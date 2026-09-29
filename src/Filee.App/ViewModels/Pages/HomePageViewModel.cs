@@ -1,0 +1,83 @@
+// Home: drop zone (handled in the view) and recent conversions.
+
+using System.Collections.ObjectModel;
+using Avalonia.Threading;
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Filee.App.Services;
+using Filee.Core.Conversion;
+using Filee.Core.History;
+using Filee.Core.Localization;
+using Filee.Core.Platform;
+using Filee.Core.Settings;
+
+namespace Filee.App.ViewModels.Pages;
+
+public sealed partial class HistoryItemViewModel(HistoryEntry entry, ILocalizer loc, IPlatformServices platform) : ObservableObject
+{
+    public string Title { get; } = entry.PresetName;
+
+    public string Subtitle { get; } = entry.Sources.Count == 1
+        ? Path.GetFileName(entry.Sources[0])
+        : loc.Format("home.files", entry.Sources.Count);
+
+    public string Time { get; } = entry.FinishedAt.Date == DateTime.Today
+        ? entry.FinishedAt.ToString("t")
+        : entry.FinishedAt.ToString("d");
+
+    public bool Succeeded { get; } = entry.State == JobState.Completed;
+    public bool HasErrors { get; } = entry.Errors.Count > 0 || entry.State == JobState.Failed;
+    public string? Errors { get; } = entry.Errors.Count == 0 ? null : string.Join(Environment.NewLine, entry.Errors);
+    public bool HasOutputs { get; } = entry.Outputs.Any(File.Exists);
+
+    [RelayCommand]
+    private void OpenFolder()
+    {
+        var output = entry.Outputs.FirstOrDefault(File.Exists);
+        if (output is not null)
+            platform.RevealInFileManager(output);
+    }
+}
+
+public sealed partial class HomePageViewModel : ObservableObject, IDisposable
+{
+    private readonly UserDataStore _store;
+    private readonly ILocalizer _loc;
+    private readonly IPlatformServices _platform;
+
+    public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform)
+    {
+        _store = store;
+        _loc = loc;
+        _platform = platform;
+        var drag = store.Settings.Triggers.FirstOrDefault(t => t.Enabled && t.Kind == TriggerKind.Drag);
+        DropHint = loc.Format("home.drop_hint", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
+        store.HistoryChanged += OnHistoryChanged;
+        Reload();
+    }
+
+    private void OnHistoryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(Reload);
+
+    public void Dispose() => _store.HistoryChanged -= OnHistoryChanged;
+
+    public string DropHint { get; }
+
+    public ObservableCollection<HistoryItemViewModel> History { get; } = [];
+
+    [ObservableProperty] private bool _isEmpty;
+
+    private void Reload()
+    {
+        History.Clear();
+        foreach (var entry in _store.History.Take(40))
+            History.Add(new HistoryItemViewModel(entry, _loc, _platform));
+        IsEmpty = History.Count == 0;
+    }
+
+    [RelayCommand]
+    private void ClearHistory()
+    {
+        _store.ClearHistory();
+        Reload();
+    }
+}

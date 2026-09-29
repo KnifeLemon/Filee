@@ -1,0 +1,71 @@
+# Builds the Windows installer and publishes it to GitHub Releases.
+# Trigger: push a tag like v0.1.0  (git tag v0.1.0 && git push origin v0.1.0)
+#
+# Output (Velopack): Filee-win-Setup.exe, Filee-win-Portable.zip, full + delta .nupkg for in-app updates.
+# Large engines are not in the installer; the app offers them on first run and in Settings > Engines.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    env:
+      PUBLISH_DIR: publish/win-x64
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Version from tag
+        id: version
+        shell: pwsh
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+      - name: Fonts
+        shell: pwsh
+        run: ./build/fetch-fonts.ps1
+
+      - name: Test
+        run: dotnet test Filee.slnx -c Release
+
+      - name: Publish
+        run: >
+          dotnet publish src/Filee.App/Filee.App.csproj -c Release -r win-x64 --self-contained
+          -p:Version=${{ steps.version.outputs.value }}
+          -p:PublishReadyToRun=true
+          -o ${{ env.PUBLISH_DIR }}
+
+      # Only the small rhwp is bundled. LibreOffice (+ H2Orestart, Java) and Pandoc are large and are downloaded by
+      # the app when the user picks them (first-run setup or Settings > Engines), see engines.json.
+      - name: Bundle conversion engines (rhwp)
+        shell: pwsh
+        run: ./build/fetch-engines.ps1 -Only rhwp -Destination "${{ env.PUBLISH_DIR }}/engines"
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk
+
+      - name: Download previous release (for delta updates)
+        run: vpk download github --repoUrl ${{ github.server_url }}/${{ github.repository }} --token ${{ secrets.GITHUB_TOKEN }} -o Releases
+        continue-on-error: true
+
+      - name: Pack
+        run: >
+          vpk pack --packId Filee --packVersion ${{ steps.version.outputs.value }}
+          --packDir ${{ env.PUBLISH_DIR }} --mainExe Filee.exe --packTitle Filee
+          --icon src/Filee.App/Assets/Icons/filee.ico -o Releases
+
+      - name: Upload to GitHub Releases
+        run: >
+          vpk upload github --repoUrl ${{ github.server_url }}/${{ github.repository }}
+          --token ${{ secrets.GITHUB_TOKEN }} --publish
+          --releaseName "Filee ${{ steps.version.outputs.value }}" --tag ${{ github.ref_name }} -o Releases

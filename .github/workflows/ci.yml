@@ -1,0 +1,45 @@
+# Build, test and style check on every push and pull request.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Filee.slnx
+
+      - name: Check formatting
+        run: dotnet format Filee.slnx --verify-no-changes --no-restore --severity warn
+
+      - name: Build
+        run: dotnet build Filee.slnx --no-restore -c Release
+
+      # rhwp + Pandoc are small; with them the HWP/HWPX engine tests run too (LibreOffice is skipped to save time).
+      - name: Fetch rhwp and Pandoc for engine tests
+        shell: pwsh
+        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc
+
+      - name: Test
+        run: dotnet test Filee.slnx --no-build -c Release --logger "trx" --results-directory TestResults
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: tests/Filee.App.Tests/bin/Release/net10.0/screenshots/
+          if-no-files-found: ignore

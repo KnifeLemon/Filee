@@ -1,0 +1,115 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             x:Class="Filee.App.Views.Pages.TriggersPage"
+             x:DataType="vm:TriggersPageViewModel">
+  <StackPanel Spacing="18">
+    <DockPanel>
+      <Button DockPanel.Dock="Right" Classes="accent" Command="{Binding AddCommand}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Plus}" />
+          <TextBlock Text="{DynamicResource triggers.add}" />
+        </StackPanel>
+      </Button>
+      <StackPanel>
+        <TextBlock Classes="h1" Text="{DynamicResource triggers.title}" />
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource triggers.description}" />
+      </StackPanel>
+    </DockPanel>
+
+    <ItemsControl ItemsSource="{Binding Gestures}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="12" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:TriggerGestureViewModel">
+          <Border Classes="card">
+            <StackPanel Spacing="14">
+              <!-- Header: on/off, summary, remove -->
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Classes="icon"
+                        Command="{Binding $parent[ItemsControl].((vm:TriggersPageViewModel)DataContext).RemoveCommand}"
+                        CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource triggers.remove}">
+                  <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Delete}" />
+                </Button>
+                <ToggleSwitch DockPanel.Dock="Left" IsChecked="{Binding Enabled}" OnContent="" OffContent="" Margin="0,0,8,0" />
+                <Border Classes="badge ok" VerticalAlignment="Center" HorizontalAlignment="Left">
+                  <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" />
+                </Border>
+              </DockPanel>
+
+              <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto">
+                <StackPanel>
+                  <TextBlock Classes="label" Text="{DynamicResource triggers.kind}" />
+                  <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+                <StackPanel Grid.Column="2">
+                  <TextBlock Classes="label" Text="{DynamicResource triggers.scope}" />
+                  <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding Scope}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="2">
+                  <TextBlock Classes="label" Text="{DynamicResource triggers.modifiers}" />
+                  <WrapPanel>
+                    <ToggleButton Content="Ctrl" IsChecked="{Binding Ctrl}" Margin="0,0,6,6" />
+                    <ToggleButton Content="Alt" IsChecked="{Binding Alt}" Margin="0,0,6,6" />
+                    <ToggleButton Content="Shift" IsChecked="{Binding Shift}" Margin="0,0,6,6" />
+                    <ToggleButton Content="{Binding MetaLabel}" IsChecked="{Binding Meta}" Margin="0,0,6,6" />
+                  </WrapPanel>
+                </StackPanel>
+
+                <StackPanel Grid.Row="2" Grid.Column="2" Spacing="10">
+                  <StackPanel IsVisible="{Binding UsesMouse}">
+                    <TextBlock Classes="label" Text="{DynamicResource triggers.button}" />
+                    <ComboBox ItemsSource="{Binding Buttons}" SelectedItem="{Binding Button}" HorizontalAlignment="Stretch" />
+                  </StackPanel>
+                  <StackPanel IsVisible="{Binding UsesKey}">
+                    <TextBlock Classes="label" Text="{DynamicResource triggers.key}" />
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <Border Classes="badge" MinWidth="120" Padding="12,6">
+                        <TextBlock Text="{Binding KeyText}" FontWeight="SemiBold" />
+                      </Border>
+                      <ToggleButton IsChecked="{Binding IsRecording}" KeyDown="OnRecorderKeyDown">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Record}" Foreground="{DynamicResource DangerBrush}" />
+                          <TextBlock Text="{Binding RecordLabel}" />
+                        </StackPanel>
+                      </ToggleButton>
+                      <Button Classes="ghost" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
+                    </StackPanel>
+                  </StackPanel>
+                </StackPanel>
+              </Grid>
+
+              <StackPanel IsVisible="{Binding UsesThreshold}">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Text="{Binding ThresholdText}" FontWeight="SemiBold" />
+                  <TextBlock Classes="label" Text="{DynamicResource triggers.threshold}" />
+                </DockPanel>
+                <Slider Minimum="0" Maximum="80" Value="{Binding DragThreshold}" TickFrequency="1" IsSnapToTickEnabled="True" />
+              </StackPanel>
+              <StackPanel IsVisible="{Binding UsesHold}">
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" FontWeight="SemiBold">
+                    <Run Text="{Binding HoldMilliseconds}" /><Run Text=" ms" />
+                  </TextBlock>
+                  <TextBlock Classes="label" Text="{DynamicResource triggers.hold_ms}" />
+                </DockPanel>
+                <Slider Minimum="150" Maximum="2000" Value="{Binding HoldMilliseconds}" TickFrequency="50" IsSnapToTickEnabled="True" />
+              </StackPanel>
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+
+    <Border Classes="card">
+      <StackPanel>
+        <TextBlock Classes="label" Text="{DynamicResource triggers.excluded}" />
+        <TextBox Text="{Binding Excluded}" PlaceholderText="{DynamicResource triggers.excluded_hint}" />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

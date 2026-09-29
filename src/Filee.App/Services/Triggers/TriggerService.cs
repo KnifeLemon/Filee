@@ -1,0 +1,155 @@
+// Connects the global input hook (SharpHook / libuiohook) to the GestureDetector and forwards detected
+// gestures to the UI thread. Hook callbacks must return quickly: Windows silently removes a low-level hook
+// whose callback takes longer than ~1 s, so no UI work happens here.
+
+using System.Diagnostics;
+using Avalonia.Threading;
+using Filee.Core.Platform;
+using Filee.Core.Settings;
+using Microsoft.Extensions.Logging;
+using SharpHook;
+using SharpHook.Data;
+
+namespace Filee.App.Services.Triggers;
+
+/// <summary>Global gesture detection. Events are raised on the UI thread with physical screen coordinates.</summary>
+public sealed class TriggerService : IDisposable
+{
+    private readonly IPlatformServices _platform;
+    private readonly ILogger<TriggerService> _log;
+    private readonly GestureDetector _detector = new();
+    private readonly string _ownProcess = Process.GetCurrentProcess().ProcessName;
+    private EventLoopGlobalHook? _hook;
+    private HashSet<string> _excluded = new(StringComparer.OrdinalIgnoreCase);
+
+    public TriggerService(IPlatformServices platform, ILogger<TriggerService> log)
+    {
+        _platform = platform;
+        _log = log;
+        _detector.SystemDragThreshold = platform.SystemDragThreshold;
+        _detector.ScopeFilter = InScope;
+
+        _detector.DragStarted += (g, x, y) => Post(() => DragStarted?.Invoke(this, new GestureEventArgs(g, x, y)));
+        _detector.DragEnded += (x, y) => Post(() => DragEnded?.Invoke(this, new GestureEventArgs(null, x, y)));
+        _detector.HoldTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
+        _detector.KeyChordTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
+        _detector.HoldTimerRequested += (token, ms) =>
+            _ = Task.Delay(ms).ContinueWith(_ => _detector.HoldElapsed(token), TaskScheduler.Default);
+    }
+
+    /// <summary>A modifier+drag started (files may be dragged). Show the donut and wait for DragEnter.</summary>
+    public event EventHandler<GestureEventArgs>? DragStarted;
+
+    /// <summary>The mouse button of an active drag gesture was released.</summary>
+    public event EventHandler<GestureEventArgs>? DragEnded;
+
+    /// <summary>A hold or keyboard gesture: open the donut for the file manager's current selection.</summary>
+    public event EventHandler<GestureEventArgs>? SelectionGesture;
+
+    /// <summary>Last known cursor position (physical pixels).</summary>
+    public (int X, int Y) LastCursor { get; private set; }
+
+    public bool IsRunning => _hook?.IsRunning == true;
+
+    public void Apply(AppSettings settings)
+    {
+        _detector.Configure(settings.Triggers);
+        _detector.Paused = settings.Paused;
+        _excluded = new HashSet<string>(settings.ExcludedProcesses.Select(p => p.Trim().Replace(".exe", "", StringComparison.OrdinalIgnoreCase)),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    public void Start()
+    {
+        if (_hook is not null)
+            return;
+        try
+        {
+            _hook = new EventLoopGlobalHook();
+            _hook.HookEnabled += (_, _) => _log.LogInformation("Global input hook started");
+            _hook.HookDisabled += (_, _) => _log.LogInformation("Global input hook stopped");
+            _hook.MousePressed += (_, e) => _detector.MouseDown(Map(e.Data.Button), e.Data.X, e.Data.Y, Map(e.RawEvent.Mask));
+            _hook.MouseReleased += (_, e) => _detector.MouseUp(Map(e.Data.Button), e.Data.X, e.Data.Y);
+            _hook.MouseDragged += (_, e) => OnMove(e);
+            _hook.MouseMoved += (_, e) => OnMove(e);
+            _hook.KeyPressed += (_, e) => _detector.KeyDown(KeyName(e.Data.KeyCode), Map(e.RawEvent.Mask));
+            _ = _hook.RunAsync().ContinueWith(t =>
+            {
+                // e.g. macOS without Accessibility permission. Drop zone and context menu keep working.
+                if (t.Exception is not null)
+                    _log.LogError(t.Exception, "Global input hook failed; gestures are unavailable");
+            }, TaskScheduler.Default);
+        }
+        catch (Exception ex)
+        {
+            // e.g. macOS without Accessibility permission. The app keeps working via the drop zone / context menu.
+            _log.LogError(ex, "Could not start the global input hook");
+            _hook = null;
+        }
+    }
+
+    private void OnMove(MouseHookEventArgs e)
+    {
+        LastCursor = (e.Data.X, e.Data.Y);
+        _detector.MouseMove(e.Data.X, e.Data.Y, Map(e.RawEvent.Mask), HeldButton(e.RawEvent.Mask));
+    }
+
+    private bool InScope(TriggerGesture gesture, int x, int y)
+    {
+        var process = _platform.ProcessNameAt(x, y);
+        if (process is not null && (string.Equals(process, _ownProcess, StringComparison.OrdinalIgnoreCase) || _excluded.Contains(process)))
+            return false;
+        return gesture.Scope == TriggerScope.Anywhere || _platform.IsFileManagerAt(x, y);
+    }
+
+    private static void Post(Action action) => Dispatcher.UIThread.Post(action);
+
+    internal static TriggerMouseButton Map(MouseButton button) => button switch
+    {
+        MouseButton.Button1 => TriggerMouseButton.Left,
+        MouseButton.Button2 => TriggerMouseButton.Right,
+        MouseButton.Button3 => TriggerMouseButton.Middle,
+        MouseButton.Button4 => TriggerMouseButton.X1,
+        MouseButton.Button5 => TriggerMouseButton.X2,
+        _ => TriggerMouseButton.None,
+    };
+
+    internal static ModifierKeys Map(EventMask mask)
+    {
+        var result = ModifierKeys.None;
+        if (mask.HasCtrl()) result |= ModifierKeys.Ctrl;
+        if (mask.HasAlt()) result |= ModifierKeys.Alt;
+        if (mask.HasShift()) result |= ModifierKeys.Shift;
+        if (mask.HasMeta()) result |= ModifierKeys.Meta;
+        return result;
+    }
+
+    internal static TriggerMouseButton HeldButton(EventMask mask) =>
+        mask.HasFlag(EventMask.Button1) ? TriggerMouseButton.Left
+        : mask.HasFlag(EventMask.Button2) ? TriggerMouseButton.Right
+        : mask.HasFlag(EventMask.Button3) ? TriggerMouseButton.Middle
+        : mask.HasFlag(EventMask.Button4) ? TriggerMouseButton.X1
+        : mask.HasFlag(EventMask.Button5) ? TriggerMouseButton.X2
+        : TriggerMouseButton.None;
+
+    /// <summary>"VcSpace" → "Space".</summary>
+    internal static string KeyName(KeyCode code)
+    {
+        var name = code.ToString();
+        return name.StartsWith("Vc", StringComparison.Ordinal) ? name[2..] : name;
+    }
+
+    public void Dispose()
+    {
+        _hook?.Dispose();
+        _hook = null;
+    }
+}
+
+/// <summary>Gesture notification with physical screen coordinates.</summary>
+public sealed class GestureEventArgs(TriggerGesture? gesture, int x, int y) : EventArgs
+{
+    public TriggerGesture? Gesture { get; } = gesture;
+    public int X { get; } = x;
+    public int Y { get; } = y;
+}

@@ -1,0 +1,31 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             x:Class="Filee.App.Views.Pages.AboutPage"
+             x:DataType="vm:AboutPageViewModel">
+  <StackPanel Spacing="18">
+    <TextBlock Classes="h1" Text="{DynamicResource about.title}" />
+    <Border Classes="card">
+      <StackPanel Orientation="Horizontal" Spacing="18">
+        <Image Source="avares://Filee/Assets/Icons/filee.png" Width="72" Height="72" />
+        <StackPanel VerticalAlignment="Center" Spacing="4">
+          <TextBlock Text="Filee" FontSize="24" FontWeight="Bold" />
+          <TextBlock Classes="muted" Text="{Binding Version}" />
+          <TextBlock Classes="muted" Text="{DynamicResource about.license}" />
+          <Button Classes="ghost" Padding="0" Click="OnOpenRepository" Margin="0,4,0,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Link}" Foreground="{DynamicResource AccentBrush}" />
+              <TextBlock Text="{Binding RepositoryUrl}" Foreground="{DynamicResource AccentBrush}" />
+            </StackPanel>
+          </Button>
+        </StackPanel>
+      </StackPanel>
+    </Border>
+    <Border Classes="card">
+      <StackPanel Spacing="8">
+        <TextBlock Classes="h2" Text="{DynamicResource about.notices}" />
+        <SelectableTextBlock Text="{Binding Notices}" TextWrapping="Wrap" FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

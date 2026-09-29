@@ -1,0 +1,40 @@
+<!-- Main window = settings: navigation on the left, current page on the right. Closing hides to the tray. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="Filee"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="1080" Height="760" MinWidth="820" MinHeight="560"
+        WindowStartupLocation="CenterScreen">
+  <Grid ColumnDefinitions="230,*">
+    <!-- Navigation -->
+    <Border Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="0,0,1,0">
+      <DockPanel Margin="14,18">
+        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="10" Margin="8,0,0,20">
+          <Image Source="avares://Filee/Assets/Icons/filee.png" Width="30" Height="30" />
+          <StackPanel VerticalAlignment="Center">
+            <TextBlock Text="Filee" FontSize="18" FontWeight="Bold" />
+            <TextBlock Classes="caption" Text="{DynamicResource app.tagline}" />
+          </StackPanel>
+        </StackPanel>
+        <ListBox Classes="nav" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:NavItem">
+              <StackPanel Orientation="Horizontal" Spacing="12">
+                <PathIcon Width="17" Height="17" Data="{Binding Icon}" />
+                <TextBlock Text="{Binding Title}" VerticalAlignment="Center" />
+              </StackPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+      </DockPanel>
+    </Border>
+
+    <!-- Page -->
+    <ScrollViewer Grid.Column="1" x:Name="PageScroller">
+      <ContentControl Classes="page" Content="{Binding CurrentPage}" Margin="32,26,32,32" MaxWidth="980" HorizontalAlignment="Stretch" />
+    </ScrollViewer>
+  </Grid>
+</Window>

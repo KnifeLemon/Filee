@@ -1,0 +1,33 @@
+<!--
+  Filee.Engines: IConverter implementations (one file per engine) and helpers to find external tools.
+  Register new engines in EngineRegistry.cs.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Filee.Engines</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Filee.Core\Filee.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Magick.NET-Q8-AnyCPU" />
+    <PackageReference Include="PDFsharp" />
+    <PackageReference Include="PDFtoImage" />
+    <PackageReference Include="Unhwp" />
+    <PackageReference Include="Markdig" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Filee.Engines.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Reference HWPX (styles, page setup) from pypandoc-hwpx (MIT), see Hwp/Hwpx/HwpxWriter.cs. -->
+    <EmbeddedResource Include="Hwp\Hwpx\blank.hwpx" LogicalName="Filee.Engines.Hwpx.blank.hwpx" />
+    <!-- Pinned downloads of optional engines, also read by build/fetch-engines.ps1. -->
+    <EmbeddedResource Include="Infrastructure\engines.json" LogicalName="Filee.Engines.engines.json" />
+  </ItemGroup>
+</Project>

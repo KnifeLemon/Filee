@@ -1,0 +1,109 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             xmlns:svc="using:Filee.App.Services"
+             x:Class="Filee.App.Views.Pages.EnginesPage"
+             x:DataType="vm:EnginesPageViewModel">
+  <StackPanel Spacing="18">
+    <DockPanel>
+      <Button DockPanel.Dock="Right" Command="{Binding RecheckCommand}">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Refresh}" />
+          <TextBlock Text="{DynamicResource engines.recheck}" />
+        </StackPanel>
+      </Button>
+      <StackPanel>
+        <TextBlock Classes="h1" Text="{DynamicResource engines.title}" />
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource engines.description}" />
+      </StackPanel>
+    </DockPanel>
+
+    <!-- Optional engines: downloaded on demand because they are large. -->
+    <StackPanel Spacing="10">
+      <StackPanel Spacing="2">
+        <TextBlock Classes="h2" Text="{DynamicResource engines.optional_title}" />
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource engines.optional_description}" />
+      </StackPanel>
+      <ItemsControl ItemsSource="{Binding Packages}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="10" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="svc:EnginePackageState">
+            <Border Classes="card" Padding="16,12">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0">
+                  <Button Classes="accent" Content="{DynamicResource engines.install}" IsVisible="{Binding CanInstall}"
+                          Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).InstallCommand}" CommandParameter="{Binding}" />
+                  <Button Content="{DynamicResource engines.cancel}" IsVisible="{Binding IsBusy}"
+                          Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).CancelCommand}" CommandParameter="{Binding}" />
+                  <Button Content="{DynamicResource engines.remove}" IsVisible="{Binding IsInstalled}" Click="OnRemove" />
+                </StackPanel>
+                <StackPanel Spacing="4">
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                    <Border Classes="badge">
+                      <TextBlock Classes="caption" Text="{Binding StatusText}" />
+                    </Border>
+                  </StackPanel>
+                  <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
+                  <TextBlock Classes="caption" Text="{Binding Sizes}" />
+                  <ProgressBar Classes="soft" Maximum="100" Value="{Binding Progress}" IsVisible="{Binding IsBusy}" Margin="0,4,0,0" />
+                </StackPanel>
+              </DockPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+      <TextBlock Classes="h2" Margin="0,8,0,0" Text="{DynamicResource engines.all_title}" />
+    </StackPanel>
+
+    <ItemsControl ItemsSource="{Binding Engines}">
+      <ItemsControl.ItemsPanel>
+        <ItemsPanelTemplate>
+          <StackPanel Spacing="10" />
+        </ItemsPanelTemplate>
+      </ItemsControl.ItemsPanel>
+      <ItemsControl.ItemTemplate>
+        <DataTemplate x:DataType="vm:EngineItemViewModel">
+          <Border Classes="card" Padding="16,12">
+            <StackPanel Spacing="10">
+              <DockPanel>
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                  <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}"
+                          Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+                  </Button>
+                  <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_down}"
+                          Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+                  </Button>
+                </StackPanel>
+                <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
+                        Background="{DynamicResource SuccessBrush}" IsVisible="{Binding IsAvailable}" />
+                <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
+                        Background="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !IsAvailable}" />
+                <StackPanel>
+                  <StackPanel Orientation="Horizontal" Spacing="10">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                    <Border Classes="badge">
+                      <TextBlock Classes="caption" Text="{Binding StatusText}" />
+                    </Border>
+                    <TextBlock Classes="caption" VerticalAlignment="Center" Text="{Binding Conversions}" />
+                  </StackPanel>
+                  <TextBlock Classes="caption" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </DockPanel>
+              <DockPanel IsVisible="{Binding SupportsCustomPath}">
+                <Button DockPanel.Dock="Right" Margin="8,0,0,0" Content="{DynamicResource engines.browse}" Click="OnBrowse" />
+                <TextBox Text="{Binding CustomPath}" PlaceholderText="{DynamicResource engines.custom_path}" />
+              </DockPanel>
+            </StackPanel>
+          </Border>
+        </DataTemplate>
+      </ItemsControl.ItemTemplate>
+    </ItemsControl>
+  </StackPanel>
+</UserControl>

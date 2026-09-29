@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             x:Class="Filee.App.Views.Pages.GeneralPage"
+             x:DataType="vm:GeneralPageViewModel">
+  <StackPanel Spacing="18">
+    <TextBlock Classes="h1" Text="{DynamicResource general.title}" />
+
+    <Border Classes="card">
+      <StackPanel Spacing="14">
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource general.language}" />
+          <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="240" />
+        </StackPanel>
+        <ToggleSwitch Content="{DynamicResource general.start_with_system}" IsChecked="{Binding StartWithSystem}" />
+        <ToggleSwitch Content="{DynamicResource general.context_menu}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding IsWindows}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="card">
+      <StackPanel Spacing="12">
+        <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button Content="{DynamicResource general.check_now}" Command="{Binding CheckNowCommand}" />
+          <Button Classes="accent" Content="{DynamicResource general.update_install}" Command="{Binding InstallUpdateCommand}" IsVisible="{Binding UpdateAvailable}" />
+          <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <Border Classes="card">
+      <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="{DynamicResource general.library}" />
+        <WrapPanel>
+          <Button Content="{DynamicResource general.export}" Click="OnExport" Margin="0,0,8,8" />
+          <Button Content="{DynamicResource general.import}" Click="OnImport" Margin="0,0,8,8" />
+          <Button Content="{DynamicResource general.reset_library}" Click="OnReset" Margin="0,0,8,8" />
+        </WrapPanel>
+        <TextBlock Classes="muted" Text="{Binding LibraryMessage}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="card">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="{DynamicResource general.open_data_folder}" Command="{Binding OpenDataFolderCommand}" />
+        <StackPanel VerticalAlignment="Center">
+          <TextBlock Classes="label" Text="{DynamicResource general.data_folder}" />
+          <TextBlock Text="{Binding DataFolder}" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

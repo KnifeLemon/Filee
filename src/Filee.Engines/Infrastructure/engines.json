@@ -1,0 +1,40 @@
+{
+  "_comment": "Downloadable conversion engines: pinned URL + SHA-256. Used by the app (Settings > Engines, first-run setup) and by build/fetch-engines.ps1. Bumping a version = change url, sha256 and size together.",
+  "components": {
+    "rhwp": {
+      "version": "0.8.6",
+      "url": "https://github.com/edwardkim/rhwp/releases/download/v0.8.6/rhwp-v0.8.6-windows-x86_64.zip",
+      "sha256": "867E0A84B778EBDA92B88433EDE301818EAEA21E7D58EB77FF9A732F41D170D9",
+      "size": 10270410,
+      "kind": "zip"
+    },
+    "pandoc": {
+      "version": "3.12",
+      "url": "https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-windows-x86_64.zip",
+      "sha256": "2A77EBC2517D13E95056E76B1CD5B574CFE958AC61AA6058117D80C22CA19B79",
+      "size": 42114462,
+      "kind": "zip"
+    },
+    "jre": {
+      "version": "21.0.12.1",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
+      "sha256": "D35F31E712F0FCF6AC5A093EDC90204FBFF22F720BA3950BD09D331D5E621636",
+      "size": 48999141,
+      "kind": "zip"
+    },
+    "libreoffice": {
+      "version": "26.2.6",
+      "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/win/x86_64/LibreOffice_26.2.6_Win_x86-64.msi",
+      "sha256": "F9877032FD908BEB9C0DDF06DF4AF5C2E85F419C42E14876C4CCE5AAE5FB2660",
+      "size": 373252096,
+      "kind": "msi"
+    },
+    "h2orestart": {
+      "version": "0.7.14",
+      "url": "https://github.com/ebandal/H2Orestart/releases/download/v0.7.14/H2Orestart.oxt",
+      "sha256": "CBEA23BC37861361BBC534BC0675E5BC67B36F712072490F82A9BF410D7C04D8",
+      "size": 606257,
+      "kind": "oxt"
+    }
+  }
+}

@@ -1,0 +1,150 @@
+<!--
+  Donut toolbar editor.
+  1. Pick a profile on the left.   2. Arrange its presets on the live donut:
+     chip → donut = add · slice → palette = remove · slice → slice = reorder · right-click / ✎ = edit.
+  Drag & drop is implemented in ToolbarPage.axaml.cs.
+-->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             xmlns:c="using:Filee.App.Controls"
+             x:Class="Filee.App.Views.Pages.ToolbarPage"
+             x:DataType="vm:ToolbarPageViewModel">
+  <UserControl.Styles>
+    <Style Selector="Border#PaletteBox.over">
+      <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+    </Style>
+    <Style Selector="Border#Ghost">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="12,6" />
+      <Setter Property="BoxShadow" Value="0 6 18 0 #33000000" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid x:Name="Root" RowDefinitions="Auto,*">
+    <StackPanel Spacing="4" Margin="0,0,0,18">
+      <TextBlock Classes="h1" Text="{DynamicResource toolbar.title}" />
+    </StackPanel>
+
+    <Grid Grid.Row="1" ColumnDefinitions="200,20,*,20,230">
+      <!-- 1. Profiles -->
+      <StackPanel Spacing="8">
+        <TextBlock Classes="label" Text="{DynamicResource toolbar.step_profile}" />
+        <ListBox Classes="soft" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}">
+          <ListBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:ProfileItemViewModel">
+              <DockPanel>
+                <Border DockPanel.Dock="Right" Classes="badge">
+                  <TextBlock Classes="caption" Text="{Binding Count}" />
+                </Border>
+                <TextBlock Text="{Binding Name}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+              </DockPanel>
+            </DataTemplate>
+          </ListBox.ItemTemplate>
+        </ListBox>
+        <Button HorizontalAlignment="Stretch" Command="{Binding AddProfileCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
+            <TextBlock Text="{DynamicResource toolbar.add_profile}" />
+          </StackPanel>
+        </Button>
+      </StackPanel>
+
+      <!-- 2. Donut -->
+      <StackPanel Grid.Column="2" Spacing="12">
+        <TextBlock Classes="label" Text="{DynamicResource toolbar.step_arrange}" />
+        <Border Classes="card" Padding="8">
+          <c:DonutMenu x:Name="Donut" IsEditMode="True" HorizontalAlignment="Center"
+                       Items="{Binding DonutItems}"
+                       CenterTitle="{Binding CenterTitle}"
+                       CenterSubtitle="{Binding CenterSubtitle}"
+                       OuterRadius="{Binding OuterRadius}"
+                       HoleRatio="{Binding HoleRatio, Converter={x:Static vm:ToolbarConverters.Percent}}"
+                       SliceOpacity="{Binding SliceOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}" />
+        </Border>
+        <TextBlock Classes="caption danger" Text="{Binding Message}" HorizontalAlignment="Center" />
+
+        <Border Classes="card">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="*,12,*">
+              <StackPanel>
+                <TextBlock Classes="label" Text="{DynamicResource toolbar.name}" />
+                <TextBox Text="{Binding ProfileName}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2">
+                <TextBlock Classes="label" Text="{DynamicResource toolbar.extensions}" />
+                <TextBox Text="{Binding Extensions}" PlaceholderText="{DynamicResource toolbar.extensions_hint}" IsEnabled="{Binding !IsFallback}" />
+              </StackPanel>
+            </Grid>
+            <TextBlock Classes="caption" Text="{DynamicResource toolbar.fallback_note}" IsVisible="{Binding IsFallback}" TextWrapping="Wrap" />
+            <Button HorizontalAlignment="Right" Content="{DynamicResource toolbar.delete_profile}" Command="{Binding DeleteProfileCommand}" IsVisible="{Binding !IsFallback}" />
+          </StackPanel>
+        </Border>
+
+        <Border Classes="card">
+          <StackPanel Spacing="6">
+            <TextBlock Classes="h2" Text="{DynamicResource toolbar.appearance}" />
+            <Grid ColumnDefinitions="90,*">
+              <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.size}" />
+              <Slider Grid.Column="1" Minimum="110" Maximum="220" Value="{Binding OuterRadius}" />
+            </Grid>
+            <Grid ColumnDefinitions="90,*">
+              <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.hole}" />
+              <Slider Grid.Column="1" Minimum="25" Maximum="65" Value="{Binding HoleRatio}" />
+            </Grid>
+            <Grid ColumnDefinitions="90,*">
+              <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.opacity}" />
+              <Slider Grid.Column="1" Minimum="50" Maximum="100" Value="{Binding SliceOpacity}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <!-- Palette -->
+      <StackPanel Grid.Column="4" Spacing="8">
+        <TextBlock Classes="label" Text="{DynamicResource toolbar.available}" />
+        <Border x:Name="PaletteBox" MinHeight="180" Padding="6" CornerRadius="{DynamicResource SoftRadius}"
+                BorderThickness="2" BorderBrush="{DynamicResource SubtleBorderBrush}" Background="Transparent">
+          <ItemsControl ItemsSource="{Binding Palette}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <WrapPanel />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:PaletteChip">
+                <Border Classes="chip" PointerPressed="OnChipPressed" DoubleTapped="OnChipDoubleTapped">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <TextBlock Text="{Binding Label}" FontWeight="SemiBold" />
+                    <TextBlock Classes="caption" Text="{Binding Caption}" VerticalAlignment="Center" />
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+        <Button HorizontalAlignment="Stretch" Command="{Binding NewPresetCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
+            <TextBlock Text="{DynamicResource toolbar.new_preset}" />
+          </StackPanel>
+        </Button>
+        <StackPanel Spacing="4" Margin="2,6,0,0">
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource toolbar.hint_add}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource toolbar.hint_remove}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource toolbar.hint_reorder}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource toolbar.hint_edit}" />
+        </StackPanel>
+      </StackPanel>
+    </Grid>
+
+    <!-- Drag ghost layer -->
+    <Canvas x:Name="DragLayer" Grid.RowSpan="2" IsHitTestVisible="False">
+      <Border x:Name="Ghost" IsVisible="False">
+        <TextBlock x:Name="GhostText" Foreground="{DynamicResource OnAccentBrush}" FontWeight="SemiBold" />
+      </Border>
+    </Canvas>
+  </Grid>
+</UserControl>

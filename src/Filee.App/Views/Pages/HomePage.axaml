@@ -1,0 +1,84 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             x:Class="Filee.App.Views.Pages.HomePage"
+             x:DataType="vm:HomePageViewModel">
+  <UserControl.Styles>
+    <Style Selector="Border#DropZone">
+      <Setter Property="Transitions">
+        <Transitions>
+          <BrushTransition Property="Background" Duration="0:0:0.2" />
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.3" Easing="BackEaseOut" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border#DropZone.over">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="RenderTransform" Value="scale(1.015)" />
+    </Style>
+  </UserControl.Styles>
+
+  <StackPanel Spacing="22">
+    <TextBlock Classes="h1" Text="{DynamicResource home.title}" />
+
+    <!-- Drop zone: files dropped here open the donut toolbar at the cursor. -->
+    <Border x:Name="DropZone" DragDrop.AllowDrop="True" MinHeight="220"
+            Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentSoftBrush}"
+            BorderThickness="2" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="24">
+      <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="10">
+        <Border Width="64" Height="64" CornerRadius="999" Background="{DynamicResource AccentSoftBrush}" HorizontalAlignment="Center">
+          <PathIcon Width="28" Height="28" Data="{StaticResource Icon.Upload}" Foreground="{DynamicResource AccentStrongBrush}" />
+        </Border>
+        <TextBlock Classes="h2" HorizontalAlignment="Center" Text="{DynamicResource home.drop_title}" />
+        <TextBlock Classes="muted" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" MaxWidth="460"
+                   Text="{Binding DropHint}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Recent conversions -->
+    <StackPanel Spacing="10">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Classes="ghost" Content="{DynamicResource home.clear_history}" Command="{Binding ClearHistoryCommand}" />
+        <TextBlock Classes="h2" VerticalAlignment="Center" Text="{DynamicResource home.recent}" />
+      </DockPanel>
+      <TextBlock Classes="muted" Text="{DynamicResource home.recent_empty}" IsVisible="{Binding IsEmpty}" />
+      <ItemsControl ItemsSource="{Binding History}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <StackPanel Spacing="8" />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:HistoryItemViewModel">
+            <Border Classes="card" Padding="14,10">
+              <DockPanel>
+                <Button DockPanel.Dock="Right" Command="{Binding OpenFolderCommand}" IsVisible="{Binding HasOutputs}" Padding="10,5">
+                  <StackPanel Orientation="Horizontal" Spacing="6">
+                    <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Folder}" />
+                    <TextBlock Text="{DynamicResource home.open_folder}" />
+                  </StackPanel>
+                </Button>
+                <Border DockPanel.Dock="Left" Width="32" Height="32" CornerRadius="999" Margin="0,0,12,0"
+                        Background="{DynamicResource AccentSoftBrush}">
+                  <Panel>
+                    <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Check}" Foreground="{DynamicResource AccentStrongBrush}" IsVisible="{Binding !HasErrors}" />
+                    <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Alert}" Foreground="{DynamicResource DangerBrush}" IsVisible="{Binding HasErrors}" />
+                  </Panel>
+                </Border>
+                <StackPanel VerticalAlignment="Center" ToolTip.Tip="{Binding Errors}">
+                  <TextBlock FontWeight="SemiBold" Text="{Binding Title}" />
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Classes="caption" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+                    <TextBlock Classes="caption" Text="·" />
+                    <TextBlock Classes="caption" Text="{Binding Time}" />
+                  </StackPanel>
+                </StackPanel>
+              </DockPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
+  </StackPanel>
+</UserControl>

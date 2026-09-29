@@ -1,0 +1,135 @@
+<!-- Preset editor form. Used on the Presets page and inside PresetEditorWindow (donut right-click / ✎). -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels"
+             x:Class="Filee.App.Views.PresetEditorView"
+             x:DataType="vm:PresetEditorViewModel">
+  <StackPanel Spacing="14">
+    <!-- Name + target -->
+    <Grid ColumnDefinitions="*,12,*">
+      <StackPanel>
+        <TextBlock Classes="label" Text="{DynamicResource presets.name}" />
+        <TextBox Text="{Binding Name}" />
+        <TextBlock Classes="caption danger" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
+      </StackPanel>
+      <StackPanel Grid.Column="2">
+        <TextBlock Classes="label" Text="{DynamicResource presets.target}" />
+        <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}" HorizontalAlignment="Stretch" MaxDropDownHeight="360" />
+      </StackPanel>
+    </Grid>
+
+    <!-- Image options -->
+    <Border Classes="card" IsVisible="{Binding ShowImage}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.image}" />
+        <StackPanel IsVisible="{Binding ShowQuality}">
+          <DockPanel>
+            <TextBlock DockPanel.Dock="Right" Text="{Binding Quality}" FontWeight="SemiBold" />
+            <TextBlock Classes="label" Text="{DynamicResource presets.quality}" />
+          </DockPanel>
+          <Slider Minimum="1" Maximum="100" Value="{Binding Quality}" TickFrequency="1" IsSnapToTickEnabled="True" />
+        </StackPanel>
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.resize}" />
+            <ComboBox ItemsSource="{Binding ResizeModes}" SelectedItem="{Binding Resize}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" IsVisible="{Binding ShowPercent}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.percent}" />
+            <NumericUpDown Value="{Binding ResizePercent}" Minimum="1" Maximum="1000" Increment="5" FormatString="0" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" IsVisible="{Binding ShowLongEdge}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.long_edge}" />
+            <NumericUpDown Value="{Binding LongEdge}" Minimum="16" Maximum="20000" Increment="100" FormatString="0" />
+          </StackPanel>
+        </Grid>
+        <Grid ColumnDefinitions="Auto,12,*">
+          <CheckBox Content="{DynamicResource presets.dpi}" IsChecked="{Binding SetDpi}" />
+          <NumericUpDown Grid.Column="2" Value="{Binding Dpi}" Minimum="36" Maximum="2400" Increment="50" FormatString="0" IsEnabled="{Binding SetDpi}" />
+        </Grid>
+        <WrapPanel>
+          <CheckBox Content="{DynamicResource presets.keep_metadata}" IsChecked="{Binding KeepMetadata}" Margin="0,0,18,0" />
+          <CheckBox Content="{DynamicResource presets.grayscale}" IsChecked="{Binding Grayscale}" Margin="0,0,18,0" />
+          <CheckBox Content="{DynamicResource presets.webp_lossless}" IsChecked="{Binding WebpLossless}" IsVisible="{Binding ShowWebp}" />
+        </WrapPanel>
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.background}" />
+            <TextBox Text="{Binding Background}" PlaceholderText="#FFFFFF" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" IsVisible="{Binding ShowTiff}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.tiff_compression}" />
+            <ComboBox ItemsSource="{Binding TiffCompressions}" SelectedItem="{Binding TiffCompression}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" IsVisible="{Binding ShowIco}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.ico_sizes}" />
+            <TextBox Text="{Binding IcoSizes}" PlaceholderText="256, 64, 48, 32, 16" />
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <!-- PDF options (render settings also apply when a PDF is converted to images) -->
+    <Border Classes="card" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.pdf}" />
+        <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
+        <CheckBox Content="{DynamicResource presets.split}" IsChecked="{Binding SplitPages}" IsVisible="{Binding ShowPdfSplit}" />
+        <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowPdfBuild}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.page_size}" />
+            <ComboBox ItemsSource="{Binding PageSizes}" SelectedItem="{Binding PageSize}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" IsVisible="{Binding ShowMargin}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.margin}" />
+            <NumericUpDown Value="{Binding MarginMm}" Minimum="0" Maximum="100" Increment="1" FormatString="0" />
+          </StackPanel>
+        </Grid>
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.render_dpi}" />
+            <NumericUpDown Value="{Binding RenderDpi}" Minimum="36" Maximum="1200" Increment="25" FormatString="0" />
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Classes="label" Text="{DynamicResource presets.page_range}" />
+            <TextBox Text="{Binding PageRange}" PlaceholderText="{DynamicResource presets.page_range_hint}" />
+          </StackPanel>
+        </Grid>
+        <CheckBox Content="{DynamicResource presets.pdfa}" IsChecked="{Binding PdfA}" IsVisible="{Binding ShowDocument}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Output -->
+    <Border Classes="card" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.output}" />
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.location}" />
+            <ComboBox ItemsSource="{Binding Locations}" SelectedItem="{Binding Location}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Classes="label" Text="{DynamicResource presets.conflict}" />
+            <ComboBox ItemsSource="{Binding Conflicts}" SelectedItem="{Binding Conflict}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Grid>
+        <StackPanel IsVisible="{Binding ShowSubfolder}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.subfolder}" />
+          <TextBox Text="{Binding SubfolderName}" PlaceholderText="converted" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding ShowCustomFolder}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.custom_folder}" />
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Margin="8,0,0,0" Content="{DynamicResource presets.browse}" Click="OnBrowseFolder" />
+            <TextBox Text="{Binding CustomFolder}" />
+          </DockPanel>
+        </StackPanel>
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource presets.pattern}" />
+          <TextBox Text="{Binding Pattern}" PlaceholderText="{}{name}" />
+          <TextBlock Classes="caption" Text="{DynamicResource presets.pattern_hint}" Margin="2,4,0,0" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

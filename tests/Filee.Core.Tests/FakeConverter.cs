@@ -1,0 +1,70 @@
+using Filee.Core.Conversion;
+
+namespace Filee.Core.Tests;
+
+/// <summary>Test double: "converts" by writing the input name and target format into the output file.</summary>
+internal sealed class FakeConverter(string id, params ConversionEdge[] edges) : IConverter
+{
+    public string Id => id;
+    public string DisplayName => id;
+    public IReadOnlyList<ConversionEdge> Edges => edges;
+    public int MaxParallelism => 0;
+    public bool Available { get; set; } = true;
+
+    /// <summary>Number of output files per input (simulates multi-page outputs).</summary>
+    public int OutputsPerInput { get; set; } = 1;
+
+    public bool Throw { get; set; }
+
+    public EngineStatus GetStatus() => Available ? EngineStatus.Available() : EngineStatus.Unavailable("engine.reason.not_installed");
+
+    public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        if (Throw)
+            throw new InvalidOperationException("boom");
+
+        var written = new List<string>();
+        for (var i = 0; i < OutputsPerInput; i++)
+        {
+            var path = step.Output.Allocate(step.To, OutputsPerInput > 1 ? $"_p{i + 1}" : null);
+            if (path is null)
+                continue;
+            File.WriteAllText(path, $"{Path.GetFileName(step.InputPath)}→{step.To} by {id}");
+            written.Add(path);
+        }
+        progress?.Report(1);
+        return Task.FromResult<IReadOnlyList<string>>(written);
+    }
+}
+
+internal sealed class FakeMerger : IPdfMerger
+{
+    public List<string> Inputs { get; } = [];
+
+    public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken)
+    {
+        Inputs.AddRange(inputPaths);
+        File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
+        return Task.CompletedTask;
+    }
+}
+
+/// <summary>Creates and removes a unique temp directory.</summary>
+internal sealed class TempDir : IDisposable
+{
+    public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "filee-tests", Guid.NewGuid().ToString("N")[..8]);
+
+    public TempDir() => Directory.CreateDirectory(Path);
+
+    public string File(string name, string content = "x")
+    {
+        var full = System.IO.Path.Combine(Path, name);
+        System.IO.File.WriteAllText(full, content);
+        return full;
+    }
+
+    public void Dispose()
+    {
+        try { Directory.Delete(Path, true); } catch (IOException) { }
+    }
+}
