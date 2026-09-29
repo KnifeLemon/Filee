@@ -5,6 +5,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Office;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App.Services;
@@ -85,6 +86,7 @@ public sealed class EngineDownloadService
     private readonly ConverterCatalog _catalog;
     private readonly ILogger<EngineDownloadService> _logger;
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
+    private int _warmingUp;
 
     public EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger)
     {
@@ -143,6 +145,8 @@ public sealed class EngineDownloadService
             }
             state.Status = EnginePackageStatus.Installed;
             _catalog.Refresh();
+            if (state.Package.ConverterIds.Contains("libreoffice"))
+                WarmUpInBackground(TimeSpan.Zero);
         }
         catch (OperationCanceledException)
         {
@@ -161,6 +165,38 @@ public sealed class EngineDownloadService
     }
 
     public void Cancel(EnginePackageState state) => state.Cancellation?.Cancel();
+
+    /// <summary>
+    /// Prepares LibreOffice's worker profiles in the background, so the first document conversion is as quick as the
+    /// following ones (LibreOffice's first start with a new profile takes 2-3× longer). One run at a time; does
+    /// nothing when LibreOffice is missing or already prepared.
+    /// </summary>
+    public void WarmUpInBackground(TimeSpan delay)
+    {
+        if (Interlocked.Exchange(ref _warmingUp, 1) == 1)
+            return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(delay);
+                foreach (var libreOffice in _catalog.All.OfType<LibreOfficeConverter>())
+                {
+                    var prepared = await libreOffice.WarmUpAsync();
+                    if (prepared > 0)
+                        _logger.LogInformation("Prepared {Count} LibreOffice profile(s)", prepared);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Preparing LibreOffice failed");
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _warmingUp, 0);
+            }
+        });
+    }
 
     /// <summary>Removes a package. Returns false when its files are in use (a conversion is running).</summary>
     public bool Uninstall(EnginePackageState state)

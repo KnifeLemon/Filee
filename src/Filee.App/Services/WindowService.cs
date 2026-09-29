@@ -18,6 +18,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
     private MainWindow? _main;
     private ToastWindow? _toast;
     private EngineSetupWindow? _engineSetup;
+    private UpdateNoticeWindow? _updateNotice;
 
     public MainWindow? Main => _main;
 
@@ -56,6 +57,25 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
     public void EnsureToast()
     {
         _toast ??= new ToastWindow { DataContext = services.GetRequiredService<ConversionService>() };
+    }
+
+    /// <summary>Shows the "new version available" card in the bottom-right corner (above a visible toast).</summary>
+    public void ShowUpdateNotice(string version)
+    {
+        _updateNotice?.Close();
+        var notice = new UpdateNoticeWindow(services.GetRequiredService<UpdateService>(), loc.Format("update.notice_title", version))
+        {
+            BottomOffset = _toast is { IsVisible: true } toast
+                ? (int)Math.Ceiling(toast.Bounds.Height * (toast.Screens.Primary?.Scaling ?? 1))
+                : 0,
+        };
+        notice.Closed += (_, _) =>
+        {
+            if (_updateNotice == notice)
+                _updateNotice = null;
+        };
+        _updateNotice = notice;
+        notice.Show();
     }
 
     /// <summary>Opens the preset popup. Returns true when the user saved (the preset object was updated).</summary>

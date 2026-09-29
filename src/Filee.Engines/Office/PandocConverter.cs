@@ -66,8 +66,10 @@ public sealed class PandocConverter(EngineEnvironment env) : IConverter
         if (step.To is "md" or "html")
             args.Add("--extract-media=" + Path.Combine(Path.GetDirectoryName(output)!, Path.GetFileNameWithoutExtension(output) + "_files"));
 
-        var result = await ProcessRunner.RunAsync(pandoc, args, Timeout, cancellationToken,
-            workingDirectory: Path.GetDirectoryName(Path.GetFullPath(step.InputPath)));
+        ProcessResult result;
+        using (ProgressEstimate.Start(progress, TimeSpan.FromSeconds(1.5)))
+            result = await ProcessRunner.RunAsync(pandoc, args, Timeout, cancellationToken,
+                workingDirectory: Path.GetDirectoryName(Path.GetFullPath(step.InputPath)));
         if (!File.Exists(output))
             throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
         progress?.Report(1);

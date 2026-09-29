@@ -29,8 +29,11 @@ public sealed class RadialController(
     UserDataStore store,
     ILogger<RadialController> log)
 {
-    /// <summary>How long the ring shows a running job before the toast window takes over.</summary>
-    private static readonly TimeSpan HandOffAfter = TimeSpan.FromSeconds(1.5);
+    /// <summary>
+    /// How long the ring shows a running job before the toast window takes over. Long enough for a typical office
+    /// document (LibreOffice needs a few seconds), so the user sees it finish where they dropped it.
+    /// </summary>
+    private static readonly TimeSpan HandOffAfter = TimeSpan.FromSeconds(5);
 
     private RadialWindow? _window;
     private bool _visible;

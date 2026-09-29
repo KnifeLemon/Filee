@@ -21,7 +21,7 @@
             ┌──────────────────────────── Filee.Engines ────────────────────────────────────────┐
             │ Magick (images) · PdfSharp (image→PDF, merge, split) · Pdfium (PDF→image)          │
             │ LibreOffice (office, HWP via H2Orestart) · rhwp (HWP→PDF, HWP↔HWPX) · Unhwp       │
-            │ HwpxWriter (DOCX / Pandoc AST → HWPX) · Pandoc · Word COM · EngineInstaller       │
+            │ HwpxWriter (DOCX / Markdown / Pandoc AST → HWPX) · Markdig · Pandoc · Word COM    │
             └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 

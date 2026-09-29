@@ -64,7 +64,8 @@
 | **表格与演示文稿**：XLSX、XLS、ODS、CSV、PPTX、PPT、ODP | PDF 及互相转换 |
 | **文本**：TXT、Markdown、HTML | DOCX、HWPX、PDF |
 
-办公文档和 Markdown 使用可选引擎（LibreOffice、Pandoc），Filee 会在首次启动时询问是否下载。
+Markdown → PDF、HWPX、HTML、TXT 装好即用。办公文档使用 LibreOffice，HTML 与 Markdown ↔ Word 使用 Pandoc，
+这两个可选引擎会在首次启动时询问是否下载。
 HWPX 的写入与验证方式见 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)。
 
 ## 截图
@@ -94,8 +95,9 @@ HWPX 的写入与验证方式见 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)�
 （Windows 10/11，64 位），或在 [Releases](https://github.com/KnifeLemon/Filee/releases) 页面选择其他版本。
 
 - **安装包很小。** 图片、PDF、HWP/HWPX 和 DOCX → HWPX 装好即用。
-- **大型引擎按需下载。** 首次启动时会询问是否下载 LibreOffice（办公文档，约 420 MB）和 Pandoc（Markdown/HTML，约 42 MB）；之后可随时在“设置 → 转换引擎”中安装或删除。
-- **自动更新。** Filee 会通过 GitHub Releases 自动更新。
+- **大型引擎按需下载。** 首次启动时会询问是否下载 LibreOffice（办公文档，约 420 MB）和 Pandoc（HTML 与 Markdown ↔ Word，约 42 MB）；之后可随时在“设置 → 转换引擎”中安装或删除。
+- **有更新会提醒你。** 新版本发布后，Filee 会在菜单底部、通知和托盘菜单中提示，点击即可打开最新发布页面下载。
+  运行新的安装程序即可更新，设置会保留。
 
 macOS 版本正在计划中。
 

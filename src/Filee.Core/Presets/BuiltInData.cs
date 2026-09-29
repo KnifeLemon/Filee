@@ -88,10 +88,20 @@ public static class BuiltInData
             Extensions = ["hwp", "hwpx"],
             PresetIds = ["to-pdf", "to-docx", "to-hwpx", "to-png", "to-txt", "to-md", "merge-pdf"],
         },
+        TextProfile(),
         new()
         {
             Id = "mixed", NameKey = "profile.mixed", IsFallback = true,
             PresetIds = ["to-pdf", "merge-pdf", "to-png", "to-txt"],
         },
     ];
+
+    /// <summary>Markdown, plain text and HTML (added in settings schema 4, see SettingsMigrations).</summary>
+    public static ToolbarProfile TextProfile() => new()
+    {
+        Id = "text",
+        NameKey = "profile.text",
+        Extensions = ["md", "markdown", "txt", "html", "htm"],
+        PresetIds = ["to-pdf", "to-hwpx", "to-docx", "to-html", "to-txt"],
+    };
 }

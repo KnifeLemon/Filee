@@ -4,6 +4,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Filee.App.Services;
 using Filee.App.ViewModels.Pages;
 using Filee.Core.Localization;
 using Microsoft.Extensions.DependencyInjection;
@@ -26,10 +28,19 @@ public sealed partial class NavItem(string key, string titleKey, string iconKey,
 public sealed partial class MainWindowViewModel : ObservableObject
 {
     private readonly IServiceProvider _services;
+    private readonly ILocalizer _loc;
 
-    public MainWindowViewModel(IServiceProvider services, ILocalizer loc)
+    public MainWindowViewModel(IServiceProvider services, ILocalizer loc, UpdateService updates)
     {
         _services = services;
+        _loc = loc;
+        Updates = updates;
+        updates.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(UpdateService.LatestVersion))
+                RefreshVersionTexts();
+        };
+        RefreshVersionTexts();
         Items =
         [
             new("home", "nav.home", "Icon.Home", typeof(HomePageViewModel)),
@@ -47,6 +58,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         {
             foreach (var item in Items)
                 item.Refresh(loc);
+            RefreshVersionTexts();
             CurrentPage = CreatePage(SelectedItem); // rebuild so code-generated labels update too
         };
         _selectedItem = Items[0];
@@ -55,8 +67,23 @@ public sealed partial class MainWindowViewModel : ObservableObject
 
     public IReadOnlyList<NavItem> Items { get; }
 
+    /// <summary>Update state for the bottom of the navigation (version, "update available" button).</summary>
+    public UpdateService Updates { get; }
+
     [ObservableProperty] private NavItem _selectedItem;
     [ObservableProperty] private ObservableObject _currentPage;
+    [ObservableProperty] private string _versionText = "";
+    [ObservableProperty] private string _updateText = "";
+
+    /// <summary>Opens the latest release page to download the new installer.</summary>
+    [RelayCommand]
+    private void DownloadUpdate() => Updates.OpenDownloadPage();
+
+    private void RefreshVersionTexts()
+    {
+        VersionText = _loc.Format("about.version", UpdateService.CurrentVersion);
+        UpdateText = Updates.LatestVersion is { } latest ? _loc.Format("update.sidebar", latest) : "";
+    }
 
     public void Navigate(string key)
     {

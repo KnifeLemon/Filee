@@ -7,6 +7,7 @@ using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Office;
 using Filee.Engines.Pdf;
+using Filee.Engines.Text;
 
 namespace Filee.Engines;
 
@@ -24,6 +25,7 @@ public static class EngineRegistry
         new PdfiumConverter(),
         new RhwpConverter(env),
         new UnhwpConverter(),
+        new MarkdownConverter(),
         new HwpxConverter(env),
         new WordComConverter(),
         new PandocConverter(env),

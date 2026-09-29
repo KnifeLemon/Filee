@@ -10,10 +10,11 @@ or remove the optional engines.
 | PDFsharp | built in (library) | images → PDF, merge, split, page ranges |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML |
-| **HWPX writer** | built in | **DOCX, TXT → HWPX**; Markdown, HTML, ODT, RTF → HWPX with Pandoc |
+| Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT** (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| **HWPX writer** | built in | **DOCX, TXT, Markdown → HWPX**; HTML, ODT, RTF → HWPX with Pandoc |
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | DOCX/DOC/ODT/RTF/XLSX/PPTX… ↔ each other and → PDF; HWP/HWPX → DOCX/ODT |
-| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/HTML/RTF, HTML ↔ DOCX/ODT |
+| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT |
 | Microsoft Word | used if installed | best-fidelity DOCX → PDF, PDF → DOCX |
 
 Engines found on the system (an installed LibreOffice, `soffice`/`rhwp`/`pandoc` on PATH) are used when Filee's own
@@ -55,9 +56,11 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
   - footnotes, endnotes, bookmarks, hyperlinks (web and within the document, e.g. a table of contents);
   - Word's document grid ("lines"), which 한글 does not have, as an "at least" line spacing.
 - **TXT** needs no reader (one paragraph per line; UTF-8, UTF-16 or the Korean code page CP949).
-- **Markdown, HTML, ODT, RTF** are parsed by Pandoc into its JSON AST (`PandocAstReader.cs`, following
-  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)). Pandoc keeps structure only, so page setup comes from
-  the built-in template (A4).
+- **Markdown** is parsed with Markdig (`MarkdownReader.cs`): headings, emphasis, code, lists (1. / a. / i. with
+  start numbers), task lists, quotes, tables with spans, links, images, footnotes and math. No Pandoc needed.
+- **HTML, ODT, RTF** are parsed by Pandoc into its JSON AST (`PandocAstReader.cs`, following
+  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)).
+- Markdown and Pandoc keep structure only, so page setup comes from the built-in template (A4).
 
 Element order and attribute values follow files saved by 한글 where the schema and 한글 disagree, for example:
 

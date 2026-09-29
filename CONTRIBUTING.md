@@ -7,7 +7,7 @@ Thanks for helping! Filee is built to be easy to extend: most contributions touc
 1. Install the .NET 10 SDK (the exact feature band is pinned in `global.json`, newer patches roll forward).
 2. `pwsh build/fetch-fonts.ps1` (optional, for the Noto Sans UI fonts).
 3. `pwsh build/fetch-engines.ps1 -Only rhwp,pandoc` (optional, enables HWP/HWPX → PDF, HWP ↔ HWPX and
-   Markdown/HTML). Without `-Only` it also downloads LibreOffice with H2Orestart and Java (~420 MB). Engines in the
+   HTML / Markdown ↔ Word; Markdown → HTML, TXT and HWPX work without it). Without `-Only` it also downloads LibreOffice with H2Orestart and Java (~420 MB). Engines in the
    repository's `engines/` folder are picked up by debug builds; users download the large ones from the app.
 4. `dotnet run --project src/Filee.App`, `dotnet test`.
 

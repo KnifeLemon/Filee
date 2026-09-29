@@ -60,8 +60,19 @@ public sealed class UserDataStore
         Profiles = Read(ProfilesPath, FileeJsonContext.Default.ListToolbarProfile) ?? BuiltInData.CreateProfiles();
         History = Read(HistoryPath, FileeJsonContext.Default.ListHistoryEntry) ?? [];
 
+        var schema = Settings.SchemaVersion;
         SettingsMigrations.Apply(Settings);
+        var libraryChanged = File.Exists(ProfilesPath) && SettingsMigrations.ApplyToLibrary(schema, Presets, Profiles);
         EnsureConsistency();
+
+        // Persist upgrades right away so they run once, even if the user never changes a setting.
+        if (schema < AppSettings.CurrentSchemaVersion && File.Exists(SettingsPath))
+            Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+        if (libraryChanged)
+        {
+            Write(PresetsPath, Presets, FileeJsonContext.Default.ListPreset);
+            Write(ProfilesPath, Profiles, FileeJsonContext.Default.ListToolbarProfile);
+        }
     }
 
     public void SaveSettings()
@@ -215,10 +226,34 @@ internal static class SettingsMigrations
                 settings.EnginePriority[index] = "hwpx-writer";
         }
 
+        // v4: built-in "markdown" engine (Markdig, no Pandoc needed); the "text" toolbar profile is added by
+        //     ApplyToLibrary.
+        if (settings.SchemaVersion < 4)
+            InsertBefore(settings.EnginePriority, "markdown", "hwpx-writer");
+
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
 
         settings.SchemaVersion = AppSettings.CurrentSchemaVersion;
+    }
+
+    /// <summary>Upgrades presets and profiles written with settings schema <paramref name="from"/>.</summary>
+    /// <returns>True when something was added.</returns>
+    public static bool ApplyToLibrary(int from, List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        // v4: Markdown / TXT / HTML files get their own donut instead of the "mixed files" fallback. Skipped when
+        //     the user already routes Markdown through a profile of their own.
+        if (from < 4 && !profiles.Any(p => p.Id == "text" || p.Extensions.Contains("md", StringComparer.OrdinalIgnoreCase)))
+        {
+            var text = BuiltInData.TextProfile();
+            var ids = presets.Select(p => p.Id).ToHashSet();
+            text.PresetIds = text.PresetIds.Where(ids.Contains).ToList();
+            var fallback = profiles.FindIndex(p => p.IsFallback);
+            profiles.Insert(fallback < 0 ? profiles.Count : fallback, text);
+            changed = true;
+        }
+        return changed;
     }
 
     private static void InsertBefore(List<string> list, string id, string before)

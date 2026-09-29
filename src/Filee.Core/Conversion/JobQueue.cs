@@ -172,7 +172,11 @@ public sealed class JobQueue : IAsyncDisposable
                     var stepIndex = s;
                     var progress = new Progress<double>(p =>
                     {
-                        file.Progress = (stepIndex + Math.Clamp(p, 0, 1)) / route.Steps.Count;
+                        // Reports arrive on the thread pool, possibly out of order: progress only moves forward.
+                        var value = (stepIndex + Math.Clamp(p, 0, 1)) / route.Steps.Count;
+                        if (value <= file.Progress)
+                            return;
+                        file.Progress = value;
                         Notify(job);
                     });
 

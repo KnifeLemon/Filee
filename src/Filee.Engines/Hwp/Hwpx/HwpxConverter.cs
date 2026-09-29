@@ -2,7 +2,8 @@
 // writes the OWPML package.
 //  * DOCX is read directly (Docx/DocxReader), keeping page setup, headers/footers, columns, text boxes and formatting.
 //  * TXT needs no reader: one paragraph per line.
-//  * Markdown, HTML, ODT and RTF are parsed by Pandoc (optional engine) into its JSON AST (PandocAstReader).
+//  * Markdown is parsed with Markdig (MarkdownReader), no external engine needed.
+//  * HTML, ODT and RTF are parsed by Pandoc (optional engine) into its JSON AST (PandocAstReader).
 
 using System.Text;
 using System.Text.Json.Nodes;
@@ -24,7 +25,6 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
         ["odt"] = "odt",
         ["rtf"] = "rtf",
         ["html"] = "html",
-        ["md"] = "markdown",
     };
 
     private string? _pandoc;
@@ -39,8 +39,8 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
     {
         _pandoc = PandocConverter.Locate(env);
         return EngineStatus.Available(_pandoc is null
-            ? "DOCX, TXT → HWPX. Markdown, HTML, ODT and RTF need Pandoc."
-            : $"DOCX, TXT; Markdown, HTML, ODT, RTF with Pandoc ({_pandoc})");
+            ? "DOCX, TXT, Markdown → HWPX. HTML, ODT and RTF need Pandoc."
+            : $"DOCX, TXT, Markdown; HTML, ODT, RTF with Pandoc ({_pandoc})");
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -51,6 +51,8 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
         {
             "docx" => DocxReader.Read(step.InputPath, media),
             "txt" => TextDocument(await File.ReadAllBytesAsync(step.InputPath, cancellationToken)),
+            "md" => MarkdownReader.Read(DecodeText(await File.ReadAllBytesAsync(step.InputPath, cancellationToken)),
+                Path.GetDirectoryName(Path.GetFullPath(step.InputPath))!),
             _ => await ReadWithPandocAsync(step, media, cancellationToken),
         };
         progress?.Report(0.6);
@@ -68,10 +70,10 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
         var pandoc = _pandoc ?? PandocConverter.Locate(env) ?? throw new InvalidOperationException("Pandoc was not found.");
         var json = Path.Combine(step.WorkDirectory, $"ast-{Guid.NewGuid():N}.json");
 
-        // Working directory = the input's folder, so relative image paths in HTML / Markdown resolve.
+        // Working directory = the input's folder, so relative image paths in HTML resolve.
         var result = await ProcessRunner.RunAsync(pandoc,
             [step.InputPath, "-f", PandocReaders[step.From], "-t", "json", "--extract-media=" + media, "-o", json],
-            Timeout, cancellationToken, workingDirectory: Path.GetDirectoryName(step.InputPath));
+            Timeout, cancellationToken, workingDirectory: Path.GetDirectoryName(Path.GetFullPath(step.InputPath)));
         if (!File.Exists(json))
             throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
         var ast = JsonNode.Parse(await File.ReadAllTextAsync(json, cancellationToken))
@@ -80,7 +82,7 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
         return PandocAstReader.Read(ast, target => ResolveImage(target, inputFolder));
     }
 
-    /// <summary>Images extracted by Pandoc have absolute paths; HTML / Markdown may use paths relative to the input.</summary>
+    /// <summary>Images extracted by Pandoc have absolute paths; HTML may use paths relative to the input.</summary>
     private static string? ResolveImage(string target, string inputFolder)
     {
         if (string.IsNullOrWhiteSpace(target) || target.Contains("://", StringComparison.Ordinal))
@@ -133,7 +135,7 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
 
     private static List<ConversionEdge> BuildEdges(bool pandoc)
     {
-        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx")];
+        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx"), new("md", "hwpx")];
         if (pandoc)
             edges.AddRange(PandocReaders.Keys.Select(from => new ConversionEdge(from, "hwpx")));
         return edges;

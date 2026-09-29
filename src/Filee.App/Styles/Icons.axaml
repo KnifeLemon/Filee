@@ -20,6 +20,7 @@
   <StreamGeometry x:Key="Icon.ArrowUp">M7,15L12,10L17,15H7Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.ArrowDown">M7,10L12,15L17,10H7Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Upload">M9,16V10H5L12,3L19,10H15V16H9M5,20V18H19V20H5Z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Download">M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Check">M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Alert">M13,13H11V7H13M13,17H11V15H13M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Pencil">M3,17.25V21h3.75L17.81,9.94l-3.75-3.75L3,17.25z M20.71,7.04c0.39-0.39,0.39-1.02,0-1.41l-2.34-2.34c-0.39-0.39-1.02-0.39-1.41,0l-1.83,1.83l3.75,3.75L20.71,7.04z</StreamGeometry>

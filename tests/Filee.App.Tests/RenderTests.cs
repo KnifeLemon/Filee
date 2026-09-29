@@ -26,7 +26,7 @@ public class RenderTests
     public void Main_window_pages_render(string page, string language)
     {
         TestServices.EnsureInitialized(language);
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
         vm.Navigate(page);
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
@@ -94,7 +94,7 @@ public class RenderTests
         TestServices.EnsureInitialized("en");
         var theme = new ThemeSettings { Mode = ThemeMode.Dark, Accent = "#1D9E75", CornerRadius = 22 };
         AppHost.Get<ThemeService>().Apply(theme, "en");
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
         vm.Navigate("toolbar");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
@@ -116,6 +116,43 @@ public class RenderTests
 
         Save(window, "preset-popup-ko.png");
         window.Close();
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Sidebar_shows_the_version_and_a_new_release(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var updates = AppHost.Get<UpdateService>();
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), updates);
+        var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+        window.Show();
+        Pump();
+        var button = window.FindControl<Button>("UpdateButton")!;
+        var version = window.FindControl<TextBlock>("VersionLabel")!;
+        Assert.False(button.IsVisible);
+        Assert.Contains(UpdateService.CurrentVersion, version.Text);
+
+        try
+        {
+            updates.LatestVersion = "9.9.9";
+            Pump();
+            Assert.True(button.IsVisible);
+            Assert.Contains("9.9.9", vm.UpdateText);
+            Save(window, $"sidebar-update-{language}.png");
+
+            var notice = new UpdateNoticeWindow(updates, AppHost.Get<Filee.Core.Localization.ILocalizer>().Format("update.notice_title", "9.9.9"));
+            notice.Show();
+            Pump();
+            Save(notice, $"update-notice-{language}.png");
+            notice.Close();
+        }
+        finally
+        {
+            updates.LatestVersion = null;
+            window.Close();
+        }
     }
 
     private static void Pump()

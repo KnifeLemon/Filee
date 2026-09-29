@@ -44,7 +44,9 @@ public sealed class RhwpConverter(EngineEnvironment env) : IConverter
         };
 
         progress?.Report(0.1);
-        var result = await ProcessRunner.RunAsync(exe, arguments, Timeout, cancellationToken);
+        ProcessResult result;
+        using (ProgressEstimate.Start(progress, TimeSpan.FromSeconds(1.5)))
+            result = await ProcessRunner.RunAsync(exe, arguments, Timeout, cancellationToken);
         if (!File.Exists(temp) || new FileInfo(temp).Length == 0)
             throw new InvalidOperationException($"rhwp failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
 

@@ -64,7 +64,8 @@
 | **스프레드시트·프레젠테이션**: XLSX, XLS, ODS, CSV, PPTX, PPT, ODP | PDF와 서로 변환 |
 | **텍스트**: TXT, 마크다운, HTML | DOCX, HWPX, PDF |
 
-오피스 문서와 마크다운은 추가 엔진(LibreOffice, Pandoc)을 씁니다. 처음 실행할 때 받을지 물어봐요.
+마크다운 → PDF·HWPX·HTML·TXT는 설치하자마자 됩니다. 오피스 문서는 LibreOffice, HTML과 마크다운 ↔ 워드는 Pandoc을
+쓰는데, 둘 다 처음 실행할 때 받을지 물어보는 추가 엔진입니다.
 HWPX를 어떻게 만들고 검증하는지는 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)에 있습니다.
 
 ## 스크린샷
@@ -94,8 +95,9 @@ HWPX를 어떻게 만들고 검증하는지는 [docs/ENGINES.md](docs/ENGINES.md
 (Windows 10/11, 64비트). 다른 버전은 [Releases](https://github.com/KnifeLemon/Filee/releases)에 있습니다.
 
 - **설치 파일은 가볍습니다.** 이미지, PDF, HWP/HWPX, DOCX → HWPX는 설치하자마자 바로 변환됩니다.
-- **큰 엔진은 골라서 설치합니다.** 처음 실행하면 LibreOffice(오피스 문서, 약 420MB)와 Pandoc(마크다운·HTML, 약 42MB)을 받을지 묻습니다. 나중에 설정 → 변환 엔진에서 언제든 설치하거나 지울 수 있습니다.
-- **업데이트는 자동입니다.** Filee는 GitHub Releases에서 스스로 업데이트합니다.
+- **큰 엔진은 골라서 설치합니다.** 처음 실행하면 LibreOffice(오피스 문서, 약 420MB)와 Pandoc(HTML·마크다운 ↔ 워드, 약 42MB)을 받을지 묻습니다. 나중에 설정 → 변환 엔진에서 언제든 설치하거나 지울 수 있습니다.
+- **업데이트는 알려 드려요.** 새 버전이 나오면 메뉴 하단, 알림, 트레이 메뉴에 표시되고 누르면 최신 릴리스 페이지가
+  열립니다. 새 설치 파일을 실행하면 설정은 그대로 유지돼요.
 
 macOS 지원은 계획 중입니다.
 

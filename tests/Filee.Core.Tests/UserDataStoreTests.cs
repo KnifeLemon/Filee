@@ -39,8 +39,47 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "word", "hwpx-writer", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "word", "markdown", "hwpx-writer", "pandoc", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
+    }
+
+    [Fact]
+    public void Version_3_libraries_get_the_text_profile_once()
+    {
+        using var dir = new TempDir();
+        var old = new UserDataStore(dir.Path);
+        old.Load();
+        old.Profiles.RemoveAll(p => p.Id == "text"); // as written by 1.0.0
+        old.Settings.SchemaVersion = 3;
+        old.Settings.EnginePriority.Remove("markdown");
+        old.SaveSettings();
+        old.SaveLibrary();
+
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        var ids = store.Profiles.Select(p => p.Id).ToList();
+        Assert.Equal(ids.IndexOf("mixed") - 1, ids.IndexOf("text")); // right before the fallback
+        Assert.Contains("md", store.Profiles.Single(p => p.Id == "text").Extensions);
+        Assert.Equal(store.Settings.EnginePriority.IndexOf("hwpx-writer") - 1, store.Settings.EnginePriority.IndexOf("markdown"));
+
+        // Saved right away: the next start neither migrates again nor brings back a profile the user deleted.
+        store.Profiles.RemoveAll(p => p.Id == "text");
+        store.SaveLibrary();
+        var next = new UserDataStore(dir.Path);
+        next.Load();
+        Assert.DoesNotContain(next.Profiles, p => p.Id == "text");
+        Assert.Equal(AppSettings.CurrentSchemaVersion, next.Settings.SchemaVersion);
+    }
+
+    [Fact]
+    public void Text_profile_is_not_added_when_a_profile_already_takes_markdown()
+    {
+        var profiles = BuiltInData.CreateProfiles().Where(p => p.Id != "text").ToList();
+        profiles[0].Extensions.Add("md");
+
+        Assert.False(SettingsMigrations.ApplyToLibrary(3, BuiltInData.CreatePresets(), profiles));
+        Assert.DoesNotContain(profiles, p => p.Id == "text");
     }
 
     [Fact]

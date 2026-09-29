@@ -61,6 +61,8 @@ public partial class App : Application
 
         AppHost.Get<TrayService>().Create(this);
         AppHost.Get<WindowService>().EnsureToast();
+        // Once LibreOffice is installed: prepare its profiles while the user isn't converting yet.
+        AppHost.Get<EngineDownloadService>().WarmUpInBackground(TimeSpan.FromSeconds(10));
 
         // Later launches (context menu, Send To, double-clicking the exe) forward their arguments here.
         if (Program.Instance is { } instance)
@@ -76,7 +78,25 @@ public partial class App : Application
         };
 
         HandleCommandLine(Program.Options, firstLaunch: true);
-        _ = CheckForUpdatesAsync(store.Settings);
+        WatchForUpdates(store);
+    }
+
+    /// <summary>
+    /// Looks for new releases in the background. A new version shows up at the bottom of the navigation and in the
+    /// tray menu; the bottom-right notice appears once per version.
+    /// </summary>
+    private static void WatchForUpdates(UserDataStore store)
+    {
+        var updates = AppHost.Get<UpdateService>();
+        updates.UpdateFound += (_, version) =>
+        {
+            if (store.Settings.NotifiedUpdateVersion == version)
+                return;
+            store.Settings.NotifiedUpdateVersion = version;
+            store.SaveSettings();
+            AppHost.Get<WindowService>().ShowUpdateNotice(version);
+        };
+        updates.StartPeriodicChecks(() => store.Settings.CheckForUpdates, TimeSpan.FromSeconds(20));
     }
 
     /// <summary>Applies everything derived from settings. Called at start-up and whenever settings are saved.</summary>
@@ -148,11 +168,4 @@ public partial class App : Application
         AppHost.Get<RadialController>().ShowForFiles(x, y, files);
     }
 
-    private static async Task CheckForUpdatesAsync(AppSettings settings)
-    {
-        if (!settings.CheckForUpdates)
-            return;
-        await Task.Delay(TimeSpan.FromSeconds(20));
-        await AppHost.Get<UpdateService>().CheckAsync();
-    }
 }

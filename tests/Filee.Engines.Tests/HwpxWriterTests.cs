@@ -1,4 +1,4 @@
-// HWPX from Markdown / HTML (Pandoc AST → OWPML) and plain text, plus the writer's small helpers.
+// HWPX from Markdown (Markdig, built in), HTML (Pandoc AST → OWPML) and plain text, plus the writer's small helpers.
 // Output is checked structurally, read back with Unhwp and rendered with rhwp. DOCX has its own tests
 // (DocxToHwpxTests) because it is read without Pandoc.
 
@@ -65,7 +65,7 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Markdown_becomes_a_valid_hwpx_that_other_readers_understand()
     {
-        SkipUnlessPandoc();
+        // No Pandoc needed: Markdown is read with Markdig.
         var dir = fx.NewFolder();
         using (var logo = new MagickImage(MagickColors.MediumPurple, 240, 120))
             logo.Write(Path.Combine(dir, "logo.png"));

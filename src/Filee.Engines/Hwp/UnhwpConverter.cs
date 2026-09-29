@@ -1,6 +1,5 @@
 // HWP / HWPX → plain text, Markdown or HTML with Unhwp (MIT, native library shipped in the NuGet package).
 
-using System.Net;
 using Filee.Core.Conversion;
 using Markdig;
 using Unhwp;
@@ -56,17 +55,5 @@ public sealed class UnhwpConverter : IConverter
         }, cancellationToken);
 
     private static string ToHtml(string markdown, string title) =>
-        $$"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <title>{{WebUtility.HtmlEncode(title)}}</title>
-        <style>body{font-family:'Noto Sans KR','Malgun Gothic',sans-serif;max-width:860px;margin:2rem auto;line-height:1.7;padding:0 1rem}table{border-collapse:collapse}td,th{border:1px solid #ccc;padding:4px 8px}</style>
-        </head>
-        <body>
-        {{Markdown.ToHtml(markdown, Pipeline)}}
-        </body>
-        </html>
-        """;
+        Text.MarkdownConverter.HtmlPage(title, Markdown.ToHtml(markdown, Pipeline));
 }

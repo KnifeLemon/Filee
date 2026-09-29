@@ -67,7 +67,8 @@
 | **Spreadsheets & slides**: XLSX, XLS, ODS, CSV, PPTX, PPT, ODP | PDF and each other |
 | **Text**: TXT, Markdown, HTML | DOCX, HWPX, PDF |
 
-Office documents and Markdown use optional engines (LibreOffice, Pandoc) that Filee offers to download on first start.
+Markdown → PDF, HWPX, HTML and TXT work out of the box. Office documents use LibreOffice, and HTML / Markdown ↔ Word use
+Pandoc: optional engines that Filee offers to download on first start.
 How HWPX is written and checked: [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer).
 
 ## Screenshots
@@ -97,8 +98,9 @@ How HWPX is written and checked: [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer).
 (Windows 10/11, 64-bit) or pick a version on the [Releases](https://github.com/KnifeLemon/Filee/releases) page.
 
 - **The installer is small.** Images, PDF, HWP/HWPX and DOCX → HWPX work right away.
-- **Large engines are optional.** On first start Filee offers LibreOffice for office documents (~420 MB) and Pandoc for Markdown/HTML (~42 MB). You can install or remove them any time in Settings → Engines.
-- **Updates are automatic.** Filee updates itself from GitHub Releases.
+- **Large engines are optional.** On first start Filee offers LibreOffice for office documents (~420 MB) and Pandoc for HTML and Markdown ↔ Word (~42 MB). You can install or remove them any time in Settings → Engines.
+- **You hear about updates.** When a new release is out, Filee says so at the bottom of the menu, in a notice and in
+  the tray menu, and opens the latest release to download it. Run the new installer; your settings are kept.
 
 macOS support is planned.
 

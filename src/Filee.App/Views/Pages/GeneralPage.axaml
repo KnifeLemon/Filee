@@ -22,7 +22,12 @@
         <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
         <StackPanel Orientation="Horizontal" Spacing="10">
           <Button Content="{DynamicResource general.check_now}" Command="{Binding CheckNowCommand}" />
-          <Button Classes="accent" Content="{DynamicResource general.update_install}" Command="{Binding InstallUpdateCommand}" IsVisible="{Binding UpdateAvailable}" />
+          <Button Classes="accent" Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding UpdateAvailable}">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
+              <TextBlock Text="{DynamicResource update.download}" />
+            </StackPanel>
+          </Button>
           <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />
         </StackPanel>
       </StackPanel>

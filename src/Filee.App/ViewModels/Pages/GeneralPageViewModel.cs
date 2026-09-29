@@ -32,7 +32,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject
         _startWithSystem = store.Settings.StartWithSystem;
         _contextMenu = store.Settings.ContextMenuEnabled;
         _checkForUpdates = store.Settings.CheckForUpdates;
-        _updateStatus = updates.IsInstalled ? null : loc["general.update_dev"];
+        ShowUpdateState(updates.LatestVersion);
     }
 
     public IReadOnlyList<Choice<string>> Languages { get; }
@@ -62,17 +62,19 @@ public sealed partial class GeneralPageViewModel : ObservableObject
     private void OpenDataFolder() => _platform.RevealInFileManager(_store.Directory);
 
     [RelayCommand]
-    private async Task CheckNow()
-    {
-        if (!_updates.IsInstalled)
-            return;
-        var version = await _updates.CheckAsync();
-        UpdateAvailable = version is not null;
-        UpdateStatus = version is null ? _loc["general.update_none"] : _loc.Format("general.update_available", version);
-    }
+    private async Task CheckNow() => ShowUpdateState(await _updates.CheckAsync(), afterCheck: true);
 
+    /// <summary>Opens the latest release page; the new installer updates Filee in place.</summary>
     [RelayCommand]
-    private Task InstallUpdate() => _updates.ApplyAsync();
+    private void DownloadUpdate() => _updates.OpenDownloadPage();
+
+    private void ShowUpdateState(string? newer, bool afterCheck = false)
+    {
+        UpdateAvailable = newer is not null;
+        UpdateStatus = newer is not null ? _loc.Format("general.update_available", newer)
+            : afterCheck ? _loc.Format("general.update_none", UpdateService.CurrentVersion)
+            : _loc.Format("about.version", UpdateService.CurrentVersion);
+    }
 
     public void Export(string path)
     {

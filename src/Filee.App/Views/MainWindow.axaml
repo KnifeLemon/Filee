@@ -19,6 +19,18 @@
             <TextBlock Classes="caption" Text="{DynamicResource app.tagline}" />
           </StackPanel>
         </StackPanel>
+        <!-- Bottom: the running version, and a download button when a newer release is out. -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="8" Margin="4,12,4,0">
+          <Button x:Name="UpdateButton" Classes="accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                  Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding Updates.IsUpdateAvailable}"
+                  ToolTip.Tip="{DynamicResource update.notice_text}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Download}" />
+              <TextBlock Text="{Binding UpdateText}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </Button>
+          <TextBlock x:Name="VersionLabel" Classes="caption" Margin="8,0,0,0" Text="{Binding VersionText}" />
+        </StackPanel>
         <ListBox Classes="nav" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:NavItem">

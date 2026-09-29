@@ -61,7 +61,8 @@ public sealed class WordComConverter : IConverter
 
         progress?.Report(0.1);
 #pragma warning disable CA1416 // guarded by the OperatingSystem.IsWindows() check above; the analyzer does not see into lambdas
-        await new AutomationProcessGuard("WINWORD").RunAsync(() => Convert(step.InputPath, target, step.To), Timeout, cancellationToken);
+        using (ProgressEstimate.Start(progress, TimeSpan.FromSeconds(4)))
+            await new AutomationProcessGuard("WINWORD").RunAsync(() => Convert(step.InputPath, target, step.To), Timeout, cancellationToken);
 #pragma warning restore CA1416
         progress?.Report(1);
         return [target];
