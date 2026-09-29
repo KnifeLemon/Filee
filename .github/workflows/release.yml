@@ -1,5 +1,5 @@
 # Builds the Windows installer and publishes it to GitHub Releases.
-# Trigger: push a tag like v0.1.0  (git tag v0.1.0 && git push origin v0.1.0)
+# Trigger: push a tag like v1.0.0  (git tag v1.0.0 && git push origin v1.0.0)
 #
 # Output (Velopack): Filee-win-Setup.exe, Filee-win-Portable.zip, full + delta .nupkg for in-app updates.
 # Large engines are not in the installer; the app offers them on first run and in Settings > Engines.
