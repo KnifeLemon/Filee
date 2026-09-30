@@ -24,7 +24,9 @@ public sealed class HwpxConverter : IConverter
     public int MaxParallelism => 0;
 
     public IReadOnlyList<ConversionEdge> Edges =>
-        DocumentReaders.Formats(_pandoc ?? PandocConverter.Locate() is not null).Select(from => new ConversionEdge(from, "hwpx")).ToList();
+        DocumentReaders.Formats(_pandoc ?? PandocConverter.Locate() is not null)
+            .Where(from => from != "hwpx") // HWPX is read only to write other formats (DOCX, HTML, EPUB, ...)
+            .Select(from => new ConversionEdge(from, "hwpx")).ToList();
 
     public EngineStatus GetStatus()
     {
