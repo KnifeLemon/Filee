@@ -4,7 +4,6 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
-using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -26,7 +25,7 @@ public sealed partial class PresetListItem(Preset preset, ILocalizer loc) : Obse
 
     private static string TargetLabel(Preset p, ILocalizer l) =>
         p.TargetFormat == BuiltInData.SameAsSource ? l["presets.same_as_source"]
-        : "→ " + (FormatRegistry.FindById(p.TargetFormat)?.DisplayName ?? p.TargetFormat);
+        : "→ " + (FormatLabels.NameOf(l, p.TargetFormat) ?? p.TargetFormat);
 }
 
 public sealed partial class PresetsPageViewModel : ObservableObject

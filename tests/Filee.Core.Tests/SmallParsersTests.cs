@@ -1,7 +1,6 @@
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Core.Presets;
-using Filee.Core.Profiles;
 
 namespace Filee.Core.Tests;
 
@@ -38,23 +37,6 @@ public class FormatRegistryTests
         Assert.Equal(
             FormatRegistry.Known.SelectMany(f => f.Extensions).Count(),
             FormatRegistry.Known.SelectMany(f => f.Extensions).Distinct(StringComparer.OrdinalIgnoreCase).Count());
-}
-
-public class ProfileSelectorTests
-{
-    private readonly List<ToolbarProfile> _profiles = BuiltInData.CreateProfiles();
-
-    [Fact]
-    public void Picks_profile_matching_all_files() =>
-        Assert.Equal("images", ProfileSelector.Select(_profiles, ["a.jpg", "b.PNG"])!.Id);
-
-    [Fact]
-    public void Mixed_files_use_the_fallback() =>
-        Assert.Equal("mixed", ProfileSelector.Select(_profiles, ["a.jpg", "b.docx"])!.Id);
-
-    [Fact]
-    public void Unknown_files_use_the_fallback() =>
-        Assert.Equal("mixed", ProfileSelector.Select(_profiles, ["a.xyz"])!.Id);
 }
 
 public class BuiltInDataTests

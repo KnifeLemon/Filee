@@ -66,7 +66,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 Label = loc.DisplayName(p),
                 Caption = p.TargetFormat == BuiltInData.SameAsSource
                     ? string.Join("/", formats.Select(f => f.DisplayName).Take(2))
-                    : FormatRegistry.FindById(p.TargetFormat)?.DisplayName,
+                    : FormatLabels.NameOf(loc, p.TargetFormat),
                 IsEnabled = reason is null,
                 DisabledReason = reason,
             };

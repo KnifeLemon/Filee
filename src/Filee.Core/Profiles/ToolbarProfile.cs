@@ -19,12 +19,17 @@ public sealed class ToolbarProfile
 
     public string? NameKey { get; set; }
 
-    /// <summary>Source extensions (without dot) this profile is used for.</summary>
+    /// <summary>
+    /// Source extensions (without dot). For a normal profile: the files it is used for. For a mixed-selection profile
+    /// (<see cref="IsFallback"/>): the extensions a mixed selection must stay within ("every selected file is one
+    /// of ..."); empty means any mixed selection.
+    /// </summary>
     public List<string> Extensions { get; set; } = [];
 
     /// <summary>
-    /// Used when dropped files match no other profile, or when they span several profiles.
-    /// Exactly one profile should be the fallback.
+    /// A "mixed files" profile: used when the dropped files span several profiles (or match none). Several may exist,
+    /// each limited to its <see cref="Extensions"/>; one with no extensions takes every other mixed selection
+    /// (see <see cref="ProfileSelector.Select"/>). The name is kept for compatibility with saved profiles.
     /// </summary>
     public bool IsFallback { get; set; }
 
@@ -50,8 +55,12 @@ public sealed class ToolbarProfile
 public static class ProfileSelector
 {
     /// <summary>
-    /// Picks the profile matching every file's extension. If the files match different profiles
-    /// (or none), the fallback profile is returned.
+    /// Picks the profile for the given files, in this order:
+    /// <list type="number">
+    /// <item>the first normal profile that has every file's extension;</item>
+    /// <item>otherwise the first mixed-selection profile (list order) whose extensions include every file's;</item>
+    /// <item>otherwise the catch-all (see <see cref="CatchAll"/>).</item>
+    /// </list>
     /// </summary>
     public static ToolbarProfile? Select(IReadOnlyList<ToolbarProfile> profiles, IEnumerable<string> filePaths)
     {
@@ -62,13 +71,24 @@ public static class ProfileSelector
 
         if (extensions.Count > 0)
         {
-            var match = profiles.FirstOrDefault(p => !p.IsFallback && extensions.All(p.Matches));
+            var match = profiles.FirstOrDefault(p => !p.IsFallback && extensions.All(p.Matches))
+                        ?? profiles.FirstOrDefault(p => p.IsFallback && p.Extensions.Count > 0 && extensions.All(p.Matches));
             if (match is not null)
                 return match;
         }
 
-        return profiles.FirstOrDefault(p => p.IsFallback) ?? profiles.FirstOrDefault();
+        return CatchAll(profiles);
     }
+
+    /// <summary>
+    /// The profile used for selections no other profile takes: the first mixed-selection profile with no extensions.
+    /// If the user limited every mixed profile to some extensions, the first mixed profile is still better than an
+    /// unrelated single-type donut; the first profile is the last resort (no mixed profile at all).
+    /// </summary>
+    public static ToolbarProfile? CatchAll(IReadOnlyList<ToolbarProfile> profiles) =>
+        profiles.FirstOrDefault(p => p.IsFallback && p.Extensions.Count == 0)
+        ?? profiles.FirstOrDefault(p => p.IsFallback)
+        ?? profiles.FirstOrDefault();
 
     /// <summary>Formats of the given files that Filee recognises.</summary>
     public static IReadOnlyList<FileFormat> DetectFormats(IEnumerable<string> filePaths) =>

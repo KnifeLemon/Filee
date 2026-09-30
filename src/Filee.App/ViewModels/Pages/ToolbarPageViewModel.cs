@@ -1,12 +1,14 @@
 // Donut toolbar editor: 1) choose a profile  2) arrange its presets on a live donut by drag & drop.
 // The drag gestures themselves live in the view (ToolbarPage.axaml.cs); this class only mutates the model.
+// A profile is either normal (extension chips, ExtensionTagsViewModel) or for mixed selections (check list,
+// MixedExtensionsViewModel). Normal profiles are kept before the mixed ones, so a new mixed profile never takes over
+// the catch-all role of the built-in "Mixed files" donut (see ProfileSelector).
 
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Controls;
 using Filee.App.Services;
-using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Profiles;
@@ -22,10 +24,14 @@ public sealed partial class ProfileItemViewModel(ToolbarProfile profile, ILocali
 
     public string Count => $"{Profile.PresetIds.Count}";
 
+    /// <summary>A donut for mixed selections (marked in the list).</summary>
+    public bool IsMixed => Profile.IsFallback;
+
     public void Refresh(ILocalizer l)
     {
         Name = l.DisplayName(Profile);
         OnPropertyChanged(nameof(Count));
+        OnPropertyChanged(nameof(IsMixed));
     }
 }
 
@@ -38,6 +44,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
     private readonly ILocalizer _loc;
     private readonly WindowService _windows;
     private bool _loading;
+    private bool _repositioning;
 
     public ToolbarPageViewModel(UserDataStore store, ILocalizer loc, WindowService windows)
     {
@@ -64,9 +71,21 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
     [ObservableProperty] private string _centerTitle = "";
     [ObservableProperty] private string _centerSubtitle = "";
     [ObservableProperty] private string _profileName = "";
-    [ObservableProperty] private string _extensions = "";
-    [ObservableProperty] private bool _isFallback;
     [ObservableProperty] private string? _message;
+
+    /// <summary>The selected profile is for mixed selections (toggle in the profile card).</summary>
+    [ObservableProperty] private bool _isMixed;
+
+    /// <summary>False for the last mixed-selection profile: Filee always needs one.</summary>
+    [ObservableProperty] private bool _canChangeMixed;
+
+    [ObservableProperty] private bool _canDelete;
+
+    /// <summary>Extension chips of a normal profile (null for a mixed one).</summary>
+    [ObservableProperty] private ExtensionTagsViewModel? _extensionTags;
+
+    /// <summary>Check list of a mixed-selection profile (null for a normal one).</summary>
+    [ObservableProperty] private MixedExtensionsViewModel? _mixedExtensions;
     [ObservableProperty] private double _outerRadius;
     [ObservableProperty] private double _holeRatio;
     [ObservableProperty] private double _sliceOpacity;
@@ -75,12 +94,14 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
 
     partial void OnSelectedProfileChanged(ProfileItemViewModel? value)
     {
+        // The list box briefly drops its selection while the selected profile is moved (see Reposition).
+        if (_repositioning)
+            return;
         _loading = true;
         ProfileName = value is null ? "" : _loc.DisplayName(value.Profile);
-        Extensions = value is null ? "" : string.Join(", ", value.Profile.Extensions);
-        IsFallback = value?.Profile.IsFallback == true;
         _loading = false;
         Message = null;
+        RebuildProfileEditor();
         Rebuild();
     }
 
@@ -94,16 +115,56 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
         _store.SaveLibrary();
     }
 
-    partial void OnExtensionsChanged(string value)
+    partial void OnIsMixedChanged(bool value)
     {
-        if (_loading || Profile is null || Profile.IsFallback)
+        if (_loading || SelectedProfile is not { } item || item.Profile.IsFallback == value)
             return;
-        Profile.Extensions = value
-            .Split([',', ' ', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(e => e.TrimStart('.').ToLowerInvariant())
-            .Distinct()
-            .ToList();
+        if (!value && !CanChangeMixed)
+        {
+            RebuildProfileEditor(); // the last mixed profile stays mixed
+            return;
+        }
+        // The extensions are kept either way: chips become checks and back, so switching is harmless.
+        item.Profile.IsFallback = value;
+        Reposition(item);
         _store.SaveLibrary();
+        item.Refresh(_loc);
+        RebuildProfileEditor();
+    }
+
+    /// <summary>Normal profiles first, then the mixed ones; a profile that switches kind moves to the border.</summary>
+    private void Reposition(ProfileItemViewModel item)
+    {
+        var profile = item.Profile;
+        _store.Profiles.Remove(profile);
+        var index = profile.IsFallback ? -1 : _store.Profiles.FindIndex(p => p.IsFallback);
+        index = index < 0 ? _store.Profiles.Count : index;
+        _store.Profiles.Insert(index, profile);
+
+        _repositioning = true;
+        try
+        {
+            Profiles.Move(Profiles.IndexOf(item), index);
+            SelectedProfile = item;
+        }
+        finally
+        {
+            _repositioning = false;
+        }
+    }
+
+    /// <summary>Shows the chips or the check list for the selected profile.</summary>
+    private void RebuildProfileEditor()
+    {
+        var profile = Profile;
+        var mixedCount = _store.Profiles.Count(p => p.IsFallback);
+        _loading = true;
+        IsMixed = profile?.IsFallback == true;
+        _loading = false;
+        CanChangeMixed = profile is not null && !(profile.IsFallback && mixedCount <= 1);
+        CanDelete = CanChangeMixed;
+        ExtensionTags = profile is { IsFallback: false } ? new ExtensionTagsViewModel(profile, _store.Profiles, _loc, _store.SaveLibrary) : null;
+        MixedExtensions = profile is { IsFallback: true } ? new MixedExtensionsViewModel(profile, _store.Profiles, _loc, _store.SaveLibrary) : null;
     }
 
     partial void OnOuterRadiusChanged(double value) => SaveAppearance();
@@ -192,17 +253,20 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
     private void AddProfile()
     {
         var profile = new ToolbarProfile { Name = _loc["toolbar.profile_new"], PresetIds = ["to-pdf", "to-png"] };
-        _store.Profiles.Insert(Math.Max(0, _store.Profiles.Count - 1), profile); // keep the fallback last
+        // Before the mixed-selection profiles (normal ones come first; see Reposition).
+        var index = _store.Profiles.FindIndex(p => p.IsFallback);
+        index = index < 0 ? _store.Profiles.Count : index;
+        _store.Profiles.Insert(index, profile);
         _store.SaveLibrary();
         var item = new ProfileItemViewModel(profile, _loc);
-        Profiles.Insert(Math.Max(0, Profiles.Count - 1), item);
+        Profiles.Insert(index, item);
         SelectedProfile = item;
     }
 
     [RelayCommand]
     private async Task DeleteProfile()
     {
-        if (Profile is null || Profile.IsFallback || _windows.Main is null)
+        if (Profile is null || !CanDelete || _windows.Main is null)
             return;
         if (!await _windows.ConfirmAsync(_windows.Main, _loc["toolbar.delete_profile"] + "?", destructive: true))
             return;
@@ -246,5 +310,5 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
     }
 
     private string? Caption(Preset p) =>
-        p.TargetFormat == BuiltInData.SameAsSource ? _loc["donut.same_format"] : FormatRegistry.FindById(p.TargetFormat)?.DisplayName;
+        p.TargetFormat == BuiltInData.SameAsSource ? _loc["donut.same_format"] : FormatLabels.NameOf(_loc, p.TargetFormat);
 }

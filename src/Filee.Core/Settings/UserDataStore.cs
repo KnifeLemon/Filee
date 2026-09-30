@@ -138,17 +138,18 @@ public sealed class UserDataStore
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }
+        // Mixed-selection profiles stay mixed: several may exist, and the catch-all is the first one with nothing
+        // checked, so an imported one added at the end never replaces ours.
         foreach (var profile in bundle.Profiles)
         {
             Profiles.RemoveAll(p => p.Id == profile.Id);
-            profile.IsFallback = false; // keep our own fallback
             Profiles.Add(profile);
         }
         SaveLibrary();
         return bundle.Presets.Count + bundle.Profiles.Count;
     }
 
-    /// <summary>Removes dangling preset references and guarantees exactly one fallback profile.</summary>
+    /// <summary>Removes dangling preset references and guarantees at least one mixed-selection profile.</summary>
     private void EnsureConsistency()
     {
         var ids = Presets.Select(p => p.Id).ToHashSet();
@@ -157,15 +158,13 @@ public sealed class UserDataStore
             profile.PresetIds = profile.PresetIds.Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
         }
 
-        var fallbacks = Profiles.Where(p => p.IsFallback).ToList();
-        if (fallbacks.Count == 0)
+        // Several mixed profiles are fine (each limited to the extensions checked on it); none is not.
+        if (!Profiles.Any(p => p.IsFallback))
         {
             var mixed = BuiltInData.CreateProfiles().First(p => p.IsFallback);
             mixed.PresetIds = mixed.PresetIds.Where(ids.Contains).ToList();
             Profiles.Add(mixed);
         }
-        foreach (var extra in fallbacks.Skip(1))
-            extra.IsFallback = false;
     }
 
     private T? Read<T>(string path, JsonTypeInfo<T> type) where T : class
@@ -263,7 +262,7 @@ internal static class SettingsMigrations
         var changed = false;
         // v4: Markdown / TXT / HTML files get their own donut instead of the "mixed files" fallback. Skipped when
         //     the user already routes Markdown through a profile of their own.
-        if (from < 4 && !profiles.Any(p => p.Id == "text" || p.Extensions.Contains("md", StringComparer.OrdinalIgnoreCase)))
+        if (from < 4 && !profiles.Any(p => p.Id == "text" || (!p.IsFallback && p.Extensions.Contains("md", StringComparer.OrdinalIgnoreCase))))
         {
             var text = BuiltInData.TextProfile();
             var ids = presets.Select(p => p.Id).ToHashSet();
@@ -294,7 +293,7 @@ internal static class SettingsMigrations
                 // The new donut takes over these extensions from the built-in documents donut, but not from
                 // profiles the user made.
                 changed |= office?.Extensions.RemoveAll(split.Extensions.Contains) > 0;
-                if (profiles.Any(p => p.Extensions.Intersect(split.Extensions, StringComparer.OrdinalIgnoreCase).Any()))
+                if (profiles.Any(p => !p.IsFallback && p.Extensions.Intersect(split.Extensions, StringComparer.OrdinalIgnoreCase).Any()))
                     continue;
                 insertAt = insertAt < 0 ? profiles.Count : insertAt;
                 profiles.Insert(insertAt++, split);
@@ -324,7 +323,8 @@ internal static class SettingsMigrations
         }
         var presetIds = presets.Select(p => p.Id).ToHashSet();
 
-        var claimed = profiles.SelectMany(p => p.Extensions).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Extensions checked on a mixed-selection profile only limit that profile; they don't claim files.
+        var claimed = profiles.Where(p => !p.IsFallback).SelectMany(p => p.Extensions).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var defaults = BuiltInData.CreateProfiles().ToDictionary(p => p.Id);
         foreach (var profile in profiles.Where(p => !p.IsFallback && defaults.ContainsKey(p.Id)))
         {
