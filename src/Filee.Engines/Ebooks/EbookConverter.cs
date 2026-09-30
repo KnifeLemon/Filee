@@ -8,6 +8,7 @@ using System.Text;
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Ebooks;
 
@@ -45,7 +46,8 @@ public sealed class EbookConverter : IConverter
         new("azw4", "pdf"),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("EPUB, MOBI / AZW3, FB2, HTMLZ, TXTZ, CBZ / CBR / CB7 / CBT / CBC, AZW4");
+    public EngineStatus GetStatus() => EngineStatus.Available("EPUB, MOBI / AZW3, FB2, HTMLZ, TXTZ, CBZ / CBR / CB7 / CBT / CBC, AZW4",
+        $"{EngineVersions.BuiltIn} · {EngineVersions.Library("AngleSharp", typeof(AngleSharp.BrowsingContext))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run(() => Convert(step, progress, cancellationToken), cancellationToken);

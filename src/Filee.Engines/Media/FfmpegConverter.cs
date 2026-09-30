@@ -57,7 +57,7 @@ public sealed partial class FfmpegConverter : IConverter
             return EngineStatus.Unavailable("engine.reason.not_installed");
         try
         {
-            return EngineStatus.Available($"{tools.Ffmpeg} (FFmpeg {VersionOf(tools.Ffmpeg)})");
+            return EngineStatus.Available(tools.Ffmpeg, $"FFmpeg {VersionOf(tools.Ffmpeg)}");
         }
         catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
         {

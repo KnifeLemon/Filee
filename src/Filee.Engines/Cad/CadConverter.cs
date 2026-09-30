@@ -2,6 +2,7 @@
 // DXF and DWG; the drawing is rendered with SkiaSharp to PDF (vector), SVG and raster images.
 
 using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
 using Microsoft.Extensions.Logging;
@@ -41,7 +42,7 @@ public sealed class CadConverter(ILogger? logger = null) : IConverter
            select new ConversionEdge(source, target),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("ACadSharp: DWG R13–2018+, DXF");
+    public EngineStatus GetStatus() => EngineStatus.Available("ACadSharp: DWG R13–2018+, DXF", $"{EngineVersions.BuiltIn} · {EngineVersions.Library("ACadSharp", typeof(ACadSharp.CadDocument))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>
