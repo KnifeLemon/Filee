@@ -18,6 +18,7 @@
     <PackageReference Include="Unhwp" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="ExcelNumberFormat" />
+    <PackageReference Include="ExcelDataReader" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 

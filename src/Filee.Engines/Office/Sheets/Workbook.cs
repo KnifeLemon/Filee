@@ -1,5 +1,6 @@
-// In-memory spreadsheet between the readers (XLSX, CSV) and the writers (CSV, XLSX, HWPX tables).
-// Cells hold the text as the spreadsheet shows it (numbers and dates already formatted).
+// In-memory spreadsheet between the readers (XLSX, XLS, ODS, CSV/TSV) and the writers (XLSX, ODS, CSV/TSV, HWPX
+// tables). Cells hold the text as the spreadsheet shows it (numbers and dates already formatted) plus, for numbers,
+// the value and its number format, so spreadsheet → spreadsheet conversions keep real numbers.
 
 namespace Filee.Engines.Office.Sheets;
 
@@ -163,5 +164,17 @@ internal sealed record CellStyle
 /// <param name="IsNumber">Numbers (and dates) align right under the General alignment.</param>
 internal sealed record SheetCell(string Text, CellStyle Style, bool IsNumber = false)
 {
+    /// <summary>
+    /// The value behind <see cref="Text"/>: numbers, dates and times as Excel serial days (1900 date system) and
+    /// booleans as 1 / 0; null for text and errors. Writers store it instead of the text.
+    /// </summary>
+    public double? Value { get; init; }
+
+    /// <summary>Excel number format code of <see cref="Value"/> ("#,##0", "yyyy-mm-dd"); null = General.</summary>
+    public string? NumberFormat { get; init; }
+
+    /// <summary>A TRUE / FALSE cell (<see cref="Value"/> is 1 or 0).</summary>
+    public bool IsBoolean { get; init; }
+
     public bool HasContent => Text.Length > 0 || Style.Fill is not null || Style.HasBorders;
 }

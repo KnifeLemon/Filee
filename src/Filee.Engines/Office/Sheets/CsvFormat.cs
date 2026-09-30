@@ -1,6 +1,7 @@
-// CSV ↔ Worksheet. Reading follows RFC 4180 (quotes, doubled quotes, line breaks inside quotes), detects the
-// delimiter (comma, semicolon or tab) and the encoding (UTF-8 / UTF-16 with BOM, else CP949 like Korean Excel).
-// Writing produces what Excel opens correctly everywhere: UTF-8 with BOM, CRLF line ends, quotes only when needed.
+// CSV / TSV ↔ Worksheet. Reading follows RFC 4180 (quotes, doubled quotes, line breaks inside quotes), detects the
+// CSV delimiter (comma, semicolon or tab; TSV is always tab) and the encoding (UTF-8 / UTF-16 with BOM, else CP949
+// like Korean Excel). Writing produces what Excel opens correctly everywhere: UTF-8 with BOM, CRLF line ends,
+// quotes only when needed.
 
 using System.Globalization;
 using System.Text;
@@ -10,12 +11,20 @@ namespace Filee.Engines.Office.Sheets;
 
 internal static class CsvFormat
 {
+    /// <summary>The TSV delimiter.</summary>
+    public const char Tab = '\t';
+
     /// <summary>Reads a CSV file into one sheet named after the file.</summary>
-    public static Workbook Read(string path)
+    public static Workbook Read(string path) => Read(path, delimiter: null);
+
+    /// <summary>Reads a TSV file (tab-separated, whatever other characters it holds).</summary>
+    public static Workbook ReadTsv(string path) => Read(path, Tab);
+
+    private static Workbook Read(string path, char? delimiter)
     {
         var text = HwpxConverter.DecodeText(File.ReadAllBytes(path));
         var sheet = new Worksheet(Path.GetFileNameWithoutExtension(path));
-        var rows = Parse(text, DetectDelimiter(text));
+        var rows = Parse(text, delimiter ?? DetectDelimiter(text));
         var widths = new Dictionary<int, double>();
         for (var r = 0; r < rows.Count; r++)
         {
@@ -24,7 +33,9 @@ internal static class CsvFormat
                 var value = rows[r][c];
                 if (value.Length == 0)
                     continue;
-                sheet.Set(r, c, new SheetCell(value, CellStyle.Default, IsNumber(value)));
+                sheet.Set(r, c, IsNumber(value)
+                    ? new SheetCell(value, CellStyle.Default, IsNumber: true) { Value = double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture) }
+                    : new SheetCell(value, CellStyle.Default));
                 widths[c] = Math.Max(widths.GetValueOrDefault(c), DisplayWidth(value));
             }
         }
@@ -36,8 +47,8 @@ internal static class CsvFormat
         return book;
     }
 
-    /// <summary>Writes the used range of a sheet as CSV (UTF-8 with BOM, CRLF).</summary>
-    public static void Write(Worksheet sheet, string path)
+    /// <summary>Writes the used range of a sheet as CSV, or as TSV with <see cref="Tab"/> (UTF-8 with BOM, CRLF).</summary>
+    public static void Write(Worksheet sheet, string path, char delimiter = ',')
     {
         var sb = new StringBuilder();
         if (sheet.UsedRange() is { } range)
@@ -50,10 +61,10 @@ internal static class CsvFormat
                 for (var c = 0; c <= range.Right; c++)
                 {
                     if (!sheet.HiddenColumns.Contains(c))
-                        fields.Add(Quote(sheet.Get(r, c)?.Text ?? ""));
+                        fields.Add(Quote(sheet.Get(r, c)?.Text ?? "", delimiter));
                 }
                 // Excel omits trailing empty fields only for fully empty rows; keep the column count stable.
-                sb.Append(string.Join(',', fields)).Append("\r\n");
+                sb.Append(string.Join(delimiter, fields)).Append("\r\n");
             }
         }
         File.WriteAllText(path, sb.ToString(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
@@ -131,8 +142,8 @@ internal static class CsvFormat
         return counts.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key == ',' ? 0 : 1).First().Key;
     }
 
-    private static string Quote(string value) =>
-        value.IndexOfAny([',', '"', '\r', '\n']) >= 0 || value.StartsWith(' ') || value.EndsWith(' ')
+    private static string Quote(string value, char delimiter) =>
+        value.IndexOfAny([delimiter, '"', '\r', '\n']) >= 0 || value.StartsWith(' ') || value.EndsWith(' ')
             ? "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\""
             : value;
 

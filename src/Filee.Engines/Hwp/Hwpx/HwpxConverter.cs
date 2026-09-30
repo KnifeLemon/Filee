@@ -59,6 +59,7 @@ public sealed class HwpxConverter : IConverter
                 Path.GetDirectoryName(Path.GetFullPath(step.InputPath))!),
             "xlsx" => SheetDocument.Build(XlsxReader.Read(step.InputPath)),
             "csv" => SheetDocument.Build(CsvFormat.Read(step.InputPath)),
+            "xls" or "ods" or "tsv" => SheetDocument.Build(SpreadsheetConverter.Read(step.InputPath, step.From)),
             "pptx" => PptxReader.Read(step.InputPath, media),
             _ => await ReadWithPandocAsync(step, media, cancellationToken),
         };
@@ -142,7 +143,8 @@ public sealed class HwpxConverter : IConverter
 
     private static List<ConversionEdge> BuildEdges(bool pandoc)
     {
-        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx"), new("md", "hwpx"), new("xlsx", "hwpx"), new("csv", "hwpx"), new("pptx", "hwpx")];
+        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx"), new("md", "hwpx"), new("xlsx", "hwpx"), new("csv", "hwpx"), new("pptx", "hwpx"),
+            new("xls", "hwpx"), new("ods", "hwpx"), new("tsv", "hwpx")];
         if (pandoc)
             edges.AddRange(PandocReaders.Keys.Select(from => new ConversionEdge(from, "hwpx")));
         return edges;

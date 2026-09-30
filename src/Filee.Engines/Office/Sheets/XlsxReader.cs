@@ -6,7 +6,6 @@
 using System.Globalization;
 using System.Text;
 using System.Xml.Linq;
-using ExcelNumberFormat;
 using Filee.Engines.Office.Ooxml;
 
 namespace Filee.Engines.Office.Sheets;
@@ -16,43 +15,13 @@ internal sealed class XlsxReader
     private static readonly XNamespace S = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
     private static readonly XNamespace R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 
-    /// <summary>Built-in number formats (ECMA-376 18.8.30); 14 uses the ISO date order most locales read.</summary>
-    private static readonly Dictionary<int, string> BuiltInFormats = new()
-    {
-        [0] = "General",
-        [1] = "0",
-        [2] = "0.00",
-        [3] = "#,##0",
-        [4] = "#,##0.00",
-        [9] = "0%",
-        [10] = "0.00%",
-        [11] = "0.00E+00",
-        [12] = "# ?/?",
-        [13] = "# ??/??",
-        [14] = "yyyy-mm-dd",
-        [15] = "d-mmm-yy",
-        [16] = "d-mmm",
-        [17] = "mmm-yy",
-        [18] = "h:mm AM/PM",
-        [19] = "h:mm:ss AM/PM",
-        [20] = "h:mm",
-        [21] = "h:mm:ss",
-        [22] = "yyyy-mm-dd h:mm",
-        [37] = "#,##0 ;(#,##0)",
-        [38] = "#,##0 ;[Red](#,##0)",
-        [39] = "#,##0.00;(#,##0.00)",
-        [40] = "#,##0.00;[Red](#,##0.00)",
-        [45] = "mm:ss",
-        [46] = "[h]:mm:ss",
-        [47] = "mmss.0",
-        [48] = "##0.0E+0",
-        [49] = "@",
-    };
+    /// <summary>Days between the 1900 and 1904 date systems (1 January 1904 is serial 1462 in the 1900 system).</summary>
+    private const double Date1904Offset = 1462;
 
     private readonly OpcPackage _package;
     private readonly List<string> _sharedStrings = [];
     private readonly List<(CellStyle Style, string Format)> _cellFormats = [];
-    private readonly Dictionary<string, NumberFormat> _numberFormats = [];
+    private NumberFormatter _formatter = new();
     private bool _date1904;
 
     private XlsxReader(OpcPackage package) => _package = package;
@@ -69,6 +38,7 @@ internal sealed class XlsxReader
         var workbookPath = _package.MainPartPath ?? "xl/workbook.xml";
         var workbook = _package.Part(workbookPath)?.Root ?? throw new InvalidDataException("The file is not an Excel workbook (no xl/workbook.xml).");
         _date1904 = (string?)workbook.Element(S + "workbookPr")?.Attribute("date1904") is "1" or "true";
+        _formatter = new NumberFormatter(_date1904);
 
         var colors = OoxmlColors.FromTheme(_package.TargetOfType(workbookPath, "/theme") is { } theme ? _package.Part(theme) : null);
         if (_package.TargetOfType(workbookPath, "/sharedStrings") is { } shared)
@@ -180,7 +150,7 @@ internal sealed class XlsxReader
                 Bottom = border.Item4,
             };
             var formatId = Index(xf, "numFmtId");
-            _cellFormats.Add((style, formats.GetValueOrDefault(formatId) ?? BuiltInFormats.GetValueOrDefault(formatId, "General")));
+            _cellFormats.Add((style, formats.GetValueOrDefault(formatId) ?? NumberFormatter.BuiltInFormats.GetValueOrDefault(formatId, "General")));
         }
     }
 
@@ -237,8 +207,7 @@ internal sealed class XlsxReader
                 var c = CellRange.TryParseCell((string?)cell.Attribute("r") ?? "", out _, out var column) ? column : nextColumn;
                 nextColumn = c + 1;
                 var (style, format) = Index(cell, "s") is var s && s < _cellFormats.Count ? _cellFormats[s] : (CellStyle.Default, "General");
-                var (text, isNumber) = Value(cell, format);
-                var value = new SheetCell(text, style, isNumber);
+                var value = Value(cell, style, format);
                 if (value.HasContent)
                     sheet.Set(r, c, value);
             }
@@ -250,57 +219,41 @@ internal sealed class XlsxReader
         return sheet;
     }
 
-    /// <summary>The displayed text of a cell and whether it is a number (dates included).</summary>
-    private (string Text, bool IsNumber) Value(XElement cell, string format)
+    /// <summary>
+    /// The displayed text of a cell, and for numbers (dates included) and booleans the value behind it. Dates in a
+    /// 1904-based workbook are moved to the 1900 date system, so the value means the same in every workbook.
+    /// </summary>
+    private SheetCell Value(XElement cell, CellStyle style, string format)
     {
         var type = (string?)cell.Attribute("t") ?? "n";
         var raw = cell.Element(S + "v")?.Value;
         switch (type)
         {
             case "s":
-                return (int.TryParse(raw, out var index) && index >= 0 && index < _sharedStrings.Count ? _sharedStrings[index] : "", false);
+                return new SheetCell(int.TryParse(raw, out var index) && index >= 0 && index < _sharedStrings.Count ? _sharedStrings[index] : "", style);
             case "inlineStr":
-                return (cell.Element(S + "is") is { } inline ? RichText(inline) : raw ?? "", false);
+                return new SheetCell(cell.Element(S + "is") is { } inline ? RichText(inline) : raw ?? "", style);
             case "str":
             case "e":
-                return (raw ?? "", false);
+                return new SheetCell(raw ?? "", style);
             case "b":
-                return (raw is "1" or "true" ? "TRUE" : "FALSE", false);
+                var on = raw is "1" or "true";
+                return new SheetCell(on ? "TRUE" : "FALSE", style) { Value = on ? 1 : 0, IsBoolean = true };
             case "d":
                 return DateTime.TryParse(raw, CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)
-                    ? (Format(date.ToOADate(), format), true)
-                    : (raw ?? "", false);
+                    ? Number(NumberFormatter.ToSerial(date) - (_date1904 ? Date1904Offset : 0), style, format)
+                    : new SheetCell(raw ?? "", style);
             default:
                 return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out var number)
-                    ? (Format(number, format), true)
-                    : (raw ?? "", false);
+                    ? Number(number, style, format)
+                    : new SheetCell(raw ?? "", style);
         }
     }
 
-    private string Format(double value, string format)
+    /// <param name="value">The stored number, in the workbook's own date system.</param>
+    private SheetCell Number(double value, CellStyle style, string format) => new(_formatter.Format(value, format), style, IsNumber: true)
     {
-        if (format is "General" or "" || format.Equals("general", StringComparison.OrdinalIgnoreCase))
-            return General(value);
-        if (!_numberFormats.TryGetValue(format, out var parsed))
-            _numberFormats[format] = parsed = new NumberFormat(format);
-        if (!parsed.IsValid)
-            return General(value);
-        try
-        {
-            return parsed.Format(value, CultureInfo.InvariantCulture, _date1904);
-        }
-        catch (Exception ex) when (ex is ArgumentException or FormatException or OverflowException)
-        {
-            return General(value);
-        }
-    }
-
-    /// <summary>Excel's General format: up to 11 significant characters, no trailing zeros.</summary>
-    internal static string General(double value)
-    {
-        if (value == Math.Floor(value) && Math.Abs(value) < 1e11)
-            return value.ToString("0", CultureInfo.InvariantCulture);
-        var text = value.ToString("G10", CultureInfo.InvariantCulture);
-        return text.Contains('E') ? value.ToString("0.#####E+00", CultureInfo.InvariantCulture) : text;
-    }
+        Value = _date1904 && _formatter.IsDate(format) ? value + Date1904Offset : value,
+        NumberFormat = NumberFormatter.IsGeneral(format) ? null : format,
+    };
 }
