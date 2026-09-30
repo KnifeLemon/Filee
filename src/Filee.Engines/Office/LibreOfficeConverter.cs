@@ -1,6 +1,7 @@
 // Office documents via LibreOffice in headless mode (MPL-2.0): the optional fallback for formats the built-in engines
-// don't handle (DOC, XLS, PPT, OpenDocument, output as DOCX, ...). Filee downloads its own copy on request
-// (engines/libreoffice); a LibreOffice installed on the system is never used.
+// don't handle (DOC, XLS, PPT, OpenDocument, ...) and the only reader of rarer ones: Works / WPS, WordPerfect, Lotus
+// Word Pro, AbiWord, Apple Pages / Numbers / Keynote, StarOffice, WPS Office, Publisher, CorelDRAW, Visio, CGM.
+// Filee downloads its own copy on request (engines/libreoffice); a LibreOffice installed on the system is never used.
 //
 // Gotchas handled here:
 //  * Each concurrent soffice process needs its own user profile (-env:UserInstallation), otherwise
@@ -13,11 +14,12 @@
 //  * soffice reports no progress: ProgressEstimate keeps the progress ring moving while it runs.
 
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office;
 
-/// <summary>DOCX / DOC / ODT / RTF / XLSX / PPTX / HWP(X) conversions through LibreOffice.</summary>
+/// <summary>Word processor, spreadsheet, presentation and drawing conversions (and HWP / HWPX) through LibreOffice.</summary>
 public sealed class LibreOfficeConverter : IConverter
 {
     private const int Workers = 2;
@@ -29,6 +31,18 @@ public sealed class LibreOfficeConverter : IConverter
     private static readonly string[] Writer = ["docx", "doc", "odt", "rtf"];
     private static readonly string[] Calc = ["xlsx", "xls", "ods", "csv"];
     private static readonly string[] Impress = ["pptx", "ppt", "odp"];
+
+    // Formats LibreOffice only reads, by the application that opens them (checked against the filter registry of
+    // LibreOffice 26.2: the DocumentService of each type's preferred import filter).
+    private static readonly string[] WriterImport = ["dot", "wps", "wpd", "lwp", "abw", "pages", "sdw"];
+    private static readonly string[] CalcImport = ["et", "numbers", "sdc"];
+
+    /// <summary>"sda" also covers .sdd: StarDraw files (.sda) open in Draw, StarImpress files (.sdd) in Impress.</summary>
+    private static readonly string[] ImpressImport = ["key", "dps", "sda"];
+
+    /// <summary>CGM opens in Impress but is a drawing: exported like one (PDF, ODG, SVG, PNG).</summary>
+    private static readonly string[] ImpressGraphics = ["cgm"];
+    private static readonly string[] Draw = ["pub", "cdr", "vsd", "odg"];
 
     private readonly EngineEnvironment _env;
 
@@ -72,7 +86,7 @@ public sealed class LibreOfficeConverter : IConverter
             progress?.Report(0.1);
             ProcessResult result;
             using (ProgressEstimate.Start(progress, TypicalDuration))
-                result = await RunAsync(soffice, slot, FilterFor(step.From, step.To, step.Preset.Document.PdfA), outDir, step.InputPath, cancellationToken);
+                result = await RunAsync(soffice, slot, FilterFor(step.From, step.To, step.Preset.Document.PdfA, FormatRegistry.ExtensionOf(step.InputPath)), outDir, step.InputPath, cancellationToken);
             var produced = Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0);
             if (produced is null)
                 throw new InvalidOperationException(
@@ -176,9 +190,10 @@ public sealed class LibreOfficeConverter : IConverter
     }
 
     /// <summary>Maps a target format to a LibreOffice <c>--convert-to</c> filter specification.</summary>
-    internal static string FilterFor(string from, string to, bool pdfA)
+    /// <param name="extension">Extension of the input file, for format ids that cover files of two applications.</param>
+    internal static string FilterFor(string from, string to, bool pdfA, string? extension = null)
     {
-        var family = Calc.Contains(from) ? "calc" : Impress.Contains(from) ? "impress" : "writer";
+        var family = FamilyOf(from, extension);
         return to switch
         {
             // PDF/A-2b via the JSON filter options syntax (LibreOffice 7.4+).
@@ -198,8 +213,24 @@ public sealed class LibreOfficeConverter : IConverter
             "pptx" => "pptx:Impress MS PowerPoint 2007 XML",
             "ppt" => "ppt:MS PowerPoint 97",
             "odp" => "odp",
+            "odg" when family == "impress" => "odg:impress8_draw",
+            "odg" => "odg:draw8",
+            "svg" => $"svg:{family}_svg_Export",
+            "png" => $"png:{family}_png_Export",
             _ => to,
         };
+    }
+
+    /// <summary>The LibreOffice application that opens a format: writer, calc, impress or draw.</summary>
+    private static string FamilyOf(string from, string? extension)
+    {
+        if (from == "sda")
+            return string.Equals(extension, "sda", StringComparison.OrdinalIgnoreCase) ? "draw" : "impress";
+        if (Calc.Contains(from) || CalcImport.Contains(from))
+            return "calc";
+        if (Impress.Contains(from) || ImpressImport.Contains(from) || ImpressGraphics.Contains(from))
+            return "impress";
+        return Draw.Contains(from) ? "draw" : "writer";
     }
 
     private static List<ConversionEdge> BuildEdges(bool hwp)
@@ -221,6 +252,11 @@ public sealed class LibreOfficeConverter : IConverter
         Add(Calc, [.. Calc, "pdf", "html"], Fallback);
         Add(Impress, [.. Impress, "pdf"], Fallback);
         Add(["txt", "html"], ["docx", "odt", "pdf"], Fallback + 3);
+        // Formats only LibreOffice reads, to PDF and the editable formats of their kind.
+        Add(WriterImport, [.. Writer, "pdf", "txt", "html"], Fallback);
+        Add(CalcImport, [.. Calc, "pdf", "html"], Fallback);
+        Add(ImpressImport, [.. Impress, "pdf"], Fallback);
+        Add([.. ImpressGraphics, .. Draw], ["pdf", "odg", "svg", "png"], Fallback);
         if (hwp)
             Add(["hwp", "hwpx"], ["pdf", "docx", "odt", "rtf"], Fallback + 6);
         return edges;

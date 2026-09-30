@@ -343,7 +343,7 @@ internal sealed partial class HwpxWriter
     /// Grid position of every cell: explicit cell columns (DOCX) or the next free position (Pandoc), skipping
     /// positions covered by cells spanning rows from above.
     /// </summary>
-    private static (List<List<(HCell Cell, int Column)>> Placed, int Columns) PlaceCells(HTable table)
+    internal static (List<List<(HCell Cell, int Column)>> Placed, int Columns) PlaceCells(HTable table)
     {
         var placed = new List<List<(HCell, int)>>();
         var occupied = new HashSet<(int Row, int Column)>();
@@ -373,7 +373,7 @@ internal sealed partial class HwpxWriter
     }
 
     /// <summary>Column widths that fit <paramref name="available"/>: absolute (scaled down if too wide), relative or equal.</summary>
-    private static int[] ColumnWidths(HTable table, int columns, int available)
+    internal static int[] ColumnWidths(HTable table, int columns, int available)
     {
         if (table.ColumnWidths is { Length: > 0 } absolute)
         {

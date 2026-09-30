@@ -1,6 +1,7 @@
 // THE place where conversion engines are registered. Adding an engine = one line in CreateAll.
 
 using Filee.Core.Conversion;
+using Filee.Engines.Email;
 using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
@@ -28,7 +29,11 @@ public static class EngineRegistry
         new UnhwpConverter(),
         new MarkdownConverter(),
         new SpreadsheetConverter(),
+        new OoxmlConverter(),
         new HwpxConverter(),
+        new DocxWriterConverter(),
+        new PdfTextConverter(),
+        new EmlConverter(),
         new PandocConverter(),
         new LibreOfficeConverter(env),
     ];

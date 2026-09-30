@@ -1,4 +1,4 @@
-// XLSX → CSV and CSV → XLSX without Excel or LibreOffice. XLSX / CSV → PDF, HWPX and HTML go through the HWPX
+// XLSX (and XLSM / XLTX) → CSV and CSV → XLSX without Excel or LibreOffice. XLSX / CSV → PDF, HWPX and HTML go through the HWPX
 // writer (sheets become 한글 tables), see HwpxConverter and SheetDocument.
 
 using Filee.Core.Conversion;
@@ -13,9 +13,9 @@ public sealed class SpreadsheetConverter : IConverter
     public string DisplayName => "Spreadsheets (built-in)";
     public int MaxParallelism => 0;
 
-    public IReadOnlyList<ConversionEdge> Edges { get; } = [new("xlsx", "csv"), new("csv", "xlsx")];
+    public IReadOnlyList<ConversionEdge> Edges { get; } = [new("xlsx", "csv"), new("xlsm", "csv"), new("xltx", "csv"), new("csv", "xlsx")];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("XLSX ↔ CSV");
+    public EngineStatus GetStatus() => EngineStatus.Available("XLSX ↔ CSV, XLSM / XLTX → CSV");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>
