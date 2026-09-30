@@ -38,6 +38,7 @@
     <PackageVersion Include="Svg.Skia" Version="5.1.1" />
     <!-- Managed zstd / bzip2 for unpacking downloaded engines (conda packages). -->
     <PackageVersion Include="SharpCompress" Version="1.0.0" />
+    <PackageVersion Include="ExcelDataReader" Version="3.9.0" />
   </ItemGroup>
 
   <ItemGroup Label="Tests">

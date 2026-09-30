@@ -20,6 +20,7 @@
     <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Svg.Skia" />
     <PackageReference Include="SharpCompress" />
+    <PackageReference Include="ExcelDataReader" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 

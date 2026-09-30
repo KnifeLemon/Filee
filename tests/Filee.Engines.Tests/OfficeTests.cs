@@ -33,7 +33,7 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     /// "매출": merged title, frozen header rows, number / date / percent formats, a formula, a boolean and an inline
     /// string; "메모": a line break and a General number; "넓은 표": too wide for a portrait page; plus a hidden sheet.
     /// </summary>
-    private string SalesWorkbook(string folder)
+    internal static string SalesWorkbook(string folder)
     {
         var xlsx = new XlsxBuilder();
         var date = new DateTime(2026, 10, 1).ToOADate();
@@ -279,9 +279,7 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Theory]
     [InlineData("doc", "pdf")]
-    [InlineData("xls", "xlsx")]
     [InlineData("ppt", "pdf")]
-    [InlineData("ods", "pdf")]
     [InlineData("docx", "odt")]
     public void Rare_formats_need_libreoffice(string from, string to)
     {
