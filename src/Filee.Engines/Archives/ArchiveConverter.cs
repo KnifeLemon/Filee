@@ -40,7 +40,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
     public EngineStatus GetStatus()
     {
         _sevenZip = SevenZip.Locate();
-        return _sevenZip is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_sevenZip.Executable);
+        return _sevenZip is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_sevenZip.Executable, $"7-Zip {EngineVersions.Component("7zip")}");
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
