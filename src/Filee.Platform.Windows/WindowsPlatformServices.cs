@@ -114,31 +114,71 @@ public sealed class WindowsPlatformServices : IPlatformServices
 
     /// <summary>
     /// Registers a per-user "Convert with Filee" verb for all files (no admin rights needed) and a Send To shortcut.
-    /// On Windows 11 the verb appears under "Show more options"; a top-level entry needs a packaged
-    /// IExplorerCommand, which is planned for a later version.
+    /// On Windows 11 the classic verb appears under "Show more options"; the top-level entry is the packaged
+    /// IExplorerCommand (<see cref="ExplorerMenuRegistration"/>), which this switches on and off through its title file.
+    /// When that package is registered the classic verb is removed, because Windows also lists the packaged command
+    /// under "Show more options" and the entry would appear twice there.
     /// </summary>
     public void SetContextMenu(bool enabled, string executablePath, string label)
     {
+        if (ExplorerMenuRegistration.IsSupportedOs)
+            ExplorerMenuRegistration.SetTitle(enabled ? label : null);
+
         if (!enabled)
         {
-            Registry.CurrentUser.DeleteSubKeyTree(ContextMenuKey, throwOnMissingSubKey: false);
+            RemoveClassicVerb();
             TryDelete(SendToShortcutPath);
             return;
         }
 
-        using (var verb = Registry.CurrentUser.CreateSubKey(ContextMenuKey))
-        {
-            verb.SetValue("MUIVerb", label);
-            verb.SetValue("Icon", $"\"{executablePath}\",0");
-            // "Player": Explorer invokes the verb once per selected file; the running instance
-            // collects the calls (see SingleInstance / --convert handling in the app).
-            verb.SetValue("MultiSelectModel", "Player");
-            using var command = verb.CreateSubKey("command");
-            command.SetValue(null, $"\"{executablePath}\" --convert \"%1\"");
-        }
+        if (GetModernContextMenuState(executablePath) == ModernContextMenuState.On)
+            RemoveClassicVerb();
+        else
+            WriteClassicVerb(executablePath, label);
 
         CreateShortcut(SendToShortcutPath, executablePath, "--convert", label);
     }
+
+    public ModernContextMenuState GetModernContextMenuState(string executablePath) =>
+        Path.GetDirectoryName(executablePath) is { Length: > 0 } folder
+            ? ExplorerMenuRegistration.GetState(folder)
+            : ModernContextMenuState.Unsupported;
+
+    public Task<ModernContextMenuResult> SetModernContextMenuAsync(bool enabled, string executablePath) => Task.Run(async () =>
+    {
+        var folder = Path.GetDirectoryName(executablePath);
+        if (string.IsNullOrEmpty(folder))
+            return new ModernContextMenuResult(false, Error: "Unknown install folder.");
+
+        var result = enabled
+            ? await ExplorerMenuRegistration.AddAsync(folder)
+            : await ExplorerMenuRegistration.RemoveAsync(allowElevation: true);
+
+        // Keep exactly one entry: the title file exists while the Explorer menu setting is on.
+        if (ExplorerMenuRegistration.ReadTitle() is { Length: > 0 } title)
+        {
+            if (GetModernContextMenuState(executablePath) == ModernContextMenuState.On)
+                RemoveClassicVerb();
+            else
+                WriteClassicVerb(executablePath, title);
+        }
+        return result;
+    });
+
+    private static void WriteClassicVerb(string executablePath, string label)
+    {
+        using var verb = Registry.CurrentUser.CreateSubKey(ContextMenuKey);
+        verb.SetValue("MUIVerb", label);
+        verb.SetValue("Icon", $"\"{executablePath}\",0");
+        // "Player": Explorer invokes the verb once per selected file; the running instance
+        // collects the calls (see SingleInstance / --convert handling in the app).
+        verb.SetValue("MultiSelectModel", "Player");
+        using var command = verb.CreateSubKey("command");
+        command.SetValue(null, $"\"{executablePath}\" --convert \"%1\"");
+    }
+
+    private static void RemoveClassicVerb() =>
+        Registry.CurrentUser.DeleteSubKeyTree(ContextMenuKey, throwOnMissingSubKey: false);
 
     public void RevealInFileManager(string path)
     {

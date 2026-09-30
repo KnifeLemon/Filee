@@ -35,6 +35,12 @@ jobs:
         shell: pwsh
         run: ./build/fetch-fonts.ps1
 
+      # Windows 11 top-level Explorer menu: FileeExplorerMenu.dll (C, built with a pinned Zig toolchain) and the
+      # unsigned sparse package FileeExplorerMenu.msix. Built before the tests so they check the real files.
+      - name: Build Explorer menu extension
+        shell: pwsh
+        run: ./build/build-explorer-menu.ps1 -Version ${{ steps.version.outputs.value }}
+
       - name: Test
         run: dotnet test Filee.slnx -c Release
 
@@ -44,6 +50,11 @@ jobs:
           -p:Version=${{ steps.version.outputs.value }}
           -p:PublishReadyToRun=true
           -o ${{ env.PUBLISH_DIR }}
+
+      # Must sit next to Filee.exe: the package's external location is the install folder.
+      - name: Add Explorer menu extension
+        shell: pwsh
+        run: Copy-Item build/.cache/explorer-menu/FileeExplorerMenu.dll, build/.cache/explorer-menu/FileeExplorerMenu.msix "${{ env.PUBLISH_DIR }}"
 
       # Only the small rhwp is bundled. LibreOffice (+ H2Orestart, Java) and Pandoc are large and are downloaded by
       # the app when the user picks them (first-run setup or Settings > Engines), see engines.json.

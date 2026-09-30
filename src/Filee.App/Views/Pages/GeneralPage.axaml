@@ -14,6 +14,14 @@
         </StackPanel>
         <ToggleSwitch Content="{DynamicResource general.start_with_system}" IsChecked="{Binding StartWithSystem}" />
         <ToggleSwitch Content="{DynamicResource general.context_menu}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding IsWindows}" />
+        <!-- Windows 11: optional top-level entry (needs one administrator prompt), see ExplorerMenuRegistration. -->
+        <StackPanel Spacing="8" IsVisible="{Binding ShowModernMenu}">
+          <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding ModernMenuStatus}" />
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <Button Content="{DynamicResource general.modern_menu_add}" Command="{Binding AddModernMenuCommand}" IsVisible="{Binding CanAddModernMenu}" />
+            <Button Content="{DynamicResource general.modern_menu_remove}" Command="{Binding RemoveModernMenuCommand}" IsVisible="{Binding CanRemoveModernMenu}" />
+          </StackPanel>
+        </StackPanel>
       </StackPanel>
     </Border>
 

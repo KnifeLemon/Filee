@@ -28,6 +28,20 @@ jobs:
       - name: Build
         run: dotnet build Filee.slnx --no-restore -c Release
 
+      # Windows 11 Explorer menu (native DLL + unsigned sparse package); its tests load the DLL in-process.
+      - name: Cache Zig toolchain
+        uses: actions/cache@v4
+        with:
+          path: |
+            build/.cache/zig-x86_64-windows-0.16.0
+            build/.cache/zig-cache
+          key: zig-0.16.0-${{ hashFiles('src/Filee.ExplorerMenu/**') }}
+          restore-keys: zig-0.16.0-
+
+      - name: Build Explorer menu extension
+        shell: pwsh
+        run: ./build/build-explorer-menu.ps1
+
       # rhwp + Pandoc are small; with them the HWP/HWPX engine tests run too (LibreOffice is skipped to save time).
       - name: Fetch rhwp and Pandoc for engine tests
         shell: pwsh
