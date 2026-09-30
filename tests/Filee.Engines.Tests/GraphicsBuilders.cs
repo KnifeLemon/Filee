@@ -320,13 +320,13 @@ internal static class GraphicsBuilders
 
     private static void DrawSample(IntPtr dc, int widthMm, int heightMm)
     {
-        // Device units of the reference DC (the screen): convert millimetres with its resolution.
-        var pixelsX = GetDeviceCaps(dc, 88 /* LOGPIXELSX */) / 25.4;
-        var pixelsY = GetDeviceCaps(dc, 90 /* LOGPIXELSY */) / 25.4;
-        var w = (int)(widthMm * pixelsX);
-        var h = (int)(heightMm * pixelsY);
-        Fill(dc, 0, 0, w, h, 0x7F9E1D); // teal (COLORREF is 0x00BBGGRR)
-        Fill(dc, 0, 0, w / 3, h, 0x1E7FFF); // orange
+        // Draw in 0.01 mm (MM_HIMETRIC, y grows upwards) so the picture fills the frame whatever screen the metafile is
+        // recorded against: device units would follow the display's resolution and scaling at the time of the test.
+        _ = SetMapMode(dc, 3 /* MM_HIMETRIC */);
+        var w = widthMm * 100;
+        var h = heightMm * 100;
+        Fill(dc, 0, 0, w, -h, 0x7F9E1D); // teal (COLORREF is 0x00BBGGRR)
+        Fill(dc, 0, 0, w / 3, -h, 0x1E7FFF); // orange
 
         static void Fill(IntPtr dc, int left, int top, int right, int bottom, uint color)
         {
@@ -348,6 +348,9 @@ internal static class GraphicsBuilders
 
     [DllImport("gdi32.dll")]
     private static extern IntPtr CloseEnhMetaFile(IntPtr dc);
+
+    [DllImport("gdi32.dll")]
+    private static extern int SetMapMode(IntPtr dc, int mode);
 
     [DllImport("gdi32.dll")]
     private static extern bool DeleteEnhMetaFile(IntPtr metafile);
