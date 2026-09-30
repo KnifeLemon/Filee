@@ -2,6 +2,7 @@
 // The container is handled by IcnsFile; ImageMagick resizes and encodes/decodes the PNG and JPEG 2000 entries.
 
 using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
 
@@ -20,7 +21,7 @@ public sealed class IcnsConverter : IConverter
         .. ImageEncoder.Writable.Select(target => new ConversionEdge("icns", target)),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available();
+    public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.BuiltIn);
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run(() => step.From == "icns"

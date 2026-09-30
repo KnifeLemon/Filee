@@ -41,7 +41,7 @@ public sealed class GhostscriptConverter : IConverter
     public EngineStatus GetStatus()
     {
         _executable = Locate();
-        return _executable is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_executable);
+        return _executable is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_executable, EngineVersions.Component("ghostscript"));
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)

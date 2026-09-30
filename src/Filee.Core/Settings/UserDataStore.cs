@@ -243,7 +243,7 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 6)
         {
             InsertBefore(settings.EnginePriority, "ooxml", "hwpx-writer");
-            foreach (var id in new[] { "docx-writer", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg" })
+            foreach (var id in new[] { "docx-writer", "pdf-text", "email", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg" })
                 InsertBefore(settings.EnginePriority, id, "pandoc");
             foreach (var id in new[] { "ghostscript", "calibre" })
                 InsertBefore(settings.EnginePriority, id, "libreoffice");

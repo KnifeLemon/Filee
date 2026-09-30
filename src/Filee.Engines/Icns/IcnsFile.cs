@@ -35,9 +35,23 @@ internal static class IcnsFile
     /// <summary>Pixel size of the image types that carry PNG or JPEG 2000 data (or ARGB for ic04/ic05).</summary>
     private static readonly Dictionary<string, int> ImageTypes = new(StringComparer.Ordinal)
     {
-        ["icp4"] = 16, ["icp5"] = 32, ["icp6"] = 64, ["ic07"] = 128, ["ic08"] = 256, ["ic09"] = 512, ["ic10"] = 1024,
-        ["ic11"] = 32, ["ic12"] = 64, ["ic13"] = 256, ["ic14"] = 512, ["ic04"] = 16, ["ic05"] = 32,
-        ["icsb"] = 18, ["icsB"] = 36, ["sb24"] = 24, ["SB24"] = 48,
+        ["icp4"] = 16,
+        ["icp5"] = 32,
+        ["icp6"] = 64,
+        ["ic07"] = 128,
+        ["ic08"] = 256,
+        ["ic09"] = 512,
+        ["ic10"] = 1024,
+        ["ic11"] = 32,
+        ["ic12"] = 64,
+        ["ic13"] = 256,
+        ["ic14"] = 512,
+        ["ic04"] = 16,
+        ["ic05"] = 32,
+        ["icsb"] = 18,
+        ["icsB"] = 36,
+        ["sb24"] = 24,
+        ["SB24"] = 48,
     };
 
     /// <summary>Legacy RLE RGB types, their size and the type of their 8-bit mask.</summary>

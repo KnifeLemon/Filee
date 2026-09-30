@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 
 namespace Filee.Engines.Vector;
@@ -27,7 +28,7 @@ public sealed class VectorConverter : IConverter
         new("ai", "pdf"),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available();
+    public EngineStatus GetStatus() => EngineStatus.Available(version: $"{EngineVersions.BuiltIn} · {EngineVersions.Library("Svg.Skia", typeof(Svg.Skia.SKSvg))}");
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
