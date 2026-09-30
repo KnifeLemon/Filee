@@ -9,6 +9,7 @@ using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Icns;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Media;
 using Filee.Engines.Office;
 using Filee.Engines.Pdf;
 using Filee.Engines.Text;
@@ -42,6 +43,7 @@ public static class EngineRegistry
         new DocxWriterConverter(),
         new PdfTextConverter(),
         new EmlConverter(),
+        new FfmpegConverter(),
         new PandocConverter(),
         new GhostscriptConverter(),
         new LibreOfficeConverter(env),

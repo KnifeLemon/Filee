@@ -320,6 +320,8 @@
   "engines.package.pandoc.description": "支持 DOCX、ODT、RTF → Markdown，reStructuredText 和 LaTeX ↔ Markdown、HTML、DOCX，以及 HTML、ODT、RTF、reStructuredText、LaTeX → HWPX。Markdown → PDF、DOCX、HWPX、HTML 和 TXT 无需此引擎。",
   "engines.package.ghostscript.name": "Ghostscript（EPS 与 PostScript）",
   "engines.package.ghostscript.description": "EPS、PS 和旧版 Illustrator 文件 → PDF、PNG 等图片，以及 PDF 或 SVG → EPS/PS。SVG 和以 PDF 兼容方式保存的 AI 文件无需它即可转换。",
+  "engines.package.ffmpeg.name": "FFmpeg（视频和音频）",
+  "engines.package.ffmpeg.description": "支持视频 ↔ 视频（MP4、MOV、MKV、WEBM、AVI、WMV 等）、视频 → GIF 动图或静态图片、从视频提取声音（→ MP3、M4A、WAV 等）、音频 ↔ 音频（MP3、M4A、FLAC、WAV、OGG、OPUS 等）以及 GIF → MP4、WEBM、MOV。仅视频和音频转换需要它。",
   "engines.package.size": "下载 {0} · 占用 {1}",
   "engines.progress_detail": "{0} / {1} · {2}/s · {3}",
   "engines.eta.estimating": "正在估算剩余时间…",

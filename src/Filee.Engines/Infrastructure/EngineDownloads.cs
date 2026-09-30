@@ -33,6 +33,7 @@ public static class EngineDownloads
         new("pandoc", ["pandoc"], 236_000_000, ["pandoc"]),
         // Ghostscript from conda-forge plus the Microsoft C++ runtime it was built against (copied next to it).
         new("ghostscript", ["ghostscript", "vcruntime"], 31_000_000, ["ghostscript"]),
+        new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
     ];
 
     /// <summary>Total download size of a package in bytes.</summary>
