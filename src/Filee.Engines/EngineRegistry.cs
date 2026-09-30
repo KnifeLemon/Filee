@@ -5,6 +5,7 @@ using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Media;
 using Filee.Engines.Office;
 using Filee.Engines.Pdf;
 using Filee.Engines.Text;
@@ -29,6 +30,7 @@ public static class EngineRegistry
         new MarkdownConverter(),
         new SpreadsheetConverter(),
         new HwpxConverter(),
+        new FfmpegConverter(),
         new PandocConverter(),
         new LibreOfficeConverter(env),
     ];

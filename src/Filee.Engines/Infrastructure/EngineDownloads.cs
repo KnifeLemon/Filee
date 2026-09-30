@@ -28,6 +28,7 @@ public static class EngineDownloads
     [
         new("libreoffice", ["libreoffice", "h2orestart", "jre"], 1_265_000_000, ["libreoffice"]),
         new("pandoc", ["pandoc"], 236_000_000, ["pandoc"]),
+        new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
     ];
 
     /// <summary>Total download size of a package in bytes.</summary>

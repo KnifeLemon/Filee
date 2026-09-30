@@ -240,6 +240,8 @@
   "engines.package.libreoffice.description": "오래되었거나 흔하지 않은 형식에만 필요해요: DOC·XLS·PPT·OpenDocument 파일, DOCX·ODT·ODS로 변환, HWP → DOCX (H2Orestart 필터와 Java 포함). DOCX·XLSX·PPTX·CSV는 없어도 변환돼요.",
   "engines.package.pandoc.name": "Pandoc (HTML·마크다운 ↔ 워드)",
   "engines.package.pandoc.description": "마크다운 ↔ DOCX·ODT·RTF 변환과 HTML·ODT·RTF → HWPX 변환을 추가합니다. 마크다운 → PDF·HWPX·HTML·TXT와 DOCX → HWPX는 없어도 됩니다.",
+  "engines.package.ffmpeg.name": "FFmpeg (동영상·오디오)",
+  "engines.package.ffmpeg.description": "동영상 ↔ 동영상(MP4·MOV·MKV·WEBM·AVI·WMV 등), 동영상 → 움직이는 GIF·정지 이미지, 동영상에서 소리 추출(→ MP3·M4A·WAV 등), 오디오 ↔ 오디오(MP3·M4A·FLAC·WAV·OGG·OPUS 등), GIF → MP4·WEBM·MOV 변환을 추가해요. 동영상과 오디오에만 필요해요.",
   "engines.package.size": "다운로드 {0} · 설치 후 {1}",
   "engines.install": "설치",
   "engines.cancel": "취소",

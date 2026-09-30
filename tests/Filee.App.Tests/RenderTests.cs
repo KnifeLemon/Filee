@@ -66,8 +66,10 @@ public class RenderTests
         window.Show();
         Pump();
 
-        // Everything not installed is offered; all but the large LibreOffice pre-selected.
-        Assert.All(vm.Packages.Where(p => !p.IsInstalled), p => Assert.Equal(p.Package.Id != "libreoffice", p.Selected));
+        // Everything not installed is offered; small downloads are pre-selected, the large LibreOffice and FFmpeg not.
+        Assert.All(vm.Packages.Where(p => !p.IsInstalled), p => Assert.Equal(
+            Filee.Engines.Infrastructure.EngineDownloads.DownloadSize(p.Package) < EngineSetupViewModel.PreselectLimit, p.Selected));
+        Assert.DoesNotContain(vm.Packages, p => p.Package.Id is "libreoffice" or "ffmpeg" && p.Selected);
         Assert.Equal(vm.Packages.Any(p => p.Selected && p.CanInstall), vm.InstallCommand.CanExecute(null));
         Save(window, $"engine-setup-{language}.png");
         window.Close();

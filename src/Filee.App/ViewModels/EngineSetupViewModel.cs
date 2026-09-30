@@ -20,12 +20,15 @@ public sealed partial class EngineSetupViewModel : ObservableObject
         _loc = loc;
         foreach (var package in Packages)
         {
-            // LibreOffice is large and only needed for older formats (DOC, XLS, PPT, OpenDocument): offered, not
-            // pre-selected.
-            package.Selected = !package.IsInstalled && package.Package.Id != "libreoffice";
+            // Large downloads are offered, not pre-selected: LibreOffice is only needed for older formats (DOC, XLS,
+            // PPT, OpenDocument), FFmpeg (~100 MB) only for video and audio.
+            package.Selected = !package.IsInstalled && Filee.Engines.Infrastructure.EngineDownloads.DownloadSize(package.Package) < PreselectLimit;
             package.PropertyChanged += OnPackageChanged;
         }
     }
+
+    /// <summary>Packages whose download is smaller than this (bytes) are ticked on first run.</summary>
+    public const long PreselectLimit = 60_000_000;
 
     public IReadOnlyList<EnginePackageState> Packages => _downloads.Packages;
 

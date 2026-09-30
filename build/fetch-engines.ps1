@@ -12,6 +12,7 @@
       jre/           Eclipse Temurin JRE 21 (GPLv2 + Classpath Exception), used by H2Orestart
       rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF
       pandoc/        Pandoc (GPL-2.0-or-later, separate program), Markdown/HTML and MD/HTML/ODT/RTF -> HWPX
+      ffmpeg/        FFmpeg (GPL-3.0 build, separate program), video and audio; bin/ffmpeg.exe + bin/ffprobe.exe
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -112,6 +113,15 @@ if ('pandoc' -in $selected) {
     $zip = Get-Engine 'pandoc'
     Expand-Flat $zip (Join-Path $Destination 'pandoc')
     if (-not (Test-Path (Join-Path $Destination 'pandoc\pandoc.exe'))) { throw 'pandoc.exe not found in the archive.' }
+}
+
+if ('ffmpeg' -in $selected) {
+    # Same layout as the app's installer: the archive's single top folder is dropped, the programs stay in bin/.
+    $zip = Get-Engine 'ffmpeg'
+    Expand-Flat $zip (Join-Path $Destination 'ffmpeg')
+    foreach ($exe in 'ffmpeg.exe', 'ffprobe.exe') {
+        if (-not (Test-Path (Join-Path $Destination "ffmpeg\bin\$exe"))) { throw "$exe not found in the archive." }
+    }
 }
 
 if ('jre' -in $selected) {

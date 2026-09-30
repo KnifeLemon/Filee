@@ -240,6 +240,8 @@
   "engines.package.libreoffice.description": "仅用于较旧或不常见的格式：DOC、XLS、PPT 和 OpenDocument 文件，转换为 DOCX、ODT 和 ODS，以及 HWP → DOCX（含 H2Orestart 过滤器和 Java）。DOCX、XLSX、PPTX 和 CSV 无需它即可转换。",
   "engines.package.pandoc.name": "Pandoc（HTML 与 Markdown ↔ Word）",
   "engines.package.pandoc.description": "支持 Markdown ↔ DOCX、ODT、RTF，以及 HTML、ODT、RTF → HWPX。Markdown → PDF、HWPX、HTML、TXT 和 DOCX → HWPX 无需此引擎。",
+  "engines.package.ffmpeg.name": "FFmpeg（视频和音频）",
+  "engines.package.ffmpeg.description": "支持视频 ↔ 视频（MP4、MOV、MKV、WEBM、AVI、WMV 等）、视频 → GIF 动图或静态图片、从视频提取声音（→ MP3、M4A、WAV 等）、音频 ↔ 音频（MP3、M4A、FLAC、WAV、OGG、OPUS 等）以及 GIF → MP4、WEBM、MOV。仅视频和音频转换需要它。",
   "engines.package.size": "下载 {0} · 占用 {1}",
   "engines.install": "安装",
   "engines.cancel": "取消",

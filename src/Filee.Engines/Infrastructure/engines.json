@@ -35,6 +35,13 @@
       "sha256": "CBEA23BC37861361BBC534BC0675E5BC67B36F712072490F82A9BF410D7C04D8",
       "size": 606257,
       "kind": "oxt"
+    },
+    "ffmpeg": {
+      "version": "9.0.2",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build-shared.zip",
+      "sha256": "8D31E162F1616E37AAB3FA2DB991B97E1B8DBEB1C8465FD81A81BE16FF91B328",
+      "size": 99899672,
+      "kind": "zip"
     }
   }
 }
