@@ -6,7 +6,10 @@ using System.Text.Json;
 namespace Filee.Engines.Infrastructure;
 
 /// <summary>One download from engines.json.</summary>
-/// <param name="Kind">"zip" (extracted), "msi" (administrative install, no system changes) or "oxt" (LibreOffice extension).</param>
+/// <param name="Kind">
+/// "zip" (extracted), "msi" (administrative install, no system changes), "oxt" (LibreOffice extension) or "conda"
+/// (conda-forge package: its Windows binaries are extracted).
+/// </param>
 /// <param name="Size">Download size in bytes.</param>
 public sealed record EngineComponent(string Id, string Version, string Url, string Sha256, long Size, string Kind);
 
@@ -28,6 +31,8 @@ public static class EngineDownloads
     [
         new("libreoffice", ["libreoffice", "h2orestart", "jre"], 1_265_000_000, ["libreoffice"]),
         new("pandoc", ["pandoc"], 236_000_000, ["pandoc"]),
+        // Ghostscript from conda-forge plus the Microsoft C++ runtime it was built against (copied next to it).
+        new("ghostscript", ["ghostscript", "vcruntime"], 31_000_000, ["ghostscript"]),
     ];
 
     /// <summary>Total download size of a package in bytes.</summary>

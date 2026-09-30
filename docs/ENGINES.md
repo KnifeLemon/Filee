@@ -5,7 +5,9 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF ↔ each other; HEIC read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM ↔ each other; HEIC, XCF, camera RAW (LibRaw) and EMF/WMF (Windows) read |
+| Vector graphics | built in (Svg.Skia, SkiaSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, PDF-compatible AI → PDF |
+| ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF, merge, split, page ranges |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML |
@@ -15,6 +17,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS; HWP/HWPX → DOCX/ODT |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium) |
 
 DOCX, XLSX and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
 and rendered by rhwp. LibreOffice's cost is set so the built-in route always wins where one exists.
@@ -37,11 +40,36 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   install root, so uninstalling removes them.
 - LibreOffice comes as an MSI and is unpacked with an administrative install (`msiexec /a`): files only, no
   registry entries, no admin rights. Help, gallery and most dictionaries are removed afterwards (~500 MB).
+- Ghostscript comes from conda-forge (Artifex publishes only an NSIS installer): a `.conda` package is a zip with a
+  zstd tarball, of which only `Library/bin` is unpacked (SharpCompress; `fetch-engines.ps1` uses Windows' `tar.exe`).
+  Its fonts and resources are compiled into `gsdll64.dll`. The Microsoft C++ runtime it was built against
+  (`vcruntime` component) is copied next to `gswin64c.exe`, so it runs on PCs without the VC++ Redistributable.
 
 To bump a version, change `url`, `sha256` and `size` in engines.json together, run
 `pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. When the LibreOffice team retires a
 version from `download.documentfoundation.org/libreoffice/stable/`, its URL stops working: keep the pinned version
 current.
+
+## Images and vector graphics
+
+- **Layered files.** PSD/PSB convert from Photoshop's composite (ImageMagick merges the layers when a file was saved
+  without "maximize compatibility"). GIMP XCF layers are composited at their offsets with their blend modes; hidden
+  layers are left out. ImageMagick reads 8-bit XCF without zlib tile compression (GIMP 2.10+ "better but slower
+  compression" files give a clear error).
+- **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,
+  sRGB output and AHD demosaicing, then turned upright from the EXIF orientation.
+- **EMF/WMF** are rendered through GDI+ (Windows only) at the preset's render DPI (at least 150), keeping their
+  physical size in PDF output.
+- **SVG → PDF** replays the drawing into Skia's PDF backend: paths, gradients and clips stay vector. Text is written
+  as glyph outlines (shaped with HarfBuzz), because SkiaSharp's PDF backend has no font subsetter and would embed
+  every font whole (13 MB for one line of Korean). SVG → images is rendered at its final size: the preset's DPI, at
+  least 1024 px on the long edge, or exactly the preset's resize target. External files next to the SVG are
+  loaded; nothing is fetched from the network and scripts don't run.
+- **ICNS** files are written with every size iconutil makes (16–1024 px, PNG), the picture centred on a transparent
+  square; reading takes the largest image (PNG, JPEG 2000 or the old RLE + mask entries).
+- **Illustrator** files saved with "Create PDF compatible file" (the default since Illustrator 9) are PDFs and need
+  nothing extra; PostScript-based ones need Ghostscript.
+- EPS, PS and AI reach PNG, JPG, … through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
 
 ## HWPX writer
 

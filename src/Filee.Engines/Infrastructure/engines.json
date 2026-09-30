@@ -35,6 +35,20 @@
       "sha256": "CBEA23BC37861361BBC534BC0675E5BC67B36F712072490F82A9BF410D7C04D8",
       "size": 606257,
       "kind": "oxt"
+    },
+    "ghostscript": {
+      "version": "10.08.0",
+      "url": "https://conda.anaconda.org/conda-forge/win-64/ghostscript-10.08.0-hac47afa_0.conda",
+      "sha256": "512BE9413C58B0AD3A2CD95A63EAEA73CBE32D9A6B9170C848BF825694A4ADB0",
+      "size": 19295904,
+      "kind": "conda"
+    },
+    "vcruntime": {
+      "version": "14.44.35208",
+      "url": "https://conda.anaconda.org/conda-forge/win-64/vc14_runtime-14.44.35208-h818238b_41.conda",
+      "sha256": "EC706FE9368B837FBD05AF4851F5EBEF12BEF8C471A273F4805F7AF788407317",
+      "size": 682908,
+      "kind": "conda"
     }
   }
 }

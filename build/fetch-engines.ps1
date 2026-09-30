@@ -12,6 +12,8 @@
       jre/           Eclipse Temurin JRE 21 (GPLv2 + Classpath Exception), used by H2Orestart
       rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF
       pandoc/        Pandoc (GPL-2.0-or-later, separate program), Markdown/HTML and MD/HTML/ODT/RTF -> HWPX
+      ghostscript/   Ghostscript (AGPL-3.0, separate program) from conda-forge, EPS/PS <-> PDF, with the Microsoft
+                     C++ runtime DLLs (vcruntime/) copied next to gswin64c.exe
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -78,6 +80,23 @@ function Expand-Flat([string]$zip, [string]$target) {
     $root = if ($items.Count -eq 1 -and $items[0].PSIsContainer) { $items[0].FullName } else { $tmp }
     Reset-Folder $target
     Get-ChildItem $root -Force | Move-Item -Destination $target
+    Remove-Item $tmp -Recurse -Force
+}
+
+# Unpacks the Windows binaries (Library/bin) of a conda-forge package: a zip holding pkg-*.tar.zst. Windows' own
+# tar.exe (bsdtar with zstd, Windows 10 1803 and later) reads the tarball; the app uses a managed decompressor.
+function Expand-Conda([string]$conda, [string]$target) {
+    $tmp = Join-Path $cache ('c-' + [Guid]::NewGuid().ToString('N').Substring(0, 8))
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    [System.IO.Compression.ZipFile]::ExtractToDirectory($conda, $tmp)
+    $pkg = Get-ChildItem $tmp -Filter 'pkg-*.tar.zst' | Select-Object -First 1
+    if (-not $pkg) { throw "$conda is not a conda package." }
+    $files = Join-Path $tmp 'files'
+    New-Item -ItemType Directory -Force -Path $files | Out-Null
+    & (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $pkg.FullName -C $files
+    if ($LASTEXITCODE -ne 0) { throw "tar.exe could not unpack $($pkg.Name) (it needs zstd support)." }
+    Reset-Folder $target
+    Get-ChildItem (Join-Path $files 'Library\bin') -Force | Move-Item -Destination $target
     Remove-Item $tmp -Recurse -Force
 }
 
@@ -153,6 +172,18 @@ if ('h2orestart' -in $selected) {
         Expand-Archive -Path $zipCopy -DestinationPath $target -Force
         Remove-Item $zipCopy
     }
+}
+
+if ('vcruntime' -in $selected -or 'ghostscript' -in $selected) {
+    Expand-Conda (Get-Engine 'vcruntime') (Join-Path $Destination 'vcruntime')
+}
+
+if ('ghostscript' -in $selected) {
+    $target = Join-Path $Destination 'ghostscript'
+    Expand-Conda (Get-Engine 'ghostscript') $target
+    if (-not (Test-Path (Join-Path $target 'gswin64c.exe'))) { throw 'gswin64c.exe not found in the Ghostscript package.' }
+    # App-local Microsoft C++ runtime next to gswin64c.exe, as EngineInstaller does.
+    Copy-Item (Join-Path $Destination 'vcruntime\*.dll') $target -Force
 }
 
 Write-Host "Engines ready in $Destination"

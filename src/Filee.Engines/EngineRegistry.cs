@@ -3,11 +3,13 @@
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Icns;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Office;
 using Filee.Engines.Pdf;
 using Filee.Engines.Text;
+using Filee.Engines.Vector;
 
 namespace Filee.Engines;
 
@@ -29,7 +31,10 @@ public static class EngineRegistry
         new MarkdownConverter(),
         new SpreadsheetConverter(),
         new HwpxConverter(),
+        new VectorConverter(),
+        new IcnsConverter(),
         new PandocConverter(),
+        new GhostscriptConverter(),
         new LibreOfficeConverter(env),
     ];
 

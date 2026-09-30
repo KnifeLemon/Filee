@@ -5,13 +5,17 @@
 //    cancelled install never leaves a half-installed engine behind.
 //  * The LibreOffice MSI is unpacked with an administrative install (msiexec /a): files only, no registry entries,
 //    no admin rights. Parts headless conversion never uses (help, gallery, most dictionaries) are removed.
+//  * conda-forge packages (Ghostscript, the Microsoft C++ runtime) are zip files holding zstd-compressed tarballs;
+//    only their Windows binaries (Library/bin) are unpacked, with a managed decompressor (no 7-Zip, no installer).
 //  * A marker file with the component's hash records what is installed, so an engines.json update is detected.
 
 using System.Diagnostics;
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using SharpCompress.Compressors.ZStandard;
 
 namespace Filee.Engines.Infrastructure;
 
@@ -81,6 +85,8 @@ public sealed class EngineInstaller
             done += component.Size;
             _logger.LogInformation("Installed engine component {Component} {Version}", component.Id, component.Version);
         }
+        if (pending.Count > 0)
+            CopyRuntime(package);
     }
 
     /// <summary>Removes the package's folders. Fails if an engine is running (its files are locked).</summary>
@@ -179,6 +185,10 @@ public sealed class EngineInstaller
                     TrimLibreOffice(libreOffice);
                     Replace(component.Id, libreOffice);
                     break;
+                case "conda":
+                    UnpackConda(file, staging, cancellationToken);
+                    Replace(component.Id, staging);
+                    break;
                 case "oxt":
                     // LibreOffice registers bundled extensions (plain folders under share/extensions) on start-up.
                     var extensions = Path.Combine(FolderOf("libreoffice"), "share", "extensions");
@@ -257,6 +267,58 @@ public sealed class EngineInstaller
                 if (Path.GetFileName(dictionary) is not ("dict-en" or "dict-ko"))
                     Directory.Delete(dictionary, recursive: true);
             }
+        }
+    }
+
+    /// <summary>
+    /// Unpacks the Windows binaries of a conda package (.conda = zip with pkg-*.tar.zst): the files under Library/bin
+    /// land directly in <paramref name="target"/>. Resources such as Ghostscript's fonts are compiled into its DLL.
+    /// </summary>
+    internal static void UnpackConda(string condaFile, string target, CancellationToken cancellationToken)
+    {
+        const string prefix = "Library/bin/";
+        using var zip = ZipFile.OpenRead(condaFile);
+        var payload = zip.Entries.FirstOrDefault(e => e.FullName.StartsWith("pkg-", StringComparison.Ordinal) && e.FullName.EndsWith(".tar.zst", StringComparison.Ordinal))
+                      ?? throw new InvalidDataException("Not a conda package (pkg-*.tar.zst is missing).");
+        Directory.CreateDirectory(target);
+        var root = Path.GetFullPath(target) + Path.DirectorySeparatorChar;
+        var count = 0;
+        using (var zstd = new DecompressionStream(payload.Open(), leaveOpen: false))
+        using (var tar = new TarReader(zstd))
+        {
+            while (tar.GetNextEntry() is { } entry)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var name = entry.Name.Replace('\\', '/');
+                if (entry.EntryType is not (TarEntryType.RegularFile or TarEntryType.V7RegularFile) || !name.StartsWith(prefix, StringComparison.Ordinal))
+                    continue;
+                var path = Path.GetFullPath(Path.Combine(target, name[prefix.Length..]));
+                if (!path.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+                    throw new InvalidDataException($"Unsafe path in conda package: {entry.Name}");
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                entry.ExtractToFile(path, overwrite: true);
+                count++;
+            }
+        }
+        if (count == 0)
+            throw new InvalidDataException("The conda package contains no Windows binaries (Library/bin).");
+    }
+
+    /// <summary>
+    /// App-local Microsoft C++ runtime: when a package includes the "vcruntime" component, its DLLs are copied next
+    /// to the programs of the package's other conda components. Windows looks for DLLs in a program's folder before
+    /// System32, so the runtime a program was built for is used even when the PC has none or an older one.
+    /// </summary>
+    private void CopyRuntime(EnginePackage package)
+    {
+        const string runtime = "vcruntime";
+        if (!package.Components.Contains(runtime) || !Directory.Exists(FolderOf(runtime)))
+            return;
+        var dlls = Directory.GetFiles(FolderOf(runtime), "*.dll");
+        foreach (var id in package.Components.Where(c => c != runtime && _components[c].Kind == "conda"))
+        {
+            foreach (var dll in dlls)
+                File.Copy(dll, Path.Combine(FolderOf(id), Path.GetFileName(dll)), overwrite: true);
         }
     }
 

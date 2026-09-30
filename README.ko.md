@@ -57,7 +57,8 @@
 
 | 원본 | 변환 대상 |
 |---|---|
-| **이미지**: JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, HEIC(읽기) | 모든 이미지 형식, PDF |
+| **이미지**: JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM; HEIC, 김프 XCF, 카메라 RAW, EMF/WMF(읽기) | 모든 이미지 형식, ICNS, PDF |
+| **벡터**: SVG, SVGZ, AI, EPS, PS; ICNS | PDF(벡터 그대로), PNG 등 이미지, SVG ↔ SVGZ, PDF → EPS/PS |
 | **PDF** | PNG, JPG, TIFF, 합치기, 나누기, 페이지 범위 |
 | **문서**: DOCX, DOC, ODT, RTF | PDF, HWPX, 서로 변환, TXT, HTML |
 | **스프레드시트**: XLSX, XLS, ODS, CSV | PDF, XLSX ↔ CSV, HWPX, HTML |
@@ -67,7 +68,8 @@
 
 DOCX·XLSX·CSV·PPTX → PDF, 한글 파일, 마크다운은 설치하자마자 변환됩니다. MS 오피스·한컴오피스·LibreOffice가 없어도
 되고, PC에 설치된 프로그램은 쓰지 않습니다. 오래된 형식(DOC·XLS·PPT·OpenDocument)과 DOCX·ODT로 저장하기는
-LibreOffice, HTML과 마크다운 ↔ 워드는 Pandoc을 쓰는데, 둘 다 처음 실행할 때 받을지 물어보는 추가 엔진입니다.
+LibreOffice, HTML과 마크다운 ↔ 워드는 Pandoc, EPS·PostScript는 Ghostscript를 쓰는데, 모두 처음 실행할 때 받을지
+물어보는 추가 엔진입니다.
 HWPX를 어떻게 만들고 검증하는지는 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)에 있습니다.
 
 ## 스크린샷

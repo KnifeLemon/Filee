@@ -22,7 +22,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
     [
-        .. ImageEncoder.Readable.Select(source => new ConversionEdge(source, "pdf")),
+        .. ImageEncoder.Sources.Select(source => new ConversionEdge(source, "pdf")),
         new("pdf", "pdf"),
     ];
 
@@ -52,7 +52,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger
     {
         var options = step.Preset.Image;
         var pdfOptions = step.Preset.Pdf;
-        using var images = new MagickImageCollection(step.InputPath);
+        using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
         var frames = ImageEncoder.SelectFrames(images, step.From, "pdf");
 
         using var document = new PdfDocument();
@@ -147,7 +147,12 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger
         }
         else
         {
-            frame.Write(stream, MagickFormat.Png);
+            // No palette PNGs: PDFsharp's decoder rejects them with transparency, and ImageMagick writes them for
+            // pictures with few colours (charts, metafiles, pixel art). Grayscale stays grayscale.
+            var format = frame.HasAlpha ? MagickFormat.Png32
+                : frame.ColorType is ColorType.Grayscale or ColorType.Bilevel ? MagickFormat.Png
+                : MagickFormat.Png24;
+            frame.Write(stream, format);
         }
         stream.Position = 0;
         return stream;

@@ -57,7 +57,8 @@
 
 | 源格式 | 目标格式 |
 |---|---|
-| **图片**：JPG、PNG、WEBP、TIFF、BMP、GIF、ICO、AVIF、HEIC（读取） | 任意图片格式、PDF |
+| **图片**：JPG、PNG、WEBP、TIFF、BMP、GIF、ICO、AVIF、JPEG XL、JPEG 2000、PSD/PSB、TGA、PPM；HEIC、GIMP XCF、相机 RAW、EMF/WMF（读取） | 任意图片格式、ICNS、PDF |
+| **矢量图**：SVG、SVGZ、AI、EPS、PS；ICNS | PDF（保持矢量）、PNG 等图片、SVG ↔ SVGZ、PDF → EPS/PS |
 | **PDF** | PNG、JPG、TIFF、合并、拆分、页码范围 |
 | **文档**：DOCX、DOC、ODT、RTF | PDF、HWPX、互相转换、TXT、HTML |
 | **电子表格**：XLSX、XLS、ODS、CSV | PDF、XLSX ↔ CSV、HWPX、HTML |
@@ -67,7 +68,7 @@
 
 DOCX、XLSX、CSV、PPTX → PDF，所有 HWP 转换和 Markdown 装好即用：无需 Microsoft Office、韩文办公软件或 LibreOffice，
 Filee 也从不调用电脑上已安装的程序。较旧的格式（DOC、XLS、PPT、OpenDocument）以及保存为 DOCX / ODT 使用 LibreOffice，
-HTML 与 Markdown ↔ Word 使用 Pandoc，这两个可选引擎会在首次启动时询问是否下载。
+HTML 与 Markdown ↔ Word 使用 Pandoc，EPS / PostScript 使用 Ghostscript，这些可选引擎会在首次启动时询问是否下载。
 HWPX 的写入与验证方式见 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)。
 
 ## 截图
