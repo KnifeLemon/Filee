@@ -21,8 +21,8 @@ public sealed partial class EngineSetupViewModel : ObservableObject
         foreach (var package in Packages)
         {
             // Large downloads are offered, not pre-selected: LibreOffice is only needed for older formats (DOC, XLS,
-            // PPT, OpenDocument), FFmpeg (~100 MB) only for video and audio. Ghostscript is small but only needed for
-            // EPS / PostScript.
+            // PPT, OpenDocument), FFmpeg (~100 MB) only for video and audio, calibre (~230 MB) only for rare e-book
+            // formats and Kindle output. Ghostscript is small but only needed for EPS / PostScript.
             package.Selected = !package.IsInstalled
                                && Filee.Engines.Infrastructure.EngineDownloads.DownloadSize(package.Package) < PreselectLimit
                                && package.Package.Id != "ghostscript";

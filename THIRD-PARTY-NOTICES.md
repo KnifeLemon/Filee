@@ -19,7 +19,7 @@ Each component remains under its own license.
 | SkiaSharp | MIT | https://github.com/mono/SkiaSharp |
 | Svg.Skia (incl. Svg, ShimSkiaSharp, ExCSS; text shaping in `Filee.Engines/Vector/OutlinedTextPlayback.cs` adapted from it) | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
-| SharpCompress (zstd decompression for engine downloads) | MIT | https://github.com/adamhathcock/sharpcompress |
+| SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
@@ -27,6 +27,7 @@ Each component remains under its own license.
 | PdfPig (PDF text, layout and pictures) | Apache-2.0 | https://github.com/UglyToad/PdfPig |
 | MimeKitLite (e-mail / MIME parsing) | MIT | https://github.com/jstedfast/MimeKit |
 | ACadSharp (DWG/DXF reading and writing; includes CSMath and CSUtilities) | MIT, Copyright (c) Albert Domenech | https://github.com/DomCR/ACadSharp |
+| AngleSharp | MIT | https://github.com/AngleSharp/AngleSharp |
 | pypandoc-hwpx (Pandoc AST mapping and package layout in `Filee.Engines/Hwp/Hwpx`, incl. the `blank.hwpx` reference document) | MIT, Copyright (c) 2024 pypandoc-hwpx Contributors | https://github.com/msjang/pypandoc-hwpx |
 | Microsoft.Extensions.* | MIT | https://github.com/dotnet/runtime |
 | cu2qu (fontTools): the cubic-to-quadratic approach followed by `Filee.Engines/Fonts/Cff/CubicToQuadratic.cs` | Apache-2.0, Copyright 2016 Google Inc. | https://github.com/fonttools/fonttools |
@@ -59,6 +60,7 @@ Downloaded from their official release pages when the user chooses to install th
 | Ghostscript (conda-forge build) | AGPL-3.0 | https://www.ghostscript.com, https://github.com/conda-forge/ghostscript-feedstock |
 | Microsoft Visual C++ Redistributable (for Ghostscript, conda-forge `vc14_runtime`) | Microsoft Visual C++ Redistributable license | https://github.com/conda-forge/vc-feedstock |
 | FFmpeg 9.0.2 (gyan.dev "full_build-shared" Windows build; ffmpeg.exe, ffprobe.exe and their libraries, incl. x264, x265, libvpx, LAME, Opus, Vorbis, Theora, OpenCORE AMR) | GPL-3.0-or-later (the build is configured with `--enable-gpl --enable-version3`); FFmpeg itself LGPL-2.1-or-later | https://ffmpeg.org, build: https://www.gyan.dev/ffmpeg/builds/ (source: https://github.com/GyanD/codexffmpeg) |
+| calibre (ebook-convert) | GPL-3.0 | https://calibre-ebook.com |
 
 These programs run as separate processes. Their source code is available from the linked projects.
 

@@ -16,6 +16,8 @@
       ghostscript/   Ghostscript (AGPL-3.0, separate program) from conda-forge, EPS/PS <-> PDF, with the Microsoft
                      C++ runtime DLLs (vcruntime/) copied next to gswin64c.exe
       ffmpeg/        FFmpeg (GPL-3.0 build, separate program), video and audio; bin/ffmpeg.exe + bin/ffprobe.exe
+      calibre/       calibre (GPL-3.0, separate program), extracted from the official MSI via an administrative
+                     install: ebook-convert for LIT, LRF, PDB, ... and MOBI / AZW3 output
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -214,6 +216,22 @@ if ('ghostscript' -in $selected) {
     if (-not (Test-Path (Join-Path $target 'gswin64c.exe'))) { throw 'gswin64c.exe not found in the Ghostscript package.' }
     # App-local Microsoft C++ runtime next to gswin64c.exe, as EngineInstaller does.
     Copy-Item (Join-Path $Destination 'vcruntime\*.dll') $target -Force
+}
+
+if ('calibre' -in $selected) {
+    $msi = Get-Engine 'calibre'
+    $tmp = Join-Path $cache 'calibre-admin'
+    Reset-Folder $tmp
+    Write-Host 'unpack calibre (administrative install, no system changes)'
+    $proc = Start-Process msiexec.exe -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$tmp`"") -Wait -PassThru
+    if ($proc.ExitCode -ne 0) { throw "msiexec /a failed with exit code $($proc.ExitCode)." }
+
+    $convert = Get-ChildItem $tmp -Recurse -Filter 'ebook-convert.exe' | Select-Object -First 1
+    if (-not $convert) { throw 'ebook-convert.exe not found after extracting the MSI.' }
+    $target = Join-Path $Destination 'calibre'
+    Reset-Folder $target
+    Get-ChildItem $convert.DirectoryName -Force | Move-Item -Destination $target
+    Remove-Item $tmp -Recurse -Force
 }
 
 Write-Host "Engines ready in $Destination"

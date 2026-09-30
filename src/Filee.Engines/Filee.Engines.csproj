@@ -24,6 +24,7 @@
     <PackageReference Include="PdfPig" />
     <PackageReference Include="MimeKitLite" />
     <PackageReference Include="ACadSharp" />
+    <PackageReference Include="AngleSharp" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
