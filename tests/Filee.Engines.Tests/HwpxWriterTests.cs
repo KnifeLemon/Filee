@@ -51,7 +51,7 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         """;
 
     private void SkipUnlessPandoc() =>
-        Assert.SkipUnless(PandocConverter.Locate(new Infrastructure.EngineEnvironment(_ => null, fx.Root)) is not null,
+        Assert.SkipUnless(PandocConverter.Locate() is not null,
             "Pandoc not found (pwsh build/fetch-engines.ps1 -Only pandoc)");
 
     private async Task<string> ConvertAsync(string input, string target = "hwpx")

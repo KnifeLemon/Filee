@@ -1,23 +1,15 @@
-// Shared context for engines: where bundled tools live and which custom paths the user configured.
+// Shared context for engines: where Filee's own engine copies live and where engines keep their state.
+// Engines never use software installed on the system (Office, a system-wide LibreOffice, tools on the PATH): only
+// the copies that ship with the installer or that Filee downloaded, so every user gets the same, tested versions.
 
 namespace Filee.Engines.Infrastructure;
 
 /// <summary>Environment information passed to every engine.</summary>
-public sealed class EngineEnvironment
+/// <param name="dataDirectory">Filee's writable data directory (profiles, caches).</param>
+public sealed class EngineEnvironment(string dataDirectory)
 {
-    /// <param name="customPath">Returns a user-configured executable path for an engine id, or null.</param>
-    /// <param name="dataDirectory">Filee's writable data directory (profiles, caches).</param>
-    public EngineEnvironment(Func<string, string?> customPath, string dataDirectory)
-    {
-        CustomPath = customPath;
-        DataDirectory = dataDirectory;
-    }
-
-    /// <summary>User override for an engine executable (engine id → path).</summary>
-    public Func<string, string?> CustomPath { get; }
-
     /// <summary>Writable directory for engine state (e.g. LibreOffice profiles).</summary>
-    public string DataDirectory { get; }
+    public string DataDirectory { get; } = dataDirectory;
 
     /// <summary>
     /// Per-user folder for engines downloaded on demand (see <see cref="EngineInstaller"/>):
@@ -29,47 +21,25 @@ public sealed class EngineEnvironment
 
     /// <summary>
     /// Finds an engine directory (<c>engines/&lt;name&gt;</c>): next to the executable (bundled with the installer),
-    /// in <see cref="DownloadRoot"/> (downloaded later), then up the directory tree so a developer running from
-    /// <c>bin/Debug</c> can use engines fetched into the repository root.
+    /// in <see cref="DownloadRoot"/> (downloaded later), then in the Filee repository checkout the app runs from
+    /// (a folder with Filee.slnx), so a developer running from <c>bin/Debug</c> uses the engines fetched there.
     /// </summary>
     public static string? FindBundled(string name)
     {
-        var downloaded = Path.Combine(DownloadRoot, name);
         var local = Path.Combine(AppContext.BaseDirectory, "engines", name);
         if (Directory.Exists(local))
             return local;
+        var downloaded = Path.Combine(DownloadRoot, name);
         if (Directory.Exists(downloaded))
             return downloaded;
 
         var dir = new DirectoryInfo(AppContext.BaseDirectory);
         for (var depth = 0; dir is not null && depth < 8; depth++, dir = dir.Parent)
         {
+            if (!File.Exists(Path.Combine(dir.FullName, "Filee.slnx")))
+                continue;
             var candidate = Path.Combine(dir.FullName, "engines", name);
-            if (Directory.Exists(candidate))
-                return candidate;
-        }
-        return null;
-    }
-
-    /// <summary>Searches the PATH for an executable.</summary>
-    public static string? FindOnPath(string executable)
-    {
-        var names = OperatingSystem.IsWindows() && !executable.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
-            ? new[] { executable + ".exe", executable }
-            : [executable];
-
-        foreach (var dir in (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator))
-        {
-            foreach (var name in names)
-            {
-                try
-                {
-                    var full = Path.Combine(dir.Trim('"'), name);
-                    if (File.Exists(full))
-                        return full;
-                }
-                catch (ArgumentException) { /* malformed PATH entry */ }
-            }
+            return Directory.Exists(candidate) ? candidate : null;
         }
         return null;
     }

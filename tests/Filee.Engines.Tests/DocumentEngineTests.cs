@@ -1,4 +1,4 @@
-// Tests for engines that depend on external software (LibreOffice, rhwp, Word).
+// Tests for engines that are downloaded or bundled separately (LibreOffice, rhwp).
 // They skip automatically when the engine is not available, so CI stays green without them.
 
 using Filee.Core.Conversion;
@@ -9,11 +9,11 @@ namespace Filee.Engines.Tests;
 
 public class DocumentEngineTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
-    /// <summary>The engine with this id; skips the test when it is excluded (Office automation is opt-in).</summary>
+    /// <summary>The engine with this id; skips the test when it is not registered.</summary>
     private IConverter Engine(string id)
     {
         var engine = fx.Converters.SingleOrDefault(c => c.Id == id);
-        Assert.SkipUnless(engine is not null, $"{id} excluded from tests (see EngineFixture)");
+        Assert.SkipUnless(engine is not null, $"{id} not registered");
         return engine!;
     }
 

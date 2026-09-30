@@ -43,7 +43,7 @@
 
 - **光标处的格式圆环。** 按住修饰键拖动文件（默认 <kbd>Ctrl</kbd>）。修饰键组合、鼠标按键、拖动距离、长按手势，
   以及对选中文件使用的快捷键都可以自定义。
-- **按文件类型的工具栏。** 图片、PDF、办公文档、HWP/HWPX，以及用于混合文件的通用配置。
+- **按文件类型的工具栏。** 图片、PDF、文档、电子表格、演示文稿、HWP/HWPX、文本，以及用于混合文件的通用配置。
   直接在圆环上拖放来添加、移除和排序预设；右键或 ✎ 编辑预设。
 - **预设。** 质量、缩放、DPI、元数据、TIFF 压缩、ICO 尺寸、PDF 合并与拆分、页码范围、
   保存位置、文件名模板和重名处理。
@@ -60,12 +60,14 @@
 | **图片**：JPG、PNG、WEBP、TIFF、BMP、GIF、ICO、AVIF、HEIC（读取） | 任意图片格式、PDF |
 | **PDF** | PNG、JPG、TIFF、合并、拆分、页码范围 |
 | **文档**：DOCX、DOC、ODT、RTF | PDF、HWPX、互相转换、TXT、HTML |
+| **电子表格**：XLSX、XLS、ODS、CSV | PDF、XLSX ↔ CSV、HWPX、HTML |
+| **演示文稿**：PPTX、PPT、ODP | PDF、PNG、JPG、HWPX |
 | **HWP**：HWP、HWPX | PDF、HWPX ↔ HWP、DOCX、TXT、Markdown、HTML |
-| **表格与演示文稿**：XLSX、XLS、ODS、CSV、PPTX、PPT、ODP | PDF 及互相转换 |
 | **文本**：TXT、Markdown、HTML | DOCX、HWPX、PDF |
 
-Markdown → PDF、HWPX、HTML、TXT 装好即用。办公文档使用 LibreOffice，HTML 与 Markdown ↔ Word 使用 Pandoc，
-这两个可选引擎会在首次启动时询问是否下载。
+DOCX、XLSX、CSV、PPTX → PDF，所有 HWP 转换和 Markdown 装好即用：无需 Microsoft Office、韩文办公软件或 LibreOffice，
+Filee 也从不调用电脑上已安装的程序。较旧的格式（DOC、XLS、PPT、OpenDocument）以及保存为 DOCX / ODT 使用 LibreOffice，
+HTML 与 Markdown ↔ Word 使用 Pandoc，这两个可选引擎会在首次启动时询问是否下载。
 HWPX 的写入与验证方式见 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)。
 
 ## 截图
@@ -94,8 +96,8 @@ HWPX 的写入与验证方式见 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)�
 **安装：** 下载 [`Filee-win-Setup.exe`](https://github.com/KnifeLemon/Filee/releases/latest/download/Filee-win-Setup.exe)
 （Windows 10/11，64 位），或在 [Releases](https://github.com/KnifeLemon/Filee/releases) 页面选择其他版本。
 
-- **安装包很小。** 图片、PDF、HWP/HWPX 和 DOCX → HWPX 装好即用。
-- **大型引擎按需下载。** 首次启动时会询问是否下载 LibreOffice（办公文档，约 420 MB）和 Pandoc（HTML 与 Markdown ↔ Word，约 42 MB）；之后可随时在“设置 → 转换引擎”中安装或删除。
+- **安装包很小。** 图片、PDF、HWP/HWPX、Markdown、DOCX / XLSX / PPTX → PDF 以及 XLSX ↔ CSV 装好即用。
+- **大型引擎按需下载。** 首次启动时会询问是否下载 LibreOffice（DOC、XLS、PPT 等旧版办公格式，约 420 MB）和 Pandoc（HTML 与 Markdown ↔ Word，约 42 MB）；之后可随时在“设置 → 转换引擎”中安装或删除。
 - **有更新会提醒你。** 新版本发布后，Filee 会在菜单底部、通知和托盘菜单中提示，点击即可打开最新发布页面下载。
   运行新的安装程序即可更新，设置会保留。
 

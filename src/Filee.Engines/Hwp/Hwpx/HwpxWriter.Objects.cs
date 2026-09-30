@@ -132,32 +132,44 @@ internal sealed partial class HwpxWriter
             _ => "TOP",
         };
 
+        // Readers lay out (and align) the text within textWidth, so it is the box minus its margins.
         var outerWidth = _width;
         _width = Math.Max(1000, w - box.Padding.Left - box.Padding.Right);
-        var content = SubList(box.Blocks, verticalAlign);
+        var content = SubList(box.Blocks, verticalAlign, _width, Math.Max(0, h - box.Padding.Top - box.Padding.Bottom));
         _width = outerWidth;
 
+        var ellipse = box.Shape == HShapeKind.Ellipse;
+        var (element, extra) = ellipse
+            ? ("ellipse", " intervalDirty=\"0\" hasArcPr=\"0\" arcType=\"NORMAL\"")
+            : ("rect", $" ratio=\"{box.CornerRatio}\"");
         var sb = new StringBuilder();
-        sb.Append($"<hp:rect id=\"{id}\" zOrder=\"{_zOrder++}\" numberingType=\"NONE\" textWrap=\"{box.Anchor?.Wrap ?? "TOP_AND_BOTTOM"}\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" href=\"\" groupLevel=\"0\" instid=\"{id}\" ratio=\"0\">");
+        sb.Append($"<hp:{element} id=\"{id}\" zOrder=\"{_zOrder++}\" numberingType=\"NONE\" textWrap=\"{box.Anchor?.Wrap ?? "TOP_AND_BOTTOM"}\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" href=\"\" groupLevel=\"0\" instid=\"{id}\"{extra}>");
         sb.Append("<hp:offset x=\"0\" y=\"0\"/>");
         sb.Append($"<hp:orgSz width=\"{w}\" height=\"{h}\"/><hp:curSz width=\"0\" height=\"0\"/>");
         sb.Append("<hp:flip horizontal=\"0\" vertical=\"0\"/>");
         sb.Append($"<hp:rotationInfo angle=\"0\" centerX=\"{w / 2}\" centerY=\"{h / 2}\" rotateimage=\"1\"/>");
         sb.Append(IdentityRendering);
         sb.Append(LineShape(box.Line));
-        sb.Append(FillBrush(box.Fill, null));
+        sb.Append(FillBrush(box.Fill, box.Gradient));
         sb.Append("<hp:shadow type=\"NONE\" color=\"#B2B2B2\" offsetX=\"0\" offsetY=\"0\" alpha=\"0\"/>");
         sb.Append($"<hp:drawText lastWidth=\"{w}\" name=\"\" editable=\"0\">");
         sb.Append(content);
         sb.Append($"<hp:textMargin left=\"{box.Padding.Left}\" right=\"{box.Padding.Right}\" top=\"{box.Padding.Top}\" bottom=\"{box.Padding.Bottom}\"/>");
         sb.Append("</hp:drawText>");
-        sb.Append($"<hc:pt0 x=\"0\" y=\"0\"/><hc:pt1 x=\"{w}\" y=\"0\"/><hc:pt2 x=\"{w}\" y=\"{h}\"/><hc:pt3 x=\"0\" y=\"{h}\"/>");
+        sb.Append(ellipse ? EllipseGeometry(w, h) : RectangleGeometry(w, h));
         sb.Append($"<hp:sz width=\"{w}\" widthRelTo=\"ABSOLUTE\" height=\"{h}\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>");
         sb.Append(Position(box.Anchor));
         sb.Append("<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/>");
-        sb.Append("</hp:rect>");
+        sb.Append($"</hp:{element}>");
         return sb.ToString();
     }
+
+    private static string RectangleGeometry(int w, int h) =>
+        $"<hc:pt0 x=\"0\" y=\"0\"/><hc:pt1 x=\"{w}\" y=\"0\"/><hc:pt2 x=\"{w}\" y=\"{h}\"/><hc:pt3 x=\"0\" y=\"{h}\"/>";
+
+    private static string EllipseGeometry(int w, int h) =>
+        $"<hc:center x=\"{w / 2}\" y=\"{h / 2}\"/><hc:ax1 x=\"{w}\" y=\"{h / 2}\"/><hc:ax2 x=\"{w / 2}\" y=\"0\"/>" +
+        "<hc:start1 x=\"0\" y=\"0\"/><hc:end1 x=\"0\" y=\"0\"/><hc:start2 x=\"0\" y=\"0\"/><hc:end2 x=\"0\" y=\"0\"/>";
 
     // ───────────────────────── Shapes ─────────────────────────
 
@@ -195,11 +207,10 @@ internal sealed partial class HwpxWriter
                     break;
                 }
             case HShapeKind.Ellipse:
-                sb.Append($"<hc:center x=\"{w / 2}\" y=\"{h / 2}\"/><hc:ax1 x=\"{w}\" y=\"{h / 2}\"/><hc:ax2 x=\"{w / 2}\" y=\"0\"/>");
-                sb.Append("<hc:start1 x=\"0\" y=\"0\"/><hc:end1 x=\"0\" y=\"0\"/><hc:start2 x=\"0\" y=\"0\"/><hc:end2 x=\"0\" y=\"0\"/>");
+                sb.Append(EllipseGeometry(w, h));
                 break;
             default:
-                sb.Append($"<hc:pt0 x=\"0\" y=\"0\"/><hc:pt1 x=\"{w}\" y=\"0\"/><hc:pt2 x=\"{w}\" y=\"{h}\"/><hc:pt3 x=\"0\" y=\"{h}\"/>");
+                sb.Append(RectangleGeometry(w, h));
                 break;
         }
         sb.Append($"<hp:sz width=\"{w}\" widthRelTo=\"ABSOLUTE\" height=\"{h}\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>");

@@ -16,19 +16,20 @@ public static class EngineRegistry
 {
     /// <summary>
     /// Instantiates all converters. Order only matters as a tie-breaker when no priority is set, so it mirrors
-    /// AppSettings.EnginePriority: free, silent engines first; Word automation after them.
+    /// AppSettings.EnginePriority: built-in engines first, the optional downloads last. Software installed on the
+    /// system (Microsoft Office, a system-wide LibreOffice) is never used.
     /// </summary>
     public static IReadOnlyList<IConverter> CreateAll(EngineEnvironment env) =>
     [
         new MagickImageConverter(),
         new PdfSharpConverter(),
         new PdfiumConverter(),
-        new RhwpConverter(env),
+        new RhwpConverter(),
         new UnhwpConverter(),
         new MarkdownConverter(),
-        new HwpxConverter(env),
-        new WordComConverter(),
-        new PandocConverter(env),
+        new SpreadsheetConverter(),
+        new HwpxConverter(),
+        new PandocConverter(),
         new LibreOfficeConverter(env),
     ];
 

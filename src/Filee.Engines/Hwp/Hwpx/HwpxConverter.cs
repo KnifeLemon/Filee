@@ -3,19 +3,23 @@
 //  * DOCX is read directly (Docx/DocxReader), keeping page setup, headers/footers, columns, text boxes and formatting.
 //  * TXT needs no reader: one paragraph per line.
 //  * Markdown is parsed with Markdig (MarkdownReader), no external engine needed.
+//  * XLSX and CSV are read directly (Office/Sheets); every sheet becomes a table (SheetDocument).
+//  * PPTX is read directly (Pptx/PptxReader): one page per slide with the objects floating at their places.
 //  * HTML, ODT and RTF are parsed by Pandoc (optional engine) into its JSON AST (PandocAstReader).
 
 using System.Text;
 using System.Text.Json.Nodes;
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
+using Filee.Engines.Office.Sheets;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
 /// <summary>Writes HWPX files with the built-in OWPML writer.</summary>
-public sealed class HwpxConverter(EngineEnvironment env) : IConverter
+public sealed class HwpxConverter : IConverter
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
 
@@ -33,14 +37,14 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
     public string DisplayName => "HWPX writer (built-in)";
     public int MaxParallelism => 0;
 
-    public IReadOnlyList<ConversionEdge> Edges => BuildEdges(_pandoc is not null || PandocConverter.Locate(env) is not null);
+    public IReadOnlyList<ConversionEdge> Edges => BuildEdges(_pandoc is not null || PandocConverter.Locate() is not null);
 
     public EngineStatus GetStatus()
     {
-        _pandoc = PandocConverter.Locate(env);
+        _pandoc = PandocConverter.Locate();
         return EngineStatus.Available(_pandoc is null
-            ? "DOCX, TXT, Markdown → HWPX. HTML, ODT and RTF need Pandoc."
-            : $"DOCX, TXT, Markdown; HTML, ODT, RTF with Pandoc ({_pandoc})");
+            ? "DOCX, XLSX, PPTX, CSV, TXT, Markdown → HWPX. HTML, ODT and RTF need Pandoc."
+            : $"DOCX, XLSX, PPTX, CSV, TXT, Markdown; HTML, ODT, RTF with Pandoc ({_pandoc})");
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -53,6 +57,9 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
             "txt" => TextDocument(await File.ReadAllBytesAsync(step.InputPath, cancellationToken)),
             "md" => MarkdownReader.Read(DecodeText(await File.ReadAllBytesAsync(step.InputPath, cancellationToken)),
                 Path.GetDirectoryName(Path.GetFullPath(step.InputPath))!),
+            "xlsx" => SheetDocument.Build(XlsxReader.Read(step.InputPath)),
+            "csv" => SheetDocument.Build(CsvFormat.Read(step.InputPath)),
+            "pptx" => PptxReader.Read(step.InputPath, media),
             _ => await ReadWithPandocAsync(step, media, cancellationToken),
         };
         progress?.Report(0.6);
@@ -67,7 +74,7 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
 
     private async Task<HDocument> ReadWithPandocAsync(ConversionStep step, string media, CancellationToken cancellationToken)
     {
-        var pandoc = _pandoc ?? PandocConverter.Locate(env) ?? throw new InvalidOperationException("Pandoc was not found.");
+        var pandoc = _pandoc ?? PandocConverter.Locate() ?? throw new InvalidOperationException("Pandoc was not found.");
         var json = Path.Combine(step.WorkDirectory, $"ast-{Guid.NewGuid():N}.json");
 
         // Working directory = the input's folder, so relative image paths in HTML resolve.
@@ -135,7 +142,7 @@ public sealed class HwpxConverter(EngineEnvironment env) : IConverter
 
     private static List<ConversionEdge> BuildEdges(bool pandoc)
     {
-        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx"), new("md", "hwpx")];
+        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx"), new("md", "hwpx"), new("xlsx", "hwpx"), new("csv", "hwpx"), new("pptx", "hwpx")];
         if (pandoc)
             edges.AddRange(PandocReaders.Keys.Select(from => new ConversionEdge(from, "hwpx")));
         return edges;

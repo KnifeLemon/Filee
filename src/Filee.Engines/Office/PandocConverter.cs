@@ -1,5 +1,5 @@
 // General document conversions with Pandoc (GPL-2.0-or-later, bundled as a separate program in engines/pandoc).
-// Mainly adds Markdown in and out, which no other engine offers; for office ↔ HTML LibreOffice/Word stay preferred.
+// Adds Markdown ↔ DOCX / ODT / RTF and HTML ↔ DOCX / ODT; Markdown → HTML / TXT / HWPX is built in (MarkdownConverter).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
@@ -7,7 +7,7 @@ using Filee.Engines.Infrastructure;
 namespace Filee.Engines.Office;
 
 /// <summary>Markdown, HTML, DOCX, ODT and RTF conversions through Pandoc.</summary>
-public sealed class PandocConverter(EngineEnvironment env) : IConverter
+public sealed class PandocConverter : IConverter
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
 
@@ -41,20 +41,20 @@ public sealed class PandocConverter(EngineEnvironment env) : IConverter
         // Markdown in / out: only Pandoc does this.
         .. new[] { "docx", "odt", "html", "rtf" }.Select(from => new ConversionEdge(from, "md")),
         .. new[] { "docx", "odt", "html", "rtf", "txt" }.Select(to => new ConversionEdge("md", to)),
-        // Overlaps with LibreOffice: slightly more expensive so LibreOffice / Word win by default.
+        // Overlaps with LibreOffice (the fallback engine, which costs more).
         .. new[] { "docx", "odt" }.Select(to => new ConversionEdge("html", to, 14)),
         .. new[] { "docx", "odt" }.Select(from => new ConversionEdge(from, "html", 14)),
     ];
 
     public EngineStatus GetStatus()
     {
-        _pandoc = Locate(env);
+        _pandoc = Locate();
         return _pandoc is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_pandoc);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var pandoc = _pandoc ?? Locate(env) ?? throw new InvalidOperationException("Pandoc was not found.");
+        var pandoc = _pandoc ?? Locate() ?? throw new InvalidOperationException("Pandoc was not found.");
         var output = step.Output.Allocate(step.To);
         if (output is null)
             return [];
@@ -76,14 +76,9 @@ public sealed class PandocConverter(EngineEnvironment env) : IConverter
         return [output];
     }
 
-    /// <summary>pandoc executable: custom path, bundled engines/pandoc, then PATH.</summary>
-    internal static string? Locate(EngineEnvironment env)
-    {
-        var bundled = EngineEnvironment.FindBundled("pandoc");
-        var exe = OperatingSystem.IsWindows() ? "pandoc.exe" : "pandoc";
-        return EngineEnvironment.FirstExisting(
-            env.CustomPath("pandoc"),
-            bundled is null ? null : Path.Combine(bundled, exe),
-            EngineEnvironment.FindOnPath("pandoc"));
-    }
+    /// <summary>Filee's own pandoc (engines/pandoc, downloaded on demand), never one found elsewhere on the system.</summary>
+    internal static string? Locate() =>
+        EngineEnvironment.FindBundled("pandoc") is { } bundled
+            ? EngineEnvironment.FirstExisting(Path.Combine(bundled, OperatingSystem.IsWindows() ? "pandoc.exe" : "pandoc"))
+            : null;
 }

@@ -7,7 +7,7 @@ using Filee.Engines.Infrastructure;
 namespace Filee.Engines.Hwp;
 
 /// <summary>Renders HWP and HWPX documents to PDF and converts between the two 한글 formats.</summary>
-public sealed class RhwpConverter(EngineEnvironment env) : IConverter
+public sealed class RhwpConverter : IConverter
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
     private string? _exe;
@@ -58,13 +58,9 @@ public sealed class RhwpConverter(EngineEnvironment env) : IConverter
         return [target];
     }
 
-    private string? Locate()
-    {
-        var exe = OperatingSystem.IsWindows() ? "rhwp.exe" : "rhwp";
-        var bundled = EngineEnvironment.FindBundled("rhwp");
-        return EngineEnvironment.FirstExisting(
-            env.CustomPath(Id),
-            bundled is null ? null : Path.Combine(bundled, exe),
-            EngineEnvironment.FindOnPath("rhwp"));
-    }
+    /// <summary>Filee's own copy (engines/rhwp), never one found elsewhere on the system.</summary>
+    private static string? Locate() =>
+        EngineEnvironment.FindBundled("rhwp") is { } bundled
+            ? EngineEnvironment.FirstExisting(Path.Combine(bundled, OperatingSystem.IsWindows() ? "rhwp.exe" : "rhwp"))
+            : null;
 }
