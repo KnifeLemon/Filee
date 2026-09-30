@@ -19,6 +19,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **DOCX writer** | built in | **Markdown, TXT, XLSX, CSV, PPTX (+ variants), PDF → DOCX** |
 | PDF text | built in (PdfPig) | **PDF → TXT** (reading order, also two columns; no OCR) |
 | E-mail | built in (MimeKit) | **EML → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments) |
+| CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP, 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats |
@@ -261,6 +262,55 @@ UTF-8 is read as CP949, as older Korean mail programs wrote it.
   sheets kept, scripts removed) or the text body; pictures sent inline (`cid:`) become data URIs.
 - **EML → TXT**: the same headers and the text body (or the HTML body as text).
 - **EML → ZIP**: the attachments (attached messages as .eml) with safe, unique file names.
+
+## CAD drawings (DWG, DXF)
+
+Built in, no AutoCAD or ODA software (`Filee.Engines/Cad`). [ACadSharp](https://github.com/DomCR/ACadSharp) reads
+and writes the files; Filee's own renderer draws them with SkiaSharp (one drawing routine for PDF, SVG and images).
+
+- **Reading**: DWG from R14 (AC1014) to the AutoCAD 2018 format (AC1032, still current in AutoCAD 2026); DXF R12 to
+  2018, ASCII and binary. DWG R13 and older fail with "version not supported". Korean AutoCAD writes pre-2007 DXF with
+  the code page name `ANSI_949`, which ACadSharp 3.8 does not map; Filee rewrites that header in memory so the text
+  is decoded as CP949 (`CadFile.OpenDxf`, covered by a test that fails once ACadSharp handles it).
+- **Writing** (DWG ↔ DXF): always **AutoCAD 2018 (AC1032)** — the current DWG format (AutoCAD 2018 and later, DWG
+  TrueView, BricsCAD, ODA tools); 2018 DXF stores text as UTF-8. ACadSharp's DWG writer is younger than its reader
+  and its DXF writer, so DXF is the safer format to hand on. Objects ACadSharp does not model (proxy and AEC objects,
+  some 3D and underlay data) are not written; degenerate dimensions it cannot measure are left out of DWG output
+  instead of failing the file.
+- **What is drawn**: model space seen from the top (Z is dropped). If model space has nothing visible, the active
+  layout (paper space) is drawn instead; viewports inside it are not followed. The page is fitted to the extents of
+  what is actually drawn — the header's EXTMIN/EXTMAX are ignored, so drawings far from the origin still fill it.
+  - PDF: an ISO A3 sheet (A4 or Letter when the preset asks for it), landscape when the drawing is wider than tall,
+    10 mm margins (or the preset's margin). Vector paths, text as text with embedded fonts.
+  - SVG: the drawing's aspect ratio with a 420 mm (A3) long edge at 96 px/inch, white background, text as `<text>`.
+  - Images: the same page rendered at the preset's render resolution (150 dpi → 2480 px on the long edge, at most
+    12 000 px / 80 MP), then the preset's image options (resize, grayscale, quality, DPI) as for other images.
+- **Entities**: LINE, XLINE/RAY (clipped to the page), LWPOLYLINE and POLYLINE (bulges, constant and tapered widths,
+  spline-fit and 3D), CIRCLE, ARC, ELLIPSE (also partial), SPLINE (NURBS from control points, knots and weights, or
+  a smooth curve through fit points), TEXT, ATTRIB and MTEXT (justification, rotation, width factor, oblique,
+  mirroring; MTEXT word wrap, height/colour/font/width codes, stacked fractions shown as `1/2`, `%%d` `%%c` `%%p`,
+  `\U+` and `\M+` escapes), INSERT (base point, scale, rotation, MINSERT arrays, nesting, attributes), DIMENSION and
+  TABLE (their anonymous block), LEADER, MULTILEADER (lines, arrows, text or block content), HATCH, SOLID/TRACE,
+  3DFACE edges, POINT, MLINE, polyface and polygon meshes (edges).
+- **Hatches**: solid fills, gradients as a linear gradient, patterns as their real pattern lines clipped to the
+  boundary; a pattern too dense to draw (over 20 000 segments) becomes a light tint of its colour.
+- **Colours and lines**: ACI index table and true colour, BYLAYER / BYBLOCK (inside blocks, entities on layer "0"
+  follow the insert's layer). White and near-white (ACI 7, which AutoCAD shows white on black) draw black on the white
+  page. Line weights are plotted in millimetres ("Default" as a thin 0.18 mm line); line types become dash patterns
+  scaled by LTSCALE, the entity's scale and the block scale (shapes and text inside complex line types are omitted).
+- **Layers**: off, frozen and non-plotting layers (including Defpoints) are not drawn, like a plot. A frozen layer
+  hides a whole block reference; an OFF one only its layer-0 contents.
+- **Fonts**: drawings name SHX fonts, which are not available, so text uses the text style's TrueType font when it is
+  installed (arial.ttf, malgun.ttf ...) and otherwise a sans-serif face (Noto Sans, Arial, Liberation Sans ...).
+  Characters the font lacks fall back per character to a CJK font (Noto Sans KR/CJK, Malgun Gothic, Apple SD Gothic
+  Neo, ...). These come from the fonts SkiaSharp finds on the system; without any, SkiaSharp's default typeface is
+  used and the geometry is unaffected.
+- **Not drawn** (counted per type in the log): 3DSOLID, REGION and BODY (ACIS), IMAGE, OLE objects, PDF/DWF/DGN
+  underlays, WIPEOUT (its masking is not applied), SHAPE, TOLERANCE, proxy entities. MTEXT columns, tabs, underline
+  and overline are ignored.
+- **Limits**: 1 000 000 drawn primitives, block nesting depth 16, 10 000 MINSERT cells, 2 000 000 hatch pattern
+  segments in total; beyond that the drawing is cut short with a warning in the log. Damaged or truncated files fail
+  with "The file is not a valid DWG/DXF drawing or is damaged: …".
 
 ## HWP ↔ HWPX
 

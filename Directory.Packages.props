@@ -41,6 +41,7 @@
     <PackageVersion Include="ExcelDataReader" Version="3.9.0" />
     <PackageVersion Include="PdfPig" Version="0.1.16" />
     <PackageVersion Include="MimeKitLite" Version="4.18.1" />
+    <PackageVersion Include="ACadSharp" Version="3.8.0" />
   </ItemGroup>
 
   <ItemGroup Label="Tests">
