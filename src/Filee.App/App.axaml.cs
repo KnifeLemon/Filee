@@ -135,6 +135,8 @@ public partial class App : Application
 
     private void HandleCommandLine(CommandLine options, bool firstLaunch = false)
     {
+        // The Windows 11 Explorer menu hands over huge selections in a temp file; its paths are in ConvertFiles now.
+        options.DeleteListFile();
         if (options.ConvertFiles.Count > 0)
         {
             // Explorer may start one process per selected file: collect them for a moment, then open once.

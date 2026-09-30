@@ -27,9 +27,40 @@ public interface IPlatformServices
     /// <summary>Adds or removes the file manager context-menu entry ("Convert with Filee") and Send To shortcut.</summary>
     void SetContextMenu(bool enabled, string executablePath, string label);
 
+    /// <summary>State of the Windows 11 top-level File Explorer menu entry for the app at <paramref name="executablePath"/>.</summary>
+    ModernContextMenuState GetModernContextMenuState(string executablePath);
+
+    /// <summary>
+    /// Adds (the OS asks for administrator permission once) or removes the Windows 11 top-level menu entry.
+    /// Runs in the background and never blocks the calling thread.
+    /// </summary>
+    Task<ModernContextMenuResult> SetModernContextMenuAsync(bool enabled, string executablePath);
+
     /// <summary>Opens a folder in the file manager and selects the file, if given.</summary>
     void RevealInFileManager(string path);
 }
+
+/// <summary>Whether "Convert with Filee" is in the top-level Windows 11 File Explorer menu (not just "Show more options").</summary>
+public enum ModernContextMenuState
+{
+    /// <summary>Not possible here: another OS, Windows 10, ARM64, or a build without the Explorer extension files.</summary>
+    Unsupported,
+
+    /// <summary>Possible but not registered.</summary>
+    Off,
+
+    /// <summary>Registered for this installation.</summary>
+    On,
+
+    /// <summary>Registered, but for an older package version or another install folder: registering again fixes it.</summary>
+    Outdated,
+}
+
+/// <summary>Outcome of <see cref="IPlatformServices.SetModernContextMenuAsync"/>.</summary>
+/// <param name="Succeeded">True when the entry is now in the requested state.</param>
+/// <param name="Cancelled">True when the user declined the administrator prompt.</param>
+/// <param name="Error">Why it failed (English, from the OS), when it failed for another reason.</param>
+public sealed record ModernContextMenuResult(bool Succeeded, bool Cancelled = false, string? Error = null);
 
 /// <summary>Fallback used on platforms without an implementation yet. Everything is a no-op.</summary>
 public sealed class NullPlatformServices : IPlatformServices
@@ -41,6 +72,10 @@ public sealed class NullPlatformServices : IPlatformServices
     public bool PrefersReducedMotion => false;
     public void SetStartWithSystem(bool enabled, string executablePath) { }
     public void SetContextMenu(bool enabled, string executablePath, string label) { }
+    public ModernContextMenuState GetModernContextMenuState(string executablePath) => ModernContextMenuState.Unsupported;
+
+    public Task<ModernContextMenuResult> SetModernContextMenuAsync(bool enabled, string executablePath) =>
+        Task.FromResult(new ModernContextMenuResult(false, Error: "Not supported on this platform."));
 
     public void RevealInFileManager(string path)
     {
