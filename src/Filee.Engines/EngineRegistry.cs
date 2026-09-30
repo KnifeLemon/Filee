@@ -2,6 +2,7 @@
 
 using Filee.Core.Conversion;
 using Filee.Engines.Archives;
+using Filee.Engines.Fonts;
 using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Icns;
@@ -35,6 +36,7 @@ public static class EngineRegistry
         new ArchiveConverter(),
         new VectorConverter(),
         new IcnsConverter(),
+        new FontConverter(),
         new PandocConverter(),
         new GhostscriptConverter(),
         new LibreOfficeConverter(env),
