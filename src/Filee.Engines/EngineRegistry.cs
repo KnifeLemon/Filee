@@ -2,6 +2,7 @@
 
 using Filee.Core.Conversion;
 using Filee.Engines.Archives;
+using Filee.Engines.Cad;
 using Filee.Engines.Email;
 using Filee.Engines.Fonts;
 using Filee.Engines.Hwp;
@@ -44,6 +45,7 @@ public static class EngineRegistry
         new PdfTextConverter(),
         new EmlConverter(),
         new FfmpegConverter(),
+        new CadConverter(),
         new PandocConverter(),
         new GhostscriptConverter(),
         new LibreOfficeConverter(env),

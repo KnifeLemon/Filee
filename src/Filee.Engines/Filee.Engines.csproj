@@ -23,6 +23,7 @@
     <PackageReference Include="ExcelDataReader" />
     <PackageReference Include="PdfPig" />
     <PackageReference Include="MimeKitLite" />
+    <PackageReference Include="ACadSharp" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
