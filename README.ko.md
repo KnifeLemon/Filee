@@ -108,7 +108,8 @@
 **설치:** [Releases](https://github.com/KnifeLemon/Filee/releases/latest)에서 최신 `Filee-<버전>-win-Setup.exe`를
 받으세요(Windows 10/11, 64비트).
 
-- **설치 파일은 가벼워요.** 이미지, PDF, 워드, 엑셀, 파워포인트, HWP, 전자책, 압축 파일, 글꼴, CAD는 설치하자마자 변환돼요.
+- **자주 쓰는 형식은 설치 파일에 다 들어 있어요.** 이미지, PDF, 워드, 엑셀, 파워포인트, HWP, 전자책, 압축 파일, 글꼴, CAD는
+  설치하자마자 변환돼요.
 - **큰 엔진은 골라서 설치해요.** 처음 실행하면 동영상·오디오용 엔진(FFmpeg, 약 100MB)과 드문 형식용 엔진(LibreOffice,
   calibre, Ghostscript, Pandoc)을 크기와 함께 보여 줘요. 설정 → 변환 엔진에서 다운로드 속도와 남은 시간을 보며 언제든
   설치하거나 지울 수 있어요.

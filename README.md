@@ -111,8 +111,8 @@ never uses programs installed on your PC. Optional engines Filee offers to downl
 **Install:** download the latest `Filee-<version>-win-Setup.exe` from
 [Releases](https://github.com/KnifeLemon/Filee/releases/latest) (Windows 10/11, 64-bit).
 
-- **The installer is small.** Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and CAD work right
-  away.
+- **Everything common is in the installer.** Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and
+  CAD work right away.
 - **Large engines are optional.** On first start Filee offers the engines for video and audio (FFmpeg, ~100 MB) and for
   rare formats (LibreOffice, calibre, Ghostscript, Pandoc), each with its size. Install or remove them any time in
   Settings → Engines, which shows download speed and time left.

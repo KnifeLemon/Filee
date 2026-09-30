@@ -105,7 +105,7 @@
 **安装：** 在 [Releases](https://github.com/KnifeLemon/Filee/releases/latest) 下载最新的
 `Filee-<版本>-win-Setup.exe`（Windows 10/11，64 位）。
 
-- **安装包很小。** 图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD 装好即用。
+- **常用格式都已包含在安装包中。** 图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD 装好即用。
 - **大型引擎按需下载。** 首次启动时会列出视频/音频引擎（FFmpeg，约 100 MB）和少见格式引擎（LibreOffice、calibre、
   Ghostscript、Pandoc）及其大小；之后可随时在“设置 → 转换引擎”中安装或删除，并显示下载速度和剩余时间。
 - **有更新会提醒你。** 新版本发布后，Filee 会在菜单底部、通知和托盘菜单中提示，点击即可打开最新发布页面下载。
