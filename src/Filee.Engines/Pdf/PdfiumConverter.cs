@@ -1,6 +1,7 @@
 // Renders PDF pages to raster images with PDFium (via PDFtoImage, MIT / PDFium BSD-3).
 
 using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
 using PDFtoImage;
@@ -26,7 +27,7 @@ public sealed class PdfiumConverter : IConverter
     public IReadOnlyList<ConversionEdge> Edges { get; } =
         ImageEncoder.Writable.Select(target => new ConversionEdge("pdf", target)).ToList();
 
-    public EngineStatus GetStatus() => EngineStatus.Available();
+    public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.Library("PDFtoImage", typeof(Conversion)));
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>

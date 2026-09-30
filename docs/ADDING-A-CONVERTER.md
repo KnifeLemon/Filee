@@ -56,9 +56,14 @@ Rules:
   (pages), pass a suffix: `Allocate("png", $"_p{page}")`.
 - Scratch files go to `step.WorkDirectory` (deleted after the job).
 - External programs: use `ProcessRunner.RunAsync` (timeout + cancellation + no shell) and find them with
-  `EngineEnvironment.FindBundled/FindOnPath`. Let users override the path via `env.CustomPath(Id)`.
+  `EngineEnvironment.FindBundled("<folder>")` only. Filee never uses programs installed on the system (nothing from
+  `PATH`, no other application's install folder): a program is either bundled with the installer (small, pinned in
+  `engines.json` and fetched by `build/fetch-engines.ps1`) or an optional download the user installs in Settings →
+  Engines (an `EnginePackage` in `EngineDownloads.Packages`).
 - Return `EngineStatus.Unavailable("engine.reason.not_installed")` when a dependency is missing; the UI then greys
-  out affected slices with a reason.
+  out affected slices with a reason and names the package to download. Report a version with
+  `EngineStatus.Available(version: …)` (see `EngineVersions`) and add an `engine.<id>.description` text to the three
+  `i18n/*.json` files: both are shown in Settings → Engines.
 
 ## 3. Register it
 

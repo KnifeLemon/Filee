@@ -40,6 +40,7 @@
                 <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
                 <TextBlock Classes="caption" Text="{Binding Sizes}" />
                 <ProgressBar Classes="soft" Maximum="100" Value="{Binding Progress}" IsVisible="{Binding IsBusy}" Margin="0,4,0,0" />
+                <TextBlock Classes="caption" Text="{Binding ProgressDetail}" IsVisible="{Binding ProgressDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </StackPanel>
             </DockPanel>
           </Border>

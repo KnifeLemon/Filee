@@ -42,9 +42,7 @@ public sealed class HwpxConverter : IConverter
     public EngineStatus GetStatus()
     {
         _pandoc = PandocConverter.Locate();
-        return EngineStatus.Available(_pandoc is null
-            ? "DOCX, XLSX, PPTX, CSV, TXT, Markdown → HWPX. HTML, ODT and RTF need Pandoc."
-            : $"DOCX, XLSX, PPTX, CSV, TXT, Markdown; HTML, ODT, RTF with Pandoc ({_pandoc})");
+        return EngineStatus.Available(_pandoc, EngineVersions.BuiltIn);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)

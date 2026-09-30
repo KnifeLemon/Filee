@@ -28,7 +28,7 @@ public sealed class RhwpConverter : IConverter
     public EngineStatus GetStatus()
     {
         _exe = Locate();
-        return _exe is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_exe);
+        return _exe is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_exe, EngineVersions.Component("rhwp"));
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)

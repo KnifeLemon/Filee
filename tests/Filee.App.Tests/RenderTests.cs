@@ -38,6 +38,36 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public void Engines_page_shows_versions_descriptions_and_download_speed()
+    {
+        TestServices.EnsureInitialized("ko");
+        var downloads = AppHost.Get<EngineDownloadService>();
+        var package = downloads.Packages[0];
+        var before = (package.Status, package.Progress, package.ProgressDetail);
+        package.Status = EnginePackageStatus.Downloading;
+        package.Progress = 42;
+        package.ProgressDetail = "176 MB / 422 MB · 8.4 MB/s · 30초 남음";
+        try
+        {
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+            vm.Navigate("engines");
+            var window = new MainWindow { DataContext = vm, Width = 1080, Height = 1400 };
+            window.Show();
+            Pump();
+
+            var engines = ((Filee.App.ViewModels.Pages.EnginesPageViewModel)vm.CurrentPage).Engines;
+            Assert.All(engines.Where(e => e.IsAvailable), e => Assert.False(string.IsNullOrWhiteSpace(e.Version)));
+            Assert.All(engines, e => Assert.False(string.IsNullOrWhiteSpace(e.Description)));
+            Save(window, "page-engines-downloading-ko.png");
+            window.Close();
+        }
+        finally
+        {
+            (package.Status, package.Progress, package.ProgressDetail) = before;
+        }
+    }
+
+    [AvaloniaFact]
     public void Donut_toolbar_renders_for_images()
     {
         TestServices.EnsureInitialized("ko");

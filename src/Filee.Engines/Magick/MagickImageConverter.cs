@@ -1,6 +1,7 @@
 // Raster image ↔ raster image conversion with ImageMagick (Magick.NET, Apache-2.0).
 
 using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 using ImageMagick;
 
 namespace Filee.Engines.Magick;
@@ -18,7 +19,12 @@ public sealed class MagickImageConverter : IConverter
          select new ConversionEdge(source, target)).ToList();
 
     public EngineStatus GetStatus() =>
-        EngineStatus.Available($"ImageMagick {MagickNET.ImageMagickVersion}");
+        EngineStatus.Available(MagickNET.ImageMagickVersion,
+            $"{EngineVersions.Library("Magick.NET", typeof(MagickImage))} · ImageMagick {ImageMagickNumber()}");
+
+    /// <summary>"7.1.2-5" out of "ImageMagick 7.1.2-5 Q8 x64 …".</summary>
+    private static string ImageMagickNumber() =>
+        MagickNET.ImageMagickVersion.Split(' ').FirstOrDefault(part => part.Length > 0 && char.IsAsciiDigit(part[0])) ?? "?";
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>
