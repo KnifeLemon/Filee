@@ -13,6 +13,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML |
 | Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT** (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets | built in | **XLSX ↔ CSV** (one CSV per sheet) |
+| Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; CFF (PostScript) outlines become TrueType for TTF and EOT |
 | **HWPX writer** | built in | **DOCX, XLSX, CSV, PPTX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); HTML, ODT, RTF → HWPX with Pandoc |
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP, 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
@@ -120,6 +121,36 @@ text) and LibreOffice + H2Orestart (opens it), see `tests/Filee.Engines.Tests/Do
 `OfficeTests.cs`.
 
 Not converted: Word charts, SmartArt, equations (kept as text), free-form shapes, tracked changes and comments.
+
+## Fonts
+
+Fonts are converted in-process (`Filee.Engines/Fonts`); zlib and Brotli come with .NET. The input format is
+recognised by content, so a mislabelled file still converts.
+
+- **WOFF 1.0**: every table zlib-compressed (stored as-is when that isn't smaller). Lossless both ways.
+- **WOFF2**: one Brotli stream at the highest quality with the glyf/loca transform and, where it applies, the hmtx
+  transform, so files come out the size of Google's reference encoder's. Reading handles both transforms, the
+  overlap bitmap, untransformed tables and the first font of a WOFF2 collection. Like other encoders, Filee drops
+  the DSIG signature and sets bit 11 of head.flags. Brotli is slow on big fonts (about 10 s per MB, so about a
+  minute for a 4.6 MB CJK font); the job shows progress and can be cancelled.
+- **EOT**: written as version 0x00020001 (names and OS/2 fields in the header, no MicroType Express compression, no
+  XOR obfuscation, no URL restriction). Uncompressed EOT files are read (XOR-obfuscated ones too); MTX-compressed
+  ones fail with a clear message.
+- **TTF → OTF** keeps the TrueType outlines: TrueType-flavoured OpenType is valid OpenType and what systems and
+  browsers expect; cubic outlines would gain nothing.
+- **OTF with CFF outlines → TTF** (and → EOT, because Internet Explorer renders only TrueType outlines in EOT)
+  converts the glyphs: Type 2 charstrings with subroutines, flex, seac accents and CID-keyed fonts are drawn, curves
+  are approximated with quadratic splines within 1/1000 em (the approach of fontTools' cu2qu) and contours are
+  reversed to TrueType's direction. glyf, loca, maxp 1.0 and post (format 2 with the CFF glyph names, format 3 for
+  CID fonts) are built; head, hhea, hmtx and, from VORG, vmtx are updated; CFF, VORG and DSIG are dropped; every
+  other table (cmap, name, OS/2, GSUB, GPOS, kern, ...) is kept. PostScript hints are not converted: the font gets a
+  gasp table (smoothing at every size) and a prep that switches on dropout control instead.
+- Not supported: CFF2 (variable) outlines to TTF or EOT (to WOFF, WOFF2 and OTF they convert), writing font
+  collections, and WOFF/WOFF2 extended metadata (dropped).
+
+`tests/Filee.Engines.Tests/FontTests.cs` checks every conversion with small OFL fonts in
+`tests/Filee.Engines.Tests/Fonts` (see `OFL.txt` there): round trips keep every table byte for byte, a WOFF2 made
+by Google's encoder decodes to the source font, and converted CFF glyphs are compared with the originals in Skia.
 
 ## HWP ↔ HWPX
 
