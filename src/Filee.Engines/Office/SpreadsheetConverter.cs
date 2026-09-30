@@ -2,6 +2,7 @@
 // writer (sheets become 한글 tables), see HwpxConverter and SheetDocument.
 
 using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Sheets;
 
 namespace Filee.Engines.Office;
@@ -15,7 +16,8 @@ public sealed class SpreadsheetConverter : IConverter
 
     public IReadOnlyList<ConversionEdge> Edges { get; } = [new("xlsx", "csv"), new("csv", "xlsx")];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("XLSX ↔ CSV");
+    public EngineStatus GetStatus() =>
+        EngineStatus.Available(version: $"{EngineVersions.BuiltIn} · {EngineVersions.Library("ExcelNumberFormat", typeof(ExcelNumberFormat.NumberFormat))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>

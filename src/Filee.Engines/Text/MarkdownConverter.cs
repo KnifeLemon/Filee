@@ -6,6 +6,7 @@ using System.Net;
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
 using Markdig;
 using Markdig.Renderers;
 using Markdig.Syntax;
@@ -23,7 +24,7 @@ public sealed class MarkdownConverter : IConverter
     // Cheaper than Pandoc's Markdown edges, so the built-in path wins for HTML and TXT.
     public IReadOnlyList<ConversionEdge> Edges { get; } = [new("md", "html", 4), new("md", "txt", 5)];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("Markdig");
+    public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.Library("Markdig", typeof(Markdown)));
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {

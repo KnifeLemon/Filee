@@ -2,6 +2,7 @@
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
 using PdfSharp.Drawing;
@@ -26,7 +27,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger
         new("pdf", "pdf"),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available();
+    public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.Library("PDFsharp", typeof(PdfDocument)));
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run(() => step.From == "pdf"

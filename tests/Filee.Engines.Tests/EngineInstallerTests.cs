@@ -73,6 +73,9 @@ public sealed class EngineInstallerTests : IDisposable
         Assert.True(installer.IsUpToDate(package));
         Assert.Contains(reports, r => r.Stage == EngineInstallStage.Unpacking);
         Assert.Equal(1.0, reports.Where(r => r.Stage == EngineInstallStage.Downloading).Max(r => r.Fraction), 3);
+        // Byte counts drive the speed and time-left display.
+        var last = reports.Last(r => r.Stage == EngineInstallStage.Downloading);
+        Assert.Equal((archive.Length, archive.Length), ((int)last.BytesDone, (int)last.BytesTotal));
         // Nothing is left over from downloading or unpacking.
         Assert.Equal(["tool"], Directory.GetDirectories(_root).Select(Path.GetFileName).Where(n => !n!.StartsWith(".downloads", StringComparison.Ordinal)));
         Assert.Empty(Directory.GetFiles(Path.Combine(_root, ".downloads")));
@@ -83,6 +86,27 @@ public sealed class EngineInstallerTests : IDisposable
 
         installer.Uninstall(package);
         Assert.False(Directory.Exists(Path.Combine(_root, "tool")));
+    }
+
+    [Fact]
+    public void Transfer_rate_averages_over_the_last_seconds_and_estimates_the_time_left()
+    {
+        var rate = new TransferRate(TimeSpan.FromSeconds(5));
+        Assert.Null(rate.Remaining(0, 1000));
+
+        rate.Add(TimeSpan.Zero, 0);
+        rate.Add(TimeSpan.FromSeconds(0.2), 100); // too short to tell
+        Assert.Equal(0, rate.BytesPerSecond);
+
+        for (var second = 1; second <= 10; second++)
+            rate.Add(TimeSpan.FromSeconds(second), second * 1_000_000L);
+        Assert.Equal(1_000_000, rate.BytesPerSecond, 0);
+        Assert.Equal(TimeSpan.FromSeconds(30), rate.Remaining(10_000_000, 40_000_000));
+
+        // The speed follows a slower connection within the window instead of keeping the old average.
+        for (var second = 11; second <= 20; second++)
+            rate.Add(TimeSpan.FromSeconds(second), 10_000_000L + (second - 10) * 100_000L);
+        Assert.Equal(100_000, rate.BytesPerSecond, 0);
     }
 
     [Fact]

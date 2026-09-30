@@ -19,10 +19,11 @@ public readonly record struct ConversionEdge(string From, string To, int Cost = 
 /// <summary>Whether an engine can currently be used.</summary>
 /// <param name="IsAvailable">True if conversions can run.</param>
 /// <param name="ReasonKey">Localization key explaining why the engine is unavailable (e.g. <c>engine.reason.not_installed</c>).</param>
-/// <param name="Detail">Extra, non-localized detail such as a path or version.</param>
-public sealed record EngineStatus(bool IsAvailable, string? ReasonKey = null, string? Detail = null)
+/// <param name="Detail">Extra, non-localized detail such as the program's path (shown as a tooltip).</param>
+/// <param name="Version">Version label shown in Settings → Engines, e.g. <c>"Markdig 1.4.0"</c> or <c>"0.8.6"</c>.</param>
+public sealed record EngineStatus(bool IsAvailable, string? ReasonKey = null, string? Detail = null, string? Version = null)
 {
-    public static EngineStatus Available(string? detail = null) => new(true, null, detail);
+    public static EngineStatus Available(string? detail = null, string? version = null) => new(true, null, detail, version);
     public static EngineStatus Unavailable(string reasonKey, string? detail = null) => new(false, reasonKey, detail);
 }
 

@@ -49,7 +49,7 @@ public sealed class PandocConverter : IConverter
     public EngineStatus GetStatus()
     {
         _pandoc = Locate();
-        return _pandoc is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_pandoc);
+        return _pandoc is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_pandoc, EngineVersions.Component("pandoc"));
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
