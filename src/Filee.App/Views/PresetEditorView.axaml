@@ -1,9 +1,18 @@
-<!-- Preset editor form. Used on the Presets page and inside PresetEditorWindow (donut right-click / ✎). -->
+<!--
+  Preset editor form. Used on the Presets page and inside PresetEditorWindow (donut right-click / ✎).
+  Only the option groups that apply to the chosen target are shown (image, video & audio, archive, PDF).
+-->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels"
              x:Class="Filee.App.Views.PresetEditorView"
              x:DataType="vm:PresetEditorViewModel">
+  <UserControl.Styles>
+    <!-- Target list: the category sits right-aligned next to each format name. -->
+    <Style Selector="ComboBox.targets ComboBoxItem">
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    </Style>
+  </UserControl.Styles>
   <StackPanel Spacing="14">
     <!-- Name + target -->
     <Grid ColumnDefinitions="*,12,*">
@@ -14,7 +23,17 @@
       </StackPanel>
       <StackPanel Grid.Column="2">
         <TextBlock Classes="label" Text="{DynamicResource presets.target}" />
-        <ComboBox ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}" HorizontalAlignment="Stretch" MaxDropDownHeight="360" />
+        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}"
+                  HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="vm:IChoice">
+              <DockPanel>
+                <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding Detail}" Margin="12,0,0,0" VerticalAlignment="Center" />
+                <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+              </DockPanel>
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
       </StackPanel>
     </Grid>
 
@@ -69,8 +88,48 @@
       </StackPanel>
     </Border>
 
+    <!-- Video & audio options -->
+    <Border x:Name="MediaCard" Classes="card" IsVisible="{Binding ShowMedia}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.media}" />
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel IsVisible="{Binding ShowMediaQuality}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />
+            <ComboBox ItemsSource="{Binding MediaQualities}" SelectedItem="{Binding MediaQuality}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" IsVisible="{Binding ShowMaxHeight}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.max_height}" />
+            <ComboBox ItemsSource="{Binding MaxHeights}" SelectedItem="{Binding MaxHeight}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Grid>
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel IsVisible="{Binding ShowAudioBitrate}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.audio_bitrate}" />
+            <ComboBox ItemsSource="{Binding AudioBitrates}" SelectedItem="{Binding AudioBitrate}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <CheckBox Grid.Column="2" VerticalAlignment="Bottom" Content="{DynamicResource presets.remove_audio}"
+                    IsChecked="{Binding RemoveAudio}" IsVisible="{Binding ShowRemoveAudio}" />
+        </Grid>
+      </StackPanel>
+    </Border>
+
+    <!-- Archive options -->
+    <Border x:Name="ArchiveCard" Classes="card" IsVisible="{Binding ShowArchive}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.archive}" />
+        <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowArchiveOptions}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.archive_level}" />
+            <ComboBox ItemsSource="{Binding ArchiveLevels}" SelectedItem="{Binding ArchiveLevel}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </Grid>
+        <CheckBox Content="{DynamicResource presets.combine}" IsChecked="{Binding CombineIntoOne}" IsVisible="{Binding ShowArchiveOptions}" />
+        <TextBlock Classes="caption" Text="{DynamicResource presets.extract_note}" TextWrapping="Wrap" IsVisible="{Binding ShowExtractNote}" />
+      </StackPanel>
+    </Border>
+
     <!-- PDF options (render settings also apply when a PDF is converted to images) -->
-    <Border Classes="card" Padding="14">
+    <Border Classes="card" Padding="14" IsVisible="{Binding ShowPdf}">
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.pdf}" />
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />

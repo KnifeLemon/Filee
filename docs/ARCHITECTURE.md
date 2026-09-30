@@ -32,7 +32,9 @@
    A drag gesture (modifier + drag past the threshold) opens the donut *before* files are known.
 2. **Donut** – `RadialWindow` is transparent, topmost and not activated, so Explorer's drag continues.
    The first `DragEnter` delivers the file list; `RadialViewModel` picks a `ToolbarProfile` by extension
-   (`ProfileSelector`) and asks `PresetAvailability` which presets can run (disabled slices get a reason).
+   (`ProfileSelector`: the first normal profile that has every file's extension; for a mix of types the first
+   mixed-selection profile whose checked extensions cover the files, else the one with nothing checked) and asks
+   `PresetAvailability` which presets can run (disabled slices get a reason).
 3. **Drop** – the slice under the cursor is a preset. `ConversionService.Start` enqueues a `ConversionJob`.
    The drop is always reported as *Copy* so Explorer never deletes the source files.
 4. **Plan** – for every file, `RoutePlanner` finds the cheapest chain of converter edges from the source format to
