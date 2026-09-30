@@ -312,6 +312,37 @@ and writes the files; Filee's own renderer draws them with SkiaSharp (one drawin
   segments in total; beyond that the drawing is cut short with a warning in the log. Damaged or truncated files fail
   with "The file is not a valid DWG/DXF drawing or is damaged: …".
 
+## HWPX reader
+
+`Hwp/Hwpx/HwpxReader*.cs` is the inverse of the writer: it reads an HWPX package into the same document model, so
+HWPX (and HWP, which rhwp turns into HWPX first) can be written as DOCX, HTML or EPUB without Hancom Office or
+LibreOffice. It reads files saved by 한글, by rhwp's `export-hwpx` and by Filee itself:
+
+- elements are matched by local name (any prefix or namespace version); `hp:switch` takes the `hp:case` for
+  HwpUnitChar / 2016 paragraphs, else `hp:default`, whose lengths 한글 doubles (as are margins and tab stops
+  outside a switch in older files); every `…IDRef` is resolved through `header.xml`;
+- sections in spine order with page size (`landscape="NARROWLY"` turns the portrait sheet), margins, gutter,
+  columns (also changing mid-section), hidden first header/footer, start page (`startNum`, `hp:newNum`);
+- headers and footers (both / odd / even pages) with page numbers and counts; an automatic page number
+  (`hp:pageNum`, e.g. "- 1 -" at the bottom centre) becomes a footer or header paragraph;
+- paragraph shapes (alignment, indents with 한글's hanging-indent convention, spacing, line spacing kinds, tab stops,
+  keep options, page break before) and complete character shapes (fonts per language, size, bold/italic,
+  underline, strikeout, colour, shade, highlighter `hp:markpen`, super/subscript, letter spacing);
+- outline paragraphs (개요) as headings, numbered with the section's outline numbering when it shows numbers;
+  numberings and bullets as lists; tabs, line breaks, non-breaking/fixed-width spaces, soft hyphens; tracked
+  deletions are left out;
+- hyperlinks (HYPERLINK fields, also across paragraphs; `?name` = bookmark), bookmarks, other fields as their
+  text, footnotes and endnotes (without 한글's number), equations as their script text;
+- tables with spans, column widths, row heights, header rows, borders and fills (`borderFill`), cell padding,
+  vertical alignment, captions and nested tables; a table splits the paragraph that holds it;
+- pictures from `BinData` (inline, or floating with `hp:pos` offsets, alignment and wrapping), rectangles,
+  ellipses and lines with outline and solid / gradient fill, text boxes (`hp:drawText`), groups.
+
+Not kept (the model has no place for them; skipped and counted by the `Read(path, media, skipped)` overload):
+OLE objects, charts, video, form controls, text art (its text is kept), arcs / polygons / curves without text,
+master pages, memos, character ratio, relative size and offset, paragraph borders, picture cropping and rotation.
+Password-protected (encrypted) HWPX and DRM-wrapped files stop with a clear error.
+
 ## HWP ↔ HWPX
 
 rhwp converts between the two 한글 formats without Hancom Office (`export-hwpx` and `convert`). Anything → HWP goes

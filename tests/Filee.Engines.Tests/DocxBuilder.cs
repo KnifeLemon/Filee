@@ -74,6 +74,10 @@ internal sealed class DocxBuilder
     public void Footnotes(string notes) =>
         Part("footnotes", $"<w:footnotes {Namespaces}><w:footnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>{notes}</w:footnotes>");
 
+    /// <summary>Endnotes (w:endnote elements with ids ≥ 1; the separators are added).</summary>
+    public void Endnotes(string notes) =>
+        Part("endnotes", $"<w:endnotes {Namespaces}><w:endnote w:type=\"separator\" w:id=\"-1\"><w:p><w:r><w:separator/></w:r></w:p></w:endnote>{notes}</w:endnotes>");
+
     public string Save(string path)
     {
         if (Numbering is not null)
@@ -135,6 +139,7 @@ internal sealed class DocxBuilder
         "numbering.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml",
         "settings.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml",
         "footnotes.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.footnotes+xml",
+        "endnotes.xml" => "application/vnd.openxmlformats-officedocument.wordprocessingml.endnotes+xml",
         _ when part.StartsWith("header", StringComparison.Ordinal) => "application/vnd.openxmlformats-officedocument.wordprocessingml.header+xml",
         _ => "application/vnd.openxmlformats-officedocument.wordprocessingml.footer+xml",
     };
