@@ -20,7 +20,9 @@ public sealed class SpreadsheetConverter : IConverter
     public int MaxParallelism => 0;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        [.. Sources.SelectMany(from => Targets.Where(to => to != from).Select(to => new ConversionEdge(from, to)))];
+        // XLSM / XLTX → XLSX is left to the ooxml engine, which keeps the whole package instead of rewriting the sheets.
+        [.. Sources.SelectMany(from => Targets.Where(to => to != from && !(to == "xlsx" && from is "xlsm" or "xltx"))
+            .Select(to => new ConversionEdge(from, to)))];
 
     public EngineStatus GetStatus() =>
         EngineStatus.Available("XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV",

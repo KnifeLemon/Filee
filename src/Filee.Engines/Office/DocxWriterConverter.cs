@@ -23,7 +23,8 @@ public sealed class DocxWriterConverter : IConverter
     public int MaxParallelism => 0;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        DocumentReaders.BuiltInFormats.Where(f => !WordFormats.Contains(f)).Select(f => new ConversionEdge(f, "docx", Cost)).ToList();
+        DocumentReaders.BuiltInFormats.Where(f => !WordFormats.Contains(f))
+            .Select(f => new ConversionEdge(f, "docx", f == "pdf" ? Cost + DocumentReaders.PdfPenalty : Cost)).ToList();
 
     public EngineStatus GetStatus() =>
         EngineStatus.Available(string.Join(", ", Edges.Select(e => e.From.ToUpperInvariant())) + " → DOCX", EngineVersions.BuiltIn);

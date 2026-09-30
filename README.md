@@ -4,12 +4,12 @@
 
 <p align="center">
   <b>A free, open-source file converter for Windows that you use by dragging.</b><br>
-  Hold <kbd>Ctrl</kbd>, drag files and drop them on a format in the donut that opens right at your cursor.
+  Hold a key (<kbd>Ctrl</kbd> by default), drag files and drop them on a format in the donut that opens right at your cursor.
 </p>
 
 <p align="center">
   <a href="https://filee.sh"><b>Website</b></a> ·
-  <a href="https://github.com/KnifeLemon/Filee/releases/latest/download/Filee-win-Setup.exe"><b>Download</b></a> ·
+  <a href="https://github.com/KnifeLemon/Filee/releases/latest"><b>Download</b></a> ·
   <a href="#get-started">Get started</a> ·
   <a href="#documentation">Docs</a>
 </p>
@@ -27,7 +27,7 @@
 <table>
   <tr>
     <td width="33%" valign="top"><b>Right at your cursor</b><br>No app window to open. The formats appear where you already are, only the ones that make sense for the files you drag.</td>
-    <td width="33%" valign="top"><b>HWP & HWPX without Hancom Office</b><br>A built-in HWPX writer keeps the layout of Word documents; rhwp converts HWP ↔ HWPX, PDF and PNG.</td>
+    <td width="33%" valign="top"><b>170+ formats, no other software</b><br>Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and CAD work without Office, Hancom Office or LibreOffice.</td>
     <td width="33%" valign="top"><b>Stays on your PC</b><br>Nothing is uploaded. Filee works offline and saves the result right next to the original.</td>
   </tr>
 </table>
@@ -41,18 +41,22 @@
 
 ## Features
 
-- **Donut toolbar at the cursor.** Modifier + drag files (default <kbd>Ctrl</kbd>). Everything is configurable: any modifier
-  combination, mouse button, drag distance, a hold gesture or a keyboard shortcut for the selected files.
-- **One toolbar per file type.** Images, PDF, documents, spreadsheets, presentations, HWP/HWPX, text and a fallback
-  for mixed files.
-  Arrange presets on a live donut by drag & drop; right-click or ✎ edits a preset.
-- **Presets.** Quality, resizing, DPI, metadata, TIFF compression, ICO sizes, PDF merge and split, page ranges,
-  output folder, file name pattern and conflict handling.
-- **Batch conversion.** 1 file or 100, converted in parallel; one failure never stops the rest.
-- **Planned routes.** Multi-step conversions are found automatically (e.g. HWPX → PDF → PNG), each step with the engine
-  that does it best.
-- **Four ways in.** The drag gesture, Explorer right-click and Send To, a keyboard shortcut on the Explorer selection,
-  and the drop zone in the main window.
+- **Donut toolbar at the cursor.** Hold a modifier key (<kbd>Ctrl</kbd> by default) and drag files. Everything is
+  configurable: any modifier combination, mouse button, drag distance, a hold gesture or a keyboard shortcut for the
+  selected files.
+- **One toolbar per file type.** Images, PDF, documents, spreadsheets, presentations, HWP, text, e-books, video, audio,
+  vector graphics, archives, CAD and fonts, plus toolbars for mixed selections. Arrange presets on a live donut by
+  drag & drop, add extensions as tags, right-click or ✎ to edit a preset.
+- **Presets.** Quality, resizing, DPI, metadata, PDF merge and split, page ranges, video quality and resolution, audio
+  bitrate, archive compression, output folder, file name pattern and conflict handling.
+- **Batch conversion.** 1 file or 100, converted in parallel; one failure never stops the rest. "One ZIP" packs any
+  files into a single archive, "Merge PDF" makes one PDF.
+- **Planned routes.** Multi-step conversions are found automatically (e.g. HWP → HWPX → DOCX, EPUB → HWPX → PDF → PNG),
+  each step with the engine that does it best.
+- **Four ways in.** The drag gesture, Explorer's right-click menu (on Windows 11 also in the main menu) and Send To, a
+  keyboard shortcut on the Explorer selection, and the drop zone in the main window.
+- **Engines you can see.** Settings → Engines lists every engine with its version and what it converts; optional
+  engines download with speed and time left.
 - **Soft, animated UI.** Light, dark or system theme, your accent colour, adjustable roundness and a *Reduce animations*
   switch for older PCs.
 - **English, 한국어, 简体中文**, following your Windows language by default.
@@ -61,20 +65,25 @@
 
 | From | To |
 |---|---|
-| **Images**: JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM; HEIC, GIMP XCF, camera RAW, EMF/WMF (read) | any image format, ICNS, PDF |
-| **Vector**: SVG, SVGZ, AI, EPS, PS; ICNS | PDF (vector), PNG and other images, SVG ↔ SVGZ, PDF → EPS/PS |
-| **PDF** | PNG, JPG, TIFF, merge, split, page ranges |
-| **Documents**: DOCX, DOC, ODT, RTF | PDF, HWPX, each other, TXT, HTML |
-| **Spreadsheets**: XLSX, XLS, ODS, CSV | PDF, XLSX ↔ CSV, HWPX, HTML |
-| **Presentations**: PPTX, PPT, ODP | PDF, PNG, JPG, HWPX |
-| **HWP**: HWP, HWPX | PDF, HWPX ↔ HWP, DOCX, TXT, Markdown, HTML |
-| **Text**: TXT, Markdown, HTML | DOCX, HWPX, PDF |
+| **Images**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM; HEIC, GIMP XCF, camera RAW (CR2, CR3, NEF, ARW, DNG, …) read | any of these, PDF, resized, grayscale |
+| **Vector**: SVG, SVGZ, EMF, WMF, AI · EPS, PS¹ · CDR, VSD, CGM, ODG² | PDF (vector), PNG and other images, SVG ↔ SVGZ, PDF → EPS/PS¹ |
+| **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ; merge, split, page ranges |
+| **Documents**: DOCX, DOCM, DOTX, EML · DOC, ODT, RTF, WPS, WPD, Pages, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML |
+| **Spreadsheets**: XLSX, XLSM, XLS, ODS, CSV, TSV · Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, HWPX, HTML |
+| **Presentations**: PPTX, PPTM, POTX, PPSX · PPT, ODP, Keynote² | PDF, PNG, JPG, DOCX, HWPX |
+| **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
+| **Text**: TXT, Markdown, HTML · reStructuredText, LaTeX³ | PDF, DOCX, HWPX, EPUB |
+| **E-books**: EPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ · LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, DOCX, TXT, HTML, HWPX · MOBI, AZW3⁴ |
+| **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, TS, M2TS, 3GP, OGV, VOB, … | MP4, WEBM, MOV, MKV, AVI, GIF, MP3, M4A, 720p |
+| **Audio**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, … | MP3, M4A, WAV, FLAC, OGG, OPUS, AAC |
+| **Archives**: ZIP, 7Z, RAR, TAR, TAR.GZ, TAR.BZ2, TAR.XZ, GZ, ISO, CAB, DMG, ALZ, EGG, … | extract, ZIP, 7Z, TAR, TAR.GZ; any files → one ZIP |
+| **CAD**: DWG, DXF | PDF, SVG, PNG, DWG ↔ DXF |
+| **Fonts**: TTF, OTF, WOFF, WOFF2, EOT | each other |
 
-DOCX, XLSX, CSV and PPTX → PDF, everything HWP and Markdown work out of the box: no Microsoft Office, Hancom Office or
-LibreOffice needed, and Filee never uses programs installed on your PC. Older formats (DOC, XLS, PPT, OpenDocument)
-and saving as DOCX / ODT use LibreOffice, HTML / Markdown ↔ Word use Pandoc, EPS / PostScript use Ghostscript: optional
-engines that Filee offers to download on first start.
-How HWPX is written and checked: [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer).
+Everything without a mark works out of the box: no Microsoft Office, Hancom Office or LibreOffice needed, and Filee
+never uses programs installed on your PC. Optional engines Filee offers to download: ¹ Ghostscript, ² LibreOffice,
+³ Pandoc, ⁴ calibre, ⁵ FFmpeg. Details, including what each engine keeps and leaves out:
+[docs/ENGINES.md](docs/ENGINES.md).
 
 ## Screenshots
 
@@ -99,11 +108,14 @@ How HWPX is written and checked: [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer).
 
 ## Get started
 
-**Install:** download [`Filee-win-Setup.exe`](https://github.com/KnifeLemon/Filee/releases/latest/download/Filee-win-Setup.exe)
-(Windows 10/11, 64-bit) or pick a version on the [Releases](https://github.com/KnifeLemon/Filee/releases) page.
+**Install:** download the latest `Filee-<version>-win-Setup.exe` from
+[Releases](https://github.com/KnifeLemon/Filee/releases/latest) (Windows 10/11, 64-bit).
 
-- **The installer is small.** Images, PDF, HWP/HWPX, Markdown, DOCX / XLSX / PPTX → PDF and XLSX ↔ CSV work right away.
-- **Large engines are optional.** On first start Filee offers LibreOffice for older office formats such as DOC, XLS and PPT (~420 MB) and Pandoc for HTML and Markdown ↔ Word (~42 MB). You can install or remove them any time in Settings → Engines.
+- **Everything common is in the installer.** Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and
+  CAD work right away.
+- **Large engines are optional.** On first start Filee offers the engines for video and audio (FFmpeg, ~100 MB) and for
+  rare formats (LibreOffice, calibre, Ghostscript, Pandoc), each with its size. Install or remove them any time in
+  Settings → Engines, which shows download speed and time left.
 - **You hear about updates.** When a new release is out, Filee says so at the bottom of the menu, in a notice and in
   the tray menu, and opens the latest release to download it. Run the new installer; your settings are kept.
 

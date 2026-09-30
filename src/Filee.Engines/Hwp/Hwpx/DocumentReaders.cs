@@ -72,6 +72,12 @@ internal static class DocumentReaders
     /// <summary>Formats read without any optional engine.</summary>
     public static IEnumerable<string> BuiltInFormats => BuiltIn.Keys;
 
+    /// <summary>
+    /// Extra cost of reading a PDF: its text is rebuilt from positioned words, so a route that keeps the source's own
+    /// structure wins (HWP → HWPX → DOCX rather than HWP → PDF → DOCX), while PDF files themselves still convert.
+    /// </summary>
+    public const int PdfPenalty = 6;
+
     /// <summary>Formats that need Pandoc (those without a built-in reader).</summary>
     public static IEnumerable<string> PandocFormats => ThroughPandoc.Keys.Where(f => !BuiltIn.ContainsKey(f));
 

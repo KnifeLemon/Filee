@@ -57,8 +57,9 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var planner = BuiltInPlanner("rhwp");
 
-        Assert.Equal(["ebook", "rhwp"], planner.Plan("epub", "pdf")!.Steps.Select(s => s.Converter.Id));
-        Assert.Equal(["ebook", "rhwp", "pdfium"], planner.Plan("mobi", "png")!.Steps.Select(s => s.Converter.Id));
+        // E-book readers are also registered with the HWPX writer, which comes first in the default engine order.
+        Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("epub", "pdf")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(["hwpx-writer", "rhwp", "pdfium"], planner.Plan("mobi", "png")!.Steps.Select(s => s.Converter.Id));
         foreach (var (from, to) in new[] { ("mobi", "epub"), ("azw3", "epub"), ("fb2", "epub"), ("epub", "fb2"), ("md", "epub"), ("docx", "epub"), ("epub", "txt"), ("cbr", "pdf"), ("pdf", "cbz"), ("azw4", "pdf"), ("htmlz", "txtz") })
             Assert.Equal("ebook", Assert.Single(planner.Plan(from, to)!.Steps).Converter.Id);
         Assert.Null(planner.Plan("epub", "mobi")); // needs calibre
