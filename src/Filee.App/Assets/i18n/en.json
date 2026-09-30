@@ -322,6 +322,8 @@
   "engines.package.ghostscript.description": "EPS, PS and older Illustrator files → PDF, PNG and other images, and PDF or SVG → EPS/PS. SVG and AI files saved with PDF compatibility convert without it.",
   "engines.package.ffmpeg.name": "FFmpeg (video and audio)",
   "engines.package.ffmpeg.description": "Video ↔ video (MP4, MOV, MKV, WEBM, AVI, WMV and more), video → animated GIF or a still image, sound from videos (→ MP3, M4A, WAV …), audio ↔ audio (MP3, M4A, FLAC, WAV, OGG, OPUS and more) and GIF → MP4, WEBM, MOV. Only needed for video and audio.",
+  "engines.package.calibre.name": "Calibre (Kindle and rare e-book formats)",
+  "engines.package.calibre.description": "Saves as MOBI and AZW3 for Kindle, and converts rare e-book formats: LIT, LRF, PDB, PML, RB, SNB and TCR, plus CHM and OEB input. EPUB, MOBI, AZW3, FB2 and comics (CBZ, CBR) are read without it.",
   "engines.package.size": "Download {0} · {1} on disk",
   "engines.progress_detail": "{0} of {1} · {2}/s · {3}",
   "engines.eta.estimating": "estimating time left…",

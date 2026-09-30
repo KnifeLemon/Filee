@@ -322,6 +322,8 @@
   "engines.package.ghostscript.description": "EPS·PS 파일과 예전 일러스트레이터 파일을 PDF·PNG 등 이미지로, PDF·SVG를 EPS·PS로 변환해요. SVG와 PDF 호환으로 저장한 AI 파일은 없어도 변환돼요.",
   "engines.package.ffmpeg.name": "FFmpeg (동영상·오디오)",
   "engines.package.ffmpeg.description": "동영상 ↔ 동영상(MP4·MOV·MKV·WEBM·AVI·WMV 등), 동영상 → 움직이는 GIF·정지 이미지, 동영상에서 소리 추출(→ MP3·M4A·WAV 등), 오디오 ↔ 오디오(MP3·M4A·FLAC·WAV·OGG·OPUS 등), GIF → MP4·WEBM·MOV 변환을 추가해요. 동영상과 오디오에만 필요해요.",
+  "engines.package.calibre.name": "Calibre (킨들과 드문 전자책 형식)",
+  "engines.package.calibre.description": "킨들용 MOBI·AZW3로 저장하고, 드문 전자책 형식(LIT·LRF·PDB·PML·RB·SNB·TCR, CHM·OEB 읽기)을 변환해요. EPUB·MOBI·AZW3·FB2와 만화책(CBZ·CBR)은 없어도 읽을 수 있어요.",
   "engines.package.size": "다운로드 {0} · 설치 후 {1}",
   "engines.progress_detail": "{0} / {1} · {2}/s · {3}",
   "engines.eta.estimating": "남은 시간 계산 중…",

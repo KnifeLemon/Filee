@@ -15,13 +15,15 @@ public static class ProcessRunner
     /// Starts <paramref name="executable"/> with the given arguments (no shell, arguments are escaped),
     /// waits for it to exit and kills the whole process tree on timeout or cancellation.
     /// </summary>
+    /// <param name="onOutput">Called with every line of standard output and error as it arrives (e.g. to parse progress).</param>
     public static async Task<ProcessResult> RunAsync(
         string executable,
         IEnumerable<string> arguments,
         TimeSpan timeout,
         CancellationToken cancellationToken,
         string? workingDirectory = null,
-        IDictionary<string, string>? environment = null)
+        IDictionary<string, string>? environment = null,
+        Action<string>? onOutput = null)
     {
         var psi = new ProcessStartInfo(executable)
         {
@@ -42,8 +44,8 @@ public static class ProcessRunner
         using var process = new Process { StartInfo = psi };
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) lock (stdout) stdout.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (stderr) stderr.AppendLine(e.Data); };
+        process.OutputDataReceived += (_, e) => { if (e.Data is not null) { lock (stdout) stdout.AppendLine(e.Data); onOutput?.Invoke(e.Data); } };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) { lock (stderr) stderr.AppendLine(e.Data); onOutput?.Invoke(e.Data); } };
 
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");

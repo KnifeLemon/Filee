@@ -322,6 +322,8 @@
   "engines.package.ghostscript.description": "EPS、PS 和旧版 Illustrator 文件 → PDF、PNG 等图片，以及 PDF 或 SVG → EPS/PS。SVG 和以 PDF 兼容方式保存的 AI 文件无需它即可转换。",
   "engines.package.ffmpeg.name": "FFmpeg（视频和音频）",
   "engines.package.ffmpeg.description": "支持视频 ↔ 视频（MP4、MOV、MKV、WEBM、AVI、WMV 等）、视频 → GIF 动图或静态图片、从视频提取声音（→ MP3、M4A、WAV 等）、音频 ↔ 音频（MP3、M4A、FLAC、WAV、OGG、OPUS 等）以及 GIF → MP4、WEBM、MOV。仅视频和音频转换需要它。",
+  "engines.package.calibre.name": "Calibre（Kindle 与少见电子书格式）",
+  "engines.package.calibre.description": "可保存为 Kindle 使用的 MOBI 和 AZW3，并转换少见的电子书格式：LIT、LRF、PDB、PML、RB、SNB、TCR，以及读取 CHM 和 OEB。EPUB、MOBI、AZW3、FB2 和漫画（CBZ、CBR）无需它即可读取。",
   "engines.package.size": "下载 {0} · 占用 {1}",
   "engines.progress_detail": "{0} / {1} · {2}/s · {3}",
   "engines.eta.estimating": "正在估算剩余时间…",

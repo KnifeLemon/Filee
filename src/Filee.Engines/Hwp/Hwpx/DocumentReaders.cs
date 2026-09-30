@@ -4,6 +4,7 @@
 
 using System.Text;
 using System.Text.Json.Nodes;
+using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
@@ -44,6 +45,15 @@ internal static class DocumentReaders
         ["pdf"] = PdfDocumentReader.Read,
         // HWP comes here as HWPX, converted by rhwp first (the route planner adds that step).
         ["hwpx"] = HwpxReader.Read,
+        ["html"] = HtmlReader.Read,
+        ["epub"] = EpubReader.Read,
+        ["mobi"] = MobiReader.Read,
+        ["azw3"] = MobiReader.Read,
+        ["azw"] = MobiReader.Read,
+        ["prc"] = MobiReader.Read,
+        ["fb2"] = Fb2Reader.Read,
+        ["htmlz"] = ZippedText.ReadHtmlz,
+        ["txtz"] = ZippedText.ReadTxtz,
     };
 
     /// <summary>

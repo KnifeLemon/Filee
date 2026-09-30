@@ -7,8 +7,8 @@ namespace Filee.Engines.Infrastructure;
 
 /// <summary>One download from engines.json.</summary>
 /// <param name="Kind">
-/// "zip" (extracted), "msi" (administrative install, no system changes), "oxt" (LibreOffice extension) or "conda"
-/// (conda-forge package: its Windows binaries are extracted).
+/// "zip" (extracted), "msi" (administrative install, no system changes; LibreOffice, calibre), "oxt" (LibreOffice
+/// extension) or "conda" (conda-forge package: its Windows binaries are extracted).
 /// </param>
 /// <param name="Size">Download size in bytes.</param>
 public sealed record EngineComponent(string Id, string Version, string Url, string Sha256, long Size, string Kind);
@@ -34,6 +34,7 @@ public static class EngineDownloads
         // Ghostscript from conda-forge plus the Microsoft C++ runtime it was built against (copied next to it).
         new("ghostscript", ["ghostscript", "vcruntime"], 31_000_000, ["ghostscript"]),
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
+        new("calibre", ["calibre"], 663_000_000, ["calibre"]),
     ];
 
     /// <summary>Total download size of a package in bytes.</summary>

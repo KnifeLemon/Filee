@@ -1,4 +1,4 @@
-// HWPX from Markdown (Markdig, built in), HTML (Pandoc AST → OWPML) and plain text, plus the writer's small helpers.
+// HWPX from Markdown (Markdig), HTML (AngleSharp) and plain text, all built in, plus the writer's small helpers.
 // Output is checked structurally, read back with Unhwp and rendered with rhwp. DOCX has its own tests
 // (DocxToHwpxTests) because it is read without Pandoc.
 
@@ -7,7 +7,6 @@ using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Hwp.Hwpx;
-using Filee.Engines.Office;
 using ImageMagick;
 using Unhwp;
 using static Filee.Engines.Tests.HwpxAssert;
@@ -50,10 +49,6 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         [^1]: 각주 내용입니다.
         """;
 
-    private void SkipUnlessPandoc() =>
-        Assert.SkipUnless(PandocConverter.Locate() is not null,
-            "Pandoc not found (pwsh build/fetch-engines.ps1 -Only pandoc)");
-
     private async Task<string> ConvertAsync(string input, string target = "hwpx")
     {
         var job = await fx.ConvertAsync([input], new Preset { TargetFormat = target });
@@ -89,10 +84,9 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Html_tables_with_merged_cells_keep_a_consistent_grid()
     {
-        SkipUnlessPandoc();
         var dir = fx.NewFolder();
         var html = Path.Combine(dir, "table.html");
-        // Spans stay inside the body: Pandoc truncates a rowspan that would cross from a <th> header row into the body.
+        // Row and column spans inside the body: every grid position must be covered exactly once.
         await File.WriteAllTextAsync(html, """
             <table>
               <tr><td rowspan="2">세로 병합</td><td colspan="2">가로 병합</td></tr>

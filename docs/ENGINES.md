@@ -15,10 +15,11 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **DOCX (+ DOCM/DOTX/DOTM), XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/PPSX), PDF, TXT, Markdown → HWPX** (and with rhwp → PDF and images); HTML, ODT, RTF, reStructuredText, LaTeX → HWPX with Pandoc |
+| **HWPX writer** | built in | **DOCX (+ DOCM/DOTX/DOTM), XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/PPSX), PDF, HTML, EPUB, MOBI/AZW3, FB2, HWPX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); ODT, RTF, reStructuredText, LaTeX → HWPX with Pandoc |
 | **DOCX writer** | built in | **Markdown, TXT, XLSX, CSV, PPTX (+ variants), PDF → DOCX** |
 | PDF text | built in (PdfPig) | **PDF → TXT** (reading order, also two columns; no OCR) |
 | E-mail | built in (MimeKit) | **EML → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments) |
+| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP, 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
@@ -26,6 +27,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, reStructuredText and LaTeX ↔ Markdown/HTML/DOCX/ODT (and → RTF, EPUB, TXT) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium) |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video, video → animated GIF or a still frame, audio extraction, audio ↔ audio, GIF → MP4/WEBM/MOV |
+| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR |
 
 DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
 and rendered by rhwp. Anything the built-in readers understand (including PDF) is written as DOCX by the DOCX writer.
@@ -51,8 +53,9 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   engine folder only when complete. Redirects to mirrors (even plain HTTP) are followed, because the hash decides.
 - Engines go to `%LOCALAPPDATA%\Filee\engines`: outside the app folder, so updates keep them, and inside Filee's
   install root, so uninstalling removes them.
-- LibreOffice comes as an MSI and is unpacked with an administrative install (`msiexec /a`): files only, no
-  registry entries, no admin rights. Help, gallery and most dictionaries are removed afterwards (~500 MB).
+- LibreOffice and calibre come as MSIs and are unpacked with an administrative install (`msiexec /a`): files only,
+  no registry entries, no admin rights. LibreOffice's help, gallery and most dictionaries are removed afterwards
+  (~500 MB).
 - Ghostscript comes from conda-forge (Artifex publishes only an NSIS installer): a `.conda` package is a zip with a
   zstd tarball, of which only `Library/bin` is unpacked (SharpCompress; `fetch-engines.ps1` uses Windows' `tar.exe`).
   Its fonts and resources are compiled into `gsdll64.dll`. The Microsoft C++ runtime it was built against
@@ -117,9 +120,16 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
   start numbers), task lists, quotes, tables with spans, links, images, footnotes and math. No Pandoc needed.
 - **PDF** is read with PdfPig (see *PDF reader* below); DOCM / DOTX / DOTM, XLSM / XLTX and PPTM / POTX / PPSX
   are read like DOCX, XLSX and PPTX.
-- **HTML, ODT, RTF, reStructuredText, LaTeX** are parsed by Pandoc into its JSON AST (`PandocAstReader.cs`, following
+- **HTML** is parsed with AngleSharp (`HtmlReader.cs`, `HtmlCss.cs`): headings, paragraphs, bold / italic /
+  underline / strike / sub / sup / code / mark, the basic inline CSS (colour, background, font weight, style and
+  size, text-align, text-indent, page breaks) and simple `tag` / `.class` rules of style sheets, nested lists with
+  start numbers and types, tables with spans / header rows / borders, pictures (local files and data: URIs; remote
+  pictures are skipped), links and anchors, quotes, `pre`, `hr` and figures. Scripts, styles, forms and `nav` are
+  skipped. The encoding comes from the BOM, the XML declaration or `<meta charset>`, else UTF-8 or the system
+  code page. No Pandoc needed.
+- **ODT, RTF** are parsed by Pandoc into its JSON AST (`PandocAstReader.cs`, following
   [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)).
-- Markdown and Pandoc keep structure only, so page setup comes from the built-in template (A4).
+- Markdown, HTML and Pandoc keep structure only, so page setup comes from the built-in template (A4).
 
 Element order and attribute values follow files saved by 한글 where the schema and 한글 disagree, for example:
 
@@ -342,6 +352,45 @@ Not kept (the model has no place for them; skipped and counted by the `Read(path
 OLE objects, charts, video, form controls, text art (its text is kept), arcs / polygons / curves without text,
 master pages, memos, character ratio, relative size and offset, paragraph borders, picture cropping and rotation.
 Password-protected (encrypted) HWPX and DRM-wrapped files stop with a clear error.
+
+## E-books
+
+The built-in e-book engine (`src/Filee.Engines/Ebooks`) reads books into the same document model as the HWPX
+writer, so every e-book also reaches HWPX, PDF and images. The document model is written back out by
+`XhtmlWriter` (EPUB chapters, HTMLZ, single-page HTML), `PlainTextWriter`, `MarkdownWriter` and `Fb2Writer`.
+
+- **EPUB 2 / 3**: container.xml → OPF → spine; each chapter is read by the HTML reader and starts a new page, links
+  between chapters become links to bookmarks, pictures come from the package, title / authors / language / cover
+  from the metadata.
+- **EPUB output** is EPUB 3 with an NCX for older readers: `mimetype` first and stored, a navigation document from
+  the headings, chapters split at level-1 headings and page breaks, one style sheet, pictures in formats every
+  reader shows (others become JPEG / PNG), a cover page for covers the content does not show.
+- **MOBI / AZW / AZW3 / PRC** (`Ebooks/Mobi`, written from the MobileRead wiki's format description): PalmDB
+  records, MOBI header and EXTH metadata, PalmDOC (LZ77) and HUFF/CDIC compression, MOBI 6 `filepos` links and
+  `recindex` pictures, KF8 text rebuilt from the skeleton and fragment indexes with `kindle:pos` / `kindle:embed` /
+  `kindle:flow` references resolved, and plain PalmDOC (TEXtREAd) books. **AZW4** (Print Replica) gives back its PDF.
+- **FB2**: nested sections become headings, poems / epigraphs / citations / tables are kept, note links become
+  footnotes, pictures come from the base64 binaries; the XML declaration's encoding (often windows-1251) is used.
+  FB2 output nests sections by heading level.
+- **HTMLZ / TXTZ** (calibre's zipped formats) are read and written, with their `metadata.opf`.
+- **Comics**: CBZ, CBR, CB7, CBT and CBC (a ZIP of CBZ files) are opened with SharpCompress; pages are sorted
+  naturally ("page2" before "page10"). → PDF has one page per picture sized like the picture (JPEGs are embedded
+  as they are), → EPUB is fixed-layout, → CBZ repacks. PDF → CBZ renders the pages with PDFium at the preset DPI.
+- Books with DRM (Adobe, Apple, Kindle) are refused with a clear message; Filee does not remove DRM. KFX and
+  Topaz books are recognised and refused too.
+
+## Calibre
+
+calibre's `ebook-convert` (GPL-3.0) is an optional download for the formats Filee does not read or write itself:
+LIT, LRF, CHM, PDB, PML, RB, SNB, TCR and OEB → EPUB, and EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB and TCR.
+EPUB is the hub, so for example FB2 → AZW3 is FB2 → EPUB (built in) → AZW3 (calibre). Its edges cost 20, so
+built-in routes always win where they exist.
+
+- The pinned `calibre-64bit-<version>.msi` from download.calibre-ebook.com is unpacked like LibreOffice; the folder
+  with `ebook-convert.exe` becomes `engines/calibre`.
+- Each run gets its own configuration, cache and temp folders in the job's work directory
+  (`CALIBRE_CONFIG_DIRECTORY`, ...), so a calibre the user installed is never read or changed; messages are
+  English (`CALIBRE_OVERRIDE_LANG`) and progress comes from its "34% ..." lines.
 
 ## HWP ↔ HWPX
 
