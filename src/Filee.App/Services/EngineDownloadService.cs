@@ -1,6 +1,7 @@
 // Optional engine downloads for the UI: one observable state per package, one install at a time, and a catalog
 // refresh when an engine appears or disappears so donut slices and routes update immediately.
 
+using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Filee.Core.Conversion;
 using Filee.Core.Localization;
@@ -51,6 +52,10 @@ public sealed partial class EnginePackageState : ObservableObject
     [NotifyPropertyChangedFor(nameof(StatusText))]
     private string? _error;
 
+    /// <summary>"120 MB / 420 MB · 8.4 MB/s · 36 s left" while downloading, empty otherwise.</summary>
+    [ObservableProperty]
+    private string _progressDetail = "";
+
     /// <summary>Ticked in the first-run setup.</summary>
     [ObservableProperty]
     private bool _selected;
@@ -78,6 +83,29 @@ public sealed partial class EnginePackageState : ObservableObject
     public static string FormatBytes(long bytes) => bytes >= 1_000_000_000
         ? $"{bytes / 1_000_000_000.0:0.0} GB"
         : $"{Math.Max(1, bytes / 1_000_000)} MB";
+
+    /// <summary>Download amounts and speeds with one decimal where it matters: "850 KB", "12.3 MB", "1.23 GB".</summary>
+    public static string FormatAmount(double bytes) => bytes switch
+    {
+        >= 1_000_000_000 => $"{bytes / 1_000_000_000:0.00} GB",
+        >= 100_000_000 => $"{bytes / 1_000_000:0} MB",
+        >= 1_000_000 => $"{bytes / 1_000_000:0.0} MB",
+        _ => $"{Math.Max(0, bytes / 1_000):0} KB",
+    };
+
+    /// <summary>Updates <see cref="ProgressDetail"/> from a download progress report.</summary>
+    internal void ShowTransfer(long done, long total, TransferRate rate)
+    {
+        var remaining = rate.Remaining(done, total);
+        var eta = remaining switch
+        {
+            null => _loc["engines.eta.estimating"],
+            { TotalSeconds: < 60 } time => _loc.Format("engines.eta.seconds", Math.Max(1, (int)Math.Ceiling(time.TotalSeconds))),
+            var time => _loc.Format("engines.eta.minutes", (int)Math.Ceiling(time.Value.TotalMinutes)),
+        };
+        ProgressDetail = _loc.Format("engines.progress_detail",
+            FormatAmount(done), FormatAmount(total), FormatAmount(rate.BytesPerSecond), eta);
+    }
 }
 
 public sealed class EngineDownloadService
@@ -130,12 +158,23 @@ public sealed class EngineDownloadService
             try
             {
                 // Progress<T> reports on the UI thread it was created on.
+                var clock = Stopwatch.StartNew();
+                var rate = new TransferRate();
                 var progress = new Progress<EngineInstallProgress>(p =>
                 {
                     if (!state.IsBusy)
                         return;
                     state.Status = p.Stage == EngineInstallStage.Downloading ? EnginePackageStatus.Downloading : EnginePackageStatus.Unpacking;
                     state.Progress = p.Fraction * 100;
+                    if (p.Stage == EngineInstallStage.Downloading && p.BytesTotal > 0)
+                    {
+                        rate.Add(clock.Elapsed, p.BytesDone);
+                        state.ShowTransfer(p.BytesDone, p.BytesTotal, rate);
+                    }
+                    else
+                    {
+                        state.ProgressDetail = "";
+                    }
                 });
                 await Task.Run(() => _installer.InstallAsync(state.Package, progress, cancellation.Token), cancellation.Token);
             }
@@ -161,6 +200,7 @@ public sealed class EngineDownloadService
         finally
         {
             state.Cancellation = null;
+            state.ProgressDetail = "";
         }
     }
 

@@ -57,7 +57,8 @@ public sealed class LibreOfficeConverter : IConverter
         Edges = BuildEdges(_hasHwpFilter);
         return _soffice is null
             ? EngineStatus.Unavailable("engine.reason.not_installed")
-            : EngineStatus.Available(_soffice + (_hasHwpFilter ? " (+H2Orestart)" : ""));
+            : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice")
+                                                + (_hasHwpFilter ? $" · H2Orestart {EngineVersions.Component("h2orestart")}" : ""));
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)

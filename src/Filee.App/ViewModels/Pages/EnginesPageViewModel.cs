@@ -18,8 +18,24 @@ public sealed class EngineItemViewModel(IConverter converter, EngineStatus statu
     public string Name => Converter.DisplayName;
     public bool IsAvailable { get; } = status.IsAvailable;
     public string StatusText { get; } = status.IsAvailable ? loc["engines.available"] : loc[status.ReasonKey ?? "engines.unavailable"];
+
+    /// <summary>Path of the program or other technical detail, shown as a tooltip.</summary>
     public string? Detail { get; } = status.Detail;
+
+    /// <summary>"Markdig 1.4.0", "0.8.6" — what the engine reports; empty for engines that aren't installed.</summary>
+    public string? Version { get; } = status.Version;
+
+    /// <summary>What the engine converts (engine.&lt;id&gt;.description), or null when there is no text for it.</summary>
+    public string? Description { get; } = Describe(loc, converter.Id);
+
     public string Conversions { get; } = loc.Format("engines.conversions", converter.Edges.Count);
+
+    private static string? Describe(ILocalizer loc, string id)
+    {
+        var key = $"engine.{id}.description";
+        var text = loc[key];
+        return text == key ? null : text;
+    }
 }
 
 public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable

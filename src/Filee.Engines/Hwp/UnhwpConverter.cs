@@ -1,6 +1,7 @@
 // HWP / HWPX → plain text, Markdown or HTML with Unhwp (MIT, native library shipped in the NuGet package).
 
 using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 using Markdig;
 using Unhwp;
 
@@ -28,7 +29,9 @@ public sealed class UnhwpConverter : IConverter
         var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
         var supported = arch == System.Runtime.InteropServices.Architecture.X64
                         || (OperatingSystem.IsMacOS() && arch == System.Runtime.InteropServices.Architecture.Arm64);
-        return supported ? EngineStatus.Available() : EngineStatus.Unavailable("engine.reason.unsupported_platform");
+        return supported
+            ? EngineStatus.Available(version: EngineVersions.Library("Unhwp", typeof(UnhwpDocument)))
+            : EngineStatus.Unavailable("engine.reason.unsupported_platform");
     }
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>

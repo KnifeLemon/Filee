@@ -22,7 +22,9 @@ public enum EngineInstallStage
 }
 
 /// <summary>Progress of an install: <paramref name="Fraction"/> covers the whole package (0..1).</summary>
-public readonly record struct EngineInstallProgress(EngineInstallStage Stage, string ComponentId, double Fraction);
+/// <param name="BytesDone">Bytes of the package downloaded so far (all components).</param>
+/// <param name="BytesTotal">Download size of the components being installed.</param>
+public readonly record struct EngineInstallProgress(EngineInstallStage Stage, string ComponentId, double Fraction, long BytesDone = 0, long BytesTotal = 0);
 
 /// <summary>Installs and removes <see cref="EnginePackage"/>s.</summary>
 public sealed class EngineInstaller
@@ -67,11 +69,13 @@ public sealed class EngineInstaller
         {
             var offset = done;
             var file = await DownloadAsync(component,
-                bytes => progress?.Report(new EngineInstallProgress(EngineInstallStage.Downloading, component.Id, Math.Min(1, (offset + bytes) / (double)total))),
+                bytes => progress?.Report(new EngineInstallProgress(EngineInstallStage.Downloading, component.Id,
+                    Math.Min(1, (offset + bytes) / (double)total), offset + bytes, total)),
                 cancellationToken);
             try
             {
-                progress?.Report(new EngineInstallProgress(EngineInstallStage.Unpacking, component.Id, Math.Min(1, (offset + component.Size) / (double)total)));
+                progress?.Report(new EngineInstallProgress(EngineInstallStage.Unpacking, component.Id,
+                    Math.Min(1, (offset + component.Size) / (double)total), offset + component.Size, total));
                 await UnpackAsync(component, file, cancellationToken);
             }
             finally
