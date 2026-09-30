@@ -32,7 +32,10 @@ public interface IOutputAllocator
     /// <summary>
     /// Returns the path the converter should write the next output file to.
     /// </summary>
-    /// <param name="extension">Extension of the file being written, without dot.</param>
+    /// <param name="extension">
+    /// Extension of the file being written, without dot. Empty asks for a folder path (archive extraction); the
+    /// converter creates the folder.
+    /// </param>
     /// <param name="suffix">Optional name suffix such as <c>"_p2"</c> when one input produces several files.</param>
     /// <returns>A path, or <c>null</c> if this output must be skipped (existing file + "skip" policy).</returns>
     string? Allocate(string extension, string? suffix = null);

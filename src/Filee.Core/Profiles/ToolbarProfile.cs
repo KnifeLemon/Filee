@@ -56,7 +56,7 @@ public static class ProfileSelector
     public static ToolbarProfile? Select(IReadOnlyList<ToolbarProfile> profiles, IEnumerable<string> filePaths)
     {
         var extensions = filePaths
-            .Select(p => Path.GetExtension(p).TrimStart('.'))
+            .Select(FormatRegistry.ExtensionOf)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
 

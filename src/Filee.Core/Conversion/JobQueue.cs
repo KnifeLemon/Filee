@@ -141,7 +141,7 @@ public sealed class JobQueue : IAsyncDisposable
         var ct = job.CancellationToken;
         var source = FormatRegistry.Detect(file.SourcePath);
         if (source is null)
-            return Fail(file, "error.unsupported_source", Path.GetExtension(file.SourcePath));
+            return Fail(file, "error.unsupported_source", "." + FormatRegistry.ExtensionOf(file.SourcePath));
 
         var target = !finalOutput ? "pdf"
             : job.Preset.TargetFormat == BuiltInData.SameAsSource ? source.Id
@@ -163,7 +163,7 @@ public sealed class JobQueue : IAsyncDisposable
                 var isLast = s == route.Steps.Count - 1;
                 IOutputAllocator allocator = isLast && finalOutput
                     ? CreateFinalAllocator(job, file.SourcePath, index)
-                    : new TempAllocator(workDir, Path.GetFileNameWithoutExtension(file.SourcePath));
+                    : new TempAllocator(workDir, FormatRegistry.NameWithoutExtension(file.SourcePath));
 
                 var outputs = new List<string>();
                 foreach (var input in inputs)
@@ -288,12 +288,13 @@ public sealed class JobQueue : IAsyncDisposable
             lock (queue._reservedOutputs)
             {
                 var path = OutputPathResolver.Resolve(rule, tokens, extension,
-                    p => File.Exists(p) || queue._reservedOutputs.Contains(p), suffix);
+                    p => File.Exists(p) || Directory.Exists(p) || queue._reservedOutputs.Contains(p), suffix);
                 if (path is null)
                     return null;
 
                 queue._reservedOutputs.Add(path);
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                // An empty extension asks for a folder (archive extraction): the converter creates it.
                 return path;
             }
         }
@@ -306,7 +307,8 @@ public sealed class JobQueue : IAsyncDisposable
         {
             var dir = Path.Combine(workDir, Guid.NewGuid().ToString("N")[..8]);
             Directory.CreateDirectory(dir);
-            return Path.Combine(dir, $"{baseName}{suffix}.{extension.TrimStart('.')}");
+            var ext = extension.TrimStart('.');
+            return Path.Combine(dir, ext.Length == 0 ? $"{baseName}{suffix}" : $"{baseName}{suffix}.{ext}");
         }
     }
 }

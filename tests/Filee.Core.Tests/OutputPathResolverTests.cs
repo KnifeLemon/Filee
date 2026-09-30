@@ -1,3 +1,4 @@
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 
 namespace Filee.Core.Tests;
@@ -17,6 +18,35 @@ public class OutputPathResolverTests
         var path = OutputPathResolver.Resolve(new OutputRule(), Tokens(source), "png", File.Exists);
 
         Assert.Equal(Path.Combine(dir.Path, "photo.png"), path);
+    }
+
+    [Fact]
+    public void Two_part_extensions_are_one_extension()
+    {
+        using var dir = new TempDir();
+        var source = dir.File("backup.tar.gz");
+
+        var path = OutputPathResolver.Resolve(new OutputRule(), Tokens(source), "zip", File.Exists);
+
+        Assert.Equal(Path.Combine(dir.Path, "backup.zip"), path);
+        Assert.Equal("tgz", FormatRegistry.Detect(source)!.Id);
+        Assert.Equal("tar.gz", FormatRegistry.ExtensionOf(source));
+        Assert.Equal("gz", FormatRegistry.ExtensionOf("notes.txt.gz"));
+        Assert.Equal("notes.txt", FormatRegistry.NameWithoutExtension("notes.txt.gz"));
+        Assert.Equal("mp4", FormatRegistry.Detect("clip.MP4")!.Id);
+        Assert.Null(FormatRegistry.Detect("README"));
+    }
+
+    [Fact]
+    public void An_empty_extension_asks_for_a_folder()
+    {
+        using var dir = new TempDir();
+        var source = dir.File("photos.zip");
+        Directory.CreateDirectory(Path.Combine(dir.Path, "photos"));
+
+        var path = OutputPathResolver.Resolve(new OutputRule(), Tokens(source), "", p => File.Exists(p) || Directory.Exists(p));
+
+        Assert.Equal(Path.Combine(dir.Path, "photos (2)"), path);
     }
 
     [Fact]

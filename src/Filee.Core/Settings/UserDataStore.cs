@@ -239,6 +239,17 @@ internal static class SettingsMigrations
             InsertBefore(settings.EnginePriority, "spreadsheet", "hwpx-writer");
         }
 
+        // v6: engines for the rest of the format catalog. Built-in ones go before Pandoc, optional downloads
+        //     before LibreOffice (the fallback that stays last).
+        if (settings.SchemaVersion < 6)
+        {
+            InsertBefore(settings.EnginePriority, "ooxml", "hwpx-writer");
+            foreach (var id in new[] { "docx-writer", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg" })
+                InsertBefore(settings.EnginePriority, id, "pandoc");
+            foreach (var id in new[] { "ghostscript", "calibre" })
+                InsertBefore(settings.EnginePriority, id, "libreoffice");
+        }
+
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
 
@@ -293,6 +304,63 @@ internal static class SettingsMigrations
             if (profiles.FirstOrDefault(p => p.Id == "pdf") is { } pdf)
                 changed |= pdf.PresetIds.RemoveAll(id => id is "to-docx" or "to-hwpx" or "to-txt") > 0;
         }
+
+        // v6: the rest of the format catalog (video, audio, e-books, archives, vector, CAD, fonts, more image and
+        //     office formats). Built-in donuts learn their new extensions unless another donut already has them, the
+        //     new donuts follow "text", PDF → DOCX is back on the PDF donut (built in now) and the mixed-files donut
+        //     gets "compress into one ZIP".
+        if (from < 6)
+            changed |= AddCatalog(presets, profiles);
+        return changed;
+    }
+
+    private static bool AddCatalog(List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        foreach (var preset in BuiltInData.CatalogPresets().Where(p => presets.All(existing => existing.Id != p.Id)))
+        {
+            presets.Add(preset);
+            changed = true;
+        }
+        var presetIds = presets.Select(p => p.Id).ToHashSet();
+
+        var claimed = profiles.SelectMany(p => p.Extensions).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var defaults = BuiltInData.CreateProfiles().ToDictionary(p => p.Id);
+        foreach (var profile in profiles.Where(p => !p.IsFallback && defaults.ContainsKey(p.Id)))
+        {
+            foreach (var extension in defaults[profile.Id].Extensions.Where(claimed.Add))
+            {
+                profile.Extensions.Add(extension);
+                changed = true;
+            }
+        }
+
+        var text = profiles.FindIndex(p => p.Id == "text");
+        var insertAt = text >= 0 ? text + 1 : profiles.FindIndex(p => p.IsFallback);
+        insertAt = insertAt < 0 ? profiles.Count : insertAt;
+        foreach (var profile in BuiltInData.CatalogProfiles().Where(p => profiles.All(existing => existing.Id != p.Id)))
+        {
+            // Only the extensions no donut of the user takes yet.
+            profile.Extensions = profile.Extensions.Where(claimed.Add).ToList();
+            if (profile.Extensions.Count == 0)
+                continue;
+            profile.PresetIds = profile.PresetIds.Where(presetIds.Contains).ToList();
+            profiles.Insert(insertAt++, profile);
+            changed = true;
+        }
+
+        void Offer(string profileId, string presetId, string? after)
+        {
+            if (profiles.FirstOrDefault(p => p.Id == profileId) is not { } profile
+                || profile.PresetIds.Contains(presetId) || profile.PresetIds.Count >= ToolbarProfile.MaxSlices
+                || !presetIds.Contains(presetId))
+                return;
+            var index = after is null ? -1 : profile.PresetIds.IndexOf(after);
+            profile.PresetIds.Insert(index < 0 ? profile.PresetIds.Count : index + 1, presetId);
+            changed = true;
+        }
+        Offer("pdf", "to-docx", "to-jpg");
+        Offer(profiles.FirstOrDefault(p => p.IsFallback)?.Id ?? "mixed", "zip-all", "merge-pdf");
         return changed;
     }
 

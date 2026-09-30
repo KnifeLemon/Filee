@@ -33,7 +33,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         [
             new Choice<string>(BuiltInData.SameAsSource, loc["presets.same_as_source"]),
             .. FormatRegistry.Known
-                .Where(f => f.Id != "heic") // read-only format
+                .Where(f => f.Writable)
                 .Select(f => new Choice<string>(f.Id, f.DisplayName)),
         ];
         ResizeModes = Enum.GetValues<ResizeMode>().Select(v => new Choice<ResizeMode>(v, loc[$"presets.resize.{v}"])).ToList();

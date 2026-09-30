@@ -1,6 +1,7 @@
 // Turns an OutputRule + source file into the concrete output path. Pure logic, unit tested.
 
 using System.Text;
+using Filee.Core.Formats;
 
 namespace Filee.Core.Presets;
 
@@ -15,7 +16,7 @@ public static class OutputPathResolver
     /// </summary>
     /// <param name="rule">Placement rule of the preset.</param>
     /// <param name="tokens">Token values for the file name pattern.</param>
-    /// <param name="targetExtension">Extension of the output, without dot.</param>
+    /// <param name="targetExtension">Extension of the output, without dot; empty for a folder (archive extraction).</param>
     /// <param name="exists">Returns true if a path is already taken (on disk or reserved by this batch).</param>
     /// <param name="suffix">Optional suffix appended to the name, e.g. <c>"_p3"</c> for page 3.</param>
     /// <returns>The path to write, or <c>null</c> when the rule says to skip an existing file.</returns>
@@ -30,10 +31,11 @@ public static class OutputPathResolver
             _ => sourceDir,
         };
 
-        var sourceName = Path.GetFileNameWithoutExtension(tokens.SourcePath);
+        var sourceName = FormatRegistry.NameWithoutExtension(tokens.SourcePath);
         var name = Sanitize(ExpandPattern(rule.FileNamePattern, tokens), sourceName) + suffix;
         var ext = targetExtension.TrimStart('.');
-        var candidate = Path.Combine(dir, $"{name}.{ext}");
+        string PathFor(string baseName) => Path.Combine(dir, ext.Length == 0 ? baseName : $"{baseName}.{ext}");
+        var candidate = PathFor(name);
 
         // The source file is never overwritten, whatever the policy says.
         var isSource = PathsEqual(candidate, tokens.SourcePath);
@@ -47,7 +49,7 @@ public static class OutputPathResolver
 
         for (var n = 2; ; n++)
         {
-            candidate = Path.Combine(dir, $"{name} ({n}).{ext}");
+            candidate = PathFor($"{name} ({n})");
             if (!exists(candidate) && !PathsEqual(candidate, tokens.SourcePath))
                 return candidate;
         }
@@ -59,9 +61,9 @@ public static class OutputPathResolver
         if (string.IsNullOrWhiteSpace(pattern))
             pattern = "{name}";
 
-        var ext = Path.GetExtension(tokens.SourcePath).TrimStart('.');
+        var ext = FormatRegistry.ExtensionOf(tokens.SourcePath);
         return pattern
-            .Replace("{name}", Path.GetFileNameWithoutExtension(tokens.SourcePath), StringComparison.OrdinalIgnoreCase)
+            .Replace("{name}", FormatRegistry.NameWithoutExtension(tokens.SourcePath), StringComparison.OrdinalIgnoreCase)
             .Replace("{ext}", ext, StringComparison.OrdinalIgnoreCase)
             .Replace("{preset}", tokens.PresetName, StringComparison.OrdinalIgnoreCase)
             .Replace("{date}", tokens.Now.ToString("yyyyMMdd"), StringComparison.OrdinalIgnoreCase)

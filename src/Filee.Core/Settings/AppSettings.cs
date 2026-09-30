@@ -48,7 +48,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -78,7 +78,11 @@ public sealed class AppSettings
     public List<string> ExcludedProcesses { get; set; } = [];
 
     /// <summary>Engine ids in preferred order (see <see cref="Conversion.ConverterCatalog.Priority"/>).</summary>
-    public List<string> EnginePriority { get; set; } = ["magick", "pdfium", "pdfsharp", "rhwp", "unhwp", "markdown", "spreadsheet", "hwpx-writer", "pandoc", "libreoffice"];
+    public List<string> EnginePriority { get; set; } =
+    [
+        "magick", "pdfium", "pdfsharp", "rhwp", "unhwp", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer",
+        "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice",
+    ];
 
     /// <summary>Set once the first-run welcome has been shown.</summary>
     public bool FirstRunCompleted { get; set; }

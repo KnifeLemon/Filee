@@ -32,6 +32,12 @@ public sealed class Preset
     /// <summary>Options used for office / HWP documents.</summary>
     public DocumentOptions Document { get; set; } = new();
 
+    /// <summary>Options used for video and audio.</summary>
+    public MediaOptions Media { get; set; } = new();
+
+    /// <summary>Options used for archives (ZIP, 7Z, TAR ...).</summary>
+    public ArchiveOptions Archive { get; set; } = new();
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
@@ -48,6 +54,8 @@ public sealed class Preset
         Image = Image.Clone(),
         Pdf = Pdf.Clone(),
         Document = Document.Clone(),
+        Media = Media.Clone(),
+        Archive = Archive.Clone(),
         Output = Output.Clone(),
     };
 }
@@ -152,4 +160,53 @@ public sealed class DocumentOptions
     public bool PdfA { get; set; }
 
     public DocumentOptions Clone() => (DocumentOptions)MemberwiseClone();
+}
+
+/// <summary>Trade-off between quality and file size for video and lossy audio.</summary>
+public enum MediaQuality
+{
+    /// <summary>Visually lossless, large files.</summary>
+    High,
+    /// <summary>Good quality at a reasonable size (default).</summary>
+    Balanced,
+    /// <summary>Small files for sharing, visible compression.</summary>
+    Small,
+}
+
+/// <summary>Video and audio options.</summary>
+public sealed class MediaOptions
+{
+    public MediaQuality Quality { get; set; } = MediaQuality.Balanced;
+
+    /// <summary>Largest output height in pixels (e.g. 720); 0 keeps the source size. Never upscales.</summary>
+    public int MaxHeight { get; set; }
+
+    /// <summary>Audio bitrate in kbit/s for lossy audio; 0 uses a good default for the format.</summary>
+    public int AudioBitrateKbps { get; set; }
+
+    /// <summary>Drop the audio track of a video.</summary>
+    public bool RemoveAudio { get; set; }
+
+    public MediaOptions Clone() => (MediaOptions)MemberwiseClone();
+}
+
+/// <summary>How hard archives are compressed.</summary>
+public enum ArchiveLevel
+{
+    /// <summary>No compression (fast, for already compressed files).</summary>
+    Store,
+    Fast,
+    Normal,
+    Maximum,
+}
+
+/// <summary>Archive options.</summary>
+public sealed class ArchiveOptions
+{
+    /// <summary>Put all dropped files into one archive instead of one archive per file.</summary>
+    public bool CombineIntoOne { get; set; }
+
+    public ArchiveLevel Level { get; set; } = ArchiveLevel.Normal;
+
+    public ArchiveOptions Clone() => (ArchiveOptions)MemberwiseClone();
 }

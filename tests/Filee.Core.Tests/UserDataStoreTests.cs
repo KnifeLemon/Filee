@@ -40,7 +40,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "hwpx-writer", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
@@ -92,14 +92,43 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "hwpx-writer", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         var ids = store.Profiles.Select(p => p.Id).ToList();
         Assert.Equal(ids.IndexOf("office") + 1, ids.IndexOf("spreadsheets"));
         Assert.Equal(ids.IndexOf("office") + 2, ids.IndexOf("presentations"));
         Assert.DoesNotContain("xlsx", store.Profiles.Single(p => p.Id == "office").Extensions);
         Assert.Contains("to-csv", store.Profiles.Single(p => p.Id == "spreadsheets").PresetIds);
         Assert.NotNull(store.FindPreset("to-xlsx"));
-        Assert.DoesNotContain("to-docx", store.Profiles.Single(p => p.Id == "pdf").PresetIds);
+        Assert.DoesNotContain("to-hwpx", store.Profiles.Single(p => p.Id == "pdf").PresetIds); // Word-only target removed by v5
+    }
+
+    [Fact]
+    public void Version_5_libraries_get_the_format_catalog()
+    {
+        // As written by 1.0.x with schema 5: no catalog presets, donuts or extensions.
+        var presets = BuiltInData.CreatePresets().Where(p => BuiltInData.CatalogPresets().All(c => c.Id != p.Id)).ToList();
+        var catalogIds = BuiltInData.CatalogProfiles().Select(p => p.Id).ToHashSet();
+        var profiles = BuiltInData.CreateProfiles().Where(p => !catalogIds.Contains(p.Id)).ToList();
+        profiles.Single(p => p.Id == "images").Extensions = ["png", "jpg"];
+        profiles.Single(p => p.Id == "pdf").PresetIds.Remove("to-docx");
+        profiles.Single(p => p.Id == "mixed").PresetIds.Remove("zip-all");
+        // A donut of the user already handles MP3.
+        profiles.Insert(0, new ToolbarProfile { Id = "mine", Name = "Mine", Extensions = ["mp3"] });
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(5, presets, profiles));
+
+        var ids = profiles.Select(p => p.Id).ToList();
+        Assert.Equal(ids.IndexOf("text") + 1, ids.IndexOf("ebooks"));
+        Assert.Equal(ids.IndexOf("mixed") - 1, ids.IndexOf("fonts"));
+        Assert.Contains("cr2", profiles.Single(p => p.Id == "images").Extensions);
+        Assert.DoesNotContain("mp3", profiles.Single(p => p.Id == "audio").Extensions);
+        Assert.Contains("flac", profiles.Single(p => p.Id == "audio").Extensions);
+        Assert.Contains(presets, p => p.Id == "to-mp4");
+        Assert.Equal(["to-png", "to-jpg", "to-docx"], profiles.Single(p => p.Id == "pdf").PresetIds.Take(3));
+        Assert.Contains("zip-all", profiles.Single(p => p.Id == "mixed").PresetIds);
+        // Every extension belongs to one donut only.
+        var all = profiles.SelectMany(p => p.Extensions).ToList();
+        Assert.Equal(all.Count, all.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 
     [Fact]
@@ -121,7 +150,7 @@ public class UserDataStoreTests
         var profiles = BuiltInData.CreateProfiles().Where(p => p.Id != "text").ToList();
         profiles[0].Extensions.Add("md");
 
-        Assert.False(SettingsMigrations.ApplyToLibrary(3, BuiltInData.CreatePresets(), profiles));
+        SettingsMigrations.ApplyToLibrary(3, BuiltInData.CreatePresets(), profiles);
         Assert.DoesNotContain(profiles, p => p.Id == "text");
     }
 
