@@ -56,6 +56,13 @@
       "sha256": "EC706FE9368B837FBD05AF4851F5EBEF12BEF8C471A273F4805F7AF788407317",
       "size": 682908,
       "kind": "conda"
+    },
+    "ffmpeg": {
+      "version": "9.0.2",
+      "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build-shared.zip",
+      "sha256": "8D31E162F1616E37AAB3FA2DB991B97E1B8DBEB1C8465FD81A81BE16FF91B328",
+      "size": 99899672,
+      "kind": "zip"
     }
   }
 }

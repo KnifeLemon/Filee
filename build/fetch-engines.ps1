@@ -15,6 +15,7 @@
       7zip/          7-Zip console (7z.exe + 7z.dll, LGPL-2.1 + unRAR restriction, separate program), archives
       ghostscript/   Ghostscript (AGPL-3.0, separate program) from conda-forge, EPS/PS <-> PDF, with the Microsoft
                      C++ runtime DLLs (vcruntime/) copied next to gswin64c.exe
+      ffmpeg/        FFmpeg (GPL-3.0 build, separate program), video and audio; bin/ffmpeg.exe + bin/ffprobe.exe
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -151,6 +152,15 @@ if ('7zip' -in $selected) {
         Copy-Item (Join-Path $exe.DirectoryName $name) $target
     }
     Remove-Item $tmp -Recurse -Force
+}
+
+if ('ffmpeg' -in $selected) {
+    # Same layout as the app's installer: the archive's single top folder is dropped, the programs stay in bin/.
+    $zip = Get-Engine 'ffmpeg'
+    Expand-Flat $zip (Join-Path $Destination 'ffmpeg')
+    foreach ($exe in 'ffmpeg.exe', 'ffprobe.exe') {
+        if (-not (Test-Path (Join-Path $Destination "ffmpeg\bin\$exe"))) { throw "$exe not found in the archive." }
+    }
 }
 
 if ('jre' -in $selected) {

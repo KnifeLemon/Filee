@@ -320,6 +320,8 @@
   "engines.package.pandoc.description": "DOCX, ODT and RTF → Markdown, reStructuredText and LaTeX ↔ Markdown, HTML and DOCX, and HTML, ODT, RTF, reStructuredText and LaTeX → HWPX. Markdown → PDF, DOCX, HWPX, HTML and TXT work without it.",
   "engines.package.ghostscript.name": "Ghostscript (EPS and PostScript)",
   "engines.package.ghostscript.description": "EPS, PS and older Illustrator files → PDF, PNG and other images, and PDF or SVG → EPS/PS. SVG and AI files saved with PDF compatibility convert without it.",
+  "engines.package.ffmpeg.name": "FFmpeg (video and audio)",
+  "engines.package.ffmpeg.description": "Video ↔ video (MP4, MOV, MKV, WEBM, AVI, WMV and more), video → animated GIF or a still image, sound from videos (→ MP3, M4A, WAV …), audio ↔ audio (MP3, M4A, FLAC, WAV, OGG, OPUS and more) and GIF → MP4, WEBM, MOV. Only needed for video and audio.",
   "engines.package.size": "Download {0} · {1} on disk",
   "engines.progress_detail": "{0} of {1} · {2}/s · {3}",
   "engines.eta.estimating": "estimating time left…",
