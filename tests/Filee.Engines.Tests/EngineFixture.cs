@@ -13,11 +13,8 @@ public sealed class EngineFixture : IDisposable
     public EngineFixture()
     {
         Directory.CreateDirectory(Root);
-        var env = new EngineEnvironment(_ => null, Path.Combine(Root, "data"));
-        // Word automation starts real Word windows: opt-in only.
-        Converters = EngineRegistry.CreateAll(env)
-            .Where(c => c.Id != "word" || Environment.GetEnvironmentVariable("FILEE_TEST_WORD") == "1")
-            .ToList();
+        var env = new EngineEnvironment(Path.Combine(Root, "data"));
+        Converters = EngineRegistry.CreateAll(env);
         Catalog = new ConverterCatalog(Converters) { Priority = new AppSettings().EnginePriority };
     }
 

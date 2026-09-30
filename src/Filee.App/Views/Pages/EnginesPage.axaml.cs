@@ -1,6 +1,5 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
-using Avalonia.Platform.Storage;
 using Filee.App.Services;
 using Filee.App.ViewModels.Pages;
 using Filee.Core.Localization;
@@ -21,14 +20,5 @@ public partial class EnginesPage : UserControl
             return;
         if (!vm.Remove(package))
             await AppHost.Get<WindowService>().MessageAsync(window, loc["engines.remove_failed"]);
-    }
-
-    private async void OnBrowse(object? sender, RoutedEventArgs e)
-    {
-        if (sender is not Button { DataContext: EngineItemViewModel engine } || TopLevel.GetTopLevel(this) is not { } top)
-            return;
-        var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { AllowMultiple = false });
-        if (files.FirstOrDefault()?.TryGetLocalPath() is { } path)
-            engine.CustomPath = path;
     }
 }

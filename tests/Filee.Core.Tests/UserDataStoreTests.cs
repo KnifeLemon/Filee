@@ -1,4 +1,5 @@
 using Filee.Core.Presets;
+using Filee.Core.Profiles;
 using Filee.Core.Settings;
 
 namespace Filee.Core.Tests;
@@ -39,7 +40,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "word", "markdown", "hwpx-writer", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "hwpx-writer", "pandoc", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
@@ -70,6 +71,48 @@ public class UserDataStoreTests
         next.Load();
         Assert.DoesNotContain(next.Profiles, p => p.Id == "text");
         Assert.Equal(AppSettings.CurrentSchemaVersion, next.Settings.SchemaVersion);
+    }
+
+    [Fact]
+    public void Version_4_libraries_get_spreadsheet_and_presentation_profiles()
+    {
+        using var dir = new TempDir();
+        var old = new UserDataStore(dir.Path);
+        old.Load();
+        // As written by 1.0.1: one documents donut for Word, Excel and PowerPoint files, Word-only PDF targets.
+        old.Profiles.RemoveAll(p => p.Id is "spreadsheets" or "presentations");
+        old.Profiles.Single(p => p.Id == "office").Extensions.AddRange(["xlsx", "xls", "ods", "csv", "pptx", "ppt", "odp"]);
+        old.Profiles.Single(p => p.Id == "pdf").PresetIds.AddRange(["to-docx", "to-hwpx"]);
+        old.Presets.RemoveAll(p => p.Id is "to-xlsx" or "to-csv");
+        old.Settings.SchemaVersion = 4;
+        old.Settings.EnginePriority = ["magick", "word", "markdown", "hwpx-writer", "pandoc", "libreoffice"];
+        old.SaveSettings();
+        old.SaveLibrary();
+
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        Assert.Equal(["magick", "markdown", "spreadsheet", "hwpx-writer", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        var ids = store.Profiles.Select(p => p.Id).ToList();
+        Assert.Equal(ids.IndexOf("office") + 1, ids.IndexOf("spreadsheets"));
+        Assert.Equal(ids.IndexOf("office") + 2, ids.IndexOf("presentations"));
+        Assert.DoesNotContain("xlsx", store.Profiles.Single(p => p.Id == "office").Extensions);
+        Assert.Contains("to-csv", store.Profiles.Single(p => p.Id == "spreadsheets").PresetIds);
+        Assert.NotNull(store.FindPreset("to-xlsx"));
+        Assert.DoesNotContain("to-docx", store.Profiles.Single(p => p.Id == "pdf").PresetIds);
+    }
+
+    [Fact]
+    public void Spreadsheet_profile_is_not_added_when_a_user_profile_takes_spreadsheets()
+    {
+        var profiles = BuiltInData.CreateProfiles().Where(p => p.Id is not ("spreadsheets" or "presentations")).ToList();
+        profiles.Insert(0, new ToolbarProfile { Id = "mine", Name = "Mine", Extensions = ["xlsx"] });
+
+        SettingsMigrations.ApplyToLibrary(4, BuiltInData.CreatePresets(), profiles);
+
+        Assert.DoesNotContain(profiles, p => p.Id == "spreadsheets");
+        Assert.Contains(profiles, p => p.Id == "presentations");
+        Assert.Equal(["xlsx"], profiles[0].Extensions);
     }
 
     [Fact]

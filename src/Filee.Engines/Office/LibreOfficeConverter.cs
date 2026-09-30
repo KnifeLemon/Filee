@@ -1,5 +1,6 @@
-// Office documents via LibreOffice in headless mode (MPL-2.0). LibreOffice is bundled with the installer
-// (engines/libreoffice); a system installation or a user-configured path is used as fallback.
+// Office documents via LibreOffice in headless mode (MPL-2.0): the optional fallback for formats the built-in engines
+// don't handle (DOC, XLS, PPT, OpenDocument, output as DOCX, ...). Filee downloads its own copy on request
+// (engines/libreoffice); a LibreOffice installed on the system is never used.
 //
 // Gotchas handled here:
 //  * Each concurrent soffice process needs its own user profile (-env:UserInstallation), otherwise
@@ -13,7 +14,6 @@
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
-using Microsoft.Win32;
 
 namespace Filee.Engines.Office;
 
@@ -213,31 +213,26 @@ public sealed class LibreOfficeConverter : IConverter
                         edges.Add(new ConversionEdge(s, t, cost));
         }
 
-        Add(Writer, [.. Writer, "pdf", "txt", "html"], 12);
-        Add(Calc, [.. Calc, "pdf", "html"], 12);
-        Add(Impress, [.. Impress, "pdf"], 12);
-        Add(["txt", "html"], ["docx", "odt", "pdf"], 15);
+        // LibreOffice is the fallback: its costs make the built-in engines win wherever they can do the job
+        // (DOCX / XLSX / PPTX / TXT → PDF through the HWPX writer and rhwp, XLSX ↔ CSV, ...), so it is only used for
+        // what nothing else reads or writes (DOC, XLS, PPT, OpenDocument, DOCX output, ...).
+        const int Fallback = 25;
+        Add(Writer, [.. Writer, "pdf", "txt", "html"], Fallback);
+        Add(Calc, [.. Calc, "pdf", "html"], Fallback);
+        Add(Impress, [.. Impress, "pdf"], Fallback);
+        Add(["txt", "html"], ["docx", "odt", "pdf"], Fallback + 3);
         if (hwp)
-            Add(["hwp", "hwpx"], ["pdf", "docx", "odt", "rtf"], 18);
+            Add(["hwp", "hwpx"], ["pdf", "docx", "odt", "rtf"], Fallback + 6);
         return edges;
     }
 
-    /// <summary>Finds soffice: user path → bundled copy → system installation.</summary>
+    /// <summary>Finds Filee's own copy (engines/libreoffice); a LibreOffice installed on the system is never used.</summary>
     private void Locate()
     {
         var bundled = EngineEnvironment.FindBundled("libreoffice");
-        var exe = OperatingSystem.IsWindows() ? "soffice.exe" : "soffice";
-
-        _soffice = EngineEnvironment.FirstExisting(
-            _env.CustomPath(Id),
-            bundled is null ? null : Path.Combine(bundled, "program", exe),
-            bundled is null ? null : Path.Combine(bundled, "Contents", "MacOS", "soffice"),
-            RegistryInstallPath(),
-            OperatingSystem.IsWindows() ? @"C:\Program Files\LibreOffice\program\soffice.exe" : null,
-            OperatingSystem.IsWindows() ? @"C:\Program Files (x86)\LibreOffice\program\soffice.exe" : null,
-            OperatingSystem.IsMacOS() ? "/Applications/LibreOffice.app/Contents/MacOS/soffice" : null,
-            EngineEnvironment.FindOnPath("soffice"));
-
+        _soffice = bundled is null ? null : EngineEnvironment.FirstExisting(
+            Path.Combine(bundled, "program", OperatingSystem.IsWindows() ? "soffice.exe" : "soffice"),
+            Path.Combine(bundled, "Contents", "MacOS", "soffice"));
         _hasHwpFilter = _soffice is not null && HasH2Orestart(_soffice);
     }
 
@@ -258,21 +253,5 @@ public sealed class LibreOfficeConverter : IConverter
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
         return false;
-    }
-
-    private static string? RegistryInstallPath()
-    {
-        if (!OperatingSystem.IsWindows())
-            return null;
-        try
-        {
-            using var key = Registry.LocalMachine.OpenSubKey(@"SOFTWARE\LibreOffice\UNO\InstallPath");
-            var dir = key?.GetValue(null) as string;
-            return dir is null ? null : Path.Combine(dir, "soffice.exe");
-        }
-        catch (Exception ex) when (ex is System.Security.SecurityException or IOException or UnauthorizedAccessException)
-        {
-            return null;
-        }
     }
 }

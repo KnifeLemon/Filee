@@ -59,6 +59,14 @@ public static class BuiltInData
         new() { Id = "to-txt", Name = "TXT", TargetFormat = "txt" },
         new() { Id = "to-md", Name = "Markdown", TargetFormat = "md" },
         new() { Id = "to-html", Name = "HTML", TargetFormat = "html" },
+        .. SpreadsheetPresets(),
+    ];
+
+    /// <summary>Spreadsheet targets (added in settings schema 5, see SettingsMigrations).</summary>
+    public static List<Preset> SpreadsheetPresets() =>
+    [
+        new() { Id = "to-xlsx", Name = "XLSX", TargetFormat = "xlsx" },
+        new() { Id = "to-csv", Name = "CSV", TargetFormat = "csv" },
     ];
 
     /// <summary>Creates the default toolbar profiles.</summary>
@@ -74,14 +82,16 @@ public static class BuiltInData
         {
             Id = "pdf", NameKey = "profile.pdf",
             Extensions = ["pdf"],
-            PresetIds = ["to-png", "to-jpg", "to-docx", "to-hwpx", "to-txt", "pdf-split", "merge-pdf"],
+            PresetIds = ["to-png", "to-jpg", "to-tiff", "pdf-split", "merge-pdf"],
         },
         new()
         {
             Id = "office", NameKey = "profile.office",
-            Extensions = ["docx", "doc", "odt", "rtf", "xlsx", "xls", "ods", "csv", "pptx", "ppt", "odp"],
-            PresetIds = ["to-pdf", "to-docx", "to-hwpx", "to-odt", "to-txt", "to-html", "merge-pdf"],
+            Extensions = ["docx", "doc", "odt", "rtf"],
+            PresetIds = ["to-pdf", "to-hwpx", "to-docx", "to-odt", "to-txt", "to-html", "merge-pdf"],
         },
+        SpreadsheetProfile(),
+        PresentationProfile(),
         new()
         {
             Id = "hwp", NameKey = "profile.hwp",
@@ -95,6 +105,24 @@ public static class BuiltInData
             PresetIds = ["to-pdf", "merge-pdf", "to-png", "to-txt"],
         },
     ];
+
+    /// <summary>Excel, OpenDocument and CSV sheets (split from "office" in settings schema 5).</summary>
+    public static ToolbarProfile SpreadsheetProfile() => new()
+    {
+        Id = "spreadsheets",
+        NameKey = "profile.spreadsheets",
+        Extensions = ["xlsx", "xls", "ods", "csv"],
+        PresetIds = ["to-pdf", "to-xlsx", "to-csv", "to-hwpx", "to-html", "merge-pdf"],
+    };
+
+    /// <summary>PowerPoint and OpenDocument slides (split from "office" in settings schema 5).</summary>
+    public static ToolbarProfile PresentationProfile() => new()
+    {
+        Id = "presentations",
+        NameKey = "profile.presentations",
+        Extensions = ["pptx", "ppt", "odp"],
+        PresetIds = ["to-pdf", "to-png", "to-jpg", "to-hwpx", "merge-pdf"],
+    };
 
     /// <summary>Markdown, plain text and HTML (added in settings schema 4, see SettingsMigrations).</summary>
     public static ToolbarProfile TextProfile() => new()

@@ -96,10 +96,6 @@
                   <TextBlock Classes="caption" Text="{Binding Detail}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
               </DockPanel>
-              <DockPanel IsVisible="{Binding SupportsCustomPath}">
-                <Button DockPanel.Dock="Right" Margin="8,0,0,0" Content="{DynamicResource engines.browse}" Click="OnBrowse" />
-                <TextBox Text="{Binding CustomPath}" PlaceholderText="{DynamicResource engines.custom_path}" />
-              </DockPanel>
             </StackPanel>
           </Border>
         </DataTemplate>

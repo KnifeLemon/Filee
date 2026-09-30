@@ -231,6 +231,14 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 4)
             InsertBefore(settings.EnginePriority, "markdown", "hwpx-writer");
 
+        // v5: Microsoft Word automation was removed (Filee no longer uses software installed on the system) and the
+        //     built-in "spreadsheet" engine (XLSX <-> CSV) was added; profiles are split by ApplyToLibrary.
+        if (settings.SchemaVersion < 5)
+        {
+            settings.EnginePriority.Remove("word");
+            InsertBefore(settings.EnginePriority, "spreadsheet", "hwpx-writer");
+        }
+
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
 
@@ -252,6 +260,38 @@ internal static class SettingsMigrations
             var fallback = profiles.FindIndex(p => p.IsFallback);
             profiles.Insert(fallback < 0 ? profiles.Count : fallback, text);
             changed = true;
+        }
+
+        // v5: spreadsheets and presentations get their own donuts (with XLSX / CSV targets) instead of sharing the
+        //     documents donut, and the PDF donut drops targets only Word could produce (PDF → DOCX / HWPX / TXT).
+        if (from < 5)
+        {
+            foreach (var preset in BuiltInData.SpreadsheetPresets().Where(p => presets.All(existing => existing.Id != p.Id)))
+            {
+                presets.Add(preset);
+                changed = true;
+            }
+
+            var office = profiles.FirstOrDefault(p => p.Id == "office");
+            var insertAt = office is null ? profiles.FindIndex(p => p.IsFallback) : profiles.IndexOf(office) + 1;
+            var ids = presets.Select(p => p.Id).ToHashSet();
+            foreach (var split in new[] { BuiltInData.SpreadsheetProfile(), BuiltInData.PresentationProfile() })
+            {
+                if (profiles.Any(p => p.Id == split.Id))
+                    continue;
+                split.PresetIds = split.PresetIds.Where(ids.Contains).ToList();
+                // The new donut takes over these extensions from the built-in documents donut, but not from
+                // profiles the user made.
+                changed |= office?.Extensions.RemoveAll(split.Extensions.Contains) > 0;
+                if (profiles.Any(p => p.Extensions.Intersect(split.Extensions, StringComparer.OrdinalIgnoreCase).Any()))
+                    continue;
+                insertAt = insertAt < 0 ? profiles.Count : insertAt;
+                profiles.Insert(insertAt++, split);
+                changed = true;
+            }
+
+            if (profiles.FirstOrDefault(p => p.Id == "pdf") is { } pdf)
+                changed |= pdf.PresetIds.RemoveAll(id => id is "to-docx" or "to-hwpx" or "to-txt") > 0;
         }
         return changed;
     }

@@ -19,6 +19,7 @@ Each component remains under its own license.
 | SkiaSharp | MIT | https://github.com/mono/SkiaSharp |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
+| ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | pypandoc-hwpx (Pandoc AST mapping and package layout in `Filee.Engines/Hwp/Hwpx`, incl. the `blank.hwpx` reference document) | MIT, Copyright (c) 2024 pypandoc-hwpx Contributors | https://github.com/msjang/pypandoc-hwpx |
 | Microsoft.Extensions.* | MIT | https://github.com/dotnet/runtime |
 
@@ -48,8 +49,3 @@ These programs run as separate processes. Their source code is available from th
 |---|---|---|
 | Noto Sans, Noto Sans KR, Noto Sans SC | SIL Open Font License 1.1 | https://github.com/notofonts |
 | Material Design Icons (Pictogrammers) | Apache-2.0 | https://pictogrammers.com |
-
-## Optional engines used when installed by the user
-
-Microsoft Word is a commercial product. Filee only automates a copy that is already installed on the user's
-computer and does not redistribute it.

@@ -43,7 +43,8 @@
 
 - **Donut toolbar at the cursor.** Modifier + drag files (default <kbd>Ctrl</kbd>). Everything is configurable: any modifier
   combination, mouse button, drag distance, a hold gesture or a keyboard shortcut for the selected files.
-- **One toolbar per file type.** Images, PDF, office documents, HWP/HWPX and a fallback for mixed files.
+- **One toolbar per file type.** Images, PDF, documents, spreadsheets, presentations, HWP/HWPX, text and a fallback
+  for mixed files.
   Arrange presets on a live donut by drag & drop; right-click or ✎ edits a preset.
 - **Presets.** Quality, resizing, DPI, metadata, TIFF compression, ICO sizes, PDF merge and split, page ranges,
   output folder, file name pattern and conflict handling.
@@ -63,12 +64,15 @@
 | **Images**: JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, HEIC (read) | any image format, PDF |
 | **PDF** | PNG, JPG, TIFF, merge, split, page ranges |
 | **Documents**: DOCX, DOC, ODT, RTF | PDF, HWPX, each other, TXT, HTML |
+| **Spreadsheets**: XLSX, XLS, ODS, CSV | PDF, XLSX ↔ CSV, HWPX, HTML |
+| **Presentations**: PPTX, PPT, ODP | PDF, PNG, JPG, HWPX |
 | **HWP**: HWP, HWPX | PDF, HWPX ↔ HWP, DOCX, TXT, Markdown, HTML |
-| **Spreadsheets & slides**: XLSX, XLS, ODS, CSV, PPTX, PPT, ODP | PDF and each other |
 | **Text**: TXT, Markdown, HTML | DOCX, HWPX, PDF |
 
-Markdown → PDF, HWPX, HTML and TXT work out of the box. Office documents use LibreOffice, and HTML / Markdown ↔ Word use
-Pandoc: optional engines that Filee offers to download on first start.
+DOCX, XLSX, CSV and PPTX → PDF, everything HWP and Markdown work out of the box: no Microsoft Office, Hancom Office or
+LibreOffice needed, and Filee never uses programs installed on your PC. Older formats (DOC, XLS, PPT, OpenDocument)
+and saving as DOCX / ODT use LibreOffice, HTML / Markdown ↔ Word use Pandoc: optional engines that Filee offers to
+download on first start.
 How HWPX is written and checked: [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer).
 
 ## Screenshots
@@ -97,8 +101,8 @@ How HWPX is written and checked: [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer).
 **Install:** download [`Filee-win-Setup.exe`](https://github.com/KnifeLemon/Filee/releases/latest/download/Filee-win-Setup.exe)
 (Windows 10/11, 64-bit) or pick a version on the [Releases](https://github.com/KnifeLemon/Filee/releases) page.
 
-- **The installer is small.** Images, PDF, HWP/HWPX and DOCX → HWPX work right away.
-- **Large engines are optional.** On first start Filee offers LibreOffice for office documents (~420 MB) and Pandoc for HTML and Markdown ↔ Word (~42 MB). You can install or remove them any time in Settings → Engines.
+- **The installer is small.** Images, PDF, HWP/HWPX, Markdown, DOCX / XLSX / PPTX → PDF and XLSX ↔ CSV work right away.
+- **Large engines are optional.** On first start Filee offers LibreOffice for older office formats such as DOC, XLS and PPT (~420 MB) and Pandoc for HTML and Markdown ↔ Word (~42 MB). You can install or remove them any time in Settings → Engines.
 - **You hear about updates.** When a new release is out, Filee says so at the bottom of the menu, in a notice and in
   the tray menu, and opens the latest release to download it. Run the new installer; your settings are kept.
 

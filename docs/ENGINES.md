@@ -1,8 +1,7 @@
 # Conversion engines
 
 Filee chooses engines automatically. Settings → *Engines* shows their status, lets you change the priority
-(higher wins when two engines can do the same conversion), point an engine at a custom executable, and install
-or remove the optional engines.
+(higher wins when two engines can do the same conversion), and install or remove the optional engines.
 
 | Engine | How it gets there | Handles |
 |---|---|---|
@@ -11,14 +10,18 @@ or remove the optional engines.
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML |
 | Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT** (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
-| **HWPX writer** | built in | **DOCX, TXT, Markdown → HWPX**; HTML, ODT, RTF → HWPX with Pandoc |
+| Spreadsheets | built in | **XLSX ↔ CSV** (one CSV per sheet) |
+| **HWPX writer** | built in | **DOCX, XLSX, CSV, PPTX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); HTML, ODT, RTF → HWPX with Pandoc |
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
-| LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | DOCX/DOC/ODT/RTF/XLSX/PPTX… ↔ each other and → PDF; HWP/HWPX → DOCX/ODT |
+| LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS; HWP/HWPX → DOCX/ODT |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT |
-| Microsoft Word | used if installed | best-fidelity DOCX → PDF, PDF → DOCX |
 
-Engines found on the system (an installed LibreOffice, `soffice`/`rhwp`/`pandoc` on PATH) are used when Filee's own
-copy is missing, e.g. when running from source.
+DOCX, XLSX and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
+and rendered by rhwp. LibreOffice's cost is set so the built-in route always wins where one exists.
+
+Filee never uses software installed on the system (Microsoft Office, an installed LibreOffice, programs on `PATH`):
+every engine is built in, bundled or downloaded into Filee's own folder, so a conversion behaves the same on every
+PC. Running from source, the repository's `engines/` folder (filled by `build/fetch-engines.ps1`) is used.
 
 ## Optional engines
 
@@ -55,6 +58,19 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
   - pictures inline and floating, text boxes, rectangles/ellipses/lines with solid or gradient fills, groups;
   - footnotes, endnotes, bookmarks, hyperlinks (web and within the document, e.g. a table of contents);
   - Word's document grid ("lines"), which 한글 does not have, as an "at least" line spacing.
+- **XLSX and CSV** (`Office/Sheets`): every visible sheet becomes a section with one table. Cells show what Excel
+  shows (number formats via ExcelNumberFormat, dates, percentages, cached formula results), with fonts, fills,
+  borders, alignment and merged cells; frozen top rows repeat on every page. The page is A4 with narrow margins,
+  landscape when the columns are much wider than portrait, and the table is scaled to the page width like
+  Excel's "Fit all columns on one page". CSV is read with its delimiter (comma, semicolon, tab) and encoding
+  (UTF-8 / UTF-16 with BOM, else CP949 as saved by Korean Excel). Not converted: charts, pictures, conditional
+  formatting, print areas and page breaks.
+- **PPTX** (`Hwp/Hwpx/Pptx`): one page per slide, sized like the slide, with every object floating at its place:
+  placeholders inherit position and text style from the layout and master, text with bullets and numbering,
+  shapes (rectangles, rounded rectangles, ellipses, lines) with solid or gradient fills and outlines, pictures,
+  tables with PowerPoint's default table style, groups, master decorations and the slide background. Not
+  converted: charts, SmartArt, rotation, effects (shadows, glow), picture cropping, animations, notes and hidden
+  slides.
 - **TXT** needs no reader (one paragraph per line; UTF-8, UTF-16 or the Korean code page CP949).
 - **Markdown** is parsed with Markdig (`MarkdownReader.cs`): headings, emphasis, code, lists (1. / a. / i. with
   start numbers), task lists, quotes, tables with spans, links, images, footnotes and math. No Pandoc needed.
@@ -71,7 +87,8 @@ Element order and attribute values follow files saved by 한글 where the schema
 - layout caches (table row heights, inline tab widths) are estimated, because simpler readers use them as-is.
 
 Every generated file is checked in the tests with three independent readers: rhwp (renders it), Unhwp (reads the
-text) and LibreOffice + H2Orestart (opens it), see `tests/Filee.Engines.Tests/DocxToHwpxTests.cs`.
+text) and LibreOffice + H2Orestart (opens it), see `tests/Filee.Engines.Tests/DocxToHwpxTests.cs` and
+`OfficeTests.cs`.
 
 Not converted: Word charts, SmartArt, equations (kept as text), free-form shapes, tracked changes and comments.
 

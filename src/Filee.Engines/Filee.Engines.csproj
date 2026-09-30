@@ -17,6 +17,7 @@
     <PackageReference Include="PDFtoImage" />
     <PackageReference Include="Unhwp" />
     <PackageReference Include="Markdig" />
+    <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 

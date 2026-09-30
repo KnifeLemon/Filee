@@ -255,7 +255,15 @@ internal sealed class HTextBox : HInline
     public int Height { get; set; }
     public HAnchor? Anchor { get; set; }
     public string? Fill { get; set; }
+    public HGradient? Gradient { get; set; }
     public HBorder Line { get; set; } = HBorder.Thin;
+
+    /// <summary>Outline of the box: <see cref="HShapeKind.Rectangle"/> (default) or <see cref="HShapeKind.Ellipse"/>.</summary>
+    public HShapeKind Shape { get; set; }
+
+    /// <summary>Corner rounding of a rectangular box in percent (0 = square).</summary>
+    public int CornerRatio { get; set; }
+
     public HInsets Padding { get; set; } = new(283, 283, 283, 283);
     public HVerticalAlign VerticalAlign { get; set; }
     public List<HBlock> Blocks { get; } = [];

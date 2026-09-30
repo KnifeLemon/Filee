@@ -40,11 +40,7 @@ public static class AppHost
         services.AddSingleton<ThemeService>();
 
         // Conversion engines
-        services.AddSingleton(sp =>
-        {
-            var store = sp.GetRequiredService<UserDataStore>();
-            return new EngineEnvironment(id => store.Settings.EnginePaths.GetValueOrDefault(id), dataDir);
-        });
+        services.AddSingleton(_ => new EngineEnvironment(dataDir));
         services.AddSingleton(sp => EngineRegistry.CreateAll(sp.GetRequiredService<EngineEnvironment>()));
         services.AddSingleton(sp => new ConverterCatalog(sp.GetRequiredService<IReadOnlyList<IConverter>>()));
         services.AddSingleton(sp => new JobQueue(

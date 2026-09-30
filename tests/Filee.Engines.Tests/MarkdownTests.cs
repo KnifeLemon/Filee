@@ -31,8 +31,8 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         - [ ] 남은 일
         """;
 
-    /// <summary>Only engines that ship with the app (or run in-process): no Pandoc, LibreOffice or Word.</summary>
-    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice", "word"];
+    /// <summary>Only engines that ship with the app (or run in-process): no Pandoc or LibreOffice.</summary>
+    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice"];
 
     private RoutePlanner BuiltInPlanner(params string[] assumeInstalled) =>
         new ConverterCatalog(fx.Converters.Where(c => !OptionalEngines.Contains(c.Id))) { Priority = fx.Catalog.Priority }
@@ -169,7 +169,7 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task LibreOffice_warm_up_prepares_every_profile_once()
     {
-        var env = new EngineEnvironment(_ => null, Path.Combine(fx.NewFolder(), "data"));
+        var env = new EngineEnvironment(Path.Combine(fx.NewFolder(), "data"));
         var libreOffice = new LibreOfficeConverter(env);
         Assert.SkipUnless(libreOffice.GetStatus().IsAvailable, "LibreOffice not found");
 

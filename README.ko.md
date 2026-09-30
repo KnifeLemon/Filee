@@ -43,7 +43,7 @@
 
 - **커서 위치에 뜨는 도넛 툴바.** 수정키 + 파일 드래그(기본 <kbd>Ctrl</kbd>). 수정키 조합, 마우스 버튼, 드래그 거리,
   길게 누르기, 선택한 파일용 키보드 단축키까지 모두 바꿀 수 있습니다.
-- **파일 종류별 툴바.** 이미지, PDF, 오피스 문서, HWP/HWPX, 혼합 파일용 프로필. 실제 도넛 위에서 드래그 앤 드롭으로
+- **파일 종류별 툴바.** 이미지, PDF, 문서, 스프레드시트, 프레젠테이션, HWP/HWPX, 텍스트, 혼합 파일용 프로필. 실제 도넛 위에서 드래그 앤 드롭으로
   프리셋을 넣고, 빼고, 순서를 바꿉니다. 우클릭이나 ✎로 프리셋을 편집합니다.
 - **프리셋.** 품질, 크기 조정, DPI, 메타데이터, TIFF 압축, ICO 크기, PDF 합치기·나누기, 페이지 범위,
   저장 위치, 파일 이름 패턴, 이름 충돌 처리.
@@ -60,12 +60,14 @@
 | **이미지**: JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, HEIC(읽기) | 모든 이미지 형식, PDF |
 | **PDF** | PNG, JPG, TIFF, 합치기, 나누기, 페이지 범위 |
 | **문서**: DOCX, DOC, ODT, RTF | PDF, HWPX, 서로 변환, TXT, HTML |
+| **스프레드시트**: XLSX, XLS, ODS, CSV | PDF, XLSX ↔ CSV, HWPX, HTML |
+| **프레젠테이션**: PPTX, PPT, ODP | PDF, PNG, JPG, HWPX |
 | **한글**: HWP, HWPX | PDF, HWPX ↔ HWP, DOCX, TXT, 마크다운, HTML |
-| **스프레드시트·프레젠테이션**: XLSX, XLS, ODS, CSV, PPTX, PPT, ODP | PDF와 서로 변환 |
 | **텍스트**: TXT, 마크다운, HTML | DOCX, HWPX, PDF |
 
-마크다운 → PDF·HWPX·HTML·TXT는 설치하자마자 됩니다. 오피스 문서는 LibreOffice, HTML과 마크다운 ↔ 워드는 Pandoc을
-쓰는데, 둘 다 처음 실행할 때 받을지 물어보는 추가 엔진입니다.
+DOCX·XLSX·CSV·PPTX → PDF, 한글 파일, 마크다운은 설치하자마자 변환됩니다. MS 오피스·한컴오피스·LibreOffice가 없어도
+되고, PC에 설치된 프로그램은 쓰지 않습니다. 오래된 형식(DOC·XLS·PPT·OpenDocument)과 DOCX·ODT로 저장하기는
+LibreOffice, HTML과 마크다운 ↔ 워드는 Pandoc을 쓰는데, 둘 다 처음 실행할 때 받을지 물어보는 추가 엔진입니다.
 HWPX를 어떻게 만들고 검증하는지는 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)에 있습니다.
 
 ## 스크린샷
@@ -94,8 +96,8 @@ HWPX를 어떻게 만들고 검증하는지는 [docs/ENGINES.md](docs/ENGINES.md
 **설치:** [`Filee-win-Setup.exe`](https://github.com/KnifeLemon/Filee/releases/latest/download/Filee-win-Setup.exe)를 받으세요
 (Windows 10/11, 64비트). 다른 버전은 [Releases](https://github.com/KnifeLemon/Filee/releases)에 있습니다.
 
-- **설치 파일은 가볍습니다.** 이미지, PDF, HWP/HWPX, DOCX → HWPX는 설치하자마자 바로 변환됩니다.
-- **큰 엔진은 골라서 설치합니다.** 처음 실행하면 LibreOffice(오피스 문서, 약 420MB)와 Pandoc(HTML·마크다운 ↔ 워드, 약 42MB)을 받을지 묻습니다. 나중에 설정 → 변환 엔진에서 언제든 설치하거나 지울 수 있습니다.
+- **설치 파일은 가볍습니다.** 이미지, PDF, HWP/HWPX, 마크다운, DOCX·XLSX·PPTX → PDF, XLSX ↔ CSV는 설치하자마자 바로 변환됩니다.
+- **큰 엔진은 골라서 설치합니다.** 처음 실행하면 LibreOffice(DOC·XLS·PPT 같은 오래된 오피스 형식, 약 420MB)와 Pandoc(HTML·마크다운 ↔ 워드, 약 42MB)을 받을지 묻습니다. 나중에 설정 → 변환 엔진에서 언제든 설치하거나 지울 수 있습니다.
 - **업데이트는 알려 드려요.** 새 버전이 나오면 메뉴 하단, 알림, 트레이 메뉴에 표시되고 누르면 최신 릴리스 페이지가
   열립니다. 새 설치 파일을 실행하면 설정은 그대로 유지돼요.
 
