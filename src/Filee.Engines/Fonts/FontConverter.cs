@@ -2,6 +2,7 @@
 // CFF (PostScript) outlines are converted to TrueType when the target needs them (TTF, EOT). See docs/ENGINES.md.
 
 using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Fonts;
 
@@ -16,7 +17,7 @@ public sealed class FontConverter : IConverter
     public IReadOnlyList<ConversionEdge> Edges { get; } =
         [.. from source in FontFile.Formats from target in FontFile.Formats where source != target select new ConversionEdge(source, target)];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("TTF, OTF, WOFF, WOFF2, EOT");
+    public EngineStatus GetStatus() => EngineStatus.Available("TTF, OTF, WOFF, WOFF2, EOT", EngineVersions.BuiltIn);
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>
