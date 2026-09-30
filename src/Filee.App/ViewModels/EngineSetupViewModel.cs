@@ -20,9 +20,9 @@ public sealed partial class EngineSetupViewModel : ObservableObject
         _loc = loc;
         foreach (var package in Packages)
         {
-            // LibreOffice is large and only needed for older formats (DOC, XLS, PPT, OpenDocument): offered, not
-            // pre-selected.
-            package.Selected = !package.IsInstalled && package.Package.Id != "libreoffice";
+            // LibreOffice (older formats: DOC, XLS, PPT, OpenDocument) and calibre (rare e-book formats, Kindle output)
+            // are large and only needed by some: offered, not pre-selected.
+            package.Selected = !package.IsInstalled && package.Package.Id is not ("libreoffice" or "calibre");
             package.PropertyChanged += OnPackageChanged;
         }
     }

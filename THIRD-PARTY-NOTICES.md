@@ -20,6 +20,8 @@ Each component remains under its own license.
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
+| AngleSharp | MIT | https://github.com/AngleSharp/AngleSharp |
+| SharpCompress | MIT | https://github.com/adamhathcock/sharpcompress |
 | pypandoc-hwpx (Pandoc AST mapping and package layout in `Filee.Engines/Hwp/Hwpx`, incl. the `blank.hwpx` reference document) | MIT, Copyright (c) 2024 pypandoc-hwpx Contributors | https://github.com/msjang/pypandoc-hwpx |
 | Microsoft.Extensions.* | MIT | https://github.com/dotnet/runtime |
 
@@ -40,6 +42,7 @@ Downloaded from their official release pages when the user chooses to install th
 | H2Orestart (HWP/HWPX import for LibreOffice) | GPL-3.0 | https://github.com/ebandal/H2Orestart |
 | Eclipse Temurin JRE (for H2Orestart) | GPL-2.0 with Classpath Exception | https://adoptium.net |
 | Pandoc | GPL-2.0-or-later | https://github.com/jgm/pandoc |
+| calibre (ebook-convert) | GPL-3.0 | https://calibre-ebook.com |
 
 These programs run as separate processes. Their source code is available from the linked projects.
 

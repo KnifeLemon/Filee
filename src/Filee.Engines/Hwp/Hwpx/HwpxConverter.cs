@@ -5,7 +5,8 @@
 //  * Markdown is parsed with Markdig (MarkdownReader), no external engine needed.
 //  * XLSX and CSV are read directly (Office/Sheets); every sheet becomes a table (SheetDocument).
 //  * PPTX is read directly (Pptx/PptxReader): one page per slide with the objects floating at their places.
-//  * HTML, ODT and RTF are parsed by Pandoc (optional engine) into its JSON AST (PandocAstReader).
+//  * HTML is parsed with AngleSharp (HtmlReader), no external engine needed.
+//  * ODT and RTF are parsed by Pandoc (optional engine) into its JSON AST (PandocAstReader).
 
 using System.Text;
 using System.Text.Json.Nodes;
@@ -28,7 +29,6 @@ public sealed class HwpxConverter : IConverter
     {
         ["odt"] = "odt",
         ["rtf"] = "rtf",
-        ["html"] = "html",
     };
 
     private string? _pandoc;
@@ -43,8 +43,8 @@ public sealed class HwpxConverter : IConverter
     {
         _pandoc = PandocConverter.Locate();
         return EngineStatus.Available(_pandoc is null
-            ? "DOCX, XLSX, PPTX, CSV, TXT, Markdown → HWPX. HTML, ODT and RTF need Pandoc."
-            : $"DOCX, XLSX, PPTX, CSV, TXT, Markdown; HTML, ODT, RTF with Pandoc ({_pandoc})");
+            ? "DOCX, XLSX, PPTX, CSV, TXT, Markdown, HTML → HWPX. ODT and RTF need Pandoc."
+            : $"DOCX, XLSX, PPTX, CSV, TXT, Markdown, HTML; ODT, RTF with Pandoc ({_pandoc})");
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -60,6 +60,7 @@ public sealed class HwpxConverter : IConverter
             "xlsx" => SheetDocument.Build(XlsxReader.Read(step.InputPath)),
             "csv" => SheetDocument.Build(CsvFormat.Read(step.InputPath)),
             "pptx" => PptxReader.Read(step.InputPath, media),
+            "html" => HtmlReader.Read(step.InputPath, media),
             _ => await ReadWithPandocAsync(step, media, cancellationToken),
         };
         progress?.Report(0.6);
@@ -142,7 +143,7 @@ public sealed class HwpxConverter : IConverter
 
     private static List<ConversionEdge> BuildEdges(bool pandoc)
     {
-        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx"), new("md", "hwpx"), new("xlsx", "hwpx"), new("csv", "hwpx"), new("pptx", "hwpx")];
+        List<ConversionEdge> edges = [new("txt", "hwpx"), new("docx", "hwpx"), new("md", "hwpx"), new("xlsx", "hwpx"), new("csv", "hwpx"), new("pptx", "hwpx"), new("html", "hwpx")];
         if (pandoc)
             edges.AddRange(PandocReaders.Keys.Select(from => new ConversionEdge(from, "hwpx")));
         return edges;

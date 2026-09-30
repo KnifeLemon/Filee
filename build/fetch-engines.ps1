@@ -12,6 +12,8 @@
       jre/           Eclipse Temurin JRE 21 (GPLv2 + Classpath Exception), used by H2Orestart
       rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF
       pandoc/        Pandoc (GPL-2.0-or-later, separate program), Markdown/HTML and MD/HTML/ODT/RTF -> HWPX
+      calibre/       calibre (GPL-3.0, separate program), extracted from the official MSI via an administrative
+                     install: ebook-convert for LIT, LRF, PDB, ... and MOBI / AZW3 output
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -153,6 +155,22 @@ if ('h2orestart' -in $selected) {
         Expand-Archive -Path $zipCopy -DestinationPath $target -Force
         Remove-Item $zipCopy
     }
+}
+
+if ('calibre' -in $selected) {
+    $msi = Get-Engine 'calibre'
+    $tmp = Join-Path $cache 'calibre-admin'
+    Reset-Folder $tmp
+    Write-Host 'unpack calibre (administrative install, no system changes)'
+    $proc = Start-Process msiexec.exe -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$tmp`"") -Wait -PassThru
+    if ($proc.ExitCode -ne 0) { throw "msiexec /a failed with exit code $($proc.ExitCode)." }
+
+    $convert = Get-ChildItem $tmp -Recurse -Filter 'ebook-convert.exe' | Select-Object -First 1
+    if (-not $convert) { throw 'ebook-convert.exe not found after extracting the MSI.' }
+    $target = Join-Path $Destination 'calibre'
+    Reset-Folder $target
+    Get-ChildItem $convert.DirectoryName -Force | Move-Item -Destination $target
+    Remove-Item $tmp -Recurse -Force
 }
 
 Write-Host "Engines ready in $Destination"

@@ -3,8 +3,8 @@
 //  * Every download is checked against the SHA-256 pinned in engines.json before anything is unpacked.
 //  * Unpacking happens in a staging folder that replaces the engine folder only when complete, so a failed or
 //    cancelled install never leaves a half-installed engine behind.
-//  * The LibreOffice MSI is unpacked with an administrative install (msiexec /a): files only, no registry entries,
-//    no admin rights. Parts headless conversion never uses (help, gallery, most dictionaries) are removed.
+//  * MSIs (LibreOffice, calibre) are unpacked with an administrative install (msiexec /a): files only, no registry
+//    entries, no admin rights. Parts headless LibreOffice never uses (help, gallery, most dictionaries) are removed.
 //  * A marker file with the component's hash records what is installed, so an engines.json update is detected.
 
 using System.Diagnostics;
@@ -172,12 +172,8 @@ public sealed class EngineInstaller
                     Replace(component.Id, SingleRoot(staging));
                     break;
                 case "msi":
-                    await UnpackMsiAsync(file, staging, Path.Combine(Path.GetTempPath(), "filee-msiexec.log"), cancellationToken);
-                    var soffice = Directory.EnumerateFiles(staging, "soffice.exe", SearchOption.AllDirectories).FirstOrDefault()
-                                  ?? throw new InvalidDataException("soffice.exe not found in the LibreOffice package.");
-                    var libreOffice = Path.GetDirectoryName(Path.GetDirectoryName(soffice)!)!; // folder with program/, share/
-                    TrimLibreOffice(libreOffice);
-                    Replace(component.Id, libreOffice);
+                    await UnpackMsiAsync(component.Id, file, staging, Path.Combine(Path.GetTempPath(), "filee-msiexec.log"), cancellationToken);
+                    Replace(component.Id, MsiProgramFolder(component.Id, staging));
                     break;
                 case "oxt":
                     // LibreOffice registers bundled extensions (plain folders under share/extensions) on start-up.
@@ -202,10 +198,29 @@ public sealed class EngineInstaller
         }
     }
 
-    private static async Task UnpackMsiAsync(string msi, string target, string log, CancellationToken cancellationToken)
+    /// <summary>
+    /// The folder to keep from an administratively installed MSI, which lays files out as they would be installed
+    /// (PFiles64\...): LibreOffice's folder with program/ and share/ (trimmed), calibre's folder with ebook-convert.
+    /// </summary>
+    private static string MsiProgramFolder(string id, string staging)
+    {
+        if (id == "calibre")
+        {
+            var convert = Directory.EnumerateFiles(staging, "ebook-convert.exe", SearchOption.AllDirectories).FirstOrDefault()
+                          ?? throw new InvalidDataException("ebook-convert.exe not found in the calibre package.");
+            return Path.GetDirectoryName(convert)!;
+        }
+        var soffice = Directory.EnumerateFiles(staging, "soffice.exe", SearchOption.AllDirectories).FirstOrDefault()
+                      ?? throw new InvalidDataException("soffice.exe not found in the LibreOffice package.");
+        var libreOffice = Path.GetDirectoryName(Path.GetDirectoryName(soffice)!)!; // folder with program/, share/
+        TrimLibreOffice(libreOffice);
+        return libreOffice;
+    }
+
+    private static async Task UnpackMsiAsync(string id, string msi, string target, string log, CancellationToken cancellationToken)
     {
         if (!OperatingSystem.IsWindows())
-            throw new PlatformNotSupportedException("The LibreOffice package is a Windows installer.");
+            throw new PlatformNotSupportedException($"The {id} package is a Windows installer.");
         Directory.CreateDirectory(target);
         // msiexec parses its own command line: the property value must be quoted as TARGETDIR="...", so the
         // argument list escaping of ProcessRunner cannot be used here.
@@ -230,7 +245,7 @@ public sealed class EngineInstaller
             throw new InvalidOperationException(process.ExitCode switch
             {
                 1618 => "Another installation is running. Try again when it has finished.",
-                _ => $"Unpacking LibreOffice failed (msiexec exit code {process.ExitCode}, log: {log}).",
+                _ => $"Unpacking {id} failed (msiexec exit code {process.ExitCode}, log: {log}).",
             });
         }
     }
