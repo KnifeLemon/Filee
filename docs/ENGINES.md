@@ -12,16 +12,16 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML |
 | Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT** (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
-| Spreadsheets | built in | **XLSX ↔ CSV** (one CSV per sheet) |
+| Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **DOCX, XLSX, CSV, PPTX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); HTML, ODT, RTF → HWPX with Pandoc |
+| **HWPX writer** | built in | **DOCX, XLSX, XLS, ODS, CSV, TSV, PPTX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); HTML, ODT, RTF → HWPX with Pandoc |
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP, 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
-| LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS; HWP/HWPX → DOCX/ODT |
+| LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, PPT, RTF, ODT and ODP → PDF and to each other, output as DOCX/ODT/XLS; HWP/HWPX → DOCX/ODT |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium) |
 
-DOCX, XLSX and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
+DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
 and rendered by rhwp. LibreOffice's cost is set so the built-in route always wins where one exists.
 
 Filee never uses software installed on the system (Microsoft Office, an installed LibreOffice, programs on `PATH`):
@@ -88,7 +88,7 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
   - pictures inline and floating, text boxes, rectangles/ellipses/lines with solid or gradient fills, groups;
   - footnotes, endnotes, bookmarks, hyperlinks (web and within the document, e.g. a table of contents);
   - Word's document grid ("lines"), which 한글 does not have, as an "at least" line spacing.
-- **XLSX and CSV** (`Office/Sheets`): every visible sheet becomes a section with one table. Cells show what Excel
+- **XLSX, XLS, ODS, CSV and TSV** (`Office/Sheets`, see [Spreadsheets](#spreadsheets)): every visible sheet becomes a section with one table. Cells show what Excel
   shows (number formats via ExcelNumberFormat, dates, percentages, cached formula results), with fonts, fills,
   borders, alignment and merged cells; frozen top rows repeat on every page. The page is A4 with narrow margins,
   landscape when the columns are much wider than portrait, and the table is scaled to the page width like
@@ -121,6 +121,30 @@ text) and LibreOffice + H2Orestart (opens it), see `tests/Filee.Engines.Tests/Do
 `OfficeTests.cs`.
 
 Not converted: Word charts, SmartArt, equations (kept as text), free-form shapes, tracked changes and comments.
+
+## Spreadsheets
+
+`SpreadsheetConverter` (engine id `spreadsheet`) converts between XLSX, XLS (also `.xlt`), ODS, CSV and TSV (also
+`.tab`) in-process; every format goes through one in-memory workbook (`Office/Sheets/Workbook.cs`) whose cells keep
+the text the spreadsheet shows, the value behind it and its Excel number format.
+
+| Format | Read | Written |
+|---|---|---|
+| XLSX | own reader: values, number formats, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
+| XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges, horizontal / vertical alignment; widths, heights and hidden rows / columns from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
+| ODS | own reader (`content.xml`, `styles.xml`, `settings.xml`): repeated rows / columns (the empty repeats up to the end of the sheet are skipped), spans, every value type, the text Calc shows (`text:p`), data styles as Excel codes, cell styles, widths, heights, hidden rows / columns / sheets, frozen and header rows | every sheet, typed cells (float, percentage, currency, date, time, boolean) with data styles and the shown text, styles, merges, widths, heights, hidden rows / columns, frozen rows |
+| CSV / TSV | delimiter (CSV: comma, semicolon or tab; TSV: tab) and encoding (UTF-8 / UTF-16 with BOM, else CP949) | UTF-8 with BOM, CRLF, one file per sheet |
+
+- Number formats: Excel codes and OpenDocument data styles are converted both ways (`OdsNumberStyles.cs`) for
+  digits, decimals, grouping, thousands scaling, percent, scientific, currency symbols, literal text, colours,
+  positive / negative / zero sections, dates, times and durations. Codes with conditions (`[>100]`), fractions or
+  text between digits are written as plain numbers (General).
+- Column widths use Excel's unit (a digit of Calibri 11 = 7 px); in ODS a character is 5.25 pt. LibreOffice
+  measures with its own fonts, so a width can differ by up to a fifth after LibreOffice opens the file.
+- XLS cells keep the default font, fill and borders (ExcelDataReader does not expose them); XLS output still
+  needs LibreOffice. Password-protected XLS and ODS files stop with a clear message.
+- Not converted: formulas (their cached results are kept), charts, pictures, comments, conditional formatting,
+  data validation, print areas and page breaks.
 
 ## Fonts
 
