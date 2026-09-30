@@ -123,8 +123,15 @@ internal sealed partial class DocxReader
         var geometry = Attr(spPr?.Element(A + "prstGeom"), "prst");
         if (wsp.Element(Wps + "txbx")?.Element(W + "txbxContent") is { } content)
         {
-            if (geometry is "rect" or "roundRect" or "flowChartProcess" or "flowChartAlternateProcess")
-                return TextBox(wsp, content, width, height, anchor, fill ?? gradient?.Colors[0]);
+            if (geometry is "rect" or "roundRect" or "flowChartProcess" or "flowChartAlternateProcess" or "ellipse" or "flowChartConnector")
+            {
+                var framed = TextBox(wsp, content, width, height, anchor, fill ?? gradient?.Colors[0]);
+                if (geometry is "ellipse" or "flowChartConnector")
+                    framed.Shape = HShapeKind.Ellipse;
+                else if (geometry is "roundRect" or "flowChartAlternateProcess")
+                    framed.CornerRatio = 20;
+                return framed;
+            }
             // Text on a free-form or decorative shape: keep the text, drop the outline 한글 cannot draw.
             if (string.IsNullOrWhiteSpace(content.Value))
                 return null;

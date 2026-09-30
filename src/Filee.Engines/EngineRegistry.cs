@@ -2,6 +2,7 @@
 
 using Filee.Core.Conversion;
 using Filee.Engines.Archives;
+using Filee.Engines.Email;
 using Filee.Engines.Fonts;
 using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
@@ -32,11 +33,15 @@ public static class EngineRegistry
         new UnhwpConverter(),
         new MarkdownConverter(),
         new SpreadsheetConverter(),
+        new OoxmlConverter(),
         new HwpxConverter(),
         new ArchiveConverter(),
         new VectorConverter(),
         new IcnsConverter(),
         new FontConverter(),
+        new DocxWriterConverter(),
+        new PdfTextConverter(),
+        new EmlConverter(),
         new PandocConverter(),
         new GhostscriptConverter(),
         new LibreOfficeConverter(env),

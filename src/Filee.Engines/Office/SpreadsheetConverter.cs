@@ -1,4 +1,5 @@
-// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS and XLT are read, not written).
+// Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT and the XLSM / XLTX
+// variants are read, not written).
 // XLSX / XLS / ODS / CSV / TSV → PDF, HWPX and HTML go through the HWPX writer (sheets become 한글 tables), see
 // HwpxConverter and SheetDocument.
 
@@ -11,7 +12,7 @@ namespace Filee.Engines.Office;
 /// <summary>Converts between spreadsheet formats in-process.</summary>
 public sealed class SpreadsheetConverter : IConverter
 {
-    private static readonly string[] Sources = ["xlsx", "xls", "ods", "csv", "tsv"];
+    private static readonly string[] Sources = ["xlsx", "xlsm", "xltx", "xls", "ods", "csv", "tsv"];
     private static readonly string[] Targets = ["xlsx", "ods", "csv", "tsv"];
 
     public string Id => "spreadsheet";

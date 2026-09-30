@@ -144,9 +144,9 @@ internal static class HwpxAssert
         }
     }
 
-    private static readonly SemaphoreSlim LibreOfficeGate = new(1, 1);
+    internal static readonly SemaphoreSlim LibreOfficeGate = new(1, 1);
 
-    private sealed class FixedPath(string path) : IOutputAllocator
+    internal sealed class FixedPath(string path) : IOutputAllocator
     {
         public string? Allocate(string extension, string? suffix = null) => path;
     }

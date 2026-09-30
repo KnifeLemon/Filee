@@ -21,6 +21,8 @@
     <PackageReference Include="Svg.Skia" />
     <PackageReference Include="SharpCompress" />
     <PackageReference Include="ExcelDataReader" />
+    <PackageReference Include="PdfPig" />
+    <PackageReference Include="MimeKitLite" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 

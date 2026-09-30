@@ -40,7 +40,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "email", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
@@ -92,7 +92,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "email", "vector", "icns", "font", "cad", "archive", "ebook", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         var ids = store.Profiles.Select(p => p.Id).ToList();
         Assert.Equal(ids.IndexOf("office") + 1, ids.IndexOf("spreadsheets"));
         Assert.Equal(ids.IndexOf("office") + 2, ids.IndexOf("presentations"));

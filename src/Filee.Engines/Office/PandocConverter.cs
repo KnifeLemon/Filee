@@ -1,12 +1,13 @@
 // General document conversions with Pandoc (GPL-2.0-or-later, bundled as a separate program in engines/pandoc).
-// Adds Markdown ↔ DOCX / ODT / RTF and HTML ↔ DOCX / ODT; Markdown → HTML / TXT / HWPX is built in (MarkdownConverter).
+// Adds Markdown ↔ DOCX / ODT / RTF, HTML ↔ DOCX / ODT, and reStructuredText and LaTeX ↔ Markdown / HTML / DOCX / ODT
+// (and → RTF, EPUB, TXT); Markdown → HTML / TXT / HWPX / DOCX is built in (MarkdownConverter, the HWPX and DOCX writers).
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office;
 
-/// <summary>Markdown, HTML, DOCX, ODT and RTF conversions through Pandoc.</summary>
+/// <summary>Markdown, HTML, DOCX, ODT, RTF, reStructuredText and LaTeX conversions through Pandoc.</summary>
 public sealed class PandocConverter : IConverter
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
@@ -18,6 +19,8 @@ public sealed class PandocConverter : IConverter
         ["docx"] = "docx",
         ["odt"] = "odt",
         ["rtf"] = "rtf",
+        ["rst"] = "rst",
+        ["tex"] = "latex",
     };
 
     private static readonly Dictionary<string, string> Writers = new()
@@ -28,7 +31,13 @@ public sealed class PandocConverter : IConverter
         ["odt"] = "odt",
         ["rtf"] = "rtf",
         ["txt"] = "plain",
+        ["rst"] = "rst",
+        ["tex"] = "latex",
+        ["epub"] = "epub",
     };
+
+    /// <summary>reStructuredText and LaTeX: what Pandoc reads and writes well (no PDF, which would need a TeX engine).</summary>
+    private static readonly string[] Markup = ["rst", "tex"];
 
     private string? _pandoc;
 
@@ -44,6 +53,14 @@ public sealed class PandocConverter : IConverter
         // Overlaps with LibreOffice (the fallback engine, which costs more).
         .. new[] { "docx", "odt" }.Select(to => new ConversionEdge("html", to, 14)),
         .. new[] { "docx", "odt" }.Select(from => new ConversionEdge(from, "html", 14)),
+        // reStructuredText and LaTeX in / out: only Pandoc does this.
+        .. from markup in Markup
+           from to in new[] { "md", "html", "docx", "odt", "rtf", "epub", "txt", "rst", "tex" }
+           where to != markup
+           select new ConversionEdge(markup, to),
+        .. from markup in Markup
+           from source in new[] { "md", "html", "docx", "odt" }
+           select new ConversionEdge(source, markup),
     ];
 
     public EngineStatus GetStatus()
@@ -61,9 +78,9 @@ public sealed class PandocConverter : IConverter
 
         progress?.Report(0.1);
         List<string> args = [step.InputPath, "-f", Readers[step.From], "-t", Writers[step.To], "-o", output];
-        if (step.To == "html")
+        if (step.To is "html" or "tex")
             args.Add("--standalone");
-        if (step.To is "md" or "html")
+        if (step.To is "md" or "html" or "rst" or "tex")
             args.Add("--extract-media=" + Path.Combine(Path.GetDirectoryName(output)!, Path.GetFileNameWithoutExtension(output) + "_files"));
 
         ProcessResult result;
