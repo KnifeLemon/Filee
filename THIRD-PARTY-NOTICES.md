@@ -30,6 +30,12 @@ Bundled with the installer:
 | Component | License | Project |
 |---|---|---|
 | rhwp | MIT | https://github.com/edwardkim/rhwp |
+| 7-Zip (console: `7z.exe`, `7z.dll`) | GNU LGPL-2.1-or-later; parts of `7z.dll`: LGPL with the unRAR license restriction, BSD-3-Clause, BSD-2-Clause | https://www.7-zip.org |
+
+7-Zip is Copyright (C) 1999-2026 Igor Pavlov; its `License.txt` is installed next to it (`engines/7zip`). The RAR
+decompression code in `7z.dll` is under the unRAR license restriction: it may be used to unpack RAR archives, but not
+to develop a RAR (WinRAR) compatible archiver or to re-create the RAR compression algorithm. Filee only reads RAR
+files. Source code: https://github.com/ip7z/7zip.
 
 Downloaded from their official release pages when the user chooses to install them
 (pinned in `src/Filee.Engines/Infrastructure/engines.json`):

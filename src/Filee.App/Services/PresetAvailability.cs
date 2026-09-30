@@ -15,6 +15,14 @@ public sealed class PresetAvailability(ConverterCatalog catalog, ILocalizer loc,
     /// </summary>
     public string? Check(Preset preset, IReadOnlyList<FileFormat> formats)
     {
+        // "Compress into one archive" packs the files as they are, so any file works, even of an unknown type.
+        if (preset.Archive.CombineIntoOne
+            && FormatRegistry.FindById(preset.TargetFormat) is { Category: FormatCategory.Archive } archive
+            && archive.Id != FormatRegistry.Folder)
+        {
+            return catalog.All.OfType<IFileCombiner>().Any(c => c.CanCombineInto(archive.Id)) ? null : loc["error.no_route"];
+        }
+
         if (formats.Count == 0)
             return loc["error.unsupported_source"];
 
