@@ -4,12 +4,12 @@
 
 <p align="center">
   <b>用拖放操作的免费开源 Windows 文件格式转换器。</b><br>
-  按住 <kbd>Ctrl</kbd> 拖动文件，光标处会弹出格式圆环，放到想要的格式上即可。
+  按住一个键（默认 <kbd>Ctrl</kbd>）拖动文件，光标处会弹出格式圆环，放到想要的格式上即可。
 </p>
 
 <p align="center">
   <a href="https://filee.sh/zh-cn/"><b>官网</b></a> ·
-  <a href="https://github.com/KnifeLemon/Filee/releases/latest/download/Filee-win-Setup.exe"><b>下载</b></a> ·
+  <a href="https://github.com/KnifeLemon/Filee/releases/latest"><b>下载</b></a> ·
   <a href="#快速开始">快速开始</a> ·
   <a href="#文档">文档</a>
 </p>
@@ -26,9 +26,9 @@
 
 <table>
   <tr>
-    <td width="33%" valign="top"><b>就在光标旁边</b><br>无需打开程序窗口。只显示适合当前拖动文件的格式，就在你的光标处。</td>
-    <td width="33%" valign="top"><b>无需韩文办公软件处理 HWP/HWPX</b><br>内置 HWPX 写入器保留 Word 文档的版式；rhwp 负责 HWP ↔ HWPX、PDF 和 PNG。</td>
-    <td width="33%" valign="top"><b>只在你的电脑上</b><br>不上传任何内容。离线也能使用，结果保存在原文件旁边。</td>
+    <td width="33%" valign="top"><b>就在光标旁</b><br>无需打开应用窗口。只显示适合当前拖动文件的格式，就在你所在的位置。</td>
+    <td width="33%" valign="top"><b>170 多种格式，无需其他软件</b><br>图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD，无需 Office、韩文办公软件或 LibreOffice。</td>
+    <td width="33%" valign="top"><b>只在你的电脑上</b><br>不上传任何文件。Filee 离线工作，结果保存在原文件旁边。</td>
   </tr>
 </table>
 
@@ -41,15 +41,18 @@
 
 ## 功能
 
-- **光标处的格式圆环。** 按住修饰键拖动文件（默认 <kbd>Ctrl</kbd>）。修饰键组合、鼠标按键、拖动距离、长按手势，
+- **光标处的格式圆环。** 按住修饰键（默认 <kbd>Ctrl</kbd>）拖动文件即可。修饰键组合、鼠标按键、拖动距离、长按手势，
   以及对选中文件使用的快捷键都可以自定义。
-- **按文件类型的工具栏。** 图片、PDF、文档、电子表格、演示文稿、HWP/HWPX、文本，以及用于混合文件的通用配置。
-  直接在圆环上拖放来添加、移除和排序预设；右键或 ✎ 编辑预设。
-- **预设。** 质量、缩放、DPI、元数据、TIFF 压缩、ICO 尺寸、PDF 合并与拆分、页码范围、
-  保存位置、文件名模板和重名处理。
-- **批量转换。** 1 个或 100 个文件并行转换，某个文件失败也不影响其余文件。
-- **自动规划路径。** 自动找到多步转换路径（例如 HWPX → PDF → PNG），每一步使用最擅长的引擎。
-- **四种使用方式。** 拖动手势、资源管理器右键和“发送到”、对资源管理器中选中的文件按快捷键、主窗口拖放区。
+- **按文件类型的工具栏。** 图片、PDF、文档、表格、演示文稿、HWP、文本、电子书、视频、音频、矢量图、压缩包、CAD 和字体，
+  以及用于混合选择的工具栏。直接在圆环上拖放来排列预设，以标签方式添加扩展名，右键或 ✎ 编辑预设。
+- **预设。** 质量、缩放、DPI、元数据、PDF 合并与拆分、页码范围、视频画质与分辨率、音频码率、压缩级别、保存位置、
+  文件名模板和重名处理。
+- **批量转换。** 1 个或 100 个文件并行转换，某个文件失败也不影响其余文件。"打包成一个 ZIP"可把任意文件压缩为一个压缩包，
+  "合并 PDF"生成一个 PDF。
+- **自动规划路径。** 自动找到多步转换路径（例如 HWP → HWPX → DOCX、EPUB → HWPX → PDF → PNG），每一步使用最擅长的引擎。
+- **四种使用方式。** 拖动手势、资源管理器右键菜单（Windows 11 也可加入主菜单）和“发送到”、对资源管理器中选中的文件按
+  快捷键、主窗口拖放区。
+- **引擎一目了然。** “设置 → 转换引擎”列出每个引擎的版本和可转换内容；可选引擎下载时显示速度和剩余时间。
 - **柔和的动画界面。** 浅色、深色或跟随系统，自定义强调色和圆角，旧电脑可开启“减少动画”。
 - **简体中文、English、한국어**，默认跟随 Windows 语言。
 
@@ -57,19 +60,24 @@
 
 | 源格式 | 目标格式 |
 |---|---|
-| **图片**：JPG、PNG、WEBP、TIFF、BMP、GIF、ICO、AVIF、JPEG XL、JPEG 2000、PSD/PSB、TGA、PPM；HEIC、GIMP XCF、相机 RAW、EMF/WMF（读取） | 任意图片格式、ICNS、PDF |
-| **矢量图**：SVG、SVGZ、AI、EPS、PS；ICNS | PDF（保持矢量）、PNG 等图片、SVG ↔ SVGZ、PDF → EPS/PS |
-| **PDF** | PNG、JPG、TIFF、合并、拆分、页码范围 |
-| **文档**：DOCX、DOC、ODT、RTF | PDF、HWPX、互相转换、TXT、HTML |
-| **电子表格**：XLSX、XLS、ODS、CSV | PDF、XLSX ↔ CSV、HWPX、HTML |
-| **演示文稿**：PPTX、PPT、ODP | PDF、PNG、JPG、HWPX |
-| **HWP**：HWP、HWPX | PDF、HWPX ↔ HWP、DOCX、TXT、Markdown、HTML |
-| **文本**：TXT、Markdown、HTML | DOCX、HWPX、PDF |
+| **图片**：JPG、PNG、WEBP、AVIF、TIFF、BMP、GIF、ICO、ICNS、JPEG XL、JPEG 2000、PSD/PSB、TGA、PPM；HEIC、GIMP XCF、相机 RAW（CR2、CR3、NEF、ARW、DNG 等）仅读取 | 上述格式互转、PDF、缩放、灰度 |
+| **矢量图**：SVG、SVGZ、EMF、WMF、AI · EPS、PS¹ · CDR、VSD、CGM、ODG² | PDF（矢量）、PNG 等图片、SVG ↔ SVGZ、PDF → EPS/PS¹ |
+| **PDF** | DOCX、HWPX、TXT、PNG、JPG、TIFF、CBZ；合并、拆分、页码范围 |
+| **文档**：DOCX、DOCM、DOTX、EML · DOC、ODT、RTF、WPS、WPD、Pages 等² | PDF、DOCX、HWPX、EPUB、TXT、HTML |
+| **表格**：XLSX、XLSM、XLS、ODS、CSV、TSV · Numbers、ET² | PDF、XLSX、ODS、CSV、TSV、HWPX、HTML |
+| **演示文稿**：PPTX、PPTM、POTX、PPSX · PPT、ODP、Keynote² | PDF、PNG、JPG、DOCX、HWPX |
+| **HWP**：HWP、HWPX | PDF、PNG、DOCX、HWPX ↔ HWP、TXT、Markdown、HTML |
+| **文本**：TXT、Markdown、HTML · reStructuredText、LaTeX³ | PDF、DOCX、HWPX、EPUB |
+| **电子书**：EPUB、MOBI、AZW3、AZW、AZW4、FB2、CBZ、CBR、CB7、HTMLZ、TXTZ · LIT、LRF、CHM、PDB 等⁴ | PDF、EPUB、DOCX、TXT、HTML、HWPX · MOBI、AZW3⁴ |
+| **视频**⁵：MP4、MOV、MKV、WEBM、AVI、WMV、FLV、MPEG、TS、M2TS、3GP、OGV、VOB 等 | MP4、WEBM、MOV、MKV、AVI、GIF、MP3、M4A、720p |
+| **音频**⁵：MP3、M4A、AAC、WAV、FLAC、OGG、OPUS、WMA、AIFF、AMR 等 | MP3、M4A、WAV、FLAC、OGG、OPUS、AAC |
+| **压缩包**：ZIP、7Z、RAR、TAR、TAR.GZ、TAR.BZ2、TAR.XZ、GZ、ISO、CAB、DMG、ALZ、EGG 等 | 解压、ZIP、7Z、TAR、TAR.GZ；多个文件 → 一个 ZIP |
+| **CAD**：DWG、DXF | PDF、SVG、PNG、DWG ↔ DXF |
+| **字体**：TTF、OTF、WOFF、WOFF2、EOT | 互相转换 |
 
-DOCX、XLSX、CSV、PPTX → PDF，所有 HWP 转换和 Markdown 装好即用：无需 Microsoft Office、韩文办公软件或 LibreOffice，
-Filee 也从不调用电脑上已安装的程序。较旧的格式（DOC、XLS、PPT、OpenDocument）以及保存为 DOCX / ODT 使用 LibreOffice，
-HTML 与 Markdown ↔ Word 使用 Pandoc，EPS / PostScript 使用 Ghostscript，这些可选引擎会在首次启动时询问是否下载。
-HWPX 的写入与验证方式见 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)。
+未标注的格式装好即用：无需 Microsoft Office、韩文办公软件或 LibreOffice，Filee 也从不调用电脑上已安装的程序。首次启动时
+可选择下载的引擎：¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg。各引擎保留和不支持的内容见
+[docs/ENGINES.md](docs/ENGINES.md)。
 
 ## 截图
 
@@ -94,11 +102,12 @@ HWPX 的写入与验证方式见 [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer)�
 
 ## 快速开始
 
-**安装：** 下载 [`Filee-win-Setup.exe`](https://github.com/KnifeLemon/Filee/releases/latest/download/Filee-win-Setup.exe)
-（Windows 10/11，64 位），或在 [Releases](https://github.com/KnifeLemon/Filee/releases) 页面选择其他版本。
+**安装：** 在 [Releases](https://github.com/KnifeLemon/Filee/releases/latest) 下载最新的
+`Filee-<版本>-win-Setup.exe`（Windows 10/11，64 位）。
 
-- **安装包很小。** 图片、PDF、HWP/HWPX、Markdown、DOCX / XLSX / PPTX → PDF 以及 XLSX ↔ CSV 装好即用。
-- **大型引擎按需下载。** 首次启动时会询问是否下载 LibreOffice（DOC、XLS、PPT 等旧版办公格式，约 420 MB）和 Pandoc（HTML 与 Markdown ↔ Word，约 42 MB）；之后可随时在“设置 → 转换引擎”中安装或删除。
+- **安装包很小。** 图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD 装好即用。
+- **大型引擎按需下载。** 首次启动时会列出视频/音频引擎（FFmpeg，约 100 MB）和少见格式引擎（LibreOffice、calibre、
+  Ghostscript、Pandoc）及其大小；之后可随时在“设置 → 转换引擎”中安装或删除，并显示下载速度和剩余时间。
 - **有更新会提醒你。** 新版本发布后，Filee 会在菜单底部、通知和托盘菜单中提示，点击即可打开最新发布页面下载。
   运行新的安装程序即可更新，设置会保留。
 
