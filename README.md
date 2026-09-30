@@ -61,7 +61,8 @@
 
 | From | To |
 |---|---|
-| **Images**: JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, HEIC (read) | any image format, PDF |
+| **Images**: JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM; HEIC, GIMP XCF, camera RAW, EMF/WMF (read) | any image format, ICNS, PDF |
+| **Vector**: SVG, SVGZ, AI, EPS, PS; ICNS | PDF (vector), PNG and other images, SVG ↔ SVGZ, PDF → EPS/PS |
 | **PDF** | PNG, JPG, TIFF, merge, split, page ranges |
 | **Documents**: DOCX, DOC, ODT, RTF | PDF, HWPX, each other, TXT, HTML |
 | **Spreadsheets**: XLSX, XLS, ODS, CSV | PDF, XLSX ↔ CSV, HWPX, HTML |
@@ -71,8 +72,8 @@
 
 DOCX, XLSX, CSV and PPTX → PDF, everything HWP and Markdown work out of the box: no Microsoft Office, Hancom Office or
 LibreOffice needed, and Filee never uses programs installed on your PC. Older formats (DOC, XLS, PPT, OpenDocument)
-and saving as DOCX / ODT use LibreOffice, HTML / Markdown ↔ Word use Pandoc: optional engines that Filee offers to
-download on first start.
+and saving as DOCX / ODT use LibreOffice, HTML / Markdown ↔ Word use Pandoc, EPS / PostScript use Ghostscript: optional
+engines that Filee offers to download on first start.
 How HWPX is written and checked: [docs/ENGINES.md](docs/ENGINES.md#hwpx-writer).
 
 ## Screenshots

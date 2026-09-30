@@ -1,9 +1,12 @@
 // Optional engine downloads without the network: a fake HTTP handler serves generated archives.
 
+using System.Formats.Tar;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
+using System.Text;
 using Filee.Engines.Infrastructure;
+using SharpCompress.Compressors.ZStandard;
 
 namespace Filee.Engines.Tests;
 
@@ -45,6 +48,28 @@ public sealed class EngineInstallerTests : IDisposable
                 using var writer = new StreamWriter(zip.CreateEntry(path).Open());
                 writer.Write(text);
             }
+        }
+        return buffer.ToArray();
+    }
+
+    /// <summary>A conda package: a zip with metadata and the files as a zstd-compressed tarball.</summary>
+    private static byte[] Conda(params (string Path, string Text)[] files)
+    {
+        using var tarball = new MemoryStream();
+        using (var zstd = new CompressionStream(tarball, level: 3, leaveOpen: true))
+        using (var tar = new TarWriter(zstd, TarEntryFormat.Pax, leaveOpen: true))
+        {
+            foreach (var (path, text) in files)
+                tar.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, path) { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(text)) });
+        }
+
+        using var buffer = new MemoryStream();
+        using (var zip = new ZipArchive(buffer, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            using (var writer = new StreamWriter(zip.CreateEntry("metadata.json").Open()))
+                writer.Write("{\"conda_pkg_format_version\": 2}");
+            using (var entry = zip.CreateEntry("pkg-tool-1.0-0.tar.zst").Open())
+                entry.Write(tarball.ToArray());
         }
         return buffer.ToArray();
     }
@@ -142,6 +167,36 @@ public sealed class EngineInstallerTests : IDisposable
 
         Assert.Equal(3, server.Requests.Count);
         Assert.True(File.Exists(Path.Combine(_root, "tool", "tool.exe")));
+    }
+
+    [Fact]
+    public async Task Conda_packages_unpack_their_windows_binaries_and_get_the_runtime_next_to_them()
+    {
+        var gs = Conda(("Library/bin/gswin64c.exe", "exe"), ("Library/bin/gsdll64.dll", "dll"), ("Library/share/doc.txt", "doc"), ("info/index.json", "{}"));
+        var runtime = Conda(("Library/bin/vcruntime140.dll", "runtime"), ("Library/bin/msvcp140.dll", "c++"));
+        var ghostscript = Component("ghostscript", "conda", gs);
+        var vcruntime = Component("vcruntime", "conda", runtime);
+        var installer = Installer(new FakeServer(new() { [ghostscript.Url] = gs, [vcruntime.Url] = runtime }), ghostscript, vcruntime);
+        var package = new EnginePackage("ghostscript", ["ghostscript", "vcruntime"], 1, ["ghostscript"]);
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        var folder = Path.Combine(_root, "ghostscript");
+        Assert.Equal(["gsdll64.dll", "gswin64c.exe", "msvcp140.dll", "vcruntime140.dll"],
+            Directory.GetFiles(folder).Select(Path.GetFileName).Where(n => !n!.StartsWith('.')).Order(StringComparer.Ordinal));
+        Assert.Equal("runtime", File.ReadAllText(Path.Combine(folder, "vcruntime140.dll")));
+        Assert.True(installer.IsInstalled(package));
+    }
+
+    [Fact]
+    public void Conda_packages_cannot_write_outside_the_engine_folder()
+    {
+        Directory.CreateDirectory(_root);
+        var file = Path.Combine(_root, "evil.conda");
+        File.WriteAllBytes(file, Conda(("Library/bin/../../../evil.txt", "evil")));
+
+        Assert.Throws<InvalidDataException>(() => EngineInstaller.UnpackConda(file, Path.Combine(_root, "target"), CancellationToken.None));
+        Assert.False(File.Exists(Path.Combine(_root, "evil.txt")));
     }
 
     [Fact]

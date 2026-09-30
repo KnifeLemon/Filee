@@ -316,6 +316,8 @@
   "engines.package.libreoffice.description": "Only needed for older and less common formats: DOC, XLS, PPT and OpenDocument files, conversions to DOCX, ODT and ODS, and HWP → DOCX (includes the H2Orestart filter and Java). DOCX, XLSX, PPTX and CSV convert without it.",
   "engines.package.pandoc.name": "Pandoc (HTML and Markdown ↔ Word)",
   "engines.package.pandoc.description": "Markdown ↔ DOCX, ODT and RTF, and HTML, ODT and RTF → HWPX. Markdown → PDF, HWPX, HTML and TXT, and DOCX → HWPX work without it.",
+  "engines.package.ghostscript.name": "Ghostscript (EPS and PostScript)",
+  "engines.package.ghostscript.description": "EPS, PS and older Illustrator files → PDF, PNG and other images, and PDF or SVG → EPS/PS. SVG and AI files saved with PDF compatibility convert without it.",
   "engines.package.size": "Download {0} · {1} on disk",
   "engines.progress_detail": "{0} of {1} · {2}/s · {3}",
   "engines.eta.estimating": "estimating time left…",

@@ -13,7 +13,7 @@ using SkiaSharp;
 
 namespace Filee.Engines.Pdf;
 
-/// <summary>PDF → PNG / JPG / WEBP / TIFF / BMP / GIF / AVIF / ICO.</summary>
+/// <summary>PDF → every raster format ImageMagick writes (PNG, JPG, WEBP, TIFF, …, PSD, TGA, PPM).</summary>
 public sealed class PdfiumConverter : IConverter
 {
     private static readonly HashSet<string> MultiPageTargets = ["tiff", "gif"];
@@ -39,6 +39,7 @@ public sealed class PdfiumConverter : IConverter
             var options = new RenderOptions(Dpi: dpi, WithAnnotations: true, WithFormFill: true, BackgroundColor: SKColors.White);
             var written = new List<string>();
             var collected = new List<IMagickImage<byte>>();
+            var (format, extension) = ImageEncoder.OutputFormat(step.To, step.Preset.Image);
 
             try
             {
@@ -60,10 +61,10 @@ public sealed class PdfiumConverter : IConverter
                     {
                         using (frame)
                         {
-                            var path = step.Output.Allocate(step.To, pages.Count > 1 ? $"_p{pageNumber}" : null);
+                            var path = step.Output.Allocate(extension, pages.Count > 1 ? $"_p{pageNumber}" : null);
                             if (path is not null)
                             {
-                                frame.Write(path, ImageEncoder.ToMagickFormat(step.To));
+                                frame.Write(path, format);
                                 written.Add(path);
                             }
                         }
@@ -72,7 +73,7 @@ public sealed class PdfiumConverter : IConverter
                 }
 
                 if (collected.Count > 0)
-                    written.AddRange(ImageEncoder.Write(collected, step.To, step.Output));
+                    written.AddRange(ImageEncoder.Write(collected, step.To, step.Output, step.Preset.Image));
             }
             finally
             {

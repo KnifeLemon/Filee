@@ -316,6 +316,8 @@
   "engines.package.libreoffice.description": "仅用于较旧或不常见的格式：DOC、XLS、PPT 和 OpenDocument 文件，转换为 DOCX、ODT 和 ODS，以及 HWP → DOCX（含 H2Orestart 过滤器和 Java）。DOCX、XLSX、PPTX 和 CSV 无需它即可转换。",
   "engines.package.pandoc.name": "Pandoc（HTML 与 Markdown ↔ Word）",
   "engines.package.pandoc.description": "支持 Markdown ↔ DOCX、ODT、RTF，以及 HTML、ODT、RTF → HWPX。Markdown → PDF、HWPX、HTML、TXT 和 DOCX → HWPX 无需此引擎。",
+  "engines.package.ghostscript.name": "Ghostscript（EPS 与 PostScript）",
+  "engines.package.ghostscript.description": "EPS、PS 和旧版 Illustrator 文件 → PDF、PNG 等图片，以及 PDF 或 SVG → EPS/PS。SVG 和以 PDF 兼容方式保存的 AI 文件无需它即可转换。",
   "engines.package.size": "下载 {0} · 占用 {1}",
   "engines.progress_detail": "{0} / {1} · {2}/s · {3}",
   "engines.eta.estimating": "正在估算剩余时间…",
