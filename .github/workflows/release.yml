@@ -47,9 +47,9 @@ jobs:
 
       # Only the small rhwp is bundled. LibreOffice (+ H2Orestart, Java) and Pandoc are large and are downloaded by
       # the app when the user picks them (first-run setup or Settings > Engines), see engines.json.
-      - name: Bundle conversion engines (rhwp)
+      - name: Bundle conversion engines (rhwp, 7-Zip)
         shell: pwsh
-        run: ./build/fetch-engines.ps1 -Only rhwp -Destination "${{ env.PUBLISH_DIR }}/engines"
+        run: ./build/fetch-engines.ps1 -Only rhwp,7zip -Destination "${{ env.PUBLISH_DIR }}/engines"
 
       - name: Install Velopack CLI
         run: dotnet tool install -g vpk

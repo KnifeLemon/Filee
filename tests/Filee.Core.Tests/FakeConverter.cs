@@ -49,6 +49,26 @@ internal sealed class FakeMerger : IPdfMerger
     }
 }
 
+/// <summary>Test double for "Compress into one archive": writes the input names into the output file.</summary>
+internal sealed class FakeCombiner : IFileCombiner
+{
+    public List<string> Inputs { get; } = [];
+
+    public bool Throw { get; set; }
+
+    public bool CanCombineInto(string format) => true;
+
+    public Task CombineAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Filee.Core.Presets.Preset preset,
+        string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        if (Throw)
+            throw new InvalidOperationException("boom");
+        Inputs.AddRange(inputPaths);
+        File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>Creates and removes a unique temp directory.</summary>
 internal sealed class TempDir : IDisposable
 {

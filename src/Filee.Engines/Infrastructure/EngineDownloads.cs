@@ -22,7 +22,7 @@ public static class EngineDownloads
     public static IReadOnlyDictionary<string, EngineComponent> Components { get; } = Load();
 
     /// <summary>
-    /// Packages offered in Settings → Engines and on first run. rhwp is not listed: it is small and bundled.
+    /// Packages offered in Settings → Engines and on first run. rhwp and 7-Zip are not listed: they are small and bundled.
     /// </summary>
     public static IReadOnlyList<EnginePackage> Packages { get; } =
     [

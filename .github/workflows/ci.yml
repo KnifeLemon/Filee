@@ -28,10 +28,11 @@ jobs:
       - name: Build
         run: dotnet build Filee.slnx --no-restore -c Release
 
-      # rhwp + Pandoc are small; with them the HWP/HWPX engine tests run too (LibreOffice is skipped to save time).
-      - name: Fetch rhwp and Pandoc for engine tests
+      # rhwp, Pandoc and 7-Zip are small; with them the HWP/HWPX and archive engine tests run too (LibreOffice is
+      # skipped to save time).
+      - name: Fetch rhwp, Pandoc and 7-Zip for engine tests
         shell: pwsh
-        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc
+        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip
 
       - name: Test
         run: dotnet test Filee.slnx --no-build -c Release --logger "trx" --results-directory TestResults
