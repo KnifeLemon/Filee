@@ -18,6 +18,8 @@
     <PackageReference Include="Unhwp" />
     <PackageReference Include="Markdig" />
     <PackageReference Include="ExcelNumberFormat" />
+    <PackageReference Include="Svg.Skia" />
+    <PackageReference Include="SharpCompress" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 

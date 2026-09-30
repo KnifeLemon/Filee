@@ -9,20 +9,39 @@ namespace Filee.Engines.Magick;
 
 internal static class ImageEncoder
 {
-    /// <summary>Image formats ImageMagick can read.</summary>
-    public static readonly string[] Readable = ["png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif", "heic"];
+    /// <summary>
+    /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources).
+    /// Camera RAW is decoded by LibRaw, XCF and HEIC are read only. EMF/WMF are Windows metafiles, which ImageMagick
+    /// renders through GDI+ on Windows only (<see cref="Metafiles"/>).
+    /// </summary>
+    public static readonly string[] Readable =
+    [
+        "png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif", "heic",
+        "jxl", "jp2", "psd", "psb", "tga", "ppm", "xcf", "raw",
+    ];
+
+    /// <summary>Vector metafiles ImageMagick rasterizes (Windows only: it uses GDI+).</summary>
+    public static readonly string[] Metafiles = ["emf", "wmf"];
 
     /// <summary>
     /// Image formats ImageMagick can write. HEIC is missing on purpose: the bundled build has no HEVC encoder
     /// (patent licensing), so we offer AVIF instead.
     /// </summary>
-    public static readonly string[] Writable = ["png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif"];
+    public static readonly string[] Writable =
+    [
+        "png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif",
+        "jxl", "jp2", "psd", "psb", "tga", "ppm",
+    ];
 
     /// <summary>Formats that store several frames/pages in one file.</summary>
     private static readonly HashSet<string> MultiFrame = ["tiff", "gif"];
 
     /// <summary>Formats without an alpha channel: transparent pixels are flattened onto the background colour.</summary>
-    private static readonly HashSet<string> NoAlpha = ["jpg"];
+    private static readonly HashSet<string> NoAlpha = ["jpg", "ppm"];
+
+    /// <summary>Every format ImageMagick reads as input: the raster formats plus, on Windows, the metafiles.</summary>
+    public static IEnumerable<string> Sources =>
+        OperatingSystem.IsWindows() ? [.. Readable, .. Metafiles] : Readable;
 
     public static MagickFormat ToMagickFormat(string formatId) => formatId switch
     {
@@ -35,12 +54,38 @@ internal static class ImageEncoder
         "ico" => MagickFormat.Icon,
         "avif" => MagickFormat.Avif,
         "heic" => MagickFormat.Heic,
+        "jxl" => MagickFormat.Jxl,
+        "jp2" => MagickFormat.Jp2,
+        "psd" => MagickFormat.Psd,
+        "psb" => MagickFormat.Psb,
+        "tga" => MagickFormat.Tga,
+        "ppm" => MagickFormat.Ppm,
         _ => throw new NotSupportedException($"ImageMagick cannot handle '{formatId}'."),
     };
 
     /// <summary>
+    /// ImageMagick format and file extension for writing <paramref name="targetFormat"/>. The "ppm" format covers the
+    /// Netpbm family: a grayscale result, or a .pgm/.pbm source kept as such, is written as PGM/PBM with its own extension.
+    /// </summary>
+    /// <param name="sourcePath">Input file of the step, used to keep the Netpbm sub-format of .pgm/.pbm sources.</param>
+    public static (MagickFormat Format, string Extension) OutputFormat(string targetFormat, ImageOptions options, string? sourcePath = null)
+    {
+        if (targetFormat != "ppm")
+            return (ToMagickFormat(targetFormat), targetFormat);
+        var sourceExtension = sourcePath is null ? "" : Path.GetExtension(sourcePath).TrimStart('.').ToLowerInvariant();
+        return sourceExtension switch
+        {
+            "pbm" => (MagickFormat.Pbm, "pbm"),
+            "pgm" => (MagickFormat.Pgm, "pgm"),
+            _ when options.Grayscale => (MagickFormat.Pgm, "pgm"),
+            _ => (MagickFormat.Ppm, "ppm"),
+        };
+    }
+
+    /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO: the largest icon. GIF → single-frame target: the first frame. Otherwise: all frames/pages.
+    /// ICO: the largest icon. GIF → single-frame target: the first frame. PSD/PSB: the composite (frame 0; any
+    /// further frames are layers). Otherwise: all frames/pages.
     /// </summary>
     public static List<IMagickImage<byte>> SelectFrames(MagickImageCollection images, string sourceFormat, string targetFormat)
     {
@@ -50,6 +95,8 @@ internal static class ImageEncoder
         var frames = images.ToList();
         if (frames.Count <= 1)
             return frames;
+        if (sourceFormat is "psd" or "psb")
+            return [frames[0]];
         if (sourceFormat == "ico")
             return [frames.OrderByDescending(f => (long)f.Width * f.Height).First()];
         if (sourceFormat == "gif" && !MultiFrame.Contains(targetFormat))
@@ -95,6 +142,11 @@ internal static class ImageEncoder
             case "avif":
                 image.Quality = quality;
                 break;
+            case "jxl":
+            case "jp2":
+                // 100 means lossless for both encoders (JPEG XL distance 0, JPEG 2000 reversible 5/3 wavelet).
+                image.Quality = quality;
+                break;
             case "webp":
                 image.Quality = quality;
                 if (options.WebpLossless)
@@ -111,6 +163,12 @@ internal static class ImageEncoder
             case "ico":
                 PrepareIcon(image, options);
                 break;
+            case "psd":
+            case "psb":
+                // ImageMagick writes a broken layer section for palette images with transparency (as read from
+                // PNG or GIF): store them as direct colour.
+                image.ClassType = ClassType.Direct;
+                break;
         }
     }
 
@@ -118,14 +176,17 @@ internal static class ImageEncoder
     /// Writes frames using the allocator. Multi-frame targets get one file; other targets get one file per frame
     /// with a <c>_p{n}</c> suffix when there is more than one frame.
     /// </summary>
-    public static List<string> Write(IReadOnlyList<IMagickImage<byte>> frames, string targetFormat, IOutputAllocator output)
+    /// <param name="options">Options of the preset (the Netpbm sub-format depends on them).</param>
+    /// <param name="sourcePath">Input file of the step, see <see cref="OutputFormat"/>.</param>
+    public static List<string> Write(IReadOnlyList<IMagickImage<byte>> frames, string targetFormat, IOutputAllocator output,
+        ImageOptions? options = null, string? sourcePath = null)
     {
         var written = new List<string>();
-        var format = ToMagickFormat(targetFormat);
+        var (format, extension) = OutputFormat(targetFormat, options ?? new ImageOptions(), sourcePath);
 
         if (frames.Count > 1 && MultiFrame.Contains(targetFormat))
         {
-            var path = output.Allocate(targetFormat);
+            var path = output.Allocate(extension);
             if (path is null)
                 return written;
             using var collection = new MagickImageCollection();
@@ -138,7 +199,7 @@ internal static class ImageEncoder
 
         for (var i = 0; i < frames.Count; i++)
         {
-            var path = output.Allocate(targetFormat, frames.Count > 1 ? $"_p{i + 1}" : null);
+            var path = output.Allocate(extension, frames.Count > 1 ? $"_p{i + 1}" : null);
             if (path is null)
                 continue;
             frames[i].Write(path, format);

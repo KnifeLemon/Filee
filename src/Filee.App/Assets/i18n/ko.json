@@ -316,6 +316,8 @@
   "engines.package.libreoffice.description": "오래되었거나 흔하지 않은 형식에만 필요해요: DOC·XLS·PPT·OpenDocument 파일, DOCX·ODT·ODS로 변환, HWP → DOCX (H2Orestart 필터와 Java 포함). DOCX·XLSX·PPTX·CSV는 없어도 변환돼요.",
   "engines.package.pandoc.name": "Pandoc (HTML·마크다운 ↔ 워드)",
   "engines.package.pandoc.description": "마크다운 ↔ DOCX·ODT·RTF 변환과 HTML·ODT·RTF → HWPX 변환을 추가합니다. 마크다운 → PDF·HWPX·HTML·TXT와 DOCX → HWPX는 없어도 됩니다.",
+  "engines.package.ghostscript.name": "Ghostscript (EPS·PostScript)",
+  "engines.package.ghostscript.description": "EPS·PS 파일과 예전 일러스트레이터 파일을 PDF·PNG 등 이미지로, PDF·SVG를 EPS·PS로 변환해요. SVG와 PDF 호환으로 저장한 AI 파일은 없어도 변환돼요.",
   "engines.package.size": "다운로드 {0} · 설치 후 {1}",
   "engines.progress_detail": "{0} / {1} · {2}/s · {3}",
   "engines.eta.estimating": "남은 시간 계산 중…",
