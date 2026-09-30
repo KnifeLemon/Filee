@@ -132,6 +132,63 @@ public class UserDataStoreTests
     }
 
     [Fact]
+    public void Catalog_migration_ignores_extensions_checked_on_mixed_profiles()
+    {
+        // Schema-5 data where the user already limited a mixed-files donut to MP3 and JPG: those checks must not
+        // count as "taken" when the catalog donuts and extensions are added.
+        var presets = BuiltInData.CreatePresets().Where(p => BuiltInData.CatalogPresets().All(c => c.Id != p.Id)).ToList();
+        var catalogIds = BuiltInData.CatalogProfiles().Select(p => p.Id).ToHashSet();
+        var profiles = BuiltInData.CreateProfiles().Where(p => !catalogIds.Contains(p.Id)).ToList();
+        profiles.Single(p => p.Id == "images").Extensions = ["png"];
+        profiles.Add(new ToolbarProfile { Id = "music-mix", Name = "Music mix", IsFallback = true, Extensions = ["mp3", "jpg"] });
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(5, presets, profiles));
+
+        Assert.Contains("mp3", profiles.Single(p => p.Id == "audio").Extensions);
+        Assert.Contains("jpg", profiles.Single(p => p.Id == "images").Extensions);
+        Assert.Equal(["mp3", "jpg"], profiles.Single(p => p.Id == "music-mix").Extensions);
+    }
+
+    [Fact]
+    public void Several_mixed_profiles_are_kept_and_one_is_added_when_none_is_left()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        store.Profiles.Add(new ToolbarProfile { Id = "scans", Name = "Scans", IsFallback = true, Extensions = ["jpg", "pdf"] });
+        store.SaveLibrary();
+
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+        Assert.Equal(["mixed", "scans"], reloaded.Profiles.Where(p => p.IsFallback).Select(p => p.Id));
+
+        reloaded.Profiles.RemoveAll(p => p.IsFallback);
+        reloaded.SaveLibrary();
+        Assert.Equal("mixed", Assert.Single(reloaded.Profiles, p => p.IsFallback).Id);
+    }
+
+    [Fact]
+    public void Imported_mixed_profiles_stay_mixed()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        store.Profiles.Add(new ToolbarProfile { Id = "scans", Name = "Scans", IsFallback = true, Extensions = ["jpg", "pdf"] });
+        var bundle = Path.Combine(dir.Path, "bundle.json");
+        store.Export(bundle);
+
+        using var other = new TempDir();
+        var target = new UserDataStore(other.Path);
+        target.Load();
+        target.Import(bundle);
+
+        Assert.True(target.Profiles.Single(p => p.Id == "scans").IsFallback);
+        Assert.Single(target.Profiles, p => p.Id == "mixed");
+        Assert.Equal("scans", ProfileSelector.Select(target.Profiles, ["a.jpg", "b.pdf"])!.Id);
+        Assert.Equal("mixed", ProfileSelector.Select(target.Profiles, ["a.jpg", "b.docx"])!.Id);
+    }
+
+    [Fact]
     public void Spreadsheet_profile_is_not_added_when_a_user_profile_takes_spreadsheets()
     {
         var profiles = BuiltInData.CreateProfiles().Where(p => p.Id is not ("spreadsheets" or "presentations")).ToList();
