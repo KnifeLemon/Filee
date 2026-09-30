@@ -1,6 +1,7 @@
 // THE place where conversion engines are registered. Adding an engine = one line in CreateAll.
 
 using Filee.Core.Conversion;
+using Filee.Engines.Archives;
 using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
@@ -29,6 +30,7 @@ public static class EngineRegistry
         new MarkdownConverter(),
         new SpreadsheetConverter(),
         new HwpxConverter(),
+        new ArchiveConverter(),
         new PandocConverter(),
         new LibreOfficeConverter(env),
     ];
@@ -36,4 +38,8 @@ public static class EngineRegistry
     /// <summary>Finds the PDF merger among the converters.</summary>
     public static IPdfMerger? FindPdfMerger(IEnumerable<IConverter> converters) =>
         converters.OfType<IPdfMerger>().FirstOrDefault();
+
+    /// <summary>Finds the engine that packs several files into one archive ("Compress into one archive").</summary>
+    public static IFileCombiner? FindFileCombiner(IEnumerable<IConverter> converters) =>
+        converters.OfType<IFileCombiner>().FirstOrDefault();
 }

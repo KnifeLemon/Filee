@@ -46,7 +46,8 @@ public static class AppHost
         services.AddSingleton(sp => new JobQueue(
             sp.GetRequiredService<ConverterCatalog>(),
             EngineRegistry.FindPdfMerger(sp.GetRequiredService<IReadOnlyList<IConverter>>()),
-            sp.GetRequiredService<ILogger<JobQueue>>()));
+            sp.GetRequiredService<ILogger<JobQueue>>(),
+            EngineRegistry.FindFileCombiner(sp.GetRequiredService<IReadOnlyList<IConverter>>())));
 
         services.AddSingleton<EngineDownloadService>();
         services.AddSingleton<PresetAvailability>();

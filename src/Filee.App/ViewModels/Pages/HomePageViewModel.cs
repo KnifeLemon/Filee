@@ -28,15 +28,18 @@ public sealed partial class HistoryItemViewModel(HistoryEntry entry, ILocalizer 
     public bool Succeeded { get; } = entry.State == JobState.Completed;
     public bool HasErrors { get; } = entry.Errors.Count > 0 || entry.State == JobState.Failed;
     public string? Errors { get; } = entry.Errors.Count == 0 ? null : string.Join(Environment.NewLine, entry.Errors);
-    public bool HasOutputs { get; } = entry.Outputs.Any(File.Exists);
+    public bool HasOutputs { get; } = entry.Outputs.Any(Exists);
 
     [RelayCommand]
     private void OpenFolder()
     {
-        var output = entry.Outputs.FirstOrDefault(File.Exists);
+        // An output may be a folder ("Extract"): revealing it opens the extracted files.
+        var output = entry.Outputs.FirstOrDefault(Exists);
         if (output is not null)
             platform.RevealInFileManager(output);
     }
+
+    private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
 }
 
 public sealed partial class HomePageViewModel : ObservableObject, IDisposable

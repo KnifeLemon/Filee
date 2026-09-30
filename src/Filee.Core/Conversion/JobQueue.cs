@@ -15,16 +15,22 @@ public sealed class JobQueue : IAsyncDisposable
 {
     private readonly ConverterCatalog _catalog;
     private readonly IPdfMerger? _pdfMerger;
+    private readonly IFileCombiner? _combiner;
     private readonly ILogger _log;
     private readonly Channel<ConversionJob> _channel = Channel.CreateUnbounded<ConversionJob>();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _engineGates = new();
     private readonly HashSet<string> _reservedOutputs = new(StringComparer.OrdinalIgnoreCase);
     private readonly Task _worker;
 
-    public JobQueue(ConverterCatalog catalog, IPdfMerger? pdfMerger = null, ILogger<JobQueue>? log = null)
+    /// <param name="catalog">Converters and their priority.</param>
+    /// <param name="pdfMerger">Used by "Merge into one PDF" presets.</param>
+    /// <param name="log">Optional logger.</param>
+    /// <param name="combiner">Used by "Compress into one archive" presets (<see cref="ArchiveOptions.CombineIntoOne"/>).</param>
+    public JobQueue(ConverterCatalog catalog, IPdfMerger? pdfMerger = null, ILogger<JobQueue>? log = null, IFileCombiner? combiner = null)
     {
         _catalog = catalog;
         _pdfMerger = pdfMerger;
+        _combiner = combiner;
         _log = log ?? (ILogger)NullLogger.Instance;
         _worker = Task.Run(WorkLoopAsync);
     }
@@ -59,9 +65,16 @@ public sealed class JobQueue : IAsyncDisposable
                         && job.Preset.TargetFormat == "pdf"
                         && job.Files.Count > 1
                         && _pdfMerger is not null;
+            // Any files, one of them or many, archives or not: they go into the archive as they are.
+            var combine = job.Preset.Archive.CombineIntoOne
+                          && _combiner is not null
+                          && FormatRegistry.FindById(job.Preset.TargetFormat) is { Category: FormatCategory.Archive } archive
+                          && archive.Id != FormatRegistry.Folder;
 
             if (merge)
                 await RunMergedAsync(job, planner, workDir);
+            else if (combine)
+                await RunCombinedAsync(job, workDir);
             else
                 await Parallel.ForEachAsync(
                     job.Files.Select((f, i) => (File: f, Index: i + 1)),
@@ -129,6 +142,84 @@ public sealed class JobQueue : IAsyncDisposable
             f.Progress = 1;
         }
         Notify(job);
+    }
+
+    /// <summary>Packs every source file, unchanged, into one archive named after the first file.</summary>
+    private async Task RunCombinedAsync(ConversionJob job, string workDir)
+    {
+        var format = FormatRegistry.Get(job.Preset.TargetFormat);
+        var inputs = new List<FileResult>();
+        foreach (var file in job.Files)
+        {
+            // Folders (from the command line; drops deliver files) are packed with their content.
+            if (File.Exists(file.SourcePath) || Directory.Exists(file.SourcePath))
+                inputs.Add(file);
+            else
+                MarkFailed(file, "The file no longer exists.");
+        }
+        if (inputs.Count == 0)
+        {
+            Notify(job);
+            return;
+        }
+
+        var output = CreateFinalAllocator(job, inputs[0].SourcePath, 1).Allocate(format.PrimaryExtension);
+        if (output is null)
+        {
+            foreach (var f in inputs)
+            {
+                f.State = FileState.Skipped;
+                f.Progress = 1;
+            }
+            Notify(job);
+            return;
+        }
+
+        foreach (var f in inputs)
+            f.State = FileState.Running;
+        Notify(job);
+        var progress = new Progress<double>(p =>
+        {
+            // Reports arrive on the thread pool, possibly out of order: progress only moves forward.
+            var value = Math.Clamp(p, 0, 1);
+            if (value <= inputs[0].Progress)
+                return;
+            foreach (var f in inputs)
+                f.Progress = value;
+            Notify(job);
+        });
+
+        try
+        {
+            await _combiner!.CombineAsync(inputs.Select(f => f.SourcePath).ToList(), output, format.Id, job.Preset,
+                workDir, progress, job.CancellationToken);
+            inputs[0].Outputs.Add(output);
+            foreach (var f in inputs)
+            {
+                f.State = FileState.Done;
+                f.Progress = 1;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            foreach (var f in inputs)
+                f.State = FileState.Cancelled;
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Packing {Count} file(s) into {Output} failed", inputs.Count, output);
+            foreach (var f in inputs)
+                MarkFailed(f, ex.Message);
+        }
+        Notify(job);
+
+        static void MarkFailed(FileResult f, string detail)
+        {
+            f.State = FileState.Failed;
+            f.ErrorKey = "error.conversion_failed";
+            f.ErrorDetail = detail;
+            f.Progress = 1;
+        }
     }
 
     /// <summary>

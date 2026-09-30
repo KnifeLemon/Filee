@@ -8,6 +8,13 @@
       "size": 10270410,
       "kind": "zip"
     },
+    "7zip": {
+      "version": "26.03",
+      "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-x64.msi",
+      "sha256": "C0680064D698A62DD4A5A47F403DB356A6531A5473E4C4B1D090EA2590513926",
+      "size": 2007040,
+      "kind": "msi"
+    },
     "pandoc": {
       "version": "3.12",
       "url": "https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-windows-x86_64.zip",

@@ -118,6 +118,58 @@ public class JobQueueTests
     }
 
     [Fact]
+    public async Task Combine_packs_every_file_as_is_even_one_or_of_unknown_type()
+    {
+        using var dir = new TempDir();
+        var a = dir.File("report.docx");
+        var b = dir.File("data.xyz");
+        var combiner = new FakeCombiner();
+        // No converter at all: combining must not need a route.
+        await using var queue = new JobQueue(new ConverterCatalog([]), combiner: combiner);
+        var preset = new Preset { TargetFormat = "zip", Archive = { CombineIntoOne = true }, Output = { FileNamePattern = "{name}_files" } };
+
+        var job = await Run(queue, [a, b], preset);
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal([a, b], combiner.Inputs);
+        Assert.Equal(Path.Combine(dir.Path, "report_files.zip"), job.Outputs.Single());
+        Assert.All(job.Files, f => Assert.Equal(FileState.Done, f.State));
+
+        var single = await Run(queue, [b], preset);
+        Assert.Equal(Path.Combine(dir.Path, "data_files.zip"), single.Outputs.Single());
+    }
+
+    [Fact]
+    public async Task Combine_uses_the_two_part_extension_and_reports_failures_for_every_file()
+    {
+        using var dir = new TempDir();
+        var a = dir.File("a.txt");
+        await using var queue = new JobQueue(new ConverterCatalog([]), combiner: new FakeCombiner());
+
+        var job = await Run(queue, [a], new Preset { TargetFormat = "tgz", Archive = { CombineIntoOne = true } });
+        Assert.Equal(Path.Combine(dir.Path, "a.tar.gz"), job.Outputs.Single());
+
+        await using var failing = new JobQueue(new ConverterCatalog([]), combiner: new FakeCombiner { Throw = true });
+        var failed = await Run(failing, [a, dir.File("b.txt")], new Preset { TargetFormat = "zip", Archive = { CombineIntoOne = true } });
+        Assert.Equal(JobState.Failed, failed.State);
+        Assert.All(failed.Files, f => Assert.Equal("boom", f.ErrorDetail));
+    }
+
+    [Fact]
+    public async Task Without_combine_archive_targets_convert_file_by_file()
+    {
+        using var dir = new TempDir();
+        var combiner = new FakeCombiner();
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("archive", new ConversionEdge("rar", "zip"))]), combiner: combiner);
+
+        var job = await Run(queue, [dir.File("a.rar"), dir.File("b.rar")], new Preset { TargetFormat = "zip" });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(2, job.Outputs.Count());
+        Assert.Empty(combiner.Inputs);
+    }
+
+    [Fact]
     public async Task Parallel_files_with_the_same_name_do_not_collide()
     {
         using var dir = new TempDir();

@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-  Downloads and prepares conversion engines for development and for the installer (which bundles rhwp only;
-  the app downloads the large engines on demand, see src/Filee.Engines/Infrastructure/EngineInstaller.cs).
+  Downloads and prepares conversion engines for development and for the installer (which bundles rhwp and 7-Zip
+  only; the app downloads the large engines on demand, see src/Filee.Engines/Infrastructure/EngineInstaller.cs).
 
 .DESCRIPTION
   Produces this layout (next to Filee.exe in a published build, or in the repo root for development):
@@ -12,6 +12,7 @@
       jre/           Eclipse Temurin JRE 21 (GPLv2 + Classpath Exception), used by H2Orestart
       rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF
       pandoc/        Pandoc (GPL-2.0-or-later, separate program), Markdown/HTML and MD/HTML/ODT/RTF -> HWPX
+      7zip/          7-Zip console (7z.exe + 7z.dll, LGPL-2.1 + unRAR restriction, separate program), archives
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -112,6 +113,25 @@ if ('pandoc' -in $selected) {
     $zip = Get-Engine 'pandoc'
     Expand-Flat $zip (Join-Path $Destination 'pandoc')
     if (-not (Test-Path (Join-Path $Destination 'pandoc\pandoc.exe'))) { throw 'pandoc.exe not found in the archive.' }
+}
+
+if ('7zip' -in $selected) {
+    # The official MSI unpacked with an administrative install (files only, no system changes). Only the console
+    # program is kept: 7z.exe + 7z.dll (all formats, incl. RAR), the license and the readme; not the GUI or help.
+    $msi = Get-Engine '7zip'
+    $tmp = Join-Path $cache '7z-admin'
+    Reset-Folder $tmp
+    $proc = Start-Process msiexec.exe -ArgumentList @('/a', "`"$msi`"", '/qn', "TARGETDIR=`"$tmp`"") -Wait -PassThru
+    if ($proc.ExitCode -ne 0) { throw "msiexec /a failed for 7-Zip with exit code $($proc.ExitCode)." }
+
+    $exe = Get-ChildItem $tmp -Recurse -Filter '7z.exe' | Select-Object -First 1
+    if (-not $exe) { throw '7z.exe not found after extracting the 7-Zip MSI.' }
+    $target = Join-Path $Destination '7zip'
+    Reset-Folder $target
+    foreach ($name in @('7z.exe', '7z.dll', 'License.txt', 'readme.txt')) {
+        Copy-Item (Join-Path $exe.DirectoryName $name) $target
+    }
+    Remove-Item $tmp -Recurse -Force
 }
 
 if ('jre' -in $selected) {

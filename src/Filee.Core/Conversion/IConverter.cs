@@ -90,3 +90,22 @@ public interface IPdfMerger
 {
     Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Packs several files, unchanged, into one archive ("Compress into one archive"). Implemented by the archive engine;
+/// <see cref="JobQueue"/> uses it when a preset sets <see cref="ArchiveOptions.CombineIntoOne"/>.
+/// </summary>
+public interface IFileCombiner
+{
+    /// <summary>True if files can be packed into <paramref name="format"/> now (e.g. the tool it needs is installed).</summary>
+    bool CanCombineInto(string format);
+
+    /// <summary>Writes every file of <paramref name="inputPaths"/> into one archive of <paramref name="format"/>.</summary>
+    /// <param name="inputPaths">Files to pack, stored under their own names (renamed "name (2)" on clashes).</param>
+    /// <param name="outputPath">Archive to create; written only when complete.</param>
+    /// <param name="format">Archive format id, e.g. <c>"zip"</c>.</param>
+    /// <param name="preset">Options, e.g. <see cref="ArchiveOptions.Level"/>.</param>
+    /// <param name="workDirectory">Scratch directory for intermediate files; deleted after the job.</param>
+    Task CombineAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
+        string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken);
+}

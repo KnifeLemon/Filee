@@ -13,6 +13,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Spreadsheets | built in | **XLSX ↔ CSV** (one CSV per sheet) |
 | **HWPX writer** | built in | **DOCX, XLSX, CSV, PPTX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); HTML, ODT, RTF → HWPX with Pandoc |
 | rhwp | bundled with the installer (`engines/rhwp`) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
+| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP, 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS; HWP/HWPX → DOCX/ODT |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT |
 
@@ -96,6 +97,49 @@ Not converted: Word charts, SmartArt, equations (kept as text), free-form shapes
 
 rhwp converts between the two 한글 formats without Hancom Office (`export-hwpx` and `convert`). Anything → HWP goes
 through the HWPX writer and then rhwp.
+
+## Archives
+
+The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) uses Filee's own copy of the 7-Zip console program
+(`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a` by `build/fetch-engines.ps1 -Only 7zip` and
+bundled with the installer), never a 7-Zip installed on the PC. It runs as a separate process (LGPL).
+
+| Format | Read | Write |
+|---|---|---|
+| ZIP, JAR | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| 7Z | 7-Zip | 7-Zip |
+| TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
+| TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
+| TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
+| TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
+| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, CRC and size checked | — |
+| GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
+| LZMA, Z | 7-Zip | — |
+| RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
+| ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
+| EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (decoded by 7-Zip); several blocks per file | — |
+
+- **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
+  when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
+  with `photos/…` gives `photos/…`, not `photos/photos/…`). Name conflicts follow the preset: `name (2)`, overwrite
+  (files are merged into the existing folder) or skip.
+- **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
+  maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
+- **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
+  of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
+  file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.
+- **Safety**: every archive is listed first. Encrypted entries or archives stop with "password-protected"; entries
+  (or hard links) with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is
+  written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
+  1,000,000 entries or more data than the drive has free are refused; Filee's own readers also stop when data unpacks
+  to more than the entry declares, and check CRCs.
+- **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
+  ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG.
+- The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
+  `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
+  instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`).
+- Tests (`ArchiveTests.cs`) build ALZ, EGG and lzip files in code (`ArchiveBuilders.cs`, with bzip2 and LZMA streams
+  written by 7-Zip) and skip the 7-Zip parts when `engines/7zip` is missing.
 
 ## LibreOffice
 
