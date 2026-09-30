@@ -33,6 +33,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject
         _contextMenu = store.Settings.ContextMenuEnabled;
         _checkForUpdates = store.Settings.CheckForUpdates;
         ShowUpdateState(updates.LatestVersion);
+        RefreshModernMenu();
     }
 
     public IReadOnlyList<Choice<string>> Languages { get; }
@@ -47,9 +48,64 @@ public sealed partial class GeneralPageViewModel : ObservableObject
     [ObservableProperty] private bool _updateAvailable;
     [ObservableProperty] private string? _libraryMessage;
 
+    // Windows 11 top-level Explorer menu entry (see ExplorerMenuRegistration). Only shown when this build ships it.
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowModernMenu), nameof(CanAddModernMenu), nameof(CanRemoveModernMenu))]
+    private ModernContextMenuState _modernMenuState;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanAddModernMenu), nameof(CanRemoveModernMenu))]
+    private bool _modernMenuBusy;
+
+    [ObservableProperty] private string? _modernMenuStatus;
+
+    public bool ShowModernMenu => ContextMenu && ModernMenuState != ModernContextMenuState.Unsupported;
+    public bool CanAddModernMenu => !ModernMenuBusy && ModernMenuState is ModernContextMenuState.Off or ModernContextMenuState.Outdated;
+    public bool CanRemoveModernMenu => !ModernMenuBusy && ModernMenuState is ModernContextMenuState.On or ModernContextMenuState.Outdated;
+
     partial void OnLanguageChanged(Choice<string> value) => Save(s => s.Language = value.Value);
     partial void OnStartWithSystemChanged(bool value) => Save(s => s.StartWithSystem = value);
-    partial void OnContextMenuChanged(bool value) => Save(s => s.ContextMenuEnabled = value);
+
+    partial void OnContextMenuChanged(bool value)
+    {
+        Save(s => s.ContextMenuEnabled = value);
+        OnPropertyChanged(nameof(ShowModernMenu));
+    }
+
+    /// <summary>Registers the top-level entry; Windows shows one administrator prompt.</summary>
+    [RelayCommand]
+    private Task AddModernMenu() => ChangeModernMenu(true);
+
+    [RelayCommand]
+    private Task RemoveModernMenu() => ChangeModernMenu(false);
+
+    private async Task ChangeModernMenu(bool enabled)
+    {
+        if (Environment.ProcessPath is not { } exe)
+            return;
+        ModernMenuBusy = true;
+        ModernMenuStatus = _loc["general.modern_menu_busy"];
+        var result = await _platform.SetModernContextMenuAsync(enabled, exe);
+        ModernMenuBusy = false;
+        RefreshModernMenu();
+        if (result.Cancelled)
+            ModernMenuStatus = _loc["general.modern_menu_cancelled"];
+        else if (!result.Succeeded)
+            ModernMenuStatus = _loc.Format(enabled ? "general.modern_menu_failed" : "general.modern_menu_remove_failed", result.Error ?? "");
+    }
+
+    private void RefreshModernMenu()
+    {
+        ModernMenuState = Environment.ProcessPath is { } exe
+            ? _platform.GetModernContextMenuState(exe)
+            : ModernContextMenuState.Unsupported;
+        ModernMenuStatus = _loc[ModernMenuState switch
+        {
+            ModernContextMenuState.On => "general.modern_menu_on",
+            ModernContextMenuState.Outdated => "general.modern_menu_outdated",
+            _ => "general.modern_menu_hint",
+        }];
+    }
     partial void OnCheckForUpdatesChanged(bool value) => Save(s => s.CheckForUpdates = value);
 
     private void Save(Action<AppSettings> change)

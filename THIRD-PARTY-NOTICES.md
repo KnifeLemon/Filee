@@ -64,6 +64,16 @@ Downloaded from their official release pages when the user chooses to install th
 
 These programs run as separate processes. Their source code is available from the linked projects.
 
+## Windows 11 Explorer menu (FileeExplorerMenu.dll)
+
+The DLL is Filee's own C code, compiled with the Zig toolchain (a build tool, not shipped) against the mingw-w64
+Windows headers, without a C runtime. Pieces of these projects that can end up in the binary:
+
+| Component | License | Project |
+|---|---|---|
+| Zig compiler_rt (compiler support routines) | MIT | https://github.com/ziglang/zig |
+| mingw-w64 Windows headers and import library definitions | Public domain / ZPL-2.1 | https://www.mingw-w64.org |
+
 ## Fonts and icons
 
 | Component | License | Project |
