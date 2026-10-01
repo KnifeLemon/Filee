@@ -50,6 +50,11 @@ jobs:
         shell: pwsh
         run: ./build/build-explorer-menu.ps1 -Version ${{ steps.version.outputs.value }}
 
+      # Same engines as CI, so the release runs the same tests (they are not part of the installer).
+      - name: Fetch rhwp, Pandoc and 7-Zip for engine tests
+        shell: pwsh
+        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip
+
       - name: Test
         run: dotnet test Filee.slnx -c Release
 

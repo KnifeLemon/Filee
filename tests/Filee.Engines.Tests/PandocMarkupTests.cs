@@ -5,6 +5,7 @@ using System.IO.Compression;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Office;
 
 namespace Filee.Engines.Tests;
 
@@ -56,9 +57,12 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var planner = fx.Catalog.CreatePlanner(["pandoc"]);
         foreach (var (from, to) in new[] { ("rst", "docx"), ("rst", "md"), ("tex", "html"), ("tex", "epub"), ("md", "rst"), ("docx", "tex") })
             Assert.Equal("pandoc", Assert.Single(planner.Plan(from, to)!.Steps).Converter.Id);
+        Assert.DoesNotContain(fx.Converters.Single(c => c.Id == "pandoc").Edges, e => e.To == "pdf");
+
+        // The HWPX writer offers its Pandoc-based readers only when Pandoc is really there (not just assumed).
+        Assert.SkipUnless(PandocConverter.Locate() is not null, "Pandoc not found (pwsh build/fetch-engines.ps1 -Only pandoc)");
         Assert.Equal("hwpx-writer", Assert.Single(planner.Plan("rst", "hwpx")!.Steps).Converter.Id);
         Assert.Equal("hwpx-writer", Assert.Single(planner.Plan("tex", "hwpx")!.Steps).Converter.Id);
-        Assert.DoesNotContain(fx.Converters.Single(c => c.Id == "pandoc").Edges, e => e.To == "pdf");
     }
 
     [Fact]
