@@ -282,7 +282,20 @@ public static class ExplorerMenuRegistration
         return string.Join(' ', message.Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
     }
 
-    private static unsafe string? ExternalLocationOf(string fullName)
+    /// <summary>The install folder the package points to, or null when Windows can't tell.</summary>
+    public static unsafe string? ExternalLocationOf(string fullName)
+    {
+        try
+        {
+            return ExternalLocationOfCore(fullName);
+        }
+        catch (Exception ex) when (ex is EntryPointNotFoundException or DllNotFoundException)
+        {
+            return null; // older Windows without the API: the folder is then not compared
+        }
+    }
+
+    private static unsafe string? ExternalLocationOfCore(string fullName)
     {
         uint length = 0;
         if (NativeMethods.GetPackagePathByFullName2(fullName, NativeMethods.PackagePathType_EffectiveExternal, ref length, null)

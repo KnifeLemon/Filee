@@ -125,7 +125,11 @@ public class RenderTests
         Pump();
 
         Assert.Empty(vm.Items);
+        // Nothing shows until files are dragged in (a Ctrl + drag without files must not open anything).
+        Assert.Equal(0, vm.DonutOpacity);
         Save(window, "donut-drag-waiting.png");
+        vm.Load([@"C:\photos\a.jpg"], clickMode: false);
+        Assert.Equal(1, vm.DonutOpacity);
         window.Close();
     }
 

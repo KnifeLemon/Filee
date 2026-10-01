@@ -1,8 +1,9 @@
 // Opens, fills and closes the live donut toolbar.
 //
 // Drag mode  (modifier + drag in Explorer):
-//   gesture detected → empty ring appears at the cursor (not activated) → DragEnter brings the file list →
-//   slices pop out → drop on a slice converts / drop in the hole or release elsewhere closes.
+//   gesture detected → an invisible window waits at the cursor (not activated) → DragEnter brings the file list →
+//   the donut pops out → drop on a slice converts / drop in the hole or release elsewhere closes. Without files
+//   (text, a rubber-band selection) nothing ever shows.
 // Click mode (keyboard shortcut, context menu, drop zone):
 //   files are known up front → donut appears activated → click a slice to convert, right-click to edit,
 //   Esc / click outside closes.
@@ -45,7 +46,11 @@ public sealed class RadialController(
 
     public bool IsVisible => _visible;
 
-    /// <summary>Drag gesture started at the given physical screen point.</summary>
+    /// <summary>
+    /// Drag gesture started at the given physical screen point. The window is placed under the cursor but stays
+    /// invisible until files are dragged into it (FilesEntered); a gesture without files (text, a rubber-band
+    /// selection, nothing at all) never shows anything and closes when the button is released.
+    /// </summary>
     public void ShowForDrag(int x, int y)
     {
         ReleaseProgressToToast();
@@ -54,7 +59,6 @@ public sealed class RadialController(
         viewModel.ResetForDrag();
         window.DonutControl.AllowContextEdit = false;
         PlaceAndShow(window, x, y, activate: false);
-        window.DonutControl.PlayOpenAnimation();
     }
 
     /// <summary>Opens the donut for known files (click mode).</summary>

@@ -58,7 +58,8 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16)]
     public static unsafe partial int GetPackagesByPackageFamily(string packageFamilyName, ref uint count, char** packageFullNames, ref uint bufferLength, char* buffer);
 
-    [LibraryImport("kernel32.dll", StringMarshalling = StringMarshalling.Utf16)]
+    // Not exported by kernel32.dll (only by kernelbase.dll): import it from its API set, Windows 10 1903 and later.
+    [LibraryImport("api-ms-win-appmodel-runtime-l1-1-3.dll", StringMarshalling = StringMarshalling.Utf16)]
     public static unsafe partial int GetPackagePathByFullName2(string packageFullName, int packagePathType, ref uint pathLength, char* path);
 
     [LibraryImport("kernel32.dll")]

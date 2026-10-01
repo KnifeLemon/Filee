@@ -85,7 +85,16 @@ public sealed partial class GeneralPageViewModel : ObservableObject
             return;
         ModernMenuBusy = true;
         ModernMenuStatus = _loc["general.modern_menu_busy"];
-        var result = await _platform.SetModernContextMenuAsync(enabled, exe);
+        ModernContextMenuResult result;
+        try
+        {
+            result = await _platform.SetModernContextMenuAsync(enabled, exe);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // A command that throws would end the app (async void path): report it on the page instead.
+            result = new ModernContextMenuResult(false, Error: ex.Message);
+        }
         ModernMenuBusy = false;
         RefreshModernMenu();
         if (result.Cancelled)
