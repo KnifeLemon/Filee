@@ -10,7 +10,6 @@ Each component remains under its own license.
 | Avalonia UI | MIT | https://github.com/AvaloniaUI/Avalonia |
 | CommunityToolkit.Mvvm | MIT | https://github.com/CommunityToolkit/dotnet |
 | SharpHook (libuiohook) | MIT (libuiohook: GPL-3.0 with linking exception / LGPL-3.0) | https://github.com/TolikPylypchuk/SharpHook |
-| Velopack | MIT | https://github.com/velopack/velopack |
 | Magick.NET / ImageMagick | Apache-2.0 / ImageMagick License | https://github.com/dlemstra/Magick.NET |
 | ImageMagick delegate libraries (libheif, libde265, libwebp, libjpeg-turbo, libpng, libtiff, zlib, …) | Various (LGPL-2.1+, BSD, zlib) | bundled inside Magick.NET |
 | PDFsharp | MIT | https://github.com/empira/PDFsharp |
@@ -73,6 +72,15 @@ Windows headers, without a C runtime. Pieces of these projects that can end up i
 |---|---|---|
 | Zig compiler_rt (compiler support routines) | MIT | https://github.com/ziglang/zig |
 | mingw-w64 Windows headers and import library definitions | Public domain / ZPL-2.1 | https://www.mingw-w64.org |
+
+## Installer
+
+`Filee-<version>-win-Setup.exe` is built with Inno Setup (a build tool, not part of the app); the setup and uninstall
+programs inside it are Inno Setup's.
+
+| Component | License | Project |
+|---|---|---|
+| Inno Setup (Copyright (C) 1997-2026 Jordan Russell, portions Copyright (C) 2000-2026 Martijn Laan) | Inno Setup License | https://jrsoftware.org/isinfo.php |
 
 ## Fonts and icons
 

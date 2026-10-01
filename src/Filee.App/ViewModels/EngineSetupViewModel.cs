@@ -1,5 +1,5 @@
-// First-run engine choice: the installer only contains the small engines, so right after installing Filee asks
-// which large ones to download (like optional components in a classic setup wizard).
+// Engine choice: the installer only contains the small engines. The installer's engine page hands its choice over
+// (InstallNow, downloads start at once); otherwise Filee asks on first run which large ones to download.
 
 using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -20,18 +20,10 @@ public sealed partial class EngineSetupViewModel : ObservableObject
         _loc = loc;
         foreach (var package in Packages)
         {
-            // Large downloads are offered, not pre-selected: LibreOffice is only needed for older formats (DOC, XLS,
-            // PPT, OpenDocument), FFmpeg (~100 MB) only for video and audio, calibre (~230 MB) only for rare e-book
-            // formats and Kindle output. Ghostscript is small but only needed for EPS / PostScript.
-            package.Selected = !package.IsInstalled
-                               && Filee.Engines.Infrastructure.EngineDownloads.DownloadSize(package.Package) < PreselectLimit
-                               && package.Package.Id != "ghostscript";
+            package.Selected = !package.IsInstalled && Filee.Engines.Infrastructure.EngineDownloads.IsSuggested(package.Package);
             package.PropertyChanged += OnPackageChanged;
         }
     }
-
-    /// <summary>Packages whose download is smaller than this (bytes) are ticked on first run.</summary>
-    public const long PreselectLimit = 60_000_000;
 
     public IReadOnlyList<EnginePackageState> Packages => _downloads.Packages;
 
@@ -63,11 +55,28 @@ public sealed partial class EngineSetupViewModel : ObservableObject
     private bool CanInstall() => !Started && Packages.Any(p => p.Selected && p.CanInstall);
 
     [RelayCommand(CanExecute = nameof(CanInstall))]
-    private void Install()
+    private void Install() => Start(Packages.Where(p => p.Selected && p.CanInstall).ToList());
+
+    /// <summary>
+    /// Ticks the packages with these ids (chosen in the installer) and starts installing them. Unknown and installed
+    /// ids are skipped; returns false when nothing is left to install.
+    /// </summary>
+    public bool InstallNow(IReadOnlyCollection<string> ids)
+    {
+        var wanted = Packages.Where(p => p.CanInstall && ids.Contains(p.Package.Id, StringComparer.OrdinalIgnoreCase)).ToList();
+        if (wanted.Count == 0)
+            return false;
+        foreach (var package in Packages.Where(p => p.CanInstall))
+            package.Selected = wanted.Contains(package) || (Started && package.Selected);
+        Start(wanted);
+        return true;
+    }
+
+    private void Start(IReadOnlyList<EnginePackageState> packages)
     {
         Started = true;
         // The service installs one package at a time; the others wait in its queue.
-        foreach (var package in Packages.Where(p => p.Selected && p.CanInstall))
+        foreach (var package in packages)
             _ = _downloads.InstallAsync(package);
     }
 

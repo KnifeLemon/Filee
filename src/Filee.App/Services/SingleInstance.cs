@@ -77,6 +77,27 @@ public sealed class SingleInstance : IDisposable
         }
     }
 
+    /// <summary>
+    /// Waits until the first instance has exited (it releases the mutex then), e.g. after forwarding <c>--quit</c>.
+    /// Returns false on timeout.
+    /// </summary>
+    public bool WaitForFirstToExit(TimeSpan timeout)
+    {
+        if (IsFirst)
+            return true;
+        try
+        {
+            if (!_mutex.WaitOne(timeout))
+                return false;
+        }
+        catch (AbandonedMutexException)
+        {
+            // The first instance ended without releasing the mutex (killed): it is gone all the same.
+        }
+        _mutex.ReleaseMutex();
+        return true;
+    }
+
     public void Dispose()
     {
         _cts.Cancel();

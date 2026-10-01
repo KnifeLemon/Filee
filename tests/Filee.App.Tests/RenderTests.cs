@@ -106,7 +106,7 @@ public class RenderTests
         // Everything not installed is offered; small downloads are pre-selected, the large LibreOffice, FFmpeg and calibre and the
         // EPS-only Ghostscript not.
         Assert.All(vm.Packages.Where(p => !p.IsInstalled), p => Assert.Equal(
-            Filee.Engines.Infrastructure.EngineDownloads.DownloadSize(p.Package) < EngineSetupViewModel.PreselectLimit
+            Filee.Engines.Infrastructure.EngineDownloads.DownloadSize(p.Package) < Filee.Engines.Infrastructure.EngineDownloads.SuggestLimit
             && p.Package.Id != "ghostscript", p.Selected));
         Assert.DoesNotContain(vm.Packages, p => p.Package.Id is "libreoffice" or "ffmpeg" or "calibre" or "ghostscript" && p.Selected);
         Assert.Equal(vm.Packages.Any(p => p.Selected && p.CanInstall), vm.InstallCommand.CanExecute(null));

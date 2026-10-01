@@ -103,13 +103,16 @@
 ## 快速开始
 
 **安装：** 在 [Releases](https://github.com/KnifeLemon/Filee/releases/latest) 下载最新的
-`Filee-<版本>-win-Setup.exe`（Windows 10/11，64 位）。
+`Filee-<版本>-win-Setup.exe`（Windows 10/11，64 位）并运行。安装程序会请求一次管理员权限，为所有用户安装到
+Program Files。不想安装？把 `Filee-<版本>-win-Portable.zip` 解压到任意位置，运行 `Filee.exe` 即可。
 
 - **常用格式都已包含在安装包中。** 图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD 装好即用。
-- **大型引擎按需下载。** 首次启动时会列出视频/音频引擎（FFmpeg，约 100 MB）和少见格式引擎（LibreOffice、calibre、
-  Ghostscript、Pandoc）及其大小；之后可随时在“设置 → 转换引擎”中安装或删除，并显示下载速度和剩余时间。
+- **安装时即可选择。** 在资源管理器右键菜单中添加“用 Filee 转换”（Windows 11 上还可直接显示在主菜单，无需点
+  “显示更多选项”）、登录时启动，并按大小挑选可选引擎：视频/音频（FFmpeg，约 100 MB）和少见格式（LibreOffice、
+  calibre、Ghostscript、Pandoc）。所选引擎会在安装完成、Filee 启动后下载；之后可随时在“设置 → 转换引擎”中安装或
+  删除，并显示下载速度和剩余时间。
 - **有更新会提醒你。** 新版本发布后，Filee 会在菜单底部、通知和托盘菜单中提示，点击即可打开最新发布页面下载。
-  运行新的安装程序即可更新，设置会保留。
+  运行新的安装程序会关闭 Filee 并完成更新，设置和引擎都会保留。按用户安装的 Filee 1.1 及更早版本也会以同样方式接管。
 
 macOS 版本正在计划中。
 

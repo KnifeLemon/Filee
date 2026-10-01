@@ -41,14 +41,23 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
     }
 
     /// <summary>Opens the optional-engine choice (first run); a second call brings the open window to front.</summary>
-    public void ShowEngineSetup()
+    /// <summary>
+    /// Shows the engine choice. With <paramref name="install"/> (packages picked in the installer) the downloads start
+    /// right away, and nothing opens when all of them are installed already.
+    /// </summary>
+    public void ShowEngineSetup(IReadOnlyCollection<string>? install = null)
     {
         if (_engineSetup is not null)
         {
+            if (install is not null && _engineSetup.DataContext is EngineSetupViewModel open)
+                open.InstallNow(install);
             _engineSetup.Activate();
             return;
         }
-        _engineSetup = new EngineSetupWindow { DataContext = ActivatorUtilities.CreateInstance<EngineSetupViewModel>(services) };
+        var vm = ActivatorUtilities.CreateInstance<EngineSetupViewModel>(services);
+        if (install is not null && !vm.InstallNow(install))
+            return;
+        _engineSetup = new EngineSetupWindow { DataContext = vm };
         _engineSetup.Closed += (_, _) => _engineSetup = null;
         _engineSetup.Show();
     }

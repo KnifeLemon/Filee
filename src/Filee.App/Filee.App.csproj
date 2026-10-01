@@ -30,7 +30,6 @@
     <PackageReference Include="Markdig" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="SharpHook" />
-    <PackageReference Include="Velopack" />
   </ItemGroup>
 
   <ItemGroup>
@@ -56,6 +55,12 @@
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>RepositoryUrl</_Parameter1>
       <_Parameter2>$(FileeRepositoryUrl)</_Parameter2>
+    </AssemblyAttribute>
+    <!-- Published builds (installer, portable zip) set -p:FileeRelease=true: only they register Explorer and startup
+         entries (UpdateService.IsReleaseBuild), so running from source leaves the user's system alone. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(FileeRelease)' == 'true'">
+      <_Parameter1>FileeRelease</_Parameter1>
+      <_Parameter2>true</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
 </Project>

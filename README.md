@@ -109,15 +109,20 @@ never uses programs installed on your PC. Optional engines Filee offers to downl
 ## Get started
 
 **Install:** download the latest `Filee-<version>-win-Setup.exe` from
-[Releases](https://github.com/KnifeLemon/Filee/releases/latest) (Windows 10/11, 64-bit).
+[Releases](https://github.com/KnifeLemon/Filee/releases/latest) (Windows 10/11, 64-bit) and run it. Setup asks for
+administrator rights once and installs Filee for all users in Program Files. Prefer no installer? Unzip
+`Filee-<version>-win-Portable.zip` anywhere and run `Filee.exe`.
 
 - **Everything common is in the installer.** Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and
   CAD work right away.
-- **Large engines are optional.** On first start Filee offers the engines for video and audio (FFmpeg, ~100 MB) and for
-  rare formats (LibreOffice, calibre, Ghostscript, Pandoc), each with its size. Install or remove them any time in
-  Settings → Engines, which shows download speed and time left.
+- **Choose in Setup.** Add “Convert with Filee” to the File Explorer menu (on Windows 11 also at the top of the menu,
+  not only under “Show more options”), start Filee when you sign in, and pick optional engines: video and audio
+  (FFmpeg, ~100 MB) and rare formats (LibreOffice, calibre, Ghostscript, Pandoc), each with its size. Filee downloads
+  the chosen engines when Setup starts it; install or remove them any time in Settings → Engines, which shows download
+  speed and time left.
 - **You hear about updates.** When a new release is out, Filee says so at the bottom of the menu, in a notice and in
-  the tray menu, and opens the latest release to download it. Run the new installer; your settings are kept.
+  the tray menu, and opens the latest release to download it. Run the new installer: it closes Filee, updates it and
+  keeps your settings and engines. Filee 1.1 and earlier (installed per user) are taken over the same way.
 
 macOS support is planned.
 
@@ -135,7 +140,9 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-Settings live in `%APPDATA%\Filee`. Debug builds never touch the Explorer context menu or auto-start.
+Settings live in `%APPDATA%\Filee`. Builds from source never touch the Explorer context menu or auto-start.
+`pwsh build/build-installer.ps1` publishes Filee and builds the installer into `Releases/` (it downloads a pinned,
+portable Inno Setup into `build/.cache`; nothing is installed).
 
 | Project | What it is |
 |---|---|

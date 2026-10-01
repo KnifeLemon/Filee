@@ -40,6 +40,17 @@ public static class EngineDownloads
     /// <summary>Total download size of a package in bytes.</summary>
     public static long DownloadSize(EnginePackage package) => package.Components.Sum(c => Components[c].Size);
 
+    /// <summary>Packages whose download is smaller than this (bytes) are suggested, see <see cref="IsSuggested"/>.</summary>
+    public const long SuggestLimit = 60_000_000;
+
+    /// <summary>
+    /// Ticked by default in the installer and in the first-run choice. Large downloads are offered, not suggested:
+    /// LibreOffice is only needed for older formats (DOC, XLS, PPT, OpenDocument), FFmpeg (~100 MB) only for video and
+    /// audio, calibre (~230 MB) only for rare e-book formats and Kindle output. Ghostscript is small but only needed for
+    /// EPS / PostScript.
+    /// </summary>
+    public static bool IsSuggested(EnginePackage package) => DownloadSize(package) < SuggestLimit && package.Id != "ghostscript";
+
     private static Dictionary<string, EngineComponent> Load()
     {
         using var stream = typeof(EngineDownloads).Assembly.GetManifestResourceStream("Filee.Engines.engines.json")

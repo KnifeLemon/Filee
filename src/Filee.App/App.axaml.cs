@@ -119,7 +119,7 @@ public partial class App : Application
         if (exe is null || !OperatingSystem.IsWindows())
             return;
         // When running from the IDE (bin\Debug) don't touch the user's Explorer / startup settings.
-        if (!AppHost.Get<UpdateService>().IsInstalled)
+        if (!UpdateService.IsReleaseBuild)
             return;
         try
         {
@@ -135,6 +135,12 @@ public partial class App : Application
 
     private void HandleCommandLine(CommandLine options, bool firstLaunch = false)
     {
+        if (options.Quit)
+        {
+            // The installer is about to replace or remove Filee's files (Program.RunInstallerCommand waits for this).
+            (ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
+            return;
+        }
         // The Windows 11 Explorer menu hands over huge selections in a temp file; its paths are in ConvertFiles now.
         options.DeleteListFile();
         if (options.ConvertFiles.Count > 0)
@@ -147,17 +153,43 @@ public partial class App : Application
         }
 
         var store = AppHost.Get<UserDataStore>();
+        ApplyInstallerChoices(options, store);
         if (!options.Background || options.ShowSettings || !firstLaunch)
             AppHost.Get<WindowService>().ShowMain(store.Settings.FirstRunCompleted ? null : "home");
 
-        if (!store.Settings.FirstRunCompleted)
+        if (options.InstallEngines is { } engines)
         {
-            // The installer only contains the small engines: offer the large ones right after installing.
+            // Picked on the installer's engine page: download them now. Picking none answers the first-run question.
+            if (engines.Count > 0)
+                AppHost.Get<WindowService>().ShowEngineSetup(engines);
+        }
+        else if (!store.Settings.FirstRunCompleted)
+        {
+            // The installer only contains the small engines: offer the large ones on first run (portable zip, or an
+            // installation that skipped the engine page).
             if (AppHost.Get<EngineDownloadService>().Packages.Any(p => !p.IsInstalled))
                 AppHost.Get<WindowService>().ShowEngineSetup();
+        }
+        if (!store.Settings.FirstRunCompleted)
+        {
             store.Settings.FirstRunCompleted = true;
             store.SaveSettings();
         }
+    }
+
+    /// <summary>
+    /// Options ticked on the installer's task page. Saving applies them (registry entries, see ApplySystemIntegration)
+    /// as if they had been switched on the General page.
+    /// </summary>
+    private static void ApplyInstallerChoices(CommandLine options, UserDataStore store)
+    {
+        if (options.StartWithWindows is null && options.ContextMenu is null)
+            return;
+        if (options.StartWithWindows is { } start)
+            store.Settings.StartWithSystem = start;
+        if (options.ContextMenu is { } menu)
+            store.Settings.ContextMenuEnabled = menu;
+        store.SaveSettings();
     }
 
     private void OpenPendingFiles()
