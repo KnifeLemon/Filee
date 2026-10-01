@@ -5,6 +5,13 @@
 //   Filee.exe --convert a b ...        open the donut for these files (Explorer context menu / Send To)
 //   Filee.exe --convert-list <file>    same, with one path per line in a UTF-8 file (Windows 11 Explorer menu, for
 //                                      selections too long for a command line); the app deletes the file afterwards
+// Used by the installer (installer/Filee.iss):
+//   Filee.exe --install-engines=a,b    download these engine packages (EngineDownloads ids) in the engine window;
+//                                      an empty list means the user chose none, so the first-run choice is skipped
+//   Filee.exe --start-with-windows=on|off, --context-menu=on|off
+//                                      set the matching options on the General page
+//   Filee.exe --quit                   ask a running Filee to exit, and wait until it has (no window otherwise)
+//   Filee.exe --uninstall-cleanup      quit Filee, then remove what it registered for this user (UninstallCleanup)
 
 using System.Text;
 
@@ -12,7 +19,19 @@ namespace Filee.App.Services;
 
 /// <summary>Parsed command line.</summary>
 /// <param name="ListFile">The <c>--convert-list</c> file, if any (see <see cref="DeleteListFile"/>).</param>
-public sealed record CommandLine(bool Background, bool ShowSettings, IReadOnlyList<string> ConvertFiles, string? ListFile = null)
+/// <param name="InstallEngines">Engine packages chosen in the installer; null when the option is absent.</param>
+/// <param name="StartWithWindows">Value of <c>--start-with-windows</c>; null when absent.</param>
+/// <param name="ContextMenu">Value of <c>--context-menu</c>; null when absent.</param>
+public sealed record CommandLine(
+    bool Background,
+    bool ShowSettings,
+    IReadOnlyList<string> ConvertFiles,
+    string? ListFile = null,
+    bool Quit = false,
+    bool UninstallCleanup = false,
+    IReadOnlyList<string>? InstallEngines = null,
+    bool? StartWithWindows = null,
+    bool? ContextMenu = null)
 {
     /// <summary>File name prefix of list files written by FileeExplorerMenu.dll (LIST_PREFIX there) into %TEMP%.</summary>
     public const string ListFilePrefix = "Filee-convert-";
@@ -25,6 +44,11 @@ public sealed record CommandLine(bool Background, bool ShowSettings, IReadOnlyLi
         string? listFile = null;
         var collecting = false;
         var expectList = false;
+        var quit = false;
+        var cleanup = false;
+        List<string>? engines = null;
+        bool? startWithWindows = null;
+        bool? contextMenu = null;
 
         foreach (var arg in args)
         {
@@ -35,8 +59,25 @@ public sealed record CommandLine(bool Background, bool ShowSettings, IReadOnlyLi
                 files.AddRange(ReadListFile(arg).Where(Exists).Select(Path.GetFullPath));
                 continue;
             }
-            switch (arg.ToLowerInvariant())
+            var (name, value) = SplitOption(arg);
+            switch (name)
             {
+                case "--install-engines" when value is not null:
+                    engines = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(id => id.ToLowerInvariant()).Distinct().ToList();
+                    break;
+                case "--start-with-windows" when OnOff(value) is { } on:
+                    startWithWindows = on;
+                    break;
+                case "--context-menu" when OnOff(value) is { } on:
+                    contextMenu = on;
+                    break;
+                case "--quit":
+                    quit = true;
+                    break;
+                case "--uninstall-cleanup":
+                    cleanup = true;
+                    break;
                 case "--background":
                     background = true;
                     break;
@@ -50,14 +91,28 @@ public sealed record CommandLine(bool Background, bool ShowSettings, IReadOnlyLi
                     expectList = true;
                     break;
                 default:
-                    // Velopack passes its own --veloapp-* arguments; ignore anything unknown that isn't a file.
+                    // Ignore anything unknown that isn't a file (e.g. options of a newer version).
                     if (collecting && !arg.StartsWith("--", StringComparison.Ordinal) && Exists(arg))
                         files.Add(Path.GetFullPath(arg));
                     break;
             }
         }
-        return new CommandLine(background, settings, files, listFile);
+        return new CommandLine(background, settings, files, listFile, quit, cleanup, engines, startWithWindows, contextMenu);
     }
+
+    /// <summary>"--Name=Value" → ("--name", "Value"); "--name" → ("--name", null).</summary>
+    private static (string Name, string? Value) SplitOption(string arg)
+    {
+        var equals = arg.StartsWith("--", StringComparison.Ordinal) ? arg.IndexOf('=') : -1;
+        return equals < 0 ? (arg.ToLowerInvariant(), null) : (arg[..equals].ToLowerInvariant(), arg[(equals + 1)..]);
+    }
+
+    private static bool? OnOff(string? value) => value?.Trim().ToLowerInvariant() switch
+    {
+        "on" or "1" or "true" or "yes" => true,
+        "off" or "0" or "false" or "no" => false,
+        _ => null,
+    };
 
     /// <summary>
     /// Deletes the list file once its paths were taken over. Only files the Explorer menu wrote (prefix, temp

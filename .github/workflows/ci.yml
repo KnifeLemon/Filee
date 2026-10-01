@@ -63,6 +63,11 @@ jobs:
       - name: Test
         run: dotnet test Filee.slnx --no-build -c Release --logger "trx" --results-directory TestResults
 
+      # Compiles installer/Filee.iss against a stub app without compression: catches script errors in about a minute.
+      - name: Check installer script
+        shell: pwsh
+        run: ./build/build-installer.ps1 -CheckOnly
+
       - name: Upload UI screenshots
         if: always()
         uses: actions/upload-artifact@v4

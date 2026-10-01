@@ -53,5 +53,13 @@ Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
 
 ## Releasing (maintainers)
 
-Push a tag `vX.Y.Z`. `.github/workflows/release.yml` builds, bundles the engines, packs with Velopack and publishes
-the installer and update packages to GitHub Releases.
+Bump `<Version>` in `Directory.Build.props`, merge, then push a tag `vX.Y.Z`. `.github/workflows/release.yml` runs the
+tests and `build/build-installer.ps1 -Portable`: it publishes the app (`-p:FileeRelease=true`, which lets it register
+Explorer and startup entries), adds the Explorer menu extension and the bundled rhwp and 7-Zip, compiles
+`installer/Filee.iss` with a pinned, portable Inno Setup, and uploads `Filee-X.Y.Z-win-Setup.exe`, the portable zip and
+their SHA-256 sums with release notes generated from the merged pull requests.
+
+To try the installer locally run `pwsh build/build-installer.ps1` (output in `Releases/`). Setup needs administrator
+rights; `pwsh build/build-installer.ps1 -CheckOnly` only compiles the script. The installer's engine page and some of
+its texts are generated from `EngineDownloads` and the app's translations (`build/tools/make-installer-engines.cs`);
+its own texts are in the `[CustomMessages]` section of `installer/Filee.iss` (English, Korean, Simplified Chinese).

@@ -9,8 +9,6 @@ using System.Text.Json;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Microsoft.Extensions.Logging;
-using Velopack;
-using Velopack.Sources;
 
 namespace Filee.App.Services;
 
@@ -21,7 +19,6 @@ public sealed partial class UpdateService : ObservableObject
 
     private readonly ILogger<UpdateService> _log;
     private readonly HttpClient _http;
-    private UpdateManager? _manager;
     private DispatcherTimer? _timer;
 
     public UpdateService(ILogger<UpdateService> log)
@@ -54,23 +51,13 @@ public sealed partial class UpdateService : ObservableObject
     /// <summary>Raised on the UI thread when a check finds a newer version than before.</summary>
     public event EventHandler<string>? UpdateFound;
 
-    /// <summary>False when running from source (no Velopack installation). Keeps dev builds out of the registry.</summary>
-    public bool IsInstalled
-    {
-        get
-        {
-            try
-            {
-                _manager ??= new UpdateManager(new GithubSource(RepositoryUrl, null, false));
-                return _manager.IsInstalled;
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Velopack locator unavailable");
-                return false;
-            }
-        }
-    }
+    /// <summary>
+    /// True for published builds (the installer and the portable zip are published with <c>-p:FileeRelease=true</c>),
+    /// false when running from source. Keeps development builds out of the registry.
+    /// </summary>
+    public static bool IsReleaseBuild =>
+        typeof(UpdateService).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .Any(a => a.Key == "FileeRelease" && a.Value == "true");
 
     /// <summary>Checks the latest release now. Returns the newer version, or null when up to date or offline.</summary>
     public async Task<string?> CheckAsync(CancellationToken cancellationToken = default)

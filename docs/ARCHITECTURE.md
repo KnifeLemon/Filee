@@ -84,13 +84,14 @@ applied by `WindowsPlatformServices.SetContextMenu` at start-up and whenever set
   (`src/Filee.ExplorerMenu`, plain C, no C runtime) declared by the sparse package `FileeExplorerMenu.msix`
   (`ExplorerMenuPackage.CreateManifest`: `desktop4:FileExplorerContextMenus`, `desktop5:ItemType Type="*"`,
   `com:SurrogateServer`, `uap10:AllowExternalContent`, `AppListEntry="none"`). Both files ship next to Filee.exe and the
-  package's external location is the install folder (`%LocalAppData%\Filee\current`, stable across Velopack updates).
+  package's external location is the install folder (`C:\Program Files\Filee` by default).
   - The package is **unsigned** (publisher contains `OID.2.25.311729368913984317654407730594956997722=1`; Filee has no
     code-signing certificate). Windows only registers an unsigned package with executable content **with
     administrator rights** (it installs it for all users); a per-user attempt fails with 0x80073D2B "an unsigned
-    package cannot include Executable activations". So it is opt-in: the General page shows "Add to the main menu"
-    on Windows 11 x64, which runs `Add-AppxPackage -Path … -ExternalLocation … -AllowUnsigned` in Windows PowerShell
-    through one UAC prompt (`ExplorerMenuRegistration`). A signed package would register per user without a prompt.
+    package cannot include Executable activations". Setup (`installer/Filee.iss`) has those rights anyway and
+    registers it on Windows 11 x64 while its option is ticked. Later the General page offers "Add to the main menu",
+    which runs `Add-AppxPackage -Path … -ExternalLocation … -AllowUnsigned` in Windows PowerShell through one UAC
+    prompt (`ExplorerMenuRegistration`). A signed package would register per user without a prompt.
   - The manifest version (`ExplorerMenuPackage.ManifestVersion`) is independent of the app version, so app updates
     don't need a new prompt: the DLL is loaded from the install folder and updated with the app. Bump it only when the
     manifest changes; the page then offers to add the entry again ("Outdated").
@@ -100,13 +101,15 @@ applied by `WindowsPlatformServices.SetContextMenu` at start-up and whenever set
     package is registered the classic verb is removed (Windows lists packaged commands under "Show more options" too).
   - Invoke starts `Filee.exe --convert "<path>"…` next to the DLL and returns at once. Selections longer than a
     command line go through `%TEMP%\Filee-convert-*.txt` (`--convert-list`, one path per line), which the app deletes.
-  - Velopack: an update renames the `current` folder even while Explorer has the DLL loaded (Windows allows renaming
-    folders that contain loaded DLLs; only deleting the file fails, so an old copy may stay in Velopack's temp folder
-    until Explorer unloads it). Uninstall removes the package (`UninstallCleanup`, no admin needed) and the title file.
+  - Updates: Setup asks the running Filee to exit (`Filee.exe --quit`), then renames a `FileeExplorerMenu.dll` that
+    Explorer still has loaded (Windows allows renaming a loaded DLL, not replacing or deleting it) and has Windows
+    delete the old copy at the next restart, so updating needs no restart. An update keeps the registration as it
+    was and refreshes it. Uninstall runs `Filee.exe --uninstall-cleanup` (`UninstallCleanup`): it removes the package,
+    the title file, the classic verb, the startup entry and downloaded engines; settings stay.
   - Build: `pwsh build/build-explorer-menu.ps1` downloads a pinned Zig (SHA-256 checked) into `build/.cache`, compiles
     the DLL and packs the MSIX with `build/tools/make-explorer-package.cs` (Windows' own packaging API, no SDK).
-    Output: `build/.cache/explorer-menu`; CI builds it for the tests, the release workflow copies it into the publish
-    folder.
+    Output: `build/.cache/explorer-menu`; CI builds it for the tests, `build/build-installer.ps1` builds it into the
+    publish folder.
 
 Debugging: `Get-AppxPackage Filee.ExplorerMenu` shows the registration (`InstallLocation` is the external location);
 `Get-AppPackageLog -ActivityID <id>` explains a failed deployment. To try a local build, copy
