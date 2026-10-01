@@ -18,8 +18,9 @@
         ShowActivated="False"
         CanResize="False"
         SizeToContent="WidthAndHeight">
-  <Panel x:Name="Root" Background="Transparent" DragDrop.AllowDrop="True">
+  <Panel x:Name="Root" Background="{Binding HitBackground}" DragDrop.AllowDrop="True">
     <c:DonutMenu x:Name="Donut"
+                 Opacity="{Binding DonutOpacity}"
                  Items="{Binding Items}"
                  CenterTitle="{Binding CenterTitle}"
                  CenterSubtitle="{Binding CenterSubtitle}"

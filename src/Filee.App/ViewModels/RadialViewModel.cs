@@ -20,6 +20,18 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private double _holeRatio = 0.42;
     [ObservableProperty] private double _sliceOpacity = 0.96;
 
+    /// <summary>
+    /// 0 while a drag gesture waits for files, 1 otherwise. The gesture starts before anyone knows what is being
+    /// dragged (a file, text, or nothing: Ctrl + a rubber-band selection), so the donut only appears when files enter.
+    /// </summary>
+    [ObservableProperty] private double _donutOpacity = 1;
+
+    /// <summary>
+    /// Background of the window while the donut is hidden: practically invisible, but not fully transparent, so
+    /// Windows still delivers the drag to this window and the files can arrive.
+    /// </summary>
+    [ObservableProperty] private string _hitBackground = "Transparent";
+
     /// <summary>Files the donut will convert (empty while waiting for a drag to enter).</summary>
     public IReadOnlyList<string> Files { get; private set; } = [];
 
@@ -41,6 +53,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         Items = [];
         CenterTitle = loc["donut.center_drag"];
         CenterSubtitle = null;
+        DonutOpacity = 0;
+        HitBackground = "#01000000";
     }
 
     /// <summary>Fills the donut for the given files.</summary>
@@ -48,6 +62,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     {
         IsClickMode = clickMode;
         Files = files;
+        DonutOpacity = 1;
+        HitBackground = "Transparent";
         ApplyAppearance();
 
         var profile = ProfileSelector.Select(store.Profiles, files);
