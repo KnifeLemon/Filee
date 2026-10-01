@@ -104,6 +104,15 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = '${{ steps.version.outputs.value }}'
-          # assets.win.json only describes the local build folder.
-          $files = Get-ChildItem Releases -File | Where-Object Name -ne 'assets.win.json' | ForEach-Object FullName
+          # Releases/ also holds the previous version's full package, downloaded only to build the delta: publish this
+          # version's files, and trim the update feed to them so the release lists only what it carries.
+          $feedPath = 'Releases/releases.win.json'
+          $feed = Get-Content $feedPath -Raw | ConvertFrom-Json
+          $feed.Assets = @($feed.Assets | Where-Object Version -eq $version)
+          $feed | ConvertTo-Json -Depth 5 -Compress | Set-Content $feedPath -Encoding utf8 -NoNewline
+          $pattern = "-$([regex]::Escape($version))-"
+          (Get-Content Releases/RELEASES) | Where-Object { $_ -match $pattern } | Set-Content Releases/RELEASES -Encoding utf8BOM
+          $files = Get-ChildItem Releases -File |
+            Where-Object { $_.Name -in 'releases.win.json', 'RELEASES' -or $_.Name -like "Filee-$version-*" } |
+            ForEach-Object FullName
           gh release create '${{ github.ref_name }}' --title "Filee $version" --generate-notes --verify-tag @files
