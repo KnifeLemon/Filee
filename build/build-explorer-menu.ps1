@@ -49,8 +49,10 @@ function Get-Zig {
         if ($ok) { break }
         Write-Host "get  $url"
         try {
-            # curl.exe (part of Windows) is much faster than Invoke-WebRequest for ~100 MB.
-            & curl.exe --fail --location --silent --show-error --retry 2 --max-time 900 --output $zip $url
+            # curl.exe (part of Windows) is much faster than Invoke-WebRequest for ~100 MB. A mirror that stalls (under
+            # 200 KB/s for 30 s) is dropped quickly for the next one instead of holding the build for many minutes.
+            & curl.exe --fail --location --silent --show-error --connect-timeout 20 --speed-limit 200000 --speed-time 30 `
+                --max-time 600 --output $zip $url
             if ($LASTEXITCODE -ne 0) { throw "curl exit code $LASTEXITCODE" }
             $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
             if ($hash -ne $zigSha256) { throw "checksum mismatch (got $hash, size $((Get-Item $zip).Length), expected $zigSize bytes)" }
@@ -67,7 +69,7 @@ function Get-Zig {
     $partial = Join-Path $cache "$zigName.partial"
     Remove-Item $partial -Recurse -Force -ErrorAction SilentlyContinue
     New-Item -ItemType Directory -Force -Path $partial | Out-Null
-    & tar.exe -xf $zip -C $partial
+    & (Join-Path $env:SystemRoot 'System32\tar.exe') -xf $zip -C $partial
     if ($LASTEXITCODE -ne 0) { throw "tar failed with exit code $LASTEXITCODE" }
     Move-Item (Join-Path $partial $zigName) $folder
     Remove-Item $partial -Recurse -Force

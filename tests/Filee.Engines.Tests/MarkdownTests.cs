@@ -150,20 +150,28 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var reports = new List<double>();
         var sink = new SyncProgress(v => { lock (reports) reports.Add(v); });
+        int Count()
+        {
+            lock (reports)
+                return reports.Count;
+        }
 
         using (ProgressEstimate.Start(sink, TimeSpan.FromSeconds(1)))
-            await Task.Delay(700, TestContext.Current.CancellationToken);
-        int count;
-        lock (reports)
-            count = reports.Count;
+        {
+            // Timer callbacks run late on a busy machine (CI runners): wait for two reports, up to 10 s.
+            var deadline = DateTime.UtcNow.AddSeconds(10);
+            while (Count() < 2 && DateTime.UtcNow < deadline)
+                await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+        // A callback that was already running when the estimate was disposed may still report once.
+        await Task.Delay(100, TestContext.Current.CancellationToken);
+        var count = Count();
         await Task.Delay(400, TestContext.Current.CancellationToken);
 
         Assert.True(count >= 2, $"only {count} reports");
+        Assert.Equal(count, Count());
         lock (reports)
-        {
-            Assert.Equal(count, reports.Count);
             Assert.All(reports, v => Assert.InRange(v, 0.1, 0.9));
-        }
     }
 
     [Fact]

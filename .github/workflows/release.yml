@@ -38,6 +38,12 @@ jobs:
         shell: pwsh
         run: ./build/fetch-fonts.ps1
 
+      - name: Restore Zig toolchain
+        uses: actions/cache/restore@v4
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
       # Windows 11 top-level Explorer menu: FileeExplorerMenu.dll (C, built with a pinned Zig toolchain) and the
       # unsigned sparse package FileeExplorerMenu.msix. Built before the tests so they check the real files.
       - name: Build Explorer menu extension
