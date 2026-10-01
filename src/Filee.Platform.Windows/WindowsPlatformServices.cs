@@ -139,10 +139,21 @@ public sealed class WindowsPlatformServices : IPlatformServices
         CreateShortcut(SendToShortcutPath, executablePath, "--convert", label);
     }
 
-    public ModernContextMenuState GetModernContextMenuState(string executablePath) =>
-        Path.GetDirectoryName(executablePath) is { Length: > 0 } folder
-            ? ExplorerMenuRegistration.GetState(folder)
-            : ModernContextMenuState.Unsupported;
+    public ModernContextMenuState GetModernContextMenuState(string executablePath)
+    {
+        try
+        {
+            return Path.GetDirectoryName(executablePath) is { Length: > 0 } folder
+                ? ExplorerMenuRegistration.GetState(folder)
+                : ModernContextMenuState.Unsupported;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // Asking Windows about packages must never take the app or the settings page down.
+            Trace.TraceWarning($"Reading the Explorer menu state failed: {ex}");
+            return ModernContextMenuState.Unsupported;
+        }
+    }
 
     public Task<ModernContextMenuResult> SetModernContextMenuAsync(bool enabled, string executablePath) => Task.Run(async () =>
     {
@@ -150,9 +161,17 @@ public sealed class WindowsPlatformServices : IPlatformServices
         if (string.IsNullOrEmpty(folder))
             return new ModernContextMenuResult(false, Error: "Unknown install folder.");
 
-        var result = enabled
-            ? await ExplorerMenuRegistration.AddAsync(folder)
-            : await ExplorerMenuRegistration.RemoveAsync(allowElevation: true);
+        ModernContextMenuResult result;
+        try
+        {
+            result = enabled
+                ? await ExplorerMenuRegistration.AddAsync(folder)
+                : await ExplorerMenuRegistration.RemoveAsync(allowElevation: true);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            result = new ModernContextMenuResult(false, Error: ex.Message);
+        }
 
         // Keep exactly one entry: the title file exists while the Explorer menu setting is on.
         if (ExplorerMenuRegistration.ReadTitle() is { Length: > 0 } title)

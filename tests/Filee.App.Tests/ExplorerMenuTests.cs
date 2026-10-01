@@ -91,6 +91,35 @@ public class ExplorerMenuTests
     }
 
     [Fact]
+    public void Every_native_import_exists_in_the_dll_it_names()
+    {
+        // GetPackagePathByFullName2 was imported from kernel32.dll, which doesn't export it: the call only failed
+        // once a package was registered and crashed the app right after "Add to the main menu" (1.1.0).
+        var nativeMethods = typeof(ExplorerMenuRegistration).Assembly.GetType("Filee.Platform.Windows.NativeMethods", throwOnError: true)!;
+        var imports = nativeMethods.GetMethods(System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic)
+            .Select(m => (Method: m, Import: m.GetCustomAttributes(typeof(LibraryImportAttribute), false).OfType<LibraryImportAttribute>().FirstOrDefault()))
+            .Where(m => m.Import is not null)
+            .ToList();
+        Assert.NotEmpty(imports);
+        Assert.All(imports, m =>
+        {
+            var entryPoint = m.Import!.EntryPoint ?? m.Method.Name;
+            Assert.True(NativeLibrary.TryLoad(m.Import.LibraryName, out var library), $"{m.Import.LibraryName} can't be loaded");
+            Assert.True(NativeLibrary.TryGetExport(library, entryPoint, out _), $"{m.Import.LibraryName} has no {entryPoint}");
+        });
+    }
+
+    [Fact]
+    public void Reading_the_registered_package_never_throws()
+    {
+        Assert.Null(ExplorerMenuRegistration.ExternalLocationOf("Filee.NotInstalled_1.0.0.0_x64__0000000000000"));
+        // Whatever is registered on this machine (nothing on CI): a registered sparse package has an external location.
+        if (ExplorerMenuRegistration.Find() is { } package)
+            Assert.False(string.IsNullOrEmpty(package.ExternalLocation), package.FullName);
+        _ = ExplorerMenuRegistration.GetState(BuiltFolder);
+    }
+
+    [Fact]
     public void PowerShell_literals_escape_straight_and_typographic_single_quotes()
     {
         Assert.Equal(@"'C:\Users\Kim''s PC\Filee'", ExplorerMenuRegistration.Quote(@"C:\Users\Kim's PC\Filee"));
