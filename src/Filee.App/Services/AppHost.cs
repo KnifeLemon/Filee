@@ -53,6 +53,7 @@ public static class AppHost
         services.AddSingleton<PresetAvailability>();
         services.AddSingleton<RadialViewModel>();
         services.AddSingleton<ConversionService>();
+        services.AddSingleton<WatchFolderService>();
         services.AddSingleton<TriggerService>();
         services.AddSingleton<RadialController>();
         services.AddSingleton<TrayService>();

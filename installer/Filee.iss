@@ -11,7 +11,8 @@
 ;    keeps the settings (%APPDATA%\Filee) and downloaded engines (%LocalAppData%\Filee\engines);
 ;  - on Windows 11 registers the top-level File Explorer menu entry (an unsigned sparse package, which needs the
 ;    administrator rights Setup already has);
-;  - offers the optional conversion engines; Filee downloads the chosen ones (verified) when Setup starts it.
+;  - offers the optional conversion engines; Filee downloads the chosen ones (verified) when Setup starts it;
+;  - can put the "filee" command line on PATH ({app}\cli\filee.cmd runs filee-cli.exe).
 ; The uninstaller runs "Filee.exe --uninstall-cleanup" for the per-user parts (UninstallCleanup.cs).
 
 #ifndef AppVersion
@@ -64,6 +65,8 @@ CloseApplicationsFilter=*.exe
 RestartApplications=no
 ; Per-user parts (the old Velopack copy, Start menu shortcuts) belong to the account that runs Setup.
 UsedUserAreasWarning=no
+; The "filee" command folder is added to PATH: tell running programs (new terminals) about it.
+ChangesEnvironment=yes
 SetupLogging=yes
 
 [Languages]
@@ -94,6 +97,9 @@ zhcn.ReadyEngines=转换引擎（Filee 启动后下载）：
 en.FinishedRunning=Filee is installed and running in the notification area of the taskbar.%n%nTo convert files, drag them while holding the trigger key, or right-click them in File Explorer.
 ko.FinishedRunning=Filee가 설치되어 작업 표시줄 알림 영역에서 실행 중이에요.%n%n파일을 변환하려면 지정한 키를 누른 채 파일을 끌거나, 탐색기에서 파일을 우클릭하세요.
 zhcn.FinishedRunning=Filee 已安装，正在任务栏通知区域运行。%n%n要转换文件，请按住触发键拖动文件，或在资源管理器中右键单击文件。
+en.TaskCli=Add the "filee" command to PATH (convert from the command line)
+ko.TaskCli="filee" 명령어를 PATH에 추가 (명령줄에서 변환)
+zhcn.TaskCli=将 "filee" 命令添加到 PATH（在命令行中转换）
 en.FinishedEngines=The conversion engines you picked are downloading in the Filee window.
 ko.FinishedEngines=선택한 변환 엔진은 Filee 창에서 내려받고 있어요.
 zhcn.FinishedEngines=你选择的转换引擎正在 Filee 窗口中下载。
@@ -102,6 +108,7 @@ zhcn.FinishedEngines=你选择的转换引擎正在 Filee 窗口中下载。
 Name: "contextmenu"; Description: "{cm:TaskContextMenu}"; GroupDescription: "{cm:GroupOptions}"; Check: IsFreshInstall
 Name: "contextmenu\top"; Description: "{cm:TaskModernMenu}"; GroupDescription: "{cm:GroupOptions}"; Check: IsFreshInstall and IsExplorerMenuSupported
 Name: "startup"; Description: "{cm:TaskStartup}"; GroupDescription: "{cm:GroupOptions}"; Check: IsFreshInstall
+Name: "cli"; Description: "{cm:TaskCli}"; GroupDescription: "{cm:GroupOptions}"; Check: not IsCliOnPath
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
@@ -321,6 +328,55 @@ begin
   RegDeleteKeyIncludingSubkeys(HKCU, VelopackUninstallKey);
 end;
 
+const
+  EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+
+// The folder with filee.cmd (the command line), which goes on the system PATH.
+function CliFolder: String;
+begin
+  Result := ExpandConstant('{app}\cli');
+end;
+
+function PathHas(const Paths, Folder: String): Boolean;
+begin
+  Result := Pos(';' + Uppercase(RemoveBackslashUnlessRoot(Folder)) + ';', ';' + Uppercase(Paths) + ';') > 0;
+end;
+
+function IsCliOnPath: Boolean;
+var
+  Paths: String;
+begin
+  Result := RegQueryStringValue(HKLM, EnvironmentKey, 'Path', Paths) and PathHas(Paths, CliFolder);
+end;
+
+procedure AddCliToPath;
+var
+  Paths: String;
+begin
+  if not RegQueryStringValue(HKLM, EnvironmentKey, 'Path', Paths) or PathHas(Paths, CliFolder) then
+    Exit;
+  if (Paths <> '') and (Copy(Paths, Length(Paths), 1) <> ';') then
+    Paths := Paths + ';';
+  // REG_EXPAND_SZ like Windows' own value, so %SystemRoot% entries keep working.
+  RegWriteExpandStringValue(HKLM, EnvironmentKey, 'Path', Paths + CliFolder);
+end;
+
+procedure RemoveCliFromPath;
+var
+  Paths, Folder: String;
+  At: Integer;
+begin
+  if not RegQueryStringValue(HKLM, EnvironmentKey, 'Path', Paths) then
+    Exit;
+  Folder := ';' + Uppercase(CliFolder) + ';';
+  Paths := ';' + Paths + ';';
+  At := Pos(Folder, Uppercase(Paths));
+  if At = 0 then
+    Exit;
+  Delete(Paths, At, Length(Folder) - 1);
+  RegWriteExpandStringValue(HKLM, EnvironmentKey, 'Path', Copy(Paths, 2, Length(Paths) - 2));
+end;
+
 // True when every listed component has been downloaded already (EngineInstaller writes the marker last).
 function IsEngineInstalled(const MarkerFolders: String): Boolean;
 var
@@ -496,6 +552,8 @@ begin
     ssPostInstall:
       begin
         UpdateExplorerMenu;
+        if WizardIsTaskSelected('cli') then
+          AddCliToPath;
         StartFilee;
       end;
   end;
@@ -519,7 +577,10 @@ begin
     usUninstall:
       MoveLoadedDllAside(ExpandConstant('{tmp}'));
     usPostUninstall:
+    begin
+      RemoveCliFromPath;
       if DirExists(ExpandConstant('{app}')) and not RemoveDir(ExpandConstant('{app}')) then
         RestartReplace(ExpandConstant('{app}'), '');
+    end;
   end;
 end;

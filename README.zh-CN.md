@@ -52,6 +52,10 @@
 - **自动规划路径。** 自动找到多步转换路径（例如 HWP → HWPX → DOCX、EPUB → HWPX → PDF → PNG），每一步使用最擅长的引擎。
 - **四种使用方式。** 拖动手势、资源管理器右键菜单（Windows 11 也可加入主菜单）和“发送到”、对资源管理器中选中的文件按
   快捷键、主窗口拖放区。
+- **自动转换文件夹。** Filee 运行时，放入指定文件夹的文件会在下载或复制完成后自动转换；原文件可以保留，也可以移走，
+  让文件夹像收件箱一样使用。
+- **命令行。** `filee convert *.heic --to jpg`、`filee watch D:\Inbox --to pdf`，支持应用中的预设、供脚本使用的 JSON 输出和
+  退出码。安装时可以把 `filee` 命令加入 PATH。
 - **引擎一目了然。** “设置 → 转换引擎”列出每个引擎的版本和可转换内容；可选引擎下载时显示速度和剩余时间。
 - **柔和的动画界面。** 浅色、深色或跟随系统，自定义强调色和圆角，旧电脑可开启“减少动画”。
 - **简体中文、English、한국어**，默认跟随 Windows 语言。
@@ -138,6 +142,7 @@ dotnet test
 | `src/Filee.Engines` | 每个转换引擎一个类（`IConverter`），包括 HWPX 写入器。 |
 | `src/Filee.Platform.Windows` | 资源管理器集成、右键菜单、开机自启动。 |
 | `src/Filee.App` | Avalonia 界面：圆环工具栏、设置窗口、托盘、通知。 |
+| `src/Filee.Cli` | `filee` 命令行（convert、watch、formats、presets），与应用共用引擎和预设。 |
 | `tests/*` | xUnit v3 测试，包括无头 UI 渲染。 |
 
 </details>

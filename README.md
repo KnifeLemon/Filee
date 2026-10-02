@@ -55,6 +55,10 @@
   each step with the engine that does it best.
 - **Four ways in.** The drag gesture, Explorer's right-click menu (on Windows 11 also in the main menu) and Send To, a
   keyboard shortcut on the Explorer selection, and the drop zone in the main window.
+- **Watch folders.** Files that land in a folder you choose are converted automatically while Filee runs, once
+  downloads and copies are complete. Keep the originals or move them aside so the folder works like an inbox.
+- **Command line.** `filee convert *.heic --to jpg`, `filee watch D:\Inbox --to pdf`, with your presets, JSON output
+  for scripts and exit codes. Setup can put the `filee` command on PATH.
 - **Engines you can see.** Settings → Engines lists every engine with its version and what it converts; optional
   engines download with speed and time left.
 - **Soft, animated UI.** Light, dark or system theme, your accent colour, adjustable roundness and a *Reduce animations*
@@ -150,6 +154,7 @@ portable Inno Setup into `build/.cache`; nothing is installed).
 | `src/Filee.Engines` | One class per conversion engine (`IConverter`), including the HWPX writer. |
 | `src/Filee.Platform.Windows` | Explorer integration, context menu, auto-start. |
 | `src/Filee.App` | Avalonia UI: donut toolbar, settings window, tray, toasts. |
+| `src/Filee.Cli` | The `filee` command line (convert, watch, formats, presets) on the same engines and presets. |
 | `tests/*` | xUnit v3 tests, including headless UI rendering. |
 
 </details>
