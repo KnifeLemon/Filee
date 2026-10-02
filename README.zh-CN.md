@@ -157,6 +157,11 @@ dotnet test
 欢迎提交 Pull Request。适合入门的任务：[添加转换器](docs/ADDING-A-CONVERTER.md)和[添加语言](docs/ADDING-A-LANGUAGE.md)。
 如果 Filee 帮你省了时间，点个 ⭐ 能让更多人发现它。
 
+## 代码签名政策
+
+Filee 的代码签名政策（Code signing policy）和隐私政策见[英文 README](README.md#code-signing-policy)。Filee 不会上传文件，
+也不会发送任何使用数据。
+
 ## 许可证
 
 MIT。随附的第三方组件遵循各自的许可证，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
