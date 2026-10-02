@@ -10,7 +10,8 @@
 <p align="center">
   <a href="https://filee.sh/ko/"><b>웹사이트</b></a> ·
   <a href="https://github.com/KnifeLemon/Filee/releases/latest"><b>다운로드</b></a> ·
-  <a href="#시작하기">시작하기</a> ·
+  <a href="#설치">설치</a> ·
+  <a href="#명령줄">명령줄</a> ·
   <a href="#문서">문서</a>
 </p>
 
@@ -27,7 +28,7 @@
 <table>
   <tr>
     <td width="33%" valign="top"><b>커서 바로 옆에서</b><br>앱 창을 열 필요가 없어요. 끌고 있는 파일에 맞는 형식만 지금 있는 자리에 나타나요.</td>
-    <td width="33%" valign="top"><b>170가지 넘는 형식, 다른 프로그램 없이</b><br>이미지, PDF, 워드, 엑셀, 파워포인트, HWP, 전자책, 압축 파일, 글꼴, CAD를 오피스·한컴오피스·LibreOffice 없이 변환해요.</td>
+    <td width="33%" valign="top"><b>180가지 형식, 다른 프로그램 없이</b><br>이미지, PDF, 워드, 엑셀, 파워포인트, HWP, 전자책, 압축 파일, 글꼴, CAD를 오피스·한컴오피스·LibreOffice 없이 변환해요.</td>
     <td width="33%" valign="top"><b>내 PC 안에서만</b><br>아무것도 업로드하지 않아요. 오프라인으로 동작하고 결과는 원본 바로 옆에 저장해요.</td>
   </tr>
 </table>
@@ -38,6 +39,24 @@
   <a href="https://filee.sh/ko/"><img src="docs/media/demo-ko.webp" alt="Ctrl을 누른 채 여행사진.jpg를 끌면 커서 위치에 형식 도넛이 열리고, PNG에 놓으면 진행률 링이 차오른 뒤 여행사진.png가 생깁니다" width="820"></a><br>
   <sub>27초 영상과 직접 해보는 데모는 <a href="https://filee.sh/ko/">filee.sh</a>에서</sub>
 </p>
+
+## 설치
+
+[Releases](https://github.com/KnifeLemon/Filee/releases/latest)에서 최신 `Filee-<버전>-win-Setup.exe`를
+받아 실행하세요(Windows 10/11, 64비트). 관리자 권한을 한 번 요청하고, 모든 사용자를 위해 Program Files에 설치해요.
+설치 없이 쓰고 싶다면 `Filee-<버전>-win-Portable.zip`을 원하는 곳에 풀고 `Filee.exe`를 실행하면 돼요.
+
+- **자주 쓰는 형식은 설치 파일에 다 들어 있어요.** 이미지, PDF, 워드, 엑셀, 파워포인트, HWP, 전자책, 압축 파일, 글꼴, CAD는
+  설치하자마자 변환돼요.
+- **설치하면서 골라요.** 탐색기 우클릭 메뉴의 “Filee로 변환”(Windows 11에서는 “추가 옵션 표시” 없이 기본 메뉴에도),
+  로그인할 때 시작, 그리고 추가 엔진을 크기를 보며 고를 수 있어요: 동영상·오디오(FFmpeg, 약 100MB)와 드문
+  형식(LibreOffice, calibre, Ghostscript, Pandoc). 고른 엔진은 설치가 끝나고 Filee가 시작되면서 내려받고, 설정 → 변환
+  엔진에서 다운로드 속도와 남은 시간을 보며 언제든 설치하거나 지울 수 있어요.
+- **업데이트는 알려 드려요.** 새 버전이 나오면 메뉴 하단, 알림, 트레이 메뉴에 표시되고 누르면 최신 릴리스 페이지가
+  열려요. 새 설치 파일을 실행하면 Filee를 닫고 업데이트하며, 설정과 엔진은 그대로 유지돼요. 사용자별로 설치된
+  Filee 1.1 이하도 같은 방법으로 넘겨받아요.
+
+macOS 지원을 계획 중이고, Linux 지원도 검토하고 있어요.
 
 ## 기능
 
@@ -54,6 +73,10 @@
   엔진을 써요.
 - **네 가지 사용 방법.** 드래그 동작, 탐색기 우클릭 메뉴(Windows 11은 기본 메뉴에도)와 보내기, 탐색기에서 선택한 파일 +
   단축키, 메인 창 드롭 영역.
+- **자동 변환 폴더.** 정해 둔 폴더에 들어오는 파일을 Filee가 실행 중일 때 자동으로 변환해요. 다운로드나 복사가 끝난 뒤에
+  변환하고, 원본은 그대로 두거나 따로 옮겨서 폴더를 받은편지함처럼 쓸 수 있어요.
+- **명령줄.** `filee convert *.heic --to jpg`, `filee watch D:\Inbox --to pdf`처럼 쓰고, 앱의 프리셋, 스크립트용 JSON 출력,
+  종료 코드를 지원해요. 설치할 때 `filee` 명령을 PATH에 추가할 수 있어요.
 - **보이는 엔진.** 설정 → 변환 엔진에서 엔진마다 버전과 변환 범위를 보여 주고, 추가 엔진은 다운로드 속도와 남은 시간을
   보며 받을 수 있어요.
 - **말랑한 애니메이션 UI.** 라이트·다크·시스템 테마, 강조색, 모서리 둥글기, 저사양 PC를 위한 *애니메이션 줄이기*.
@@ -79,8 +102,33 @@
 | **글꼴**: TTF, OTF, WOFF, WOFF2, EOT | 서로 변환 |
 
 표시가 없는 것은 설치하자마자 변환돼요. MS 오피스·한컴오피스·LibreOffice가 없어도 되고, PC에 설치된 프로그램은 쓰지 않아요.
-처음 실행할 때 받을지 물어보는 추가 엔진: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg. 엔진마다 무엇을
+설치할 때 고르거나 나중에 앱에서 받는 추가 엔진: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg. 엔진마다 무엇을
 유지하고 무엇을 빼는지는 [docs/ENGINES.md](docs/ENGINES.md)에 있어요.
+
+## 명령줄
+
+`filee` 명령으로 앱을 열지 않고도 파일을 변환하고 폴더를 감시할 수 있어요. 앱과 같은 엔진과 프리셋을 써요.
+설치할 때 **"filee" 명령어를 PATH에 추가**를 체크한 뒤 새 터미널을 열면 돼요.
+
+```
+filee convert photo.heic --to jpg
+filee convert *.png --to webp --quality 80 -o converted
+filee convert D:\Scans --recursive --preset to-pdf --json
+filee watch D:\Inbox --to pdf --move-originals
+filee formats heic
+filee presets
+```
+
+| 명령 | 하는 일 |
+|---|---|
+| `filee convert` | 파일, 와일드카드(`*.heic`), 폴더를 `--to <형식>`이나 `--preset <프리셋>`으로 변환 |
+| `filee watch` | <kbd>Ctrl</kbd>+<kbd>C</kbd>를 누를 때까지 폴더에 들어오는 파일을 변환 |
+| `filee formats` | 모든 형식, 또는 한 형식이 무엇으로 바뀔 수 있는지 보기 |
+| `filee presets` | 앱에 저장된 프리셋 목록 |
+
+`--json`을 붙이면 스크립트나 다른 프로그램이 읽기 좋은 JSON으로 결과를 출력해요. 종료 코드: `0` 모두 변환,
+`1` 일부 실패, `2` 잘못된 인자나 없는 파일, `3` 변환할 파일 없음. 모든 옵션은 [명령줄 가이드](https://filee.sh/ko/cli/)와
+`filee help`에 있어요.
 
 ## 스크린샷
 
@@ -103,26 +151,18 @@
   </tr>
 </table>
 
-## 시작하기
+## 문서
 
-**설치:** [Releases](https://github.com/KnifeLemon/Filee/releases/latest)에서 최신 `Filee-<버전>-win-Setup.exe`를
-받아 실행하세요(Windows 10/11, 64비트). 관리자 권한을 한 번 요청하고, 모든 사용자를 위해 Program Files에 설치해요.
-설치 없이 쓰고 싶다면 `Filee-<버전>-win-Portable.zip`을 원하는 곳에 풀고 `Filee.exe`를 실행하면 돼요.
+| 하고 싶은 일 | 여기서 시작 |
+|---|---|
+| 명령줄로 변환하기 | [filee.sh/ko/cli](https://filee.sh/ko/cli/) |
+| 앱 구조 이해하기 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 어떤 엔진이 무엇을 변환하는지, 라이선스 | [docs/ENGINES.md](docs/ENGINES.md) |
+| 새 변환 추가하기 | [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md) |
+| 새 언어로 번역하기 | [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md) |
+| PR 보내기 | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-- **자주 쓰는 형식은 설치 파일에 다 들어 있어요.** 이미지, PDF, 워드, 엑셀, 파워포인트, HWP, 전자책, 압축 파일, 글꼴, CAD는
-  설치하자마자 변환돼요.
-- **설치하면서 골라요.** 탐색기 우클릭 메뉴의 “Filee로 변환”(Windows 11에서는 “추가 옵션 표시” 없이 기본 메뉴에도),
-  로그인할 때 시작, 그리고 추가 엔진을 크기를 보며 고를 수 있어요: 동영상·오디오(FFmpeg, 약 100MB)와 드문
-  형식(LibreOffice, calibre, Ghostscript, Pandoc). 고른 엔진은 설치가 끝나고 Filee가 시작되면서 내려받고, 설정 → 변환
-  엔진에서 다운로드 속도와 남은 시간을 보며 언제든 설치하거나 지울 수 있어요.
-- **업데이트는 알려 드려요.** 새 버전이 나오면 메뉴 하단, 알림, 트레이 메뉴에 표시되고 누르면 최신 릴리스 페이지가
-  열려요. 새 설치 파일을 실행하면 Filee를 닫고 업데이트하며, 설정과 엔진은 그대로 유지돼요. 사용자별로 설치된
-  Filee 1.1 이하도 같은 방법으로 넘겨받아요.
-
-macOS 지원은 계획 중입니다.
-
-<details>
-<summary><b>소스에서 빌드</b></summary>
+## 소스에서 빌드
 
 필요: .NET 10 SDK, Windows 10/11.
 
@@ -135,7 +175,9 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-설정은 `%APPDATA%\Filee`에 저장됩니다. 디버그 빌드는 탐색기 우클릭 메뉴나 자동 시작을 건드리지 않습니다.
+설정은 `%APPDATA%\Filee`에 저장됩니다. 소스에서 빌드한 Filee는 탐색기 우클릭 메뉴나 자동 시작을 건드리지 않습니다.
+`pwsh build/build-installer.ps1`로 설치 프로그램을 `Releases/`에 만들 수 있어요(고정된 버전의 Inno Setup을 `build/.cache`에
+받아서 쓰고, 아무것도 설치하지 않아요).
 
 | 프로젝트 | 설명 |
 |---|---|
@@ -143,19 +185,8 @@ dotnet test
 | `src/Filee.Engines` | 변환 엔진마다 클래스 하나(`IConverter`). HWPX 작성기 포함. |
 | `src/Filee.Platform.Windows` | 탐색기 연동, 우클릭 메뉴, 자동 시작. |
 | `src/Filee.App` | Avalonia UI: 도넛 툴바, 설정 창, 트레이, 알림. |
+| `src/Filee.Cli` | `filee` 명령줄(convert, watch, formats, presets). 앱과 같은 엔진과 프리셋을 써요. |
 | `tests/*` | xUnit v3 테스트(헤드리스 UI 렌더링 포함). |
-
-</details>
-
-## 문서
-
-| 하고 싶은 일 | 여기서 시작 |
-|---|---|
-| 앱 구조 이해하기 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| 어떤 엔진이 무엇을 변환하는지, 라이선스 | [docs/ENGINES.md](docs/ENGINES.md) |
-| 새 변환 추가하기 | [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md) |
-| 새 언어로 번역하기 | [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md) |
-| PR 보내기 | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## 기여
 

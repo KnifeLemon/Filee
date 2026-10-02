@@ -27,6 +27,7 @@ public sealed class ConversionService
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, JobViewModel> _byId = new();
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<ConversionJob>> _waiting = new();
 
     public ConversionService(JobQueue queue, UserDataStore store, ILocalizer loc, IPlatformServices platform)
     {
@@ -68,6 +69,24 @@ public sealed class ConversionService
         return vm;
     }
 
+    /// <summary>
+    /// Converts like <see cref="Start"/> (shown in the toast and history) and completes when the job has finished.
+    /// Callable from any thread; used by watch folders.
+    /// </summary>
+    public async Task<ConversionJob?> RunAsync(IReadOnlyList<string> files, Preset preset)
+    {
+        var vm = await Dispatcher.UIThread.InvokeAsync(() => Start(files, preset));
+        if (vm is null)
+            return null;
+        var finished = _waiting.GetOrAdd(vm.Job.Id, _ => new TaskCompletionSource<ConversionJob>(TaskCreationOptions.RunContinuationsAsynchronously));
+        // The job may have finished before the wait was registered.
+        if (vm.Job.State is not (JobState.Queued or JobState.Running))
+            finished.TrySetResult(vm.Job);
+        var job = await finished.Task;
+        _waiting.TryRemove(job.Id, out _);
+        return job;
+    }
+
     /// <summary>Moves a job into the toast window (no-op if it is already there or gone).</summary>
     public void ShowInToast(JobViewModel vm)
     {
@@ -85,6 +104,8 @@ public sealed class ConversionService
     private void OnJobFinished(object? sender, ConversionJob job)
     {
         _store.AddHistory(HistoryEntry.From(job));
+        if (_waiting.TryGetValue(job.Id, out var waiting))
+            waiting.TrySetResult(job);
         Dispatcher.UIThread.Post(() =>
         {
             if (!_byId.TryGetValue(job.Id, out var vm))

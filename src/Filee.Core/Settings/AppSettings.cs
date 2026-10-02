@@ -62,6 +62,9 @@ public sealed class AppSettings
 
     public bool CheckForUpdates { get; set; } = true;
 
+    /// <summary>Record finished conversions in the history (home page). Off: nothing new is recorded.</summary>
+    public bool KeepHistory { get; set; } = true;
+
     /// <summary>Newest version the user was already told about, so the update notice shows once per release.</summary>
     public string? NotifiedUpdateVersion { get; set; }
 
@@ -93,4 +96,7 @@ public sealed class AppSettings
 
     /// <summary>Set once the "Is Filee helping you?" card (GitHub star / feedback) has been shown.</summary>
     public bool FeedbackPromptShown { get; set; }
+
+    /// <summary>Folders whose new files are converted automatically (Settings → Watch folders).</summary>
+    public List<Watching.WatchRule> WatchFolders { get; set; } = [];
 }

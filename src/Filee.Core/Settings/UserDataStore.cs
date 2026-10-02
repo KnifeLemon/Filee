@@ -89,8 +89,11 @@ public sealed class UserDataStore
         LibraryChanged?.Invoke(this, EventArgs.Empty);
     }
 
+    /// <summary>Records a finished conversion, unless the user turned the history off (<see cref="AppSettings.KeepHistory"/>).</summary>
     public void AddHistory(HistoryEntry entry)
     {
+        if (!Settings.KeepHistory)
+            return;
         lock (_saveLock)
         {
             History.Insert(0, entry);

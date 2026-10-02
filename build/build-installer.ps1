@@ -100,6 +100,14 @@ elseif (-not $PublishDir) {
         dotnet publish (Join-Path $root 'src\Filee.App\Filee.App.csproj') -c Release -r win-x64 --self-contained `
             "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true -o $PublishDir
     }
+    # The command line, in the same folder so it shares the runtime and the engines (filee-cli.exe). Its name can't
+    # be filee.exe next to Filee.exe, so the "filee" command is cli\filee.cmd, which the installer can put on PATH.
+    Invoke-Checked 'dotnet publish (cli)' {
+        dotnet publish (Join-Path $root 'src\Filee.Cli\Filee.Cli.csproj') -c Release -r win-x64 --self-contained `
+            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true -o $PublishDir
+    }
+    New-Item -ItemType Directory -Force -Path (Join-Path $PublishDir 'cli') | Out-Null
+    Set-Content (Join-Path $PublishDir 'cli\filee.cmd') "@`"%~dp0..\filee-cli.exe`" %*" -Encoding ascii
     # Next to Filee.exe: the Explorer menu package's external location is the install folder.
     & (Join-Path $PSScriptRoot 'build-explorer-menu.ps1') -Destination $PublishDir -Version $Version
     # Only the small rhwp and 7-Zip are bundled; the app downloads the others when the user picks them.

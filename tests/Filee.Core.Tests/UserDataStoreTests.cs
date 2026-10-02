@@ -31,6 +31,26 @@ public class UserDataStoreTests
     }
 
     [Fact]
+    public void History_is_kept_until_turned_off_and_can_be_cleared()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        store.AddHistory(new Filee.Core.History.HistoryEntry { JobId = "a" });
+        Assert.Single(store.History);
+
+        store.Settings.KeepHistory = false;
+        store.AddHistory(new Filee.Core.History.HistoryEntry { JobId = "b" });
+        Assert.Single(store.History); // not recorded
+
+        store.ClearHistory();
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+        Assert.Empty(reloaded.History);
+    }
+
+    [Fact]
     public void Version_1_settings_are_upgraded_to_the_current_engine_list()
     {
         using var dir = new TempDir();

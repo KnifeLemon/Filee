@@ -32,6 +32,8 @@ public sealed partial class GeneralPageViewModel : ObservableObject
         _startWithSystem = store.Settings.StartWithSystem;
         _contextMenu = store.Settings.ContextMenuEnabled;
         _checkForUpdates = store.Settings.CheckForUpdates;
+        _noHistory = !store.Settings.KeepHistory;
+        _historyCount = store.History.Count;
         ShowUpdateState(updates.LatestVersion);
         RefreshModernMenu();
     }
@@ -116,6 +118,32 @@ public sealed partial class GeneralPageViewModel : ObservableObject
         }];
     }
     partial void OnCheckForUpdatesChanged(bool value) => Save(s => s.CheckForUpdates = value);
+
+    // Conversion history (home page): don't record it, or clear what is there.
+    [ObservableProperty] private bool _noHistory;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HistoryText))]
+    [NotifyCanExecuteChangedFor(nameof(ClearHistoryCommand))]
+    private int _historyCount;
+
+    [ObservableProperty] private bool _historyCleared;
+
+    public string HistoryText => HistoryCleared ? _loc["general.history_cleared"] : _loc.Format("general.history_count", HistoryCount);
+
+    partial void OnNoHistoryChanged(bool value) => Save(s => s.KeepHistory = !value);
+
+    partial void OnHistoryClearedChanged(bool value) => OnPropertyChanged(nameof(HistoryText));
+
+    private bool CanClearHistory() => HistoryCount > 0;
+
+    [RelayCommand(CanExecute = nameof(CanClearHistory))]
+    private void ClearHistory()
+    {
+        _store.ClearHistory();
+        HistoryCount = 0;
+        HistoryCleared = true;
+    }
 
     private void Save(Action<AppSettings> change)
     {

@@ -44,6 +44,36 @@ public class RenderTests
         window.Close();
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Watch_folders_page_renders_a_rule(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var store = AppHost.Get<Filee.Core.Settings.UserDataStore>();
+        var rule = new Filee.Core.Watching.WatchRule { Folder = @"C:\Scans\Inbox", PresetId = "to-pdf", Enabled = false };
+        store.Settings.WatchFolders.Add(rule);
+        try
+        {
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+            vm.Navigate("watch");
+            var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+            window.Show();
+            Pump();
+
+            var page = (Filee.App.ViewModels.Pages.WatchFoldersPageViewModel)vm.CurrentPage;
+            var item = Assert.Single(page.Rules);
+            Assert.Equal("to-pdf", item.Preset?.Value);
+            Assert.False(string.IsNullOrWhiteSpace(item.Status));
+            Save(window, $"page-watch-{language}.png");
+            window.Close();
+        }
+        finally
+        {
+            store.Settings.WatchFolders.Remove(rule);
+        }
+    }
+
     [AvaloniaFact]
     public void Engines_page_shows_versions_descriptions_and_download_speed()
     {

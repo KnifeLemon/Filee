@@ -4,11 +4,13 @@
     <Project Path="src/Filee.Engines/Filee.Engines.csproj" />
     <Project Path="src/Filee.Platform.Windows/Filee.Platform.Windows.csproj" />
     <Project Path="src/Filee.App/Filee.App.csproj" />
+    <Project Path="src/Filee.Cli/Filee.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Filee.Core.Tests/Filee.Core.Tests.csproj" />
     <Project Path="tests/Filee.Engines.Tests/Filee.Engines.Tests.csproj" />
     <Project Path="tests/Filee.App.Tests/Filee.App.Tests.csproj" />
+    <Project Path="tests/Filee.Cli.Tests/Filee.Cli.Tests.csproj" />
   </Folder>
   <Folder Name="/Solution Items/">
     <File Path="Directory.Build.props" />

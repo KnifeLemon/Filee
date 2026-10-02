@@ -67,6 +67,18 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
 - `ThemeService` writes the accent colour, corner radii, fonts and Fluent's `SystemAccentColor*` into
   application resources. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`.
 
+## Command line and watch folders
+
+- `Filee.Cli` (`filee-cli.exe`, run as `filee` through `cli\filee.cmd`, which Setup can put on PATH) composes the same
+  pipeline as the app without any UI (`CliHost`: `UserDataStore`, `EngineRegistry`, `ConverterCatalog`, `JobQueue`)
+  and reads the app's presets and engine order. It is published into the app folder, so both share one runtime and
+  the bundled engines; its name can't be `filee.exe` next to `Filee.exe` on a case-insensitive file system.
+- `Filee.Core/Watching/FolderWatcher` watches one `WatchRule` with a `FileSystemWatcher` and converts a file once it
+  has kept its size and time for a moment and opens without sharing (downloads and copies in progress are skipped).
+  Temporary files, unknown formats and the output and originals folders are ignored, so outputs never loop back.
+  The tray app runs one per rule (`WatchFolderService`, Settings → Watch folders, conversions in the toast and
+  history); `filee watch` runs one on its own.
+
 ## Platform code
 
 Everything OS-specific goes through `IPlatformServices` (`Filee.Core/Platform`). Windows lives in
