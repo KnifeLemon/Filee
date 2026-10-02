@@ -25,6 +25,13 @@ public sealed class WindowsPlatformServices : IPlatformServices
         "WorkerW",       // desktop (when wallpaper slideshow / Win+Tab created a WorkerW)
     };
 
+    public void RaiseTopmost(nint windowHandle)
+    {
+        if (windowHandle != 0)
+            NativeMethods.SetWindowPos(windowHandle, NativeMethods.HWND_TOPMOST, 0, 0, 0, 0,
+                NativeMethods.SWP_NOMOVE | NativeMethods.SWP_NOSIZE | NativeMethods.SWP_NOACTIVATE | NativeMethods.SWP_NOOWNERZORDER);
+    }
+
     public bool IsFileManagerAt(int x, int y)
     {
         var root = RootWindowAt(x, y);

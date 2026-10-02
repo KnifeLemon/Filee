@@ -38,6 +38,12 @@ public interface IPlatformServices
 
     /// <summary>Opens a folder in the file manager and selects the file, if given.</summary>
     void RevealInFileManager(string path);
+
+    /// <summary>
+    /// Puts an always-on-top window back at the top of the z-order without activating it. Windows can push such a
+    /// window below normal ones (seen after the Photos app opened) while it still reports itself as topmost.
+    /// </summary>
+    void RaiseTopmost(nint windowHandle);
 }
 
 /// <summary>Whether "Convert with Filee" is in the top-level Windows 11 File Explorer menu (not just "Show more options").</summary>
@@ -76,6 +82,8 @@ public sealed class NullPlatformServices : IPlatformServices
 
     public Task<ModernContextMenuResult> SetModernContextMenuAsync(bool enabled, string executablePath) =>
         Task.FromResult(new ModernContextMenuResult(false, Error: "Not supported on this platform."));
+
+    public void RaiseTopmost(nint windowHandle) { }
 
     public void RevealInFileManager(string path)
     {
