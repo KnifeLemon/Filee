@@ -192,6 +192,12 @@ public class RenderTests
             Pump();
             Save(notice, $"update-notice-{language}.png");
             notice.Close();
+
+            var feedback = new FeedbackNoticeWindow();
+            feedback.Show();
+            Pump();
+            Save(feedback, $"feedback-notice-{language}.png");
+            feedback.Close();
         }
         finally
         {

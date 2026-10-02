@@ -19,6 +19,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
     private ToastWindow? _toast;
     private EngineSetupWindow? _engineSetup;
     private UpdateNoticeWindow? _updateNotice;
+    private FeedbackNoticeWindow? _feedbackNotice;
 
     public MainWindow? Main => _main;
 
@@ -85,6 +86,16 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
         };
         _updateNotice = notice;
         notice.Show();
+    }
+
+    /// <summary>Shows the one-time "Is Filee helping you?" card in the bottom-right corner.</summary>
+    public void ShowFeedbackNotice()
+    {
+        if (_feedbackNotice is not null)
+            return;
+        _feedbackNotice = new FeedbackNoticeWindow();
+        _feedbackNotice.Closed += (_, _) => _feedbackNotice = null;
+        _feedbackNotice.Show();
     }
 
     /// <summary>Opens the preset popup. Returns true when the user saved (the preset object was updated).</summary>

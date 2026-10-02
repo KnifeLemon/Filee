@@ -355,6 +355,12 @@
   "about.license": "Filee is free software under the MIT license.",
   "about.notices": "Third-party notices",
   "about.github": "GitHub repository",
+  "about.support_title": "Help Filee grow",
+  "about.support_text": "Filee is free and open source. A star on GitHub, a bug report or a feature idea all help it get better and reach more people.",
+  "feedback.notice_title": "Is Filee helping you?",
+  "feedback.notice_text": "A star on GitHub helps other people find Filee. Problems and ideas are welcome too.",
+  "feedback.star": "Star on GitHub",
+  "feedback.issue": "Report a problem or idea",
 
   "common.ok": "OK",
   "common.cancel": "Cancel",

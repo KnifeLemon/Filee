@@ -87,4 +87,10 @@ public sealed class AppSettings
 
     /// <summary>Set once the first-run welcome has been shown.</summary>
     public bool FirstRunCompleted { get; set; }
+
+    /// <summary>Conversions that succeeded completely, counted until the feedback card has been shown.</summary>
+    public int SuccessfulConversions { get; set; }
+
+    /// <summary>Set once the "Is Filee helping you?" card (GitHub star / feedback) has been shown.</summary>
+    public bool FeedbackPromptShown { get; set; }
 }

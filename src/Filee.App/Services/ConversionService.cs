@@ -19,6 +19,9 @@ public sealed class ConversionService
     private static readonly TimeSpan KeepSuccess = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan KeepErrors = TimeSpan.FromSeconds(15);
 
+    /// <summary>After this many fully successful conversions Filee asks once for a star or feedback.</summary>
+    public const int FeedbackAfterConversions = 3;
+
     private readonly JobQueue _queue;
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
@@ -40,6 +43,12 @@ public sealed class ConversionService
 
     /// <summary>The subset shown in the toast window. UI thread only.</summary>
     public ObservableCollection<JobViewModel> ToastJobs { get; } = [];
+
+    /// <summary>
+    /// Raised once (UI thread) when the user has had a few successful conversions and the toast has gone: time to
+    /// ask for a GitHub star or feedback.
+    /// </summary>
+    public event EventHandler? FeedbackDue;
 
     /// <summary>Starts converting files with a preset.</summary>
     /// <param name="files">Source files.</param>
@@ -83,7 +92,21 @@ public sealed class ConversionService
             vm.Refresh();
             var keep = vm.HasErrors ? KeepErrors : KeepSuccess;
             DispatcherTimer.RunOnce(() => Remove(vm), keep);
+            if (!vm.HasErrors && CountSuccess(job))
+                DispatcherTimer.RunOnce(() => FeedbackDue?.Invoke(this, EventArgs.Empty), keep + TimeSpan.FromSeconds(1));
         });
+    }
+
+    /// <summary>Counts a fully successful conversion; true when the feedback card is due now (only once).</summary>
+    private bool CountSuccess(ConversionJob job)
+    {
+        var settings = _store.Settings;
+        if (settings.FeedbackPromptShown || job.Files.Count == 0 || job.Files.Any(f => f.State != FileState.Done))
+            return false;
+        settings.SuccessfulConversions++;
+        settings.FeedbackPromptShown = settings.SuccessfulConversions >= FeedbackAfterConversions;
+        _store.SaveSettings();
+        return settings.FeedbackPromptShown;
     }
 
     private void Remove(JobViewModel vm)
