@@ -18,6 +18,7 @@ using Filee.App.Controls;
 using Filee.App.ViewModels;
 using Filee.App.Views;
 using Filee.Core.Conversion;
+using Filee.Core.Platform;
 using Filee.Core.Settings;
 using Microsoft.Extensions.Logging;
 
@@ -28,6 +29,7 @@ public sealed class RadialController(
     ConversionService conversions,
     WindowService windows,
     UserDataStore store,
+    IPlatformServices platform,
     ILogger<RadialController> log)
 {
     /// <summary>
@@ -290,6 +292,11 @@ public sealed class RadialController(
         if (!window.IsVisible)
             window.Show();
         window.Position = position; // again, in case showing changed the DPI scale
+        // Showing a window that is already marked topmost does not move it in the z-order, and Windows can push it
+        // below normal windows while it keeps the mark (after the Photos app opened, for one). Then Explorer stays on
+        // top of the donut and the drop never reaches it, so put it back on top every time.
+        if (window.TryGetPlatformHandle()?.Handle is { } handle)
+            platform.RaiseTopmost(handle);
         _visible = true;
         if (activate)
             window.Activate();
