@@ -355,6 +355,12 @@
   "about.license": "Filee 是基于 MIT 许可证的免费软件。",
   "about.notices": "第三方声明",
   "about.github": "GitHub 仓库",
+  "about.support_title": "支持 Filee",
+  "about.support_text": "Filee 免费开源。在 GitHub 上点星、报告错误或提出功能建议，都能帮助它变得更好、让更多人知道。",
+  "feedback.notice_title": "Filee 对你有帮助吗？",
+  "feedback.notice_text": "在 GitHub 上点个星（⭐）能帮助更多人发现 Filee。也欢迎反馈问题或提出想法。",
+  "feedback.star": "在 GitHub 上点星",
+  "feedback.issue": "报告问题 · 提出建议",
 
   "common.ok": "确定",
   "common.cancel": "取消",

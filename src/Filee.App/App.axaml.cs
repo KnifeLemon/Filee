@@ -61,6 +61,7 @@ public partial class App : Application
 
         AppHost.Get<TrayService>().Create(this);
         AppHost.Get<WindowService>().EnsureToast();
+        AppHost.Get<ConversionService>().FeedbackDue += (_, _) => AppHost.Get<WindowService>().ShowFeedbackNotice();
         // Once LibreOffice is installed: prepare its profiles while the user isn't converting yet.
         AppHost.Get<EngineDownloadService>().WarmUpInBackground(TimeSpan.FromSeconds(10));
 

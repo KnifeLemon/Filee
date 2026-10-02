@@ -355,6 +355,12 @@
   "about.license": "Filee는 MIT 라이선스의 무료 소프트웨어입니다.",
   "about.notices": "서드파티 고지",
   "about.github": "GitHub 저장소",
+  "about.support_title": "Filee 응원하기",
+  "about.support_text": "Filee는 무료 오픈소스예요. GitHub 별, 버그 신고, 기능 제안 모두 Filee가 나아지고 더 많은 분께 알려지는 데 큰 힘이 돼요.",
+  "feedback.notice_title": "Filee가 도움이 되고 있나요?",
+  "feedback.notice_text": "GitHub에 별(⭐)을 남겨 주시면 다른 분들이 Filee를 찾는 데 큰 도움이 돼요. 불편한 점이나 원하는 기능도 알려 주세요.",
+  "feedback.star": "GitHub에서 별 주기",
+  "feedback.issue": "문제 신고 · 기능 제안",
 
   "common.ok": "확인",
   "common.cancel": "취소",
