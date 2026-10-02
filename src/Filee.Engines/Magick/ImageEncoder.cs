@@ -36,6 +36,16 @@ internal static class ImageEncoder
     /// <summary>Formats that store several frames/pages in one file.</summary>
     private static readonly HashSet<string> MultiFrame = ["tiff", "gif"];
 
+    /// <summary>
+    /// Formats whose frames are an animation. Between these, all frames are kept with their timing (an animated GIF
+    /// becomes an animated WebP and the other way round); any other target gets the first frame.
+    /// </summary>
+    private static readonly HashSet<string> Animated = ["gif", "webp"];
+
+    /// <summary>True when frames of <paramref name="sourceFormat"/> are written as one animation in <paramref name="targetFormat"/>.</summary>
+    public static bool KeepsAnimation(string sourceFormat, string targetFormat) =>
+        Animated.Contains(sourceFormat) && Animated.Contains(targetFormat);
+
     /// <summary>Formats without an alpha channel: transparent pixels are flattened onto the background colour.</summary>
     private static readonly HashSet<string> NoAlpha = ["jpg", "ppm"];
 
@@ -84,13 +94,13 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO: the largest icon. GIF → single-frame target: the first frame. PSD/PSB: the composite (frame 0; any
-    /// further frames are layers). Otherwise: all frames/pages.
+    /// ICO: the largest icon. Animated GIF/WebP: every frame for a GIF/WebP/TIFF target, else the first frame.
+    /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
     public static List<IMagickImage<byte>> SelectFrames(MagickImageCollection images, string sourceFormat, string targetFormat)
     {
-        if (sourceFormat == "gif")
-            images.Coalesce(); // GIF frames can be partial; coalescing makes every frame a full image
+        if (Animated.Contains(sourceFormat) && images.Count > 1)
+            images.Coalesce(); // animation frames can be partial; coalescing makes every frame a full image
 
         var frames = images.ToList();
         if (frames.Count <= 1)
@@ -99,7 +109,7 @@ internal static class ImageEncoder
             return [frames[0]];
         if (sourceFormat == "ico")
             return [frames.OrderByDescending(f => (long)f.Width * f.Height).First()];
-        if (sourceFormat == "gif" && !MultiFrame.Contains(targetFormat))
+        if (Animated.Contains(sourceFormat) && !MultiFrame.Contains(targetFormat) && !KeepsAnimation(sourceFormat, targetFormat))
             return [frames[0]];
         return frames;
     }
@@ -173,18 +183,19 @@ internal static class ImageEncoder
     }
 
     /// <summary>
-    /// Writes frames using the allocator. Multi-frame targets get one file; other targets get one file per frame
-    /// with a <c>_p{n}</c> suffix when there is more than one frame.
+    /// Writes frames using the allocator. Multi-frame targets (and animations, see <see cref="KeepsAnimation"/>) get
+    /// one file; other targets get one file per frame with a <c>_p{n}</c> suffix when there is more than one frame.
     /// </summary>
     /// <param name="options">Options of the preset (the Netpbm sub-format depends on them).</param>
     /// <param name="sourcePath">Input file of the step, see <see cref="OutputFormat"/>.</param>
+    /// <param name="animation">The frames are an animation: write them into one file even for a WebP target.</param>
     public static List<string> Write(IReadOnlyList<IMagickImage<byte>> frames, string targetFormat, IOutputAllocator output,
-        ImageOptions? options = null, string? sourcePath = null)
+        ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {
         var written = new List<string>();
         var (format, extension) = OutputFormat(targetFormat, options ?? new ImageOptions(), sourcePath);
 
-        if (frames.Count > 1 && MultiFrame.Contains(targetFormat))
+        if (frames.Count > 1 && (MultiFrame.Contains(targetFormat) || animation))
         {
             var path = output.Allocate(extension);
             if (path is null)

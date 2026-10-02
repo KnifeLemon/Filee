@@ -44,7 +44,8 @@ public sealed class MagickImageConverter : IConverter
             }
             progress?.Report(0.7);
 
-            var written = ImageEncoder.Write(frames, step.To, step.Output, step.Preset.Image, step.InputPath);
+            var written = ImageEncoder.Write(frames, step.To, step.Output, step.Preset.Image, step.InputPath,
+                ImageEncoder.KeepsAnimation(step.From, step.To));
             progress?.Report(1);
             return written;
         }, cancellationToken);

@@ -68,6 +68,9 @@ current.
 
 ## Images and vector graphics
 
+- **Animations.** An animated GIF or WebP keeps every frame and its timing when converted to GIF or WebP (animated
+  GIF ↔ animated WebP, lossy or lossless as the preset says) and becomes a multi-page TIFF; other targets get the first
+  frame. Multi-page TIFFs and PDFs stay one image per page in WebP.
 - **Layered files.** PSD/PSB convert from Photoshop's composite (ImageMagick merges the layers when a file was saved
   without "maximize compatibility"). GIMP XCF layers are composited at their offsets with their blend modes; hidden
   layers are left out. ImageMagick reads 8-bit XCF without zlib tile compression (GIMP 2.10+ "better but slower
