@@ -10,7 +10,8 @@
 <p align="center">
   <a href="https://filee.sh"><b>Website</b></a> ·
   <a href="https://github.com/KnifeLemon/Filee/releases/latest"><b>Download</b></a> ·
-  <a href="#get-started">Get started</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#command-line">Command line</a> ·
   <a href="#documentation">Docs</a>
 </p>
 
@@ -27,7 +28,7 @@
 <table>
   <tr>
     <td width="33%" valign="top"><b>Right at your cursor</b><br>No app window to open. The formats appear where you already are, only the ones that make sense for the files you drag.</td>
-    <td width="33%" valign="top"><b>170+ formats, no other software</b><br>Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and CAD work without Office, Hancom Office or LibreOffice.</td>
+    <td width="33%" valign="top"><b>180 formats, no other software</b><br>Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and CAD work without Office, Hancom Office or LibreOffice.</td>
     <td width="33%" valign="top"><b>Stays on your PC</b><br>Nothing is uploaded. Filee works offline and saves the result right next to the original.</td>
   </tr>
 </table>
@@ -38,6 +39,26 @@
   <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Dragging trip.jpg with Ctrl held: a donut of formats opens at the cursor, the file is dropped on PNG, a progress ring completes and trip.png appears" width="820"></a><br>
   <sub>Watch the 27-second video and try the interactive demo on <a href="https://filee.sh">filee.sh</a></sub>
 </p>
+
+## Install
+
+Download the latest `Filee-<version>-win-Setup.exe` from
+[Releases](https://github.com/KnifeLemon/Filee/releases/latest) (Windows 10/11, 64-bit) and run it. Setup asks for
+administrator rights once and installs Filee for all users in Program Files. Prefer no installer? Unzip
+`Filee-<version>-win-Portable.zip` anywhere and run `Filee.exe`.
+
+- **Everything common is in the installer.** Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and
+  CAD work right away.
+- **Choose in Setup.** Add “Convert with Filee” to the File Explorer menu (on Windows 11 also at the top of the menu,
+  not only under “Show more options”), start Filee when you sign in, and pick optional engines: video and audio
+  (FFmpeg, ~100 MB) and rare formats (LibreOffice, calibre, Ghostscript, Pandoc), each with its size. Filee downloads
+  the chosen engines when Setup starts it; install or remove them any time in Settings → Engines, which shows download
+  speed and time left.
+- **You hear about updates.** When a new release is out, Filee says so at the bottom of the menu, in a notice and in
+  the tray menu, and opens the latest release to download it. Run the new installer: it closes Filee, updates it and
+  keeps your settings and engines. Filee 1.1 and earlier (installed per user) are taken over the same way.
+
+macOS support is planned, and Linux is being considered.
 
 ## Features
 
@@ -89,6 +110,31 @@ never uses programs installed on your PC. Optional engines Filee offers to downl
 ³ Pandoc, ⁴ calibre, ⁵ FFmpeg. Details, including what each engine keeps and leaves out:
 [docs/ENGINES.md](docs/ENGINES.md).
 
+## Command line
+
+The `filee` command converts files and watches folders without opening the app, with the same engines and presets.
+Tick **Add the "filee" command to PATH** in Setup, then open a new terminal.
+
+```
+filee convert photo.heic --to jpg
+filee convert *.png --to webp --quality 80 -o converted
+filee convert D:\Scans --recursive --preset to-pdf --json
+filee watch D:\Inbox --to pdf --move-originals
+filee formats heic
+filee presets
+```
+
+| Command | What it does |
+|---|---|
+| `filee convert` | Converts files, wildcards (`*.heic`) and folders with `--to <format>` or `--preset <preset>` |
+| `filee watch` | Converts files that land in a folder until <kbd>Ctrl</kbd>+<kbd>C</kbd> |
+| `filee formats` | Lists every format, or what one format converts to |
+| `filee presets` | Lists the presets saved in the app |
+
+`--json` prints the result for scripts and other programs. Exit codes: `0` all converted, `1` some files failed,
+`2` wrong arguments or a missing input, `3` nothing to convert. Every option is in the
+[command line guide](https://filee.sh/cli/) and in `filee help`.
+
 ## Screenshots
 
 <table>
@@ -110,28 +156,18 @@ never uses programs installed on your PC. Optional engines Filee offers to downl
   </tr>
 </table>
 
-## Get started
+## Documentation
 
-**Install:** download the latest `Filee-<version>-win-Setup.exe` from
-[Releases](https://github.com/KnifeLemon/Filee/releases/latest) (Windows 10/11, 64-bit) and run it. Setup asks for
-administrator rights once and installs Filee for all users in Program Files. Prefer no installer? Unzip
-`Filee-<version>-win-Portable.zip` anywhere and run `Filee.exe`.
+| I want to… | Start here |
+|---|---|
+| Use the command line | [filee.sh/cli](https://filee.sh/cli/) |
+| Understand how the app fits together | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| Know which engine converts what, and their licenses | [docs/ENGINES.md](docs/ENGINES.md) |
+| Add a new conversion | [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md) |
+| Translate Filee into my language | [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md) |
+| Send a pull request | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-- **Everything common is in the installer.** Images, PDF, Word, Excel, PowerPoint, HWP, e-books, archives, fonts and
-  CAD work right away.
-- **Choose in Setup.** Add “Convert with Filee” to the File Explorer menu (on Windows 11 also at the top of the menu,
-  not only under “Show more options”), start Filee when you sign in, and pick optional engines: video and audio
-  (FFmpeg, ~100 MB) and rare formats (LibreOffice, calibre, Ghostscript, Pandoc), each with its size. Filee downloads
-  the chosen engines when Setup starts it; install or remove them any time in Settings → Engines, which shows download
-  speed and time left.
-- **You hear about updates.** When a new release is out, Filee says so at the bottom of the menu, in a notice and in
-  the tray menu, and opens the latest release to download it. Run the new installer: it closes Filee, updates it and
-  keeps your settings and engines. Filee 1.1 and earlier (installed per user) are taken over the same way.
-
-macOS support is planned.
-
-<details>
-<summary><b>Build from source</b></summary>
+## Build from source
 
 Requirements: .NET 10 SDK, Windows 10/11.
 
@@ -156,18 +192,6 @@ portable Inno Setup into `build/.cache`; nothing is installed).
 | `src/Filee.App` | Avalonia UI: donut toolbar, settings window, tray, toasts. |
 | `src/Filee.Cli` | The `filee` command line (convert, watch, formats, presets) on the same engines and presets. |
 | `tests/*` | xUnit v3 tests, including headless UI rendering. |
-
-</details>
-
-## Documentation
-
-| I want to… | Start here |
-|---|---|
-| Understand how the app fits together | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| Know which engine converts what, and their licenses | [docs/ENGINES.md](docs/ENGINES.md) |
-| Add a new conversion | [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md) |
-| Translate Filee into my language | [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md) |
-| Send a pull request | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## Contributing
 

@@ -10,7 +10,8 @@
 <p align="center">
   <a href="https://filee.sh/zh-cn/"><b>官网</b></a> ·
   <a href="https://github.com/KnifeLemon/Filee/releases/latest"><b>下载</b></a> ·
-  <a href="#快速开始">快速开始</a> ·
+  <a href="#安装">安装</a> ·
+  <a href="#命令行">命令行</a> ·
   <a href="#文档">文档</a>
 </p>
 
@@ -27,7 +28,7 @@
 <table>
   <tr>
     <td width="33%" valign="top"><b>就在光标旁</b><br>无需打开应用窗口。只显示适合当前拖动文件的格式，就在你所在的位置。</td>
-    <td width="33%" valign="top"><b>170 多种格式，无需其他软件</b><br>图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD，无需 Office、韩文办公软件或 LibreOffice。</td>
+    <td width="33%" valign="top"><b>180 种格式，无需其他软件</b><br>图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD，无需 Office、韩文办公软件或 LibreOffice。</td>
     <td width="33%" valign="top"><b>只在你的电脑上</b><br>不上传任何文件。Filee 离线工作，结果保存在原文件旁边。</td>
   </tr>
 </table>
@@ -38,6 +39,22 @@
   <a href="https://filee.sh/zh-cn/"><img src="docs/media/demo-zh-CN.webp" alt="按住 Ctrl 拖动 旅行.jpg，光标处弹出格式圆环，放到 PNG 上，进度环走完后生成 旅行.png" width="820"></a><br>
   <sub>27 秒视频和可交互演示请访问 <a href="https://filee.sh/zh-cn/">filee.sh</a></sub>
 </p>
+
+## 安装
+
+在 [Releases](https://github.com/KnifeLemon/Filee/releases/latest) 下载最新的
+`Filee-<版本>-win-Setup.exe`（Windows 10/11，64 位）并运行。安装程序会请求一次管理员权限，为所有用户安装到
+Program Files。不想安装？把 `Filee-<版本>-win-Portable.zip` 解压到任意位置，运行 `Filee.exe` 即可。
+
+- **常用格式都已包含在安装包中。** 图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD 装好即用。
+- **安装时即可选择。** 在资源管理器右键菜单中添加“用 Filee 转换”（Windows 11 上还可直接显示在主菜单，无需点
+  “显示更多选项”）、登录时启动，并按大小挑选可选引擎：视频/音频（FFmpeg，约 100 MB）和少见格式（LibreOffice、
+  calibre、Ghostscript、Pandoc）。所选引擎会在安装完成、Filee 启动后下载；之后可随时在“设置 → 转换引擎”中安装或
+  删除，并显示下载速度和剩余时间。
+- **有更新会提醒你。** 新版本发布后，Filee 会在菜单底部、通知和托盘菜单中提示，点击即可打开最新发布页面下载。
+  运行新的安装程序会关闭 Filee 并完成更新，设置和引擎都会保留。按用户安装的 Filee 1.1 及更早版本也会以同样方式接管。
+
+macOS 版本正在计划中，也在考虑支持 Linux。
 
 ## 功能
 
@@ -79,9 +96,33 @@
 | **CAD**：DWG、DXF | PDF、SVG、PNG、DWG ↔ DXF |
 | **字体**：TTF、OTF、WOFF、WOFF2、EOT | 互相转换 |
 
-未标注的格式装好即用：无需 Microsoft Office、韩文办公软件或 LibreOffice，Filee 也从不调用电脑上已安装的程序。首次启动时
-可选择下载的引擎：¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg。各引擎保留和不支持的内容见
+未标注的格式装好即用：无需 Microsoft Office、韩文办公软件或 LibreOffice，Filee 也从不调用电脑上已安装的程序。可在安装时勾选或之后在应用内
+下载的引擎：¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg。各引擎保留和不支持的内容见
 [docs/ENGINES.md](docs/ENGINES.md)。
+
+## 命令行
+
+`filee` 命令无需打开应用即可转换文件、监视文件夹，与应用共用引擎和预设。安装时勾选 **将 "filee" 命令添加到 PATH**，
+然后打开新的终端即可。
+
+```
+filee convert photo.heic --to jpg
+filee convert *.png --to webp --quality 80 -o converted
+filee convert D:\Scans --recursive --preset to-pdf --json
+filee watch D:\Inbox --to pdf --move-originals
+filee formats heic
+filee presets
+```
+
+| 命令 | 作用 |
+|---|---|
+| `filee convert` | 用 `--to <格式>` 或 `--preset <预设>` 转换文件、通配符（`*.heic`）和文件夹 |
+| `filee watch` | 转换放入文件夹的文件，直到按下 <kbd>Ctrl</kbd>+<kbd>C</kbd> |
+| `filee formats` | 列出所有格式，或某个格式可以转换成什么 |
+| `filee presets` | 列出应用中保存的预设 |
+
+加上 `--json` 会输出便于脚本和其他程序读取的 JSON。退出码：`0` 全部转换，`1` 部分失败，`2` 参数错误或文件不存在，
+`3` 没有可转换的文件。全部选项见[命令行指南](https://filee.sh/zh-cn/cli/)和 `filee help`。
 
 ## 截图
 
@@ -104,24 +145,18 @@
   </tr>
 </table>
 
-## 快速开始
+## 文档
 
-**安装：** 在 [Releases](https://github.com/KnifeLemon/Filee/releases/latest) 下载最新的
-`Filee-<版本>-win-Setup.exe`（Windows 10/11，64 位）并运行。安装程序会请求一次管理员权限，为所有用户安装到
-Program Files。不想安装？把 `Filee-<版本>-win-Portable.zip` 解压到任意位置，运行 `Filee.exe` 即可。
+| 我想要… | 从这里开始 |
+|---|---|
+| 使用命令行 | [filee.sh/zh-cn/cli](https://filee.sh/zh-cn/cli/) |
+| 了解应用的整体结构 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| 了解各引擎负责哪些转换及其许可证 | [docs/ENGINES.md](docs/ENGINES.md) |
+| 添加新的转换 | [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md) |
+| 把 Filee 翻译成我的语言 | [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md) |
+| 提交 Pull Request | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
-- **常用格式都已包含在安装包中。** 图片、PDF、Word、Excel、PowerPoint、HWP、电子书、压缩包、字体和 CAD 装好即用。
-- **安装时即可选择。** 在资源管理器右键菜单中添加“用 Filee 转换”（Windows 11 上还可直接显示在主菜单，无需点
-  “显示更多选项”）、登录时启动，并按大小挑选可选引擎：视频/音频（FFmpeg，约 100 MB）和少见格式（LibreOffice、
-  calibre、Ghostscript、Pandoc）。所选引擎会在安装完成、Filee 启动后下载；之后可随时在“设置 → 转换引擎”中安装或
-  删除，并显示下载速度和剩余时间。
-- **有更新会提醒你。** 新版本发布后，Filee 会在菜单底部、通知和托盘菜单中提示，点击即可打开最新发布页面下载。
-  运行新的安装程序会关闭 Filee 并完成更新，设置和引擎都会保留。按用户安装的 Filee 1.1 及更早版本也会以同样方式接管。
-
-macOS 版本正在计划中。
-
-<details>
-<summary><b>从源码构建</b></summary>
+## 从源码构建
 
 需要：.NET 10 SDK、Windows 10/11。
 
@@ -144,18 +179,6 @@ dotnet test
 | `src/Filee.App` | Avalonia 界面：圆环工具栏、设置窗口、托盘、通知。 |
 | `src/Filee.Cli` | `filee` 命令行（convert、watch、formats、presets），与应用共用引擎和预设。 |
 | `tests/*` | xUnit v3 测试，包括无头 UI 渲染。 |
-
-</details>
-
-## 文档
-
-| 我想要… | 从这里开始 |
-|---|---|
-| 了解应用的整体结构 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
-| 了解各引擎负责哪些转换及其许可证 | [docs/ENGINES.md](docs/ENGINES.md) |
-| 添加新的转换 | [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md) |
-| 把 Filee 翻译成我的语言 | [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md) |
-| 提交 Pull Request | [CONTRIBUTING.md](CONTRIBUTING.md) |
 
 ## 参与贡献
 
