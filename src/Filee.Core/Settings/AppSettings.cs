@@ -62,6 +62,9 @@ public sealed class AppSettings
 
     public bool CheckForUpdates { get; set; } = true;
 
+    /// <summary>Record finished conversions in the history (home page). Off: nothing new is recorded.</summary>
+    public bool KeepHistory { get; set; } = true;
+
     /// <summary>Newest version the user was already told about, so the update notice shows once per release.</summary>
     public string? NotifiedUpdateVersion { get; set; }
 

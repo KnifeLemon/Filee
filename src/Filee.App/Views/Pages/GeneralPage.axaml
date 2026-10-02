@@ -43,6 +43,17 @@
 
     <Border Classes="card">
       <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="{DynamicResource general.history}" />
+        <ToggleSwitch Content="{DynamicResource general.no_history}" IsChecked="{Binding NoHistory}" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Button Content="{DynamicResource general.clear_history}" Command="{Binding ClearHistoryCommand}" />
+          <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding HistoryText}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <Border Classes="card">
+      <StackPanel Spacing="12">
         <TextBlock Classes="h2" Text="{DynamicResource general.library}" />
         <WrapPanel>
           <Button Content="{DynamicResource general.export}" Click="OnExport" Margin="0,0,8,8" />
