@@ -34,6 +34,75 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(320u, result.Width);
     }
 
+    /// <summary>A 3-frame animated GIF (red, green, blue; 20, 30 and 40 hundredths of a second, looping).</summary>
+    private static string MakeAnimatedGif(string folder)
+    {
+        using var frames = new MagickImageCollection();
+        foreach (var (color, delay) in new[] { (MagickColors.Red, 20u), (MagickColors.Lime, 30u), (MagickColors.Blue, 40u) })
+            frames.Add(new MagickImage(color, 64, 48) { AnimationDelay = delay });
+        var path = Path.Combine(folder, "anim.gif");
+        frames.Write(path, MagickFormat.Gif);
+        return path;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Animated_gif_becomes_an_animated_webp_and_back(bool lossless)
+    {
+        var dir = fx.NewFolder();
+        var gif = MakeAnimatedGif(dir);
+
+        var toWebp = await fx.ConvertAsync([gif], new Preset { TargetFormat = "webp", Image = { WebpLossless = lossless } });
+
+        AssertDone(toWebp);
+        var webp = toWebp.Outputs.Single();
+        using (var frames = new MagickImageCollection(webp))
+        {
+            Assert.Equal(3, frames.Count);
+            Assert.All(frames, f => Assert.Equal(MagickFormat.WebP, f.Format));
+            Assert.Equal([20u, 30u, 40u], frames.Select(f => f.AnimationDelay));
+            Assert.True(frames[1].GetPixels().GetPixel(32, 24).ToColor()!.G > 200, "second frame should be green");
+        }
+
+        var back = await fx.ConvertAsync([webp], new Preset { TargetFormat = "gif", Output = { FileNamePattern = "{name}_back" } });
+
+        AssertDone(back);
+        using var again = new MagickImageCollection(back.Outputs.Single());
+        Assert.Equal(3, again.Count);
+        Assert.Equal([20u, 30u, 40u], again.Select(f => f.AnimationDelay));
+    }
+
+    [Fact]
+    public async Task Animated_gif_to_a_still_format_takes_the_first_frame()
+    {
+        var dir = fx.NewFolder();
+        var gif = MakeAnimatedGif(dir);
+
+        var job = await fx.ConvertAsync([gif], new Preset { TargetFormat = "png" });
+
+        AssertDone(job);
+        using var png = new MagickImage(job.Outputs.Single());
+        Assert.True(png.GetPixels().GetPixel(32, 24).ToColor()!.R > 200, "first frame is red");
+    }
+
+    [Fact]
+    public async Task Multi_page_tiff_to_webp_writes_one_image_per_page()
+    {
+        var dir = fx.NewFolder();
+        using (var pages = new MagickImageCollection())
+        {
+            pages.Add(new MagickImage(MagickColors.Red, 64, 48));
+            pages.Add(new MagickImage(MagickColors.Blue, 64, 48));
+            pages.Write(Path.Combine(dir, "pages.tiff"), MagickFormat.Tiff);
+        }
+
+        var job = await fx.ConvertAsync([Path.Combine(dir, "pages.tiff")], new Preset { TargetFormat = "webp" });
+
+        AssertDone(job);
+        Assert.Equal(2, job.Outputs.Count());
+    }
+
     [Fact]
     public async Task Jpg_output_flattens_transparency_and_applies_quality()
     {
