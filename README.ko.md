@@ -162,6 +162,11 @@ dotnet test
 PR 환영합니다. 시작하기 좋은 작업은 [변환기 추가](docs/ADDING-A-CONVERTER.md)와 [언어 추가](docs/ADDING-A-LANGUAGE.md)입니다.
 Filee가 쓸만하다면 ⭐ 하나가 다른 사람들이 찾는 데 큰 도움이 됩니다.
 
+## 코드 서명 정책
+
+Filee의 코드 서명 정책(Code signing policy)과 개인정보 처리 방침은 [영문 README](README.md#code-signing-policy)에
+있어요. Filee는 파일을 업로드하지 않고, 사용 기록도 보내지 않아요.
+
 ## 라이선스
 
 MIT. 포함된 서드파티 구성요소는 각자의 라이선스를 따릅니다: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

@@ -70,4 +70,5 @@ jobs:
         run: |
           $version = '${{ steps.version.outputs.value }}'
           $files = Get-ChildItem Releases -File -Filter "Filee-$version-*" | ForEach-Object FullName
-          gh release create '${{ github.ref_name }}' --title "Filee $version" --generate-notes --verify-tag @files
+          $policy = "**Code signing policy:** ${{ github.server_url }}/${{ github.repository }}#code-signing-policy"
+          gh release create '${{ github.ref_name }}' --title "Filee $version" --notes $policy --generate-notes --verify-tag @files

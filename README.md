@@ -169,6 +169,31 @@ portable Inno Setup into `build/.cache`; nothing is installed).
 Pull requests are welcome. Good first steps are [adding a converter](docs/ADDING-A-CONVERTER.md) and
 [adding a language](docs/ADDING-A-LANGUAGE.md). If Filee saves you some clicks, a ⭐ helps other people find it.
 
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/).
+
+> Filee has applied for this program. Until it is approved, releases are not code-signed and Windows SmartScreen may
+> warn when you run the installer ("More info" → "Run anyway").
+
+- Committers and reviewers: [KnifeLemon](https://github.com/KnifeLemon)
+- Approvers: [KnifeLemon](https://github.com/KnifeLemon)
+
+Only the installer and files built by this repository's GitHub Actions release workflow are signed, and every release
+is approved by hand. Bundled third-party programs (rhwp, 7-Zip) keep their own publishers' files.
+
+### Privacy policy
+
+Filee converts files on your own computer and never uploads them. It collects no usage data and sends no telemetry.
+It connects to the internet only:
+
+- to ask GitHub (`api.github.com`) whether a newer release exists, shortly after start and then every few hours.
+  Turn this off in Settings → General ("Check for updates").
+- to download the conversion engines you choose to install, from the official locations pinned in
+  [`engines.json`](src/Filee.Engines/Infrastructure/engines.json).
+- when you click a link, which opens your web browser.
+
 ## License
 
 MIT. Bundled third-party components keep their own licenses: see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).

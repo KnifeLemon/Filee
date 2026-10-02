@@ -1,10 +1,13 @@
 # Build, test and style check on every push and pull request.
 name: CI
 
+# Changes to documentation only (Markdown, docs/) skip the build and tests.
 on:
   push:
     branches: [main]
+    paths-ignore: ['**/*.md', 'docs/**']
   pull_request:
+    paths-ignore: ['**/*.md', 'docs/**']
 
 permissions:
   contents: read
