@@ -99,6 +99,12 @@ public sealed class ImageOptions
     /// <summary>Keep EXIF / XMP / ICC metadata.</summary>
     public bool KeepMetadata { get; set; } = true;
 
+    /// <summary>
+    /// When metadata is removed, still keep the ICC colour profile: without it, wide-gamut photos (Display P3 from
+    /// phones) look washed out. Has no effect while <see cref="KeepMetadata"/> is on (everything is kept then).
+    /// </summary>
+    public bool KeepColorProfile { get; set; } = true;
+
     /// <summary>Convert to grayscale.</summary>
     public bool Grayscale { get; set; }
 

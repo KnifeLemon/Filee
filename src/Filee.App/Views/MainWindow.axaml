@@ -45,7 +45,7 @@
     </Border>
 
     <!-- Page -->
-    <ScrollViewer Grid.Column="1" x:Name="PageScroller">
+    <ScrollViewer Grid.Column="1" x:Name="PageScroller" VerticalScrollBarVisibility="{Binding PageScroll}">
       <ContentControl Classes="page" Content="{Binding CurrentPage}" Margin="32,26,32,32" MaxWidth="980" HorizontalAlignment="Stretch" />
     </ScrollViewer>
   </Grid>

@@ -68,6 +68,8 @@
         </Grid>
         <WrapPanel>
           <CheckBox Content="{DynamicResource presets.keep_metadata}" IsChecked="{Binding KeepMetadata}" Margin="0,0,18,0" />
+          <CheckBox Content="{DynamicResource presets.keep_color_profile}" IsChecked="{Binding ColorProfileChecked}"
+                    IsEnabled="{Binding CanChangeColorProfile}" ToolTip.Tip="{DynamicResource presets.keep_color_profile_hint}" ToolTip.ShowOnDisabled="True" Margin="0,0,18,0" />
           <CheckBox Content="{DynamicResource presets.grayscale}" IsChecked="{Binding Grayscale}" Margin="0,0,18,0" />
           <CheckBox Content="{DynamicResource presets.webp_lossless}" IsChecked="{Binding WebpLossless}" IsVisible="{Binding ShowWebp}" />
         </WrapPanel>
