@@ -244,6 +244,8 @@
   "presets.dpi": "DPI",
   "presets.dpi_keep": "유지",
   "presets.keep_metadata": "메타데이터(EXIF) 유지",
+  "presets.keep_color_profile": "색 프로필 유지 (ICC)",
+  "presets.keep_color_profile_hint": "메타데이터를 지울 때 선택할 수 있어요. 색 프로필이 없으면 휴대폰의 Display P3 사진처럼 색 영역이 넓은 사진은 색이 바래 보일 수 있어요.",
   "presets.grayscale": "흑백으로",
   "presets.background": "투명 영역 배경색",
   "presets.tiff_compression": "TIFF 압축",

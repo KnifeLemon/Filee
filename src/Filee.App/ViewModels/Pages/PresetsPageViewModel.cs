@@ -28,7 +28,10 @@ public sealed partial class PresetListItem(Preset preset, ILocalizer loc) : Obse
         : "→ " + (FormatLabels.NameOf(l, p.TargetFormat) ?? p.TargetFormat);
 }
 
-public sealed partial class PresetsPageViewModel : ObservableObject
+/// <summary>Pages that fill the window height and scroll their own parts instead of scrolling as a whole.</summary>
+public interface IFitsWindowHeight;
+
+public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindowHeight
 {
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;

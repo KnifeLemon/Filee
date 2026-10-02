@@ -137,7 +137,12 @@ internal static class ImageEncoder
             image.Density = new Density(options.Dpi.Value, options.Dpi.Value, DensityUnit.PixelsPerInch);
 
         if (!options.KeepMetadata)
+        {
+            var colorProfile = options.KeepColorProfile ? image.GetColorProfile() : null;
             image.Strip();
+            if (colorProfile is not null)
+                image.SetProfile(colorProfile);
+        }
 
         if (NoAlpha.Contains(targetFormat) && image.HasAlpha)
         {

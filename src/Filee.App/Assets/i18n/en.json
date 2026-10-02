@@ -244,6 +244,8 @@
   "presets.dpi": "DPI",
   "presets.dpi_keep": "Keep",
   "presets.keep_metadata": "Keep metadata (EXIF)",
+  "presets.keep_color_profile": "Keep colour profile (ICC)",
+  "presets.keep_color_profile_hint": "Available when metadata is removed. Without the colour profile, wide-gamut photos (Display P3 from phones) can look washed out.",
   "presets.grayscale": "Grayscale",
   "presets.background": "Background for transparency",
   "presets.tiff_compression": "TIFF compression",

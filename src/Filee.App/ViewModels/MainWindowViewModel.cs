@@ -2,6 +2,7 @@
 
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -71,7 +72,15 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public UpdateService Updates { get; }
 
     [ObservableProperty] private NavItem _selectedItem;
-    [ObservableProperty] private ObservableObject _currentPage;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PageScroll))]
+    private ObservableObject _currentPage;
+
+    /// <summary>
+    /// Pages scroll as a whole, except pages that fit the window height and scroll their own parts
+    /// (<see cref="IFitsWindowHeight"/>, e.g. the presets list and editor).
+    /// </summary>
+    public ScrollBarVisibility PageScroll => CurrentPage is IFitsWindowHeight ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
     [ObservableProperty] private string _versionText = "";
     [ObservableProperty] private string _updateText = "";
 

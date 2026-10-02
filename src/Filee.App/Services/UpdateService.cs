@@ -21,10 +21,15 @@ public sealed partial class UpdateService : ObservableObject
     private readonly HttpClient _http;
     private DispatcherTimer? _timer;
 
-    public UpdateService(ILogger<UpdateService> log)
+    public UpdateService(ILogger<UpdateService> log) : this(log, new HttpClientHandler())
+    {
+    }
+
+    /// <param name="handler">Network access; tests pass a handler that simulates being offline.</param>
+    internal UpdateService(ILogger<UpdateService> log, HttpMessageHandler handler)
     {
         _log = log;
-        _http = new HttpClient { Timeout = TimeSpan.FromSeconds(20) };
+        _http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
         _http.DefaultRequestHeaders.UserAgent.Add(new ProductInfoHeaderValue("Filee", CurrentVersion));
         _http.DefaultRequestHeaders.Accept.ParseAdd("application/vnd.github+json");
     }
@@ -82,7 +87,10 @@ public sealed partial class UpdateService : ObservableObject
             await Dispatcher.UIThread.InvokeAsync(() => Publish(newer));
             return newer;
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or JsonException or InvalidOperationException)
+        // Offline, DNS failure, timeout, a connection dropped while reading, or an unexpected answer: Filee works
+        // offline, so a failed check is only logged and the next one is tried later.
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or IOException or JsonException
+                                       or InvalidOperationException)
         {
             _log.LogInformation("Update check failed: {Message}", ex.Message);
             return LatestVersion;

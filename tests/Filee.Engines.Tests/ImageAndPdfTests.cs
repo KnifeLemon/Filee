@@ -103,6 +103,36 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(2, job.Outputs.Count());
     }
 
+    [Theory]
+    [InlineData(true, true, true)]    // all metadata kept
+    [InlineData(false, true, false)]  // metadata removed, colour profile kept
+    [InlineData(false, false, false)] // everything removed
+    public async Task Removing_metadata_can_keep_the_colour_profile(bool keepMetadata, bool keepColorProfile, bool exifExpected)
+    {
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "photo.jpg");
+        using (var image = new MagickImage(MagickColors.SkyBlue, 64, 48))
+        {
+            var exif = new ExifProfile();
+            exif.SetValue(ExifTag.Model, "TestPhone");
+            image.SetProfile(exif);
+            // A wide-gamut profile, like Display P3 from a phone (an sRGB profile would just become PNG's sRGB chunk).
+            image.SetProfile(ColorProfiles.AdobeRGB1998);
+            image.Write(source, MagickFormat.Jpeg);
+        }
+
+        var job = await fx.ConvertAsync([source], new Preset
+        {
+            TargetFormat = "webp",
+            Image = { KeepMetadata = keepMetadata, KeepColorProfile = keepColorProfile },
+        });
+
+        AssertDone(job);
+        using var result = new MagickImage(job.Outputs.Single());
+        Assert.Equal(exifExpected, result.GetExifProfile() is not null);
+        Assert.Equal(keepMetadata || keepColorProfile, result.GetColorProfile() is not null);
+    }
+
     [Fact]
     public async Task Jpg_output_flattens_transparency_and_applies_quality()
     {

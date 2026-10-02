@@ -7,9 +7,9 @@
   <Grid RowDefinitions="Auto,*" ColumnDefinitions="260,20,*">
     <TextBlock Grid.ColumnSpan="3" Classes="h1" Text="{DynamicResource presets.title}" Margin="0,0,0,18" />
 
-    <!-- List -->
-    <StackPanel Grid.Row="1" Spacing="8">
-      <WrapPanel>
+    <!-- List: fits the window height and scrolls on its own (the page itself does not scroll, IFitsWindowHeight) -->
+    <DockPanel Grid.Row="1">
+      <WrapPanel DockPanel.Dock="Top" Margin="0,0,0,8">
         <Button Classes="accent" Command="{Binding AddCommand}" Margin="0,0,6,6">
           <StackPanel Orientation="Horizontal" Spacing="6">
             <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
@@ -33,18 +33,22 @@
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>
-    </StackPanel>
+    </DockPanel>
 
-    <!-- Editor (same control as the donut's preset popup) -->
-    <StackPanel Grid.Row="1" Grid.Column="2" Spacing="12">
-      <TextBlock Classes="muted" Text="{DynamicResource presets.select}" IsVisible="{Binding Editor, Converter={x:Static ObjectConverters.IsNull}}" />
-      <views:PresetEditorView DataContext="{Binding Editor}" IsVisible="{Binding $parent[UserControl].((vm:PresetsPageViewModel)DataContext).Editor, Converter={x:Static ObjectConverters.IsNotNull}}" />
-      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
+    <!-- Editor (same control as the donut's preset popup): scrolls on its own, Save stays visible below it -->
+    <DockPanel Grid.Row="1" Grid.Column="2">
+      <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,12,0,0"
                   IsVisible="{Binding Editor, Converter={x:Static ObjectConverters.IsNotNull}}">
         <TextBlock Text="{Binding SavedMessage}" VerticalAlignment="Center" Foreground="{DynamicResource SuccessBrush}" FontWeight="Bold" />
         <Button Content="{DynamicResource presets.revert}" Command="{Binding RevertCommand}" />
         <Button Classes="accent" Content="{DynamicResource presets.save}" Command="{Binding SaveCommand}" />
       </StackPanel>
-    </StackPanel>
+      <ScrollViewer>
+        <StackPanel Spacing="12" Margin="0,0,12,0">
+          <TextBlock Classes="muted" Text="{DynamicResource presets.select}" IsVisible="{Binding Editor, Converter={x:Static ObjectConverters.IsNull}}" />
+          <views:PresetEditorView DataContext="{Binding Editor}" IsVisible="{Binding $parent[UserControl].((vm:PresetsPageViewModel)DataContext).Editor, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
+      </ScrollViewer>
+    </DockPanel>
   </Grid>
 </UserControl>

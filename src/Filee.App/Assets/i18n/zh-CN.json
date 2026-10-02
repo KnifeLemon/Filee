@@ -244,6 +244,8 @@
   "presets.dpi": "DPI",
   "presets.dpi_keep": "保持",
   "presets.keep_metadata": "保留元数据 (EXIF)",
+  "presets.keep_color_profile": "保留颜色配置文件 (ICC)",
+  "presets.keep_color_profile_hint": "删除元数据时可选。没有颜色配置文件时，手机拍摄的 Display P3 等广色域照片可能会显得发灰。",
   "presets.grayscale": "转为灰度",
   "presets.background": "透明区域背景色",
   "presets.tiff_compression": "TIFF 压缩",

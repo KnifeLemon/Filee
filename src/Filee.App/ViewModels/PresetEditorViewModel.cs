@@ -86,6 +86,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _setDpi = _edit.Image.Dpi.HasValue;
         _dpi = _edit.Image.Dpi ?? 300;
         _keepMetadata = _edit.Image.KeepMetadata;
+        _keepColorProfile = _edit.Image.KeepColorProfile;
         _grayscale = _edit.Image.Grayscale;
         _background = _edit.Image.Background;
         _webpLossless = _edit.Image.WebpLossless;
@@ -140,7 +141,28 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private int _longEdge;
     [ObservableProperty] private bool _setDpi;
     [ObservableProperty] private int _dpi;
-    [ObservableProperty] private bool _keepMetadata;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanChangeColorProfile), nameof(ColorProfileChecked))]
+    private bool _keepMetadata;
+
+    /// <summary>Keep the ICC colour profile when metadata is removed (ImageOptions.KeepColorProfile).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ColorProfileChecked))]
+    private bool _keepColorProfile;
+
+    /// <summary>The colour profile choice only matters while metadata is removed; kept metadata includes it.</summary>
+    public bool CanChangeColorProfile => !KeepMetadata;
+
+    /// <summary>What the checkbox shows: always ticked (and disabled) while all metadata is kept.</summary>
+    public bool ColorProfileChecked
+    {
+        get => KeepMetadata || KeepColorProfile;
+        set
+        {
+            if (!KeepMetadata)
+                KeepColorProfile = value;
+        }
+    }
     [ObservableProperty] private bool _grayscale;
     [ObservableProperty] private string _background;
     [ObservableProperty] private bool _webpLossless;
@@ -214,6 +236,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         image.LongEdge = Math.Clamp(LongEdge, 16, 20000);
         image.Dpi = SetDpi ? Math.Clamp(Dpi, 36, 2400) : null;
         image.KeepMetadata = KeepMetadata;
+        image.KeepColorProfile = KeepColorProfile;
         image.Grayscale = Grayscale;
         image.Background = string.IsNullOrWhiteSpace(Background) ? "#FFFFFF" : Background.Trim();
         image.TiffCompression = TiffCompression.Value;
