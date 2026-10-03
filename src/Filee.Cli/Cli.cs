@@ -231,6 +231,7 @@ internal static class Cli
             }
             preset = found.Clone();
         }
+        preset = host.Store.Settings.WithDefaultOutput(preset);
         if (options.Quality is { } quality)
             preset.Image.Quality = quality;
         if (options.Conflict is { } conflict)

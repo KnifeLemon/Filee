@@ -60,6 +60,19 @@ public class DefaultOutputTests
     }
 
     [Fact]
+    public void Keep_file_dates_turns_dates_on_for_every_preset()
+    {
+        var settings = new AppSettings { KeepFileDates = true };
+        var own = new Preset { Output = { Location = OutputLocation.SameFolder } };
+
+        var applied = settings.WithDefaultOutput(own);
+
+        Assert.True(applied.Output.KeepDates);
+        Assert.False(own.Output.KeepDates); // a copy: the saved preset is unchanged
+        Assert.Same(own, new AppSettings().WithDefaultOutput(own));
+    }
+
+    [Fact]
     public void Presets_with_their_own_location_ignore_the_default()
     {
         var settings = new AppSettings { DefaultOutput = { Location = OutputLocation.CustomFolder, CustomFolder = @"D:\x" } };

@@ -40,6 +40,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _defaultLocation = OutputLocations.FirstOrDefault(l => l.Value == output.Location) ?? OutputLocations[0];
         _defaultSubfolder = output.SubfolderName;
         _defaultFolder = output.CustomFolder;
+        _keepFileDates = store.Settings.KeepFileDates;
         _historyCount = store.History.Count;
         ShowUpdateState(updates.LatestVersion);
         updates.PropertyChanged += OnUpdatesChanged;
@@ -80,6 +81,10 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         Save(s => s.DefaultOutput.SubfolderName = string.IsNullOrWhiteSpace(value) ? "converted" : value.Trim());
 
     partial void OnDefaultFolderChanged(string value) => Save(s => s.DefaultOutput.CustomFolder = value.Trim());
+
+    [ObservableProperty] private bool _keepFileDates;
+
+    partial void OnKeepFileDatesChanged(bool value) => Save(s => s.KeepFileDates = value);
 
     [ObservableProperty] private Choice<string> _language;
     [ObservableProperty] private bool _startWithSystem;

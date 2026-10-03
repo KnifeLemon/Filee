@@ -136,6 +136,8 @@
   "general.modern_menu_remove_failed": "Windows did not remove the entry: {0}",
   "general.default_output": "Default save location",
   "general.default_output_hint": "Presets set to “Default save location” save here. A preset with its own location keeps it.",
+  "general.keep_dates": "Keep the original file dates for every conversion",
+  "general.keep_dates_hint": "Converted files get the created and modified dates of the original, with every preset. Off: only presets with \"Keep the original file dates\" do it.",
   "general.check_updates": "Check for updates automatically",
   "general.history": "Conversion history",
   "general.no_history": "Don't keep a history of recent conversions",

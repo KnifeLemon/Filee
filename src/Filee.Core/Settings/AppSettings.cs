@@ -105,18 +105,29 @@ public sealed class AppSettings
     /// <summary>Where presets set to "Default" save (Settings → General).</summary>
     public DefaultOutputSettings DefaultOutput { get; set; } = new();
 
+    /// <summary>Every conversion keeps the created and modified dates of the original, whatever the preset says.</summary>
+    public bool KeepFileDates { get; set; }
+
     /// <summary>
-    /// Returns <paramref name="preset"/> itself, or a copy that saves to <see cref="DefaultOutput"/> when the preset's
-    /// location is <see cref="OutputLocation.Default"/>. Name pattern, conflict handling and dates stay the preset's.
+    /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
+    /// <see cref="DefaultOutput"/> when the preset's location is <see cref="OutputLocation.Default"/>, and keeps the
+    /// original dates when <see cref="KeepFileDates"/> is on. Name pattern and conflict handling stay the preset's.
     /// </summary>
     public Preset WithDefaultOutput(Preset preset)
     {
-        if (preset.Output.Location != OutputLocation.Default)
+        var location = preset.Output.Location == OutputLocation.Default;
+        var dates = KeepFileDates && !preset.Output.KeepDates;
+        if (!location && !dates)
             return preset;
         var copy = preset.Clone();
-        copy.Output.Location = DefaultOutput.Location == OutputLocation.Default ? OutputLocation.SameFolder : DefaultOutput.Location;
-        copy.Output.SubfolderName = DefaultOutput.SubfolderName;
-        copy.Output.CustomFolder = DefaultOutput.CustomFolder;
+        if (location)
+        {
+            copy.Output.Location = DefaultOutput.Location == OutputLocation.Default ? OutputLocation.SameFolder : DefaultOutput.Location;
+            copy.Output.SubfolderName = DefaultOutput.SubfolderName;
+            copy.Output.CustomFolder = DefaultOutput.CustomFolder;
+        }
+        if (dates)
+            copy.Output.KeepDates = true;
         return copy;
     }
 }

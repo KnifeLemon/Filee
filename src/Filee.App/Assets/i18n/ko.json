@@ -136,6 +136,8 @@
   "general.modern_menu_remove_failed": "Windows가 항목을 제거하지 못했어요: {0}",
   "general.default_output": "기본 저장 위치",
   "general.default_output_hint": "저장 위치가 “기본 저장 위치”인 프리셋은 여기에 저장해요. 저장 위치를 따로 정한 프리셋은 그대로예요.",
+  "general.keep_dates": "모든 변환에서 원본 파일 날짜 유지",
+  "general.keep_dates_hint": "어떤 프리셋으로 변환하든 원본의 만든 날짜와 수정한 날짜를 그대로 넣어요. 끄면 \"원본 파일 날짜 유지\"를 켠 프리셋만 그렇게 해요.",
   "general.check_updates": "자동으로 업데이트 확인",
   "general.history": "변환 기록",
   "general.no_history": "최근 변환 기록 남기지 않기",

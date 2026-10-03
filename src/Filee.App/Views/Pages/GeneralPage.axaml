@@ -42,6 +42,8 @@
             <TextBox Text="{Binding DefaultFolder}" />
           </DockPanel>
         </StackPanel>
+        <ToggleSwitch Content="{DynamicResource general.keep_dates}" IsChecked="{Binding KeepFileDates}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.keep_dates_hint}" Margin="0,-6,0,0" />
       </StackPanel>
     </Border>
 

@@ -136,6 +136,8 @@
   "general.modern_menu_remove_failed": "Windows 未能移除此项：{0}",
   "general.default_output": "默认保存位置",
   "general.default_output_hint": "保存位置为“默认保存位置”的预设会保存到这里。单独设置了保存位置的预设不受影响。",
+  "general.keep_dates": "所有转换都保留原文件日期",
+  "general.keep_dates_hint": "无论使用哪个预设，转换后的文件都沿用原文件的创建和修改日期。关闭时，只有勾选了“保留原文件日期”的预设会这样做。",
   "general.check_updates": "自动检查更新",
   "general.history": "转换记录",
   "general.no_history": "不保留最近的转换记录",
