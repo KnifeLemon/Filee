@@ -9,6 +9,7 @@ using Filee.App.Services;
 using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Settings;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.App.ViewModels.Pages;
 
@@ -68,6 +69,26 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
 
     /// <summary>Removes a package (after the view asked for confirmation). False when its files are in use.</summary>
     public bool Remove(EnginePackageState package) => _downloads.Uninstall(package);
+
+    /// <summary>
+    /// Uses the user's own copy of a package from <paramref name="path"/> (a program they picked). Returns false when
+    /// that folder doesn't have the package's programs; nothing is saved then.
+    /// </summary>
+    public bool UseOwnCopy(EnginePackageState package, string path)
+    {
+        if (EngineEnvironment.FolderWithPrograms(package.Package.Id, path) is null)
+            return false;
+        _store.Settings.EngineOwnCopies[package.Package.Id] = path;
+        _store.SaveSettings(); // App.ApplySettings re-checks the engines
+        return true;
+    }
+
+    /// <summary>Goes back to Filee's download (or no engine) for <paramref name="package"/>.</summary>
+    public void StopUsingOwnCopy(EnginePackageState package)
+    {
+        if (_store.Settings.EngineOwnCopies.Remove(package.Package.Id))
+            _store.SaveSettings();
+    }
 
     // Installing or removing an engine changes the list below (status, supported conversions).
     private void OnCatalogChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(Reload);

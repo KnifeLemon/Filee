@@ -54,9 +54,11 @@ administrator rights once and installs Filee for all users in Program Files. Pre
   (FFmpeg, ~100 MB) and rare formats (LibreOffice, calibre, Ghostscript, Pandoc), each with its size. Filee downloads
   the chosen engines when Setup starts it; install or remove them any time in Settings → Engines, which shows download
   speed and time left.
-- **You hear about updates.** When a new release is out, Filee says so at the bottom of the menu, in a notice and in
-  the tray menu, and opens the latest release to download it. Run the new installer: it closes Filee, updates it and
-  keeps your settings and engines. Filee 1.1 and earlier (installed per user) are taken over the same way.
+- **Updates install themselves.** When a new release is out, Filee says so at the bottom of the menu, in a notice and
+  in the tray menu. Press Update and Filee downloads the new installer, checks it against the release's SHA-256 file
+  and runs it after one administrator prompt. Setup closes Filee, updates it, keeps your settings and engines, and
+  starts it again. The portable copy opens the release page instead. Filee 1.1 and earlier (installed per user) are
+  taken over by the new installer too.
 
 macOS support is planned, and Linux is being considered.
 
@@ -69,7 +71,10 @@ macOS support is planned, and Linux is being considered.
   vector graphics, archives, CAD and fonts, plus toolbars for mixed selections. Arrange presets on a live donut by
   drag & drop, add extensions as tags, right-click or ✎ to edit a preset.
 - **Presets.** Quality, resizing, DPI, metadata, PDF merge and split, page ranges, video quality and resolution, audio
-  bitrate, archive compression, output folder, file name pattern, conflict handling and keeping the original file dates.
+  bitrate, archive compression, output folder, file name pattern, conflict handling and keeping the original file dates
+  (one preset at a time, or for every conversion in Settings → General).
+  Converted files go next to the original by default. Settings → General sets another default save location (a
+  subfolder or one fixed folder) for every preset that has no location of its own.
 - **Batch conversion.** 1 file or 100, converted in parallel; one failure never stops the rest. "One ZIP" packs any
   files into a single archive, "Merge PDF" makes one PDF.
 - **Planned routes.** Multi-step conversions are found automatically (e.g. HWP → HWPX → DOCX, EPUB → HWPX → PDF → PNG),
@@ -81,7 +86,8 @@ macOS support is planned, and Linux is being considered.
 - **Command line.** `filee convert *.heic --to jpg`, `filee watch D:\Inbox --to pdf`, with your presets, JSON output
   for scripts and exit codes. Setup can put the `filee` command on PATH.
 - **Engines you can see.** Settings → Engines lists every engine with its version and what it converts; optional
-  engines download with speed and time left.
+  engines download with speed and time left. Already have FFmpeg, calibre, Pandoc, Ghostscript or LibreOffice? Pick
+  your copy with "Use my copy…" and Filee uses it instead of downloading its own.
 - **Soft, animated UI.** Light, dark or system theme, your accent colour, adjustable roundness and a *Reduce animations*
   switch for older PCs.
 - **English, 한국어, 简体中文**, following your Windows language by default.
@@ -106,7 +112,7 @@ macOS support is planned, and Linux is being considered.
 | **Fonts**: TTF, OTF, WOFF, WOFF2, EOT | each other |
 
 Everything without a mark works out of the box: no Microsoft Office, Hancom Office or LibreOffice needed, and Filee
-never uses programs installed on your PC. Optional engines Filee offers to download: ¹ Ghostscript, ² LibreOffice,
+doesn't look for programs installed on your PC (it only uses an engine you point it to yourself). Optional engines Filee offers to download: ¹ Ghostscript, ² LibreOffice,
 ³ Pandoc, ⁴ calibre, ⁵ FFmpeg. Details, including what each engine keeps and leaves out:
 [docs/ENGINES.md](docs/ENGINES.md).
 

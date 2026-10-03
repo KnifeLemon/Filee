@@ -41,7 +41,7 @@ public sealed partial class CalibreConverter : IConverter
     public EngineStatus GetStatus()
     {
         _executable = Locate();
-        return _executable is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_executable, EngineVersions.Component("calibre"));
+        return _executable is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_executable, EngineEnvironment.OwnCopyFolder("calibre") is null ? EngineVersions.Component("calibre") : null);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -99,8 +99,14 @@ public sealed partial class CalibreConverter : IConverter
     [GeneratedRegex(@"^\s*(\d{1,3})%\s")]
     private static partial Regex Percent();
 
-    /// <summary>Filee's own calibre (engines/calibre, downloaded on demand), never one installed on the system.</summary>
+    /// <summary>
+    /// The user's own calibre when they chose one in Settings → Engines, else Filee's (engines/calibre, downloaded on
+    /// demand). A calibre installed on the system is never looked for.
+    /// </summary>
     internal static string? Locate() =>
+        EngineEnvironment.OwnProgram("calibre", "ebook-convert.exe") ?? LocateBundled();
+
+    private static string? LocateBundled() =>
         OperatingSystem.IsWindows() && EngineEnvironment.FindBundled("calibre") is { } folder
             ? EngineEnvironment.FirstExisting(Path.Combine(folder, "ebook-convert.exe"))
             : null;

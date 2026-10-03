@@ -5,11 +5,12 @@ using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
 using Filee.Core.Localization;
 using Filee.Core.Platform;
+using Filee.Core.Presets;
 using Filee.Core.Settings;
 
 namespace Filee.App.ViewModels.Pages;
 
-public sealed partial class GeneralPageViewModel : ObservableObject
+public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
 {
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
@@ -33,14 +34,57 @@ public sealed partial class GeneralPageViewModel : ObservableObject
         _contextMenu = store.Settings.ContextMenuEnabled;
         _checkForUpdates = store.Settings.CheckForUpdates;
         _noHistory = !store.Settings.KeepHistory;
+        OutputLocations = new[] { OutputLocation.SameFolder, OutputLocation.Subfolder, OutputLocation.CustomFolder }
+            .Select(v => new Choice<OutputLocation>(v, loc[$"presets.location.{v}"])).ToList();
+        var output = store.Settings.DefaultOutput;
+        _defaultLocation = OutputLocations.FirstOrDefault(l => l.Value == output.Location) ?? OutputLocations[0];
+        _defaultSubfolder = output.SubfolderName;
+        _defaultFolder = output.CustomFolder;
+        _keepFileDates = store.Settings.KeepFileDates;
         _historyCount = store.History.Count;
         ShowUpdateState(updates.LatestVersion);
+        updates.PropertyChanged += OnUpdatesChanged;
         RefreshModernMenu();
     }
+
+    /// <summary>The page is rebuilt on every visit; the update service lives on.</summary>
+    public void Dispose() => _updates.PropertyChanged -= OnUpdatesChanged;
+
+    private void OnUpdatesChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (UpdateTexts.Affects(e.PropertyName))
+            ShowUpdateState(_updates.LatestVersion);
+    }
+
+    /// <summary>"Update" in an installed copy, "Download" in a portable one.</summary>
+    public string UpdateButtonText => _loc[UpdateTexts.ButtonKey];
 
     public IReadOnlyList<Choice<string>> Languages { get; }
     public string DataFolder => _store.Directory;
     public bool IsWindows => OperatingSystem.IsWindows();
+
+    /// <summary>Choices for the default save location (everything but "Default" itself).</summary>
+    public IReadOnlyList<Choice<OutputLocation>> OutputLocations { get; }
+
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowDefaultSubfolder), nameof(ShowDefaultFolder))]
+    private Choice<OutputLocation> _defaultLocation;
+
+    [ObservableProperty] private string _defaultSubfolder;
+    [ObservableProperty] private string _defaultFolder;
+
+    public bool ShowDefaultSubfolder => DefaultLocation.Value == OutputLocation.Subfolder;
+    public bool ShowDefaultFolder => DefaultLocation.Value == OutputLocation.CustomFolder;
+
+    partial void OnDefaultLocationChanged(Choice<OutputLocation> value) => Save(s => s.DefaultOutput.Location = value.Value);
+
+    partial void OnDefaultSubfolderChanged(string value) =>
+        Save(s => s.DefaultOutput.SubfolderName = string.IsNullOrWhiteSpace(value) ? "converted" : value.Trim());
+
+    partial void OnDefaultFolderChanged(string value) => Save(s => s.DefaultOutput.CustomFolder = value.Trim());
+
+    [ObservableProperty] private bool _keepFileDates;
+
+    partial void OnKeepFileDatesChanged(bool value) => Save(s => s.KeepFileDates = value);
 
     [ObservableProperty] private Choice<string> _language;
     [ObservableProperty] private bool _startWithSystem;
@@ -157,14 +201,15 @@ public sealed partial class GeneralPageViewModel : ObservableObject
     [RelayCommand]
     private async Task CheckNow() => ShowUpdateState(await _updates.CheckAsync(), afterCheck: true);
 
-    /// <summary>Opens the latest release page; the new installer updates Filee in place.</summary>
+    /// <summary>Downloads and runs the new installer, which updates Filee in place (a portable copy opens the download page).</summary>
     [RelayCommand]
-    private void DownloadUpdate() => _updates.OpenDownloadPage();
+    private Task DownloadUpdate() => _updates.UpdateAsync();
 
     private void ShowUpdateState(string? newer, bool afterCheck = false)
     {
-        UpdateAvailable = newer is not null;
-        UpdateStatus = newer is not null ? _loc.Format("general.update_available", newer)
+        UpdateAvailable = newer is not null && !_updates.IsBusy;
+        UpdateStatus = UpdateTexts.Status(_updates, _loc) is { } progress ? progress
+            : newer is not null ? _loc.Format("general.update_available", newer)
             : afterCheck ? _loc.Format("general.update_none", UpdateService.CurrentVersion)
             : _loc.Format("about.version", UpdateService.CurrentVersion);
     }

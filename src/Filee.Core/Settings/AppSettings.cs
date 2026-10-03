@@ -1,5 +1,7 @@
 // Root settings object persisted to settings.json.
 
+using Filee.Core.Presets;
+
 namespace Filee.Core.Settings;
 
 public enum ThemeMode
@@ -48,7 +50,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -99,4 +101,50 @@ public sealed class AppSettings
 
     /// <summary>Folders whose new files are converted automatically (Settings → Watch folders).</summary>
     public List<Watching.WatchRule> WatchFolders { get; set; } = [];
+
+    /// <summary>Where presets set to "Default" save (Settings → General).</summary>
+    public DefaultOutputSettings DefaultOutput { get; set; } = new();
+
+    /// <summary>
+    /// Optional engines the user already has: package id ("ffmpeg", "calibre", …) → the program they picked. Used
+    /// instead of Filee's download (Settings → Engines).
+    /// </summary>
+    public Dictionary<string, string> EngineOwnCopies { get; set; } = [];
+
+    /// <summary>Every conversion keeps the created and modified dates of the original, whatever the preset says.</summary>
+    public bool KeepFileDates { get; set; }
+
+    /// <summary>
+    /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
+    /// <see cref="DefaultOutput"/> when the preset's location is <see cref="OutputLocation.Default"/>, and keeps the
+    /// original dates when <see cref="KeepFileDates"/> is on. Name pattern and conflict handling stay the preset's.
+    /// </summary>
+    public Preset WithDefaultOutput(Preset preset)
+    {
+        var location = preset.Output.Location == OutputLocation.Default;
+        var dates = KeepFileDates && !preset.Output.KeepDates;
+        if (!location && !dates)
+            return preset;
+        var copy = preset.Clone();
+        if (location)
+        {
+            copy.Output.Location = DefaultOutput.Location == OutputLocation.Default ? OutputLocation.SameFolder : DefaultOutput.Location;
+            copy.Output.SubfolderName = DefaultOutput.SubfolderName;
+            copy.Output.CustomFolder = DefaultOutput.CustomFolder;
+        }
+        if (dates)
+            copy.Output.KeepDates = true;
+        return copy;
+    }
+}
+
+/// <summary>The save location presets set to "Default" use. Starts as "next to the source file", as before 1.4.</summary>
+public sealed class DefaultOutputSettings
+{
+    /// <summary><see cref="OutputLocation.SameFolder"/>, <see cref="OutputLocation.Subfolder"/> or <see cref="OutputLocation.CustomFolder"/>.</summary>
+    public OutputLocation Location { get; set; } = OutputLocation.SameFolder;
+
+    public string SubfolderName { get; set; } = "converted";
+
+    public string CustomFolder { get; set; } = "";
 }

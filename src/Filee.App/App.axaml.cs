@@ -11,6 +11,7 @@ using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Settings;
+using Filee.Engines.Infrastructure;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App;
@@ -99,12 +100,18 @@ public partial class App : Application
             store.SaveSettings();
             AppHost.Get<WindowService>().ShowUpdateNotice(version);
         };
+        updates.UpdateFailed += async (_, _) => await AppHost.Get<WindowService>().ShowUpdateFailedAsync();
         updates.StartPeriodicChecks(() => store.Settings.CheckForUpdates, TimeSpan.FromSeconds(20));
     }
 
     /// <summary>Applies everything derived from settings. Called at start-up and whenever settings are saved.</summary>
     private static void ApplySettings(AppSettings settings)
     {
+        // Before the catalog is created (the first time) or re-checked: engines look for the user's own copies first.
+        var ownCopiesChanged = !EngineEnvironment.OwnCopies.OrderBy(p => p.Key).SequenceEqual(settings.EngineOwnCopies.OrderBy(p => p.Key));
+        if (ownCopiesChanged)
+            EngineEnvironment.OwnCopies = new Dictionary<string, string>(settings.EngineOwnCopies);
+
         var loc = AppHost.Get<LocalizationService>();
         if (loc.NeedsUpdate(settings.Language))
             loc.SetLanguage(settings.Language);
@@ -112,6 +119,11 @@ public partial class App : Application
         AppHost.Get<ThemeService>().Apply(settings.Theme, loc.Language);
         AppHost.Get<TriggerService>().Apply(settings);
         AppHost.Get<ConverterCatalog>().Priority = settings.EnginePriority;
+        if (ownCopiesChanged)
+        {
+            AppHost.Get<ConverterCatalog>().Refresh();
+            AppHost.Get<EngineDownloadService>().RefreshStatus();
+        }
         ApplySystemIntegration(settings, loc);
     }
 

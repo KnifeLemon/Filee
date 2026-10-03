@@ -71,8 +71,10 @@ public sealed class LibreOfficeConverter : IConverter
         Edges = BuildEdges(_hasHwpFilter);
         return _soffice is null
             ? EngineStatus.Unavailable("engine.reason.not_installed")
-            : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice")
-                                                + (_hasHwpFilter ? $" · H2Orestart {EngineVersions.Component("h2orestart")}" : ""));
+            : EngineEnvironment.OwnCopyFolder("libreoffice") is not null
+                ? EngineStatus.Available(_soffice, _hasHwpFilter ? "H2Orestart" : null)
+                : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice")
+                                                   + (_hasHwpFilter ? $" · H2Orestart {EngineVersions.Component("h2orestart")}" : ""));
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -263,13 +265,16 @@ public sealed class LibreOfficeConverter : IConverter
         return edges;
     }
 
-    /// <summary>Finds Filee's own copy (engines/libreoffice); a LibreOffice installed on the system is never used.</summary>
+    /// <summary>
+    /// The user's own LibreOffice when they chose one in Settings → Engines, else Filee's copy (engines/libreoffice).
+    /// A LibreOffice installed on the system is never looked for.
+    /// </summary>
     private void Locate()
     {
         var bundled = EngineEnvironment.FindBundled("libreoffice");
-        _soffice = bundled is null ? null : EngineEnvironment.FirstExisting(
+        _soffice = EngineEnvironment.OwnProgram("libreoffice", "soffice.exe") ?? (bundled is null ? null : EngineEnvironment.FirstExisting(
             Path.Combine(bundled, "program", OperatingSystem.IsWindows() ? "soffice.exe" : "soffice"),
-            Path.Combine(bundled, "Contents", "MacOS", "soffice"));
+            Path.Combine(bundled, "Contents", "MacOS", "soffice")));
         _hasHwpFilter = _soffice is not null && HasH2Orestart(_soffice);
     }
 

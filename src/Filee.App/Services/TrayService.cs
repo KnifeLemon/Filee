@@ -1,4 +1,4 @@
-// System tray icon: open settings, pause gestures, download a new version, quit.
+// System tray icon: open settings, pause gestures, install a new version, quit.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -28,7 +28,7 @@ public sealed class TrayService(UserDataStore store, ILocalizer loc, WindowServi
         _quit = new NativeMenuItem();
         _quit.Click += (_, _) => (app.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown();
         _update = new NativeMenuItem();
-        _update.Click += (_, _) => updates.OpenDownloadPage();
+        _update.Click += async (_, _) => await updates.UpdateAsync();
 
         _tray = new TrayIcon
         {
@@ -44,7 +44,7 @@ public sealed class TrayService(UserDataStore store, ILocalizer loc, WindowServi
         store.SettingsChanged += (_, _) => Refresh();
         updates.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(UpdateService.LatestVersion))
+            if (UpdateTexts.Affects(e.PropertyName))
                 Refresh();
         };
     }
@@ -53,10 +53,12 @@ public sealed class TrayService(UserDataStore store, ILocalizer loc, WindowServi
     {
         if (_tray?.Menu is not { } menu)
             return;
-        // "Download update (x.y.z)" sits at the top of the menu while a newer release is out.
+        // "Update to x.y.z" sits at the top of the menu while a newer release is out ("Downloading… 42%" meanwhile).
         if (updates.LatestVersion is { } latest)
         {
-            _update!.Header = loc.Format("tray.update", latest);
+            _update!.Header = updates.Step is UpdateStep.Downloading or UpdateStep.Installing
+                ? UpdateTexts.Short(updates, loc)
+                : loc.Format("tray.update", latest);
             if (!menu.Items.Contains(_update))
                 menu.Items.Insert(0, _update);
         }

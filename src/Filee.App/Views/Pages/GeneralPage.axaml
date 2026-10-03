@@ -25,6 +25,28 @@
       </StackPanel>
     </Border>
 
+    <!-- Where presets set to "Default" save (AppSettings.DefaultOutput). -->
+    <Border Classes="card">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource general.default_output}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.default_output_hint}" />
+        <ComboBox ItemsSource="{Binding OutputLocations}" SelectedItem="{Binding DefaultLocation}" MinWidth="240" />
+        <StackPanel IsVisible="{Binding ShowDefaultSubfolder}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.subfolder}" />
+          <TextBox Text="{Binding DefaultSubfolder}" PlaceholderText="converted" MaxWidth="420" HorizontalAlignment="Left" MinWidth="240" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding ShowDefaultFolder}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.custom_folder}" />
+          <DockPanel MaxWidth="560" HorizontalAlignment="Stretch">
+            <Button DockPanel.Dock="Right" Margin="8,0,0,0" Content="{DynamicResource presets.browse}" Click="OnBrowseDefaultFolder" />
+            <TextBox Text="{Binding DefaultFolder}" />
+          </DockPanel>
+        </StackPanel>
+        <ToggleSwitch Content="{DynamicResource general.keep_dates}" IsChecked="{Binding KeepFileDates}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.keep_dates_hint}" Margin="0,-6,0,0" />
+      </StackPanel>
+    </Border>
+
     <Border Classes="card">
       <StackPanel Spacing="12">
         <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
@@ -33,7 +55,7 @@
           <Button Classes="accent" Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding UpdateAvailable}">
             <StackPanel Orientation="Horizontal" Spacing="6">
               <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
-              <TextBlock Text="{DynamicResource update.download}" />
+              <TextBlock Text="{Binding UpdateButtonText}" />
             </StackPanel>
           </Button>
           <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />

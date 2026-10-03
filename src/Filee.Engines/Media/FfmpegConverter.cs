@@ -127,6 +127,9 @@ public sealed partial class FfmpegConverter : IConverter
     /// </summary>
     internal static (string Ffmpeg, string Ffprobe)? Locate()
     {
+        // The user's own FFmpeg (Settings → Engines) comes first.
+        if (EngineEnvironment.OwnCopyFolder("ffmpeg") is { } own)
+            return (Path.Combine(own, "ffmpeg.exe"), Path.Combine(own, "ffprobe.exe"));
         if (EngineEnvironment.FindBundled("ffmpeg") is not { } folder)
             return null;
         var suffix = OperatingSystem.IsWindows() ? ".exe" : "";

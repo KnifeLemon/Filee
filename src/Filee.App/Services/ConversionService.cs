@@ -60,6 +60,8 @@ public sealed class ConversionService
     {
         if (files.Count == 0)
             return null;
+        // A preset on "Default" saves where Settings > General says (read now, so a changed default applies at once).
+        preset = _store.Settings.WithDefaultOutput(preset);
         var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset));
         var vm = new JobViewModel(job, _loc, _platform, Remove);
         _byId[job.Id] = vm;
