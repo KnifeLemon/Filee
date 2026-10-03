@@ -221,6 +221,9 @@ public sealed partial class DonutMenu : Control
         StartAnimation();
     }
 
+    /// <summary>How far slice <paramref name="index"/> is drawn lit up right now (0 to 1), for the drag log.</summary>
+    public double LitAmount(int index) => index >= 0 && index < _hover.Length ? _hover[index].Value : 0;
+
     /// <summary>Edit mode: the slice being dragged is drawn faded.</summary>
     public void SetDimmedIndex(int index)
     {
@@ -485,28 +488,46 @@ public sealed partial class DonutMenu : Control
         }
     }
 
+    /// <summary>
+    /// A frame loop that got no frame for this long is treated as stopped: a frame request can be lost (the window
+    /// hidden in between, for one), and every later animation would wait for it, so the slice under a dragged file
+    /// would never light up.
+    /// </summary>
+    internal const long StalledLoopMs = 250;
+
+    private int _loop;           // the current frame loop; frames of an older one are ignored
+    private long _lastTick;      // Environment.TickCount64 of the last frame or frame request
+
     private void StartAnimation()
     {
         InvalidateVisual();
-        if (_animating)
+        if (_animating && Environment.TickCount64 - _lastTick < StalledLoopMs)
             return;
         var top = TopLevel.GetTopLevel(this);
         if (top is null)
+        {
+            _animating = false;
             return;
+        }
         _animating = true;
         _lastFrame = null;
-        top.RequestAnimationFrame(OnFrame);
+        _lastTick = Environment.TickCount64;
+        var loop = ++_loop;
+        top.RequestAnimationFrame(time => OnFrame(time, loop));
     }
 
-    private void OnFrame(TimeSpan time)
+    private void OnFrame(TimeSpan time, int loop)
     {
+        if (loop != _loop)
+            return; // a loop that was given up on as stalled, replaced by a newer one
+        _lastTick = Environment.TickCount64;
         var dt = _lastFrame is { } last ? Math.Clamp((time - last).TotalSeconds, 0, 0.05) : 1 / 60.0;
         _lastFrame = time;
         var active = Advance(dt);
 
         InvalidateVisual();
         if (active && TopLevel.GetTopLevel(this) is { } top)
-            top.RequestAnimationFrame(OnFrame);
+            top.RequestAnimationFrame(next => OnFrame(next, loop));
         else
             _animating = false;
     }
