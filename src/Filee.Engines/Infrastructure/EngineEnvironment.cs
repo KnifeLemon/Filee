@@ -1,8 +1,10 @@
 // Shared context for engines: where Filee's own engine copies live and where engines keep their state.
-// Engines never look for software installed on the system (Office, a system-wide LibreOffice, tools on the PATH):
-// they use the copies that ship with the installer or that Filee downloaded, so every user gets the same, tested
-// versions. The one exception is a copy the user points Filee to in Settings → Engines (OwnCopies), so nobody has
-// to download a second FFmpeg or calibre they already have.
+// Built-in engines never use software installed on the system (Microsoft Office, Hancom Office). The optional
+// engines (FFmpeg, calibre, Pandoc, Ghostscript, LibreOffice) are looked up in this order: a copy the user chose in
+// Settings → Engines (OwnCopies), Filee's own copy (installer or download, the tested version), then one already on
+// the PC (on the PATH or where its installer puts it), so nobody has to download a second FFmpeg they already have.
+
+using System.Collections.Concurrent;
 
 namespace Filee.Engines.Infrastructure;
 
@@ -85,6 +87,74 @@ public sealed class EngineEnvironment(string dataDirectory)
             if (programs.All(p => File.Exists(Path.Combine(folder, p))))
                 return folder;
         return null;
+    }
+
+    /// <summary>True when package <paramref name="id"/> runs from Filee's own copy (not the user's or the PC's).</summary>
+    public static bool UsesFileesCopy(string id) => OwnCopyFolder(id) is null && FindBundled(id) is not null;
+
+    /// <summary>Searching the PC for engines; tests turn it off so the machine's tools don't change results.</summary>
+    public static bool SearchSystem { get; set; } = true;
+
+    private static readonly ConcurrentDictionary<string, string?> SystemCopies = new();
+
+    /// <summary>
+    /// The folder of a copy of package <paramref name="id"/> already on the PC: on the PATH (also the user's and the
+    /// machine's PATH as saved, so a tool installed after Filee started is found, e.g. Scoop's shims) or where its
+    /// installer puts it (LibreOffice, calibre, Ghostscript under Program Files). Cached until
+    /// <see cref="ForgetSystemCopies"/>.
+    /// </summary>
+    public static string? SystemCopyFolder(string id) =>
+        SearchSystem && OperatingSystem.IsWindows() ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
+
+    /// <summary>A program of the copy of package <paramref name="id"/> on the PC, or null.</summary>
+    public static string? SystemProgram(string id, string program) =>
+        SystemCopyFolder(id) is { } folder ? Path.Combine(folder, program) : null;
+
+    /// <summary>Searches the PC again (Settings → Engines → Check again, settings changes).</summary>
+    public static void ForgetSystemCopies() => SystemCopies.Clear();
+
+    private static string? FindOnSystem(string id) =>
+        SystemFolders(id).Select(folder => FolderWithPrograms(id, folder)).FirstOrDefault(found => found is not null);
+
+    private static IEnumerable<string> SystemFolders(string id)
+    {
+        var path = string.Join(';',
+            Environment.GetEnvironmentVariable("PATH"),
+            Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User),
+            Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine));
+        var folders = path.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(entry => Environment.ExpandEnvironmentVariables(entry.Trim('"')))
+            .ToList();
+        foreach (var root in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
+                     .Select(Environment.GetFolderPath).Where(r => r.Length > 0))
+        {
+            switch (id)
+            {
+                case "libreoffice":
+                    folders.Add(Path.Combine(root, "LibreOffice", "program"));
+                    break;
+                case "calibre":
+                    folders.Add(Path.Combine(root, "Calibre2"));
+                    break;
+                case "ghostscript":
+                    // C:\Program Files\gs\gs10.04.0\bin, newest first
+                    try
+                    {
+                        var gs = Path.Combine(root, "gs");
+                        if (Directory.Exists(gs))
+                            folders.AddRange(Directory.EnumerateDirectories(gs).OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase)
+                                .Select(d => Path.Combine(d, "bin")));
+                    }
+                    catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                    {
+                    }
+                    break;
+            }
+        }
+        // Never Filee's own folders: those are its own copy, found before.
+        return folders.Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(f => !f.StartsWith(DownloadRoot, StringComparison.OrdinalIgnoreCase)
+                        && !f.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>Returns the first path that exists as a file.</summary>

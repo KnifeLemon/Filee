@@ -366,6 +366,8 @@
   "engines.remove": "제거",
   "engines.remove_confirm": "{0}을(를) 제거할까요? 나중에 다시 내려받을 수 있어요.",
   "engines.state.own_copy": "내 프로그램 사용 중",
+  "engines.state.system_copy": "PC에 있는 프로그램 사용 중",
+  "engines.update_recommended": "업데이트 권장: 이 프로그램은 {0} 버전이고 Filee는 {1} 버전으로 테스트했어요. 대부분의 변환은 그대로 돼요.",
   "engines.use_own": "내 프로그램 쓰기…",
   "engines.use_own_hint": "이미 설치해 둔 게 있다면 실행 파일을 고르세요. Filee가 따로 내려받지 않고 그걸 써요.",
   "engines.use_own_title": "{0} 실행 파일 고르기",

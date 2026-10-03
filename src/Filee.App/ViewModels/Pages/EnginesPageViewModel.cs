@@ -111,6 +111,7 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Recheck()
     {
+        EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
         _catalog.Refresh();
     }

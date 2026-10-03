@@ -53,7 +53,9 @@
                   </StackPanel>
                   <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
                   <TextBlock Classes="caption" Text="{Binding Sizes}" IsVisible="{Binding !UsesOwnCopy}" />
-                  <TextBlock Classes="caption" Text="{Binding OwnCopyFolder}" IsVisible="{Binding UsesOwnCopy}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="caption" Text="{Binding OwnCopyFolder}" IsVisible="{Binding ShowsCopyFolder}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Text="{Binding UpdateNote}"
+                             IsVisible="{Binding UpdateNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                   <ProgressBar Classes="soft" Maximum="100" Value="{Binding Progress}" IsVisible="{Binding IsBusy}" Margin="0,4,0,0" />
                   <TextBlock Classes="caption" Text="{Binding ProgressDetail}" IsVisible="{Binding ProgressDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>

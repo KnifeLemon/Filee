@@ -366,6 +366,8 @@
   "engines.remove": "删除",
   "engines.remove_confirm": "删除 {0}？以后可以重新下载。",
   "engines.state.own_copy": "使用你的副本",
+  "engines.state.system_copy": "使用电脑上已有的程序",
+  "engines.update_recommended": "建议更新：此程序为 {0} 版，Filee 使用 {1} 版测试。大多数转换仍可正常进行。",
   "engines.use_own": "使用我的程序…",
   "engines.use_own_hint": "已经装过了？选择它的程序，Filee 就直接使用，不再另外下载。",
   "engines.use_own_title": "选择 {0} 的程序",

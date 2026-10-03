@@ -66,7 +66,7 @@ public sealed class PandocConverter : IConverter
     public EngineStatus GetStatus()
     {
         _pandoc = Locate();
-        return _pandoc is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_pandoc, EngineEnvironment.OwnCopyFolder("pandoc") is null ? EngineVersions.Component("pandoc") : null);
+        return _pandoc is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_pandoc, EngineEnvironment.UsesFileesCopy("pandoc") ? EngineVersions.Component("pandoc") : null);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -95,7 +95,7 @@ public sealed class PandocConverter : IConverter
 
     /// <summary>Filee's own pandoc (engines/pandoc, downloaded on demand), never one found elsewhere on the system.</summary>
     internal static string? Locate() =>
-        EngineEnvironment.OwnProgram("pandoc", "pandoc.exe") ?? LocateBundled();
+        EngineEnvironment.OwnProgram("pandoc", "pandoc.exe") ?? LocateBundled() ?? EngineEnvironment.SystemProgram("pandoc", "pandoc.exe");
 
     private static string? LocateBundled() =>
         EngineEnvironment.FindBundled("pandoc") is { } bundled
