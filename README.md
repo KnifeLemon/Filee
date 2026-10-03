@@ -68,11 +68,12 @@ macOS support is planned, and Linux is being considered.
   configurable: any modifier combination, mouse button, drag distance, a hold gesture or a keyboard shortcut for the
   selected files.
 - **One toolbar per file type.** Images, PDF, documents, spreadsheets, presentations, HWP, text, e-books, video, audio,
-  vector graphics, archives, CAD and fonts, plus toolbars for mixed selections. Arrange presets on a live donut by
+  vector graphics, archives, CAD and fonts, plus toolbars for mixed selections. Arrange presets on a live donut (it opens a gap where a dragged preset will land) by
   drag & drop, add extensions as tags, right-click or ✎ to edit a preset.
 - **Presets.** Quality, resizing, DPI, metadata, PDF merge and split, page ranges, video quality and resolution, audio
   bitrate, archive compression, output folder, file name pattern, conflict handling and keeping the original file dates
-  (one preset at a time, or for every conversion in Settings → General).
+  (one preset at a time, or for every conversion in Settings → General). TIFF presets can put every file into one
+  multi-page TIFF (one page per image or PDF page).
   Converted files go next to the original by default. Settings → General sets another default save location (a
   subfolder or one fixed folder) for every preset that has no location of its own.
 - **Batch conversion.** 1 file or 100, converted in parallel; one failure never stops the rest. "One ZIP" packs any
@@ -86,8 +87,9 @@ macOS support is planned, and Linux is being considered.
 - **Command line.** `filee convert *.heic --to jpg`, `filee watch D:\Inbox --to pdf`, with your presets, JSON output
   for scripts and exit codes. Setup can put the `filee` command on PATH.
 - **Engines you can see.** Settings → Engines lists every engine with its version and what it converts; optional
-  engines download with speed and time left. Already have FFmpeg, calibre, Pandoc, Ghostscript or LibreOffice? Pick
-  your copy with "Use my copy…" and Filee uses it instead of downloading its own.
+  engines download with speed and time left. FFmpeg, calibre, Pandoc, Ghostscript or LibreOffice already on your PC
+  (on the PATH, Scoop included, or in Program Files) are found and used instead of a download, with a note when one is
+  older than the version Filee is tested with. "Use my copy…" picks a specific one.
 - **Soft, animated UI.** Light, dark or system theme, your accent colour, adjustable roundness and a *Reduce animations*
   switch for older PCs.
 - **English, 한국어, 简体中文**, following your Windows language by default.
@@ -112,7 +114,8 @@ macOS support is planned, and Linux is being considered.
 | **Fonts**: TTF, OTF, WOFF, WOFF2, EOT | each other |
 
 Everything without a mark works out of the box: no Microsoft Office, Hancom Office or LibreOffice needed, and Filee
-doesn't look for programs installed on your PC (it only uses an engine you point it to yourself). Optional engines Filee offers to download: ¹ Ghostscript, ² LibreOffice,
+doesn't use Microsoft Office or Hancom Office even when they are installed. The optional engines below are
+downloaded only if your PC doesn't already have them. Optional engines Filee offers to download: ¹ Ghostscript, ² LibreOffice,
 ³ Pandoc, ⁴ calibre, ⁵ FFmpeg. Details, including what each engine keeps and leaves out:
 [docs/ENGINES.md](docs/ENGINES.md).
 

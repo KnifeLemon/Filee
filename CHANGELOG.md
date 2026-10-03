@@ -6,9 +6,7 @@ version it publishes at the top of the GitHub release notes, above the list of p
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
-## Unreleased
-
-Rename this heading to the version number when you release it.
+## 1.5.0
 
 ### FFmpeg, calibre and the others you already have are used by themselves
 
