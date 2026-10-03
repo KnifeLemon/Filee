@@ -152,16 +152,24 @@ public class UserDataStoreTests
     }
 
     [Fact]
-    public void Version_6_libraries_get_epub_on_the_pdf_donut()
+    public void Version_6_libraries_get_the_conversions_that_were_on_no_donut()
     {
-        // As written by 1.3.0: no EPUB on the PDF donut.
+        // As written by 1.3.0: no HWP preset, and the donuts below without the targets 1.3.1 added.
         var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id == "to-hwp");
         var profiles = BuiltInData.CreateProfiles();
-        profiles.Single(p => p.Id == "pdf").PresetIds.Remove("to-epub");
+        foreach (var profile in profiles)
+            profile.PresetIds.Remove("to-hwp");
+        profiles.Single(p => p.Id == "pdf").PresetIds.RemoveAll(id => id is "to-md" or "to-epub");
+        profiles.Single(p => p.Id == "office").PresetIds.Remove("to-png");
+        profiles.Single(p => p.Id == "hwp").PresetIds.RemoveAll(id => id is "to-jpg" or "to-epub");
 
         Assert.True(SettingsMigrations.ApplyToLibrary(6, presets, profiles));
 
-        Assert.Equal(["to-png", "to-jpg", "to-docx", "to-txt", "to-epub"], profiles.Single(p => p.Id == "pdf").PresetIds.Take(5));
+        // The same donuts as a new install.
+        Assert.NotNull(presets.SingleOrDefault(p => p.Id == "to-hwp"));
+        foreach (var expected in BuiltInData.CreateProfiles())
+            Assert.Equal(expected.PresetIds, profiles.Single(p => p.Id == expected.Id).PresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(6, presets, profiles)); // once only
     }
 
