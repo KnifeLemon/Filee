@@ -3,7 +3,8 @@
 // Sources: a palette chip (add) or a donut slice (reorder / remove).
 // Targets: a donut slice (insert at / move to that position), the empty ring or the hole (append),
 //          or the palette box (remove a slice).
-// A floating "ghost" chip follows the pointer; the donut highlights the slice that would receive the drop.
+// A floating "ghost" chip follows the pointer, and the donut opens a gap where the drop would land, with a
+// translucent slice of the dragged preset in it (DonutMenu.SetDropPreview).
 
 using Avalonia;
 using Avalonia.Controls;
@@ -94,8 +95,9 @@ public partial class ToolbarPage : UserControl
 
         ShowGhost(_drag.Label, p);
         var (sliceTarget, overPalette) = FindTarget(e);
-        Donut.SetDropTarget(sliceTarget);
-        PaletteBox.Classes.Set("over", overPalette && _drag.Source == Source.Slice);
+        var removing = overPalette && _drag.Source == Source.Slice;
+        Donut.SetDropPreview(removing ? -1 : sliceTarget, _drag.Label, _drag.Source == Source.Slice ? _drag.SliceIndex : -1);
+        PaletteBox.Classes.Set("over", removing);
     }
 
     private void OnRootPointerReleased(object? sender, PointerReleasedEventArgs e)
@@ -125,21 +127,19 @@ public partial class ToolbarPage : UserControl
     }
 
     /// <summary>
-    /// Where would a drop land? Returns the slice index (or SliceCount = append; -1 = not on the donut)
-    /// and whether the pointer is over the palette.
+    /// Where would a drop land? Returns the position in the list after the drop (SliceCount = append; -1 = not on the
+    /// donut) and whether the pointer is over the palette. The slots are those of the donut with the gap open (one
+    /// more slice for a new preset), so the gap doesn't move away from under the pointer.
     /// </summary>
     private (int SliceTarget, bool OverPalette) FindTarget(PointerEventArgs e)
     {
         var overPalette = new Rect(PaletteBox.Bounds.Size).Contains(e.GetPosition(PaletteBox));
-        var hit = Donut.HitTest(e.GetPosition(Donut));
+        var point = e.GetPosition(Donut);
         var count = Vm?.SliceCount ?? 0;
-        var target = hit.Kind switch
-        {
-            DonutHitKind.Segment or DonutHitKind.EditButton => hit.Index,
-            DonutHitKind.EmptyRing => 0,
-            DonutHitKind.Center when _drag?.Source == Source.Chip => count, // drop in the hole = append
-            _ => -1,
-        };
+        var adding = _drag?.Source == Source.Chip;
+        var target = Donut.HitTest(point).Kind == DonutHitKind.Center
+            ? adding ? count : -1 // drop in the hole = append
+            : Donut.SlotAt(point, adding ? count + 1 : count);
         return (target, overPalette);
     }
 
@@ -156,6 +156,7 @@ public partial class ToolbarPage : UserControl
         _drag = null;
         Ghost.IsVisible = false;
         Donut.SetDropTarget(-1);
+        Donut.SetDropPreview(-1);
         Donut.SetDimmedIndex(-1);
         PaletteBox.Classes.Set("over", false);
     }

@@ -94,6 +94,16 @@ public sealed partial class DonutMenu : Control
     private bool _externalCenterHot;
     private int _dimmedIndex = -1;
     private int _dropTargetIndex = -1;
+
+    // Edit mode drop preview: the slices make room where a dragged preset would land and a translucent slice shows
+    // it there. Every slice's centre angle and width is a spring, so the others slide aside instead of jumping.
+    private Spring[] _mid = [];
+    private Spring[] _span = [];
+    private Spring _previewMid;
+    private Spring _previewSpan;
+    private int _previewSlot = -1;
+    private int _previewRemoved = -1;
+    private string? _previewLabel;
     private (int Index, Point Start, PointerPressedEventArgs Args)? _press;
 
     static DonutMenu()
@@ -227,6 +237,82 @@ public sealed partial class DonutMenu : Control
         InvalidateVisual();
     }
 
+    /// <summary>
+    /// Edit mode: opens a gap at <paramref name="slot"/> (the position in the list after the drop) and shows a
+    /// translucent slice labelled <paramref name="label"/> there. <paramref name="removed"/> is the slice being moved,
+    /// which leaves its place. -1 closes the gap.
+    /// </summary>
+    public void SetDropPreview(int slot, string? label = null, int removed = -1)
+    {
+        if (_previewSlot == slot && _previewRemoved == removed && _previewLabel == label)
+            return;
+        if (_previewSlot < 0 && slot >= 0)
+        {
+            // The new slice grows out of nothing where it appears.
+            _previewMid = new Spring { Value = DonutGeometry.MidAngle(slot, SlotCount(removed)) };
+            _previewSpan = default;
+        }
+        _previewSlot = slot;
+        _previewRemoved = removed;
+        _previewLabel = label;
+        StartAnimation();
+    }
+
+    /// <summary>The slot under <paramref name="p"/> when the donut has <paramref name="slots"/> slices; -1 off the ring.</summary>
+    public int SlotAt(Point p, int slots)
+    {
+        var hit = DonutGeometry.HitTest(Center, p, InnerRadius, OuterRadius, Math.Max(slots, 1), PopOut);
+        return hit.Kind == DonutHitKind.Segment ? hit.Index : -1;
+    }
+
+    /// <summary>Slices while previewing: the items, minus the one being moved, plus the preview.</summary>
+    private int SlotCount(int removed) => Count + 1 - (removed >= 0 ? 1 : 0);
+
+    /// <summary>Where slice <paramref name="i"/> belongs: its usual place, or shifted to make room for the preview.</summary>
+    private (double Mid, double Span) LayoutTarget(int i)
+    {
+        var n = Count;
+        if (_previewSlot < 0)
+            return (DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n));
+        if (i == _previewRemoved)
+            return (i < _mid.Length ? _mid[i].Value : DonutGeometry.MidAngle(i, n), 0); // it becomes the preview
+        var slot = _previewRemoved >= 0 && i > _previewRemoved ? i - 1 : i;
+        if (slot >= _previewSlot)
+            slot++;
+        var m = SlotCount(_previewRemoved);
+        return (DonutGeometry.MidAngle(slot, m), DonutGeometry.Span(m));
+    }
+
+    /// <summary>Moves the slices and the preview towards their places. Returns true while they are still moving.</summary>
+    private bool StepLayout(double dt)
+    {
+        var active = false;
+        for (var i = 0; i < _mid.Length; i++)
+        {
+            var (mid, span) = LayoutTarget(i);
+            if (!Motion.Enabled)
+            {
+                _mid[i] = new Spring { Value = mid };
+                _span[i] = new Spring { Value = span };
+                continue;
+            }
+            active |= _mid[i].Step(mid, dt, 420, 36);
+            active |= _span[i].Step(span, dt, 420, 36);
+        }
+        var m = SlotCount(_previewRemoved);
+        var previewMid = _previewSlot >= 0 ? DonutGeometry.MidAngle(_previewSlot, m) : _previewMid.Value;
+        var previewSpan = _previewSlot >= 0 ? DonutGeometry.Span(m) : 0;
+        if (!Motion.Enabled)
+        {
+            _previewMid = new Spring { Value = previewMid };
+            _previewSpan = new Spring { Value = previewSpan };
+            return false;
+        }
+        active |= _previewMid.Step(previewMid, dt, 420, 36);
+        active |= _previewSpan.Step(previewSpan, dt, 420, 36);
+        return active;
+    }
+
     /// <summary>Hit-tests a point in this control's coordinates.</summary>
     public DonutHit HitTest(Point p)
     {
@@ -255,6 +341,12 @@ public sealed partial class DonutMenu : Control
         _externalHighlight = -1;
         _dimmedIndex = -1;
         _dropTargetIndex = -1;
+        // A drop changes the items into exactly what the preview showed: start there, without a jump.
+        _previewSlot = -1;
+        _previewRemoved = -1;
+        _previewSpan = default;
+        _mid = Enumerable.Range(0, n).Select(i => new Spring { Value = DonutGeometry.MidAngle(i, n) }).ToArray();
+        _span = Enumerable.Range(0, n).Select(_ => new Spring { Value = DonutGeometry.Span(n) }).ToArray();
         InvalidateVisual();
     }
 
@@ -436,6 +528,7 @@ public sealed partial class DonutMenu : Control
             }
             Array.Fill(_open, _closing ? 0 : 1);
             _centerPulse = default;
+            StepLayout(dt);
             if (_closing)
                 FinishClose();
             active |= StepProgress(dt); // hold timers still run without animation
@@ -446,6 +539,7 @@ public sealed partial class DonutMenu : Control
                 active |= _hover[i].Step(i == ActiveIndex ? 1 : 0, dt);
             active |= _centerPulse.Step(0, dt, 260, 12);
             active |= StepProgress(dt);
+            active |= StepLayout(dt);
 
             if (_openClock < double.MaxValue)
             {
@@ -524,8 +618,12 @@ public sealed partial class DonutMenu : Control
             if (open <= 0.001)
                 continue;
 
-            var hover = i < _hover.Length ? _hover[i].Value : 0;
-            var mid = DonutGeometry.MidAngle(i, n);
+            var previewing = IsEditMode && i < _mid.Length;
+            var hover = i < _hover.Length && _previewSlot < 0 ? _hover[i].Value : 0;
+            var mid = previewing ? _mid[i].Value : DonutGeometry.MidAngle(i, n);
+            var span = previewing ? _span[i].Value : DonutGeometry.Span(n);
+            if (span < 0.01)
+                continue;
             var offset = DonutGeometry.PointAt(new Point(0, 0), hover * PopOut, mid);
 
             // Open animation: scale up from the centre with a small twist.
@@ -540,7 +638,7 @@ public sealed partial class DonutMenu : Control
             using (context.PushTransform(transform))
             using (context.PushOpacity(Math.Clamp(open, 0, 1) * (i == _dimmedIndex ? 0.3 : 1)))
             {
-                var wedge = CreateWedge(center, r1, r2, i, n);
+                var wedge = CreateWedge(center, r1, r2, mid, span);
                 context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
 
                 var emphasis = i == _dropTargetIndex ? 1.0 : hover;
@@ -548,10 +646,13 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.22 + 0.6 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
-                DrawLabel(context, item, center, (r1 + r2) / 2, mid, DonutGeometry.Span(n) * (r1 + r2) / 2 - 10,
+                DrawLabel(context, item, center, (r1 + r2) / 2, mid, span * (r1 + r2) / 2 - 10,
                     r2 - r1 - 16, typeface, typefaceRegular, hot);
             }
         }
+
+        if (IsEditMode && _previewSpan.Value > 0.01)
+            DrawPreview(context, center, r1, r2, typeface, typefaceRegular);
 
         DrawCenter(context, center, r1, typeface, typefaceRegular);
 
@@ -661,15 +762,32 @@ public sealed partial class DonutMenu : Control
     private static double Distance(Point a, Point b) => Math.Sqrt(Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2));
 
     /// <summary>Wedge-shaped slice with a constant-width gap to its neighbours.</summary>
-    private static StreamGeometry CreateWedge(Point c, double r1, double r2, int index, int count)
+    /// <summary>The translucent slice where a dragged preset would land, with its name.</summary>
+    private void DrawPreview(DrawingContext context, Point center, double r1, double r2, Typeface bold, Typeface regular)
     {
-        if (count == 1)
+        var mid = _previewMid.Value;
+        var span = _previewSpan.Value;
+        var wedge = CreateWedge(center, r1, r2, mid, span);
+        var outline = new Pen(WithOpacity(AccentBrush, 0.9), 1.5, new DashStyle([4, 3], 0));
+        context.DrawGeometry(WithOpacity(AccentBrush, 0.22), outline, wedge);
+        if (_previewLabel is null || span < 0.25)
+            return;
+        using (context.PushOpacity(Math.Clamp((span - 0.25) / 0.3, 0, 1) * 0.9))
+            DrawLabel(context, new DonutItem { Id = "", Label = _previewLabel }, center, (r1 + r2) / 2, mid,
+                span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot: false);
+    }
+
+    private static StreamGeometry CreateWedge(Point c, double r1, double r2, int index, int count) =>
+        count == 1 ? CreateRing(c, r1, r2) : CreateWedge(c, r1, r2, DonutGeometry.MidAngle(index, count), DonutGeometry.Span(count));
+
+    /// <summary>A slice of <paramref name="span"/> radians centred on <paramref name="mid"/> (a ring when it is all of it).</summary>
+    private static StreamGeometry CreateWedge(Point c, double r1, double r2, double mid, double span)
+    {
+        if (span >= 2 * Math.PI - 0.001)
             return CreateRing(c, r1, r2);
 
-        var span = DonutGeometry.Span(count);
-        var mid = DonutGeometry.MidAngle(index, count);
-        var outerHalf = span / 2 - GapPixels / 2 / r2;
-        var innerHalf = span / 2 - GapPixels / 2 / r1;
+        var outerHalf = Math.Max(0.001, span / 2 - GapPixels / 2 / r2);
+        var innerHalf = Math.Max(0.001, span / 2 - GapPixels / 2 / r1);
 
         var geometry = new StreamGeometry();
         using var ctx = geometry.Open();
