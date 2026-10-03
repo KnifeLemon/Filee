@@ -136,6 +136,11 @@ public sealed class RadialController(
             else
                 Close();
         };
+        // One line per drag, to tell "the drag never reached the donut" from "it did but nothing lit up" when someone
+        // reports a donut that doesn't react.
+        window.DragSummary += (events, hit, lit) =>
+            log.LogInformation("Drag over the donut: {Events} move event(s), ended on {Kind} {Index}, drawn lit {Lit:0.00}",
+                events, hit.Kind, hit.Index, lit);
         window.EscapePressed += () => Close();
         window.Deactivated += (_, _) =>
         {

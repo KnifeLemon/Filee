@@ -31,6 +31,15 @@ public partial class RadialWindow : Window
 
     public event Action? DragLeft;
 
+    /// <summary>
+    /// After a drag ends (drop or leave): how many drag-over events came in, where the last one was and how far that
+    /// slice was drawn lit up (0 to 1).
+    /// </summary>
+    public event Action<int, DonutHit, double>? DragSummary;
+
+    private int _dragOverEvents;
+    private DonutHit _lastDragHit;
+
     private void OnDragEnter(object? sender, DragEventArgs e)
     {
         var files = LocalFiles(e);
@@ -39,6 +48,7 @@ public partial class RadialWindow : Window
             e.DragEffects = DragDropEffects.None;
             return;
         }
+        _dragOverEvents = 0;
         FilesEntered?.Invoke(files);
         OnDragOver(sender, e);
     }
@@ -46,6 +56,8 @@ public partial class RadialWindow : Window
     private void OnDragOver(object? sender, DragEventArgs e)
     {
         var hit = Donut.HitTest(e.GetPosition(Donut));
+        _dragOverEvents++;
+        _lastDragHit = hit;
         var files = e.DataTransfer.Contains(DataFormat.File);
         Donut.SetExternalHighlight(hit.Kind == DonutHitKind.Segment ? hit.Index : -1, hit.Kind == DonutHitKind.Center);
 
@@ -56,6 +68,7 @@ public partial class RadialWindow : Window
 
     private void OnDragLeave(object? sender, DragEventArgs e)
     {
+        DragSummary?.Invoke(_dragOverEvents, _lastDragHit, Donut.LitAmount(_lastDragHit.Index));
         Donut.SetExternalHighlight(-1);
         DragLeft?.Invoke();
     }
@@ -63,6 +76,7 @@ public partial class RadialWindow : Window
     private void OnDrop(object? sender, DragEventArgs e)
     {
         var hit = Donut.HitTest(e.GetPosition(Donut));
+        DragSummary?.Invoke(_dragOverEvents, hit, Donut.LitAmount(hit.Index));
         Donut.SetExternalHighlight(-1);
         e.DragEffects = hit.Kind == DonutHitKind.Segment ? DragDropEffects.Copy : DragDropEffects.None;
         Dropped?.Invoke(hit, LocalFiles(e));
