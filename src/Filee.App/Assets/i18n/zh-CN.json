@@ -268,6 +268,8 @@
   "presets.background": "透明区域背景色",
   "presets.tiff_compression": "TIFF 压缩",
   "presets.webp_lossless": "无损 WEBP",
+  "presets.multipage_tiff": "将所有文件合并为一个多页 TIFF",
+  "presets.multipage_tiff_hint": "每张图片、每个 PDF 页面以及 TIFF 的每一页都会按顺序成为一页。只放一个 PDF 也能得到多页 TIFF。",
   "presets.ico_sizes": "图标尺寸",
   "presets.group.pdf": "PDF",
   "presets.merge": "将所有文件合并为一个 PDF",

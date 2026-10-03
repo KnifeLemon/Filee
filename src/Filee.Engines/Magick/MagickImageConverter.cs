@@ -10,7 +10,7 @@ namespace Filee.Engines.Magick;
 /// Converts between PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA and PPM, and reads
 /// HEIC, XCF, camera RAW and (on Windows) EMF/WMF.
 /// </summary>
-public sealed class MagickImageConverter : IConverter
+public sealed class MagickImageConverter : IConverter, ITiffMerger
 {
     public string Id => "magick";
     public string DisplayName => "ImageMagick";
@@ -28,6 +28,40 @@ public sealed class MagickImageConverter : IConverter
     /// <summary>"7.1.2-5" out of "ImageMagick 7.1.2-5 Q8 x64 …".</summary>
     private static string ImageMagickNumber() =>
         MagickNET.ImageMagickVersion.Split(' ').FirstOrDefault(part => part.Length > 0 && char.IsAsciiDigit(part[0])) ?? "?";
+
+    /// <summary>
+    /// Writes the pages into one multi-page TIFF. Each page is flattened onto the preset's background (no alpha) at 8 bits
+    /// and marked as a page of a multi-page document (SubfileType 2), so older viewers (Microsoft Office Document
+    /// Imaging, fax software) show it page by page; compression is the preset's.
+    /// </summary>
+    public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, Filee.Core.Presets.ImageOptions options,
+        CancellationToken cancellationToken) =>
+        Task.Run(() =>
+        {
+            var compression = options.TiffCompression switch
+            {
+                Filee.Core.Presets.TiffCompression.Lzw => CompressionMethod.LZW,
+                Filee.Core.Presets.TiffCompression.Zip => CompressionMethod.Zip,
+                _ => CompressionMethod.NoCompression,
+            };
+            using var pages = new MagickImageCollection();
+            foreach (var path in inputPaths)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using var source = new MagickImageCollection(path);
+                foreach (var frame in source)
+                {
+                    var page = frame.Clone();
+                    page.BackgroundColor = new MagickColor(string.IsNullOrWhiteSpace(options.Background) ? "#FFFFFF" : options.Background);
+                    page.Alpha(AlphaOption.Remove);
+                    page.Depth = 8;
+                    page.Settings.Compression = compression;
+                    page.SetAttribute("tiff:subfiletype", "2");
+                    pages.Add(page);
+                }
+            }
+            pages.Write(outputPath, MagickFormat.Tiff);
+        }, cancellationToken);
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>

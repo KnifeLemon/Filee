@@ -87,6 +87,8 @@
             <TextBox Text="{Binding IcoSizes}" PlaceholderText="256, 64, 48, 32, 16" />
           </StackPanel>
         </Grid>
+        <CheckBox Content="{DynamicResource presets.multipage_tiff}" IsChecked="{Binding MultiPageTiff}" IsVisible="{Binding ShowMultiPageTiff}"
+                  ToolTip.Tip="{DynamicResource presets.multipage_tiff_hint}" />
       </StackPanel>
     </Border>
 

@@ -268,6 +268,8 @@
   "presets.background": "Background for transparency",
   "presets.tiff_compression": "TIFF compression",
   "presets.webp_lossless": "Lossless WEBP",
+  "presets.multipage_tiff": "Put every file into one multi-page TIFF",
+  "presets.multipage_tiff_hint": "Each image, each PDF page and each page of a TIFF becomes a page, in order. One PDF is enough for a multi-page TIFF.",
   "presets.ico_sizes": "Icon sizes",
   "presets.group.pdf": "PDF",
   "presets.merge": "Merge all files into one PDF",

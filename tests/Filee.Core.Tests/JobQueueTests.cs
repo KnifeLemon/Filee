@@ -144,6 +144,30 @@ public class JobQueueTests
     }
 
     [Fact]
+    public async Task Multi_page_tiff_converts_every_file_to_pages_then_writes_one_tiff()
+    {
+        using var dir = new TempDir();
+        var scan = dir.File("scan.pdf");
+        var photo = dir.File("photo.jpg");
+        var fax = dir.File("fax.tiff");
+        var merger = new FakeTiffMerger();
+        var catalog = new ConverterCatalog([
+            new FakeConverter("pdfium", new ConversionEdge("pdf", "tiff")) { OutputsPerInput = 2 },
+            new FakeConverter("magick", new ConversionEdge("jpg", "tiff")),
+        ]);
+        await using var queue = new JobQueue(catalog, tiffMerger: merger);
+
+        var job = await Run(queue, [scan, photo, fax], new Preset { TargetFormat = "tiff", Image = { MultiPageTiff = true } });
+
+        Assert.Equal(JobState.Completed, job.State);
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal(Path.Combine(dir.Path, "scan.tiff"), output);
+        // Both PDF pages, then the photo, then the TIFF as it is.
+        Assert.Equal(["scan_p1.tiff", "scan_p2.tiff", "photo.tiff", "fax.tiff"], merger.Inputs.Select(Path.GetFileName));
+        Assert.Equal(fax, merger.Inputs[^1]);
+    }
+
+    [Fact]
     public async Task Combine_packs_every_file_as_is_even_one_or_of_unknown_type()
     {
         using var dir = new TempDir();

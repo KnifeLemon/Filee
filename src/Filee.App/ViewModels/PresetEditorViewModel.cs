@@ -90,6 +90,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _grayscale = _edit.Image.Grayscale;
         _background = _edit.Image.Background;
         _webpLossless = _edit.Image.WebpLossless;
+        _multiPageTiff = _edit.Image.MultiPageTiff;
         _icoSizes = string.Join(", ", _edit.Image.IcoSizes);
         _merge = _edit.Pdf.MergeIntoSingle;
         _marginMm = _edit.Pdf.MarginMm;
@@ -120,7 +121,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private string _name;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowWebp), nameof(ShowIco),
+    [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowPdfSplit),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote))]
@@ -167,6 +168,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _grayscale;
     [ObservableProperty] private string _background;
     [ObservableProperty] private bool _webpLossless;
+    [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
     [ObservableProperty] private bool _merge;
     [ObservableProperty] private double _marginMm;
@@ -196,6 +198,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowQuality => TargetId == BuiltInData.SameAsSource || LossyTargets.Contains(TargetId);
     public bool ShowTiff => TargetId is "tiff" or BuiltInData.SameAsSource;
     public bool ShowWebp => TargetId is "webp" or BuiltInData.SameAsSource;
+    public bool ShowMultiPageTiff => TargetId is "tiff";
     public bool ShowIco => TargetId == "ico";
     /// <summary>PDF options (also used when a PDF source becomes images) mean nothing for media, archive and font targets.</summary>
     public bool ShowPdf => TargetCategory is not (FormatCategory.Video or FormatCategory.Audio or FormatCategory.Archive or FormatCategory.Font);
@@ -243,6 +246,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         image.Background = string.IsNullOrWhiteSpace(Background) ? "#FFFFFF" : Background.Trim();
         image.TiffCompression = TiffCompression.Value;
         image.WebpLossless = WebpLossless;
+        image.MultiPageTiff = MultiPageTiff;
         image.IcoSizes = IcoSizes.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(s => int.TryParse(s, out var v) ? v : 0)
             .Where(v => v is > 0 and <= 256)

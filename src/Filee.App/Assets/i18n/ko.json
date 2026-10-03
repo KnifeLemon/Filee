@@ -268,6 +268,8 @@
   "presets.background": "투명 영역 배경색",
   "presets.tiff_compression": "TIFF 압축",
   "presets.webp_lossless": "무손실 WEBP",
+  "presets.multipage_tiff": "모든 파일을 여러 페이지짜리 TIFF 하나로 합치기",
+  "presets.multipage_tiff_hint": "이미지 한 장, PDF 한 페이지, TIFF의 각 페이지가 순서대로 한 페이지씩 들어가요. PDF 하나만 넣어도 여러 페이지 TIFF가 돼요.",
   "presets.ico_sizes": "아이콘 크기",
   "presets.group.pdf": "PDF",
   "presets.merge": "모든 파일을 하나의 PDF로 합치기",

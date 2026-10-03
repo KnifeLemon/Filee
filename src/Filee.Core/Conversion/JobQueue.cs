@@ -16,6 +16,7 @@ public sealed class JobQueue : IAsyncDisposable
     private readonly ConverterCatalog _catalog;
     private readonly IPdfMerger? _pdfMerger;
     private readonly IFileCombiner? _combiner;
+    private readonly ITiffMerger? _tiffMerger;
     private readonly ILogger _log;
     private readonly Channel<ConversionJob> _channel = Channel.CreateUnbounded<ConversionJob>();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _engineGates = new();
@@ -26,11 +27,14 @@ public sealed class JobQueue : IAsyncDisposable
     /// <param name="pdfMerger">Used by "Merge into one PDF" presets.</param>
     /// <param name="log">Optional logger.</param>
     /// <param name="combiner">Used by "Compress into one archive" presets (<see cref="ArchiveOptions.CombineIntoOne"/>).</param>
-    public JobQueue(ConverterCatalog catalog, IPdfMerger? pdfMerger = null, ILogger<JobQueue>? log = null, IFileCombiner? combiner = null)
+    /// <param name="tiffMerger">Used by multi-page TIFF presets (<see cref="ImageOptions.MultiPageTiff"/>).</param>
+    public JobQueue(ConverterCatalog catalog, IPdfMerger? pdfMerger = null, ILogger<JobQueue>? log = null, IFileCombiner? combiner = null,
+        ITiffMerger? tiffMerger = null)
     {
         _catalog = catalog;
         _pdfMerger = pdfMerger;
         _combiner = combiner;
+        _tiffMerger = tiffMerger;
         _log = log ?? (ILogger)NullLogger.Instance;
         _worker = Task.Run(WorkLoopAsync);
     }
@@ -71,8 +75,13 @@ public sealed class JobQueue : IAsyncDisposable
                           && FormatRegistry.FindById(job.Preset.TargetFormat) is { Category: FormatCategory.Archive } archive
                           && archive.Id != FormatRegistry.Folder;
 
+            // One file is enough: a 10-page PDF becomes one 10-page TIFF.
+            var multiPageTiff = job.Preset.Image.MultiPageTiff && job.Preset.TargetFormat == "tiff" && _tiffMerger is not null;
+
             if (merge)
                 await RunMergedAsync(job, planner, workDir);
+            else if (multiPageTiff)
+                await RunMultiPageTiffAsync(job, planner, workDir);
             else if (combine)
                 await RunCombinedAsync(job, workDir);
             else
@@ -135,6 +144,45 @@ public sealed class JobQueue : IAsyncDisposable
         }
 
         await _pdfMerger!.MergeAsync(inputs, output, job.CancellationToken);
+        first.Outputs.Add(output);
+        foreach (var f in job.Files.Where(f => f.State != FileState.Failed))
+        {
+            f.State = FileState.Done;
+            f.Progress = 1;
+        }
+        Notify(job);
+    }
+
+    /// <summary>
+    /// Converts every file to TIFF pages in the work directory (a TIFF is taken as it is), then writes them all as one
+    /// multi-page TIFF named after the first file.
+    /// </summary>
+    private async Task RunMultiPageTiffAsync(ConversionJob job, RoutePlanner planner, string workDir)
+    {
+        var parts = new IReadOnlyList<string>[job.Files.Count];
+        await Parallel.ForEachAsync(Enumerable.Range(0, job.Files.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+            async (i, _) =>
+            {
+                var file = job.Files[i];
+                parts[i] = FormatRegistry.Detect(file.SourcePath)?.Id == "tiff"
+                    ? [file.SourcePath]
+                    : await RunFileAsync(job, file, i + 1, planner, workDir, finalOutput: false, intermediate: "tiff");
+            });
+
+        var inputs = parts.SelectMany(p => p ?? []).ToList();
+        if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
+            return;
+
+        var first = job.Files[0];
+        var output = CreateFinalAllocator(job, first.SourcePath, 1).Allocate("tiff");
+        if (output is null)
+        {
+            foreach (var f in job.Files) f.State = FileState.Skipped;
+            return;
+        }
+
+        await _tiffMerger!.MergeAsync(inputs, output, job.Preset.Image, job.CancellationToken);
         first.Outputs.Add(output);
         foreach (var f in job.Files.Where(f => f.State != FileState.Failed))
         {
@@ -252,17 +300,19 @@ public sealed class JobQueue : IAsyncDisposable
 
     /// <summary>
     /// Converts one source file along its planned route.
-    /// With <paramref name="finalOutput"/> false, results stay in the work directory (used for merging).
+    /// With <paramref name="finalOutput"/> false, results stay in the work directory as <paramref name="intermediate"/>
+    /// files (PDF for merging, TIFF pages for a multi-page TIFF).
     /// </summary>
     private async Task<IReadOnlyList<string>> RunFileAsync(
-        ConversionJob job, FileResult file, int index, RoutePlanner planner, string workDir, bool finalOutput)
+        ConversionJob job, FileResult file, int index, RoutePlanner planner, string workDir, bool finalOutput,
+        string intermediate = "pdf")
     {
         var ct = job.CancellationToken;
         var source = FormatRegistry.Detect(file.SourcePath);
         if (source is null)
             return Fail(file, "error.unsupported_source", "." + FormatRegistry.ExtensionOf(file.SourcePath));
 
-        var target = !finalOutput ? "pdf"
+        var target = !finalOutput ? intermediate
             : job.Preset.TargetFormat == BuiltInData.SameAsSource ? source.Id
             : job.Preset.TargetFormat;
 
