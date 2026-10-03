@@ -6,6 +6,16 @@ version it publishes at the top of the GitHub release notes, above the list of p
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.5.1
+
+### Fixes
+
+- Sometimes, after Ctrl+drag opened the donut, the format under the dragged files didn't light up and dropping
+  didn't pick it, until a while later. The donut's animation could wait forever for a frame that never came; it now
+  starts again after a quarter of a second.
+- Each drag over the donut writes one line to the log (`%APPDATA%\Filee\logs`), so if a donut ever ignores a drag
+  again, the log shows whether the drag reached it.
+
 ## 1.5.0
 
 ### FFmpeg, calibre and the others you already have are used by themselves
