@@ -1,7 +1,7 @@
 # Changelog
 
 What changed in each version of Filee, for the people using it. The release workflow puts the section of the
-version it publishes at the top of the GitHub release notes, above the list of pull requests.
+version it publishes under "What's Changed" in the GitHub release notes, above the list of pull requests.
 
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
