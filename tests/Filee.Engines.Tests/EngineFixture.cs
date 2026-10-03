@@ -67,7 +67,7 @@ public sealed class EngineFixture : IDisposable
     public async Task<ConversionJob> ConvertAsync(IReadOnlyList<string> sources, Preset preset)
     {
         await using var queue = new JobQueue(Catalog, EngineRegistry.FindPdfMerger(Converters),
-            combiner: EngineRegistry.FindFileCombiner(Converters));
+            combiner: EngineRegistry.FindFileCombiner(Converters), tiffMerger: EngineRegistry.FindTiffMerger(Converters));
         var job = new ConversionJob(sources, preset, preset.Name);
         await queue.RunAsync(job);
         return job;

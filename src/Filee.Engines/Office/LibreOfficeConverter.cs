@@ -71,7 +71,7 @@ public sealed class LibreOfficeConverter : IConverter
         Edges = BuildEdges(_hasHwpFilter);
         return _soffice is null
             ? EngineStatus.Unavailable("engine.reason.not_installed")
-            : EngineEnvironment.OwnCopyFolder("libreoffice") is not null
+            : !EngineEnvironment.UsesFileesCopy("libreoffice")
                 ? EngineStatus.Available(_soffice, _hasHwpFilter ? "H2Orestart" : null)
                 : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice")
                                                    + (_hasHwpFilter ? $" · H2Orestart {EngineVersions.Component("h2orestart")}" : ""));
@@ -266,15 +266,16 @@ public sealed class LibreOfficeConverter : IConverter
     }
 
     /// <summary>
-    /// The user's own LibreOffice when they chose one in Settings → Engines, else Filee's copy (engines/libreoffice).
-    /// A LibreOffice installed on the system is never looked for.
+    /// The user's own LibreOffice when they chose one in Settings → Engines, else Filee's copy (engines/libreoffice),
+    /// else a LibreOffice installed on the PC. Each conversion uses its own profile, so an open LibreOffice is untouched.
     /// </summary>
     private void Locate()
     {
         var bundled = EngineEnvironment.FindBundled("libreoffice");
         _soffice = EngineEnvironment.OwnProgram("libreoffice", "soffice.exe") ?? (bundled is null ? null : EngineEnvironment.FirstExisting(
             Path.Combine(bundled, "program", OperatingSystem.IsWindows() ? "soffice.exe" : "soffice"),
-            Path.Combine(bundled, "Contents", "MacOS", "soffice")));
+            Path.Combine(bundled, "Contents", "MacOS", "soffice")))
+            ?? EngineEnvironment.SystemProgram("libreoffice", "soffice.exe");
         _hasHwpFilter = _soffice is not null && HasH2Orestart(_soffice);
     }
 

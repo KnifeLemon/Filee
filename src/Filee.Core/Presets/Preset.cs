@@ -113,6 +113,12 @@ public sealed class ImageOptions
 
     public TiffCompression TiffCompression { get; set; } = TiffCompression.Lzw;
 
+    /// <summary>
+    /// TIFF target: every file becomes pages of one multi-page TIFF (one page per image, per PDF page and per page of
+    /// a multi-page TIFF), like scanned documents and faxes, instead of one TIFF per file.
+    /// </summary>
+    public bool MultiPageTiff { get; set; }
+
     /// <summary>Use lossless WEBP encoding.</summary>
     public bool WebpLossless { get; set; }
 

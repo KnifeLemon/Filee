@@ -131,7 +131,9 @@ public sealed partial class FfmpegConverter : IConverter
         if (EngineEnvironment.OwnCopyFolder("ffmpeg") is { } own)
             return (Path.Combine(own, "ffmpeg.exe"), Path.Combine(own, "ffprobe.exe"));
         if (EngineEnvironment.FindBundled("ffmpeg") is not { } folder)
-            return null;
+            return EngineEnvironment.SystemCopyFolder("ffmpeg") is { } system
+                ? (Path.Combine(system, "ffmpeg.exe"), Path.Combine(system, "ffprobe.exe"))
+                : null;
         var suffix = OperatingSystem.IsWindows() ? ".exe" : "";
         var ffmpeg = EngineEnvironment.FirstExisting(Path.Combine(folder, "bin", "ffmpeg" + suffix), Path.Combine(folder, "ffmpeg" + suffix));
         var ffprobe = EngineEnvironment.FirstExisting(Path.Combine(folder, "bin", "ffprobe" + suffix), Path.Combine(folder, "ffprobe" + suffix));

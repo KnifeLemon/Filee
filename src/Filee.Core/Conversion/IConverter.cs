@@ -92,6 +92,15 @@ public interface IPdfMerger
 }
 
 /// <summary>
+/// Writes TIFF pages (and every page of multi-page TIFFs) into one multi-page TIFF, in order. Implemented by the
+/// ImageMagick engine; <see cref="JobQueue"/> uses it when a preset sets <see cref="Presets.ImageOptions.MultiPageTiff"/>.
+/// </summary>
+public interface ITiffMerger
+{
+    Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, Presets.ImageOptions options, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Packs several files, unchanged, into one archive ("Compress into one archive"). Implemented by the archive engine;
 /// <see cref="JobQueue"/> uses it when a preset sets <see cref="ArchiveOptions.CombineIntoOne"/>.
 /// </summary>

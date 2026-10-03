@@ -105,6 +105,47 @@ public class RenderTests
     }
 
     [AvaloniaFact]
+    public void Dragging_a_preset_opens_a_gap_with_a_preview_slice()
+    {
+        TestServices.EnsureInitialized("ko");
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+        vm.Navigate("toolbar");
+        var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+        window.Show();
+        Pump();
+        var donut = window.GetVisualDescendants().OfType<DonutMenu>().Single(d => d.IsEditMode);
+        var count = donut.Items!.Count;
+
+        // A chip over the third slice: the slices from there on slide clockwise and a preview takes slot 2.
+        donut.SetDropPreview(2, "TIFF 300dpi");
+        for (var i = 0; i < 120; i++)
+            donut.Advance(1 / 60.0);
+        donut.InvalidateVisual();
+        Pump();
+        Assert.Equal(2, donut.SlotAt(DonutPoint(donut, 2, count + 1), count + 1));
+        Save(window, "toolbar-drop-preview-ko.png");
+
+        // Moving the first slice to slot 3: it leaves its place, the preview shows it at the new one.
+        donut.SetDropPreview(3, donut.Items[0].Label, removed: 0);
+        for (var i = 0; i < 120; i++)
+            donut.Advance(1 / 60.0);
+        donut.InvalidateVisual();
+        Pump();
+        Save(window, "toolbar-move-preview-ko.png");
+
+        donut.SetDropPreview(-1);
+        window.Close();
+    }
+
+    /// <summary>The middle of slot <paramref name="slot"/> of a donut with <paramref name="slots"/> slices.</summary>
+    private static Avalonia.Point DonutPoint(DonutMenu donut, int slot, int slots)
+    {
+        var center = new Avalonia.Point(donut.Bounds.Width / 2, donut.Bounds.Height / 2);
+        var radius = donut.OuterRadius * (1 + donut.HoleRatio) / 2;
+        return DonutGeometry.PointAt(center, radius, DonutGeometry.MidAngle(slot, slots));
+    }
+
+    [AvaloniaFact]
     public void Donut_toolbar_renders_for_images()
     {
         TestServices.EnsureInitialized("ko");

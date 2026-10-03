@@ -49,6 +49,20 @@ internal sealed class FakeMerger : IPdfMerger
     }
 }
 
+/// <summary>Test double for multi-page TIFF: writes the input names into the output file.</summary>
+internal sealed class FakeTiffMerger : ITiffMerger
+{
+    public List<string> Inputs { get; } = [];
+
+    public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, Filee.Core.Presets.ImageOptions options,
+        CancellationToken cancellationToken)
+    {
+        Inputs.AddRange(inputPaths);
+        File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>Test double for "Compress into one archive": writes the input names into the output file.</summary>
 internal sealed class FakeCombiner : IFileCombiner
 {

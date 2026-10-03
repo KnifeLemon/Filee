@@ -58,6 +58,10 @@ public static class EngineRegistry
     public static IPdfMerger? FindPdfMerger(IEnumerable<IConverter> converters) =>
         converters.OfType<IPdfMerger>().FirstOrDefault();
 
+    /// <summary>Finds the engine that writes several pages into one multi-page TIFF.</summary>
+    public static ITiffMerger? FindTiffMerger(IEnumerable<IConverter> converters) =>
+        converters.OfType<ITiffMerger>().FirstOrDefault();
+
     /// <summary>Finds the engine that packs several files into one archive ("Compress into one archive").</summary>
     public static IFileCombiner? FindFileCombiner(IEnumerable<IConverter> converters) =>
         converters.OfType<IFileCombiner>().FirstOrDefault();
