@@ -6,6 +6,34 @@ version it publishes at the top of the GitHub release notes, above the list of p
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## Unreleased
+
+Rename this heading to the version number when you release it.
+
+### FFmpeg, calibre and the others you already have are used by themselves
+
+- Filee now finds FFmpeg, calibre, Pandoc, Ghostscript and LibreOffice that are already on your PC, without asking
+  you to download them: on the PATH (Scoop's shims included) or where their installers put them (LibreOffice,
+  calibre and Ghostscript under Program Files). Settings → Engines shows "Found on this PC" and the folder.
+- If that copy is older than the version Filee is tested with, Settings → Engines recommends an update. It keeps
+  working; most conversions don't need the newest version.
+- Order: a copy you chose with **Use my copy…**, then Filee's own download (if you installed it), then one found on
+  the PC. **Install** is still there if you'd rather use Filee's tested copy. **Check again** searches again after
+  you install something.
+
+### One multi-page TIFF
+
+- New option for TIFF presets: **Put every file into one multi-page TIFF**. Every image, every PDF page and every
+  page of a TIFF becomes a page of one TIFF, in order, named after the first file. One PDF is enough: a 10-page PDF
+  becomes one 10-page TIFF.
+- Pages use the preset's compression and are marked as pages of a multi-page document, so older viewers (fax
+  software, Microsoft Office Document Imaging) show them page by page. Transparent areas get the preset's background.
+
+### Arranging the donut
+
+- In Settings → Donut toolbar, dragging a preset (or a slice) over the donut opens a gap where it will land, with a
+  see-through slice showing its name. The other slices slide aside, and a moved slice leaves its old place.
+
 ## 1.4.0
 
 ### Updates install themselves
