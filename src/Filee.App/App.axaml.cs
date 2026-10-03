@@ -99,6 +99,7 @@ public partial class App : Application
             store.SaveSettings();
             AppHost.Get<WindowService>().ShowUpdateNotice(version);
         };
+        updates.UpdateFailed += async (_, _) => await AppHost.Get<WindowService>().ShowUpdateFailedAsync();
         updates.StartPeriodicChecks(() => store.Settings.CheckForUpdates, TimeSpan.FromSeconds(20));
     }
 

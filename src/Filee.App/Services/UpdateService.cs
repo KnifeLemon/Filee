@@ -90,6 +90,9 @@ public sealed partial class UpdateService : ObservableObject
     public static bool IsInstalled { get; } = OperatingSystem.IsWindows()
                                               && File.Exists(Path.Combine(AppContext.BaseDirectory, "unins000.exe"));
 
+    /// <summary>Whether <see cref="UpdateAsync"/> installs by itself (<see cref="IsInstalled"/>; tests set it).</summary>
+    internal bool InstallsItself { get; init; } = IsInstalled;
+
     /// <summary>The newer version found by the last check (e.g. "1.0.2"), or null when up to date / unknown.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsUpdateAvailable))]
@@ -172,9 +175,14 @@ public sealed partial class UpdateService : ObservableObject
     {
         if (IsBusy)
             return;
-        if (!IsInstalled || _installer is null || _checksums is null)
+        if (!InstallsItself)
         {
             OpenDownloadPage();
+            return;
+        }
+        if (_installer is null || _checksums is null)
+        {
+            Fail("release", new InvalidDataException("The latest release has no installer or no checksum file"));
             return;
         }
 
@@ -313,11 +321,17 @@ public sealed partial class UpdateService : ObservableObject
         }
     }
 
+    /// <summary>
+    /// Raised on the UI thread when an installed copy could not download or start the new installer. The app says so
+    /// and, once the user presses OK, opens <see cref="WebsiteUrl"/> (<see cref="OpenDownloadPage"/>).
+    /// </summary>
+    public event EventHandler? UpdateFailed;
+
     private void Fail(string stage, Exception ex)
     {
-        _log.LogWarning(ex, "In-app update failed ({Stage}); opening the download page", stage);
+        _log.LogWarning(ex, "In-app update failed ({Stage})", stage);
         Step = UpdateStep.Failed;
-        OpenDownloadPage();
+        UpdateFailed?.Invoke(this, EventArgs.Empty);
     }
 
     private void Publish(string? newer)

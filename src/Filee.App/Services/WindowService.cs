@@ -124,10 +124,18 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
     public Task<bool> ConfirmAsync(Window owner, string message, bool destructive = false) =>
         ShowMessageAsync(owner, message, destructive, withCancel: true);
 
-    /// <summary>A message with only an OK button.</summary>
-    public Task MessageAsync(Window owner, string message) => ShowMessageAsync(owner, message, destructive: false, withCancel: false);
+    /// <summary>A message with only an OK button. Without a visible owner it shows on its own, centred on the screen.</summary>
+    public Task MessageAsync(Window? owner, string message) => ShowMessageAsync(owner, message, destructive: false, withCancel: false);
 
-    private async Task<bool> ShowMessageAsync(Window owner, string message, bool destructive, bool withCancel)
+    /// <summary>The in-app update failed: say so, then open the website to download the new version there.</summary>
+    public async Task ShowUpdateFailedAsync()
+    {
+        _updateNotice?.Close();
+        await MessageAsync(_main is { IsVisible: true } main ? main : null, loc["update.failed_alert"]);
+        services.GetRequiredService<UpdateService>().OpenDownloadPage();
+    }
+
+    private async Task<bool> ShowMessageAsync(Window? owner, string message, bool destructive, bool withCancel)
     {
         var dialog = new Window
         {
@@ -142,7 +150,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
         var yes = new Button { Content = destructive ? loc["common.delete"] : loc["common.ok"], IsDefault = true };
         yes.Classes.Add("accent");
         var no = new Button { Content = loc["common.cancel"], IsCancel = true };
-        yes.Click += (_, _) => dialog.Close(true);
+        var answer = false;
+        yes.Click += (_, _) => { answer = true; dialog.Close(true); };
         no.Click += (_, _) => dialog.Close(false);
         no.IsVisible = withCancel;
         dialog.Content = new StackPanel
@@ -161,7 +170,19 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
                 },
             },
         };
-        return await dialog.ShowDialog<bool>(owner);
+        if (owner is { IsVisible: true })
+            return await dialog.ShowDialog<bool>(owner);
+
+        // From the tray or the bottom-right notice there is no window to sit on: a normal window on top instead.
+        var closed = new TaskCompletionSource();
+        dialog.Closed += (_, _) => closed.TrySetResult();
+        dialog.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+        dialog.ShowInTaskbar = true;
+        dialog.Topmost = true;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        return answer;
     }
 
     private static Window? MainWindowOrNull() =>

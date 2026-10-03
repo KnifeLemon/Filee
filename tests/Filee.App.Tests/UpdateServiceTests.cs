@@ -228,6 +228,21 @@ public class UpdateServiceTests
     }
 
     [Fact]
+    public async Task A_failed_update_is_reported_instead_of_opening_a_page_right_away()
+    {
+        // Installed copy, but the release offers no installer to download: the app shows an alert first and opens
+        // the website only after OK (WindowService.ShowUpdateFailedAsync).
+        var updates = new UpdateService(NullLogger<UpdateService>.Instance, new FakeNetwork("no network")) { InstallsItself = true };
+        var reported = 0;
+        updates.UpdateFailed += (_, _) => reported++;
+
+        await updates.UpdateAsync();
+
+        Assert.Equal(1, reported);
+        Assert.Equal(UpdateStep.Failed, updates.Step);
+    }
+
+    [Fact]
     public void Download_page_is_the_latest_release()
     {
         Assert.EndsWith("/releases/latest", UpdateService.LatestReleaseUrl);
