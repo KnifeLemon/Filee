@@ -19,6 +19,8 @@ public enum EnginePackageStatus
     Unpacking,
     Installed,
     Failed,
+    /// <summary>The user's own copy is used (Settings → Engines), nothing downloaded.</summary>
+    OwnCopy,
 }
 
 /// <summary>Install state of one optional engine package, bound by the Engines page and the first-run setup.</summary>
@@ -40,8 +42,13 @@ public sealed partial class EnginePackageState : ObservableObject
         FormatBytes(EngineDownloads.DownloadSize(Package)), FormatBytes(Package.InstalledSize));
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsInstalled), nameof(IsBusy), nameof(CanInstall))]
+    [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsInstalled), nameof(IsBusy), nameof(CanInstall), nameof(CanRemove),
+        nameof(UsesOwnCopy), nameof(CanUseOwnCopy))]
     private EnginePackageStatus _status;
+
+    /// <summary>Folder of the user's own copy while <see cref="UsesOwnCopy"/>.</summary>
+    [ObservableProperty]
+    private string? _ownCopyFolder;
 
     /// <summary>0..100 while downloading or unpacking.</summary>
     [ObservableProperty]
@@ -60,7 +67,11 @@ public sealed partial class EnginePackageState : ObservableObject
     [ObservableProperty]
     private bool _selected;
 
-    public bool IsInstalled => Status == EnginePackageStatus.Installed;
+    /// <summary>The engine is there: Filee's download or the user's own copy.</summary>
+    public bool IsInstalled => Status is EnginePackageStatus.Installed or EnginePackageStatus.OwnCopy;
+    public bool CanRemove => Status == EnginePackageStatus.Installed;
+    public bool UsesOwnCopy => Status == EnginePackageStatus.OwnCopy;
+    public bool CanUseOwnCopy => Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed or EnginePackageStatus.Installed;
     public bool IsBusy => Status is EnginePackageStatus.Queued or EnginePackageStatus.Downloading or EnginePackageStatus.Unpacking;
     public bool CanInstall => Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed;
 
@@ -70,6 +81,7 @@ public sealed partial class EnginePackageState : ObservableObject
         EnginePackageStatus.Downloading => _loc.Format("engines.state.downloading", (int)Progress),
         EnginePackageStatus.Unpacking => _loc["engines.state.unpacking"],
         EnginePackageStatus.Installed => _loc["engines.state.installed"],
+        EnginePackageStatus.OwnCopy => _loc["engines.state.own_copy"],
         EnginePackageStatus.Failed => _loc.Format("engines.state.failed", Error ?? ""),
         _ => _loc["engines.state.not_installed"],
     };
@@ -139,7 +151,16 @@ public sealed class EngineDownloadService
     public void RefreshStatus()
     {
         foreach (var state in Packages.Where(p => !p.IsBusy))
-            state.Status = _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed : EnginePackageStatus.NotInstalled;
+            state.Status = StatusOf(state);
+    }
+
+    /// <summary>The user's own copy wins over Filee's download, as in the engines (EngineEnvironment.OwnCopies).</summary>
+    private EnginePackageStatus StatusOf(EnginePackageState state)
+    {
+        state.OwnCopyFolder = EngineEnvironment.OwnCopyFolder(state.Package.Id);
+        return state.OwnCopyFolder is not null ? EnginePackageStatus.OwnCopy
+            : _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed
+            : EnginePackageStatus.NotInstalled;
     }
 
     /// <summary>Downloads and installs a package; packages queue up and install one after another.</summary>
@@ -189,7 +210,7 @@ public sealed class EngineDownloadService
         }
         catch (OperationCanceledException)
         {
-            state.Status = _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed : EnginePackageStatus.NotInstalled;
+            state.Status = StatusOf(state);
         }
         catch (Exception ex)
         {

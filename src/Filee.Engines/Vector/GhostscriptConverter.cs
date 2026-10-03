@@ -41,7 +41,7 @@ public sealed class GhostscriptConverter : IConverter
     public EngineStatus GetStatus()
     {
         _executable = Locate();
-        return _executable is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_executable, EngineVersions.Component("ghostscript"));
+        return _executable is null ? EngineStatus.Unavailable("engine.reason.not_installed") : EngineStatus.Available(_executable, EngineEnvironment.OwnCopyFolder("ghostscript") is null ? EngineVersions.Component("ghostscript") : null);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -61,6 +61,9 @@ public sealed class GhostscriptConverter : IConverter
 
     /// <summary>Filee's own Ghostscript (engines/ghostscript, downloaded on demand), never one installed on the system.</summary>
     internal static string? Locate() =>
+        EngineEnvironment.OwnProgram("ghostscript", "gswin64c.exe") ?? LocateBundled();
+
+    private static string? LocateBundled() =>
         EngineEnvironment.FindBundled("ghostscript") is { } folder
             ? EngineEnvironment.FirstExisting(Path.Combine(folder, OperatingSystem.IsWindows() ? "gswin64c.exe" : "gs"))
             : null;

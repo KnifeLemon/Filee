@@ -105,6 +105,12 @@ public sealed class AppSettings
     /// <summary>Where presets set to "Default" save (Settings → General).</summary>
     public DefaultOutputSettings DefaultOutput { get; set; } = new();
 
+    /// <summary>
+    /// Optional engines the user already has: package id ("ffmpeg", "calibre", …) → the program they picked. Used
+    /// instead of Filee's download (Settings → Engines).
+    /// </summary>
+    public Dictionary<string, string> EngineOwnCopies { get; set; } = [];
+
     /// <summary>Every conversion keeps the created and modified dates of the original, whatever the preset says.</summary>
     public bool KeepFileDates { get; set; }
 

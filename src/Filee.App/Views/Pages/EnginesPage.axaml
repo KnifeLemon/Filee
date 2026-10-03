@@ -39,7 +39,10 @@
                           Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).InstallCommand}" CommandParameter="{Binding}" />
                   <Button Content="{DynamicResource engines.cancel}" IsVisible="{Binding IsBusy}"
                           Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).CancelCommand}" CommandParameter="{Binding}" />
-                  <Button Content="{DynamicResource engines.remove}" IsVisible="{Binding IsInstalled}" Click="OnRemove" />
+                  <Button Content="{DynamicResource engines.use_own}" IsVisible="{Binding CanUseOwnCopy}" Click="OnUseOwnCopy"
+                          ToolTip.Tip="{DynamicResource engines.use_own_hint}" />
+                  <Button Content="{DynamicResource engines.stop_own}" IsVisible="{Binding UsesOwnCopy}" Click="OnStopOwnCopy" />
+                  <Button Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
                 </StackPanel>
                 <StackPanel Spacing="4">
                   <StackPanel Orientation="Horizontal" Spacing="10">
@@ -49,7 +52,8 @@
                     </Border>
                   </StackPanel>
                   <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
-                  <TextBlock Classes="caption" Text="{Binding Sizes}" />
+                  <TextBlock Classes="caption" Text="{Binding Sizes}" IsVisible="{Binding !UsesOwnCopy}" />
+                  <TextBlock Classes="caption" Text="{Binding OwnCopyFolder}" IsVisible="{Binding UsesOwnCopy}" TextTrimming="CharacterEllipsis" />
                   <ProgressBar Classes="soft" Maximum="100" Value="{Binding Progress}" IsVisible="{Binding IsBusy}" Margin="0,4,0,0" />
                   <TextBlock Classes="caption" Text="{Binding ProgressDetail}" IsVisible="{Binding ProgressDetail, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
