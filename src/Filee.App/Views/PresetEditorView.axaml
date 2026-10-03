@@ -190,6 +190,8 @@
           <TextBox Text="{Binding Pattern}" PlaceholderText="{}{name}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.pattern_hint}" Margin="2,4,0,0" />
         </StackPanel>
+        <CheckBox Content="{DynamicResource presets.keep_dates}" IsChecked="{Binding KeepDates}"
+                  ToolTip.Tip="{DynamicResource presets.keep_dates_hint}" />
       </StackPanel>
     </Border>
   </StackPanel>

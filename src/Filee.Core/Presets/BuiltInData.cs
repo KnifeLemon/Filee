@@ -55,6 +55,7 @@ public static class BuiltInData
         },
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
         new() { Id = "to-hwpx", Name = "HWPX", TargetFormat = "hwpx" },
+        .. HwpPresets(),
         new() { Id = "to-odt", Name = "ODT", TargetFormat = "odt" },
         new() { Id = "to-rtf", Name = "RTF", TargetFormat = "rtf" },
         new() { Id = "to-txt", Name = "TXT", TargetFormat = "txt" },
@@ -62,6 +63,12 @@ public static class BuiltInData
         new() { Id = "to-html", Name = "HTML", TargetFormat = "html" },
         .. SpreadsheetPresets(),
         .. CatalogPresets(),
+    ];
+
+    /// <summary>HWP as a target, through HWPX (added in settings schema 7, see SettingsMigrations).</summary>
+    public static List<Preset> HwpPresets() =>
+    [
+        new() { Id = "to-hwp", Name = "HWP", TargetFormat = "hwp" },
     ];
 
     /// <summary>Spreadsheet targets (added in settings schema 5, see SettingsMigrations).</summary>
@@ -160,13 +167,13 @@ public static class BuiltInData
         {
             Id = "pdf", NameKey = "profile.pdf",
             Extensions = ["pdf"],
-            PresetIds = ["to-png", "to-jpg", "to-docx", "to-txt", "to-hwpx", "to-tiff", "pdf-split", "merge-pdf"],
+            PresetIds = ["to-png", "to-jpg", "to-docx", "to-txt", "to-md", "to-epub", "to-hwpx", "to-hwp", "to-tiff", "pdf-split", "merge-pdf"],
         },
         new()
         {
             Id = "office", NameKey = "profile.office",
             Extensions = ExtensionsOf(FormatCategory.Document),
-            PresetIds = ["to-pdf", "to-hwpx", "to-docx", "to-odt", "to-txt", "to-html", "to-epub", "merge-pdf"],
+            PresetIds = ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-odt", "to-txt", "to-html", "to-epub", "to-png", "merge-pdf"],
         },
         SpreadsheetProfile(),
         PresentationProfile(),
@@ -174,7 +181,7 @@ public static class BuiltInData
         {
             Id = "hwp", NameKey = "profile.hwp",
             Extensions = ["hwp", "hwpx"],
-            PresetIds = ["to-pdf", "to-docx", "to-hwpx", "to-png", "to-txt", "to-md", "merge-pdf"],
+            PresetIds = ["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-jpg", "to-txt", "to-md", "to-epub", "merge-pdf"],
         },
         TextProfile(),
         .. CatalogProfiles(),
@@ -191,7 +198,7 @@ public static class BuiltInData
         Id = "spreadsheets",
         NameKey = "profile.spreadsheets",
         Extensions = ExtensionsOf(FormatCategory.Spreadsheet),
-        PresetIds = ["to-pdf", "to-xlsx", "to-csv", "to-ods", "to-hwpx", "to-html", "merge-pdf"],
+        PresetIds = ["to-pdf", "to-xlsx", "to-csv", "to-ods", "to-hwpx", "to-hwp", "to-html", "merge-pdf"],
     };
 
     /// <summary>PowerPoint and OpenDocument slides (split from "office" in settings schema 5).</summary>
@@ -200,7 +207,7 @@ public static class BuiltInData
         Id = "presentations",
         NameKey = "profile.presentations",
         Extensions = ExtensionsOf(FormatCategory.Presentation),
-        PresetIds = ["to-pdf", "to-png", "to-jpg", "to-pptx", "to-hwpx", "merge-pdf"],
+        PresetIds = ["to-pdf", "to-png", "to-jpg", "to-pptx", "to-hwpx", "to-hwp", "merge-pdf"],
     };
 
     /// <summary>Markdown, plain text and HTML (added in settings schema 4, see SettingsMigrations).</summary>
@@ -209,7 +216,7 @@ public static class BuiltInData
         Id = "text",
         NameKey = "profile.text",
         Extensions = ExtensionsOf(FormatCategory.Text),
-        PresetIds = ["to-pdf", "to-hwpx", "to-docx", "to-html", "to-txt", "to-epub"],
+        PresetIds = ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt", "to-epub"],
     };
 
     /// <summary>Donuts of the categories added in settings schema 6, in the order they follow "text".</summary>
@@ -219,7 +226,7 @@ public static class BuiltInData
         {
             Id = "ebooks", NameKey = "profile.ebooks",
             Extensions = ExtensionsOf(FormatCategory.Ebook),
-            PresetIds = ["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-mobi", "to-hwpx", "to-html"],
+            PresetIds = ["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-mobi", "to-hwpx", "to-hwp", "to-html"],
         },
         new()
         {

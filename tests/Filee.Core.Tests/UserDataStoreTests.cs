@@ -152,6 +152,28 @@ public class UserDataStoreTests
     }
 
     [Fact]
+    public void Version_6_libraries_get_the_conversions_that_were_on_no_donut()
+    {
+        // As written by 1.3.0: no HWP preset, and the donuts below without the targets 1.3.1 added.
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id == "to-hwp");
+        var profiles = BuiltInData.CreateProfiles();
+        foreach (var profile in profiles)
+            profile.PresetIds.Remove("to-hwp");
+        profiles.Single(p => p.Id == "pdf").PresetIds.RemoveAll(id => id is "to-md" or "to-epub");
+        profiles.Single(p => p.Id == "office").PresetIds.Remove("to-png");
+        profiles.Single(p => p.Id == "hwp").PresetIds.RemoveAll(id => id is "to-jpg" or "to-epub");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(6, presets, profiles));
+
+        // The same donuts as a new install.
+        Assert.NotNull(presets.SingleOrDefault(p => p.Id == "to-hwp"));
+        foreach (var expected in BuiltInData.CreateProfiles())
+            Assert.Equal(expected.PresetIds, profiles.Single(p => p.Id == expected.Id).PresetIds);
+        Assert.False(SettingsMigrations.ApplyToLibrary(6, presets, profiles)); // once only
+    }
+
+    [Fact]
     public void Catalog_migration_ignores_extensions_checked_on_mixed_profiles()
     {
         // Schema-5 data where the user already limited a mixed-files donut to MP3 and JPG: those checks must not

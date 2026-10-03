@@ -54,6 +54,7 @@ internal static class Help
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
               --overwrite        Replace existing output files (default: add a number)
               --skip             Leave existing output files alone
+              --keep-dates       Give converted files the created and modified dates of the originals
               --json             Print the result as JSON (for scripts and other programs)
               --quiet            Print nothing but errors
 
@@ -73,6 +74,7 @@ internal static class Help
               --move-originals   Move converted sources to <folder>\originals; files already waiting are
                                  converted at start
               --settle <seconds> How long a file must stay unchanged (default 2)
+              --keep-dates       Give converted files the created and modified dates of the originals
               --quiet            Print nothing but errors
 
         """;

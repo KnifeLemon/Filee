@@ -313,6 +313,19 @@ internal static class SettingsMigrations
         //     gets "compress into one ZIP".
         if (from < 6)
             changed |= AddCatalog(presets, profiles);
+
+        // v7: conversions that already worked through another format but were on no donut. HWP as a target (through
+        //     HWPX), PDF → Markdown / EPUB (through DOCX), Word → PNG, HWP → JPG / EPUB (through PDF / DOCX).
+        if (from < 7)
+        {
+            foreach (var preset in BuiltInData.HwpPresets().Where(p => presets.All(existing => existing.Id != p.Id)))
+            {
+                presets.Add(preset);
+                changed = true;
+            }
+            foreach (var (profile, preset, after) in Version7Offers)
+                changed |= Offer(presets, profiles, profile, preset, after);
+        }
         return changed;
     }
 
@@ -352,19 +365,34 @@ internal static class SettingsMigrations
             changed = true;
         }
 
-        void Offer(string profileId, string presetId, string? after)
-        {
-            if (profiles.FirstOrDefault(p => p.Id == profileId) is not { } profile
-                || profile.PresetIds.Contains(presetId) || profile.PresetIds.Count >= ToolbarProfile.MaxSlices
-                || !presetIds.Contains(presetId))
-                return;
-            var index = after is null ? -1 : profile.PresetIds.IndexOf(after);
-            profile.PresetIds.Insert(index < 0 ? profile.PresetIds.Count : index + 1, presetId);
-            changed = true;
-        }
-        Offer("pdf", "to-docx", "to-jpg");
-        Offer(profiles.FirstOrDefault(p => p.IsFallback)?.Id ?? "mixed", "zip-all", "merge-pdf");
+        changed |= Offer(presets, profiles, "pdf", "to-docx", "to-jpg");
+        changed |= Offer(presets, profiles, profiles.FirstOrDefault(p => p.IsFallback)?.Id ?? "mixed", "zip-all", "merge-pdf");
         return changed;
+    }
+
+    /// <summary>Presets that settings schema 7 puts on the built-in donuts: (donut, preset, after which preset).</summary>
+    private static readonly (string Profile, string Preset, string After)[] Version7Offers =
+    [
+        ("pdf", "to-md", "to-txt"), ("pdf", "to-epub", "to-md"), ("pdf", "to-hwp", "to-hwpx"),
+        ("office", "to-hwp", "to-hwpx"), ("office", "to-png", "to-epub"),
+        ("hwp", "to-hwp", "to-hwpx"), ("hwp", "to-jpg", "to-png"), ("hwp", "to-epub", "to-md"),
+        ("spreadsheets", "to-hwp", "to-hwpx"), ("presentations", "to-hwp", "to-hwpx"),
+        ("text", "to-hwp", "to-hwpx"), ("ebooks", "to-hwp", "to-hwpx"),
+    ];
+
+    /// <summary>
+    /// Puts a preset on a donut after <paramref name="after"/> (or at the end), unless the donut is missing, full or
+    /// has it already. Returns true when it was added.
+    /// </summary>
+    private static bool Offer(List<Preset> presets, List<ToolbarProfile> profiles, string profileId, string presetId, string? after)
+    {
+        if (profiles.FirstOrDefault(p => p.Id == profileId) is not { } profile
+            || profile.PresetIds.Contains(presetId) || profile.PresetIds.Count >= ToolbarProfile.MaxSlices
+            || presets.All(p => p.Id != presetId))
+            return false;
+        var index = after is null ? -1 : profile.PresetIds.IndexOf(after);
+        profile.PresetIds.Insert(index < 0 ? profile.PresetIds.Count : index + 1, presetId);
+        return true;
     }
 
     private static void InsertBefore(List<string> list, string id, string before)

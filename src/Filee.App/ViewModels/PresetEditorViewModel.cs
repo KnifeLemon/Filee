@@ -100,6 +100,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _subfolderName = _edit.Output.SubfolderName;
         _customFolder = _edit.Output.CustomFolder;
         _pattern = _edit.Output.FileNamePattern;
+        _keepDates = _edit.Output.KeepDates;
     }
 
     public string PresetId => _original.Id;
@@ -176,6 +177,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private string _subfolderName;
     [ObservableProperty] private string _customFolder;
     [ObservableProperty] private string _pattern;
+    [ObservableProperty] private bool _keepDates;
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
     [ObservableProperty] private Choice<int> _audioBitrate;
@@ -272,6 +274,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         output.CustomFolder = CustomFolder.Trim();
         output.FileNamePattern = string.IsNullOrWhiteSpace(Pattern) ? "{name}" : Pattern.Trim();
         output.Conflict = Conflict.Value;
+        output.KeepDates = KeepDates;
         return true;
     }
 
