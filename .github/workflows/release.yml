@@ -76,7 +76,9 @@ jobs:
           $changes = ''
           $changelog = Get-Content CHANGELOG.md -Raw -Encoding utf8
           if ($changelog -match "(?ms)^## $([regex]::Escape($version))[ \t]*\r?\n(.*?)(?=^## |\z)") {
-            $changes = $Matches[1].Trim()
+            # One line per list item: GitHub shows the line breaks of the 120-column file in release notes.
+            $changes = $Matches[1].Trim() -replace '?
+  (?=\S)', ' '
           }
           if (-not $changes) { Write-Warning "CHANGELOG.md has no section for $version" }
           $notes = if ($changes) { "$policy`n`n$changes" } else { $policy }
