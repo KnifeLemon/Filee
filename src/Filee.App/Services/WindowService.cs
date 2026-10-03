@@ -73,7 +73,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
     public void ShowUpdateNotice(string version)
     {
         _updateNotice?.Close();
-        var notice = new UpdateNoticeWindow(services.GetRequiredService<UpdateService>(), loc.Format("update.notice_title", version))
+        var notice = new UpdateNoticeWindow(services.GetRequiredService<UpdateService>(), loc, loc.Format("update.notice_title", version))
         {
             BottomOffset = _toast is { IsVisible: true } toast
                 ? (int)Math.Ceiling(toast.Bounds.Height * (toast.Screens.Primary?.Scaling ?? 1))

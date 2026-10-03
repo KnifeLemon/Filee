@@ -217,10 +217,20 @@ public class RenderTests
             Assert.Contains("9.9.9", vm.UpdateText);
             Save(window, $"sidebar-update-{language}.png");
 
-            var notice = new UpdateNoticeWindow(updates, AppHost.Get<Filee.Core.Localization.ILocalizer>().Format("update.notice_title", "9.9.9"));
+            var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+            var notice = new UpdateNoticeWindow(updates, loc, loc.Format("update.notice_title", "9.9.9"));
             notice.Show();
             Pump();
             Save(notice, $"update-notice-{language}.png");
+
+            // While the installer downloads, the card, the sidebar button and the tray show the progress.
+            updates.Step = UpdateStep.Downloading;
+            updates.DownloadPercent = 42;
+            Pump();
+            Assert.Contains("42", vm.UpdateText);
+            Save(notice, $"update-notice-downloading-{language}.png");
+            Save(window, $"sidebar-update-downloading-{language}.png");
+            updates.Step = UpdateStep.Idle;
             notice.Close();
 
             var feedback = new FeedbackNoticeWindow();
@@ -231,6 +241,7 @@ public class RenderTests
         }
         finally
         {
+            updates.Step = UpdateStep.Idle;
             updates.LatestVersion = null;
             window.Close();
         }

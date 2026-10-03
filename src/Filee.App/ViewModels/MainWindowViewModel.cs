@@ -38,7 +38,7 @@ public sealed partial class MainWindowViewModel : ObservableObject
         Updates = updates;
         updates.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(UpdateService.LatestVersion))
+            if (UpdateTexts.Affects(e.PropertyName))
                 RefreshVersionTexts();
         };
         RefreshVersionTexts();
@@ -84,15 +84,17 @@ public sealed partial class MainWindowViewModel : ObservableObject
     public ScrollBarVisibility PageScroll => CurrentPage is IFitsWindowHeight ? ScrollBarVisibility.Disabled : ScrollBarVisibility.Auto;
     [ObservableProperty] private string _versionText = "";
     [ObservableProperty] private string _updateText = "";
+    [ObservableProperty] private string _updateTip = "";
 
-    /// <summary>Opens the latest release page to download the new installer.</summary>
+    /// <summary>Downloads and runs the new installer (or opens the download page in a portable copy).</summary>
     [RelayCommand]
-    private void DownloadUpdate() => Updates.OpenDownloadPage();
+    private Task DownloadUpdate() => Updates.UpdateAsync();
 
     private void RefreshVersionTexts()
     {
         VersionText = _loc.Format("about.version", UpdateService.CurrentVersion);
-        UpdateText = Updates.LatestVersion is { } latest ? _loc.Format("update.sidebar", latest) : "";
+        UpdateText = UpdateTexts.Short(Updates, _loc);
+        UpdateTip = UpdateTexts.Status(Updates, _loc) ?? _loc[UpdateTexts.HowKey];
     }
 
     public void Navigate(string key)

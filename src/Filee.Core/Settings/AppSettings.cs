@@ -1,5 +1,7 @@
 // Root settings object persisted to settings.json.
 
+using Filee.Core.Presets;
+
 namespace Filee.Core.Settings;
 
 public enum ThemeMode
@@ -48,7 +50,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 7;
+    public const int CurrentSchemaVersion = 8;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -99,4 +101,33 @@ public sealed class AppSettings
 
     /// <summary>Folders whose new files are converted automatically (Settings → Watch folders).</summary>
     public List<Watching.WatchRule> WatchFolders { get; set; } = [];
+
+    /// <summary>Where presets set to "Default" save (Settings → General).</summary>
+    public DefaultOutputSettings DefaultOutput { get; set; } = new();
+
+    /// <summary>
+    /// Returns <paramref name="preset"/> itself, or a copy that saves to <see cref="DefaultOutput"/> when the preset's
+    /// location is <see cref="OutputLocation.Default"/>. Name pattern, conflict handling and dates stay the preset's.
+    /// </summary>
+    public Preset WithDefaultOutput(Preset preset)
+    {
+        if (preset.Output.Location != OutputLocation.Default)
+            return preset;
+        var copy = preset.Clone();
+        copy.Output.Location = DefaultOutput.Location == OutputLocation.Default ? OutputLocation.SameFolder : DefaultOutput.Location;
+        copy.Output.SubfolderName = DefaultOutput.SubfolderName;
+        copy.Output.CustomFolder = DefaultOutput.CustomFolder;
+        return copy;
+    }
+}
+
+/// <summary>The save location presets set to "Default" use. Starts as "next to the source file", as before 1.4.</summary>
+public sealed class DefaultOutputSettings
+{
+    /// <summary><see cref="OutputLocation.SameFolder"/>, <see cref="OutputLocation.Subfolder"/> or <see cref="OutputLocation.CustomFolder"/>.</summary>
+    public OutputLocation Location { get; set; } = OutputLocation.SameFolder;
+
+    public string SubfolderName { get; set; } = "converted";
+
+    public string CustomFolder { get; set; } = "";
 }

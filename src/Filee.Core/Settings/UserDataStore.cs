@@ -326,6 +326,18 @@ internal static class SettingsMigrations
             foreach (var (profile, preset, after) in Version7Offers)
                 changed |= Offer(presets, profiles, profile, preset, after);
         }
+
+        // v8: Settings → General has a default save location. "Same folder as the source" was the default until now,
+        //     so presets still on it follow the new setting, which starts as the same folder: nothing moves until the
+        //     user picks another default.
+        if (from < 8)
+        {
+            foreach (var preset in presets.Where(p => p.Output.Location == OutputLocation.SameFolder))
+            {
+                preset.Output.Location = OutputLocation.Default;
+                changed = true;
+            }
+        }
         return changed;
     }
 

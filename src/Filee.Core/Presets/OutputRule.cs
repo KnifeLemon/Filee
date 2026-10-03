@@ -5,6 +5,11 @@ namespace Filee.Core.Presets;
 /// <summary>Where converted files go.</summary>
 public enum OutputLocation
 {
+    /// <summary>
+    /// The default save location from Settings → General (<see cref="Settings.AppSettings.DefaultOutput"/>). Where
+    /// nothing resolves it (the command line), it means <see cref="SameFolder"/>.
+    /// </summary>
+    Default,
     /// <summary>Next to the source file.</summary>
     SameFolder,
     /// <summary>In a sub folder (see <see cref="OutputRule.SubfolderName"/>) next to the source file.</summary>
@@ -27,7 +32,7 @@ public enum ConflictPolicy
 /// <summary>Output placement and naming rules.</summary>
 public sealed class OutputRule
 {
-    public OutputLocation Location { get; set; } = OutputLocation.SameFolder;
+    public OutputLocation Location { get; set; } = OutputLocation.Default;
 
     public string SubfolderName { get; set; } = "converted";
 

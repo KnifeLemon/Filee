@@ -29,6 +29,15 @@ public partial class GeneralPage : UserControl
             Vm.Export(path);
     }
 
+    private async void OnBrowseDefaultFolder(object? sender, RoutedEventArgs e)
+    {
+        if (Vm is null || TopLevel.GetTopLevel(this) is not { } top)
+            return;
+        var folders = await top.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions { AllowMultiple = false });
+        if (folders.FirstOrDefault()?.TryGetLocalPath() is { } path)
+            Vm.DefaultFolder = path;
+    }
+
     private async void OnImport(object? sender, RoutedEventArgs e)
     {
         if (Vm is null || TopLevel.GetTopLevel(this) is not { } top)
