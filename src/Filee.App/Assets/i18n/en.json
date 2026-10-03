@@ -299,6 +299,8 @@
   "presets.browse": "Browse…",
   "presets.pattern": "File name",
   "presets.pattern_hint": "{name} {ext} {preset} {date} {time} {index}",
+  "presets.keep_dates": "Keep the original file dates",
+  "presets.keep_dates_hint": "Converted files get the created and modified dates of the original, so photos still sort by date.",
   "presets.conflict": "If the file exists",
   "presets.conflict.Rename": "Add a number",
   "presets.conflict.Overwrite": "Replace it",

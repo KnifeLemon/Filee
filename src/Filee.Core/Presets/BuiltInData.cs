@@ -160,7 +160,7 @@ public static class BuiltInData
         {
             Id = "pdf", NameKey = "profile.pdf",
             Extensions = ["pdf"],
-            PresetIds = ["to-png", "to-jpg", "to-docx", "to-txt", "to-hwpx", "to-tiff", "pdf-split", "merge-pdf"],
+            PresetIds = ["to-png", "to-jpg", "to-docx", "to-txt", "to-epub", "to-hwpx", "to-tiff", "pdf-split", "merge-pdf"],
         },
         new()
         {

@@ -313,6 +313,10 @@ internal static class SettingsMigrations
         //     gets "compress into one ZIP".
         if (from < 6)
             changed |= AddCatalog(presets, profiles);
+
+        // v7: PDF → EPUB (PDF → DOCX → EPUB, built in) is on the PDF donut.
+        if (from < 7)
+            changed |= Offer(presets, profiles, "pdf", "to-epub", "to-txt");
         return changed;
     }
 
@@ -352,19 +356,24 @@ internal static class SettingsMigrations
             changed = true;
         }
 
-        void Offer(string profileId, string presetId, string? after)
-        {
-            if (profiles.FirstOrDefault(p => p.Id == profileId) is not { } profile
-                || profile.PresetIds.Contains(presetId) || profile.PresetIds.Count >= ToolbarProfile.MaxSlices
-                || !presetIds.Contains(presetId))
-                return;
-            var index = after is null ? -1 : profile.PresetIds.IndexOf(after);
-            profile.PresetIds.Insert(index < 0 ? profile.PresetIds.Count : index + 1, presetId);
-            changed = true;
-        }
-        Offer("pdf", "to-docx", "to-jpg");
-        Offer(profiles.FirstOrDefault(p => p.IsFallback)?.Id ?? "mixed", "zip-all", "merge-pdf");
+        changed |= Offer(presets, profiles, "pdf", "to-docx", "to-jpg");
+        changed |= Offer(presets, profiles, profiles.FirstOrDefault(p => p.IsFallback)?.Id ?? "mixed", "zip-all", "merge-pdf");
         return changed;
+    }
+
+    /// <summary>
+    /// Puts a preset on a donut after <paramref name="after"/> (or at the end), unless the donut is missing, full or
+    /// has it already. Returns true when it was added.
+    /// </summary>
+    private static bool Offer(List<Preset> presets, List<ToolbarProfile> profiles, string profileId, string presetId, string? after)
+    {
+        if (profiles.FirstOrDefault(p => p.Id == profileId) is not { } profile
+            || profile.PresetIds.Contains(presetId) || profile.PresetIds.Count >= ToolbarProfile.MaxSlices
+            || presets.All(p => p.Id != presetId))
+            return false;
+        var index = after is null ? -1 : profile.PresetIds.IndexOf(after);
+        profile.PresetIds.Insert(index < 0 ? profile.PresetIds.Count : index + 1, presetId);
+        return true;
     }
 
     private static void InsertBefore(List<string> list, string id, string before)

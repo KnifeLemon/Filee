@@ -29,6 +29,32 @@ public class JobQueueTests
     }
 
     [Fact]
+    public async Task Keep_dates_gives_outputs_the_dates_of_their_source()
+    {
+        using var dir = new TempDir();
+        var taken = dir.File("taken.jpg");
+        var plain = dir.File("plain.jpg");
+        var created = new DateTime(2019, 7, 1, 9, 30, 0, DateTimeKind.Utc);
+        var modified = new DateTime(2019, 7, 2, 18, 5, 0, DateTimeKind.Utc);
+        foreach (var source in new[] { taken, plain })
+        {
+            File.SetCreationTimeUtc(source, created);
+            File.SetLastWriteTimeUtc(source, modified);
+        }
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("jpg", "png"))]));
+
+        var keep = new Preset { TargetFormat = "png", Output = { KeepDates = true } };
+        await Run(queue, [taken], keep);
+        await Run(queue, [plain], new Preset { TargetFormat = "png" });
+
+        var output = Path.Combine(dir.Path, "taken.png");
+        Assert.Equal(created, File.GetCreationTimeUtc(output));
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(output));
+        // Without the option the output has the time it was made.
+        Assert.True(File.GetLastWriteTimeUtc(Path.Combine(dir.Path, "plain.png")) > DateTime.UtcNow.AddMinutes(-5));
+    }
+
+    [Fact]
     public async Task Multi_step_route_keeps_intermediates_out_of_the_output_folder()
     {
         using var dir = new TempDir();

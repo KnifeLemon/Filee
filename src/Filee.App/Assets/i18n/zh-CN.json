@@ -299,6 +299,8 @@
   "presets.browse": "浏览…",
   "presets.pattern": "文件名",
   "presets.pattern_hint": "{name} {ext} {preset} {date} {time} {index}",
+  "presets.keep_dates": "保留原文件日期",
+  "presets.keep_dates_hint": "转换后的文件沿用原文件的创建和修改日期，按日期排序的照片顺序不变。",
   "presets.conflict": "文件已存在时",
   "presets.conflict.Rename": "添加编号",
   "presets.conflict.Overwrite": "覆盖",

@@ -42,5 +42,11 @@ public sealed class OutputRule
 
     public ConflictPolicy Conflict { get; set; } = ConflictPolicy.Rename;
 
+    /// <summary>
+    /// Give converted files the creation and modification dates of their source, e.g. so converted photos still sort
+    /// by when they were taken. Not for merged PDFs or combined archives, which come from many files.
+    /// </summary>
+    public bool KeepDates { get; set; }
+
     public OutputRule Clone() => (OutputRule)MemberwiseClone();
 }

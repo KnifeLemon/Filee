@@ -299,6 +299,8 @@
   "presets.browse": "찾아보기…",
   "presets.pattern": "파일 이름",
   "presets.pattern_hint": "{name} {ext} {preset} {date} {time} {index}",
+  "presets.keep_dates": "원본 파일 날짜 유지",
+  "presets.keep_dates_hint": "변환된 파일에 원본의 만든 날짜와 수정한 날짜를 그대로 넣어요. 날짜순으로 정렬한 사진도 순서가 그대로예요.",
   "presets.conflict": "같은 파일이 있으면",
   "presets.conflict.Rename": "번호 붙이기",
   "presets.conflict.Overwrite": "덮어쓰기",

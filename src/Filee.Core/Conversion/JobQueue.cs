@@ -222,6 +222,34 @@ public sealed class JobQueue : IAsyncDisposable
         }
     }
 
+    /// <summary>Gives the outputs the creation and modification dates of the source (<see cref="OutputRule.KeepDates"/>).</summary>
+    private void CopyDates(string source, IEnumerable<string> outputs)
+    {
+        try
+        {
+            var created = File.GetCreationTimeUtc(source);
+            var modified = File.GetLastWriteTimeUtc(source);
+            foreach (var output in outputs)
+            {
+                if (File.Exists(output))
+                {
+                    File.SetCreationTimeUtc(output, created);
+                    File.SetLastWriteTimeUtc(output, modified);
+                }
+                else if (Directory.Exists(output))
+                {
+                    Directory.SetCreationTimeUtc(output, created);
+                    Directory.SetLastWriteTimeUtc(output, modified);
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // The conversion itself worked: keep the files, only the dates are new.
+            _log.LogWarning(ex, "Could not copy the dates of {Source}", source);
+        }
+    }
+
     /// <summary>
     /// Converts one source file along its planned route.
     /// With <paramref name="finalOutput"/> false, results stay in the work directory (used for merging).
@@ -287,7 +315,11 @@ public sealed class JobQueue : IAsyncDisposable
             }
 
             if (finalOutput)
+            {
                 file.Outputs.AddRange(inputs);
+                if (job.Preset.Output.KeepDates)
+                    CopyDates(file.SourcePath, inputs);
+            }
             file.State = inputs.Count == 0 && finalOutput ? FileState.Skipped : FileState.Done;
             file.Progress = 1;
             Notify(job);

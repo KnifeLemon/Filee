@@ -152,6 +152,20 @@ public class UserDataStoreTests
     }
 
     [Fact]
+    public void Version_6_libraries_get_epub_on_the_pdf_donut()
+    {
+        // As written by 1.3.0: no EPUB on the PDF donut.
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        profiles.Single(p => p.Id == "pdf").PresetIds.Remove("to-epub");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(6, presets, profiles));
+
+        Assert.Equal(["to-png", "to-jpg", "to-docx", "to-txt", "to-epub"], profiles.Single(p => p.Id == "pdf").PresetIds.Take(5));
+        Assert.False(SettingsMigrations.ApplyToLibrary(6, presets, profiles)); // once only
+    }
+
+    [Fact]
     public void Catalog_migration_ignores_extensions_checked_on_mixed_profiles()
     {
         // Schema-5 data where the user already limited a mixed-files donut to MP3 and JPG: those checks must not

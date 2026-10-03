@@ -49,6 +49,19 @@ public sealed class CliTests : IDisposable
     }
 
     [Fact]
+    public async Task Keep_dates_copies_the_dates_of_the_originals()
+    {
+        var source = Png("old.png");
+        var modified = new DateTime(2018, 5, 4, 12, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(source, modified);
+
+        var (code, _, _) = await Run("convert", source, "--to", "jpg", "--keep-dates");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(Path.Combine(_folder, "old.jpg")));
+    }
+
+    [Fact]
     public async Task Json_output_lists_every_file()
     {
         var source = Png("a.png");

@@ -235,6 +235,8 @@ internal static class Cli
             preset.Image.Quality = quality;
         if (options.Conflict is { } conflict)
             preset.Output.Conflict = conflict;
+        if (options.KeepDates)
+            preset.Output.KeepDates = true;
         return preset;
     }
 
