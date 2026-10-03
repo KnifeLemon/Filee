@@ -31,7 +31,7 @@ Rename this heading to the version number when you release it.
 
 ### Arranging the donut
 
-- In Settings → Donut toolbar, dragging a preset (or a slice) over the donut opens a gap where it will land, with a
+- On the Donut toolbar page, dragging a preset (or a slice) over the donut opens a gap where it will land, with a
   see-through slice showing its name. The other slices slide aside, and a moved slice leaves its old place.
 
 ## 1.4.0
