@@ -69,7 +69,7 @@ macOS support is planned, and Linux is being considered.
   vector graphics, archives, CAD and fonts, plus toolbars for mixed selections. Arrange presets on a live donut by
   drag & drop, add extensions as tags, right-click or ✎ to edit a preset.
 - **Presets.** Quality, resizing, DPI, metadata, PDF merge and split, page ranges, video quality and resolution, audio
-  bitrate, archive compression, output folder, file name pattern and conflict handling.
+  bitrate, archive compression, output folder, file name pattern, conflict handling and keeping the original file dates.
 - **Batch conversion.** 1 file or 100, converted in parallel; one failure never stops the rest. "One ZIP" packs any
   files into a single archive, "Merge PDF" makes one PDF.
 - **Planned routes.** Multi-step conversions are found automatically (e.g. HWP → HWPX → DOCX, EPUB → HWPX → PDF → PNG),
