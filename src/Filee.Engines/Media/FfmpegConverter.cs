@@ -77,8 +77,13 @@ public sealed partial class FfmpegConverter : IConverter
         if (output is null)
             return [];
 
+        // Album art for targets FFmpeg can't put a picture stream into (Ogg, Matroska): prepared on the side.
+        var cover = info.CoverStreamIndex is { } coverStream
+            ? await CoverArt.PrepareAsync(ffmpeg, input, coverStream, step.To, step.WorkDirectory, cancellationToken)
+            : null;
+
         // Throws for a missing stream before anything is written (an existing file of that name stays untouched).
-        var passes = MediaEncoding.Plan(input, output, step.To, step.Preset.Media, info, step.WorkDirectory);
+        var passes = MediaEncoding.Plan(input, output, step.To, step.Preset.Media, info, step.WorkDirectory, cover);
         try
         {
             var done = 0.0;

@@ -522,14 +522,16 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         await RunAsync(Tools.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=duration=2", "-i", cover,
             "-map", "0:a", "-map", "1:v", "-c:v", "copy", "-disposition:v:0", "attached_pic", "-metadata", "title=노래 제목", song]);
 
-        foreach (var target in new[] { "flac", "m4a" })
+        // FLAC and M4A take a picture stream; Opus and Ogg a METADATA_BLOCK_PICTURE comment; MKA an attachment.
+        foreach (var target in new[] { "flac", "m4a", "opus", "ogg", "mka" })
         {
             var output = await ConvertAsync(song, target);
             var probed = await ProbeAsync(output);
-            Assert.Contains(probed.Streams, s => s.Cover && s.Codec == "png");
-            var tags = await ProcessRunner.RunAsync(Tools.Value.Ffprobe, ["-v", "error", "-show_entries", "format_tags=title,major_brand", "-of", "json", output],
+            Assert.True(probed.Streams.Any(s => s.Cover && s.Codec == "png"), $"{target}: no cover");
+            var tags = await ProcessRunner.RunAsync(Tools.Value.Ffprobe,
+                ["-v", "error", "-show_entries", "format_tags=title,major_brand:stream_tags=title", "-of", "json", output],
                 TimeSpan.FromMinutes(1), CancellationToken.None);
-            Assert.Contains("노래 제목", tags.StandardOutput);
+            Assert.True(tags.StandardOutput.Contains("노래 제목"), $"{target}: title lost");
         }
     }
 
