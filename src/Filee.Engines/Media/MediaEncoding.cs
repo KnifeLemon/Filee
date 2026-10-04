@@ -97,15 +97,17 @@ internal static class MediaEncoding
     private static readonly string[] SourceOnlyTags = ["major_brand", "minor_version", "compatible_brands"];
 
     /// <summary>Global arguments of every run: no banner, no keyboard input, only errors on stderr, overwrite.</summary>
-    private static readonly string[] Common = ["-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y"];
+    internal static readonly string[] Common = ["-hide_banner", "-nostdin", "-nostats", "-v", "error", "-y"];
 
     /// <summary>
     /// The ffmpeg runs that convert <paramref name="input"/> into <paramref name="output"/> in format
     /// <paramref name="target"/>.
     /// </summary>
     /// <param name="workDirectory">Scratch folder (the GIF palette goes there).</param>
+    /// <param name="cover">The source's cover for targets FFmpeg can't put a picture stream into (<see cref="CoverArt"/>).</param>
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
-    public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory)
+    public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
+        CoverExtras? cover = null)
     {
         if (target == "gif")
             return AnimatedGif(input, output, options, info, workDirectory);
@@ -114,7 +116,7 @@ internal static class MediaEncoding
         if (VideoTargets.TryGetValue(target, out var video))
             return [new FfmpegPass(Video(input, output, target, video, options, info), 1)];
         if (AudioTargets.TryGetValue(target, out var audio))
-            return [new FfmpegPass(Audio(input, output, target, audio, options, info), 1)];
+            return [new FfmpegPass(Audio(input, output, target, audio, options, info, cover), 1)];
         throw new NotSupportedException($"FFmpeg cannot write '{target}'.");
     }
 
@@ -260,11 +262,11 @@ internal static class MediaEncoding
         _ => [],
     };
 
-    private static IEnumerable<string> MetadataArguments()
+    private static IEnumerable<string> MetadataArguments(int from = 0)
     {
         // Keep title, artist, dates, … (chapters are kept by default); an empty value removes a tag.
         yield return "-map_metadata";
-        yield return "0";
+        yield return from.ToString(CultureInfo.InvariantCulture);
         foreach (var tag in SourceOnlyTags)
         {
             yield return "-metadata";
@@ -274,14 +276,21 @@ internal static class MediaEncoding
 
     // ───────────────────────── Audio ─────────────────────────
 
-    private static List<string> Audio(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info)
+    private static List<string> Audio(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,
+        CoverExtras? extras)
     {
         var audio = info.Audio ?? throw new InvalidOperationException("The file has no audio track.");
-        List<string> args = [.. Common, "-i", input, "-map", "0:a:0"];
+        List<string> args = [.. Common, "-i", input];
+        // Ogg: the tags, and the picture as a comment, come from a metadata file (input 1) instead of the source.
+        if (extras?.MetadataFile is { } metadata)
+            args.AddRange(["-i", metadata]);
+        args.AddRange(["-map", "0:a:0"]);
         if (info.CoverStreamIndex is { } cover && CoverTargets.Contains(target))
             args.AddRange(["-map", $"0:{cover}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]);
+        if (extras is { AttachmentFile: { } picture, AttachmentMime: { } mime })
+            args.AddRange(["-attach", picture, "-metadata:s:t", "mimetype=" + mime, "-metadata:s:t", "filename=" + Path.GetFileName(picture)]);
         args.AddRange(AudioCodecArguments(target, spec.AudioCodec, options, audio, inVideo: false));
-        args.AddRange(MetadataArguments());
+        args.AddRange(MetadataArguments(extras?.MetadataFile is null ? 0 : 1));
         args.AddRange(ContainerArguments(target));
         args.AddRange(["-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
