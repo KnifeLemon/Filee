@@ -6,6 +6,7 @@
 *.md      text
 *.ps1     text eol=crlf
 *.sh      text eol=lf
+*.plist   text eol=lf
 
 *.ttf     binary
 *.otf     binary

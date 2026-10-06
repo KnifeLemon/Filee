@@ -87,13 +87,15 @@ if ($Runtime.StartsWith('osx-')) {
     $entitlements = Join-Path $root 'installer/macos/entitlements.plist'
     $signOptions = @('--force', '--sign', $SigningIdentity)
     if ($SigningIdentity -ne '-') { $signOptions += @('--timestamp', '--options', 'runtime') }
-    foreach ($file in Get-ChildItem -LiteralPath $publish -Recurse -File | Sort-Object { $_.FullName.Length } -Descending) {
-        $format = & /usr/bin/file --brief $file.FullName
-        if ($LASTEXITCODE -ne 0) { throw "Cannot inspect $($file.FullName) before signing." }
-        if ($format -match 'Mach-O') {
-            Invoke-Checked 'Sign native binary' { codesign @signOptions --entitlements $entitlements $file.FullName }
-        }
+    # Every file in Contents/MacOS is code to codesign, the .NET assemblies too (their signature goes into extended
+    # attributes): signing the main executable checks all of them. Deepest paths first, the main executable last.
+    $mainExecutable = Join-Path $publish 'Filee'
+    $files = Get-ChildItem -LiteralPath $publish -Recurse -File | Where-Object { $_.FullName -ne $mainExecutable } |
+        Sort-Object { $_.FullName.Length } -Descending
+    foreach ($file in $files) {
+        Invoke-Checked "Sign $($file.Name)" { codesign @signOptions --entitlements $entitlements $file.FullName }
     }
+    Invoke-Checked 'Sign main executable' { codesign @signOptions --entitlements $entitlements $mainExecutable }
     Invoke-Checked 'Sign app bundle' { codesign @signOptions --entitlements $entitlements $appBundle }
     Invoke-Checked 'Verify app signature' { codesign --verify --deep --strict $appBundle }
     Copy-Item -LiteralPath (Join-Path $root 'installer/macos/install.sh') -Destination $package

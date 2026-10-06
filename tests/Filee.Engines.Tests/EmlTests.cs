@@ -157,7 +157,7 @@ public class EmlTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var html = await File.ReadAllTextAsync(await ConvertAsync(path, "html"), TestContext.Current.CancellationToken);
         Assert.Contains("<title>한글 제목</title>", html);
-        Assert.Contains("<pre class=\"filee-mail-text\">본문 &lt;첫 줄&gt;\r\n둘째 줄", html);
+        Assert.Contains("<pre class=\"filee-mail-text\">본문 &lt;첫 줄&gt;\n둘째 줄", html.ReplaceLineEndings("\n"));
         Assert.DoesNotContain("Attachments", html);
 
         // No attachments: a clear error instead of an empty ZIP.

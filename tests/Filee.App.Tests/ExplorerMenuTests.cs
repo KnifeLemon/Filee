@@ -93,6 +93,7 @@ public class ExplorerMenuTests
     [Fact]
     public void Every_native_import_exists_in_the_dll_it_names()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows only.");
         // GetPackagePathByFullName2 was imported from kernel32.dll, which doesn't export it: the call only failed
         // once a package was registered and crashed the app right after "Add to the main menu" (1.1.0).
         var nativeMethods = typeof(ExplorerMenuRegistration).Assembly.GetType("Filee.Platform.Windows.NativeMethods", throwOnError: true)!;
@@ -112,6 +113,7 @@ public class ExplorerMenuTests
     [Fact]
     public void Reading_the_registered_package_never_throws()
     {
+        Assert.SkipUnless(OperatingSystem.IsWindowsVersionAtLeast(10), "Package APIs need Windows.");
         Assert.Null(ExplorerMenuRegistration.ExternalLocationOf("Filee.NotInstalled_1.0.0.0_x64__0000000000000"));
         // Whatever is registered on this machine (nothing on CI): a registered sparse package has an external location.
         if (ExplorerMenuRegistration.Find() is { } package)
