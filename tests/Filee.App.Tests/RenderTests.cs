@@ -416,11 +416,22 @@ public class RenderTests
             Save(window, $"preset-archive-{suffix}.png");
             window.Close();
 
-            // Audio targets have no picture options; lossless ones nothing to set at all; "Extract" only explains.
+            // Audio targets have no picture options; lossless ones only channels, WAV also sample rate and bit depth (#37);
+            // AMR is fixed mono 8 kHz; "Extract" only explains.
             archive.Target = archive.Targets.Single(t => t.Value == "mp3");
-            Assert.True(archive.ShowMedia && archive.ShowAudioBitrate && !archive.ShowMaxHeight && !archive.ShowRemoveAudio);
+            Assert.True(archive.ShowMedia && archive.ShowAudioBitrate && archive.ShowAudioChannels && !archive.ShowMaxHeight && !archive.ShowRemoveAudio);
+            Assert.False(archive.ShowWav);
             archive.Target = archive.Targets.Single(t => t.Value == "flac");
-            Assert.False(archive.ShowMedia);
+            Assert.True(archive.ShowMedia && archive.ShowAudioChannels && !archive.ShowAudioBitrate && !archive.ShowWav);
+            archive.Target = archive.Targets.Single(t => t.Value == "wav");
+            Assert.True(archive.ShowMedia && archive.ShowAudioChannels && archive.ShowWav);
+            window = new PresetEditorWindow { DataContext = archive, Height = 760 };
+            window.Show();
+            Pump();
+            Save(window, $"preset-wav-{suffix}.png");
+            window.Close();
+            archive.Target = archive.Targets.Single(t => t.Value == "amr");
+            Assert.False(archive.ShowAudioChannels || archive.ShowWav);
             archive.Target = archive.Targets.Single(t => t.Value == Filee.Core.Formats.FormatRegistry.Folder);
             Assert.True(archive.ShowArchive && archive.ShowExtractNote && !archive.ShowArchiveOptions);
         }
@@ -438,6 +449,7 @@ public class RenderTests
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "mp4", Name = "Clip" };
         var vm = new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>());
         Assert.Equal("*", vm.Targets[0].Value); // "Same as source" stays first
+        Assert.Equal([0, 32, 48, 64, 96, 128, 192, 256, 320], vm.AudioBitrates.Select(b => b.Value)); // 32-64 for speech (#37)
         Assert.All(vm.Targets.Skip(1), t => Assert.True(Filee.Core.Formats.FormatRegistry.Get(t.Value).Writable));
         Assert.Equal("Video", vm.Target.Detail);
 
@@ -445,6 +457,10 @@ public class RenderTests
         vm.MaxHeight = vm.MaxHeights.Single(h => h.Value == 1080);
         vm.AudioBitrate = vm.AudioBitrates.Single(b => b.Value == 192);
         vm.RemoveAudio = true;
+        vm.AudioChannels = vm.AudioChannelChoices.Single(c => c.Value == 1);
+        vm.SampleRate = vm.SampleRates.Single(r => r.Value == 16000);
+        vm.WavFormat = vm.WavFormats.Single(f => f.Value == Filee.Core.Presets.WavSampleFormat.Pcm24);
+        Assert.Equal("16 kHz", vm.SampleRate.Label);
         vm.ArchiveLevel = vm.ArchiveLevels.Single(l => l.Value == Filee.Core.Presets.ArchiveLevel.Maximum);
         vm.CombineIntoOne = true;
         Assert.True(vm.Apply());
@@ -453,6 +469,8 @@ public class RenderTests
         Assert.Equal(1080, preset.Media.MaxHeight);
         Assert.Equal(192, preset.Media.AudioBitrateKbps);
         Assert.True(preset.Media.RemoveAudio);
+        Assert.Equal((1, 16000, Filee.Core.Presets.WavSampleFormat.Pcm24),
+            (preset.Media.AudioChannels, preset.Media.AudioSampleRate, preset.Media.WavFormat));
         Assert.Equal(Filee.Core.Presets.ArchiveLevel.Maximum, preset.Archive.Level);
         Assert.True(preset.Archive.CombineIntoOne);
 

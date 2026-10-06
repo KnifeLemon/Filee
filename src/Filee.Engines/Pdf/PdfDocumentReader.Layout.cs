@@ -52,8 +52,9 @@ internal sealed partial class PdfDocumentReader
         var space = gaps.Count > 0 ? Math.Max(0.5, Median(gaps.Where(g => g > 0))) : 3;
 
         var lines = new List<TextLine>();
-        foreach (var row in rows)
+        for (var r = 0; r < rows.Count; r++)
         {
+            var row = rows[r];
             var current = new List<TextWord> { row[0] };
             for (var i = 1; i < row.Count; i++)
             {
@@ -61,14 +62,79 @@ internal sealed partial class PdfDocumentReader
                 var size = Math.Min(row[i].Size, row[i - 1].Size);
                 if (gap > Math.Max(5 * space, 1.5 * size))
                 {
-                    lines.Add(new TextLine(current));
+                    lines.Add(new TextLine(current, r));
                     current = [];
                 }
                 current.Add(row[i]);
             }
-            lines.Add(new TextLine(current));
+            lines.Add(new TextLine(current, r));
         }
         return lines;
+    }
+
+    /// <summary>
+    /// Joins the parts of a split row again, with a tab between them, where no column gutter lies between the parts
+    /// and the gap is a tab: after a list number ("1."), wider than a column gutter with a ragged line end (6 em), or
+    /// at the same place as a tab in a row right above or below (the value column of a form, whatever the label's
+    /// length). "1.  RFP Published   08/14/2026" stays one row instead of three paragraphs. Null when no row changes.
+    /// </summary>
+    private static List<TextLine>? JoinTabbedRows(List<TextLine> lines, List<Item> items)
+    {
+        var rows = lines.GroupBy(l => l.Row).Select(g => g.ToList()).ToList();
+        if (items.Count == 0 || rows.All(r => r.Count == 1))
+            return null;
+        var gutters = Gutters(items, items.Min(i => i.Left), items.Max(i => i.Right));
+
+        // Gaps that may be tabs: (row, index of the part after the gap, where that part starts).
+        var candidates = new List<(int Row, int Part, double X)>();
+        var tabs = new HashSet<(int Row, int Part)>();
+        foreach (var row in rows)
+        {
+            for (var p = 1; p < row.Count; p++)
+            {
+                var (before, after) = (row[p - 1], row[p]);
+                if (gutters.Any(g => g.Start >= before.Right - 2 && g.End <= after.Left + 2))
+                    continue;
+                candidates.Add((before.Row, p, after.Left));
+                var number = before.Words.Count == 1 && ListStart.IsMatch(before.Words[0].Text);
+                if (number || after.Left - before.Right > 6 * Math.Max(before.Size, after.Size))
+                    tabs.Add((before.Row, p));
+            }
+        }
+        if (tabs.Count == 0)
+            return null;
+        for (var grown = true; grown;)
+        {
+            grown = false;
+            foreach (var (row, part, x) in candidates)
+            {
+                if (!tabs.Contains((row, part)) && candidates.Any(c => tabs.Contains((c.Row, c.Part)) && Math.Abs(c.Row - row) <= 2 && Math.Abs(c.X - x) <= 1.5))
+                    grown |= tabs.Add((row, part));
+            }
+        }
+
+        var result = new List<TextLine>();
+        foreach (var row in rows)
+        {
+            var current = row[0];
+            for (var p = 1; p < row.Count; p++)
+            {
+                if (tabs.Contains((current.Row, p)))
+                {
+                    var joined = new TextLine([.. current.Words, .. row[p].Words], current.Row);
+                    joined.Tabs.AddRange(current.Tabs);
+                    joined.Tabs.Add(current.Words.Count);
+                    current = joined;
+                }
+                else
+                {
+                    result.Add(current);
+                    current = row[p];
+                }
+            }
+            result.Add(current);
+        }
+        return result;
     }
 
     // ───────────────────────── Paragraphs ─────────────────────────
@@ -87,7 +153,13 @@ internal sealed partial class PdfDocumentReader
             var bestDistance = double.MaxValue;
             foreach (var item in items)
             {
+                if (line.Tabs.Count > 0)
+                    break; // a tabbed row starts its own paragraph
                 var last = item.Lines[^1];
+                // A tabbed row continues only with text under its last part (the wrapped text of "1.  Text …").
+                var head = item.Lines[0];
+                if (head.Tabs.Count > 0 && Math.Abs(line.Left - head.Words[head.Tabs[^1]].Left) > 0.5 * line.Size)
+                    continue;
                 var distance = last.Baseline - line.Baseline;
                 var size = Math.Max(last.Size, line.Size);
                 if (distance <= 0 || distance > 1.9 * size || Math.Abs(last.Size - line.Size) > 0.2 * size)
@@ -124,7 +196,7 @@ internal sealed partial class PdfDocumentReader
 
         // First-line indent: this line starts further right than the paragraph's other lines.
         var bodyLeft = item.Lines.Count > 1 ? item.Lines.Skip(1).Min(l => l.Left) : last.Left;
-        var listItem = ListStart.IsMatch(item.Lines[0].Words[0].Text);
+        var listItem = ListStart.IsMatch(item.Lines[0].Words[0].Text) || item.Lines[0].Tabs.Count > 0;
         if (line.Left > bodyLeft + 0.8 * em && !listItem && (item.Lines.Count > 1 || line.Left > last.Left + 0.8 * em))
             return true;
 

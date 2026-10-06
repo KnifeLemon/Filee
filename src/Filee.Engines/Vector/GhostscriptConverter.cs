@@ -1,9 +1,12 @@
 // PostScript and EPS with Ghostscript (AGPL-3.0, a separate program downloaded on demand into engines/ghostscript).
-// EPS/PS → PDF with pdfwrite; PDF → EPS/PS with eps2write/ps2write. Everything else (EPS → PNG, SVG → EPS, …) is
-// planned through PDF by the route planner.
+// EPS/PS → PDF with pdfwrite; PDF → EPS/PS with eps2write/ps2write; EPS/PS → PNG with pngalpha, which keeps a
+// transparent background (through PDF the page would be drawn on white paper). Everything else (EPS → JPG,
+// SVG → EPS, …) is planned through PDF or PNG by the route planner.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Magick;
+using ImageMagick;
 using PdfSharp.Pdf.IO;
 
 namespace Filee.Engines.Vector;
@@ -36,6 +39,8 @@ public sealed class GhostscriptConverter : IConverter
         new("ps", "pdf"),
         new("pdf", "eps"),
         new("pdf", "ps"),
+        new("eps", "png"),
+        new("ps", "png"),
     ];
 
     public EngineStatus GetStatus()
@@ -53,6 +58,7 @@ public sealed class GhostscriptConverter : IConverter
             "pdf" => await ToPdfAsync(gs, step, cancellationToken, progress),
             "ps" => await ToPostScriptAsync(gs, step, cancellationToken, progress),
             "eps" => await ToEpsAsync(gs, step, cancellationToken, progress),
+            "png" => await ToPngAsync(gs, step, cancellationToken, progress),
             _ => throw new NotSupportedException($"Ghostscript cannot write '{step.To}'."),
         };
         progress?.Report(1);
@@ -132,6 +138,41 @@ public sealed class GhostscriptConverter : IConverter
             if (path is null)
                 continue;
             File.Move(file, path, overwrite: true);
+            written.Add(path);
+        }
+        return written;
+    }
+
+    /// <summary>
+    /// EPS/PS → PNG with a transparent background where the drawing leaves the page empty, at the preset's render
+    /// DPI, EPS cropped to its bounding box. A multi-page PS gives one PNG per page (<c>_p{n}</c>). The preset's image
+    /// options (resize, grayscale, DPI, metadata) apply as for any other PNG.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> ToPngAsync(string gs, ConversionStep step, CancellationToken ct, IProgress<double>? progress)
+    {
+        var scratch = NewScratch(step.WorkDirectory);
+        var dpi = Math.Clamp(step.Preset.Pdf.RenderDpi, 36, 1200);
+        List<string> args = ["-sDEVICE=pngalpha", $"-r{dpi}", "-dTextAlphaBits=4", "-dGraphicsAlphaBits=4"];
+        if (step.From == "eps")
+            args.Add("-dEPSCrop");
+        await RunAsync(gs, args, Path.Combine(scratch, "page-%d.png"), step.InputPath, ct, progress);
+
+        var files = Directory.GetFiles(scratch, "page-*.png")
+            .OrderBy(f => int.Parse(Path.GetFileNameWithoutExtension(f)["page-".Length..], System.Globalization.CultureInfo.InvariantCulture))
+            .ToList();
+        if (files.Count == 0)
+            throw new InvalidOperationException("Ghostscript wrote no PNG file.");
+
+        var (format, extension) = ImageEncoder.OutputFormat("png", step.Preset.Image);
+        var written = new List<string>();
+        for (var i = 0; i < files.Count; i++)
+        {
+            var path = step.Output.Allocate(extension, files.Count > 1 ? $"_p{i + 1}" : null);
+            if (path is null)
+                continue;
+            using var image = new MagickImage(files[i]);
+            ImageEncoder.ApplyOptions(image, step.Preset.Image, "png");
+            image.Write(path, format);
             written.Add(path);
         }
         return written;
