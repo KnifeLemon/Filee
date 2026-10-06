@@ -128,6 +128,67 @@ public class PdfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains(Text("Left first") + "\r\n\r\n" + Text("Left second"), text);
     }
 
+    /// <summary>
+    /// Page 5 of the RFP in #38: a schedule laid out with tab stops, an address block of short lines, and a form whose
+    /// labels are short and long.
+    /// </summary>
+    private static string Schedule(string folder)
+    {
+        var pdf = new PdfBuilder().NewPage(612, 792);
+        var body = pdf.Font();
+        pdf.Paragraph("E. PROPOSED SCHEDULE OF ACTIVITIES: the dates below may change. This paragraph is long enough to wrap, so the page has a full text width.",
+            12, body, 54, 60, 500, 15);
+        string[][] rows = [["1.", "RFP Published", "08/14/2026"], ["2.", "Proposal Submission", "10/16/2026"], ["3.", "Proposal Selection", "10/19/2026"]];
+        for (var r = 0; r < rows.Length; r++)
+        {
+            pdf.Line(rows[r][0], 12, body, 76.5, 110 + r * 14.6);
+            pdf.Line(rows[r][1], 12, body, 108, 110 + r * 14.6);
+            pdf.Line(rows[r][2], 12, body, 432, 110 + r * 14.6);
+        }
+        pdf.Paragraph("F. INQUIRIES: Send all inquiries (transmittal by E-Mail preferred) to the address below, which is the only one.", 12, body, 54, 170, 500, 15);
+        string[] address = ["WESTAR", "1880 Willamette Falls Drive, Ste. 200E", "West Linn, Oregon 97068", "Attn: Jeffrey P. Gabler"];
+        for (var l = 0; l < address.Length; l++)
+            pdf.Line(address[l], 12, body, 144, 215 + l * 14.6);
+        string[][] form = [["Name:", "JEFFREY P. GABLER"], ["Organization:", "WESTAR COUNCIL"], ["Phone:", "503-657-4838"]];
+        for (var r = 0; r < form.Length; r++)
+        {
+            pdf.Line(form[r][0], 11, body, 72, 300 + r * 14);
+            pdf.Line(form[r][1], 11, body, 176, 300 + r * 14);
+        }
+        return pdf.Save(Path.Combine(folder, "schedule.pdf"));
+    }
+
+    /// <summary>Text with tabs as \t and line breaks as \n.</summary>
+    private static string Shown(HParagraph paragraph) => string.Concat(paragraph.Inlines.SelectMany(i => i is HLink link ? link.Content : [i])
+        .Select(i => i switch { HText t => t.Text, HTab => "\t", HLineBreak => "\n", _ => "" }));
+
+    [Fact]
+    public async Task Tabbed_rows_and_line_breaks_are_kept()
+    {
+        var path = Schedule(fx.NewFolder());
+
+        var docx = await ConvertAsync(path, "docx");
+
+        ValidPackage(docx);
+        var paragraphs = Paragraphs(ReadBack(docx).Sections.SelectMany(s => s.Blocks)).Where(p => TextOf(p).Length > 0).ToList();
+        Assert.Equal([
+            "1.\tRFP Published\t08/14/2026", "2.\tProposal Submission\t10/16/2026", "3.\tProposal Selection\t10/19/2026",
+            "1880 Willamette Falls Drive, Ste. 200E\nWest Linn, Oregon 97068",
+            "Name:\tJEFFREY P. GABLER", "Organization:\tWESTAR COUNCIL", "Phone:\t503-657-4838",
+        ], paragraphs.Select(Shown).Where(t => t.Contains('\t') || t.Contains('\n')));
+        // The tab stops sit where the parts start in the PDF, from the text's left edge (54 pt): 108 - 54 and 432 - 54.
+        var row = paragraphs.Single(p => Shown(p).StartsWith("1.\t", StringComparison.Ordinal));
+        Assert.Equal([5400, 37800], row.Format.Tabs!.Select(t => t.Position));
+        Assert.All(row.Format.Tabs!, t => Assert.Equal(HTabKind.Left, t.Kind));
+        // The street and the town stay apart; the short lines around them are paragraphs of their own.
+        Assert.Contains(paragraphs, p => Shown(p) == "WESTAR");
+        Assert.Contains(paragraphs, p => Shown(p) == "Attn: Jeffrey P. Gabler");
+
+        var text = await File.ReadAllTextAsync(await ConvertAsync(path, "txt"), TestContext.Current.CancellationToken);
+        Assert.Contains("1.\tRFP Published\t08/14/2026\r\n\r\n2.\tProposal Submission", text);
+        Assert.Contains("Ste. 200E\r\nWest Linn", text);
+    }
+
     [Fact]
     public async Task Scanned_pages_become_page_pictures()
     {

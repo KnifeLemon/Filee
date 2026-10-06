@@ -96,8 +96,8 @@
     <Border x:Name="MediaCard" Classes="card" IsVisible="{Binding ShowMedia}" Padding="14">
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.media}" />
-        <Grid ColumnDefinitions="*,12,*">
-          <StackPanel IsVisible="{Binding ShowMediaQuality}">
+        <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
+          <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />
             <ComboBox ItemsSource="{Binding MediaQualities}" SelectedItem="{Binding MediaQuality}" HorizontalAlignment="Stretch" />
           </StackPanel>
@@ -106,14 +106,27 @@
             <ComboBox ItemsSource="{Binding MaxHeights}" SelectedItem="{Binding MaxHeight}" HorizontalAlignment="Stretch" />
           </StackPanel>
         </Grid>
-        <Grid ColumnDefinitions="*,12,*">
+        <!-- Two per row, whichever apply to the target: hidden ones leave no gap. -->
+        <UniformGrid Columns="2" ColumnSpacing="12" RowSpacing="10">
           <StackPanel IsVisible="{Binding ShowAudioBitrate}">
             <TextBlock Classes="label" Text="{DynamicResource presets.audio_bitrate}" />
             <ComboBox ItemsSource="{Binding AudioBitrates}" SelectedItem="{Binding AudioBitrate}" HorizontalAlignment="Stretch" />
           </StackPanel>
-          <CheckBox Grid.Column="2" VerticalAlignment="Bottom" Content="{DynamicResource presets.remove_audio}"
+          <CheckBox VerticalAlignment="Bottom" Content="{DynamicResource presets.remove_audio}"
                     IsChecked="{Binding RemoveAudio}" IsVisible="{Binding ShowRemoveAudio}" />
-        </Grid>
+          <StackPanel IsVisible="{Binding ShowAudioChannels}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.audio_channels}" />
+            <ComboBox ItemsSource="{Binding AudioChannelChoices}" SelectedItem="{Binding AudioChannels}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding ShowWav}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.sample_rate}" />
+            <ComboBox ItemsSource="{Binding SampleRates}" SelectedItem="{Binding SampleRate}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding ShowWav}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.wav_format}" />
+            <ComboBox ItemsSource="{Binding WavFormats}" SelectedItem="{Binding WavFormat}" HorizontalAlignment="Stretch" />
+          </StackPanel>
+        </UniformGrid>
       </StackPanel>
     </Border>
 

@@ -33,7 +33,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private static readonly HashSet<string> LosslessAudioTargets = ["wav", "flac", "aiff"];
 
     private static readonly int[] MaxHeightSteps = [0, 2160, 1440, 1080, 720, 480];
-    private static readonly int[] BitrateSteps = [0, 96, 128, 192, 256, 320];
+    // 32-64 kbit/s: speech (Opus is still clear at 32 kbit/s mono), small files.
+    private static readonly int[] BitrateSteps = [0, 32, 48, 64, 96, 128, 192, 256, 320];
+    private static readonly int[] SampleRateSteps = [0, 8000, 16000, 22050, 44100, 48000];
 
     private readonly Preset _original;
     private readonly Preset _edit;
@@ -65,6 +67,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
         MaxHeights = Steps(MaxHeightSteps, _edit.Media.MaxHeight, h => h == 0 ? loc["presets.max_height.original"] : $"{h}p");
         AudioBitrates = Steps(BitrateSteps, _edit.Media.AudioBitrateKbps, k => k == 0 ? loc["presets.audio_bitrate.auto"] : $"{k} kbps");
+        AudioChannelChoices = new[] { 0, 1, 2 }.Select(c => new Choice<int>(c, loc[$"presets.audio_channels.{c}"])).ToList();
+        SampleRates = Steps(SampleRateSteps, _edit.Media.AudioSampleRate,
+            r => r == 0 ? loc["presets.sample_rate.source"] : $"{r / 1000.0:0.##} kHz");
+        WavFormats = Enum.GetValues<WavSampleFormat>().Select(v => new Choice<WavSampleFormat>(v, loc[$"presets.wav_format.{v}"])).ToList();
         ArchiveLevels = Enum.GetValues<ArchiveLevel>().Select(v => new Choice<ArchiveLevel>(v, loc[$"presets.archive_level.{v}"])).ToList();
 
         _name = string.IsNullOrWhiteSpace(_edit.Name) ? loc.DisplayName(_edit) : _edit.Name;
@@ -78,6 +84,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _maxHeight = MaxHeights.First(h => h.Value == _edit.Media.MaxHeight);
         _audioBitrate = AudioBitrates.First(b => b.Value == _edit.Media.AudioBitrateKbps);
         _removeAudio = _edit.Media.RemoveAudio;
+        _audioChannels = AudioChannelChoices.FirstOrDefault(c => c.Value == _edit.Media.AudioChannels) ?? AudioChannelChoices[0];
+        _sampleRate = SampleRates.First(r => r.Value == _edit.Media.AudioSampleRate);
+        _wavFormat = WavFormats.First(f => f.Value == _edit.Media.WavFormat);
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _quality = _edit.Image.Quality;
@@ -115,6 +124,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<MediaQuality>> MediaQualities { get; }
     public IReadOnlyList<Choice<int>> MaxHeights { get; }
     public IReadOnlyList<Choice<int>> AudioBitrates { get; }
+    public IReadOnlyList<Choice<int>> AudioChannelChoices { get; }
+    public IReadOnlyList<Choice<int>> SampleRates { get; }
+    public IReadOnlyList<Choice<WavSampleFormat>> WavFormats { get; }
     public IReadOnlyList<Choice<ArchiveLevel>> ArchiveLevels { get; }
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NameError), nameof(IsValid))]
@@ -124,6 +136,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowPdfSplit),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
+        nameof(ShowAudioChannels), nameof(ShowWav),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote))]
     private Choice<string> _target;
 
@@ -183,6 +196,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
     [ObservableProperty] private Choice<int> _audioBitrate;
+    [ObservableProperty] private Choice<int> _audioChannels;
+    [ObservableProperty] private Choice<int> _sampleRate;
+    [ObservableProperty] private Choice<WavSampleFormat> _wavFormat;
     [ObservableProperty] private bool _removeAudio;
     [ObservableProperty] private Choice<ArchiveLevel> _archiveLevel;
     [ObservableProperty] private bool _combineIntoOne;
@@ -205,7 +221,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowPdfBuild => TargetId == "pdf";
     public bool ShowPdfSplit => TargetId == "pdf";
     public bool ShowDocument => TargetId == "pdf";
-    public bool ShowMedia => ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio;
+    public bool ShowMedia => ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels;
+    /// <summary>Mono / stereo for every audio target but AMR, which is mono by definition.</summary>
+    public bool ShowAudioChannels => TargetIsAudio && TargetId != "amr";
+    /// <summary>Sample rate and sample format: WAV's PCM takes any.</summary>
+    public bool ShowWav => TargetId == "wav";
     public bool ShowMediaQuality => TargetIsLossyMedia;
     public bool ShowMaxHeight => TargetIsVideo;
     public bool ShowAudioBitrate => TargetIsLossyMedia;
@@ -269,6 +289,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.MaxHeight = MaxHeight.Value;
         media.AudioBitrateKbps = AudioBitrate.Value;
         media.RemoveAudio = RemoveAudio;
+        media.AudioChannels = AudioChannels.Value;
+        media.AudioSampleRate = SampleRate.Value;
+        media.WavFormat = WavFormat.Value;
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = CombineIntoOne;
 

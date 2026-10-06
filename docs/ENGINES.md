@@ -88,7 +88,8 @@ current.
   square; reading takes the largest image (PNG, JPEG 2000 or the old RLE + mask entries).
 - **Illustrator** files saved with "Create PDF compatible file" (the default since Illustrator 9) are PDFs and need
   nothing extra; PostScript-based ones need Ghostscript.
-- EPS, PS and AI reach PNG, JPG, … through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
+- EPS and PS → PNG go straight through Ghostscript's `pngalpha` device, so the background stays transparent;
+  JPG, WebP, … and AI reach images through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
 
 ## HWPX writer
 
@@ -242,6 +243,11 @@ it. DOCX → DOCX is no edge; the Word variants are the Office Open XML engine's
   when it follows at about one line pitch, unless it starts with a bullet or number, is indented as a first line,
   or the previous line ended although the next word would have fitted; hyphenated line ends are joined, and no
   space is added between Chinese or Japanese lines;
+- tab stops: a line split at wide gaps ("1.  RFP Published   08/14/2026") stays one paragraph with tabs and left tab
+  stops where its parts start, unless a column gutter lies between them; a gap counts as a tab after a list number,
+  when it is wider than 6 em, or when a row right above or below has a tab at the same place (a form's value column);
+- line breaks: in a paragraph narrower than its column (an address block), a line that ended although the next
+  line's first word would have fitted keeps its line break;
 - reading order: gutters between columns are found where no narrow paragraph crosses; paragraphs that span the
   columns (titles, figures, closing text) split the page into bands, read column by column;
 - headings from font sizes (short paragraphs clearly larger than the body text, the largest size is level 1), bold
@@ -490,12 +496,14 @@ Same-format edges exist too, so "MP4 720p" works on MP4 files and "MP3 128k" on 
   | MXF | OP1a with long-GOP MPEG-2 + 48 kHz PCM |
   | GIF | two passes: palettegen over the whole clip, then paletteuse; 15/12/10 fps and at most 640/480/320 px wide (High/Balanced/Small) |
   | MP3 · M4A/M4B · AAC · OGG · OPUS · WEBA · MKA · WMA · MP2 · AC3 · AMR | LAME VBR (V0/V2/V5) or CBR · AAC · AAC (ADTS) · Vorbis · Opus · Opus · Opus · WMA 2 · MP2 · AC-3 · AMR-NB 12.2k (8 kHz mono) |
-  | WAV · AIFF · AU · CAF · VOC · FLAC | 16-bit PCM (RF64 for WAV over 4 GB) · FLAC |
+  | WAV · AIFF · AU · CAF · VOC · FLAC | 16-bit PCM (WAV: 8/16/24/32-bit or 32-bit float; RF64 over 4 GB) · FLAC |
 
 - Preset options (`MediaOptions`): *Quality* picks CRF 18/23/28 (x264), 24/32/38 (VP9), quantizer 2/4/7 (MPEG-4,
   WMV, MPEG-2), Theora 8/6/4 and the audio bitrates (e.g. AAC 256/192/128 kbit/s per stereo pair); *MaxHeight*
   scales down only, keeps the aspect ratio and even sizes; *AudioBitrateKbps* overrides the audio bitrate (snapped to
-  the MP3/MP2/AC-3 bitrate tables); *RemoveAudio* drops the sound.
+  the MP3/MP2/AC-3 bitrate tables; the editor offers 32 to 320 kbit/s); *RemoveAudio* drops the sound;
+  *AudioChannels* (0 source, 1 mono, 2 stereo) applies to every audio target but AMR; *AudioSampleRate* (8 to
+  48 kHz) and *WavFormat* (bit depth) apply to WAV.
 - The first video stream (cover pictures excluded) and the first audio stream are converted; files without sound
   still convert to video. Title, artist and other tags and chapters are kept, album art too for MP3, M4A, M4B and
   FLAC. Portrait phone videos are turned upright. Odd sizes are evened out, frame rates that MPEG-2/MXF/MPEG-4 part 2

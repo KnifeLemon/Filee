@@ -511,6 +511,9 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal((400u, 200u), (image.Width, image.Height));
         var triangle = Pixel(image, 360, 170);
         Assert.True(triangle.B > 150 && triangle.R < 100, triangle.ToString());
+        // Where the drawing leaves the page empty, the PNG stays transparent (#39), not white.
+        Assert.True(image.HasAlpha);
+        Assert.Equal(0, Pixel(image, 2, 2).A);
     }
 
     [Fact]
@@ -560,7 +563,7 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("svg", "png", "vector")]
     [InlineData("svg", "pdf", "vector")]
     [InlineData("ai", "png", "vector,pdfium")]
-    [InlineData("eps", "png", "ghostscript,pdfium")]
+    [InlineData("eps", "png", "ghostscript")] // straight to PNG: keeps transparency (#39)
     [InlineData("svg", "eps", "vector,ghostscript")]
     [InlineData("raw", "jpg", "magick")]
     [InlineData("xcf", "psd", "magick")]

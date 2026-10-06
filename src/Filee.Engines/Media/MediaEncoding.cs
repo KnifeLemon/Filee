@@ -289,11 +289,41 @@ internal static class MediaEncoding
             args.AddRange(["-map", $"0:{cover}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]);
         if (extras is { AttachmentFile: { } picture, AttachmentMime: { } mime })
             args.AddRange(["-attach", picture, "-metadata:s:t", "mimetype=" + mime, "-metadata:s:t", "filename=" + Path.GetFileName(picture)]);
-        args.AddRange(AudioCodecArguments(target, spec.AudioCodec, options, audio, inVideo: false));
+        var codec = target == "wav" ? WavCodec(options.WavFormat) : spec.AudioCodec;
+        args.AddRange(AudioCodecArguments(target, codec, options, audio, inVideo: false));
+        args.AddRange(ChannelAndRateArguments(target, codec, options));
         args.AddRange(MetadataArguments(extras?.MetadataFile is null ? 0 : 1));
         args.AddRange(ContainerArguments(target));
         args.AddRange(["-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
+    }
+
+    /// <summary>The PCM codec of a WAV sample format (little-endian, 8-bit is unsigned as WAV defines it).</summary>
+    internal static string WavCodec(WavSampleFormat format) => format switch
+    {
+        WavSampleFormat.Pcm8 => "pcm_u8",
+        WavSampleFormat.Pcm24 => "pcm_s24le",
+        WavSampleFormat.Pcm32 => "pcm_s32le",
+        WavSampleFormat.Float32 => "pcm_f32le",
+        _ => "pcm_s16le",
+    };
+
+    /// <summary>
+    /// Mono or stereo for any audio target (after the codec's own limits, so the user's choice wins), and the sample
+    /// rate for WAV, whose PCM takes any rate. Codecs with a fixed layout (AMR is mono, 8 kHz) are left alone.
+    /// </summary>
+    internal static IEnumerable<string> ChannelAndRateArguments(string target, string codec, MediaOptions options)
+    {
+        if (options.AudioChannels is 1 or 2 && codec != "libopencore_amrnb")
+        {
+            yield return "-ac";
+            yield return options.AudioChannels.ToString(CultureInfo.InvariantCulture);
+        }
+        if (target == "wav" && options.AudioSampleRate is >= 8000 and <= 192000)
+        {
+            yield return "-ar";
+            yield return options.AudioSampleRate.ToString(CultureInfo.InvariantCulture);
+        }
     }
 
     /// <summary>
