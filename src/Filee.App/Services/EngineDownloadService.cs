@@ -43,7 +43,22 @@ public sealed partial class EnginePackageState : ObservableObject
         ? _loc.Format("engines.package.size", FormatBytes(EngineDownloads.DownloadSize(Package)), FormatBytes(Package.InstalledSize))
         : _loc["engines.package.system_required"];
 
-    public string? InstallGuidance => EngineDownloads.UnavailableReason(Package);
+    /// <summary>
+    /// How to get an engine Filee doesn't download on this system (FFmpeg and Ghostscript from Homebrew on macOS,
+    /// the distribution's packages on Linux), in the app's language; null when Filee can download it.
+    /// </summary>
+    public string? InstallGuidance
+    {
+        get
+        {
+            if (EngineDownloads.CanDownload(Package))
+                return null;
+            var system = OperatingSystem.IsMacOS() ? "macos" : OperatingSystem.IsLinux() ? "linux" : "windows";
+            var key = $"engines.guidance.{system}.{Package.Id}";
+            var text = _loc[key];
+            return text != key ? text : _loc.Format($"engines.guidance.{system}", Name);
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsInstalled), nameof(IsBusy), nameof(CanInstall), nameof(CanRemove),
