@@ -50,10 +50,14 @@ public sealed class TriggerService : IDisposable
     public (int X, int Y) LastCursor { get; private set; }
 
     public bool IsRunning => _hook?.IsRunning == true;
+    public string? Error { get; private set; }
+    public event EventHandler? StatusChanged;
+
+    private void NotifyStatus() => Post(() => StatusChanged?.Invoke(this, EventArgs.Empty));
 
     public void Apply(AppSettings settings)
     {
-        _detector.Configure(settings.Triggers);
+        _detector.Configure(settings.Triggers.Where(g => _platform.SupportsSelectionShortcut || g.Kind == TriggerKind.Drag).ToList());
         _detector.Paused = settings.Paused;
         _excluded = new HashSet<string>(settings.ExcludedProcesses.Select(p => p.Trim().Replace(".exe", "", StringComparison.OrdinalIgnoreCase)),
             StringComparer.OrdinalIgnoreCase);
@@ -63,11 +67,14 @@ public sealed class TriggerService : IDisposable
     {
         if (_hook is not null)
             return;
+        if (!_platform.SupportsGlobalPointerGestures)
+            return;
+        Error = null;
         try
         {
             _hook = new EventLoopGlobalHook();
-            _hook.HookEnabled += (_, _) => _log.LogInformation("Global input hook started");
-            _hook.HookDisabled += (_, _) => _log.LogInformation("Global input hook stopped");
+            _hook.HookEnabled += (_, _) => { _log.LogInformation("Global input hook started"); NotifyStatus(); };
+            _hook.HookDisabled += (_, _) => { _log.LogInformation("Global input hook stopped"); NotifyStatus(); };
             _hook.MousePressed += (_, e) => _detector.MouseDown(Map(e.Data.Button), e.Data.X, e.Data.Y, Map(e.RawEvent.Mask));
             _hook.MouseReleased += (_, e) => _detector.MouseUp(Map(e.Data.Button), e.Data.X, e.Data.Y);
             _hook.MouseDragged += (_, e) => OnMove(e);
@@ -77,14 +84,21 @@ public sealed class TriggerService : IDisposable
             {
                 // e.g. macOS without Accessibility permission. Drop zone and context menu keep working.
                 if (t.Exception is not null)
+                {
+                    Error = t.Exception.GetBaseException().Message;
                     _log.LogError(t.Exception, "Global input hook failed; gestures are unavailable");
+                    NotifyStatus();
+                }
             }, TaskScheduler.Default);
         }
         catch (Exception ex)
         {
             // e.g. macOS without Accessibility permission. The app keeps working via the drop zone / context menu.
             _log.LogError(ex, "Could not start the global input hook");
+            Error = ex.Message;
+            _hook?.Dispose();
             _hook = null;
+            NotifyStatus();
         }
     }
 

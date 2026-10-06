@@ -1,5 +1,5 @@
-// Makes sure only one Filee runs per user session. Later launches send their command line to the first
-// instance through a named pipe (e.g. Explorer starts one process per selected file for the context menu).
+// Keeps one Filee per Windows session, or per user across Unix launcher/terminal sessions.
+// Later launches forward arguments through a named pipe.
 
 using System.IO.Pipes;
 using System.Text.Json;
@@ -28,7 +28,11 @@ public sealed class SingleInstance : IDisposable
 
     public static SingleInstance Acquire()
     {
-        var mutex = new Mutex(initiallyOwned: true, @"Local\" + Name, out var createdNew);
+        bool createdNew;
+        var mutex = OperatingSystem.IsWindows()
+            ? new Mutex(initiallyOwned: true, @"Local\" + Name, out createdNew)
+            : new Mutex(initiallyOwned: true, Name,
+                new NamedWaitHandleOptions { CurrentUserOnly = true, CurrentSessionOnly = false }, out createdNew);
         return new SingleInstance(mutex, createdNew);
     }
 

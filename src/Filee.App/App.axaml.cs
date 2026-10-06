@@ -20,6 +20,7 @@ public partial class App : Application
 {
     private readonly List<string> _pendingConvertFiles = [];
     private IDisposable? _convertDebounce;
+    private bool _selectionPending;
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
@@ -49,11 +50,29 @@ public partial class App : Application
         var platform = AppHost.Get<IPlatformServices>();
         triggers.DragStarted += (_, e) => radial.ShowForDrag(e.X, e.Y);
         triggers.DragEnded += (_, _) => radial.OnDragGestureEnded();
-        triggers.SelectionGesture += (_, e) =>
+        triggers.SelectionGesture += async (_, e) =>
         {
-            var files = platform.GetFileManagerSelection();
-            if (files.Count > 0)
-                radial.ShowForFiles(e.X, e.Y, files);
+            if (_selectionPending || store.Settings.Paused)
+                return;
+            _selectionPending = true;
+            try
+            {
+                var files = OperatingSystem.IsMacOS()
+                    ? await Task.Run(platform.GetFileManagerSelection) : platform.GetFileManagerSelection();
+                if (files.Count > 0 && !store.Settings.Paused)
+                    radial.ShowForFiles(e.X, e.Y, files);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                log.LogWarning(ex, "Could not read the file manager selection");
+                AppHost.Get<WindowService>().ShowMain("triggers");
+                if (AppHost.Get<WindowService>().Main is { } window)
+                    _ = AppHost.Get<WindowService>().MessageAsync(window, ex.Message);
+            }
+            finally
+            {
+                _selectionPending = false;
+            }
         };
         triggers.Start();
         log.LogInformation("Filee {Version} started", UpdateService.CurrentVersion);
@@ -124,28 +143,7 @@ public partial class App : Application
             AppHost.Get<ConverterCatalog>().Refresh();
             AppHost.Get<EngineDownloadService>().RefreshStatus();
         }
-        ApplySystemIntegration(settings, loc);
-    }
-
-    /// <summary>Keeps registry entries in sync with settings (idempotent; paths follow updates).</summary>
-    private static void ApplySystemIntegration(AppSettings settings, ILocalizer loc)
-    {
-        var exe = Environment.ProcessPath;
-        if (exe is null || !OperatingSystem.IsWindows())
-            return;
-        // When running from the IDE (bin\Debug) don't touch the user's Explorer / startup settings.
-        if (!UpdateService.IsReleaseBuild)
-            return;
-        try
-        {
-            var platform = AppHost.Get<IPlatformServices>();
-            platform.SetStartWithSystem(settings.StartWithSystem, exe);
-            platform.SetContextMenu(settings.ContextMenuEnabled, exe, loc["general.context_menu_label"]);
-        }
-        catch (Exception ex)
-        {
-            AppHost.Get<ILogger<App>>().LogWarning(ex, "Could not update system integration");
-        }
+        AppHost.Get<SystemIntegrationService>().Apply(settings);
     }
 
     private void HandleCommandLine(CommandLine options, bool firstLaunch = false)
@@ -193,7 +191,7 @@ public partial class App : Application
     }
 
     /// <summary>
-    /// Options ticked on the installer's task page. Saving applies them (registry entries, see ApplySystemIntegration)
+    /// Options ticked on the installer's task page. Saving applies them through SystemIntegrationService
     /// as if they had been switched on the General page.
     /// </summary>
     private static void ApplyInstallerChoices(CommandLine options, UserDataStore store)
@@ -209,7 +207,7 @@ public partial class App : Application
 
     private void OpenPendingFiles()
     {
-        var files = _pendingConvertFiles.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var files = _pendingConvertFiles.Distinct(FileSystemPaths.Comparer).ToList();
         _pendingConvertFiles.Clear();
         var (x, y) = AppHost.Get<TriggerService>().LastCursor;
         if (x == 0 && y == 0 && AppHost.Get<WindowService>().Main is { } main)

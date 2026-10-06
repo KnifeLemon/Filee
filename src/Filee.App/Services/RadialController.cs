@@ -279,7 +279,7 @@ public sealed class RadialController(
     {
         var cursor = new PixelPoint(x, y);
         var screen = window.Screens.ScreenFromPoint(cursor) ?? window.Screens.Primary;
-        var scaling = screen?.Scaling ?? 1;
+        var scaling = OperatingSystem.IsMacOS() ? 1 : screen?.Scaling ?? 1;
 
         // Window size follows the donut size (SizeToContent); compute it up front to centre on the cursor.
         var side = 2 * (viewModel.OuterRadius + 7 + 14);
@@ -308,5 +308,5 @@ public sealed class RadialController(
     }
 
     private static bool SameFiles(IReadOnlyList<string> a, IReadOnlyList<string> b) =>
-        a.Count == b.Count && a.SequenceEqual(b, StringComparer.OrdinalIgnoreCase);
+        a.Count == b.Count && a.SequenceEqual(b, FileSystemPaths.Comparer);
 }

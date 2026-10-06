@@ -93,12 +93,10 @@ public sealed class PandocConverter : IConverter
         return [output];
     }
 
-    /// <summary>Filee's own pandoc (engines/pandoc, downloaded on demand), never one found elsewhere on the system.</summary>
+    /// <summary>Uses the selected copy, a bundled copy, then the system installation.</summary>
     internal static string? Locate() =>
         EngineEnvironment.OwnProgram("pandoc", "pandoc.exe") ?? LocateBundled() ?? EngineEnvironment.SystemProgram("pandoc", "pandoc.exe");
 
     private static string? LocateBundled() =>
-        EngineEnvironment.FindBundled("pandoc") is { } bundled
-            ? EngineEnvironment.FirstExisting(Path.Combine(bundled, OperatingSystem.IsWindows() ? "pandoc.exe" : "pandoc"))
-            : null;
+        EngineEnvironment.BundledProgram("pandoc", "pandoc.exe");
 }

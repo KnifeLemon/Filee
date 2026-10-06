@@ -6,6 +6,7 @@
 using System.Collections.Concurrent;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -31,8 +32,8 @@ public sealed class FolderWatcher : IAsyncDisposable
     private readonly ILogger _log;
     private readonly TimeSpan _settleTime;
     private readonly TimeProvider _time;
-    private readonly ConcurrentDictionary<string, Candidate> _pending = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _handled = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Candidate> _pending = new(FileSystemPaths.Comparer);
+    private readonly HashSet<string> _handled = new(FileSystemPaths.Comparer);
     private readonly SemaphoreSlim _busy = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private FileSystemWatcher? _watcher;
@@ -143,7 +144,7 @@ public sealed class FolderWatcher : IAsyncDisposable
             if (ready.Count == 0 || _stop.IsCancellationRequested)
                 return 0;
 
-            ready.Sort(StringComparer.OrdinalIgnoreCase);
+            ready.Sort(FileSystemPaths.Comparer);
             _log.LogInformation("Watch folder {Folder}: converting {Count} file(s)", Rule.Folder, ready.Count);
             var job = await _convert(ready, _stop.Token);
             if (job is not null)
@@ -242,12 +243,12 @@ public sealed class FolderWatcher : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(folder))
             return false;
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
-        return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        return Path.GetFullPath(path).StartsWith(root, FileSystemPaths.Comparison);
     }
 
     private static bool SameFolder(string? a, string b) =>
         a is not null && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)),
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), StringComparison.OrdinalIgnoreCase);
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), FileSystemPaths.Comparison);
 
     public async ValueTask DisposeAsync()
     {

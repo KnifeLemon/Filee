@@ -52,6 +52,18 @@ public sealed class EngineInstallerTests : IDisposable
         return buffer.ToArray();
     }
 
+    private static byte[] TarGzip(params (string Path, string Text)[] files)
+    {
+        using var buffer = new MemoryStream();
+        using (var gzip = new GZipStream(buffer, CompressionLevel.Fastest, leaveOpen: true))
+        using (var tar = new TarWriter(gzip, TarEntryFormat.Pax, leaveOpen: true))
+        {
+            foreach (var (path, text) in files)
+                tar.WriteEntry(new PaxTarEntry(TarEntryType.RegularFile, path) { DataStream = new MemoryStream(Encoding.UTF8.GetBytes(text)) });
+        }
+        return buffer.ToArray();
+    }
+
     /// <summary>A conda package: a zip with metadata and the files as a zstd-compressed tarball.</summary>
     private static byte[] Conda(params (string Path, string Text)[] files)
     {
@@ -150,6 +162,53 @@ public sealed class EngineInstallerTests : IDisposable
         Assert.Empty(Directory.GetFiles(Path.Combine(_root, ".downloads")));
     }
 
+    [Theory]
+    [InlineData("zip")]
+    [InlineData("tar.gz")]
+    public async Task An_incomplete_engine_update_preserves_the_working_install_and_its_marker(string kind)
+    {
+        var programs = EngineEnvironment.OwnCopyPrograms["ffmpeg"];
+        byte[] Archive(params (string Path, string Text)[] files) => kind == "zip" ? Zip(files) : TarGzip(files);
+        var previousArchive = Archive(($"ffmpeg-1.0/bin/{programs[0]}", "working encoder"),
+            ($"ffmpeg-1.0/bin/{programs[1]}", "working probe"));
+        var previousComponent = Component("ffmpeg", kind, previousArchive);
+        var package = new EnginePackage("ffmpeg", ["ffmpeg"], 1, ["ffmpeg"]);
+        var previousInstaller = Installer(new FakeServer(new() { [previousComponent.Url] = previousArchive }), previousComponent);
+        await previousInstaller.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        var incompleteArchive = Archive(($"ffmpeg-2.0/bin/{programs[0]}", "new encoder without probe"));
+        var incompleteComponent = Component("ffmpeg", kind, incompleteArchive) with { Version = "2.0" };
+        var installer = Installer(new FakeServer(new() { [incompleteComponent.Url] = incompleteArchive }), incompleteComponent);
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.Contains("ffmpeg", error.Message);
+        var folder = Path.Combine(_root, "ffmpeg");
+        Assert.Equal("working encoder", File.ReadAllText(Path.Combine(folder, "bin", programs[0])));
+        Assert.Equal("working probe", File.ReadAllText(Path.Combine(folder, "bin", programs[1])));
+        Assert.Equal(previousComponent.Sha256, File.ReadAllText(Path.Combine(folder, ".filee-component")));
+        Assert.True(previousInstaller.IsUpToDate(package));
+        Assert.True(installer.IsInstalled(package));
+        Assert.False(installer.IsUpToDate(package));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, ".downloads")));
+    }
+
+    [Theory]
+    [InlineData("libreoffice", "LibreOffice.app", "soffice")]
+    [InlineData("calibre", "calibre.app", "ebook-convert")]
+    public void A_Mac_application_bundle_requires_its_conversion_program(string id, string app, string program)
+    {
+        var folder = Path.Combine(_root, app, "Contents", "MacOS");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "README"), "not an executable");
+
+        Assert.Throws<InvalidDataException>(() => EngineInstaller.RequiredProgramFolder(id, _root, windows: false));
+
+        File.WriteAllText(Path.Combine(folder, program), "binary");
+        Assert.Equal(folder, EngineInstaller.RequiredProgramFolder(id, _root, windows: false));
+    }
+
     [Fact]
     public async Task Redirects_to_plain_http_mirrors_are_followed_because_the_hash_is_checked()
     {
@@ -235,7 +294,7 @@ public sealed class EngineInstallerTests : IDisposable
     [Fact]
     public void Every_package_component_is_pinned_in_the_manifest()
     {
-        foreach (var package in EngineDownloads.Packages)
+        foreach (var package in EngineDownloads.Packages.Where(EngineDownloads.CanDownload))
         {
             foreach (var id in package.Components)
             {

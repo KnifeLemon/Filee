@@ -17,6 +17,19 @@
       </StackPanel>
     </DockPanel>
 
+    <StackPanel Spacing="8">
+      <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding PlatformNotice}"
+                 IsVisible="{Binding PlatformNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding HookStatus}" />
+      <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Text="{Binding IntegrationError}"
+                 IsVisible="{Binding IntegrationError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <WrapPanel>
+        <Button Content="{DynamicResource triggers.open_accessibility}" Command="{Binding OpenAccessibilityCommand}"
+                IsVisible="{Binding IsMacOS}" Margin="0,0,8,0" />
+        <Button Content="{DynamicResource triggers.retry_hook}" Command="{Binding RetryHookCommand}" IsVisible="{Binding CanRetryHook}" />
+      </WrapPanel>
+    </StackPanel>
+
     <ItemsControl ItemsSource="{Binding Gestures}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>

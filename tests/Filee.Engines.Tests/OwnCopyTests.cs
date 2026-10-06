@@ -30,13 +30,11 @@ public sealed class OwnCopyTests : IDisposable
     [Fact]
     public void The_users_own_copy_wins_over_filees_download()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-        var ffmpeg = Program(@"ffmpeg\bin\ffmpeg.exe");
-        var ffprobe = Program(@"ffmpeg\bin\ffprobe.exe");
-        var pandoc = Program(@"pandoc\pandoc.exe");
-        var calibre = Program(@"Calibre2\calibre.exe");
-        var convert = Program(@"Calibre2\ebook-convert.exe");
+        var ffmpeg = Program(Path.Combine("ffmpeg", "bin", EngineEnvironment.ProgramName("ffmpeg.exe")));
+        var ffprobe = Program(Path.Combine("ffmpeg", "bin", EngineEnvironment.ProgramName("ffprobe.exe")));
+        var pandoc = Program(Path.Combine("pandoc", EngineEnvironment.ProgramName("pandoc.exe")));
+        var calibre = Program(Path.Combine("Calibre2", EngineEnvironment.ProgramName("calibre.exe")));
+        var convert = Program(Path.Combine("Calibre2", EngineEnvironment.ProgramName("ebook-convert.exe")));
 
         EngineEnvironment.OwnCopies = new Dictionary<string, string>
         {
@@ -53,9 +51,7 @@ public sealed class OwnCopyTests : IDisposable
     [Fact]
     public void A_folder_without_every_program_is_not_used()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-        var ffmpeg = Program(@"tools\ffmpeg.exe"); // no ffprobe.exe next to it
+        var ffmpeg = Program(Path.Combine("tools", EngineEnvironment.ProgramName("ffmpeg.exe")));
 
         Assert.Null(EngineEnvironment.FolderWithPrograms("ffmpeg", ffmpeg));
         EngineEnvironment.OwnCopies = new Dictionary<string, string> { ["ffmpeg"] = ffmpeg };
@@ -84,16 +80,13 @@ public sealed class SystemCopyTests : IDisposable
     [Fact]
     public void A_tool_on_the_path_is_found_when_filee_has_no_copy()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-        // Like Scoop's shims folder: ffmpeg.exe and ffprobe.exe side by side, on the PATH.
-        File.WriteAllBytes(Path.Combine(_folder, "ffmpeg.exe"), [0x4D, 0x5A]);
-        File.WriteAllBytes(Path.Combine(_folder, "ffprobe.exe"), [0x4D, 0x5A]);
-        Environment.SetEnvironmentVariable("PATH", _folder + ";" + _path);
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("ffmpeg.exe")), [0x4D, 0x5A]);
+        File.WriteAllBytes(Path.Combine(_folder, EngineEnvironment.ProgramName("ffprobe.exe")), [0x4D, 0x5A]);
+        Environment.SetEnvironmentVariable("PATH", _folder + Path.PathSeparator + _path);
         EngineEnvironment.ForgetSystemCopies();
 
         Assert.Equal(_folder, EngineEnvironment.SystemCopyFolder("ffmpeg"));
-        Assert.Equal(Path.Combine(_folder, "ffmpeg.exe"), EngineEnvironment.SystemProgram("ffmpeg", "ffmpeg.exe"));
+        Assert.Equal(Path.Combine(_folder, EngineEnvironment.ProgramName("ffmpeg.exe")), EngineEnvironment.SystemProgram("ffmpeg", "ffmpeg.exe"));
     }
 
     [Theory]
@@ -104,6 +97,7 @@ public sealed class SystemCopyTests : IDisposable
     [InlineData("calibre", "ebook-convert.exe (calibre 8.5.0)\nCreated by: Kovid Goyal", "8.5")]
     [InlineData("ghostscript", "10.04.0\r\n", "10.4")]
     [InlineData("libreoffice", "[Version]\nAllLanguages=en-US\nMsiProductVersion=25.2.4.3\n", "25.2")]
+    [InlineData("libreoffice", "LibreOffice 26.2.6.2 98d5f8\n", "26.2")]
     public void Versions_are_read_from_each_program(string id, string output, string? expected) =>
         Assert.Equal(expected is null ? null : Version.Parse(expected), CopyVersions.ParseVersion(id, output));
 

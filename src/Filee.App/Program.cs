@@ -67,7 +67,7 @@ internal static class Program
             if (!WaitForOtherProcessesOfThisExe(deadline))
                 return 1;
             if (Options.UninstallCleanup)
-                UninstallCleanup.Run();
+                return UninstallCleanup.Run() ? 0 : 1;
             return 0;
         }
     }
@@ -83,7 +83,7 @@ internal static class Program
                 try
                 {
                     if (process.Id == Environment.ProcessId
-                        || !string.Equals(process.MainModule?.FileName, exe, StringComparison.OrdinalIgnoreCase))
+                        || !string.Equals(process.MainModule?.FileName, exe, Filee.Core.Platform.FileSystemPaths.Comparison))
                         continue;
                     var left = deadline - DateTime.UtcNow;
                     if (left <= TimeSpan.Zero || !process.WaitForExit(left))

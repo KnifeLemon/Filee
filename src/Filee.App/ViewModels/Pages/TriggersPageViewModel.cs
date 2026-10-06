@@ -6,8 +6,12 @@ using Avalonia.Input;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
+using Filee.App.Services.Triggers;
 using Filee.Core.Localization;
+using Filee.Core.Platform;
 using Filee.Core.Settings;
+using Filee.Platform.Linux;
+using Filee.Platform.MacOS;
 using ModifierKeys = Filee.Core.Settings.ModifierKeys;
 
 namespace Filee.App.ViewModels.Pages;
@@ -127,21 +131,79 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     }
 }
 
-public sealed partial class TriggersPageViewModel : ObservableObject
+public sealed partial class TriggersPageViewModel : ObservableObject, IDisposable
 {
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
+    private readonly IPlatformServices? _platform;
+    private readonly TriggerService? _triggers;
+    private readonly SystemIntegrationService? _integration;
+    private string? _accessibilityError;
 
-    public TriggersPageViewModel(UserDataStore store, ILocalizer loc)
+    public TriggersPageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices? platform = null, TriggerService? triggers = null,
+        SystemIntegrationService? integration = null)
     {
         _store = store;
         _loc = loc;
+        _platform = platform;
+        _triggers = triggers;
+        _integration = integration;
+        store.SettingsChanged += OnTriggerSettingsChanged;
+        if (triggers is not null)
+            triggers.StatusChanged += OnTriggerStatusChanged;
         foreach (var gesture in store.Settings.Triggers)
             Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save));
         _excluded = string.Join(", ", store.Settings.ExcludedProcesses);
     }
 
     public ObservableCollection<TriggerGestureViewModel> Gestures { get; } = [];
+
+    public bool IsMacOS => _platform is MacOSPlatformServices;
+    public bool CanRetryHook => _triggers is not null && (_platform?.SupportsGlobalPointerGestures == true || IsMacOS);
+    public string? IntegrationError => _accessibilityError ?? _integration?.Error;
+    public string? PlatformNotice => _platform switch
+    {
+        MacOSPlatformServices => _loc["triggers.macos_permissions"],
+        LinuxPlatformServices when OperatingSystem.IsLinux() && LinuxPlatformServices.IsWaylandSession => _loc["triggers.linux_wayland"],
+        LinuxPlatformServices => _loc["triggers.linux_x11"],
+        _ => null,
+    };
+    public string? HookStatus => _triggers?.Error is { } error ? _loc.Format("triggers.hook_failed", error)
+        : _triggers is null ? null : _loc[_triggers.IsRunning ? "triggers.hook_running" : "triggers.hook_stopped"];
+
+    private void OnTriggerStatusChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(HookStatus));
+    private void OnTriggerSettingsChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(IntegrationError));
+
+    [RelayCommand]
+    private void OpenAccessibility()
+    {
+        try
+        {
+            _accessibilityError = null;
+            if (OperatingSystem.IsMacOS() && _platform is MacOSPlatformServices mac)
+                mac.OpenAccessibilitySettings();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            _accessibilityError = ex.Message;
+        }
+        OnPropertyChanged(nameof(IntegrationError));
+    }
+
+    [RelayCommand]
+    private void RetryHook()
+    {
+        _triggers?.Dispose();
+        _triggers?.Start();
+        OnPropertyChanged(nameof(HookStatus));
+    }
+
+    public void Dispose()
+    {
+        _store.SettingsChanged -= OnTriggerSettingsChanged;
+        if (_triggers is not null)
+            _triggers.StatusChanged -= OnTriggerStatusChanged;
+    }
 
     [ObservableProperty] private string _excluded;
 

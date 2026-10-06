@@ -20,7 +20,7 @@ public sealed partial class EngineSetupViewModel : ObservableObject
         _loc = loc;
         foreach (var package in Packages)
         {
-            package.Selected = !package.IsInstalled && Filee.Engines.Infrastructure.EngineDownloads.IsSuggested(package.Package);
+            package.Selected = package.CanInstall && Filee.Engines.Infrastructure.EngineDownloads.IsSuggested(package.Package);
             package.PropertyChanged += OnPackageChanged;
         }
     }

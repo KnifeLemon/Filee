@@ -23,7 +23,7 @@ public static partial class CopyVersions
     {
         var program = id switch
         {
-            "libreoffice" => Path.Combine(folder, "version.ini"),
+            "libreoffice" when OperatingSystem.IsWindows() => Path.Combine(folder, "version.ini"),
             _ when EngineEnvironment.OwnCopyPrograms.TryGetValue(id, out var programs) => Path.Combine(folder, programs[0]),
             _ => null,
         };
@@ -58,7 +58,7 @@ public static partial class CopyVersions
 
     private static string Read(string id, string program)
     {
-        if (id == "libreoffice")
+        if (id == "libreoffice" && OperatingSystem.IsWindows())
             return File.ReadAllText(program);
         var arguments = id == "ffmpeg" ? "-hide_banner -version" : "--version";
         try
@@ -96,7 +96,7 @@ public static partial class CopyVersions
     [GeneratedRegex(@"calibre (\d+)\.(\d+)")]
     private static partial Regex CalibreVersion();
 
-    [GeneratedRegex(@"MsiProductVersion=(\d+)\.(\d+)")]
+    [GeneratedRegex(@"(?:MsiProductVersion=|LibreOffice\s+)(\d+)\.(\d+)")]
     private static partial Regex LibreOfficeVersion();
 
     [GeneratedRegex(@"^\s*(\d+)\.(\d+)", RegexOptions.Multiline)]

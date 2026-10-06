@@ -1,33 +1,54 @@
-// Runs as "Filee.exe --uninstall-cleanup" from the uninstaller (installer/Filee.iss), after the running Filee exited:
-// removes registry entries, the Windows 11 Explorer menu package, downloaded engines and other integration Filee
-// created for the current user. Settings in %APPDATA%\Filee stay, so reinstalling brings them back.
+// Removes per-user integration and downloaded engines after Filee exits. User settings remain for reinstalling.
 
+using Filee.Core.Platform;
+using Filee.Platform.Linux;
+using Filee.Platform.MacOS;
 using Filee.Platform.Windows;
 
 namespace Filee.App.Services;
 
 internal static class UninstallCleanup
 {
-    public static void Run()
+    public static bool Run()
     {
-        if (!OperatingSystem.IsWindows())
-            return;
-        try
+        IPlatformServices platform = OperatingSystem.IsWindows() ? new WindowsPlatformServices()
+            : OperatingSystem.IsMacOS() ? new MacOSPlatformServices()
+            : OperatingSystem.IsLinux() ? new LinuxPlatformServices() : new NullPlatformServices();
+        var succeeded = true;
+        Clean(() => platform.SetContextMenu(false, "", ""));
+        Clean(() => platform.SetStartWithSystem(false, ""));
+        if (OperatingSystem.IsLinux() && platform is LinuxPlatformServices linux)
+            Clean(() => linux.SetThunarShortcut(null));
+        if (OperatingSystem.IsWindows() && ExplorerMenuRegistration.IsSupportedOs)
         {
-            var platform = new WindowsPlatformServices();
-            // Deletes the classic verb, Send To and the title file (which already hides the top-level entry).
-            platform.SetContextMenu(false, "", "");
-            platform.SetStartWithSystem(false, "");
-            // The uninstaller runs with administrator rights already, so no UAC prompt can appear here.
-            if (ExplorerMenuRegistration.IsSupportedOs)
-                ExplorerMenuRegistration.RemoveAsync(allowElevation: false).Wait(TimeSpan.FromSeconds(40));
-            // Engines downloaded later live outside the app folder (see EngineEnvironment.DownloadRoot).
-            if (Directory.Exists(Filee.Engines.Infrastructure.EngineEnvironment.DownloadRoot))
-                Directory.Delete(Filee.Engines.Infrastructure.EngineEnvironment.DownloadRoot, recursive: true);
+            Clean(() =>
+            {
+                var task = ExplorerMenuRegistration.RemoveAsync(allowElevation: false);
+                if (!task.Wait(TimeSpan.FromSeconds(40)))
+                    throw new TimeoutException("Timed out removing the Explorer menu.");
+                if (!task.Result.Succeeded)
+                    throw new IOException(task.Result.Error ?? "Could not remove the Explorer menu.");
+            });
         }
-        catch (Exception)
+        if (succeeded)
         {
-            // Uninstall must never fail because of cleanup.
+            Clean(() =>
+            {
+                var engines = Filee.Engines.Infrastructure.EngineEnvironment.DownloadRoot;
+                if (Directory.Exists(engines))
+                    Directory.Delete(engines, recursive: true);
+            });
+        }
+        return succeeded;
+
+        void Clean(Action action)
+        {
+            try { action(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                succeeded = false;
+                Console.Error.WriteLine(ex.Message);
+            }
         }
     }
 }

@@ -6,6 +6,7 @@ using System.Text.Json;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Watching;
 
@@ -281,7 +282,7 @@ internal static class Cli
             else
                 missing.Add(input);
         }
-        return files.Select(Path.GetFullPath).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        return files.Select(Path.GetFullPath).Distinct(FileSystemPaths.Comparer).ToList();
     }
 
     private static int ListFormats(CliOptions options, CliHost host, TextWriter output, TextWriter errors)

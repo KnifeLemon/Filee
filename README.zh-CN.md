@@ -55,7 +55,8 @@ Program Files。不想安装？把 `Filee-<版本>-win-Portable.zip` 解压到�
   用发布页的 SHA-256 校验文件核对，再经过一次管理员确认后运行。安装程序会关闭 Filee、完成更新并重新启动它，设置和引擎都会保留。
   便携版则会打开发布页面。按用户安装的 Filee 1.1 及更早版本也会由新的安装程序接管。
 
-macOS 版本正在计划中，也在考虑支持 Linux。
+Linux 和 macOS 版本正在开发，实际桌面验证尚未完成。当前稳定版下载仍为 Windows 版。
+开发构建请参阅 [Unix 构建说明](CONTRIBUTING.md#linux-and-macos-development)。
 
 ## 功能
 

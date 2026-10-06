@@ -84,8 +84,7 @@ public static class OutputPathResolver
     }
 
     private static bool PathsEqual(string a, string b) =>
+        // A Unix mount may still be case-insensitive. Prefer a numbered output to risking the source.
         string.Equals(Path.GetFullPath(a), Path.GetFullPath(b),
-            OperatingSystem.IsWindows() || OperatingSystem.IsMacOS()
-                ? StringComparison.OrdinalIgnoreCase
-                : StringComparison.Ordinal);
+            StringComparison.OrdinalIgnoreCase);
 }

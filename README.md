@@ -60,7 +60,8 @@ administrator rights once and installs Filee for all users in Program Files. Pre
   starts it again. The portable copy opens the release page instead. Filee 1.1 and earlier (installed per user) are
   taken over by the new installer too.
 
-macOS support is planned, and Linux is being considered.
+Linux and macOS ports are in development. Native desktop validation is still in progress; the Windows release
+remains the stable download. See [the Unix build instructions](CONTRIBUTING.md#linux-and-macos-development).
 
 ## Features
 

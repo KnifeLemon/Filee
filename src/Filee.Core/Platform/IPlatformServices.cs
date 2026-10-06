@@ -1,12 +1,12 @@
-// OS integration points. Windows implementation: Filee.Platform.Windows. macOS: planned.
-// Code that needs the OS goes through this interface so the rest of the app stays portable.
-
 namespace Filee.Core.Platform;
 
 /// <summary>Operating-system specific services.</summary>
 public interface IPlatformServices
 {
-    /// <summary>True if the window under the given screen point (physical pixels) belongs to the file manager or desktop.</summary>
+    bool SupportsGlobalPointerGestures => true;
+    bool SupportsSelectionShortcut => true;
+
+    /// <summary>True if the window at the screen point belongs to the file manager or desktop. Coordinates are pixels on Windows/Linux and desktop points on macOS.</summary>
     bool IsFileManagerAt(int x, int y);
 
     /// <summary>Process name (without extension) owning the window under the point, or <c>null</c>.</summary>
@@ -15,7 +15,7 @@ public interface IPlatformServices
     /// <summary>Files currently selected in the foreground file manager window (empty if none).</summary>
     IReadOnlyList<string> GetFileManagerSelection();
 
-    /// <summary>System drag threshold in physical pixels.</summary>
+    /// <summary>System drag threshold in the same units as screen coordinates.</summary>
     int SystemDragThreshold { get; }
 
     /// <summary>True if the user asked the OS to reduce animations.</summary>
@@ -71,7 +71,9 @@ public sealed record ModernContextMenuResult(bool Succeeded, bool Cancelled = fa
 /// <summary>Fallback used on platforms without an implementation yet. Everything is a no-op.</summary>
 public sealed class NullPlatformServices : IPlatformServices
 {
-    public bool IsFileManagerAt(int x, int y) => true;
+    public bool SupportsGlobalPointerGestures => false;
+    public bool SupportsSelectionShortcut => false;
+    public bool IsFileManagerAt(int x, int y) => false;
     public string? ProcessNameAt(int x, int y) => null;
     public IReadOnlyList<string> GetFileManagerSelection() => [];
     public int SystemDragThreshold => 4;
@@ -91,6 +93,8 @@ public sealed class NullPlatformServices : IPlatformServices
         if (target is null)
             return;
         var opener = OperatingSystem.IsMacOS() ? "open" : "xdg-open";
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(opener, $"\"{target}\"") { UseShellExecute = false });
+        var start = new System.Diagnostics.ProcessStartInfo(opener) { UseShellExecute = false };
+        start.ArgumentList.Add(target);
+        System.Diagnostics.Process.Start(start)?.Dispose();
     }
 }

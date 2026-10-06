@@ -16,13 +16,16 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
     private readonly UpdateService _updates;
+    private readonly SystemIntegrationService? _integration;
 
-    public GeneralPageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, UpdateService updates)
+    public GeneralPageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, UpdateService updates,
+        SystemIntegrationService? integration = null)
     {
         _store = store;
         _loc = loc;
         _platform = platform;
         _updates = updates;
+        _integration = integration;
 
         Languages =
         [
@@ -62,6 +65,11 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     public IReadOnlyList<Choice<string>> Languages { get; }
     public string DataFolder => _store.Directory;
     public bool IsWindows => OperatingSystem.IsWindows();
+    public bool HasSystemIntegration => _platform is not NullPlatformServices;
+    public string ContextMenuText => _loc[OperatingSystem.IsMacOS() ? "general.context_menu_macos"
+        : OperatingSystem.IsLinux() ? "general.context_menu_linux" : "general.context_menu"];
+    public string? IntegrationMessage => _integration?.Error ?? (OperatingSystem.IsMacOS()
+        ? _loc["general.integration_macos"] : OperatingSystem.IsLinux() ? _loc["general.integration_linux"] : null);
 
     /// <summary>Choices for the default save location (everything but "Default" itself).</summary>
     public IReadOnlyList<Choice<OutputLocation>> OutputLocations { get; }
@@ -193,6 +201,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     {
         change(_store.Settings);
         _store.SaveSettings();
+        OnPropertyChanged(nameof(IntegrationMessage));
     }
 
     [RelayCommand]

@@ -35,6 +35,8 @@
     <PackageVersion Include="ExcelNumberFormat" Version="1.1.0" />
     <!-- 5.2+ requires SkiaSharp 4 (see PDFtoImage above); 5.1.1 uses SkiaSharp 3.119 and HarfBuzzSharp 8.3 like Avalonia. -->
     <PackageVersion Include="Svg.Skia" Version="5.1.1" />
+    <PackageVersion Include="SkiaSharp" Version="3.119.4" />
+    <PackageVersion Include="SkiaSharp.NativeAssets.Linux.NoDependencies" Version="3.119.4" />
     <!-- Managed zstd / bzip2 for unpacking downloaded engines (conda packages). -->
     <PackageVersion Include="SharpCompress" Version="1.0.0" />
     <PackageVersion Include="ExcelDataReader" Version="3.9.0" />

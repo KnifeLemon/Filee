@@ -1,7 +1,7 @@
 // Office documents via LibreOffice in headless mode (MPL-2.0): the optional fallback for formats the built-in engines
 // don't handle (DOC, XLS, PPT, OpenDocument, ...) and the only reader of rarer ones: Works / WPS, WordPerfect, Lotus
 // Word Pro, AbiWord, Apple Pages / Numbers / Keynote, StarOffice, WPS Office, Publisher, CorelDRAW, Visio, CGM.
-// Filee downloads its own copy on request (engines/libreoffice); a LibreOffice installed on the system is never used.
+// Uses a selected installation, Filee's downloaded copy, or the system installation.
 //
 // Gotchas handled here:
 //  * Each concurrent soffice process needs its own user profile (-env:UserInstallation), otherwise
@@ -42,7 +42,7 @@ public sealed class LibreOfficeConverter : IConverter
 
     /// <summary>CGM opens in Impress but is a drawing: exported like one (PDF, ODG, SVG, PNG).</summary>
     private static readonly string[] ImpressGraphics = ["cgm"];
-    private static readonly string[] Draw = ["pub", "cdr", "vsd", "odg"];
+    private static readonly string[] Draw = ["pub", "cdr", "vsd", "odg", "emf", "wmf"];
 
     private readonly EngineEnvironment _env;
 
@@ -187,7 +187,11 @@ public sealed class LibreOfficeConverter : IConverter
         };
         // The HWP import filter (H2Orestart) is written in Java: point LibreOffice at the bundled JRE.
         if (EngineEnvironment.FindBundled("jre") is { } jre)
+        {
+            if (Directory.Exists(Path.Combine(jre, "Contents", "Home")))
+                jre = Path.Combine(jre, "Contents", "Home");
             args.Add("-env:UNO_JAVA_JFW_JREHOME=" + new Uri(jre + Path.DirectorySeparatorChar).AbsoluteUri);
+        }
         args.AddRange(["--convert-to", filter, "--outdir", outDir, input]);
         return await ProcessRunner.RunAsync(soffice, args, Timeout, cancellationToken);
     }
@@ -271,10 +275,8 @@ public sealed class LibreOfficeConverter : IConverter
     /// </summary>
     private void Locate()
     {
-        var bundled = EngineEnvironment.FindBundled("libreoffice");
-        _soffice = EngineEnvironment.OwnProgram("libreoffice", "soffice.exe") ?? (bundled is null ? null : EngineEnvironment.FirstExisting(
-            Path.Combine(bundled, "program", OperatingSystem.IsWindows() ? "soffice.exe" : "soffice"),
-            Path.Combine(bundled, "Contents", "MacOS", "soffice")))
+        _soffice = EngineEnvironment.OwnProgram("libreoffice", "soffice.exe")
+            ?? EngineEnvironment.BundledProgram("libreoffice", "soffice.exe")
             ?? EngineEnvironment.SystemProgram("libreoffice", "soffice.exe");
         _hasHwpFilter = _soffice is not null && HasH2Orestart(_soffice);
     }
@@ -284,6 +286,7 @@ public sealed class LibreOfficeConverter : IConverter
     {
         try
         {
+            soffice = File.ResolveLinkTarget(soffice, returnFinalTarget: true)?.FullName ?? soffice;
             var root = Directory.GetParent(Path.GetDirectoryName(soffice)!)!.FullName;
             foreach (var sub in new[] { "share/uno_packages", "share/extensions", "Resources/uno_packages", "Resources/extensions" })
             {

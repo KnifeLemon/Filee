@@ -13,7 +13,9 @@
           <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="240" />
         </StackPanel>
         <ToggleSwitch Content="{DynamicResource general.start_with_system}" IsChecked="{Binding StartWithSystem}" />
-        <ToggleSwitch Content="{DynamicResource general.context_menu}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding IsWindows}" />
+        <ToggleSwitch Content="{Binding ContextMenuText}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding HasSystemIntegration}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding IntegrationMessage}"
+                   IsVisible="{Binding IntegrationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <!-- Windows 11: optional top-level entry (needs one administrator prompt), see ExplorerMenuRegistration. -->
         <StackPanel Spacing="8" IsVisible="{Binding ShowModernMenu}">
           <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding ModernMenuStatus}" />
