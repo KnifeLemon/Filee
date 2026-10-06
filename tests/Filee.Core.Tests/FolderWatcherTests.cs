@@ -35,9 +35,13 @@ public class FolderWatcherTests
             await queue.RunAsync(job);
             jobs.Add(job);
             return job;
-        }, time: time);
+        }, settleTime: TimeSpan.FromSeconds(2), time: time);
         return (watcher, time, jobs, queue);
     }
+
+    [Fact]
+    public void Default_wait_is_longer_where_files_being_written_are_not_locked() =>
+        Assert.Equal(TimeSpan.FromSeconds(OperatingSystem.IsWindows() ? 2 : 5), FolderWatcher.DefaultSettleTime);
 
     [Fact]
     public async Task A_file_is_converted_once_it_has_settled()

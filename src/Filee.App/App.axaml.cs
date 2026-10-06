@@ -89,7 +89,7 @@ public partial class App : Application
             && store.Settings.Triggers.Any(t => t.Enabled && t.Kind == TriggerKind.Drag))
             DispatcherTimer.RunOnce(() =>
             {
-                if (triggers.NeedsPermission)
+                if (OperatingSystem.IsMacOS() && triggers.NeedsPermission)
                     mac.RequestAccessibilityPermission();
             }, TimeSpan.FromSeconds(1.5));
 

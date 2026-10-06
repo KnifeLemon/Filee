@@ -13,8 +13,6 @@ on:
         description: 'Package version (empty uses Directory.Build.props)'
         type: string
         required: false
-  # Every pull request builds, tests and launches the app on Linux and on real Macs (screenshots in the results).
-  pull_request:
 
 permissions:
   contents: read

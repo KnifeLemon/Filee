@@ -8,7 +8,6 @@ using System.Runtime.Versioning;
 
 namespace Filee.Platform.MacOS;
 
-[SupportedOSPlatform("macos")]
 public static class MacOSServicesProvider
 {
     /// <summary>The service's menu title in Info.plist; ServicesMenu.strings in each .lproj translates it.</summary>
@@ -31,6 +30,7 @@ public static class MacOSServicesProvider
     /// Answers the service from now on; <paramref name="handler"/> gets the files (on the main thread). Call it on the
     /// main thread early at start: a service picked while Filee wasn't running is delivered once this is set.
     /// </summary>
+    [SupportedOSPlatform("macos")]
     public static void Register(Action<IReadOnlyList<string>> handler)
     {
         _handler = handler;
