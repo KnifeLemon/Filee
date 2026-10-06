@@ -19,6 +19,8 @@
     <PackageReference Include="Markdig" />
     <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Svg.Skia" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="SkiaSharp.NativeAssets.Linux.NoDependencies" />
     <PackageReference Include="SharpCompress" />
     <PackageReference Include="ExcelDataReader" />
     <PackageReference Include="PdfPig" />

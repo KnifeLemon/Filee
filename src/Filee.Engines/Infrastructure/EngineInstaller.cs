@@ -15,6 +15,7 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using SharpCompress.Compressors.Xz;
 using SharpCompress.Compressors.ZStandard;
 
 namespace Filee.Engines.Infrastructure;
@@ -52,15 +53,19 @@ public sealed class EngineInstaller
     }
 
     /// <summary>True when every component is installed (any version).</summary>
-    public bool IsInstalled(EnginePackage package) => package.Components.All(c => Marker(c) is not null);
+    public bool IsInstalled(EnginePackage package) => package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
 
     /// <summary>True when every component is installed in the version engines.json pins.</summary>
     public bool IsUpToDate(EnginePackage package) =>
-        package.Components.All(c => string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase));
+        package.Components.All(c => _components.TryGetValue(c, out var component)
+            && string.Equals(Marker(c), component.Sha256, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Downloads and unpacks the components that are missing or outdated.</summary>
     public async Task InstallAsync(EnginePackage package, IProgress<EngineInstallProgress>? progress, CancellationToken cancellationToken)
     {
+        if (package.Components.Any(c => !_components.ContainsKey(c)))
+            throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
+                ?? $"The {package.Id} package is unavailable on this platform.");
         var pending = package.Components
             .Where(c => !string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase))
             .Select(c => _components[c])
@@ -179,7 +184,18 @@ public sealed class EngineInstaller
             {
                 case "zip":
                     ZipFile.ExtractToDirectory(file, staging);
+                    EnsureExecutablePrograms(component.Id, SingleRoot(staging));
                     Replace(component.Id, SingleRoot(staging));
+                    break;
+                case "tar.gz":
+                case "tar.xz":
+                    await UnpackTarAsync(file, staging, component.Kind, cancellationToken);
+                    EnsureExecutablePrograms(component.Id, SingleRoot(staging));
+                    Replace(component.Id, SingleRoot(staging));
+                    break;
+                case "dmg":
+                    await UnpackDiskImageAsync(component.Id, file, staging, cancellationToken);
+                    Replace(component.Id, staging);
                     break;
                 case "msi":
                     await UnpackMsiAsync(component.Id, file, staging, Path.Combine(Path.GetTempPath(), "filee-msiexec.log"), cancellationToken);
@@ -209,6 +225,80 @@ public sealed class EngineInstaller
         {
             if (Directory.Exists(staging))
                 Directory.Delete(staging, recursive: true);
+        }
+    }
+
+    internal static async Task UnpackTarAsync(string file, string target, string kind, CancellationToken cancellationToken)
+    {
+        Directory.CreateDirectory(target);
+        await using var input = File.OpenRead(file);
+        await using Stream content = kind switch
+        {
+            "tar.gz" => new GZipStream(input, CompressionMode.Decompress),
+            "tar.xz" => new XZStream(input),
+            _ => throw new NotSupportedException(kind),
+        };
+        await TarFile.ExtractToDirectoryAsync(content, target, overwriteFiles: false, cancellationToken);
+    }
+
+    internal static void EnsureExecutablePrograms(string id, string root)
+    {
+        var folder = RequiredProgramFolder(id, root, OperatingSystem.IsWindows());
+        if (OperatingSystem.IsWindows() || folder is null)
+            return;
+        foreach (var program in EngineEnvironment.OwnCopyPrograms[id])
+        {
+            var path = Path.Combine(folder, program);
+            File.SetUnixFileMode(path, File.GetUnixFileMode(path)
+                | UnixFileMode.UserExecute | UnixFileMode.GroupExecute | UnixFileMode.OtherExecute);
+        }
+    }
+
+    internal static string? RequiredProgramFolder(string id, string root, bool windows)
+    {
+        if (!EngineEnvironment.OwnCopyPrograms.ContainsKey(id))
+            return null;
+        return EngineEnvironment.FolderWithPrograms(id, root, windows)
+            ?? throw new InvalidDataException($"The {id} package is missing required executable programs in its expected folders.");
+    }
+
+    private async Task UnpackDiskImageAsync(string id, string file, string target, CancellationToken cancellationToken)
+    {
+        if (!OperatingSystem.IsMacOS())
+            throw new PlatformNotSupportedException("Disk image packages can only be installed on macOS.");
+        var appName = id switch
+        {
+            "libreoffice" => "LibreOffice.app",
+            "calibre" => "calibre.app",
+            _ => throw new NotSupportedException($"No application bundle is specified for {id}."),
+        };
+        // Keep the mount outside staging so failed unmounts cannot be removed by staging cleanup.
+        var mount = Path.Combine(_root, ".mount-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(mount);
+        var attached = false;
+        try
+        {
+            var attach = await ProcessRunner.RunAsync("/usr/bin/hdiutil",
+                ["attach", "-readonly", "-nobrowse", "-mountpoint", mount, file], TimeSpan.FromMinutes(3), cancellationToken);
+            if (attach.ExitCode != 0)
+                throw new InvalidOperationException($"Could not open {id} disk image: {attach.StandardError.Trim()}");
+            attached = true;
+            var app = Path.Combine(mount, appName);
+            if (!Directory.Exists(app) || new DirectoryInfo(app).LinkTarget is not null)
+                throw new InvalidDataException($"{appName} is missing from the disk image.");
+            Directory.CreateDirectory(target);
+            var copy = await ProcessRunner.RunAsync("/usr/bin/ditto", [app, Path.Combine(target, appName)],
+                TimeSpan.FromMinutes(10), cancellationToken);
+            if (copy.ExitCode != 0)
+                throw new InvalidOperationException($"Could not copy {appName}: {copy.StandardError.Trim()}");
+        }
+        finally
+        {
+            var detach = await ProcessRunner.RunAsync("/usr/bin/hdiutil", ["detach", mount],
+                TimeSpan.FromSeconds(30), CancellationToken.None);
+            if (detach.ExitCode != 0 && attached)
+                throw new IOException($"Could not unmount the engine disk image at {mount}: {detach.StandardError.Trim()}");
+            Directory.Delete(mount);
         }
     }
 
@@ -351,6 +441,7 @@ public sealed class EngineInstaller
     /// <summary>Makes <paramref name="source"/> the engine folder, replacing a previous version.</summary>
     private void Replace(string id, string source)
     {
+        RequiredProgramFolder(id, source, _components[id].Kind is "msi" or "conda" || OperatingSystem.IsWindows());
         var target = FolderOf(id);
         if (Directory.Exists(target))
             Directory.Delete(target, recursive: true);

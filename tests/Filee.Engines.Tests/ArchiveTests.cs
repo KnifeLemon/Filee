@@ -584,7 +584,9 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Clashing_names_in_one_archive_are_numbered()
     {
-        var items = ArchiveConverter.UniqueEntries([@"C:\a\x.txt", @"C:\b\X.txt", @"C:\c\x.txt", @"C:\d\y"]);
+        var root = Path.GetTempPath();
+        var items = ArchiveConverter.UniqueEntries([Path.Combine(root, "a", "x.txt"), Path.Combine(root, "b", "X.txt"),
+            Path.Combine(root, "c", "x.txt"), Path.Combine(root, "d", "y")]);
         Assert.Equal(["x.txt", "X (2).txt", "x (3).txt", "y"], items.Select(i => i.EntryName));
     }
 

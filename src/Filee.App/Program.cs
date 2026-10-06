@@ -41,6 +41,15 @@ internal static class Program
         {
             return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
         }
+        catch (InvalidOperationException ex) when (OperatingSystem.IsMacOS() && ex.Message.Contains("RenderTimer", StringComparison.Ordinal))
+        {
+            // The window system has no display link for this screen: a Mac in a virtual machine without graphics
+            // acceleration (VMware). Avalonia can't draw there; say so instead of quitting without a word.
+            StartupFailure.Report(ex, "Filee can't open its window on this Mac: macOS reports no display it can draw on. " +
+                                      "This happens in virtual machines without graphics acceleration (such as VMware). " +
+                                      "The filee command still works in Terminal.");
+            return 1;
+        }
         finally
         {
             Instance.Dispose();
@@ -67,7 +76,7 @@ internal static class Program
             if (!WaitForOtherProcessesOfThisExe(deadline))
                 return 1;
             if (Options.UninstallCleanup)
-                UninstallCleanup.Run();
+                return UninstallCleanup.Run() ? 0 : 1;
             return 0;
         }
     }
@@ -83,7 +92,7 @@ internal static class Program
                 try
                 {
                     if (process.Id == Environment.ProcessId
-                        || !string.Equals(process.MainModule?.FileName, exe, StringComparison.OrdinalIgnoreCase))
+                        || !string.Equals(process.MainModule?.FileName, exe, Filee.Core.Platform.FileSystemPaths.Comparison))
                         continue;
                     var left = deadline - DateTime.UtcNow;
                     if (left <= TimeSpan.Zero || !process.WaitForExit(left))

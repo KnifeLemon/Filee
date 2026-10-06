@@ -50,6 +50,7 @@ public class InstallerTests
         Assert.Null(CommandLine.Parse(["--background"]).InstallEngines);
         Assert.Null(CommandLine.Parse(["--start-with-windows=maybe"]).StartWithWindows);
         Assert.Null(CommandLine.Parse([]).ContextMenu);
+        Assert.True(CommandLine.Parse(["--start-with-system=on"]).StartWithWindows);
     }
 
     [Fact]

@@ -35,9 +35,13 @@ public class FolderWatcherTests
             await queue.RunAsync(job);
             jobs.Add(job);
             return job;
-        }, time: time);
+        }, settleTime: TimeSpan.FromSeconds(2), time: time);
         return (watcher, time, jobs, queue);
     }
+
+    [Fact]
+    public void Default_wait_is_longer_where_files_being_written_are_not_locked() =>
+        Assert.Equal(TimeSpan.FromSeconds(OperatingSystem.IsWindows() ? 2 : 5), FolderWatcher.DefaultSettleTime);
 
     [Fact]
     public async Task A_file_is_converted_once_it_has_settled()
@@ -156,5 +160,65 @@ public class FolderWatcherTests
 
         Assert.False(watcher.Start());
         Assert.NotNull(watcher.Error);
+    }
+
+    [Fact]
+    public async Task Case_distinct_files_with_identical_metadata_are_both_converted()
+    {
+        using var dir = new TempDir();
+        var lower = dir.File("photo.jpg", "one");
+        var upper = Path.Combine(dir.Path, "PHOTO.jpg");
+        if (File.Exists(upper))
+        {
+            Assert.Skip("The temporary volume is case-insensitive.");
+            return;
+        }
+        File.WriteAllText(upper, "two");
+        File.SetLastWriteTimeUtc(upper, File.GetLastWriteTimeUtc(lower));
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path });
+        await using var queueLifetime = queue;
+        await using var watcherLifetime = watcher;
+
+        watcher.Notice(lower);
+        watcher.Notice(upper);
+        time.Advance(3);
+
+        Assert.Equal(2, await watcher.ProcessPendingAsync());
+        var job = Assert.Single(jobs);
+        Assert.Equal(2, job.Files.Count);
+        Assert.Equal(2, job.Outputs.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        foreach (var result in job.Files)
+        {
+            Assert.Equal(FileState.Done, result.State);
+            Assert.Contains(Path.GetFileName(result.SourcePath), File.ReadAllText(Assert.Single(result.Outputs)));
+        }
+
+        watcher.Notice(lower);
+        watcher.Notice(upper);
+        time.Advance(3);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Single(jobs);
+    }
+
+    [Fact]
+    public void A_case_distinct_folder_is_not_mistaken_for_the_output_folder()
+    {
+        using var dir = new TempDir();
+        var rule = new WatchRule { Folder = dir.Path, IncludeSubfolders = true };
+        Directory.CreateDirectory(rule.ResolvedOutputFolder);
+        var alternate = Path.Combine(dir.Path, "Converted");
+        if (Directory.Exists(alternate))
+        {
+            Assert.Skip("The temporary volume is case-insensitive.");
+            return;
+        }
+        Directory.CreateDirectory(alternate);
+        var input = Path.Combine(alternate, "photo.jpg");
+        var output = Path.Combine(rule.ResolvedOutputFolder, "photo.jpg");
+        File.WriteAllText(input, "input");
+        File.WriteAllText(output, "output");
+
+        Assert.False(FolderWatcher.ShouldIgnore(input, rule));
+        Assert.True(FolderWatcher.ShouldIgnore(output, rule));
     }
 }

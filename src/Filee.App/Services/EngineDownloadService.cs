@@ -39,8 +39,26 @@ public sealed partial class EnginePackageState : ObservableObject
     public string Name => _loc[$"engines.package.{Package.Id}.name"];
     public string Description => _loc[$"engines.package.{Package.Id}.description"];
 
-    public string Sizes => _loc.Format("engines.package.size",
-        FormatBytes(EngineDownloads.DownloadSize(Package)), FormatBytes(Package.InstalledSize));
+    public string Sizes => EngineDownloads.CanDownload(Package)
+        ? _loc.Format("engines.package.size", FormatBytes(EngineDownloads.DownloadSize(Package)), FormatBytes(Package.InstalledSize))
+        : _loc["engines.package.system_required"];
+
+    /// <summary>
+    /// How to get an engine Filee doesn't download on this system (FFmpeg and Ghostscript from Homebrew on macOS,
+    /// the distribution's packages on Linux), in the app's language; null when Filee can download it.
+    /// </summary>
+    public string? InstallGuidance
+    {
+        get
+        {
+            if (EngineDownloads.CanDownload(Package))
+                return null;
+            var system = OperatingSystem.IsMacOS() ? "macos" : OperatingSystem.IsLinux() ? "linux" : "windows";
+            var key = $"engines.guidance.{system}.{Package.Id}";
+            var text = _loc[key];
+            return text != key ? text : _loc.Format($"engines.guidance.{system}", Name);
+        }
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(StatusText), nameof(IsInstalled), nameof(IsBusy), nameof(CanInstall), nameof(CanRemove),
@@ -87,8 +105,8 @@ public sealed partial class EnginePackageState : ObservableObject
                                  || (Status == EnginePackageStatus.OwnCopy && FromSystem);
     public bool IsBusy => Status is EnginePackageStatus.Queued or EnginePackageStatus.Downloading or EnginePackageStatus.Unpacking;
     /// <summary>Also when a copy on the PC is used: Filee's download is the tested version and wins once installed.</summary>
-    public bool CanInstall => Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed
-                              || (Status == EnginePackageStatus.OwnCopy && FromSystem);
+    public bool CanInstall => EngineDownloads.CanDownload(Package) && (Status is EnginePackageStatus.NotInstalled or EnginePackageStatus.Failed
+                              || (Status == EnginePackageStatus.OwnCopy && FromSystem));
 
     public string StatusText => Status switch
     {
@@ -204,7 +222,7 @@ public sealed class EngineDownloadService
     /// <summary>Downloads and installs a package; packages queue up and install one after another.</summary>
     public async Task InstallAsync(EnginePackageState state)
     {
-        if (state.IsBusy || state.IsInstalled)
+        if (!state.CanInstall)
             return;
         using var cancellation = new CancellationTokenSource();
         state.Cancellation = cancellation;

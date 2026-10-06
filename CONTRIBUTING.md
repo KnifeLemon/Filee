@@ -11,10 +11,50 @@ Thanks for helping! Filee is built to be easy to extend: most contributions touc
    DOCX. XLSX ↔ CSV and anything → HWPX work without either). Without `-Only` it also downloads LibreOffice with
    H2Orestart and Java (~420 MB), which only older formats such as DOC, XLS and PPT need. Engines in the
    repository's `engines/` folder are picked up by debug builds; users download the large ones from the app.
-   Filee never uses programs installed on the system (Microsoft Office, a system LibreOffice, tools on `PATH`).
+   Filee can also discover supported engines on `PATH` and in their standard installation folders. Settings >
+   Engines lets you choose a specific copy. Microsoft Office is not used.
 4. `dotnet run --project src/Filee.App`, `dotnet test`.
 
 Any IDE works (Visual Studio 2022+, Rider, VS Code with C# Dev Kit).
+
+## Linux and macOS development
+
+These ports are development builds until native desktop tests are complete. Install .NET 10 and PowerShell 7,
+then build on the target OS. Supported package targets are `linux-x64`, `linux-arm64`, `osx-x64` and `osx-arm64`.
+
+```sh
+pwsh build/fetch-fonts.ps1
+pwsh build/fetch-portable-engines.ps1 -Runtime linux-x64 -Destination engines
+dotnet test Filee.slnx -c Release
+pwsh build/build-portable.ps1 -Runtime linux-x64
+```
+
+Use the matching runtime on a Mac or ARM64 Linux machine. Packaging runs on Linux/macOS so archives retain
+executable permissions. Each archive contains the app, CLI, rhwp, 7-Zip, installation instructions and per-user
+install/uninstall scripts. `Filee-<version>-<rid>-SHA256SUMS.txt` verifies the archive. macOS bundles use
+`com.filee.app` and a development ad-hoc signature by default; public distribution still needs Developer ID signing
+and notarization. `-SigningIdentity` can supply a signing identity, but does not perform notarization.
+
+- **Linux:** drag gestures require X11. Install the Avalonia desktop dependencies (fontconfig, FreeType, X11,
+  Xrandr, Xi, Xtst, XkbCommon, ICE and SM) and CJK fonts for document comparisons. File actions are installed for
+  Thunar, Nautilus, Nemo and Dolphin. The first enabled keyboard shortcut uses Thunar's native custom action;
+  close Thunar before changing or pausing that shortcut and reopen it afterwards. Global selected-file queries
+  and hold gestures are not supported. Wayland can use file actions, the drop zone, watch folders and CLI.
+- **macOS:** grant Filee Accessibility permission for gestures and Finder Automation permission for selection.
+  Keep the development `.app` at a stable path while testing these permissions. Finder integration is a Quick
+  Action under Services; auto-start uses a per-user LaunchAgent.
+- **Engines:** packages are selected by OS and architecture. Linux LibreOffice/Ghostscript and macOS
+  FFmpeg/Ghostscript currently use system or user-selected installations. Linux ARM64 has no Unhwp native binary.
+  The macOS LibreOffice package does not include H2Orestart; native rhwp/Unhwp provide the supported HWP routes.
+  Use Settings > Engines to inspect actual availability before comparing formats.
+
+The reusable `portable.yml` workflow builds and tests all four targets. Native platform tests skip on other OSes.
+Before calling a port ready, verify the installed package, CLI conversion, Finder/Thunar selection with Unicode
+and spaced paths, drag and keyboard gestures, permissions denied/granted, Retina/scaling, tray, login startup,
+engine downloads, watch folders, and uninstall. CI GUI startup alone does not validate these interactions.
+
+The website lives in the adjacent `../filee-web` repository. Its downloads must match real release assets and
+keep development status visible until native validation is complete.
 
 ## Where things live
 

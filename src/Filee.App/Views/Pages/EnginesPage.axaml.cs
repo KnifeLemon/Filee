@@ -19,13 +19,27 @@ public partial class EnginesPage : UserControl
             return;
         var loc = AppHost.Get<ILocalizer>();
         var programs = Filee.Engines.Infrastructure.EngineEnvironment.OwnCopyPrograms[package.Package.Id];
-        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        string? path;
+        if (OperatingSystem.IsMacOS() && package.Package.Id is "libreoffice" or "calibre")
         {
-            Title = loc.Format("engines.use_own_title", package.Name),
-            AllowMultiple = false,
-            FileTypeFilter = [new FilePickerFileType(programs[0]) { Patterns = [programs[0]] }, FilePickerFileTypes.All],
-        });
-        if (files.FirstOrDefault()?.TryGetLocalPath() is not { } path)
+            var folders = await window.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = loc.Format("engines.use_own_app_folder", package.Name),
+                AllowMultiple = false,
+            });
+            path = folders.FirstOrDefault()?.TryGetLocalPath();
+        }
+        else
+        {
+            var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            {
+                Title = loc.Format("engines.use_own_title", package.Name),
+                AllowMultiple = false,
+                FileTypeFilter = [new FilePickerFileType(programs[0]) { Patterns = [programs[0]] }, FilePickerFileTypes.All],
+            });
+            path = files.FirstOrDefault()?.TryGetLocalPath();
+        }
+        if (path is null)
             return;
         if (!vm.UseOwnCopy(package, path))
             await AppHost.Get<WindowService>().MessageAsync(window, loc.Format("engines.use_own_missing", string.Join(", ", programs)));

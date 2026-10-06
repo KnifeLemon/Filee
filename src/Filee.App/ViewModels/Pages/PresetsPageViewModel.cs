@@ -42,12 +42,20 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
         _store = store;
         _loc = loc;
         _windows = windows;
+        VisiblePresets = new FilteredList<PresetListItem>(Presets, p => [p.Name, p.Target, p.Preset.TargetFormat]);
         foreach (var preset in store.Presets)
             Presets.Add(new PresetListItem(preset, loc));
         SelectedPreset = Presets.FirstOrDefault();
     }
 
     public ObservableCollection<PresetListItem> Presets { get; } = [];
+
+    /// <summary>The presets the search box above the list lets through (name or target format).</summary>
+    public FilteredList<PresetListItem> VisiblePresets { get; }
+
+    [ObservableProperty] private string _search = "";
+
+    partial void OnSearchChanged(string value) => VisiblePresets.Query = value;
 
     [ObservableProperty] private PresetListItem? _selectedPreset;
     [ObservableProperty] private PresetEditorViewModel? _editor;

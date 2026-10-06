@@ -1,4 +1,4 @@
-// General settings: language, start-up, Explorer integration, updates, preset library import/export.
+// General settings: language, start-up, Explorer integration, preset library import/export. Updates are on the About page.
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,19 +10,19 @@ using Filee.Core.Settings;
 
 namespace Filee.App.ViewModels.Pages;
 
-public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
+public sealed partial class GeneralPageViewModel : ObservableObject
 {
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
-    private readonly UpdateService _updates;
+    private readonly SystemIntegrationService? _integration;
 
-    public GeneralPageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, UpdateService updates)
+    public GeneralPageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, SystemIntegrationService? integration = null)
     {
         _store = store;
         _loc = loc;
         _platform = platform;
-        _updates = updates;
+        _integration = integration;
 
         Languages =
         [
@@ -32,7 +32,6 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _language = Languages.FirstOrDefault(l => l.Value == store.Settings.Language) ?? Languages[0];
         _startWithSystem = store.Settings.StartWithSystem;
         _contextMenu = store.Settings.ContextMenuEnabled;
-        _checkForUpdates = store.Settings.CheckForUpdates;
         _noHistory = !store.Settings.KeepHistory;
         OutputLocations = new[] { OutputLocation.SameFolder, OutputLocation.Subfolder, OutputLocation.CustomFolder }
             .Select(v => new Choice<OutputLocation>(v, loc[$"presets.location.{v}"])).ToList();
@@ -42,26 +41,17 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _defaultFolder = output.CustomFolder;
         _keepFileDates = store.Settings.KeepFileDates;
         _historyCount = store.History.Count;
-        ShowUpdateState(updates.LatestVersion);
-        updates.PropertyChanged += OnUpdatesChanged;
         RefreshModernMenu();
     }
-
-    /// <summary>The page is rebuilt on every visit; the update service lives on.</summary>
-    public void Dispose() => _updates.PropertyChanged -= OnUpdatesChanged;
-
-    private void OnUpdatesChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
-    {
-        if (UpdateTexts.Affects(e.PropertyName))
-            ShowUpdateState(_updates.LatestVersion);
-    }
-
-    /// <summary>"Update" in an installed copy, "Download" in a portable one.</summary>
-    public string UpdateButtonText => _loc[UpdateTexts.ButtonKey];
 
     public IReadOnlyList<Choice<string>> Languages { get; }
     public string DataFolder => _store.Directory;
     public bool IsWindows => OperatingSystem.IsWindows();
+    public bool HasSystemIntegration => _platform is not NullPlatformServices;
+    public string ContextMenuText => _loc[OperatingSystem.IsMacOS() ? "general.context_menu_macos"
+        : OperatingSystem.IsLinux() ? "general.context_menu_linux" : "general.context_menu"];
+    public string? IntegrationMessage => _integration?.Error ?? (OperatingSystem.IsMacOS()
+        ? _loc["general.integration_macos"] : OperatingSystem.IsLinux() ? _loc["general.integration_linux"] : null);
 
     /// <summary>Choices for the default save location (everything but "Default" itself).</summary>
     public IReadOnlyList<Choice<OutputLocation>> OutputLocations { get; }
@@ -89,9 +79,6 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private Choice<string> _language;
     [ObservableProperty] private bool _startWithSystem;
     [ObservableProperty] private bool _contextMenu;
-    [ObservableProperty] private bool _checkForUpdates;
-    [ObservableProperty] private string? _updateStatus;
-    [ObservableProperty] private bool _updateAvailable;
     [ObservableProperty] private string? _libraryMessage;
 
     // Windows 11 top-level Explorer menu entry (see ExplorerMenuRegistration). Only shown when this build ships it.
@@ -161,7 +148,6 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
             _ => "general.modern_menu_hint",
         }];
     }
-    partial void OnCheckForUpdatesChanged(bool value) => Save(s => s.CheckForUpdates = value);
 
     // Conversion history (home page): don't record it, or clear what is there.
     [ObservableProperty] private bool _noHistory;
@@ -193,26 +179,11 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     {
         change(_store.Settings);
         _store.SaveSettings();
+        OnPropertyChanged(nameof(IntegrationMessage));
     }
 
     [RelayCommand]
     private void OpenDataFolder() => _platform.RevealInFileManager(_store.Directory);
-
-    [RelayCommand]
-    private async Task CheckNow() => ShowUpdateState(await _updates.CheckAsync(), afterCheck: true);
-
-    /// <summary>Downloads and runs the new installer, which updates Filee in place (a portable copy opens the download page).</summary>
-    [RelayCommand]
-    private Task DownloadUpdate() => _updates.UpdateAsync();
-
-    private void ShowUpdateState(string? newer, bool afterCheck = false)
-    {
-        UpdateAvailable = newer is not null && !_updates.IsBusy;
-        UpdateStatus = UpdateTexts.Status(_updates, _loc) is { } progress ? progress
-            : newer is not null ? _loc.Format("general.update_available", newer)
-            : afterCheck ? _loc.Format("general.update_none", UpdateService.CurrentVersion)
-            : _loc.Format("about.version", UpdateService.CurrentVersion);
-    }
 
     public void Export(string path)
     {

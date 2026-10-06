@@ -53,6 +53,8 @@
                   </StackPanel>
                   <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Description}" />
                   <TextBlock Classes="caption" Text="{Binding Sizes}" IsVisible="{Binding !UsesOwnCopy}" />
+                  <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding InstallGuidance}"
+                             IsVisible="{Binding InstallGuidance, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                   <TextBlock Classes="caption" Text="{Binding OwnCopyFolder}" IsVisible="{Binding ShowsCopyFolder}" TextTrimming="CharacterEllipsis" />
                   <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Text="{Binding UpdateNote}"
                              IsVisible="{Binding UpdateNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

@@ -70,8 +70,7 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hwpx = await ConvertAsync(md);
 
         ValidPackage(hwpx, expectImages: 1);
-        using var document = UnhwpDocument.ParseFile(hwpx);
-        var text = document.ToText();
+        var text = HwpxAssert.ReadBackText(hwpx);
         foreach (var expected in new[] { "첫 번째 제목", "굵게", "취소선", "인용문도 사라지면 안 됩니다", "셋째부터 시작", "중첩 글머리", "표 셀", "42", "코드 블록" })
             Assert.Contains(expected, text);
 
@@ -122,8 +121,7 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hwpx = await ConvertAsync(txt);
 
         ValidPackage(hwpx, expectImages: 0);
-        using var document = UnhwpDocument.ParseFile(hwpx);
-        Assert.Contains("세 번째 줄 <태그> & 기호", document.ToText());
+        Assert.Contains("세 번째 줄 <태그> & 기호", HwpxAssert.ReadBackText(hwpx));
     }
 
     [Fact]

@@ -37,13 +37,15 @@ public class LibreOfficeFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
     [InlineData("odg", "odg", null, "odg:draw8")]
     [InlineData("cgm", "odg", null, "odg:impress8_draw")]
     [InlineData("cgm", "svg", null, "svg:impress_svg_Export")]
+    [InlineData("emf", "pdf", null, "pdf:draw_pdf_Export")]
+    [InlineData("wmf", "png", null, "png:draw_png_Export")]
     public void Filters_follow_the_application_that_opens_the_file(string from, string to, string? extension, string expected) =>
         Assert.Equal(expected, LibreOfficeConverter.FilterFor(from, to, pdfA: false, extension));
 
     [Fact]
     public void Every_edge_has_a_filter_of_its_application()
     {
-        string[] draw = ["pub", "cdr", "vsd", "odg"];
+        string[] draw = ["pub", "cdr", "vsd", "odg", "emf", "wmf"];
         string[] impress = ["pptx", "ppt", "odp", "key", "dps", "sda", "cgm"];
         string[] calc = ["xlsx", "xls", "ods", "csv", "et", "numbers", "sdc"];
         foreach (var edge in LibreOffice.Edges)

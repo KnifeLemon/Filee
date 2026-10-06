@@ -51,6 +51,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
         _store = store;
         _loc = loc;
         _windows = windows;
+        // A profile is found by its name or by an extension it handles ("png" finds the photo donut).
+        VisibleProfiles = new FilteredList<ProfileItemViewModel>(Profiles, p => [p.Name, .. p.Profile.Extensions]);
+        VisiblePalette = new FilteredList<PaletteChip>(Palette, c => [c.Label, c.Caption]);
         foreach (var profile in store.Profiles)
             Profiles.Add(new ProfileItemViewModel(profile, loc));
 
@@ -65,6 +68,16 @@ public sealed partial class ToolbarPageViewModel : ObservableObject
 
     public ObservableCollection<ProfileItemViewModel> Profiles { get; } = [];
     public ObservableCollection<PaletteChip> Palette { get; } = [];
+
+    /// <summary>The profiles and the presets the search boxes above the two lists let through.</summary>
+    public FilteredList<ProfileItemViewModel> VisibleProfiles { get; }
+    public FilteredList<PaletteChip> VisiblePalette { get; }
+
+    [ObservableProperty] private string _profileSearch = "";
+    [ObservableProperty] private string _paletteSearch = "";
+
+    partial void OnProfileSearchChanged(string value) => VisibleProfiles.Query = value;
+    partial void OnPaletteSearchChanged(string value) => VisiblePalette.Query = value;
 
     [ObservableProperty] private ProfileItemViewModel? _selectedProfile;
     [ObservableProperty] private IReadOnlyList<DonutItem> _donutItems = [];

@@ -179,4 +179,50 @@ public sealed class CliTests : IDisposable
         Assert.Equal(Cli.Success, code);
         Assert.StartsWith("filee ", output);
     }
+
+    [Fact]
+    public async Task Case_distinct_inputs_are_both_converted_and_exact_duplicates_are_removed()
+    {
+        var lower = Png("photo.png");
+        if (File.Exists(Path.Combine(_folder, "PHOTO.png")))
+        {
+            Assert.Skip("The temporary volume is case-insensitive.");
+            return;
+        }
+        var upper = Png("PHOTO.png");
+        var outputFolder = Path.Combine(_folder, "out");
+
+        var (code, output, errors) = await Run("convert", lower, upper, lower, "--to", "jpg", "-o", outputFolder, "--json");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        using var json = JsonDocument.Parse(output);
+        Assert.Equal(2, json.RootElement.GetProperty("converted").GetInt32());
+        Assert.Equal(2, json.RootElement.GetProperty("files").GetArrayLength());
+        var outputPaths = json.RootElement.GetProperty("files").EnumerateArray()
+            .Select(file => file.GetProperty("outputs")[0].GetString()!).ToArray();
+        Assert.Equal(2, outputPaths.Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.All(outputPaths, path => Assert.True(File.Exists(path)));
+    }
+
+    [Fact]
+    public async Task Unicode_spaces_and_quotes_stay_in_a_single_input_argument()
+    {
+        var name = OperatingSystem.IsWindows() ? "한글 report's 100%.png" : "한글 report's \"quoted\" 100%.png";
+        var source = Png(name);
+        var outputFolder = Path.Combine(_folder, "결과 output's");
+
+        var (code, output, errors) = await Run("convert", source, "--to", "jpg", "-o", outputFolder, "--json");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        using var json = JsonDocument.Parse(output);
+        Assert.Equal(1, json.RootElement.GetProperty("converted").GetInt32());
+        var result = json.RootElement.GetProperty("files")[0].GetProperty("outputs")[0].GetString();
+        Assert.NotNull(result);
+        Assert.Equal(outputFolder, Path.GetDirectoryName(result));
+        Assert.Contains("한글 report's", Path.GetFileName(result));
+        Assert.True(File.Exists(result));
+        Assert.True(File.Exists(source));
+    }
 }

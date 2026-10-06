@@ -71,9 +71,7 @@ public sealed class GhostscriptConverter : IConverter
         ?? EngineEnvironment.SystemProgram("ghostscript", "gswin64c.exe");
 
     private static string? LocateBundled() =>
-        EngineEnvironment.FindBundled("ghostscript") is { } folder
-            ? EngineEnvironment.FirstExisting(Path.Combine(folder, OperatingSystem.IsWindows() ? "gswin64c.exe" : "gs"))
-            : null;
+        EngineEnvironment.BundledProgram("ghostscript", "gswin64c.exe");
 
     /// <summary>
     /// Converts PostScript (PS, EPS, PostScript-based Illustrator files) to PDF. EPS pages are cropped to the

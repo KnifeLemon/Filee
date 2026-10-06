@@ -8,6 +8,8 @@ using Filee.Core.Platform;
 using Filee.Core.Settings;
 using Filee.Engines;
 using Filee.Engines.Infrastructure;
+using Filee.Platform.Linux;
+using Filee.Platform.MacOS;
 using Filee.Platform.Windows;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -33,11 +35,15 @@ public static class AppHost
 
         services.AddSingleton(sp => new UserDataStore(dataDir, sp.GetRequiredService<ILogger<UserDataStore>>()));
         services.AddSingleton<IPlatformServices>(_ =>
-            OperatingSystem.IsWindows() ? new WindowsPlatformServices() : new NullPlatformServices());
+            OperatingSystem.IsWindows() ? new WindowsPlatformServices()
+            : OperatingSystem.IsMacOS() ? new MacOSPlatformServices()
+            : OperatingSystem.IsLinux() ? new LinuxPlatformServices()
+            : new NullPlatformServices());
 
         services.AddSingleton<LocalizationService>();
         services.AddSingleton<ILocalizer>(sp => sp.GetRequiredService<LocalizationService>());
         services.AddSingleton<ThemeService>();
+        services.AddSingleton<SystemIntegrationService>();
 
         // Conversion engines
         services.AddSingleton(_ => new EngineEnvironment(dataDir));

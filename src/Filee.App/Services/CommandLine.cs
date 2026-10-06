@@ -66,7 +66,7 @@ public sealed record CommandLine(
                     engines = value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                         .Select(id => id.ToLowerInvariant()).Distinct().ToList();
                     break;
-                case "--start-with-windows" when OnOff(value) is { } on:
+                case "--start-with-windows" or "--start-with-system" when OnOff(value) is { } on:
                     startWithWindows = on;
                     break;
                 case "--context-menu" when OnOff(value) is { } on:
@@ -139,7 +139,7 @@ public sealed record CommandLine(
             return Path.GetFileName(full).StartsWith(ListFilePrefix, StringComparison.OrdinalIgnoreCase)
                    && full.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)
                    && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetDirectoryName(full) ?? ""),
-                       Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath())), StringComparison.OrdinalIgnoreCase);
+                       Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath())), Filee.Core.Platform.FileSystemPaths.Comparison);
         }
         catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {

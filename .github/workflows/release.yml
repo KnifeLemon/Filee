@@ -18,7 +18,13 @@ permissions:
   contents: write
 
 jobs:
+  portable:
+    uses: ./.github/workflows/portable.yml
+    with:
+      version: ${{ github.ref_name }}
+
   windows:
+    needs: portable
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +69,13 @@ jobs:
       - name: Build installer and portable zip
         shell: pwsh
         run: ./build/build-installer.ps1 -Version ${{ steps.version.outputs.value }} -Portable
+
+      - name: Download Linux and macOS packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: portable-*
+          merge-multiple: true
+          path: Releases
 
       - name: Publish the GitHub release
         shell: pwsh

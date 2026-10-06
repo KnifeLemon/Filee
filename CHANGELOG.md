@@ -6,6 +6,33 @@ version it publishes under "What's Changed" in the GitHub release notes, above t
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.7.0
+
+### macOS and Linux (preview)
+
+- Filee runs on macOS 14 or later (Apple silicon and Intel) and on Linux (x64 and ARM64). Download the package for
+  your system from this release and run `install.sh` in it. These are previews: the macOS app isn't notarized yet,
+  so macOS asks you to allow it once under System Settings → Privacy & Security.
+- macOS: hold Option and drag files to open the donut. Filee asks for the Accessibility permission the gesture needs
+  and starts it as soon as you switch Filee on. "Convert with Filee" is in Finder's right-click menu.
+- Linux: the drag gesture works in an X11 session (on Ubuntu, "Ubuntu on Xorg" on the login screen). On Wayland, use
+  the drop zone and the right-click action in Nautilus, Nemo, Thunar or Dolphin.
+- FFmpeg and Ghostscript come from Homebrew on macOS and from your distribution's packages on Linux. Filee finds them
+  by itself.
+
+### New
+
+- Search boxes above the profiles and the available presets (Donut toolbar) and above the preset list. A profile is
+  also found by an extension it handles: type "png" to find the image donut.
+- "Never trigger in these apps" (Shortcuts) holds the apps as tags. Type a name, with the running apps suggested, or
+  pick one from the apps that have a window open.
+- The update settings are on the About page now: the automatic check, Check now and the update button.
+- The first-run engine choice starts with nothing ticked, so only what you pick is downloaded.
+
+### Fixes
+
+- On macOS and Linux, watch folders wait for a copy that pauses to finish instead of converting it half-written.
+
 ## 1.6.0
 
 ### New in the preset editor for audio

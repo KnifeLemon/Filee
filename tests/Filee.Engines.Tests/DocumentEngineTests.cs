@@ -89,8 +89,7 @@ public class DocumentEngineTests(EngineFixture fx) : IClassFixture<EngineFixture
         var back = await fx.ConvertAsync([hwp.Outputs.Single()], new Preset { TargetFormat = "hwpx" });
         Assert.Equal(JobState.Completed, back.State);
         Assert.Equal("rhwp", Assert.Single(fx.Catalog.CreatePlanner().Plan("hwp", "hwpx")!.Steps).Converter.Id);
-        using var document = Unhwp.UnhwpDocument.ParseFile(back.Outputs.Single());
-        Assert.Contains("두 번째 문단입니다", document.ToText());
+        Assert.Contains("두 번째 문단입니다", HwpxAssert.ReadBackText(back.Outputs.Single()));
     }
 
     [Fact]

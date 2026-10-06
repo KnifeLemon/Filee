@@ -18,6 +18,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  portable:
+    uses: ./.github/workflows/portable.yml
+
   build:
     runs-on: windows-latest
     steps:

@@ -48,7 +48,9 @@ public class JobQueueTests
         await Run(queue, [plain], new Preset { TargetFormat = "png" });
 
         var output = Path.Combine(dir.Path, "taken.png");
-        Assert.Equal(created, File.GetCreationTimeUtc(output));
+        // Linux file systems keep no creation time a program can set: there only the modification time is kept.
+        if (!OperatingSystem.IsLinux())
+            Assert.Equal(created, File.GetCreationTimeUtc(output));
         Assert.Equal(modified, File.GetLastWriteTimeUtc(output));
         // Without the option the output has the time it was made.
         Assert.True(File.GetLastWriteTimeUtc(Path.Combine(dir.Path, "plain.png")) > DateTime.UtcNow.AddMinutes(-5));

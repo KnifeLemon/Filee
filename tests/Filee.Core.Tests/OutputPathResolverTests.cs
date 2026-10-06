@@ -116,4 +116,21 @@ public class OutputPathResolverTests
 
         Assert.Equal(Path.Combine("D:", "out", "a.png"), path);
     }
+
+    [Theory]
+    [InlineData(ConflictPolicy.Overwrite)]
+    [InlineData(ConflictPolicy.Skip)]
+    [InlineData(ConflictPolicy.Rename)]
+    public void A_case_alias_of_the_source_is_never_overwritten(ConflictPolicy policy)
+    {
+        using var dir = new TempDir();
+        var source = dir.File("photo.jpg", "original");
+        var rule = new OutputRule { FileNamePattern = "PHOTO", Conflict = policy };
+
+        var path = OutputPathResolver.Resolve(rule, Tokens(source), "jpg", File.Exists);
+
+        Assert.Equal(Path.Combine(dir.Path, "PHOTO (2).jpg"), path);
+        Assert.Equal("original", File.ReadAllText(source));
+    }
+
 }

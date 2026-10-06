@@ -91,7 +91,8 @@ public sealed class LocalizationService : ILocalizer
             Languages.Any(l => l.Code.Equals(setting, StringComparison.OrdinalIgnoreCase)))
             return Languages.First(l => l.Code.Equals(setting, StringComparison.OrdinalIgnoreCase)).Code;
 
-        var ui = CultureInfo.InstalledUICulture.Name;
+        // macOS gives an app started from Finder no LANG: its language list comes from the system instead.
+        var ui = Filee.Platform.MacOS.MacOSLocale.PreferredLanguage() ?? CultureInfo.InstalledUICulture.Name;
         if (ui.StartsWith("ko", StringComparison.OrdinalIgnoreCase))
             return "ko";
         if (ui.StartsWith("zh", StringComparison.OrdinalIgnoreCase))

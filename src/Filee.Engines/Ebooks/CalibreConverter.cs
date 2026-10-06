@@ -108,7 +108,5 @@ public sealed partial class CalibreConverter : IConverter
         ?? EngineEnvironment.SystemProgram("calibre", "ebook-convert.exe");
 
     private static string? LocateBundled() =>
-        OperatingSystem.IsWindows() && EngineEnvironment.FindBundled("calibre") is { } folder
-            ? EngineEnvironment.FirstExisting(Path.Combine(folder, "ebook-convert.exe"))
-            : null;
+        EngineEnvironment.BundledProgram("calibre", "ebook-convert.exe");
 }

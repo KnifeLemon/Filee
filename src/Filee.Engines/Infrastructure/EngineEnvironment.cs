@@ -54,15 +54,22 @@ public sealed class EngineEnvironment(string dataDirectory)
     /// </summary>
     public static IReadOnlyDictionary<string, string> OwnCopies { get; set; } = new Dictionary<string, string>();
 
-    /// <summary>Programs that must be in the folder of an own copy, per package (Windows names).</summary>
-    public static IReadOnlyDictionary<string, string[]> OwnCopyPrograms { get; } = new Dictionary<string, string[]>
+    /// <summary>Programs required by each engine package on the current operating system.</summary>
+    public static IReadOnlyDictionary<string, string[]> OwnCopyPrograms { get; } = Programs(OperatingSystem.IsWindows());
+
+    private static IReadOnlyDictionary<string, string[]> Programs(bool windows) => new Dictionary<string, string[]>
     {
-        ["libreoffice"] = ["soffice.exe"],
-        ["pandoc"] = ["pandoc.exe"],
-        ["ghostscript"] = ["gswin64c.exe"],
-        ["ffmpeg"] = ["ffmpeg.exe", "ffprobe.exe"],
-        ["calibre"] = ["ebook-convert.exe"],
+        ["libreoffice"] = [windows ? "soffice.exe" : "soffice"],
+        ["pandoc"] = [windows ? "pandoc.exe" : "pandoc"],
+        ["ghostscript"] = [windows ? "gswin64c.exe" : "gs"],
+        ["ffmpeg"] = windows ? ["ffmpeg.exe", "ffprobe.exe"] : ["ffmpeg", "ffprobe"],
+        ["calibre"] = [windows ? "ebook-convert.exe" : "ebook-convert"],
+        ["rhwp"] = [windows ? "rhwp.exe" : "rhwp"],
+        ["7zip"] = [windows ? "7z.exe" : "7zz"],
     };
+
+    public static string ProgramName(string name) => OperatingSystem.IsWindows() ? name
+        : name == "gswin64c.exe" ? "gs" : name.EndsWith(".exe", StringComparison.Ordinal) ? name[..^4] : name;
 
     /// <summary>The folder of the user's own copy of package <paramref name="id"/>, when it has every program.</summary>
     public static string? OwnCopyFolder(string id) =>
@@ -70,27 +77,39 @@ public sealed class EngineEnvironment(string dataDirectory)
 
     /// <summary>A program of the user's own copy of package <paramref name="id"/>, or null.</summary>
     public static string? OwnProgram(string id, string program) =>
-        OwnCopyFolder(id) is { } folder ? Path.Combine(folder, program) : null;
+        OwnCopyFolder(id) is { } folder ? Path.Combine(folder, ProgramName(program)) : null;
+
+    public static string? BundledProgram(string id, string program) =>
+        FindBundled(id) is { } root && FolderWithPrograms(id, root) is { } folder
+            ? Path.Combine(folder, ProgramName(program)) : null;
 
     /// <summary>
     /// The folder with all programs of package <paramref name="id"/>, given a program the user picked or a folder:
     /// that folder itself, or its bin\ or program\ sub folder (FFmpeg builds, LibreOffice). Null when they are missing.
     /// </summary>
-    public static string? FolderWithPrograms(string id, string path)
+    public static string? FolderWithPrograms(string id, string path) =>
+        FolderWithPrograms(id, path, OperatingSystem.IsWindows());
+
+    internal static string? FolderWithPrograms(string id, string path, bool windows)
     {
-        if (!OperatingSystem.IsWindows() || string.IsNullOrWhiteSpace(path) || !OwnCopyPrograms.TryGetValue(id, out var programs))
+        if (string.IsNullOrWhiteSpace(path) || !Programs(windows).TryGetValue(id, out var programs))
             return null;
         var start = File.Exists(path) ? Path.GetDirectoryName(path) : Directory.Exists(path) ? path : null;
         if (start is null)
             return null;
-        foreach (var folder in new[] { start, Path.Combine(start, "bin"), Path.Combine(start, "program") })
+        var app = id == "libreoffice" ? "LibreOffice.app" : id == "calibre" ? "calibre.app" : null;
+        var candidates = new List<string> { start, Path.Combine(start, "bin"), Path.Combine(start, "program"), Path.Combine(start, "Contents", "MacOS") };
+        if (app is not null)
+            candidates.Add(Path.Combine(start, app, "Contents", "MacOS"));
+        foreach (var folder in candidates)
             if (programs.All(p => File.Exists(Path.Combine(folder, p))))
                 return folder;
         return null;
     }
 
     /// <summary>True when package <paramref name="id"/> runs from Filee's own copy (not the user's or the PC's).</summary>
-    public static bool UsesFileesCopy(string id) => OwnCopyFolder(id) is null && FindBundled(id) is not null;
+    public static bool UsesFileesCopy(string id) => OwnCopyFolder(id) is null
+        && FindBundled(id) is { } folder && FolderWithPrograms(id, folder) is not null;
 
     /// <summary>Searching the PC for engines; tests turn it off so the machine's tools don't change results.</summary>
     public static bool SearchSystem { get; set; } = true;
@@ -104,11 +123,11 @@ public sealed class EngineEnvironment(string dataDirectory)
     /// <see cref="ForgetSystemCopies"/>.
     /// </summary>
     public static string? SystemCopyFolder(string id) =>
-        SearchSystem && OperatingSystem.IsWindows() ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
+        SearchSystem ? SystemCopies.GetOrAdd(id, FindOnSystem) : null;
 
     /// <summary>A program of the copy of package <paramref name="id"/> on the PC, or null.</summary>
     public static string? SystemProgram(string id, string program) =>
-        SystemCopyFolder(id) is { } folder ? Path.Combine(folder, program) : null;
+        SystemCopyFolder(id) is { } folder ? Path.Combine(folder, ProgramName(program)) : null;
 
     /// <summary>Searches the PC again (Settings → Engines → Check again, settings changes).</summary>
     public static void ForgetSystemCopies() => SystemCopies.Clear();
@@ -118,14 +137,34 @@ public sealed class EngineEnvironment(string dataDirectory)
 
     private static IEnumerable<string> SystemFolders(string id)
     {
-        var path = string.Join(';',
+        var path = OperatingSystem.IsWindows() ? string.Join(Path.PathSeparator,
             Environment.GetEnvironmentVariable("PATH"),
             Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User),
-            Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine));
-        var folders = path.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine))
+            : Environment.GetEnvironmentVariable("PATH") ?? "";
+        var folders = path.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(entry => Environment.ExpandEnvironmentVariables(entry.Trim('"')))
             .ToList();
-        foreach (var root in new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
+        if (!OperatingSystem.IsWindows())
+        {
+            folders.AddRange(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", "/opt/local/bin"]);
+            if (id == "libreoffice")
+            {
+                folders.AddRange(["/Applications/LibreOffice.app", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Applications", "LibreOffice.app"), "/usr/lib/libreoffice/program", "/usr/lib64/libreoffice/program"]);
+                try
+                {
+                    if (Directory.Exists("/opt"))
+                        folders.AddRange(Directory.EnumerateDirectories("/opt", "libreoffice*")
+                            .OrderDescending(StringComparer.Ordinal).Select(p => Path.Combine(p, "program")));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+            if (id == "calibre")
+                folders.AddRange(["/Applications/calibre.app", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Applications", "calibre.app"), "/opt/calibre"]);
+        }
+        foreach (var root in (OperatingSystem.IsWindows()
+                     ? new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
+                     : [])
                      .Select(Environment.GetFolderPath).Where(r => r.Length > 0))
         {
             switch (id)
@@ -152,10 +191,14 @@ public sealed class EngineEnvironment(string dataDirectory)
             }
         }
         // Never Filee's own folders: those are its own copy, found before.
-        return folders.Distinct(StringComparer.OrdinalIgnoreCase)
-            .Where(f => !f.StartsWith(DownloadRoot, StringComparison.OrdinalIgnoreCase)
-                        && !f.StartsWith(AppContext.BaseDirectory, StringComparison.OrdinalIgnoreCase));
+        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
+        return folders.Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
+            .Where(f => !IsWithin(f, DownloadRoot, comparison) && !IsWithin(f, AppContext.BaseDirectory, comparison));
     }
+
+    private static bool IsWithin(string path, string root, StringComparison comparison) =>
+        string.Equals(Path.TrimEndingDirectorySeparator(path), Path.TrimEndingDirectorySeparator(root), comparison)
+        || path.StartsWith(Path.TrimEndingDirectorySeparator(root) + Path.DirectorySeparatorChar, comparison);
 
     /// <summary>Returns the first path that exists as a file.</summary>
     public static string? FirstExisting(params string?[] candidates) =>

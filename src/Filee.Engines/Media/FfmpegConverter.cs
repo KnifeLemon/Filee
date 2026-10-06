@@ -126,23 +126,14 @@ public sealed partial class FfmpegConverter : IConverter
         }
     }
 
-    /// <summary>
-    /// Filee's own FFmpeg (engines/ffmpeg, downloaded on demand; the programs are in its bin folder), never one
-    /// found elsewhere on the system.
-    /// </summary>
+    /// <summary>Both tools must come from the same installation.</summary>
     internal static (string Ffmpeg, string Ffprobe)? Locate()
     {
-        // The user's own FFmpeg (Settings → Engines) comes first.
-        if (EngineEnvironment.OwnCopyFolder("ffmpeg") is { } own)
-            return (Path.Combine(own, "ffmpeg.exe"), Path.Combine(own, "ffprobe.exe"));
-        if (EngineEnvironment.FindBundled("ffmpeg") is not { } folder)
-            return EngineEnvironment.SystemCopyFolder("ffmpeg") is { } system
-                ? (Path.Combine(system, "ffmpeg.exe"), Path.Combine(system, "ffprobe.exe"))
-                : null;
-        var suffix = OperatingSystem.IsWindows() ? ".exe" : "";
-        var ffmpeg = EngineEnvironment.FirstExisting(Path.Combine(folder, "bin", "ffmpeg" + suffix), Path.Combine(folder, "ffmpeg" + suffix));
-        var ffprobe = EngineEnvironment.FirstExisting(Path.Combine(folder, "bin", "ffprobe" + suffix), Path.Combine(folder, "ffprobe" + suffix));
-        return ffmpeg is null || ffprobe is null ? null : (ffmpeg, ffprobe);
+        var folder = EngineEnvironment.OwnCopyFolder("ffmpeg")
+            ?? (EngineEnvironment.FindBundled("ffmpeg") is { } bundled ? EngineEnvironment.FolderWithPrograms("ffmpeg", bundled) : null)
+            ?? EngineEnvironment.SystemCopyFolder("ffmpeg");
+        return folder is null ? null : (Path.Combine(folder, EngineEnvironment.ProgramName("ffmpeg.exe")),
+            Path.Combine(folder, EngineEnvironment.ProgramName("ffprobe.exe")));
     }
 
     /// <summary>"9.0.2" from <c>ffmpeg -version</c>; cached per executable so re-checking the engines stays cheap.</summary>

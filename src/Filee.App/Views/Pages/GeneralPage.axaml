@@ -13,7 +13,9 @@
           <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="240" />
         </StackPanel>
         <ToggleSwitch Content="{DynamicResource general.start_with_system}" IsChecked="{Binding StartWithSystem}" />
-        <ToggleSwitch Content="{DynamicResource general.context_menu}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding IsWindows}" />
+        <ToggleSwitch Content="{Binding ContextMenuText}" IsChecked="{Binding ContextMenu}" IsVisible="{Binding HasSystemIntegration}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding IntegrationMessage}"
+                   IsVisible="{Binding IntegrationMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <!-- Windows 11: optional top-level entry (needs one administrator prompt), see ExplorerMenuRegistration. -->
         <StackPanel Spacing="8" IsVisible="{Binding ShowModernMenu}">
           <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding ModernMenuStatus}" />
@@ -44,22 +46,6 @@
         </StackPanel>
         <ToggleSwitch Content="{DynamicResource general.keep_dates}" IsChecked="{Binding KeepFileDates}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.keep_dates_hint}" Margin="0,-6,0,0" />
-      </StackPanel>
-    </Border>
-
-    <Border Classes="card">
-      <StackPanel Spacing="12">
-        <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
-        <StackPanel Orientation="Horizontal" Spacing="10">
-          <Button Content="{DynamicResource general.check_now}" Command="{Binding CheckNowCommand}" />
-          <Button Classes="accent" Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding UpdateAvailable}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
-              <TextBlock Text="{Binding UpdateButtonText}" />
-            </StackPanel>
-          </Button>
-          <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />
-        </StackPanel>
       </StackPanel>
     </Border>
 

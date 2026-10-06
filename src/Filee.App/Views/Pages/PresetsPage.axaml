@@ -23,7 +23,12 @@
           <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Delete}" />
         </Button>
       </WrapPanel>
-      <ListBox Classes="soft" ItemsSource="{Binding Presets}" SelectedItem="{Binding SelectedPreset}">
+      <TextBox Classes="search" DockPanel.Dock="Top" Margin="0,0,0,8" Text="{Binding Search}" Watermark="{DynamicResource common.search}">
+            <TextBox.InnerLeftContent>
+              <PathIcon Width="14" Height="14" Margin="10,0,0,0" Data="{StaticResource Icon.Search}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </TextBox.InnerLeftContent>
+      </TextBox>
+      <ListBox Classes="soft" ItemsSource="{Binding VisiblePresets}" SelectedItem="{Binding SelectedPreset}">
         <ListBox.ItemTemplate>
           <DataTemplate x:DataType="vm:PresetListItem">
             <StackPanel>

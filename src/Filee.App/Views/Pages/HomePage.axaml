@@ -22,6 +22,16 @@
   <StackPanel Spacing="22">
     <TextBlock Classes="h1" Text="{DynamicResource home.title}" />
 
+    <!-- macOS without Accessibility permission: the drag gesture can't work yet. Gone once it is given. -->
+    <Border IsVisible="{Binding NeedsAccessibility}" Background="{DynamicResource AccentFaintBrush}"
+            BorderBrush="{DynamicResource AccentSoftBrush}" BorderThickness="1" CornerRadius="{DynamicResource SoftRadius}" Padding="14,10">
+      <DockPanel>
+        <Button DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" Classes="accent"
+                Content="{DynamicResource triggers.open_accessibility}" Command="{Binding OpenAccessibilityCommand}" />
+        <TextBlock VerticalAlignment="Center" TextWrapping="Wrap" Text="{DynamicResource home.accessibility_needed}" />
+      </DockPanel>
+    </Border>
+
     <!-- Drop zone: files dropped here open the donut toolbar at the cursor. -->
     <Border x:Name="DropZone" DragDrop.AllowDrop="True" MinHeight="220"
             Background="{DynamicResource AccentFaintBrush}" BorderBrush="{DynamicResource AccentSoftBrush}"

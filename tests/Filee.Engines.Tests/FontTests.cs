@@ -210,8 +210,9 @@ public class FontTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var ttfFont = new SKFont(ttfFace, 1000) { Hinting = SKFontHinting.None };
         for (ushort gid = 0; gid < glyphs.Length; gid++)
         {
-            using var expected = cffFont.GetGlyphPath(gid);
-            using var actual = ttfFont.GetGlyphPath(gid);
+            // macOS's font backend gives no path at all (null) for an empty glyph.
+            using var expected = cffFont.GetGlyphPath(gid) ?? new SKPath();
+            using var actual = ttfFont.GetGlyphPath(gid) ?? new SKPath();
             Assert.Equal(expected.IsEmpty, actual.IsEmpty);
             if (expected.IsEmpty)
                 continue;

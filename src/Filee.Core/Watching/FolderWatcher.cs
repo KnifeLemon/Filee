@@ -1,11 +1,13 @@
 // Watches one folder (WatchRule) and converts files that arrive in it. Used by the tray app (Settings → Watch folders)
 // and by "filee watch". A file is converted only once it is complete: it must keep the same size and time for
-// SettleTime and open without sharing, so downloads and copies still in progress are left alone. Temporary files,
+// SettleTime and open without sharing (on Windows; macOS and Linux don't lock files being written, so there only
+// the longer wait and Finder's copy-in-progress date count), so downloads and copies still in progress are left alone. Temporary files,
 // the output folder and the originals folder are never picked up, so converted files can't loop back in.
 
 using System.Collections.Concurrent;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -17,8 +19,15 @@ public sealed class FolderWatcher : IAsyncDisposable
     /// <summary>Converts a batch of complete files and returns the finished job (null when it could not start).</summary>
     public delegate Task<ConversionJob?> ConvertFiles(IReadOnlyList<string> files, CancellationToken cancellationToken);
 
-    /// <summary>Default time a file must stay unchanged before it is converted.</summary>
-    public static readonly TimeSpan DefaultSettleTime = TimeSpan.FromSeconds(2);
+    /// <summary>
+    /// Default time a file must stay unchanged before it is converted. Longer on macOS and Linux: there a file
+    /// still being written can be opened exclusively all the same, so only the wait tells a paused copy from a
+    /// finished one.
+    /// </summary>
+    public static readonly TimeSpan DefaultSettleTime = TimeSpan.FromSeconds(OperatingSystem.IsWindows() ? 2 : 5);
+
+    /// <summary>The creation date Finder gives a file while it is still copying it (24 January 1984).</summary>
+    private static readonly DateTime FinderCopyInProgress = new(1984, 1, 24);
 
     private static readonly HashSet<string> TemporaryExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -31,8 +40,8 @@ public sealed class FolderWatcher : IAsyncDisposable
     private readonly ILogger _log;
     private readonly TimeSpan _settleTime;
     private readonly TimeProvider _time;
-    private readonly ConcurrentDictionary<string, Candidate> _pending = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _handled = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Candidate> _pending = new(FileSystemPaths.Comparer);
+    private readonly HashSet<string> _handled = new(FileSystemPaths.Comparer);
     private readonly SemaphoreSlim _busy = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private FileSystemWatcher? _watcher;
@@ -133,7 +142,7 @@ public sealed class FolderWatcher : IAsyncDisposable
                     continue;
                 }
                 _pending[path] = current;
-                if (now - current.StableSince < _settleTime || !CanOpenExclusively(path))
+                if (now - current.StableSince < _settleTime || !CanOpenExclusively(path) || IsBeingCopiedByFinder(path))
                     continue;
                 _pending.TryRemove(path, out _);
                 // A file that was converted before (same size and time) is not converted again.
@@ -143,7 +152,7 @@ public sealed class FolderWatcher : IAsyncDisposable
             if (ready.Count == 0 || _stop.IsCancellationRequested)
                 return 0;
 
-            ready.Sort(StringComparer.OrdinalIgnoreCase);
+            ready.Sort(FileSystemPaths.Comparer);
             _log.LogInformation("Watch folder {Folder}: converting {Count} file(s)", Rule.Folder, ready.Count);
             var job = await _convert(ready, _stop.Token);
             if (job is not null)
@@ -224,6 +233,20 @@ public sealed class FolderWatcher : IAsyncDisposable
     }
 
     /// <summary>A writer still holding the file (download, copy) makes an exclusive open fail.</summary>
+    private static bool IsBeingCopiedByFinder(string path)
+    {
+        if (!OperatingSystem.IsMacOS())
+            return false;
+        try
+        {
+            return File.GetCreationTime(path).Date == FinderCopyInProgress;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
     private static bool CanOpenExclusively(string path)
     {
         try
@@ -242,12 +265,12 @@ public sealed class FolderWatcher : IAsyncDisposable
         if (string.IsNullOrWhiteSpace(folder))
             return false;
         var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
-        return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        return Path.GetFullPath(path).StartsWith(root, FileSystemPaths.Comparison);
     }
 
     private static bool SameFolder(string? a, string b) =>
         a is not null && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)),
-            Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), StringComparison.OrdinalIgnoreCase);
+            Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), FileSystemPaths.Comparison);
 
     public async ValueTask DisposeAsync()
     {

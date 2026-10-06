@@ -16,6 +16,8 @@
     <ProjectReference Include="..\Filee.Core\Filee.Core.csproj" />
     <ProjectReference Include="..\Filee.Engines\Filee.Engines.csproj" />
     <ProjectReference Include="..\Filee.Platform.Windows\Filee.Platform.Windows.csproj" />
+    <ProjectReference Include="..\Filee.Platform.Linux\Filee.Platform.Linux.csproj" />
+    <ProjectReference Include="..\Filee.Platform.MacOS\Filee.Platform.MacOS.csproj" />
   </ItemGroup>
 
   <ItemGroup>
