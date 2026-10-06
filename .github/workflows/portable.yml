@@ -13,6 +13,9 @@ on:
         description: 'Package version (empty uses Directory.Build.props)'
         type: string
         required: false
+  # The Linux and macOS work in progress: every push builds, tests and launches the app on real Macs.
+  push:
+    branches: ['wip/linux-macos']
 
 permissions:
   contents: read
@@ -125,6 +128,8 @@ jobs:
           import time
 
           app = os.environ['FILEE_SMOKE_APP']
+          shots = pathlib.Path(os.environ['RUNNER_TEMP']) / 'filee-screens'
+          shots.mkdir(exist_ok=True)
           command = [app, '--settings', '--install-engines=', '--context-menu=off', '--start-with-system=off']
           if os.environ['RUNNER_OS'] == 'Linux':
               command = ['xvfb-run', '-a', 'env', '-u', 'WAYLAND_DISPLAY', 'XDG_SESSION_TYPE=x11', *command]
@@ -135,6 +140,18 @@ jobs:
                   time.sleep(8)
                   if process.poll() is not None:
                       raise RuntimeError('The desktop app exited before the startup check.')
+                  if os.environ['RUNNER_OS'] == 'macOS':
+                      # The real screen with Filee's window, as a person would see it (uploaded with the results).
+                      subprocess.run(['screencapture', '-x', str(shots / 'settings.png')], check=False, timeout=30)
+                      # A second start forwards to the running Filee, which brings its window to the front.
+                      try:
+                          subprocess.run([app], check=False, timeout=30)
+                      except subprocess.TimeoutExpired:
+                          raise RuntimeError('A second start did not hand over to the running Filee.')
+                      time.sleep(4)
+                      subprocess.run(['screencapture', '-x', str(shots / 'second-start.png')], check=False, timeout=30)
+                      if process.poll() is not None:
+                          raise RuntimeError('The desktop app exited after a second start.')
                   quit_code = 'import os, sys; os.setsid(); os.execv(sys.argv[1], [sys.argv[1], "--quit"])'
                   subprocess.run([sys.executable, '-c', quit_code, app], check=True, timeout=30)
                   if process.wait(timeout=15) != 0:
@@ -152,6 +169,15 @@ jobs:
                           os.killpg(process.pid, signal.SIGKILL)
                           process.wait()
           PY
+
+      - name: Collect Filee logs
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/filee-screens"
+          for logs in "$HOME/Library/Application Support/Filee/logs" "$HOME/.config/Filee/logs"; do
+            if [ -d "$logs" ]; then cp -R "$logs" "$RUNNER_TEMP/filee-screens/"; fi
+          done
 
       - name: Upload packages
         uses: actions/upload-artifact@v4
@@ -171,4 +197,5 @@ jobs:
             TestResults/${{ matrix.rid }}/
             tests/Filee.App.Tests/bin/Release/net10.0/screenshots/
             ${{ runner.temp }}/filee-startup.log
+            ${{ runner.temp }}/filee-screens/
           if-no-files-found: ignore
