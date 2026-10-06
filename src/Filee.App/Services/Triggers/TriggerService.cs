@@ -63,12 +63,26 @@ public sealed class TriggerService : IDisposable
             StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>macOS without Accessibility permission: gestures wait for it (and start by themselves once it is given).</summary>
+    public bool NeedsPermission { get; private set; }
+
+    private Timer? _permissionWatch;
+
     public void Start()
     {
         if (_hook is not null)
             return;
         if (!_platform.SupportsGlobalPointerGestures)
+        {
+            if (OperatingSystem.IsMacOS())
+                WatchForPermission();
             return;
+        }
+        if (NeedsPermission)
+        {
+            NeedsPermission = false;
+            NotifyStatus();
+        }
         Error = null;
         try
         {
@@ -153,8 +167,33 @@ public sealed class TriggerService : IDisposable
         return name.StartsWith("Vc", StringComparison.Ordinal) ? name[2..] : name;
     }
 
+    /// <summary>
+    /// Checks every two seconds whether the user switched Filee on under Accessibility, then starts the gestures;
+    /// no restart needed.
+    /// </summary>
+    private void WatchForPermission()
+    {
+        if (!NeedsPermission)
+        {
+            NeedsPermission = true;
+            _log.LogInformation("Gestures wait for the Accessibility permission");
+            NotifyStatus();
+        }
+        _permissionWatch ??= new Timer(_ =>
+        {
+            if (!_platform.SupportsGlobalPointerGestures)
+                return;
+            _permissionWatch?.Dispose();
+            _permissionWatch = null;
+            _log.LogInformation("Accessibility permission granted");
+            Post(Start);
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(2));
+    }
+
     public void Dispose()
     {
+        _permissionWatch?.Dispose();
+        _permissionWatch = null;
         _hook?.Dispose();
         _hook = null;
     }

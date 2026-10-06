@@ -17,6 +17,9 @@ public sealed class MacOSPlatformServices : IPlatformServices
 
     public bool HasAccessibilityPermission => NativeMethods.AXIsProcessTrusted();
 
+    /// <summary>Asks for Accessibility with macOS's own alert (nothing happens when Filee already has it).</summary>
+    public bool RequestAccessibilityPermission() => NativeMethods.RequestAccessibility();
+
     public bool SupportsGlobalPointerGestures => HasAccessibilityPermission;
 
     public bool SupportsSelectionShortcut => true;

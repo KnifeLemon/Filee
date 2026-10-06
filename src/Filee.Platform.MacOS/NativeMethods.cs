@@ -107,6 +107,36 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.I1)]
     internal static extern bool AXIsProcessTrusted();
 
+    /// <summary>
+    /// Whether Filee may watch input; when not, macOS shows its own alert (Open System Settings / Deny) and lists
+    /// Filee under Accessibility, switched off, so the user only has to switch it on.
+    /// </summary>
+    internal static bool RequestAccessibility()
+    {
+        var coreFoundation = NativeLibrary.Load(CoreFoundation);
+        var trueValue = Marshal.ReadIntPtr(NativeLibrary.GetExport(coreFoundation, "kCFBooleanTrue"));
+        var key = CFStringCreateWithCString(0, "AXTrustedCheckOptionPrompt", 0x08000100);
+        var options = CFDictionaryCreate(0, [key], [trueValue], 1,
+            NativeLibrary.GetExport(coreFoundation, "kCFTypeDictionaryKeyCallBacks"),
+            NativeLibrary.GetExport(coreFoundation, "kCFTypeDictionaryValueCallBacks"));
+        try
+        {
+            return AXIsProcessTrustedWithOptions(options);
+        }
+        finally
+        {
+            CFRelease(options);
+            CFRelease(key);
+        }
+    }
+
+    [DllImport(ApplicationServices)]
+    [return: MarshalAs(UnmanagedType.I1)]
+    private static extern bool AXIsProcessTrustedWithOptions(nint options);
+
+    [DllImport(CoreFoundation)]
+    private static extern nint CFDictionaryCreate(nint allocator, nint[] keys, nint[] values, nint count, nint keyCallBacks, nint valueCallBacks);
+
     [DllImport(CoreGraphics)]
     private static extern nint CGWindowListCopyWindowInfo(uint option, uint relativeToWindow);
 

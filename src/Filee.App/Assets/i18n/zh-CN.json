@@ -24,6 +24,7 @@
   "home.drop_hint": "或在资源管理器中按住 {0} 拖动文件，环形工具栏会在光标处打开。",
   "home.drop_hint_macos": "或在访达中按住 {0} 拖动文件，环形工具栏会在光标处打开。",
   "home.drop_hint_linux": "或在文件管理器中按住 {0} 拖动文件，环形工具栏会在光标处打开。",
+  "home.accessibility_needed": "要按住 ⌥ Option 拖动打开环形工具栏，请在“辅助功能”中允许 Filee。打开后立即生效。",
   "home.recent": "最近的转换",
   "home.recent_empty": "转换后的文件会显示在这里。",
   "home.open_folder": "打开文件夹",
@@ -178,7 +179,7 @@
 
   "triggers.title": "快捷操作",
   "triggers.description": "选择打开环形工具栏的方式。可以添加任意多个手势。",
-  "triggers.macos_permissions": "请在系统设置 > 隐私与安全性 > 辅助功能中允许 Filee，然后重试手势。首次使用选择文件的快捷键时，Finder 还会请求自动化权限。",
+  "triggers.macos_permissions": "请在系统设置 > 隐私与安全性 > 辅助功能中允许 Filee，打开后手势立即可用。首次使用选择文件的快捷键时，Finder 还会请求自动化权限。",
   "triggers.linux_x11": "拖动手势需要 X11。启用文件管理器集成后，第一个已启用的键盘快捷键会分配给 Thunar 的 Filee 操作。修改前请关闭 Thunar，修改后重新打开。不支持长按手势及其他文件管理器的全局选择快捷键，请使用 Filee 菜单或拖放区域。",
   "triggers.linux_wayland": "当前 Wayland 会话不支持跟随光标的手势。请使用 X11 会话进行拖动，或通过文件管理器操作和拖放区域转换。重启 Thunar 后可使用第一个已启用的键盘快捷键。",
   "triggers.open_accessibility": "打开辅助功能设置",

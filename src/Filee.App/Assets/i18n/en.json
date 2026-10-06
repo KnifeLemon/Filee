@@ -24,6 +24,7 @@
   "home.drop_hint": "Or hold {0} while dragging files in Explorer. The donut toolbar opens at your cursor.",
   "home.drop_hint_macos": "Or hold {0} while dragging files in Finder. The donut toolbar opens at your cursor.",
   "home.drop_hint_linux": "Or hold {0} while dragging files in your file manager. The donut toolbar opens at your cursor.",
+  "home.accessibility_needed": "To open the donut by dragging with ⌥ Option, allow Filee under Accessibility. It works as soon as you switch it on.",
   "home.recent": "Recent conversions",
   "home.recent_empty": "Your converted files will show up here.",
   "home.open_folder": "Open folder",
@@ -178,7 +179,7 @@
 
   "triggers.title": "Shortcuts",
   "triggers.description": "Choose how the donut toolbar opens. You can add as many gestures as you like.",
-  "triggers.macos_permissions": "Allow Filee in System Settings > Privacy & Security > Accessibility, then retry gestures. Finder also asks for Automation permission when you first use a selection shortcut.",
+  "triggers.macos_permissions": "Allow Filee in System Settings > Privacy & Security > Accessibility; gestures start as soon as you switch it on. Finder also asks for Automation permission when you first use a selection shortcut.",
   "triggers.linux_x11": "Drag gestures use X11. The first enabled keyboard shortcut is assigned to the Thunar Filee action when file manager integration is on. Close Thunar before changing it, then reopen Thunar. Hold gestures and global selection shortcuts in other file managers are unavailable; use their Filee menu action or the drop zone.",
   "triggers.linux_wayland": "Cursor-following gestures are unavailable in this Wayland session. Use an X11 session for drag gestures, or convert through file manager actions and the drop zone. Thunar can use the first enabled keyboard shortcut after it restarts.",
   "triggers.open_accessibility": "Open Accessibility settings",

@@ -47,12 +47,16 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     private readonly UserDataStore _store;
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
+    private readonly Services.Triggers.TriggerService? _triggers;
 
-    public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform)
+    public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, Services.Triggers.TriggerService? triggers = null)
     {
         _store = store;
         _loc = loc;
         _platform = platform;
+        _triggers = triggers;
+        if (triggers is not null)
+            triggers.StatusChanged += OnTriggerStatusChanged;
         var drag = store.Settings.Triggers.FirstOrDefault(t => t.Enabled && t.Kind == TriggerKind.Drag);
         DropHint = loc.Format(OperatingSystem.IsMacOS() ? "home.drop_hint_macos" : OperatingSystem.IsLinux() ? "home.drop_hint_linux" : "home.drop_hint", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
         store.HistoryChanged += OnHistoryChanged;
@@ -61,7 +65,24 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
 
     private void OnHistoryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(Reload);
 
-    public void Dispose() => _store.HistoryChanged -= OnHistoryChanged;
+    public void Dispose()
+    {
+        _store.HistoryChanged -= OnHistoryChanged;
+        if (_triggers is not null)
+            _triggers.StatusChanged -= OnTriggerStatusChanged;
+    }
+
+    private void OnTriggerStatusChanged(object? sender, EventArgs e) => OnPropertyChanged(nameof(NeedsAccessibility));
+
+    /// <summary>macOS: gestures wait for the Accessibility permission (the reminder above the drop zone).</summary>
+    public bool NeedsAccessibility => _triggers?.NeedsPermission == true;
+
+    [RelayCommand]
+    private void OpenAccessibility()
+    {
+        if (OperatingSystem.IsMacOS() && _platform is Filee.Platform.MacOS.MacOSPlatformServices mac)
+            mac.OpenAccessibilitySettings();
+    }
 
     public string DropHint { get; }
 
