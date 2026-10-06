@@ -133,6 +133,30 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Channels_sample_rate_and_bit_depth_reach_the_audio_encoders()
+    {
+        // Low Opus bitrates for speech, mono (#37).
+        var opus = Args("opus", new MediaOptions { AudioBitrateKbps = 32, AudioChannels = 1 });
+        Assert.Equal("32k", After(opus, "-b:a"));
+        Assert.Equal("1", After(opus, "-ac"));
+        Assert.DoesNotContain("-ac", Args("opus"));
+
+        var wav = Args("wav", new MediaOptions { AudioChannels = 1, AudioSampleRate = 16000, WavFormat = WavSampleFormat.Pcm24 });
+        Assert.Equal("pcm_s24le", After(wav, "-c:a"));
+        Assert.Equal("1", After(wav, "-ac"));
+        Assert.Equal("16000", After(wav, "-ar"));
+        Assert.Equal("pcm_s16le", After(Args("wav"), "-c:a")); // 16-bit stays the default
+        Assert.DoesNotContain("-ar", Args("wav"));
+        Assert.Equal("pcm_u8", After(Args("wav", new MediaOptions { WavFormat = WavSampleFormat.Pcm8 }), "-c:a"));
+        Assert.Equal("pcm_f32le", After(Args("wav", new MediaOptions { WavFormat = WavSampleFormat.Float32 }), "-c:a"));
+
+        // The sample rate is a WAV option only; AMR keeps its fixed mono 8 kHz.
+        Assert.DoesNotContain("-ar", Args("flac", new MediaOptions { AudioSampleRate = 16000 }));
+        var amr = Args("amr", new MediaOptions { AudioChannels = 2 });
+        Assert.All(amr.Where((_, i) => i > 0 && amr[i - 1] == "-ac"), channels => Assert.Equal("1", channels));
+    }
+
+    [Fact]
     public void Dvd_and_dv_frames_are_letterboxed_into_the_nearest_tv_shape()
     {
         // 16:9 source: fills the anamorphic 16:9 NTSC frame.
@@ -493,6 +517,15 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(128_000, mp3.Audio!.BitRate);
         var m4a = await ProbeAsync(await ConvertAsync(tone, "m4a", new MediaOptions { AudioBitrateKbps = 96 }));
         Assert.InRange(m4a.Audio!.BitRate, 70_000, 110_000);
+
+        // #37: mono speech Opus at 32 kbit/s, and a WAV for a phone system (mono, 8 kHz, 8-bit).
+        var opus = await ProbeAsync(await ConvertAsync(tone, "opus", new MediaOptions { AudioBitrateKbps = 32, AudioChannels = 1 }));
+        Assert.Equal(("opus", 1), (opus.Audio!.Codec, opus.Audio.Channels));
+        var wav = await ProbeAsync(await ConvertAsync(tone, "wav",
+            new MediaOptions { AudioChannels = 1, AudioSampleRate = 8000, WavFormat = WavSampleFormat.Pcm8 }));
+        Assert.Equal(("pcm_u8", 1, 8000), (wav.Audio!.Codec, wav.Audio.Channels, wav.Audio.SampleRate));
+        var float32 = await ProbeAsync(await ConvertAsync(tone, "wav", new MediaOptions { WavFormat = WavSampleFormat.Float32 }));
+        Assert.Equal(("pcm_f32le", 2, 44100), (float32.Audio!.Codec, float32.Audio.Channels, float32.Audio.SampleRate));
     }
 
     [Fact]

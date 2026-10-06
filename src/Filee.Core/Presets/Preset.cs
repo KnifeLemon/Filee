@@ -199,7 +199,26 @@ public sealed class MediaOptions
     /// <summary>Drop the audio track of a video.</summary>
     public bool RemoveAudio { get; set; }
 
+    /// <summary>Audio channels of an audio file: 0 keeps the source's, 1 mono, 2 stereo.</summary>
+    public int AudioChannels { get; set; }
+
+    /// <summary>Sample rate in Hz of a WAV file (8000 … 48000); 0 keeps the source's.</summary>
+    public int AudioSampleRate { get; set; }
+
+    /// <summary>How a WAV file stores its samples.</summary>
+    public WavSampleFormat WavFormat { get; set; } = WavSampleFormat.Pcm16;
+
     public MediaOptions Clone() => (MediaOptions)MemberwiseClone();
+}
+
+/// <summary>Sample format of a WAV file. 16-bit PCM is what every player reads (and was the only one before 1.6).</summary>
+public enum WavSampleFormat
+{
+    Pcm16,
+    Pcm8,
+    Pcm24,
+    Pcm32,
+    Float32,
 }
 
 /// <summary>How hard archives are compressed.</summary>
