@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels.Pages"
+             xmlns:c="using:Filee.App.Controls"
              x:Class="Filee.App.Views.Pages.TriggersPage"
              x:DataType="vm:TriggersPageViewModel">
   <StackPanel Spacing="18">
@@ -119,9 +120,42 @@
     </ItemsControl>
 
     <Border Classes="card">
-      <StackPanel>
+      <StackPanel Spacing="8" DataContext="{Binding ExcludedApps}" x:DataType="vm:ExcludedAppsViewModel">
         <TextBlock Classes="label" Text="{DynamicResource triggers.excluded}" />
-        <TextBox Text="{Binding Excluded}" PlaceholderText="{DynamicResource triggers.excluded_hint}" />
+        <c:TagEditor Tags="{Binding Tags}" Suggestions="{Binding Suggestions}" Text="{Binding Text}"
+                     AddCommand="{Binding AddCommand}" RemoveCommand="{Binding RemoveCommand}"
+                     PlaceholderText="{DynamicResource triggers.excluded_hint}" />
+        <!-- Pick from the apps that have a window open now -->
+        <Button HorizontalAlignment="Left" Command="{Binding LoadRunningAppsCommand}">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
+            <TextBlock Text="{DynamicResource triggers.excluded_pick}" />
+          </StackPanel>
+          <Button.Flyout>
+            <Flyout Placement="BottomEdgeAlignedLeft">
+              <StackPanel Spacing="8" Width="280">
+                <TextBox Text="{Binding RunningSearch}" Watermark="{DynamicResource common.search}">
+                  <TextBox.InnerLeftContent>
+                    <PathIcon Width="14" Height="14" Margin="10,0,0,0" Data="{StaticResource Icon.Search}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  </TextBox.InnerLeftContent>
+                </TextBox>
+                <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource triggers.excluded_none_running}"
+                           IsVisible="{Binding NoRunningApps}" />
+                <ScrollViewer MaxHeight="280">
+                  <ItemsControl ItemsSource="{Binding VisibleRunningApps}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="x:String">
+                        <Button Classes="ghost" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left" Content="{Binding}"
+                                Command="{Binding $parent[ItemsControl].((vm:ExcludedAppsViewModel)DataContext).AddCommand}" CommandParameter="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </ScrollViewer>
+              </StackPanel>
+            </Flyout>
+          </Button.Flyout>
+        </Button>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource triggers.excluded_note}" />
       </StackPanel>
     </Border>
   </StackPanel>

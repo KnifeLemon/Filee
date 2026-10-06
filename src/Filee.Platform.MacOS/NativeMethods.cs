@@ -17,6 +17,42 @@ internal static class NativeMethods
     private static readonly nint AlphaKey = CFStringCreateWithCString(0, "kCGWindowAlpha", 0x08000100);
     private static readonly nint LayerKey = CFStringCreateWithCString(0, "kCGWindowLayer", 0x08000100);
 
+    /// <summary>Process names of the app windows on screen (layer 0), front to back.</summary>
+    internal static IEnumerable<string> WindowOwnerNames()
+    {
+        var windows = CGWindowListCopyWindowInfo(1, 0);
+        if (windows == 0)
+            yield break;
+        try
+        {
+            for (nint index = 0; index < CFArrayGetCount(windows); index++)
+            {
+                var window = CFArrayGetValueAtIndex(windows, index);
+                var layerValue = CFDictionaryGetValue(window, LayerKey);
+                if (layerValue == 0 || !CFNumberGetInt(layerValue, 3, out var layer) || layer != 0)
+                    continue;
+                var pidValue = CFDictionaryGetValue(window, PidKey);
+                if (pidValue == 0 || !CFNumberGetInt(pidValue, 3, out var pid))
+                    continue;
+                string? name = null;
+                try
+                {
+                    using var process = Process.GetProcessById(pid);
+                    name = process.ProcessName;
+                }
+                catch (ArgumentException) { }
+                catch (InvalidOperationException) { }
+                catch (System.ComponentModel.Win32Exception) { }
+                if (name is not null)
+                    yield return name;
+            }
+        }
+        finally
+        {
+            CFRelease(windows);
+        }
+    }
+
     internal static string? ProcessNameAt(int x, int y)
     {
         var windows = CGWindowListCopyWindowInfo(1, 0);

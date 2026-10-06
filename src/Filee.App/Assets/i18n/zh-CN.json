@@ -215,7 +215,10 @@
   "triggers.scope.FileManager_linux": "文件管理器和桌面",
   "triggers.scope.Anywhere": "所有位置",
   "triggers.excluded": "在这些应用中不触发",
-  "triggers.excluded_hint": "进程名，用逗号分隔，例如 photoshop, code",
+  "triggers.excluded_hint": "输入应用名称后按 Enter，例如 photoshop",
+  "triggers.excluded_pick": "从正在运行的应用中选择",
+  "triggers.excluded_none_running": "没有其他打开窗口的应用。",
+  "triggers.excluded_note": "指针位于这些应用上时，手势和快捷键不起作用。",
   "triggers.paused": "快捷操作已暂停",
 
   "toolbar.title": "环形工具栏",
@@ -423,6 +426,8 @@
   "engines.state.failed": "失败：{0}",
 
   "about.title": "关于",
+  "about.updates": "更新",
+  "common.search": "搜索",
   "about.version": "版本 {0}",
   "about.license": "Filee 是基于 MIT 许可证的免费软件。",
   "about.notices": "第三方声明",

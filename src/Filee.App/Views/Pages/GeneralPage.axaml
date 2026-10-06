@@ -51,22 +51,6 @@
 
     <Border Classes="card">
       <StackPanel Spacing="12">
-        <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
-        <StackPanel Orientation="Horizontal" Spacing="10">
-          <Button Content="{DynamicResource general.check_now}" Command="{Binding CheckNowCommand}" />
-          <Button Classes="accent" Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding UpdateAvailable}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
-              <TextBlock Text="{Binding UpdateButtonText}" />
-            </StackPanel>
-          </Button>
-          <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />
-        </StackPanel>
-      </StackPanel>
-    </Border>
-
-    <Border Classes="card">
-      <StackPanel Spacing="12">
         <TextBlock Classes="h2" Text="{DynamicResource general.history}" />
         <ToggleSwitch Content="{DynamicResource general.no_history}" IsChecked="{Binding NoHistory}" />
         <StackPanel Orientation="Horizontal" Spacing="10">

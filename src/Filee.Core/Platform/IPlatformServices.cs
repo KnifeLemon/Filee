@@ -12,6 +12,22 @@ public interface IPlatformServices
     /// <summary>Process name (without extension) owning the window under the point, or <c>null</c>.</summary>
     string? ProcessNameAt(int x, int y);
 
+    /// <summary>
+    /// Names of the apps that have a window open now, as <see cref="ProcessNameAt"/> reports them, sorted, without
+    /// Filee. Windows reports a main window per process; macOS and Linux list the windows on screen.
+    /// </summary>
+    IReadOnlyList<string> RunningAppNames() => AppNames(System.Diagnostics.Process.GetProcesses()
+        .Where(p => { try { return p.MainWindowHandle != 0; } catch (InvalidOperationException) { return false; } })
+        .Select(p => { using (p) return p.ProcessName; }));
+
+    /// <summary>Distinct, sorted, Filee itself left out.</summary>
+    static IReadOnlyList<string> AppNames(IEnumerable<string?> names)
+    {
+        var own = System.Diagnostics.Process.GetCurrentProcess().ProcessName;
+        return [.. names.OfType<string>().Where(n => n.Length > 0 && !n.Equals(own, StringComparison.OrdinalIgnoreCase))
+            .Distinct(StringComparer.OrdinalIgnoreCase).Order(StringComparer.CurrentCultureIgnoreCase)];
+    }
+
     /// <summary>Files currently selected in the foreground file manager window (empty if none).</summary>
     IReadOnlyList<string> GetFileManagerSelection();
 

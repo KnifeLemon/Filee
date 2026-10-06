@@ -174,14 +174,13 @@ public class RenderTests
         window.Show();
         Pump();
 
-        // Everything not installed is offered; small downloads are pre-selected, the large LibreOffice, FFmpeg and calibre and the
-        // EPS-only Ghostscript not.
-        // (On macOS FFmpeg and Ghostscript come from Homebrew: listed, but not offered for download.)
-        Assert.All(vm.Packages.Where(p => !p.IsInstalled && p.CanInstall), p => Assert.Equal(
-            Filee.Engines.Infrastructure.EngineDownloads.DownloadSize(p.Package) < Filee.Engines.Infrastructure.EngineDownloads.SuggestLimit
-            && p.Package.Id != "ghostscript", p.Selected));
-        Assert.DoesNotContain(vm.Packages, p => p.Package.Id is "libreoffice" or "ffmpeg" or "calibre" or "ghostscript" && p.Selected);
-        Assert.Equal(vm.Packages.Any(p => p.Selected && p.CanInstall), vm.InstallCommand.CanExecute(null));
+        // Everything not installed is offered, nothing is ticked: installing needs a choice first.
+        Assert.Contains(vm.Packages, p => !p.IsInstalled && p.CanInstall);
+        Assert.DoesNotContain(vm.Packages, p => p.Selected);
+        Assert.False(vm.InstallCommand.CanExecute(null));
+        vm.Packages.First(p => p.CanInstall && !p.IsInstalled).Selected = true;
+        Assert.True(vm.InstallCommand.CanExecute(null));
+        vm.Packages.First(p => p.Selected).Selected = false;
         Save(window, $"engine-setup-{language}.png");
         window.Close();
     }
@@ -508,6 +507,33 @@ public class RenderTests
             store.Profiles.Clear();
             store.Profiles.AddRange(snapshot);
             store.SaveLibrary();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Excluded_apps_render_as_tags(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var store = AppHost.Get<UserDataStore>();
+        var before = store.Settings.ExcludedProcesses.ToList();
+        try
+        {
+            store.Settings.ExcludedProcesses.Clear();
+            store.Settings.ExcludedProcesses.AddRange(["Photoshop", "code"]);
+            var vm = new TriggersPageViewModel(store, AppHost.Get<Filee.Core.Localization.ILocalizer>());
+            var window = new Window { Content = new Filee.App.Views.Pages.TriggersPage { DataContext = vm }, Width = 820, Height = 1500 };
+            window.Show();
+            Pump();
+            Assert.Equal(["Photoshop", "code"], vm.ExcludedApps.Tags.Select(t => t.Value));
+            Save(window, $"triggers-excluded-{language}.png");
+            window.Close();
+        }
+        finally
+        {
+            store.Settings.ExcludedProcesses.Clear();
+            store.Settings.ExcludedProcesses.AddRange(before);
         }
     }
 

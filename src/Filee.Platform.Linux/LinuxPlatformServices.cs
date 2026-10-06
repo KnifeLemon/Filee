@@ -33,6 +33,8 @@ public sealed class LinuxPlatformServices : IPlatformServices
 
     public bool IsFileManagerAt(int x, int y) => ProcessNameAt(x, y) is { } name && FileManagers.Contains(name);
     public string? ProcessNameAt(int x, int y) => X11WindowSystem.ProcessNameAt(x, y);
+
+    public IReadOnlyList<string> RunningAppNames() => IPlatformServices.AppNames(X11WindowSystem.ClientProcessNames());
     public IReadOnlyList<string> GetFileManagerSelection() => throw new NotSupportedException(SelectionShortcutUnavailableReason);
     public int SystemDragThreshold => 8;
 

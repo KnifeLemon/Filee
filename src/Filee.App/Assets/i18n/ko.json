@@ -215,7 +215,10 @@
   "triggers.scope.FileManager_linux": "파일 관리자와 바탕화면",
   "triggers.scope.Anywhere": "모든 곳",
   "triggers.excluded": "이 앱에서는 동작하지 않기",
-  "triggers.excluded_hint": "프로세스 이름을 쉼표로 구분, 예: photoshop, code",
+  "triggers.excluded_hint": "앱 이름을 입력하고 Enter, 예: photoshop",
+  "triggers.excluded_pick": "실행 중인 앱에서 선택",
+  "triggers.excluded_none_running": "창이 열린 다른 앱이 없어요.",
+  "triggers.excluded_note": "마우스가 이 앱 위에 있으면 제스처와 단축키가 동작하지 않아요.",
   "triggers.paused": "단축키가 일시 중지되었어요",
 
   "toolbar.title": "원형 툴바",
@@ -423,6 +426,8 @@
   "engines.state.failed": "실패: {0}",
 
   "about.title": "정보",
+  "about.updates": "업데이트",
+  "common.search": "검색",
   "about.version": "버전 {0}",
   "about.license": "Filee는 MIT 라이선스의 무료 소프트웨어예요.",
   "about.notices": "서드파티 고지",

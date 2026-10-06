@@ -31,6 +31,8 @@ public sealed class MacOSPlatformServices : IPlatformServices
 
     public string? ProcessNameAt(int x, int y) => NativeMethods.ProcessNameAt(x, y);
 
+    public IReadOnlyList<string> RunningAppNames() => IPlatformServices.AppNames(NativeMethods.WindowOwnerNames().ToList());
+
     public IReadOnlyList<string> GetFileManagerSelection()
     {
         LastSelectionError = null;

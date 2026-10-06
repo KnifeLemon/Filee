@@ -215,7 +215,10 @@
   "triggers.scope.FileManager_linux": "File manager and desktop",
   "triggers.scope.Anywhere": "Everywhere",
   "triggers.excluded": "Never trigger in these apps",
-  "triggers.excluded_hint": "Process names separated by commas, e.g. photoshop, code",
+  "triggers.excluded_hint": "Type an app name and press Enter, e.g. photoshop",
+  "triggers.excluded_pick": "Pick a running app",
+  "triggers.excluded_none_running": "No other app has a window open.",
+  "triggers.excluded_note": "Gestures and shortcuts do nothing while the pointer is over these apps.",
   "triggers.paused": "Shortcuts are paused",
 
   "toolbar.title": "Donut toolbar",
@@ -423,6 +426,8 @@
   "engines.state.failed": "Failed: {0}",
 
   "about.title": "About",
+  "about.updates": "Updates",
+  "common.search": "Search",
   "about.version": "Version {0}",
   "about.license": "Filee is free software under the MIT license.",
   "about.notices": "Third-party notices",

@@ -43,6 +43,45 @@ internal static class X11WindowSystem
         }
     }
 
+    /// <summary>Process names of the windows the window manager lists (_NET_CLIENT_LIST).</summary>
+    internal static IReadOnlyList<string> ClientProcessNames()
+    {
+        if (!IsAvailable)
+            return [];
+        var display = OpenDisplay();
+        if (display == 0)
+            return [];
+        try
+        {
+            var list = XInternAtom(display, "_NET_CLIENT_LIST", 1);
+            if (list == 0 || XGetWindowProperty(display, XDefaultRootWindow(display), list, 0, 4096, 0, 0,
+                    out _, out var format, out var count, out _, out var data) != 0)
+                return [];
+            try
+            {
+                if (data == 0 || format != 32 || count == 0)
+                    return [];
+                var names = new List<string>();
+                for (var i = 0; i < (int)count; i++)
+                {
+                    // Format-32 properties come back as C longs, one per window.
+                    var window = (nuint)(ulong)Marshal.ReadIntPtr(data, i * IntPtr.Size);
+                    if (ReadProcessName(display, window) is { } name)
+                        names.Add(name);
+                }
+                return names;
+            }
+            finally
+            {
+                XFree(data);
+            }
+        }
+        finally
+        {
+            XCloseDisplay(display);
+        }
+    }
+
     internal static void RaiseTopmost(nint window)
     {
         if (window == 0 || !IsAvailable)

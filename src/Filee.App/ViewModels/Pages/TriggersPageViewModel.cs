@@ -157,7 +157,7 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
             triggers.StatusChanged += OnTriggerStatusChanged;
         foreach (var gesture in store.Settings.Triggers)
             Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save));
-        _excluded = string.Join(", ", store.Settings.ExcludedProcesses);
+        ExcludedApps = new ExcludedAppsViewModel(store.Settings.ExcludedProcesses, platform, Save);
     }
 
     public ObservableCollection<TriggerGestureViewModel> Gestures { get; } = [];
@@ -209,15 +209,8 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
             _triggers.StatusChanged -= OnTriggerStatusChanged;
     }
 
-    [ObservableProperty] private string _excluded;
-
-    partial void OnExcludedChanged(string value)
-    {
-        _store.Settings.ExcludedProcesses = value
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .ToList();
-        Save();
-    }
+    /// <summary>"Never trigger in these apps" as tags.</summary>
+    public ExcludedAppsViewModel ExcludedApps { get; }
 
     [RelayCommand]
     private void Add()

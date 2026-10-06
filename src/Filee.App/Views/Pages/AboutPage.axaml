@@ -23,6 +23,22 @@
       </StackPanel>
     </Border>
     <Border Classes="card">
+      <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="{DynamicResource about.updates}" />
+        <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
+        <WrapPanel>
+          <Button Content="{DynamicResource general.check_now}" Command="{Binding CheckNowCommand}" Margin="0,0,10,0" />
+          <Button Classes="accent" Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding UpdateAvailable}" Margin="0,0,10,0">
+            <StackPanel Orientation="Horizontal" Spacing="6">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
+              <TextBlock Text="{Binding UpdateButtonText}" />
+            </StackPanel>
+          </Button>
+          <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />
+        </WrapPanel>
+      </StackPanel>
+    </Border>
+    <Border Classes="card">
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource about.support_title}" />
         <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource about.support_text}" />

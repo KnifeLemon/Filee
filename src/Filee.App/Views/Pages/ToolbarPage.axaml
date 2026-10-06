@@ -106,7 +106,12 @@
       <!-- 1. Profiles -->
       <StackPanel Spacing="8">
         <TextBlock Classes="label" Text="{DynamicResource toolbar.step_profile}" />
-        <ListBox Classes="soft" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}">
+        <TextBox Classes="search" Text="{Binding ProfileSearch}" Watermark="{DynamicResource common.search}">
+          <TextBox.InnerLeftContent>
+            <PathIcon Width="14" Height="14" Margin="10,0,0,0" Data="{StaticResource Icon.Search}" Foreground="{DynamicResource TextSecondaryBrush}" />
+          </TextBox.InnerLeftContent>
+        </TextBox>
+        <ListBox Classes="soft" ItemsSource="{Binding VisibleProfiles}" SelectedItem="{Binding SelectedProfile}">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="vm:ProfileItemViewModel">
               <DockPanel>
@@ -265,9 +270,14 @@
       <!-- Palette -->
       <StackPanel Grid.Column="4" Spacing="8">
         <TextBlock Classes="label" Text="{DynamicResource toolbar.available}" />
+        <TextBox Classes="search" Text="{Binding PaletteSearch}" Watermark="{DynamicResource common.search}">
+          <TextBox.InnerLeftContent>
+            <PathIcon Width="14" Height="14" Margin="10,0,0,0" Data="{StaticResource Icon.Search}" Foreground="{DynamicResource TextSecondaryBrush}" />
+          </TextBox.InnerLeftContent>
+        </TextBox>
         <Border x:Name="PaletteBox" MinHeight="180" Padding="6" CornerRadius="{DynamicResource SoftRadius}"
                 BorderThickness="2" BorderBrush="{DynamicResource SubtleBorderBrush}" Background="Transparent">
-          <ItemsControl ItemsSource="{Binding Palette}">
+          <ItemsControl ItemsSource="{Binding VisiblePalette}">
             <ItemsControl.ItemsPanel>
               <ItemsPanelTemplate>
                 <WrapPanel />
