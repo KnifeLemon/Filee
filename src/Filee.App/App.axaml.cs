@@ -77,11 +77,16 @@ public partial class App : Application
         triggers.Start();
         log.LogInformation("Filee {Version} started", UpdateService.CurrentVersion);
         // macOS: ask for Accessibility with the system's own alert when the user opened Filee (not at sign-in) and
-        // a drag gesture is on. The home page keeps a reminder until it is given.
+        // a drag gesture is on. The home page keeps a reminder until it is given. Asked once the main window is up:
+        // asked earlier, the alert ends up behind it.
         if (OperatingSystem.IsMacOS() && triggers.NeedsPermission && !Program.Options.Background
             && platform is Filee.Platform.MacOS.MacOSPlatformServices mac
             && store.Settings.Triggers.Any(t => t.Enabled && t.Kind == TriggerKind.Drag))
-            mac.RequestAccessibilityPermission();
+            DispatcherTimer.RunOnce(() =>
+            {
+                if (triggers.NeedsPermission)
+                    mac.RequestAccessibilityPermission();
+            }, TimeSpan.FromSeconds(1.5));
 
         store.SettingsChanged += (_, _) => ApplySettings(store.Settings);
 
