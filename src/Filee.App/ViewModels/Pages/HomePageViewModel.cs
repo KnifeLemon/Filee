@@ -54,7 +54,7 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         _loc = loc;
         _platform = platform;
         var drag = store.Settings.Triggers.FirstOrDefault(t => t.Enabled && t.Kind == TriggerKind.Drag);
-        DropHint = loc.Format("home.drop_hint", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
+        DropHint = loc.Format(OperatingSystem.IsMacOS() ? "home.drop_hint_macos" : OperatingSystem.IsLinux() ? "home.drop_hint_linux" : "home.drop_hint", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
         store.HistoryChanged += OnHistoryChanged;
         Reload();
     }

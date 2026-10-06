@@ -29,7 +29,11 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         Kinds = Enum.GetValues<TriggerKind>().Select(k => new Choice<TriggerKind>(k, loc[$"triggers.kind.{k}"])).ToList();
         Buttons = Enum.GetValues<TriggerMouseButton>().Where(b => b != TriggerMouseButton.None)
             .Select(b => new Choice<TriggerMouseButton>(b, loc[$"triggers.button.{b}"])).ToList();
-        Scopes = Enum.GetValues<TriggerScope>().Select(s => new Choice<TriggerScope>(s, loc[$"triggers.scope.{s}"])).ToList();
+        // The file manager has its own name on each system: Explorer, Finder, the Linux desktop's file manager.
+        var platform = OperatingSystem.IsMacOS() ? "_macos" : OperatingSystem.IsLinux() ? "_linux" : "";
+        Scopes = Enum.GetValues<TriggerScope>()
+            .Select(s => new Choice<TriggerScope>(s, loc[s == TriggerScope.FileManager ? $"triggers.scope.{s}{platform}" : $"triggers.scope.{s}"]))
+            .ToList();
         RecordLabel = loc["triggers.record"];
         RecordingLabel = loc["triggers.recording"];
         SystemLabel = loc["triggers.threshold_system"];

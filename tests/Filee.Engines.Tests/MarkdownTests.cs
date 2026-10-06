@@ -112,8 +112,7 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hwpx = await ConvertAsync(await WriteSampleAsync(dir), "hwpx");
 
         HwpxAssert.ValidPackage(hwpx, expectImages: 1);
-        using var document = Unhwp.UnhwpDocument.ParseFile(hwpx);
-        var text = document.ToText();
+        var text = HwpxAssert.ReadBackText(hwpx);
         foreach (var expected in new[] { "주간 회의", "배포", "v1.0.1", "설치", "민지", "☑ 끝낸 일", "☐ 남은 일" })
             Assert.Contains(expected, text);
         Assert.DoesNotContain("title:", text);

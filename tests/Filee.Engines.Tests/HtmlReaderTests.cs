@@ -280,9 +280,8 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
         var hwpx = job.Outputs.Single();
         ValidPackage(hwpx, expectImages: 1);
-        using (var document = Unhwp.UnhwpDocument.ParseFile(hwpx))
         {
-            var text = document.ToText();
+            var text = HwpxAssert.ReadBackText(hwpx);
             foreach (var expected in new[] { "분기 보고서", "12%", "서울", "부산", "매출", "둘째 쪽" })
                 Assert.Contains(expected, text);
         }

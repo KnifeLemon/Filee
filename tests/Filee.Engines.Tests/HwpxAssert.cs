@@ -86,6 +86,23 @@ internal static class HwpxAssert
         return XDocument.Load(zip.GetEntry(entry)!.Open(), LoadOptions.PreserveWhitespace).Root!;
     }
 
+    /// <summary>
+    /// The text of an HWPX as an independent reader sees it: Unhwp where its native library exists, else (Linux ARM64)
+    /// the text of the section XML.
+    /// </summary>
+    public static string ReadBackText(string hwpx)
+    {
+        if (new Filee.Engines.Hwp.UnhwpConverter().GetStatus().IsAvailable)
+        {
+            using var document = Unhwp.UnhwpDocument.ParseFile(hwpx);
+            return document.ToText();
+        }
+        using var zip = ZipFile.OpenRead(hwpx);
+        return string.Join("\n", zip.Entries.Where(e => e.FullName.StartsWith("Contents/section", StringComparison.Ordinal))
+            .OrderBy(e => e.FullName, StringComparer.Ordinal)
+            .Select(e => XDocument.Load(e.Open()).Root!.Value));
+    }
+
     /// <summary>The header element with the given id.</summary>
     public static XElement HeadItem(string hwpx, string name, string id) =>
         Xml(hwpx, "Contents/header.xml").Descendants(Hh + name).Single(e => (string?)e.Attribute("id") == id);
