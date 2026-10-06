@@ -22,6 +22,9 @@ public sealed class TriggerService : IDisposable
     private EventLoopGlobalHook? _hook;
     private HashSet<string> _excluded = new(StringComparer.OrdinalIgnoreCase);
 
+    /// <summary>FILEE_TRACE_GESTURES=1 logs each mouse press and scope decision, to find why a gesture doesn't fire.</summary>
+    private static readonly bool Trace = Environment.GetEnvironmentVariable("FILEE_TRACE_GESTURES") == "1";
+
     public TriggerService(IPlatformServices platform, ILogger<TriggerService> log)
     {
         _platform = platform;
@@ -89,7 +92,12 @@ public sealed class TriggerService : IDisposable
             _hook = new EventLoopGlobalHook();
             _hook.HookEnabled += (_, _) => { _log.LogInformation("Global input hook started"); NotifyStatus(); };
             _hook.HookDisabled += (_, _) => { _log.LogInformation("Global input hook stopped"); NotifyStatus(); };
-            _hook.MousePressed += (_, e) => _detector.MouseDown(Map(e.Data.Button), e.Data.X, e.Data.Y, Map(e.RawEvent.Mask));
+            _hook.MousePressed += (_, e) =>
+            {
+                if (Trace)
+                    _log.LogInformation("Trace: press {Button} at {X},{Y}, mask {Mask} = {Modifiers}", e.Data.Button, e.Data.X, e.Data.Y, e.RawEvent.Mask, Map(e.RawEvent.Mask));
+                _detector.MouseDown(Map(e.Data.Button), e.Data.X, e.Data.Y, Map(e.RawEvent.Mask));
+            };
             _hook.MouseReleased += (_, e) => _detector.MouseUp(Map(e.Data.Button), e.Data.X, e.Data.Y);
             _hook.MouseDragged += (_, e) => OnMove(e);
             _hook.MouseMoved += (_, e) => OnMove(e);
@@ -125,6 +133,8 @@ public sealed class TriggerService : IDisposable
     private bool InScope(TriggerGesture gesture, int x, int y)
     {
         var process = _platform.ProcessNameAt(x, y);
+        if (Trace)
+            _log.LogInformation("Trace: {Gesture} at {X},{Y} over {Process}", gesture.Kind, x, y, process ?? "(none)");
         if (process is not null && (string.Equals(process, _ownProcess, StringComparison.OrdinalIgnoreCase) || _excluded.Contains(process)))
             return false;
         return gesture.Scope == TriggerScope.Anywhere || _platform.IsFileManagerAt(x, y);

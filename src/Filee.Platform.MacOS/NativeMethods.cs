@@ -15,6 +15,7 @@ internal static class NativeMethods
     private static readonly nint BoundsKey = CFStringCreateWithCString(0, "kCGWindowBounds", 0x08000100);
     private static readonly nint PidKey = CFStringCreateWithCString(0, "kCGWindowOwnerPID", 0x08000100);
     private static readonly nint AlphaKey = CFStringCreateWithCString(0, "kCGWindowAlpha", 0x08000100);
+    private static readonly nint LayerKey = CFStringCreateWithCString(0, "kCGWindowLayer", 0x08000100);
 
     internal static string? ProcessNameAt(int x, int y)
     {
@@ -31,6 +32,11 @@ internal static class NativeMethods
                     continue;
                 // Quartz and Avalonia's macOS desktop coordinates use top-left points, including on Retina displays.
                 if (x < bounds.X || y < bounds.Y || x >= bounds.X + bounds.Width || y >= bounds.Y + bounds.Height)
+                    continue;
+                // Only app windows (layer 0) and the desktop (below 0): the Dock, the menu bar and other system
+                // overlays sit above (the Dock keeps a transparent window over the whole screen).
+                var layerValue = CFDictionaryGetValue(window, LayerKey);
+                if (layerValue != 0 && CFNumberGetInt(layerValue, 3, out var layer) && layer > 0)
                     continue;
                 var alphaValue = CFDictionaryGetValue(window, AlphaKey);
                 if (alphaValue != 0 && CFNumberGetDouble(alphaValue, 6, out var alpha) && alpha <= 0)
