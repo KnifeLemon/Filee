@@ -6,6 +6,26 @@ version it publishes under "What's Changed" in the GitHub release notes, above t
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.6.0
+
+### New in the preset editor for audio
+
+- Opus and the other lossy audio formats offer 32, 48 and 64 kbit/s as well, for speech and small files (#37).
+- **Channels**: same as the source, mono or stereo, for every audio format except AMR (which is always mono).
+- WAV gets a **sample rate** (8, 16, 22.05, 44.1 or 48 kHz, or the same as the source) and a **bit depth** (8, 16,
+  24 or 32-bit, or 32-bit float). 16-bit stays the default.
+
+### Fixes
+
+- EPS and PS → PNG keep a transparent background where the drawing leaves the page empty, instead of white (#39).
+  Ghostscript renders the PNG directly; JPG and other formats without transparency still get a white background.
+- PDF → DOCX keeps rows laid out with tab stops, such as a numbered schedule with dates on the right ("1.  RFP
+  Published   08/14/2026"): each row stays one paragraph with tabs at the PDF's positions, instead of the numbers,
+  labels and dates coming out as separate paragraphs. Forms with a label and a value on each row come out the same
+  way (#38).
+- PDF → DOCX keeps the line breaks of address blocks and other short lines: "West Linn, Oregon 97068" no longer
+  moves up onto the street line (#38). PDF → TXT has the tabs and line breaks too.
+
 ## 1.5.2
 
 ### Fixes
