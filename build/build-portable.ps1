@@ -84,6 +84,10 @@ if ($Runtime.StartsWith('osx-')) {
         }
     }
     Invoke-Checked 'Create app icon' { iconutil -c icns $iconset -o (Join-Path $resources 'filee.icns') }
+    # Translations of the service title ("Convert with Filee") in Finder's right-click menu.
+    foreach ($localization in Get-ChildItem -LiteralPath (Join-Path $root 'installer/macos') -Directory -Filter '*.lproj') {
+        Copy-Item -LiteralPath $localization.FullName -Destination $resources -Recurse
+    }
     $entitlements = Join-Path $root 'installer/macos/entitlements.plist'
     $signOptions = @('--force', '--sign', $SigningIdentity)
     if ($SigningIdentity -ne '-') { $signOptions += @('--timestamp', '--options', 'runtime') }

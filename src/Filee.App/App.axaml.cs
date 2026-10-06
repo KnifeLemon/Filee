@@ -36,6 +36,11 @@ public partial class App : Application
 
     private void Start(IClassicDesktopStyleApplicationLifetime desktop)
     {
+        // macOS: "Convert with Filee" in Finder's right-click menu. Registered first, so a service picked while
+        // Filee wasn't running is delivered as soon as it starts.
+        if (OperatingSystem.IsMacOS())
+            Filee.Platform.MacOS.MacOSServicesProvider.Register(files =>
+                Dispatcher.UIThread.Post(() => HandleCommandLine(CommandLine.Parse(["--convert", .. files]))));
         var log = AppHost.Get<ILogger<App>>();
         var store = AppHost.Get<UserDataStore>();
         store.Load();

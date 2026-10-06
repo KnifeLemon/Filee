@@ -69,28 +69,23 @@ public sealed class MacOSPlatformServices : IPlatformServices
         File.WriteAllText(path, MacOSIntegrationFiles.LaunchAgent(executablePath), new UTF8Encoding(false));
     }
 
+    /// <summary>
+    /// Shows or hides Filee's own service in Finder's right-click menu (the same switch as System Settings >
+    /// Keyboard > Keyboard Shortcuts > Services), and removes the Automator Quick Action earlier builds installed.
+    /// </summary>
     public void SetContextMenu(bool enabled, string executablePath, string label)
     {
-        var workflow = Path.Combine(UserLibrary, "Services", "Filee.workflow");
-        var contents = Path.Combine(workflow, "Contents");
-        if (enabled)
-        {
-            RequireExecutable(executablePath);
-            Directory.CreateDirectory(contents);
-            File.WriteAllText(Path.Combine(contents, "Info.plist"), MacOSIntegrationFiles.ServiceInfo(label), new UTF8Encoding(false));
-            File.WriteAllText(Path.Combine(contents, "document.wflow"), MacOSIntegrationFiles.Workflow(executablePath), new UTF8Encoding(false));
-        }
-        else if (Directory.Exists(contents))
-        {
-            File.Delete(Path.Combine(contents, "Info.plist"));
-            File.Delete(Path.Combine(contents, "document.wflow"));
-            if (!Directory.EnumerateFileSystemEntries(contents).Any())
-                Directory.Delete(contents);
-            if (!Directory.EnumerateFileSystemEntries(workflow).Any())
-                Directory.Delete(workflow);
-        }
-
+        RemoveLegacyWorkflow();
+        Run("/usr/bin/defaults", ["write", "pbs", "NSServicesStatus", "-dict-add",
+            MacOSIntegrationFiles.ServiceStatusKey, MacOSIntegrationFiles.ServiceStatus(enabled)], 10_000);
         Run("/System/Library/CoreServices/pbs", ["-update"], 10_000);
+    }
+
+    private static void RemoveLegacyWorkflow()
+    {
+        var workflow = Path.Combine(UserLibrary, "Services", "Filee.workflow");
+        if (Directory.Exists(workflow))
+            Directory.Delete(workflow, recursive: true);
     }
 
     public ModernContextMenuState GetModernContextMenuState(string executablePath) => ModernContextMenuState.Unsupported;

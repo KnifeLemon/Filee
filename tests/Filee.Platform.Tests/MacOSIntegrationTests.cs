@@ -17,38 +17,35 @@ public sealed class MacOSIntegrationTests
     }
 
     [Fact]
-    public void ServiceMenuEscapesLocalizedLabelAndOnlyAcceptsFinderFiles()
+    public void ServiceSwitchWritesTheEntrySystemSettingsUses()
     {
-        const string label = "Filee로 변환 <빠르게> & 'convert'";
-        var root = ReadPlist(MacOSIntegrationFiles.ServiceInfo(label));
+        Assert.Equal("\"com.filee.app - Convert with Filee - convertFiles\"", MacOSIntegrationFiles.ServiceStatusKey);
+        Assert.Contains("\"enabled_context_menu\" = 0;", MacOSIntegrationFiles.ServiceStatus(false));
+        Assert.Contains("\"ContextMenu\" = 1;", MacOSIntegrationFiles.ServiceStatus(true));
+    }
+
+    [Fact]
+    public void AppBundleDeclaresTheServiceFileeAnswers()
+    {
+        var installer = Path.Combine(RepositoryRoot(), "installer", "macos");
+        var root = ReadPlist(File.ReadAllText(Path.Combine(installer, "Info.plist")));
         var service = Property(root, "NSServices").Element("dict")!;
-        Assert.Equal(label, Property(Property(service, "NSMenuItem"), "default").Value);
-        Assert.Equal(label, Property(root, "CFBundleName").Value);
-        Assert.Equal("com.apple.finder", Property(Property(service, "NSRequiredContext"), "NSApplicationIdentifier").Value);
+        Assert.Equal(MacOSServicesProvider.MenuItem, Property(Property(service, "NSMenuItem"), "default").Value);
+        Assert.Equal(MacOSServicesProvider.Message, Property(service, "NSMessage").Value);
+        Assert.Equal("Filee", Property(service, "NSPortName").Value);
         Assert.Equal("public.item", Property(service, "NSSendFileTypes").Element("string")!.Value);
+        // Each translation names the same menu title.
+        foreach (var strings in Directory.GetFiles(installer, "ServicesMenu.strings", SearchOption.AllDirectories))
+            Assert.StartsWith($"\"{MacOSServicesProvider.MenuItem}\" = ", File.ReadAllLines(strings).Single(l => l.StartsWith('"')));
+        Assert.Equal(3, Directory.GetFiles(installer, "ServicesMenu.strings", SearchOption.AllDirectories).Length);
     }
 
-    [Fact]
-    public void QuickActionLaunchesFreshBundleInstanceToForwardArguments()
+    private static string RepositoryRoot()
     {
-        const string executable = "/Applications/O'Brien & Friends/Filee.app/Contents/MacOS/Filee";
-        var workflow = ReadPlist(MacOSIntegrationFiles.Workflow(executable));
-        var action = Property(Property(workflow, "actions").Element("dict")!, "action");
-        var parameters = Property(action, "ActionParameters");
-        Assert.Equal("1", Property(parameters, "inputMethod").Value);
-        Assert.Equal("/bin/sh", Property(parameters, "shell").Value);
-        Assert.Equal("exec /usr/bin/open -n -a '/Applications/O'\"'\"'Brien & Friends/Filee.app' --args --convert \"$@\"",
-            Property(parameters, "COMMAND_STRING").Value);
-        var metadata = Property(workflow, "workflowMetaData");
-        Assert.Equal("com.apple.Automator.fileSystemObject", Property(metadata, "serviceInputTypeIdentifier").Value);
-        Assert.Equal("com.apple.finder", Property(metadata, "serviceApplicationBundleID").Value);
-    }
-
-    [Fact]
-    public void RawExecutableIsQuotedWithoutEvaluatingShellMetacharacters()
-    {
-        Assert.Equal("exec '/tmp/$(touch nope) `echo bad` \"quote\"' --convert \"$@\"",
-            MacOSIntegrationFiles.ConversionCommand("/tmp/$(touch nope) `echo bad` \"quote\""));
+        var folder = new DirectoryInfo(AppContext.BaseDirectory);
+        while (folder is not null && !File.Exists(Path.Combine(folder.FullName, "Filee.slnx")))
+            folder = folder.Parent;
+        return folder?.FullName ?? throw new DirectoryNotFoundException("Filee.slnx not found above the test output.");
     }
 
     [Fact]
