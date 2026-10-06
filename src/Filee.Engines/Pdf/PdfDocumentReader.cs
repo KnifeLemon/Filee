@@ -6,6 +6,10 @@
 // repeat on the pages (and bare page numbers) are left out. A page without text (a scan) becomes the rendered page as
 // a picture (PDFium via PDFtoImage), so the result is complete; there is no OCR.
 //
+// Rows laid out with tab stops (a number, a label and a date far to the right) stay one line with tabs at the PDF's
+// positions, and a line that ends early although the next line's first word would have fitted (an address) keeps its
+// line break.
+//
 // Not converted: tables (their cells come out as paragraphs in reading order), vector drawings on text pages,
 // annotations other than links, form fields.
 
@@ -90,9 +94,16 @@ internal sealed partial class PdfDocumentReader
     private sealed record TextWord(string Text, double Left, double Right, double Top, double Bottom, double Baseline, double Size, HCharFormat Format, string? Link);
 
     /// <summary>A text line (or the part of it in one column).</summary>
-    private sealed class TextLine(List<TextWord> words)
+    private sealed class TextLine(List<TextWord> words, int row = 0)
     {
         public List<TextWord> Words { get; } = words;
+
+        /// <summary>The row of the page the line is on: the parts of a line split at wide gaps share it.</summary>
+        public int Row { get; } = row;
+
+        /// <summary>Indexes of the words a tab leads to (the start of each part after the first of a tabbed row).</summary>
+        public List<int> Tabs { get; } = [];
+
         public double Left => Words[0].Left;
         public double Right => Words[^1].Right;
         public double Top => Words.Max(w => w.Top);
@@ -215,7 +226,11 @@ internal sealed partial class PdfDocumentReader
             return content;
         }
 
-        content.Items = Paragraphs(Lines(words));
+        var lines = Lines(words);
+        var items = Paragraphs(lines);
+        if (JoinTabbedRows(lines, items) is { } joined)
+            items = Paragraphs(joined);
+        content.Items = items;
         if (!_textOnly)
             content.Items.AddRange(Pictures(page, content, crop));
         return content;
@@ -599,11 +614,16 @@ internal sealed partial class PdfDocumentReader
                 firstLine = Hwp(first);
         }
 
+        // A tabbed row: a left tab stop where each part starts in the PDF.
+        var tabs = item.Lines.SelectMany(l => l.Tabs.Select(t => Hwp(l.Words[t].Left - item.ContainerLeft))).Distinct().Order()
+            .Select(position => new HTabStop(position, HTabKind.Left, "NONE")).ToList();
+
         var pitch = item.Lines.Count >= 2 ? Pitch(item) : size * lineRatio;
         paragraph.Format = new HParaFormat(
             Align: align,
             Left: left,
             FirstLine: firstLine,
+            Tabs: tabs.Count > 0 ? tabs : null,
             Before: SpaceBefore(item, previous, lineRatio),
             After: 0,
             // "At least" the PDF's line distance: close to the original and never cuts off a larger font.
@@ -629,7 +649,10 @@ internal sealed partial class PdfDocumentReader
         return extra > 1 ? Hwp(Math.Min(extra, 72)) : 0;
     }
 
-    /// <summary>Words joined into runs of equal formatting; line ends become spaces (not inside CJK text or after a hyphen).</summary>
+    /// <summary>
+    /// Words joined into runs of equal formatting; line ends become spaces (not inside CJK text or after a hyphen), or
+    /// line breaks where the line ended early on purpose. Tabs of a tabbed row stay tabs.
+    /// </summary>
     private static void Runs(Item item, List<HInline> output)
     {
         var pieces = new List<(string Text, HCharFormat Format, string? Link)>();
@@ -643,13 +666,21 @@ internal sealed partial class PdfDocumentReader
                 if (pieces.Count > 0)
                 {
                     var (previousText, previousFormat, previousLink) = pieces[^1];
-                    if (w > 0)
+                    if (w > 0 && line.Tabs.Contains(w))
+                    {
+                        pieces.Add(("\t", word.Format, null));
+                    }
+                    else if (w > 0)
                     {
                         pieces[^1] = (previousText + " ", previousFormat, previousLink);
                     }
                     else if (previousText.EndsWith('-') && previousText.Length > 1 && char.IsLetter(previousText[^2]) && text.Length > 0 && char.IsLower(text[0]))
                     {
                         pieces[^1] = (previousText[..^1], previousFormat, previousLink); // hyphenated at the line end
+                    }
+                    else if (EndedEarly(item, l))
+                    {
+                        pieces.Add(("\n", word.Format, null));
                     }
                     else if (!(IsCjk(previousText[^1]) || IsCjk(text[0])))
                     {
@@ -663,6 +694,12 @@ internal sealed partial class PdfDocumentReader
         HLink? link = null;
         foreach (var group in Merge(pieces))
         {
+            if (group.Text is "\t" or "\n")
+            {
+                link = null;
+                output.Add(group.Text == "\t" ? new HTab(group.Format) : new HLineBreak(group.Format));
+                continue;
+            }
             var text = new HText(group.Text, group.Format);
             if (group.Link is null)
             {
@@ -681,6 +718,26 @@ internal sealed partial class PdfDocumentReader
         }
     }
 
+    /// <summary>
+    /// Whether line <paramref name="l"/> - 1 of the item ended although the first word of line <paramref name="l"/>
+    /// would have fitted after it: a line break the author made (an address, a poem). Wrapped text never ends like
+    /// that within its own width; past it only when the paragraph is clearly narrower than its column (an indented
+    /// block of short lines), not a quote with a right indent.
+    /// </summary>
+    private static bool EndedEarly(Item item, int l)
+    {
+        var previous = item.Lines[l - 1];
+        var line = item.Lines[l];
+        if (previous.Words[^1].Text.EndsWith('-'))
+            return false;
+        var em = line.Size;
+        var end = previous.Right + 0.3 * em + (line.Words[0].Right - line.Words[0].Left);
+        if (end < item.Right - 0.5 * em)
+            return true;
+        var column = item.ContainerRight - item.ContainerLeft;
+        return end < item.ContainerRight - 0.5 * em && item.ContainerRight - item.Right > 0.25 * column;
+    }
+
     private static IEnumerable<(string Text, HCharFormat Format, string? Link)> Merge(List<(string Text, HCharFormat Format, string? Link)> pieces)
     {
         var sb = new StringBuilder();
@@ -689,7 +746,7 @@ internal sealed partial class PdfDocumentReader
         var open = false;
         foreach (var piece in pieces)
         {
-            if (open && (piece.Format != format || piece.Link != link))
+            if (open && (piece.Format != format || piece.Link != link || piece.Text is "\t" or "\n" || sb.ToString() is "\t" or "\n"))
             {
                 yield return (sb.ToString(), format, link);
                 sb.Clear();
@@ -698,7 +755,7 @@ internal sealed partial class PdfDocumentReader
             (format, link, open) = (piece.Format, piece.Link, true);
         }
         if (open)
-            yield return (sb.ToString().TrimEnd(), format, link);
+            yield return (sb.ToString() is "\t" or "\n" ? sb.ToString() : sb.ToString().TrimEnd(), format, link);
     }
 
     /// <summary>Chinese and Japanese text has no spaces between words (Korean does).</summary>
@@ -720,7 +777,13 @@ internal sealed partial class PdfDocumentReader
         var sb = new StringBuilder();
         foreach (var paragraph in document.Sections.SelectMany(s => s.Blocks).OfType<HParagraph>())
         {
-            var text = string.Concat(paragraph.Inlines.SelectMany(i => i is HLink link ? link.Content : [i]).OfType<HText>().Select(t => t.Text)).Trim();
+            var text = string.Concat(paragraph.Inlines.SelectMany(i => i is HLink link ? link.Content : [i]).Select(i => i switch
+            {
+                HText t => t.Text,
+                HTab => "\t",
+                HLineBreak => "\r\n",
+                _ => "",
+            })).Trim();
             if (text.Length == 0)
                 continue;
             if (sb.Length > 0)
