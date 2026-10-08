@@ -9,6 +9,7 @@ using Filee.App.Controls;
 
 namespace Filee.App.Tests;
 
+[Collection("Motion")]
 public class DonutHighlightTests
 {
     [AvaloniaFact]
@@ -50,6 +51,8 @@ public class DonutHighlightTests
         window.Show();
         Dispatcher.UIThread.RunJobs();
 
+        // Animations on, whatever the machine reports (build servers report Windows animations off).
+        Filee.App.Services.Motion.Configure(false, () => false);
         donut.PlayOpenAnimation(); // the render timer never ticks in this test: every frame request is lost
         Assert.Equal(0, Open(donut).Max());
         // The watchdog's checks, each after the loop got no frame for a while: two retries, then the donut is drawn open.
@@ -88,7 +91,7 @@ public class DonutHighlightTests
         Assert.Equal(0, donut.LitAmount(1), 3);
     }
 
-    [Fact]
+    [AvaloniaFact] // switching the setting restyles the open windows, which belong to the UI thread
     public void Following_the_system_reads_it_again_when_a_window_opens()
     {
         var reduced = true;
@@ -117,3 +120,10 @@ public class DonutHighlightTests
     private static void Set(DonutMenu donut, string field, object value) =>
         typeof(DonutMenu).GetField(field, BindingFlags.Instance | BindingFlags.NonPublic)!.SetValue(donut, value);
 }
+
+/// <summary>
+/// Tests that switch the global animation setting (<see cref="Filee.App.Services.Motion"/>) run on their own: run next
+/// to others, the app's start-up in those would switch it back halfway through.
+/// </summary>
+[CollectionDefinition("Motion", DisableParallelization = true)]
+public sealed class MotionCollection;

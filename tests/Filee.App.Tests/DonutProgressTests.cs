@@ -10,6 +10,7 @@ using Filee.App.Services;
 
 namespace Filee.App.Tests;
 
+[Collection("Motion")]
 public class DonutProgressTests
 {
     private const double Frame = 1 / 60.0;
