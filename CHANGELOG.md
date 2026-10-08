@@ -6,6 +6,19 @@ version it publishes under "What's Changed" in the GitHub release notes, above t
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.7.1
+
+### Fixes
+
+- Moving the pointer from one slice of the donut to another no longer makes the slice it left flash in the accent
+  colour as its highlight fades.
+- After Filee sat unused for a long time, the donut could take seconds to appear or open without its animation. A
+  frame the animation waited for could get lost; the donut now asks again and, if frames still don't come, shows
+  itself fully open.
+- With "Reduce animations" following Windows, a moment when Windows reported animations off (a remote session,
+  waking from sleep) could switch them off in Filee until the setting was changed. Filee reads the Windows setting
+  again whenever the donut or the main window opens.
+
 ## 1.7.0
 
 ### macOS and Linux (preview)

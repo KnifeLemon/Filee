@@ -13,6 +13,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Documents;
 using Avalonia.Input;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Filee.App.Services;
 
 namespace Filee.App.Controls;
@@ -287,13 +288,14 @@ public sealed partial class DonutMenu : Control
     }
 
     /// <summary>Moves the slices and the preview towards their places. Returns true while they are still moving.</summary>
-    private bool StepLayout(double dt)
+    private bool StepLayout(double dt, bool snap = false)
     {
+        snap |= !Motion.Enabled;
         var active = false;
         for (var i = 0; i < _mid.Length; i++)
         {
             var (mid, span) = LayoutTarget(i);
-            if (!Motion.Enabled)
+            if (snap)
             {
                 _mid[i] = new Spring { Value = mid };
                 _span[i] = new Spring { Value = span };
@@ -305,7 +307,7 @@ public sealed partial class DonutMenu : Control
         var m = SlotCount(_previewRemoved);
         var previewMid = _previewSlot >= 0 ? DonutGeometry.MidAngle(_previewSlot, m) : _previewMid.Value;
         var previewSpan = _previewSlot >= 0 ? DonutGeometry.Span(m) : 0;
-        if (!Motion.Enabled)
+        if (snap)
         {
             _previewMid = new Spring { Value = previewMid };
             _previewSpan = new Spring { Value = previewSpan };
@@ -467,7 +469,10 @@ public sealed partial class DonutMenu : Control
 
     // ───────────────────────── Animation ─────────────────────────
 
-    /// <summary>Critically-underdamped spring: gives the soft "boing" when a slice pops out.</summary>
+    /// <summary>Damping at which a spring of stiffness 320 settles without overshooting (2·√320).</summary>
+    private const double CriticalDamping = 36;
+
+    /// <summary>Underdamped spring: gives the soft "boing" when a slice pops out.</summary>
     private struct Spring
     {
         public double Value;
@@ -498,11 +503,22 @@ public sealed partial class DonutMenu : Control
     private int _loop;           // the current frame loop; frames of an older one are ignored
     private long _lastTick;      // Environment.TickCount64 of the last frame or frame request
 
+    /// <summary>Frame requests asked again before the animation is finished at once (see <see cref="CheckLoop"/>).</summary>
+    internal const int FrameRetries = 2;
+
+    private int _stalls; // times the current animation's frames stopped coming
+
     private void StartAnimation()
     {
         InvalidateVisual();
         if (_animating && Environment.TickCount64 - _lastTick < StalledLoopMs)
             return;
+        _stalls = 0;
+        StartLoop();
+    }
+
+    private void StartLoop()
+    {
         var top = TopLevel.GetTopLevel(this);
         if (top is null)
         {
@@ -514,6 +530,59 @@ public sealed partial class DonutMenu : Control
         _lastTick = Environment.TickCount64;
         var loop = ++_loop;
         top.RequestAnimationFrame(time => OnFrame(time, loop));
+        Watch(loop);
+    }
+
+    private void Watch(int loop) =>
+        DispatcherTimer.RunOnce(() =>
+        {
+            if (loop == _loop)
+                CheckLoop();
+        }, TimeSpan.FromMilliseconds(StalledLoopMs + 50));
+
+    /// <summary>
+    /// Watches the frame loop without waiting for another animation call. When its frames stop (a request lost
+    /// while the window was hidden, or the renderer waking up after a long idle), the frame is asked for again; after
+    /// <see cref="FrameRetries"/> stalls the animations jump to their end, so an opening donut always appears. Stalls
+    /// are counted per animation: frames that trickle in once per retry would otherwise open the donut over seconds.
+    /// </summary>
+    internal void CheckLoop()
+    {
+        if (!_animating)
+            return;
+        if (Environment.TickCount64 - _lastTick < StalledLoopMs)
+        {
+            Watch(_loop); // frames are coming: keep watching until the loop ends
+            return;
+        }
+        if (++_stalls <= FrameRetries)
+        {
+            StartLoop();
+            return;
+        }
+        _animating = false;
+        _loop++;
+        FinishAnimations();
+    }
+
+    /// <summary>
+    /// Sets the opening, the highlights and the slice layout to where they end (a closing donut closes). The progress
+    /// ring keeps its own timers.
+    /// </summary>
+    internal void FinishAnimations()
+    {
+        for (var i = 0; i < _hover.Length; i++)
+            _hover[i] = new Spring { Value = i == ActiveIndex ? 1 : 0 };
+        _centerPulse = default;
+        StepLayout(0, snap: true);
+        if (_openClock < double.MaxValue)
+        {
+            _openClock = double.MaxValue;
+            Array.Fill(_open, _closing ? 0 : 1);
+            if (_closing)
+                FinishClose();
+        }
+        InvalidateVisual();
     }
 
     private void OnFrame(TimeSpan time, int loop)
@@ -556,8 +625,10 @@ public sealed partial class DonutMenu : Control
         }
         else
         {
+            // Popping out bounces; letting go settles without a bounce: one below zero would make the faded accent
+            // flash once more on its way back.
             for (var i = 0; i < _hover.Length; i++)
-                active |= _hover[i].Step(i == ActiveIndex ? 1 : 0, dt);
+                active |= i == ActiveIndex ? _hover[i].Step(1, dt) : _hover[i].Step(0, dt, 320, CriticalDamping);
             active |= _centerPulse.Step(0, dt, 260, 12);
             active |= StepProgress(dt);
             active |= StepLayout(dt);
@@ -662,9 +733,10 @@ public sealed partial class DonutMenu : Control
                 var wedge = CreateWedge(center, r1, r2, mid, span);
                 context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
 
+                // The accent fades in and out with the highlight (no floor: a floor made it vanish with a jump).
                 var emphasis = i == _dropTargetIndex ? 1.0 : hover;
                 if (emphasis > 0.01 && item.IsEnabled)
-                    context.DrawGeometry(WithOpacity(AccentBrush, 0.22 + 0.6 * Math.Clamp(emphasis, 0, 1)), null, wedge);
+                    context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
                 DrawLabel(context, item, center, (r1 + r2) / 2, mid, span * (r1 + r2) / 2 - 10,
