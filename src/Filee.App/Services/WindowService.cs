@@ -26,6 +26,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services)
     /// <summary>Shows (or brings to front) the main window, optionally on a page.</summary>
     public void ShowMain(string? page = null)
     {
+        Motion.Refresh();
         if (_main is null)
         {
             _main = new MainWindow { DataContext = services.GetRequiredService<MainWindowViewModel>() };

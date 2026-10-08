@@ -64,7 +64,7 @@ public sealed class ThemeService(IPlatformServices platform)
             : $"{Korean}, {Chinese}";
         res["AppFontFamily"] = FontFamily.Parse($"{Latin}, {cjk}, {SystemFallbacks}");
 
-        Motion.Set(!(theme.ReduceMotion ?? platform.PrefersReducedMotion));
+        Motion.Configure(theme.ReduceMotion, () => platform.PrefersReducedMotion);
     }
 
     /// <summary>Lightens (amount &gt; 0) or darkens (amount &lt; 0) a colour.</summary>

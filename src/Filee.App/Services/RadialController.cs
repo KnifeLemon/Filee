@@ -293,6 +293,7 @@ public sealed class RadialController(
                 Math.Clamp(position.Y, area.Y, Math.Max(area.Y, area.Bottom - sidePx)));
         }
 
+        Motion.Refresh();
         window.Position = position;
         if (!window.IsVisible)
             window.Show();
