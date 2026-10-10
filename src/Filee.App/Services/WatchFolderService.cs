@@ -87,7 +87,7 @@ public sealed class WatchFolderService(UserDataStore store, ConversionService co
     private static string Signature(WatchRule rule) =>
         string.Join('|', rule.Folder, rule.PresetId, rule.IncludeSubfolders, rule.OutputFolder, rule.Originals,
             string.Join('/', rule.Include), rule.FileNamePattern,
-            string.Join('/', rule.Renames.Select(r => $"{r.Find}>{r.Replace}")));
+            string.Join('/', rule.Renames.Select(r => $"{r.Kind}:{r.Find}>{r.Replace}")));
 
     public async ValueTask DisposeAsync()
     {

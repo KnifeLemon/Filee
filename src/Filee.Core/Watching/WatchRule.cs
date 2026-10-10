@@ -70,7 +70,7 @@ public sealed class WatchRule
         if (!string.IsNullOrWhiteSpace(FileNamePattern))
             applied.Output.FileNamePattern = FileNamePattern.Trim();
         // Steps without a pattern are being typed; leaving them out keeps the name as it is.
-        applied.Output.Renames.AddRange(Renames.Where(r => r.Find.Length > 0).Select(r => r.Clone()));
+        applied.Output.Renames.AddRange(Renames.Where(r => !r.IsBlank).Select(r => r.Clone()));
         return applied;
     }
 

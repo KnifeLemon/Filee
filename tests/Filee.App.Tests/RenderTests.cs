@@ -118,17 +118,26 @@ public class RenderTests
 
             // The rename window works on copies: a ready-made replacement becomes a rule, the preview follows.
             var tool = item.CreateRenameTool();
-            tool.Recipes[0].AddCommand.Execute(null); // camera number → Photo_number
+            tool.Recipes[0].AddCommand.Execute(null); // change IMG_ to Photo_
             Assert.Empty(rule.Renames); // nothing changes before saving
             Assert.Equal(new Filee.App.ViewModels.RenamePreview("IMG_0412.jpg", "Photo_0412_scan.pdf"), Assert.Single(tool.Previews));
-            tool.CustomName = "DSC_0815.heic";
+            tool.CustomName = "img_0815.heic";
             Assert.Equal("Photo_0815_scan.pdf", tool.CustomResult);
-            var step = tool.Steps[0];
-            step.Find = "IMG_(";
-            Assert.NotNull(step.Error);
+
+            // Plain text is never "wrong"; only the advanced kind checks its expression.
+            tool.AddStepCommand.Execute(null);
+            var extra = tool.Steps[1];
+            extra.Find = "(";
+            Assert.Null(extra.Error);
+            extra.Kind = tool.Kinds.First(k => k.Value == Filee.Core.Presets.RenameKind.Regex);
+            Assert.NotNull(extra.Error);
             Assert.False(tool.IsValid);
-            step.Find = @"^(?:IMG|DSC|PXL)_(\d+)";
+            extra.Kind = tool.Kinds.First(k => k.Value == Filee.Core.Presets.RenameKind.Suffix);
+            Assert.True(extra.ShowReplaceOnly);
+            extra.Replace = "_v2";
             Assert.True(tool.IsValid);
+            Assert.Equal("Photo_0412_scan_v2.pdf", tool.Previews[0].After);
+            extra.RemoveCommand.Execute(null);
             var dialog = new Filee.App.Views.RenameToolWindow { DataContext = tool };
             dialog.Show();
             Pump();
@@ -136,7 +145,7 @@ public class RenderTests
             dialog.Close();
 
             item.SetRenames(tool.Result); // saved
-            Assert.Equal(@"^(?:IMG|DSC|PXL)_(\d+)", Assert.Single(rule.Renames).Find);
+            Assert.Equal("IMG_", Assert.Single(rule.Renames).Find);
             // A file already in the folder that the patterns let through, renamed by the name rule and the rule.
             Assert.Equal($"IMG_0412.jpg → {Path.Combine("converted", "Photo_0412_scan.pdf")}", item.PreviewExample);
             Pump();

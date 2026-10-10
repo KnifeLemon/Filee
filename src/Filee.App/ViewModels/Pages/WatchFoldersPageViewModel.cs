@@ -334,7 +334,7 @@ public sealed partial class WatchRuleViewModel : ObservableObject
 
     private void RefreshPreview()
     {
-        RenameSummary = Rule.Renames.Select(r => $"{r.Find}  →  {(r.Replace.Length == 0 ? _page.Text("watch.recipe_removes") : r.Replace)}").ToList();
+        RenameSummary = Rule.Renames.Select(r => RenameRecipes.Describe(_page.Localizer, r)).ToList();
         OnPropertyChanged(nameof(HasRenames));
         FileNamePlaceholder = _page.Format("watch.name_placeholder", _page.PresetNamePattern(Rule));
         var preview = _page.PreviewOf(Rule);

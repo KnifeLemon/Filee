@@ -55,9 +55,13 @@
                         <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
                       </Button>
                       <StackPanel Spacing="1">
-                        <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextWrapping="Wrap" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextWrapping="Wrap" />
+                          <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="4" Padding="5,0" IsVisible="{Binding IsAdvanced}" VerticalAlignment="Center">
+                            <TextBlock Classes="caption" Text="{DynamicResource watch.advanced}" />
+                          </Border>
+                        </StackPanel>
                         <TextBlock Classes="caption" Text="{Binding Example}" TextWrapping="Wrap" />
-                        <TextBlock Classes="caption code" Text="{Binding Expression}" TextWrapping="Wrap" Opacity="0.75" />
                       </StackPanel>
                     </DockPanel>
                   </Border>
@@ -83,17 +87,25 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:RenameStepViewModel">
                   <StackPanel Spacing="2">
-                    <Grid ColumnDefinitions="*,Auto,*,Auto,Auto">
-                      <TextBox Text="{Binding Find}" PlaceholderText="{DynamicResource watch.rename_find}" FontFamily="Consolas, Menlo, monospace" />
-                      <TextBlock Grid.Column="1" Classes="muted" Text="→" Margin="8,0" VerticalAlignment="Center" />
-                      <TextBox Grid.Column="2" Text="{Binding Replace}" PlaceholderText="{DynamicResource watch.rename_replace}" FontFamily="Consolas, Menlo, monospace" />
-                      <Button Grid.Column="3" Classes="icon" Margin="6,0,0,0" Command="{Binding MoveUpCommand}" ToolTip.Tip="{DynamicResource watch.step_up}">
-                        <PathIcon Width="12" Height="12" Data="{StaticResource Icon.ChevronRight}" RenderTransform="rotate(-90deg)" />
-                      </Button>
-                      <Button Grid.Column="4" Classes="icon" Margin="2,0,0,0" Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource watch.remove_step}">
+                    <DockPanel>
+                      <Button DockPanel.Dock="Right" Classes="icon" Margin="2,0,0,0" Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource watch.remove_step}">
                         <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
                       </Button>
-                    </Grid>
+                      <Button DockPanel.Dock="Right" Classes="icon" Margin="6,0,0,0" Command="{Binding MoveUpCommand}" ToolTip.Tip="{DynamicResource watch.step_up}">
+                        <PathIcon Width="12" Height="12" Data="{StaticResource Icon.ChevronRight}" RenderTransform="rotate(-90deg)" />
+                      </Button>
+                      <!-- What the rule does, then only the boxes that kind needs -->
+                      <ComboBox DockPanel.Dock="Left" Width="190" Margin="0,0,8,0" ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" />
+                      <Panel>
+                        <Grid ColumnDefinitions="*,Auto,*" IsVisible="{Binding ShowArrow}">
+                          <TextBox Text="{Binding Find}" PlaceholderText="{Binding FindPlaceholder}" />
+                          <TextBlock Grid.Column="1" Classes="muted" Text="→" Margin="8,0" VerticalAlignment="Center" />
+                          <TextBox Grid.Column="2" Text="{Binding Replace}" PlaceholderText="{Binding ReplacePlaceholder}" />
+                        </Grid>
+                        <TextBox Text="{Binding Find}" PlaceholderText="{Binding FindPlaceholder}" IsVisible="{Binding ShowFindOnly}" />
+                        <TextBox Text="{Binding Replace}" PlaceholderText="{Binding ReplacePlaceholder}" IsVisible="{Binding ShowReplaceOnly}" />
+                      </Panel>
+                    </DockPanel>
                     <TextBlock Classes="caption danger" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
                   </StackPanel>
                 </DataTemplate>

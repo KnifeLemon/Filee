@@ -58,7 +58,7 @@ public static class OutputPathResolver
 
     /// <summary>Applies <paramref name="steps"/> to <paramref name="name"/> in order.</summary>
     public static string Rename(string name, IEnumerable<RenameStep> steps) =>
-        steps.Aggregate(name, (current, step) => Rename(current, step.Find, step.Replace));
+        steps.Aggregate(name, (current, step) => step.Apply(current));
 
     /// <summary>
     /// Replaces the regular expression <paramref name="find"/> in <paramref name="name"/>. A pattern that isn't valid

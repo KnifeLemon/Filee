@@ -76,7 +76,7 @@ public class WatchRuleOptionsTests
         {
             Folder = "Inbox",
             FileNamePattern = "{name}_{date}",
-            Renames = [new() { Find = @"IMG_(\d+)", Replace = "Photo_$1" }, new() { Find = "", Replace = "typing" }],
+            Renames = [new() { Kind = RenameKind.Regex, Find = @"IMG_(\d+)", Replace = "Photo_$1" }, new() { Find = "", Replace = "typing" }],
         };
         var own = rule.Apply(preset);
         Assert.Equal("{name}_{date}", own.Output.FileNamePattern);
@@ -91,13 +91,33 @@ public class WatchRuleOptionsTests
         var rule = new OutputRule
         {
             Location = OutputLocation.SameFolder,
-            Renames = [new() { Find = @"IMG_(\d+)", Replace = "Photo $1" }, new() { Find = @"\s+", Replace = "_" }],
+            Renames = [new() { Find = "img_", Replace = "Photo " }, new() { Kind = RenameKind.SpacesToUnderscores }],
         };
         var source = Path.Combine(Path.GetTempPath(), "IMG_0412.heic");
 
         var path = OutputPathResolver.Resolve(rule, new OutputPathResolver.Tokens(source, "JPG", 1, DateTime.Now), "jpg", _ => false);
 
         Assert.Equal(Path.Combine(Path.GetTempPath(), "Photo_0412.jpg"), path);
+    }
+
+    [Theory]
+    [InlineData(RenameKind.Replace, "IMG_", "Photo_", "IMG_0412", "Photo_0412")]
+    [InlineData(RenameKind.Remove, "_copy", "", "report_COPY", "report")]
+    [InlineData(RenameKind.Prefix, "", "2026_", "report", "2026_report")]
+    [InlineData(RenameKind.Suffix, "", "_final", "report", "report_final")]
+    [InlineData(RenameKind.SpacesToUnderscores, "", "", "trip to  busan", "trip_to_busan")]
+    [InlineData(RenameKind.RemoveCopyNumber, "", "", "report (2)", "report")]
+    [InlineData(RenameKind.RemoveBrackets, "", "", "song [remix] (live)", "song")]
+    [InlineData(RenameKind.RemoveLeadingNumber, "", "", "01 - intro", "intro")]
+    [InlineData(RenameKind.RemoveSymbols, "", "", "invoice#12@acme!", "invoice12acme")]
+    [InlineData(RenameKind.RemoveSymbols, "", "", "보고서#1", "보고서1")]
+    [InlineData(RenameKind.Lowercase, "", "", "Report_FINAL", "report_final")]
+    [InlineData(RenameKind.Uppercase, "", "", "report", "REPORT")]
+    [InlineData(RenameKind.Regex, @"(\d{4})(\d{2})(\d{2})", "$1-$2-$3", "scan_20261011", "scan_2026-10-11")]
+    [InlineData(RenameKind.Replace, "", "x", "report", "report")] // still being typed: no change
+    public void Each_kind_of_rule_changes_the_name_as_it_says(RenameKind kind, string find, string replace, string name, string expected)
+    {
+        Assert.Equal(expected, new RenameStep { Kind = kind, Find = find, Replace = replace }.Apply(name));
     }
 
     [Fact]
