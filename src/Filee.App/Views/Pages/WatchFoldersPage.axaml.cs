@@ -21,6 +21,17 @@ public partial class WatchFoldersPage : UserControl
             rule.OutputFolder = path;
     }
 
+    /// <summary>Opens the rename steps in their own window; they change only when it is saved.</summary>
+    private async void OnEditRenames(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.DataContext is not WatchRuleViewModel rule || TopLevel.GetTopLevel(this) is not Window owner)
+            return;
+        var tool = rule.CreateRenameTool();
+        var dialog = new RenameToolWindow { DataContext = tool };
+        if (await dialog.ShowDialog<bool>(owner))
+            rule.SetNaming(tool.NamePattern, tool.Result);
+    }
+
     private async Task<string?> PickFolderAsync()
     {
         if (TopLevel.GetTopLevel(this) is not { } top)

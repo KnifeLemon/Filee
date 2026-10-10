@@ -65,12 +65,210 @@ public class RenderTests
             var item = Assert.Single(page.Rules);
             Assert.Equal("to-pdf", item.Preset?.Value);
             Assert.False(string.IsNullOrWhiteSpace(item.Status));
+            Assert.EndsWith(Path.Combine("converted", Path.ChangeExtension(AppHost.Get<Filee.Core.Localization.ILocalizer>()["watch.sample_file"], "pdf")),
+                item.PreviewExample); // where a converted file goes and what it is called
+            Assert.False(item.ShowOptions); // the optional settings stay folded until used
             Save(window, $"page-watch-{language}.png");
             window.Close();
         }
         finally
         {
             store.Settings.WatchFolders.Remove(rule);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Watch_folder_card_shows_recent_results_and_retries_in_the_folder(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var store = AppHost.Get<Filee.Core.Settings.UserDataStore>();
+        var conversions = AppHost.Get<ConversionService>();
+        var folder = Directory.CreateTempSubdirectory("filee-watch-").FullName;
+        var broken = Path.Combine(folder, "scan-0412.heic");
+        File.WriteAllBytes(broken, [0]);
+        var rule = new Filee.Core.Watching.WatchRule { Folder = folder, PresetId = "to-pdf", Enabled = false };
+        store.Settings.WatchFolders.Add(rule);
+        store.AddHistory(new Filee.Core.History.HistoryEntry
+        {
+            WatchRuleId = rule.Id,
+            FinishedAt = DateTime.Now,
+            Sources = [Path.Combine(folder, "a.jpg"), Path.Combine(folder, "b.jpg"), broken],
+            Failures = [new() { Source = broken, ErrorKey = "error.conversion_failed", ErrorDetail = "HEIC decoder: unexpected end of file" }],
+            Preset = new Filee.Core.Presets.Preset { TargetFormat = "pdf" },
+        });
+        var retried = new List<(string Rule, IReadOnlyList<string> Files)>();
+        var previousRetry = conversions.WatchRetry;
+        conversions.WatchRetry = (id, files, _) =>
+        {
+            retried.Add((id, files));
+            return Task.CompletedTask;
+        };
+        try
+        {
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+            vm.Navigate("watch");
+            var window = new MainWindow { DataContext = vm, Width = 1080, Height = 1000 };
+            window.Show();
+            Pump();
+
+            var item = Assert.Single(((Filee.App.ViewModels.Pages.WatchFoldersPageViewModel)vm.CurrentPage).Rules);
+            Assert.True(item.HasResults);
+            Assert.Equal("scan-0412.heic", Assert.Single(item.ResultFailures).Name);
+            Assert.True(item.CanRetryResults);
+            item.ToggleResultFailuresCommand.Execute(null);
+            Pump();
+            Save(window, $"page-watch-results-{language}.png");
+
+            // Retrying goes through the watch folder (which then moves originals when it does that).
+            item.RetryResultsCommand.Execute(null);
+            var (ruleId, files) = Assert.Single(retried);
+            Assert.Equal(rule.Id, ruleId);
+            Assert.Equal([broken], files);
+            window.Close();
+        }
+        finally
+        {
+            conversions.WatchRetry = previousRetry;
+            store.Settings.WatchFolders.Remove(rule);
+            store.SaveSettings();
+            store.ClearHistory();
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Watch_folder_options_rename_and_filter_with_a_preview(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var store = AppHost.Get<Filee.Core.Settings.UserDataStore>();
+        var folder = Directory.CreateTempSubdirectory("filee-watch-").FullName;
+        File.WriteAllBytes(Path.Combine(folder, "notes.txt"), [0x41]);
+        File.WriteAllBytes(Path.Combine(folder, "IMG_0412.jpg"), [0xFF, 0xD8]);
+        var rule = new Filee.Core.Watching.WatchRule
+        {
+            Folder = folder,
+            PresetId = "to-pdf",
+            Enabled = false,
+            Include = ["*.jpg"],
+            FileNamePattern = "{name}_scan",
+        };
+        store.Settings.WatchFolders.Add(rule);
+        try
+        {
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+            vm.Navigate("watch");
+            var window = new MainWindow { DataContext = vm, Width = 1080, Height = 1500 };
+            window.Show();
+            Pump();
+
+            var item = Assert.Single(((Filee.App.ViewModels.Pages.WatchFoldersPageViewModel)vm.CurrentPage).Rules);
+            Assert.True(item.ShowOptions); // options in use are shown
+
+            // Typed patterns become chips: an extension turns into *.ext, a broken expression is not added.
+            item.AddIncludeCommand.Execute("heic");
+            Assert.Equal(["*.jpg", "*.heic"], rule.Include);
+            item.AddIncludeCommand.Execute("/IMG_(/");
+            Assert.NotNull(item.IncludeError);
+            Assert.Equal("/IMG_(/", item.IncludeText);
+            item.IncludeText = "";
+            Assert.NotNull(item.IncludeMatches); // IMG_0412.jpg matches, notes.txt doesn't
+
+            // The rename window works on copies: a ready-made replacement becomes a rule, the preview follows.
+            var tool = item.CreateRenameTool();
+            Assert.Equal("{name}_scan", tool.NamePattern); // the base name is edited here too
+            tool.NamePattern = "";
+            tool.InsertToken("date"); // an empty name starts from the original one
+            Assert.Equal("{name}_{date}", tool.NamePattern);
+            tool.NamePattern = "{name}_scan";
+            tool.Recipes[0].AddCommand.Execute(null); // change IMG_ to Photo_
+            Assert.Empty(rule.Renames); // nothing changes before saving
+            Assert.Equal(new Filee.App.ViewModels.RenamePreview("IMG_0412.jpg", "Photo_0412_scan.pdf"), Assert.Single(tool.Previews));
+            tool.CustomName = "img_0815.heic";
+            Assert.Equal("Photo_0815_scan.pdf", tool.CustomResult);
+
+            // Plain text is never "wrong"; only the advanced kind checks its expression.
+            tool.AddStepCommand.Execute(null);
+            var extra = tool.Steps[1];
+            extra.Find = "(";
+            Assert.Null(extra.Error);
+            extra.Kind = tool.Kinds.First(k => k.Value == Filee.Core.Presets.RenameKind.Regex);
+            Assert.NotNull(extra.Error);
+            Assert.False(tool.IsValid);
+            extra.Kind = tool.Kinds.First(k => k.Value == Filee.Core.Presets.RenameKind.Suffix);
+            Assert.True(extra.ShowReplaceOnly);
+            extra.Replace = "_v2";
+            Assert.True(tool.IsValid);
+            Assert.Equal("Photo_0412_scan_v2.pdf", tool.Previews[0].After);
+            extra.RemoveCommand.Execute(null);
+            var dialog = new Filee.App.Views.RenameToolWindow { DataContext = tool };
+            dialog.Show();
+            Pump();
+            Save(dialog, $"window-rename-{language}.png");
+            dialog.Close();
+
+            item.SetNaming(tool.NamePattern, tool.Result); // saved
+            Assert.Equal("IMG_", Assert.Single(rule.Renames).Find);
+            // A file already in the folder that the patterns let through, renamed by the name rule and the rule.
+            Assert.Equal($"IMG_0412.jpg → {Path.Combine("converted", "Photo_0412_scan.pdf")}", item.PreviewExample);
+            Pump();
+            Save(window, $"page-watch-options-{language}.png");
+            window.Close();
+        }
+        finally
+        {
+            store.Settings.WatchFolders.Remove(rule);
+            store.SaveSettings(); // editing the rule saved it: the next test's application would load it again
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Home_page_lists_failed_files_with_a_retry_button(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var store = AppHost.Get<Filee.Core.Settings.UserDataStore>();
+        var folder = Directory.CreateTempSubdirectory("filee-home-").FullName;
+        var scan = Path.Combine(folder, "scan-0412.heic");
+        File.WriteAllBytes(scan, [0]);
+        var entry = new Filee.Core.History.HistoryEntry
+        {
+            FinishedAt = DateTime.Now,
+            PresetName = "PDF",
+            State = Filee.Core.Conversion.JobState.CompletedWithErrors,
+            Sources = [Path.Combine(folder, "report.docx"), scan, Path.Combine(folder, "notes.xyz")],
+            Failures =
+            [
+                new() { Source = scan, ErrorKey = "error.conversion_failed", ErrorDetail = "HEIC decoder: unexpected end of file" },
+                new() { Source = Path.Combine(folder, "notes.xyz"), ErrorKey = "error.unsupported_source", ErrorDetail = "xyz" },
+            ],
+            Preset = new Filee.Core.Presets.Preset { TargetFormat = "pdf" },
+        };
+        store.AddHistory(entry);
+        try
+        {
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+            vm.Navigate("home");
+            var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+            window.Show();
+            Pump();
+
+            var item = ((Filee.App.ViewModels.Pages.HomePageViewModel)vm.CurrentPage).History[0];
+            Assert.True(item.CanRetry);
+            item.ToggleFailuresCommand.Execute(null);
+            Pump();
+            Save(window, $"page-home-failed-{language}.png");
+            window.Close();
+        }
+        finally
+        {
+            store.ClearHistory(); // also on disk: the next test's application loads the history again
+            try { Directory.Delete(folder, true); } catch (IOException) { }
         }
     }
 

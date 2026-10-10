@@ -1,6 +1,8 @@
 // A watch folder: files that land in the folder are converted with a preset (Settings → Watch folders, or
 // "filee watch" on the command line).
 
+using Filee.Core.Presets;
+
 namespace Filee.Core.Watching;
 
 /// <summary>What happens to a source file once it was converted.</summary>
@@ -38,6 +40,17 @@ public sealed class WatchRule
 
     public AfterConversion Originals { get; set; } = AfterConversion.Keep;
 
+    // Optional: empty means every file, and names as the preset gives them.
+
+    /// <summary>Which files are converted (<see cref="FileNameFilter"/>), e.g. <c>*.heic</c> and <c>scan_*</c>; empty for all.</summary>
+    public List<string> Include { get; set; } = [];
+
+    /// <summary>File name pattern of converted files (tokens as in <see cref="OutputRule.FileNamePattern"/>); empty for the preset's.</summary>
+    public string FileNamePattern { get; set; } = "";
+
+    /// <summary>Replacements applied in order to the names of converted files (<see cref="OutputRule.Renames"/>).</summary>
+    public List<RenameStep> Renames { get; set; } = [];
+
     /// <summary>The output folder actually used.</summary>
     public string ResolvedOutputFolder =>
         string.IsNullOrWhiteSpace(OutputFolder) ? Path.Combine(Folder, DefaultOutputName) : OutputFolder;
@@ -45,5 +58,27 @@ public sealed class WatchRule
     /// <summary>Where converted sources go with <see cref="AfterConversion.MoveToOriginals"/>.</summary>
     public string OriginalsFolder => Path.Combine(Folder, OriginalsName);
 
-    public WatchRule Clone() => (WatchRule)MemberwiseClone();
+    /// <summary>
+    /// The preset as this folder converts with it: output into <see cref="ResolvedOutputFolder"/>, and the folder's
+    /// own name rules where set.
+    /// </summary>
+    public Preset Apply(Preset preset)
+    {
+        var applied = preset.Clone();
+        applied.Output.Location = OutputLocation.CustomFolder;
+        applied.Output.CustomFolder = ResolvedOutputFolder;
+        if (!string.IsNullOrWhiteSpace(FileNamePattern))
+            applied.Output.FileNamePattern = FileNamePattern.Trim();
+        // Steps without a pattern are being typed; leaving them out keeps the name as it is.
+        applied.Output.Renames.AddRange(Renames.Where(r => !r.IsBlank).Select(r => r.Clone()));
+        return applied;
+    }
+
+    public WatchRule Clone()
+    {
+        var clone = (WatchRule)MemberwiseClone();
+        clone.Include = [.. Include];
+        clone.Renames = Renames.Select(r => r.Clone()).ToList();
+        return clone;
+    }
 }

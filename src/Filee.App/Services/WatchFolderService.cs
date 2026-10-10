@@ -24,6 +24,7 @@ public sealed class WatchFolderService(UserDataStore store, ConversionService co
 
     public void Start()
     {
+        conversions.WatchRetry = RetryAsync;
         _ = ApplyAsync();
         store.SettingsChanged += (_, _) =>
         {
@@ -74,20 +75,33 @@ public sealed class WatchFolderService(UserDataStore store, ConversionService co
 
     private async Task<Core.Conversion.ConversionJob?> ConvertAsync(WatchRule rule, IReadOnlyList<string> files)
     {
-        var preset = store.Presets.FirstOrDefault(p => p.Id == rule.PresetId)?.Clone();
+        var preset = store.Presets.FirstOrDefault(p => p.Id == rule.PresetId);
         if (preset is null)
         {
             log.LogWarning("Watch folder {Folder}: preset {Preset} no longer exists", rule.Folder, rule.PresetId);
             return null;
         }
-        preset.Output.Location = Core.Presets.OutputLocation.CustomFolder;
-        preset.Output.CustomFolder = rule.ResolvedOutputFolder;
-        return await conversions.RunAsync(files, preset);
+        return await conversions.RunAsync(files, rule.Apply(preset), rule.Id);
+    }
+
+    /// <summary>
+    /// Converts files of a watch folder again (a retry from the toast or the history) with the preset as it ran, then
+    /// moves the originals that converted when the folder does that.
+    /// </summary>
+    internal async Task RetryAsync(string ruleId, IReadOnlyList<string> files, Core.Presets.Preset preset)
+    {
+        var job = await conversions.RunAsync(files, preset, ruleId);
+        if (job is null || store.Settings.WatchFolders.FirstOrDefault(r => r.Id == ruleId) is not { Originals: AfterConversion.MoveToOriginals } rule)
+            return;
+        foreach (var file in job.Files.Where(f => f.State == Core.Conversion.FileState.Done))
+            FolderWatcher.MoveToOriginals(rule, file.SourcePath, log);
     }
 
     /// <summary>Everything that needs a new watcher when it changes.</summary>
     private static string Signature(WatchRule rule) =>
-        string.Join('|', rule.Folder, rule.PresetId, rule.IncludeSubfolders, rule.OutputFolder, rule.Originals);
+        string.Join('|', rule.Folder, rule.PresetId, rule.IncludeSubfolders, rule.OutputFolder, rule.Originals,
+            string.Join('/', rule.Include), rule.FileNamePattern,
+            string.Join('/', rule.Renames.Select(r => $"{r.Kind}:{r.Find}>{r.Replace}")));
 
     public async ValueTask DisposeAsync()
     {

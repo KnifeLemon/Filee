@@ -6,6 +6,40 @@ version it publishes under "What's Changed" in the GitHub release notes, above t
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.8.0
+
+### New
+
+- **Failed files at a glance, and a retry.** When files of a conversion fail, Recent conversions on the Home page
+  lists them with the reason (click "2 failed" to open the list; names and reasons can be selected and copied).
+  **Retry** converts the files that failed again with the same settings and save location, even after the preset
+  was changed or deleted. Files that are no longer there are left out. The progress card that pops up after a
+  conversion has the same **Retry** button. A retried file from a watch folder is handled like the folder handles
+  its files: when the folder moves originals to "originals", the original moves once it converts.
+- **Watch folders: choose files and name them** (Settings → Watch folders → *More options*, all optional; empty
+  fields change nothing):
+  - *Files to convert*: patterns entered as tags. Typing `heic` adds `*.heic`, other text picks names that contain
+    it, and `*` stands for any text, `?` for one character. Extensions are suggested while typing, and the card says
+    how many files in the folder match. Other files in the folder are left alone.
+  - *Names of converted files*: **Edit name rules** opens a window with the base name (typed, or built with buttons
+    for the original name, date, time, number and preset name; empty keeps the preset's) and changes applied to it
+    from top to bottom. Each change says what it does — replace text, remove text, add at the start or end, spaces
+    to `_`, remove a copy number like "(2)", text in brackets, a leading number or symbols, all lowercase or
+    uppercase — and asks only for the text it needs; a regular expression is there as the last, advanced kind.
+    **Common replacements** on the left lists ready-made changes with an example of each; double-click one or press +
+    to add it. The preview shows the name each file in the folder will get, and any name you type. Nothing changes
+    until you save. The card shows the name in words ("[Original name]_scan") and the changes.
+  - A **preview** on every watch folder shows a converted file as it will be saved (`IMG_0412.jpg →
+    converted\Photo_0412.pdf`, using a file already in the folder when there is one), what happens when the name is
+    taken and what happens to the original.
+  - **Recent results** on every watch folder: how many files it converted and which failed, with the reason, and
+    **Retry** right there. A file that converts on a retry or a later copy no longer counts as failed.
+
+### Documentation
+
+- docs/ENGINES.md said Filee never uses engines installed on the computer. It does, as the last choice after a copy
+  you picked and Filee's own: that is how FFmpeg and Ghostscript are found on macOS. The order is now described.
+
 ## 1.7.2
 
 ### Fixes

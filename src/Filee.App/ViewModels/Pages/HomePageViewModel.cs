@@ -13,33 +13,67 @@ using Filee.Core.Settings;
 
 namespace Filee.App.ViewModels.Pages;
 
-public sealed partial class HistoryItemViewModel(HistoryEntry entry, ILocalizer loc, IPlatformServices platform) : ObservableObject
+public sealed partial class HistoryItemViewModel : ObservableObject
 {
-    public string Title { get; } = entry.PresetName;
+    private readonly HistoryEntry _entry;
+    private readonly IPlatformServices _platform;
+    private readonly ConversionService? _conversions;
 
-    public string Subtitle { get; } = entry.Sources.Count == 1
-        ? Path.GetFileName(entry.Sources[0])
-        : loc.Format("home.files", entry.Sources.Count);
+    public HistoryItemViewModel(HistoryEntry entry, ILocalizer loc, IPlatformServices platform, ConversionService? conversions = null)
+    {
+        _entry = entry;
+        _platform = platform;
+        _conversions = conversions;
+        Title = entry.PresetName;
+        Subtitle = entry.Sources.Count == 1 ? Path.GetFileName(entry.Sources[0]) : loc.Format("home.files", entry.Sources.Count);
+        Time = entry.FinishedAt.Date == DateTime.Today ? entry.FinishedAt.ToString("t") : entry.FinishedAt.ToString("d");
+        Failures = entry.Failures.Count > 0
+            ? entry.Failures.Select(f => new FailureItem(Path.GetFileName(f.Source), FailureText.Reason(loc, f.ErrorKey, f.ErrorDetail))).ToList()
+            : entry.Errors.Select(line => FailureText.FromLegacy(loc, line)).ToList();
+        HasErrors = Failures.Count > 0 || entry.State == JobState.Failed;
+        FailureSummary = loc.Format("home.failed_files", Failures.Count);
+        HasOutputs = entry.Outputs.Any(ConversionService.Exists);
+        // Only entries that remember their preset (Filee 1.8 and later) and still have a failed file to convert.
+        CanRetry = conversions is not null && entry.Preset is not null && entry.Failures.Any(f => ConversionService.Exists(f.Source));
+    }
 
-    public string Time { get; } = entry.FinishedAt.Date == DateTime.Today
-        ? entry.FinishedAt.ToString("t")
-        : entry.FinishedAt.ToString("d");
+    public string Title { get; }
+    public string Subtitle { get; }
+    public string Time { get; }
+    public bool HasErrors { get; }
+    public bool HasOutputs { get; }
 
-    public bool Succeeded { get; } = entry.State == JobState.Completed;
-    public bool HasErrors { get; } = entry.Errors.Count > 0 || entry.State == JobState.Failed;
-    public string? Errors { get; } = entry.Errors.Count == 0 ? null : string.Join(Environment.NewLine, entry.Errors);
-    public bool HasOutputs { get; } = entry.Outputs.Any(Exists);
+    /// <summary>The files that failed and why.</summary>
+    public IReadOnlyList<FailureItem> Failures { get; }
+
+    public bool HasFailures => Failures.Count > 0;
+
+    /// <summary>"2 files failed": the button that shows the list.</summary>
+    public string FailureSummary { get; }
+
+    public bool CanRetry { get; }
+
+    [ObservableProperty] private bool _showFailures;
+
+    [RelayCommand]
+    private void ToggleFailures() => ShowFailures = !ShowFailures;
+
+    /// <summary>Converts the failed files again the way the job ran them; progress shows in the toast.</summary>
+    [RelayCommand]
+    private void Retry()
+    {
+        if (_conversions is not null && _entry.Preset is not null)
+            _conversions.Retry(_entry.Failures.Select(f => f.Source), _entry.Preset, _entry.WatchRuleId);
+    }
 
     [RelayCommand]
     private void OpenFolder()
     {
         // An output may be a folder ("Extract"): revealing it opens the extracted files.
-        var output = entry.Outputs.FirstOrDefault(Exists);
+        var output = _entry.Outputs.FirstOrDefault(ConversionService.Exists);
         if (output is not null)
-            platform.RevealInFileManager(output);
+            _platform.RevealInFileManager(output);
     }
-
-    private static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
 }
 
 public sealed partial class HomePageViewModel : ObservableObject, IDisposable
@@ -48,13 +82,16 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
     private readonly Services.Triggers.TriggerService? _triggers;
+    private readonly ConversionService? _conversions;
 
-    public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, Services.Triggers.TriggerService? triggers = null)
+    public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, Services.Triggers.TriggerService? triggers = null,
+        ConversionService? conversions = null)
     {
         _store = store;
         _loc = loc;
         _platform = platform;
         _triggers = triggers;
+        _conversions = conversions;
         if (triggers is not null)
             triggers.StatusChanged += OnTriggerStatusChanged;
         var drag = store.Settings.Triggers.FirstOrDefault(t => t.Enabled && t.Kind == TriggerKind.Drag);
@@ -94,7 +131,7 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     {
         History.Clear();
         foreach (var entry in _store.History.Take(40))
-            History.Add(new HistoryItemViewModel(entry, _loc, _platform));
+            History.Add(new HistoryItemViewModel(entry, _loc, _platform, _conversions));
         IsEmpty = History.Count == 0;
     }
 
