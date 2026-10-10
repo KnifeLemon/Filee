@@ -91,6 +91,34 @@ public class DonutHighlightTests
         Assert.Equal(0, donut.LitAmount(1), 3);
     }
 
+    [AvaloniaFact]
+    public void Highlights_settle_when_frames_come_late()
+    {
+        TestServices.EnsureInitialized("ko");
+        Filee.App.Services.Motion.Configure(false, () => false);
+        var donut = new DonutMenu
+        {
+            Items = new[] { "PNG", "JPG", "WEBP", "PDF" }.Select(l => new DonutItem { Id = l, Label = l }).ToList(),
+        };
+        // Every frame as late as the loop allows (a busy GPU, a screen recorder): the pointer crosses the slices.
+        const double late = 0.05;
+        for (var slice = 0; slice < 4; slice++)
+        {
+            donut.SetExternalHighlight(slice);
+            for (var i = 0; i < 6; i++)
+                donut.Advance(late);
+        }
+        for (var i = 0; i < 60; i++)
+        {
+            donut.Advance(late);
+            for (var slice = 0; slice < 3; slice++)
+                Assert.InRange(donut.LitAmount(slice), 0, 1);
+        }
+
+        Assert.All(Enumerable.Range(0, 3), slice => Assert.Equal(0, donut.LitAmount(slice), 3));
+        Assert.Equal(1, donut.LitAmount(3), 3);
+    }
+
     [AvaloniaFact] // switching the setting restyles the open windows, which belong to the UI thread
     public void Following_the_system_reads_it_again_when_a_window_opens()
     {

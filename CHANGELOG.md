@@ -6,6 +6,15 @@ version it publishes under "What's Changed" in the GitHub release notes, above t
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.7.2
+
+### Fixes
+
+- When the computer was busy (a screen recorder running, a slow graphics card), slices of the donut could stay lit
+  after the pointer left them, pile up in the accent colour and fly apart as the donut closed. A late frame moved the
+  highlight further than it should, and every following frame made it worse. The animations now stay steady however
+  late the frames come. Turning on "Reduce animations" was the workaround until now.
+
 ## 1.7.1
 
 ### Fixes
