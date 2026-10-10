@@ -116,18 +116,29 @@ public class RenderTests
             item.IncludeText = "";
             Assert.NotNull(item.IncludeMatches); // IMG_0412.jpg matches, notes.txt doesn't
 
-            // A ready-made replacement becomes a step; steps run in order.
-            item.Recipes[0].AddCommand.Execute(null); // camera number → Photo_number
-            Assert.Equal(@"^(?:IMG|DSC|PXL)_(\d+)", Assert.Single(rule.Renames).Find);
-            // A file already in the folder that the patterns let through, renamed by the name rule and the step.
-            Assert.Equal($"IMG_0412.jpg → {Path.Combine("converted", "Photo_0412_scan.pdf")}", item.PreviewExample);
-
-            var step = item.RenameSteps[0];
+            // The rename window works on copies: a ready-made replacement becomes a rule, the preview follows.
+            var tool = item.CreateRenameTool();
+            tool.Recipes[0].AddCommand.Execute(null); // camera number → Photo_number
+            Assert.Empty(rule.Renames); // nothing changes before saving
+            Assert.Equal(new Filee.App.ViewModels.RenamePreview("IMG_0412.jpg", "Photo_0412_scan.pdf"), Assert.Single(tool.Previews));
+            tool.CustomName = "DSC_0815.heic";
+            Assert.Equal("Photo_0815_scan.pdf", tool.CustomResult);
+            var step = tool.Steps[0];
             step.Find = "IMG_(";
             Assert.NotNull(step.Error);
+            Assert.False(tool.IsValid);
             step.Find = @"^(?:IMG|DSC|PXL)_(\d+)";
-            Assert.Null(step.Error);
-            item.ShowRecipes = true;
+            Assert.True(tool.IsValid);
+            var dialog = new Filee.App.Views.RenameToolWindow { DataContext = tool };
+            dialog.Show();
+            Pump();
+            Save(dialog, $"window-rename-{language}.png");
+            dialog.Close();
+
+            item.SetRenames(tool.Result); // saved
+            Assert.Equal(@"^(?:IMG|DSC|PXL)_(\d+)", Assert.Single(rule.Renames).Find);
+            // A file already in the folder that the patterns let through, renamed by the name rule and the rule.
+            Assert.Equal($"IMG_0412.jpg → {Path.Combine("converted", "Photo_0412_scan.pdf")}", item.PreviewExample);
             Pump();
             Save(window, $"page-watch-options-{language}.png");
             window.Close();

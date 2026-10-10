@@ -24,10 +24,12 @@ find it, what it does and doesn't do.
     many files in the folder match. Other files in the folder are left alone.
   - *File name rule*: a name pattern for this folder in place of the preset's, with `{name}`, `{date}`, `{time}`,
     `{index}` and `{preset}`.
-  - *Replace part of the name*: regular expressions and what to put in their place, applied in order, e.g.
-    `IMG_(\d+)` → `Photo_$1`. **Common replacements** lists ready-made ones (camera numbers, spaces, copy numbers
-    like "(2)", text in brackets, dates, symbols, text at the start or end), each with an example of what it does;
-    double-click one or press + to add it as a step and change it from there.
+  - *Rename converted files*: **Edit rules** opens a window of rules that find part of the name with a regular
+    expression and replace it, applied from top to bottom (e.g. `IMG_(\d+)` → `Photo_$1`). **Common replacements**
+    on the left lists ready-made ones (camera numbers, spaces, copy numbers like "(2)", text in brackets, dates,
+    symbols, text at the start or end), each with an example of what it does; double-click one or press + to add it
+    and change it from there. The preview shows files from the folder before and after, and any name you type.
+    Nothing changes until you save.
   - A **preview** on every watch folder shows a converted file as it will be saved (`IMG_0412.jpg →
     converted\Photo_0412.pdf`, using a file already in the folder when there is one), what happens when the name is
     taken and what happens to the original.

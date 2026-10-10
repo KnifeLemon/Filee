@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using Filee.App.ViewModels.Pages;
@@ -22,11 +21,15 @@ public partial class WatchFoldersPage : UserControl
             rule.OutputFolder = path;
     }
 
-    /// <summary>Double-clicking a ready-made replacement adds it as a step, like its + button.</summary>
-    private void OnRecipeDoubleTapped(object? sender, TappedEventArgs e)
+    /// <summary>Opens the rename steps in their own window; they change only when it is saved.</summary>
+    private async void OnEditRenames(object? sender, RoutedEventArgs e)
     {
-        if ((sender as Control)?.DataContext is RenameRecipeViewModel recipe)
-            recipe.AddCommand.Execute(null);
+        if ((sender as Control)?.DataContext is not WatchRuleViewModel rule || TopLevel.GetTopLevel(this) is not Window owner)
+            return;
+        var tool = rule.CreateRenameTool();
+        var dialog = new RenameToolWindow { DataContext = tool };
+        if (await dialog.ShowDialog<bool>(owner))
+            rule.SetRenames(tool.Result);
     }
 
     private async Task<string?> PickFolderAsync()

@@ -79,12 +79,7 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
             return null;
         var folder = rule.Folder.Trim();
         var source = SampleFile(rule) ?? Path.Combine(folder, _loc["watch.sample_file"]);
-        var extension = preset.TargetFormat switch
-        {
-            BuiltInData.SameAsSource => FormatRegistry.ExtensionOf(source),
-            FormatRegistry.Folder => "",
-            var id => FormatRegistry.FindById(id)?.PrimaryExtension ?? id,
-        };
+        var extension = TargetExtension(preset, source);
         var applied = rule.Apply(preset);
         var output = OutputPathResolver.Resolve(applied.Output,
             new OutputPathResolver.Tokens(source, _loc.DisplayName(preset), 1, DateTime.Now), extension, _ => false) ?? "";
@@ -105,6 +100,44 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
     internal string Format(string key, params object[] args) => _loc.Format(key, args);
 
     internal string Text(string key) => _loc[key];
+
+    internal ILocalizer Localizer => _loc;
+
+    /// <summary>The file name a source gets in this folder with <paramref name="steps"/> in place of the rule's.</summary>
+    internal string OutputNameOf(WatchRule rule, string source, IReadOnlyList<RenameStep> steps)
+    {
+        if (_store.FindPreset(rule.PresetId) is not { } preset)
+            return source;
+        var trial = rule.Clone();
+        trial.Renames = [.. steps];
+        var applied = trial.Apply(preset);
+        var output = OutputPathResolver.Resolve(applied.Output,
+            new OutputPathResolver.Tokens(source, _loc.DisplayName(preset), 1, DateTime.Now), TargetExtension(preset, source), _ => false);
+        return output is null ? source : Path.GetFileName(output);
+    }
+
+    /// <summary>Names of a few files in the folder the rule would convert, for the rename preview.</summary>
+    internal static IReadOnlyList<string> SampleNames(WatchRule rule)
+    {
+        if (string.IsNullOrWhiteSpace(rule.Folder) || !Directory.Exists(rule.Folder))
+            return [];
+        try
+        {
+            return Directory.EnumerateFiles(rule.Folder).Take(500).Where(path => !FolderWatcher.ShouldIgnore(path, rule))
+                .Select(Path.GetFileName).OfType<string>().Take(8).ToList();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return [];
+        }
+    }
+
+    private static string TargetExtension(Preset preset, string source) => preset.TargetFormat switch
+    {
+        BuiltInData.SameAsSource => FormatRegistry.ExtensionOf(source),
+        FormatRegistry.Folder => "",
+        var id => FormatRegistry.FindById(id)?.PrimaryExtension ?? id,
+    };
 
     /// <summary>Extensions starting with what is typed ("he" → *.heic, *.heif), minus the patterns already there.</summary>
     internal static IReadOnlyList<TagSuggestion> ExtensionSuggestions(string typed, IReadOnlyCollection<string> existing)
@@ -179,9 +212,6 @@ public sealed partial class WatchRuleViewModel : ObservableObject
         _originals = page.OriginalsChoices.First(c => c.Value == rule.Originals);
         _status = page.StatusOf(rule);
         _fileNamePattern = rule.FileNamePattern;
-        foreach (var step in rule.Renames)
-            RenameSteps.Add(new RenameStepViewModel(step, this));
-        Recipes = RenameRecipes.All.Select(r => new RenameRecipeViewModel(r, page.Text(r.TitleKey), page.Text("watch.recipe_removes"), this)).ToList();
         // Options in use stay in view; a new rule starts with them folded away.
         _showOptions = rule.Include.Count > 0 || rule.FileNamePattern.Length > 0 || rule.Renames.Count > 0;
         RefreshIncludeTags();
@@ -220,13 +250,10 @@ public sealed partial class WatchRuleViewModel : ObservableObject
     /// <summary>"Same as the preset: {name}" in the empty file name box.</summary>
     [ObservableProperty] private string _fileNamePlaceholder = "";
 
-    /// <summary>Replacements applied in order to the name.</summary>
-    public ObservableCollection<RenameStepViewModel> RenameSteps { get; } = [];
+    /// <summary>The rename steps, one "find → replace" line each, for the card.</summary>
+    [ObservableProperty] private IReadOnlyList<string> _renameSummary = [];
 
-    /// <summary>Ready-made replacements, each with what it does to an example name.</summary>
-    public IReadOnlyList<RenameRecipeViewModel> Recipes { get; }
-
-    [ObservableProperty] private bool _showRecipes;
+    public bool HasRenames => RenameSummary.Count > 0;
 
     /// <summary>"scan.jpg → converted\scan.pdf": a converted file as it would be saved.</summary>
     [ObservableProperty] private string? _previewExample;
@@ -253,9 +280,6 @@ public sealed partial class WatchRuleViewModel : ObservableObject
     [RelayCommand]
     private void ToggleOptions() => ShowOptions = !ShowOptions;
 
-    [RelayCommand]
-    private void ToggleRecipes() => ShowRecipes = !ShowRecipes;
-
     /// <summary>Adds a typed pattern: "heic" becomes *.heic, plain text matches names containing it.</summary>
     [RelayCommand]
     private void AddInclude(string? typed)
@@ -281,26 +305,12 @@ public sealed partial class WatchRuleViewModel : ObservableObject
             Change(r => r.Include.RemoveAll(p => p == chip.Value));
     }
 
-    [RelayCommand]
-    private void AddStep() => AddStep(new RenameStep());
+    /// <summary>The dialog that edits the rename steps, on copies of them.</summary>
+    public RenameToolViewModel CreateRenameTool() =>
+        new(Rule.Renames, WatchFoldersPageViewModel.SampleNames(Rule), (steps, source) => _page.OutputNameOf(Rule, source, steps), _page.Localizer);
 
-    internal void AddStep(RenameStep step)
-    {
-        Rule.Renames.Add(step);
-        RenameSteps.Add(new RenameStepViewModel(step, this));
-        StepsChanged();
-    }
-
-    internal void RemoveStep(RenameStepViewModel step)
-    {
-        Rule.Renames.Remove(step.Step);
-        RenameSteps.Remove(step);
-        StepsChanged();
-    }
-
-    internal void StepsChanged() => Change(_ => { });
-
-    internal string InvalidRegex(string error) => _page.Format("watch.invalid_regex", error);
+    /// <summary>Takes the steps the dialog applied.</summary>
+    public void SetRenames(List<RenameStep> steps) => Change(r => r.Renames = steps);
 
     [RelayCommand]
     private void Remove() => _page.Remove(this);
@@ -324,6 +334,8 @@ public sealed partial class WatchRuleViewModel : ObservableObject
 
     private void RefreshPreview()
     {
+        RenameSummary = Rule.Renames.Select(r => $"{r.Find}  →  {(r.Replace.Length == 0 ? _page.Text("watch.recipe_removes") : r.Replace)}").ToList();
+        OnPropertyChanged(nameof(HasRenames));
         FileNamePlaceholder = _page.Format("watch.name_placeholder", _page.PresetNamePattern(Rule));
         var preview = _page.PreviewOf(Rule);
         PreviewExample = preview?.Example;
@@ -332,59 +344,3 @@ public sealed partial class WatchRuleViewModel : ObservableObject
     }
 }
 
-/// <summary>One replacement in a watch folder's names: a regular expression and what goes in its place.</summary>
-public sealed partial class RenameStepViewModel : ObservableObject
-{
-    private readonly WatchRuleViewModel _rule;
-
-    public RenameStepViewModel(RenameStep step, WatchRuleViewModel rule)
-    {
-        Step = step;
-        _rule = rule;
-        _find = step.Find;
-        _replace = step.Replace;
-        Validate();
-    }
-
-    public RenameStep Step { get; }
-
-    [ObservableProperty] private string _find;
-    [ObservableProperty] private string _replace;
-
-    /// <summary>Why <see cref="Find"/> is not a valid regular expression, or null.</summary>
-    [ObservableProperty] private string? _error;
-
-    partial void OnFindChanged(string value)
-    {
-        Step.Find = value;
-        Validate();
-        _rule.StepsChanged();
-    }
-
-    partial void OnReplaceChanged(string value)
-    {
-        Step.Replace = value;
-        _rule.StepsChanged();
-    }
-
-    [RelayCommand]
-    private void Remove() => _rule.RemoveStep(this);
-
-    private void Validate() => Error = OutputPathResolver.RenameError(Find) is { } error ? _rule.InvalidRegex(error) : null;
-}
-
-/// <summary>A ready-made replacement in the list: what it does, its expression and an example.</summary>
-public sealed partial class RenameRecipeViewModel(RenameRecipe recipe, string title, string removes, WatchRuleViewModel rule) : ObservableObject
-{
-    public string Title { get; } = title;
-
-    /// <summary>"IMG_(\d+) → Photo_$1"; an empty replacement shows as "(removed)".</summary>
-    public string Expression { get; } = $"{recipe.Find}  →  {(recipe.Replace.Length == 0 ? removes : recipe.Replace)}";
-
-    /// <summary>"IMG_0412 → Photo_0412".</summary>
-    public string Example { get; } = $"{recipe.Example}  →  {OutputPathResolver.Rename(recipe.Example, recipe.Find, recipe.Replace)}";
-
-    /// <summary>Adds the replacement as the last step (double-click, or the + button).</summary>
-    [RelayCommand]
-    private void Add() => rule.AddStep(new RenameStep { Find = recipe.Find, Replace = recipe.Replace });
-}

@@ -5,9 +5,6 @@
              x:Class="Filee.App.Views.Pages.WatchFoldersPage"
              x:DataType="vm:WatchFoldersPageViewModel">
   <UserControl.Styles>
-    <Style Selector="Border.recipe:pointerover">
-      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
-    </Style>
     <Style Selector="PathIcon.chevron">
       <Setter Property="RenderTransform" Value="rotate(0deg)" />
     </Style>
@@ -101,68 +98,24 @@
                 </StackPanel>
                 <StackPanel Spacing="4">
                   <TextBlock Classes="label" Text="{DynamicResource watch.rename}" />
-                  <!-- The steps, applied in order -->
-                  <ItemsControl ItemsSource="{Binding RenameSteps}">
-                    <ItemsControl.ItemsPanel>
-                      <ItemsPanelTemplate>
-                        <StackPanel Spacing="6" />
-                      </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
+                  <!-- The steps in short; they are edited in their own window -->
+                  <ItemsControl ItemsSource="{Binding RenameSummary}" IsVisible="{Binding HasRenames}">
                     <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:RenameStepViewModel">
-                        <StackPanel Spacing="2">
-                          <Grid ColumnDefinitions="*,Auto,*,Auto">
-                            <TextBox Text="{Binding Find}" PlaceholderText="{DynamicResource watch.rename_find}" />
-                            <TextBlock Grid.Column="1" Classes="muted" Text="→" Margin="8,0" VerticalAlignment="Center" />
-                            <TextBox Grid.Column="2" Text="{Binding Replace}" PlaceholderText="{DynamicResource watch.rename_replace}" />
-                            <Button Grid.Column="3" Classes="icon" Margin="6,0,0,0" Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource watch.remove_step}">
-                              <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
-                            </Button>
-                          </Grid>
-                          <TextBlock Classes="caption danger" Text="{Binding Error}" TextWrapping="Wrap" IsVisible="{Binding Error, Converter={x:Static ObjectConverters.IsNotNull}}" />
-                        </StackPanel>
+                      <DataTemplate x:DataType="x:String">
+                        <TextBlock Classes="caption" FontFamily="Consolas, Menlo, monospace" Text="{Binding}" TextTrimming="CharacterEllipsis" />
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                  <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Command="{Binding AddStepCommand}" Padding="10,5">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
-                        <TextBlock Text="{DynamicResource watch.add_step}" />
-                      </StackPanel>
-                    </Button>
-                    <Button Classes="ghost" Command="{Binding ToggleRecipesCommand}" Padding="6,4">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <PathIcon Classes="chevron" Classes.open="{Binding ShowRecipes}" Width="12" Height="12" Data="{StaticResource Icon.ChevronRight}" />
-                        <TextBlock Text="{DynamicResource watch.recipes}" />
-                      </StackPanel>
-                    </Button>
-                  </StackPanel>
-
-                  <!-- Ready-made replacements: what each does to an example; double-click or + adds it as a step -->
-                  <StackPanel Spacing="4" IsVisible="{Binding ShowRecipes}">
-                    <TextBlock Classes="caption" Text="{DynamicResource watch.recipes_hint}" TextWrapping="Wrap" />
-                    <Border BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" CornerRadius="8" ClipToBounds="True">
-                      <ItemsControl ItemsSource="{Binding Recipes}">
-                        <ItemsControl.ItemTemplate>
-                          <DataTemplate x:DataType="vm:RenameRecipeViewModel">
-                            <Border Classes="recipe" Padding="10,6" Background="Transparent" DoubleTapped="OnRecipeDoubleTapped">
-                              <Grid ColumnDefinitions="*,*,Auto">
-                                <StackPanel VerticalAlignment="Center">
-                                  <TextBlock FontWeight="SemiBold" Text="{Binding Title}" TextWrapping="Wrap" />
-                                  <TextBlock Classes="caption" FontFamily="Consolas, Menlo, monospace" Text="{Binding Expression}" TextWrapping="Wrap" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="1" Classes="caption" Text="{Binding Example}" TextWrapping="Wrap" VerticalAlignment="Center" Margin="12,0" />
-                                <Button Grid.Column="2" Classes="icon" Command="{Binding AddCommand}" ToolTip.Tip="{DynamicResource watch.recipe_add}" VerticalAlignment="Center">
-                                  <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
-                                </Button>
-                              </Grid>
-                            </Border>
-                          </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                      </ItemsControl>
-                    </Border>
-                  </StackPanel>
+                  <TextBlock Classes="caption" Text="{DynamicResource watch.rename_none}" IsVisible="{Binding !HasRenames}" TextWrapping="Wrap" />
+                  <Button HorizontalAlignment="Left" Padding="10,5" Click="OnEditRenames">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                      <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Pencil}" />
+                      <Panel>
+                        <TextBlock Text="{DynamicResource watch.rename_edit}" IsVisible="{Binding HasRenames}" />
+                        <TextBlock Text="{DynamicResource watch.rename_add}" IsVisible="{Binding !HasRenames}" />
+                      </Panel>
+                    </StackPanel>
+                  </Button>
                 </StackPanel>
               </StackPanel>
 
