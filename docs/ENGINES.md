@@ -37,9 +37,19 @@ All built-in document readers are registered in one place, `Hwp/Hwpx/DocumentRea
 which formats need Pandoc). The HWPX writer and the DOCX writer take their input formats from it: adding a reader
 there is one line and makes both writers (and every route through them) accept the format.
 
-Filee never uses software installed on the system (Microsoft Office, an installed LibreOffice, programs on `PATH`):
-every engine is built in, bundled or downloaded into Filee's own folder, so a conversion behaves the same on every
-PC. Running from source, the repository's `engines/` folder (filled by `build/fetch-engines.ps1`) is used.
+Every engine is built in, bundled with the installer or downloaded into Filee's own folder, so a conversion behaves
+the same on every PC. An external engine is looked for in this order:
+
+1. a copy the user picked in Settings → *Engines*;
+2. Filee's own copy (bundled or downloaded);
+3. a copy already on the computer: on `PATH`, in Homebrew's and the usual Unix folders, or where the LibreOffice,
+   calibre and Ghostscript installers put it. Settings → *Engines* shows it as "Found on this PC", with a note when
+   its version is older than the one Filee downloads.
+
+Where Filee has no download of an engine (FFmpeg and Ghostscript on macOS, LibreOffice and Ghostscript on Linux),
+step 3 is how it is found. Microsoft Office
+and Hancom Office are never used, even when installed. Running from source, the repository's `engines/` folder
+(filled by `build/fetch-engines.ps1`) is used.
 
 ## Optional engines
 

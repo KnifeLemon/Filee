@@ -74,6 +74,52 @@ public class RenderTests
         }
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Home_page_lists_failed_files_with_a_retry_button(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var store = AppHost.Get<Filee.Core.Settings.UserDataStore>();
+        var folder = Directory.CreateTempSubdirectory("filee-home-").FullName;
+        var scan = Path.Combine(folder, "scan-0412.heic");
+        File.WriteAllBytes(scan, [0]);
+        var entry = new Filee.Core.History.HistoryEntry
+        {
+            FinishedAt = DateTime.Now,
+            PresetName = "PDF",
+            State = Filee.Core.Conversion.JobState.CompletedWithErrors,
+            Sources = [Path.Combine(folder, "report.docx"), scan, Path.Combine(folder, "notes.xyz")],
+            Failures =
+            [
+                new() { Source = scan, ErrorKey = "error.conversion_failed", ErrorDetail = "HEIC decoder: unexpected end of file" },
+                new() { Source = Path.Combine(folder, "notes.xyz"), ErrorKey = "error.unsupported_source", ErrorDetail = "xyz" },
+            ],
+            Preset = new Filee.Core.Presets.Preset { TargetFormat = "pdf" },
+        };
+        store.AddHistory(entry);
+        try
+        {
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+            vm.Navigate("home");
+            var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+            window.Show();
+            Pump();
+
+            var item = ((Filee.App.ViewModels.Pages.HomePageViewModel)vm.CurrentPage).History[0];
+            Assert.True(item.CanRetry);
+            item.ToggleFailuresCommand.Execute(null);
+            Pump();
+            Save(window, $"page-home-failed-{language}.png");
+            window.Close();
+        }
+        finally
+        {
+            store.ClearHistory(); // also on disk: the next test's application loads the history again
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
     [AvaloniaFact]
     public void Engines_page_shows_versions_descriptions_and_download_speed()
     {

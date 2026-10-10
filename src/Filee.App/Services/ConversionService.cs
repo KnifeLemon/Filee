@@ -63,12 +63,29 @@ public sealed class ConversionService
         // A preset on "Default" saves where Settings > General says (read now, so a changed default applies at once).
         preset = _store.Settings.WithDefaultOutput(preset);
         var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset));
-        var vm = new JobViewModel(job, _loc, _platform, Remove);
+        var vm = new JobViewModel(job, _loc, _platform, Remove, RetryFailed);
         _byId[job.Id] = vm;
         Jobs.Insert(0, vm);
         if (showInToast)
             ToastJobs.Insert(0, vm);
         return vm;
+    }
+
+    /// <summary>
+    /// Converts files that failed again with the preset their job ran with (shown in the toast). Files that are no
+    /// longer there are left out.
+    /// </summary>
+    /// <returns>The new job, or null when none of the files is left.</returns>
+    public JobViewModel? Retry(IEnumerable<string> sources, Preset preset) =>
+        Start(sources.Where(Exists).Distinct(StringComparer.Ordinal).ToList(), preset);
+
+    /// <summary>True when a source file (or folder) is still where it was.</summary>
+    public static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
+
+    private void RetryFailed(JobViewModel vm)
+    {
+        Remove(vm);
+        Retry(vm.FailedSources, vm.Job.Preset);
     }
 
     /// <summary>

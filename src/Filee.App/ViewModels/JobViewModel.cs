@@ -13,14 +13,17 @@ public sealed partial class JobViewModel : ObservableObject
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
     private readonly Action<JobViewModel> _dismiss;
+    private readonly Action<JobViewModel>? _retry;
     private int _refreshPending;
 
-    public JobViewModel(ConversionJob job, ILocalizer loc, IPlatformServices platform, Action<JobViewModel> dismiss)
+    public JobViewModel(ConversionJob job, ILocalizer loc, IPlatformServices platform, Action<JobViewModel> dismiss,
+        Action<JobViewModel>? retry = null)
     {
         Job = job;
         _loc = loc;
         _platform = platform;
         _dismiss = dismiss;
+        _retry = retry;
         var what = job.Sources.Count == 1 ? Path.GetFileName(job.Sources[0]) : loc.Format("home.files", job.Sources.Count);
         Title = loc.Format("toast.converting", what, job.PresetDisplayName);
         Refresh();
@@ -36,6 +39,10 @@ public sealed partial class JobViewModel : ObservableObject
     [ObservableProperty] private bool _hasErrors;
     [ObservableProperty] private bool _hasOutputs;
     [ObservableProperty] private string? _errorDetails;
+    [ObservableProperty] private bool _canRetry;
+
+    /// <summary>Source files that failed.</summary>
+    public IEnumerable<string> FailedSources => Job.Files.Where(f => f.State == FileState.Failed).Select(f => f.SourcePath);
 
     /// <summary>Marks a refresh as pending; returns false if one is already queued (coalesces UI updates).</summary>
     internal bool TryMarkPending() => Interlocked.Exchange(ref _refreshPending, 1) == 0;
@@ -51,7 +58,8 @@ public sealed partial class JobViewModel : ObservableObject
         var failed = Job.Files.Where(f => f.State == FileState.Failed).ToList();
         HasErrors = failed.Count > 0;
         ErrorDetails = failed.Count == 0 ? null : string.Join(Environment.NewLine,
-            failed.Select(f => $"{Path.GetFileName(f.SourcePath)} — {_loc[f.ErrorKey ?? "error.conversion_failed"]}{(f.ErrorDetail is null ? "" : $" ({f.ErrorDetail})")}"));
+            failed.Select(f => $"{Path.GetFileName(f.SourcePath)} — {FailureText.Reason(_loc, f.ErrorKey, f.ErrorDetail)}"));
+        CanRetry = _retry is not null && !IsRunning && failed.Count > 0;
 
         Status = Job.State switch
         {
@@ -77,4 +85,8 @@ public sealed partial class JobViewModel : ObservableObject
 
     [RelayCommand]
     private void Dismiss() => _dismiss(this);
+
+    /// <summary>Converts the files that failed again (a new job in the toast in place of this one).</summary>
+    [RelayCommand]
+    private void Retry() => _retry?.Invoke(this);
 }

@@ -30,6 +30,7 @@
   "home.open_folder": "Open folder",
   "home.clear_history": "Clear",
   "home.files": "{0} files",
+  "home.failed_files": "{0} failed",
 
   "donut.center_drag": "Bring files here",
   "donut.files_same": "{0} × {1}",
@@ -428,6 +429,7 @@
   "about.title": "About",
   "about.updates": "Updates",
   "common.search": "Search",
+  "common.retry": "Retry",
   "about.version": "Version {0}",
   "about.license": "Filee is free software under the MIT license.",
   "about.notices": "Third-party notices",

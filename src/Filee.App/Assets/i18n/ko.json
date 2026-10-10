@@ -30,6 +30,7 @@
   "home.open_folder": "폴더 열기",
   "home.clear_history": "지우기",
   "home.files": "파일 {0}개",
+  "home.failed_files": "{0}개 실패",
 
   "donut.center_drag": "파일을 이쪽으로",
   "donut.files_same": "{1} {0}개",
@@ -428,6 +429,7 @@
   "about.title": "정보",
   "about.updates": "업데이트",
   "common.search": "검색",
+  "common.retry": "다시 시도",
   "about.version": "버전 {0}",
   "about.license": "Filee는 MIT 라이선스의 무료 소프트웨어예요.",
   "about.notices": "서드파티 고지",

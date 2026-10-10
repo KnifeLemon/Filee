@@ -6,6 +6,22 @@ version it publishes under "What's Changed" in the GitHub release notes, above t
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.8.0
+
+### New
+
+- **Failed files at a glance, and a retry.** When files of a conversion fail, Recent conversions on the Home page
+  lists them with the reason (click "2 failed" to open the list; names and reasons can be selected and copied).
+  **Retry** converts the files that failed again with the same settings and save location, even after the preset
+  was changed or deleted. Files that are no longer there are left out. The progress card that pops up after a
+  conversion has the same **Retry** button. Conversions from watch folders are listed and retried the same way;
+  a retried file stays in the watched folder, also when the folder moves originals to "originals".
+
+### Documentation
+
+- docs/ENGINES.md said Filee never uses engines installed on the computer. It does, as the last choice after a copy
+  you picked and Filee's own: that is how FFmpeg and Ghostscript are found on macOS. The order is now described.
+
 ## 1.7.2
 
 ### Fixes
