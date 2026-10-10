@@ -59,11 +59,21 @@ public class FailedFilesTests
 
             item.RetryCommand.Execute(null);
 
-            var job = conversions.Jobs[0].Job;
+            var retried = conversions.Jobs[0];
+            var job = retried.Job;
             Assert.Equal([kept], job.Sources);
             Assert.Equal("jpg", job.Preset.TargetFormat);
             Assert.Equal(Path.Combine(folder, "out"), job.Preset.Output.CustomFolder);
+
+            // Let the job end inside the test: a conversion finishing after it would post to a dispatcher that is gone.
             job.Cancel();
+            for (var i = 0; i < 200 && job.State is JobState.Queued or JobState.Running; i++)
+            {
+                Thread.Sleep(25);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            }
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            retried.DismissCommand.Execute(null);
         }
         finally
         {
