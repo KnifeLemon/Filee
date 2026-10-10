@@ -103,12 +103,13 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
 
     internal ILocalizer Localizer => _loc;
 
-    /// <summary>The file name a source gets in this folder with <paramref name="steps"/> in place of the rule's.</summary>
-    internal string OutputNameOf(WatchRule rule, string source, IReadOnlyList<RenameStep> steps)
+    /// <summary>The file name a source gets in this folder with a base name pattern and rules in place of the rule's.</summary>
+    internal string OutputNameOf(WatchRule rule, string source, string pattern, IReadOnlyList<RenameStep> steps)
     {
         if (_store.FindPreset(rule.PresetId) is not { } preset)
             return source;
         var trial = rule.Clone();
+        trial.FileNamePattern = pattern;
         trial.Renames = [.. steps];
         var applied = trial.Apply(preset);
         var output = OutputPathResolver.Resolve(applied.Output,
@@ -211,7 +212,6 @@ public sealed partial class WatchRuleViewModel : ObservableObject
         _outputFolder = rule.OutputFolder;
         _originals = page.OriginalsChoices.First(c => c.Value == rule.Originals);
         _status = page.StatusOf(rule);
-        _fileNamePattern = rule.FileNamePattern;
         // Options in use stay in view; a new rule starts with them folded away.
         _showOptions = rule.Include.Count > 0 || rule.FileNamePattern.Length > 0 || rule.Renames.Count > 0;
         RefreshIncludeTags();
@@ -245,12 +245,10 @@ public sealed partial class WatchRuleViewModel : ObservableObject
     /// <summary>"3 files in the folder match now", or null.</summary>
     [ObservableProperty] private string? _includeMatches;
 
-    [ObservableProperty] private string _fileNamePattern;
+    /// <summary>"Name: [Original name]_scan", or the preset's name when the folder has none.</summary>
+    [ObservableProperty] private string _nameSummary = "";
 
-    /// <summary>"Same as the preset: {name}" in the empty file name box.</summary>
-    [ObservableProperty] private string _fileNamePlaceholder = "";
-
-    /// <summary>The rename steps, one "find → replace" line each, for the card.</summary>
+    /// <summary>The rules, one line each, for the card.</summary>
     [ObservableProperty] private IReadOnlyList<string> _renameSummary = [];
 
     public bool HasRenames => RenameSummary.Count > 0;
@@ -269,7 +267,6 @@ public sealed partial class WatchRuleViewModel : ObservableObject
     partial void OnIncludeSubfoldersChanged(bool value) => Change(r => r.IncludeSubfolders = value);
     partial void OnOutputFolderChanged(string value) => Change(r => r.OutputFolder = value.Trim());
     partial void OnOriginalsChanged(Choice<AfterConversion> value) => Change(r => r.Originals = value.Value);
-    partial void OnFileNamePatternChanged(string value) => Change(r => r.FileNamePattern = value.Trim());
 
     partial void OnIncludeTextChanged(string value)
     {
@@ -307,10 +304,15 @@ public sealed partial class WatchRuleViewModel : ObservableObject
 
     /// <summary>The dialog that edits the rename steps, on copies of them.</summary>
     public RenameToolViewModel CreateRenameTool() =>
-        new(Rule.Renames, WatchFoldersPageViewModel.SampleNames(Rule), (steps, source) => _page.OutputNameOf(Rule, source, steps), _page.Localizer);
+        new(Rule.FileNamePattern, _page.PresetNamePattern(Rule), Rule.Renames, WatchFoldersPageViewModel.SampleNames(Rule),
+            (pattern, steps, source) => _page.OutputNameOf(Rule, source, pattern, steps), _page.Localizer);
 
-    /// <summary>Takes the steps the dialog applied.</summary>
-    public void SetRenames(List<RenameStep> steps) => Change(r => r.Renames = steps);
+    /// <summary>Takes the base name and the rules the dialog saved.</summary>
+    public void SetNaming(string pattern, List<RenameStep> steps) => Change(r =>
+    {
+        r.FileNamePattern = pattern.Trim();
+        r.Renames = steps;
+    });
 
     [RelayCommand]
     private void Remove() => _page.Remove(this);
@@ -334,9 +336,12 @@ public sealed partial class WatchRuleViewModel : ObservableObject
 
     private void RefreshPreview()
     {
-        RenameSummary = Rule.Renames.Select(r => RenameRecipes.Describe(_page.Localizer, r)).ToList();
+        var loc = _page.Localizer;
+        NameSummary = Rule.FileNamePattern.Length > 0
+            ? loc.Format("watch.name_summary", RenameRecipes.Friendly(loc, Rule.FileNamePattern))
+            : loc.Format("watch.name_summary_preset", RenameRecipes.Friendly(loc, _page.PresetNamePattern(Rule)));
+        RenameSummary = Rule.Renames.Select(r => RenameRecipes.Describe(loc, r)).ToList();
         OnPropertyChanged(nameof(HasRenames));
-        FileNamePlaceholder = _page.Format("watch.name_placeholder", _page.PresetNamePattern(Rule));
         var preview = _page.PreviewOf(Rule);
         PreviewExample = preview?.Example;
         PreviewDetails = preview?.Details;

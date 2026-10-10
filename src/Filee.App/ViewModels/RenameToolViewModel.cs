@@ -1,6 +1,6 @@
-// The name tool of a watch folder (Watch folders → More options → Replace part of the name → Name tool…): regular
-// expression steps applied in order, ready-made replacements to add with a double-click, and a preview of files from
-// the folder before and after. Works on copies; the folder takes the steps only when the dialog is applied.
+// Naming the converted files of a watch folder (Watch folders → More options → Edit name rules): the base name (a
+// pattern, built with token buttons), rules applied to it in order, ready-made rules to add with a double-click, and
+// a preview of files from the folder. Works on copies; the folder takes them only when the dialog is saved.
 
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -11,24 +11,32 @@ using Filee.Core.Presets;
 
 namespace Filee.App.ViewModels;
 
+/// <summary>A part of the base name a button inserts: <c>date</c> → <c>{date}</c>, labelled "Date".</summary>
+public sealed record NamePart(string Token, string Label);
+
 /// <summary>A file name before and after the steps.</summary>
 public sealed record RenamePreview(string Before, string After);
 
 public sealed partial class RenameToolViewModel : ObservableObject
 {
     private readonly ILocalizer _loc;
-    private readonly Func<IReadOnlyList<RenameStep>, string, string> _rename;
+    private readonly Func<string, IReadOnlyList<RenameStep>, string, string> _rename;
     private readonly IReadOnlyList<string> _samples;
 
-    /// <param name="steps">The folder's steps (copied; changes stay here until <see cref="Result"/> is taken).</param>
+    /// <param name="pattern">The folder's base name pattern; empty for the preset's.</param>
+    /// <param name="presetPattern">The preset's pattern, used while <paramref name="pattern"/> is empty.</param>
+    /// <param name="steps">The folder's rules (copied; changes stay here until the dialog is saved).</param>
     /// <param name="samples">Names of files in the folder (with extension), for the preview.</param>
-    /// <param name="rename">The name a file gets with some steps: source name → converted file name.</param>
-    public RenameToolViewModel(IEnumerable<RenameStep> steps, IReadOnlyList<string> samples,
-        Func<IReadOnlyList<RenameStep>, string, string> rename, ILocalizer loc)
+    /// <param name="rename">The name a file gets: (pattern, rules, source name) → converted file name.</param>
+    public RenameToolViewModel(string pattern, string presetPattern, IEnumerable<RenameStep> steps, IReadOnlyList<string> samples,
+        Func<string, IReadOnlyList<RenameStep>, string, string> rename, ILocalizer loc)
     {
         _loc = loc;
         _rename = rename;
         _samples = samples;
+        _namePattern = pattern;
+        NamePlaceholder = loc.Format("watch.name_placeholder", RenameRecipes.Friendly(loc, presetPattern));
+        Tokens = new[] { "name", "date", "time", "index", "preset" }.Select(t => new NamePart(t, loc[$"watch.token.{t}"])).ToList();
         Kinds = Enum.GetValues<RenameKind>().Select(k => new Choice<RenameKind>(k, loc[$"watch.kind.{k}"])).ToList();
         Recipes = RenameRecipes.All.Select(r => new RenameRecipeViewModel(r, loc[r.TitleKey], this)).ToList();
         foreach (var step in steps)
@@ -37,7 +45,16 @@ public sealed partial class RenameToolViewModel : ObservableObject
         Refresh();
     }
 
-    /// <summary>Replacements applied in order.</summary>
+    /// <summary>The base name: <c>{name}_scan</c>; empty for the preset's.</summary>
+    [ObservableProperty] private string _namePattern;
+
+    /// <summary>"Same as the preset: [Original name]" in the empty box.</summary>
+    public string NamePlaceholder { get; }
+
+    /// <summary>The parts the token buttons insert: name, date, time, index, preset.</summary>
+    public IReadOnlyList<NamePart> Tokens { get; }
+
+    /// <summary>Rules applied in order to the base name.</summary>
     public ObservableCollection<RenameStepViewModel> Steps { get; } = [];
 
     /// <summary>What a rule can do, for its drop-down.</summary>
@@ -66,6 +83,12 @@ public sealed partial class RenameToolViewModel : ObservableObject
     public List<RenameStep> Result => Steps.Where(s => !s.Step.IsBlank).Select(s => s.Step.Clone()).ToList();
 
     partial void OnCustomNameChanged(string value) => Refresh();
+
+    partial void OnNamePatternChanged(string value) => Refresh();
+
+    /// <summary>Adds a part ({name}, {date}, …) at the end of the base name; an empty one starts from the original name.</summary>
+    public void InsertToken(string token) =>
+        NamePattern = (NamePattern.Trim().Length == 0 && token != "name" ? "{name}_" : NamePattern) + "{" + token + "}";
 
     [RelayCommand]
     private void AddStep() => AddStep(new RenameStep());
@@ -104,8 +127,8 @@ public sealed partial class RenameToolViewModel : ObservableObject
         var steps = Steps.Select(s => s.Step).Where(s => !s.IsBlank).ToList();
         Previews.Clear();
         foreach (var sample in _samples)
-            Previews.Add(new RenamePreview(sample, _rename(steps, sample)));
-        CustomResult = CustomName.Trim().Length == 0 ? "" : _rename(steps, CustomName.Trim());
+            Previews.Add(new RenamePreview(sample, _rename(NamePattern.Trim(), steps, sample)));
+        CustomResult = CustomName.Trim().Length == 0 ? "" : _rename(NamePattern.Trim(), steps, CustomName.Trim());
         OnPropertyChanged(nameof(HasNoSteps));
         OnPropertyChanged(nameof(IsValid));
     }

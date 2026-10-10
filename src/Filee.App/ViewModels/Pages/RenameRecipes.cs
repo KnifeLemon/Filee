@@ -28,6 +28,14 @@ public static class RenameRecipes
         new("watch.recipe.date_dashes", new RenameStep { Kind = RenameKind.Regex, Find = @"(\d{4})(\d{2})(\d{2})", Replace = "$1-$2-$3" }, "scan_20261011"),
     ];
 
+    /// <summary>A name pattern with its parts in words: <c>{name}_{date}</c> → "[Original name]_[Date]".</summary>
+    public static string Friendly(ILocalizer loc, string pattern)
+    {
+        foreach (var token in new[] { "name", "ext", "date", "time", "index", "preset" })
+            pattern = pattern.Replace("{" + token + "}", $"[{loc[$"watch.token.{token}"]}]", StringComparison.Ordinal);
+        return pattern;
+    }
+
     /// <summary>A rule in one line for the watch folder card: "Replace text: IMG_ → Photo_", "Spaces to _".</summary>
     public static string Describe(ILocalizer loc, RenameStep step)
     {

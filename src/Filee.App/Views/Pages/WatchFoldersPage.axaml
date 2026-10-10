@@ -91,29 +91,21 @@
                   <TextBlock Classes="caption" Text="{Binding IncludeMatches}" TextWrapping="Wrap" IsVisible="{Binding IncludeMatches, Converter={x:Static ObjectConverters.IsNotNull}}" />
                   <TextBlock Classes="caption" Text="{DynamicResource watch.include_hint}" TextWrapping="Wrap" />
                 </StackPanel>
-                <StackPanel Spacing="4">
-                  <TextBlock Classes="label" Text="{DynamicResource watch.name}" />
-                  <TextBox Text="{Binding FileNamePattern}" PlaceholderText="{Binding FileNamePlaceholder}" />
-                  <TextBlock Classes="caption" Text="{DynamicResource watch.name_hint}" TextWrapping="Wrap" />
-                </StackPanel>
+                <!-- The base name and the rules in short; both are edited in their own window -->
                 <StackPanel Spacing="4">
                   <TextBlock Classes="label" Text="{DynamicResource watch.rename}" />
-                  <!-- The steps in short; they are edited in their own window -->
+                  <TextBlock Classes="caption" Text="{Binding NameSummary}" TextWrapping="Wrap" />
                   <ItemsControl ItemsSource="{Binding RenameSummary}" IsVisible="{Binding HasRenames}">
                     <ItemsControl.ItemTemplate>
                       <DataTemplate x:DataType="x:String">
-                        <TextBlock Classes="caption" FontFamily="Consolas, Menlo, monospace" Text="{Binding}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Classes="caption" Text="{Binding StringFormat='· {0}'}" TextTrimming="CharacterEllipsis" />
                       </DataTemplate>
                     </ItemsControl.ItemTemplate>
                   </ItemsControl>
-                  <TextBlock Classes="caption" Text="{DynamicResource watch.rename_none}" IsVisible="{Binding !HasRenames}" TextWrapping="Wrap" />
-                  <Button HorizontalAlignment="Left" Padding="10,5" Click="OnEditRenames">
+                  <Button HorizontalAlignment="Left" Padding="10,5" Margin="0,2,0,0" Click="OnEditRenames">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                       <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Pencil}" />
-                      <Panel>
-                        <TextBlock Text="{DynamicResource watch.rename_edit}" IsVisible="{Binding HasRenames}" />
-                        <TextBlock Text="{DynamicResource watch.rename_add}" IsVisible="{Binding !HasRenames}" />
-                      </Panel>
+                      <TextBlock Text="{DynamicResource watch.rename_edit}" />
                     </StackPanel>
                   </Button>
                 </StackPanel>

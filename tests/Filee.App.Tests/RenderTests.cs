@@ -118,6 +118,11 @@ public class RenderTests
 
             // The rename window works on copies: a ready-made replacement becomes a rule, the preview follows.
             var tool = item.CreateRenameTool();
+            Assert.Equal("{name}_scan", tool.NamePattern); // the base name is edited here too
+            tool.NamePattern = "";
+            tool.InsertToken("date"); // an empty name starts from the original one
+            Assert.Equal("{name}_{date}", tool.NamePattern);
+            tool.NamePattern = "{name}_scan";
             tool.Recipes[0].AddCommand.Execute(null); // change IMG_ to Photo_
             Assert.Empty(rule.Renames); // nothing changes before saving
             Assert.Equal(new Filee.App.ViewModels.RenamePreview("IMG_0412.jpg", "Photo_0412_scan.pdf"), Assert.Single(tool.Previews));
@@ -144,7 +149,7 @@ public class RenderTests
             Save(dialog, $"window-rename-{language}.png");
             dialog.Close();
 
-            item.SetRenames(tool.Result); // saved
+            item.SetNaming(tool.NamePattern, tool.Result); // saved
             Assert.Equal("IMG_", Assert.Single(rule.Renames).Find);
             // A file already in the folder that the patterns let through, renamed by the name rule and the rule.
             Assert.Equal($"IMG_0412.jpg → {Path.Combine("converted", "Photo_0412_scan.pdf")}", item.PreviewExample);

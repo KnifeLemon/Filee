@@ -22,6 +22,12 @@ public partial class RenameToolWindow : Window
             recipe.AddCommand.Execute(null);
     }
 
+    private void OnInsertToken(object? sender, RoutedEventArgs e)
+    {
+        if ((sender as Control)?.Tag is string token && DataContext is RenameToolViewModel tool)
+            tool.InsertToken(token);
+    }
+
     private void OnSave(object? sender, RoutedEventArgs e)
     {
         if (DataContext is RenameToolViewModel { IsValid: true })

@@ -19,18 +19,16 @@ find it, what it does and doesn't do.
 - **Watch folders: choose files and name them** (Settings → Watch folders → *More options*, all optional; empty
   fields change nothing):
   - *Files to convert*: patterns entered as tags. Typing `heic` adds `*.heic`, other text picks names that contain
-    it, `*` stands for any text and `?` for one character, and a regular expression goes between slashes
-    (`/^IMG_\d+/`). Extensions are suggested while typing, a broken expression is not added, and the card says how
-    many files in the folder match. Other files in the folder are left alone.
-  - *File name rule*: a name pattern for this folder in place of the preset's, with `{name}`, `{date}`, `{time}`,
-    `{index}` and `{preset}`.
-  - *Rename converted files*: **Edit rules** opens a window of rules applied from top to bottom. Each rule says
-    what it does — replace text, remove text, add at the start or end, spaces to `_`, remove a copy number like
-    "(2)", remove text in brackets, remove a leading number, remove symbols, all lowercase or uppercase — and asks
-    only for the text it needs. A regular expression is there as the last, advanced kind. **Common replacements** on
-    the left lists ready-made rules with an example of what each does; double-click one or press + to add it and
-    change it from there. The preview shows files from the folder before and after, and any name you type. Nothing
-    changes until you save.
+    it, and `*` stands for any text, `?` for one character. Extensions are suggested while typing, and the card says
+    how many files in the folder match. Other files in the folder are left alone.
+  - *Names of converted files*: **Edit name rules** opens a window with the base name (typed, or built with buttons
+    for the original name, date, time, number and preset name; empty keeps the preset's) and changes applied to it
+    from top to bottom. Each change says what it does — replace text, remove text, add at the start or end, spaces
+    to `_`, remove a copy number like "(2)", text in brackets, a leading number or symbols, all lowercase or
+    uppercase — and asks only for the text it needs; a regular expression is there as the last, advanced kind.
+    **Common replacements** on the left lists ready-made changes with an example of each; double-click one or press +
+    to add it. The preview shows the name each file in the folder will get, and any name you type. Nothing changes
+    until you save. The card shows the name in words ("[Original name]_scan") and the changes.
   - A **preview** on every watch folder shows a converted file as it will be saved (`IMG_0412.jpg →
     converted\Photo_0412.pdf`, using a file already in the folder when there is one), what happens when the name is
     taken and what happens to the original.

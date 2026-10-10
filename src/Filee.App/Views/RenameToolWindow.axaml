@@ -72,9 +72,34 @@
         </Border>
       </DockPanel>
 
-      <!-- The steps and what they do -->
+      <!-- The base name, the rules and what they do -->
       <ScrollViewer Grid.Column="1">
         <StackPanel Spacing="16" Margin="0,0,4,0">
+          <!-- 1. Base name: typed, or built with the part buttons -->
+          <StackPanel Spacing="6">
+            <TextBlock Classes="label" Text="{DynamicResource watch.name}" />
+            <TextBox Text="{Binding NamePattern}" PlaceholderText="{Binding NamePlaceholder}" />
+            <ItemsControl ItemsSource="{Binding Tokens}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <WrapPanel />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:NamePart">
+                  <Button Padding="8,3" Margin="0,0,6,6" Tag="{Binding Token}" Click="OnInsertToken">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                      <PathIcon Width="10" Height="10" Data="{StaticResource Icon.Plus}" />
+                      <TextBlock Classes="caption" Text="{Binding Label}" />
+                    </StackPanel>
+                  </Button>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock Classes="caption" Text="{DynamicResource watch.name_hint}" TextWrapping="Wrap" />
+          </StackPanel>
+
+          <!-- 2. Rules applied to it -->
           <StackPanel Spacing="6">
             <TextBlock Classes="label" Text="{DynamicResource watch.rename_steps}" />
             <TextBlock Classes="caption" Text="{DynamicResource watch.rename_no_steps}" TextWrapping="Wrap" IsVisible="{Binding HasNoSteps}" />

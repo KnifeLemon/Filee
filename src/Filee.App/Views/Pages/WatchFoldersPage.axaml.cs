@@ -29,7 +29,7 @@ public partial class WatchFoldersPage : UserControl
         var tool = rule.CreateRenameTool();
         var dialog = new RenameToolWindow { DataContext = tool };
         if (await dialog.ShowDialog<bool>(owner))
-            rule.SetRenames(tool.Result);
+            rule.SetNaming(tool.NamePattern, tool.Result);
     }
 
     private async Task<string?> PickFolderAsync()
