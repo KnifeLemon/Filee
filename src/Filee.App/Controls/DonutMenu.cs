@@ -478,11 +478,22 @@ public sealed partial class DonutMenu : Control
         public double Value;
         public double Velocity;
 
+        /// <summary>
+        /// Longest time one integration step covers. With these stiffnesses a single step of a late frame (50 ms)
+        /// overshoots more each frame instead of settling: slices stayed lit and flew apart on a busy machine.
+        /// </summary>
+        private const double MaxStep = 1 / 120.0;
+
         public bool Step(double target, double dt, double stiffness = 320, double damping = 20)
         {
-            var force = stiffness * (target - Value) - damping * Velocity;
-            Velocity += force * dt;
-            Value += Velocity * dt;
+            var steps = Math.Max(1, (int)Math.Ceiling(dt / MaxStep));
+            var h = dt / steps;
+            for (var i = 0; i < steps; i++)
+            {
+                var force = stiffness * (target - Value) - damping * Velocity;
+                Velocity += force * h;
+                Value += Velocity * h;
+            }
             var settled = Math.Abs(target - Value) < 0.001 && Math.Abs(Velocity) < 0.01;
             if (settled)
             {
