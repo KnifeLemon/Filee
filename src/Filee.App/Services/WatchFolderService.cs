@@ -74,20 +74,20 @@ public sealed class WatchFolderService(UserDataStore store, ConversionService co
 
     private async Task<Core.Conversion.ConversionJob?> ConvertAsync(WatchRule rule, IReadOnlyList<string> files)
     {
-        var preset = store.Presets.FirstOrDefault(p => p.Id == rule.PresetId)?.Clone();
+        var preset = store.Presets.FirstOrDefault(p => p.Id == rule.PresetId);
         if (preset is null)
         {
             log.LogWarning("Watch folder {Folder}: preset {Preset} no longer exists", rule.Folder, rule.PresetId);
             return null;
         }
-        preset.Output.Location = Core.Presets.OutputLocation.CustomFolder;
-        preset.Output.CustomFolder = rule.ResolvedOutputFolder;
-        return await conversions.RunAsync(files, preset);
+        return await conversions.RunAsync(files, rule.Apply(preset));
     }
 
     /// <summary>Everything that needs a new watcher when it changes.</summary>
     private static string Signature(WatchRule rule) =>
-        string.Join('|', rule.Folder, rule.PresetId, rule.IncludeSubfolders, rule.OutputFolder, rule.Originals);
+        string.Join('|', rule.Folder, rule.PresetId, rule.IncludeSubfolders, rule.OutputFolder, rule.Originals,
+            string.Join('/', rule.Include), rule.FileNamePattern,
+            string.Join('/', rule.Renames.Select(r => $"{r.Find}>{r.Replace}")));
 
     public async ValueTask DisposeAsync()
     {

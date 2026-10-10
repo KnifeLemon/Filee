@@ -1,6 +1,7 @@
 // Turns an OutputRule + source file into the concrete output path. Pure logic, unit tested.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Filee.Core.Formats;
 
 namespace Filee.Core.Presets;
@@ -32,7 +33,7 @@ public static class OutputPathResolver
         };
 
         var sourceName = FormatRegistry.NameWithoutExtension(tokens.SourcePath);
-        var name = Sanitize(ExpandPattern(rule.FileNamePattern, tokens), sourceName) + suffix;
+        var name = Sanitize(Rename(ExpandPattern(rule.FileNamePattern, tokens), rule.Renames), sourceName) + suffix;
         var ext = targetExtension.TrimStart('.');
         string PathFor(string baseName) => Path.Combine(dir, ext.Length == 0 ? baseName : $"{baseName}.{ext}");
         var candidate = PathFor(name);
@@ -52,6 +53,44 @@ public static class OutputPathResolver
             candidate = PathFor($"{name} ({n})");
             if (!exists(candidate) && !PathsEqual(candidate, tokens.SourcePath))
                 return candidate;
+        }
+    }
+
+    /// <summary>Applies <paramref name="steps"/> to <paramref name="name"/> in order.</summary>
+    public static string Rename(string name, IEnumerable<RenameStep> steps) =>
+        steps.Aggregate(name, (current, step) => Rename(current, step.Find, step.Replace));
+
+    /// <summary>
+    /// Replaces the regular expression <paramref name="find"/> in <paramref name="name"/>. A pattern that isn't valid
+    /// (see <see cref="RenameError"/>) or runs too long leaves the name as it is.
+    /// </summary>
+    public static string Rename(string name, string? find, string? replace)
+    {
+        if (string.IsNullOrEmpty(find))
+            return name;
+        try
+        {
+            return Regex.Replace(name, find, replace ?? "", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
+        }
+        catch (Exception ex) when (ex is ArgumentException or RegexMatchTimeoutException)
+        {
+            return name;
+        }
+    }
+
+    /// <summary>Why <paramref name="find"/> is not a valid regular expression, or null.</summary>
+    public static string? RenameError(string? find)
+    {
+        if (string.IsNullOrEmpty(find))
+            return null;
+        try
+        {
+            _ = new Regex(find, RegexOptions.CultureInvariant);
+            return null;
+        }
+        catch (ArgumentException ex)
+        {
+            return ex.Message;
         }
     }
 

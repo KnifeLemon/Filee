@@ -65,12 +65,78 @@ public class RenderTests
             var item = Assert.Single(page.Rules);
             Assert.Equal("to-pdf", item.Preset?.Value);
             Assert.False(string.IsNullOrWhiteSpace(item.Status));
+            Assert.EndsWith(Path.Combine("converted", Path.ChangeExtension(AppHost.Get<Filee.Core.Localization.ILocalizer>()["watch.sample_file"], "pdf")),
+                item.PreviewExample); // where a converted file goes and what it is called
+            Assert.False(item.ShowOptions); // the optional settings stay folded until used
             Save(window, $"page-watch-{language}.png");
             window.Close();
         }
         finally
         {
             store.Settings.WatchFolders.Remove(rule);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    public void Watch_folder_options_rename_and_filter_with_a_preview(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var store = AppHost.Get<Filee.Core.Settings.UserDataStore>();
+        var folder = Directory.CreateTempSubdirectory("filee-watch-").FullName;
+        File.WriteAllBytes(Path.Combine(folder, "notes.txt"), [0x41]);
+        File.WriteAllBytes(Path.Combine(folder, "IMG_0412.jpg"), [0xFF, 0xD8]);
+        var rule = new Filee.Core.Watching.WatchRule
+        {
+            Folder = folder,
+            PresetId = "to-pdf",
+            Enabled = false,
+            Include = ["*.jpg"],
+            FileNamePattern = "{name}_scan",
+        };
+        store.Settings.WatchFolders.Add(rule);
+        try
+        {
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+            vm.Navigate("watch");
+            var window = new MainWindow { DataContext = vm, Width = 1080, Height = 1500 };
+            window.Show();
+            Pump();
+
+            var item = Assert.Single(((Filee.App.ViewModels.Pages.WatchFoldersPageViewModel)vm.CurrentPage).Rules);
+            Assert.True(item.ShowOptions); // options in use are shown
+
+            // Typed patterns become chips: an extension turns into *.ext, a broken expression is not added.
+            item.AddIncludeCommand.Execute("heic");
+            Assert.Equal(["*.jpg", "*.heic"], rule.Include);
+            item.AddIncludeCommand.Execute("/IMG_(/");
+            Assert.NotNull(item.IncludeError);
+            Assert.Equal("/IMG_(/", item.IncludeText);
+            item.IncludeText = "";
+            Assert.NotNull(item.IncludeMatches); // IMG_0412.jpg matches, notes.txt doesn't
+
+            // A ready-made replacement becomes a step; steps run in order.
+            item.Recipes[0].AddCommand.Execute(null); // camera number → Photo_number
+            Assert.Equal(@"^(?:IMG|DSC|PXL)_(\d+)", Assert.Single(rule.Renames).Find);
+            // A file already in the folder that the patterns let through, renamed by the name rule and the step.
+            Assert.Equal($"IMG_0412.jpg → {Path.Combine("converted", "Photo_0412_scan.pdf")}", item.PreviewExample);
+
+            var step = item.RenameSteps[0];
+            step.Find = "IMG_(";
+            Assert.NotNull(step.Error);
+            step.Find = @"^(?:IMG|DSC|PXL)_(\d+)";
+            Assert.Null(step.Error);
+            item.ShowRecipes = true;
+            Pump();
+            Save(window, $"page-watch-options-{language}.png");
+            window.Close();
+        }
+        finally
+        {
+            store.Settings.WatchFolders.Remove(rule);
+            store.SaveSettings(); // editing the rule saved it: the next test's application would load it again
+            try { Directory.Delete(folder, true); } catch (IOException) { }
         }
     }
 

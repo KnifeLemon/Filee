@@ -98,7 +98,9 @@ Dolphin. Ubuntu 24.04 is the tested baseline; `INSTALL.txt` in the package lists
 - **Four ways in.** The drag gesture, the file manager's right-click menu (and Send To on Windows), a keyboard shortcut
   on the selected files, and the drop zone in the main window.
 - **Watch folders.** Files that land in a folder you choose are converted once their download or copy is complete.
-  Keep the originals or move them aside, so the folder works like an inbox.
+  Keep the originals or move them aside, so the folder works like an inbox. Optionally convert only some files
+  (`*.heic`, `scan_*` or a regular expression, entered as tags), give converted files their own name rule and
+  replace parts of names with ready-made or your own regular expressions, with a live preview.
 - **Engines you can see.** Settings → Engines lists every engine with its version and what it converts. FFmpeg,
   calibre, Pandoc, Ghostscript and LibreOffice already on your computer are found and used instead of a download.
 - **Light, dark or system theme**, your accent colour and a *Reduce animations* switch.

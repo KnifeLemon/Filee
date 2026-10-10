@@ -176,7 +176,7 @@ public sealed class FolderWatcher : IAsyncDisposable
     }
 
     /// <summary>True for files a watch folder never converts: temporary, hidden or system files, unknown formats,
-    /// and anything inside the output or originals folder.</summary>
+    /// anything inside the output or originals folder, and names the rule's <see cref="WatchRule.Include"/> leaves out.</summary>
     public static bool ShouldIgnore(string path, WatchRule rule)
     {
         var name = Path.GetFileName(path);
@@ -188,6 +188,8 @@ public sealed class FolderWatcher : IAsyncDisposable
         if (!rule.IncludeSubfolders && !SameFolder(Path.GetDirectoryName(path), rule.Folder))
             return true;
         if (FormatRegistry.Detect(path) is null)
+            return true;
+        if (!FileNameFilter.Of(rule.Include).Matches(name))
             return true;
         try
         {

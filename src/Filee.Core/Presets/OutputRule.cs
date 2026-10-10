@@ -45,6 +45,9 @@ public sealed class OutputRule
     /// </summary>
     public string FileNamePattern { get; set; } = "{name}";
 
+    /// <summary>Replacements applied in order to the name made from <see cref="FileNamePattern"/>.</summary>
+    public List<RenameStep> Renames { get; set; } = [];
+
     public ConflictPolicy Conflict { get; set; } = ConflictPolicy.Rename;
 
     /// <summary>
@@ -53,5 +56,21 @@ public sealed class OutputRule
     /// </summary>
     public bool KeepDates { get; set; }
 
-    public OutputRule Clone() => (OutputRule)MemberwiseClone();
+    public OutputRule Clone()
+    {
+        var clone = (OutputRule)MemberwiseClone();
+        clone.Renames = Renames.Select(r => r.Clone()).ToList();
+        return clone;
+    }
+}
+
+/// <summary>A regular expression replaced in a file name, e.g. <c>IMG_(\d+)</c> → <c>Photo_$1</c>.</summary>
+public sealed class RenameStep
+{
+    public string Find { get; set; } = "";
+
+    /// <summary>What <see cref="Find"/> is replaced with; <c>$1</c> inserts the first group.</summary>
+    public string Replace { get; set; } = "";
+
+    public RenameStep Clone() => (RenameStep)MemberwiseClone();
 }

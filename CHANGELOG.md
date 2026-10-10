@@ -16,6 +16,21 @@ find it, what it does and doesn't do.
   was changed or deleted. Files that are no longer there are left out. The progress card that pops up after a
   conversion has the same **Retry** button. Conversions from watch folders are listed and retried the same way;
   a retried file stays in the watched folder, also when the folder moves originals to "originals".
+- **Watch folders: choose files and name them** (Settings → Watch folders → *More options*, all optional; empty
+  fields change nothing):
+  - *Files to convert*: patterns entered as tags. Typing `heic` adds `*.heic`, other text picks names that contain
+    it, `*` stands for any text and `?` for one character, and a regular expression goes between slashes
+    (`/^IMG_\d+/`). Extensions are suggested while typing, a broken expression is not added, and the card says how
+    many files in the folder match. Other files in the folder are left alone.
+  - *File name rule*: a name pattern for this folder in place of the preset's, with `{name}`, `{date}`, `{time}`,
+    `{index}` and `{preset}`.
+  - *Replace part of the name*: regular expressions and what to put in their place, applied in order, e.g.
+    `IMG_(\d+)` → `Photo_$1`. **Common replacements** lists ready-made ones (camera numbers, spaces, copy numbers
+    like "(2)", text in brackets, dates, symbols, text at the start or end), each with an example of what it does;
+    double-click one or press + to add it as a step and change it from there.
+  - A **preview** on every watch folder shows a converted file as it will be saved (`IMG_0412.jpg →
+    converted\Photo_0412.pdf`, using a file already in the folder when there is one), what happens when the name is
+    taken and what happens to the original.
 
 ### Documentation
 
