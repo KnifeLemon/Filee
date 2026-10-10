@@ -14,8 +14,8 @@ find it, what it does and doesn't do.
   lists them with the reason (click "2 failed" to open the list; names and reasons can be selected and copied).
   **Retry** converts the files that failed again with the same settings and save location, even after the preset
   was changed or deleted. Files that are no longer there are left out. The progress card that pops up after a
-  conversion has the same **Retry** button. Conversions from watch folders are listed and retried the same way;
-  a retried file stays in the watched folder, also when the folder moves originals to "originals".
+  conversion has the same **Retry** button. A retried file from a watch folder is handled like the folder handles
+  its files: when the folder moves originals to "originals", the original moves once it converts.
 - **Watch folders: choose files and name them** (Settings → Watch folders → *More options*, all optional; empty
   fields change nothing):
   - *Files to convert*: patterns entered as tags. Typing `heic` adds `*.heic`, other text picks names that contain
@@ -32,6 +32,8 @@ find it, what it does and doesn't do.
   - A **preview** on every watch folder shows a converted file as it will be saved (`IMG_0412.jpg →
     converted\Photo_0412.pdf`, using a file already in the folder when there is one), what happens when the name is
     taken and what happens to the original.
+  - **Recent results** on every watch folder: how many files it converted and which failed, with the reason, and
+    **Retry** right there. A file that converts on a retry or a later copy no longer counts as failed.
 
 ### Documentation
 

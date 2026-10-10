@@ -24,6 +24,7 @@ public sealed class WatchFolderService(UserDataStore store, ConversionService co
 
     public void Start()
     {
+        conversions.WatchRetry = RetryAsync;
         _ = ApplyAsync();
         store.SettingsChanged += (_, _) =>
         {
@@ -80,7 +81,20 @@ public sealed class WatchFolderService(UserDataStore store, ConversionService co
             log.LogWarning("Watch folder {Folder}: preset {Preset} no longer exists", rule.Folder, rule.PresetId);
             return null;
         }
-        return await conversions.RunAsync(files, rule.Apply(preset));
+        return await conversions.RunAsync(files, rule.Apply(preset), rule.Id);
+    }
+
+    /// <summary>
+    /// Converts files of a watch folder again (a retry from the toast or the history) with the preset as it ran, then
+    /// moves the originals that converted when the folder does that.
+    /// </summary>
+    internal async Task RetryAsync(string ruleId, IReadOnlyList<string> files, Core.Presets.Preset preset)
+    {
+        var job = await conversions.RunAsync(files, preset, ruleId);
+        if (job is null || store.Settings.WatchFolders.FirstOrDefault(r => r.Id == ruleId) is not { Originals: AfterConversion.MoveToOriginals } rule)
+            return;
+        foreach (var file in job.Files.Where(f => f.State == Core.Conversion.FileState.Done))
+            FolderWatcher.MoveToOriginals(rule, file.SourcePath, log);
     }
 
     /// <summary>Everything that needs a new watcher when it changes.</summary>

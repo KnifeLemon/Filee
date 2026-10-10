@@ -63,7 +63,7 @@ public sealed partial class HistoryItemViewModel : ObservableObject
     private void Retry()
     {
         if (_conversions is not null && _entry.Preset is not null)
-            _conversions.Retry(_entry.Failures.Select(f => f.Source), _entry.Preset);
+            _conversions.Retry(_entry.Failures.Select(f => f.Source), _entry.Preset, _entry.WatchRuleId);
     }
 
     [RelayCommand]

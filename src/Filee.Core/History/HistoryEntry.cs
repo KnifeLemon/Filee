@@ -16,6 +16,9 @@ public sealed class HistoryEntry
     public List<string> Sources { get; set; } = [];
     public List<string> Outputs { get; set; } = [];
 
+    /// <summary>The watch folder (<see cref="Watching.WatchRule.Id"/>) the job came from, or null.</summary>
+    public string? WatchRuleId { get; set; }
+
     /// <summary>Files that failed, with the reason.</summary>
     public List<HistoryFailure> Failures { get; set; } = [];
 

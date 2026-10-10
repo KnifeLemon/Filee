@@ -159,7 +159,7 @@ public sealed class FolderWatcher : IAsyncDisposable
             {
                 if (Rule.Originals == AfterConversion.MoveToOriginals)
                     foreach (var file in job.Files.Where(f => f.State == FileState.Done))
-                        MoveToOriginals(file.SourcePath);
+                        MoveToOriginals(Rule, file.SourcePath, _log);
                 Converted?.Invoke(this, job);
             }
             return ready.Count;
@@ -216,11 +216,17 @@ public sealed class FolderWatcher : IAsyncDisposable
         }
     }
 
-    private void MoveToOriginals(string source)
+    /// <summary>
+    /// Moves a converted source into the rule's originals folder (keeping its subfolder), numbering it when the name is
+    /// taken. A file outside the watched folder stays where it is.
+    /// </summary>
+    public static void MoveToOriginals(WatchRule rule, string source, ILogger log)
     {
+        if (!IsInside(source, rule.Folder) || IsInside(source, rule.OriginalsFolder))
+            return;
         try
         {
-            var target = Path.Combine(Rule.OriginalsFolder, Path.GetRelativePath(Rule.Folder, source));
+            var target = Path.Combine(rule.OriginalsFolder, Path.GetRelativePath(rule.Folder, source));
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             var name = Path.GetFileNameWithoutExtension(target);
             var extension = Path.GetExtension(target);
@@ -230,7 +236,7 @@ public sealed class FolderWatcher : IAsyncDisposable
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            _log.LogWarning(ex, "Could not move {File} to the originals folder", source);
+            log.LogWarning(ex, "Could not move {File} to the originals folder", source);
         }
     }
 

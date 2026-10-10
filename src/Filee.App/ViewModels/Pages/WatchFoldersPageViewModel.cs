@@ -2,11 +2,13 @@
 // saved at once; the service applies it after a short pause.
 
 using System.Collections.ObjectModel;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.Core.Formats;
+using Filee.Core.History;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -19,12 +21,14 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
     private readonly UserDataStore _store;
     private readonly WatchFolderService _service;
     private readonly ILocalizer _loc;
+    private readonly ConversionService? _conversions;
 
-    public WatchFoldersPageViewModel(UserDataStore store, WatchFolderService service, ILocalizer loc)
+    public WatchFoldersPageViewModel(UserDataStore store, WatchFolderService service, ILocalizer loc, ConversionService? conversions = null)
     {
         _store = store;
         _service = service;
         _loc = loc;
+        _conversions = conversions;
         Presets = store.Presets.Select(p => new Choice<string>(p.Id, loc.DisplayName(p), FormatLabels.NameOf(loc, p.TargetFormat))).ToList();
         OriginalsChoices =
         [
@@ -34,6 +38,7 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
         foreach (var rule in store.Settings.WatchFolders)
             Rules.Add(new WatchRuleViewModel(rule, this));
         service.StatusChanged += OnStatusChanged;
+        store.HistoryChanged += OnHistoryChanged;
     }
 
     public ObservableCollection<WatchRuleViewModel> Rules { get; } = [];
@@ -193,7 +198,30 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
             rule.RefreshStatus();
     }
 
-    public void Dispose() => _service.StatusChanged -= OnStatusChanged;
+    /// <summary>A conversion finished (a watch folder's, perhaps): the cards' recent results follow.</summary>
+    private void OnHistoryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+    {
+        foreach (var rule in Rules)
+            rule.RefreshResults();
+    });
+
+    /// <summary>What the rule's folder converted lately, from the history.</summary>
+    internal WatchResults ResultsOf(WatchRule rule) => WatchResults.Of(_store.History, rule.Id);
+
+    /// <summary>Converts the folder's failed files again, each with the preset its job ran with.</summary>
+    internal void RetryFailures(WatchRule rule, IEnumerable<WatchFailure> failures)
+    {
+        if (_conversions is null)
+            return;
+        foreach (var group in failures.Where(f => f.Preset is not null).GroupBy(f => f.Preset!))
+            _conversions.Retry(group.Select(f => f.Failure.Source), group.Key, rule.Id);
+    }
+
+    public void Dispose()
+    {
+        _service.StatusChanged -= OnStatusChanged;
+        _store.HistoryChanged -= OnHistoryChanged;
+    }
 }
 
 /// <summary>One watch folder on the page; edits go straight into the settings' <see cref="WatchRule"/>.</summary>
@@ -216,6 +244,7 @@ public sealed partial class WatchRuleViewModel : ObservableObject
         _showOptions = rule.Include.Count > 0 || rule.FileNamePattern.Length > 0 || rule.Renames.Count > 0;
         RefreshIncludeTags();
         RefreshPreview();
+        RefreshResults();
     }
 
     public WatchRule Rule { get; }
@@ -260,6 +289,47 @@ public sealed partial class WatchRuleViewModel : ObservableObject
     [ObservableProperty] private string? _previewDetails;
 
     public bool HasPreview => PreviewExample is not null;
+
+    // Recent results of the folder, from the history.
+    private WatchResults _results = new(0, []);
+
+    /// <summary>"12 converted · 2 failed", or null before the folder converted anything.</summary>
+    [ObservableProperty] private string? _resultsSummary;
+
+    /// <summary>The files whose last conversion failed, and why.</summary>
+    [ObservableProperty] private IReadOnlyList<FailureItem> _resultFailures = [];
+
+    [ObservableProperty] private bool _showResultFailures;
+
+    public bool HasResults => ResultsSummary is not null;
+    public bool HasResultFailures => ResultFailures.Count > 0;
+
+    /// <summary>"2 failed": the button that shows the list.</summary>
+    public string ResultFailuresLabel => _page.Format("home.failed_files", ResultFailures.Count);
+
+    /// <summary>A failed file is still there and its preset is known.</summary>
+    public bool CanRetryResults => _results.Failures.Any(f => f.Preset is not null && ConversionService.Exists(f.Failure.Source));
+
+    [RelayCommand]
+    private void ToggleResultFailures() => ShowResultFailures = !ShowResultFailures;
+
+    [RelayCommand]
+    private void RetryResults() => _page.RetryFailures(Rule, _results.Failures);
+
+    internal void RefreshResults()
+    {
+        _results = _page.ResultsOf(Rule);
+        ResultsSummary = _results.IsEmpty ? null
+            : _results.Failures.Count == 0 ? _page.Format("watch.results_ok", _results.Converted)
+            : _page.Format("watch.results_failed", _results.Converted, _results.Failures.Count);
+        ResultFailures = _results.Failures
+            .Select(f => new FailureItem(Path.GetFileName(f.Failure.Source), FailureText.Reason(_page.Localizer, f.Failure.ErrorKey, f.Failure.ErrorDetail)))
+            .ToList();
+        OnPropertyChanged(nameof(HasResults));
+        OnPropertyChanged(nameof(HasResultFailures));
+        OnPropertyChanged(nameof(ResultFailuresLabel));
+        OnPropertyChanged(nameof(CanRetryResults));
+    }
 
     partial void OnEnabledChanged(bool value) => Change(r => r.Enabled = value);
     partial void OnFolderChanged(string value) => Change(r => r.Folder = value.Trim());
