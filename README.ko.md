@@ -216,6 +216,9 @@ dotnet test
 PR 환영해요. 시작하기 좋은 작업은 [변환기 추가](docs/ADDING-A-CONVERTER.md)와 [언어 추가](docs/ADDING-A-LANGUAGE.md)예요.
 Filee가 쓸만하다면 ⭐ 하나가 다른 사람들이 Filee를 찾는 데 도움이 돼요.
 
+Filee는 앞으로도 무료예요. 개발을 응원하고 싶다면 [Fairy](https://fairy.hada.io/@filee)나
+[GitHub Sponsors](https://github.com/sponsors/KnifeLemon)로 후원할 수 있어요.
+
 ## 코드 서명 정책
 
 Filee의 코드 서명 정책(Code signing policy)과 개인정보 처리 방침은 [영문 README](README.md#code-signing-policy)에
