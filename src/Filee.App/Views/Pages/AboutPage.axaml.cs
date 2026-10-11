@@ -17,6 +17,12 @@ public partial class AboutPage : UserControl
     // A star is given on the repository page itself.
     private void OnStar(object? sender, RoutedEventArgs e) => OnOpenRepository(sender, e);
 
+    private async void OnSponsor(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is AboutPageViewModel vm && TopLevel.GetTopLevel(this) is { } top)
+            await top.Launcher.LaunchUriAsync(new Uri(vm.SponsorUrl));
+    }
+
     private async void OnIssue(object? sender, RoutedEventArgs e)
     {
         if (TopLevel.GetTopLevel(this) is { } top)

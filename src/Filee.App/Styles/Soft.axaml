@@ -142,6 +142,13 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
+  <!-- Small links at the bottom of the navigation (GitHub, Sponsor) -->
+  <Style Selector="Button.navlink">
+    <Setter Property="Padding" Value="8,6" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
   <Style Selector="Button.icon">
     <Setter Property="Padding" Value="8" />
     <Setter Property="Background" Value="Transparent" />
