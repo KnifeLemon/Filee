@@ -204,6 +204,8 @@ dotnet test
 欢迎提交 Pull Request。适合入门的任务：[添加转换器](docs/ADDING-A-CONVERTER.md)和[添加语言](docs/ADDING-A-LANGUAGE.md)。
 如果 Filee 帮你省了时间，点个 ⭐ 能让更多人发现它。
 
+Filee 免费，并将一直免费。想支持开发的话，可以通过 [GitHub Sponsors](https://github.com/sponsors/KnifeLemon) 赞助。
+
 ## 代码签名政策
 
 Filee 的代码签名政策（Code signing policy）和隐私政策见[英文 README](README.md#code-signing-policy)。Filee 不会上传文件，

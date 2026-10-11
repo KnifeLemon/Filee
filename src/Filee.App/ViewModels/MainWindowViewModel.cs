@@ -31,6 +31,12 @@ public sealed partial class MainWindowViewModel : ObservableObject
     private readonly IServiceProvider _services;
     private readonly ILocalizer _loc;
 
+    /// <summary>The repository, for the GitHub button above the version.</summary>
+    public string RepositoryUrl => UpdateService.RepositoryUrl;
+
+    /// <summary>Where the Sponsor button above the version leads in the current language.</summary>
+    public string SponsorUrl => AboutPageViewModel.SponsorUrlFor(_loc.Language);
+
     public MainWindowViewModel(IServiceProvider services, ILocalizer loc, UpdateService updates)
     {
         _services = services;

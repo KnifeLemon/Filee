@@ -29,6 +29,16 @@ public sealed partial class AboutPageViewModel : ObservableObject, IDisposable
     public string Version { get; }
     public string RepositoryUrl { get; } = UpdateService.RepositoryUrl;
 
+    /// <summary>Sponsoring in Korean goes to Fairy (Korean cards and easy-pay), otherwise to GitHub Sponsors.</summary>
+    public const string FairyUrl = "https://fairy.hada.io/@filee";
+
+    public const string GitHubSponsorsUrl = "https://github.com/sponsors/KnifeLemon";
+
+    /// <summary>Where "Sponsor" leads in the current language.</summary>
+    public string SponsorUrl => SponsorUrlFor(_loc.Language);
+
+    public static string SponsorUrlFor(string language) => language == "ko" ? FairyUrl : GitHubSponsorsUrl;
+
     /// <summary>The page is rebuilt on every visit; the update service lives on.</summary>
     public void Dispose() => _updates.PropertyChanged -= OnUpdatesChanged;
 

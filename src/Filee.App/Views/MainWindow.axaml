@@ -29,6 +29,21 @@
               <TextBlock Text="{Binding UpdateText}" TextTrimming="CharacterEllipsis" />
             </StackPanel>
           </Button>
+          <!-- The project on GitHub, and sponsoring it -->
+          <Grid ColumnDefinitions="*,6,*">
+            <Button Classes="navlink" HorizontalAlignment="Stretch" Click="OnOpenGitHub" ToolTip.Tip="{Binding RepositoryUrl}">
+              <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.GitHub}" />
+                <TextBlock Text="GitHub" />
+              </StackPanel>
+            </Button>
+            <Button Grid.Column="2" Classes="navlink" HorizontalAlignment="Stretch" Click="OnSponsor">
+              <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Heart}" Foreground="#D4537E" />
+                <TextBlock Text="{DynamicResource about.sponsor}" />
+              </StackPanel>
+            </Button>
+          </Grid>
           <TextBlock x:Name="VersionLabel" Classes="caption" Margin="8,0,0,0" Text="{Binding VersionText}" />
         </StackPanel>
         <ListBox Classes="nav" ItemsSource="{Binding Items}" SelectedItem="{Binding SelectedItem}">

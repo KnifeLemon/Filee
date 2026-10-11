@@ -6,6 +6,14 @@ version it publishes under "What's Changed" in the GitHub release notes, above t
 Add a `## <version>` section before tagging a release. Write what someone using Filee notices: what's new, where to
 find it, what it does and doesn't do.
 
+## 1.8.1
+
+### New
+
+- **Sponsor Filee.** Filee stays free; if it helps you, you can now support its development. **Sponsor** sits at the
+  bottom of the navigation next to **GitHub**, above the version, and on the About page next to Star and Report. It
+  opens Fairy when Filee is in Korean (Korean cards and easy-pay) and GitHub Sponsors in other languages.
+
 ## 1.8.0
 
 ### New

@@ -220,6 +220,9 @@ package. More in [CONTRIBUTING.md](CONTRIBUTING.md#linux-and-macos-development).
 Pull requests are welcome. Good first steps are [adding a converter](docs/ADDING-A-CONVERTER.md) and
 [adding a language](docs/ADDING-A-LANGUAGE.md). If Filee saves you some clicks, a ⭐ helps other people find it.
 
+Filee is free and stays free. If you'd like to support its development, you can sponsor it on
+[GitHub Sponsors](https://github.com/sponsors/KnifeLemon) (or [Fairy](https://fairy.hada.io/@filee) from Korea).
+
 ## Code signing policy
 
 Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
