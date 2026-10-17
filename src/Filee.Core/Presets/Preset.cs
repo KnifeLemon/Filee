@@ -367,6 +367,15 @@ public sealed class MediaOptions
     /// <summary>Audio codec for targets that can hold several (<see cref="MediaCodecs.AudioCodecsFor"/>).</summary>
     public AudioCodec AudioCodec { get; set; } = AudioCodec.Default;
 
+    /// <summary>Video → image: save every frame as an individual image instead of a single still frame.</summary>
+    public bool SaveEveryFrame { get; set; }
+
+    /// <summary>With <see cref="SaveEveryFrame"/>: extract every Nth frame (1 = every frame).</summary>
+    public int FrameInterval { get; set; } = 1;
+
+    /// <summary>With <see cref="SaveEveryFrame"/>: target frames per second (0 = keep source rate).</summary>
+    public double FramesPerSecond { get; set; }
+
     public MediaOptions Clone() => (MediaOptions)MemberwiseClone();
 }
 

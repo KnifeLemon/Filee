@@ -96,6 +96,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _audioCodecValue = _edit.Media.AudioCodec;
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
+        _saveEveryFrame = _edit.Media.SaveEveryFrame;
+        _frameInterval = _edit.Media.FrameInterval > 0 ? _edit.Media.FrameInterval : 1;
         _traceMode = TraceModes.First(m => m.Value == _edit.Trace.Mode);
         _traceColors = Math.Clamp(_edit.Trace.Colors, TracingOptions.MinColors, TracingOptions.MaxColors);
         _traceDetail = Math.Clamp(_edit.Trace.Detail, 0, 100);
@@ -160,7 +162,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
-        nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote), nameof(ShowTrace))]
+        nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
+        nameof(ShowSaveEveryFrame), nameof(ShowTrace))]
     private Choice<string> _target;
 
     private VideoCodec _videoCodecValue;
@@ -283,6 +286,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _removeAudio;
     [ObservableProperty] private Choice<ArchiveLevel> _archiveLevel;
     [ObservableProperty] private bool _combineIntoOne;
+    [ObservableProperty] private bool _saveEveryFrame;
+    [ObservableProperty] private int _frameInterval = 1;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowTraceColors))]
     private Choice<TracingMode> _traceMode;
@@ -335,6 +340,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowArchiveOptions => ShowArchive && TargetId != FormatRegistry.Folder;
     /// <summary>"Extract" has nothing to set; a line says what it does instead.</summary>
     public bool ShowExtractNote => TargetId == FormatRegistry.Folder;
+    public bool ShowSaveEveryFrame => TargetId is "jpg" or "jpeg" or "png";
     /// <summary>
     /// Tracing options: raster images reach SVG (and DXF / DWG through it) only by tracing. For other sources (a
     /// drawing, a CAD file) the options are ignored.
@@ -413,6 +419,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.WavFormat = WavFormat.Value;
         media.VideoCodec = MediaCodecs.Effective(TargetId, _videoCodecValue);
         media.AudioCodec = MediaCodecs.Effective(TargetId, _audioCodecValue);
+        media.SaveEveryFrame = SaveEveryFrame;
+        media.FrameInterval = Math.Clamp(FrameInterval, 1, 1000);
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;

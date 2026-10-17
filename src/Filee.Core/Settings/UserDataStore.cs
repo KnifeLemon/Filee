@@ -479,6 +479,18 @@ internal static class SettingsMigrations
                 }
             }
         }
+
+        // v18: Video frame sequence extraction presets (PNG and JPG), on no donut to avoid accidental clicks.
+        if (from < 18)
+        {
+            foreach (var id in new[] { "extract-frames-png", "extract-frames-jpg" })
+            {
+                if (presets.Any(p => p.Id == id))
+                    continue;
+                presets.Add(BuiltInData.CreatePresets().Single(p => p.Id == id));
+                changed = true;
+            }
+        }
         return changed;
     }
 

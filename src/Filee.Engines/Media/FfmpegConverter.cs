@@ -55,6 +55,7 @@ public sealed partial class FfmpegConverter : IConverter, IImageTransformer
         return
         [
             .. from source in videos from target in videoTargets select new ConversionEdge(source, target),
+            .. from source in videos from target in new[] { "jpg", "jpeg" } select new ConversionEdge(source, target, 11),
             // Subtitles out of a video. SRT is the hub to the other subtitle formats (the subtitle engine takes it on),
             // so ASS and WebVTT cost a little more and are only taken when they are the target.
             .. from source in videos from target in MediaEncoding.SubtitleTargets.Keys
@@ -95,6 +96,9 @@ public sealed partial class FfmpegConverter : IConverter, IImageTransformer
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
         progress?.Report(0.02);
 
+        if (IsVideoFrameSplitting(step, info, out var imageExt))
+            return await ExtractFramesAsync(ffmpeg, step, input, info, imageExt, progress, cancellationToken);
+
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
             return [];
@@ -110,7 +114,7 @@ public sealed partial class FfmpegConverter : IConverter, IImageTransformer
         // Throws for a missing stream before anything is written (an existing file of that name stays untouched).
         var passes = still
             ? MediaEncoding.PlanStill(input, output, step.To, step.Preset.Media, info)
-            : MediaEncoding.Plan(input, output, step.To, step.Preset.Media, info, step.WorkDirectory, cover, EncodersOf(ffmpeg));
+            : MediaEncoding.Plan(input, output, step.To, step.Preset.Media, info, step.WorkDirectory, cover, EncodersOf(ffmpeg), step.Preset.Image.Quality);
         var duration = still ? MediaEncoding.StillDuration : info.Duration;
         try
         {
@@ -229,6 +233,117 @@ public sealed partial class FfmpegConverter : IConverter, IImageTransformer
                 return null;
             }
         });
+
+    private static readonly HashSet<string> VideoExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".mp4", ".m4v", ".mov", ".mkv", ".webm", ".avi", ".wmv", ".flv", ".mpg", ".mpeg",
+        ".ts", ".m2ts", ".3gp", ".3g2", ".ogv", ".vob", ".dv", ".mxf"
+    };
+
+    private static bool IsVideoFrameSplitting(ConversionStep step, MediaInfo info, out string imageExt)
+    {
+        imageExt = "";
+        if (!step.Preset.Media.SaveEveryFrame)
+            return false;
+
+        var isSourceVideo = (FormatRegistry.FindById(step.From)?.Category == FormatCategory.Video)
+            || (FormatRegistry.Detect(step.InputPath)?.Category == FormatCategory.Video)
+            || VideoExtensions.Contains(Path.GetExtension(step.InputPath))
+            || (info.Video is not null && step.From is not "png" and not "gif");
+
+        if (!isSourceVideo)
+            return false;
+
+        var targetExt = step.To.TrimStart('.').ToLowerInvariant();
+        if (targetExt is "jpg" or "jpeg")
+        {
+            imageExt = "jpg";
+            return true;
+        }
+        if (targetExt is "png")
+        {
+            imageExt = "png";
+            return true;
+        }
+
+        var presetTarget = step.Preset.TargetFormat.TrimStart('.').ToLowerInvariant();
+        if (presetTarget is "jpg" or "jpeg")
+        {
+            imageExt = "jpg";
+            return true;
+        }
+        if (presetTarget is "png")
+        {
+            imageExt = "png";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static async Task<IReadOnlyList<string>> ExtractFramesAsync(
+        string ffmpeg,
+        ConversionStep step,
+        string input,
+        MediaInfo info,
+        string imageExt,
+        IProgress<double>? progress,
+        CancellationToken cancellationToken)
+    {
+        var allocated = step.Output.Allocate(imageExt);
+        if (allocated is null)
+            return [];
+
+        var outputDirectory = Path.GetDirectoryName(allocated)!;
+        var videoFilename = Path.GetFileNameWithoutExtension(allocated);
+        if (string.IsNullOrEmpty(videoFilename))
+            videoFilename = FormatRegistry.NameWithoutExtension(step.InputPath);
+
+        var framesSubfolder = Path.Combine(outputDirectory, $"{videoFilename}_frames");
+        for (var n = 2; Directory.Exists(framesSubfolder); n++)
+            framesSubfolder = Path.Combine(outputDirectory, $"{videoFilename}_frames ({n})");
+
+        Directory.CreateDirectory(framesSubfolder);
+
+        var outputPattern = Path.Combine(framesSubfolder, $"frame_%06d.{imageExt}");
+        var args = MediaEncoding.FrameSequence(
+            input,
+            outputPattern,
+            imageExt,
+            info.Video,
+            step.Preset.Image.Quality,
+            step.Preset.Media.FrameInterval,
+            step.Preset.Media.FramesPerSecond);
+
+        var pass = new FfmpegPass(args, 1);
+
+        try
+        {
+            await RunPassAsync(ffmpeg, pass, info.Duration, progress, done: 0, cancellationToken);
+
+            if (!Directory.Exists(framesSubfolder) || !Directory.EnumerateFiles(framesSubfolder).Any())
+                throw new InvalidOperationException("FFmpeg did not write any frames.");
+        }
+        catch
+        {
+            TryDeleteDirectory(framesSubfolder);
+            throw;
+        }
+
+        progress?.Report(1);
+        return [framesSubfolder];
+    }
+
+    private static void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path))
+                Directory.Delete(path, recursive: true);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
 
     private static void TryDelete(string path)
     {

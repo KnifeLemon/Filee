@@ -115,4 +115,30 @@ public class BuiltInDataTests
                 Assert.True(preset.TargetFormat == BuiltInData.SameAsSource || FormatRegistry.FindById(preset.TargetFormat) is not null, preset.Id);
         }
     }
+
+    [Fact]
+    public void Extract_frames_preset_is_properly_configured()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var pngPreset = Assert.Single(presets, p => p.Id == "extract-frames-png" || p.NameKey == "preset.extract_frames_png");
+
+        Assert.Equal("png", pngPreset.TargetFormat);
+        Assert.True(pngPreset.Media.SaveEveryFrame);
+        Assert.Equal(1, pngPreset.Media.FrameInterval);
+
+        var jpgPreset = Assert.Single(presets, p => p.Id == "extract-frames-jpg" || p.NameKey == "preset.extract_frames_jpg");
+
+        Assert.Equal("jpg", jpgPreset.TargetFormat);
+        Assert.True(jpgPreset.Media.SaveEveryFrame);
+        Assert.Equal(1, jpgPreset.Media.FrameInterval);
+        Assert.Equal(90, jpgPreset.Image.Quality);
+
+        // Ensure they are NOT added to any default donut profile to prevent accidental frame splitting
+        var profiles = BuiltInData.CreateProfiles();
+        foreach (var profile in profiles)
+        {
+            Assert.DoesNotContain(pngPreset.Id, profile.PresetIds);
+            Assert.DoesNotContain(jpgPreset.Id, profile.PresetIds);
+        }
+    }
 }

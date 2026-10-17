@@ -303,6 +303,28 @@ public class UserDataStoreTests
     }
 
     [Fact]
+    public void Version_17_libraries_get_the_extract_frames_presets()
+    {
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id is "extract-frames-png" or "extract-frames-jpg");
+        var profiles = BuiltInData.CreateProfiles();
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(17, presets, profiles));
+
+        var pngPreset = presets.Single(p => p.Id == "extract-frames-png");
+        Assert.True(pngPreset.Media.SaveEveryFrame);
+        Assert.Equal("png", pngPreset.TargetFormat);
+
+        var jpgPreset = presets.Single(p => p.Id == "extract-frames-jpg");
+        Assert.True(jpgPreset.Media.SaveEveryFrame);
+        Assert.Equal("jpg", jpgPreset.TargetFormat);
+
+        Assert.DoesNotContain(profiles, p => p.PresetIds.Contains("extract-frames-png"));
+        Assert.DoesNotContain(profiles, p => p.PresetIds.Contains("extract-frames-jpg"));
+        Assert.False(SettingsMigrations.ApplyToLibrary(17, presets, profiles)); // once only
+    }
+
+    [Fact]
     public void Version_13_libraries_get_the_data_donut_msg_files_and_json_for_spreadsheets()
     {
         // As written with schema 13: no data presets or donut, no MSG on the documents donut, no JSON on the spreadsheets

@@ -65,6 +65,17 @@ public static class BuiltInData
             Id = "pdf-split", NameKey = "preset.split_pdf", TargetFormat = "pdf",
             Pdf = { SplitPages = true }, Output = { Location = OutputLocation.Subfolder, SubfolderName = "{name}" },
         },
+        new()
+        {
+            Id = "extract-frames-png", NameKey = "preset.extract_frames_png", TargetFormat = "png",
+            Media = { SaveEveryFrame = true, FrameInterval = 1 },
+        },
+        new()
+        {
+            Id = "extract-frames-jpg", NameKey = "preset.extract_frames_jpg", TargetFormat = "jpg",
+            Image = { Quality = 90 },
+            Media = { SaveEveryFrame = true, FrameInterval = 1 },
+        },
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
         new() { Id = "to-hwpx", Name = "HWPX", TargetFormat = "hwpx" },
         .. HwpPresets(),

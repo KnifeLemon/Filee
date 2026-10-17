@@ -115,6 +115,14 @@
         </Grid>
         <CheckBox Content="{DynamicResource presets.multipage_tiff}" IsChecked="{Binding MultiPageTiff}" IsVisible="{Binding ShowMultiPageTiff}"
                   ToolTip.Tip="{DynamicResource presets.multipage_tiff_hint}" />
+        <StackPanel Spacing="6" IsVisible="{Binding ShowSaveEveryFrame}">
+          <CheckBox Content="{DynamicResource presets.save_every_frame}" IsChecked="{Binding SaveEveryFrame}"
+                    ToolTip.Tip="{DynamicResource presets.save_every_frame_hint}" />
+          <Grid ColumnDefinitions="Auto,12,120" Margin="28,0,0,0" IsVisible="{Binding SaveEveryFrame}">
+            <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource presets.frame_interval}" />
+            <NumericUpDown Grid.Column="2" Value="{Binding FrameInterval}" Minimum="1" Maximum="1000" Increment="1" FormatString="0" />
+          </Grid>
+        </StackPanel>
       </StackPanel>
     </Border>
 
