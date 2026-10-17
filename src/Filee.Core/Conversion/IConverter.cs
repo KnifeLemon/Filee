@@ -22,8 +22,13 @@ namespace Filee.Core.Conversion;
 /// The opposite: never used in routes that start from a raster image. PDF → SVG through LibreOffice keeps a PDF's
 /// vectors, but a photo that became a PDF would only come back as a picture inside an SVG, so images are traced.
 /// </param>
+/// <param name="DirectOnly">
+/// The edge is a route of its own only: the file being converted is a <paramref name="From"/> file and
+/// <paramref name="To"/> is what the user asked for. PDF → PPTX puts pictures of the pages on slides; a Word document
+/// rendered to PDF must not become pictures on slides, and a picture deck must not be a step towards ODP or PPSX.
+/// </param>
 public readonly record struct ConversionEdge(
-    string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false);
+    string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false, bool DirectOnly = false);
 
 /// <summary>Whether an engine can currently be used.</summary>
 /// <param name="IsAvailable">True if conversions can run.</param>

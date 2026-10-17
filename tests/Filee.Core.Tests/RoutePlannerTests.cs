@@ -52,6 +52,22 @@ public class RoutePlannerTests
     }
 
     [Fact]
+    public void Direct_only_edges_are_never_a_step_of_a_longer_route()
+    {
+        // PDF → PPTX puts pictures of the pages on slides: only for a PDF the user asked to turn into PPTX.
+        var slides = new FakeConverter("slides", new ConversionEdge("pdf", "pptx", DirectOnly: true));
+        var word = new FakeConverter("word", new ConversionEdge("docx", "pdf"));
+        var office = new FakeConverter("office", new ConversionEdge("pptx", "odp"), new ConversionEdge("pptx", "ppsx"));
+        var planner = new RoutePlanner([slides, word, office]);
+
+        Assert.Equal(["pdf→pptx"], planner.Plan("pdf", "pptx")!.Steps.Select(s => $"{s.From}→{s.To}"));
+        Assert.Null(planner.Plan("docx", "pptx")); // not after another step
+        Assert.Null(planner.Plan("pdf", "odp")); // nor before one
+        Assert.Null(planner.Plan("pdf", "ppsx"));
+        Assert.Equal(["pptx→odp"], planner.Plan("pptx", "odp")!.Steps.Select(s => $"{s.From}→{s.To}"));
+    }
+
+    [Fact]
     public void Cheaper_route_wins()
     {
         var slow = new FakeConverter("slow", new ConversionEdge("docx", "pdf", 30));

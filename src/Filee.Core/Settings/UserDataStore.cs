@@ -292,6 +292,16 @@ internal static class SettingsMigrations
                 InsertBefore(settings.EnginePriority, "model3d", settings.EnginePriority.Contains("archive") ? "archive" : "pandoc");
         }
 
+        // v18: built-in "pdf-slides" engine (PDF → PPTX, a picture of each page per slide), after "pdf-text".
+        if (settings.SchemaVersion < 18 && !settings.EnginePriority.Contains("pdf-slides"))
+        {
+            var text = settings.EnginePriority.IndexOf("pdf-text");
+            if (text >= 0)
+                settings.EnginePriority.Insert(text + 1, "pdf-slides");
+            else
+                InsertBefore(settings.EnginePriority, "pdf-slides", "pandoc");
+        }
+
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
 
@@ -479,7 +489,30 @@ internal static class SettingsMigrations
                 }
             }
         }
+
+        // v18: PDF → PPTX ("PPTX (slides)", a picture of each page per slide), on the PDF donut after DOCX. The default
+        //      PDF donut is full: one the user never changed takes it in place of TIFF, as a new library has it; a donut
+        //      the user changed gets it when it has room.
+        if (from < 18)
+            changed |= AddPdfSlides(presets, profiles);
         return changed;
+    }
+
+    private static bool AddPdfSlides(List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        if (presets.All(p => p.Id != "pdf-slides"))
+        {
+            var at = presets.FindIndex(p => p.Id == "pdf-split");
+            presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.PdfSlidesPresets().Single());
+            changed = true;
+        }
+        if (profiles.FirstOrDefault(p => p.Id == "pdf") is { } pdf && pdf.PresetIds.SequenceEqual(BuiltInData.PdfDonutBefore18))
+        {
+            pdf.PresetIds = [.. BuiltInData.PdfDonut];
+            return true;
+        }
+        return Offer(presets, profiles, "pdf", "pdf-slides", "to-docx") || changed;
     }
 
     private static bool AddData(List<Preset> presets, List<ToolbarProfile> profiles)

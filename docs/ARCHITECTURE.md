@@ -40,7 +40,9 @@
 3. **Drop** – the slice under the cursor is a preset. `ConversionService.Start` enqueues a `ConversionJob`.
    The drop is always reported as *Copy* so Explorer never deletes the source files.
 4. **Plan** – for every file, `RoutePlanner` finds the cheapest chain of converter edges from the source format to
-   the target (at most 3 hops). Engine priority (Settings → Engines) breaks ties.
+   the target (at most 3 hops). Engine priority (Settings → Engines) breaks ties. Some edges are limited: tracing
+   only starts from raster images (`ImageSourcesOnly`), and PDF → PPTX picture slides are only ever a route of their
+   own (`DirectOnly`), never a step of a longer one.
 5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a temp folder;
    final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
    "Merge into one PDF" converts each file to PDF and merges with PDFsharp.

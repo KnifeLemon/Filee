@@ -183,8 +183,40 @@ internal sealed partial class PdfDocumentReader
         }
     }
 
-    private static InvalidOperationException PasswordProtected() =>
+    internal static InvalidOperationException PasswordProtected() =>
         new("The PDF is password-protected. Open it with its password and save a copy without one, then convert that copy.");
+
+    /// <summary>
+    /// The text of each page in <paramref name="pages"/> (zero-based), read like <see cref="ReadText"/> (reading order,
+    /// invisible OCR text included) but page by page, with running heads and page numbers kept: "" for a page without
+    /// text. Paragraphs are separated by an empty line, lines end with CR LF.
+    /// </summary>
+    public static IReadOnlyList<string> PageTexts(string path, IReadOnlyList<int> pages, CancellationToken cancellationToken = default)
+    {
+        var reader = new PdfDocumentReader(path, "", textOnly: true);
+        try
+        {
+            using var pdf = PdfDocument.Open(path, new ParsingOptions { UseLenientParsing = true, SkipMissingFonts = true });
+            var texts = new List<string>(pages.Count);
+            foreach (var index in pages)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var page = reader.ReadPage(pdf.GetPage(index + 1));
+                if (page.Scanned)
+                {
+                    texts.Add("");
+                    continue;
+                }
+                page.Items = ReadingOrder(page.Items);
+                texts.Add(PlainText(reader.Build([page], null)).TrimEnd());
+            }
+            return texts;
+        }
+        catch (PdfDocumentEncryptedException)
+        {
+            throw PasswordProtected();
+        }
+    }
 
     private PageContent ReadPage(Page page)
     {

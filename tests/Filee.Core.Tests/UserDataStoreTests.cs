@@ -148,7 +148,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "email", "data", "vector", "icns", "font", "cad", "model3d", "archive", "ebook", "subtitle", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "pdf-slides", "email", "data", "vector", "icns", "font", "cad", "model3d", "archive", "ebook", "subtitle", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
@@ -200,7 +200,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "email", "data", "vector", "icns", "font", "cad", "model3d", "archive", "ebook", "subtitle", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "pdf-slides", "email", "data", "vector", "icns", "font", "cad", "model3d", "archive", "ebook", "subtitle", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         var ids = store.Profiles.Select(p => p.Id).ToList();
         Assert.Equal(ids.IndexOf("office") + 1, ids.IndexOf("spreadsheets"));
         Assert.Equal(ids.IndexOf("office") + 2, ids.IndexOf("presentations"));
@@ -345,8 +345,9 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        // ... and, from schema 15, the 3D model engine before Pandoc (no CAD or archive engine in this list).
-        Assert.Equal(["magick", "email", "data", "vector", "model3d", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        // ... and, from schema 15, the 3D model engine before Pandoc (no CAD or archive engine in this list), from
+        // schema 18 the PDF slides engine there too (no PDF text engine).
+        Assert.Equal(["magick", "email", "data", "vector", "model3d", "pdf-slides", "pandoc", "libreoffice"], store.Settings.EnginePriority);
     }
 
     [Fact]
@@ -523,6 +524,70 @@ public class UserDataStoreTests
         // Where a new library has them: after "Remove background".
         var background = presets.FindIndex(p => p.Id == "remove-background");
         Assert.Equal("rotate-left", presets[background + 1].Id);
+    }
+
+    /// <summary>Presets and donuts as a Filee before PDF → PPTX wrote them (schema 17).</summary>
+    private static (List<Preset> Presets, List<ToolbarProfile> Profiles) Version17Library()
+    {
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id == "pdf-slides");
+        var profiles = BuiltInData.CreateProfiles();
+        profiles.Single(p => p.Id == "pdf").PresetIds = [.. BuiltInData.PdfDonutBefore18];
+        return (presets, profiles);
+    }
+
+    [Fact]
+    public void Version_17_libraries_get_pptx_slides_on_the_unchanged_pdf_donut_in_place_of_tiff()
+    {
+        var (presets, profiles) = Version17Library();
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(17, presets, profiles));
+
+        var slides = presets.Single(p => p.Id == "pdf-slides");
+        Assert.Equal(("pptx", "preset.pdf_slides"), (slides.TargetFormat, slides.NameKey));
+        Assert.Equal("pdf-split", presets[presets.IndexOf(slides) - 1].Id); // where a new library has it
+        var pdf = profiles.Single(p => p.Id == "pdf").PresetIds;
+        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "pdf").PresetIds, pdf);
+        Assert.Equal(pdf.IndexOf("to-docx") + 1, pdf.IndexOf("pdf-slides"));
+        Assert.DoesNotContain("to-tiff", pdf);
+        Assert.NotNull(presets.SingleOrDefault(p => p.Id == "to-tiff")); // still a preset to add again
+        Assert.False(SettingsMigrations.ApplyToLibrary(17, presets, profiles)); // once only
+    }
+
+    [Fact]
+    public void A_pdf_donut_the_user_changed_gets_pptx_slides_only_when_it_has_room()
+    {
+        // Full, but not the default: the user's choice of twelve stays.
+        var (presets, profiles) = Version17Library();
+        var pdf = profiles.Single(p => p.Id == "pdf");
+        pdf.PresetIds[pdf.PresetIds.IndexOf("to-tiff")] = "to-webp";
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(17, presets, profiles)); // the preset is added
+        Assert.DoesNotContain("pdf-slides", pdf.PresetIds);
+        Assert.Contains("to-webp", pdf.PresetIds);
+
+        // With room: after DOCX.
+        (presets, profiles) = Version17Library();
+        pdf = profiles.Single(p => p.Id == "pdf");
+        pdf.PresetIds.RemoveAll(id => id is "to-md" or "to-epub");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(17, presets, profiles));
+        Assert.Equal(pdf.PresetIds.IndexOf("to-docx") + 1, pdf.PresetIds.IndexOf("pdf-slides"));
+        Assert.Contains("to-tiff", pdf.PresetIds);
+    }
+
+    [Fact]
+    public void Version_17_settings_get_the_pdf_slides_engine_after_pdf_text()
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"),
+            """{ "schemaVersion": 17, "enginePriority": ["magick", "pdfium", "docx-writer", "pdf-text", "email", "pandoc", "libreoffice"] }""");
+
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        Assert.Equal(["magick", "pdfium", "docx-writer", "pdf-text", "pdf-slides", "email", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
     [Fact]
