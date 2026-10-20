@@ -4,7 +4,8 @@
 // audio and GIF, APNG or a still picture → video, and images → HEIC (FFmpeg's HEVC encoder, Filee's own container
 // writer). Container and codec choices live in MediaEncoding, the process handling in FfmpegRunner, hardware encoders
 // in HardwareVideo (options) and HardwareProbe (which one works here).
-// Live / Motion Photos (Android, iPhone) give their video when a preset asks for it (LivePhotoSource, MotionPhoto).
+// Live / Motion Photos (Android, iPhone) give their video when a preset asks for it (LivePhotoSource, MotionPhoto), and
+// a clip of a video becomes one (LivePhotoWriter).
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
@@ -45,7 +46,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     public int MaxParallelism => 2;
 
     /// <summary>Only HEIC, which ImageMagick reads and turns before x265 encodes it (Heic/HeicWriter); never video.</summary>
-    public bool Transforms(string from, string to) => to == "heic";
+    public bool Transforms(string from, string to) => to == "heic" && FormatRegistry.FindById(from)?.Category != FormatCategory.Video;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } = BuildEdges();
 
@@ -92,6 +93,10 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             // The video of a Live / Motion Photo, only when a preset asks for it (see ConversionEdge.MotionPhoto).
             .. from source in MediaOptions.MotionPhotoSources from target in MediaOptions.MotionPhotoTargets
                select new ConversionEdge(source, target, MotionPhoto: true),
+            // A clip of a video as a Live / Motion Photo, only when a preset asks for it (see ConversionEdge.LivePhoto).
+            .. from source in videos
+               from target in MediaOptions.LivePhotoTargets(LivePhotoKind.Apple).Union(MediaOptions.LivePhotoTargets(LivePhotoKind.Android))
+               select new ConversionEdge(source, target, LivePhoto: true),
         ];
     }
 
@@ -116,6 +121,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         var (ffmpeg, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
         if (step.MotionPhoto)
             return await ExtractMotionAsync(step, progress, cancellationToken);
+        if (step.LivePhoto)
+            return await LivePhotoWriter.ConvertAsync(ffmpeg, ffprobe, step, EncodersOf(ffmpeg), filter => HasFilter(ffmpeg, filter),
+                progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
         var input = Path.GetFullPath(step.InputPath);
@@ -337,6 +345,35 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 return null;
             }
         });
+
+    private static readonly ConcurrentDictionary<string, IReadOnlySet<string>?> Filters = new();
+
+    /// <summary>
+    /// True when <paramref name="ffmpeg"/> has the filter <paramref name="name"/> (<c>ffmpeg -filters</c>, cached per
+    /// executable): a copy the user picked may lack zscale. Assumed when the list can't be read.
+    /// </summary>
+    internal static bool HasFilter(string ffmpeg, string name) =>
+        Filters.GetOrAdd($"{ffmpeg}|{File.GetLastWriteTimeUtc(ffmpeg).Ticks}", _ =>
+        {
+            try
+            {
+                var result = FfmpegRunner.RunBriefly(ffmpeg, ["-hide_banner", "-filters"], QueryTimeout);
+                return result.ExitCode == 0 ? ParseFilters(result.StandardOutput) : null;
+            }
+            catch (Exception ex) when (ex is TimeoutException or InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
+            {
+                return null;
+            }
+        }) is not { } filters || filters.Contains(name);
+
+    /// <summary>The filter names in <c>ffmpeg -filters</c> output (" .S zscale  V->V  Apply resizing, …").</summary>
+    internal static IReadOnlySet<string> ParseFilters(string list) =>
+        list.Split('\n')
+            .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Where(parts => parts.Length >= 3 && parts[0].Length is 2 or 3 && parts[0].All(c => c is '.' or 'T' or 'S' or 'C')
+                            && parts[2].Contains("->", StringComparison.Ordinal))
+            .Select(parts => parts[1])
+            .ToHashSet(StringComparer.Ordinal);
 
     /// <summary>The encoder names in <c>ffmpeg -encoders</c> output.</summary>
     internal static IReadOnlySet<string> ParseEncoders(string list) =>

@@ -52,6 +52,8 @@
 ## Files dragged from a web browser
 
 A picture, a link to a file or a download dragged out of a browser opens the donut like a file from the file manager.
+A drag gesture over a browser (`WebBrowsers`, by process name) counts as over the file manager, so the default scope
+covers it; click and key gestures don't, as they read the file manager's selection.
 `DraggedFiles.Read` asks `BrowserDrags` (App, reads Avalonia's drag data) first; `BrowserDrag` (Core, pure rules)
 decides what in the drag is a file:
 

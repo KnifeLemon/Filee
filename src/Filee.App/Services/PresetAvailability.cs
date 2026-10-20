@@ -47,10 +47,11 @@ public sealed class PresetAvailability(ConverterCatalog catalog, ILocalizer loc,
                 return true; // merged as it is
             var frames = preset.SavesFramesOf(f.Id);
             var motion = preset.ExtractsMotionOf(f.Id);
+            var live = preset.MakesLivePhotoOf(f.Id);
             if (!turns)
-                return planner.CanConvert(f.Id, target, frames, motionPhoto: motion);
+                return planner.CanConvert(f.Id, target, frames, motionPhoto: motion, livePhoto: live);
             // Rotate / flip: a route only counts when an engine on it turns images (not a PDF or a video copied).
-            if (planner.Plan(f.Id, target, frames, motionPhoto: motion) is not { } route)
+            if (planner.Plan(f.Id, target, frames, motionPhoto: motion, livePhoto: live) is not { } route)
                 return false;
             if (route.FirstTransformStep() >= 0)
                 return true;

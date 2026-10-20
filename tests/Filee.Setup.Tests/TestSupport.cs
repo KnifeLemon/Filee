@@ -58,6 +58,7 @@ public sealed class FakeSystem : ISetupSystem
 {
     public bool ExplorerMenuSupported { get; set; }
     public bool MenuRegistered { get; set; }
+    public bool MenuCurrent { get; set; }
     public string? RegisterError { get; set; }
     public List<string> Calls { get; } = [];
     public List<RunningProgram> Running { get; } = [];
@@ -65,6 +66,8 @@ public sealed class FakeSystem : ISetupSystem
     public Action<string>? OnCreateShortcut { get; set; }
 
     public bool IsExplorerMenuRegistered() => MenuRegistered;
+
+    public bool IsExplorerMenuCurrent(string installFolder) => MenuRegistered && MenuCurrent;
 
     public string? RegisterExplorerMenu(string installFolder, bool removeFirst)
     {

@@ -1,4 +1,5 @@
-// Android Motion Photos: where the video saved with a camera picture is, read from the picture's own metadata.
+// Android Motion Photos: where the video saved with a camera picture is, read from the picture's own metadata, and new
+// ones written the way a Pixel writes them.
 
 using System.Buffers.Binary;
 using System.Globalization;
@@ -21,6 +22,93 @@ internal static class MotionPhoto
 
     /// <summary>JPEG metadata comes before the picture data; the walk stops there, and never goes further than this.</summary>
     private const int MaxMetadataBytes = 8 * 1024 * 1024;
+
+    /// <summary>
+    /// Writes a Motion Photo 1.0 JPEG to <paramref name="output"/>: <paramref name="jpeg"/> with the Motion Photo XMP
+    /// after its JFIF and Exif segments (JFIF must come first), then the MP4 <paramref name="video"/> appended, ending
+    /// the file. The XMP is laid out as a Pixel writes it (<c>GCamera:MotionPhoto</c> 1, version 1, the still's
+    /// presentation time; a container directory of the primary JPEG and the video with its length and no padding),
+    /// plus the older MicroVideo properties (the same length as an offset from the end) for older Google Photos.
+    /// </summary>
+    public static async Task WriteAsync(byte[] jpeg, string video, string output, long presentationMicroseconds, CancellationToken ct)
+    {
+        var length = new FileInfo(video).Length;
+        var payload = Xmp(length, presentationMicroseconds);
+        var at = XmpPosition(jpeg);
+        await using var target = File.Create(output);
+        await target.WriteAsync(jpeg.AsMemory(0, at), ct);
+        var header = new byte[4];
+        header[0] = 0xff;
+        header[1] = 0xe1;
+        BinaryPrimitives.WriteUInt16BigEndian(header.AsSpan(2), checked((ushort)(payload.Length + 2)));
+        await target.WriteAsync(header, ct);
+        await target.WriteAsync(payload, ct);
+        await target.WriteAsync(jpeg.AsMemory(at), ct);
+        await using var movie = File.OpenRead(video);
+        await MovieBoxes.CopyRangeAsync(movie, target, length, ct);
+    }
+
+    /// <summary>The XMP segment's payload: the XMP signature, then the packet.</summary>
+    internal static byte[] Xmp(long videoLength, long presentationMicroseconds)
+    {
+        var length = videoLength.ToString(CultureInfo.InvariantCulture);
+        var time = presentationMicroseconds.ToString(CultureInfo.InvariantCulture);
+        var xml = $"""
+            <x:xmpmeta xmlns:x="adobe:ns:meta/">
+              <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+                <rdf:Description rdf:about=""
+                    xmlns:GCamera="{Camera}"
+                    xmlns:Container="{Container}"
+                    xmlns:Item="{Item}"
+                  GCamera:MotionPhoto="1"
+                  GCamera:MotionPhotoVersion="1"
+                  GCamera:MotionPhotoPresentationTimestampUs="{time}"
+                  GCamera:MicroVideo="1"
+                  GCamera:MicroVideoVersion="1"
+                  GCamera:MicroVideoOffset="{length}"
+                  GCamera:MicroVideoPresentationTimestampUs="{time}">
+                  <Container:Directory>
+                    <rdf:Seq>
+                      <rdf:li rdf:parseType="Resource">
+                        <Container:Item
+                          Item:Semantic="Primary"
+                          Item:Mime="image/jpeg"/>
+                      </rdf:li>
+                      <rdf:li rdf:parseType="Resource">
+                        <Container:Item
+                          Item:Mime="video/mp4"
+                          Item:Semantic="MotionPhoto"
+                          Item:Length="{length}"
+                          Item:Padding="0"/>
+                      </rdf:li>
+                    </rdf:Seq>
+                  </Container:Directory>
+                </rdf:Description>
+              </rdf:RDF>
+            </x:xmpmeta>
+            """;
+        return [.. XmpHeader, .. Encoding.UTF8.GetBytes(xml)];
+    }
+
+    /// <summary>Where the XMP segment goes: after the start marker and the JFIF (APP0) and Exif (APP1) segments.</summary>
+    internal static int XmpPosition(byte[] jpeg)
+    {
+        if (jpeg.Length < 4 || jpeg[0] != 0xff || jpeg[1] != 0xd8)
+            throw new InvalidDataException("The Motion Photo's picture is not a JPEG.");
+        var at = 2;
+        while (at + 4 <= jpeg.Length && jpeg[at] == 0xff)
+        {
+            var marker = jpeg[at + 1];
+            var exif = marker == 0xe1 && jpeg.AsSpan(at + 4).StartsWith("Exif\0"u8);
+            if (marker != 0xe0 && !exif)
+                break;
+            var end = at + 2 + BinaryPrimitives.ReadUInt16BigEndian(jpeg.AsSpan(at + 2));
+            if (end > jpeg.Length)
+                throw new InvalidDataException("Invalid JPEG segment length.");
+            at = end;
+        }
+        return at;
+    }
 
     /// <summary>
     /// Finds the declared video, never by searching the picture's bytes for an MP4 signature. Null for a picture

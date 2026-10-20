@@ -122,6 +122,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
         _extractMotionPhoto = _edit.Media.ExtractMotionPhoto;
+        _livePhotoValue = _edit.Media.LivePhoto;
+        _livePhotoStart = _edit.Media.LivePhotoStart;
+        _livePhotoLength = _edit.Media.LivePhotoLength;
+        _livePhotoCover = _edit.Media.LivePhotoCover;
         _frameInterval = _edit.Media.FrameInterval > 0 ? _edit.Media.FrameInterval : 1;
         _traceMode = TraceModes.First(m => m.Value == _edit.Trace.Mode);
         _animationSpeed = AnimationSpeeds.First(s => s.Value == _edit.Image.PlaybackSpeed);
@@ -200,8 +204,66 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
-        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowExtractMotionPhoto))]
+        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowExtractMotionPhoto),
+        nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint))]
     private Choice<string> _target;
+
+    private LivePhotoKind _livePhotoValue;
+
+    /// <summary>What a video becomes for a JPG or HEIC target: one still frame, or a Live / Motion Photo it can be written as.</summary>
+    public IReadOnlyList<Choice<LivePhotoKind>> LivePhotoKinds =>
+        [.. Enum.GetValues<LivePhotoKind>()
+            .Where(k => k == LivePhotoKind.None || MediaOptions.LivePhotoTargets(k).Contains(TargetId))
+            .Select(k => new Choice<LivePhotoKind>(k, _loc[$"presets.live_photo.{k}"]))];
+
+    /// <summary>The chosen kind; one the target can't be written as shows (and is saved) as None.</summary>
+    public Choice<LivePhotoKind> LivePhotoChoice
+    {
+        get => LivePhotoKinds.FirstOrDefault(c => c.Value == _livePhotoValue) ?? LivePhotoKinds[0];
+        set
+        {
+            // The combo box clears its selection while its list is replaced: announcing the value shows it again.
+            if (value is null)
+            {
+                OnPropertyChanged();
+                return;
+            }
+            if (value.Value == _livePhotoValue)
+                return;
+            _livePhotoValue = value.Value;
+            OnPropertyChanged();
+            foreach (var name in (string[])[nameof(IsLivePhoto), nameof(LivePhotoHint), nameof(ShowImage), nameof(ShowPdf), nameof(ShowSaveEveryFrame)])
+                OnPropertyChanged(name);
+        }
+    }
+
+    [ObservableProperty] private double _livePhotoStart;
+    [ObservableProperty] private double _livePhotoLength;
+    [ObservableProperty] private double _livePhotoCover;
+
+    /// <summary>The clip's video codec: H.264, or HEVC for smaller files (MediaOptions.VideoCodec).</summary>
+    public IReadOnlyList<Choice<VideoCodec>> LivePhotoCodecs =>
+    [
+        new(VideoCodec.Default, _loc["presets.video_codec.h264"]),
+        new(VideoCodec.Hevc, _loc["presets.video_codec.hevc"]),
+    ];
+
+    public Choice<VideoCodec> LivePhotoCodecChoice
+    {
+        get => LivePhotoCodecs.FirstOrDefault(c => c.Value == _videoCodecValue) ?? LivePhotoCodecs[0];
+        set
+        {
+            if (value is null)
+            {
+                OnPropertyChanged();
+                return;
+            }
+            if (value.Value == _videoCodecValue)
+                return;
+            _videoCodecValue = value.Value;
+            OnPropertyChanged();
+        }
+    }
 
     private VideoCodec _videoCodecValue;
     private AudioCodec _audioCodecValue;
@@ -397,7 +459,14 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         || (TargetIsAudio && !LosslessAudioTargets.Contains(TargetId) && MediaCodecs.Effective(TargetId, _audioCodecValue) != AudioCodec.Alac);
 
     /// <summary>A tool (Crop) keeps the source as it is: none of the image options apply.</summary>
-    public bool ShowImage => !IsTool && TargetIsImage;
+    public bool ShowImage => !IsTool && TargetIsImage && !IsLivePhoto;
+    /// <summary>JPG and HEIC: a video can become a Live / Motion Photo instead of one still frame.</summary>
+    public bool ShowLivePhotoChoice => !IsTool && LivePhotoKinds.Count > 1;
+    /// <summary>A Live / Motion Photo is chosen and the target can be written as it: its clip options are shown.</summary>
+    public bool IsLivePhoto => ShowLivePhotoChoice && _livePhotoValue != LivePhotoKind.None
+        && MediaOptions.LivePhotoTargets(_livePhotoValue).Contains(TargetId);
+    /// <summary>What the chosen kind writes and where it is expected to work.</summary>
+    public string LivePhotoHint => _loc[_livePhotoValue == LivePhotoKind.Android ? "presets.live_photo_hint.android" : "presets.live_photo_hint.apple"];
     /// <summary>Images and PDFs (pictures placed on pages) can be turned and flipped.</summary>
     private bool CanTurn => TargetIsImage || TargetId == "pdf";
     /// <summary>Rotate and flip for a PDF target, which has no image card to show them in.</summary>
@@ -408,7 +477,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowMultiPageTiff => TargetId is "tiff";
     public bool ShowIco => TargetId == "ico";
     /// <summary>PDF options (also used when a PDF source becomes images) mean nothing for media, archive, font, subtitle, data, e-mail, 3D and geospatial targets.</summary>
-    public bool ShowPdf => !IsTool && TargetCategory is not (FormatCategory.Video or FormatCategory.Audio or FormatCategory.Archive or FormatCategory.Font
+    public bool ShowPdf => !IsTool && !IsLivePhoto && TargetCategory is not (FormatCategory.Video or FormatCategory.Audio or FormatCategory.Archive or FormatCategory.Font
         or FormatCategory.Subtitle or FormatCategory.Data or FormatCategory.Model3D or FormatCategory.Geo) && TargetId != "eml";
     /// <summary>"Save as ZIP" is offered for geospatial targets, whose results are several files (a Shapefile) or travel zipped.</summary>
     public bool ShowZipResult => TargetCategory == FormatCategory.Geo;
@@ -445,7 +514,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>"Extract" has nothing to set; a line says what it does instead.</summary>
     public bool ShowExtractNote => TargetId == FormatRegistry.Folder;
     /// <summary>"Save every frame" of a video: PNG and JPG (format ids, <see cref="MediaOptions.FrameTargets"/>).</summary>
-    public bool ShowSaveEveryFrame => !IsTool && MediaOptions.FrameTargets.Contains(TargetId);
+    public bool ShowSaveEveryFrame => !IsTool && !IsLivePhoto && MediaOptions.FrameTargets.Contains(TargetId);
     /// <summary>The video of a Live / Motion Photo: MP4 and MOV (<see cref="MediaOptions.MotionPhotoTargets"/>).</summary>
     public bool ShowExtractMotionPhoto => !IsTool && MediaOptions.MotionPhotoTargets.Contains(TargetId);
     /// <summary>
@@ -535,13 +604,22 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.AudioChannels = AudioChannels.Value;
         media.AudioSampleRate = SampleRate.Value;
         media.WavFormat = WavFormat.Value;
-        media.VideoCodec = MediaCodecs.Effective(TargetId, _videoCodecValue);
+        // A Live Photo's clip is a MOV (or an MP4 in a Motion Photo): H.264 or HEVC, whatever the photo's format.
+        media.VideoCodec = IsLivePhoto
+            ? (_videoCodecValue == VideoCodec.Hevc ? VideoCodec.Hevc : VideoCodec.Default)
+            : MediaCodecs.Effective(TargetId, _videoCodecValue);
         media.AudioCodec = MediaCodecs.Effective(TargetId, _audioCodecValue);
         media.HardwareEncoding = HardwareEncoding;
         // Only where the option is shown: a box ticked for PNG and left behind by another target saves nothing.
         media.SaveEveryFrame = ShowSaveEveryFrame && SaveEveryFrame;
         media.FrameInterval = media.SaveEveryFrame ? Math.Clamp(FrameInterval, 1, 1000) : 1;
         media.ExtractMotionPhoto = ShowExtractMotionPhoto && ExtractMotionPhoto;
+        media.LivePhoto = IsLivePhoto ? _livePhotoValue : LivePhotoKind.None;
+        static double Seconds(double value, double fallback, double min, double max) =>
+            double.IsFinite(value) ? Math.Clamp(value, min, max) : fallback;
+        media.LivePhotoStart = Seconds(LivePhotoStart, 0, 0, 24 * 3600);
+        media.LivePhotoLength = Seconds(LivePhotoLength, 3, MediaOptions.MinLivePhotoLength, MediaOptions.MaxLivePhotoLength);
+        media.LivePhotoCover = Seconds(LivePhotoCover, 1.5, 0, MediaOptions.MaxLivePhotoLength);
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;

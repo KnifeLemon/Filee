@@ -1804,6 +1804,48 @@ public class RenderTests
         Assert.False(preset.Media.ExtractMotionPhoto);
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    [InlineData("ja")]
+    [InlineData("zh-CN")]
+    [InlineData("ru")]
+    public void Live_photo_options_render_for_jpg_and_heic_and_save_only_there(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var preset = Filee.Core.Presets.BuiltInData.LivePhotoPresets().First();
+        var vm = new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>());
+        Assert.True(vm.ShowLivePhotoChoice);
+        Assert.True(vm.IsLivePhoto);
+        Assert.False(vm.ShowImage);
+        Assert.False(vm.ShowSaveEveryFrame);
+        Assert.Equal(3, vm.LivePhotoKinds.Count);
+        var window = new PresetEditorWindow { DataContext = vm, Height = 980 };
+        window.Show();
+        Pump();
+        Save(window, $"preset-live-photo-{language}.png");
+        window.Close();
+
+        // HEIC is an iPhone's: no Motion Photo there.
+        vm.Target = vm.Targets.Single(t => t.Value == "heic");
+        Assert.Equal(2, vm.LivePhotoKinds.Count);
+        Assert.True(vm.IsLivePhoto);
+        vm.LivePhotoCodecChoice = vm.LivePhotoCodecs.Single(c => c.Value == Filee.Core.Presets.VideoCodec.Hevc);
+        vm.LivePhotoLength = 60;
+        Assert.True(vm.Apply());
+        Assert.Equal(("heic", Filee.Core.Presets.LivePhotoKind.Apple), (preset.TargetFormat, preset.Media.LivePhoto));
+        Assert.Equal(Filee.Core.Presets.VideoCodec.Hevc, preset.Media.VideoCodec);
+        Assert.Equal(Filee.Core.Presets.MediaOptions.MaxLivePhotoLength, preset.Media.LivePhotoLength);
+
+        // A kind left behind by a target that can't be one saves nothing.
+        var restored = new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>());
+        restored.Target = restored.Targets.Single(t => t.Value == "png");
+        Assert.False(restored.ShowLivePhotoChoice);
+        Assert.True(restored.ShowImage);
+        Assert.True(restored.Apply());
+        Assert.Equal(Filee.Core.Presets.LivePhotoKind.None, preset.Media.LivePhoto);
+    }
+
     internal static void Pump()
     {
         // Let layout, bindings and a few animation frames run.

@@ -146,11 +146,13 @@ public partial class App : Application
             AppHost.Get<WatchFolderService>().DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
         };
 
-        // Before HandleCommandLine marks the first run complete: a fresh install gets no slides. Without the main
-        // window (sign-in, the Explorer menu) they wait until the user opens Filee, unless the installer asked for them.
+        // Before HandleCommandLine marks the first run complete: a fresh install gets no slides (an update by the
+        // installer does, even when its settings are gone). Without the main window (sign-in, the Explorer menu) they
+        // wait until the user opens Filee, unless the installer asked for them.
         AppHost.Get<WhatsNewService>().CheckAtStartup(
             background: Program.Options.Background && !Program.Options.ShowSettings && !Program.Options.WhatsNew
-                        || Program.Options.ConvertFiles.Count > 0);
+                        || Program.Options.ConvertFiles.Count > 0,
+            updated: Program.Options.WhatsNew, updatedFrom: Program.Options.UpdatedFrom);
         HandleCommandLine(Program.Options, firstLaunch: true);
         if (OperatingSystem.IsMacOS())
             this.TryGetFeature<IActivatableLifetime>()?.Activated += (_, e) =>

@@ -140,6 +140,7 @@ public sealed class Preset
     /// </summary>
     public bool SavesFramesOf(string sourceFormat) =>
         Media.SaveEveryFrame
+        && !MakesLivePhotoOf(sourceFormat)
         && MediaOptions.FrameTargets.Contains(TargetFormat)
         && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
@@ -153,6 +154,15 @@ public sealed class Preset
         MediaOptions.MotionPhotoTargets.Contains(TargetFormat)
         && MediaOptions.MotionPhotoSources.Contains(sourceFormat)
         && (Media.ExtractMotionPhoto || sourceFormat == "livp");
+
+    /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file makes a Live / Motion Photo of a short clip
+    /// (<see cref="MediaOptions.LivePhoto"/>): the file is a video and the target one the kind is written as
+    /// (<see cref="MediaOptions.LivePhotoTargets"/>). Other files, and other targets, convert as usual.
+    /// </summary>
+    public bool MakesLivePhotoOf(string sourceFormat) =>
+        MediaOptions.LivePhotoTargets(Media.LivePhoto).Contains(TargetFormat)
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
     /// <summary>True for a <see cref="PresetKind.Tool"/>.</summary>
     [JsonIgnore]
@@ -493,6 +503,39 @@ public sealed class MediaOptions
     /// </summary>
     public bool ExtractMotionPhoto { get; set; }
 
+    /// <summary>
+    /// Video → JPG (or HEIC for an iPhone): a Live / Motion Photo of a short clip instead of one still frame. Only for
+    /// video sources and a target in <see cref="LivePhotoTargets"/> (<see cref="Preset.MakesLivePhotoOf"/>).
+    /// </summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<LivePhotoKind>))]
+    public LivePhotoKind LivePhoto { get; set; }
+
+    /// <summary>The photo formats a <paramref name="kind"/> of Live / Motion Photo is written as.</summary>
+    public static IReadOnlyList<string> LivePhotoTargets(LivePhotoKind kind) => kind switch
+    {
+        LivePhotoKind.Apple => ["jpg", "heic"],
+        LivePhotoKind.Android => ["jpg"],
+        _ => [],
+    };
+
+    /// <summary>Shortest and longest clip of a Live / Motion Photo, in seconds (phones record about 3).</summary>
+    public const double MinLivePhotoLength = 0.5, MaxLivePhotoLength = 5;
+
+    /// <summary>With <see cref="LivePhoto"/>: where the clip starts in the video, in seconds.</summary>
+    public double LivePhotoStart { get; set; }
+
+    /// <summary>
+    /// With <see cref="LivePhoto"/>: how long the clip is, in seconds (<see cref="MinLivePhotoLength"/> to
+    /// <see cref="MaxLivePhotoLength"/>); shorter when the video ends sooner.
+    /// </summary>
+    public double LivePhotoLength { get; set; } = 3;
+
+    /// <summary>
+    /// With <see cref="LivePhoto"/>: the frame that becomes the photo, in seconds from the start of the clip (the
+    /// middle, as a phone takes it, by default); the clip's last frame when the clip is shorter.
+    /// </summary>
+    public double LivePhotoCover { get; set; } = 1.5;
+
     /// <summary>With <see cref="SaveEveryFrame"/>: extract every Nth frame (1 = every frame).</summary>
     public int FrameInterval { get; set; } = 1;
 
@@ -504,6 +547,17 @@ public sealed class MediaOptions
 
 
     public MediaOptions Clone() => (MediaOptions)MemberwiseClone();
+}
+
+/// <summary>The kind of moving photo a video becomes (<see cref="MediaOptions.LivePhoto"/>).</summary>
+public enum LivePhotoKind
+{
+    /// <summary>One still frame, as usual.</summary>
+    None,
+    /// <summary>An iPhone Live Photo: a JPG or HEIC and a MOV with the same name and content identifier.</summary>
+    Apple,
+    /// <summary>An Android Motion Photo: one JPG with the clip (MP4) appended, described in its XMP.</summary>
+    Android,
 }
 
 /// <summary>Video codec of a video target. <see cref="Default"/> is the target's usual codec (H.264, VP9 for WebM, ...).</summary>

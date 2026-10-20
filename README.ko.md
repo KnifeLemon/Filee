@@ -90,7 +90,7 @@
 
 | 원본 | 변환 대상 |
 |---|---|
-| **이미지**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR 등; GIMP XCF, 카메라 RAW(CR2, CR3, NEF, ARW, DNG 등), DICOM, OpenEXR, HDR, JPEG XR(Windows), 아이폰 라이브 포토(LIVP)는 읽기 | 위 형식끼리(HEIC⁵), PDF, SVG(벡터화), 크기 조정, 흑백; 라이브/모션 포토(아이폰, 안드로이드) → 그 동영상(MP4, MOV⁵) |
+| **이미지**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR 등; GIMP XCF, 카메라 RAW(CR2, CR3, NEF, ARW, DNG 등), DICOM, OpenEXR, HDR, JPEG XR(Windows), 아이폰 라이브 포토(LIVP)는 읽기 | 위 형식끼리(HEIC⁵), PDF, SVG(벡터화), 크기 조정, 흑백; 라이브/모션 포토(아이폰, 안드로이드) → 그 동영상(MP4, MOV⁵), 동영상 → 라이브 포토(아이폰)·모션 포토(안드로이드)⁵(실험 기능) |
 | **벡터**: SVG, SVGZ, EMF, WMF, AI · EPS, PS¹ · CDR, VSD, CGM, ODG, FODG² | PDF(벡터), PNG 등 이미지, SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX(페이지마다 그림 한 장), SVG²; 합치기, 나누기, 페이지 범위, 압축 (더 작은 PDF) |
 | **문서**: DOCX, DOCM, DOTX, EML, Outlook MSG; OFD(중국 전자세금계산서·공문서)는 읽기 · DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602 등² | PDF, DOCX, HWPX, EPUB, TXT, HTML; MSG → EML · ODT, FODT, OTT² |

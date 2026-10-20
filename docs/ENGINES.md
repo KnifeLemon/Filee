@@ -32,7 +32,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
-| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, images → HEIC |
+| FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
 
 DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
@@ -216,6 +216,8 @@ pinned source in `build/build-linux-native.py` like rhwp (PR #113 did this for S
 - **LIVP** (an iPhone Live Photo as iCloud downloads it: a ZIP of the photo, HEIC or JPEG, and its MOV) is read as its
   photo, taken out of the package in memory (`LivePhotoSource.ReadStill`, at most 64 MB); its video is FFmpeg's (see
   Live / Motion Photos there).
+- **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
+  it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,
   sRGB output and AHD demosaicing, then turned upright from the EXIF orientation.
 - **EMF/WMF** are rendered through GDI+ (Windows only) at the preset's render DPI (at least 150), keeping their
@@ -1366,6 +1368,50 @@ Same-format edges exist too, so "MP4 720p" works on MP4 files and "MP3 128k" on 
     read from (IMG_0001.HEIC → `IMG_0001 (2).mov`). A photo without a video fails with "This photo has no video
     Filee can read"; why goes to the log.
   - Not read: vendor formats without this metadata (Huawei's "LIVE_" trailer, for one).
+- **Making Live / Motion Photos** (experimental until confirmed on phones; *A video becomes* on a JPG or HEIC preset,
+  `MediaOptions.LivePhoto`; the presets "Live Photo (iPhone)" and "Motion Photo (Android)", JPG, on the back of the
+  video donut, added in settings schema 31): a short clip of a video becomes a moving photo instead of one still
+  frame.
+  - Routes: the live edges (`ConversionEdge.LivePhoto`, every video → JPG and HEIC) are taken only when
+    `Preset.MakesLivePhotoOf` the file (an iPhone Live Photo as JPG or HEIC, a Motion Photo as JPG,
+    `MediaOptions.LivePhotoTargets`), and then as the whole route (`RoutePlanner.Plan(from, to, livePhoto: true)`); "Save
+    every frame" is ignored meanwhile. Other files and targets convert as usual.
+  - The clip (`Media/LivePhotoWriter.cs`): *Clip start*, *Clip length* (0.5 to 5 s, 3 by default, shorter when the
+    video ends sooner; a start past the end is refused) and *Photo at* (seconds into the clip, 1.5 by default, the last
+    frame at most). FFmpeg encodes it at 30 fps, upright (the phone's rotation is applied to the pixels), scaled to at
+    most 1440 px on the shorter side (or the preset's maximum height), 8-bit 4:2:0 H.264 (HEVC when the preset asks,
+    tagged `hvc1`), the sound as AAC (mono or stereo, 44.1 or 48 kHz) unless the preset removes it. HDR (PQ or HLG) is
+    tone-mapped to SDR BT.709 with zscale; an FFmpeg without zscale refuses HDR with a message. The photo is the same
+    frame at the video's full size, picked by the same 30 fps timing (`select` on the frame number the clip really has,
+    counted from its `stsz`), encoded at the preset's image quality.
+  - **iPhone Live Photo**: a JPG (or HEIC) and a MOV with the same name and one content identifier (a new upper-case
+    UUID), the pair Photos imports as a Live Photo. The photo carries it in Apple's maker note (Exif `MakerNote`,
+    "Apple iOS" big-endian, tag 17, ASCII), HEIC through the HEIC writer's Exif item. The MOV (QuickTime, `qt  ` brand)
+    gets, as an iPhone writes them: `com.apple.quicktime.content.identifier` in a movie-level `meta` (plain container,
+    `mdta` handler, `keys`, `ilst` with a UTF-8 `data` item), and a timed metadata track for the still: track flags 0xF,
+    `tref/cdsc` to the video track, a `mhlr/meta` handler, `gmhd`, an alias data reference, a `mebx` sample entry whose
+    key 1 is `mdta` + `com.apple.quicktime.still-image-time` typed as a signed 8-bit integer (well-known type 65), one
+    9-byte sample (the item, value -1) of one tick at the movie's timescale, placed by an empty edit at the photo's
+    time (`AppleLivePhoto.TagMovie`). FFmpeg leaves the movie header at the end, so only that header is rewritten: the
+    sample goes into a small `mdat` where it was, and no chunk offset moves. Not written: the other timed metadata of
+    an iPhone (live-photo-info, the still's transform, video orientation) and its camera keys, which Photos does not
+    need to pair the files.
+  - **Android Motion Photo**: one `NAME.MP.jpg` (the name a Pixel gives them): the JPEG, then the clip as MP4 appended,
+    ending the file. Its XMP APP1 (after the JFIF APP0 and an Exif APP1) is laid out as a Pixel's:
+    `GCamera:MotionPhoto` 1, `MotionPhotoVersion` 1, `MotionPhotoPresentationTimestampUs` (the photo's time in the
+    clip), and a `Container:Directory` of the primary JPEG and the video (`video/mp4`, `MotionPhoto`, its length,
+    `Padding` 0); the older `GCamera:MicroVideo` properties (the same length as `MicroVideoOffset`) are written too for
+    older Google Photos (`MotionPhoto.WriteAsync`). Samsung's own SEF trailer is not written.
+  - Expected to work, to be confirmed on devices: Photos on iPhone, iPad and Mac with both files imported together
+    (iCloud Photos, AirDrop of both, Image Capture or Photos on a Mac; a single file sent through a messenger loses the
+    pairing), Google Photos on Android, iPhone and the web, and galleries that read Google's Motion Photo XMP (Samsung
+    Gallery on recent One UI is likely but untested). Not expected: galleries that only know their maker's own format.
+  - Everything is written in the work directory and moved into place at the end, first next to its target under a
+    hidden name, then renamed over it: a failed or cancelled run never touches an existing file. The pair keeps one
+    name: when the MOV's name is taken (another file, or the video being converted, which is never written over) both
+    take the next number (`clip (2).jpg` + `clip (2).mov`); a MOV is only written over together with the photo
+    "overwrite" replaces; "skip" skips the pair when the photo exists. Filee's own extraction (above) reads both kinds
+    back.
 - Pictures → MP4/WEBM/MOV go through a full-size PNG from the image engines (HEIC → PNG → MOV): a 5-second still at
   30 fps, one quality step above the preset (identical frames cost almost nothing; x264 `-tune stillimage`). The
   PNG's ICC profile is read (`-flags2 +icc_profiles`), so primaries and transfer are tagged as the photo's (Display

@@ -74,6 +74,7 @@ public static class BuiltInData
         .. PdfSlidesPresets(),
         .. FramePresets(),
         .. MotionPhotoPresets(),
+        .. LivePhotoPresets(),
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
         new() { Id = "to-hwpx", Name = "HWPX", TargetFormat = "hwpx" },
         .. HwpPresets(),
@@ -98,6 +99,16 @@ public static class BuiltInData
     public static List<Preset> MotionPhotoPresets() =>
     [
         new() { Id = "extract-motion", NameKey = "preset.extract_motion", TargetFormat = "mp4", Media = { ExtractMotionPhoto = true } },
+    ];
+
+    /// <summary>
+    /// A clip of a video as an iPhone Live Photo (a JPG and a MOV) or an Android Motion Photo (added in settings schema
+    /// 31), on the back of the video donut after "Extract frames".
+    /// </summary>
+    public static List<Preset> LivePhotoPresets() =>
+    [
+        new() { Id = "live-photo-iphone", NameKey = "preset.live_photo_iphone", TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Apple } },
+        new() { Id = "motion-photo-android", NameKey = "preset.motion_photo_android", TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Android } },
     ];
 
     /// <summary>
@@ -447,8 +458,9 @@ public static class BuiltInData
             Extensions = ExtensionsOf(FormatCategory.Video),
             PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "to-mkv", "to-avi"],
             // Every frame as pictures is on no front (a long video gives thousands of files): behind a flip, a drop that
-            // misses its slice doesn't start it.
-            BackPresetIds = ["mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "to-m4a", "to-wav", "to-flac", "zip-all"],
+            // misses its slice doesn't start it. Live / Motion Photos of a clip are there too.
+            BackPresetIds = ["mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "live-photo-iphone", "motion-photo-android",
+                "to-m4a", "to-wav", "to-flac", "zip-all"],
         },
         new()
         {

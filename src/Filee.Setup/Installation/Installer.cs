@@ -124,7 +124,7 @@ public sealed class Installer(SetupContext context, SetupPayload payload)
             swap.Commit();
             progress?.Report(new SetupProgress(SetupStep.Finishing, 1));
             Log.Info("Done");
-            var launch = choices.Portable ? null : new LaunchRequest(Path.Combine(folder, SetupNames.AppExe), LaunchArguments(choices, update));
+            var launch = choices.Portable ? null : new LaunchRequest(Path.Combine(folder, SetupNames.AppExe), LaunchArguments(choices, update, updatedFrom: previous?.Version));
             return new InstallResult(launch, warnings);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -169,16 +169,21 @@ public sealed class Installer(SetupContext context, SetupPayload payload)
     }
 
     /// <summary>
-    /// The arguments Filee starts with: the choices of a fresh install, or "back to the tray" after an update, with the
-    /// new version's "What's new" slides.
+    /// The arguments Filee starts with: the choices of a fresh install, or after an update the new version's "What's new"
+    /// slides, back in the tray (/SILENT, the app's own updater) or over the main window (<paramref name="shown"/>: the
+    /// user clicked "Launch Filee"). <paramref name="updatedFrom"/>, the version updated from, tells Filee what is new.
     /// </summary>
-    public static string LaunchArguments(InstallChoices choices, bool update) => update
-        ? "--background --whats-new"
+    public static string LaunchArguments(InstallChoices choices, bool update, bool shown = false, string? updatedFrom = null) => update
+        ? (shown ? "" : "--background ") + "--whats-new" + (IsVersion(updatedFrom) ? "=" + updatedFrom : "")
         : $"--install-engines={string.Join(',', choices.Engines)} " +
           $"--start-with-windows={OnOff(choices.Tasks.Startup)} --context-menu={OnOff(choices.Tasks.ContextMenu)}" +
           (choices.LanguagePicked ? $" --language={choices.Language}" : "");
 
     private static string OnOff(bool value) => value ? "on" : "off";
+
+    /// <summary>Digits and dots only: safe on a command line without quoting.</summary>
+    private static bool IsVersion(string? text) =>
+        !string.IsNullOrEmpty(text) && text.Length <= 32 && text.All(c => char.IsAsciiDigit(c) || c == '.');
 
     private void CheckSpace(string folder)
     {
@@ -346,7 +351,8 @@ public sealed class Installer(SetupContext context, SetupPayload payload)
 
     /// <summary>
     /// A fresh install registers the top-level menu when ticked (removing an older registration first, which may point
-    /// to another folder) and removes it when not; an update keeps what was chosen in Filee and refreshes it.
+    /// to another folder) and removes it when not; an update keeps what was chosen in Filee and refreshes it, unless
+    /// it is registered for this folder at this version already.
     /// Returns Windows' error when registering failed.
     /// </summary>
     private string? UpdateExplorerMenu(string folder, InstallChoices choices, bool update, bool wasRegistered)
@@ -357,7 +363,11 @@ public sealed class Installer(SetupContext context, SetupPayload payload)
             return null;
         }
         string? error = null;
-        if (update ? wasRegistered : choices.Tasks.ContextMenu && choices.Tasks.ModernMenu)
+        if (update && wasRegistered && System.IsExplorerMenuCurrent(folder))
+        {
+            Log.Info("The Windows 11 Explorer menu package is registered already; Explorer loads the new menu by itself");
+        }
+        else if (update ? wasRegistered : choices.Tasks.ContextMenu && choices.Tasks.ModernMenu)
         {
             Log.Info("Registering the Windows 11 Explorer menu package");
             error = System.RegisterExplorerMenu(folder, removeFirst: !update);

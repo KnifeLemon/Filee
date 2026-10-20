@@ -715,6 +715,38 @@ internal static class SettingsMigrations
         //      back. One the user emptied is saved empty and stays so.
         if (from < 30 || profiles.Any(p => p.BackPresetIds is null))
             changed |= AddBackFaces(presets, profiles);
+        // v31: "Live Photo (iPhone)" and "Motion Photo (Android)" (a clip of a video as a moving photo), after "Extract
+        //      Live Photo video" as in a new library, and on the back of the video donut after "Extract frames" when it
+        //      has room and the user hasn't put them elsewhere on it. Present already but saved since by a Filee before
+        //      31: that one dropped the option and left a plain JPG preset, so it is put back.
+        if (from < 31)
+        {
+            if (profiles.FirstOrDefault(p => p.Id == "video") is { BackPresetIds: { } back })
+            {
+                var missing = BuiltInData.LivePhotoPresets().Select(p => p.Id).Where(id => !back.Contains(id)).ToList();
+                if (missing.Count > 0 && back.Count + missing.Count <= ToolbarProfile.MaxSlices)
+                {
+                    var after = back.IndexOf("extract-frames-jpg");
+                    back.InsertRange(after < 0 ? back.Count(id => id != "zip-all") : after + 1, missing);
+                    changed = true;
+                }
+            }
+            foreach (var live in BuiltInData.LivePhotoPresets())
+            {
+                if (presets.FirstOrDefault(p => p.Id == live.Id) is { } existing)
+                {
+                    if (existing.Media.LivePhoto == LivePhotoKind.None && existing.TargetFormat == live.TargetFormat)
+                    {
+                        existing.Media.LivePhoto = live.Media.LivePhoto;
+                        changed = true;
+                    }
+                    continue;
+                }
+                var at = presets.FindLastIndex(p => p.Id is "extract-motion" or "live-photo-iphone" or "extract-frames-jpg");
+                presets.Insert(at < 0 ? presets.Count : at + 1, live);
+                changed = true;
+            }
+        }
         return changed;
     }
 

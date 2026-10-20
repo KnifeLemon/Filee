@@ -2,6 +2,8 @@
 // errors and text that doesn't fit, and leaves screenshots in bin/.../screenshots for review. Animations are off
 // (static logo, a still from each clip) except in the test that runs them.
 
+extern alias app;
+
 using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Controls;
@@ -19,6 +21,7 @@ using Filee.Setup.Installation;
 using Filee.Setup.Payload;
 using Filee.Setup.ViewModels;
 using Filee.Setup.Views;
+using CommandLine = app::Filee.App.Services.CommandLine;
 
 namespace Filee.Setup.Tests;
 
@@ -325,6 +328,20 @@ public class SetupWindowTests
         Assert.Equal(0, model.ExitCode);
         model.LaunchAndCloseCommand.Execute(null);
         Assert.Equal("--background", model.Launch!.Arguments);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public async Task Launch_after_an_update_opens_the_main_window_with_the_slides()
+    {
+        var (model, _, _) = Model("en", update: true);
+        var window = Show(model);
+        await model.InstallAsync();
+        Pump();
+        model.LaunchAndCloseCommand.Execute(null);
+        var options = CommandLine.Parse(model.Launch!.Arguments.Split(' '));
+        Assert.False(options.Background);
+        Assert.True(options.WhatsNew);
         window.Close();
     }
 

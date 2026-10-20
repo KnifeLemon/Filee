@@ -955,6 +955,68 @@ public class UserDataStoreTests
     }
 
     [Fact]
+    public void Version_30_libraries_get_the_live_photo_presets_after_extract_live_video_and_behind_the_video_donut()
+    {
+        // As written with schema 30: no Live / Motion Photo presets, and the video donut's back face without them.
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id is "live-photo-iphone" or "motion-photo-android");
+        var profiles = BuiltInData.CreateProfiles();
+        var video = profiles.Single(p => p.Id == "video");
+        video.BackPresetIds!.RemoveAll(id => id is "live-photo-iphone" or "motion-photo-android");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(30, presets, profiles));
+
+        var iphone = presets.Single(p => p.Id == "live-photo-iphone");
+        var android = presets.Single(p => p.Id == "motion-photo-android");
+        Assert.Equal((LivePhotoKind.Apple, "jpg"), (iphone.Media.LivePhoto, iphone.TargetFormat));
+        Assert.Equal((LivePhotoKind.Android, "jpg"), (android.Media.LivePhoto, android.TargetFormat));
+        // Where a new library has them, on no donut.
+        Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id));
+        Assert.Equal("extract-motion", presets[presets.IndexOf(iphone) - 1].Id);
+        Assert.DoesNotContain(profiles, p => p.PresetIds.Contains("live-photo-iphone") || p.PresetIds.Contains("motion-photo-android"));
+        // Behind the video donut as in a new one, after "Extract frames".
+        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "video").BackPresetIds, video.BackPresetIds);
+        Assert.False(SettingsMigrations.ApplyToLibrary(30, presets, profiles)); // once only
+
+        // A back face the user filled up stays as it is.
+        var full = BuiltInData.CreateProfiles();
+        var fullBack = full.Single(p => p.Id == "video").BackPresetIds!;
+        fullBack.RemoveAll(id => id is "live-photo-iphone" or "motion-photo-android");
+        while (fullBack.Count < ToolbarProfile.MaxSlices)
+            fullBack.Add("to-mp3");
+        var before = fullBack.ToList();
+        SettingsMigrations.ApplyToLibrary(30, BuiltInData.CreatePresets(), full);
+        Assert.Equal(before, fullBack);
+
+        // Back from an older Filee, which dropped the option it didn't know: the preset makes Live Photos again.
+        iphone.Media.LivePhoto = LivePhotoKind.None;
+        iphone.Name = "My Live Photo";
+        Assert.True(SettingsMigrations.ApplyToLibrary(30, presets, profiles));
+        Assert.Equal(LivePhotoKind.Apple, iphone.Media.LivePhoto);
+        Assert.Equal("My Live Photo", iphone.Name);
+        Assert.Single(presets, p => p.Id == "live-photo-iphone");
+    }
+
+    [Fact]
+    public void Live_photo_options_survive_saving_and_unknown_kinds_read_as_none()
+    {
+        var preset = new Preset
+        {
+            TargetFormat = "heic",
+            Media = { LivePhoto = LivePhotoKind.Apple, LivePhotoStart = 2.5, LivePhotoLength = 2, LivePhotoCover = 0.5 },
+        };
+        var json = System.Text.Json.JsonSerializer.Serialize(preset, FileeJsonContext.Default.Preset);
+        Assert.Contains("\"livePhoto\": \"Apple\"", json);
+        var read = System.Text.Json.JsonSerializer.Deserialize(json, FileeJsonContext.Default.Preset)!;
+        Assert.Equal((LivePhotoKind.Apple, 2.5, 2.0, 0.5),
+            (read.Media.LivePhoto, read.Media.LivePhotoStart, read.Media.LivePhotoLength, read.Media.LivePhotoCover));
+
+        // A kind of a newer Filee: still one preset that loads, as a plain conversion.
+        var future = System.Text.Json.JsonSerializer.Deserialize(json.Replace("\"Apple\"", "\"Hologram\""), FileeJsonContext.Default.Preset)!;
+        Assert.Equal(LivePhotoKind.None, future.Media.LivePhoto);
+    }
+
+    [Fact]
     public void Version_15_libraries_get_the_tracing_presets_on_the_images_donut_after_pdf()
     {
         // As written before tracing: no trace presets, and the images donut without them.

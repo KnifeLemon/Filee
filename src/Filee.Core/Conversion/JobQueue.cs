@@ -461,11 +461,13 @@ public sealed class JobQueue : IAsyncDisposable
             : job.Preset.TargetFormat;
 
         // "Save every frame": a video becomes a folder of pictures in one step of its own; "Extract Live/Motion Photo
-        // video" likewise takes a photo's video. Never for an intermediate file, and never on the way to another format
-        // (video → JPG is otherwise one still frame, photo → MP4 a video of the still picture).
+        // video" likewise takes a photo's video, and "Live / Motion Photo" makes one of a video. Never for an
+        // intermediate file, and never on the way to another format (video → JPG is otherwise one still frame, photo →
+        // MP4 a video of the still picture).
         var frames = finalOutput && job.Preset.SavesFramesOf(source.Id);
         var motionPhoto = finalOutput && job.Preset.ExtractsMotionOf(source.Id);
-        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto);
+        var livePhoto = finalOutput && job.Preset.MakesLivePhotoOf(source.Id);
+        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto);
         if (route is null)
             return Fail(file, "error.no_route", $"{source.Id} → {target}");
 
@@ -533,7 +535,7 @@ public sealed class JobQueue : IAsyncDisposable
                         if (preset.Image.ChangesSpeed && !(isLast && finalOutput))
                             preset = AtOriginalSpeed(preset);
                         var stepInfo = new ConversionStep(input, step.From, step.To, preset, allocator, workDir, step.FrameSequence,
-                            key => file.NoticeKey = key, step.MotionPhoto);
+                            key => file.NoticeKey = key, step.MotionPhoto, step.LivePhoto);
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally

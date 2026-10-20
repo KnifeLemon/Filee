@@ -166,6 +166,30 @@ public sealed class TriggerServiceLifecycleTests
     }
 
     /// <summary>Runs the work the hook posted to the UI thread for a moment, then reads the value.</summary>
+    [AvaloniaFact]
+    public void A_drag_over_a_web_browser_counts_as_over_the_file_manager()
+    {
+        var platform = new NullPlatformServicesForHooks { FileManager = false, Process = "msedge" };
+        using var service = new TriggerService(platform, NullLogger<TriggerService>.Instance);
+        var drag = new TriggerGesture { Kind = TriggerKind.Drag, Scope = TriggerScope.FileManager };
+        Assert.True(service.InScope(drag, 10, 10));
+        // Click and key gestures read the file manager's selection, which a browser doesn't have.
+        Assert.False(service.InScope(new TriggerGesture { Kind = TriggerKind.Hold, Scope = TriggerScope.FileManager }, 10, 10));
+        Assert.False(service.InScope(new TriggerGesture { Kind = TriggerKind.KeyChord, Scope = TriggerScope.FileManager }, 10, 10));
+        foreach (var browser in new[] { "chrome", "firefox", "Safari", "Google Chrome", "whale.exe" })
+        {
+            platform.Process = browser;
+            Assert.True(service.InScope(drag, 10, 10), browser);
+        }
+        platform.Process = "notepad";
+        Assert.False(service.InScope(drag, 10, 10));
+        // An excluded browser stays excluded.
+        platform.Process = "msedge";
+        var settings = new AppSettings { ExcludedProcesses = ["msedge.exe"] };
+        service.Apply(settings);
+        Assert.False(service.InScope(drag, 10, 10));
+    }
+
     internal static T Settle<T>(Func<T> read)
     {
         for (var i = 0; i < 20; i++)
@@ -287,8 +311,10 @@ public sealed class TriggerServiceLifecycleTests
     internal sealed class NullPlatformServicesForHooks : IPlatformServices
     {
         public bool PressCarriesPosition { get; init; } = true;
-        public bool IsFileManagerAt(int x, int y) => true;
-        public string? ProcessNameAt(int x, int y) => "explorer";
+        public bool FileManager { get; set; } = true;
+        public string? Process { get; set; } = "explorer";
+        public bool IsFileManagerAt(int x, int y) => FileManager;
+        public string? ProcessNameAt(int x, int y) => Process;
         public IReadOnlyList<string> GetFileManagerSelection() => [];
         public int SystemDragThreshold => 4;
         public bool PrefersReducedMotion => false;

@@ -60,6 +60,8 @@ public sealed partial class SetupViewModel : ObservableObject
     private readonly long _neededSpace;
     private bool _languagePicked;
     private InstallResult? _result;
+    private SlideDeck? _deck;
+    private bool _deckRead;
 
     /// <param name="version">The Filee version Setup installs (or the uninstaller removes).</param>
     /// <param name="initial">The choices from the command line and the defaults.</param>
@@ -97,8 +99,6 @@ public sealed partial class SetupViewModel : ObservableObject
                     UpdateEngineSelection();
             };
         }
-        if (!uninstall)
-            Deck = SlideDeck.Newest(SlideDeck.LoadAll("Filee.Setup"), seen: null, SlideDeck.TryParseVersion(version) ?? new Version(0, 0, 0));
         _page = uninstall ? SetupPage.Uninstall : SetupPage.Welcome;
         texts.LanguageChanged += (_, _) => RefreshTexts();
         RefreshTexts();
@@ -120,9 +120,24 @@ public sealed partial class SetupViewModel : ObservableObject
 
     /// <summary>
     /// The newest "What's new" slides up to the version being installed (Assets/WhatsNew, shared with the app), shown
-    /// while the files go in; null when there are none.
+    /// while the files go in; null when there are none. Read when first asked for: the model is made before Avalonia
+    /// starts, and its resources can't be read until then.
     /// </summary>
-    public SlideDeck? Deck { get; init; }
+    public SlideDeck? Deck
+    {
+        get
+        {
+            if (!_deckRead && !IsUninstall)
+                _deck = SlideDeck.Newest(SlideDeck.LoadAll("Filee.Setup"), seen: null, SlideDeck.TryParseVersion(Version) ?? new Version(0, 0, 0));
+            _deckRead = true;
+            return _deck;
+        }
+        init
+        {
+            _deck = value;
+            _deckRead = true;
+        }
+    }
 
     /// <summary>Raised when the window should close (finished, cancelled).</summary>
     public event EventHandler? CloseRequested;
@@ -299,11 +314,13 @@ public sealed partial class SetupViewModel : ObservableObject
     [RelayCommand]
     private Task Uninstall() => UninstallAsync();
 
-    /// <summary>"Launch Filee" on the Done card.</summary>
+    /// <summary>"Launch Filee" on the Done card: after an update the main window, not the tray, so the slides show over it.</summary>
     [RelayCommand]
     private void LaunchAndClose()
     {
-        Launch = _result?.Launch;
+        Launch = IsUpdate && _result?.Launch is { } launch
+            ? launch with { Arguments = Installer.LaunchArguments(_initial, update: true, shown: true, _previous?.Version) }
+            : _result?.Launch;
         CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 

@@ -4,6 +4,7 @@
 
 using System.Diagnostics;
 using System.Runtime.Versioning;
+using Filee.Core.Platform;
 using Filee.Platform.Windows;
 
 namespace Filee.Setup.Platform;
@@ -17,6 +18,12 @@ public interface ISetupSystem
     bool ExplorerMenuSupported { get; }
 
     bool IsExplorerMenuRegistered();
+
+    /// <summary>
+    /// The package is registered for <paramref name="installFolder"/> at the version this build ships. Explorer then
+    /// picks up the new DLL by itself; registering it again fails while Explorer has the old one loaded (0x80073D02).
+    /// </summary>
+    bool IsExplorerMenuCurrent(string installFolder);
 
     /// <summary>Registers the sparse package next to Filee.exe; returns why not, or null when it worked.</summary>
     string? RegisterExplorerMenu(string installFolder, bool removeFirst);
@@ -52,6 +59,18 @@ public class WindowsSetupSystem(SetupLog log) : ISetupSystem
         try
         {
             return ExplorerMenuRegistration.Find() is not null;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
+        {
+            return false;
+        }
+    }
+
+    public virtual bool IsExplorerMenuCurrent(string installFolder)
+    {
+        try
+        {
+            return ExplorerMenuRegistration.GetState(installFolder) == ModernContextMenuState.On;
         }
         catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException)
         {
@@ -219,6 +238,8 @@ public sealed class SandboxSetupSystem(SetupLog log, string dataFolder) : Window
     public override bool ExplorerMenuSupported => false;
 
     public override bool IsExplorerMenuRegistered() => false;
+
+    public override bool IsExplorerMenuCurrent(string installFolder) => false;
 
     public override string? RegisterExplorerMenu(string installFolder, bool removeFirst) => "Not in a sandbox.";
 

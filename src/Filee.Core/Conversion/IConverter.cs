@@ -30,7 +30,7 @@ namespace Filee.Core.Conversion;
 /// <param name="FrameSequence">
 /// The edge writes every frame of a video as numbered pictures into a folder (<see cref="Presets.MediaOptions.SaveEveryFrame"/>).
 /// It is never part of an ordinary route (a video → JPG stays one still frame), and with
-/// <see cref="RoutePlanner.Plan(string, string, bool, bool, bool)"/> asking for frames it is the whole route.
+/// <see cref="RoutePlanner.Plan(string, string, bool, bool, bool, bool)"/> asking for frames it is the whole route.
 /// </param>
 /// <param name="Unshaped">
 /// The engine draws text one character after the other, left to right, without complex-script shaping (no joined
@@ -41,11 +41,16 @@ namespace Filee.Core.Conversion;
 /// <param name="MotionPhoto">
 /// The edge takes the video out of a Live / Motion Photo (<see cref="Presets.MediaOptions.ExtractMotionPhoto"/>). It is
 /// never part of an ordinary route (a photo → MP4 is otherwise a video of the still picture), and with
-/// <see cref="RoutePlanner.Plan(string, string, bool, bool, bool)"/> asking for it it is the whole route.
+/// <see cref="RoutePlanner.Plan(string, string, bool, bool, bool, bool)"/> asking for it it is the whole route.
+/// </param>
+/// <param name="LivePhoto">
+/// The edge makes a Live / Motion Photo of a short clip of a video (<see cref="Presets.MediaOptions.LivePhoto"/>). It is
+/// never part of an ordinary route (a video → JPG is otherwise one still frame), and with
+/// <see cref="RoutePlanner.Plan(string, string, bool, bool, bool, bool)"/> asking for it it is the whole route.
 /// </param>
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
-    bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false);
+    bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's
@@ -106,6 +111,10 @@ public interface IOutputAllocator
 /// The step takes a <see cref="ConversionEdge.MotionPhoto"/> edge: the video of the Live / Motion Photo becomes the
 /// output, not its still picture.
 /// </param>
+/// <param name="LivePhoto">
+/// The step takes a <see cref="ConversionEdge.LivePhoto"/> edge: a clip of the video becomes a Live / Motion Photo
+/// (<see cref="Presets.MediaOptions.LivePhoto"/> says which kind).
+/// </param>
 public sealed record ConversionStep(
     string InputPath,
     string From,
@@ -115,7 +124,8 @@ public sealed record ConversionStep(
     string WorkDirectory,
     bool FrameSequence = false,
     Action<string>? Notice = null,
-    bool MotionPhoto = false);
+    bool MotionPhoto = false,
+    bool LivePhoto = false);
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).
