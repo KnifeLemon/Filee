@@ -53,7 +53,7 @@
 - **Windows 10/11**: `Filee-<version>-win-Setup.exe`를 실행하거나, `win-Portable.zip`을 풀고 `Filee.exe`를 실행해요.
   설치 프로그램은 Filee가 직접 만든 것이라 Filee와 같은 언어로 안내하고, PC에 따로 설치할 것이 없어요.
   설치할 때 탐색기 메뉴, 로그인 시 자동 실행, `filee` 명령, 추가 엔진을 고를 수 있어요.
-- **macOS 14 이상** (미리보기): `osx-arm64` 또는 `osx-x64` 패키지를 풀고 `./install.sh`를 실행해요.
+- **macOS 13 이상** (미리보기): `osx-arm64` 또는 `osx-x64` 패키지를 풀고 `./install.sh`를 실행해요.
   아직 공증 전이라, 처음 실행할 때 시스템 설정 → 개인정보 보호 및 보안 → **그래도 열기**로 허용해 주세요.
 - **Linux x64·ARM64** (미리보기, Ubuntu 22.04 이상): 패키지를 풀고 `./install.sh`를 실행해요(root 불필요, Python 3 필요).
   드래그 제스처는 X11에서 돼요. Wayland에서는 드롭 영역과 파일 관리자 우클릭 메뉴를 써 주세요.

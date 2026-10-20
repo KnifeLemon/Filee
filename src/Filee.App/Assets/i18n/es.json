@@ -610,6 +610,7 @@
   "engines.guidance.macos": "Instala {0} para este Mac y luego elige «Usar mi copia…» y selecciona su programa o su carpeta .app.",
   "engines.guidance.macos.ffmpeg": "Instálalo con Homebrew (brew install ffmpeg) y luego elige «Comprobar otra vez».\nO bien elige «Usar mi copia…» y selecciona su carpeta bin.",
   "engines.guidance.macos.ghostscript": "Instálalo con Homebrew (brew install ghostscript) y luego elige «Comprobar otra vez».\nO bien elige «Usar mi copia…» y selecciona su carpeta bin.",
+  "engines.guidance.macos.calibre": "El calibre que descarga Filee necesita macOS 14 o posterior. Instala calibre 7.26, la última versión para este macOS, desde calibre-ebook.com y luego elige «Usar mi copia…» y selecciona su carpeta .app.",
   "engines.guidance.linux": "Instala {0} con el gestor de paquetes de tu distribución y luego elige «Usar mi copia…» y selecciona su carpeta de programa.",
   "engines.guidance.linux.libreoffice": "Instálalo con tu gestor de paquetes (Ubuntu/Debian: sudo apt install libreoffice) y luego elige «Comprobar otra vez».\nAbrir HWP necesita además Java y la extensión H2Orestart.",
   "engines.guidance.linux.ghostscript": "Instálalo con tu gestor de paquetes (Ubuntu/Debian: sudo apt install ghostscript) y luego elige «Comprobar otra vez».",

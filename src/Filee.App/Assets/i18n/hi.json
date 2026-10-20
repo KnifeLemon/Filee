@@ -610,6 +610,7 @@
   "engines.guidance.macos": "इस Mac के लिए {0} इंस्टॉल करें, फिर “मेरी कॉपी इस्तेमाल करें…” चुनें और उसका प्रोग्राम या .app फ़ोल्डर चुनें।",
   "engines.guidance.macos.ffmpeg": "इसे Homebrew से इंस्टॉल करें (brew install ffmpeg), फिर “फिर से जाँचें” चुनें।\nया “मेरी कॉपी इस्तेमाल करें…” चुनें और उसका bin फ़ोल्डर चुनें।",
   "engines.guidance.macos.ghostscript": "इसे Homebrew से इंस्टॉल करें (brew install ghostscript), फिर “फिर से जाँचें” चुनें।\nया “मेरी कॉपी इस्तेमाल करें…” चुनें और उसका bin फ़ोल्डर चुनें।",
+  "engines.guidance.macos.calibre": "Filee जो calibre डाउनलोड करता है, उसके लिए macOS 14 या नया चाहिए। calibre-ebook.com से calibre 7.26 इंस्टॉल करें (इस macOS के लिए आख़िरी वर्ज़न), फिर “मेरी कॉपी इस्तेमाल करें…” चुनें और उसका .app फ़ोल्डर चुनें।",
   "engines.guidance.linux": "अपने डिस्ट्रीब्यूशन के पैकेज मैनेजर से {0} इंस्टॉल करें, फिर “मेरी कॉपी इस्तेमाल करें…” चुनें और उसका प्रोग्राम फ़ोल्डर चुनें।",
   "engines.guidance.linux.libreoffice": "इसे अपने पैकेज मैनेजर से इंस्टॉल करें (Ubuntu/Debian: sudo apt install libreoffice), फिर “फिर से जाँचें” चुनें।\nHWP खोलने के लिए Java और H2Orestart एक्सटेंशन भी चाहिए।",
   "engines.guidance.linux.ghostscript": "इसे अपने पैकेज मैनेजर से इंस्टॉल करें (Ubuntu/Debian: sudo apt install ghostscript), फिर “फिर से जाँचें” चुनें।",

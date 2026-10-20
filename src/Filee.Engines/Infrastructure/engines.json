@@ -1,5 +1,5 @@
 {
-  "_comment": "Downloadable conversion engines: pinned URL + SHA-256. Used by the app (Settings > Engines, first-run setup) and by build/fetch-engines.ps1. Bumping a version = change url, sha256 and size together.",
+  "_comment": "Downloadable conversion engines: pinned URL + SHA-256. Used by the app (Settings > Engines, first-run setup) and by build/fetch-engines.ps1. Bumping a version = change url, sha256 and size together. minimumMacOS: the oldest macOS a macOS download runs on; older Macs are not offered it.",
   "components": {
     "rhwp": {
       "version": "0.8.7",
@@ -179,7 +179,8 @@
           "url": "https://download.calibre-ebook.com/9.15.0/calibre-9.15.0.dmg",
           "sha256": "1B3A7451175B73AE2BAA28FE1BC1C53EE34D65B489881E7EC02C20F9E0FF6019",
           "size": 350293492,
-          "kind": "dmg"
+          "kind": "dmg",
+          "minimumMacOS": "14.0"
         },
         "libreoffice": {
           "version": "26.2.6",
@@ -218,7 +219,8 @@
           "url": "https://download.calibre-ebook.com/9.15.0/calibre-9.15.0.dmg",
           "sha256": "1B3A7451175B73AE2BAA28FE1BC1C53EE34D65B489881E7EC02C20F9E0FF6019",
           "size": 350293492,
-          "kind": "dmg"
+          "kind": "dmg",
+          "minimumMacOS": "14.0"
         },
         "libreoffice": {
           "version": "26.2.6",

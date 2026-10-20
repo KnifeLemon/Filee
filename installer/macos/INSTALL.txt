@@ -1,4 +1,4 @@
-This package requires macOS 14 or later and contains a separate build for
+This package requires macOS 13 or later and contains a separate build for
 Apple Silicon or Intel Macs. The .NET runtime is included.
 Run ./install.sh to copy Filee.app to ~/Applications and add ~/.local/bin/filee.
 You can also move Filee.app into Applications manually. Keep its location stable

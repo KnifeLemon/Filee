@@ -627,6 +627,7 @@
   "engines.guidance.macos": "Install {0} for this Mac, then choose “Use my copy…” and select its program or .app folder.",
   "engines.guidance.macos.ffmpeg": "Install it with Homebrew (brew install ffmpeg), then choose “Check again”.\nOr choose “Use my copy…” and select its bin folder.",
   "engines.guidance.macos.ghostscript": "Install it with Homebrew (brew install ghostscript), then choose “Check again”.\nOr choose “Use my copy…” and select its bin folder.",
+  "engines.guidance.macos.calibre": "The calibre Filee downloads needs macOS 14 or later. Install calibre 7.26, the last version for this macOS, from calibre-ebook.com, then choose “Use my copy…” and select its .app folder.",
   "engines.guidance.linux": "Install {0} with your distribution’s package manager, then choose “Use my copy…” and select its program folder.",
   "engines.guidance.linux.libreoffice": "Install it with your package manager (Ubuntu/Debian: sudo apt install libreoffice), then choose “Check again”.\nOpening HWP also needs Java and the H2Orestart extension.",
   "engines.guidance.linux.ghostscript": "Install it with your package manager (Ubuntu/Debian: sudo apt install ghostscript), then choose “Check again”.",

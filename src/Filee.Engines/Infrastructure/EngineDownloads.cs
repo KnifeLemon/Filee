@@ -26,7 +26,12 @@ public static class EngineDownloads
         (OperatingSystem.IsWindows() ? "win" : OperatingSystem.IsMacOS() ? "osx" : OperatingSystem.IsLinux() ? "linux" : "unknown")
         + "-" + RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
 
-    public static IReadOnlyDictionary<string, EngineComponent> Components { get; } = ComponentsForRuntime(RuntimeIdentifier);
+    /// <summary>
+    /// The downloads for this computer. On a Mac older than a download's minimumMacOS (calibre 9 needs macOS 14) that
+    /// download is left out, so the package is offered like one Filee has no download of.
+    /// </summary>
+    public static IReadOnlyDictionary<string, EngineComponent> Components { get; } =
+        ComponentsForRuntime(RuntimeIdentifier, OperatingSystem.IsMacOS() ? Environment.OSVersion.Version : null);
 
     /// <summary>
     /// Packages offered in Settings → Engines and on first run. rhwp and 7-Zip are not listed: they are small and bundled.
@@ -55,6 +60,7 @@ public static class EngineDownloads
             {
                 "ffmpeg" => "Install FFmpeg with Homebrew (brew install ffmpeg), then check again or select its bin folder.",
                 "ghostscript" => "Install Ghostscript with Homebrew (brew install ghostscript), then check again or select its bin folder.",
+                "calibre" => "The calibre Filee downloads needs macOS 14 or later. Install calibre 7.26 from calibre-ebook.com and select its .app folder.",
                 _ => $"No Filee download is available for {RuntimeIdentifier}. Install {package.Id} for this Mac and select its program or .app folder.",
             };
         if (OperatingSystem.IsLinux())
@@ -78,7 +84,8 @@ public static class EngineDownloads
     /// </summary>
     public static bool IsSuggested(EnginePackage package) => CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id != "ghostscript";
 
-    public static IReadOnlyDictionary<string, EngineComponent> ComponentsForRuntime(string runtimeIdentifier)
+    /// <param name="macOSVersion">The running macOS; downloads whose minimumMacOS is newer are left out. Null keeps all.</param>
+    public static IReadOnlyDictionary<string, EngineComponent> ComponentsForRuntime(string runtimeIdentifier, Version? macOSVersion = null)
     {
         using var stream = typeof(EngineDownloads).Assembly.GetManifestResourceStream("Filee.Engines.engines.json")
                            ?? throw new InvalidOperationException("Embedded engines.json is missing.");
@@ -91,7 +98,7 @@ public static class EngineDownloads
             components = platform.GetProperty("components");
         else
             return new Dictionary<string, EngineComponent>();
-        return components.EnumerateObject().ToDictionary(
+        return components.EnumerateObject().Where(p => RunsOn(p.Value, macOSVersion)).ToDictionary(
             p => p.Name,
             p => new EngineComponent(
                 p.Name,
@@ -101,4 +108,8 @@ public static class EngineDownloads
                 p.Value.GetProperty("size").GetInt64(),
                 p.Value.GetProperty("kind").GetString()!));
     }
+
+    private static bool RunsOn(JsonElement component, Version? macOSVersion) =>
+        macOSVersion is null || !component.TryGetProperty("minimumMacOS", out var minimum)
+        || macOSVersion >= Version.Parse(minimum.GetString()!);
 }

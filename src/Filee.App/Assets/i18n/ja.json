@@ -610,6 +610,7 @@
   "engines.guidance.macos": "このMacに{0}をインストールし、「手元のプログラムを使う…」を選んで、プログラムまたは.appフォルダーを指定してください。",
   "engines.guidance.macos.ffmpeg": "Homebrewでffmpegをインストール（brew install ffmpeg）してから、「再確認」を選んでください。\nまたは「手元のプログラムを使う…」を選び、binフォルダーを指定してください。",
   "engines.guidance.macos.ghostscript": "Homebrewでghostscriptをインストール（brew install ghostscript）してから、「再確認」を選んでください。\nまたは「手元のプログラムを使う…」を選び、binフォルダーを指定してください。",
+  "engines.guidance.macos.calibre": "FileeがダウンロードするcalibreにはmacOS 14以降が必要です。calibre-ebook.comからこのmacOS用の最終版calibre 7.26をインストールし、「手元のプログラムを使う…」を選んで.appフォルダーを指定してください。",
   "engines.guidance.linux": "ディストリビューションのパッケージマネージャーで{0}をインストールしてから、「手元のプログラムを使う…」を選び、プログラムのフォルダーを指定してください。",
   "engines.guidance.linux.libreoffice": "パッケージマネージャーでインストール（Ubuntu/Debian：sudo apt install libreoffice）してから、「再確認」を選んでください。\nHWPを開くには、JavaとH2Orestart拡張機能も必要です。",
   "engines.guidance.linux.ghostscript": "パッケージマネージャーでインストール（Ubuntu/Debian：sudo apt install ghostscript）してから、「再確認」を選んでください。",

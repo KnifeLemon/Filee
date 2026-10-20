@@ -77,7 +77,8 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
 "Needs LibreOffice …" on its donut slice.
 
 - Downloads are pinned in `src/Filee.Engines/Infrastructure/engines.json` (URL, SHA-256, size). The same file is
-  read by `build/fetch-engines.ps1`, so development and the app always use the same versions.
+  read by `build/fetch-engines.ps1`, so development and the app always use the same versions. A macOS download can
+  name the oldest macOS it runs on (`minimumMacOS`); an older Mac isn't offered it.
 - `EngineInstaller` verifies the SHA-256 before unpacking and unpacks into a staging folder that replaces the
   engine folder only when complete. Redirects to mirrors (even plain HTTP) are followed, because the hash decides.
 - Engines go to `%LOCALAPPDATA%\Filee\engines`: outside the app folder, so updates keep them, and inside Filee's
@@ -1061,6 +1062,9 @@ never switches engines by itself.
 
 - The pinned `calibre-64bit-<version>.msi` from download.calibre-ebook.com is unpacked like LibreOffice; the folder
   with `ebook-convert.exe` becomes `engines/calibre`.
+- On macOS the pinned calibre needs macOS 14 (`minimumMacOS` in engines.json). Filee runs on macOS 13, where the
+  download isn't offered; Settings → *Engines* points to calibre 7.26, the last version for macOS 13, as the user's
+  own copy.
 - Each run gets its own configuration, cache and temp folders in the job's work directory
   (`CALIBRE_CONFIG_DIRECTORY`, ...), so a calibre the user installed is never read or changed; messages are
   English (`CALIBRE_OVERRIDE_LANG`) and progress comes from its "34% ..." lines.
