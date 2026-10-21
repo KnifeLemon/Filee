@@ -7,6 +7,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
         xmlns:c="using:Filee.App.Controls"
+        xmlns:v="using:Filee.App.Views"
         x:Class="Filee.App.Views.ClipWindow"
         x:DataType="vm:ClipWindowViewModel"
         Title="{DynamicResource preset.clip}"
@@ -433,7 +434,7 @@
       </Grid>
 
       <!-- Top: the file and close -->
-      <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Top" Margin="14,14,14,0">
+      <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Top" Margin="14,14,14,0" IsVisible="{Binding !IsEditorMode}">
         <StackPanel Spacing="8" HorizontalAlignment="Left">
           <Border Classes="float" Padding="5,5,12,5" IsVisible="{Binding IsEditing}" HorizontalAlignment="Left">
             <StackPanel Orientation="Horizontal" Spacing="9">
@@ -462,6 +463,15 @@
 
         <Border Grid.Column="1" Classes="float" Padding="3" VerticalAlignment="Top">
           <StackPanel Orientation="Horizontal" Spacing="2">
+            <!-- The editor: several videos, texts, transitions, the frame's shape, Export -->
+            <Button x:Name="OpenEditorButton" Classes="tool" Padding="12,7" Command="{Binding OpenEditorCommand}" IsVisible="{Binding IsQuickMode}"
+                    IsEnabled="{Binding CanEdit}" ToolTip.Tip="{DynamicResource editor.open_hint}"
+                    AutomationProperties.Name="{DynamicResource editor.open}">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Tune}" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Text="{DynamicResource editor.open}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
             <Button x:Name="MaximizeButton" Classes="tool round" Click="OnMaximize"
                     ToolTip.Tip="{DynamicResource crop.maximize}" AutomationProperties.Name="{DynamicResource crop.maximize}">
               <PathIcon Width="13" Height="13" Data="{StaticResource Clip.Maximize}" Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -473,6 +483,11 @@
           </StackPanel>
         </Border>
       </Grid>
+
+      <!-- The editor, over the quick cut -->
+      <Border x:Name="EditorLayer" Background="{DynamicResource PageBrush}" IsVisible="{Binding IsEditorMode}">
+        <v:ClipEditorView x:Name="EditorView" DataContext="{Binding Editor}" />
+      </Border>
 
       <!-- Drag the bottom-right corner to resize -->
       <Border x:Name="ResizeGrip" Width="22" Height="22" Background="Transparent" HorizontalAlignment="Right" VerticalAlignment="Bottom"

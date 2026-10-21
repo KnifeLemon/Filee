@@ -88,7 +88,7 @@ public sealed class PresetAvailability
     private PresetJudgement Evaluate(Preset preset, IReadOnlyList<FileFormat> formats,
         Func<RoutePlanner> installedPlanner, Func<Func<RoutePlanner, bool>, EnginePackageState?> packageEnabling)
     {
-        if (preset.IsClipTool)
+        if (preset.IsClipTool || preset.IsJoinTool)
         {
             // Any video among the files: the others are left out when the clip window opens.
             var videos = formats.Where(f => f.Category == FormatCategory.Video).ToList();

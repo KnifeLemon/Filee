@@ -112,7 +112,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 33;
+    public const int CurrentSchemaVersion = 34;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -241,6 +241,12 @@ public sealed class AppSettings
     /// <summary>Every geospatial conversion is saved as a ZIP, whatever the preset says (see <see cref="OutputRule.ZipResult"/>).</summary>
     public bool ZipGeoResults { get; set; }
 
+    /// <summary>How large Filee's windows draw everything (Ctrl + mouse wheel, Ctrl +/-, Ctrl+0): 1 as designed.</summary>
+    public double UiScale { get; set; } = 1;
+
+    /// <summary>The clip editor's export choices, as last used.</summary>
+    public EditorExportSettings EditorExport { get; set; } = new();
+
     /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
     /// <see cref="DefaultOutput"/> when the preset's location is <see cref="OutputLocation.Default"/>, and keeps the
@@ -305,4 +311,25 @@ public sealed class BrowserDropSettings
 
     /// <summary>Keep only the converted file: the original goes into a work folder and is deleted after the conversion.</summary>
     public bool SaveOnlyConverted { get; set; }
+}
+
+/// <summary>What the clip editor's Export window last wrote, offered again next time.</summary>
+public sealed class EditorExportSettings
+{
+    /// <summary>"mp4" (H.264), "mp4-hevc", "webm" or "gif".</summary>
+    public string Format { get; set; } = "mp4";
+
+    /// <summary>The frame's shorter side; 0 as the video.</summary>
+    public int Resolution { get; set; }
+
+    /// <summary>Frames per second; 0 as the video.</summary>
+    public double Fps { get; set; }
+
+    public Presets.MediaQuality Quality { get; set; } = Presets.MediaQuality.High;
+
+    /// <summary>The largest file in megabytes; 0 for no limit.</summary>
+    public double LimitMegabytes { get; set; }
+
+    /// <summary>Encode on the graphics chip when it works.</summary>
+    public bool Gpu { get; set; } = true;
 }

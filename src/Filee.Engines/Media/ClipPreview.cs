@@ -69,15 +69,77 @@ public static partial class ClipPreview
             return; // nothing left to play
         }
 
+        var pictures = MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out var width, out var frameHeight);
+        var sound = info.Audio is not null || clip.Music is not null ? MediaEncoding.ClipPreviewAudio(input, clip, video, info.Audio is not null) : null;
+        await PlayGraphAsync(ffmpeg, pictures, sound, width, frameHeight, onFrame, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Plays an editor clip (<see cref="ClipEdit.Editor"/>) as <see cref="PlayAsync"/> does: <paramref name="path"/> is
+    /// the window's video (a part's <see cref="ClipPart.Source"/> null), the frame is scaled to fit
+    /// <paramref name="maxWidth"/> × <paramref name="maxHeight"/>, and the texts are left out (the editor draws them).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">FFmpeg is missing or a video can't be read.</exception>
+    public static async Task PlayEditorAsync(string path, ClipEdit edit, int maxWidth, int maxHeight, Action<byte[], int, int, double> onFrame,
+        CancellationToken cancellationToken)
+    {
+        var (ffmpeg, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var sourceOf = await SourcesAsync(ffprobe, path, edit, cancellationToken).ConfigureAwait(false);
+        ClipEdit clip;
+        try
+        {
+            clip = edit.Clamped(source => sourceOf(source).Info.Duration?.TotalSeconds);
+        }
+        catch (InvalidOperationException)
+        {
+            return; // nothing left to play
+        }
+        if (clip.Parts.Any(p => !p.Blank && sourceOf(p.Source).Info.Video is null))
+            throw new InvalidOperationException("A part of the clip comes from a file without a picture.");
+        var pictures = MediaEncoding.EditorPreviewVideo(clip, sourceOf, maxWidth, maxHeight, Fps, out var width, out var height);
+        var hasSound = clip.AllSounds.Any() || clip.Parts.Any(p => !p.Blank && sourceOf(p.Source).Info.Audio is not null);
+        var sound = hasSound ? MediaEncoding.EditorPreviewAudio(clip, sourceOf) : null;
+        await PlayGraphAsync(ffmpeg, pictures, sound, width, height, onFrame, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>What FFmpeg says of each video, kept while the file is unchanged (playing starts often).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime Written, long Size, MediaInfo Info)> Probed =
+        new(StringComparer.OrdinalIgnoreCase);
+
+    internal static async Task<Func<string?, EditorSource>> SourcesAsync(string ffprobe, string path, ClipEdit edit, CancellationToken cancellationToken)
+    {
+        var sources = new Dictionary<string, EditorSource>(StringComparer.OrdinalIgnoreCase);
+        var main = Path.GetFullPath(path);
+        foreach (var file in edit.Parts.Where(p => !p.Blank).Select(p => p.Source is null ? main : Path.GetFullPath(p.Source)).Append(main)
+                     .Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var stamp = new FileInfo(file);
+            if (!Probed.TryGetValue(file, out var known) || known.Written != stamp.LastWriteTimeUtc || known.Size != stamp.Length)
+            {
+                // A long session reads many files: what is kept stays small.
+                if (Probed.Count > 256)
+                    Probed.Clear();
+                known = (stamp.LastWriteTimeUtc, stamp.Length, await MediaInfo.ProbeAsync(ffprobe, file, cancellationToken).ConfigureAwait(false));
+                Probed[file] = known;
+            }
+            sources[file] = new EditorSource(file, known.Info);
+        }
+        return source => sources[source is null ? main : Path.GetFullPath(source)];
+    }
+
+    /// <summary>Plays FFmpeg's raw pictures (<paramref name="pictureArguments"/>) with the sound (<paramref name="soundArguments"/>) through ffplay.</summary>
+    private static async Task PlayGraphAsync(string ffmpeg, List<string> pictureArguments, List<string>? soundArguments, int width, int frameHeight,
+        Action<byte[], int, int, double> onFrame, CancellationToken cancellationToken)
+    {
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        var pictures = Start(ffmpeg, MediaEncoding.ClipPreviewVideo(input, clip, video, height, Fps, out var width, out var frameHeight), stdin: false);
+        var pictures = Start(ffmpeg, pictureArguments, stdin: false);
         Process? decoder = null, player = null;
         Task pump = Task.CompletedTask;
         try
         {
-            if ((info.Audio is not null || clip.Music is not null) && Player() is { } ffplay)
+            if (soundArguments is not null && Player() is { } ffplay)
             {
-                decoder = Start(ffmpeg, MediaEncoding.ClipPreviewAudio(input, clip, video, info.Audio is not null), stdin: false);
+                decoder = Start(ffmpeg, soundArguments, stdin: false);
                 player = Start(ffplay, ["-hide_banner", "-loglevel", "error", "-nodisp", "-autoexit",
                     .. PlayerVolume is { } volume ? new[] { "-volume", volume.ToString(CultureInfo.InvariantCulture) } : [], "-i", "-"], stdin: true);
                 pump = Pump(decoder, player, stop.Token);

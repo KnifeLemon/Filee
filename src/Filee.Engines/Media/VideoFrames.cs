@@ -8,7 +8,8 @@ namespace Filee.Engines.Media;
 /// <param name="Width">Width of the picture as shown (pixel aspect and rotation applied).</param>
 /// <param name="Height">Height of the picture as shown.</param>
 /// <param name="FrameRate">Frames per second, 0 when unknown.</param>
-public sealed record VideoSummary(double Duration, int Width, int Height, double FrameRate)
+/// <param name="HasAudio">The video has sound.</param>
+public sealed record VideoSummary(double Duration, int Width, int Height, double FrameRate, bool HasAudio = true)
 {
     /// <summary>One frame's length in seconds (a 30 fps one when the rate is unknown).</summary>
     public double FrameLength => FrameRate is > 1 and < 1000 ? 1 / FrameRate : 1 / 30.0;
@@ -37,7 +38,21 @@ public static class VideoFrames
         var info = await MediaInfo.ProbeAsync(ffprobe, Path.GetFullPath(path), cancellationToken);
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         var height = video.IsRotated ? video.Width : video.Height;
-        return new VideoSummary(info.Duration?.TotalSeconds ?? 0, (int)Math.Round(height * video.DisplayAspect), height, video.FrameRate);
+        return new VideoSummary(info.Duration?.TotalSeconds ?? 0, (int)Math.Round(height * video.DisplayAspect), height, video.FrameRate,
+            info.Audio is not null);
+    }
+
+    /// <summary>
+    /// The graphics chip's encoder that works on this computer for <paramref name="codec"/> ("h264", "hevc"), e.g.
+    /// "h264_nvenc"; null when none does (or FFmpeg is missing). The first call runs a tiny test encode.
+    /// </summary>
+    public static async Task<string?> HardwareEncoderAsync(string codec, CancellationToken cancellationToken)
+    {
+        if (FfmpegConverter.Locate() is not { } tools)
+            return null;
+        var encoder = await HardwareProbe.SelectAsync(tools.Ffmpeg, codec, false, FfmpegConverter.EncodersOf(tools.Ffmpeg),
+            Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance, cancellationToken);
+        return encoder?.Name;
     }
 
     /// <summary>

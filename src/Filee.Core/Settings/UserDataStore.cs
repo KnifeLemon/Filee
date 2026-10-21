@@ -756,6 +756,9 @@ internal static class SettingsMigrations
         //      crop, so it is put back. The user's own changes (name, file name pattern) stay.
         if (from < 33)
             changed |= AddClipTool(presets, profiles);
+        // 34: "Join videos" — after "Cut a clip" in the presets and on the video donut's back face.
+        if (from < 34)
+            changed |= AddJoinTool(presets, profiles);
         return changed;
     }
 
@@ -772,6 +775,26 @@ internal static class SettingsMigrations
         foreach (var profile in profiles.Where(p => p.BackPresetIds is null && defaults.ContainsKey(p.Id)))
         {
             profile.BackPresetIds = (defaults[profile.Id].BackPresetIds ?? []).Where(ids.Contains).ToList();
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool AddJoinTool(List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        var join = BuiltInData.JoinPresets().Single();
+        if (!presets.Any(p => p.Id == join.Id))
+        {
+            var at = presets.FindIndex(p => p.Id == "tool-clip");
+            presets.Insert(at < 0 ? presets.Count : at + 1, join);
+            changed = true;
+        }
+        if (profiles.FirstOrDefault(p => p.Id == "video") is { BackPresetIds: { } back } video
+            && !back.Contains(join.Id) && !video.PresetIds.Contains(join.Id) && back.Count < ToolbarProfile.MaxSlices)
+        {
+            var clip = back.IndexOf("tool-clip");
+            back.Insert(clip < 0 ? 0 : clip + 1, join.Id);
             changed = true;
         }
         return changed;

@@ -174,6 +174,9 @@ public sealed class Preset
     /// <summary><see cref="Tool"/> of "Cut a clip": a part of a video, chosen on a timeline.</summary>
     public const string ClipTool = "clip";
 
+    /// <summary><see cref="Tool"/> of "Join videos": several videos one after the other, in an order chosen first.</summary>
+    public const string JoinTool = "join";
+
     /// <summary>
     /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there were
     /// other tools) or <see cref="ClipTool"/>. A tool this version doesn't know (from a newer Filee) opens nothing.
@@ -188,6 +191,10 @@ public sealed class Preset
     /// <summary>True for "Cut a clip".</summary>
     [JsonIgnore]
     public bool IsClipTool => IsTool && Tool == ClipTool;
+
+    /// <summary>True for "Join videos".</summary>
+    [JsonIgnore]
+    public bool IsJoinTool => IsTool && Tool == JoinTool;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,

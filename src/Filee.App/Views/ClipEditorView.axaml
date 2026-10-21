@@ -1,0 +1,895 @@
+<!-- The clip window's editor (its second mode, CapCut-like in Filee's style): the videos and the music on the left, the
+     preview with the player in the middle, the selection's properties on the right, the tools and the timeline (T, V1,
+     A1, A2) at the bottom, Export at the top right. A narrow window slides Files and Properties out on demand; F or a
+     double click fills the window with the preview. Files dropped anywhere fly into Files (and onto the timeline). -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels"
+             xmlns:c="using:Filee.App.Controls"
+             xmlns:p="using:Filee.Core.Presets"
+             x:Class="Filee.App.Views.ClipEditorView"
+             x:DataType="vm:ClipEditorViewModel"
+             DragDrop.AllowDrop="True">
+
+  <UserControl.Resources>
+    <StreamGeometry x:Key="Editor.Text">M18.5,4L19.66,8.35L18.7,8.61C18.25,7.74 17.79,6.87 17.26,6.43C16.73,6 16.11,6 15.5,6H13V16.5C13,17 13,17.5 13.33,17.75C13.67,18 14.33,18 15,18V19H9V18C9.67,18 10.33,18 10.67,17.75C11,17.5 11,17 11,16.5V6H8.5C7.89,6 7.27,6 6.74,6.43C6.21,6.87 5.75,7.74 5.3,8.61L4.34,8.35L5.5,4H18.5Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.Freeze">M19,19H5V5H19M19,3H5A2,2 0 0,0 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M13.96,12.29L11.21,15.83L9.25,13.47L6.5,17H17.5L13.96,12.29Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.Reverse">M21,9L17,5V8H10V10H17V13M7,11L3,15L7,19V16H14V14H7V11Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.Fullscreen">M5,5H10V7H7V10H5V5M14,5H19V10H17V7H14V5M17,14H19V19H14V17H17V14M10,17V19H5V14H7V17H10Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.StepBack">M6,18V6H8V18H6M9.5,12L18,6V18L9.5,12Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.StepForward">M16,18H18V6H16M6,18L14.5,12L6,6V18Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.Rewind">M11.5,12L20,18V6M11,18V6L2.5,12L11,18Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.Forward">M13,6V18L21.5,12M4,18L12.5,12L4,6V18Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.Film">M18,9H16V7H18M18,13H16V11H18M18,17H16V15H18M8,9H6V7H8M8,13H6V11H8M8,17H6V15H8M18,3V5H16V3H8V5H6V3H4V21H6V19H8V21H16V19H18V21H20V3H18Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.DockLeft">M20,4H4C2.9,4 2,4.9 2,6V18C2,19.1 2.9,20 4,20H20C21.1,20 22,19.1 22,18V6C22,4.9 21.1,4 20,4M20,18H8V6H20V18Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.DockRight">M4,4H20C21.1,4 22,4.9 22,6V18C22,19.1 21.1,20 20,20H4C2.9,20 2,19.1 2,18V6C2,4.9 2.9,4 4,4M4,18H16V6H4V18Z</StreamGeometry>
+    <StreamGeometry x:Key="Editor.Back">M20,11V13H8L13.5,18.5L12.08,19.92L4.16,12L12.08,4.08L13.5,5.5L8,11H20Z</StreamGeometry>
+  </UserControl.Resources>
+
+  <UserControl.DataTemplates>
+    <DataTemplate x:DataType="vm:IChoice">
+      <TextBlock Text="{Binding Label}" />
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <UserControl.Styles>
+    <Style Selector="Border.panel">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+    </Style>
+    <Style Selector="Border.panel.sliding">
+      <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
+    </Style>
+    <Style Selector="TextBlock.panel-title">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.section">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+      <Setter Property="Padding" Value="12,10" />
+    </Style>
+    <Style Selector="TextBlock.section-title">
+      <Setter Property="FontSize" Value="13" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Margin" Value="0,0,0,2" />
+    </Style>
+    <Style Selector="TextBlock.label">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBlock.value">
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="MinWidth" Value="44" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.segments">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="3" />
+    </Style>
+    <Style Selector="ToggleButton.segment">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="10,5" />
+      <Setter Property="FontSize" Value="12" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="ToggleButton.segment:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+    </Style>
+    <Style Selector="ComboBox.field">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+      <Setter Property="FontSize" Value="12.5" />
+    </Style>
+    <Style Selector="CheckBox.switch">
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="Focusable" Value="False" />
+    </Style>
+    <Style Selector="Slider">
+      <Setter Property="Focusable" Value="False" />
+    </Style>
+
+    <!-- A card in Files -->
+    <Style Selector="Border.media">
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="RenderTransform" Value="none" />
+    </Style>
+    <Style Selector="Border.media.used">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <!-- Just dropped in: the card flies in from the right -->
+    <Style Selector="Border.media.new">
+      <Style.Animations>
+        <Animation Duration="0:0:0.55" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="TranslateTransform.X" Value="160" />
+            <Setter Property="TranslateTransform.Y" Value="-40" />
+            <Setter Property="ScaleTransform.ScaleX" Value="0.7" />
+            <Setter Property="ScaleTransform.ScaleY" Value="0.7" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+            <Setter Property="TranslateTransform.X" Value="0" />
+            <Setter Property="TranslateTransform.Y" Value="0" />
+            <Setter Property="ScaleTransform.ScaleX" Value="1" />
+            <Setter Property="ScaleTransform.ScaleY" Value="1" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- Files dragged over: a glowing frame that breathes -->
+    <Style Selector="Border#DropGlow">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+    <Style Selector="Border#DropGlow.on">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border#DropGlow.on > Border">
+      <Style.Animations>
+        <Animation Duration="0:0:1.1" IterationCount="Infinite" PlaybackDirection="Alternate" Easing="SineEaseInOut">
+          <KeyFrame Cue="0%">
+            <Setter Property="Opacity" Value="0.55" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- Files added: a check in a circle draws itself, like a payment that went through -->
+    <Style Selector="Panel#Added">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="IsHitTestVisible" Value="False" />
+    </Style>
+    <Style Selector="Panel#Added.play">
+      <Setter Property="IsVisible" Value="True" />
+      <Style.Animations>
+        <Animation Duration="0:0:1.6" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+          <KeyFrame Cue="10%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+          <KeyFrame Cue="80%"><Setter Property="Opacity" Value="1" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="Opacity" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Panel#Added.play Path#AddedRing">
+      <Style.Animations>
+        <Animation Duration="0:0:0.5" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="StrokeDashOffset" Value="46" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="StrokeDashOffset" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Panel#Added.play Path#AddedCheck">
+      <Style.Animations>
+        <Animation Duration="0:0:0.75" Easing="CubicEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%"><Setter Property="StrokeDashOffset" Value="14" /></KeyFrame>
+          <KeyFrame Cue="45%"><Setter Property="StrokeDashOffset" Value="14" /></KeyFrame>
+          <KeyFrame Cue="100%"><Setter Property="StrokeDashOffset" Value="0" /></KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+    <Style Selector="Panel#Added.play Border#AddedBadge">
+      <Style.Animations>
+        <Animation Duration="0:0:0.45" Easing="BackEaseOut" FillMode="Forward">
+          <KeyFrame Cue="0%">
+            <Setter Property="ScaleTransform.ScaleX" Value="0.6" />
+            <Setter Property="ScaleTransform.ScaleY" Value="0.6" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="ScaleTransform.ScaleX" Value="1" />
+            <Setter Property="ScaleTransform.ScaleY" Value="1" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
+
+    <!-- Narrow: toolbar words go, only the icons stay -->
+    <Style Selector="Grid.compact TextBlock.tool-label">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid x:Name="Root" RowDefinitions="Auto,*,Auto" Margin="12">
+
+    <!-- Top: back to the quick cut, the file, the two modes, undo / redo, Export, maximize and close -->
+    <Grid ColumnDefinitions="*,Auto,*" Margin="2,0,2,10" IsVisible="{Binding !IsFullPreview}">
+      <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Left">
+        <Border Classes="float" Padding="5,5,12,5">
+          <StackPanel Orientation="Horizontal" Spacing="9">
+            <Border Width="26" Height="26" CornerRadius="999" Background="{DynamicResource AccentSoftBrush}">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Cut}" Foreground="{DynamicResource AccentBrush}" />
+            </Border>
+            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" MaxWidth="260"
+                       TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <TextBlock Text="{Binding LengthText, StringFormat='· {0}'}" FontSize="13" VerticalAlignment="Center"
+                       Foreground="{DynamicResource TextSecondaryBrush}" />
+          </StackPanel>
+        </Border>
+        <Border Classes="float" Padding="3" IsVisible="{Binding IsNarrow}">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <ToggleButton Classes="tool round" IsChecked="{Binding IsFilesOpen}" ToolTip.Tip="{DynamicResource editor.files}">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Editor.DockLeft}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </ToggleButton>
+            <ToggleButton Classes="tool round" IsChecked="{Binding IsPropertiesOpen}" ToolTip.Tip="{DynamicResource editor.properties}">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Editor.DockRight}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </ToggleButton>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+
+      <Border Grid.Column="1" Classes="float segments" Padding="4" Background="{DynamicResource SurfaceBrush}">
+        <StackPanel Orientation="Horizontal" Spacing="2">
+          <ToggleButton x:Name="QuickButton" Classes="segment" Content="{DynamicResource editor.quick}" Padding="14,6" IsChecked="False"
+                        Command="{Binding BackCommand}" ToolTip.Tip="{DynamicResource editor.quick_hint}" />
+          <ToggleButton Classes="segment" Content="{DynamicResource editor.open}" Padding="14,6" IsChecked="True" IsHitTestVisible="False" />
+        </StackPanel>
+      </Border>
+
+      <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+        <Border Classes="float" Padding="3">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button Classes="tool round" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}" ToolTip.Tip="{DynamicResource clip.undo}"
+                    AutomationProperties.Name="{DynamicResource clip.undo}">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Undo}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+            <Button Classes="tool round" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}" ToolTip.Tip="{DynamicResource clip.redo}"
+                    AutomationProperties.Name="{DynamicResource clip.redo}">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Redo}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+          </StackPanel>
+        </Border>
+        <Button x:Name="ExportButton" Classes="accent primary" Padding="18,9" Command="{Binding OpenExportCommand}"
+                ToolTip.Tip="{DynamicResource editor.export_hint}">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Upload}" Foreground="{DynamicResource OnAccentBrush}" />
+            <TextBlock Text="{DynamicResource editor.export}" FontSize="13.5" VerticalAlignment="Center" />
+          </StackPanel>
+        </Button>
+        <Border Classes="float" Padding="3">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button x:Name="MaximizeButton" Classes="tool round" ToolTip.Tip="{DynamicResource crop.maximize}">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Clip.Maximize}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+            <Button x:Name="CloseButton" Classes="tool round" ToolTip.Tip="{DynamicResource crop.close_hint}"
+                    AutomationProperties.Name="{DynamicResource common.close}">
+              <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Close}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Grid>
+
+    <!-- Middle: Files | the preview and the player | Properties -->
+    <Grid x:Name="Middle" Grid.Row="1" ColumnDefinitions="250,*,300" ColumnSpacing="10">
+
+      <!-- Files: the videos and the music of the clip -->
+      <Border x:Name="FilesPanel" Classes="panel" Padding="12" IsVisible="{Binding ShowFiles}">
+        <Grid RowDefinitions="Auto,*,Auto">
+          <Grid ColumnDefinitions="*,Auto" Margin="2,0,0,10">
+            <TextBlock Classes="panel-title" Text="{DynamicResource editor.files}" />
+            <Button x:Name="AddFilesButton" Grid.Column="1" Classes="tool round" Width="28" Height="28" Padding="7"
+                    ToolTip.Tip="{DynamicResource editor.add_files}">
+              <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" Foreground="{DynamicResource AccentBrush}" />
+            </Button>
+          </Grid>
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <ItemsControl x:Name="FilesList" ItemsSource="{Binding Files}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="10" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:EditorMedia">
+                  <Border Classes="media" Classes.used="{Binding IsUsed}" Classes.new="{Binding JustAdded}" Cursor="Hand"
+                          ToolTip.Tip="{Binding Path}">
+                    <Border.RenderTransform>
+                      <TransformGroup>
+                        <ScaleTransform />
+                        <TranslateTransform />
+                      </TransformGroup>
+                    </Border.RenderTransform>
+                    <Grid RowDefinitions="86,Auto">
+                      <Panel Background="#1A1A1E">
+                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" IsVisible="{Binding HasPicture}" />
+                        <PathIcon Width="28" Height="28" Data="{StaticResource Clip.Music}" Foreground="#D68A36" IsVisible="{Binding IsAudio}" />
+                        <Border Background="#99000000" CornerRadius="5" Padding="6,1" Margin="6" HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                          <TextBlock Text="{Binding DurationText}" FontSize="11" Foreground="White" />
+                        </Border>
+                        <Button Classes="tool round" Width="26" Height="26" Padding="6" Margin="5" HorizontalAlignment="Right" VerticalAlignment="Top"
+                                Background="#AA000000" Command="{Binding $parent[ItemsControl].((vm:ClipEditorViewModel)DataContext).UseMediaCommand}"
+                                CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource editor.use_media}">
+                          <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Plus}" Foreground="White" />
+                        </Button>
+                      </Panel>
+                      <StackPanel Grid.Row="1" Margin="8,6" Spacing="1">
+                        <TextBlock Text="{Binding Name}" FontSize="12.5" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding Details}" FontSize="11" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      </StackPanel>
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+          <Border Grid.Row="2" Margin="0,10,0,0" Padding="10,9" CornerRadius="{DynamicResource SoftRadiusSmall}"
+                  BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" Background="{DynamicResource AccentFaintBrush}">
+            <StackPanel Spacing="2">
+              <TextBlock Text="{DynamicResource editor.drop_here}" FontSize="12" FontWeight="SemiBold" TextWrapping="Wrap"
+                         Foreground="{DynamicResource TextPrimaryBrush}" />
+              <TextBlock Text="{DynamicResource editor.drop_hint}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+          </Border>
+        </Grid>
+      </Border>
+
+      <!-- The preview and the player -->
+      <Grid x:Name="PreviewArea" Grid.Column="1" RowDefinitions="*,Auto">
+        <Border x:Name="PreviewPanel" Classes="panel" Background="#0d0d10" ClipToBounds="True">
+          <Panel>
+            <c:EditorPreview x:Name="Preview" Host="{Binding}" AccentBrush="{DynamicResource AccentBrush}" />
+            <!-- Busy and messages -->
+            <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10" Spacing="6" IsHitTestVisible="False">
+              <Border Classes="float" Padding="10,5,12,5" IsVisible="{Binding IsBusy}" HorizontalAlignment="Right">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <ProgressBar Classes="soft" IsIndeterminate="True" Width="34" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding BusyText}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                             Foreground="{DynamicResource TextPrimaryBrush}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="float" Padding="12,5" IsVisible="{Binding HasMessage}" HorizontalAlignment="Right">
+                <TextBlock Text="{Binding Message}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+              </Border>
+            </StackPanel>
+          </Panel>
+        </Border>
+
+        <!-- The player: time, J K L and frame steps, the frame's shape, full screen -->
+        <Grid x:Name="Player" Grid.Row="1" ColumnDefinitions="*,Auto,*" Margin="0,8,0,0">
+          <TextBlock Classes="label" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" Text="{Binding TimeText}" />
+          <Border Grid.Column="1" Classes="float" Padding="4">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <Button Classes="tool round" Command="{Binding GoToStartCommand}" ToolTip.Tip="{DynamicResource editor.to_start}">
+                <PathIcon Width="12" Height="12" Data="{StaticResource Editor.StepBack}" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Button>
+              <Button Classes="tool round" Command="{Binding JumpCommand}" CommandParameter="-5" ToolTip.Tip="{DynamicResource editor.back_5}">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Editor.Rewind}" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Button>
+              <Button Classes="tool round" Command="{Binding StepFrameCommand}" CommandParameter="-1" ToolTip.Tip="{DynamicResource editor.frame_back}">
+                <TextBlock Text="‹" FontSize="17" FontWeight="SemiBold" Margin="0,-4,0,0" HorizontalAlignment="Center" />
+              </Button>
+              <Button x:Name="PlayButton" Classes="tool round" Width="40" Height="40" Command="{Binding PlayPauseCommand}"
+                      ToolTip.Tip="{Binding PlayToolTip}" Background="{DynamicResource AccentSoftBrush}">
+                <Panel>
+                  <PathIcon Width="16" Height="16" Data="{StaticResource Clip.Play}" Foreground="{DynamicResource AccentBrush}" IsVisible="{Binding !IsPlaying}" />
+                  <PathIcon Width="16" Height="16" Data="{StaticResource Clip.Pause}" Foreground="{DynamicResource AccentBrush}" IsVisible="{Binding IsPlaying}" />
+                </Panel>
+              </Button>
+              <Button Classes="tool round" Command="{Binding StepFrameCommand}" CommandParameter="1" ToolTip.Tip="{DynamicResource editor.frame_forward}">
+                <TextBlock Text="›" FontSize="17" FontWeight="SemiBold" Margin="0,-4,0,0" HorizontalAlignment="Center" />
+              </Button>
+              <Button Classes="tool round" Command="{Binding JumpCommand}" CommandParameter="5" ToolTip.Tip="{DynamicResource editor.forward_5}">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Editor.Forward}" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Button>
+              <Button Classes="tool round" Command="{Binding GoToEndCommand}" ToolTip.Tip="{DynamicResource editor.to_end}">
+                <PathIcon Width="12" Height="12" Data="{StaticResource Editor.StepForward}" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Button>
+            </StackPanel>
+          </Border>
+          <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right">
+            <Border x:Name="ShapeBar" Classes="segments">
+              <StackPanel Orientation="Horizontal" Spacing="2">
+                <ToggleButton Classes="segment" Content="{DynamicResource editor.shape_short}" IsChecked="{Binding IsSourceShape, Mode=OneWay}"
+                              Command="{Binding SetAspectCommand}" CommandParameter="" ToolTip.Tip="{DynamicResource editor.shape_source}" />
+                <ToggleButton Classes="segment" Content="16:9" IsChecked="{Binding Is16x9, Mode=OneWay}" Command="{Binding SetAspectCommand}" CommandParameter="16:9" />
+                <ToggleButton Classes="segment" Content="9:16" IsChecked="{Binding Is9x16, Mode=OneWay}" Command="{Binding SetAspectCommand}" CommandParameter="9:16" />
+                <ToggleButton Classes="segment" Content="1:1" IsChecked="{Binding Is1x1, Mode=OneWay}" Command="{Binding SetAspectCommand}" CommandParameter="1:1" />
+                <ToggleButton Classes="segment" Content="4:5" IsChecked="{Binding Is4x5, Mode=OneWay}" Command="{Binding SetAspectCommand}" CommandParameter="4:5" />
+              </StackPanel>
+            </Border>
+            <Button Classes="tool round" Command="{Binding ToggleFullPreviewCommand}" ToolTip.Tip="{DynamicResource editor.fullscreen}">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Editor.Fullscreen}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Grid>
+
+      <!-- Properties of the selection -->
+      <Border x:Name="PropertiesPanel" Grid.Column="2" Classes="panel" Padding="12" IsVisible="{Binding ShowProperties}">
+        <Grid RowDefinitions="Auto,*">
+          <StackPanel Spacing="2" Margin="2,0,0,10">
+            <TextBlock Classes="panel-title" Text="{DynamicResource editor.properties}" />
+            <TextBlock Text="{Binding SelectionTitle}" FontSize="13.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                       TextTrimming="CharacterEllipsis" />
+            <TextBlock Text="{Binding SelectionDetail}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+          <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="10">
+
+              <!-- A part: its sound -->
+              <Border Classes="section" IsVisible="{Binding IsMovingSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="section-title" Text="{DynamicResource editor.sound_section}" />
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Volume}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="2" SmallChange="0.05" LargeChange="0.25" Value="{Binding PartVolume}"
+                            IsEnabled="{Binding !PartMuted}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding PartVolumeText}" />
+                  </Grid>
+                  <CheckBox Classes="switch" Content="{DynamicResource clip.mute}" IsChecked="{Binding PartMuted}" />
+                </StackPanel>
+              </Border>
+
+              <!-- A part: its speed and direction -->
+              <Border Classes="section" IsVisible="{Binding IsMovingSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="section-title" Text="{DynamicResource editor.speed}" />
+                  <Grid ColumnDefinitions="*,10,*" RowDefinitions="Auto,Auto">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.speed_from}" Margin="0,0,0,4" />
+                    <TextBlock Grid.Column="2" Classes="label" Text="{DynamicResource editor.speed_to}" Margin="0,0,0,4" />
+                    <ComboBox Grid.Row="1" Classes="field" ItemsSource="{Binding Speeds}" SelectedItem="{Binding PartSpeed}" />
+                    <ComboBox Grid.Row="1" Grid.Column="2" Classes="field" ItemsSource="{Binding SpeedEnds}" SelectedItem="{Binding PartSpeedEnd}" />
+                  </Grid>
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.reverse}" IsChecked="{Binding PartReverse}" />
+                  <Button Classes="tool" Background="{DynamicResource SurfaceBrush}" Command="{Binding FreezeCommand}" HorizontalAlignment="Left"
+                          ToolTip.Tip="{DynamicResource editor.freeze_hint}">
+                    <StackPanel Orientation="Horizontal" Spacing="7">
+                      <PathIcon Width="13" Height="13" Data="{StaticResource Editor.Freeze}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                      <TextBlock Text="{DynamicResource editor.freeze}" FontSize="12.5" VerticalAlignment="Center" />
+                    </StackPanel>
+                  </Button>
+                </StackPanel>
+              </Border>
+
+              <!-- A still -->
+              <Border Classes="section" IsVisible="{Binding IsStillSelected}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="section-title" Text="{DynamicResource editor.freeze}" />
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.still_length}" />
+                    <Slider Grid.Column="1" Minimum="0.5" Maximum="10" SmallChange="0.5" Value="{Binding PartHold}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding PartHoldText}" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <!-- The transition into the next part -->
+              <Border Classes="section" IsVisible="{Binding HasTransitionSection}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="section-title" Text="{DynamicResource editor.transition}" />
+                  <ComboBox Classes="field" ItemsSource="{Binding Transitions}" SelectedItem="{Binding TransitionKind}" />
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" IsVisible="{Binding HasTransitionLength}">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.transition_length}" />
+                    <Slider Grid.Column="1" Minimum="0.2" Maximum="2" SmallChange="0.1" Value="{Binding TransitionSeconds}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding TransitionSecondsText}" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <!-- A part: its picture's size, place and turn -->
+              <Border Classes="section" IsVisible="{Binding HasPartSelection}">
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Classes="section-title" Text="{DynamicResource editor.frame}" />
+                    <Button Grid.Column="1" Classes="tool" Padding="8,3" FontSize="11.5" Content="{DynamicResource editor.menu_turn}"
+                            Command="{Binding TurnRightCommand}" />
+                    <Button Grid.Column="2" Classes="tool" Padding="8,3" FontSize="11.5" Content="{DynamicResource editor.reset_frame}"
+                            Command="{Binding ResetFrameCommand}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.zoom}" />
+                    <Slider Grid.Column="1" Minimum="0.2" Maximum="3" SmallChange="0.05" Value="{Binding PartZoom}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding PartZoomText}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.rotation}" />
+                    <Slider Grid.Column="1" Minimum="-180" Maximum="180" SmallChange="1" Value="{Binding PartRotation}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding PartRotationText}" />
+                  </Grid>
+                  <TextBlock Classes="label" Text="{DynamicResource editor.drag_picture}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <!-- A text -->
+              <Border Classes="section" IsVisible="{Binding HasTextSelection}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="section-title" Text="{DynamicResource editor.text}" />
+                  <TextBox x:Name="TextContentBox" Text="{Binding TextContent}" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="56" MaxHeight="120"
+                           FontSize="13" />
+                  <ComboBox Classes="field" ItemsSource="{Binding TextStyles}" SelectedItem="{Binding TextStyleChoice}" />
+                  <ComboBox Classes="field" ItemsSource="{Binding Fonts}" SelectedItem="{Binding TextFont}" ToolTip.Tip="{DynamicResource editor.font}">
+                    <ComboBox.ItemTemplate>
+                      <DataTemplate x:DataType="vm:Choice`1">
+                        <TextBlock Text="{Binding Label}" FontFamily="{Binding Value, Converter={x:Static vm:FontNames.Family}}" />
+                      </DataTemplate>
+                    </ComboBox.ItemTemplate>
+                  </ComboBox>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.text_size}" />
+                    <Slider Grid.Column="1" Minimum="0.02" Maximum="0.2" SmallChange="0.005" Value="{Binding TextSize}" VerticalAlignment="Center" />
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding TextColors}">
+                    <ItemsControl.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel Orientation="Horizontal" Spacing="6" />
+                      </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="x:String">
+                        <Button Width="24" Height="24" CornerRadius="999" Padding="0" BorderThickness="2" BorderBrush="{DynamicResource SubtleBorderBrush}"
+                                Background="{Binding}" Cursor="Hand"
+                                Command="{Binding $parent[ItemsControl].((vm:ClipEditorViewModel)DataContext).SetTextColorCommand}"
+                                CommandParameter="{Binding}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.text_length}" />
+                    <Slider Grid.Column="1" Minimum="0.5" Maximum="20" SmallChange="0.5" Value="{Binding TextLength}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding TextLengthText}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.opacity}" />
+                    <Slider Grid.Column="1" Minimum="0.05" Maximum="1" SmallChange="0.05" Value="{Binding TextOpacity}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding TextOpacityText}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.rotation}" />
+                    <Slider Grid.Column="1" Minimum="-180" Maximum="180" SmallChange="1" Value="{Binding TextRotation}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding TextRotationText}" />
+                  </Grid>
+                </StackPanel>
+              </Border>
+
+              <!-- A picture over the video -->
+              <Border Classes="section" IsVisible="{Binding HasImageSelection}">
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Classes="section-title" Text="{DynamicResource editor.picture}" />
+                    <Button Grid.Column="1" Classes="tool" Padding="8,3" FontSize="11.5" Content="{DynamicResource editor.menu_turn}"
+                            Command="{Binding TurnRightCommand}" />
+                    <Button Grid.Column="2" Classes="tool" Padding="8,3" FontSize="11.5" Content="{DynamicResource editor.reset_frame}"
+                            Command="{Binding ResetFrameCommand}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.text_size}" />
+                    <Slider Grid.Column="1" Minimum="0.03" Maximum="1.5" SmallChange="0.01" Value="{Binding ImageWidth}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding ImageWidthText}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.opacity}" />
+                    <Slider Grid.Column="1" Minimum="0.05" Maximum="1" SmallChange="0.05" Value="{Binding ImageOpacity}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding ImageOpacityText}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.rotation}" />
+                    <Slider Grid.Column="1" Minimum="-180" Maximum="180" SmallChange="1" Value="{Binding ImageRotation}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding ImageRotationText}" />
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <TextBlock Classes="label" Text="{DynamicResource editor.text_length}" />
+                    <Slider Grid.Column="1" Minimum="0.5" Maximum="60" SmallChange="0.5" Value="{Binding ImageLength}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding ImageLengthText}" />
+                  </Grid>
+                  <TextBlock Classes="label" Text="{DynamicResource editor.drag_picture}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Border>
+
+              <!-- A sound -->
+              <Border Classes="section" IsVisible="{Binding HasSoundSelection}">
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <TextBlock Classes="section-title" Text="{DynamicResource editor.sound}" />
+                    <Border Grid.Column="1" Classes="segments" Padding="2">
+                      <StackPanel Orientation="Horizontal" Spacing="2">
+                        <Button Classes="tool round" Width="26" Height="26" Padding="5" Command="{Binding MoveSoundTrackCommand}" CommandParameter="-1"
+                                ToolTip.Tip="{DynamicResource editor.menu_track_up}">
+                          <PathIcon Width="10" Height="10" Data="{StaticResource Icon.ArrowUp}" />
+                        </Button>
+                        <TextBlock Text="{Binding SoundTrackText}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="4,0" />
+                        <Button Classes="tool round" Width="26" Height="26" Padding="5" Command="{Binding MoveSoundTrackCommand}" CommandParameter="1"
+                                ToolTip.Tip="{DynamicResource editor.menu_track_down}">
+                          <PathIcon Width="10" Height="10" Data="{StaticResource Icon.ArrowDown}" />
+                        </Button>
+                      </StackPanel>
+                    </Border>
+                  </Grid>
+                  <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Volume}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Slider Grid.Column="1" Minimum="0" Maximum="2" SmallChange="0.05" Value="{Binding SoundVolume}" VerticalAlignment="Center" />
+                    <TextBlock Grid.Column="2" Classes="value" Text="{Binding SoundVolumeText}" />
+                  </Grid>
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.music_fade}" IsChecked="{Binding SoundFade}" />
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.duck}" IsChecked="{Binding DuckMusic}" />
+                  <TextBlock Classes="label" Text="{DynamicResource editor.sound_hint}" TextWrapping="Wrap" />
+                  <Button Classes="tool" Background="{DynamicResource SurfaceBrush}" HorizontalAlignment="Left" Command="{Binding DeleteSelectedCommand}"
+                          Content="{DynamicResource editor.remove_sound}" FontSize="12.5" />
+                </StackPanel>
+              </Border>
+
+              <!-- The whole clip (nothing selected) -->
+              <Border Classes="section" IsVisible="{Binding HasNoSelection}">
+                <StackPanel Spacing="8">
+                  <TextBlock Classes="section-title" Text="{DynamicResource editor.shape}" />
+                  <ComboBox Classes="field" ItemsSource="{Binding Aspects}" SelectedItem="{Binding AspectChoice}" />
+                  <TextBlock Classes="label" Text="{DynamicResource editor.fit}" TextWrapping="Wrap" />
+                  <ComboBox Classes="field" ItemsSource="{Binding Fits}" SelectedItem="{Binding FitChoice}" />
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.fade_in}" IsChecked="{Binding HasFadeIn}" />
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.fade_out}" IsChecked="{Binding HasFadeOut}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="section" IsVisible="{Binding HasNoSelection}">
+                <StackPanel Spacing="6">
+                  <TextBlock Classes="section-title" Text="{DynamicResource editor.sound_tools}" />
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.level}" IsChecked="{Binding LevelLoudness}"
+                            ToolTip.Tip="{DynamicResource editor.level_hint}" />
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.duck}" IsChecked="{Binding DuckMusic}"
+                            ToolTip.Tip="{DynamicResource editor.duck_hint}" />
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.noise}" IsChecked="{Binding ReduceNoise}"
+                            ToolTip.Tip="{DynamicResource editor.noise_hint}" />
+                  <CheckBox Classes="switch" Content="{DynamicResource editor.lift}" IsChecked="{Binding LiftSpeech}"
+                            ToolTip.Tip="{DynamicResource editor.lift_hint}" />
+                </StackPanel>
+              </Border>
+            </StackPanel>
+          </ScrollViewer>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Bottom: the tools and the timeline -->
+    <Border x:Name="Bottom" Grid.Row="2" Classes="panel" Padding="10,8,10,8" Margin="0,10,0,0" IsVisible="{Binding !IsFullPreview}">
+      <StackPanel Spacing="6">
+        <Grid x:Name="Tools" ColumnDefinitions="*,Auto">
+          <ScrollViewer HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+            <StackPanel Orientation="Horizontal" Spacing="2">
+              <Button Classes="tool" Padding="10,6" Command="{Binding SplitCommand}" ToolTip.Tip="{DynamicResource editor.split_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Cut}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource clip.cut}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" Command="{Binding DeleteSelectedCommand}" ToolTip.Tip="{DynamicResource editor.delete_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Delete}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource clip.delete}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" Command="{Binding DuplicateCommand}" ToolTip.Tip="{DynamicResource editor.duplicate_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Copy}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource editor.duplicate}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" Command="{Binding FreezeCommand}" ToolTip.Tip="{DynamicResource editor.freeze_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Editor.Freeze}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource editor.freeze}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" Command="{Binding TurnRightCommand}" ToolTip.Tip="{DynamicResource editor.turn_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Refresh}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource editor.menu_turn}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" Command="{Binding ToggleReverseCommand}" ToolTip.Tip="{DynamicResource editor.reverse_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Editor.Reverse}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource editor.reverse_short}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" ToolTip.Tip="{DynamicResource editor.text_hint}">
+                <Button.Flyout>
+                  <MenuFlyout Placement="TopEdgeAlignedLeft">
+                    <MenuItem Header="{DynamicResource editor.style_title}" Command="{Binding AddTextCommand}" CommandParameter="Title" />
+                    <MenuItem Header="{DynamicResource editor.style_caption}" Command="{Binding AddTextCommand}" CommandParameter="Caption" />
+                    <MenuItem Header="{DynamicResource editor.style_label}" Command="{Binding AddTextCommand}" CommandParameter="Label" />
+                  </MenuFlyout>
+                </Button.Flyout>
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Editor.Text}" Foreground="{DynamicResource AccentBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource editor.text}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" Command="{Binding RemoveSilenceCommand}" ToolTip.Tip="{DynamicResource clip.remove_silence_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Silence}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource clip.remove_silence}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Padding="10,6" Command="{Binding CloseGapsCommand}" IsVisible="{Binding HasGaps}"
+                      ToolTip.Tip="{DynamicResource clip.close_gaps_hint}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="14" Height="14" Data="{StaticResource Clip.CloseGaps}" Foreground="{DynamicResource AccentBrush}" />
+                  <TextBlock Classes="tool-label" Text="{DynamicResource clip.close_gaps}" FontSize="12.5" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
+            <Button Classes="tool round" Width="28" Height="28" Padding="6" Command="{Binding ZoomTimelineOutCommand}" ToolTip.Tip="{DynamicResource editor.zoom_out}">
+              <TextBlock Text="−" FontSize="15" Margin="0,-3,0,0" HorizontalAlignment="Center" />
+            </Button>
+            <Slider Width="110" Minimum="0" Maximum="1" Value="{Binding TimelineZoom}" VerticalAlignment="Center"
+                    ToolTip.Tip="{DynamicResource editor.zoom_timeline}" />
+            <Button Classes="tool round" Width="28" Height="28" Padding="6" Command="{Binding ZoomTimelineInCommand}" ToolTip.Tip="{DynamicResource editor.zoom_in}">
+              <TextBlock Text="+" FontSize="15" Margin="0,-3,0,0" HorizontalAlignment="Center" />
+            </Button>
+          </StackPanel>
+        </Grid>
+
+        <c:EditorTimeline x:Name="Timeline" Host="{Binding}" Zoom="{Binding TimelineZoom}" Margin="2,0"
+                          AutomationProperties.Name="{DynamicResource clip.sequence}"
+                          AccentBrush="{DynamicResource AccentBrush}" OnAccentBrush="{DynamicResource OnAccentBrush}"
+                          TrackBrush="{DynamicResource SurfaceAltBrush}" Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock Text="{DynamicResource editor.hint_keys}" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"
+                   TextWrapping="Wrap" Opacity="0.75" Foreground="{DynamicResource TextSecondaryBrush}" />
+      </StackPanel>
+    </Border>
+
+    <!-- Files dragged over the editor -->
+    <Border x:Name="DropGlow" Grid.RowSpan="3" Margin="-6" CornerRadius="{DynamicResource SoftRadiusLarge}" Background="#14FFFFFF">
+      <Border BorderBrush="{DynamicResource AccentBrush}" BorderThickness="3" CornerRadius="{DynamicResource SoftRadiusLarge}"
+              BoxShadow="0 0 28 6 #887F77DD">
+        <Border Classes="float" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="22,14">
+          <StackPanel Orientation="Horizontal" Spacing="12">
+            <PathIcon Width="22" Height="22" Data="{StaticResource Icon.Download}" Foreground="{DynamicResource AccentBrush}" />
+            <TextBlock x:Name="DropText" Text="{DynamicResource editor.drop_release}" FontSize="15" FontWeight="SemiBold"
+                       VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+          </StackPanel>
+        </Border>
+      </Border>
+    </Border>
+
+    <!-- Files added: the check -->
+    <Panel x:Name="Added" Grid.RowSpan="3">
+      <Border x:Name="AddedBadge" Classes="float" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="26,22" CornerRadius="24"
+              RenderTransformOrigin="50%,50%">
+        <Border.RenderTransform>
+          <ScaleTransform />
+        </Border.RenderTransform>
+        <StackPanel Spacing="12" HorizontalAlignment="Center">
+          <Panel Width="64" Height="64" HorizontalAlignment="Center">
+            <Ellipse Width="64" Height="64" Fill="{DynamicResource AccentSoftBrush}" />
+            <Path x:Name="AddedRing" Data="M 32,4 A 28,28 0 1 1 31.99,4" Stroke="{DynamicResource AccentBrush}" StrokeThickness="4"
+                  StrokeDashArray="46,46" StrokeDashOffset="0" StrokeLineCap="Round" />
+            <Path x:Name="AddedCheck" Data="M 19,33 L 28,42 L 46,23" Stroke="{DynamicResource AccentBrush}" StrokeThickness="4.5"
+                  StrokeDashArray="14,14" StrokeDashOffset="0" StrokeLineCap="Round" StrokeJoin="Round" />
+          </Panel>
+          <TextBlock x:Name="AddedText" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </StackPanel>
+      </Border>
+    </Panel>
+
+    <!-- Going back to the quick cut loses what only the editor has -->
+    <Border Grid.RowSpan="3" Background="#66000000" Margin="-12" IsVisible="{Binding IsBackConfirmOpen}">
+      <Border Classes="card" MaxWidth="460" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="22,20">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{DynamicResource editor.back_title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextPrimaryBrush}" />
+          <TextBlock Text="{DynamicResource editor.back_text}" FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+          <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Classes="tool" Content="{DynamicResource editor.stay}" Command="{Binding StayInEditorCommand}" />
+            <Button Classes="accent primary" Content="{DynamicResource editor.back_confirm}" Command="{Binding ConfirmBackCommand}" />
+          </StackPanel>
+        </StackPanel>
+      </Border>
+    </Border>
+
+    <!-- The Export window -->
+    <Border Grid.RowSpan="3" Background="#66000000" Margin="-12" IsVisible="{Binding IsExportOpen}">
+      <Border x:Name="ExportCard" Classes="card" Width="540" MaxWidth="{Binding $parent[Border].Bounds.Width}" HorizontalAlignment="Center"
+              VerticalAlignment="Center" Padding="22,20">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" MaxHeight="{Binding $parent[Border;1].Bounds.Height}">
+          <StackPanel Spacing="14">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Text="{DynamicResource editor.export}" FontSize="18" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+              <Button Grid.Column="1" Classes="tool round" Command="{Binding CloseExportCommand}" AutomationProperties.Name="{DynamicResource common.close}">
+                <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Close}" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Button>
+            </Grid>
+            <StackPanel Spacing="6">
+              <TextBlock Classes="label" Text="{DynamicResource editor.export_for}" />
+              <ListBox ItemsSource="{Binding ExportPresets}" SelectedItem="{Binding ExportPreset}" Background="Transparent">
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <WrapPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="11,6" />
+                    <Setter Property="Margin" Value="0,0,6,6" />
+                    <Setter Property="CornerRadius" Value="999" />
+                    <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+                    <Setter Property="FontSize" Value="12.5" />
+                  </Style>
+                  <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+                    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+                    <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:IChoice">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ListBox.ItemTemplate>
+              </ListBox>
+            </StackPanel>
+            <Grid ColumnDefinitions="*,12,*" RowDefinitions="Auto,10,Auto,10,Auto">
+              <StackPanel Spacing="4">
+                <TextBlock Classes="label" Text="{DynamicResource editor.resolution}" />
+                <ComboBox Classes="field" ItemsSource="{Binding ExportResolutions}" SelectedItem="{Binding ExportResolution}" />
+              </StackPanel>
+              <StackPanel Grid.Column="2" Spacing="4">
+                <TextBlock Classes="label" Text="{DynamicResource editor.format}" />
+                <ComboBox Classes="field" ItemsSource="{Binding ExportFormats}" SelectedItem="{Binding ExportFormat}" />
+              </StackPanel>
+              <StackPanel Grid.Row="2" Spacing="4">
+                <TextBlock Classes="label" Text="{DynamicResource editor.fps_label}" />
+                <ComboBox Classes="field" ItemsSource="{Binding ExportFpsChoices}" SelectedItem="{Binding ExportFps}" />
+              </StackPanel>
+              <StackPanel Grid.Row="2" Grid.Column="2" Spacing="4">
+                <TextBlock Classes="label" Text="{DynamicResource editor.quality}" />
+                <ComboBox Classes="field" ItemsSource="{Binding ExportQualities}" SelectedItem="{Binding ExportQuality}" />
+              </StackPanel>
+              <StackPanel Grid.Row="4" Spacing="4" IsVisible="{Binding !IsGif}">
+                <TextBlock Classes="label" Text="{DynamicResource editor.limit}" />
+                <ComboBox Classes="field" ItemsSource="{Binding ExportLimits}" SelectedItem="{Binding ExportLimit}" />
+              </StackPanel>
+              <StackPanel Grid.Row="4" Grid.Column="2" Spacing="4" IsVisible="{Binding HasCustomLimit}">
+                <TextBlock Classes="label" Text="{DynamicResource editor.limit_custom_mb}" />
+                <NumericUpDown Value="{Binding CustomLimit}" Minimum="1" Maximum="4000" Increment="5" FormatString="0" />
+              </StackPanel>
+            </Grid>
+            <CheckBox Classes="switch" Content="{Binding SeparateText}" IsChecked="{Binding ExportSeparate}"
+                      ToolTip.Tip="{DynamicResource editor.export_separate_hint}" />
+            <Border Classes="section">
+              <StackPanel Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <Ellipse Width="8" Height="8" Fill="#3BB273" VerticalAlignment="Center" IsVisible="{Binding HasGpu}" />
+                  <CheckBox Classes="switch" IsChecked="{Binding UseGpu}" IsEnabled="{Binding HasGpu}" IsVisible="{Binding !IsGif}">
+                    <TextBlock Text="{Binding GpuText}" TextWrapping="Wrap" FontWeight="SemiBold" />
+                  </CheckBox>
+                </StackPanel>
+                <TextBlock Classes="label" Text="{Binding ExportSummary}" TextWrapping="Wrap" />
+                <TextBlock Classes="label" Text="{DynamicResource editor.saved_next_to}" TextWrapping="Wrap" Opacity="0.85" />
+              </StackPanel>
+            </Border>
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+              <Button Classes="tool" Content="{DynamicResource common.cancel}" Command="{Binding CloseExportCommand}" />
+              <Button x:Name="ExportStartButton" Classes="accent primary" Padding="20,9" Command="{Binding ExportCommand}">
+                <TextBlock Text="{DynamicResource editor.export_start}" FontSize="13.5" />
+              </Button>
+            </StackPanel>
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+    </Border>
+  </Grid>
+</UserControl>

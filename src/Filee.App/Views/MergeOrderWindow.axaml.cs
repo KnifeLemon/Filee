@@ -11,6 +11,7 @@ public partial class MergeOrderWindow : Window
     {
         InitializeComponent();
         Motion.Track(this);
+        UiZoom.Track(this);
     }
 
     public IReadOnlyList<string>? Result { get; private set; }

@@ -31,7 +31,7 @@ internal static partial class MediaEncoding
     /// <c>trim</c>, so a clip late in a long video starts at once. The music is the second input, read from where it
     /// starts playing.
     /// </summary>
-    /// <param name="edit">The clip, already <see cref="ClipEdit.Clamped"/> to the video.</param>
+    /// <param name="edit">The clip, already <see cref="ClipEdit.Clamped(double?)"/> to the video.</param>
     /// <param name="pixelFormat">The pictures' format, the same for every part (pauses included) so they join.</param>
     /// <param name="video">
     /// False for the sound alone (the preview's): FFmpeg refuses a graph with a picture output nothing takes.

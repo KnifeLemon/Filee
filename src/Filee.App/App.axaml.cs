@@ -257,6 +257,20 @@ public partial class App : Application
 
         var custom = CustomTheme.Load(AppHost.Get<UserDataStore>().Directory, AppHost.Get<ILogger<App>>());
         AppHost.Get<ThemeService>().Apply(settings.Theme, loc.Language, custom);
+        // Ctrl + wheel / Ctrl +/- / Ctrl+0: everything larger or smaller, remembered.
+        UiZoom.Configure(settings.UiScale, scale =>
+        {
+            var store = AppHost.Get<UserDataStore>();
+            store.Settings.UiScale = scale;
+            try
+            {
+                store.SaveSettings();
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                AppHost.Get<ILogger<App>>().LogWarning(ex, "Could not remember the window zoom");
+            }
+        });
         AppHost.Get<TriggerService>().Apply(settings);
         AppHost.Get<ConverterCatalog>().Priority = settings.EnginePriority;
         if (ownCopiesChanged || routesChanged)

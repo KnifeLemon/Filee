@@ -32,6 +32,16 @@ public interface IVideoFrameSource
     /// height, seconds into the clip) on a worker thread, when it is due. Ends when played or cancelled.
     /// </summary>
     Task PlayAsync(string path, ClipEdit clip, int height, Action<byte[], int, int, double> onFrame, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Plays an editor clip (<see cref="ClipEdit.Editor"/>; <paramref name="path"/> is the window's video) in its frame
+    /// scaled to fit <paramref name="maxWidth"/> × <paramref name="maxHeight"/>, without its texts.
+    /// </summary>
+    Task PlayEditorAsync(string path, ClipEdit clip, int maxWidth, int maxHeight, Action<byte[], int, int, double> onFrame,
+        CancellationToken cancellationToken);
+
+    /// <summary>The graphics chip's encoder for <paramref name="codec"/> that works here ("h264_nvenc"), or null.</summary>
+    Task<string?> FindHardwareEncoderAsync(string codec, CancellationToken cancellationToken);
 }
 
 /// <summary>All of it with Filee's FFmpeg (<see cref="VideoFrames"/>, <see cref="ClipPreview"/>).</summary>
@@ -54,4 +64,11 @@ public sealed class FfmpegFrameSource : IVideoFrameSource
 
     public Task PlayAsync(string path, ClipEdit clip, int height, Action<byte[], int, int, double> onFrame, CancellationToken cancellationToken) =>
         ClipPreview.PlayAsync(path, clip, height, onFrame, cancellationToken);
+
+    public Task PlayEditorAsync(string path, ClipEdit clip, int maxWidth, int maxHeight, Action<byte[], int, int, double> onFrame,
+        CancellationToken cancellationToken) =>
+        ClipPreview.PlayEditorAsync(path, clip, maxWidth, maxHeight, onFrame, cancellationToken);
+
+    public Task<string?> FindHardwareEncoderAsync(string codec, CancellationToken cancellationToken) =>
+        VideoFrames.HardwareEncoderAsync(codec, cancellationToken);
 }

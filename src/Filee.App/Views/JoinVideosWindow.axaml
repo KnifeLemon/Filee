@@ -1,0 +1,80 @@
+<!-- "Join videos" from the donut: the order (moved with the arrows or Alt+Up / Alt+Down), what each video is, how
+     videos of another shape fill the frame when they differ, and Join or Open in editor. Cancel or closing the window
+     starts nothing. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.JoinVideosWindow"
+        x:DataType="vm:JoinVideosViewModel"
+        Title="{DynamicResource preset.join}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="600" Height="560" MinWidth="460" MinHeight="380"
+        WindowStartupLocation="CenterScreen">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveUpCommand}" />
+    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveDownCommand}" />
+    <KeyBinding Gesture="Escape" Command="{Binding CancelCommand}" />
+  </Window.KeyBindings>
+  <Window.DataTemplates>
+    <DataTemplate x:DataType="vm:IChoice">
+      <TextBlock Text="{Binding Label}" />
+    </DataTemplate>
+  </Window.DataTemplates>
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            Background="{DynamicResource SurfaceBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
+          <Button x:Name="MoveUp" Classes="icon" Command="{Binding MoveUpCommand}"
+                  ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}">
+            <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+          </Button>
+          <Button x:Name="MoveDown" Classes="icon" Command="{Binding MoveDownCommand}"
+                  ToolTip.Tip="{DynamicResource group.move_down}" AutomationProperties.Name="{DynamicResource group.move_down}">
+            <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+          </Button>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+          <Button x:Name="CancelJoin" Content="{DynamicResource common.cancel}" Command="{Binding CancelCommand}" IsCancel="True" />
+          <Button x:Name="OpenInEditor" Content="{DynamicResource join.open_editor}" Command="{Binding OpenInEditorCommand}" />
+          <Button x:Name="StartJoin" Classes="accent" Content="{DynamicResource join.start}" Command="{Binding JoinCommand}" IsDefault="True" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+    <DockPanel Margin="20,18,20,14">
+      <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,12">
+        <TextBlock Classes="h2" Text="{DynamicResource preset.join}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource join.hint}" />
+      </StackPanel>
+      <StackPanel DockPanel.Dock="Bottom" Spacing="10" Margin="0,12,0,0">
+        <TextBlock Text="{Binding Reading}" TextWrapping="Wrap" FontWeight="SemiBold" />
+        <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding Differ}">
+          <StackPanel Spacing="4">
+            <TextBlock Classes="caption" Text="{DynamicResource editor.fit}" />
+            <ComboBox x:Name="FitBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Fits}" SelectedItem="{Binding Fit}" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" Spacing="4">
+            <TextBlock Classes="caption" Text="{DynamicResource join.size}" />
+            <ComboBox x:Name="SizeBox" HorizontalAlignment="Stretch" ItemsSource="{Binding Resolutions}" SelectedItem="{Binding Resolution}" />
+          </StackPanel>
+        </Grid>
+      </StackPanel>
+      <ListBox x:Name="FileOrder" ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+          </Style>
+        </ListBox.Styles>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:JoinSource">
+            <StackPanel Spacing="2" Margin="4,6" ToolTip.Tip="{Binding Path}">
+              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="caption" Text="{Binding Details}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+  </DockPanel>
+</Window>

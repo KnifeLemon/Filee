@@ -28,7 +28,7 @@ namespace Filee.App.Tests;
 public class ClipWindowTests
 {
     /// <summary>A 5:12.4 video, as long as the highlights the tool is for come from.</summary>
-    private const double Length = 312.4;
+    internal const double Length = 312.4;
 
     [AvaloniaFact]
     public void A_video_opens_on_its_first_30_seconds_with_the_timeline_filled()
@@ -875,6 +875,9 @@ public class ClipWindowTests
         }
     }
 
+    /// <summary>The window's files after its first (to add in the editor).</summary>
+    internal static IReadOnlyList<string> OtherFiles(ClipWindowViewModel vm) => [.. vm.FilePaths.Skip(1)];
+
     internal static void Press(ClipWindow window, Key key, RawInputModifiers modifiers = RawInputModifiers.None)
     {
         window.KeyPress(key, modifiers, PhysicalKey.None, null);
@@ -947,16 +950,47 @@ public class ClipWindowTests
                 await hold.Task.WaitAsync(cancellationToken).ContinueWith(_ => { }, TaskScheduler.Default);
         }
 
+        /// <summary>The editor's clips played, as asked for.</summary>
+        public List<ClipEdit> PlayedEditor { get; } = [];
+
+        public async Task PlayEditorAsync(string path, ClipEdit clip, int maxWidth, int maxHeight, Action<byte[], int, int, double> onFrame,
+            CancellationToken cancellationToken)
+        {
+            PlayedEditor.Add(clip);
+            if (HoldStart is { } start)
+                await start.Task.WaitAsync(cancellationToken);
+            var (width, height) = (maxWidth, maxWidth * 9 / 16);
+            var pixels = new byte[width * height * 4];
+            for (var n = 0; n < PlayedFrames && !cancellationToken.IsCancellationRequested; n++)
+            {
+                Array.Fill(pixels, (byte)(40 + n * 10));
+                onFrame(pixels, width, height, n / 25.0);
+                await Task.Yield();
+            }
+            if (HoldPlaying is { } hold)
+                await hold.Task.WaitAsync(cancellationToken).ContinueWith(_ => { }, TaskScheduler.Default);
+        }
+
+        /// <summary>The graphics chip found, or null.</summary>
+        public string? HardwareEncoder { get; set; } = "h264_nvenc";
+
+        public Task<string?> FindHardwareEncoderAsync(string codec, CancellationToken cancellationToken) => Task.FromResult(HardwareEncoder);
+
+        /// <summary>Sounds (.mp3, .wav, .m4a) aren't videos; "tall" ones stand upright; "broken" ones can't be read.</summary>
         public Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken) =>
             Path.GetFileName(path).Contains("broken", StringComparison.Ordinal)
+            || Path.GetExtension(path).ToLowerInvariant() is ".mp3" or ".wav" or ".m4a"
                 ? Task.FromException<VideoSummary>(new InvalidOperationException("Invalid data found when processing input"))
-                : Task.FromResult(new VideoSummary(duration, 1920, 1080, 30));
+                : Task.FromResult(Path.GetFileName(path).Contains("tall", StringComparison.Ordinal)
+                    ? new VideoSummary(duration / 2, 1080, 1920, 30)
+                    : new VideoSummary(duration, 1920, 1080, 30));
 
         public Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken)
         {
             _times.Enqueue(seconds);
+            var tall = Path.GetFileName(path).Contains("tall", StringComparison.Ordinal);
             var height = (uint)maxHeight;
-            var width = height * 16 / 9;
+            var width = tall ? height * 9 / 16 : height * 16 / 9;
             var t = Math.Clamp(seconds / duration, 0, 1);
             var top = Hsl(200 + 160 * t, 0.65, 0.55);
             var bottom = Hsl(30 + 20 * t, 0.85, 0.75);

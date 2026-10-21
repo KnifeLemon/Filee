@@ -10,6 +10,7 @@ public partial class EngineSetupWindow : Window
     {
         InitializeComponent();
         Motion.Track(this);
+        UiZoom.Track(this);
         DataContextChanged += (_, _) =>
         {
             if (DataContext is EngineSetupViewModel vm)

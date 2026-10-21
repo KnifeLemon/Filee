@@ -83,6 +83,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     private readonly Action<string, Preset> _export;
     private readonly ILogger? _log;
     private readonly string _workFolder;
+    private IReadOnlyList<string>? _joining;
 
     private CancellationTokenSource _fileCts = new();
     private CancellationTokenSource? _previewCts;
@@ -218,6 +219,18 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private bool _isMagnet = true;
 
+    /// <summary>The editor (the window's second mode), or null for the quick cut.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditorMode))]
+    [NotifyPropertyChangedFor(nameof(IsQuickMode))]
+    private ClipEditorViewModel? _editor;
+
+    public bool IsEditorMode => Editor is not null;
+
+    /// <summary>The videos the window was opened with.</summary>
+    public IReadOnlyList<string> FilePaths => _files;
+    public bool IsQuickMode => Editor is null && IsEditing;
+
     /// <summary>The timeline shows the clip and a little around it instead of the whole video (Z).</summary>
     [ObservableProperty] private bool _isZoomed;
 
@@ -259,6 +272,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditing))]
     [NotifyPropertyChangedFor(nameof(CanEdit))]
+    [NotifyPropertyChangedFor(nameof(IsQuickMode))]
     private bool _isFinished;
 
     [ObservableProperty] private string _summary = "";
@@ -470,9 +484,14 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <param name="frames">Length, pictures, sound and playing of a video (FFmpeg).</param>
     /// <param name="targetFor">The format a clip of the file at a path is written in.</param>
     /// <param name="export">Starts the conversion that writes a clip (the file, the conversion's preset).</param>
+    /// <param name="joining">
+    /// Videos joined in the editor after the first of <paramref name="files"/> ("Join videos"): the window opens the
+    /// editor with all of them one after the other.
+    /// </param>
     public ClipWindowViewModel(IReadOnlyList<string> files, Preset tool, ILocalizer loc, UserDataStore store, IVideoFrameSource frames,
-        Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null)
+        Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null, IReadOnlyList<string>? joining = null)
     {
+        _joining = joining;
         _files = files;
         _tool = tool;
         _loc = loc;
@@ -506,6 +525,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         var ct = _fileCts.Token;
         _previewCts?.Cancel();
 
+        DropEditor();
         IsLoading = true;
         CurrentIndex = index;
         var path = _files[index];
@@ -559,7 +579,83 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         IsLoading = false;
         SchedulePreview(immediately: true);
         _ = ReadLoudnessAsync(path, video.Duration, ct);
+        if (_joining is { } joining)
+        {
+            // "Join videos": the editor at once, with the others after this one.
+            _joining = null;
+            StartEditor(ClipEdit.Of(new ClipRange(0, video.Duration)));
+            if (Editor is { } editor)
+                await editor.AddFilesAsync(joining, toTimeline: true);
+        }
         await FillTimelineAsync(path, video.Duration, ct);
+    }
+
+    // ───────────────────────── The editor ─────────────────────────
+
+    /// <summary>Opens the editor with the clip so far (the quick cut carries over).</summary>
+    [RelayCommand]
+    public void OpenEditor()
+    {
+        if (_cutter is not null)
+            StartEditor(_cutter.ToEdit(join: false));
+    }
+
+    private void StartEditor(ClipEdit start)
+    {
+        if (!CanEdit || _video is null || Editor is not null || _closed)
+            return;
+        StopPlaying();
+        var path = _files[CurrentIndex];
+        var editor = new ClipEditorViewModel(path, _video, start, _tool, _loc, _store, _frames, _export, _workFolder, _log);
+        editor.Exported += OnEditorExported;
+        editor.BackRequested += CloseEditor;
+        Editor = editor;
+        OnPropertyChanged(nameof(IsQuickMode));
+    }
+
+    /// <summary>Files dropped on the quick cut: the editor opens with them after the clip.</summary>
+    public async Task OpenEditorWithAsync(IReadOnlyList<string> files)
+    {
+        OpenEditor();
+        if (Editor is { } editor)
+            await editor.AddFilesAsync(files, toTimeline: true);
+    }
+
+    /// <summary>Back to the quick cut: the editor's clip when it is one, else the clip's stretch of the video.</summary>
+    public void CloseEditor()
+    {
+        if (Editor is not { } editor)
+            return;
+        var cutter = editor.ToQuickCut();
+        if (cutter is null)
+        {
+            var parts = editor.ToEdit().Parts.Where(p => !p.Blank && p.Source is null).ToList();
+            var start = parts.Count > 0 ? parts.Min(p => p.Start) : 0;
+            var end = parts.Count > 0 ? parts.Max(p => Math.Max(p.End, p.Start + ClipRange.MinLength)) : Math.Min(Duration, FirstClipLength);
+            cutter = new ClipCutter(Duration, new ClipRange(start, end));
+        }
+        DropEditor();
+        UseCutter(cutter);
+        SelectedIndices = [];
+        SelectedIndex = -1;
+        SchedulePreview(immediately: true);
+    }
+
+    private void OnEditorExported()
+    {
+        DropEditor();
+        _ = LoadFileAsync(CurrentIndex + 1);
+    }
+
+    private void DropEditor()
+    {
+        if (Editor is not { } editor)
+            return;
+        editor.Exported -= OnEditorExported;
+        editor.BackRequested -= CloseEditor;
+        Editor = null;
+        editor.Dispose();
+        OnPropertyChanged(nameof(IsQuickMode));
     }
 
     /// <summary>Takes the timeline's pictures, a few at a time, each shown as soon as it is there.</summary>
@@ -1557,6 +1653,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        DropEditor();
         Shutdown();
         _loc.LanguageChanged -= OnLanguageChanged;
         UseCutter(null);

@@ -1968,6 +1968,102 @@ public class RenderTests
         });
     }
 
+    /// <summary>
+    /// The clip editor: a video joined with an upright one in a 9:16 frame over a blurred copy, a caption, a transition,
+    /// music, the parts' properties; then the clip's own settings, the Export window, a narrow window and the join window.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("ru", true)]
+    [InlineData("ru", false)]
+    [InlineData("en", true)]
+    [InlineData("ar", false)]
+    public void Clip_editor_renders(string language, bool dark)
+    {
+        ClipWindowTests.WithClipWindow(language, dark, ["Match highlights.mp4", "Round 2 tall.mp4", "Summer song.mp3"], (window, vm, frames, _) =>
+        {
+            window.Width = 1480;
+            window.Height = 920;
+            vm.MoveHandle(ClipHandle.Start, 95.3);
+            vm.SetLength(20);
+            vm.OpenEditor();
+            var editor = vm.Editor!;
+            var others = ClipWindowTests.OtherFiles(vm);
+            editor.AddFilesAsync(others, toTimeline: true).GetAwaiter().GetResult();
+            ClipWindowTests.WaitFor(() => editor.Files.All(f => f.IsAudio ? editor.LoudnessOf(f.Path).Count > 0 : f.Thumbnail is not null));
+            editor.Seek(8);
+            editor.Split();
+            editor.SelectPart(0, Filee.App.Controls.ClipSelect.Only);
+            editor.TransitionKind = editor.Transitions[1];
+            editor.SetAspect("9:16");
+            editor.ClearSelection();
+            editor.FitChoice = editor.Fits.First(f => f.Value == Filee.Core.Presets.ClipFit.Blur);
+            editor.Seek(4);
+            editor.AddText("Caption");
+            editor.TextContent = language == "ru" ? "ЭЙС 1 vs 4" : "ACE 1 vs 4";
+            editor.SelectPart(1, Filee.App.Controls.ClipSelect.Only);
+            editor.PartZoom = 1.4;
+            editor.PartRotation = -8;
+            var logo = Path.Combine(Path.GetDirectoryName(vm.FilePaths[0])!, "logo.png");
+            using (var picture = new ImageMagick.MagickImage(new ImageMagick.MagickColor("#E8505B"), 240, 120))
+                picture.Write(logo, ImageMagick.MagickFormat.Png);
+            editor.Seek(2);
+            editor.AddFilesAsync([logo], toTimeline: true).GetAwaiter().GetResult();
+            editor.Transform(new Filee.App.Controls.EditorItem(Filee.App.Controls.EditorItemKind.Image, 0), 0.75, 0.15, 0.35, 12);
+            editor.Seek(4);
+            editor.Select(new Filee.App.Controls.EditorItem(Filee.App.Controls.EditorItemKind.Image, 0));
+            ClipWindowTests.WaitFor(() => editor.Picture is not null && !editor.IsBusy);
+            Pump();
+            var theme = dark ? "dark" : "light";
+            Save(window, $"editor-{language}-{theme}.png");
+
+            editor.ClearSelection();
+            Pump();
+            Save(window, $"editor-clip-settings-{language}-{theme}.png");
+
+            editor.OpenExport();
+            Pump();
+            Save(window, $"editor-export-{language}-{theme}.png");
+            editor.CloseExport();
+
+            window.Width = 980;
+            window.Height = 760;
+            Pump();
+            Assert.True(editor.IsNarrow);
+            Save(window, $"editor-narrow-{language}-{theme}.png");
+        });
+    }
+
+    /// <summary>The "Join videos" window: the order, what each video is, and how videos of another shape fill the frame.</summary>
+    [AvaloniaTheory]
+    [InlineData("ru", false)]
+    [InlineData("en", true)]
+    public void Join_window_renders(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var themes = AppHost.Get<ThemeService>();
+        if (dark)
+            themes.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        try
+        {
+            var frames = new ClipWindowTests.PaintedFrames(300);
+            var vm = new JoinVideosViewModel([.. new[] { "clip 10.mp4", "clip 2.mp4", "phone tall.mp4" }.Select(name => Path.Combine(Path.GetTempPath(), name))],
+                AppHost.Get<ILocalizer>(), frames);
+            var window = new JoinVideosWindow { DataContext = vm };
+            window.Show();
+            ClipWindowTests.WaitFor(() => vm.IsReady);
+            Pump();
+            Assert.Equal(["clip 2.mp4", "clip 10.mp4", "phone tall.mp4"], vm.Files.Select(f => f.Name));
+            Assert.True(vm.Differ);
+            Save(window, $"join-{language}-{(dark ? "dark" : "light")}.png");
+            window.Close();
+        }
+        finally
+        {
+            if (dark)
+                themes.Apply(new ThemeSettings(), language);
+        }
+    }
+
     internal static void Pump()
     {
         // Let layout, bindings and a few animation frames run.

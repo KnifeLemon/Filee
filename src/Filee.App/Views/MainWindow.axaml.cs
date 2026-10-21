@@ -20,6 +20,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         Motion.Track(this);
+        UiZoom.Track(this);
     }
 
     private async void OnOpenGitHub(object? sender, RoutedEventArgs e)

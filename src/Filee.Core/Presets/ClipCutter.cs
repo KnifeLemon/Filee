@@ -64,6 +64,62 @@ public sealed class ClipCutter
         _pieces = [new ClipPiece(clip.Start, clip.End)];
     }
 
+    /// <summary>
+    /// The quick cut an editor clip is, when it is one: parts of the window's video in their order in it, each as
+    /// recorded or louder, quieter, muted or at another speed, pauses where a stretch between two parts was taken out,
+    /// the music and the fades. Null when the clip uses anything only the editor has (another video, a part out of order
+    /// or used twice, played backwards, held, a smooth speed change, a transition, a closer look, texts, its frame or
+    /// its sound settings).
+    /// </summary>
+    public static ClipCutter? FromEdit(double duration, ClipEdit edit)
+    {
+        if (edit.Texts.Count > 0 || edit.Images.Count > 0 || edit.Aspect is not null || edit.LevelLoudness || edit.DuckMusic || edit.ReduceNoise
+            || edit.LiftSpeech || edit.Parts.Count == 0 || edit.Parts[0].Blank || edit.Parts[^1].Blank)
+            return null;
+        // One sound on A2 is the quick cut's music; more, or on other tracks, only the editor plays.
+        var music = edit.Music;
+        if (edit.Sounds.Count > 1 || edit.Sounds.Count == 1 && (music is not null || edit.Sounds[0].Track != 0 || edit.Sounds[0].Play > 0))
+            return null;
+        music ??= edit.Sounds.FirstOrDefault();
+        var pieces = new List<ClipPiece>();
+        for (var i = 0; i < edit.Parts.Count; i++)
+        {
+            var part = edit.Parts[i];
+            if (part.Source is not null || part.Reverse || part.IsStill || part.IsRamp || part.PlayZoom != 1 || part.PlayRotation != 0
+                || part.FocusX != 0.5 || part.FocusY != 0.5 || part.Transition != ClipTransitionKind.Cut)
+                return null;
+            if (part.Blank)
+            {
+                // A pause stands for the stretch between the parts around it, as long as that stretch.
+                var before = pieces[^1];
+                var next = edit.Parts[i + 1];
+                if (next.Blank || Math.Abs(next.Start - before.End - part.Length) > 0.01)
+                    return null;
+                pieces.Add(new ClipPiece(before.End, next.Start, ClipPieceState.Blank));
+                continue;
+            }
+            if (pieces.Count > 0)
+            {
+                var last = pieces[^1].End;
+                if (part.Start < last - 1e-6)
+                    return null;
+                if (part.Start > last + 1e-6)
+                    pieces.Add(new ClipPiece(last, part.Start, ClipPieceState.Removed));
+            }
+            pieces.Add(new ClipPiece(part.Start, part.End, ClipPieceState.Kept, part.Volume, part.PlaySpeed, part.Muted));
+        }
+        if (pieces[^1].End > duration + 0.05)
+            return null;
+        var cutter = new ClipCutter(duration, new ClipRange(pieces[0].Start, pieces[^1].End))
+        {
+            _pieces = pieces,
+            _fadeIn = ClipEdit.Fade(edit.FadeIn),
+            _fadeOut = ClipEdit.Fade(edit.FadeOut),
+            _music = music?.Clone(),
+        };
+        return cutter;
+    }
+
     /// <summary>Raised after every change (also undo and redo).</summary>
     public event Action? Changed;
 
@@ -428,14 +484,15 @@ public sealed class ClipCutter
     /// <summary>
     /// What the conversion writes: the pieces that play (neighbours alike joined), the pauses, the music and the fades.
     /// </summary>
+    /// <param name="join">Neighbours alike are written as one part (false keeps every cut, for the editor).</param>
     /// <exception cref="InvalidOperationException">Every piece is cut out.</exception>
-    public ClipEdit ToEdit()
+    public ClipEdit ToEdit(bool join = true)
     {
         var edit = new ClipEdit { FadeIn = FadeIn, FadeOut = FadeOut, Music = _music?.Clone() };
         foreach (var piece in _pieces.Where(p => p.State != ClipPieceState.Removed))
         {
             var blank = piece.State == ClipPieceState.Blank;
-            if (edit.Parts.Count > 0 && edit.Parts[^1] is var last && !blank && !last.Blank
+            if (join && edit.Parts.Count > 0 && edit.Parts[^1] is var last && !blank && !last.Blank
                 && Math.Abs(last.End - piece.Start) < 1e-9 && last.Volume == piece.Volume && last.Speed == piece.Speed
                 && last.Muted == piece.Muted)
             {

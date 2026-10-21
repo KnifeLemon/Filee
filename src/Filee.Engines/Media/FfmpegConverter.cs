@@ -132,8 +132,12 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
 
         if (step.FrameSequence)
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
-        if (step.Preset.CutsClipOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
-            return await CutClipAsync(ffmpeg, step, input, info, progress, cancellationToken);
+        // The editor's clips also become GIFs.
+        if (step.Preset.CutsClipOf(step.From)
+            && (MediaEncoding.VideoTargets.ContainsKey(step.To) || step.To == "gif" && step.Preset.Media.Clip!.Editor))
+            return step.Preset.Media.Clip!.Editor
+                ? await EditorClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken)
+                : await CutClipAsync(ffmpeg, step, input, info, progress, cancellationToken);
 
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)

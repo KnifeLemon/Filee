@@ -76,6 +76,7 @@ public static class BuiltInData
         .. MotionPhotoPresets(),
         .. LivePhotoPresets(),
         .. ClipPresets(),
+        .. JoinPresets(),
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
         new() { Id = "to-hwpx", Name = "HWPX", TargetFormat = "hwpx" },
         .. HwpPresets(),
@@ -122,6 +123,19 @@ public static class BuiltInData
         {
             Id = "tool-clip", NameKey = "preset.clip", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Tool = Preset.ClipTool, Output = { FileNamePattern = "{name}_clip" },
+        },
+    ];
+
+    /// <summary>
+    /// "Join videos" (added in settings schema 34): several videos one after the other in an order chosen first, copied
+    /// together when they share their format, else written in one frame; also opens them in the clip editor.
+    /// </summary>
+    public static List<Preset> JoinPresets() =>
+    [
+        new()
+        {
+            Id = "tool-join", NameKey = "preset.join", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.JoinTool, Output = { FileNamePattern = "{name}_joined" },
         },
     ];
 
@@ -473,7 +487,7 @@ public static class BuiltInData
             PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "to-mkv", "to-avi"],
             // Every frame as pictures is on no front (a long video gives thousands of files): behind a flip, a drop that
             // misses its slice doesn't start it. Live / Motion Photos of a clip are there too, and "Cut a clip" first.
-            BackPresetIds = ["tool-clip", "mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "live-photo-iphone", "motion-photo-android",
+            BackPresetIds = ["tool-clip", "tool-join", "mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "live-photo-iphone", "motion-photo-android",
                 "to-m4a", "to-wav", "to-flac", "zip-all"],
         },
         new()
