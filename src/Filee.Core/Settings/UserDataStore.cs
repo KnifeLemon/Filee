@@ -750,6 +750,48 @@ internal static class SettingsMigrations
         // v32: logs and script source, Video CD DAT and Workbench archives learn their donuts; custom claims stay put.
         if (from < 32)
             changed |= LearnExtensions(profiles, out _, ["log", "py", "pac", "bat", "command", "dat", "wbpz"]);
+        // v33: everyday tools (compress image / video / audio, video from images, extract audio, merge videos / audio,
+        //      remove metadata), after "Motion Photo (Android)" as in a new library, and on the back faces of the
+        //      built-in donuts before "One ZIP" where they have room and the user hasn't put them there already.
+        if (from < 33)
+            changed |= AddMediaTools(presets, profiles);
+        return changed;
+    }
+
+    /// <summary>Where schema 33 offers its tools: (donut, presets for its back face).</summary>
+    private static readonly (string Profile, string[] Presets)[] Version33Offers =
+    [
+        ("images", ["compress-image", "remove-metadata"]),
+        ("pdf", ["remove-metadata"]),
+        ("video", ["compress-video", "merge-videos"]),
+        ("audio", ["compress-audio", "merge-audio", "remove-metadata"]),
+    ];
+
+    private static bool AddMediaTools(List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        var at = presets.FindLastIndex(p => p.Id is "motion-photo-android" or "live-photo-iphone" or "extract-motion");
+        at = at < 0 ? presets.Count : at + 1;
+        foreach (var tool in BuiltInData.MediaToolPresets())
+        {
+            if (presets.Any(p => p.Id == tool.Id))
+                continue;
+            presets.Insert(Math.Min(at++, presets.Count), tool);
+            changed = true;
+        }
+        foreach (var (profileId, ids) in Version33Offers)
+        {
+            if (profiles.FirstOrDefault(p => p.Id == profileId) is not { BackPresetIds: { } back } profile)
+                continue;
+            foreach (var id in ids)
+            {
+                if (back.Contains(id) || profile.PresetIds.Contains(id) || back.Count >= ToolbarProfile.MaxSlices
+                    || presets.All(p => p.Id != id))
+                    continue;
+                InsertBefore(back, id, "zip-all");
+                changed = true;
+            }
+        }
         return changed;
     }
 

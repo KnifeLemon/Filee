@@ -193,6 +193,14 @@
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.media}" />
         <CheckBox Content="{DynamicResource presets.extract_motion_photo}" IsChecked="{Binding ExtractMotionPhoto}"
                   IsVisible="{Binding ShowExtractMotionPhoto}" ToolTip.Tip="{DynamicResource presets.extract_motion_photo_hint}" />
+        <StackPanel Spacing="6" IsVisible="{Binding ShowSlideshow}">
+          <Grid ColumnDefinitions="Auto,12,120">
+            <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource presets.slide_seconds}" />
+            <NumericUpDown Grid.Column="2" Value="{Binding SlideSeconds}" Minimum="0.5" Maximum="60" Increment="0.5" FormatString="0.#" />
+          </Grid>
+          <CheckBox Content="{DynamicResource presets.crossfade}" IsChecked="{Binding Crossfade}"
+                    ToolTip.Tip="{DynamicResource presets.crossfade_hint}" />
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />

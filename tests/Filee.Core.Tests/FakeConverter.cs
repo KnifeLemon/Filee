@@ -158,6 +158,26 @@ internal sealed class FakeCombiner : IFileCombiner
     }
 }
 
+/// <summary>Test double for the FFmpeg engine's joining: records what it was given and writes their names.</summary>
+internal sealed class FakeJoiner : IMediaJoiner
+{
+    public List<string> Inputs { get; } = [];
+
+    public bool Throw { get; set; }
+
+    public bool CanJoinInto(string format) => true;
+
+    public Task JoinAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Filee.Core.Presets.Preset preset,
+        string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        if (Throw)
+            throw new InvalidOperationException("boom");
+        Inputs.AddRange(inputPaths);
+        File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
+        return Task.CompletedTask;
+    }
+}
+
 /// <summary>Creates and removes a unique temp directory.</summary>
 internal sealed class TempDir : IDisposable
 {

@@ -106,6 +106,23 @@ public sealed class PresetAvailability
         if (formats.Count == 0)
             return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
 
+        // "Merge videos" / "Merge audio" / "Video from images": FFmpeg joins the files, so a route into the target (or,
+        // for pictures, into PNG and from PNG into a video) says whether it is installed.
+        if (preset.JoinsIntoOneMedia)
+        {
+            var target = preset.TargetFormat;
+            bool Joinable(RoutePlanner planner) => formats.Any(f => preset.Media.Slideshow
+                ? f.Category is FormatCategory.Image or FormatCategory.Vector
+                  && (f.Id == "png" || planner.CanConvert(f.Id, "png")) && planner.CanConvert("png", target)
+                : (f.Category == FormatCategory.Video || f.Category == FormatCategory.Audio && target == "m4a")
+                  && planner.CanConvert(f.Id, target));
+            if (Joinable(installedPlanner()))
+                return new(PresetUse.Usable, null);
+            return packageEnabling(Joinable) is { } joiner
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", joiner.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
         var merge = preset.Pdf.MergeIntoSingle && preset.TargetFormat == "pdf";
         var turns = preset.Image.TurnsOrMirrors;
         string TargetFor(FileFormat f) => preset.TargetFormat == BuiltInData.SameAsSource ? f.Id : preset.TargetFormat;

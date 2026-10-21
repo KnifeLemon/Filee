@@ -17,6 +17,7 @@ public sealed class JobQueue : IAsyncDisposable
     private readonly IPdfMerger? _pdfMerger;
     private readonly IFileCombiner? _combiner;
     private readonly ITiffMerger? _tiffMerger;
+    private readonly IMediaJoiner? _mediaJoiner;
     private readonly ILogger _log;
     private readonly Channel<ConversionJob> _channel = Channel.CreateUnbounded<ConversionJob>();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _engineGates = new();
@@ -35,13 +36,15 @@ public sealed class JobQueue : IAsyncDisposable
     /// <param name="log">Optional logger.</param>
     /// <param name="combiner">Used by "Compress into one archive" presets (<see cref="ArchiveOptions.CombineIntoOne"/>).</param>
     /// <param name="tiffMerger">Used by multi-page TIFF presets (<see cref="ImageOptions.MultiPageTiff"/>).</param>
+    /// <param name="mediaJoiner">Used by "Merge videos", "Merge audio" and "Video from images" (<see cref="Preset.JoinsIntoOneMedia"/>).</param>
     public JobQueue(ConverterCatalog catalog, IPdfMerger? pdfMerger = null, ILogger<JobQueue>? log = null, IFileCombiner? combiner = null,
-        ITiffMerger? tiffMerger = null)
+        ITiffMerger? tiffMerger = null, IMediaJoiner? mediaJoiner = null)
     {
         _catalog = catalog;
         _pdfMerger = pdfMerger;
         _combiner = combiner;
         _tiffMerger = tiffMerger;
+        _mediaJoiner = mediaJoiner;
         _log = log ?? (ILogger)NullLogger.Instance;
         _worker = Task.Run(WorkLoopAsync);
     }
@@ -102,8 +105,12 @@ public sealed class JobQueue : IAsyncDisposable
 
             // One file is enough: a 10-page PDF becomes one 10-page TIFF.
             var multiPageTiff = job.Preset.Image.MultiPageTiff && job.Preset.TargetFormat == "tiff" && _tiffMerger is not null;
+            // Clips back to back, or pictures one after the other, in the order they were dropped.
+            var join = job.Preset.JoinsIntoOneMedia && _mediaJoiner is not null;
 
-            if (merge)
+            if (join)
+                await RunJoinedMediaAsync(job, planner, workDir);
+            else if (merge)
                 await RunMergedAsync(job, planner, workDir);
             else if (multiPageTiff)
                 await RunMultiPageTiffAsync(job, planner, workDir);
@@ -330,6 +337,127 @@ public sealed class JobQueue : IAsyncDisposable
             f.State = FileState.Done;
             f.Progress = 1;
         }
+        Notify(job);
+    }
+
+    /// <summary>
+    /// "Merge videos" / "Merge audio": the videos or audio files go into one file as they are. "Video from images":
+    /// every picture becomes PNG in the work directory first (a PNG is taken as it is), with its orientation applied by
+    /// the image engines, then the pictures become one video. The output is named after the first file.
+    /// </summary>
+    private async Task RunJoinedMediaAsync(ConversionJob job, RoutePlanner planner, string workDir)
+    {
+        var slideshow = job.Preset.Media.Slideshow;
+        var target = FormatRegistry.Get(job.Preset.TargetFormat);
+        var parts = new IReadOnlyList<string>?[job.Files.Count];
+        await Parallel.ForEachAsync(Enumerable.Range(0, job.Files.Count),
+            new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount },
+            async (i, _) =>
+            {
+                var file = job.Files[i];
+                if (Stopped(file))
+                    return;
+                var source = FormatRegistry.Detect(file.SourcePath);
+                if (source is null)
+                {
+                    FailFile(job, file, "error.unsupported_source", "." + FormatRegistry.ExtensionOf(file.SourcePath));
+                    return;
+                }
+                if (IsEmptyFile(file.SourcePath))
+                {
+                    FailFile(job, file, "error.empty_file", null);
+                    return;
+                }
+                if (slideshow)
+                {
+                    parts[i] = source.Id == "png" && !job.Preset.Image.TurnsOrMirrors
+                        ? [file.SourcePath]
+                        : await RunFileAsync(job, file, i + 1, planner, workDir, finalOutput: false, intermediate: "png");
+                    return;
+                }
+                // A video's sound can join an audio file; a picture or a document joins nothing.
+                var joins = source.Category == FormatCategory.Video
+                    || source.Category == FormatCategory.Audio && target.Category == FormatCategory.Audio;
+                if (!joins)
+                {
+                    FailFile(job, file, "error.no_route", $"{source.Id} → {target.Id}");
+                    return;
+                }
+                parts[i] = [file.SourcePath];
+            });
+
+        var joined = job.Files.Where((f, i) => parts[i] is { Count: > 0 } && f.State != FileState.Failed).ToList();
+        var inputs = parts.Where(p => p is not null).SelectMany(p => p!).ToList();
+        if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
+        {
+            Notify(job);
+            return;
+        }
+
+        var first = joined[0];
+        var output = CreateFinalAllocator(job, first.SourcePath, 1).Allocate(target.PrimaryExtension);
+        if (output is null)
+        {
+            foreach (var f in joined)
+            {
+                f.State = FileState.Skipped;
+                f.Progress = 1;
+            }
+            Notify(job);
+            return;
+        }
+
+        foreach (var f in joined)
+            f.State = FileState.Running;
+        Notify(job);
+        var floor = joined.Min(f => f.Progress);
+        var progress = new Progress<double>(p =>
+        {
+            // Reports arrive on the thread pool, possibly out of order: progress only moves forward.
+            var value = floor + (1 - floor) * Math.Clamp(p, 0, 1);
+            if (value <= first.Progress)
+                return;
+            foreach (var f in joined)
+                f.Progress = value;
+            Notify(job);
+        });
+
+        try
+        {
+            await _mediaJoiner!.JoinAsync(inputs, output, target.Id, job.Preset, workDir, progress, job.CancellationToken);
+            first.Outputs.Add(output);
+            foreach (var f in joined)
+            {
+                f.State = FileState.Done;
+                f.Progress = 1;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            foreach (var f in joined)
+                f.State = FileState.Cancelled;
+        }
+        catch (ConversionRefusedException ex)
+        {
+            _log.LogInformation("Joining {Count} file(s) into {Output} was refused: {Reason}", inputs.Count, output, ex.Message);
+            foreach (var f in joined)
+                FailFile(job, f, ex.ErrorKey, ex.Detail);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Joining {Count} file(s) into {Output} failed", inputs.Count, output);
+            foreach (var f in joined)
+                FailFile(job, f, "error.conversion_failed", ex.Message);
+        }
+        Notify(job);
+    }
+
+    private void FailFile(ConversionJob job, FileResult file, string key, string? detail)
+    {
+        file.State = FileState.Failed;
+        file.ErrorKey = key;
+        file.ErrorDetail = detail;
+        file.Progress = 1;
         Notify(job);
     }
 

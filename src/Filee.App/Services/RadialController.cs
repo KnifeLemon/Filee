@@ -327,7 +327,8 @@ public sealed class RadialController(
             return;
         }
 
-        if (preset.TargetFormat == "pdf" && preset.Pdf.MergeIntoSingle && sources.Count > 1)
+        // Merged PDFs, joined clips and slideshows follow the order the user picks.
+        if ((preset.TargetFormat == "pdf" && preset.Pdf.MergeIntoSingle || preset.JoinsIntoOneMedia) && sources.Count > 1)
         {
             Close(animate: false);
             _ = MergeInOrderAsync(sources, preset.Clone(), web);

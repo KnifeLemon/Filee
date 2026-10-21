@@ -1,5 +1,5 @@
-// Builds PDFs from images, splits / extracts PDF pages, merges PDFs and makes PDFs smaller (PDFsharp, MIT; the
-// compression itself is in PdfCompressor, with Ghostscript as an optional second try).
+// Builds PDFs from images, splits / extracts PDF pages, merges PDFs, makes PDFs smaller (PDFsharp, MIT; the
+// compression itself is in PdfCompressor, with Ghostscript as an optional second try) and removes their metadata.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -36,6 +36,8 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IImageTransforme
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         step.From != "pdf" ? Task.Run(() => ImageToPdf(step, progress, cancellationToken), cancellationToken)
+        : step.Preset.Pdf is { Compression: PdfCompression.None, RemoveMetadata: true, SplitPages: false, PageRange: "" }
+            ? Task.Run(() => WithoutMetadata(step, progress, cancellationToken), cancellationToken)
         : step.Preset.Pdf.Compression == PdfCompression.None ? Task.Run(() => SplitOrExtract(step, progress, cancellationToken), cancellationToken)
         : Task.Run(() => CompressAsync(step, progress, cancellationToken), cancellationToken);
 
@@ -103,6 +105,42 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IImageTransforme
             return [];
         document.Save(path);
         return [path];
+    }
+
+    /// <summary>
+    /// "Remove metadata": the whole PDF, opened for changes so links, bookmarks and form fields stay, without its
+    /// document information (title, author, subject, keywords, creator, dates) and XMP packets.
+    /// </summary>
+    private static IReadOnlyList<string> WithoutMetadata(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
+    {
+        using var document = OpenForChanges(step.InputPath);
+        ct.ThrowIfCancellationRequested();
+        StripMetadata(document);
+        progress?.Report(0.5);
+        var output = step.Output.Allocate("pdf");
+        if (output is null)
+            return [];
+        document.Save(output);
+        return [output];
+    }
+
+    /// <summary>
+    /// Drops the document information and every XMP packet (document, pages, pictures, forms) and the private data of
+    /// the apps that made the file. PDFsharp writes a new XMP packet with only its own name and the save date.
+    /// </summary>
+    internal static void StripMetadata(PdfDocument document)
+    {
+        foreach (var key in document.Info.Elements.Keys.ToList())
+            document.Info.Elements.Remove(key);
+        document.Internals.Catalog.Elements.Remove("/Metadata");
+        document.Internals.Catalog.Elements.Remove("/PieceInfo");
+        foreach (var page in document.Pages)
+            page.Elements.Remove("/PieceInfo");
+        foreach (var item in document.Internals.GetAllObjects())
+        {
+            if (item is PdfDictionary dictionary && dictionary.Elements.ContainsKey("/Metadata"))
+                dictionary.Elements.Remove("/Metadata");
+        }
     }
 
     /// <summary>PDF → PDF: split into single pages, or extract the configured page range.</summary>

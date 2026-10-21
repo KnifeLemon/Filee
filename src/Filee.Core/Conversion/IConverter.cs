@@ -197,6 +197,29 @@ public interface ITiffMerger
 }
 
 /// <summary>
+/// Joins several videos or audio files into one, one after the other, or turns pictures into one video ("Merge
+/// videos", "Merge audio", "Video from images"). Implemented by the FFmpeg engine; <see cref="JobQueue"/> uses it when
+/// a preset joins files (<see cref="Preset.JoinsIntoOneMedia"/>).
+/// </summary>
+public interface IMediaJoiner
+{
+    /// <summary>True if files can be joined into <paramref name="format"/> now (FFmpeg is installed).</summary>
+    bool CanJoinInto(string format);
+
+    /// <summary>
+    /// Writes every file of <paramref name="inputPaths"/>, in order, into <paramref name="outputPath"/>: video or audio
+    /// clips back to back, or pictures shown one after the other (<see cref="MediaOptions.Slideshow"/>).
+    /// </summary>
+    /// <param name="inputPaths">Videos, audio files, or pictures (PNG, as the image engines wrote them).</param>
+    /// <param name="outputPath">File to create; removed again when the join fails.</param>
+    /// <param name="format">Target format id, <c>"mp4"</c> or <c>"m4a"</c>.</param>
+    /// <param name="preset">Options, e.g. <see cref="MediaOptions.SlideSeconds"/>.</param>
+    /// <param name="workDirectory">Scratch directory for intermediate files; deleted after the job.</param>
+    Task JoinAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
+        string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Packs several files, unchanged, into one archive ("Compress into one archive"). Implemented by the archive engine;
 /// <see cref="JobQueue"/> uses it when a preset sets <see cref="ArchiveOptions.CombineIntoOne"/>.
 /// </summary>

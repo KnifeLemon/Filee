@@ -127,6 +127,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _livePhotoLength = _edit.Media.LivePhotoLength;
         _livePhotoCover = _edit.Media.LivePhotoCover;
         _frameInterval = _edit.Media.FrameInterval > 0 ? _edit.Media.FrameInterval : 1;
+        _isSlideshow = _edit.Media.Slideshow;
+        _slideSeconds = _edit.Media.SlideDuration;
+        _crossfade = _edit.Media.Crossfade;
         _traceMode = TraceModes.First(m => m.Value == _edit.Trace.Mode);
         _animationSpeed = AnimationSpeeds.First(s => s.Value == _edit.Image.PlaybackSpeed);
         _traceColors = Math.Clamp(_edit.Trace.Colors, TracingOptions.MinColors, TracingOptions.MaxColors);
@@ -205,7 +208,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
-        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowExtractMotionPhoto),
+        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint))]
     private Choice<string> _target;
 
@@ -419,6 +422,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(FrameEstimate))]
     private int _frameInterval = 1;
 
+    /// <summary>"Video from images" (MediaOptions.Slideshow): how long each picture shows, and fades between them.</summary>
+    private readonly bool _isSlideshow;
+    [ObservableProperty] private double _slideSeconds;
+    [ObservableProperty] private bool _crossfade;
+
     /// <summary>How many pictures a minute of 30 fps video gives at the chosen interval, and the limit per video.</summary>
     public string FrameEstimate => _loc.Format("presets.frame_estimate",
         (int)Math.Ceiling(1800.0 / Math.Clamp(FrameInterval, 1, 1000)), MediaOptions.MaxFrames.ToString("N0", System.Globalization.CultureInfo.InvariantCulture));
@@ -518,6 +526,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowExtractNote => TargetId == FormatRegistry.Folder;
     /// <summary>"Save every frame" of a video: PNG and JPG (format ids, <see cref="MediaOptions.FrameTargets"/>).</summary>
     public bool ShowSaveEveryFrame => !IsTool && !IsLivePhoto && MediaOptions.FrameTargets.Contains(TargetId);
+    /// <summary>The slideshow options, for a preset that makes a video of pictures (MP4).</summary>
+    public bool ShowSlideshow => _isSlideshow && MediaOptions.JoinTargets.Contains(TargetId) && TargetIsVideo;
     /// <summary>The video of a Live / Motion Photo: MP4 and MOV (<see cref="MediaOptions.MotionPhotoTargets"/>).</summary>
     public bool ShowExtractMotionPhoto => !IsTool && MediaOptions.MotionPhotoTargets.Contains(TargetId);
     /// <summary>
@@ -617,6 +627,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.SaveEveryFrame = ShowSaveEveryFrame && SaveEveryFrame;
         media.FrameInterval = media.SaveEveryFrame ? Math.Clamp(FrameInterval, 1, 1000) : 1;
         media.ExtractMotionPhoto = ShowExtractMotionPhoto && ExtractMotionPhoto;
+        if (ShowSlideshow)
+        {
+            media.SlideSeconds = double.IsFinite(SlideSeconds) ? Math.Clamp(SlideSeconds, MediaOptions.MinSlideSeconds, MediaOptions.MaxSlideSeconds) : 3;
+            media.Crossfade = Crossfade;
+        }
         media.LivePhoto = IsLivePhoto ? _livePhotoValue : LivePhotoKind.None;
         static double Seconds(double value, double fallback, double min, double max) =>
             double.IsFinite(value) ? Math.Clamp(value, min, max) : fallback;

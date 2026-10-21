@@ -164,6 +164,14 @@ public sealed class Preset
         MediaOptions.LivePhotoTargets(Media.LivePhoto).Contains(TargetFormat)
         && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
+    /// <summary>
+    /// True for "Merge videos", "Merge audio" and "Video from images": every dropped file goes, in order, into one
+    /// video or audio file (<see cref="MediaOptions.JoinIntoOne"/>, <see cref="MediaOptions.Slideshow"/>).
+    /// </summary>
+    [JsonIgnore]
+    public bool JoinsIntoOneMedia =>
+        (Media.JoinIntoOne || Media.Slideshow) && MediaOptions.JoinTargets.Contains(TargetFormat);
+
     /// <summary>True for a <see cref="PresetKind.Tool"/>.</summary>
     [JsonIgnore]
     public bool IsTool => Kind == PresetKind.Tool;
@@ -272,6 +280,18 @@ public sealed class ImageOptions
     /// phones) look washed out. Has no effect while <see cref="KeepMetadata"/> is on (everything is kept then).
     /// </summary>
     public bool KeepColorProfile { get; set; } = true;
+
+    /// <summary>
+    /// "Compress image": PNG with zlib's best compression, and a JPEG never saved above the quality it had (a photo
+    /// saved at 75 would otherwise come back at the preset's quality, bigger and no better).
+    /// </summary>
+    public bool MaxCompression { get; set; }
+
+    /// <summary>
+    /// JPEG → JPEG at the quality the photo had (ImageMagick's estimate), not at <see cref="Quality"/>: "Remove
+    /// metadata" re-encodes the picture as little as it can. Other targets use <see cref="Quality"/>.
+    /// </summary>
+    public bool KeepSourceQuality { get; set; }
 
     /// <summary>Convert to grayscale.</summary>
     public bool Grayscale { get; set; }
@@ -402,6 +422,12 @@ public sealed class PdfOptions
     /// </summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<PdfCompression>))]
     public PdfCompression Compression { get; set; }
+
+    /// <summary>
+    /// For PDF → PDF: drop the document information (title, author, dates, creator) and every XMP packet. Pages,
+    /// links, bookmarks and form fields stay as they are.
+    /// </summary>
+    public bool RemoveMetadata { get; set; }
 
     /// <summary>
     /// With <see cref="Compression"/>: also let Ghostscript rewrite the PDF when it is installed, and keep whichever
@@ -545,6 +571,60 @@ public sealed class MediaOptions
     /// </summary>
     public const long MaxFrames = 100_000;
 
+    /// <summary>Targets the dropped files can be joined into (<see cref="JoinIntoOne"/>, <see cref="Slideshow"/>).</summary>
+    public static readonly IReadOnlyList<string> JoinTargets = ["mp4", "m4a"];
+
+    /// <summary>
+    /// MP4 or M4A: every dropped video (or audio file) goes, in order and without gaps, into one file named after the
+    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first.
+    /// </summary>
+    public bool JoinIntoOne { get; set; }
+
+    /// <summary>
+    /// MP4: the dropped pictures become one video, each shown for <see cref="SlideSeconds"/>, fitted into
+    /// <see cref="SlideshowWidth"/> × <see cref="SlideshowHeight"/> with black bars.
+    /// </summary>
+    public bool Slideshow { get; set; }
+
+    /// <summary>Shortest and longest time one picture of a <see cref="Slideshow"/> is shown, in seconds.</summary>
+    public const double MinSlideSeconds = 0.5, MaxSlideSeconds = 60;
+
+    /// <summary>With <see cref="Slideshow"/>: how long each picture is shown, in seconds.</summary>
+    public double SlideSeconds { get; set; } = 3;
+
+    /// <summary>With <see cref="Slideshow"/>: fade from one picture into the next instead of cutting.</summary>
+    public bool Crossfade { get; set; } = true;
+
+    /// <summary>With <see cref="Crossfade"/>: how long a fade takes, in seconds (at most half a picture's time).</summary>
+    public double CrossfadeSeconds { get; set; } = 1;
+
+    /// <summary>Frame size of a <see cref="Slideshow"/> (1080p unless the preset says otherwise).</summary>
+    public int SlideshowWidth { get; set; } = 1920;
+
+    /// <inheritdoc cref="SlideshowWidth"/>
+    public int SlideshowHeight { get; set; } = 1080;
+
+    /// <summary>
+    /// Audio target: copy the sound as it is when the target takes its codec (AAC from a phone video into M4A), with
+    /// no bitrate, channel or Small quality asking for an encode. Off: always encoded, as before the option existed.
+    /// </summary>
+    public bool CopyAudioWhenPossible { get; set; }
+
+    /// <summary>
+    /// Video and audio: drop the tags (title, artist, dates, location, camera, encoder) and chapters, copying the
+    /// streams as they are. Only when the file keeps its format.
+    /// </summary>
+    public bool RemoveMetadata { get; set; }
+
+    /// <summary><see cref="SlideSeconds"/> within its limits (a hand-edited preset file may hold anything).</summary>
+    [JsonIgnore]
+    public double SlideDuration => double.IsFinite(SlideSeconds) ? Math.Clamp(SlideSeconds, MinSlideSeconds, MaxSlideSeconds) : 3;
+
+    /// <summary>The fade between two pictures in seconds: 0 without <see cref="Crossfade"/>, never over half a picture's time.</summary>
+    [JsonIgnore]
+    public double FadeDuration => Crossfade && double.IsFinite(CrossfadeSeconds) && CrossfadeSeconds > 0
+        ? Math.Min(CrossfadeSeconds, SlideDuration / 2)
+        : 0;
 
     public MediaOptions Clone() => (MediaOptions)MemberwiseClone();
 }

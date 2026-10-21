@@ -81,4 +81,8 @@ public static class EngineRegistry
     /// <summary>Finds the engine that packs several files into one archive ("Compress into one archive").</summary>
     public static IFileCombiner? FindFileCombiner(IEnumerable<IConverter> converters) =>
         converters.OfType<IFileCombiner>().FirstOrDefault();
+
+    /// <summary>The engine that joins videos, audio files and pictures into one (FFmpeg).</summary>
+    public static IMediaJoiner? FindMediaJoiner(IEnumerable<IConverter> converters) =>
+        converters.OfType<IMediaJoiner>().FirstOrDefault();
 }

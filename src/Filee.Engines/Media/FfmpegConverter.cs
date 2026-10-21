@@ -5,7 +5,8 @@
 // writer). Container and codec choices live in MediaEncoding, the process handling in FfmpegRunner, hardware encoders
 // in HardwareVideo (options) and HardwareProbe (which one works here).
 // Live / Motion Photos (Android, iPhone) give their video when a preset asks for it (LivePhotoSource, MotionPhoto), and
-// a clip of a video becomes one (LivePhotoWriter).
+// a clip of a video becomes one (LivePhotoWriter). Clips and pictures are joined into one file by IMediaJoiner
+// (MediaJoining), and "Remove metadata" copies a file's streams without its tags.
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
@@ -22,7 +23,7 @@ namespace Filee.Engines.Media;
 
 /// <summary>Converts video and audio files with Filee's own copy of FFmpeg.</summary>
 /// <param name="logger">Receives which hardware encoders work and why a hardware encode was redone in software.</param>
-public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer
+public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer, IMediaJoiner
 {
     private static readonly ConcurrentDictionary<string, string> Versions = new();
 
@@ -146,6 +147,24 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             : null;
 
         var media = step.Preset.Media;
+        // "Remove metadata": the streams as they are, in the same format, without tags.
+        if (media.RemoveMetadata && step.From == step.To && !still
+            && (MediaEncoding.VideoTargets.ContainsKey(step.To) || MediaEncoding.AudioTargets.ContainsKey(step.To)))
+        {
+            try
+            {
+                await RunPassesAsync(ffmpeg, [new FfmpegPass(MediaEncoding.WithoutMetadata(input, output, step.To, info), 1)], output,
+                    info.Duration, progress, cancellationToken);
+            }
+            catch
+            {
+                TryDelete(output);
+                throw;
+            }
+            progress?.Report(1);
+            return [output];
+        }
+
         var encoders = still ? null : EncodersOf(ffmpeg);
         // Hardware encoding (preset option): the first GPU encoder that passes its test encode, if any.
         HardwareEncoder? hardware = null;
@@ -180,6 +199,103 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
 
         progress?.Report(1);
         return [output];
+    }
+
+    public bool CanJoinInto(string format) => MediaOptions.JoinTargets.Contains(format) && (_tools ?? Locate()) is not null;
+
+    public async Task JoinAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
+        string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var (ffmpeg, ffprobe) = _tools ?? Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var scratch = Path.Combine(workDirectory, "join-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(scratch);
+        var media = preset.Media;
+        try
+        {
+            if (media.Slideshow)
+            {
+                await SlideshowAsync(ffmpeg, inputPaths, outputPath, media, scratch, progress, cancellationToken);
+            }
+            else
+            {
+                // Probing takes the first few percent.
+                var clips = new List<(string Path, MediaInfo Info)>();
+                for (var i = 0; i < inputPaths.Count; i++)
+                {
+                    var path = Path.GetFullPath(inputPaths[i]);
+                    clips.Add((path, await MediaInfo.ProbeAsync(ffprobe, path, cancellationToken)));
+                    progress?.Report(0.05 * (i + 1) / inputPaths.Count);
+                }
+                var duration = TimeSpan.FromSeconds(clips.Sum(c => c.Info.Duration?.TotalSeconds ?? 0));
+                List<string> args;
+                if (format == "m4a")
+                {
+                    if (clips.FirstOrDefault(c => c.Info.Audio is null && c.Info.Video is null) is { Path: { } silent })
+                        throw new InvalidOperationException($"{Path.GetFileName(silent)} has no sound.");
+                    args = MediaJoining.EncodeAudio(clips, outputPath, media, scratch);
+                }
+                else if (MediaJoining.CanCopyVideos([.. clips.Select(c => c.Info)], media))
+                {
+                    var list = Path.Combine(scratch, "clips.txt");
+                    await File.WriteAllTextAsync(list, MediaJoining.ConcatList(clips.Select(c => c.Path)), cancellationToken);
+                    args = MediaJoining.CopyVideos(list, outputPath, clips[0].Info);
+                }
+                else
+                {
+                    var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, EncodersOf(ffmpeg));
+                    args = MediaJoining.EncodeVideos(clips, outputPath, media, encoder, scratch);
+                }
+                await RunJoinPassAsync(ffmpeg, args, duration, progress, 0.05, 1, cancellationToken);
+            }
+            if (!File.Exists(outputPath) || new FileInfo(outputPath).Length == 0)
+                throw new InvalidOperationException("FFmpeg did not write any output.");
+        }
+        catch
+        {
+            TryDelete(outputPath);
+            throw;
+        }
+        progress?.Report(1);
+    }
+
+    /// <summary>
+    /// Pictures → one video: each picture is fitted into the frame as a small JPEG first (a fifth of the progress),
+    /// then the slides are encoded with their fades.
+    /// </summary>
+    private async Task SlideshowAsync(string ffmpeg, IReadOnlyList<string> pictures, string output, MediaOptions media, string scratch,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        if (pictures.Count > MediaJoining.MaxSlides)
+            throw new ConversionRefusedException("error.too_many_pictures", $"{pictures.Count} > {MediaJoining.MaxSlides}");
+        var (width, height) = MediaJoining.SlideshowFrame(media);
+        var slides = new List<string>();
+        for (var i = 0; i < pictures.Count; i++)
+        {
+            var slide = Path.Combine(scratch, $"slide-{i + 1:D4}.jpg");
+            await RunJoinPassAsync(ffmpeg, MediaJoining.PrepareSlide(Path.GetFullPath(pictures[i]), slide, width, height), null,
+                null, 0, 0, cancellationToken);
+            slides.Add(slide);
+            progress?.Report(0.2 * (i + 1) / pictures.Count);
+        }
+        var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, EncodersOf(ffmpeg));
+        await RunJoinPassAsync(ffmpeg, MediaJoining.Slideshow(slides, output, media, encoder, scratch),
+            MediaJoining.SlideshowDuration(slides.Count, media), progress, 0.2, 1, cancellationToken);
+    }
+
+    /// <summary>Runs one join pass, mapping FFmpeg's position onto <paramref name="from"/> … <paramref name="to"/> of the progress.</summary>
+    private static async Task RunJoinPassAsync(string ffmpeg, IReadOnlyList<string> arguments, TimeSpan? duration, IProgress<double>? progress,
+        double from, double to, CancellationToken cancellationToken)
+    {
+        var total = duration?.TotalSeconds ?? 0;
+        Action<double>? onPosition = progress is null || total <= 0
+            ? null
+            : seconds => progress.Report(from + (to - from) * Math.Clamp(seconds / total, 0, 1));
+        var result = await FfmpegRunner.RunAsync(ffmpeg, arguments, onPosition, cancellationToken);
+        if (result.ExitCode != 0)
+        {
+            var reason = FfmpegRunner.Summarize(result.StandardError);
+            throw new InvalidOperationException($"FFmpeg failed (exit code {result.ExitCode}){(reason.Length > 0 ? ": " + reason : ".")}");
+        }
     }
 
     /// <summary>
