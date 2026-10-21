@@ -29,6 +29,12 @@ public static partial class ClipPreview
     /// </summary>
     private static readonly TimeSpan SoundStart = TimeSpan.FromMilliseconds(180);
 
+    /// <summary>The player's volume (0–100) instead of full; tests play silently with 0.</summary>
+    internal static int? PlayerVolume { get; set; }
+
+    /// <summary>Told how many bytes of sound reached the player once a clip has played (tests).</summary>
+    internal static Action<long>? SoundPlayed { get; set; }
+
     /// <summary>True when the preview plays sound: ffplay is next to Filee's FFmpeg.</summary>
     public static bool HasSound => Player() is not null;
 
@@ -72,7 +78,8 @@ public static partial class ClipPreview
             if (info.Audio is not null && Player() is { } ffplay)
             {
                 decoder = Start(ffmpeg, MediaEncoding.ClipPreviewAudio(input, clip, video), stdin: false);
-                player = Start(ffplay, ["-hide_banner", "-loglevel", "error", "-nodisp", "-autoexit", "-i", "-"], stdin: true);
+                player = Start(ffplay, ["-hide_banner", "-loglevel", "error", "-nodisp", "-autoexit",
+                    .. PlayerVolume is { } volume ? new[] { "-volume", volume.ToString(CultureInfo.InvariantCulture) } : [], "-i", "-"], stdin: true);
                 pump = Pump(decoder, player, stop.Token);
             }
 
@@ -256,12 +263,20 @@ public static partial class ClipPreview
     /// <summary>Passes the decoded sound on to the player.</summary>
     private static async Task Pump(Process decoder, Process player, CancellationToken cancellationToken)
     {
+        long passed = 0;
         try
         {
-            await decoder.StandardOutput.BaseStream.CopyToAsync(player.StandardInput.BaseStream, cancellationToken).ConfigureAwait(false);
+            var buffer = new byte[64 * 1024];
+            int read;
+            while ((read = await decoder.StandardOutput.BaseStream.ReadAsync(buffer, cancellationToken).ConfigureAwait(false)) > 0)
+            {
+                await player.StandardInput.BaseStream.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
+                passed += read;
+            }
         }
         finally
         {
+            SoundPlayed?.Invoke(passed);
             try
             {
                 player.StandardInput.Close();

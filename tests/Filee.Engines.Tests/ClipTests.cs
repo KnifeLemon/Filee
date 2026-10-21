@@ -497,6 +497,58 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void The_previews_sound_is_a_graph_of_sound_alone()
+    {
+        // A picture output nobody takes makes FFmpeg refuse the whole graph: the preview played no sound.
+        var sound = MediaEncoding.ClipPreviewAudio("in.mp4", Parts(), Hd);
+        var filter = After(sound, "-filter_complex");
+        Assert.DoesNotContain("[v", filter);
+        Assert.DoesNotContain("color=", filter);
+        Assert.Contains("concat=n=3:v=0:a=1[ac]", filter);
+        Assert.EndsWith("[a]", filter);
+        Assert.Throws<ArgumentException>(() => MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: false, 160, 90, "10", video: false));
+    }
+
+    [Fact]
+    public async Task The_previews_sound_is_decoded_and_reaches_the_player()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = await MakeVideoAsync(folder, "match.mp4");
+        var edit = new ClipEdit
+        {
+            Parts = [new ClipPart { Start = 1, End = 2 }, new ClipPart { Start = 2, End = 2.5, Blank = true }, new ClipPart { Start = 5, End = 6, Speed = 2 }],
+        };
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, source, CancellationToken.None);
+
+        // What FFmpeg writes for the player: a WAV of the clip's length (1 + 0.5 + 0.5 s at 48 kHz stereo 16-bit).
+        var wav = Path.Combine(folder, "sound.wav");
+        var args = MediaEncoding.ClipPreviewAudio(source, edit, info.Video!).ToList();
+        args[^1] = wav;
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg, args, TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        Assert.InRange(new FileInfo(wav).Length, 1.9 * 48000 * 4, 2.1 * 48000 * 4);
+
+        // Played: the sound goes through ffplay (silently here) alongside the pictures.
+        Assert.SkipUnless(ClipPreview.HasSound, "ffplay is not next to FFmpeg");
+        long played = 0;
+        ClipPreview.PlayerVolume = 0;
+        ClipPreview.SoundPlayed = bytes => played = bytes;
+        try
+        {
+            var frames = 0;
+            await ClipPreview.PlayAsync(source, edit, 90, (_, _, _, _) => frames++, CancellationToken.None);
+            Assert.InRange(frames, 40, 55);
+            Assert.InRange(played, 1.9 * 48000 * 4, 2.1 * 48000 * 4 + 1000);
+        }
+        finally
+        {
+            ClipPreview.PlayerVolume = null;
+            ClipPreview.SoundPlayed = null;
+        }
+    }
+
+    [Fact]
     public async Task The_preview_plays_the_clips_pictures_in_time()
     {
         SkipUnlessInstalled();

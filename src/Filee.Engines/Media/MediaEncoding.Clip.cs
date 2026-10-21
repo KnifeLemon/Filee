@@ -12,8 +12,9 @@ namespace Filee.Engines.Media;
 /// <param name="Inputs">The input options (one input: the video from the first part's start to the last one's end).</param>
 /// <param name="Filter">The <c>-filter_complex</c> graph.</param>
 /// <param name="HasAudio">True when the graph has <c>[a]</c> (the video has sound).</param>
+/// <param name="HasVideo">True when the graph has <c>[v]</c> (false for the preview's sound alone).</param>
 /// <param name="Length">How long the clip plays, in seconds.</param>
-internal sealed record ClipGraph(IReadOnlyList<string> Inputs, string Filter, bool HasAudio, double Length);
+internal sealed record ClipGraph(IReadOnlyList<string> Inputs, string Filter, bool HasAudio, double Length, bool HasVideo = true);
 
 internal static partial class MediaEncoding
 {
@@ -28,8 +29,14 @@ internal static partial class MediaEncoding
     /// </summary>
     /// <param name="edit">The clip, already <see cref="ClipEdit.Clamped"/> to the video.</param>
     /// <param name="pixelFormat">The pictures' format, the same for every part (pauses included) so they join.</param>
-    internal static ClipGraph ClipGraphOf(string input, ClipEdit edit, bool audio, int width, int height, string fps, string pixelFormat = "yuv420p")
+    /// <param name="video">
+    /// False for the sound alone (the preview's): FFmpeg refuses a graph with a picture output nothing takes.
+    /// </param>
+    internal static ClipGraph ClipGraphOf(string input, ClipEdit edit, bool audio, int width, int height, string fps, string pixelFormat = "yuv420p",
+        bool video = true)
     {
+        if (!video && !audio)
+            throw new ArgumentException("A clip's graph needs pictures or sound.", nameof(audio));
         var sourceParts = edit.Parts.Where(p => !p.Blank).ToList();
         if (sourceParts.Count == 0)
             throw new InvalidOperationException("The clip has no part of the video.");
@@ -39,10 +46,13 @@ internal static partial class MediaEncoding
 
         var graph = new StringBuilder();
         var n = sourceParts.Count;
-        graph.Append("[0:V:0]").Append(n > 1 ? $"split={n}" : "null");
-        for (var k = 0; k < n; k++)
-            graph.Append($"[vs{k}]");
-        graph.Append(';');
+        if (video)
+        {
+            graph.Append("[0:V:0]").Append(n > 1 ? $"split={n}" : "null");
+            for (var k = 0; k < n; k++)
+                graph.Append($"[vs{k}]");
+            graph.Append(';');
+        }
         if (audio)
         {
             graph.Append("[0:a:0]").Append(n > 1 ? $"asplit={n}" : "anull");
@@ -59,7 +69,8 @@ internal static partial class MediaEncoding
             var length = Seconds(part.Length);
             if (part.Blank)
             {
-                graph.Append($"color=c=black:s={width}x{height}:r={fps}:d={length},setsar=1,format={pixelFormat}[v{i}];");
+                if (video)
+                    graph.Append($"color=c=black:s={width}x{height}:r={fps}:d={length},setsar=1,format={pixelFormat}[v{i}];");
                 if (audio)
                     graph.Append($"anullsrc=r=48000:cl=stereo,atrim=duration={length}[a{i}];");
                 continue;
@@ -68,7 +79,8 @@ internal static partial class MediaEncoding
             var end = Seconds(part.End - from);
             var speed = part.PlaySpeed;
             var setpts = speed == 1 ? "setpts=PTS-STARTPTS" : $"setpts=(PTS-STARTPTS)/{Seconds(speed)}";
-            graph.Append($"[vs{source}]trim=start={start}:end={end},{setpts},{picture}[v{i}];");
+            if (video)
+                graph.Append($"[vs{source}]trim=start={start}:end={end},{setpts},{picture}[v{i}];");
             if (audio)
             {
                 graph.Append($"[as{source}]atrim=start={start}:end={end},asetpts=PTS-STARTPTS");
@@ -82,16 +94,19 @@ internal static partial class MediaEncoding
         }
 
         for (var i = 0; i < edit.Parts.Count; i++)
-            graph.Append(audio ? $"[v{i}][a{i}]" : $"[v{i}]");
-        graph.Append($"concat=n={edit.Parts.Count}:v=1:a={(audio ? 1 : 0)}[vc]{(audio ? "[ac]" : "")};");
+            graph.Append(video ? $"[v{i}]" : "").Append(audio ? $"[a{i}]" : "");
+        graph.Append($"concat=n={edit.Parts.Count}:v={(video ? 1 : 0)}:a={(audio ? 1 : 0)}{(video ? "[vc]" : "")}{(audio ? "[ac]" : "")};");
 
         var total = edit.Length;
         var fadeIn = Math.Min(ClipEdit.Fade(edit.FadeIn), total / 2);
         var fadeOut = Math.Min(ClipEdit.Fade(edit.FadeOut), total / 2);
-        graph.Append("[vc]").Append(Fades("fade", fadeIn, fadeOut, total)).Append("[v]");
+        var outputs = new List<string>();
+        if (video)
+            outputs.Add("[vc]" + Fades("fade", fadeIn, fadeOut, total) + "[v]");
         if (audio)
-            graph.Append(";[ac]").Append(Fades("afade", fadeIn, fadeOut, total)).Append("[a]");
-        return new ClipGraph(inputs, graph.ToString(), audio, total);
+            outputs.Add("[ac]" + Fades("afade", fadeIn, fadeOut, total) + "[a]");
+        graph.Append(string.Join(';', outputs));
+        return new ClipGraph(inputs, graph.ToString(), audio, total, video);
     }
 
     /// <summary>
@@ -148,7 +163,7 @@ internal static partial class MediaEncoding
     internal static List<string> ClipPreviewAudio(string input, ClipEdit edit, VideoStreamInfo video)
     {
         var (width, height) = ClipSize(video, 90);
-        var graph = ClipGraphOf(input, edit, true, width, height, "10");
+        var graph = ClipGraphOf(input, edit, true, width, height, "10", video: false);
         return [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[a]", "-c:a", "pcm_s16le", "-f", "wav", "pipe:1"];
     }
 
