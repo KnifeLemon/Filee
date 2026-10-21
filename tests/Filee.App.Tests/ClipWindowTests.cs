@@ -1,0 +1,408 @@
+// The "Cut a clip" window: the clip a video opens with, the handles moved by the timeline, the keys and the quick
+// lengths, the large picture of the active handle, and the conversion that Save starts. Frames come from a stand-in
+// for FFmpeg that paints a picture for each time, so these tests run without it (RenderTests has its screenshots).
+
+using System.Collections.Concurrent;
+using System.IO;
+using Avalonia;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Threading;
+using Filee.App.Services;
+using Filee.App.ViewModels;
+using Filee.App.Views;
+using Filee.Core.Localization;
+using Filee.Core.Presets;
+using Filee.Core.Settings;
+using Filee.Engines.Media;
+using ImageMagick;
+using ImageMagick.Drawing;
+using static Filee.App.Tests.RenderTests;
+
+namespace Filee.App.Tests;
+
+public class ClipWindowTests
+{
+    /// <summary>A 5:12.4 video, as long as the highlights the tool is for come from.</summary>
+    private const double Length = 312.4;
+
+    [AvaloniaFact]
+    public void A_video_opens_on_its_first_30_seconds_with_the_timeline_filled()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            Assert.Equal((0.0, 30.0), (vm.Start, vm.End));
+            Assert.Equal(("0:00.0", "0:30.0", "0:30.0", "5:12.4"), (vm.StartText, vm.EndText, vm.LengthText, vm.DurationText));
+            Assert.Equal(ClipHandle.Start, vm.ActiveHandle);
+            Assert.Equal("Start 0:00.0", vm.PreviewLabel);
+            Assert.Equal(ClipWindowViewModel.ThumbnailCount, vm.Thumbnails.Count);
+            Assert.All(vm.Thumbnails, Assert.NotNull);
+            Assert.Same(vm.Thumbnails, window.ClipTimeline.Thumbnails);
+            // The large picture is the start's own frame, larger than a timeline picture.
+            Assert.Contains(0.0, frames.Times);
+            Assert.True(vm.Preview!.PixelSize.Height > vm.Thumbnails[0]!.PixelSize.Height);
+            Assert.False(vm.HasMultipleFiles);
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.save"], vm.SaveText);
+            Assert.True(vm.IsFast);
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_short_video_opens_whole_and_offers_only_the_lengths_it_has()
+    {
+        WithClipWindow("en", false, ["short.mp4"], (_, vm, _, _) =>
+        {
+            Assert.Equal((0.0, 20.0), (vm.Start, vm.End));
+            Assert.True(vm.Can15);
+            Assert.False(vm.Can30);
+            Assert.False(vm.Can60);
+        }, duration: 20);
+    }
+
+    [AvaloniaFact]
+    public void Handles_stay_inside_the_video_and_in_order()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (_, vm, _, _) =>
+        {
+            vm.MoveHandle(ClipHandle.End, 999);
+            Assert.Equal(Length, vm.End);
+            Assert.Equal(ClipHandle.End, vm.ActiveHandle);
+
+            vm.MoveHandle(ClipHandle.Start, 400);
+            Assert.Equal(Length - ClipRange.MinLength, vm.Start, 6);
+            Assert.Equal(ClipHandle.Start, vm.ActiveHandle);
+
+            vm.MoveHandle(ClipHandle.Start, -10);
+            Assert.Equal(0, vm.Start);
+            vm.MoveHandle(ClipHandle.End, 0);
+            Assert.Equal(ClipRange.MinLength, vm.End, 6);
+
+            // The whole clip moves without changing length, and stops at the ends.
+            vm.MoveHandle(ClipHandle.End, 20);
+            vm.MoveClip(300);
+            Assert.Equal((Length - 20, Length), (vm.Start, vm.End));
+            vm.MoveClip(-5);
+            Assert.Equal((0.0, 20.0), (vm.Start, vm.End));
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_handle_moved_past_the_other_takes_the_clip_along()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (_, vm, _, _) =>
+        {
+            // Put the start on the moment: the 30-second clip follows.
+            vm.MoveHandle(ClipHandle.Start, 100);
+            Assert.Equal((100.0, 130.0), (vm.Start, vm.End));
+            // Within the clip, only that end moves.
+            vm.MoveHandle(ClipHandle.Start, 110);
+            Assert.Equal((110.0, 130.0), (vm.Start, vm.End));
+            // The end before the start: the start goes back with it.
+            vm.MoveHandle(ClipHandle.End, 50);
+            Assert.Equal((30.0, 50.0), (vm.Start, vm.End));
+            // As far as the video goes.
+            vm.MoveHandle(ClipHandle.Start, 305);
+            Assert.Equal((305.0, Length), (vm.Start, vm.End));
+            vm.MoveHandle(ClipHandle.End, 3);
+            Assert.Equal((0.0, 3.0), (vm.Start, vm.End));
+        });
+    }
+
+    [AvaloniaFact]
+    public void Quick_lengths_run_from_the_start_or_end_with_the_video()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (_, vm, _, _) =>
+        {
+            vm.MoveHandle(ClipHandle.Start, 100);
+            vm.QuickLengthCommand.Execute("60");
+            Assert.Equal((100.0, 160.0), (vm.Start, vm.End));
+            Assert.Equal(ClipHandle.End, vm.ActiveHandle); // to see where it now ends
+            vm.QuickLengthCommand.Execute("15");
+            Assert.Equal((100.0, 115.0), (vm.Start, vm.End));
+
+            // Near the end: the video's last 60 seconds.
+            vm.MoveHandle(ClipHandle.End, Length);
+            vm.MoveHandle(ClipHandle.Start, 300);
+            vm.SetLength(60);
+            Assert.Equal(Length - 60, vm.Start, 6);
+            Assert.Equal(Length, vm.End);
+            Assert.Equal("1:00.0", vm.LengthText);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Arrow_keys_move_the_active_handle_and_s_and_e_pick_it()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, _) =>
+        {
+            Press(window, Key.Right);
+            Assert.Equal(0.1, vm.Start, 6);
+            Press(window, Key.Right, RawInputModifiers.Shift);
+            Assert.Equal(1.1, vm.Start, 6);
+            Press(window, Key.Left);
+            Assert.Equal(1.0, vm.Start, 6);
+
+            Press(window, Key.E);
+            Assert.Equal(ClipHandle.End, vm.ActiveHandle);
+            Assert.True(vm.IsEndActive);
+            Press(window, Key.Left, RawInputModifiers.Shift);
+            Assert.Equal(29.0, vm.End, 6);
+            Assert.Equal("End 0:29.0", vm.PreviewLabel);
+
+            Press(window, Key.S);
+            Assert.Equal(ClipHandle.Start, vm.ActiveHandle);
+            // Ctrl + arrow is no nudge.
+            Press(window, Key.Right, RawInputModifiers.Control);
+            Assert.Equal(1.0, vm.Start, 6);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Right_to_left_languages_keep_time_running_left_to_right()
+    {
+        WithClipWindow("ar", false, ["match.mp4"], (window, vm, _, _) =>
+        {
+            Assert.Equal(FlowDirection.RightToLeft, window.FlowDirection);
+            Assert.Equal(FlowDirection.LeftToRight, window.ClipTimeline.FlowDirection);
+            Press(window, Key.Right);
+            Assert.Equal(0.1, vm.Start, 6); // later, as on the timeline
+            var timeline = window.ClipTimeline;
+            Assert.True(timeline.XOf(vm.End) > timeline.XOf(vm.Start));
+        });
+    }
+
+    [AvaloniaFact]
+    public void Dragging_a_handle_on_the_timeline_moves_that_end_and_shows_its_frame()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            var timeline = window.ClipTimeline;
+            var origin = timeline.TranslatePoint(default, window)!.Value;
+            var y = timeline.Bounds.Height / 2;
+            var grab = new Point(timeline.XOf(vm.End) + 6, y) + (Vector)origin;
+            var drop = new Point(timeline.XOf(120), y) + (Vector)origin;
+
+            window.MouseDown(grab, MouseButton.Left);
+            window.MouseMove(drop);
+            window.MouseUp(drop, MouseButton.Left);
+            Pump();
+
+            Assert.Equal(ClipHandle.End, vm.ActiveHandle);
+            Assert.InRange(vm.End, 117, 123);
+            Assert.Equal(0, vm.Start);
+            // The end's frame: the clip's last one, just before the end.
+            WaitFor(() => frames.Times.Any(t => Math.Abs(t - (vm.End - 1 / 30.0)) < 1e-6));
+
+            // Dragging the middle moves the whole clip.
+            var length = vm.End - vm.Start;
+            var middle = new Point(timeline.XOf(vm.Start + length / 2), y) + (Vector)origin;
+            window.MouseDown(middle, MouseButton.Left);
+            window.MouseMove(middle + new Vector(timeline.XOf(60) - timeline.XOf(0), 0));
+            window.MouseUp(middle, MouseButton.Left);
+            Pump();
+            Assert.InRange(vm.Start, 57, 63);
+            Assert.Equal(length, vm.End - vm.Start, 6);
+
+            // Pressing beside the clip brings the nearer handle there.
+            var before = new Point(timeline.XOf(20), y) + (Vector)origin;
+            window.MouseDown(before, MouseButton.Left);
+            window.MouseUp(before, MouseButton.Left);
+            Pump();
+            Assert.Equal(ClipHandle.Start, vm.ActiveHandle);
+            Assert.InRange(vm.Start, 17, 23);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Save_starts_the_conversion_of_the_clip_and_closes()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, exports) =>
+        {
+            vm.MoveHandle(ClipHandle.Start, 65.3);
+            vm.QuickLengthCommand.Execute("30");
+            vm.IsFast = false;
+            Press(window, Key.Enter);
+
+            var (path, preset) = Assert.Single(exports);
+            Assert.EndsWith("match.mp4", path);
+            Assert.Equal(PresetKind.Convert, preset.Kind);
+            Assert.Equal("mkv", preset.TargetFormat); // what targetFor says for the file
+            Assert.Equal(65.3, preset.Media.ClipStart!.Value, 6);
+            Assert.Equal(95.3, preset.Media.ClipEnd!.Value, 6);
+            Assert.True(preset.Media.ExactCut);
+            Assert.Equal("{name}_clip", preset.Output.FileNamePattern);
+            Assert.Equal("preset.clip", preset.NameKey);
+            WaitFor(() => !window.IsVisible);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Fast_or_exact_is_remembered_in_the_tool()
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var saved = store.FindPreset("tool-clip")!;
+        try
+        {
+            WithClipWindow("en", false, ["match.mp4"], (_, vm, _, _) =>
+            {
+                vm.IsFast = false;
+                Assert.True(saved.Media.ExactCut);
+            }, tool: saved);
+            // Opened again: exact, as left.
+            WithClipWindow("en", false, ["match.mp4"], (_, vm, _, _) =>
+            {
+                Assert.False(vm.IsFast);
+                vm.IsFast = true;
+            }, tool: saved);
+            Assert.False(saved.Media.ExactCut);
+        }
+        finally
+        {
+            saved.Media.ExactCut = false;
+        }
+    }
+
+    [AvaloniaFact]
+    public void Several_videos_follow_each_other_and_ones_that_cant_be_read_are_listed()
+    {
+        WithClipWindow("en", false, ["one.mp4", "broken.mp4", "three.mp4"], (window, vm, frames, exports) =>
+        {
+            Assert.True(vm.HasMultipleFiles);
+            Assert.Equal("1 of 3", vm.CounterText);
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.save_next"], vm.SaveText);
+
+            _ = vm.SaveAsync();
+            // The second one can't be read: noted, and the third opens.
+            WaitFor(() => vm.CurrentIndex == 2 && !vm.IsLoading && vm.Thumbnails.All(t => t is not null));
+            Assert.True(vm.HasStatusNotice);
+            Assert.Contains("broken.mp4", vm.StatusNotice);
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.save"], vm.SaveText);
+
+            _ = vm.SkipAsync();
+            WaitFor(() => vm.IsFinished);
+            Assert.Single(exports);
+            Assert.Single(vm.Problems);
+            Assert.Equal("1 of 3 failed", vm.Summary);
+            Assert.True(window.IsVisible); // stays on what went wrong until closed
+            Press(window, Key.Escape);
+            WaitFor(() => !window.IsVisible);
+        });
+    }
+
+    // ───────────────────────── Helpers ─────────────────────────
+
+    /// <summary>
+    /// Opens the window on made-up videos (a file name with "broken" can't be read) of <paramref name="duration"/>
+    /// seconds, waits until the timeline and the large picture are there, and runs <paramref name="act"/> with the
+    /// window, its model, the frames taken and the conversions started.
+    /// </summary>
+    internal static void WithClipWindow(string language, bool dark, string[] names,
+        Action<ClipWindow, ClipWindowViewModel, PaintedFrames, List<(string Path, Preset Preset)>> act, double duration = Length, Preset? tool = null)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        if (dark)
+            theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        var folder = Directory.CreateTempSubdirectory("filee-clip-window-").FullName;
+        ClipWindow? window = null;
+        try
+        {
+            var files = names.Select(name => Path.Combine(folder, name)).ToList();
+            foreach (var file in files)
+                File.WriteAllBytes(file, [0]);
+            var frames = new PaintedFrames(duration);
+            var exports = new List<(string, Preset)>();
+            tool ??= BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+            var vm = new ClipWindowViewModel(files, tool, AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), frames,
+                _ => "mkv", (path, preset) => exports.Add((path, preset)));
+            window = new ClipWindow { DataContext = vm, Width = 1040, Height = 720 };
+            window.Show();
+            WaitFor(() => !vm.IsLoading && vm.Thumbnails.All(t => t is not null) && frames.Times.Contains(vm.PreviewTime));
+            Pump();
+            act(window, vm, frames, exports);
+        }
+        finally
+        {
+            if (window?.IsVisible == true)
+                window.Close();
+            if (dark)
+                theme.Apply(new ThemeSettings(), language);
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    internal static void Press(ClipWindow window, Key key, RawInputModifiers modifiers = RawInputModifiers.None)
+    {
+        window.KeyPress(key, modifiers, PhysicalKey.None, null);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    internal static void WaitFor(Func<bool> condition)
+    {
+        for (var i = 0; i < 500 && !condition(); i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(10);
+        }
+        Assert.True(condition());
+    }
+
+    /// <summary>
+    /// Stands in for FFmpeg: a 16:9 video of a sunny day whose sky changes colour over time and whose sun crosses the
+    /// picture, so each frame looks different.
+    /// </summary>
+    internal sealed class PaintedFrames(double duration) : IVideoFrameSource
+    {
+        private readonly ConcurrentQueue<double> _times = new();
+
+        /// <summary>Every time a frame was taken at.</summary>
+        public IReadOnlyCollection<double> Times => _times;
+
+        public Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken) =>
+            Path.GetFileName(path).Contains("broken", StringComparison.Ordinal)
+                ? Task.FromException<VideoSummary>(new InvalidOperationException("Invalid data found when processing input"))
+                : Task.FromResult(new VideoSummary(duration, 1920, 1080, 30));
+
+        public Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken)
+        {
+            _times.Enqueue(seconds);
+            var height = (uint)maxHeight;
+            var width = height * 16 / 9;
+            var t = Math.Clamp(seconds / duration, 0, 1);
+            var top = Hsl(200 + 160 * t, 0.65, 0.55);
+            var bottom = Hsl(30 + 20 * t, 0.85, 0.75);
+            using var image = new MagickImage($"gradient:{top}-{bottom}", width, height);
+            new Drawables()
+                .FillColor(new MagickColor("#FFE9A8"))
+                .Circle(width * (0.1 + 0.8 * t), height * 0.35, width * (0.1 + 0.8 * t) + height * 0.08, height * 0.35)
+                .FillColor(new MagickColor("#2F6B3A"))
+                .Rectangle(0, height * 0.72, width, height)
+                .FillColor(new MagickColor("#F4F1E8"))
+                .Rectangle(width * 0.48, height * 0.72, width * 0.52, height)
+                .Draw(image);
+            image.Write(output, MagickFormat.Jpeg);
+            return Task.FromResult(true);
+        }
+
+        private static string Hsl(double hue, double saturation, double lightness)
+        {
+            var c = (1 - Math.Abs(2 * lightness - 1)) * saturation;
+            var h = (hue % 360 + 360) % 360 / 60;
+            var x = c * (1 - Math.Abs(h % 2 - 1));
+            var (r, g, b) = h switch
+            {
+                < 1 => (c, x, 0.0),
+                < 2 => (x, c, 0.0),
+                < 3 => (0.0, c, x),
+                < 4 => (0.0, x, c),
+                < 5 => (x, 0.0, c),
+                _ => (c, 0.0, x),
+            };
+            var m = lightness - c / 2;
+            return $"#{(int)Math.Round((r + m) * 255):X2}{(int)Math.Round((g + m) * 255):X2}{(int)Math.Round((b + m) * 255):X2}";
+        }
+    }
+}

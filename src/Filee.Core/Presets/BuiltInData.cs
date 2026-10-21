@@ -75,6 +75,7 @@ public static class BuiltInData
         .. FramePresets(),
         .. MotionPhotoPresets(),
         .. LivePhotoPresets(),
+        .. ClipPresets(),
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
         new() { Id = "to-hwpx", Name = "HWPX", TargetFormat = "hwpx" },
         .. HwpPresets(),
@@ -109,6 +110,19 @@ public static class BuiltInData
     [
         new() { Id = "live-photo-iphone", NameKey = "preset.live_photo_iphone", TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Apple } },
         new() { Id = "motion-photo-android", NameKey = "preset.motion_photo_android", TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Android } },
+    ];
+
+    /// <summary>
+    /// "Cut a clip" (added in settings schema 33): a part of a video, chosen on a timeline, as a file of its own. First on
+    /// the back of the video donut, as "Crop" is on the images donut.
+    /// </summary>
+    public static List<Preset> ClipPresets() =>
+    [
+        new()
+        {
+            Id = "tool-clip", NameKey = "preset.clip", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.ClipTool, Output = { FileNamePattern = "{name}_clip" },
+        },
     ];
 
     /// <summary>
@@ -458,8 +472,8 @@ public static class BuiltInData
             Extensions = ExtensionsOf(FormatCategory.Video),
             PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "to-mkv", "to-avi"],
             // Every frame as pictures is on no front (a long video gives thousands of files): behind a flip, a drop that
-            // misses its slice doesn't start it. Live / Motion Photos of a clip are there too.
-            BackPresetIds = ["mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "live-photo-iphone", "motion-photo-android",
+            // misses its slice doesn't start it. Live / Motion Photos of a clip are there too, and "Cut a clip" first.
+            BackPresetIds = ["tool-clip", "mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "live-photo-iphone", "motion-photo-android",
                 "to-m4a", "to-wav", "to-flac", "zip-all"],
         },
         new()

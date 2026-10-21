@@ -5,7 +5,7 @@
 // writer). Container and codec choices live in MediaEncoding, the process handling in FfmpegRunner, hardware encoders
 // in HardwareVideo (options) and HardwareProbe (which one works here).
 // Live / Motion Photos (Android, iPhone) give their video when a preset asks for it (LivePhotoSource, MotionPhoto), and
-// a clip of a video becomes one (LivePhotoWriter).
+// a clip of a video becomes one (LivePhotoWriter). "Cut a clip" copies or encodes a part of a video (CutClipAsync).
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
@@ -132,6 +132,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
 
         if (step.FrameSequence)
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
+        if (step.Preset.CutsClipOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
+            return await CutClipAsync(ffmpeg, step, input, info, progress, cancellationToken);
 
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
@@ -178,6 +180,64 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             throw;
         }
 
+        progress?.Report(1);
+        return [output];
+    }
+
+    /// <summary>
+    /// "Cut a clip": the part of the video between <see cref="MediaOptions.ClipStart"/> and
+    /// <see cref="MediaOptions.ClipEnd"/> (kept inside the video). Copied as it is unless the preset asks for an exact
+    /// cut (<see cref="MediaOptions.ExactCut"/>); a copy the target can't take (a codec its container doesn't hold) is
+    /// encoded exactly instead, like the preset's other videos.
+    /// </summary>
+    private async Task<IReadOnlyList<string>> CutClipAsync(string ffmpeg, ConversionStep step, string input, MediaInfo info,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        if (info.Video is null)
+            throw new InvalidOperationException("The file has no video stream.");
+        var media = step.Preset.Media;
+        var clip = ClipRange.Clamp(media.ClipStart ?? 0, media.ClipEnd ?? 0, info.Duration?.TotalSeconds);
+        var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
+        if (output is null)
+            return [];
+        var duration = TimeSpan.FromSeconds(clip.Length);
+        try
+        {
+            if (!media.ExactCut)
+            {
+                try
+                {
+                    var copy = new FfmpegPass(MediaEncoding.ClipCopy(input, output, step.To, clip, media, info), 1);
+                    await RunPassesAsync(ffmpeg, [copy], output, duration, progress, cancellationToken);
+                    progress?.Report(1);
+                    return [output];
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
+                {
+                    _logger.LogWarning("{File}: copying the clip failed ({Reason}); encoding it instead", input, ex.Message);
+                    TryDelete(output);
+                }
+            }
+
+            var encoders = EncodersOf(ffmpeg);
+            HardwareEncoder? hardware = null;
+            if (MediaEncoding.HardwareCodec(step.To, media, info, encode: true) is { } codec)
+            {
+                var tenBit = HardwareVideo.TenBit(codec, info.Video);
+                hardware = SelectHardware is { } select
+                    ? await select(ffmpeg, codec, tenBit, encoders, cancellationToken)
+                    : await HardwareProbe.SelectAsync(ffmpeg, codec, tenBit, encoders, _logger, cancellationToken);
+            }
+            IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder) =>
+                MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, encoders: encoders, hardware: encoder, clip: clip);
+            await RunWithFallbackAsync(Plan(hardware), hardware, Plan,
+                planned => RunPassesAsync(ffmpeg, planned, output, duration, progress, cancellationToken), output, _logger, cancellationToken);
+        }
+        catch
+        {
+            TryDelete(output);
+            throw;
+        }
         progress?.Report(1);
         return [output];
     }

@@ -88,9 +88,23 @@ public sealed class PresetAvailability
     private PresetJudgement Evaluate(Preset preset, IReadOnlyList<FileFormat> formats,
         Func<RoutePlanner> installedPlanner, Func<Func<RoutePlanner, bool>, EnginePackageState?> packageEnabling)
     {
+        if (preset.IsClipTool)
+        {
+            // Any video among the files: the others are left out when the clip window opens.
+            var videos = formats.Where(f => f.Category == FormatCategory.Video).ToList();
+            if (videos.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+            bool CanCut(RoutePlanner planner) => videos.Any(f => ClipTool.CanCut(f.Id, planner));
+            if (CanCut(installedPlanner()))
+                return new(PresetUse.Usable, null);
+            return packageEnabling(CanCut) is { } needed
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", needed.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
         if (preset.IsTool)
         {
-            if (formats.Count > 0 && formats.All(f => WritableSingleFrameRasterFormats.Contains(f.Id)))
+            if (preset.IsCropTool && formats.Count > 0 && formats.All(f => WritableSingleFrameRasterFormats.Contains(f.Id)))
                 return new(PresetUse.Usable, null);
             return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
         }

@@ -146,10 +146,17 @@ internal static class MediaEncoding
     /// x265 (also the retry after a hardware encode failed).
     /// </param>
     /// <param name="animationSpeed">Playback speed of an animated GIF or APNG (ImageOptions.PlaybackSpeed); 1 keeps the video's.</param>
+    /// <param name="clip">
+    /// A video target: only this part of the video, cut exactly (the video is always encoded; <see cref="ClipCopy"/>
+    /// copies it instead, cut at key frames).
+    /// </param>
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
-        CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1)
+        CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1,
+        ClipRange? clip = null)
     {
+        if (clip is { } part && VideoTargets.TryGetValue(target, out var clipTarget))
+            return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part), 1)];
         if (target == "gif")
             return AnimatedGif(input, output, options, info, workDirectory, animationSpeed);
         if (target == "apng")
@@ -215,31 +222,33 @@ internal static class MediaEncoding
     /// not ask for hardware encoding, the target is written with another codec (VP9, AV1, MPEG-2, …), or the video is
     /// copied anyway.
     /// </summary>
-    internal static string? HardwareCodec(string target, MediaOptions options, MediaInfo info) =>
+    /// <param name="encode">The video is encoded even where it could be copied (an exact clip).</param>
+    internal static string? HardwareCodec(string target, MediaOptions options, MediaInfo info, bool encode = false) =>
         options.HardwareEncoding && info.Video is { } video && VideoTargets.ContainsKey(target)
-        && MediaCodecs.TakesHardwareEncoding(target, options.VideoCodec) && !CanCopyVideo(target, video, options)
+        && MediaCodecs.TakesHardwareEncoding(target, options.VideoCodec) && (encode || !CanCopyVideo(target, video, options))
             ? MediaCodecs.Effective(target, options.VideoCodec) == Core.Presets.VideoCodec.Hevc ? "hevc" : "h264"
             : null;
 
     private static List<string> Video(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,
-        IReadOnlySet<string>? encoders, HardwareEncoder? hardware)
+        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         // An input without sound is fine: the output simply has no audio track.
         var audio = options.RemoveAudio ? null : info.Audio;
 
-        List<string> args = [.. Common, "-i", input, "-map", "0:V:0"];
+        // A clip: FFmpeg seeks the input and decodes from the key frame before the start, so the first frame is exact.
+        List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
         if (audio is not null)
             args.AddRange(["-map", "0:a:0"]);
 
-        if (CanCopyVideo(target, video, options))
+        if (clip is null && CanCopyVideo(target, video, options))
         {
             args.AddRange(["-c:v", "copy"]);
             // Apple plays HEVC in MP4/MOV only under the "hvc1" tag (FFmpeg keeps "hev1" from some sources).
             if (video.Codec == "hevc" && target is "mp4" or "m4v" or "mov")
                 args.AddRange(["-tag:v", "hvc1"]);
         }
-        else if (hardware is not null && HardwareCodec(target, options, info) == hardware.Codec)
+        else if (hardware is not null && HardwareCodec(target, options, info, encode: clip is not null) == hardware.Codec)
         {
             // VA-API's device is a global option, so it goes before the input.
             args.InsertRange(Common.Length, HardwareVideo.InputArguments(hardware));
@@ -255,7 +264,8 @@ internal static class MediaEncoding
 
         if (audio is null)
             args.Add("-an");
-        else if (CanCopyAudio(target, audio, options))
+        // A clip's sound is encoded too: copied, it would start with the packets before the seek point (a second early).
+        else if (clip is null && CanCopyAudio(target, audio, options))
             args.AddRange(["-c:a", "copy"]);
         else
             args.AddRange(AudioCodecArguments(target, spec.AudioCodec, options, audio, inVideo: true));
@@ -266,6 +276,55 @@ internal static class MediaEncoding
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
     }
+
+    /// <summary>
+    /// A part of a video copied as it is (<c>-c copy</c>): done in a moment and nothing is lost, but a copy can only
+    /// start at a key frame, so the clip starts at the last one before <see cref="ClipRange.Start"/> (up to a few
+    /// seconds early). The first video stream and every audio track are kept (none with
+    /// <see cref="MediaOptions.RemoveAudio"/>); the other options only apply to an exact clip, which is encoded.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The file has no video stream.</exception>
+    /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
+    internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, MediaOptions options, MediaInfo info)
+    {
+        var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
+        if (!VideoTargets.TryGetValue(target, out var spec))
+            throw new NotSupportedException($"FFmpeg cannot write '{target}'.");
+        var audio = !options.RemoveAudio && info.Audio is not null;
+
+        List<string> args = [.. Common, .. ClipInput(clip), "-i", input, "-map", "0:V:0"];
+        if (audio)
+            args.AddRange(["-map", "0:a"]);
+        args.AddRange(["-c", "copy"]);
+        // Apple plays HEVC in MP4/MOV only under the "hvc1" tag (FFmpeg keeps "hev1" from some sources).
+        if (video.Codec == "hevc" && target is "mp4" or "m4v" or "mov")
+            args.AddRange(["-tag:v", "hvc1"]);
+        if (!audio)
+            args.Add("-an");
+        // The copied packets keep their timestamps from the key frame on: shifted so the clip starts at 0.
+        args.AddRange(["-avoid_negative_ts", "make_zero"]);
+        args.AddRange(MetadataArguments());
+        args.AddRange(ContainerArguments(target));
+        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
+        return args;
+    }
+
+    /// <summary>
+    /// Input options that read only <paramref name="clip"/> of the file: <c>-ss</c> and <c>-to</c> before <c>-i</c>,
+    /// both positions in the source.
+    /// </summary>
+    internal static string[] ClipInput(ClipRange clip) => ["-ss", ClipRange.Ffmpeg(clip.Start), "-to", ClipRange.Ffmpeg(clip.End)];
+
+    /// <summary>
+    /// One frame at <paramref name="seconds"/> as a JPEG at most <paramref name="maxHeight"/> pixels high (square
+    /// pixels, turned upright): the timeline and the large picture of the clip window.
+    /// </summary>
+    internal static List<string> FrameAt(string input, double seconds, string output, int maxHeight, VideoStreamInfo? video) =>
+    [
+        .. Common, "-ss", ClipRange.Ffmpeg(seconds), "-i", input, "-map", "0:V:0",
+        "-vf", (video is null ? "" : SquarePixels(video)) + $"scale=w=-2:h='trunc(min(ih,{Math.Max(16, maxHeight)})/2)*2'",
+        "-frames:v", "1", "-update", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2", output,
+    ];
 
     /// <summary>
     /// Codecs a container takes as they are. A video whose streams are listed for the target is only rewrapped

@@ -1,0 +1,319 @@
+<!-- "Cut a clip": a frameless soft-rounded stage like the crop overlay's. The frame at the handle being moved large in
+     the middle; floating on the stage the file chip (top left), maximize and close (top right), and at the bottom a
+     card with the start, length and end, the timeline of the video with the clip between two handles, and the toolbar
+     pill with the quick lengths, the fast / exact choice, Skip and "Save clip". After the last file, when a file could
+     not be opened, a card with what went wrong. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        xmlns:c="using:Filee.App.Controls"
+        x:Class="Filee.App.Views.ClipWindow"
+        x:DataType="vm:ClipWindowViewModel"
+        Title="{DynamicResource preset.clip}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="1040" Height="720" MinWidth="680" MinHeight="520"
+        WindowDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        CanResize="True">
+
+  <Window.Resources>
+    <StreamGeometry x:Key="Clip.Maximize">M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z M7 6.2a.8.8 0 0 0-.8.8v10c0 .44.36.8.8.8h10a.8.8 0 0 0 .8-.8V7a.8.8 0 0 0-.8-.8z</StreamGeometry>
+    <StreamGeometry x:Key="Clip.Grip">M18 10a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M18 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M12 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z</StreamGeometry>
+    <StreamGeometry x:Key="Clip.Fast">M13.2 2.2 4.6 13.4h6.1l-1.5 8.4 8.6-11.2h-6.1z</StreamGeometry>
+  </Window.Resources>
+
+  <Window.Styles>
+    <!-- The frame of the window; none when maximized -->
+    <Style Selector="Border#Shell">
+      <Setter Property="Margin" Value="12" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusLarge}" />
+    </Style>
+    <Style Selector="Window.maximized Border#Shell">
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- Floating pieces on the stage -->
+    <Style Selector="Border.float">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
+    </Style>
+
+    <!-- Toolbar buttons: quiet, round, a soft tint on hover -->
+    <Style Selector="Button.tool, ToggleButton.tool">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.tool:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tool:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Button.round">
+      <Setter Property="Padding" Value="9" />
+      <Setter Property="Width" Value="34" />
+      <Setter Property="Height" Value="34" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="16,8" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- The start and end: what they are, the time, and their key; the active one tinted -->
+    <Style Selector="Button.time">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+      <Setter Property="Padding" Value="10,5" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.time:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+    </Style>
+    <Style Selector="Button.time.active /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="TextBlock.caption">
+      <Setter Property="FontSize" Value="11.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+    </Style>
+    <Style Selector="TextBlock.clock">
+      <Setter Property="FontSize" Value="17" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+
+    <!-- Keycaps: the shortcut beside a button's name -->
+    <Style Selector="Border.key">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="MinWidth" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.key > TextBlock">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.key.onaccent">
+      <Setter Property="Background" Value="#2EFFFFFF" />
+    </Style>
+    <Style Selector="Border.key.onaccent > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+    </Style>
+  </Window.Styles>
+
+  <Border x:Name="Shell" ClipToBounds="True"
+          Background="{DynamicResource PageBrush}"
+          BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
+          BoxShadow="{DynamicResource CardShadow}">
+    <Grid x:Name="Stage">
+      <Grid RowDefinitions="*,Auto" IsVisible="{Binding IsEditing}">
+        <!-- The frame at the active handle, as large as fits -->
+        <Panel Margin="36,66,36,12">
+          <Border x:Name="PreviewFrame" CornerRadius="{DynamicResource SoftRadius}" ClipToBounds="True"
+                  HorizontalAlignment="Center" VerticalAlignment="Center"
+                  Background="{DynamicResource SurfaceAltBrush}" BoxShadow="{DynamicResource CardShadow}">
+            <Panel>
+              <Image Source="{Binding Preview}" Stretch="Uniform" />
+              <!-- Which handle's frame this is, on the picture -->
+              <Border Classes="float" Padding="10,4" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10"
+                      IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
+                <TextBlock Text="{Binding PreviewLabel}" FontSize="12.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </Border>
+            </Panel>
+          </Border>
+        </Panel>
+
+        <!-- The clip: start, length, end and the timeline; then the toolbar and the keys -->
+        <StackPanel Grid.Row="1" Margin="16,0,16,12" Spacing="8">
+          <!-- Left to right in every language, as time runs on the timeline: the start on the left, the end on the right -->
+          <Border Classes="float" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="10,8,10,10" MaxWidth="980"
+                  FlowDirection="LeftToRight">
+            <StackPanel Spacing="6" IsEnabled="{Binding CanEdit}">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Button x:Name="StartButton" Classes="time" Classes.active="{Binding IsStartActive}" Command="{Binding ActivateStartCommand}"
+                        AutomationProperties.Name="{DynamicResource clip.start}">
+                  <StackPanel Orientation="Horizontal" Spacing="9">
+                    <StackPanel Spacing="0">
+                      <TextBlock Classes="caption" Text="{DynamicResource clip.start}" />
+                      <TextBlock Classes="clock" Text="{Binding StartText}" />
+                    </StackPanel>
+                    <Border Classes="key"><TextBlock Text="S" /></Border>
+                  </StackPanel>
+                </Button>
+                <StackPanel Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="0">
+                  <TextBlock Classes="caption" Text="{DynamicResource clip.length}" HorizontalAlignment="Center" />
+                  <TextBlock Classes="clock" Text="{Binding LengthText}" HorizontalAlignment="Center"
+                             Foreground="{DynamicResource AccentBrush}" />
+                </StackPanel>
+                <Button x:Name="EndButton" Grid.Column="2" Classes="time" Classes.active="{Binding IsEndActive}" Command="{Binding ActivateEndCommand}"
+                        AutomationProperties.Name="{DynamicResource clip.end}">
+                  <StackPanel Orientation="Horizontal" Spacing="9">
+                    <Border Classes="key"><TextBlock Text="E" /></Border>
+                    <StackPanel Spacing="0">
+                      <TextBlock Classes="caption" Text="{DynamicResource clip.end}" HorizontalAlignment="Right" />
+                      <TextBlock Classes="clock" Text="{Binding EndText}" HorizontalAlignment="Right" />
+                    </StackPanel>
+                  </StackPanel>
+                </Button>
+              </Grid>
+
+              <c:ClipTimeline x:Name="Timeline" Height="62" Margin="2,0"
+                              AutomationProperties.Name="{DynamicResource clip.timeline}"
+                              Duration="{Binding Duration}" Start="{Binding Start}" End="{Binding End}"
+                              ActiveHandle="{Binding ActiveHandle}" Thumbnails="{Binding Thumbnails}"
+                              AccentBrush="{DynamicResource AccentBrush}" OnAccentBrush="{DynamicResource OnAccentBrush}"
+                              TrackBrush="{DynamicResource SurfaceAltBrush}" StageBrush="{DynamicResource SurfaceBrush}" />
+
+              <Grid ColumnDefinitions="*,*" Margin="16,0">
+                <TextBlock Classes="caption" Text="0:00.0" />
+                <TextBlock Grid.Column="1" Classes="caption" Text="{Binding DurationText}" HorizontalAlignment="Right" />
+              </Grid>
+            </StackPanel>
+          </Border>
+
+          <Border Classes="float" Padding="5" HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="3" IsEnabled="{Binding CanEdit}">
+              <Button Classes="tool" Content="{Binding Length15Text}" Command="{Binding QuickLengthCommand}" CommandParameter="15"
+                      IsEnabled="{Binding Can15}" ToolTip.Tip="{DynamicResource clip.length_hint}" />
+              <Button Classes="tool" Content="{Binding Length30Text}" Command="{Binding QuickLengthCommand}" CommandParameter="30"
+                      IsEnabled="{Binding Can30}" ToolTip.Tip="{DynamicResource clip.length_hint}" />
+              <Button Classes="tool" Content="{Binding Length60Text}" Command="{Binding QuickLengthCommand}" CommandParameter="60"
+                      IsEnabled="{Binding Can60}" ToolTip.Tip="{DynamicResource clip.length_hint}" />
+
+              <Border Width="1" Height="22" Margin="3,0" Background="{DynamicResource SubtleBorderBrush}" VerticalAlignment="Center" />
+
+              <ToggleButton x:Name="FastToggle" Classes="tool" IsChecked="{Binding IsFast}" Padding="10,8,12,8"
+                            ToolTip.Tip="{DynamicResource clip.fast_hint}" AutomationProperties.Name="{DynamicResource clip.fast}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Clip.Fast}" Foreground="{DynamicResource AccentBrush}" />
+                  <TextBlock Text="{DynamicResource clip.fast}" FontSize="13" VerticalAlignment="Center" />
+                </StackPanel>
+              </ToggleButton>
+
+              <Button Classes="tool" Command="{Binding SkipCommand}" IsVisible="{Binding HasMultipleFiles}"
+                      AutomationProperties.Name="{DynamicResource crop.skip}">
+                <StackPanel Orientation="Horizontal" Spacing="5">
+                  <TextBlock Text="{DynamicResource crop.skip}" FontSize="13" VerticalAlignment="Center" />
+                  <PathIcon Width="11" Height="11" Data="{StaticResource Icon.ChevronRight}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+              </Button>
+
+              <Button x:Name="PrimaryButton" Classes="accent primary" Margin="4,0,0,0" Command="{Binding SaveCommand}"
+                      AutomationProperties.Name="{Binding SaveText}">
+                <StackPanel Orientation="Horizontal" Spacing="9">
+                  <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Cut}" Foreground="{DynamicResource OnAccentBrush}" />
+                  <TextBlock Text="{Binding SaveText}" FontSize="13" VerticalAlignment="Center" />
+                  <Border Classes="key onaccent"><TextBlock Text="Enter" /></Border>
+                </StackPanel>
+              </Button>
+            </StackPanel>
+          </Border>
+          <TextBlock Text="{DynamicResource clip.hint_keys}" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"
+                     TextWrapping="Wrap" MaxWidth="620" Opacity="0.8" Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+      </Grid>
+
+      <!-- Top: the file and close -->
+      <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Top" Margin="14,14,14,0">
+        <StackPanel Spacing="8" HorizontalAlignment="Left">
+          <Border Classes="float" Padding="5,5,12,5" IsVisible="{Binding IsEditing}" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" Spacing="9">
+              <Border Width="26" Height="26" CornerRadius="999" Background="{DynamicResource AccentSoftBrush}">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Cut}" Foreground="{DynamicResource AccentBrush}" />
+              </Border>
+              <TextBlock Text="{Binding CurrentFileName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" MaxWidth="360" Foreground="{DynamicResource TextPrimaryBrush}" />
+              <Border IsVisible="{Binding HasMultipleFiles}" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="999"
+                      Padding="8,2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding CounterText}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- The last file that could not be opened -->
+          <Border Classes="float" Padding="10,6,12,6" IsVisible="{Binding HasStatusNotice}" HorizontalAlignment="Left"
+                  CornerRadius="{DynamicResource SoftRadius}" MaxWidth="420">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Alert}" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding StatusNotice}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                         Foreground="{DynamicResource TextSecondaryBrush}" MaxWidth="380" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <Border Grid.Column="1" Classes="float" Padding="3" VerticalAlignment="Top">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button x:Name="MaximizeButton" Classes="tool round" Click="OnMaximize"
+                    ToolTip.Tip="{DynamicResource crop.maximize}" AutomationProperties.Name="{DynamicResource crop.maximize}">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Clip.Maximize}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+            <Button Classes="tool round" Command="{Binding CancelCommand}"
+                    ToolTip.Tip="{DynamicResource crop.close_hint}" AutomationProperties.Name="{DynamicResource common.close}">
+              <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Close}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- Drag the bottom-right corner to resize -->
+      <Border x:Name="ResizeGrip" Width="22" Height="22" Background="Transparent" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              Margin="0,0,4,4" Cursor="BottomRightCorner">
+        <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Grip}" Foreground="{DynamicResource TextSecondaryBrush}" Opacity="0.6" />
+      </Border>
+
+      <!-- After the last file, when files could not be opened -->
+      <Border Classes="card" IsVisible="{Binding IsFinished}" HorizontalAlignment="Center" VerticalAlignment="Center"
+              MaxWidth="540" Margin="24" Padding="26,24">
+        <StackPanel Spacing="14">
+          <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" FontSize="16" TextAlignment="Center" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextPrimaryBrush}" />
+          <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="{DynamicResource SoftRadiusSmall}" Padding="14,10">
+            <ScrollViewer MaxHeight="220">
+              <ItemsControl ItemsSource="{Binding Problems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding}" FontSize="12" Margin="0,2" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+          <Button x:Name="CloseButton" Classes="accent primary" HorizontalAlignment="Center" MinWidth="120"
+                  HorizontalContentAlignment="Center" Content="{DynamicResource common.close}" Command="{Binding CancelCommand}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Reading the video -->
+      <Border Classes="float" IsVisible="{Binding IsLoading}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="18,14">
+        <ProgressBar Classes="soft" IsIndeterminate="True" Width="96" />
+      </Border>
+    </Grid>
+  </Border>
+</Window>

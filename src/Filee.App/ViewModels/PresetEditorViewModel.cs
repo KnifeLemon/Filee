@@ -453,7 +453,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private string TargetId => Target.Value;
     private FormatCategory? TargetCategory => FormatRegistry.FindById(TargetId)?.Category;
     private bool TargetIsImage => TargetId == BuiltInData.SameAsSource || TargetCategory == FormatCategory.Image;
-    private bool TargetIsVideo => TargetCategory == FormatCategory.Video;
+    /// <summary>A video target, or "Cut a clip", whose exact cuts are encoded with the video options.</summary>
+    private bool TargetIsVideo => TargetCategory == FormatCategory.Video || _original.IsClipTool;
     private bool TargetIsAudio => TargetCategory == FormatCategory.Audio;
     private bool TargetIsLossyMedia => TargetIsVideo
         || (TargetIsAudio && !LosslessAudioTargets.Contains(TargetId) && MediaCodecs.Effective(TargetId, _audioCodecValue) != AudioCodec.Alac);

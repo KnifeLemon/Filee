@@ -750,6 +750,12 @@ internal static class SettingsMigrations
         // v32: logs and script source, Video CD DAT and Workbench archives learn their donuts; custom claims stay put.
         if (from < 32)
             changed |= LearnExtensions(profiles, out _, ["log", "py", "pac", "bat", "command", "dat", "wbpz"]);
+        // v33: "Cut a clip" (a part of a video as a file of its own), after "Motion Photo (Android)" as in a new library,
+        //      and first on the back of the video donut when it has room and the user hasn't put it elsewhere on it.
+        //      Present already but saved since by a Filee before 33: that one dropped the tool's name, which made it a
+        //      crop, so it is put back. The user's own changes (name, file name pattern) stay.
+        if (from < 33)
+            changed |= AddClipTool(presets, profiles);
         return changed;
     }
 
@@ -766,6 +772,36 @@ internal static class SettingsMigrations
         foreach (var profile in profiles.Where(p => p.BackPresetIds is null && defaults.ContainsKey(p.Id)))
         {
             profile.BackPresetIds = (defaults[profile.Id].BackPresetIds ?? []).Where(ids.Contains).ToList();
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool AddClipTool(List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        var clip = BuiltInData.ClipPresets().Single();
+        if (presets.FirstOrDefault(p => p.Id == clip.Id) is { } existing)
+        {
+            if (!existing.IsClipTool)
+            {
+                existing.Kind = PresetKind.Tool;
+                existing.Tool = Preset.ClipTool;
+                existing.TargetFormat = clip.TargetFormat;
+                existing.SubPresetIds = [];
+                changed = true;
+            }
+        }
+        else
+        {
+            var at = presets.FindLastIndex(p => p.Id is "motion-photo-android" or "live-photo-iphone" or "extract-motion");
+            presets.Insert(at < 0 ? presets.Count : at + 1, clip);
+            changed = true;
+        }
+        if (profiles.FirstOrDefault(p => p.Id == "video") is { BackPresetIds: { } back } video
+            && !back.Contains(clip.Id) && !video.PresetIds.Contains(clip.Id) && back.Count < ToolbarProfile.MaxSlices)
+        {
+            back.Insert(0, clip.Id);
             changed = true;
         }
         return changed;

@@ -7,6 +7,8 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Filee.App.ViewModels;
 using Filee.App.Views;
+using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -30,6 +32,9 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     internal FormatRequestNoticeWindow? FormatRequestNotice => _formatRequestNotice;
 
     private CropOverlayWindow? _cropOverlay;
+    private ClipWindow? _clipWindow;
+
+    internal ClipWindow? ClipWindow => _clipWindow;
     private MergeOrderWindow? _mergeOrder;
 
     internal MergeOrderWindow? MergeOrder => _mergeOrder;
@@ -53,6 +58,45 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     }
 
     public MainWindow? Main => _main;
+
+    /// <summary>Opens the window of a tool preset (crop, cut a clip) on the files. A tool this version doesn't know opens nothing.</summary>
+    public void ShowTool(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null)
+    {
+        if (preset.IsClipTool)
+            ShowClipWindow(files, preset, near);
+        else if (preset.IsCropTool)
+            ShowCropOverlay(files, preset, near);
+    }
+
+    /// <summary>
+    /// Opens the "Cut a clip" window on the videos among the files. Each clip is written by an ordinary conversion,
+    /// shown in the toast.
+    /// </summary>
+    public void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null)
+    {
+        var videos = files.Where(f => FormatRegistry.Detect(f)?.Category == FormatCategory.Video).ToList();
+        if (videos.Count == 0)
+            return;
+        _clipWindow?.Close();
+        var store = services.GetRequiredService<UserDataStore>();
+        var catalog = services.GetRequiredService<ConverterCatalog>();
+        var conversions = services.GetRequiredService<ConversionService>();
+        var log = services.GetService<ILogger<ClipWindowViewModel>>();
+        var vm = new ClipWindowViewModel(videos, preset, loc, store, new FfmpegFrameSource(),
+            path => ClipTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? ClipTool.FallbackTarget, catalog.CreatePlanner()),
+            (path, conversion) => conversions.Start([path], conversion), log);
+        var win = new ClipWindow { DataContext = vm };
+        win.PositionOnScreen(near);
+        win.Closed += (_, _) =>
+        {
+            if (_clipWindow == win)
+                _clipWindow = null;
+            trimmer.Request();
+        };
+        _clipWindow = win;
+        win.Show();
+        win.Activate();
+    }
 
     /// <summary>Opens the interactive crop overlay for the files.</summary>
     public void ShowCropOverlay(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null)

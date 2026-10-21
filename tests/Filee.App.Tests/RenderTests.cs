@@ -1867,6 +1867,33 @@ public class RenderTests
         Assert.Equal(Filee.Core.Presets.LivePhotoKind.None, preset.Media.LivePhoto);
     }
 
+    public static TheoryData<string, bool> ClipLooks => new()
+    {
+        { "en", false }, { "en", true }, { "ru", false }, { "ru", true }, { "ar", false }, { "ar", true }, { "ja", false }, { "hi", true },
+    };
+
+    /// <summary>
+    /// "Cut a clip": the frame at the active handle large, start / length / end, the timeline with the clip between its
+    /// handles and the toolbar, in light and dark, short and long languages and right to left.
+    /// </summary>
+    [AvaloniaTheory]
+    [MemberData(nameof(ClipLooks))]
+    public void Clip_window_renders(string language, bool dark)
+    {
+        ClipWindowTests.WithClipWindow(language, dark, ["Match highlights.mp4"], (window, vm, frames, _) =>
+        {
+            vm.MoveHandle(ClipHandle.Start, 95.3);
+            vm.SetLength(30);
+            ClipWindowTests.WaitFor(() => frames.Times.Contains(vm.PreviewTime));
+            Pump();
+
+            Assert.Equal(("1:35.3", "2:05.3", "0:30.0"), (vm.StartText, vm.EndText, vm.LengthText));
+            Assert.True(window.ClipTimeline.Bounds.Width > 600);
+            Assert.True(window.ClipTimeline.XOf(vm.Start) < window.ClipTimeline.XOf(vm.End));
+            Save(window, $"clip-{language}-{(dark ? "dark" : "light")}.png");
+        });
+    }
+
     internal static void Pump()
     {
         // Let layout, bindings and a few animation frames run.
