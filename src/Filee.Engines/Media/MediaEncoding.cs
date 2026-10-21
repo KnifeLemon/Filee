@@ -19,7 +19,7 @@ internal sealed record MediaTarget(string Muxer, string? VideoCodec, string Audi
 internal sealed record FfmpegPass(IReadOnlyList<string> Arguments, double Weight);
 
 /// <summary>Encoding choices and command lines.</summary>
-internal static class MediaEncoding
+internal static partial class MediaEncoding
 {
     /// <summary>
     /// Video formats Filee writes. H.264 + AAC wherever the container allows it: it plays on every browser, phone,

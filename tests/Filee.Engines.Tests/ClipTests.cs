@@ -315,4 +315,217 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(await VideoFrames.WriteFrameAsync(source, video.LastFrameTime, Path.Combine(folder, "last.jpg"), 96, CancellationToken.None));
         Assert.False(await VideoFrames.WriteFrameAsync(source, 60, Path.Combine(folder, "past.jpg"), 96, CancellationToken.None));
     }
+
+    // ───────────────────────── Clips with parts (no FFmpeg needed) ─────────────────────────
+
+    private static ClipEdit Parts() => new()
+    {
+        Parts =
+        [
+            new ClipPart { Start = 10, End = 20, Volume = 0.5 },
+            new ClipPart { Start = 20, End = 22, Blank = true },
+            new ClipPart { Start = 30, End = 40, Speed = 2 },
+        ],
+        FadeIn = 1,
+        FadeOut = 2,
+    };
+
+    [Fact]
+    public void A_clip_with_parts_is_one_graph_that_reads_the_video_once()
+    {
+        var graph = MediaEncoding.ClipGraphOf("in.mp4", Parts(), audio: true, 1920, 1080, "30");
+
+        // From the first part to the last, seeking before the input.
+        Assert.Equal(["-ss", "10.000", "-to", "40.000", "-i", "in.mp4"], graph.Inputs);
+        Assert.Equal(10 + 2 + 5, graph.Length);
+        var filter = graph.Filter;
+        Assert.Contains("[0:V:0]split=2[vs0][vs1];", filter);
+        Assert.Contains("[0:a:0]asplit=2[as0][as1];", filter);
+        // The parts are cut out of what was read: their times count from the first part's start.
+        Assert.Contains("[vs0]trim=start=0:end=10,setpts=PTS-STARTPTS,fps=30,scale=1920:1080,setsar=1,format=yuv420p[v0]", filter);
+        Assert.Contains("[vs1]trim=start=20:end=30,setpts=(PTS-STARTPTS)/2,", filter);
+        Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0.5,", filter);
+        Assert.Contains("[as1]atrim=start=20:end=30,asetpts=PTS-STARTPTS,atempo=2,", filter);
+        // The pause: black and silence as long as the part played.
+        Assert.Contains("color=c=black:s=1920x1080:r=30:d=2,setsar=1,format=yuv420p[v1]", filter);
+        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=2[a1]", filter);
+        Assert.Contains("[v0][a0][v1][a1][v2][a2]concat=n=3:v=1:a=1[vc][ac]", filter);
+        Assert.EndsWith("[vc]fade=t=in:st=0:d=1,fade=t=out:st=15:d=2[v];[ac]afade=t=in:st=0:d=1,afade=t=out:st=15:d=2[a]", filter);
+    }
+
+    [Fact]
+    public void A_clip_without_sound_or_fades_has_only_pictures()
+    {
+        var edit = ClipEdit.Of(new ClipRange(5, 9));
+        edit.Parts[0].Speed = 0.5;
+        var graph = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: false, 640, 360, "25");
+        Assert.False(graph.HasAudio);
+        Assert.DoesNotContain("[0:a:0]", graph.Filter);
+        Assert.Contains("[0:V:0]null[vs0];", graph.Filter);
+        Assert.EndsWith("concat=n=1:v=1:a=0[vc];[vc]null[v]", graph.Filter);
+        Assert.Equal(8, graph.Length);
+    }
+
+    [Theory]
+    [InlineData(1, new double[0])]
+    [InlineData(2, new[] { 2.0 })]
+    [InlineData(0.75, new[] { 0.75 })]
+    [InlineData(3, new[] { 2.0, 1.5 })]
+    [InlineData(4, new[] { 2.0, 2.0 })]
+    [InlineData(0.25, new[] { 0.5, 0.5 })]
+    public void Sound_changes_speed_in_steps_every_ffmpeg_takes(double speed, double[] steps) =>
+        Assert.Equal(steps, MediaEncoding.Tempo(speed));
+
+    [Fact]
+    public void A_clip_with_parts_is_encoded_with_the_presets_options()
+    {
+        var options = new MediaOptions { Quality = MediaQuality.Small, MaxHeight = 720 };
+        var args = MediaEncoding.ClipEditArguments("in.mp4", "out.mp4", "mp4", Parts(), options, Movie);
+
+        Assert.Equal("[v]", After(args, "-map"));
+        Assert.Contains("[a]", args);
+        Assert.Contains("scale=1280:720", After(args, "-filter_complex"));
+        Assert.Equal("libx264", After(args, "-c:v"));
+        Assert.Equal("28", After(args, "-crf"));
+        Assert.Equal("aac", After(args, "-c:a"));
+        Assert.Equal("mp4", After(args, "-f"));
+
+        var silent = MediaEncoding.ClipEditArguments("in.mp4", "out.webm", "webm", Parts(), new MediaOptions { RemoveAudio = true }, Movie);
+        Assert.DoesNotContain("[a]", silent);
+        Assert.Contains("-an", silent);
+        Assert.Equal("libvpx-vp9", After(silent, "-c:v"));
+        // A portrait phone video stays portrait.
+        Assert.Equal((1080, 1920), MediaEncoding.ClipSize(Hd with { Rotation = 90 }, 0));
+        Assert.Equal((404, 720), MediaEncoding.ClipSize(Hd with { Rotation = -90 }, 720));
+    }
+
+    [Fact]
+    public void The_preview_plays_small_raw_pictures_and_the_sound_as_wav()
+    {
+        var pictures = MediaEncoding.ClipPreviewVideo("in.mp4", Parts(), Hd, 360, 25, out var width, out var height);
+        Assert.Equal((640, 360), (width, height));
+        Assert.Equal(("rawvideo", "bgra"), (After(pictures, "-f"), After(pictures, "-pix_fmt")));
+        Assert.Contains("format=bgra", After(pictures, "-filter_complex"));
+        Assert.Equal("pipe:1", pictures[^1]);
+
+        var sound = MediaEncoding.ClipPreviewAudio("in.mp4", Parts(), Hd);
+        Assert.Equal("[a]", After(sound, "-map"));
+        Assert.Equal("wav", After(sound, "-f"));
+    }
+
+    [Fact]
+    public void Silences_are_read_from_silencedetect()
+    {
+        const string log = """
+            [silencedetect @ 0000] silence_start: 0
+            [silencedetect @ 0000] silence_end: 1.25 | silence_duration: 1.25
+            [silencedetect @ 0000] silence_start: 3.5
+            [silencedetect @ 0000] silence_end: 5 | silence_duration: 1.5
+            [silencedetect @ 0000] silence_start: 9.75
+            """;
+        Assert.Equal([new ClipRange(60, 61.25), new ClipRange(63.5, 65), new ClipRange(69.75, 70)], ClipPreview.ParseSilences(log, 60, 70));
+        Assert.Empty(ClipPreview.ParseSilences("nothing here", 0, 10));
+        var args = ClipPreview.SilenceArguments("in.mp4", 60, 70);
+        Assert.Equal("60.000", After(args, "-ss"));
+        Assert.StartsWith("silencedetect=noise=-35dB:d=0.4", After(args, "-af"));
+    }
+
+    [Fact]
+    public void Loudness_is_one_level_per_step_the_loudest_one()
+    {
+        float[] samples = [.. Enumerable.Repeat(0.5f, 100), .. Enumerable.Repeat(0f, 100), .. Enumerable.Repeat(0.25f, 100)];
+        Assert.Equal([1f, 0f, 0.5f], ClipPreview.Loudness(samples, 100, 3, 3));
+        Assert.Empty(ClipPreview.Loudness([], 100, 3, 3));
+    }
+
+    // ───────────────────────── Clips with parts (FFmpeg) ─────────────────────────
+
+    [Fact]
+    public async Task A_clip_with_parts_plays_them_one_after_the_other()
+    {
+        SkipUnlessInstalled();
+        var source = await MakeVideoAsync(fx.NewFolder(), "match.mp4");
+        var edit = new ClipEdit
+        {
+            Parts =
+            [
+                new ClipPart { Start = 1, End = 3 },
+                new ClipPart { Start = 3, End = 4, Blank = true },
+                new ClipPart { Start = 6, End = 8, Speed = 2, Volume = 0.5 },
+            ],
+            FadeIn = 0.5,
+            FadeOut = 0.5,
+        };
+        var tool = BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+
+        var job = await fx.ConvertAsync([source], ClipTool.ConversionOf(tool, "mp4", edit));
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var probed = await ProbeAsync(Assert.Single(job.Outputs));
+        Assert.Equal(("h264", "aac"), (probed.VideoCodec, probed.AudioCodec));
+        // 2 s + a 1 s pause + 2 s of video at double speed.
+        Assert.InRange(probed.Duration, 3.9, 4.15);
+        Assert.InRange(probed.Frames, 98, 102);
+    }
+
+    [Fact]
+    public async Task Silences_and_loudness_are_found_in_the_sound()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = Path.Combine(folder, "talk.mp4");
+        // A tone with two seconds of silence in the middle (3 s to 5 s).
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+        [
+            "-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=25:duration=8",
+            "-f", "lavfi", "-i", "aevalsrc='if(between(t,3,5),0,0.5*sin(2*PI*440*t))':s=48000:d=8",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", source,
+        ], TimeSpan.FromMinutes(2), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+
+        var silences = await ClipPreview.FindSilencesAsync(source, 1, 7, CancellationToken.None);
+        var silence = Assert.Single(silences);
+        Assert.InRange(silence.Start, 2.9, 3.2);
+        Assert.InRange(silence.End, 4.9, 5.2);
+
+        var loudness = await ClipPreview.ReadLoudnessAsync(source, 8, 8, folder, CancellationToken.None);
+        Assert.Equal(8, loudness.Length);
+        Assert.True(loudness[3] < 0.1 && loudness[4] < 0.1, string.Join(", ", loudness));
+        Assert.True(loudness[1] > 0.8 && loudness[6] > 0.8, string.Join(", ", loudness));
+        Assert.Single(Directory.GetFiles(folder)); // the samples are gone
+    }
+
+    [Fact]
+    public async Task The_preview_plays_the_clips_pictures_in_time()
+    {
+        SkipUnlessInstalled();
+        // No sound: the test plays nothing aloud.
+        var source = await MakeVideoAsync(fx.NewFolder(), "silent.mp4", "-c:v", "libx264", "-g", "25", "-pix_fmt", "yuv420p", "-an");
+        var edit = new ClipEdit { Parts = [new ClipPart { Start = 2, End = 3 }, new ClipPart { Start = 5, End = 6, Speed = 2 }] };
+        var frames = new List<(int Width, int Height, double Seconds)>();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await ClipPreview.PlayAsync(source, edit, 120, (pixels, width, height, seconds) =>
+        {
+            Assert.Equal(width * height * 4, pixels.Length);
+            frames.Add((width, height, seconds));
+        }, CancellationToken.None);
+
+        // 1.5 s of clip at 25 pictures a second, shown in real time.
+        Assert.InRange(frames.Count, 30, 40);
+        Assert.All(frames, f => Assert.Equal((160, 120), (f.Width, f.Height)));
+        Assert.InRange(clock.Elapsed.TotalSeconds, 1.2, 6);
+
+        // Stopping ends it at once.
+        using var stop = new CancellationTokenSource();
+        var seen = 0;
+        var playing = ClipPreview.PlayAsync(source, ClipEdit.Of(new ClipRange(0, 10)), 120, (_, _, _, _) =>
+        {
+            if (++seen == 5)
+                stop.Cancel();
+        }, stop.Token);
+        await playing.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        Assert.InRange(seen, 5, 8);
+    }
 }

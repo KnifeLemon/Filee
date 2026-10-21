@@ -190,11 +190,11 @@ public sealed class Preset
     public bool IsClipTool => IsTool && Tool == ClipTool;
 
     /// <summary>
-    /// True if converting a <paramref name="sourceFormat"/> file cuts a part of it (<see cref="MediaOptions.ClipEnd"/>,
+    /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
     /// set by the clip window on the conversion it starts): the file is a video. Other files convert as usual.
     /// </summary>
     public bool CutsClipOf(string sourceFormat) =>
-        Media.ClipEnd is > 0 && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+        Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
     /// <summary>Creates a new random preset id.</summary>
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
@@ -576,13 +576,10 @@ public sealed class MediaOptions
     public bool ExactCut { get; set; }
 
     /// <summary>
-    /// A clip of a video (<see cref="Preset.CutsClipOf"/>): where it starts, in seconds. Set with
-    /// <see cref="ClipEnd"/> by the clip window on the conversion it starts, never on a saved preset.
+    /// A clip of a video (<see cref="Preset.CutsClipOf"/>): its parts, their volume and speed, and its fades. Set by the
+    /// clip window on the conversion it starts, never on a saved preset.
     /// </summary>
-    public double? ClipStart { get; set; }
-
-    /// <summary>A clip of a video: where it ends, in seconds (see <see cref="ClipStart"/>).</summary>
-    public double? ClipEnd { get; set; }
+    public ClipEdit? Clip { get; set; }
 
     /// <summary>
     /// Most pictures one video may become (<see cref="SaveEveryFrame"/>): about an hour at 30 fps, already more than
@@ -591,7 +588,12 @@ public sealed class MediaOptions
     public const long MaxFrames = 100_000;
 
 
-    public MediaOptions Clone() => (MediaOptions)MemberwiseClone();
+    public MediaOptions Clone()
+    {
+        var copy = (MediaOptions)MemberwiseClone();
+        copy.Clip = Clip?.Clone();
+        return copy;
+    }
 }
 
 /// <summary>The kind of moving photo a video becomes (<see cref="MediaOptions.LivePhoto"/>).</summary>

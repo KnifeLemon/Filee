@@ -9,9 +9,10 @@ using Filee.App.ViewModels;
 namespace Filee.App.Views;
 
 /// <summary>
-/// The "Cut a clip" window: placement, keys (Enter saves, Esc closes, S / E pick the start or end handle, the arrow
-/// keys move it by 0.1 s, with Shift by 1 s), the timeline's drags and moving, sizing and maximizing the frameless
-/// window.
+/// The "Cut a clip" window: placement, keys (Space plays, C cuts at the playhead, Delete cuts a piece out or puts it
+/// back, Ctrl+Z / Ctrl+Y undo and redo, M the magnet, Z zooms the timeline in on the clip, S / E pick the start or end handle, P the playhead, the arrow keys
+/// move it by 0.1 s, with Shift by 1 s, Enter saves, Esc stops playing or closes), the timeline's drags and moving,
+/// sizing and maximizing the frameless window.
 /// </summary>
 public partial class ClipWindow : Window
 {
@@ -59,6 +60,7 @@ public partial class ClipWindow : Window
             vm.CloseRequested += Close;
             Timeline.HandleMoved += vm.MoveHandle;
             Timeline.ClipMoved += vm.MoveClip;
+            Timeline.PlayheadMoved += vm.MovePlayhead;
             Closed += (_, _) => vm.Dispose();
         }
     }
@@ -71,10 +73,48 @@ public partial class ClipWindow : Window
         if (_vm is not { } vm)
             return;
         var plain = e.KeyModifiers == KeyModifiers.None;
+        var command = e.KeyModifiers == KeyModifiers.Control || e.KeyModifiers == KeyModifiers.Meta;
+        var commandShift = e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift) || e.KeyModifiers == (KeyModifiers.Meta | KeyModifiers.Shift);
         switch (e.Key)
         {
             case Key.Escape:
-                vm.Cancel();
+                if (vm.IsPlaying)
+                    vm.StopPlaying();
+                else
+                    vm.Cancel();
+                e.Handled = true;
+                break;
+            case Key.Space when plain && vm.CanEdit:
+                vm.PlayPause();
+                e.Handled = true;
+                break;
+            case Key.C when plain && vm.CanEdit:
+                vm.Split();
+                e.Handled = true;
+                break;
+            case Key.Delete or Key.Back when plain && vm.CanEdit:
+                vm.Delete();
+                e.Handled = true;
+                break;
+            case Key.Z when command && vm.CanEdit:
+                vm.Undo();
+                e.Handled = true;
+                break;
+            case Key.Y when command && vm.CanEdit:
+            case Key.Z when commandShift && vm.CanEdit:
+                vm.Redo();
+                e.Handled = true;
+                break;
+            case Key.M when plain && vm.CanEdit:
+                vm.IsMagnet = !vm.IsMagnet;
+                e.Handled = true;
+                break;
+            case Key.Z when plain && vm.CanEdit:
+                vm.ToggleZoom();
+                e.Handled = true;
+                break;
+            case Key.P when plain && vm.CanEdit:
+                vm.Activate(ClipHandle.Playhead);
                 e.Handled = true;
                 break;
             case Key.Enter:

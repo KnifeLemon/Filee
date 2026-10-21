@@ -115,7 +115,7 @@ public class ClipToolTests
         Assert.Equal("preset.clip", tool.NameKey);
         Assert.Equal("{name}_clip", tool.Output.FileNamePattern);
         Assert.False(tool.Media.ExactCut);
-        Assert.Null(tool.Media.ClipEnd);
+        Assert.Null(tool.Media.Clip);
         // The crop tool stays the crop, also as saved before tools had names.
         var crop = BuiltInData.CreatePresets().Single(p => p.Id == "tool-crop");
         Assert.True(crop.IsCropTool);
@@ -141,7 +141,8 @@ public class ClipToolTests
         Assert.False(conversion.IsTool);
         Assert.Null(conversion.Tool);
         Assert.Equal("mkv", conversion.TargetFormat);
-        Assert.Equal((12.5, 42.5), (conversion.Media.ClipStart, conversion.Media.ClipEnd));
+        var part = Assert.Single(conversion.Media.Clip!.Parts);
+        Assert.Equal((12.5, 42.5), (part.Start, part.End));
         Assert.True(conversion.Media.ExactCut);
         Assert.Equal(MediaQuality.Small, conversion.Media.Quality);
         Assert.Equal(LivePhotoKind.None, conversion.Media.LivePhoto);
@@ -150,7 +151,7 @@ public class ClipToolTests
         Assert.False(conversion.CutsClipOf("mp3")); // only videos
         // The tool itself is untouched.
         Assert.True(tool.IsClipTool);
-        Assert.Null(tool.Media.ClipEnd);
+        Assert.Null(tool.Media.Clip);
         Assert.False(new Preset { TargetFormat = "mp4" }.CutsClipOf("mp4"));
     }
 
@@ -176,8 +177,7 @@ public class ClipToolTests
         tool.Media.ExactCut = true;
         var json = JsonSerializer.Serialize(new List<Preset> { tool }, FileeJsonContext.Default.ListPreset);
         Assert.Contains("\"tool\": \"clip\"", json);
-        Assert.DoesNotContain("clipStart", json);
-        Assert.DoesNotContain("clipEnd", json);
+        Assert.DoesNotContain("\"clip\":", json); // the times of a clip, never on the tool
 
         var read = JsonSerializer.Deserialize(json, FileeJsonContext.Default.ListPreset)!.Single();
         Assert.True(read.IsClipTool);
@@ -187,7 +187,7 @@ public class ClipToolTests
         var conversion = ClipTool.ConversionOf(read, "mp4", new ClipRange(1, 2));
         var again = JsonSerializer.Deserialize(JsonSerializer.Serialize(new List<Preset> { conversion }, FileeJsonContext.Default.ListPreset),
             FileeJsonContext.Default.ListPreset)!.Single();
-        Assert.Equal((1.0, 2.0), (again.Media.ClipStart, again.Media.ClipEnd));
+        Assert.Equal((1.0, 2.0), (again.Media.Clip!.Parts[0].Start, again.Media.Clip.Parts[0].End));
         // Other presets don't write a tool at all.
         Assert.DoesNotContain("\"tool\"", JsonSerializer.Serialize(new List<Preset> { new() { TargetFormat = "png" } }, FileeJsonContext.Default.ListPreset));
     }

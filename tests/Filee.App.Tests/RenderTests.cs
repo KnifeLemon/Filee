@@ -1884,10 +1884,23 @@ public class RenderTests
         {
             vm.MoveHandle(ClipHandle.Start, 95.3);
             vm.SetLength(30);
+            // Cut in three: the middle piece out, the last one faster and louder, a fade in.
+            vm.MovePlayhead(103);
+            vm.Split();
+            vm.MovePlayhead(110);
+            vm.Split();
+            vm.MovePlayhead(106);
+            vm.Delete();
+            vm.MovePlayhead(118);
+            vm.SelectedSpeed = vm.Speeds.Single(s => s.Value == 2);
+            vm.SelectedVolume = 1.5;
+            vm.HasFadeIn = true;
+            vm.IsZoomed = true;
             ClipWindowTests.WaitFor(() => frames.Times.Contains(vm.PreviewTime));
             Pump();
 
-            Assert.Equal(("1:35.3", "2:05.3", "0:30.0"), (vm.StartText, vm.EndText, vm.LengthText));
+            Assert.Equal(("1:35.3", "2:05.3"), (vm.StartText, vm.EndText));
+            Assert.Equal(7.7 + 15.3 / 2, vm.Length, 6);
             Assert.True(window.ClipTimeline.Bounds.Width > 600);
             Assert.True(window.ClipTimeline.XOf(vm.Start) < window.ClipTimeline.XOf(vm.End));
             Save(window, $"clip-{language}-{(dark ? "dark" : "light")}.png");

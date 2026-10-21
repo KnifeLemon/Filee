@@ -25,11 +25,16 @@ public static class ClipTool
         FormatRegistry.FindById(sourceFormat)?.Category == FormatCategory.Video
         && planner.Plan(sourceFormat, TargetFor(sourceFormat, planner)) is { Steps.Count: 1 };
 
+    /// <summary>The conversion that writes one stretch of a video, as recorded (see the other overload).</summary>
+    public static Preset ConversionOf(Preset tool, string targetFormat, ClipRange clip) =>
+        ConversionOf(tool, targetFormat, ClipEdit.Of(clip));
+
     /// <summary>
     /// The conversion that writes <paramref name="clip"/> of a video as <paramref name="targetFormat"/> with the
-    /// tool's name, output rule and media options (which an exact cut encodes with). The tool itself is left as it is.
+    /// tool's name, output rule and media options (which an encoded clip is written with). The tool itself is left as
+    /// it is.
     /// </summary>
-    public static Preset ConversionOf(Preset tool, string targetFormat, ClipRange clip)
+    public static Preset ConversionOf(Preset tool, string targetFormat, ClipEdit clip)
     {
         var preset = tool.Clone();
         preset.Kind = PresetKind.Convert;
@@ -40,8 +45,7 @@ public static class ClipTool
         preset.Media.SaveEveryFrame = false;
         preset.Media.ExtractMotionPhoto = false;
         preset.Media.LivePhoto = LivePhotoKind.None;
-        preset.Media.ClipStart = clip.Start;
-        preset.Media.ClipEnd = clip.End;
+        preset.Media.Clip = clip.Clone();
         return preset;
     }
 }

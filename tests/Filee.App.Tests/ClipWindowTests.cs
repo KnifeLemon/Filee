@@ -229,8 +229,9 @@ public class ClipWindowTests
             Assert.EndsWith("match.mp4", path);
             Assert.Equal(PresetKind.Convert, preset.Kind);
             Assert.Equal("mkv", preset.TargetFormat); // what targetFor says for the file
-            Assert.Equal(65.3, preset.Media.ClipStart!.Value, 6);
-            Assert.Equal(95.3, preset.Media.ClipEnd!.Value, 6);
+            var part = Assert.Single(preset.Media.Clip!.Parts);
+            Assert.Equal(65.3, part.Start, 6);
+            Assert.Equal(95.3, part.End, 6);
             Assert.True(preset.Media.ExactCut);
             Assert.Equal("{name}_clip", preset.Output.FileNamePattern);
             Assert.Equal("preset.clip", preset.NameKey);
@@ -292,6 +293,236 @@ public class ClipWindowTests
         });
     }
 
+    // ───────────────────────── Editing ─────────────────────────
+
+    [AvaloniaFact]
+    public void The_blade_cuts_at_the_playhead_and_delete_closes_up_with_the_magnet()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, exports) =>
+        {
+            vm.MovePlayhead(10);
+            Press(window, Key.C);
+            vm.MovePlayhead(20);
+            Press(window, Key.C);
+            Assert.Equal(3, vm.Pieces.Count);
+            Assert.Equal(2, vm.SelectedIndex); // the piece right of the last cut
+
+            // The middle piece out: with the magnet the clip closes up.
+            vm.MovePlayhead(15);
+            Assert.Equal(1, vm.CurrentPiece);
+            Assert.Equal("Delete", vm.DeleteText);
+            Press(window, Key.Delete);
+            Assert.Equal(ClipPieceState.Removed, vm.Pieces[1].State);
+            Assert.Equal("0:20.0", vm.LengthText);
+            Assert.Equal("Put back", vm.DeleteText);
+            Assert.False(vm.CanFast); // two stretches: encoded
+            Assert.True(vm.CanUndo);
+
+            // Back, and out again without the magnet: a pause stays.
+            Press(window, Key.Delete);
+            Assert.True(vm.Pieces[1].IsKept);
+            Press(window, Key.M);
+            Assert.False(vm.IsMagnet);
+            Press(window, Key.Delete);
+            Assert.Equal(ClipPieceState.Blank, vm.Pieces[1].State);
+            Assert.True(vm.HasGaps);
+            Assert.Equal("0:30.0", vm.LengthText);
+            vm.CloseGapsCommand.Execute(null);
+            Assert.False(vm.HasGaps);
+            Assert.Equal("0:20.0", vm.LengthText);
+
+            // Undo with Ctrl+Z, redo with Ctrl+Y.
+            Press(window, Key.Z, RawInputModifiers.Control);
+            Assert.True(vm.HasGaps);
+            Press(window, Key.Y, RawInputModifiers.Control);
+            Assert.False(vm.HasGaps);
+
+            // Saving writes the two pieces.
+            Press(window, Key.Enter);
+            var (_, preset) = Assert.Single(exports);
+            Assert.Equal([(0.0, 10.0), (20.0, 30.0)], preset.Media.Clip!.Parts.Select(p => (p.Start, p.End)));
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_cut_needs_the_playhead_inside_the_clip()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, _) =>
+        {
+            vm.MovePlayhead(100);
+            Press(window, Key.C);
+            Assert.Single(vm.Pieces);
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.cannot_cut"], vm.Message);
+            Assert.True(vm.HasMessage);
+            // The only piece can't be cut out.
+            vm.MovePlayhead(5);
+            Press(window, Key.Delete);
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.last_piece"], vm.Message);
+            Assert.True(vm.Pieces[0].IsKept);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Volume_speed_and_fades_change_the_piece_and_the_clip()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, exports) =>
+        {
+            vm.MovePlayhead(10);
+            vm.Split();
+            vm.SelectedVolume = 1.5;
+            Assert.Equal("150 %", vm.VolumeText);
+            vm.SelectedSpeed = vm.Speeds.Single(s => s.Value == 2);
+            Assert.Equal((1.5, 2.0), (vm.Pieces[1].Volume, vm.Pieces[1].Speed));
+            Assert.Equal((1.0, 1.0), (vm.Pieces[0].Volume, vm.Pieces[0].Speed));
+            Assert.Equal("0:20.0", vm.LengthText); // 10 s + 20 s at double speed
+
+            // Another piece shows its own values.
+            vm.MovePlayhead(5);
+            Assert.Equal(1, vm.SelectedVolume);
+            Assert.Equal(1, vm.SelectedSpeed!.Value);
+
+            vm.HasFadeIn = true;
+            vm.HasFadeOut = true;
+            Assert.True(window.ClipTimeline.FadeIn && window.ClipTimeline.FadeOut);
+            Assert.False(vm.CanFast);
+
+            Press(window, Key.Enter);
+            var clip = Assert.Single(exports).Preset.Media.Clip!;
+            Assert.Equal((ClipWindowViewModel.FadeSeconds, ClipWindowViewModel.FadeSeconds), (clip.FadeIn, clip.FadeOut));
+            Assert.Equal([(1.0, 1.0), (1.5, 2.0)], clip.Parts.Select(p => (p.Volume, p.Speed)));
+        });
+    }
+
+    [AvaloniaFact]
+    public void Remove_silence_cuts_the_silent_stretches_out_and_says_how_many()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (_, vm, frames, _) =>
+        {
+            frames.Silences.AddRange([new ClipRange(5, 8), new ClipRange(20, 24)]);
+            _ = vm.RemoveSilenceAsync();
+            WaitFor(() => !vm.IsFindingSilence);
+
+            Assert.Equal(2, vm.Pieces.Count(p => p.State == ClipPieceState.Removed));
+            Assert.Equal(AppHost.Get<ILocalizer>().Format("clip.silence_removed", 2), vm.Message);
+            vm.Undo();
+            Assert.Single(vm.Pieces);
+
+            frames.Silences.Clear();
+            _ = vm.RemoveSilenceAsync();
+            WaitFor(() => !vm.IsFindingSilence);
+            Assert.Equal(AppHost.Get<ILocalizer>()["clip.no_silence"], vm.Message);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Space_plays_the_clip_as_it_will_be_written_from_the_playhead()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, _) =>
+        {
+            vm.MovePlayhead(10);
+            vm.Split();
+            vm.MovePlayhead(5);
+            vm.Delete(); // the first ten seconds out
+            vm.MovePlayhead(12);
+
+            Press(window, Key.Space);
+            WaitFor(() => frames.Played.Count == 1 && !vm.IsPlaying);
+            var played = frames.Played[0];
+            // From the playhead, as the clip plays: 2 s into the second piece.
+            Assert.Equal((12.0, 30.0), (played.Parts[0].Start, played.Parts[^1].End));
+            Assert.Equal(ClipHandle.Playhead, vm.ActiveHandle);
+            // The playhead followed the pictures (12 at 25 a second).
+            Assert.Equal(12 + 11 / 25.0, vm.Playhead, 3);
+            Assert.StartsWith("Playhead", vm.PreviewLabel);
+
+            // Esc stops playing first, and only then closes.
+            frames.HoldPlaying = new TaskCompletionSource();
+            Press(window, Key.Space);
+            WaitFor(() => vm.IsPlaying && frames.Played.Count == 2);
+            Assert.Equal("Pause (Space)", vm.PlayToolTip);
+            Press(window, Key.Escape);
+            Assert.False(vm.IsPlaying);
+            Assert.True(window.IsVisible);
+            // Editing while playing stops it too.
+            Press(window, Key.Space);
+            WaitFor(() => vm.IsPlaying);
+            vm.MoveHandle(ClipHandle.End, 25);
+            Assert.False(vm.IsPlaying);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Clicking_the_ruler_or_the_clip_puts_the_playhead_there_and_the_magnet_snaps_it()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, _) =>
+        {
+            vm.MovePlayhead(10);
+            vm.Split();
+            var timeline = window.ClipTimeline;
+            var origin = timeline.TranslatePoint(default, window)!.Value;
+
+            // The ruler, a little beside the cut: snapped onto it.
+            var ruler = new Point(timeline.XOf(10) + 4, 6) + (Vector)origin;
+            window.MouseDown(ruler, MouseButton.Left);
+            window.MouseUp(ruler, MouseButton.Left);
+            Pump();
+            Assert.Equal(10, vm.Playhead);
+            Assert.Equal(ClipHandle.Playhead, vm.ActiveHandle);
+
+            // Without the magnet it stays where pressed.
+            vm.IsMagnet = false;
+            window.MouseDown(ruler, MouseButton.Left);
+            window.MouseUp(ruler, MouseButton.Left);
+            Pump();
+            Assert.True(vm.Playhead > 10.5, vm.Playhead.ToString());
+
+            // A click (no drag) in the clip: the playhead, and the piece there selected.
+            var inClip = new Point(timeline.XOf(25), timeline.Bounds.Height - 10) + (Vector)origin;
+            window.MouseDown(inClip, MouseButton.Left);
+            window.MouseUp(inClip, MouseButton.Left);
+            Pump();
+            Assert.InRange(vm.Playhead, 24, 26);
+            Assert.Equal(1, vm.SelectedIndex);
+            Assert.Equal((0.0, 30.0), (vm.Start, vm.End)); // not moved
+        });
+    }
+
+    [AvaloniaFact]
+    public void Zooming_shows_the_clip_close_up_and_stays_put_while_a_handle_is_dragged()
+    {
+        WithClipWindow("en", false, ["match.mp4"], (window, vm, _, _) =>
+        {
+            vm.MoveHandle(ClipHandle.Start, 100);
+            Assert.Equal((0.0, Length), (vm.ViewStart, vm.ViewEnd));
+            Press(window, Key.Z);
+            Assert.True(vm.IsZoomed);
+            // The 30-second clip with a little room either side.
+            Assert.Equal((100 - 4.5, 130 + 4.5), (vm.ViewStart, vm.ViewEnd));
+            Pump();
+            var timeline = window.ClipTimeline;
+            Assert.True(timeline.XOf(130) - timeline.XOf(100) > timeline.Bounds.Width * 0.7);
+            Assert.Equal("1:35.5", vm.ViewStartText);
+
+            // Dragging the end to the edge of the view: the view doesn't move under the pointer.
+            var origin = timeline.TranslatePoint(default, window)!.Value;
+            var y = timeline.Bounds.Height / 2;
+            var grab = new Point(timeline.XOf(130) + 6, y) + (Vector)origin;
+            var edge = new Point(timeline.Bounds.Width + 40, y) + (Vector)origin;
+            window.MouseDown(grab, MouseButton.Left);
+            window.MouseMove(edge);
+            window.MouseUp(edge, MouseButton.Left);
+            Pump();
+            Assert.InRange(vm.End, 134, 134.5); // at the edge, less where the handle was grabbed
+            Assert.Equal((95.5, 134.5), (vm.ViewStart, vm.ViewEnd));
+            // A key past it fits the view again.
+            Press(window, Key.Right, RawInputModifiers.Shift);
+            Assert.True(vm.ViewEnd > vm.End);
+
+            Press(window, Key.Z);
+            Assert.Equal((0.0, Length), (vm.ViewStart, vm.ViewEnd));
+        });
+    }
+
     // ───────────────────────── Helpers ─────────────────────────
 
     /// <summary>
@@ -318,7 +549,7 @@ public class ClipWindowTests
             tool ??= BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
             var vm = new ClipWindowViewModel(files, tool, AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), frames,
                 _ => "mkv", (path, preset) => exports.Add((path, preset)));
-            window = new ClipWindow { DataContext = vm, Width = 1040, Height = 720 };
+            window = new ClipWindow { DataContext = vm, Width = 1180, Height = 780 };
             window.Show();
             WaitFor(() => !vm.IsLoading && vm.Thumbnails.All(t => t is not null) && frames.Times.Contains(vm.PreviewTime));
             Pump();
@@ -360,6 +591,40 @@ public class ClipWindowTests
 
         /// <summary>Every time a frame was taken at.</summary>
         public IReadOnlyCollection<double> Times => _times;
+
+        /// <summary>What "Remove silence" finds.</summary>
+        public List<ClipRange> Silences { get; } = [];
+
+        /// <summary>The clips played, as asked for.</summary>
+        public List<ClipEdit> Played { get; } = [];
+
+        /// <summary>Pictures a played clip gives before it ends (unless stopped).</summary>
+        public int PlayedFrames { get; set; } = 12;
+
+        /// <summary>A played clip waits here before it ends, when set (to stop it while it plays).</summary>
+        public TaskCompletionSource? HoldPlaying { get; set; }
+
+        public Task<float[]> ReadLoudnessAsync(string path, double duration, int count, string workFolder, CancellationToken cancellationToken) =>
+            Task.FromResult(Enumerable.Range(0, count).Select(i => (float)(0.35 + 0.3 * Math.Sin(i / 3.0) + 0.3 * Math.Sin(i / 17.0)) is var v
+                ? (float)Math.Clamp(i % 40 < 6 ? 0.03 : v, 0, 1) : 0).ToArray());
+
+        public Task<IReadOnlyList<ClipRange>> FindSilencesAsync(string path, double start, double end, CancellationToken cancellationToken) =>
+            Task.FromResult<IReadOnlyList<ClipRange>>([.. Silences]);
+
+        public async Task PlayAsync(string path, ClipEdit clip, int height, Action<byte[], int, int, double> onFrame, CancellationToken cancellationToken)
+        {
+            Played.Add(clip);
+            var width = height * 16 / 9;
+            var pixels = new byte[width * height * 4];
+            for (var n = 0; n < PlayedFrames && !cancellationToken.IsCancellationRequested; n++)
+            {
+                Array.Fill(pixels, (byte)(40 + n * 10));
+                onFrame(pixels, width, height, n / 25.0);
+                await Task.Yield();
+            }
+            if (HoldPlaying is { } hold)
+                await hold.Task.WaitAsync(cancellationToken).ContinueWith(_ => { }, TaskScheduler.Default);
+        }
 
         public Task<VideoSummary> ProbeAsync(string path, CancellationToken cancellationToken) =>
             Path.GetFileName(path).Contains("broken", StringComparison.Ordinal)

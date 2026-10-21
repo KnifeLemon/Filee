@@ -185,10 +185,10 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     }
 
     /// <summary>
-    /// "Cut a clip": the part of the video between <see cref="MediaOptions.ClipStart"/> and
-    /// <see cref="MediaOptions.ClipEnd"/> (kept inside the video). Copied as it is unless the preset asks for an exact
-    /// cut (<see cref="MediaOptions.ExactCut"/>); a copy the target can't take (a codec its container doesn't hold) is
-    /// encoded exactly instead, like the preset's other videos.
+    /// "Cut a clip": the clip the window made (<see cref="MediaOptions.Clip"/>, kept inside the video). One stretch as
+    /// recorded is copied as it is unless the preset asks for an exact cut (<see cref="MediaOptions.ExactCut"/>); a copy
+    /// the target can't take (a codec its container doesn't hold) is encoded exactly instead, like the preset's other
+    /// videos. Several parts, speeds, volumes, pauses or fades are encoded through one filter graph.
     /// </summary>
     private async Task<IReadOnlyList<string>> CutClipAsync(string ffmpeg, ConversionStep step, string input, MediaInfo info,
         IProgress<double>? progress, CancellationToken cancellationToken)
@@ -196,11 +196,29 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         if (info.Video is null)
             throw new InvalidOperationException("The file has no video stream.");
         var media = step.Preset.Media;
-        var clip = ClipRange.Clamp(media.ClipStart ?? 0, media.ClipEnd ?? 0, info.Duration?.TotalSeconds);
+        var edit = media.Clip!.Clamped(info.Duration?.TotalSeconds);
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
             return [];
-        var duration = TimeSpan.FromSeconds(clip.Length);
+        var duration = TimeSpan.FromSeconds(edit.Length);
+        if (!edit.IsPlainCut)
+        {
+            // Parts, speeds, volumes, pauses or fades: one filter graph, always encoded.
+            try
+            {
+                var pass = new FfmpegPass(MediaEncoding.ClipEditArguments(input, output, step.To, edit, media, info, EncodersOf(ffmpeg)), 1);
+                await RunPassesAsync(ffmpeg, [pass], output, duration, progress, cancellationToken);
+            }
+            catch
+            {
+                TryDelete(output);
+                throw;
+            }
+            progress?.Report(1);
+            return [output];
+        }
+
+        var clip = new ClipRange(edit.Parts[0].Start, edit.Parts[0].End);
         try
         {
             if (!media.ExactCut)
