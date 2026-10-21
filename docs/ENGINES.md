@@ -876,6 +876,11 @@ textures; and every format drops what Filee's model has no place for: animations
 lights, metallic / roughness / normal / emissive maps, and lines and points. Draco- and meshopt-compressed glTF fail with
 a clear message, as do damaged files ("cut short", an index that does not exist, no triangles).
 
+**Files a model refers to** (OBJ's `.mtl` and textures, glTF's separate buffers and pictures, PLY's `TextureFile`,
+FBX's texture names) are read only from the model's folder or a folder below it. A path that climbs out (`../`) or
+points anywhere else is looked up by its name in the model's folder instead, so a downloaded model cannot pull a
+picture from elsewhere on the disk into its output.
+
 **3D → pictures**: a small software rasteriser (`MeshRenderer`) draws an isometric view from the front right, above,
 with one light and flat shading per triangle, vertex colours or the texture interpolated across it, and a z-buffer,
 at 2048 px and scaled down to 1024 px for smooth edges, on a transparent background. The preset's image options
@@ -1286,28 +1291,37 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   x265 or AV1 fails with a clear message instead of an FFmpeg error. x265 and SVT-AV1 log only errors
   (`-x265-params log-level=error`, `SVT_LOG=1`).
 - **Hardware encoding** (*Hardware acceleration* in the video card, `MediaOptions.HardwareEncoding`; off by default and
-  for older presets, so nobody's results change without asking). H.264 and HEVC encodes (not VP9, AV1 and the
+  for older presets, so nobody's results change without asking). H.264, HEVC and AV1 encodes (not VP9 and the
   MPEG-style codecs, not stream copies, not pictures → video) go to the graphics chip (`Media/HardwareVideo.cs`,
   `Media/HardwareProbe.cs`):
 
   | System | Tried in this order |
   |---|---|
   | Windows | `*_nvenc` (NVIDIA), `*_qsv` (Intel Quick Sync), `*_amf` (AMD) |
-  | macOS | `*_videotoolbox` with constant quality (Apple Silicon), then with a bitrate (Intel Macs reject `-q:v`) |
+  | macOS | `*_videotoolbox` with constant quality (Apple Silicon), then with a bitrate (Intel Macs reject `-q:v`); none for AV1 (VideoToolbox has no AV1 encoder) |
   | Linux | `*_nvenc`, then `*_vaapi` on `/dev/dri/renderD128` (`-vaapi_device`, frames uploaded with `format=nv12,hwupload`) |
 
-  FFmpeg lists encoders the computer can't run (NVENC without an NVIDIA card), so only the ones `ffmpeg -encoders`
-  lists are tried, each first with a test encode with the real options (0.1 s of `testsrc` at 256 × 144 to the null
-  muxer, 15 s limit). The first that succeeds is used; results are kept per FFmpeg executable, encoder, rate control
-  and bit depth until Filee restarts, and written to the log. Quality: *High/Balanced/Small* become quantizer 19/24/29
-  for H.264 and 23/27/31 for HEVC (one above x264's and x265's CRF: hardware encoders spend bits less wisely) as NVENC
-  `-rc vbr -cq N -b:v 0 -preset p5`, Quick Sync `-global_quality N -preset medium` (ICQ), AMF `-rc cqp -qp_p N -qp_i N−2`
-  (`-quality balanced`) and VA-API `-rc_mode CQP -qp N`; VideoToolbox gets `-q:v` 70/60/50, or on Intel Macs
-  `-b:v` from 0.14/0.09/0.05 bits per pixel per frame (× 0.65 for HEVC). 8-bit video is NV12 (H.264 High, HEVC Main);
-  10-bit and HDR sources stay P010 HEVC Main 10 with their colour tags when the encoder passes a 10-bit test encode,
-  otherwise x265 encodes them. HEVC keeps the `hvc1` tag in MP4/M4V/MOV. When a hardware encode fails anyway (a
-  picture too large for the chip, a driver error), the partial output is deleted and the file is encoded again with
-  x264/x265; that is logged, not shown as a failure.
+  AV1 encodes only on recent chips: NVIDIA RTX 40 and newer (`av1_nvenc`), Intel Arc and Core Ultra (Meteor Lake) and
+  newer (`av1_qsv`), AMD RDNA 3 and newer (`av1_amf`), and VA-API drivers that offer it; on older ones the test
+  encode fails and SVT-AV1 encodes as before. FFmpeg lists encoders the computer can't run (NVENC without an NVIDIA
+  card), so only the ones `ffmpeg -encoders` lists are tried, each first with a test encode with the real options
+  (0.1 s of `testsrc` at 256 × 144 to the null muxer, 15 s limit). The first that succeeds is used; results are kept
+  per FFmpeg executable, encoder, rate control and bit depth until Filee restarts, and written to the log
+  ("Hardware encoder av1_qsv (Quality, 8-bit) works" / "is not usable: …"). Quality: *High/Balanced/Small* become
+  quantizer 19/24/29 for H.264 and 23/27/31 for HEVC (one above x264's and x265's CRF: hardware encoders spend bits
+  less wisely) as NVENC `-rc vbr -cq N -b:v 0 -preset p5`, Quick Sync `-global_quality N -preset medium` (ICQ), AMF
+  `-rc cqp -qp_p N -qp_i N−2` (`-quality balanced`) and VA-API `-rc_mode CQP -qp N`; VideoToolbox gets `-q:v`
+  70/60/50, or on Intel Macs `-b:v` from 0.14/0.09/0.05 bits per pixel per frame (× 0.65 for HEVC). AV1 has other
+  scales: NVENC's `-cq` is AV1's 0–63 quantizer and gets 28/34/42 (two above SVT-AV1's CRF 26/32/40); AMF and VA-API
+  take the 0–255 quantizer index, four times that (112/136/168: AMF `-qp_p`/`-qp_b` N, `-qp_i` N−8; VA-API
+  `-rc_mode CQP -global_quality N`, as `av1_vaapi` has no `-qp`); Quick Sync's ICQ is 1–51 for AV1 too and gets
+  HEVC's 23/27/31. 8-bit video is NV12 (H.264 High, HEVC Main, AV1 Main); 10-bit and HDR sources stay P010 (HEVC Main
+  10, 10-bit AV1 Main) with their colour tags when the encoder passes a 10-bit test encode, otherwise x265 / SVT-AV1
+  encode them. AV1 gets no `-profile:v` (every encoder picks Main; `av1_nvenc` has no such option) and no tag (`av01`
+  in MP4/M4V, as written to MKV and WebM). HEVC keeps the `hvc1` tag in MP4/M4V/MOV. GOP length and B-frames are
+  left to each encoder's defaults, as for H.264 and HEVC. When a hardware encode fails anyway (a picture too large for
+  the chip, a driver error), the partial output is deleted and the file is encoded again with x264/x265/SVT-AV1; that
+  is logged, not shown as a failure.
 - DSD (DSF, DFF) decodes at 2.8 MHz or more: lossless and PCM targets get 88.2 kHz, Vorbis and WMA 44.1 kHz, the
   other lossy encoders their nearest supported rate.
 - Subtitle extraction takes the first text subtitle track (SubRip, ASS/SSA, WebVTT, MP4 timed text, CEA-608, …).

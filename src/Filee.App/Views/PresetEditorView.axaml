@@ -378,6 +378,8 @@
         <StackPanel IsVisible="{Binding ShowSubfolder}">
           <TextBlock Classes="label" Text="{DynamicResource presets.subfolder}" />
           <TextBox Text="{Binding SubfolderName}" PlaceholderText="converted" />
+          <CheckBox Content="{DynamicResource presets.subfolder_only_several}" IsChecked="{Binding SubfolderOnlyForSeveralFiles}"
+                    ToolTip.Tip="{DynamicResource presets.subfolder_only_several_hint}" Margin="0,6,0,0" />
         </StackPanel>
         <StackPanel IsVisible="{Binding ShowCustomFolder}">
           <TextBlock Classes="label" Text="{DynamicResource presets.custom_folder}" />

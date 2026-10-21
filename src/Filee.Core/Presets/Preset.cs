@@ -499,10 +499,10 @@ public sealed class MediaOptions
     public AudioCodec AudioCodec { get; set; } = AudioCodec.Default;
 
     /// <summary>
-    /// Encode H.264 and HEVC video with the graphics chip's encoder (NVENC, Quick Sync, AMF, VideoToolbox or VA-API)
-    /// when one works on this computer, else with x264 / x265 as usual. Much faster and lighter on power, a little
-    /// larger at the same quality. Off by default (and for presets saved before it existed), so results never change
-    /// without the user asking for it.
+    /// Encode H.264, HEVC and AV1 video with the graphics chip's encoder (NVENC, Quick Sync, AMF, VideoToolbox or VA-API;
+    /// AV1 only on recent chips and not on a Mac) when one works on this computer, else with x264 / x265 / SVT-AV1 as
+    /// usual. Much faster and lighter on power, a little larger at the same quality. Off by default (and for presets
+    /// saved before it existed), so results never change without the user asking for it.
     /// </summary>
     public bool HardwareEncoding { get; set; }
 
@@ -654,12 +654,12 @@ public static class MediaCodecs
     public static IReadOnlySet<string> H264Targets { get; } = new HashSet<string> { "mp4", "m4v", "mov", "mkv", "flv", "ts", "m2ts", "3gp", "3g2" };
 
     /// <summary>
-    /// True when <paramref name="target"/> with <paramref name="codec"/> is written as H.264 or HEVC, the codecs
+    /// True when <paramref name="target"/> with <paramref name="codec"/> is written as H.264, HEVC or AV1, the codecs
     /// <see cref="MediaOptions.HardwareEncoding"/> applies to.
     /// </summary>
     public static bool TakesHardwareEncoding(string target, VideoCodec codec) => Effective(target, codec) switch
     {
-        VideoCodec.Hevc => true,
+        VideoCodec.Hevc or VideoCodec.Av1 => true,
         VideoCodec.Default => H264Targets.Contains(target),
         _ => false,
     };

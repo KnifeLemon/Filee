@@ -46,7 +46,7 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.Equal([new HardwareEncoder("h264_nvenc", HardwareApi.Nvenc), new("h264_vaapi", HardwareApi.Vaapi)],
             HardwareVideo.Candidates("h264", HostPlatform.Linux, encoders: null, vaapiDevice: true));
         Assert.Empty(HardwareVideo.Candidates("h264", HostPlatform.Other, encoders: null, vaapiDevice: true));
-        Assert.Empty(HardwareVideo.Candidates("av1", HostPlatform.Windows, encoders: null, vaapiDevice: false));
+        Assert.Empty(HardwareVideo.Candidates("vp9", HostPlatform.Windows, encoders: null, vaapiDevice: false));
 
         // Only what this FFmpeg was built with: a build without NVENC goes straight to Quick Sync.
         Assert.Equal([new HardwareEncoder("h264_qsv", HardwareApi.Qsv), new("h264_amf", HardwareApi.Amf)],
@@ -55,20 +55,49 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
 
         Assert.Equal("hevc", new HardwareEncoder("hevc_videotoolbox", HardwareApi.VideoToolbox).Codec);
         Assert.Equal("h264", new HardwareEncoder("h264_qsv", HardwareApi.Qsv).Codec);
+        Assert.Equal("av1", new HardwareEncoder("av1_qsv", HardwareApi.Qsv).Codec);
     }
 
     [Fact]
-    public void Only_h264_and_hevc_encodes_ask_for_a_hardware_encoder()
+    public void Av1_tries_nvidia_intel_and_amd_and_stays_on_the_cpu_on_a_mac()
+    {
+        Assert.Equal(
+            [new HardwareEncoder("av1_nvenc", HardwareApi.Nvenc), new("av1_qsv", HardwareApi.Qsv), new("av1_amf", HardwareApi.Amf)],
+            HardwareVideo.Candidates("av1", HostPlatform.Windows, encoders: null, vaapiDevice: false));
+        Assert.Equal([new HardwareEncoder("av1_nvenc", HardwareApi.Nvenc), new("av1_vaapi", HardwareApi.Vaapi)],
+            HardwareVideo.Candidates("av1", HostPlatform.Linux, encoders: null, vaapiDevice: true));
+        Assert.Equal([new HardwareEncoder("av1_nvenc", HardwareApi.Nvenc)],
+            HardwareVideo.Candidates("av1", HostPlatform.Linux, encoders: null, vaapiDevice: false));
+        // VideoToolbox has no AV1 encoder: SVT-AV1 encodes, even with an FFmpeg that lists one by that name.
+        Assert.Empty(HardwareVideo.Candidates("av1", HostPlatform.MacOS, encoders: null, vaapiDevice: false));
+        Assert.Empty(HardwareVideo.Candidates("av1", HostPlatform.MacOS, new HashSet<string> { "av1_videotoolbox" }, false));
+        Assert.Empty(HardwareVideo.Candidates("av1", HostPlatform.Other, encoders: null, vaapiDevice: true));
+
+        // Only what this FFmpeg lists: an older build with H.264/HEVC Quick Sync but no av1_qsv tries nothing.
+        Assert.Equal([new HardwareEncoder("av1_qsv", HardwareApi.Qsv)],
+            HardwareVideo.Candidates("av1", HostPlatform.Windows, new HashSet<string> { "libsvtav1", "av1_qsv", "hevc_nvenc", "h264_amf" }, false));
+        Assert.Empty(HardwareVideo.Candidates("av1", HostPlatform.Windows, new HashSet<string> { "libsvtav1", "h264_qsv", "hevc_qsv" }, false));
+    }
+
+    [Fact]
+    public void Only_h264_hevc_and_av1_encodes_ask_for_a_hardware_encoder()
     {
         var on = new MediaOptions { HardwareEncoding = true };
+        var av1 = new MediaOptions { HardwareEncoding = true, VideoCodec = VideoCodec.Av1 };
         Assert.Equal("h264", MediaEncoding.HardwareCodec("mp4", on, HdClip));
         Assert.Equal("h264", MediaEncoding.HardwareCodec("ts", on, HdClip));
         Assert.Equal("hevc", MediaEncoding.HardwareCodec("mkv", new MediaOptions { HardwareEncoding = true, VideoCodec = VideoCodec.Hevc }, HdClip));
+        Assert.Equal("av1", MediaEncoding.HardwareCodec("mp4", av1, HdClip));
+        Assert.Equal("av1", MediaEncoding.HardwareCodec("m4v", av1, HdClip));
+        Assert.Equal("av1", MediaEncoding.HardwareCodec("mkv", av1, HdClip));
+        Assert.Equal("av1", MediaEncoding.HardwareCodec("webm", av1, HdClip));
         // Off, another codec, or a video that is only rewrapped.
         Assert.Null(MediaEncoding.HardwareCodec("mp4", new MediaOptions(), HdClip));
+        Assert.Null(MediaEncoding.HardwareCodec("mp4", new MediaOptions { VideoCodec = VideoCodec.Av1 }, HdClip));
         Assert.Null(MediaEncoding.HardwareCodec("webm", on, HdClip));
         Assert.Null(MediaEncoding.HardwareCodec("avi", on, HdClip));
-        Assert.Null(MediaEncoding.HardwareCodec("mp4", new MediaOptions { HardwareEncoding = true, VideoCodec = VideoCodec.Av1 }, HdClip));
+        Assert.Equal("h264", MediaEncoding.HardwareCodec("mov", av1, HdClip)); // MOV has no AV1: H.264 as usual
+        Assert.Null(MediaEncoding.HardwareCodec("mp4", av1, HdClip with { Video = Hd with { Codec = "av1", PixelFormat = "yuv420p" } }));
         Assert.Null(MediaEncoding.HardwareCodec("mp3", on, HdClip));
         var playable = HdClip with { Video = Hd with { PixelFormat = "yuv420p" } };
         Assert.Null(MediaEncoding.HardwareCodec("mp4", on, playable));
@@ -114,6 +143,49 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Fact]
+    public void Av1_gets_each_encoders_own_quality_scale()
+    {
+        IReadOnlyList<string> Codec(string name, HardwareApi api, string target, MediaQuality quality) =>
+            HardwareVideo.CodecArguments(new HardwareEncoder(name, api), target, quality, Hd, 0);
+
+        // NVENC: AV1's 0–63 quantizer, two above SVT-AV1's CRF 26/32/40.
+        Assert.Equal(["-c:v", "av1_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "34", "-b:v", "0", "-pix_fmt", "nv12"],
+            Codec("av1_nvenc", HardwareApi.Nvenc, "mp4", MediaQuality.Balanced));
+        // Quick Sync: ICQ is 1–51 for AV1 as for HEVC.
+        Assert.Equal(["-c:v", "av1_qsv", "-preset", "medium", "-global_quality", "23", "-pix_fmt", "nv12"],
+            Codec("av1_qsv", HardwareApi.Qsv, "mkv", MediaQuality.High));
+        // AMF and VA-API: the 0–255 quantizer index, four times the quantizer.
+        Assert.Equal(["-c:v", "av1_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", "160", "-qp_p", "168", "-qp_b", "168", "-pix_fmt", "nv12"],
+            Codec("av1_amf", HardwareApi.Amf, "webm", MediaQuality.Small));
+        Assert.Equal(["-c:v", "av1_vaapi", "-rc_mode", "CQP", "-global_quality", "136"],
+            Codec("av1_vaapi", HardwareApi.Vaapi, "mkv", MediaQuality.Balanced));
+
+        Assert.Equal([28, 34, 42], new[] { MediaQuality.High, MediaQuality.Balanced, MediaQuality.Small }.Select(HardwareVideo.Av1Quantizer));
+        Assert.Equal([112, 136, 168], new[] { MediaQuality.High, MediaQuality.Balanced, MediaQuality.Small }.Select(HardwareVideo.Av1QIndex));
+        Assert.Equal([23, 27, 31], new[] { MediaQuality.High, MediaQuality.Balanced, MediaQuality.Small }.Select(q => HardwareVideo.Quantizer("av1", q)));
+        // Every value inside the range each encoder accepts (NVENC -cq 0–63, AMF/VA-API 0–255, Quick Sync ICQ 1–51).
+        foreach (var quality in new[] { MediaQuality.High, MediaQuality.Balanced, MediaQuality.Small })
+        {
+            Assert.InRange(HardwareVideo.Av1Quantizer(quality), 1, 63);
+            Assert.InRange(HardwareVideo.Av1QIndex(quality) - 8, 0, 255);
+            Assert.InRange(HardwareVideo.Av1QIndex(quality), 0, 255);
+            Assert.InRange(HardwareVideo.Quantizer("av1", quality), 1, 51);
+        }
+
+        // No profile (each encoder picks Main; av1_nvenc has no -profile) and no tag, in MP4 as in MKV and WebM.
+        foreach (var (name, api) in new[] { ("av1_nvenc", HardwareApi.Nvenc), ("av1_qsv", HardwareApi.Qsv), ("av1_amf", HardwareApi.Amf), ("av1_vaapi", HardwareApi.Vaapi) })
+        {
+            foreach (var target in new[] { "mp4", "m4v", "mkv", "webm" })
+            {
+                var args = Codec(name, api, target, MediaQuality.Balanced);
+                Assert.DoesNotContain("-profile:v", args);
+                Assert.DoesNotContain("-tag:v", args);
+                Assert.DoesNotContain("-qp", args);
+            }
+        }
+    }
+
+    [Fact]
     public void Ten_bit_and_hdr_stay_ten_bit_on_hevc_and_h264_stays_eight_bit()
     {
         var hdr = HdrClip.Video!;
@@ -129,6 +201,15 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.True(HardwareVideo.TenBit("hevc", hdr));
         Assert.True(HardwareVideo.TenBit("hevc", Hd with { PixelFormat = "p010le" }));
         Assert.False(HardwareVideo.TenBit("hevc", Hd));
+
+        // AV1 keeps 10 bits as SVT-AV1 does: P010 with the colour tags, no profile to name.
+        var av1 = HardwareVideo.CodecArguments(new("av1_qsv", HardwareApi.Qsv), "mp4", MediaQuality.Balanced, hdr, 0);
+        Assert.Equal("p010le", After(av1, "-pix_fmt"));
+        Assert.Equal(("bt2020", "smpte2084", "bt2020nc"), (After(av1, "-color_primaries"), After(av1, "-color_trc"), After(av1, "-colorspace")));
+        Assert.DoesNotContain("-profile:v", av1);
+        Assert.True(HardwareVideo.TenBit("av1", hdr));
+        Assert.False(HardwareVideo.TenBit("av1", Hd));
+        Assert.Equal("nv12", After(HardwareVideo.CodecArguments(new("av1_nvenc", HardwareApi.Nvenc), "mkv", MediaQuality.Balanced, Hd, 0), "-pix_fmt"));
 
         // VA-API: 10-bit frames are uploaded as P010.
         var vaapi = new HardwareEncoder("hevc_vaapi", HardwareApi.Vaapi);
@@ -173,6 +254,36 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 
     [Fact]
+    public void The_plan_writes_av1_on_the_gpu_into_mp4_mkv_and_webm()
+    {
+        var av1 = new MediaOptions { HardwareEncoding = true, VideoCodec = VideoCodec.Av1 };
+        var qsv = new HardwareEncoder("av1_qsv", HardwareApi.Qsv);
+        var mp4 = Args("mp4", av1, qsv);
+        Assert.Equal(("av1_qsv", "27", "nv12", "+faststart"), (After(mp4, "-c:v"), After(mp4, "-global_quality"), After(mp4, "-pix_fmt"), After(mp4, "-movflags")));
+        Assert.DoesNotContain("-tag:v", mp4);
+        Assert.DoesNotContain("-crf", mp4);
+
+        // WebM: the GPU writes the video, the sound becomes Opus as usual.
+        var webm = Args("webm", av1, new HardwareEncoder("av1_nvenc", HardwareApi.Nvenc));
+        Assert.Equal(("av1_nvenc", "34", "libopus", "webm"), (After(webm, "-c:v"), After(webm, "-cq"), After(webm, "-c:a"), After(webm, "-f")));
+
+        // 10-bit HDR stays 10-bit; VA-API uploads it as P010.
+        var vaapi = Args("mkv", av1, new HardwareEncoder("av1_vaapi", HardwareApi.Vaapi), HdrClip);
+        Assert.Equal(("av1_vaapi", "136", "scale=w='trunc(iw/2)*2':h='trunc(ih/2)*2',format=p010le,hwupload"),
+            (After(vaapi, "-c:v"), After(vaapi, "-global_quality"), After(vaapi, "-vf")));
+        Assert.True(vaapi.ToList().IndexOf("-vaapi_device") < vaapi.ToList().IndexOf("-i"));
+
+        // Without a working encoder (or with one for another codec) SVT-AV1 encodes as before.
+        Assert.Equal("libsvtav1", After(Args("mp4", av1, null), "-c:v"));
+        Assert.Equal("libsvtav1", After(Args("mp4", av1, new HardwareEncoder("hevc_qsv", HardwareApi.Qsv)), "-c:v"));
+        Assert.Equal("h264_qsv", After(Args("mp4", new MediaOptions { HardwareEncoding = true }, new HardwareEncoder("h264_qsv", HardwareApi.Qsv)), "-c:v"));
+        Assert.Equal("libx264", After(Args("mp4", new MediaOptions { HardwareEncoding = true }, qsv), "-c:v"));
+        // A missing SVT-AV1 doesn't matter while the hardware encoder writes AV1.
+        Assert.Equal("av1_amf", After(MediaEncoding.Plan("in.mov", "out.mkv", "mkv", av1, HdClip, "work", encoders: new HashSet<string> { "aac" },
+            hardware: new HardwareEncoder("av1_amf", HardwareApi.Amf)).Single().Arguments, "-c:v"));
+    }
+
+    [Fact]
     public void The_probe_is_a_tiny_test_encode_with_the_real_options()
     {
         var qsv = HardwareVideo.ProbeArguments(new HardwareEncoder("hevc_qsv", HardwareApi.Qsv), tenBit: true);
@@ -187,6 +298,11 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
         var intelMac = HardwareVideo.ProbeArguments(new HardwareEncoder("h264_videotoolbox", HardwareApi.VideoToolbox, HardwareRateControl.Bitrate), false);
         Assert.Contains("-b:v", intelMac);
         Assert.DoesNotContain("-q:v", intelMac);
+
+        // AV1 is probed with its own options, 10-bit too: a chip without AV1 (or without 10-bit AV1) fails here.
+        var av1 = HardwareVideo.ProbeArguments(new HardwareEncoder("av1_qsv", HardwareApi.Qsv), tenBit: true);
+        Assert.Equal(("av1_qsv", "p010le", "27"), (After(av1, "-c:v"), After(av1, "-pix_fmt"), After(av1, "-global_quality")));
+        Assert.Equal(["-f", "null", "-"], av1.TakeLast(3));
     }
 
     // ───────────────────────── Software retry ─────────────────────────
@@ -292,6 +408,7 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
     [Theory]
     [InlineData(VideoCodec.Default, "h264")]
     [InlineData(VideoCodec.Hevc, "hevc")]
+    [InlineData(VideoCodec.Av1, "av1")]
     public async Task A_working_hardware_encoder_writes_the_video(VideoCodec videoCodec, string codec)
     {
         Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
@@ -309,6 +426,27 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
 
         Assert.Equal(codec, await CodecOfAsync(Assert.Single(outputs)));
         Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Warning); // no software retry
+    }
+
+    /// <summary>
+    /// With the real probe: where a chip encodes AV1 the GPU writes it, elsewhere (CI, an older chip such as Intel Iris
+    /// Xe) the probes fail quietly and SVT-AV1 does. Either way the file is AV1 and no hardware encode had to be redone.
+    /// </summary>
+    [Fact]
+    public async Task An_av1_preset_with_hardware_encoding_writes_av1_with_or_without_a_capable_chip()
+    {
+        Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
+        var folder = fx.NewFolder();
+        var source = await MakeClipAsync(folder, "clip.mov");
+        var logger = new ListLogger();
+        var converter = new FfmpegConverter(logger);
+        Assert.True(converter.GetStatus().IsAvailable);
+
+        var outputs = await converter.ConvertAsync(Step(source, "mov", "mp4", folder,
+            new MediaOptions { HardwareEncoding = true, Quality = MediaQuality.Small, VideoCodec = VideoCodec.Av1 }), null, CancellationToken.None);
+
+        Assert.Equal("av1", await CodecOfAsync(Assert.Single(outputs)));
+        Assert.DoesNotContain(logger.Entries, e => e.Level == LogLevel.Warning);
     }
 
     // ───────────────────────── Quick queries ─────────────────────────

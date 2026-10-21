@@ -143,7 +143,7 @@ internal static partial class MediaEncoding
     /// <param name="encoders">The encoders the FFmpeg in use has (<c>ffmpeg -encoders</c>); null assumes the pinned build's.</param>
     /// <param name="hardware">
     /// The hardware encoder that passed its probe for <see cref="HardwareCodec"/> of this file; null encodes with x264 /
-    /// x265 (also the retry after a hardware encode failed).
+    /// x265 / SVT-AV1 (also the retry after a hardware encode failed).
     /// </param>
     /// <param name="animationSpeed">Playback speed of an animated GIF or APNG (ImageOptions.PlaybackSpeed); 1 keeps the video's.</param>
     /// <param name="clip">
@@ -218,15 +218,20 @@ internal static partial class MediaEncoding
     // ───────────────────────── Video ─────────────────────────
 
     /// <summary>
-    /// The codec a hardware encoder would have to write for this file ("h264" or "hevc"), or null when the preset does
-    /// not ask for hardware encoding, the target is written with another codec (VP9, AV1, MPEG-2, …), or the video is
+    /// The codec a hardware encoder would have to write for this file ("h264", "hevc" or "av1"), or null when the preset
+    /// does not ask for hardware encoding, the target is written with another codec (VP9, MPEG-2, …), or the video is
     /// copied anyway.
     /// </summary>
     /// <param name="encode">The video is encoded even where it could be copied (an exact clip).</param>
     internal static string? HardwareCodec(string target, MediaOptions options, MediaInfo info, bool encode = false) =>
         options.HardwareEncoding && info.Video is { } video && VideoTargets.ContainsKey(target)
         && MediaCodecs.TakesHardwareEncoding(target, options.VideoCodec) && (encode || !CanCopyVideo(target, video, options))
-            ? MediaCodecs.Effective(target, options.VideoCodec) == Core.Presets.VideoCodec.Hevc ? "hevc" : "h264"
+            ? MediaCodecs.Effective(target, options.VideoCodec) switch
+            {
+                VideoCodec.Hevc => "hevc",
+                VideoCodec.Av1 => "av1",
+                _ => "h264",
+            }
             : null;
 
     private static List<string> Video(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,

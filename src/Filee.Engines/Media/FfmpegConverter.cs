@@ -330,7 +330,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             logger.LogWarning("{File}: hardware encoder {Encoder} failed ({Reason}); encoding it again with the software encoder",
                 output, hardware.Name, ex.Message);
             TryDelete(output);
-            // An FFmpeg without x265 says so here: the hardware encoder was the only way to write HEVC.
+            // An FFmpeg without x265 or an AV1 encoder says so here: the hardware encoder was its only way to write it.
             await run(plan(null));
         }
     }

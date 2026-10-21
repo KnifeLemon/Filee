@@ -20,10 +20,10 @@ internal static class HardwareProbe
     private static readonly ConcurrentDictionary<string, Lazy<Task<bool>>> Results = new();
 
     /// <summary>
-    /// The hardware encoder to write <paramref name="codec"/> ("h264" or "hevc") with, or null when none works here
-    /// (then x264 / x265 encode as usual).
+    /// The hardware encoder to write <paramref name="codec"/> ("h264", "hevc" or "av1") with, or null when none works
+    /// here (then x264 / x265 / SVT-AV1 encode as usual).
     /// </summary>
-    /// <param name="tenBit">The video is encoded in 10 bits (HEVC Main 10): an encoder must handle that too.</param>
+    /// <param name="tenBit">The video is encoded in 10 bits (HEVC Main 10, 10-bit AV1): an encoder must handle that too.</param>
     /// <param name="encoders">The encoders <paramref name="ffmpeg"/> lists; null when the list could not be read.</param>
     public static async Task<HardwareEncoder?> SelectAsync(string ffmpeg, string codec, bool tenBit, IReadOnlySet<string>? encoders,
         ILogger logger, CancellationToken cancellationToken)

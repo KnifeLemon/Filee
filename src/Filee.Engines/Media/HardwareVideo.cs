@@ -1,5 +1,5 @@
-// Hardware video encoders (NVENC, Quick Sync, AMF, VideoToolbox, VA-API) for H.264 and HEVC: which ones to try on
-// which system, and their FFmpeg options. Pure (no processes), so every choice is unit tested without a GPU; whether
+// Hardware video encoders (NVENC, Quick Sync, AMF, VideoToolbox, VA-API) for H.264, HEVC and AV1: which ones to try
+// on which system, and their FFmpeg options. Pure (no processes), so every choice is unit tested without a GPU; whether
 // an encoder actually works on this computer is found out by HardwareProbe.
 
 using System.Globalization;
@@ -10,19 +10,19 @@ namespace Filee.Engines.Media;
 /// <summary>The vendor interface a hardware encoder goes through; it decides the encoder's options.</summary>
 internal enum HardwareApi
 {
-    /// <summary>NVIDIA (<c>h264_nvenc</c>, <c>hevc_nvenc</c>).</summary>
+    /// <summary>NVIDIA (<c>h264_nvenc</c>, <c>hevc_nvenc</c>, <c>av1_nvenc</c> from the RTX 40 series on).</summary>
     Nvenc,
 
-    /// <summary>Intel Quick Sync Video (<c>h264_qsv</c>, <c>hevc_qsv</c>).</summary>
+    /// <summary>Intel Quick Sync Video (<c>h264_qsv</c>, <c>hevc_qsv</c>, <c>av1_qsv</c> from Arc and Core Ultra on).</summary>
     Qsv,
 
-    /// <summary>AMD Advanced Media Framework (<c>h264_amf</c>, <c>hevc_amf</c>).</summary>
+    /// <summary>AMD Advanced Media Framework (<c>h264_amf</c>, <c>hevc_amf</c>, <c>av1_amf</c> from RDNA 3 on).</summary>
     Amf,
 
-    /// <summary>Apple VideoToolbox (<c>h264_videotoolbox</c>, <c>hevc_videotoolbox</c>).</summary>
+    /// <summary>Apple VideoToolbox (<c>h264_videotoolbox</c>, <c>hevc_videotoolbox</c>; no AV1 encoder).</summary>
     VideoToolbox,
 
-    /// <summary>Linux VA-API (<c>h264_vaapi</c>, <c>hevc_vaapi</c>): frames are uploaded to the GPU first.</summary>
+    /// <summary>Linux VA-API (<c>h264_vaapi</c>, <c>hevc_vaapi</c>, <c>av1_vaapi</c>): frames are uploaded to the GPU first.</summary>
     Vaapi,
 }
 
@@ -52,7 +52,7 @@ internal enum HostPlatform
 /// <param name="Name">FFmpeg encoder name, e.g. <c>hevc_nvenc</c>.</param>
 internal sealed record HardwareEncoder(string Name, HardwareApi Api, HardwareRateControl RateControl = HardwareRateControl.Quality)
 {
-    /// <summary>"h264" or "hevc": the part before the underscore.</summary>
+    /// <summary>"h264", "hevc" or "av1": the part before the underscore.</summary>
     public string Codec => Name[..Name.IndexOf('_', StringComparison.Ordinal)];
 }
 
@@ -73,19 +73,21 @@ internal static class HardwareVideo
         : HostPlatform.Other;
 
     /// <summary>
-    /// The hardware encoders for <paramref name="codec"/> ("h264" or "hevc") worth trying, best first. Windows:
+    /// The hardware encoders for <paramref name="codec"/> ("h264", "hevc" or "av1") worth trying, best first. Windows:
     /// NVIDIA, then Intel, then AMD (a laptop with an Intel chip and an NVIDIA card encodes on the card). macOS:
-    /// VideoToolbox with constant quality (Apple Silicon), then with a bitrate (Intel Macs). Linux: NVIDIA, then
-    /// VA-API when a render node exists. Only encoders the FFmpeg in use lists are tried (all of them when the list
-    /// could not be read); the probe decides which one really works.
+    /// VideoToolbox with constant quality (Apple Silicon), then with a bitrate (Intel Macs); none for AV1, which
+    /// VideoToolbox can't encode. Linux: NVIDIA, then VA-API when a render node exists. Only encoders the FFmpeg in use
+    /// lists are tried (all of them when the list could not be read); the probe decides which one really works, so a
+    /// chip too old for AV1 (before the RTX 40 series, Arc and Core Ultra, RDNA 3) leaves AV1 to SVT-AV1.
     /// </summary>
     public static IReadOnlyList<HardwareEncoder> Candidates(string codec, HostPlatform platform, IReadOnlySet<string>? encoders, bool vaapiDevice)
     {
-        if (codec is not ("h264" or "hevc"))
+        if (codec is not ("h264" or "hevc" or "av1"))
             return [];
         List<HardwareEncoder> candidates = platform switch
         {
             HostPlatform.Windows => [new($"{codec}_nvenc", HardwareApi.Nvenc), new($"{codec}_qsv", HardwareApi.Qsv), new($"{codec}_amf", HardwareApi.Amf)],
+            HostPlatform.MacOS when codec == "av1" => [],
             HostPlatform.MacOS =>
             [
                 new($"{codec}_videotoolbox", HardwareApi.VideoToolbox),
@@ -100,20 +102,33 @@ internal static class HardwareVideo
     }
 
     /// <summary>
-    /// True when the video is encoded in 10 bits: HEVC keeps 10-bit and HDR sources in Main 10 (as x265 does). H.264
-    /// is always 8-bit 4:2:0, the only format every player decodes (as with x264).
+    /// True when the video is encoded in 10 bits: HEVC and AV1 keep 10-bit and HDR sources in 10 bits (HEVC Main 10, AV1
+    /// Main), as x265 and SVT-AV1 do. H.264 is always 8-bit 4:2:0, the only format every player decodes (as with x264).
     /// </summary>
-    public static bool TenBit(string codec, VideoStreamInfo video) => codec == "hevc" && (video.IsHighBitDepth || video.IsHdr);
+    public static bool TenBit(string codec, VideoStreamInfo video) => codec is "hevc" or "av1" && (video.IsHighBitDepth || video.IsHdr);
 
     /// <summary>
     /// The preset's quality on the encoders' 0–51 quantizer scale (NVENC <c>-cq</c>, Quick Sync <c>-global_quality</c>,
     /// AMF and VA-API <c>-qp</c>): one above x264's CRF 18/23/28 for H.264 and x265's 22/26/30 for HEVC. Hardware
     /// encoders lack x264/x265's psychovisual tuning and spend bits less wisely, so the same number gives a larger
-    /// file; one step coarser keeps the size close at a slightly lower quality.
+    /// file; one step coarser keeps the size close at a slightly lower quality. AV1 gets HEVC's numbers: only Quick
+    /// Sync takes this scale for AV1 (its ICQ is 1–51 for every codec, 26 by default as for HEVC).
     /// </summary>
-    public static int Quantizer(string codec, MediaQuality quality) => codec == "hevc"
+    public static int Quantizer(string codec, MediaQuality quality) => codec is "hevc" or "av1"
         ? Choose(quality, 23, 27, 31)
         : Choose(quality, 19, 24, 29);
+
+    /// <summary>
+    /// The preset's quality on AV1's 0–63 quantizer scale (NVENC <c>-cq</c>), the scale of SVT-AV1's CRF: two above its
+    /// 26/32/40, about the one step coarser H.264 and HEVC get, on AV1's finer scale.
+    /// </summary>
+    public static int Av1Quantizer(MediaQuality quality) => Choose(quality, 28, 34, 42);
+
+    /// <summary>
+    /// <see cref="Av1Quantizer"/> on AV1's 0–255 quantizer index (<c>base_q_idx</c>), which AMF (<c>-qp_p</c>) and VA-API
+    /// (<c>-global_quality</c>) take: quantizer q is index 4q, as AV1 encoders map their CRF.
+    /// </summary>
+    public static int Av1QIndex(MediaQuality quality) => Av1Quantizer(quality) * 4;
 
     /// <summary>VideoToolbox's constant quality (<c>-q:v</c>, 1–100, higher is better) on Apple Silicon.</summary>
     public static int VideoToolboxQuality(MediaQuality quality) => Choose(quality, 70, 60, 50);
@@ -145,13 +160,14 @@ internal static class HardwareVideo
         encoder.Api == HardwareApi.Vaapi ? $",format={(tenBit ? "p010le" : "nv12")},hwupload" : "";
 
     /// <summary>
-    /// The encoder options for one video: rate control from the preset's quality, NV12 (8-bit) or P010 with the Main 10
-    /// profile (10-bit HEVC), the source's HDR colour tags, and the <c>hvc1</c> tag Apple players need for HEVC in
-    /// MP4/MOV.
+    /// The encoder options for one video: rate control from the preset's quality, NV12 (8-bit) or P010 (10-bit HEVC
+    /// Main 10 and AV1), the source's HDR colour tags, and the <c>hvc1</c> tag Apple players need for HEVC in MP4/MOV.
+    /// AV1 needs no tag (<c>av01</c> in MP4; MKV and WebM have none).
     /// </summary>
     public static List<string> CodecArguments(HardwareEncoder encoder, string target, MediaQuality quality, VideoStreamInfo video, int maxHeight)
     {
         var codec = encoder.Codec;
+        var av1 = codec == "av1";
         var tenBit = TenBit(codec, video);
         var quantizer = Text(Quantizer(codec, quality));
         List<string> args = ["-c:v", encoder.Name];
@@ -159,13 +175,18 @@ internal static class HardwareVideo
         {
             case HardwareApi.Nvenc:
                 // Constant quality inside VBR; -b:v 0 lifts NVENC's default 2 Mbit/s cap. P5 is the "slow, good quality"
-                // preset, still many times faster than x264's medium.
-                args.AddRange(["-preset", "p5", "-rc", "vbr", "-cq", quantizer, "-b:v", "0"]);
+                // preset, still many times faster than x264's medium. AV1's -cq is on its own 0–63 scale.
+                args.AddRange(["-preset", "p5", "-rc", "vbr", "-cq", av1 ? Text(Av1Quantizer(quality)) : quantizer, "-b:v", "0"]);
                 break;
             case HardwareApi.Qsv:
                 // global_quality without a bitrate selects ICQ (intelligent constant quality), or CQP where the driver
                 // has no ICQ.
                 args.AddRange(["-preset", "medium", "-global_quality", quantizer]);
+                break;
+            case HardwareApi.Amf when av1:
+                // AV1 takes the quantizer index (0–255): I-frames the same two steps finer, B-frames like P-frames.
+                var index = Av1QIndex(quality);
+                args.AddRange(["-quality", "balanced", "-rc", "cqp", "-qp_i", Text(index - 8), "-qp_p", Text(index), "-qp_b", Text(index)]);
                 break;
             case HardwareApi.Amf:
                 // Constant quantizer; I-frames two steps finer, as AMF's own presets do.
@@ -179,14 +200,19 @@ internal static class HardwareVideo
             case HardwareApi.VideoToolbox:
                 args.AddRange(["-q:v", Text(VideoToolboxQuality(quality))]);
                 break;
+            case HardwareApi.Vaapi when av1:
+                // av1_vaapi has no -qp: the constant quantizer index comes from -global_quality.
+                args.AddRange(["-rc_mode", "CQP", "-global_quality", Text(Av1QIndex(quality))]);
+                break;
             case HardwareApi.Vaapi:
                 args.AddRange(["-rc_mode", "CQP", "-qp", quantizer]);
                 break;
         }
 
+        // AV1's Main profile covers 8- and 10-bit 4:2:0 and every encoder picks it itself (av1_nvenc has no -profile).
         if (codec == "h264")
             args.AddRange(["-profile:v", "high"]);
-        else
+        else if (codec == "hevc")
             args.AddRange(["-profile:v", tenBit ? "main10" : "main"]);
         // VA-API's frames are already uploaded in the right format (FilterSuffix).
         if (encoder.Api != HardwareApi.Vaapi)

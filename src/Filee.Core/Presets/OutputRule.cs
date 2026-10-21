@@ -36,6 +36,13 @@ public sealed class OutputRule
 
     public string SubfolderName { get; set; } = "converted";
 
+    /// <summary>
+    /// With <see cref="OutputLocation.Subfolder"/>: only a source that becomes several files (a PDF split into pages)
+    /// gets the subfolder; one that becomes a single file is saved next to the source, so a one-page PDF doesn't end up
+    /// alone in a folder of its own.
+    /// </summary>
+    public bool SubfolderOnlyForSeveralFiles { get; set; }
+
     public string CustomFolder { get; set; } = "";
 
     /// <summary>

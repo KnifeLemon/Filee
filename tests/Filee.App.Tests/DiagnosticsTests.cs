@@ -1,6 +1,7 @@
 // The log lines that explain a Filee which seems to ignore everything: UI thread stalls, bursts kept short, the
 // start-up line, and the restart without administrator rights.
 
+using System.Globalization;
 using Avalonia.Headless.XUnit;
 using Filee.App.Services;
 using Filee.Core.Platform;
@@ -77,22 +78,33 @@ public class UiWatchdogTests
     [Fact]
     public void A_stall_is_reported_once_and_its_end_with_the_length()
     {
-        var watchdog = Create();
-        watchdog.Tick(); // ping sent at 0 s
-        TickFor(watchdog, _clock, 4);
-        Assert.Empty(_log.Lines); // 4 s: under the threshold
+        // In a language that writes 12,5, on every machine: the log still says 12.5.
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("ru-RU");
+        try
+        {
+            var watchdog = Create();
+            watchdog.Tick(); // ping sent at 0 s
+            TickFor(watchdog, _clock, 4);
+            Assert.Empty(_log.Lines); // 4 s: under the threshold
 
-        TickFor(watchdog, _clock, 8); // 12 s
-        var warning = Assert.Single(_log.Lines);
-        Assert.Equal(LogLevel.Warning, warning.Level);
-        Assert.Equal("UI thread blocked for 6 s", warning.Message); // the first tick past 5 s
-        Assert.Single(_uiQueue); // no second ping while the first waits
+            TickFor(watchdog, _clock, 8); // 12 s
+            var warning = Assert.Single(_log.Lines);
+            Assert.Equal(LogLevel.Warning, warning.Level);
+            Assert.Equal("UI thread blocked for 6 s", warning.Message); // the first tick past 5 s
+            Assert.Single(_uiQueue); // no second ping while the first waits
 
-        _clock.Advance(TimeSpan.FromSeconds(0.5));
-        RunUi();
-        Assert.Equal(2, _log.Lines.Count);
-        Assert.Equal(LogLevel.Information, _log.Lines[1].Level);
-        Assert.Equal($"UI thread responsive again after {12.5:0.0} s", _log.Lines[1].Message);
+            _clock.Advance(TimeSpan.FromSeconds(0.5));
+            RunUi();
+            Assert.Equal(2, _log.Lines.Count);
+            Assert.Equal(LogLevel.Information, _log.Lines[1].Level);
+            // The log formats numbers the same way in every language: 12.5, never 12,5.
+            Assert.Equal("UI thread responsive again after 12.5 s", _log.Lines[1].Message);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = culture;
+        }
     }
 
     [Fact]

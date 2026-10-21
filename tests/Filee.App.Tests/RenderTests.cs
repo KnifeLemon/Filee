@@ -1067,6 +1067,49 @@ public class RenderTests
         Assert.Equal("jpg", preset.TargetFormat);
     }
 
+    [AvaloniaTheory]
+    [InlineData("en", false)]
+    [InlineData("ru", false)]
+    [InlineData("ar", true)]
+    public void Preset_editor_offers_the_subfolder_only_for_several_files_with_a_subfolder(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        // PDF → page images saves into a folder per document.
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "pdf-split");
+        var vm = new PresetEditorViewModel(preset, loc);
+        Assert.True(vm.ShowSubfolder);
+        Assert.False(vm.SubfolderOnlyForSeveralFiles);
+
+        vm.SubfolderOnlyForSeveralFiles = true;
+        if (dark)
+            theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        try
+        {
+            var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+            window.Show();
+            Pump();
+            Save(window, $"preset-subfolder-{language}{(dark ? "-dark" : "")}.png");
+            window.Close();
+        }
+        finally
+        {
+            if (dark)
+                theme.Apply(new ThemeSettings(), language);
+        }
+        Assert.True(vm.Apply());
+        Assert.True(preset.Output.SubfolderOnlyForSeveralFiles);
+
+        // Hidden with another location, and not kept on behind it.
+        vm = new PresetEditorViewModel(preset, loc);
+        Assert.True(vm.SubfolderOnlyForSeveralFiles);
+        vm.Location = vm.Locations.Single(l => l.Value == Filee.Core.Presets.OutputLocation.SameFolder);
+        Assert.False(vm.ShowSubfolder);
+        Assert.True(vm.Apply());
+        Assert.False(preset.Output.SubfolderOnlyForSeveralFiles);
+    }
+
     [AvaloniaFact]
     public void Preset_editor_keeps_rotation_visible_for_pdf_and_drops_it_for_targets_that_cannot_turn()
     {
@@ -1613,7 +1656,7 @@ public class RenderTests
     }
 
     [AvaloniaFact]
-    public void Preset_editor_offers_hardware_encoding_for_h264_and_hevc()
+    public void Preset_editor_offers_hardware_encoding_for_h264_hevc_and_av1()
     {
         TestServices.EnsureInitialized("en");
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "mp4", Name = "Fast" };
@@ -1622,9 +1665,9 @@ public class RenderTests
         Assert.False(vm.HardwareEncoding); // off unless asked for
         vm.HardwareEncoding = true;
 
-        // AV1 and VP9 have no hardware path; HEVC does.
+        // HEVC and AV1 have a hardware path; VP9 (WebM's usual codec) has none.
         vm.VideoCodecChoice = vm.VideoCodecs.Single(c => c.Value == Filee.Core.Presets.VideoCodec.Av1);
-        Assert.False(vm.ShowHardwareEncoding);
+        Assert.True(vm.ShowHardwareEncoding);
         vm.VideoCodecChoice = vm.VideoCodecs.Single(c => c.Value == Filee.Core.Presets.VideoCodec.Hevc);
         Assert.True(vm.ShowHardwareEncoding);
         vm.Target = vm.Targets.Single(t => t.Value == "webm");
@@ -1641,6 +1684,12 @@ public class RenderTests
         Assert.Equal(Filee.Core.Presets.VideoCodec.Hevc, preset.Media.VideoCodec);
 
         Assert.True(new PresetEditorViewModel(preset, AppHost.Get<ILocalizer>()).HardwareEncoding);
+
+        // WebM written as AV1 (the "MP4 AV1" kind of preset, in WebM) offers it too.
+        var webm = new PresetEditorViewModel(new Filee.Core.Presets.Preset { TargetFormat = "webm", Name = "AV1" }, AppHost.Get<ILocalizer>());
+        Assert.False(webm.ShowHardwareEncoding);
+        webm.VideoCodecChoice = webm.VideoCodecs.Single(c => c.Value == Filee.Core.Presets.VideoCodec.Av1);
+        Assert.True(webm.ShowHardwareEncoding);
     }
 
     [AvaloniaFact]

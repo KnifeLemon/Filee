@@ -259,6 +259,7 @@ public sealed class AppSettings
         {
             copy.Output.Location = DefaultOutput.Location == OutputLocation.Default ? OutputLocation.SameFolder : DefaultOutput.Location;
             copy.Output.SubfolderName = DefaultOutput.SubfolderName;
+            copy.Output.SubfolderOnlyForSeveralFiles = false;
             copy.Output.CustomFolder = DefaultOutput.CustomFolder;
         }
         if (dates)

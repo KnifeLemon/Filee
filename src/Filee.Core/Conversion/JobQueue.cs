@@ -79,7 +79,7 @@ public sealed class JobQueue : IAsyncDisposable
         job.State = JobState.Running;
         Notify(job);
 
-        var workDir = Path.Combine(Path.GetTempPath(), "Filee", job.Id);
+        var workDir = Path.Combine(DefaultWorkRoot, job.Id);
         Directory.CreateDirectory(workDir);
         try
         {
@@ -245,7 +245,7 @@ public sealed class JobQueue : IAsyncDisposable
             return;
 
         var first = job.Files[0];
-        var allocator = CreateFinalAllocator(job, first.SourcePath, 1);
+        var allocator = CreateFinalAllocator(job, first.SourcePath, 1, oneFile: true);
         var output = allocator.Allocate("pdf");
         if (output is null)
         {
@@ -289,7 +289,7 @@ public sealed class JobQueue : IAsyncDisposable
             return;
 
         var first = job.Files[0];
-        var output = CreateFinalAllocator(job, first.SourcePath, 1).Allocate("tiff");
+        var output = CreateFinalAllocator(job, first.SourcePath, 1, oneFile: true).Allocate("tiff");
         if (output is null)
         {
             foreach (var f in job.Files) f.State = FileState.Skipped;
@@ -335,7 +335,7 @@ public sealed class JobQueue : IAsyncDisposable
             return;
         }
 
-        var output = CreateFinalAllocator(job, inputs[0].SourcePath, 1).Allocate(format.PrimaryExtension);
+        var output = CreateFinalAllocator(job, inputs[0].SourcePath, 1, oneFile: true).Allocate(format.PrimaryExtension);
         if (output is null)
         {
             foreach (var f in inputs)
@@ -494,6 +494,8 @@ public sealed class JobQueue : IAsyncDisposable
         Notify(job);
         // A file saved from a browser first has part of its progress already.
         var floor = file.Progress;
+        // The last step's allocator: how many paths it handed out tells a single output from several.
+        FinalAllocator? final = null;
 
         try
         {
@@ -505,7 +507,7 @@ public sealed class JobQueue : IAsyncDisposable
                 var step = route.Steps[s];
                 var isLast = s == route.Steps.Count - 1;
                 IOutputAllocator allocator = isLast && finalOutput && !zipResult
-                    ? CreateFinalAllocator(job, file.SourcePath, index)
+                    ? final = CreateFinalAllocator(job, file.SourcePath, index)
                     : new TempAllocator(workDir, FormatRegistry.NameWithoutExtension(file.SourcePath));
 
                 var outputs = new List<string>();
@@ -548,6 +550,9 @@ public sealed class JobQueue : IAsyncDisposable
 
             if (zipResult && inputs.Count > 0)
                 inputs = PackZip(job, file, index, inputs, ct);
+            // One output, and nothing else handed out for it (a Markdown file's picture folder goes with it).
+            else if (finalOutput && inputs.Count == 1 && final is { Handed: 1 })
+                inputs = [NextToSource(job, file, index, inputs[0])];
 
             if (finalOutput)
             {
@@ -610,7 +615,7 @@ public sealed class JobQueue : IAsyncDisposable
     /// </summary>
     private IReadOnlyList<string> PackZip(ConversionJob job, FileResult file, int index, IReadOnlyList<string> files, CancellationToken ct)
     {
-        if (CreateFinalAllocator(job, file.SourcePath, index).Allocate("zip") is not { } zipPath)
+        if (CreateFinalAllocator(job, file.SourcePath, index, oneFile: true).Allocate("zip") is not { } zipPath)
             return [];
         try
         {
@@ -661,8 +666,78 @@ public sealed class JobQueue : IAsyncDisposable
             return new SemaphoreSlim(max, max);
         });
 
-    private FinalAllocator CreateFinalAllocator(ConversionJob job, string sourcePath, int index) =>
-        new(this, job.Preset.Output, new OutputPathResolver.Tokens(sourcePath, job.PresetDisplayName, index, job.CreatedAt));
+    /// <param name="oneFile">The output is one file whatever happens (a merged PDF, a multi-page TIFF, an archive).</param>
+    private FinalAllocator CreateFinalAllocator(ConversionJob job, string sourcePath, int index, bool oneFile = false) =>
+        new(this, oneFile ? ForOneFile(job.Preset.Output) : job.Preset.Output,
+            new OutputPathResolver.Tokens(sourcePath, job.PresetDisplayName, index, job.CreatedAt));
+
+    /// <summary>
+    /// The rule for a single output file: with <see cref="OutputRule.SubfolderOnlyForSeveralFiles"/> it is saved next to
+    /// the source instead of in the subfolder.
+    /// </summary>
+    private static OutputRule ForOneFile(OutputRule rule)
+    {
+        if (!rule.SubfolderOnlyForSeveralFiles || rule.Location != OutputLocation.Subfolder)
+            return rule;
+        var single = rule.Clone();
+        single.Location = OutputLocation.SameFolder;
+        return single;
+    }
+
+    /// <summary>
+    /// With <see cref="OutputRule.SubfolderOnlyForSeveralFiles"/>: moves the one file a source became out of the
+    /// subfolder to the folder next to the source, keeping its name (the conflict policy applies there), and removes
+    /// the subfolder if that left it empty. A file that can't be moved (the policy skips an existing file, or the file
+    /// is in use) stays in the subfolder.
+    /// </summary>
+    private string NextToSource(ConversionJob job, FileResult file, int index, string output)
+    {
+        var rule = ForOneFile(job.Preset.Output);
+        if (ReferenceEquals(rule, job.Preset.Output) || !File.Exists(output)
+            // Pandoc writes a document's pictures into "<name>_files" beside it, outside the allocator: they stay together.
+            || Directory.Exists(Path.Combine(Path.GetDirectoryName(output)!, Path.GetFileNameWithoutExtension(output) + "_files")))
+            return output;
+        // The name was already made from the pattern and renames: it is kept as it is.
+        rule.FileNamePattern = Path.GetFileNameWithoutExtension(output);
+        rule.Renames = [];
+
+        lock (_reservedOutputs)
+        {
+            var tokens = new OutputPathResolver.Tokens(file.SourcePath, job.PresetDisplayName, index, job.CreatedAt);
+            var target = OutputPathResolver.Resolve(rule, tokens, Path.GetExtension(output),
+                p => !PathsEqual(p, output) && (File.Exists(p) || Directory.Exists(p) || _reservedOutputs.Contains(p)));
+            if (target is null || PathsEqual(target, output))
+                return output;
+            try
+            {
+                // Over an existing file only when the policy says so: one that appeared since is never replaced.
+                File.Move(output, target, overwrite: rule.Conflict == ConflictPolicy.Overwrite);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning(ex, "Could not move {Output} next to its source", output);
+                return output;
+            }
+            _reservedOutputs.Remove(output);
+            _reservedOutputs.Add(target);
+
+            // Another file of this or a running job may still be written into the same subfolder.
+            var subfolder = Path.GetDirectoryName(output)!;
+            if (!_reservedOutputs.Any(p => PathsEqual(Path.GetDirectoryName(p) ?? "", subfolder)))
+            {
+                try
+                {
+                    if (!Directory.EnumerateFileSystemEntries(subfolder).Any())
+                        Directory.Delete(subfolder);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+            }
+            return target;
+        }
+
+        static bool PathsEqual(string a, string b) =>
+            string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), Platform.FileSystemPaths.Comparison);
+    }
 
     private void Notify(ConversionJob job)
     {
@@ -699,6 +774,64 @@ public sealed class JobQueue : IAsyncDisposable
         }
     }
 
+    /// <summary>Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>.</summary>
+    public static string DefaultWorkRoot => Path.Combine(Path.GetTempPath(), "Filee");
+
+    /// <summary>
+    /// Deletes the work folders of jobs a crash, a forced quit or a power cut kept from removing them: intermediate
+    /// PDFs, TIFF pages and video frames can take gigabytes, and the OS doesn't empty its temp folder by itself. Only a
+    /// job's folder nothing was written in for <paramref name="age"/> goes, so a job still running in another Filee (the
+    /// command line) keeps its own; files from a browser have a sweep of their own (<c>WebDrop.DeleteStale</c>).
+    /// </summary>
+    public static void DeleteStaleWorkFolders(string workRoot, TimeSpan age)
+    {
+        try
+        {
+            var root = new DirectoryInfo(workRoot);
+            // A temp folder everyone can write in (/tmp on Linux) may hold a link to somewhere else: never follow one.
+            if (!root.Exists || root.LinkTarget is not null)
+                return;
+            foreach (var folder in root.EnumerateDirectories())
+            {
+                if (!IsJobId(folder.Name) || folder.LinkTarget is not null)
+                    continue;
+                try
+                {
+                    if (DateTime.UtcNow - LastWrite(folder) > age)
+                        TryDelete(folder.FullName);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    // Something in it can't be read: it stays, and the other folders are still looked at.
+                }
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+        }
+
+        static bool IsJobId(string name) => name.Length == 10 && name.All(char.IsAsciiHexDigitLower);
+
+        // A folder's own time changes only when an entry right inside it does: a long job writes deeper down. Links
+        // inside are not followed, and a folder that can't be read throws (the job's folder then stays).
+        static DateTime LastWrite(DirectoryInfo folder)
+        {
+            var last = folder.LastWriteTimeUtc;
+            var everything = new EnumerationOptions
+            {
+                RecurseSubdirectories = true,
+                AttributesToSkip = FileAttributes.ReparsePoint,
+                IgnoreInaccessible = false,
+            };
+            foreach (var entry in folder.EnumerateFileSystemInfos("*", everything))
+            {
+                if (entry.LastWriteTimeUtc > last)
+                    last = entry.LastWriteTimeUtc;
+            }
+            return last;
+        }
+    }
+
     private static void TryDelete(string dir)
     {
         try
@@ -719,6 +852,9 @@ public sealed class JobQueue : IAsyncDisposable
     /// <summary>Allocates final output paths according to the preset's <see cref="OutputRule"/>.</summary>
     private sealed class FinalAllocator(JobQueue queue, OutputRule rule, OutputPathResolver.Tokens tokens) : IOutputAllocator
     {
+        /// <summary>How many paths were handed out: an output and the picture folder that goes with it are two.</summary>
+        public int Handed { get; private set; }
+
         public string? Allocate(string extension, string? suffix = null)
         {
             // Reserve under a lock so two parallel files never pick the same name.
@@ -730,6 +866,7 @@ public sealed class JobQueue : IAsyncDisposable
                     return null;
 
                 queue._reservedOutputs.Add(path);
+                Handed++;
                 Directory.CreateDirectory(Path.GetDirectoryName(path)!);
                 // An empty extension asks for a folder (archive extraction): the converter creates it.
                 return path;

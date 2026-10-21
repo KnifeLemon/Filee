@@ -86,15 +86,26 @@ public sealed class LocalizationService : ILocalizer
     public static string LeftToRight(string text) =>
         CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? "\u200E" + text + "\u200E" : text;
 
+    /// <summary>
+    /// The language the user reads the OS in, taken before <see cref="SetLanguage"/> makes Filee's own the current one.
+    /// Not InstalledUICulture: that is the language Windows was installed in, which stays Polish when the user switches
+    /// the display language to English (or Russian, …) later.
+    /// </summary>
+    private static readonly string UserLanguage = CultureInfo.CurrentUICulture.Name;
+
     /// <summary>Maps "auto" / a culture name to one of the shipped languages.</summary>
-    public static string Resolve(string setting)
+    public static string Resolve(string setting) =>
+        // macOS gives an app started from Finder no LANG: its language list comes from the system instead.
+        Resolve(setting, () => Filee.Platform.MacOS.MacOSLocale.PreferredLanguage() ?? UserLanguage);
+
+    /// <summary>Maps "auto" (the OS language <paramref name="osLanguage"/> gives) / a culture name to a shipped language.</summary>
+    internal static string Resolve(string setting, Func<string> osLanguage)
     {
         if (!string.Equals(setting, "auto", StringComparison.OrdinalIgnoreCase) &&
             Languages.Any(l => l.Code.Equals(setting, StringComparison.OrdinalIgnoreCase)))
             return Languages.First(l => l.Code.Equals(setting, StringComparison.OrdinalIgnoreCase)).Code;
 
-        // macOS gives an app started from Finder no LANG: its language list comes from the system instead.
-        var ui = Filee.Platform.MacOS.MacOSLocale.PreferredLanguage() ?? CultureInfo.InstalledUICulture.Name;
+        var ui = osLanguage();
         if (ui.StartsWith("ja", StringComparison.OrdinalIgnoreCase))
             return "ja";
         if (ui.StartsWith("ko", StringComparison.OrdinalIgnoreCase))
