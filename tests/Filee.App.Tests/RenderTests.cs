@@ -2012,6 +2012,8 @@ public class RenderTests
             editor.Seek(4);
             editor.Select(new Filee.App.Controls.EditorItem(Filee.App.Controls.EditorItemKind.Image, 0));
             ClipWindowTests.WaitFor(() => editor.Picture is not null && !editor.IsBusy);
+            // The check of the files just added is over before the picture is taken (its timer doesn't run here).
+            window.EditorView.FindControl<Panel>("Added")!.Classes.Remove("play");
             Pump();
             var theme = dark ? "dark" : "light";
             Save(window, $"editor-{language}-{theme}.png");

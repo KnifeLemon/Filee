@@ -523,7 +523,7 @@
                   <ComboBox Classes="field" ItemsSource="{Binding TextStyles}" SelectedItem="{Binding TextStyleChoice}" />
                   <ComboBox Classes="field" ItemsSource="{Binding Fonts}" SelectedItem="{Binding TextFont}" ToolTip.Tip="{DynamicResource editor.font}">
                     <ComboBox.ItemTemplate>
-                      <DataTemplate x:DataType="vm:Choice`1">
+                      <DataTemplate x:DataType="vm:FontChoice">
                         <TextBlock Text="{Binding Label}" FontFamily="{Binding Value, Converter={x:Static vm:FontNames.Family}}" />
                       </DataTemplate>
                     </ComboBox.ItemTemplate>

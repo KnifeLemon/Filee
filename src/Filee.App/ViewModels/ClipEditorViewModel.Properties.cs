@@ -263,9 +263,9 @@ public sealed partial class ClipEditorViewModel
     public string TextLengthText => _loc.Format("editor.seconds", TextLength.ToString("0.#", CultureInfo.CurrentCulture));
 
     /// <summary>The fonts on this computer, Filee's own first.</summary>
-    public IReadOnlyList<Choice<string>> Fonts { get; private set; } = [];
+    public IReadOnlyList<FontChoice> Fonts { get; private set; } = [];
 
-    public Choice<string>? TextFont
+    public FontChoice? TextFont
     {
         get => CurrentText is { } text ? Fonts.FirstOrDefault(f => f.Value == (text.Font ?? "")) ?? Fonts.FirstOrDefault() : null;
         set
@@ -527,7 +527,7 @@ public sealed partial class ClipEditorViewModel
         Fonts =
         [
             new("", _loc["editor.font_default"]),
-            .. SystemFonts().Select(name => new Choice<string>(name, name)),
+            .. SystemFonts().Select(name => new FontChoice(name, name)),
         ];
         Fits =
         [
