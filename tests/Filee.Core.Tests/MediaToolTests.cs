@@ -79,6 +79,9 @@ public class MediaToolTests
         var profiles = BuiltInData.CreateProfiles();
         foreach (var profile in profiles)
             profile.BackPresetIds!.RemoveAll(ToolIds.Contains);
+        // The video donut's back face of schema 32, with the plain M4A slice.
+        profiles.Single(p => p.Id == "video").BackPresetIds = ["mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg",
+            "live-photo-iphone", "motion-photo-android", "to-m4a", "to-wav", "to-flac", "zip-all"];
         // A back face the user filled up stays as it is.
         var pdf = profiles.Single(p => p.Id == "pdf");
         while (pdf.BackPresetIds!.Count < ToolbarProfile.MaxSlices)
@@ -90,11 +93,25 @@ public class MediaToolTests
         Assert.All(ToolIds, id => Assert.Single(presets, p => p.Id == id));
         var audio = profiles.Single(p => p.Id == "audio").BackPresetIds!;
         Assert.Equal(["to-alac", "compress-audio", "merge-audio", "remove-metadata", "zip-all"], audio);
+        // "Extract audio" takes the M4A slice's place; the new library's back face is what an upgraded one gets.
         var video = profiles.Single(p => p.Id == "video").BackPresetIds!;
-        Assert.Equal(["compress-video", "merge-videos", "zip-all"], video.TakeLast(3));
+        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "video").BackPresetIds, video);
         Assert.Equal(full, pdf.BackPresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(32, presets, profiles)); // once only
         Assert.False(SettingsMigrations.ApplyToLibrary(AppSettings.CurrentSchemaVersion, presets, profiles));
+    }
+
+    [Fact]
+    public void Extract_audio_comes_onto_a_video_back_face_without_the_m4a_slice_when_there_is_room()
+    {
+        var presets = BuiltInData.CreatePresets().Where(p => !ToolIds.Contains(p.Id)).ToList();
+        var profiles = BuiltInData.CreateProfiles();
+        var video = profiles.Single(p => p.Id == "video");
+        video.BackPresetIds = ["mp4-av1", "to-wav", "zip-all"];
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(32, presets, profiles));
+
+        Assert.Equal(["mp4-av1", "to-wav", "compress-video", "merge-videos", "extract-audio", "zip-all"], video.BackPresetIds);
     }
 
     [Fact]

@@ -753,6 +753,7 @@ internal static class SettingsMigrations
         // v33: everyday tools (compress image / video / audio, video from images, extract audio, merge videos / audio,
         //      remove metadata), after "Motion Photo (Android)" as in a new library, and on the back faces of the
         //      built-in donuts before "One ZIP" where they have room and the user hasn't put them there already.
+        //      "Extract audio" replaces the plain M4A slice on the video donut's back.
         if (from < 33)
             changed |= AddMediaTools(presets, profiles);
         return changed;
@@ -763,7 +764,7 @@ internal static class SettingsMigrations
     [
         ("images", ["compress-image", "remove-metadata"]),
         ("pdf", ["remove-metadata"]),
-        ("video", ["compress-video", "merge-videos"]),
+        ("video", ["compress-video", "merge-videos", "extract-audio"]),
         ("audio", ["compress-audio", "merge-audio", "remove-metadata"]),
     ];
 
@@ -783,6 +784,18 @@ internal static class SettingsMigrations
         {
             if (profiles.FirstOrDefault(p => p.Id == profileId) is not { BackPresetIds: { } back } profile)
                 continue;
+            // "Extract audio" writes the same M4A as the plain M4A slice, copying the sound where it can: it takes that
+            // slice's place on the video donut's back, or comes in with the other tools when there is room.
+            if (profileId == "video" && !back.Contains("extract-audio") && !profile.PresetIds.Contains("extract-audio")
+                && presets.Any(p => p.Id == "extract-audio"))
+            {
+                var m4a = back.IndexOf("to-m4a");
+                if (m4a >= 0)
+                {
+                    back[m4a] = "extract-audio";
+                    changed = true;
+                }
+            }
             foreach (var id in ids)
             {
                 if (back.Contains(id) || profile.PresetIds.Contains(id) || back.Count >= ToolbarProfile.MaxSlices

@@ -244,7 +244,7 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var folder = fx.NewFolder();
         var chapters = Path.Combine(folder, "chapters.txt");
         await File.WriteAllTextAsync(chapters, ";FFMETADATA1\ntitle=Secret trip\nartist=Jane Doe\n" +
-            "[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=1000\ntitle=Arrival\n");
+            "[CHAPTER]\nTIMEBASE=1/1000\nSTART=0\nEND=1000\ntitle=Arrival\n", TestContext.Current.CancellationToken);
         var clip = Path.Combine(folder, "trip.mp4");
         await FfmpegAsync(
         [
@@ -267,7 +267,7 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.False(after.Tags.ContainsKey(tag), tag);
         Assert.DoesNotContain(after.Streams, s => s.Tags.Values.Any(v => v.Contains("Jane", StringComparison.Ordinal)));
         Assert.Equal(0, after.Chapters);
-        var bytes = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output));
+        var bytes = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken));
         Assert.DoesNotContain("Secret trip", bytes);
         Assert.DoesNotContain("+37.5665", bytes);
         Assert.Equal(await StreamHashAsync(clip, "v"), await StreamHashAsync(output, "v"));
@@ -289,7 +289,7 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("mp3", after.Audio!.Codec);
         Assert.False(after.Tags.ContainsKey("title"));
         Assert.False(after.Tags.ContainsKey("artist"));
-        Assert.DoesNotContain("Jane Doe", Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output)));
+        Assert.DoesNotContain("Jane Doe", Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken)));
         Assert.Equal(await StreamHashAsync(song, "a"), await StreamHashAsync(output, "a"));
     }
 
@@ -319,7 +319,7 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(string.IsNullOrEmpty(clean.Comment));
         Assert.Equal((400u, 300u), (clean.Width, clean.Height));
         Assert.InRange(clean.Quality, 78u, 82u); // saved at the photo's own quality, not above it
-        var bytes = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output));
+        var bytes = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken));
         Assert.DoesNotContain("Filee Camera", bytes);
         Assert.DoesNotContain("Jane", bytes);
     }
@@ -348,7 +348,7 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.True(string.IsNullOrEmpty(clean.Info.Author));
             Assert.True(string.IsNullOrEmpty(clean.Info.Title));
         }
-        var bytes = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output));
+        var bytes = Encoding.Latin1.GetString(await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken));
         Assert.DoesNotContain("Jane Doe", bytes);
         Assert.DoesNotContain("Secret contract", bytes);
         Assert.DoesNotContain("confidential", bytes);
