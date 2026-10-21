@@ -126,6 +126,7 @@ public class MergeOrderTests
     [InlineData("pl")]
     [InlineData("hi")]
     [InlineData("ru")]
+    [InlineData("pt-BR")]
     public void Chooser_fits_long_paths_at_its_minimum_width(string language)
     {
         TestServices.EnsureInitialized(language);

@@ -30,7 +30,7 @@
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
 </p>
 
-<p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <b>简体中文</b> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a></p>
+<p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <b>简体中文</b> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <table>
   <tr>
@@ -73,7 +73,7 @@
 - **监视文件夹**，放入的文件自动转换。
 - **最近的转换**显示在主页上，每项都有缩略图，可以直接“打开文件”，也可以用“打开方式”换个应用打开。
 - **其他方式** 右键菜单、键盘快捷键、拖放区域和 [`filee` 命令](#命令行)。
-- 浅色和深色主题，可自选强调色和环形工具栏不透明度，支持 English、Español、日本語、한국어、简体中文、Polski、हिन्दी、Русский、العربية（从右到左）。
+- 浅色和深色主题，可自选强调色和环形工具栏不透明度，支持 English、Español、日本語、한국어、简体中文、Polski、हिन्दी、Русский、العربية（从右到左）、Português (Brasil)。
 
 ## 截图
 

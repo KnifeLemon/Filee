@@ -30,7 +30,7 @@
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
 </p>
 
-<p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <b>हिन्दी</b> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a></p>
+<p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <b>हिन्दी</b> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <table>
   <tr>
@@ -77,7 +77,7 @@
 - **वॉच फ़ोल्डर** में आने वाली हर फ़ाइल अपने-आप कन्वर्ट हो जाती है।
 - **हाल के कन्वर्ज़न** होम पर, हर एक के थंबनेल के साथ: नतीजे को "फ़ाइल खोलें" से खोलें, या "इसके साथ खोलें" से किसी दूसरे ऐप में।
 - **दूसरे तरीके**: राइट-क्लिक मेनू, कीबोर्ड शॉर्टकट, ड्रॉप ज़ोन और [`filee` कमांड](#कमांड-लाइन)।
-- लाइट और डार्क थीम, अपने एक्सेंट रंग और डोनट की अपारदर्शिता के साथ, English, Español, 日本語, 한국어, 简体中文, Polski, हिन्दी, Русский और العربية (दाएँ से बाएँ) में।
+- लाइट और डार्क थीम, अपने एक्सेंट रंग और डोनट की अपारदर्शिता के साथ, English, Español, 日本語, 한국어, 简体中文, Polski, हिन्दी, Русский, العربية (दाएँ से बाएँ) और Português (Brasil) में।
 
 ## स्क्रीनशॉट
 

@@ -7,12 +7,261 @@ Add a `## <version>` section before tagging a release. Write what someone using 
 find it, what it does and doesn't do.
 
 Start the section with an `<!-- update -->` block (hidden on GitHub). The app's update notice shows its level and its
-one-line summaries in the user's language (`ko`, `en`, `zh`, `pl`; a line per change, a language may repeat; a language
-without lines shows the English ones):
+one-line summaries in the user's language (any language Filee ships: `ko`, `en`, `zh`, `pl`, `pt-BR`, …; a line per
+change, a language may repeat; a language without lines shows the English ones):
 
 - `required`: wrong or lost results, security, Filee not starting. The card shows every time Filee starts.
 - `recommended`: bug fixes. The card shows once per version.
 - `optional`: new features only. No card, the sidebar button only.
+
+## 2.0.0
+
+<!-- update
+level: recommended
+ko: Filee 전용 Windows 설치 프로그램으로 바뀌었어요. 설정, 프리셋, 변환 엔진은 그대로 남아요
+ko: 브라우저의 그림이나 파일 링크를 원형 툴바로 바로 끌어 놓을 수 있어요
+ko: 원형 툴바에 뒷면이 생겼어요. Tab 키나 마우스 휠로 뒤집어요
+ko: 자르기가 새로워졌어요. 그림 위에서 A를 눌러 그 자리에서 비율을 골라요
+ko: 라이브 포토·모션 포토에서 동영상을 꺼내고, 동영상으로 만들 수도 있어요(실험 기능)
+ko: OFD, MHTML, POTM, FBX, JPEG XR, Shapefile·GeoJSON·KML·GPX 지도를 지원해요
+ko: 강조색을 자유롭게 고르고 원형 툴바를 반투명하게 만들 수 있어요
+ko: 스페인어, 힌디어, 일본어, 러시아어, 아랍어, 브라질 포르투갈어를 지원해요
+ko: PDF의 표가 Word·한글 표로, Word 수식이 한글 수식으로 바뀌어요
+ko: 전자책·SVG·3D 모델·이메일의 보안 문제와 여러 오류를 고쳤어요
+en: Filee's own Windows installer; your settings, presets and engines stay as they are
+en: Drag pictures and file links from a web browser straight onto the donut
+en: The donut has a back face: press Tab or turn the mouse wheel to flip it
+en: A new crop tool: press A over the picture to pick a ratio right there
+en: Take the video out of Live and Motion Photos, or make one from a video (experimental)
+en: OFD, MHTML, POTM, FBX, JPEG XR, and Shapefile, GeoJSON, KML and GPX maps
+en: Any accent colour, and a see-through donut
+en: Spanish, Hindi, Japanese, Russian, Arabic and Brazilian Portuguese
+en: Tables in PDFs become real Word tables, and Arabic or Hindi documents become proper PDFs
+en: Security fixes for e-books, SVG, 3D models and e-mails, and many bug fixes
+zh: 改用 Filee 自己的 Windows 安装程序，设置、预设和转换引擎保持不变
+zh: 可以把浏览器中的图片或文件链接直接拖到环形工具栏上
+zh: 环形工具栏有了背面，按 Tab 键或滚动鼠标滚轮即可翻转
+zh: 全新的裁剪工具，在图片上按 A 即可就地选择比例
+zh: 可以从实况照片和动态照片中提取视频，也可以用视频制作（实验性）
+zh: 支持 OFD、MHTML、POTM、FBX、JPEG XR 以及 Shapefile、GeoJSON、KML、GPX 地图
+zh: 可以任选强调色，并让环形工具栏半透明
+zh: 新增西班牙语、印地语、日语、俄语、阿拉伯语和巴西葡萄牙语界面
+zh: PDF 中的表格可转为真正的 Word 表格，阿拉伯语和印地语文档也能正确转为 PDF
+zh: 修复了电子书、SVG、3D 模型和电子邮件的安全问题以及许多错误
+pl: Własny instalator Filee dla Windows; ustawienia, ustawienia wstępne i silniki zostają bez zmian
+pl: Obrazy i linki do plików można przeciągać z przeglądarki prosto na pasek-pierścień
+pl: Pasek-pierścień ma drugą stronę: obróć go klawiszem Tab lub kółkiem myszy
+pl: Nowe kadrowanie: naciśnij A nad obrazem, aby wybrać proporcje na miejscu
+pl: Wideo z Live Photo i Motion Photo oraz tworzenie ich z filmu (eksperymentalne)
+pl: Nowe formaty: OFD, MHTML, POTM, FBX, JPEG XR oraz mapy Shapefile, GeoJSON, KML i GPX
+pl: Dowolny kolor akcentu i półprzezroczysty pasek-pierścień
+pl: Język hiszpański, hindi, japoński, rosyjski, arabski i portugalski brazylijski
+pl: Tabele z PDF stają się prawdziwymi tabelami Worda, a dokumenty po arabsku i w hindi poprawnymi plikami PDF
+pl: Poprawki bezpieczeństwa dla e-booków, SVG, modeli 3D i e-maili oraz wiele innych poprawek
+es: Instalador propio de Filee para Windows; tu configuración, ajustes preestablecidos y motores se mantienen
+es: Arrastra imágenes y enlaces a archivos desde el navegador directamente al menú circular
+es: El menú circular tiene reverso: dale la vuelta con Tab o con la rueda del ratón
+es: Nueva herramienta de recorte: pulsa A sobre la imagen para elegir la proporción ahí mismo
+es: Extrae el vídeo de las Live Photos y Motion Photos, o créalas a partir de un vídeo (experimental)
+es: Nuevos formatos: OFD, MHTML, POTM, FBX, JPEG XR y mapas Shapefile, GeoJSON, KML y GPX
+es: Cualquier color de acento y un menú circular translúcido
+es: Español, hindi, japonés, ruso, árabe y portugués de Brasil
+es: Las tablas de los PDF pasan a ser tablas de Word, y los documentos en árabe o hindi salen bien en PDF
+es: Correcciones de seguridad para libros electrónicos, SVG, modelos 3D y correos, y muchos errores corregidos
+hi: Windows के लिए Filee का अपना इंस्टॉलर; आपकी सेटिंग, प्रीसेट और इंजन वैसे ही रहते हैं
+hi: ब्राउज़र से चित्र या फ़ाइल के लिंक सीधे डोनट पर खींचें
+hi: डोनट का अब पिछला हिस्सा भी है: Tab दबाएँ या माउस व्हील घुमाकर पलटें
+hi: नया क्रॉप टूल: चित्र पर A दबाकर वहीं अनुपात चुनें
+hi: लाइव / मोशन फ़ोटो से वीडियो निकालें, या वीडियो से बनाएँ (प्रायोगिक)
+hi: नए फ़ॉर्मैट: OFD, MHTML, POTM, FBX, JPEG XR और Shapefile, GeoJSON, KML, GPX नक्शे
+hi: कोई भी एक्सेंट रंग चुनें और डोनट को अर्ध-पारदर्शी बनाएँ
+hi: स्पैनिश, हिन्दी, जापानी, रूसी, अरबी और ब्राज़ीलियाई पुर्तगाली भाषाएँ
+hi: PDF की तालिकाएँ Word की असली तालिकाएँ बनती हैं, और हिन्दी या अरबी दस्तावेज़ सही PDF बनते हैं
+hi: ई-बुक, SVG, 3D मॉडल और ईमेल की सुरक्षा समस्याएँ और कई गड़बड़ियाँ ठीक की गईं
+ja: Filee 独自の Windows インストーラーになりました。設定・プリセット・変換エンジンはそのままです
+ja: ブラウザーから画像やファイルへのリンクをドーナツメニューに直接ドラッグできます
+ja: ドーナツメニューに裏面ができました。Tab キーかマウスホイールで裏返せます
+ja: トリミングが新しくなりました。画像の上で A を押すとその場で比率を選べます
+ja: Live Photo・モーションフォトから動画を取り出せます。動画から作ることもできます（試験的）
+ja: OFD、MHTML、POTM、FBX、JPEG XR、Shapefile・GeoJSON・KML・GPX の地図に対応しました
+ja: 好きなアクセントカラーを選び、ドーナツメニューを半透明にできます
+ja: スペイン語、ヒンディー語、日本語、ロシア語、アラビア語、ブラジルポルトガル語に対応しました
+ja: PDF の表が Word の表になり、アラビア語やヒンディー語の文書も正しく PDF にできます
+ja: 電子書籍・SVG・3D モデル・メールのセキュリティ問題と多くの不具合を修正しました
+ru: Собственный установщик Filee для Windows; настройки, пресеты и движки сохраняются
+ru: Картинки и ссылки на файлы можно перетаскивать из браузера прямо на круговое меню
+ru: У кругового меню есть обратная сторона: переверните его клавишей Tab или колесом мыши
+ru: Новая обрезка: нажмите A над картинкой и выберите пропорции прямо там
+ru: Видео из Live Photo и Motion Photo, а также их создание из видео (экспериментально)
+ru: Новые форматы: OFD, MHTML, POTM, FBX, JPEG XR и карты Shapefile, GeoJSON, KML и GPX
+ru: Любой акцентный цвет и полупрозрачное круговое меню
+ru: Испанский, хинди, японский, русский, арабский и бразильский португальский
+ru: Таблицы из PDF становятся настоящими таблицами Word, а документы на арабском и хинди правильно конвертируются в PDF
+ru: Исправления безопасности для электронных книг, SVG, 3D-моделей и писем, а также много других исправлений
+ar: مثبّت Filee الخاص لنظام Windows، مع بقاء إعداداتك والإعدادات المسبقة والمحركات كما هي
+ar: اسحب الصور وروابط الملفات من المتصفح مباشرةً إلى القائمة الدائرية
+ar: للقائمة الدائرية وجه آخر: اقلبها بمفتاح Tab أو بعجلة الفأرة
+ar: أداة اقتصاص جديدة: اضغط A فوق الصورة لاختيار نسبة الأبعاد في مكانها
+ar: استخراج الفيديو من Live Photo وMotion Photo، أو إنشاؤها من فيديو (تجريبي)
+ar: صيغ جديدة: OFD وMHTML وPOTM وFBX وJPEG XR وخرائط Shapefile وGeoJSON وKML وGPX
+ar: اختر أي لون مميّز واجعل القائمة الدائرية شبه شفافة
+ar: الإسبانية والهندية واليابانية والروسية والعربية والبرتغالية البرازيلية
+ar: تتحول جداول PDF إلى جداول Word حقيقية، وتُحوَّل المستندات العربية والهندية إلى PDF بشكل صحيح
+ar: إصلاحات أمنية للكتب الإلكترونية وSVG والنماذج ثلاثية الأبعاد ورسائل البريد، وإصلاح أخطاء كثيرة
+pt-BR: Instalador próprio do Filee para Windows; suas configurações, predefinições e motores continuam como estão
+pt-BR: Arraste imagens e links de arquivos do navegador direto para o menu circular
+pt-BR: O menu circular tem um verso: vire-o com Tab ou com a roda do mouse
+pt-BR: Nova ferramenta de recorte: pressione A sobre a imagem para escolher a proporção ali mesmo
+pt-BR: Extraia o vídeo de Live Photos e Motion Photos, ou crie-as a partir de um vídeo (experimental)
+pt-BR: Novos formatos: OFD, MHTML, POTM, FBX, JPEG XR e mapas Shapefile, GeoJSON, KML e GPX
+pt-BR: Qualquer cor de destaque e um menu circular translúcido
+pt-BR: Espanhol, hindi, japonês, russo, árabe e português do Brasil
+pt-BR: Tabelas de PDF viram tabelas de verdade no Word, e documentos em árabe ou hindi viram PDFs corretos
+pt-BR: Correções de segurança para e-books, SVG, modelos 3D e e-mails, e muitos outros erros corrigidos
+-->
+
+### New
+
+- **Filee's own installer** (Windows). `Filee-<version>-win-Setup.exe` is now Filee's own installer instead of an Inno
+  Setup one; the download names stay the same. It is one card in Filee's look, in every app language (Windows' display
+  language first): **Install**, and **Options** for the language, folder, desktop icon, Explorer menu, starting at
+  sign-in, `filee` on the PATH and the engines to download. While it installs, it shows this version's What's new
+  slides. It installs over Filee 1.x, also from the built-in updater: same folder, your choices and one entry in Apps &
+  Features, with settings, presets and engines kept. The uninstaller asks whether to delete your settings (kept unless
+  you say so). Setup checks its files before changing anything and puts everything back if an install fails halfway.
+  The usual switches still work (`/SILENT`, `/VERYSILENT`, `/SUPPRESSMSGBOXES`, `/NORESTART`, `/DIR=`, `/LANG=`,
+  `/TASKS=`, `/MERGETASKS=`, `/NOICONS`, `/CURRENTUSER`, `/LOG`), and `/NOLAUNCH` doesn't start Filee at the end.
+  Tools that unpacked the old Setup with innounp need the portable zip now.
+- **What's new.** The first time Filee starts after an update, a small window shows the new features as short animated
+  slides (Previous / Next, ← / →, Esc). About → "What's new in Filee 2.0" opens them again. With "Reduce animations"
+  each slide is a still picture.
+- **Files from a web browser.** Hold the shortcut key and drag a picture, a link to a file or a download out of
+  Chrome, Edge, Firefox or Safari: the donut opens as it does for your own files, and dropping on a slice saves the
+  file and converts it. The Home drop zone takes the same drags. Settings → General → "Files dragged from a browser"
+  sets where they are saved (Downloads unless you choose another folder) and can keep only the converted file. A badge
+  over the progress ring shows the download. Filee downloads a link itself, without your browser's sign-in, so a file
+  behind a sign-in has to be saved from the browser first. Web pages, programs and scripts are refused, and nothing is
+  run. Attachments dragged out of Outlook and files dragged out of a ZIP in Explorer open the donut too.
+- **The donut's back face** (issue #195). Every donut has a second set of up to 12 slices. While the donut is open,
+  press **Tab** or turn the **mouse wheel** to flip it; the hub shows the hint when the back has something for your
+  files. Built-in donuts come with a back face: Crop, Rotate, Flip, Remove background and Live Photo video on the image
+  donut, Compress PDF on the PDF donut, frame extraction and Live / Motion Photos on the video donut, One ZIP on most.
+  The Front / Back switch in Settings → Donut toolbar edits it, and Settings → Shortcuts → "Flip the donut" changes the
+  key or turns the wheel off.
+- **Crop** (by @smjrifle). The Crop slice (on the back of the image donut) opens your pictures one after another in a
+  crop window. Drag the frame or its corners, pick a ratio on the aspect dial (Free, Original, 1:1, 4:3, 3:2, 16:9,
+  and their portrait forms; **A** over the picture opens it at the pointer), then **Crop & Next** (Enter) or Skip.
+  The arrow keys move the frame by a pixel (Shift: 10), R resets and X swaps portrait and landscape. A strip shows the
+  files, and a summary lists what was skipped or failed. The quality of the picture is kept; animated pictures aren't
+  cropped.
+- **Live Photos and Motion Photos** (issue #174, by @SunGang-pine). "Extract Live Photo video" takes the video out of
+  an Android Motion Photo, or out of the MOV next to an iPhone Live Photo (LIVP packages too), as MP4 or MOV.
+  **Experimental:** "Live Photo (iPhone)" and "Motion Photo (Android)" turn a short clip of a video (0.5 to 5 s) into
+  an iPhone Live Photo (a JPG or HEIC plus a MOV with the same name; import both into Photos together) or an Android
+  Motion Photo (one `NAME.MP.jpg`). They aren't confirmed on every phone yet. Both need FFmpeg.
+- **More formats**, 255 in all.
+  - **OFD** (by @MMNHHK): Chinese e-invoices and other OFD documents become DOCX, PDF, HWPX, TXT and the other document
+    formats, with their seals. Built in.
+  - **MHTML / MHT** web archives ("Webpage, Single File", issue #210) become HTML, PDF, DOCX, HWPX, TXT, Markdown or
+    EPUB. Scripts and anything outside the archive are left out.
+  - **POTM** (issue #213, by @ganeshmshetty): macro-enabled PowerPoint templates, to and from the other PowerPoint
+    formats and to documents and PDF.
+  - **Geospatial data** (by @KAPPI1925): Shapefile, GeoJSON, KML, KMZ, GPX and CSV with coordinates convert into
+    each other on a donut of their own, built in. Results are in WGS 84 longitude / latitude; projected data is
+    converted using its `.prj`. *Save the result as a ZIP* (a preset option, also for every geospatial result in
+    Settings → General, and `--zip` on the command line) keeps a Shapefile's files together in one ZIP.
+  - **FBX** 3D models (issue #148), read only: to GLB, glTF, STL, OBJ, 3MF, PLY and pictures.
+  - **JPEG XR** (`.jxr`, `.wdp`, `.hdp`; issue #150), on Windows: HDR screenshots are tone-mapped instead of clipped.
+  - **Scripts and logs as text** (issues #254, #273, #284, by @Mustafa1p): `.log`, `.py`, `.pac`, `.bat` and
+    `.command` become UTF-8 TXT. They are read, never run.
+  - **Video CD** `.dat` (issue #292) becomes MP4 or MKV with FFmpeg; other `.dat` files are refused.
+  - **`.wbpz`** Workbench archives open as ZIP (issue #294).
+
+  Your donuts learn the new extensions, unless one of your own donuts already takes them.
+- **Playback speed** (issue #158). GIF, WebP, APNG and MNG presets can make animations play from 0.25× to 4× as fast,
+  also for video → GIF or APNG.
+- **Theme** (accent picker by @Mustafa1p, donut opacity by @gtxPrime, `theme.json` by @AkiVonAkira). Settings →
+  Theme has a colour picker with a hex field next to the accent swatches, and *Donut toolbar opacity* (10 to 100 %,
+  issue #276). Softness rounds the donut's slices too (issue #206). A `theme.json` next to `settings.json` can replace
+  Filee's page, surface, text and status colours (docs/CUSTOM-THEMES.md).
+- **Reset one donut** (issue #205). *Reset to default* next to *Delete profile* in Settings → Donut toolbar puts a
+  built-in donut back as it came, front and back. Your other donuts and your presets stay as they are.
+- **Recent conversions** (by @gtxPrime). Home has a search box over the list, thumbnails of pictures, and *Open file*
+  and *Open with* next to the folder button. Settings → General → "Conversions to keep in the history" (50 to 2,000,
+  200 unless you change it).
+- **Folders into one ZIP** (issue #186, by @SonicaReddy and @gtxPrime). Dragged folders go into One ZIP with
+  everything in them, and One ZIP is on the archives donut too. Other presets still don't take folders.
+- **Watch folders that write into themselves** (issue #234, by @Mustafa1p). A watch folder's output may be the folder
+  it watches; its own results aren't converted again.
+- **Merge order** (issue #268, by @Mustafa1p). Merge PDF first shows the files in name order (2 before 10), with each
+  file's folder. Move them up or down (Alt+↑ / Alt+↓) or cancel before anything starts.
+- **AV1 on the graphics chip** (issue #196). *Use hardware acceleration (graphics chip)* encodes AV1 too, on NVIDIA
+  RTX 40, Intel Arc and Core Ultra, AMD RDNA 3 and newer, and through VA-API on Linux. Other chips leave AV1 to the
+  usual encoder, as before.
+- **A subfolder only when needed** (issue #259, by @flexeykinDev). With "A subfolder", *Only when a file becomes
+  several* saves a single result next to the original and keeps the subfolder for files that become several (a PDF
+  split into pages).
+- **Dock and menu bar** (macOS, issue #132, by @SeoJCalive). Settings → General → *Show Filee in the Dock* and *Show
+  Filee in the menu bar*. With both off, opening Filee again brings up its window.
+- **macOS 13** (by @yoamzil). Filee runs on macOS 13 Ventura, not only 14 and newer.
+- **Linux** packages are no longer a preview.
+- **KDE Plasma on Wayland** (experimental, by @IPedrax). With `FILEE_WAYLAND_GESTURES=1`, the drag gesture works on KDE
+  Plasma 6 on Wayland. installer/linux/INSTALL.txt has the steps (the `input` group and a KWin script) and the limits.
+- **Languages.** Filee speaks Spanish (by @danielcastro-dev), Hindi (by @adnan-bhaldar), Japanese (by @sh-ayu),
+  Russian (by @allamitsamara-cmd), Arabic, right to left in every window and in Setup (by @Mustafa1p), and Brazilian
+  Portuguese, also for Portuguese from Portugal (by @RaulSKKS). It picks them when Windows, macOS or Linux does. Hindi,
+  Japanese and Arabic bring their own fonts, so they show on systems without one.
+
+### Improved
+
+- **Arabic, Hebrew and Indic text to PDF** (issues #185, #202). Documents with Arabic, Hebrew, Gujarati, Hindi, Thai
+  or another script whose letters join or combine go to PDF through LibreOffice, whatever Settings → Engines picks.
+  Without LibreOffice they stop with a message saying so instead of a PDF with broken letters. PDF → DOCX reads such
+  text in its proper order, and right-to-left paragraphs stay right to left.
+- **Ruled tables in PDF → DOCX / HWPX** (issue #138). Tables drawn with lines become real tables with merged cells,
+  borders, shading and column widths. Tables without lines and nested tables still come out as text, and a table
+  running over several pages becomes one per page.
+- **Word equations** (issue #143). DOCX → HWPX, HWP and PDF keep fractions, sub- and superscripts, roots, sums,
+  integrals, brackets and matrices as 한글 equations. HTML, EPUB, Markdown and TXT get them on one line, as
+  `(a+b)/(2c)`.
+- **PDF → Markdown** (issue #144). Pictures are saved in a `<name>_files` folder next to the Markdown file instead of
+  being broken links (HWP and HWPX → Markdown too), and fewer running heads and page numbers come along. The new
+  option *Leave out pictures (text only)* keeps just the text.
+- **Chinese Word documents to PDF** (issue #237). WordArt titles, indents set in characters and full-width
+  punctuation come out as in Word; quotation marks no longer sit on top of the next character.
+- **DOCX → HWPX** (by @amebaleon). Cell padding and small bullets (•, ▪, –) are kept.
+- **Remove background** (issue #139). On a coloured backdrop, a drawing keeps its own colours instead of turning half
+  transparent.
+- **Donut toolbar page** (issue #266, by @SeoJCalive). The list of presets shows only those the selected donut's files
+  can use; those that need an engine are dimmed, with the reason when you point at them.
+- **Engines without the Visual C++ Redistributable** (Windows, issue #248). rhwp, unhwp and LibreOffice now come with
+  the runtime files they need, so HWP conversions no longer fail with "exit -1073741515" on a PC without them. When
+  such a file is missing anyway, the message says what to install.
+- **Automatic language** (by @flexeykinDev). Filee follows the display language you chose in Windows, not the
+  language Windows was installed in.
+
+### Fixed
+
+- A failed or cancelled conversion left a half-written file where the result should be, and converting again gave
+  `photo (2).png` (by @flexeykinDev). A file the preset was going to overwrite is never deleted.
+- Work folders a crash or a shutdown left in the temp folder stayed there for good. They are deleted after a day (by
+  @flexeykinDev).
+- With several Explorer tabs open (Windows 11), the selection shortcut read the files of an older tab (issue #239).
+- A Windows shortcut (`.lnk`) brought in the shortcut instead of the file it points to (issue #159).
+- An empty file (0 bytes, such as a DOCX made with "New" in Explorer) failed with "Central Directory corrupt". The
+  message now says the file is empty, and an empty PDF no longer breaks a merge (issue #157).
+- Some DOCX files (from Tencent Docs, for example) failed with "source file could not be loaded" through LibreOffice.
+  Filee tries again from a cleaned-up copy (issue #141).
+- On macOS, Finder replacements such as QSpace Pro couldn't hand files to Filee, and a donut opened from another
+  launch could close at once (issue #160).
+- With FFmpeg installed, audio presets counted as available for pictures, which would have made silent files.
+- The donut could sit on a frosted rectangle (issue #269). Filee now takes away a backdrop another program puts on its
+  windows, and the log says how transparent windows are drawn.
+- On Linux and macOS, converting a document to PDF that names a font that isn't installed could break other
+  conversions running at the same time.
+- **Security** (by @Stamina9): e-books (issue #167), SVG files (issue #191) and 3D models (issue #317) read pictures
+  and styles only from their own package or folder, never from elsewhere on the disk or the web. E-mails converted to
+  HTML (issue #165) lose scripts, forms, frames and remote pictures.
 
 ## 1.12.0
 

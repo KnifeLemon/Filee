@@ -30,7 +30,7 @@
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
 </p>
 
-<p align="center"><b>English</b> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a></p>
+<p align="center"><b>English</b> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <table>
   <tr>
@@ -77,7 +77,7 @@ slides show what's new.
 - **Watch folders** convert every file that lands in them.
 - **Recent conversions** on Home, each with a thumbnail: open the result, or open it with another app.
 - **Other ways in**: the right-click menu, a keyboard shortcut, the drop zone and the [`filee` command](#command-line).
-- Light and dark themes with your own accent colour and donut opacity, in English, Español, 日本語, 한국어, 简体中文, Polski, हिन्दी, Русский and العربية (right to left).
+- Light and dark themes with your own accent colour and donut opacity, in English, Español, 日本語, 한국어, 简体中文, Polski, हिन्दी, Русский, العربية (right to left) and Português (Brasil).
 
 ## Screenshots
 

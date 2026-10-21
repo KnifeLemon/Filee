@@ -45,6 +45,9 @@
    own (`DirectOnly`), never a step of a longer one.
 5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a temp folder;
    final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
+   Each name stays reserved while a conversion holds it. A conversion that fails or is cancelled deletes what it began
+   writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
+   same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
    "Merge into one PDF" converts each file to PDF and merges with PDFsharp.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
 6. **Report** – progress and results appear in the toast window and in Home → Recent conversions.

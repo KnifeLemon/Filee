@@ -30,7 +30,7 @@
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
 </p>
 
-<p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a></p>
+<p align="center"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <b>日本語</b> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <table>
   <tr>
@@ -78,7 +78,7 @@
 - **最近の変換**はホームにサムネイル付きで表示され、変換結果を開いたり、別のアプリで開いたりできます。
 - **ほかの使い方**：右クリックメニュー、キーボードショートカット、ドロップ領域、[`filee`コマンド](#コマンドライン)。
 - ライトテーマとダークテーマ。アクセントカラーとドーナツメニューの不透明度も選べます。English、Español、日本語、한국어、
-  简体中文、Polski、हिन्दी、Русский、العربية（右から左へ表示）に対応。
+  简体中文、Polski、हिन्दी、Русский、العربية（右から左へ表示）、Português (Brasil)に対応。
 
 ## スクリーンショット
 

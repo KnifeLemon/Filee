@@ -10,7 +10,7 @@
 //   /NOCLOSEAPPLICATIONS    don't force-close programs that still run from the install folder after "Filee --quit"
 //   /DIR="folder"           install folder (environment variables are expanded)
 //   /LANG=ko                language of Setup (and of a newly installed Filee): en, es, ja, ko, zh-CN (Inno: zhcn),
-//                           pl, hi, ru, ar
+//                           pl, hi, ru, ar, pt-BR
 //   /TASKS="a,b"            exactly these options; /MERGETASKS="a,!b" changes the defaults. "!" unticks, "*" ticks
 //                           the children too. Names: contextmenu, contextmenu\top, startup, cli, desktopicon
 //   /NOICONS                no Start menu and desktop shortcuts

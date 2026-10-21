@@ -591,6 +591,7 @@ public class DonutFlipTests
     [InlineData("ja", false)]
     [InlineData("ru", false)]
     [InlineData("ar", true)]
+    [InlineData("pt-BR", false)]
     public void The_back_face_renders(string language, bool dark) => With(animations: true, back: null, () =>
     {
         var theme = AppHost.Get<ThemeService>();

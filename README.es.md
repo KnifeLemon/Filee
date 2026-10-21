@@ -30,7 +30,7 @@
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
 </p>
 
-<p align="center"><a href="README.md">English</a> · <b>Español</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a></p>
+<p align="center"><a href="README.md">English</a> · <b>Español</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <a href="README.ar.md">العربية</a> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <table>
   <tr>
@@ -77,7 +77,7 @@ actualización, unas pocas diapositivas muestran las novedades.
 - **Carpetas supervisadas** que convierten cada archivo que llega a ellas.
 - **Conversiones recientes** en Inicio, cada una con su miniatura: abre el resultado o ábrelo con otra aplicación.
 - **Otras formas de usarlo**: el menú contextual, un atajo de teclado, la zona de suelta y el [comando `filee`](#línea-de-comandos).
-- Temas claro y oscuro con tu propio color de acento y la opacidad del menú circular, en English, Español, 日本語, 한국어, 简体中文, Polski, हिन्दी, Русский y العربية (de derecha a izquierda).
+- Temas claro y oscuro con tu propio color de acento y la opacidad del menú circular, en English, Español, 日本語, 한국어, 简体中文, Polski, हिन्दी, Русский, العربية (de derecha a izquierda) y Português (Brasil).
 
 ## Capturas de pantalla
 

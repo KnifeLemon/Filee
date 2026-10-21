@@ -543,7 +543,7 @@ public class WhatsNewMedia
     private static Clip Languages(string version)
     {
         var clip = new Clip();
-        foreach (var language in new[] { "es", "hi", "ja", "ru", "ar", "en", "ko", "zh-CN", "pl" })
+        foreach (var language in new[] { "es", "hi", "ja", "ru", "ar", "pt-BR", "en", "ko", "zh-CN", "pl" })
         {
             TestServices.EnsureInitialized(language);
             AppHost.Get<ThemeService>().Apply(new ThemeSettings { ReduceMotion = false, Mode = ThemeMode.Light }, language);

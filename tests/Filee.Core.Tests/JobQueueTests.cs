@@ -537,6 +537,146 @@ public class JobQueueTests
         Assert.Equal(2, job.Outputs.Distinct().Count());
     }
 
+    /// <summary>An engine that writes half a file where it was told to and then fails, or is cancelled.</summary>
+    private sealed class HalfWriter(Action<ConversionStep>? whileWriting = null, string from = "jpg") : IConverter
+    {
+        public string Id => "half";
+        public string DisplayName => "half";
+        public IReadOnlyList<ConversionEdge> Edges { get; } = [new ConversionEdge(from, "png")];
+        public int MaxParallelism => 0;
+        public bool Writes { get; init; } = true;
+        public bool Available { get; set; } = true;
+
+        /// <summary>Awaited after taking the name and before failing: lets a test run something else meanwhile.</summary>
+        public Func<Task>? Hold { get; init; }
+
+        public EngineStatus GetStatus() => Available ? EngineStatus.Available() : EngineStatus.Unavailable("engine.reason.not_installed");
+
+        public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+        {
+            var path = step.Output.Allocate(step.To)!;
+            if (Writes)
+                await File.WriteAllTextAsync(path, "half", cancellationToken);
+            whileWriting?.Invoke(step);
+            if (Hold is not null)
+                await Hold();
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new InvalidOperationException("the engine crashed");
+        }
+    }
+
+    [Fact]
+    public async Task A_failed_conversion_leaves_no_half_written_file_and_frees_its_name()
+    {
+        using var dir = new TempDir();
+        var photo = dir.File("photo.jpg");
+        await using (var failing = new JobQueue(new ConverterCatalog([new HalfWriter()])))
+        {
+            var job = await Run(failing, [photo], new Preset { TargetFormat = "png" });
+
+            Assert.Equal(JobState.Failed, job.State);
+            Assert.False(File.Exists(Path.Combine(dir.Path, "photo.png")));
+        }
+    }
+
+    [Fact]
+    public async Task A_cancelled_conversion_leaves_no_half_written_file_and_a_retry_gets_the_same_name()
+    {
+        using var dir = new TempDir();
+        var photo = dir.File("photo.jpg");
+        ConversionJob? running = null;
+        var half = new HalfWriter(_ => running!.Cancel());
+        var good = new FakeConverter("magick", new ConversionEdge("jpg", "png"));
+        var catalog = new ConverterCatalog([half, good]);
+        await using var queue = new JobQueue(catalog);
+
+        running = new ConversionJob([photo], new Preset { TargetFormat = "png" }, "Test");
+        good.Available = false;
+        catalog.Refresh();
+        await queue.RunAsync(running);
+        Assert.Equal(JobState.Cancelled, running.State);
+        Assert.False(File.Exists(Path.Combine(dir.Path, "photo.png")));
+
+        // Tried again in the same session: the name the cancelled one had is free again.
+        half.Available = false;
+        good.Available = true;
+        catalog.Refresh();
+        var retry = await Run(queue, [photo], new Preset { TargetFormat = "png" });
+        Assert.Equal([Path.Combine(dir.Path, "photo.png")], retry.Outputs);
+    }
+
+    [Fact]
+    public async Task A_name_a_failed_conversion_took_is_free_for_the_next_one()
+    {
+        using var dir = new TempDir();
+        var photo = dir.File("photo.jpg");
+        var half = new HalfWriter { Writes = false };
+        var good = new FakeConverter("magick", new ConversionEdge("jpg", "png")) { Available = false };
+        var catalog = new ConverterCatalog([half, good]);
+        await using var queue = new JobQueue(catalog);
+
+        Assert.Equal(JobState.Failed, (await Run(queue, [photo], new Preset { TargetFormat = "png" })).State);
+        half.Available = false;
+        good.Available = true;
+        catalog.Refresh();
+        var retry = await Run(queue, [photo], new Preset { TargetFormat = "png" });
+
+        Assert.Equal([Path.Combine(dir.Path, "photo.png")], retry.Outputs);
+    }
+
+    [Fact]
+    public async Task A_failed_conversion_never_deletes_a_file_it_was_to_overwrite()
+    {
+        using var dir = new TempDir();
+        var photo = dir.File("photo.jpg");
+        var older = dir.File("photo.png", "older");
+        await using var queue = new JobQueue(new ConverterCatalog([new HalfWriter { Writes = false }]));
+
+        var job = await Run(queue, [photo], new Preset { TargetFormat = "png", Output = { Conflict = ConflictPolicy.Overwrite } });
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Equal("older", File.ReadAllText(older));
+    }
+
+    [Fact]
+    public async Task A_failed_conversion_never_deletes_the_file_another_one_was_given_the_same_name_for()
+    {
+        // "Overwrite" hands photo.gif and photo.jpg the same photo.png. The GIF's engine took it first and fails after
+        // the JPG's has finished it: that file stays.
+        using var dir = new TempDir();
+        var took = new TaskCompletionSource();
+        var fail = new TaskCompletionSource();
+        var half = new HalfWriter(_ => took.TrySetResult(), from: "gif") { Writes = false, Hold = () => fail.Task };
+        var good = new FakeConverter("magick", new ConversionEdge("jpg", "png"));
+        await using var queue = new JobQueue(new ConverterCatalog([half, good]));
+        var preset = new Preset { TargetFormat = "png", Output = { Conflict = ConflictPolicy.Overwrite } };
+
+        var failing = Run(queue, [dir.File("photo.gif")], preset);
+        await took.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var finished = await Run(queue, [dir.File("photo.jpg")], preset);
+        fail.SetResult();
+
+        Assert.Equal(JobState.Failed, (await failing).State);
+        Assert.Equal([Path.Combine(dir.Path, "photo.png")], finished.Outputs);
+        Assert.Contains("by magick", File.ReadAllText(Path.Combine(dir.Path, "photo.png")));
+    }
+
+    [Fact]
+    public async Task A_failed_conversion_removes_the_subfolder_it_made_but_not_one_that_was_there()
+    {
+        using var dir = new TempDir();
+        await using var queue = new JobQueue(new ConverterCatalog([new HalfWriter()]));
+        var preset = new Preset { TargetFormat = "png", Output = { Location = OutputLocation.Subfolder, SubfolderName = "{name}" } };
+
+        Assert.Equal(JobState.Failed, (await Run(queue, [dir.File("photo.jpg")], preset)).State);
+        Assert.False(Directory.Exists(Path.Combine(dir.Path, "photo")));
+
+        var mine = Directory.CreateDirectory(Path.Combine(dir.Path, "scan")).FullName;
+        Assert.Equal(JobState.Failed, (await Run(queue, [dir.File("scan.jpg")], preset)).State);
+        Assert.True(Directory.Exists(mine));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(mine));
+    }
+
     [Fact]
     public async Task Subfolder_only_for_several_files_keeps_a_single_output_next_to_its_source()
     {

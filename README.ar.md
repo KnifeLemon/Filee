@@ -30,7 +30,7 @@
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
 </p>
 
-<p align="center" dir="ltr"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <b>العربية</b></p>
+<p align="center" dir="ltr"><a href="README.md">English</a> · <a href="README.es.md">Español</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.pl.md">Polski</a> · <a href="README.hi.md">हिन्दी</a> · <a href="README.ru.md">Русский</a> · <b>العربية</b> · <a href="README.pt-BR.md">Português (Brasil)</a></p>
 
 <div dir="rtl">
 
@@ -79,7 +79,7 @@
 - **مراقبة المجلدات**: يُحوَّل كل ملف يصل إلى المجلد المراقَب.
 - **التحويلات الأخيرة** في الصفحة الرئيسية، لكل نتيجة صورة مصغّرة: افتح الملف، أو افتحه باستخدام تطبيق آخر.
 - **طرق أخرى**: قائمة النقر بالزر الأيمن، واختصار لوحة المفاتيح، ومنطقة الإفلات، و[الأمر `filee`](#سطر-الأوامر).
-- مظهر فاتح وداكن، باللون المميّز وشفافية الشريط الدائري اللذين تختارهما، وباللغات: English · Español · 日本語 · 한국어 · 简体中文 · Polski · हिन्दी · Русский · العربية (من اليمين إلى اليسار).
+- مظهر فاتح وداكن، باللون المميّز وشفافية الشريط الدائري اللذين تختارهما، وباللغات: English · Español · 日本語 · 한국어 · 简体中文 · Polski · हिन्दी · Русский · العربية (من اليمين إلى اليسار) · Português (Brasil).
 
 ## لقطات الشاشة
 
