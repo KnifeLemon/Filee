@@ -75,9 +75,9 @@ public static partial class ClipPreview
         Task pump = Task.CompletedTask;
         try
         {
-            if (info.Audio is not null && Player() is { } ffplay)
+            if ((info.Audio is not null || clip.Music is not null) && Player() is { } ffplay)
             {
-                decoder = Start(ffmpeg, MediaEncoding.ClipPreviewAudio(input, clip, video), stdin: false);
+                decoder = Start(ffmpeg, MediaEncoding.ClipPreviewAudio(input, clip, video, info.Audio is not null), stdin: false);
                 player = Start(ffplay, ["-hide_banner", "-loglevel", "error", "-nodisp", "-autoexit",
                     .. PlayerVolume is { } volume ? new[] { "-volume", volume.ToString(CultureInfo.InvariantCulture) } : [], "-i", "-"], stdin: true);
                 pump = Pump(decoder, player, stop.Token);
@@ -132,19 +132,33 @@ public static partial class ClipPreview
     /// <paramref name="count"/> steps from 0 (silent) to 1 (its loudest step); empty when it has no sound.
     /// </summary>
     /// <param name="workFolder">Where the samples are written for a moment.</param>
-    public static async Task<float[]> ReadLoudnessAsync(string path, double duration, int count, string workFolder, CancellationToken cancellationToken)
+    public static Task<float[]> ReadLoudnessAsync(string path, double duration, int count, string workFolder, CancellationToken cancellationToken) =>
+        ReadLoudnessAsync(path, 0, duration, count, workFolder, cancellationToken);
+
+    /// <summary>
+    /// How loud the sound of the file at <paramref name="path"/> is from <paramref name="start"/> to
+    /// <paramref name="end"/> seconds, in <paramref name="count"/> steps from 0 to 1 (its loudest step); empty
+    /// without sound.
+    /// </summary>
+    public static async Task<float[]> ReadLoudnessAsync(string path, double start, double end, int count, string workFolder,
+        CancellationToken cancellationToken)
     {
         var (ffmpeg, _) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
         var samples = Path.Combine(workFolder, Guid.NewGuid().ToString("N") + ".f32");
         try
         {
-            var result = await FfmpegRunner.RunAsync(ffmpeg,
-                [.. MediaEncoding.Common, "-i", Path.GetFullPath(path), "-map", "0:a:0", "-ac", "1", "-ar", PeakRate.ToString(CultureInfo.InvariantCulture),
-                 "-c:a", "pcm_f32le", "-f", "f32le", samples], null, cancellationToken);
+            List<string> args = [.. MediaEncoding.Common];
+            if (start > 0)
+                args.AddRange(["-ss", ClipRange.Ffmpeg(start)]);
+            if (end > start)
+                args.AddRange(["-to", ClipRange.Ffmpeg(end)]);
+            args.AddRange(["-i", Path.GetFullPath(path), "-map", "0:a:0", "-ac", "1", "-ar", PeakRate.ToString(CultureInfo.InvariantCulture),
+                "-c:a", "pcm_f32le", "-f", "f32le", samples]);
+            var result = await FfmpegRunner.RunAsync(ffmpeg, args, null, cancellationToken, background: true);
             if (result.ExitCode != 0 || !File.Exists(samples))
                 return []; // no sound
             var bytes = await File.ReadAllBytesAsync(samples, cancellationToken);
-            return Loudness(MemoryMarshalFloats(bytes), PeakRate, duration, count);
+            return Loudness(MemoryMarshalFloats(bytes), PeakRate, end > start ? end - start : 0, count);
         }
         finally
         {
@@ -154,6 +168,16 @@ public static partial class ClipPreview
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
         }
+    }
+
+    /// <summary>How long the sound (or video) at <paramref name="path"/> plays, in seconds; throws when it has no sound.</summary>
+    public static async Task<double> ReadSoundLengthAsync(string path, CancellationToken cancellationToken)
+    {
+        var (_, ffprobe) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        var info = await MediaInfo.ProbeAsync(ffprobe, Path.GetFullPath(path), cancellationToken);
+        if (info.Audio is null)
+            throw new InvalidOperationException("The file has no sound.");
+        return info.Duration?.TotalSeconds is > 0 and var seconds ? seconds : throw new InvalidOperationException("The file doesn't say how long it is.");
     }
 
     /// <summary>The silent stretches of the video at <paramref name="path"/> between <paramref name="start"/> and <paramref name="end"/>.</summary>

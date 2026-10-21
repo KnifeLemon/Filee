@@ -1,5 +1,6 @@
-// What "Cut a clip" writes: parts of one video one after the other, each with its own volume and speed, pauses
-// (black and silence) where the user removed a part without closing the gap, and a fade in and out. The clip window
+// What "Cut a clip" writes: parts of one video one after the other, each with its own volume and speed (its sound
+// muted or not), pauses (black and silence) where the user removed a part without closing the gap, music from another
+// file under it, and a fade in and out. The clip window
 // edits it with ClipCutter; the conversion writes it with FFmpeg (MediaEncoding.ClipGraph).
 
 using System.Text.Json.Serialization;
@@ -33,6 +34,9 @@ public sealed class ClipPart
     /// <summary>How loud, 1 as recorded (0 silent, <see cref="MaxVolume"/> loudest).</summary>
     public double Volume { get; set; } = 1;
 
+    /// <summary>The part's own sound is cut out (its picture plays): silence, or only the music.</summary>
+    public bool Muted { get; set; }
+
     /// <summary>How fast, 1 as recorded (<see cref="MinSpeed"/> to <see cref="MaxSpeed"/>); the sound keeps its pitch.</summary>
     public double Speed { get; set; } = 1;
 
@@ -40,9 +44,9 @@ public sealed class ClipPart
     [JsonIgnore]
     public double PlaySpeed => double.IsFinite(Speed) && Speed > 0 ? Math.Clamp(Speed, MinSpeed, MaxSpeed) : 1;
 
-    /// <summary><see cref="Volume"/> as written: within its limits, 1 for a value that makes no sense.</summary>
+    /// <summary><see cref="Volume"/> as written: within its limits, 1 for a value that makes no sense, 0 when muted.</summary>
     [JsonIgnore]
-    public double PlayVolume => double.IsFinite(Volume) && Volume >= 0 ? Math.Min(Volume, MaxVolume) : 1;
+    public double PlayVolume => Muted ? 0 : double.IsFinite(Volume) && Volume >= 0 ? Math.Min(Volume, MaxVolume) : 1;
 
     /// <summary>How long the part plays in the clip, in seconds (its stretch of the video at its speed).</summary>
     [JsonIgnore]
@@ -50,12 +54,49 @@ public sealed class ClipPart
 
     /// <summary>True when the part plays as recorded: full volume, normal speed, not a pause.</summary>
     [JsonIgnore]
-    public bool IsPlain => !Blank && PlayVolume == 1 && PlaySpeed == 1;
+    public bool IsPlain => !Blank && !Muted && PlayVolume == 1 && PlaySpeed == 1;
 
     public ClipPart Clone() => (ClipPart)MemberwiseClone();
 }
 
-/// <summary>A clip of a video: its parts in the order they play, and how it fades in and out.</summary>
+/// <summary>Music (or any sound) from another file played under a clip, its own track.</summary>
+public sealed class ClipMusic
+{
+    /// <summary>How loud the music is to start with: under the clip's own sound, not over it.</summary>
+    public const double DefaultVolume = 0.6;
+
+    /// <summary>Seconds the music fades in and out at its ends, so it doesn't start or stop with a jump.</summary>
+    public const double FadeSeconds = 1;
+
+    /// <summary>The file the music comes from (any audio, or the sound of a video).</summary>
+    public string Path { get; set; } = "";
+
+    /// <summary>How far into the clip the music starts, in seconds.</summary>
+    public double Offset { get; set; }
+
+    /// <summary>Where in the file it starts playing, in seconds.</summary>
+    public double From { get; set; }
+
+    /// <summary>How long the file is, in seconds.</summary>
+    public double Length { get; set; }
+
+    /// <summary>How loud, 1 as recorded (0 to 2).</summary>
+    public double Volume { get; set; } = DefaultVolume;
+
+    /// <summary>Fade in and out at its ends (<see cref="FadeSeconds"/>).</summary>
+    public bool Fade { get; set; } = true;
+
+    /// <summary><see cref="Volume"/> as written: 0 to 2, the default for a value that makes no sense.</summary>
+    [JsonIgnore]
+    public double PlayVolume => double.IsFinite(Volume) && Volume >= 0 ? Math.Min(Volume, 2) : DefaultVolume;
+
+    /// <summary>How long the music plays in a clip of <paramref name="clipLength"/> seconds: until it or the clip ends.</summary>
+    public double PlayLength(double clipLength) => Math.Max(0, Math.Min(Length - From, clipLength - Offset));
+
+    public ClipMusic Clone() => (ClipMusic)MemberwiseClone();
+}
+
+/// <summary>A clip of a video: its parts in the order they play, music under them, and how it fades in and out.</summary>
 public sealed class ClipEdit
 {
     /// <summary>The longest fade, in seconds.</summary>
@@ -69,6 +110,9 @@ public sealed class ClipEdit
 
     /// <summary>Seconds the clip fades out to black and silence; 0 for none.</summary>
     public double FadeOut { get; set; }
+
+    /// <summary>Music under the clip, or null.</summary>
+    public ClipMusic? Music { get; set; }
 
     /// <summary>How long the clip plays, in seconds.</summary>
     [JsonIgnore]
@@ -87,7 +131,7 @@ public sealed class ClipEdit
     /// Anything else is encoded.
     /// </summary>
     [JsonIgnore]
-    public bool IsPlainCut => Parts.Count == 1 && Parts[0].IsPlain && Fade(FadeIn) == 0 && Fade(FadeOut) == 0;
+    public bool IsPlainCut => Parts.Count == 1 && Parts[0].IsPlain && Fade(FadeIn) == 0 && Fade(FadeOut) == 0 && Music is null;
 
     /// <summary>A fade as written: 0 to <see cref="MaxFade"/> seconds.</summary>
     public static double Fade(double seconds) => double.IsFinite(seconds) ? Math.Clamp(seconds, 0, MaxFade) : 0;
@@ -95,7 +139,8 @@ public sealed class ClipEdit
     /// <summary>One stretch of the video, as recorded.</summary>
     public static ClipEdit Of(ClipRange range) => new() { Parts = [new ClipPart { Start = range.Start, End = range.End }] };
 
-    public ClipEdit Clone() => new() { Parts = Parts.Select(p => p.Clone()).ToList(), FadeIn = FadeIn, FadeOut = FadeOut };
+    public ClipEdit Clone() =>
+        new() { Parts = Parts.Select(p => p.Clone()).ToList(), FadeIn = FadeIn, FadeOut = FadeOut, Music = Music?.Clone() };
 
     /// <summary>
     /// The clip as it can be written from a video of <paramref name="duration"/> seconds (null when unknown): every part
@@ -127,7 +172,8 @@ public sealed class ClipEdit
                 Start = start,
                 End = end,
                 Blank = part.Blank,
-                Volume = part.PlayVolume,
+                Volume = part.Muted ? part.Volume : part.PlayVolume,
+                Muted = part.Muted,
                 Speed = part.PlaySpeed,
             });
             if (!part.Blank)
@@ -144,6 +190,16 @@ public sealed class ClipEdit
         var half = clip.Length / 2;
         clip.FadeIn = Math.Min(Fade(FadeIn), half);
         clip.FadeOut = Math.Min(Fade(FadeOut), half);
+        // Music only where it plays: from 0 into the clip, from a place in its file, for some time.
+        if (Music is { Path.Length: > 0 } music && double.IsFinite(music.Offset) && double.IsFinite(music.From) && double.IsFinite(music.Length))
+        {
+            var kept = music.Clone();
+            kept.Offset = Math.Max(0, kept.Offset);
+            kept.From = Math.Clamp(kept.From, 0, Math.Max(0, kept.Length));
+            kept.Volume = kept.PlayVolume;
+            if (kept.PlayLength(clip.Length) >= ClipRange.MinLength)
+                clip.Music = kept;
+        }
         return clip;
     }
 
@@ -154,6 +210,14 @@ public sealed class ClipEdit
     public ClipEdit From(double seconds)
     {
         var rest = new ClipEdit { FadeOut = FadeOut };
+        if (Music?.Clone() is { } music)
+        {
+            // The music keeps its place against the pictures: what has played of it is left out.
+            var played = Math.Max(0, seconds - music.Offset);
+            music.From += played;
+            music.Offset = Math.Max(0, music.Offset - Math.Max(0, seconds));
+            rest.Music = music;
+        }
         var at = 0.0;
         var skip = Math.Max(0, seconds);
         foreach (var part in Parts)

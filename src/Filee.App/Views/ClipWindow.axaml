@@ -11,7 +11,7 @@
         x:DataType="vm:ClipWindowViewModel"
         Title="{DynamicResource preset.clip}"
         Icon="avares://Filee/Assets/Icons/filee.ico"
-        Width="1180" Height="780" MinWidth="900" MinHeight="600"
+        Width="1240" Height="880" MinWidth="960" MinHeight="680"
         WindowDecorations="None"
         Background="Transparent"
         TransparencyLevelHint="Transparent"
@@ -32,6 +32,8 @@
     <StreamGeometry x:Key="Clip.FadeIn">M2 20h20V4z</StreamGeometry>
     <StreamGeometry x:Key="Clip.FadeOut">M2 4v16h20z</StreamGeometry>
     <StreamGeometry x:Key="Clip.Silence">M2 11h2v2H2z M5.5 8h2v8h-2z M9 5h2v14H9z M17 8h2v8h-2z M20 11h2v2h-2z M12.6 11.3h2.8v1.4h-2.8z</StreamGeometry>
+    <StreamGeometry x:Key="Clip.Music">M12,3V12.26C11.5,12.09 11,12 10.5,12C8,12 6,14 6,16.5C6,19 8,21 10.5,21C13,21 15,19 15,16.5V6H19V3H12Z</StreamGeometry>
+    <StreamGeometry x:Key="Clip.Muted">M12,4L9.91,6.09L12,8.18M4.27,3L3,4.27L7.73,9H3V15H7L12,20V13.27L16.25,17.53C15.58,18.04 14.83,18.46 14,18.7V20.77C15.38,20.45 16.63,19.82 17.68,18.96L19.73,21L21,19.73L12,10.73M19,12C19,12.94 18.8,13.82 18.46,14.64L19.97,16.15C20.62,14.91 21,13.5 21,12C21,7.72 18,4.14 14,3.23V5.29C16.89,6.15 19,8.83 19,12M16.5,12C16.5,10.23 15.5,8.71 14,7.97V10.18L16.45,12.63C16.5,12.43 16.5,12.21 16.5,12Z</StreamGeometry>
     <StreamGeometry x:Key="Clip.CloseGaps">M13,20V4H15.03V20H13M10,20V4H12.03V20H10M5,8L9.03,12L5,16V13H2V11H5V8M20,16L16,12L20,8V11H23V13H20V16Z</StreamGeometry>
   </Window.Resources>
 
@@ -208,7 +210,8 @@
                 </Button>
               </Grid>
 
-              <c:ClipTimeline x:Name="Timeline" Height="82" Margin="2,0"
+              <!-- The whole video: where the clip is in it (its ends dragged here) -->
+              <c:ClipTimeline x:Name="Timeline" Height="58" Margin="2,0"
                               AutomationProperties.Name="{DynamicResource clip.timeline}"
                               Duration="{Binding Duration}" Start="{Binding Start}" End="{Binding End}"
                               Playhead="{Binding Playhead}" ActiveHandle="{Binding ActiveHandle}"
@@ -224,6 +227,20 @@
                 <TextBlock Classes="caption" Text="{Binding ViewStartText}" />
                 <TextBlock Grid.Column="1" Classes="caption" Text="{Binding ViewEndText}" HorizontalAlignment="Right" />
               </Grid>
+
+              <!-- The clip as it plays: pictures (V1), its sound (A1) and the music (A2) -->
+              <c:ClipSequence x:Name="Sequence" Margin="2,4,2,0"
+                              AutomationProperties.Name="{DynamicResource clip.sequence}"
+                              Pieces="{Binding Pieces}" Playhead="{Binding SequencePlayhead}"
+                              SelectedIndex="{Binding SelectedIndex}" SelectedLane="{Binding SelectedLane}"
+                              Thumbnails="{Binding DetailThumbnails}" Loudness="{Binding DetailLoudness}"
+                              DetailStart="{Binding DetailStart}" DetailEnd="{Binding DetailEnd}"
+                              Music="{Binding Music}" MusicLoudness="{Binding MusicLoudness}"
+                              FadeIn="{Binding HasFadeIn}" FadeOut="{Binding HasFadeOut}" Snap="{Binding IsMagnet}"
+                              GapText="{DynamicResource clip.close_gap}" NoMusicText="{DynamicResource clip.no_music_yet}"
+                              AccentBrush="{DynamicResource AccentBrush}" OnAccentBrush="{DynamicResource OnAccentBrush}"
+                              TrackBrush="{DynamicResource SurfaceAltBrush}" StageBrush="{DynamicResource SurfaceBrush}"
+                              Foreground="{DynamicResource TextPrimaryBrush}" />
             </StackPanel>
           </Border>
 
@@ -247,15 +264,13 @@
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Cut}" Foreground="{DynamicResource TextSecondaryBrush}" />
                   <TextBlock Text="{DynamicResource clip.cut}" FontSize="13" VerticalAlignment="Center" />
-                  <Border Classes="key"><TextBlock Text="C" /></Border>
                 </StackPanel>
               </Button>
-              <Button Classes="tool" Command="{Binding DeleteCommand}" Padding="10,8"
+              <Button Classes="tool" Command="{Binding DeleteSelectedCommand}" Padding="10,8"
                       ToolTip.Tip="{DynamicResource clip.delete_hint}" AutomationProperties.Name="{Binding DeleteText}">
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Delete}" Foreground="{DynamicResource TextSecondaryBrush}" />
                   <TextBlock Text="{Binding DeleteText}" FontSize="13" VerticalAlignment="Center" />
-                  <Border Classes="key"><TextBlock Text="Del" /></Border>
                 </StackPanel>
               </Button>
               <Button Classes="tool round" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
@@ -279,7 +294,15 @@
 
               <StackPanel Orientation="Horizontal" Spacing="6" Margin="6,0" VerticalAlignment="Center"
                           ToolTip.Tip="{DynamicResource clip.volume_hint}">
-                <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Volume}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <ToggleButton x:Name="MuteToggle" Classes="tool round" IsChecked="{Binding IsCurrentMuted}" Width="30" Height="30" Padding="7"
+                              ToolTip.Tip="{DynamicResource clip.mute_hint}" AutomationProperties.Name="{DynamicResource clip.mute}">
+                  <Panel>
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Volume}" Foreground="{DynamicResource TextSecondaryBrush}"
+                              IsVisible="{Binding !IsCurrentMuted}" />
+                    <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Muted}" Foreground="{DynamicResource AccentBrush}"
+                              IsVisible="{Binding IsCurrentMuted}" />
+                  </Panel>
+                </ToggleButton>
                 <Slider x:Name="VolumeSlider" Width="96" Minimum="0" Maximum="2" SmallChange="0.05" LargeChange="0.25"
                         Value="{Binding SelectedVolume}" VerticalAlignment="Center"
                         AutomationProperties.Name="{DynamicResource clip.volume}" />
@@ -306,6 +329,13 @@
                 <StackPanel Orientation="Horizontal" Spacing="7">
                   <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Silence}" Foreground="{DynamicResource TextSecondaryBrush}" />
                   <TextBlock Text="{DynamicResource clip.remove_silence}" FontSize="13" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Button Classes="tool" Click="OnAddMusic" Padding="10,8"
+                      ToolTip.Tip="{DynamicResource clip.music_hint}" AutomationProperties.Name="{DynamicResource clip.music}">
+                <StackPanel Orientation="Horizontal" Spacing="7">
+                  <PathIcon Width="14" Height="14" Data="{StaticResource Clip.Music}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  <TextBlock Text="{DynamicResource clip.music}" FontSize="13" VerticalAlignment="Center" />
                 </StackPanel>
               </Button>
               <Button Classes="tool" Command="{Binding CloseGapsCommand}" IsVisible="{Binding HasGaps}" Padding="10,8"

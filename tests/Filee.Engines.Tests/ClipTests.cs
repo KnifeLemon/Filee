@@ -580,4 +580,90 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         await playing.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
         Assert.InRange(seen, 5, 8);
     }
+
+    // ───────────────────────── Muted parts and music ─────────────────────────
+
+    [Fact]
+    public void Music_is_a_second_input_mixed_under_the_clip()
+    {
+        var edit = Parts();
+        edit.Parts[0].Muted = true;
+        edit.Music = new ClipMusic { Path = "song.mp3", Offset = 2.5, From = 30, Length = 100, Volume = 0.5 };
+        var graph = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30");
+
+        Assert.Equal(["-ss", "10.000", "-to", "40.000", "-i", "in.mp4", "-ss", "30.000", "-i", "song.mp3"], graph.Inputs);
+        Assert.True(graph.HasAudio);
+        var filter = graph.Filter;
+        Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0,", filter); // muted: silent, still there
+        // 17 s of clip, from 2.5 s: 14.5 s of music, faded a second at its ends, 2.5 s late.
+        Assert.Contains("[1:a:0]atrim=duration=14.5,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=13.5:d=1,adelay=2500:all=1,", filter);
+        Assert.Contains("[ac][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[am]", filter);
+        Assert.EndsWith("[am]afade=t=in:st=0:d=1,afade=t=out:st=15:d=2[a]", filter);
+
+        // Without the video's sound the music plays over silence; "Remove audio" leaves it out too.
+        var silentVideo = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: false, 1920, 1080, "30");
+        Assert.True(silentVideo.HasAudio);
+        Assert.Contains("anullsrc=r=48000:cl=stereo,atrim=duration=17[ac]", silentVideo.Filter);
+        var removed = MediaEncoding.ClipEditArguments("in.mp4", "out.mp4", "mp4", edit, new MediaOptions { RemoveAudio = true }, Movie);
+        Assert.Contains("-an", removed);
+        Assert.DoesNotContain("song.mp3", removed);
+        // The preview plays the music too, also of a video without sound.
+        Assert.Contains("song.mp3", MediaEncoding.ClipPreviewAudio("in.mp4", edit, Hd, hasAudio: false));
+    }
+
+    [Fact]
+    public async Task Music_plays_under_a_clip_with_a_part_muted()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = await MakeVideoAsync(folder, "match.mp4");
+        var song = Path.Combine(folder, "song.wav");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=20", "-ac", "2", song],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        Assert.Equal(20, await ClipPreview.ReadSoundLengthAsync(song, CancellationToken.None), 1);
+
+        // 0-2 s as recorded, 2-4 s muted; music from 1 s into the clip.
+        var edit = new ClipEdit
+        {
+            Parts = [new ClipPart { Start = 1, End = 3 }, new ClipPart { Start = 3, End = 5, Muted = true }],
+            Music = new ClipMusic { Path = song, Offset = 1, Length = 20, Volume = 1, Fade = false },
+        };
+        var tool = BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip");
+        var job = await fx.ConvertAsync([source], ClipTool.ConversionOf(tool, "mp4", edit));
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = Assert.Single(job.Outputs);
+        var probed = await ProbeAsync(output);
+        Assert.Equal("aac", probed.AudioCodec);
+        Assert.InRange(probed.Duration, 3.9, 4.15);
+
+        // Loud where the tone and the music sound together, quieter where only the music plays, silent before it.
+        var loudness = await ClipPreview.ReadLoudnessAsync(output, 4, 8, folder, CancellationToken.None);
+        Assert.True(loudness[0] < 0.75, string.Join(", ", loudness)); // the tone only (0-0.5 s)
+        Assert.True(loudness[3] > 0.9, string.Join(", ", loudness)); // tone and music (1.5-2 s)
+        Assert.True(loudness[6] is > 0.3f and < 0.85f, string.Join(", ", loudness)); // music only (3-3.5 s)
+    }
+
+    [Fact]
+    public async Task A_video_without_sound_gets_the_musics()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = await MakeVideoAsync(folder, "silent.mp4", "-c:v", "libx264", "-g", "25", "-pix_fmt", "yuv420p", "-an");
+        var song = Path.Combine(folder, "song.m4a");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=8", "-c:a", "aac", song],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var edit = ClipEdit.Of(new ClipRange(2, 5));
+        edit.Music = new ClipMusic { Path = song, Length = 8 };
+
+        var job = await fx.ConvertAsync([source], ClipTool.ConversionOf(BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip"), "mp4", edit));
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var probed = await ProbeAsync(Assert.Single(job.Outputs));
+        Assert.Equal(("h264", "aac"), (probed.VideoCodec, probed.AudioCodec));
+        Assert.InRange(probed.Duration, 2.9, 3.15);
+    }
 }

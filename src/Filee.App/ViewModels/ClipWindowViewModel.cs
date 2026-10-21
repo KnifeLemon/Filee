@@ -12,6 +12,7 @@ using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
@@ -36,6 +37,15 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
 
     /// <summary>Steps of the sound's loudness drawn on the timeline.</summary>
     public const int LoudnessSteps = 480;
+
+    /// <summary>Pictures of the clip's own stretch of the video, for the sequence.</summary>
+    public const int DetailCount = 14;
+
+    /// <summary>Steps of the loudness of the clip's own stretch (A1) and of the music (A2).</summary>
+    public const int DetailLoudnessSteps = 400;
+
+    /// <summary>How long the clip's ends rest before the sequence's pictures of it are taken again.</summary>
+    private static readonly TimeSpan DetailDelay = TimeSpan.FromMilliseconds(350);
 
     /// <summary>Height of a timeline picture (twice its size on screen, for high-DPI displays).</summary>
     private const int ThumbnailHeight = 96;
@@ -77,6 +87,12 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     private CancellationTokenSource _fileCts = new();
     private CancellationTokenSource? _previewCts;
     private CancellationTokenSource? _playCts;
+    private CancellationTokenSource? _detailCts;
+    private ClipEdit? _edit;
+    private (double Start, double End) _detailWanted;
+    private int _detailNumber;
+    private int _trimIndex = -1;
+    private bool _trimEnd;
     private ClipCutter? _cutter;
     private VideoSummary? _video;
     private Bitmap? _ownPreview;   // a frame taken for the large picture (not a timeline one), disposed with it
@@ -144,6 +160,31 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(DeleteText))]
     private int _selectedIndex = -1;
 
+    /// <summary>The track selected in the sequence: a piece's pictures, its sound, or the music.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DeleteText))]
+    [NotifyPropertyChangedFor(nameof(IsMusicSelected))]
+    private ClipLane _selectedLane;
+
+    /// <summary>The playhead in the sequence: seconds into the clip as it plays.</summary>
+    [ObservableProperty] private double _sequencePlayhead;
+
+    /// <summary>The music under the clip (a copy), or null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasMusic))]
+    private ClipMusic? _music;
+
+    /// <summary>The loudness of the whole music file, for A2.</summary>
+    [ObservableProperty] private IReadOnlyList<float> _musicLoudness = [];
+
+    /// <summary>The loudness of the clip's stretch of the video (<see cref="DetailStart"/> to <see cref="DetailEnd"/>), for A1.</summary>
+    [ObservableProperty] private IReadOnlyList<float> _detailLoudness = [];
+
+    /// <summary>The stretch of the video <see cref="DetailThumbnails"/> and <see cref="DetailLoudness"/> show.</summary>
+    [ObservableProperty] private double _detailStart;
+
+    [ObservableProperty] private double _detailEnd;
+
     /// <summary>The loudness of the sound over the video (0 to 1), empty until read or without sound.</summary>
     [ObservableProperty] private IReadOnlyList<float> _loudness = [];
 
@@ -205,6 +246,9 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <summary>The timeline's pictures, in order; null until taken (or when FFmpeg found none).</summary>
     public ObservableCollection<Bitmap?> Thumbnails { get; } = [];
 
+    /// <summary>Pictures of the clip's stretch of the video, for V1 (new ones once its ends rest).</summary>
+    [ObservableProperty] private IReadOnlyList<Bitmap?> _detailThumbnails = [];
+
     /// <summary>"file: reason" for each file that could not be opened.</summary>
     public ObservableCollection<string> Problems { get; } = [];
 
@@ -213,6 +257,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         ClipPart.Speeds.Select(s => new Choice<double>(s, s.ToString("0.##", CultureInfo.CurrentCulture) + "×")).ToList();
 
     public bool HasStatusNotice => !string.IsNullOrWhiteSpace(StatusNotice);
+    public bool HasMusic => Music is not null;
+    public bool IsMusicSelected => SelectedLane == ClipLane.Music && HasMusic;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
     public bool IsEditing => !IsFinished;
     public bool CanEdit => !IsFinished && !IsLoading;
@@ -237,19 +283,51 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         : _cutter?.IndexAt(Playhead) is >= 0 and var at ? at
         : Pieces.Count > 0 ? 0 : -1;
 
-    /// <summary>Delete, or Put back for a piece cut out.</summary>
-    public string DeleteText => _loc[CurrentPiece >= 0 && CurrentPiece < Pieces.Count && !Pieces[CurrentPiece].IsKept ? "clip.restore" : "clip.delete"];
+    /// <summary>What Delete does to the selection: cut a piece out, close its gap, put it back, mute its sound, take the music away.</summary>
+    public string DeleteText => _loc[DeleteKey()];
 
-    /// <summary>The current piece's volume for the slider: 0 to 2 (200 %).</summary>
+    private string DeleteKey()
+    {
+        if (IsMusicSelected)
+            return "clip.remove_music";
+        if (CurrentPiece < 0 || CurrentPiece >= Pieces.Count)
+            return "clip.delete";
+        var piece = Pieces[CurrentPiece];
+        if (piece.State == ClipPieceState.Blank)
+            return "clip.close_gap";
+        if (piece.State == ClipPieceState.Removed)
+            return "clip.restore";
+        if (SelectedLane == ClipLane.Audio)
+            return piece.Muted ? "clip.unmute" : "clip.mute";
+        return "clip.delete";
+    }
+
+    /// <summary>The volume slider: the music's when it is selected, else the current piece's (0 to 2, 200 %).</summary>
     public double SelectedVolume
     {
-        get => CurrentPiece >= 0 ? Pieces[CurrentPiece].Volume : 1;
+        get => IsMusicSelected ? Music!.Volume : CurrentPiece >= 0 ? Pieces[CurrentPiece].Volume : 1;
+        set
+        {
+            if (_syncing || _cutter is null)
+                return;
+            StopPlaying();
+            if (IsMusicSelected)
+                _cutter.SetMusicVolume(value);
+            else if (CurrentPiece >= 0)
+                _cutter.SetVolume(CurrentPiece, value);
+        }
+    }
+
+    /// <summary>The current piece's own sound is muted (its picture plays).</summary>
+    public bool IsCurrentMuted
+    {
+        get => CurrentPiece >= 0 && CurrentPiece < Pieces.Count && Pieces[CurrentPiece].Muted;
         set
         {
             if (_syncing || _cutter is null || CurrentPiece < 0)
                 return;
             StopPlaying();
-            _cutter.SetVolume(CurrentPiece, value);
+            _cutter.SetMuted(CurrentPiece, value);
         }
     }
 
@@ -382,6 +460,13 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         ClearPictures();
         UseCutter(null);
         Loudness = [];
+        MusicLoudness = [];
+        _detailWanted = default;
+        var oldDetail = DetailThumbnails;
+        DetailThumbnails = [];
+        DetailLoudness = [];
+        foreach (var picture in oldDetail)
+            picture?.Dispose();
 
         VideoSummary video;
         try
@@ -410,6 +495,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         _video = video;
         Duration = video.Duration;
         ViewEnd = video.Duration;
+        SelectedLane = ClipLane.Video;
         UseCutter(new ClipCutter(video.Duration, new ClipRange(0, Math.Min(video.Duration, FirstClipLength))));
         ActiveHandle = ClipHandle.Start;
         Playhead = 0;
@@ -473,7 +559,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     {
         try
         {
-            var loudness = await _frames.ReadLoudnessAsync(path, duration, LoudnessSteps, _workFolder, ct);
+            var loudness = await _frames.ReadLoudnessAsync(path, 0, duration, LoudnessSteps, _workFolder, ct);
             if (!ct.IsCancellationRequested && !_closed)
                 Loudness = loudness;
         }
@@ -502,15 +588,20 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         try
         {
             var cutter = _cutter;
+            _edit = cutter?.ToEdit();
             Pieces = cutter?.Pieces.ToList() ?? [];
+            Music = cutter?.Music;
             Start = cutter?.Start ?? 0;
             End = cutter?.End ?? 0;
             Length = cutter?.Length ?? 0;
             CanUndo = cutter?.CanUndo == true;
             CanRedo = cutter?.CanRedo == true;
             HasGaps = cutter?.HasGaps == true;
-            CanFast = cutter is null || cutter.ToEdit().IsPlainCut;
+            CanFast = cutter is null || _edit!.IsPlainCut;
             FitView(refit: false);
+            SequencePlayhead = _edit?.ClipTimeAt(Playhead) ?? 0;
+            if (cutter is not null && (cutter.Start, cutter.End) != _detailWanted)
+                ScheduleDetail();
             if (SelectedIndex >= Pieces.Count)
                 SelectedIndex = Pieces.Count - 1;
             OnPropertyChanged(nameof(SelectedVolume));
@@ -520,6 +611,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(HasFadeOut));
             OnPropertyChanged(nameof(DeleteText));
             OnPropertyChanged(nameof(CurrentPiece));
+            OnPropertyChanged(nameof(IsCurrentMuted));
+            OnPropertyChanged(nameof(IsMusicSelected));
         }
         finally
         {
@@ -558,9 +651,12 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     partial void OnSelectedIndexChanged(int value) => RefreshPieceControls();
     partial void OnPlayheadChanged(double value)
     {
+        SequencePlayhead = _edit?.ClipTimeAt(value) ?? 0;
         if (SelectedIndex < 0)
             RefreshPieceControls();
     }
+
+    partial void OnSelectedLaneChanged(ClipLane value) => RefreshPieceControls();
 
     private void RefreshPieceControls()
     {
@@ -572,10 +668,207 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(VolumeText));
             OnPropertyChanged(nameof(SelectedSpeed));
             OnPropertyChanged(nameof(DeleteText));
+            OnPropertyChanged(nameof(IsCurrentMuted));
         }
         finally
         {
             _syncing = false;
+        }
+    }
+
+    // ───────────────────────── The sequence ─────────────────────────
+
+    /// <summary>A piece (or the music) clicked in the sequence: it is what the volume, speed and Delete apply to.</summary>
+    public void SelectPiece(int index, ClipLane lane)
+    {
+        if (!CanEdit)
+            return;
+        SelectedLane = lane;
+        if (lane != ClipLane.Music)
+            SelectedIndex = index;
+        RefreshPieceControls();
+    }
+
+    /// <summary>The playhead put in the sequence, <paramref name="seconds"/> into the clip as it plays.</summary>
+    public void MoveSequencePlayhead(double seconds)
+    {
+        if (!CanEdit || _edit is null || !double.IsFinite(seconds))
+            return;
+        MovePlayhead(_edit.SourceTimeAt(Math.Clamp(seconds, 0, _edit.Length)));
+    }
+
+    /// <summary>An edge of piece <paramref name="index"/> starts to be dragged (its end, or its start).</summary>
+    public void BeginTrim(int index, bool end)
+    {
+        StopPlaying();
+        _trimIndex = index;
+        _trimEnd = end;
+    }
+
+    /// <summary>
+    /// The dragged edge is at <paramref name="seconds"/> of the video: outwards it takes back what was cut next to the
+    /// piece, inwards it cuts that much out. The large picture shows the frame at the edge.
+    /// </summary>
+    public void Trim(double seconds)
+    {
+        if (!CanEdit || _cutter is null || _trimIndex < 0 || !double.IsFinite(seconds))
+            return;
+        var at = _cutter.TrimEdge(_trimIndex, _trimEnd, seconds);
+        if (!double.IsFinite(at))
+            return;
+        // Pieces cut out before it may have been used up: find the piece again by its edge.
+        var pieces = _cutter.Pieces;
+        var index = -1;
+        for (var i = 0; i < pieces.Count; i++)
+        {
+            if (Math.Abs((_trimEnd ? pieces[i].End : pieces[i].Start) - at) < 1e-9 && pieces[i].IsKept)
+                index = i;
+        }
+        if (index >= 0)
+        {
+            _trimIndex = index;
+            SelectedIndex = index;
+        }
+        Playhead = _trimEnd ? Math.Max(0, at - (_video?.FrameLength ?? 1 / 30.0)) : at;
+        ActiveHandle = ClipHandle.Playhead;
+        SchedulePreview();
+    }
+
+    /// <summary>Closes the gap piece <paramref name="index"/> left: what follows moves up.</summary>
+    public void CloseGap(int index)
+    {
+        if (CanEdit && _cutter is not null)
+        {
+            StopPlaying();
+            _cutter.CloseGap(index);
+        }
+    }
+
+    /// <summary>A piece's volume line dragged on A1.</summary>
+    public void SetPieceVolume(int index, double volume)
+    {
+        if (CanEdit && _cutter is not null)
+        {
+            StopPlaying();
+            _cutter.SetVolume(index, volume);
+        }
+    }
+
+    /// <summary>Puts the sound of the file at <paramref name="path"/> under the clip as music (A2), from the clip's start.</summary>
+    public async Task AddMusicAsync(string path)
+    {
+        if (!CanEdit || _cutter is null)
+            return;
+        StopPlaying();
+        var cutter = _cutter;
+        var ct = _fileCts.Token;
+        try
+        {
+            var length = await _frames.ReadSoundLengthAsync(path, ct);
+            if (ct.IsCancellationRequested || !ReferenceEquals(cutter, _cutter))
+                return;
+            cutter.SetMusic(new ClipMusic { Path = path, Length = length });
+            SelectedLane = ClipLane.Music;
+            RefreshPieceControls();
+            MusicLoudness = [];
+            var loudness = await _frames.ReadLoudnessAsync(path, 0, length, DetailLoudnessSteps, _workFolder, ct);
+            if (!ct.IsCancellationRequested && cutter.Music?.Path == path)
+                MusicLoudness = loudness;
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log?.LogWarning(ex, "Could not add {File} as music", path);
+            ShowMessage(_loc["clip.no_music"]);
+        }
+    }
+
+    /// <summary>Takes the music away.</summary>
+    [RelayCommand]
+    public void RemoveMusic()
+    {
+        if (CanEdit && _cutter?.Music is not null)
+        {
+            StopPlaying();
+            _cutter.SetMusic(null);
+            MusicLoudness = [];
+            SelectedLane = ClipLane.Video;
+        }
+    }
+
+    /// <summary>The music dragged to start <paramref name="offset"/> seconds into the clip.</summary>
+    public void MoveMusic(double offset)
+    {
+        if (CanEdit && _cutter is not null)
+        {
+            StopPlaying();
+            _cutter.MoveMusic(offset);
+        }
+    }
+
+    /// <summary>The music's volume line dragged on A2.</summary>
+    public void SetMusicVolume(double volume)
+    {
+        if (CanEdit && _cutter is not null)
+        {
+            StopPlaying();
+            _cutter.SetMusicVolume(volume);
+        }
+    }
+
+    /// <summary>Takes new pictures and loudness of the clip's stretch of the video once its ends rest.</summary>
+    private void ScheduleDetail()
+    {
+        if (_cutter is null || _closed || _video is null)
+            return;
+        _detailWanted = (_cutter.Start, _cutter.End);
+        _detailCts?.Cancel();
+        _detailCts?.Dispose();
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(_fileCts.Token);
+        _detailCts = cts;
+        _ = TakeDetailAsync(_files[CurrentIndex], _detailWanted.Start, _detailWanted.End, DetailThumbnails.Count == 0 ? TimeSpan.Zero : DetailDelay, cts.Token);
+    }
+
+    private async Task TakeDetailAsync(string path, double start, double end, TimeSpan delay, CancellationToken ct)
+    {
+        try
+        {
+            if (delay > TimeSpan.Zero)
+                await Task.Delay(delay, ct);
+            var folder = Path.Combine(_workFolder, "detail" + (++_detailNumber).ToString(CultureInfo.InvariantCulture));
+            Directory.CreateDirectory(folder);
+            var loudness = _frames.ReadLoudnessAsync(path, start, end, DetailLoudnessSteps, folder, ct);
+            var pictures = new Bitmap?[DetailCount];
+            var span = (end - start) / DetailCount;
+            for (var i = 0; i < DetailCount; i++)
+            {
+                var output = Path.Combine(folder, $"d_{i:00}.jpg");
+                if (await _frames.WriteFrameAsync(path, start + span * (i + 0.5), output, ThumbnailHeight, ct))
+                    pictures[i] = Load(output);
+            }
+            var levels = await loudness;
+            if (ct.IsCancellationRequested || _closed)
+            {
+                foreach (var picture in pictures)
+                    picture?.Dispose();
+                return;
+            }
+            var old = DetailThumbnails;
+            DetailStart = start;
+            DetailEnd = end;
+            DetailThumbnails = pictures;
+            DetailLoudness = levels;
+            foreach (var picture in old)
+                picture?.Dispose();
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log?.LogDebug(ex, "No pictures of the clip of {File}", path);
         }
     }
 
@@ -600,6 +893,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             default:
                 Playhead = Math.Clamp(seconds, 0, Duration);
                 SelectedIndex = _cutter.IndexAt(Playhead);
+                if (SelectedLane == ClipLane.Music)
+                    SelectedLane = ClipLane.Video;
                 break;
         }
         SchedulePreview();
@@ -673,21 +968,36 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Delete: cuts the current piece out (closing up with the magnet on, leaving a pause without it); on a piece cut
-    /// out, puts it back.
+    /// Delete, on what is selected: a piece is cut out and leaves a gap (with <paramref name="closeUp"/>, Shift+Delete,
+    /// what follows moves up at once); a gap is closed; a piece cut out is put back; on A1 the piece's sound is muted or
+    /// unmuted; on A2 the music is taken away.
     /// </summary>
-    [RelayCommand]
-    public void Delete()
+    public void Delete(bool closeUp)
     {
-        if (!CanEdit || _cutter is null || CurrentPiece is var index && index < 0)
+        if (!CanEdit || _cutter is null)
             return;
         StopPlaying();
-        if (!Pieces[index].IsKept)
+        if (IsMusicSelected)
+        {
+            RemoveMusic();
+            return;
+        }
+        if (CurrentPiece is var index && index < 0)
+            return;
+        var piece = Pieces[index];
+        if (piece.State == ClipPieceState.Blank)
+            _cutter.CloseGap(index);
+        else if (piece.State == ClipPieceState.Removed)
             _cutter.Restore(index);
-        else if (!_cutter.Remove(index, closeUp: IsMagnet))
+        else if (SelectedLane == ClipLane.Audio)
+            _cutter.SetMuted(index, !piece.Muted);
+        else if (!_cutter.Remove(index, closeUp))
             ShowMessage(_loc["clip.last_piece"]);
         OnPropertyChanged(nameof(DeleteText));
     }
+
+    [RelayCommand]
+    private void DeleteSelected() => Delete(closeUp: false);
 
     [RelayCommand]
     public void Undo()
@@ -1060,6 +1370,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             return;
         _closed = true;
         _playCts?.Cancel();
+        _detailCts?.Cancel();
         _fileCts.Cancel();
         _previewCts?.Cancel();
     }
@@ -1104,6 +1415,10 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
                 frame?.Dispose();
             Array.Clear(_playFrames);
         }
+        _detailCts?.Dispose();
+        foreach (var picture in DetailThumbnails)
+            picture?.Dispose();
+        DetailThumbnails = [];
         _previewCts?.Dispose();
         _fileCts.Dispose();
         // FFmpeg may still hold a picture for a moment after it was cancelled: the folder goes a little later.

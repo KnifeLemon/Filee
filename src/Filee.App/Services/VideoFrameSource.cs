@@ -15,8 +15,14 @@ public interface IVideoFrameSource
     /// <summary>Writes the frame at <paramref name="seconds"/> as a JPEG; false when there is none.</summary>
     Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken);
 
-    /// <summary>The loudness of the sound in <paramref name="count"/> steps (0 to 1); empty without sound.</summary>
-    Task<float[]> ReadLoudnessAsync(string path, double duration, int count, string workFolder, CancellationToken cancellationToken);
+    /// <summary>
+    /// The loudness of the sound from <paramref name="start"/> to <paramref name="end"/> seconds in
+    /// <paramref name="count"/> steps (0 to 1); empty without sound.
+    /// </summary>
+    Task<float[]> ReadLoudnessAsync(string path, double start, double end, int count, string workFolder, CancellationToken cancellationToken);
+
+    /// <summary>How long the sound of a file plays (music for the clip); throws when it has none.</summary>
+    Task<double> ReadSoundLengthAsync(string path, CancellationToken cancellationToken);
 
     /// <summary>The silent stretches between <paramref name="start"/> and <paramref name="end"/>.</summary>
     Task<IReadOnlyList<ClipRange>> FindSilencesAsync(string path, double start, double end, CancellationToken cancellationToken);
@@ -37,8 +43,11 @@ public sealed class FfmpegFrameSource : IVideoFrameSource
     public Task<bool> WriteFrameAsync(string path, double seconds, string output, int maxHeight, CancellationToken cancellationToken) =>
         VideoFrames.WriteFrameAsync(path, seconds, output, maxHeight, cancellationToken);
 
-    public Task<float[]> ReadLoudnessAsync(string path, double duration, int count, string workFolder, CancellationToken cancellationToken) =>
-        ClipPreview.ReadLoudnessAsync(path, duration, count, workFolder, cancellationToken);
+    public Task<float[]> ReadLoudnessAsync(string path, double start, double end, int count, string workFolder, CancellationToken cancellationToken) =>
+        ClipPreview.ReadLoudnessAsync(path, start, end, count, workFolder, cancellationToken);
+
+    public Task<double> ReadSoundLengthAsync(string path, CancellationToken cancellationToken) =>
+        ClipPreview.ReadSoundLengthAsync(path, cancellationToken);
 
     public Task<IReadOnlyList<ClipRange>> FindSilencesAsync(string path, double start, double end, CancellationToken cancellationToken) =>
         ClipPreview.FindSilencesAsync(path, start, end, cancellationToken);

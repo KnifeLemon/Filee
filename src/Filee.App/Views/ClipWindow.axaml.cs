@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.ViewModels;
@@ -31,6 +32,36 @@ public partial class ClipWindow : Window
     }
 
     internal ClipTimeline ClipTimeline => Timeline;
+    internal ClipSequence ClipSequence => Sequence;
+
+    /// <summary>Music…: picks a sound (or video) file and puts its sound under the clip.</summary>
+    private async void OnAddMusic(object? sender, RoutedEventArgs e)
+    {
+        if (_vm is not { } vm)
+            return;
+        try
+        {
+            var files = await StorageProvider.OpenFilePickerAsync(new Avalonia.Platform.Storage.FilePickerOpenOptions
+            {
+                AllowMultiple = false,
+                FileTypeFilter =
+                [
+                    new Avalonia.Platform.Storage.FilePickerFileType("Audio")
+                    {
+                        Patterns = ["*.mp3", "*.m4a", "*.aac", "*.wav", "*.flac", "*.ogg", "*.opus", "*.wma", "*.mp4", "*.mkv", "*.mov", "*.webm"],
+                    },
+                    Avalonia.Platform.Storage.FilePickerFileTypes.All,
+                ],
+            });
+            if (files.Count > 0 && files[0].TryGetLocalPath() is { } path)
+                await vm.AddMusicAsync(path);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The picker isn't there (a test, an unusual desktop): nothing to add.
+            System.Diagnostics.Debug.WriteLine(ex);
+        }
+    }
 
     /// <summary>
     /// Opens near <paramref name="near"/> (the screen of the donut), else on the primary screen, centred in its working
@@ -61,6 +92,14 @@ public partial class ClipWindow : Window
             Timeline.HandleMoved += vm.MoveHandle;
             Timeline.ClipMoved += vm.MoveClip;
             Timeline.PlayheadMoved += vm.MovePlayhead;
+            Sequence.PlayheadMoved += vm.MoveSequencePlayhead;
+            Sequence.PieceSelected += vm.SelectPiece;
+            Sequence.EdgeDragStarted += vm.BeginTrim;
+            Sequence.EdgeDragged += vm.Trim;
+            Sequence.GapCloseRequested += vm.CloseGap;
+            Sequence.VolumeDragged += vm.SetPieceVolume;
+            Sequence.MusicMoved += vm.MoveMusic;
+            Sequence.MusicVolumeDragged += vm.SetMusicVolume;
             Closed += (_, _) => vm.Dispose();
         }
     }
@@ -92,8 +131,9 @@ public partial class ClipWindow : Window
                 vm.Split();
                 e.Handled = true;
                 break;
-            case Key.Delete or Key.Back when plain && vm.CanEdit:
-                vm.Delete();
+            case Key.Delete or Key.Back when (plain || e.KeyModifiers == KeyModifiers.Shift) && vm.CanEdit:
+                // Shift+Delete: cut out and close up at once (a ripple delete).
+                vm.Delete(closeUp: e.KeyModifiers == KeyModifiers.Shift);
                 e.Handled = true;
                 break;
             case Key.Z when command && vm.CanEdit:

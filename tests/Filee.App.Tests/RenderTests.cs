@@ -1939,17 +1939,25 @@ public class RenderTests
             vm.MovePlayhead(110);
             vm.Split();
             vm.MovePlayhead(106);
-            vm.Delete();
+            vm.Delete(closeUp: false); // a gap, with its button
             vm.MovePlayhead(118);
             vm.SelectedSpeed = vm.Speeds.Single(s => s.Value == 2);
             vm.SelectedVolume = 1.5;
             vm.HasFadeIn = true;
             vm.IsZoomed = true;
+            var adding = vm.AddMusicAsync(@"C:\music\Summer song.mp3");
+            ClipWindowTests.WaitFor(() => vm.MusicLoudness.Count > 0);
+            vm.MoveMusic(3);
+            vm.MovePlayhead(98);
+            vm.SelectPiece(0, Filee.App.Controls.ClipLane.Audio);
+            vm.IsCurrentMuted = false;
+            // The sequence's own pictures of the clip, taken again once its ends rest.
+            ClipWindowTests.WaitFor(() => vm.DetailStart == vm.Start && vm.DetailEnd == vm.End && vm.DetailLoudness.Count > 0);
             ClipWindowTests.WaitFor(() => frames.Times.Contains(vm.PreviewTime));
             Pump();
 
             Assert.Equal(("1:35.3", "2:05.3"), (vm.StartText, vm.EndText));
-            Assert.Equal(7.7 + 15.3 / 2, vm.Length, 6);
+            Assert.Equal(7.7 + 7 + 15.3 / 2, vm.Length, 6); // the gap stays until closed
             Assert.True(window.ClipTimeline.Bounds.Width > 600);
             Assert.True(window.ClipTimeline.XOf(vm.Start) < window.ClipTimeline.XOf(vm.End));
             Save(window, $"clip-{language}-{(dark ? "dark" : "light")}.png");

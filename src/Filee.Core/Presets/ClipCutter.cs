@@ -1,7 +1,8 @@
 // The clip window's editing, without the window: the stretch of the video between the start and end handles, cut into
-// pieces with the blade. A piece can be removed (the rest closing up with the magnet on, a pause left with it off),
-// put back, made louder or quieter, faster or slower; silent stretches can be taken out at once. Every change can be
-// undone. ToEdit() gives what the conversion writes.
+// pieces with the blade. A piece can be cut out (leaving a pause that can be closed, or closing up at once), put back,
+// trimmed by its edges (taking back what was cut next to it), made louder or quieter, muted, faster or slower; silent
+// stretches can be taken out at once; music from another file can go under the clip. Every change can be undone.
+// ToEdit() gives what the conversion writes.
 
 namespace Filee.Core.Presets;
 
@@ -11,15 +12,16 @@ public enum ClipPieceState
     /// <summary>It plays.</summary>
     Kept,
 
-    /// <summary>Cut out: what follows closes up (removed with the magnet on).</summary>
+    /// <summary>Cut out, and what follows closed up.</summary>
     Removed,
 
-    /// <summary>Cut out, its time left as black and silence (removed with the magnet off).</summary>
+    /// <summary>Cut out, its time left as a pause of black and silence (until the gap is closed).</summary>
     Blank,
 }
 
 /// <summary>A piece of the clip between two cuts, in seconds of the video.</summary>
-public sealed record ClipPiece(double Start, double End, ClipPieceState State = ClipPieceState.Kept, double Volume = 1, double Speed = 1)
+public sealed record ClipPiece(double Start, double End, ClipPieceState State = ClipPieceState.Kept, double Volume = 1, double Speed = 1,
+    bool Muted = false)
 {
     public bool IsKept => State == ClipPieceState.Kept;
 
@@ -39,12 +41,15 @@ public sealed class ClipCutter
     /// <summary>Kept of a silence on either side next to sound, so words aren't clipped.</summary>
     public const double SilencePadding = 0.12;
 
+    private sealed record State(List<ClipPiece> Pieces, double FadeIn, double FadeOut, ClipMusic? Music);
+
     private List<ClipPiece> _pieces;
     private double _fadeIn, _fadeOut;
-    private readonly Stack<(List<ClipPiece> Pieces, double FadeIn, double FadeOut)> _undo = new();
-    private readonly Stack<(List<ClipPiece> Pieces, double FadeIn, double FadeOut)> _redo = new();
+    private ClipMusic? _music;
+    private readonly Stack<State> _undo = new();
+    private readonly Stack<State> _redo = new();
 
-    /// <summary>What the last change did, when changes alike join into one undo step (a volume slider dragged).</summary>
+    /// <summary>What the last change did, when changes alike join into one undo step (a slider or an edge dragged).</summary>
     private string? _joining;
 
     /// <param name="duration">The video's length in seconds.</param>
@@ -80,6 +85,9 @@ public sealed class ClipCutter
         get => _fadeOut;
         set => Change(() => _fadeOut = ClipEdit.Fade(value), _fadeOut != ClipEdit.Fade(value));
     }
+
+    /// <summary>The music under the clip (a copy), or null.</summary>
+    public ClipMusic? Music => _music?.Clone();
 
     /// <summary>How long the clip plays, in seconds.</summary>
     public double Length => _pieces.Sum(p => p.Length);
@@ -174,8 +182,8 @@ public sealed class ClipCutter
     // ───────────────────────── Cuts ─────────────────────────
 
     /// <summary>
-    /// The blade: cuts the piece at <paramref name="seconds"/> in two (both keep its volume and speed). False when it
-    /// is outside the clip or too close to a cut.
+    /// The blade: cuts the piece at <paramref name="seconds"/> in two (both keep its volume, speed and mute). False
+    /// when it is outside the clip or too close to a cut.
     /// </summary>
     public bool Split(double seconds)
     {
@@ -194,8 +202,8 @@ public sealed class ClipCutter
     }
 
     /// <summary>
-    /// Cuts piece <paramref name="index"/> out: with <paramref name="closeUp"/> (the magnet) what follows closes up,
-    /// otherwise its time stays as a pause. False for the last piece that plays.
+    /// Cuts piece <paramref name="index"/> out: with <paramref name="closeUp"/> what follows closes up (a ripple
+    /// delete), otherwise its time stays as a pause until the gap is closed. False for the last piece that plays.
     /// </summary>
     public bool Remove(int index, bool closeUp)
     {
@@ -218,6 +226,59 @@ public sealed class ClipCutter
         return true;
     }
 
+    /// <summary>Closes the gap a piece cut out left (piece <paramref name="index"/>, a pause): what follows closes up.</summary>
+    public bool CloseGap(int index)
+    {
+        if (index < 0 || index >= _pieces.Count || _pieces[index].State != ClipPieceState.Blank)
+            return false;
+        Change(() => _pieces[index] = _pieces[index] with { State = ClipPieceState.Removed });
+        return true;
+    }
+
+    /// <summary>Closes every gap pieces cut out left. Returns how many.</summary>
+    public int CloseGaps()
+    {
+        var gaps = _pieces.Count(p => p.State == ClipPieceState.Blank);
+        if (gaps > 0)
+            Change(() => _pieces = _pieces.Select(p => p.State == ClipPieceState.Blank ? p with { State = ClipPieceState.Removed } : p).ToList());
+        return gaps;
+    }
+
+    /// <summary>
+    /// Drags an edge of piece <paramref name="index"/> (its end with <paramref name="end"/>, else its start) to
+    /// <paramref name="seconds"/> of the video, as a trim on the timeline: outwards it takes back what was cut out next
+    /// to it (pieces cut out are used up as it goes) or, at the clip's ends, more of the video; inwards it shortens the
+    /// piece and what it gives up is cut out. Next to a piece that plays, the cut between them moves. A drag is one
+    /// undo step. Returns where the edge ended up.
+    /// </summary>
+    public double TrimEdge(int index, bool end, double seconds)
+    {
+        if (index < 0 || index >= _pieces.Count || !double.IsFinite(seconds))
+            return double.NaN;
+        var join = $"trim {index} {end}";
+        if (end)
+        {
+            if (index == _pieces.Count - 1)
+            {
+                var to = Math.Clamp(seconds, _pieces[index].Start + ClipRange.MinLength, Duration);
+                if (to != End)
+                    Change(() => Bound(Start, to), join: join);
+                return End;
+            }
+            Change(() => MoveCut(index, seconds, growing: true), join: join);
+            return _pieces[Math.Min(index, _pieces.Count - 1)].End;
+        }
+        if (index == 0)
+        {
+            var from = Math.Clamp(seconds, 0, _pieces[0].End - ClipRange.MinLength);
+            if (from != Start)
+                Change(() => Bound(from, End), join: join);
+            return Start;
+        }
+        Change(() => MoveCut(index - 1, seconds, growing: false), join: join);
+        return _pieces[Math.Min(index, _pieces.Count - 1)].Start;
+    }
+
     /// <summary>The volume of piece <paramref name="index"/> (1 as recorded, 0 silent).</summary>
     public void SetVolume(int index, double volume)
     {
@@ -226,6 +287,13 @@ public sealed class ClipCutter
         var value = Math.Clamp(Math.Round(volume, 2), 0, ClipPart.MaxVolume);
         if (_pieces[index].Volume != value)
             Change(() => _pieces[index] = _pieces[index] with { Volume = value }, join: $"volume {index}");
+    }
+
+    /// <summary>Mutes (or unmutes) the sound of piece <paramref name="index"/>; its picture plays on.</summary>
+    public void SetMuted(int index, bool muted)
+    {
+        if (index >= 0 && index < _pieces.Count && _pieces[index].Muted != muted)
+            Change(() => _pieces[index] = _pieces[index] with { Muted = muted });
     }
 
     /// <summary>The speed of piece <paramref name="index"/> (1 as recorded).</summary>
@@ -238,13 +306,36 @@ public sealed class ClipCutter
             Change(() => _pieces[index] = _pieces[index] with { Speed = value });
     }
 
-    /// <summary>Closes every pause left by pieces cut out with the magnet off. Returns how many.</summary>
-    public int CloseGaps()
+    // ───────────────────────── Music ─────────────────────────
+
+    /// <summary>Music under the clip (null takes it away): from the clip's start, at its usual volume, unless given.</summary>
+    public void SetMusic(ClipMusic? music) => Change(() => _music = music?.Clone());
+
+    /// <summary>Moves the music to start <paramref name="offset"/> seconds into the clip (a drag is one undo step).</summary>
+    public void MoveMusic(double offset)
     {
-        var gaps = _pieces.Count(p => p.State == ClipPieceState.Blank);
-        if (gaps > 0)
-            Change(() => _pieces = _pieces.Select(p => p.State == ClipPieceState.Blank ? p with { State = ClipPieceState.Removed } : p).ToList());
-        return gaps;
+        if (_music is null || !double.IsFinite(offset))
+            return;
+        var value = Math.Clamp(offset, 0, Math.Max(0, Length - ClipRange.MinLength));
+        if (value != _music.Offset)
+            Change(() => _music = WithMusic(m => m.Offset = value), join: "music offset");
+    }
+
+    /// <summary>The music's volume (0 to 2; a drag is one undo step).</summary>
+    public void SetMusicVolume(double volume)
+    {
+        if (_music is null || !double.IsFinite(volume))
+            return;
+        var value = Math.Clamp(Math.Round(volume, 2), 0, 2);
+        if (value != _music.Volume)
+            Change(() => _music = WithMusic(m => m.Volume = value), join: "music volume");
+    }
+
+    private ClipMusic WithMusic(Action<ClipMusic> change)
+    {
+        var copy = _music!.Clone();
+        change(copy);
+        return copy;
     }
 
     /// <summary>
@@ -298,21 +389,32 @@ public sealed class ClipCutter
     /// <summary>Does the last undone change again.</summary>
     public bool Redo() => Step(_redo, _undo);
 
-    /// <summary>What the conversion writes: the pieces that play (neighbours alike joined), the pauses and the fades.</summary>
+    /// <summary>
+    /// What the conversion writes: the pieces that play (neighbours alike joined), the pauses, the music and the fades.
+    /// </summary>
     /// <exception cref="InvalidOperationException">Every piece is cut out.</exception>
     public ClipEdit ToEdit()
     {
-        var edit = new ClipEdit { FadeIn = FadeIn, FadeOut = FadeOut };
+        var edit = new ClipEdit { FadeIn = FadeIn, FadeOut = FadeOut, Music = _music?.Clone() };
         foreach (var piece in _pieces.Where(p => p.State != ClipPieceState.Removed))
         {
             var blank = piece.State == ClipPieceState.Blank;
             if (edit.Parts.Count > 0 && edit.Parts[^1] is var last && !blank && !last.Blank
-                && Math.Abs(last.End - piece.Start) < 1e-9 && last.Volume == piece.Volume && last.Speed == piece.Speed)
+                && Math.Abs(last.End - piece.Start) < 1e-9 && last.Volume == piece.Volume && last.Speed == piece.Speed
+                && last.Muted == piece.Muted)
             {
                 last.End = piece.End;
                 continue;
             }
-            edit.Parts.Add(new ClipPart { Start = piece.Start, End = piece.End, Blank = blank, Volume = piece.Volume, Speed = piece.Speed });
+            edit.Parts.Add(new ClipPart
+            {
+                Start = piece.Start,
+                End = piece.End,
+                Blank = blank,
+                Volume = piece.Volume,
+                Speed = piece.Speed,
+                Muted = piece.Muted,
+            });
         }
         if (!edit.Parts.Any(p => !p.Blank))
             throw new InvalidOperationException("Every piece of the clip is cut out.");
@@ -321,9 +423,9 @@ public sealed class ClipCutter
 
     // ───────────────────────── Inside ─────────────────────────
 
-    private (List<ClipPiece>, double, double) Snapshot() => ([.. _pieces], _fadeIn, _fadeOut);
+    private State Snapshot() => new([.. _pieces], _fadeIn, _fadeOut, _music?.Clone());
 
-    private void Remember((List<ClipPiece>, double, double) state)
+    private void Remember(State state)
     {
         _undo.Push(state);
         _redo.Clear();
@@ -353,12 +455,13 @@ public sealed class ClipCutter
         Changed?.Invoke();
     }
 
-    private bool Step(Stack<(List<ClipPiece>, double, double)> from, Stack<(List<ClipPiece>, double, double)> to)
+    private bool Step(Stack<State> from, Stack<State> to)
     {
         if (from.Count == 0)
             return false;
         to.Push(Snapshot());
-        (_pieces, _fadeIn, _fadeOut) = from.Pop();
+        var state = from.Pop();
+        (_pieces, _fadeIn, _fadeOut, _music) = (state.Pieces, state.FadeIn, state.FadeOut, state.Music);
         _joining = null;
         Changed?.Invoke();
         return true;
@@ -366,6 +469,79 @@ public sealed class ClipCutter
 
     private void Shift(double delta) =>
         _pieces = _pieces.Select(p => p with { Start = p.Start + delta, End = p.End + delta }).ToList();
+
+    /// <summary>
+    /// Moves the cut after piece <paramref name="left"/> to <paramref name="seconds"/>. The piece being dragged (the
+    /// left one when <paramref name="growing"/>, else the right one) grows over pieces cut out next to it, using them up;
+    /// a piece that plays next to it gives way down to <see cref="ClipRange.MinLength"/>. Dragged inwards, what the
+    /// dragged piece gives up becomes a piece cut out (removed), unless its neighbour plays: then the cut just moves.
+    /// </summary>
+    private void MoveCut(int left, double seconds, bool growing)
+    {
+        if (growing)
+        {
+            var piece = _pieces[left];
+            var to = Math.Max(seconds, piece.Start + ClipRange.MinLength);
+            // Outwards: eat the cut-out pieces after it.
+            while (left + 1 < _pieces.Count && !_pieces[left + 1].IsKept && to >= _pieces[left + 1].End - ClipRange.MinLength)
+            {
+                _pieces.RemoveAt(left + 1);
+            }
+            var next = left + 1 < _pieces.Count ? _pieces[left + 1] : null;
+            if (next is null)
+            {
+                Bound(Start, Math.Clamp(to, piece.Start + ClipRange.MinLength, Duration));
+                return;
+            }
+            to = Math.Min(to, next.End - ClipRange.MinLength);
+            if (to < piece.End && piece.IsKept && !next.IsKept)
+            {
+                // Shortened next to a piece cut out: what it gives up joins that one.
+                _pieces[left] = piece with { End = to };
+                _pieces[left + 1] = next with { Start = to };
+                return;
+            }
+            if (to < piece.End && piece.IsKept && next.IsKept)
+            {
+                // Shortened next to a piece that plays: the given-up part is cut out, nothing else moves.
+                _pieces[left] = piece with { End = to };
+                _pieces.Insert(left + 1, new ClipPiece(to, next.Start, ClipPieceState.Removed, piece.Volume, piece.Speed, piece.Muted));
+                if (_pieces[left + 1].End - _pieces[left + 1].Start < 1e-9)
+                    _pieces.RemoveAt(left + 1);
+                return;
+            }
+            _pieces[left] = piece with { End = to };
+            _pieces[left + 1] = next with { Start = to };
+        }
+        else
+        {
+            var right = left + 1;
+            var piece = _pieces[right];
+            var from = Math.Min(seconds, piece.End - ClipRange.MinLength);
+            // Outwards (to the left): eat the cut-out pieces before it.
+            while (right - 1 >= 0 && !_pieces[right - 1].IsKept && from <= _pieces[right - 1].Start + ClipRange.MinLength)
+            {
+                _pieces.RemoveAt(right - 1);
+                right--;
+            }
+            var previous = right - 1 >= 0 ? _pieces[right - 1] : null;
+            if (previous is null)
+            {
+                Bound(Math.Clamp(from, 0, piece.End - ClipRange.MinLength), End);
+                return;
+            }
+            from = Math.Max(from, previous.Start + ClipRange.MinLength);
+            if (from > piece.Start && piece.IsKept && previous.IsKept)
+            {
+                // Shortened next to a piece that plays: the given-up part is cut out.
+                _pieces[right] = piece with { Start = from };
+                _pieces.Insert(right, new ClipPiece(previous.End, from, ClipPieceState.Removed, piece.Volume, piece.Speed, piece.Muted));
+                return;
+            }
+            _pieces[right] = piece with { Start = from };
+            _pieces[right - 1] = previous with { End = from };
+        }
+    }
 
     /// <summary>
     /// The pieces between <paramref name="start"/> and <paramref name="end"/>: those outside dropped, the first and last

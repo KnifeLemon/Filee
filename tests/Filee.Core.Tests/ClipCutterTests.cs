@@ -209,6 +209,139 @@ public class ClipCutterTests
         Assert.Equal(0, changes);
     }
 
+    [Fact]
+    public void A_pieces_sound_can_be_muted_while_its_picture_plays()
+    {
+        var cutter = Cutter();
+        cutter.Split(70);
+        cutter.SetMuted(1, true);
+        Assert.True(cutter.Pieces[1].Muted);
+        var edit = cutter.ToEdit();
+        Assert.Equal([false, true], edit.Parts.Select(p => p.Muted));
+        Assert.Equal(0, edit.Parts[1].PlayVolume);
+        Assert.Equal(1, edit.Parts[1].Volume); // kept for unmuting
+        Assert.False(edit.IsPlainCut);
+        Assert.Equal(30, cutter.Length); // the picture still plays
+        cutter.SetMuted(1, false);
+        Assert.True(cutter.ToEdit().IsPlainCut);
+    }
+
+    [Fact]
+    public void A_gap_is_closed_on_its_own()
+    {
+        var cutter = Cutter();
+        cutter.Split(70);
+        cutter.Split(80);
+        cutter.Remove(0, closeUp: false);
+        cutter.Remove(1, closeUp: false);
+        Assert.True(cutter.CloseGap(1));
+        Assert.Equal([ClipPieceState.Blank, ClipPieceState.Removed, ClipPieceState.Kept], cutter.Pieces.Select(p => p.State));
+        Assert.False(cutter.CloseGap(2)); // not a gap
+        Assert.Equal(20, cutter.Length);
+    }
+
+    [Fact]
+    public void Dragging_an_edge_out_takes_back_what_was_cut_next_to_it()
+    {
+        var cutter = Cutter();
+        cutter.Split(70);
+        cutter.Split(80);
+        cutter.Remove(1, closeUp: true); // [60-70][70-80 out][80-90]
+        Assert.Equal(20, cutter.Length);
+
+        // A little back.
+        cutter.TrimEdge(0, end: true, 74);
+        Assert.Equal([(60.0, 74.0, true), (74.0, 80.0, false), (80.0, 90.0, true)], cutter.Pieces.Select(p => (p.Start, p.End, p.IsKept)));
+        Assert.Equal(24, cutter.Length);
+        // All of it back: the piece cut out is used up, the cut lands on the next piece.
+        cutter.TrimEdge(0, end: true, 80);
+        Assert.Equal([(60.0, 80.0), (80.0, 90.0)], cutter.Pieces.Select(p => (p.Start, p.End)));
+        Assert.Equal(30, cutter.Length);
+        // The whole drag is one undo step.
+        Assert.True(cutter.Undo());
+        Assert.Equal(20, cutter.Length);
+
+        // The next piece's start pulled back to the left.
+        cutter.TrimEdge(2, end: false, 76);
+        Assert.Equal([(60.0, 70.0, true), (70.0, 76.0, false), (76.0, 90.0, true)], cutter.Pieces.Select(p => (p.Start, p.End, p.IsKept)));
+    }
+
+    [Fact]
+    public void Dragging_an_edge_in_cuts_that_much_out()
+    {
+        var cutter = Cutter();
+        cutter.Split(70); // [60-70][70-90], both play
+        cutter.TrimEdge(0, end: true, 65);
+        Assert.Equal([(60.0, 65.0, true), (65.0, 70.0, false), (70.0, 90.0, true)], cutter.Pieces.Select(p => (p.Start, p.End, p.IsKept)));
+        Assert.Equal(25, cutter.Length);
+
+        var other = Cutter();
+        other.Split(70);
+        other.TrimEdge(1, end: false, 75);
+        Assert.Equal([(60.0, 70.0, true), (70.0, 75.0, false), (75.0, 90.0, true)], other.Pieces.Select(p => (p.Start, p.End, p.IsKept)));
+        // Never shorter than the least length.
+        other.TrimEdge(2, end: false, 95);
+        Assert.Equal(90 - ClipRange.MinLength, other.Pieces[^1].Start, 6);
+    }
+
+    [Fact]
+    public void The_clips_outer_edges_reach_further_into_the_video()
+    {
+        var cutter = Cutter();
+        cutter.Split(70);
+        Assert.Equal(100, cutter.TrimEdge(1, end: true, 100));
+        Assert.Equal(50, cutter.TrimEdge(0, end: false, 50));
+        Assert.Equal((50.0, 100.0), (cutter.Start, cutter.End));
+        Assert.Equal(312.4, cutter.TrimEdge(1, end: true, 999));
+    }
+
+    [Fact]
+    public void Music_goes_under_the_clip_and_moves_and_changes_volume_with_undo()
+    {
+        var cutter = Cutter();
+        cutter.SetMusic(new ClipMusic { Path = "song.mp3", Length = 200 });
+        Assert.Equal(ClipMusic.DefaultVolume, cutter.Music!.Volume);
+        cutter.MoveMusic(5);
+        cutter.MoveMusic(8);
+        cutter.SetMusicVolume(0.3);
+        cutter.SetMusicVolume(0.25);
+        cutter.MoveMusic(999);
+        Assert.Equal(30 - ClipRange.MinLength, cutter.Music!.Offset, 6);
+        var edit = cutter.ToEdit();
+        Assert.Equal(("song.mp3", 0.25), (edit.Music!.Path, edit.Music.Volume));
+        Assert.False(edit.IsPlainCut);
+
+        Assert.True(cutter.Undo()); // the last move
+        Assert.Equal(8, cutter.Music!.Offset);
+        Assert.True(cutter.Undo()); // the volume drag at once
+        Assert.Equal(ClipMusic.DefaultVolume, cutter.Music!.Volume);
+        Assert.True(cutter.Undo()); // both moves at once
+        Assert.Equal(0, cutter.Music!.Offset);
+        Assert.True(cutter.Undo());
+        Assert.Null(cutter.Music);
+    }
+
+    [Fact]
+    public void Music_plays_while_both_last_and_keeps_its_place_when_playing_from_later()
+    {
+        var music = new ClipMusic { Path = "song.mp3", Offset = 4, From = 10, Length = 20 };
+        Assert.Equal(10, music.PlayLength(30)); // the song ends first
+        Assert.Equal(6, music.PlayLength(10)); // the clip ends first
+
+        var edit = ClipEdit.Of(new ClipRange(0, 30));
+        edit.Music = music;
+        var later = edit.From(7);
+        Assert.Equal((0.0, 13.0), (later.Music!.Offset, later.Music.From));
+        var sooner = edit.From(1);
+        Assert.Equal((3.0, 10.0), (sooner.Music!.Offset, sooner.Music.From));
+
+        // Music past the clip's end isn't written.
+        edit.Music = new ClipMusic { Path = "song.mp3", Offset = 40, Length = 20 };
+        Assert.Null(edit.Clamped(100).Music);
+        edit.Music = new ClipMusic { Path = "song.mp3", Offset = -3, Volume = 9, Length = 20 };
+        Assert.Equal((0.0, 2.0), (edit.Clamped(100).Music!.Offset, edit.Clamped(100).Music!.Volume));
+    }
+
     // ───────────────────────── The edit ─────────────────────────
 
     private static ClipEdit Edit() => new()

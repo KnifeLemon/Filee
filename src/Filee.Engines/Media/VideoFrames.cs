@@ -48,7 +48,7 @@ public static class VideoFrames
     {
         var (ffmpeg, _) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
         var arguments = MediaEncoding.FrameAt(Path.GetFullPath(path), Math.Max(0, seconds), output, maxHeight, null);
-        var result = await FfmpegRunner.RunAsync(ffmpeg, arguments, null, cancellationToken, FrameStall);
+        var result = await FfmpegRunner.RunAsync(ffmpeg, arguments, null, cancellationToken, FrameStall, background: true);
         return result.ExitCode == 0 && File.Exists(output) && new FileInfo(output).Length > 0;
     }
 

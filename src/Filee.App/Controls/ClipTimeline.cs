@@ -136,6 +136,11 @@ public sealed class ClipTimeline : Control
 
     private enum Drag { None, Start, End, Clip, Playhead, Pending }
 
+    // Made once: a new cursor on every pointer move would ask the system for one each time.
+    private static readonly Cursor HandCursor = new(StandardCursorType.Hand);
+    private static readonly Cursor IbeamCursor = new(StandardCursorType.Ibeam);
+    private static readonly Cursor SizeWestEastCursor = new(StandardCursorType.SizeWestEast);
+
     private Drag _drag;
     private double _grabOffset; // seconds between the pointer and what it drags (the handle, or the clip's start)
     private Point _pressedAt;
@@ -579,9 +584,9 @@ public sealed class ClipTimeline : Control
             Cursor = Duration <= 0 ? Cursor.Default
                 : HitTest(point) switch
                 {
-                    Drag.Clip => new Cursor(StandardCursorType.Hand),
-                    Drag.Playhead => new Cursor(StandardCursorType.Ibeam),
-                    _ => new Cursor(StandardCursorType.SizeWestEast),
+                    Drag.Clip => HandCursor,
+                    Drag.Playhead => IbeamCursor,
+                    _ => SizeWestEastCursor,
                 };
             return;
         }

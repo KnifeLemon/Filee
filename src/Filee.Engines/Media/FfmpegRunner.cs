@@ -30,9 +30,13 @@ internal static class FfmpegRunner
     /// <param name="onPosition">Called with the output position in seconds whenever FFmpeg reports one.</param>
     /// <param name="stallTimeout">How long FFmpeg may stay silent before it is killed; <see cref="DefaultStallTimeout"/> when null.</param>
     /// <returns>Exit code and the last lines FFmpeg wrote to stderr (its error messages).</returns>
+    /// <param name="background">
+    /// Runs below normal priority: pictures and sound for a window (the clip window's timeline), which must not take
+    /// the processor from the window itself.
+    /// </param>
     public static async Task<ProcessResult> RunAsync(
         string ffmpeg, IReadOnlyList<string> arguments, Action<double>? onPosition, CancellationToken cancellationToken,
-        TimeSpan? stallTimeout = null)
+        TimeSpan? stallTimeout = null, bool background = false)
     {
         var psi = new ProcessStartInfo(ffmpeg)
         {
@@ -75,6 +79,8 @@ internal static class FfmpegRunner
 
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {ffmpeg}.");
+        if (background)
+            Lower(process);
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
@@ -107,6 +113,18 @@ internal static class FfmpegRunner
         lock (errors)
             stderr = string.Join(Environment.NewLine, errors);
         return new ProcessResult(process.ExitCode, "", stderr);
+    }
+
+    /// <summary>Below normal priority; a process that is already gone or not ours to change stays as it is.</summary>
+    internal static void Lower(Process process)
+    {
+        try
+        {
+            process.PriorityClass = ProcessPriorityClass.BelowNormal;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+        }
     }
 
     /// <summary>
