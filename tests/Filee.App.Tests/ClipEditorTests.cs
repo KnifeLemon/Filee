@@ -86,7 +86,8 @@ public class ClipEditorTests
             Assert.Equal(2, added.Count); // the text file isn't a video or a sound
             Assert.Equal(3, editor.Files.Count);
             Assert.Same(added, flown);
-            Assert.True(added.All(m => m.JustAdded));
+            // Marked new while their cards fly in; with less motion (an OS setting) the mark goes at once.
+            Assert.True(added.All(m => m.JustAdded == Motion.Enabled));
             Assert.Equal(2, editor.Edit.Parts.Count);
             Assert.EndsWith("phone tall.mp4", editor.Edit.Parts[1].Source);
             Assert.Equal(before + ClipWindowTests.Length / 2, editor.Length, 6);
