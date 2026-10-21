@@ -228,7 +228,7 @@
   "clip.remove_silence": "चुप्पी हटाएँ",
   "clip.remove_silence_hint": "क्लिप में शांत हिस्से ढूँढकर काटें (Ctrl+Z से वापस)",
   "clip.close_gaps": "खाली जगह हटाएँ",
-  "clip.close_gaps_hint": "बिना चुंबक हटाए गए टुकड़ों की खाली जगह बंद करें",
+  "clip.close_gaps_hint": "हटाए गए टुकड़ों की सारी खाली जगह बंद करें",
   "clip.fade_in": "फ़ेड इन",
   "clip.fade_in_hint": "1 सेकंड में काले और चुप्पी से उभरें",
   "clip.fade_out": "फ़ेड आउट",

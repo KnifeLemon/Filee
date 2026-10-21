@@ -237,7 +237,7 @@
   "clip.remove_silence": "去除静音",
   "clip.remove_silence_hint": "找出片段中的静音部分并剪掉（Ctrl+Z 可恢复）",
   "clip.close_gaps": "合拢空白",
-  "clip.close_gaps_hint": "合拢关闭磁铁时剪掉片段留下的空白",
+  "clip.close_gaps_hint": "合拢剪掉片段留下的所有空白",
   "clip.fade_in": "淡入",
   "clip.fade_in_hint": "1 秒内从黑屏和静音中淡入",
   "clip.fade_out": "淡出",

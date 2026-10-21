@@ -1949,7 +1949,7 @@ public class RenderTests
             vm.SelectedVolume = 1.5;
             vm.HasFadeIn = true;
             vm.IsZoomed = true;
-            var adding = vm.AddMusicAsync(@"C:\music\Summer song.mp3");
+            var adding = vm.AddMusicAsync(Path.Combine("music", "Summer song.mp3"));
             ClipWindowTests.WaitFor(() => vm.MusicLoudness.Count > 0);
             vm.MoveMusic(3);
             vm.MovePlayhead(98);

@@ -228,7 +228,7 @@
   "clip.remove_silence": "無音を削除",
   "clip.remove_silence_hint": "クリップの無音部分を見つけて切り取る（Ctrl+Z で戻せます）",
   "clip.close_gaps": "空白を詰める",
-  "clip.close_gaps_hint": "マグネットなしで切り取った区間の空白を詰める",
+  "clip.close_gaps_hint": "切り取った区間が残した空白をすべて詰める",
   "clip.fade_in": "フェードイン",
   "clip.fade_in_hint": "1 秒かけて黒と無音から現れる",
   "clip.fade_out": "フェードアウト",

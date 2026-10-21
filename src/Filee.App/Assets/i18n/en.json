@@ -237,7 +237,7 @@
   "clip.remove_silence": "Remove silence",
   "clip.remove_silence_hint": "Find the silent stretches of the clip and cut them out (Ctrl+Z puts them back)",
   "clip.close_gaps": "Close gaps",
-  "clip.close_gaps_hint": "Close the pauses left by pieces cut out without the magnet",
+  "clip.close_gaps_hint": "Close every gap left by pieces cut out",
   "clip.fade_in": "Fade in",
   "clip.fade_in_hint": "Fade in from black and silence over 1 second",
   "clip.fade_out": "Fade out",

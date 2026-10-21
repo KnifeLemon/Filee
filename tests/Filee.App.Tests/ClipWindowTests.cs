@@ -648,7 +648,7 @@ public class ClipWindowTests
     {
         WithClipWindow("en", false, ["match.mp4"], (window, vm, frames, exports) =>
         {
-            _ = vm.AddMusicAsync(@"C:\music\song.mp3");
+            _ = vm.AddMusicAsync(Path.Combine("music", "song.mp3"));
             WaitFor(() => vm.HasMusic && vm.MusicLoudness.Count > 0);
             Assert.True(vm.IsMusicSelected);
             Assert.Equal("Remove music", vm.DeleteText);
@@ -684,12 +684,12 @@ public class ClipWindowTests
     {
         WithClipWindow("en", false, ["match.mp4"], (window, vm, _, _) =>
         {
-            _ = vm.AddMusicAsync(@"C:\music\silent.mp4");
+            _ = vm.AddMusicAsync(Path.Combine("music", "silent.mp4"));
             WaitFor(() => vm.HasMessage);
             Assert.False(vm.HasMusic);
             Assert.Equal(AppHost.Get<ILocalizer>()["clip.no_music"], vm.Message);
 
-            _ = vm.AddMusicAsync(@"C:\music\song.mp3");
+            _ = vm.AddMusicAsync(Path.Combine("music", "song.mp3"));
             WaitFor(() => vm.HasMusic);
             Press(window, Key.Delete);
             Assert.False(vm.HasMusic);

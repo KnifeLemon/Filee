@@ -237,7 +237,7 @@
   "clip.remove_silence": "무음 제거",
   "clip.remove_silence_hint": "클립에서 조용한 구간을 찾아 잘라내기 (Ctrl+Z로 되돌림)",
   "clip.close_gaps": "빈 자리 없애기",
-  "clip.close_gaps_hint": "자석 없이 잘라낸 조각이 남긴 빈 자리를 없애기",
+  "clip.close_gaps_hint": "잘라낸 조각이 남긴 빈 자리를 모두 없애기",
   "clip.fade_in": "페이드 인",
   "clip.fade_in_hint": "1초 동안 검은 화면과 무음에서 나타나기",
   "clip.fade_out": "페이드 아웃",

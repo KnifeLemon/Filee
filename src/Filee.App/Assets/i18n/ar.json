@@ -228,7 +228,7 @@
   "clip.remove_silence": "إزالة الصمت",
   "clip.remove_silence_hint": "إيجاد المقاطع الصامتة في المقطع واقتطاعها (Ctrl+Z يعيدها)",
   "clip.close_gaps": "إزالة الفراغات",
-  "clip.close_gaps_hint": "إغلاق الفراغات التي خلّفتها الأجزاء المقتطعة دون المغناطيس",
+  "clip.close_gaps_hint": "إغلاق كل الفراغات التي خلّفتها الأجزاء المقتطعة",
   "clip.fade_in": "ظهور تدريجي",
   "clip.fade_in_hint": "الظهور من السواد والصمت خلال ثانية",
   "clip.fade_out": "تلاشٍ",

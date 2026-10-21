@@ -228,7 +228,7 @@
   "clip.remove_silence": "Quitar silencios",
   "clip.remove_silence_hint": "Buscar los tramos en silencio del clip y quitarlos (Ctrl+Z los devuelve)",
   "clip.close_gaps": "Cerrar huecos",
-  "clip.close_gaps_hint": "Cerrar las pausas que dejaron los fragmentos quitados sin el imán",
+  "clip.close_gaps_hint": "Cerrar todos los huecos que dejaron los fragmentos quitados",
   "clip.fade_in": "Fundido de entrada",
   "clip.fade_in_hint": "Aparece desde negro y silencio en 1 segundo",
   "clip.fade_out": "Fundido de salida",

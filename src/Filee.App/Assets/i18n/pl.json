@@ -237,7 +237,7 @@
   "clip.remove_silence": "Usuń ciszę",
   "clip.remove_silence_hint": "Znajdź ciche miejsca w klipie i wytnij je (Ctrl+Z przywraca)",
   "clip.close_gaps": "Zamknij luki",
-  "clip.close_gaps_hint": "Zamknij pauzy po fragmentach wyciętych bez magnesu",
+  "clip.close_gaps_hint": "Zamknij wszystkie luki po wyciętych fragmentach",
   "clip.fade_in": "Pojawianie",
   "clip.fade_in_hint": "Pojawienie się z czerni i ciszy w 1 sekundę",
   "clip.fade_out": "Wygaszanie",
