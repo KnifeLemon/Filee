@@ -28,6 +28,12 @@ public partial class ClipWindow : Window
         Motion.Track(this);
         DataContextChanged += OnDataContextChanged;
         AddHandler(KeyDownEvent, OnKeyDownFirst, RoutingStrategies.Tunnel);
+        // Space and Enter are the window's own: their key-up must not press a button either.
+        AddHandler(KeyUpEvent, (_, e) =>
+        {
+            if (e.Key is Key.Space or Key.Enter)
+                e.Handled = true;
+        }, RoutingStrategies.Tunnel);
         ResizeGrip.PointerPressed += OnGripPressed;
     }
 
@@ -94,6 +100,7 @@ public partial class ClipWindow : Window
             Timeline.PlayheadMoved += vm.MovePlayhead;
             Sequence.PlayheadMoved += vm.MoveSequencePlayhead;
             Sequence.PieceSelected += vm.SelectPiece;
+            Sequence.MarqueeSelected += vm.SelectAcross;
             Sequence.EdgeDragStarted += vm.BeginTrim;
             Sequence.EdgeDragged += vm.Trim;
             Sequence.GapCloseRequested += vm.CloseGap;
@@ -117,14 +124,21 @@ public partial class ClipWindow : Window
         switch (e.Key)
         {
             case Key.Escape:
+                // Stops playing first, then drops a selection of several pieces, then closes.
                 if (vm.IsPlaying)
                     vm.StopPlaying();
-                else
+                else if (!vm.CollapseSelection())
                     vm.Cancel();
                 e.Handled = true;
                 break;
-            case Key.Space when plain && vm.CanEdit:
-                vm.PlayPause();
+            case Key.Space:
+                // Always play / pause, whatever was clicked last.
+                if (plain && vm.CanEdit)
+                    vm.PlayPause();
+                e.Handled = true;
+                break;
+            case Key.A when command && vm.CanEdit:
+                vm.SelectAll();
                 e.Handled = true;
                 break;
             case Key.C when plain && vm.CanEdit:

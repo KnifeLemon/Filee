@@ -52,6 +52,9 @@ public sealed class ClipCutter
     /// <summary>What the last change did, when changes alike join into one undo step (a slider or an edge dragged).</summary>
     private string? _joining;
 
+    /// <summary>Inside <see cref="Batch"/>: changes are made but remembered (and told) once, at its end.</summary>
+    private int _batching;
+
     /// <param name="duration">The video's length in seconds.</param>
     /// <param name="range">The clip to start with, kept inside the video.</param>
     public ClipCutter(double duration, ClipRange range)
@@ -383,6 +386,39 @@ public sealed class ClipCutter
         return removed;
     }
 
+    /// <summary>
+    /// Several changes as one: one undo step and one <see cref="Changed"/> (cutting out several selected pieces,
+    /// setting their volume). Nothing is remembered when nothing changed.
+    /// </summary>
+    /// <param name="join">Batches in a row with the same value are one undo step (a slider dragged over several pieces).</param>
+    public void Batch(Action changes, string? join = null)
+    {
+        var before = Snapshot();
+        _batching++;
+        try
+        {
+            changes();
+        }
+        finally
+        {
+            _batching--;
+        }
+        if (_batching > 0 || Same(before))
+            return;
+        if (join is null || join != _joining || _undo.Count == 0)
+            Remember(before);
+        else
+            _redo.Clear();
+        _joining = join;
+        Changed?.Invoke();
+    }
+
+    private bool Same(State state) =>
+        state.Pieces.SequenceEqual(_pieces) && state.FadeIn == _fadeIn && state.FadeOut == _fadeOut
+        && (state.Music is null ? _music is null
+            : _music is not null && (state.Music.Path, state.Music.Offset, state.Music.Volume, state.Music.From)
+                == (_music.Path, _music.Offset, _music.Volume, _music.From));
+
     /// <summary>Takes back the last change.</summary>
     public bool Undo() => Step(_undo, _redo);
 
@@ -445,6 +481,11 @@ public sealed class ClipCutter
     {
         if (!changes)
             return;
+        if (_batching > 0)
+        {
+            change();
+            return;
+        }
         var before = Snapshot();
         change();
         if (join is null || join != _joining || _undo.Count == 0)

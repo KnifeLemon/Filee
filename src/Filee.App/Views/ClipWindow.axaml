@@ -95,6 +95,11 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="CornerRadius" Value="999" />
     </Style>
+    <!-- The window is worked with its own keys (Space plays, Enter saves): its buttons never keep the keyboard focus,
+         so Space can't press the one clicked last (maximize, a fade, the magnet). -->
+    <Style Selector="Button, ToggleButton">
+      <Setter Property="Focusable" Value="False" />
+    </Style>
     <Style Selector="Button.round, ToggleButton.round">
       <Setter Property="Padding" Value="9" />
       <Setter Property="Width" Value="34" />
@@ -167,6 +172,15 @@
                   Background="{DynamicResource SurfaceAltBrush}" BoxShadow="{DynamicResource CardShadow}">
             <Panel>
               <Image Source="{Binding Preview}" Stretch="Uniform" />
+              <!-- Busy: preparing to play, finding silence, reading the music -->
+              <Border Classes="float" Padding="10,5,12,5" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="10"
+                      IsVisible="{Binding IsBusy}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <ProgressBar Classes="soft" IsIndeterminate="True" Width="34" VerticalAlignment="Center" />
+                  <TextBlock Text="{Binding BusyText}" FontSize="12.5" FontWeight="SemiBold" VerticalAlignment="Center"
+                             Foreground="{DynamicResource TextPrimaryBrush}" />
+                </StackPanel>
+              </Border>
               <!-- Which handle's frame this is, on the picture -->
               <Border Classes="float" Padding="10,4" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="10"
                       IsVisible="{Binding Preview, Converter={x:Static ObjectConverters.IsNotNull}}">
@@ -232,7 +246,8 @@
               <c:ClipSequence x:Name="Sequence" Margin="2,4,2,0"
                               AutomationProperties.Name="{DynamicResource clip.sequence}"
                               Pieces="{Binding Pieces}" Playhead="{Binding SequencePlayhead}"
-                              SelectedIndex="{Binding SelectedIndex}" SelectedLane="{Binding SelectedLane}"
+                              SelectedIndex="{Binding SelectedIndex}" SelectedIndices="{Binding SelectedIndices}"
+                              SelectedLane="{Binding SelectedLane}"
                               Thumbnails="{Binding DetailThumbnails}" Loudness="{Binding DetailLoudness}"
                               DetailStart="{Binding DetailStart}" DetailEnd="{Binding DetailEnd}"
                               Music="{Binding Music}" MusicLoudness="{Binding MusicLoudness}"
@@ -256,6 +271,10 @@
               </Button>
               <TextBlock Text="{Binding PlayheadText}" FontSize="13" FontWeight="SemiBold" MinWidth="50" VerticalAlignment="Center"
                          Margin="2,0,6,0" Foreground="{DynamicResource TextPrimaryBrush}" />
+              <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="8,2" Margin="0,0,4,0" VerticalAlignment="Center"
+                      IsVisible="{Binding SelectionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                <TextBlock Text="{Binding SelectionText}" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+              </Border>
 
               <Border Classes="divider" />
 

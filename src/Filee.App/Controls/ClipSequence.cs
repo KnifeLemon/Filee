@@ -24,6 +24,14 @@ public enum ClipLane
     Music,
 }
 
+/// <summary>How a click selects a piece: alone, added or taken out (Ctrl), or a run from the last one (Shift).</summary>
+public enum ClipSelect
+{
+    Only,
+    Toggle,
+    Range,
+}
+
 public sealed class ClipSequence : Control
 {
     public static readonly StyledProperty<IReadOnlyList<ClipPiece>?> PiecesProperty =
@@ -35,6 +43,10 @@ public sealed class ClipSequence : Control
 
     public static readonly StyledProperty<int> SelectedIndexProperty =
         AvaloniaProperty.Register<ClipSequence, int>(nameof(SelectedIndex), -1);
+
+    /// <summary>Every selected piece; empty: just <see cref="SelectedIndex"/>.</summary>
+    public static readonly StyledProperty<IReadOnlyList<int>?> SelectedIndicesProperty =
+        AvaloniaProperty.Register<ClipSequence, IReadOnlyList<int>?>(nameof(SelectedIndices));
 
     public static readonly StyledProperty<ClipLane> SelectedLaneProperty =
         AvaloniaProperty.Register<ClipSequence, ClipLane>(nameof(SelectedLane));
@@ -103,6 +115,7 @@ public sealed class ClipSequence : Control
     public double Playhead { get => GetValue(PlayheadProperty); set => SetValue(PlayheadProperty, value); }
     public int SelectedIndex { get => GetValue(SelectedIndexProperty); set => SetValue(SelectedIndexProperty, value); }
     public ClipLane SelectedLane { get => GetValue(SelectedLaneProperty); set => SetValue(SelectedLaneProperty, value); }
+    public IReadOnlyList<int>? SelectedIndices { get => GetValue(SelectedIndicesProperty); set => SetValue(SelectedIndicesProperty, value); }
     public IReadOnlyList<Bitmap?>? Thumbnails { get => GetValue(ThumbnailsProperty); set => SetValue(ThumbnailsProperty, value); }
     public IReadOnlyList<float>? Loudness { get => GetValue(LoudnessProperty); set => SetValue(LoudnessProperty, value); }
     public double DetailStart { get => GetValue(DetailStartProperty); set => SetValue(DetailStartProperty, value); }
@@ -125,8 +138,11 @@ public sealed class ClipSequence : Control
     /// <summary>The playhead was put somewhere: seconds into the clip.</summary>
     public event Action<double>? PlayheadMoved;
 
-    /// <summary>A piece (or the music) was clicked on a track.</summary>
-    public event Action<int, ClipLane>? PieceSelected;
+    /// <summary>A piece (or the music, -1) was clicked on a track: alone, with Ctrl or with Shift.</summary>
+    public event Action<int, ClipLane, ClipSelect>? PieceSelected;
+
+    /// <summary>Dragged across pieces: from and to (seconds into the clip), the track, and Ctrl (add to the selection).</summary>
+    public event Action<double, double, ClipLane, bool>? MarqueeSelected;
 
     /// <summary>A piece's edge started to be dragged: the piece, and its end (true) or start.</summary>
     public event Action<int, bool>? EdgeDragStarted;
@@ -158,7 +174,7 @@ public sealed class ClipSequence : Control
     private const double SnapDistance = 8;
     private const double DragThreshold = 4;
 
-    private enum Drag { None, Playhead, Edge, Volume, Music, MusicVolume, Pending }
+    private enum Drag { None, Playhead, Edge, Volume, Music, MusicVolume, Pending, Marquee }
 
     // Made once: a new cursor on every pointer move would ask the system for one each time.
     private static readonly Cursor IbeamCursor = new(StandardCursorType.Ibeam);
@@ -180,10 +196,13 @@ public sealed class ClipSequence : Control
     private int _pendingIndex = -1;
     private ClipLane _pendingLane;
     private double _musicOffsetAtPress;
+    private ClipSelect _pendingMode;
+    private bool _marqueeAdds;
+    private double _marqueeFrom, _marqueeTo;
 
     static ClipSequence()
     {
-        AffectsRender<ClipSequence>(PiecesProperty, PlayheadProperty, SelectedIndexProperty, SelectedLaneProperty, ThumbnailsProperty,
+        AffectsRender<ClipSequence>(PiecesProperty, PlayheadProperty, SelectedIndexProperty, SelectedIndicesProperty, SelectedLaneProperty, ThumbnailsProperty,
             LoudnessProperty, DetailStartProperty, DetailEndProperty, MusicProperty, MusicLoudnessProperty, FadeInProperty, FadeOutProperty,
             GapTextProperty, NoMusicTextProperty, AccentBrushProperty, TrackBrushProperty, StageBrushProperty, ForegroundProperty);
         FocusableProperty.OverrideDefaultValue<ClipSequence>(false);
@@ -272,8 +291,9 @@ public sealed class ClipSequence : Control
             DrawSound(context, piece, sound);
             if (piece.Speed != 1 || piece.Volume != 1 || piece.Muted)
                 DrawBadge(context, piece, video);
-            var selectedVideo = index == SelectedIndex && SelectedLane == ClipLane.Video;
-            var selectedSound = index == SelectedIndex && SelectedLane == ClipLane.Audio;
+            var selected = IsSelected(index);
+            var selectedVideo = selected && SelectedLane == ClipLane.Video;
+            var selectedSound = selected && SelectedLane == ClipLane.Audio;
             context.DrawRectangle(null, new Pen(selectedVideo ? accent : new SolidColorBrush(Color.FromArgb(90, 0, 0, 0)), selectedVideo ? 2.5 : 1),
                 video.Deflate(selectedVideo ? 1.25 : 0.5), Radius, Radius);
             context.DrawRectangle(null, new Pen(selectedSound ? accent : new SolidColorBrush(Color.FromArgb(90, 0, 0, 0)), selectedSound ? 2.5 : 1),
@@ -282,7 +302,20 @@ public sealed class ClipSequence : Control
         DrawFades(context);
         DrawMusic(context, accent);
         DrawPlayhead(context);
+        if (_drag == Drag.Marquee)
+        {
+            // The stretch being dragged across: the pieces it touches become selected.
+            var rect = new Rect(XOf(Math.Min(_marqueeFrom, _marqueeTo)), VideoLane.Top - 2,
+                Math.Abs(XOf(_marqueeTo) - XOf(_marqueeFrom)), SoundLane.Bottom - VideoLane.Top + 4);
+            using (context.PushOpacity(0.18))
+                context.FillRectangle(accent, rect);
+            context.DrawRectangle(null, new Pen(accent, 1.2) { DashStyle = new DashStyle([3, 2], 0) }, rect);
+        }
     }
+
+    /// <summary>True for a selected piece: one of <see cref="SelectedIndices"/>, or <see cref="SelectedIndex"/> without them.</summary>
+    private bool IsSelected(int index) =>
+        SelectedIndices is { Count: > 0 } several ? several.Contains(index) : index == SelectedIndex;
 
     private void DrawLabels(DrawingContext context)
     {
@@ -603,7 +636,7 @@ public sealed class ClipSequence : Control
         {
             if (MusicRect() is { } music && music.Inflate(new Thickness(0, 2)).Contains(point))
             {
-                PieceSelected?.Invoke(-1, ClipLane.Music);
+                PieceSelected?.Invoke(-1, ClipLane.Music, ClipSelect.Only);
                 if (Math.Abs(point.Y - VolumeY(music, Music!.Volume)) <= 5)
                     _drag = Drag.MusicVolume;
                 else
@@ -644,7 +677,7 @@ public sealed class ClipSequence : Control
                     _edgeAtPress = _dragEnd ? piece.End : piece.Start;
                     _speedAtPress = piece.Speed;
                     _drag = Drag.Edge;
-                    PieceSelected?.Invoke(index, lane);
+                    PieceSelected?.Invoke(index, lane, ClipSelect.Only);
                     EdgeDragStarted?.Invoke(index, _dragEnd);
                     break;
                 }
@@ -654,14 +687,16 @@ public sealed class ClipSequence : Control
                 {
                     _drag = Drag.Volume;
                     _pendingIndex = index;
-                    PieceSelected?.Invoke(index, lane);
+                    PieceSelected?.Invoke(index, lane, ClipSelect.Only);
                     break;
                 }
-                // A click: the piece selected, the playhead there (on release).
+                // A click selects the piece (on release); a drag selects every piece it goes across.
                 _drag = Drag.Pending;
                 _pendingIndex = index;
                 _pendingLane = lane;
-                PieceSelected?.Invoke(index, lane);
+                _pendingMode = (e.KeyModifiers & (KeyModifiers.Control | KeyModifiers.Meta)) != 0 ? ClipSelect.Toggle
+                    : (e.KeyModifiers & KeyModifiers.Shift) != 0 ? ClipSelect.Range
+                    : ClipSelect.Only;
                 break;
             }
             if (_drag == Drag.None)
@@ -702,9 +737,14 @@ public sealed class ClipSequence : Control
                 MusicVolumeDragged?.Invoke(VolumeAt(MusicLane, point.Y));
                 break;
             case Drag.Pending when Math.Abs(dx) >= DragThreshold:
-                // Dragged along a piece: the playhead follows (scrubbing).
-                _drag = Drag.Playhead;
-                PlayheadMoved?.Invoke(SnapTime(TimeAt(point.X), playhead: true));
+                _drag = Drag.Marquee;
+                _marqueeFrom = TimeAt(_pressedAt.X);
+                _marqueeAdds = _pendingMode != ClipSelect.Only;
+                goto case Drag.Marquee;
+            case Drag.Marquee:
+                _marqueeTo = TimeAt(point.X);
+                MarqueeSelected?.Invoke(_marqueeFrom, _marqueeTo, _pendingLane, _marqueeAdds);
+                InvalidateVisual();
                 break;
         }
         e.Handled = true;
@@ -714,8 +754,16 @@ public sealed class ClipSequence : Control
     {
         base.OnPointerReleased(e);
         if (_drag == Drag.Pending)
-            PlayheadMoved?.Invoke(SnapTime(TimeAt(e.GetPosition(this).X), playhead: true));
+        {
+            PieceSelected?.Invoke(_pendingIndex, _pendingLane, _pendingMode);
+            // Ctrl and Shift only change the selection; a plain click also puts the playhead there.
+            if (_pendingMode == ClipSelect.Only)
+                PlayheadMoved?.Invoke(SnapTime(TimeAt(e.GetPosition(this).X), playhead: true));
+        }
+        var marquee = _drag == Drag.Marquee;
         _drag = Drag.None;
+        if (marquee)
+            InvalidateVisual();
         _pendingIndex = -1;
         e.Pointer.Capture(null);
     }

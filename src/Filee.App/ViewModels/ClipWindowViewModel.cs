@@ -160,6 +160,23 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(DeleteText))]
     private int _selectedIndex = -1;
 
+    /// <summary>Every selected piece (in order), with <see cref="SelectedIndex"/> the one clicked last; empty: none.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DeleteText))]
+    [NotifyPropertyChangedFor(nameof(SelectionText))]
+    private IReadOnlyList<int> _selectedIndices = [];
+
+    /// <summary>Playing is about to start (FFmpeg seeks and starts): the window says so until the first picture.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BusyText))]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    private bool _isBuffering;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BusyText))]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    private bool _isAddingMusic;
+
     /// <summary>The track selected in the sequence: a piece's pictures, its sound, or the music.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DeleteText))]
@@ -224,7 +241,10 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _canUndo;
     [ObservableProperty] private bool _canRedo;
     [ObservableProperty] private bool _hasGaps;
-    [ObservableProperty] private bool _isFindingSilence;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BusyText))]
+    [NotifyPropertyChangedFor(nameof(IsBusy))]
+    private bool _isFindingSilence;
 
     /// <summary>A short note after an action (silences removed, nowhere to cut), shown for a moment.</summary>
     [ObservableProperty]
@@ -258,6 +278,22 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
 
     public bool HasStatusNotice => !string.IsNullOrWhiteSpace(StatusNotice);
     public bool HasMusic => Music is not null;
+
+    /// <summary>What the window is busy with ("Preparing…" before the clip plays), or empty.</summary>
+    public string BusyText => IsBuffering ? _loc["clip.preparing"]
+        : IsFindingSilence ? _loc["clip.finding_silence"]
+        : IsAddingMusic ? _loc["clip.loading_music"]
+        : "";
+
+    public bool IsBusy => IsBuffering || IsFindingSilence || IsAddingMusic;
+
+    /// <summary>"3 pieces selected" when several are, else empty.</summary>
+    public string SelectionText => SelectedIndices.Count > 1 ? _loc.Format("clip.selected_count", SelectedIndices.Count) : "";
+
+    /// <summary>The pieces the piece actions apply to: the selection, or the current piece.</summary>
+    public IReadOnlyList<int> Targets =>
+        SelectedIndices.Count > 0 ? SelectedIndices.Where(i => i < Pieces.Count).ToList()
+        : CurrentPiece >= 0 ? [CurrentPiece] : [];
     public bool IsMusicSelected => SelectedLane == ClipLane.Music && HasMusic;
     public bool HasMessage => !string.IsNullOrEmpty(Message);
     public bool IsEditing => !IsFinished;
@@ -284,7 +320,9 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         : Pieces.Count > 0 ? 0 : -1;
 
     /// <summary>What Delete does to the selection: cut a piece out, close its gap, put it back, mute its sound, take the music away.</summary>
-    public string DeleteText => _loc[DeleteKey()];
+    public string DeleteText => SelectedIndices.Count > 1 && !IsMusicSelected
+        ? $"{_loc[DeleteKey()]} ({SelectedIndices.Count})"
+        : _loc[DeleteKey()];
 
     private string DeleteKey()
     {
@@ -313,8 +351,15 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             StopPlaying();
             if (IsMusicSelected)
                 _cutter.SetMusicVolume(value);
-            else if (CurrentPiece >= 0)
-                _cutter.SetVolume(CurrentPiece, value);
+            else
+            {
+                var targets = Targets;
+                _cutter.Batch(() =>
+                {
+                    foreach (var index in targets)
+                        _cutter.SetVolume(index, value);
+                }, join: "volume " + string.Join(",", targets));
+            }
         }
     }
 
@@ -327,7 +372,12 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             if (_syncing || _cutter is null || CurrentPiece < 0)
                 return;
             StopPlaying();
-            _cutter.SetMuted(CurrentPiece, value);
+            var targets = Targets;
+            _cutter.Batch(() =>
+            {
+                foreach (var index in targets)
+                    _cutter.SetMuted(index, value);
+            });
         }
     }
 
@@ -346,7 +396,12 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             if (_syncing || _cutter is null || CurrentPiece < 0 || value is null)
                 return;
             StopPlaying();
-            _cutter.SetSpeed(CurrentPiece, value.Value);
+            var targets = Targets;
+            _cutter.Batch(() =>
+            {
+                foreach (var index in targets)
+                    _cutter.SetSpeed(index, value.Value);
+            });
         }
     }
 
@@ -496,6 +551,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         Duration = video.Duration;
         ViewEnd = video.Duration;
         SelectedLane = ClipLane.Video;
+        SelectedIndices = [];
         UseCutter(new ClipCutter(video.Duration, new ClipRange(0, Math.Min(video.Duration, FirstClipLength))));
         ActiveHandle = ClipHandle.Start;
         Playhead = 0;
@@ -604,6 +660,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
                 ScheduleDetail();
             if (SelectedIndex >= Pieces.Count)
                 SelectedIndex = Pieces.Count - 1;
+            if (SelectedIndices.Any(i => i >= Pieces.Count))
+                SelectedIndices = SelectedIndices.Where(i => i < Pieces.Count).ToList();
             OnPropertyChanged(nameof(SelectedVolume));
             OnPropertyChanged(nameof(VolumeText));
             OnPropertyChanged(nameof(SelectedSpeed));
@@ -669,6 +727,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             OnPropertyChanged(nameof(SelectedSpeed));
             OnPropertyChanged(nameof(DeleteText));
             OnPropertyChanged(nameof(IsCurrentMuted));
+            OnPropertyChanged(nameof(Targets));
         }
         finally
         {
@@ -679,14 +738,83 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     // ───────────────────────── The sequence ─────────────────────────
 
     /// <summary>A piece (or the music) clicked in the sequence: it is what the volume, speed and Delete apply to.</summary>
-    public void SelectPiece(int index, ClipLane lane)
+    public void SelectPiece(int index, ClipLane lane) => SelectPiece(index, lane, ClipSelect.Only);
+
+    /// <summary>
+    /// A piece clicked: <see cref="ClipSelect.Only"/> selects it alone, <see cref="ClipSelect.Toggle"/> (Ctrl) adds it
+    /// to the selection or takes it out, <see cref="ClipSelect.Range"/> (Shift) selects every piece from the last one
+    /// clicked to it.
+    /// </summary>
+    public void SelectPiece(int index, ClipLane lane, ClipSelect mode)
     {
         if (!CanEdit)
             return;
         SelectedLane = lane;
-        if (lane != ClipLane.Music)
-            SelectedIndex = index;
+        if (lane == ClipLane.Music || index < 0 || index >= Pieces.Count)
+        {
+            SelectedIndices = [];
+            RefreshPieceControls();
+            return;
+        }
+        var anchor = SelectedIndex >= 0 && SelectedIndex < Pieces.Count ? SelectedIndex : index;
+        SelectedIndices = mode switch
+        {
+            ClipSelect.Toggle => SelectedIndices.Contains(index)
+                ? SelectedIndices.Where(i => i != index).ToList()
+                : [.. SelectedIndices.Append(index).Order()],
+            ClipSelect.Range => Enumerable.Range(Math.Min(anchor, index), Math.Abs(anchor - index) + 1)
+                .Where(i => Pieces[i].State != ClipPieceState.Removed).ToList(),
+            _ => [index],
+        };
+        if (mode != ClipSelect.Range)
+            SelectedIndex = SelectedIndices.Contains(index) ? index : SelectedIndices.LastOrDefault(-1);
         RefreshPieceControls();
+    }
+
+    /// <summary>
+    /// The pieces a drag across the sequence covered, from <paramref name="from"/> to <paramref name="to"/> seconds
+    /// into the clip, selected (added to the selection with <paramref name="add"/>, Ctrl).
+    /// </summary>
+    public void SelectAcross(double from, double to, ClipLane lane, bool add = false)
+    {
+        if (!CanEdit || lane == ClipLane.Music)
+            return;
+        var (low, high) = (Math.Min(from, to), Math.Max(from, to));
+        var covered = new List<int>();
+        var at = 0.0;
+        for (var i = 0; i < Pieces.Count; i++)
+        {
+            var length = Pieces[i].Length;
+            if (length > 0 && at < high && at + length > low)
+                covered.Add(i);
+            at += length;
+        }
+        SelectedLane = lane;
+        SelectedIndices = add ? [.. SelectedIndices.Union(covered).Order()] : covered;
+        if (covered.Count > 0)
+            SelectedIndex = covered[^1];
+        RefreshPieceControls();
+    }
+
+    /// <summary>Ctrl+A: every piece of the clip (gaps too) selected.</summary>
+    [RelayCommand]
+    public void SelectAll()
+    {
+        if (!CanEdit)
+            return;
+        SelectedLane = ClipLane.Video;
+        SelectedIndices = Enumerable.Range(0, Pieces.Count).Where(i => Pieces[i].State != ClipPieceState.Removed).ToList();
+        RefreshPieceControls();
+    }
+
+    /// <summary>Back to the one piece clicked last (Esc with several selected). False when there were not several.</summary>
+    public bool CollapseSelection()
+    {
+        if (SelectedIndices.Count <= 1)
+            return false;
+        SelectedIndices = SelectedIndex >= 0 ? [SelectedIndex] : [];
+        RefreshPieceControls();
+        return true;
     }
 
     /// <summary>The playhead put in the sequence, <paramref name="seconds"/> into the clip as it plays.</summary>
@@ -762,6 +890,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         StopPlaying();
         var cutter = _cutter;
         var ct = _fileCts.Token;
+        IsAddingMusic = true;
         try
         {
             var length = await _frames.ReadSoundLengthAsync(path, ct);
@@ -782,6 +911,10 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         {
             _log?.LogWarning(ex, "Could not add {File} as music", path);
             ShowMessage(_loc["clip.no_music"]);
+        }
+        finally
+        {
+            IsAddingMusic = false;
         }
     }
 
@@ -893,6 +1026,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             default:
                 Playhead = Math.Clamp(seconds, 0, Duration);
                 SelectedIndex = _cutter.IndexAt(Playhead);
+                if (SelectedIndices.Count > 0 && !SelectedIndices.Contains(SelectedIndex))
+                    SelectedIndices = [];
                 if (SelectedLane == ClipLane.Music)
                     SelectedLane = ClipLane.Video;
                 break;
@@ -982,16 +1117,27 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             RemoveMusic();
             return;
         }
-        if (CurrentPiece is var index && index < 0)
+        var targets = Targets;
+        if (targets.Count == 0)
             return;
-        var piece = Pieces[index];
-        if (piece.State == ClipPieceState.Blank)
-            _cutter.CloseGap(index);
-        else if (piece.State == ClipPieceState.Removed)
-            _cutter.Restore(index);
-        else if (SelectedLane == ClipLane.Audio)
-            _cutter.SetMuted(index, !piece.Muted);
-        else if (!_cutter.Remove(index, closeUp))
+        var first = Pieces[targets[0]];
+        var refused = false;
+        _cutter.Batch(() =>
+        {
+            foreach (var index in targets)
+            {
+                var piece = _cutter.Pieces[index];
+                if (piece.State == ClipPieceState.Blank)
+                    _cutter.CloseGap(index);
+                else if (piece.State == ClipPieceState.Removed)
+                    _cutter.Restore(index);
+                else if (SelectedLane == ClipLane.Audio)
+                    _cutter.SetMuted(index, !first.Muted);
+                else if (!_cutter.Remove(index, closeUp))
+                    refused = true;
+            }
+        });
+        if (refused)
             ShowMessage(_loc["clip.last_piece"]);
         OnPropertyChanged(nameof(DeleteText));
     }
@@ -1105,6 +1251,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         var cts = CancellationTokenSource.CreateLinkedTokenSource(_fileCts.Token);
         _playCts = cts;
         IsPlaying = true;
+        IsBuffering = true;
         ActiveHandle = ClipHandle.Playhead;
         Playhead = edit.SourceTimeAt(from);
         var path = _files[CurrentIndex];
@@ -1127,6 +1274,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             {
                 _playCts = null;
                 IsPlaying = false;
+                IsBuffering = false;
                 if (!_closed && !cts.IsCancellationRequested)
                     SchedulePreview(immediately: true);
             }
@@ -1142,6 +1290,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         _playCts = null;
         cts.Cancel();
         IsPlaying = false;
+        IsBuffering = false;
         if (!_closed)
             SchedulePreview(immediately: true);
     }
@@ -1168,6 +1317,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             if (ct.IsCancellationRequested || _closed)
                 return;
             SetPreview(bitmap, own: false);
+            IsBuffering = false;
             Playhead = sourceTime;
         });
     }
@@ -1389,6 +1539,8 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(PlayToolTip));
         OnPropertyChanged(nameof(FastToolTip));
         OnPropertyChanged(nameof(DeleteText));
+        OnPropertyChanged(nameof(BusyText));
+        OnPropertyChanged(nameof(SelectionText));
     }
 
     private static void TryDelete(string path)

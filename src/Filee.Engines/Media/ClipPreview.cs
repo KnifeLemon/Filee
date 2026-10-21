@@ -84,12 +84,15 @@ public static partial class ClipPreview
             }
 
             var frame = new byte[width * frameHeight * 4];
-            var clock = Stopwatch.StartNew();
+            // The clock starts with the first picture: FFmpeg takes a moment to seek and start, and pictures counted
+            // from before that would all be late (and skipped) until it caught up.
+            Stopwatch? clock = null;
             var delay = player is null ? TimeSpan.Zero : SoundStart;
             for (var n = 0; !stop.IsCancellationRequested; n++)
             {
                 if (!await ReadFully(pictures.StandardOutput.BaseStream, frame, stop.Token).ConfigureAwait(false))
                     break;
+                clock ??= Stopwatch.StartNew();
                 var due = delay + TimeSpan.FromSeconds((double)n / Fps);
                 var wait = due - clock.Elapsed;
                 if (wait > TimeSpan.Zero)

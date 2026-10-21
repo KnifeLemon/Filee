@@ -342,6 +342,34 @@ public class ClipCutterTests
         Assert.Equal((0.0, 2.0), (edit.Clamped(100).Music!.Offset, edit.Clamped(100).Music!.Volume));
     }
 
+    [Fact]
+    public void Several_changes_in_a_batch_are_one_undo_step()
+    {
+        var cutter = Cutter();
+        cutter.Split(70);
+        cutter.Split(80);
+        var told = 0;
+        cutter.Changed += () => told++;
+        cutter.Batch(() =>
+        {
+            cutter.Remove(0, closeUp: false);
+            cutter.Remove(2, closeUp: false);
+            cutter.SetVolume(1, 1.5);
+        });
+        Assert.Equal(1, told);
+        Assert.Equal([ClipPieceState.Blank, ClipPieceState.Kept, ClipPieceState.Blank], cutter.Pieces.Select(p => p.State));
+        Assert.True(cutter.Undo());
+        Assert.All(cutter.Pieces, p => Assert.True(p.IsKept && p.Volume == 1));
+        Assert.Equal(2, cutter.Pieces.Count(p => p.Start > 60)); // the cuts stay: they were made before
+        // A batch that changes nothing leaves nothing to undo.
+        var steps = 0;
+        while (cutter.Undo())
+            steps++;
+        cutter.Batch(() => cutter.SetVolume(0, 1));
+        Assert.False(cutter.CanUndo);
+        Assert.Equal(2, steps);
+    }
+
     // ───────────────────────── The edit ─────────────────────────
 
     private static ClipEdit Edit() => new()
