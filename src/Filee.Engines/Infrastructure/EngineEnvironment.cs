@@ -79,6 +79,7 @@ public sealed class EngineEnvironment(string dataDirectory)
     {
         ["libreoffice"] = [windows ? "soffice.exe" : "soffice"],
         ["pandoc"] = [windows ? "pandoc.exe" : "pandoc"],
+        ["indra"] = [windows ? "indra-ocr.exe" : "indra-ocr"],
         ["ghostscript"] = [windows ? "gswin64c.exe" : "gs"],
         ["ffmpeg"] = windows ? ["ffmpeg.exe", "ffprobe.exe"] : ["ffmpeg", "ffprobe"],
         ["calibre"] = [windows ? "ebook-convert.exe" : "ebook-convert"],

@@ -44,6 +44,9 @@ public static class EngineDownloads
         new("ghostscript", OperatingSystem.IsWindows() ? ["ghostscript", "vcruntime"] : ["ghostscript"], 31_000_000, ["ghostscript"]),
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
+        // Indra ships as a Python package and downloads its own models; Filee therefore offers its Settings card and
+        // lets the user choose/find a local command, but does not install Python or model weights itself.
+        new("indra", [], 76_000_000, ["indra"]),
     ];
 
     /// <summary>Total download size of a package in bytes.</summary>

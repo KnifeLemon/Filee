@@ -59,7 +59,11 @@ public sealed partial class EnginePackageState : ObservableObject
             var system = OperatingSystem.IsMacOS() ? "macos" : OperatingSystem.IsLinux() ? "linux" : "windows";
             var key = $"engines.guidance.{system}.{Package.Id}";
             var text = _loc[key];
-            return text != key ? text : _loc.Format($"engines.guidance.{system}", Name);
+            if (text != key)
+                return text;
+            var shared = $"engines.guidance.{Package.Id}";
+            text = _loc[shared];
+            return text != shared ? text : _loc.Format($"engines.guidance.{system}", Name);
         }
     }
 
@@ -77,7 +81,8 @@ public sealed partial class EnginePackageState : ObservableObject
     private bool _isOutdated;
 
     /// <summary>The version Filee downloads now, e.g. "8.0" for FFmpeg (the package's main component).</summary>
-    public string? Version => EngineDownloads.Components.TryGetValue(Package.Components[0], out var component) ? component.Version : null;
+    public string? Version => Package.Components.FirstOrDefault() is { } id && EngineDownloads.Components.TryGetValue(id, out var component)
+        ? component.Version : null;
 
     /// <summary>Filee's download is installed in an older version than the one Filee downloads now.</summary>
     public bool CanUpdate => Status == EnginePackageStatus.Installed && IsOutdated && EngineDownloads.CanDownload(Package);

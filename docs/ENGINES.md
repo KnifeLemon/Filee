@@ -19,6 +19,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWPX writer** | built in | **DOCX (+ DOCM/DOTX/DOTM), XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, HWPX, TXT, Markdown → HWPX** (and with rhwp → PDF and images); ODT, RTF, reStructuredText, LaTeX → HWPX with Pandoc |
 | **DOCX writer** | built in | **HWPX (and HWP through rhwp), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
+| Indra OCR | **optional local install** (Python command) | **PDF → structured Markdown**, including scans: reads a usable text layer and OCRs what is missing; recognises headings, lists and simple tables locally on the CPU |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard ↔ CSV**; spreadsheets and contacts reach JSON / YAML / TOML / XML through CSV |
@@ -90,6 +91,12 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   zstd tarball, of which only `Library/bin` is unpacked (SharpCompress; `fetch-engines.ps1` uses Windows' `tar.exe`).
   Its fonts and resources are compiled into `gsdll64.dll`. The Microsoft C++ runtime it was built against
   (`vcruntime` component) is copied next to `gswin64c.exe`, so it runs on PCs without the VC++ Redistributable.
+- Indra is deliberately not bundled or downloaded by Filee: it is a Python package which fetches its own model files.
+  Install it with `pipx install indra-ocr` (or `pip install --user indra-ocr`), then choose `indra-ocr` with *Use my
+  copy…* or let Filee find it on `PATH`. The initial model download is about 76 MB. Indra's code is Apache-2.0, while
+  its model weights use the modified OpenRAIL-M licence; Filee never redistributes either. It runs in `--mode auto`,
+  which preserves usable PDF text and OCRs missing regions. Complex tables and degraded handwriting can still need a
+  manual check.
 
 ### Microsoft C++ runtime (Windows)
 

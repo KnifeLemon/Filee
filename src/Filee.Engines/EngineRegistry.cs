@@ -53,6 +53,7 @@ public static class EngineRegistry
         new IcnsConverter(),
         new FontConverter(),
         new DocxWriterConverter(),
+        new IndraConverter(),
         new PdfTextConverter(),
         new PdfSlidesConverter(),
         new EmlConverter(),

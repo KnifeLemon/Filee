@@ -53,11 +53,12 @@ public sealed class EngineInstaller
     }
 
     /// <summary>True when every component is installed (any version).</summary>
-    public bool IsInstalled(EnginePackage package) => package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
+    public bool IsInstalled(EnginePackage package) => package.Components.Count > 0
+        && package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
 
     /// <summary>True when every component is installed in the version engines.json pins.</summary>
-    public bool IsUpToDate(EnginePackage package) =>
-        package.Components.All(c => _components.TryGetValue(c, out var component)
+    public bool IsUpToDate(EnginePackage package) => package.Components.Count > 0
+        && package.Components.All(c => _components.TryGetValue(c, out var component)
             && string.Equals(Marker(c), component.Sha256, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Downloads and unpacks the components that are missing or outdated.</summary>
