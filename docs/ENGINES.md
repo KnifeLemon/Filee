@@ -8,6 +8,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows) and the photo of an iPhone LIVP read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF |
+| CorelDRAW | built in | **CDR → CDR as CorelDRAW 2022 (24.0)**: rewrites the version records only; a file already at 24.0 or older is copied unchanged |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF, merge, split, page ranges, **compression** (smaller PDFs, see below) |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
@@ -240,6 +241,18 @@ pinned source in `build/build-linux-native.py` like rhwp (PR #113 did this for S
   nothing extra; PostScript-based ones need Ghostscript.
 - EPS and PS → PNG go straight through Ghostscript's `pngalpha` device, so the background stays transparent;
   JPG, WebP, … and AI reach images through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
+
+## CorelDRAW version downgrade (CDR → CDR)
+
+`Corel/CorelDrawConverter.cs` makes a newer CDR look like CorelDRAW 2022 (24.0) without touching the drawing.
+It rewrites the `fver` and `vrsn` records of `content/root.dat`, the versions in `META-INF/metadata.xml`, and
+`styles/document.cdss`; entries and their order, compression and data stay as they were (`mimetype` stays first
+and stored). A file whose version record is already 24.0 or older is copied byte for byte. The preset saves
+`<name>_v24.cdr`.
+
+This does not convert features added after CorelDRAW 2022 or repair an incompatible file: it changes what the
+file says its version is. The output is verified to carry the 24.0 record, but opening it in CorelDRAW 2022 is
+outside Filee's test suite.
 
 ## Tracing (raster images → SVG)
 

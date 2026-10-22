@@ -403,6 +403,16 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
+        // v33: built-in "cdr" engine (CorelDRAW 2022 downgrade), after the vector engine as in a new library.
+        if (settings.SchemaVersion < 33 && !settings.EnginePriority.Contains("cdr"))
+        {
+            var vector = settings.EnginePriority.IndexOf("vector");
+            if (vector >= 0)
+                settings.EnginePriority.Insert(vector + 1, "cdr");
+            else
+                InsertBefore(settings.EnginePriority, "cdr", settings.EnginePriority.Contains("icns") ? "icns" : "pandoc");
+        }
+
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
 
@@ -750,6 +760,18 @@ internal static class SettingsMigrations
         // v32: logs and script source, Video CD DAT and Workbench archives learn their donuts; custom claims stay put.
         if (from < 32)
             changed |= LearnExtensions(profiles, out _, ["log", "py", "pac", "bat", "command", "dat", "wbpz"]);
+        // v33: CDR -> CDR saved as CorelDRAW 2022 (24.0), on the vector donut after SVG. A donut the user filled up,
+        //      or a library without the preset, stays as it is.
+        if (from < 33)
+        {
+            if (presets.All(p => p.Id != "cdr-v24"))
+            {
+                var at = presets.FindIndex(p => p.Id == "to-eps");
+                presets.Insert(at < 0 ? presets.Count : at + 1, BuiltInData.CreatePresets().Single(p => p.Id == "cdr-v24"));
+                changed = true;
+            }
+            changed |= Offer(presets, profiles, "vector", "cdr-v24", "to-svg");
+        }
         return changed;
     }
 

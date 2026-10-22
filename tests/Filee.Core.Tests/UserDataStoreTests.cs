@@ -54,6 +54,35 @@ public class UserDataStoreTests
     }
 
     [Fact]
+    public void Schema_33_adds_the_coreldraw_downgrade_to_an_existing_library()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        store.Presets.RemoveAll(p => p.Id == "cdr-v24");
+        store.Profiles.Single(p => p.Id == "vector").PresetIds.Remove("cdr-v24");
+        store.Settings.EnginePriority.Remove("cdr");
+        store.Settings.SchemaVersion = 32;
+        store.SaveLibrary();
+        store.SaveSettings();
+
+        var upgraded = new UserDataStore(dir.Path);
+        upgraded.Load();
+
+        Assert.NotNull(upgraded.FindPreset("cdr-v24"));
+        Assert.Contains("cdr-v24", upgraded.Profiles.Single(p => p.Id == "vector").PresetIds);
+        Assert.Contains("cdr", upgraded.Settings.EnginePriority);
+        Assert.Equal(33, upgraded.Settings.SchemaVersion);
+
+        // Once upgraded, removing the slice from a donut must survive the next load.
+        upgraded.Profiles.Single(p => p.Id == "vector").PresetIds.Remove("cdr-v24");
+        upgraded.SaveLibrary();
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+        Assert.DoesNotContain("cdr-v24", reloaded.Profiles.Single(p => p.Id == "vector").PresetIds);
+    }
+
+    [Fact]
     public void Groups_keep_only_conversions_once_and_at_most_six()
     {
         using var dir = new TempDir();
@@ -415,7 +444,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "pdf-slides", "email", "data", "vector", "icns", "font", "cad", "model3d", "geo", "archive", "ebook", "subtitle", "wic", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "pdf-slides", "email", "data", "vector", "cdr", "icns", "font", "cad", "model3d", "geo", "archive", "ebook", "subtitle", "wic", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
@@ -467,7 +496,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "pdf-slides", "email", "data", "vector", "icns", "font", "cad", "model3d", "geo", "archive", "ebook", "subtitle", "wic", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer", "pdf-text", "pdf-slides", "email", "data", "vector", "cdr", "icns", "font", "cad", "model3d", "geo", "archive", "ebook", "subtitle", "wic", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice"], store.Settings.EnginePriority);
         var ids = store.Profiles.Select(p => p.Id).ToList();
         Assert.Equal(ids.IndexOf("office") + 1, ids.IndexOf("spreadsheets"));
         Assert.Equal(ids.IndexOf("office") + 2, ids.IndexOf("presentations"));
@@ -643,7 +672,7 @@ public class UserDataStoreTests
         // ... and, from schema 15, the 3D model engine before Pandoc (no CAD or archive engine in this list), from
         // schema 18 the PDF slides engine there too (no PDF text engine), from schema 21 the WIC engine (no FFmpeg),
         // from schema 25 the geospatial engine after the 3D models engine.
-        Assert.Equal(["magick", "email", "data", "vector", "model3d", "geo", "pdf-slides", "wic", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "email", "data", "vector", "cdr", "model3d", "geo", "pdf-slides", "wic", "pandoc", "libreoffice"], store.Settings.EnginePriority);
     }
 
     [Fact]
@@ -927,7 +956,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "cad", "model3d", "geo", "archive", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "cad", "model3d", "geo", "archive", "cdr", "pandoc", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
@@ -1181,7 +1210,7 @@ public class UserDataStoreTests
         var store = new UserDataStore(dir.Path);
         store.Load();
 
-        Assert.Equal(["magick", "pdfium", "docx-writer", "pdf-text", "pdf-slides", "email", "geo", "wic", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "pdfium", "docx-writer", "pdf-text", "pdf-slides", "email", "geo", "wic", "cdr", "pandoc", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
@@ -1196,7 +1225,7 @@ public class UserDataStoreTests
         store.Load();
 
         // Not near the top: the HWPX writer stays among the ranks that win ties (see EbookTests).
-        Assert.Equal(["magick", "pdfium", "hwpx-writer", "subtitle", "wic", "ffmpeg", "geo", "pandoc", "libreoffice"], store.Settings.EnginePriority);
+        Assert.Equal(["magick", "pdfium", "hwpx-writer", "subtitle", "wic", "ffmpeg", "geo", "cdr", "pandoc", "libreoffice"], store.Settings.EnginePriority);
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 

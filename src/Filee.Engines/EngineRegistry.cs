@@ -3,6 +3,7 @@
 using Filee.Core.Conversion;
 using Filee.Engines.Archives;
 using Filee.Engines.Cad;
+using Filee.Engines.Corel;
 using Filee.Engines.Data;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
@@ -50,6 +51,7 @@ public static class EngineRegistry
         new HwpxConverter(),
         new ArchiveConverter(),
         new VectorConverter(),
+        new CorelDrawConverter(),
         new IcnsConverter(),
         new FontConverter(),
         new DocxWriterConverter(),

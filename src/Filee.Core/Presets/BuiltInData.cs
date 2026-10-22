@@ -232,6 +232,11 @@ public static class BuiltInData
         new() { Id = "to-icns", Name = "ICNS", TargetFormat = "icns" },
         new() { Id = "to-svg", Name = "SVG", TargetFormat = "svg" },
         new() { Id = "to-eps", Name = "EPS", TargetFormat = "eps" },
+        new()
+        {
+            Id = "cdr-v24", Name = "CorelDRAW 2022", TargetFormat = "cdr",
+            Output = { FileNamePattern = "{name}_v24" },
+        },
 
         // Office and text
         new() { Id = "to-ods", Name = "ODS", TargetFormat = "ods" },
@@ -473,7 +478,7 @@ public static class BuiltInData
         {
             Id = "vector", NameKey = "profile.vector",
             Extensions = ExtensionsOf(FormatCategory.Vector),
-            PresetIds = ["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp", "to-eps"],
+            PresetIds = ["to-png", "to-pdf", "to-svg", "cdr-v24", "to-jpg", "to-webp", "to-eps"],
             BackPresetIds = ["to-tiff", "to-ico", "to-icns", "to-avif", "to-dxf", "merge-pdf", "zip-all"],
         },
         new()

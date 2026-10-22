@@ -112,7 +112,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 32;
+    public const int CurrentSchemaVersion = 33;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -183,7 +183,7 @@ public sealed class AppSettings
     public List<string> EnginePriority { get; set; } =
     [
         "magick", "pdfium", "pdfsharp", "rhwp", "unhwp", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer",
-        "pdf-text", "pdf-slides", "email", "data", "vector", "icns", "font", "cad", "model3d", "geo", "archive", "ebook",
+        "pdf-text", "pdf-slides", "email", "data", "vector", "cdr", "icns", "font", "cad", "model3d", "geo", "archive", "ebook",
         "subtitle", "wic", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice",
     ];
 

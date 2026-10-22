@@ -64,7 +64,7 @@ public static class FormatRegistry
         new("ai", "AI", FormatCategory.Vector, ["ai"], Writable: false),
         new("emf", "EMF", FormatCategory.Vector, ["emf"]),
         new("wmf", "WMF", FormatCategory.Vector, ["wmf"]),
-        new("cdr", "CDR", FormatCategory.Vector, ["cdr"], Writable: false),
+        new("cdr", "CDR", FormatCategory.Vector, ["cdr"]),
         new("cgm", "CGM", FormatCategory.Vector, ["cgm"], Writable: false),
         new("vsd", "VSD", FormatCategory.Vector, ["vsd", "vsdx"], Writable: false),
         new("odg", "ODG", FormatCategory.Vector, ["odg"]),
