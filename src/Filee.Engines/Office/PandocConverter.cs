@@ -122,15 +122,24 @@ public sealed class PandocConverter : IConverter
         List<string> args = [step.InputPath, "-f", Readers[step.From], "-t", Writers[step.To], "-o", output];
         if (Standalone.Contains(step.To))
             args.Add("--standalone");
+        // Pictures go into "<name>_files" next to the output, linked relative to it (#391): Pandoc writes the links as
+        // --extract-media is given, so it runs in the output's folder and finds the input's own pictures through
+        // --resource-path. With an absolute folder the links broke as soon as the file was moved.
+        var inputFolder = Path.GetDirectoryName(Path.GetFullPath(step.InputPath))!;
+        var workingDirectory = inputFolder;
         if (step.To == "md" && step.Preset.Document.LeaveOutPictures)
+        {
             args.Add("--lua-filter=" + WithoutPictures(step.WorkDirectory));
+        }
         else if (ExtractsMedia.Contains(step.To))
-            args.Add("--extract-media=" + Path.Combine(Path.GetDirectoryName(output)!, Path.GetFileNameWithoutExtension(output) + "_files"));
+        {
+            args.AddRange(["--extract-media=" + Path.GetFileNameWithoutExtension(output) + "_files", "--resource-path=" + inputFolder]);
+            workingDirectory = Path.GetDirectoryName(Path.GetFullPath(output))!;
+        }
 
         ProcessResult result;
         using (ProgressEstimate.Start(progress, TimeSpan.FromSeconds(1.5)))
-            result = await ProcessRunner.RunAsync(pandoc, args, Timeout, cancellationToken,
-                workingDirectory: Path.GetDirectoryName(Path.GetFullPath(step.InputPath)));
+            result = await ProcessRunner.RunAsync(pandoc, args, Timeout, cancellationToken, workingDirectory: workingDirectory);
         if (!File.Exists(output))
             throw new InvalidOperationException($"Pandoc failed (exit {result.ExitCode}). {result.StandardError.Trim()}");
         progress?.Report(1);

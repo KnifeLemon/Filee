@@ -1193,8 +1193,9 @@ DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`)
 - Extensions that mean other things are not claimed: man pages only as `.man` (`.1` … `.9` are also rotated logs,
   `app.log.1`), DocBook as `.dbk` / `.docbook`, never every `.xml`.
 - DocBook, man pages, OPML, Typst, HTML and LaTeX are written with `--standalone` (a root element, a `.TH` header,
-  a preamble), the text formats extract pictures into `<name>_files` next to the result (Markdown with *Leave out
-  pictures* gets none: a Lua filter drops them).
+  a preamble), the text formats extract pictures into `<name>_files` next to the result and link them relative to it
+  (Pandoc runs in the result's folder with `--resource-path` set to the input's, so the result can be moved with its
+  folder, #391; Markdown with *Leave out pictures* gets none: a Lua filter drops them).
 
 ## Subtitles
 

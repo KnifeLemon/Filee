@@ -192,8 +192,13 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
         File.Delete(source);
         Assert.Equal("pandoc", Assert.Single(fx.Catalog.CreatePlanner().Plan("docx", "md")!.Steps).Converter.Id);
 
-        var withPictures = await File.ReadAllTextAsync(await ConvertAsync(docx, "md"), TestContext.Current.CancellationToken);
-        Assert.Contains("memo_files", withPictures);
+        var markdown = await ConvertAsync(docx, "md");
+        var withPictures = await File.ReadAllTextAsync(markdown, TestContext.Current.CancellationToken);
+        // Linked relative to the Markdown file, so it can be moved with its folder (#391).
+        // ![](link) or <img src="link" style="width:…"> when the picture has a size.
+        var link = System.Text.RegularExpressions.Regex.Match(withPictures, @"(?:!\[[^\]]*\]\(<?|src="")([^)>""]+)").Groups[1].Value;
+        Assert.True(link.StartsWith("memo_files/", StringComparison.Ordinal), withPictures);
+        Assert.True(File.Exists(Path.Combine(Path.GetDirectoryName(markdown)!, link)), link);
 
         var job = await fx.ConvertAsync([docx], new Preset { TargetFormat = "md", Document = { LeaveOutPictures = true } });
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
