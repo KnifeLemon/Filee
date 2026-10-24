@@ -16,6 +16,11 @@
     <Style Selector="Border.chip.dimmed">
       <Setter Property="Opacity" Value="0.55" />
     </Style>
+    <!-- A chip reached with Tab shows where the keyboard is: Enter adds it, Shift+F10 edits it. -->
+    <Style Selector="Border.chip:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+    </Style>
     <Style Selector="Border#PaletteBox.over">
       <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
       <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
@@ -417,7 +422,8 @@
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:PaletteChip">
                   <Border Classes="chip" Classes.dimmed="{Binding IsDimmed}" ToolTip.Tip="{Binding Reason}"
-                          PointerPressed="OnChipPressed" DoubleTapped="OnChipDoubleTapped">
+                          PointerPressed="OnChipPressed" DoubleTapped="OnChipDoubleTapped"
+                          Focusable="True" KeyDown="OnChipKeyDown" AutomationProperties.Name="{Binding Label}">
                     <!-- A chip wider than the palette ends its caption with "…" instead of being cut at the edge. -->
                     <DockPanel>
                       <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />

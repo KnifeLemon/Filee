@@ -126,6 +126,24 @@ public partial class ToolbarPage : UserControl
             vm.Insert(chip.PresetId, vm.SliceCount);
     }
 
+    /// <summary>The keyboard's double- and right-click on a chip: Enter appends it, Shift+F10 or the menu key edits it.</summary>
+    private void OnChipKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (sender is not Border { DataContext: PaletteChip chip } || Vm is not { } vm)
+            return;
+        if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
+        {
+            if (chip.CanAdd)
+                vm.Insert(chip.PresetId, vm.SliceCount);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Apps || (e.Key == Key.F10 && e.KeyModifiers == KeyModifiers.Shift))
+        {
+            _ = vm.EditChipAsync(chip.PresetId);
+            e.Handled = true;
+        }
+    }
+
     private void OnRootPointerMoved(object? sender, PointerEventArgs e)
     {
         if (_drag is null)

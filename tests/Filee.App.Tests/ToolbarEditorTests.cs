@@ -3,6 +3,7 @@
 
 using System.Reflection;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Headless;
@@ -796,6 +797,42 @@ public class PresetAvailabilityTests
         Assert.Contains("test-mp4", vm.SelectedProfile!.Profile.PresetIds);
         Assert.DoesNotContain(vm.Palette, c => c.PresetId == "test-mp4");
         window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_keyboard_adds_a_focused_chip_with_enter_and_edits_it_with_shift_f10()
+    {
+        using var f = new Fixture();
+        using var vm = f.PageWithPalette("png", "mp4");
+        Dispatcher.UIThread.RunJobs();
+        var window = new Window { Width = 1080, Height = 820, Content = new ToolbarPage { DataContext = vm } };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        Border Chip(string id) => window.GetVisualDescendants().OfType<Border>().Single(b => b.DataContext is PaletteChip c && c.PresetId == id);
+
+        var jpg = Chip("test-jpg");
+        Assert.True(jpg.Focus(NavigationMethod.Tab));
+        Assert.Equal(((PaletteChip)jpg.DataContext!).Label, AutomationProperties.GetName(jpg));
+        window.KeyPress(Key.Enter, RawInputModifiers.None, PhysicalKey.Enter, null);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal("test-jpg", vm.SelectedProfile!.Profile.PresetIds[^1]);
+
+        var windows = OpenMain();
+        try
+        {
+            // Opening the main window made it the active one; the keys go to the page's window again.
+            window.Activate();
+            Assert.True(Chip("test-mp4").Focus(NavigationMethod.Tab));
+            window.KeyPress(Key.F10, RawInputModifiers.Shift, PhysicalKey.F10, null);
+            SaveInEditor(windows, "jpg");
+            Dispatcher.UIThread.RunJobs();
+            Assert.Null(vm.Palette.Single(c => c.PresetId == "test-mp4").Reason);
+        }
+        finally
+        {
+            CloseMain(windows);
+            window.Close();
+        }
     }
 
     [AvaloniaFact]
