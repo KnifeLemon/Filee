@@ -331,6 +331,8 @@ public static class FormatRegistry
         new("kmz", "KMZ", FormatCategory.Geo, ["kmz"]),
         new("gpx", "GPX", FormatCategory.Geo, ["gpx"]),
         new("shp", "Shapefile", FormatCategory.Geo, ["shp"]),
+        // Activity files read by the geo engine (issue #451); .fits/.fts stay FITS.
+        new("fit", "Garmin FIT", FormatCategory.Geo, ["fit"], Writable: false),
     ];
 
     private static readonly Dictionary<string, FileFormat> ById =

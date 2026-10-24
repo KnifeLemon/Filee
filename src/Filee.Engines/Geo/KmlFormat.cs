@@ -2,9 +2,13 @@
 // name, description and ExtendedData (Data and SimpleData) as attributes, and Point, LineString, LinearRing, Polygon,
 // MultiGeometry and Google's gx:Track as geometry. Styles, icons, overlays, network links and time spans are not data
 // of the features and are left out. KMZ is a ZIP with the .kml inside (doc.kml first). Writing makes one Document with
-// a Placemark per feature; attributes go to ExtendedData. KML positions are always WGS 84 longitude, latitude, height.
+// a Placemark per feature; attributes go to ExtendedData. A line with a time and a height on every point (a FIT activity)
+// is written as a gx:Track; other timed lines keep their times as coordTimes data. KML positions are always WGS 84
+// longitude, latitude, height.
 
+using System.Globalization;
 using System.IO.Compression;
+using System.Text.Json;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -13,6 +17,7 @@ namespace Filee.Engines.Geo;
 internal static class KmlFormat
 {
     private static readonly XNamespace Kml = "http://www.opengis.net/kml/2.2";
+    private const string Gx = "http://www.google.com/kml/ext/2.2";
 
     /// <summary>The largest .kml a KMZ may hold, declared or really unpacked: a ZIP of a few KB can claim far more.</summary>
     internal const long MaxKmlBytes = 256L << 20;
@@ -254,24 +259,27 @@ internal static class KmlFormat
         foreach (var feature in dataset.Features)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            WritePlacemark(writer, feature);
+            WritePlacemark(writer, feature, dataset.SparseHeights);
         }
         writer.WriteEndElement();
         writer.WriteEndElement();
         writer.WriteEndDocument();
     }
 
-    private static void WritePlacemark(XmlWriter writer, GeoFeature feature)
+    private static void WritePlacemark(XmlWriter writer, GeoFeature feature, bool sparseHeights)
     {
         writer.WriteStartElement("Placemark");
+        var line = feature.Geometry as GeoLineString;
+        var track = line is not null && IsTrack(line);
         var name = feature.FindText("name", "title", "label");
         if (name is not null)
             writer.WriteElementString("name", GeoXml.Clean(name));
         var description = feature.FindText("description", "desc", "comment");
         if (description is not null)
             writer.WriteElementString("description", GeoXml.Clean(description));
-        var extra = feature.Properties.Where(p => !IsNameOrDescription(p.Key, name, description, feature)).ToList();
-        if (extra.Count > 0)
+        var extra = feature.Properties.Where(p => !IsNameOrDescription(p.Key, name, description, feature)
+            && (line?.Times is null || !p.Key.Equals("coordTimes", StringComparison.OrdinalIgnoreCase))).ToList();
+        if (extra.Count > 0 || line?.Times is not null && !track)
         {
             writer.WriteStartElement("ExtendedData");
             var used = new HashSet<string>(StringComparer.Ordinal);
@@ -284,10 +292,18 @@ internal static class KmlFormat
                 writer.WriteElementString("value", GeoXml.Clean(GeoText.ToText(value)));
                 writer.WriteEndElement();
             }
+            if (line?.Times is not null && !track)
+            {
+                writer.WriteStartElement("Data");
+                writer.WriteAttributeString("name", "coordTimes");
+                writer.WriteElementString("value", JsonSerializer.Serialize(line.Times.Select(t =>
+                    t?.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture))));
+                writer.WriteEndElement();
+            }
             writer.WriteEndElement();
         }
         if (feature.Geometry is { } geometry)
-            WriteGeometry(writer, geometry);
+            WriteGeometry(writer, geometry, sparseHeights);
         writer.WriteEndElement();
     }
 
@@ -310,53 +326,70 @@ internal static class KmlFormat
         return null;
     }
 
-    private static void WriteGeometry(XmlWriter writer, GeoGeometry geometry)
+    private static void WriteGeometry(XmlWriter writer, GeoGeometry geometry, bool sparseHeights)
     {
         switch (geometry)
         {
             case GeoPoint point:
                 writer.WriteStartElement("Point");
-                WriteCoordinates(writer, [point.Position]);
+                WriteCoordinates(writer, [point.Position], sparseHeights);
                 writer.WriteEndElement();
                 break;
             case GeoLineString line:
-                writer.WriteStartElement("LineString");
-                WriteCoordinates(writer, line.Points);
+                if (line.Times is { } times && IsTrack(line))
+                {
+                    writer.WriteStartElement("gx", "Track", Gx);
+                    foreach (var time in times)
+                        writer.WriteElementString("when", time!.Value.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
+                    foreach (var point in line.Points)
+                        writer.WriteElementString("gx", "coord", Gx,
+                            $"{GeoText.Degrees(point.X)} {GeoText.Degrees(point.Y)} {GeoText.Height(point.Z)}");
+                }
+                else
+                {
+                    writer.WriteStartElement("LineString");
+                    WriteCoordinates(writer, line.Points, sparseHeights);
+                }
                 writer.WriteEndElement();
                 break;
             case GeoPolygon polygon:
-                WritePolygon(writer, polygon);
+                WritePolygon(writer, polygon, sparseHeights);
                 break;
             default:
                 // Several parts of one feature: MultiGeometry holds the simple geometries.
                 writer.WriteStartElement("MultiGeometry");
                 foreach (var part in geometry.Parts())
-                    WriteGeometry(writer, part);
+                    WriteGeometry(writer, part, sparseHeights);
                 writer.WriteEndElement();
                 break;
         }
     }
 
-    private static void WritePolygon(XmlWriter writer, GeoPolygon polygon)
+    /// <summary>gx:Track needs a time and a height for every point: Google's reference reads gx:coord as
+    /// longitude, latitude and altitude, and a missing height is not made up.</summary>
+    private static bool IsTrack(GeoLineString line) =>
+        line.Times is not null && line.Times.All(t => t.HasValue) && line.Points.All(p => p.HasZ);
+
+    private static void WritePolygon(XmlWriter writer, GeoPolygon polygon, bool sparseHeights)
     {
         writer.WriteStartElement("Polygon");
         for (var i = 0; i < polygon.Rings.Count; i++)
         {
             writer.WriteStartElement(i == 0 ? "outerBoundaryIs" : "innerBoundaryIs");
             writer.WriteStartElement("LinearRing");
-            WriteCoordinates(writer, GeoRings.Oriented(polygon.Rings[i], counterClockwise: i == 0));
+            WriteCoordinates(writer, GeoRings.Oriented(polygon.Rings[i], counterClockwise: i == 0), sparseHeights);
             writer.WriteEndElement();
             writer.WriteEndElement();
         }
         writer.WriteEndElement();
     }
 
-    private static void WriteCoordinates(XmlWriter writer, IReadOnlyList<Coord> points)
+    private static void WriteCoordinates(XmlWriter writer, IReadOnlyList<Coord> points, bool sparseHeights)
     {
         var hasZ = points.Any(p => p.HasZ);
         writer.WriteStartElement("coordinates");
         writer.WriteString(string.Join(' ', points.Select(p =>
-            hasZ ? $"{GeoText.Degrees(p.X)},{GeoText.Degrees(p.Y)},{GeoText.Height(p.HasZ ? p.Z : 0)}" : $"{GeoText.Degrees(p.X)},{GeoText.Degrees(p.Y)}")));
+            hasZ && (!sparseHeights || p.HasZ) ? $"{GeoText.Degrees(p.X)},{GeoText.Degrees(p.Y)},{GeoText.Height(p.HasZ ? p.Z : 0)}" : $"{GeoText.Degrees(p.X)},{GeoText.Degrees(p.Y)}")));
         writer.WriteEndElement();
     }
 }

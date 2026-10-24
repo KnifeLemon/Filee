@@ -210,7 +210,7 @@ internal static class GeoJsonFormat
             cancellationToken.ThrowIfCancellationRequested();
             buffer.Clear();
             writer.Reset(buffer);
-            WriteFeature(writer, dataset.Features[i]);
+            WriteFeature(writer, dataset.Features[i], dataset.SparseHeights);
             writer.Flush();
             if (i > 0)
                 stream.Write(",\n"u8);
@@ -219,24 +219,39 @@ internal static class GeoJsonFormat
         stream.Write("\n]}\n"u8);
     }
 
-    private static void WriteFeature(Utf8JsonWriter writer, GeoFeature feature)
+    private static void WriteFeature(Utf8JsonWriter writer, GeoFeature feature, bool sparseHeights)
     {
         writer.WriteStartObject();
         writer.WriteString("type", "Feature");
         writer.WriteStartObject("properties");
         var written = new HashSet<string>(StringComparer.Ordinal);
+        var times = (feature.Geometry as GeoLineString)?.Times;
         foreach (var (key, value) in feature.Properties)
         {
+            if (times is not null && key.Equals("coordTimes", StringComparison.OrdinalIgnoreCase))
+                continue;
             // A repeated name (two columns that only differ in case elsewhere) would make duplicate JSON keys.
             if (!written.Add(key))
                 continue;
             writer.WritePropertyName(key);
             WriteValue(writer, value);
         }
+        if (times is not null)
+        {
+            writer.WriteStartArray("coordTimes");
+            foreach (var time in times)
+            {
+                if (time is { } value)
+                    writer.WriteStringValue(value.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
+                else
+                    writer.WriteNullValue();
+            }
+            writer.WriteEndArray();
+        }
         writer.WriteEndObject();
         writer.WritePropertyName("geometry");
         if (feature.Geometry is { } geometry)
-            WriteGeometry(writer, geometry);
+            WriteGeometry(writer, geometry, sparseHeights);
         else
             writer.WriteNullValue();
         writer.WriteEndObject();
@@ -270,7 +285,7 @@ internal static class GeoJsonFormat
         }
     }
 
-    private static void WriteGeometry(Utf8JsonWriter writer, GeoGeometry geometry)
+    private static void WriteGeometry(Utf8JsonWriter writer, GeoGeometry geometry, bool sparseHeights)
     {
         writer.WriteStartObject();
         writer.WriteString("type", geometry.TypeName);
@@ -278,7 +293,7 @@ internal static class GeoJsonFormat
         {
             writer.WriteStartArray("geometries");
             foreach (var member in collection.Geometries)
-                WriteGeometry(writer, member);
+                WriteGeometry(writer, member, sparseHeights);
             writer.WriteEndArray();
             writer.WriteEndObject();
             return;
@@ -288,55 +303,55 @@ internal static class GeoJsonFormat
         switch (geometry)
         {
             case GeoPoint point:
-                WritePosition(writer, point.Position, hasZ);
+                WritePosition(writer, point.Position, hasZ, sparseHeights);
                 break;
             case GeoMultiPoint multiPoint:
-                WriteLine(writer, multiPoint.Points, hasZ);
+                WriteLine(writer, multiPoint.Points, hasZ, sparseHeights);
                 break;
             case GeoLineString line:
-                WriteLine(writer, line.Points, hasZ);
+                WriteLine(writer, line.Points, hasZ, sparseHeights);
                 break;
             case GeoMultiLineString lines:
                 writer.WriteStartArray();
                 foreach (var part in lines.Lines)
-                    WriteLine(writer, part, hasZ);
+                    WriteLine(writer, part, hasZ, sparseHeights);
                 writer.WriteEndArray();
                 break;
             case GeoPolygon polygon:
-                WritePolygon(writer, polygon, hasZ);
+                WritePolygon(writer, polygon, hasZ, sparseHeights);
                 break;
             case GeoMultiPolygon polygons:
                 writer.WriteStartArray();
                 foreach (var part in polygons.Polygons)
-                    WritePolygon(writer, part, hasZ);
+                    WritePolygon(writer, part, hasZ, sparseHeights);
                 writer.WriteEndArray();
                 break;
         }
         writer.WriteEndObject();
     }
 
-    private static void WritePolygon(Utf8JsonWriter writer, GeoPolygon polygon, bool hasZ)
+    private static void WritePolygon(Utf8JsonWriter writer, GeoPolygon polygon, bool hasZ, bool sparseHeights)
     {
         writer.WriteStartArray();
         for (var i = 0; i < polygon.Rings.Count; i++)
-            WriteLine(writer, GeoRings.Oriented(polygon.Rings[i], counterClockwise: i == 0), hasZ);
+            WriteLine(writer, GeoRings.Oriented(polygon.Rings[i], counterClockwise: i == 0), hasZ, sparseHeights);
         writer.WriteEndArray();
     }
 
-    private static void WriteLine(Utf8JsonWriter writer, IReadOnlyList<Coord> points, bool hasZ)
+    private static void WriteLine(Utf8JsonWriter writer, IReadOnlyList<Coord> points, bool hasZ, bool sparseHeights)
     {
         writer.WriteStartArray();
         foreach (var point in points)
-            WritePosition(writer, point, hasZ);
+            WritePosition(writer, point, hasZ, sparseHeights);
         writer.WriteEndArray();
     }
 
-    private static void WritePosition(Utf8JsonWriter writer, Coord position, bool hasZ)
+    private static void WritePosition(Utf8JsonWriter writer, Coord position, bool hasZ, bool sparseHeights)
     {
         writer.WriteStartArray();
         writer.WriteRawValue(GeoText.Degrees(position.X));
         writer.WriteRawValue(GeoText.Degrees(position.Y));
-        if (hasZ)
+        if (hasZ && (!sparseHeights || position.HasZ))
             writer.WriteRawValue(GeoText.Height(position.HasZ ? position.Z : 0));
         writer.WriteEndArray();
     }

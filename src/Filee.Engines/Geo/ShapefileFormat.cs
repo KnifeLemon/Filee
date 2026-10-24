@@ -332,10 +332,10 @@ internal static class ShapefileFormat
     };
 
     /// <summary>Writes <paramref name="group"/> as <paramref name="shpPath"/> with its .shx, .dbf, .prj and .cpg beside it.</summary>
-    public static DbfLosses Write(ShapefileGroup group, string shpPath, CancellationToken cancellationToken)
+    public static DbfLosses Write(ShapefileGroup group, string shpPath, CancellationToken cancellationToken, bool dropHeights = false)
     {
         var shapes = group.Records;
-        var hasZ = shapes.Any(r => r.Geometry?.HasZ == true);
+        var hasZ = !dropHeights && shapes.Any(r => r.Geometry?.HasZ == true);
         var multiPoint = group.Kind == ShapeKind.Point && shapes.Any(r => r.Geometry is GeoMultiPoint { Points.Count: not 1 });
         var shapeType = group.Kind switch
         {

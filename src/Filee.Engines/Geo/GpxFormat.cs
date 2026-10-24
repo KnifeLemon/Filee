@@ -2,7 +2,8 @@
 // into a LineString (one segment) or MultiLineString (several), with name, comment, description, source, symbol, type,
 // time and the point's elevation (as the height). "gpx_type" says which of the three a feature was. Per-point times of
 // tracks are not kept. Writing puts Points into waypoints, lines into tracks (or routes when gpx_type says "route"),
-// and the outlines of polygons into tracks, since GPX has no areas; only the fields above survive. GPX is WGS 84.
+// and the outlines of polygons into tracks, since GPX has no areas; only the fields above survive. Writing keeps
+// point times when a line has them. GPX is WGS 84.
 
 using System.Globalization;
 using System.Xml;
@@ -111,7 +112,7 @@ internal static class GpxFormat
             var asRoute = string.Equals(feature.FindText("gpx_type"), "route", StringComparison.OrdinalIgnoreCase);
             // Points become waypoints; every line, and the outline of every polygon, is a segment of the feature's track
             // (or a route of its own), so one feature stays one track.
-            var lines = new List<IReadOnlyList<Coord>>();
+            var lines = new List<GeoLineString>();
             var outlines = false;
             foreach (var part in geometry.Parts())
             {
@@ -121,11 +122,11 @@ internal static class GpxFormat
                         WritePoint(writer, "wpt", point.Position, feature, withFields: true);
                         break;
                     case GeoLineString line:
-                        lines.Add(line.Points);
+                        lines.Add(line);
                         break;
                     case GeoPolygon polygon:
                         lossy = outlines = true;
-                        lines.AddRange(polygon.Rings);
+                        lines.AddRange(polygon.Rings.Select(ring => new GeoLineString(ring)));
                         break;
                 }
             }
@@ -137,7 +138,7 @@ internal static class GpxFormat
         return lossy;
     }
 
-    private static void WriteLines(XmlWriter writer, IReadOnlyList<IReadOnlyList<Coord>> lines, GeoFeature feature, bool route)
+    private static void WriteLines(XmlWriter writer, IReadOnlyList<GeoLineString> lines, GeoFeature feature, bool route)
     {
         if (route)
         {
@@ -146,7 +147,7 @@ internal static class GpxFormat
             {
                 writer.WriteStartElement("rte");
                 WriteFields(writer, feature, trackFields: true);
-                foreach (var point in line)
+                foreach (var point in line.Points)
                     WritePoint(writer, "rtept", point, feature, withFields: false);
                 writer.WriteEndElement();
             }
@@ -157,20 +158,22 @@ internal static class GpxFormat
         foreach (var line in lines)
         {
             writer.WriteStartElement("trkseg");
-            foreach (var point in line)
-                WritePoint(writer, "trkpt", point, feature, withFields: false);
+            for (var i = 0; i < line.Points.Count; i++)
+                WritePoint(writer, "trkpt", line.Points[i], feature, withFields: false, pointTime: line.Times?[i]);
             writer.WriteEndElement();
         }
         writer.WriteEndElement();
     }
 
-    private static void WritePoint(XmlWriter writer, string element, Coord point, GeoFeature feature, bool withFields)
+    private static void WritePoint(XmlWriter writer, string element, Coord point, GeoFeature feature, bool withFields, DateTime? pointTime = null)
     {
         writer.WriteStartElement(element);
         writer.WriteAttributeString("lat", GeoText.Degrees(point.Y));
         writer.WriteAttributeString("lon", GeoText.Degrees(point.X));
         if (point.HasZ)
             writer.WriteElementString("ele", GeoText.Height(point.Z));
+        if (pointTime is { } timestamp)
+            writer.WriteElementString("time", timestamp.ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture));
         if (withFields)
         {
             if (Time(feature.FindText("time")) is { } time)

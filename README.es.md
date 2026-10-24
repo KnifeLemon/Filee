@@ -163,7 +163,7 @@ Para deshacerlo, quita esas entradas en Seguridad de Windows → Control de apli
 | **Tipografías**: TTF, OTF, WOFF, WOFF2, EOT | entre sí |
 | **Datos**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | entre sí, CSV y XLSX (tablas);<br>vCard, iCalendar ↔ CSV |
 | **Modelos 3D**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>FBX solo lectura | entre sí, vista previa en PNG |
-| **Datos geoespaciales vectoriales**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV con coordenadas | entre sí y a CSV / XLSX / JSON;<br>los datos proyectados (UTM, Web Mercator, Lambert, Albers) salen como longitud / latitud WGS 84 |
+| **Datos geoespaciales vectoriales**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV con coordenadas;<br>Garmin FIT solo lectura | entre sí y a CSV / XLSX / JSON;<br>los datos proyectados (UTM, Web Mercator, Lambert, Albers) salen como longitud / latitud WGS 84 |
 
 Los formatos sin marca funcionan nada más instalar, sin Office, Hancom Office ni LibreOffice.
 Los marcados necesitan un motor opcional, que solo se descarga cuando hace falta: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalles](docs/ENGINES.md)).

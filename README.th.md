@@ -163,7 +163,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **ฟอนต์**: TTF, OTF, WOFF, WOFF2, EOT | แปลงสลับกันได้ |
 | **ข้อมูล**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | แปลงสลับกันได้, CSV และ XLSX (ตาราง);<br>vCard, iCalendar ↔ CSV |
 | **โมเดล 3D**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>อ่าน FBX | แปลงสลับกันได้, แสดงภาพตัวอย่าง PNG |
-| **ข้อมูลเวกเตอร์เชิงพื้นที่**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV พร้อมพิกัด | แปลงสลับกันได้ และเป็น CSV / XLSX / JSON<br>โดยพิกัดโปรเจกชัน (UTM, Web Mercator, Lambert, Albers) จะถูกแปลงเป็น WGS 84 ลองจิจูด/ละติจูด |
+| **ข้อมูลเวกเตอร์เชิงพื้นที่**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV พร้อมพิกัด;<br>อ่าน Garmin FIT | แปลงสลับกันได้ และเป็น CSV / XLSX / JSON<br>โดยพิกัดโปรเจกชัน (UTM, Web Mercator, Lambert, Albers) จะถูกแปลงเป็น WGS 84 ลองจิจูด/ละติจูด |
 
 ฟอร์แมตที่ไม่มีเครื่องหมายสามารถใช้งานได้ทันทีโดยไม่ต้องติดตั้งซอฟต์แวร์เสริม<br>
 ฟอร์แมตที่มีเครื่องหมายกำกับต้องการเครื่องมือเสริม ซึ่งจะดาวน์โหลดเมื่อจำเป็นเท่านั้น: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg (ดู [รายละเอียด](docs/ENGINES.md))

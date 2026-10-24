@@ -1,6 +1,8 @@
 // End-to-end tests of the "filee" command: real engines, a temporary settings folder, files in a temporary folder.
 
+using System.Buffers.Binary;
 using System.Text.Json;
+using System.Xml.Linq;
 using Filee.Core.Presets;
 
 namespace Filee.Cli.Tests;
@@ -30,6 +32,67 @@ public sealed class CliTests : IDisposable
         var errors = new StringWriter();
         var code = await Cli.RunAsync(args, output, errors, TestContext.Current.CancellationToken, () => CliHost.Create(_settings));
         return (code, output.ToString(), errors.ToString());
+    }
+
+    private static readonly ushort[] FitCrcTable =
+        [0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, 0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400];
+
+    private static ushort FitCrc(IEnumerable<byte> bytes)
+    {
+        ushort crc = 0;
+        foreach (var b in bytes)
+        {
+            crc = (ushort)((crc >> 4) ^ FitCrcTable[crc & 0xF] ^ FitCrcTable[b & 0xF]);
+            crc = (ushort)((crc >> 4) ^ FitCrcTable[crc & 0xF] ^ FitCrcTable[b >> 4]);
+        }
+        return crc;
+    }
+
+    /// <summary>A FIT activity built from the protocol: a 14-byte header, an activity file_id, one record
+    /// definition (timestamp, latitude, longitude) with a message per point, and the header and file CRCs.</summary>
+    private static byte[] FitActivity(params (uint Time, int Lat, int Lon)[] points)
+    {
+        var data = new List<byte> { 0x40, 0, 0, 0, 0, 1, 0, 1, 0, 0x00, 4 };
+        data.AddRange([0x41, 0, 0, 20, 0, 3, 253, 4, 0x86, 0, 4, 0x85, 1, 4, 0x85]);
+        var value = new byte[4];
+        foreach (var (time, lat, lon) in points)
+        {
+            data.Add(0x01);
+            BinaryPrimitives.WriteUInt32LittleEndian(value, time);
+            data.AddRange(value);
+            BinaryPrimitives.WriteInt32LittleEndian(value, lat);
+            data.AddRange(value);
+            BinaryPrimitives.WriteInt32LittleEndian(value, lon);
+            data.AddRange(value);
+        }
+        var file = new List<byte> { 14, 0x10, 0x34, 0x08 };
+        BinaryPrimitives.WriteInt32LittleEndian(value, data.Count);
+        file.AddRange(value);
+        file.AddRange(".FIT"u8.ToArray());
+        var headerCrc = FitCrc(file);
+        file.AddRange([(byte)headerCrc, (byte)(headerCrc >> 8)]);
+        file.AddRange(data);
+        var fileCrc = FitCrc(file);
+        file.AddRange([(byte)fileCrc, (byte)(fileCrc >> 8)]);
+        return [.. file];
+    }
+
+    [Fact]
+    public async Task Fit_activity_converts_to_gpx_with_point_times_using_the_builtin_preset()
+    {
+        var fit = Path.Combine(_folder, "ride.fit");
+        File.WriteAllBytes(fit, FitActivity((0x1000003B, 0x20000000, 0x40000000), (0x1000003C, 0x30000000, 0x30000000),
+            (0x1000003D, 0x40000000, 0x20000000)));
+
+        var (code, output, errors) = await Run("convert", fit, "--preset", "to-gpx");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Contains("Converted 1 of 1", output);
+        var gpx = XDocument.Load(Path.Combine(_folder, "ride.gpx"));
+        var points = gpx.Descendants().Where(element => element.Name.LocalName == "trkpt").ToArray();
+        Assert.Equal(3, points.Length);
+        Assert.All(points, point => Assert.Single(point.Elements(), element => element.Name.LocalName == "time"));
     }
 
     [Fact]
