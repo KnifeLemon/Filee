@@ -40,10 +40,10 @@
             <TextBlock Text="{DynamicResource pdf_editor.add}" />
           </StackPanel>
         </Button>
-        <Button Margin="0,0,6,6" Command="{Binding MoveUpCommand}" ToolTip.Tip="{DynamicResource group.move_up}">
+        <Button Margin="0,0,6,6" Command="{Binding MoveUpCommand}" ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}">
           <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
         </Button>
-        <Button Margin="0,0,6,6" Command="{Binding MoveDownCommand}" ToolTip.Tip="{DynamicResource group.move_down}">
+        <Button Margin="0,0,6,6" Command="{Binding MoveDownCommand}" ToolTip.Tip="{DynamicResource group.move_down}" AutomationProperties.Name="{DynamicResource group.move_down}">
           <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
         </Button>
         <Button Margin="0,0,6,6" Command="{Binding RotateLeftCommand}" Content="{DynamicResource preset.rotate_left.short}" />

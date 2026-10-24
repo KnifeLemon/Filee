@@ -245,7 +245,7 @@
             <StackPanel Spacing="12">
               <StackPanel>
                 <TextBlock Classes="label" Text="{DynamicResource toolbar.name}" />
-                <TextBox Text="{Binding ProfileName}" />
+                <TextBox Text="{Binding ProfileName}" AutomationProperties.Name="{DynamicResource toolbar.name}" />
               </StackPanel>
 
               <!-- The label wraps (a ToggleSwitch header doesn't), so it sits next to a bare switch. -->
@@ -351,15 +351,15 @@
               <TextBlock Classes="h2" Text="{DynamicResource toolbar.appearance}" />
               <Grid ColumnDefinitions="90,*">
                 <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.size}" />
-                <Slider Grid.Column="1" Minimum="110" Maximum="220" Value="{Binding OuterRadius}" />
+                <Slider Grid.Column="1" Minimum="110" Maximum="220" Value="{Binding OuterRadius}" AutomationProperties.Name="{DynamicResource toolbar.size}" />
               </Grid>
               <Grid ColumnDefinitions="90,*">
                 <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.hole}" />
-                <Slider Grid.Column="1" Minimum="25" Maximum="65" Value="{Binding HoleRatio}" />
+                <Slider Grid.Column="1" Minimum="25" Maximum="65" Value="{Binding HoleRatio}" AutomationProperties.Name="{DynamicResource toolbar.hole}" />
               </Grid>
               <Grid ColumnDefinitions="90,*">
                 <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.opacity}" />
-                <Slider Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding SliceOpacity}" />
+                <Slider Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding SliceOpacity}" AutomationProperties.Name="{DynamicResource toolbar.opacity}" />
               </Grid>
             </StackPanel>
           </Border>

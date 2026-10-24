@@ -41,7 +41,7 @@
                         <PathIcon Classes="tagchip-flag" Data="{StaticResource Icon.Alert}" IsVisible="{Binding IsWarning}" />
                         <!-- Extensions, name patterns and app names read left to right, also in Arabic (else "*.jpg" shows as "jpg.*"). -->
                         <TextBlock Classes="tagchip-text" Text="{Binding Text}" FlowDirection="LeftToRight" />
-                        <Button Classes="tagchip-remove" Focusable="False" ToolTip.Tip="{DynamicResource tags.remove}">
+                        <Button Classes="tagchip-remove" Focusable="False" ToolTip.Tip="{DynamicResource tags.remove}" AutomationProperties.Name="{DynamicResource tags.remove}">
                           <PathIcon Width="8" Height="8" Data="{StaticResource Icon.Close}" />
                         </Button>
                       </StackPanel>

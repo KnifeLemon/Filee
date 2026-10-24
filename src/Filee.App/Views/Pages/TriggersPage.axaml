@@ -45,10 +45,11 @@
               <DockPanel>
                 <Button DockPanel.Dock="Right" Classes="icon"
                         Command="{Binding $parent[ItemsControl].((vm:TriggersPageViewModel)DataContext).RemoveCommand}"
-                        CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource triggers.remove}">
+                        CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource triggers.remove}" AutomationProperties.Name="{DynamicResource triggers.remove}">
                   <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Delete}" />
                 </Button>
-                <ToggleSwitch DockPanel.Dock="Left" IsChecked="{Binding Enabled}" OnContent="" OffContent="" Margin="0,0,8,0" />
+                <ToggleSwitch DockPanel.Dock="Left" IsChecked="{Binding Enabled}" OnContent="" OffContent="" Margin="0,0,8,0"
+                              AutomationProperties.Name="{Binding Summary}" />
                 <Border Classes="badge ok" VerticalAlignment="Center" HorizontalAlignment="Left">
                   <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" />
                 </Border>
@@ -57,11 +58,11 @@
               <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto">
                 <StackPanel>
                   <TextBlock Classes="label" Text="{DynamicResource triggers.kind}" />
-                  <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" />
+                  <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.kind}" />
                 </StackPanel>
                 <StackPanel Grid.Column="2">
                   <TextBlock Classes="label" Text="{DynamicResource triggers.scope}" />
-                  <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding Scope}" HorizontalAlignment="Stretch" />
+                  <ComboBox ItemsSource="{Binding Scopes}" SelectedItem="{Binding Scope}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.scope}" />
                 </StackPanel>
 
                 <StackPanel Grid.Row="2">
@@ -77,7 +78,7 @@
                 <StackPanel Grid.Row="2" Grid.Column="2" Spacing="10">
                   <StackPanel IsVisible="{Binding UsesMouse}">
                     <TextBlock Classes="label" Text="{DynamicResource triggers.button}" />
-                    <ComboBox ItemsSource="{Binding Buttons}" SelectedItem="{Binding Button}" HorizontalAlignment="Stretch" />
+                    <ComboBox ItemsSource="{Binding Buttons}" SelectedItem="{Binding Button}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.button}" />
                   </StackPanel>
                   <StackPanel IsVisible="{Binding UsesKey}">
                     <TextBlock Classes="label" Text="{DynamicResource triggers.key}" />
@@ -102,7 +103,7 @@
                   <TextBlock DockPanel.Dock="Right" Text="{Binding ThresholdText}" FontWeight="SemiBold" />
                   <TextBlock Classes="label" Text="{DynamicResource triggers.threshold}" />
                 </DockPanel>
-                <Slider Minimum="0" Maximum="80" Value="{Binding DragThreshold}" TickFrequency="1" IsSnapToTickEnabled="True" />
+                <Slider Minimum="0" Maximum="80" Value="{Binding DragThreshold}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
               </StackPanel>
               <StackPanel IsVisible="{Binding UsesHold}">
                 <DockPanel>
@@ -111,7 +112,7 @@
                   </TextBlock>
                   <TextBlock Classes="label" Text="{DynamicResource triggers.hold_ms}" />
                 </DockPanel>
-                <Slider Minimum="150" Maximum="2000" Value="{Binding HoldMilliseconds}" TickFrequency="50" IsSnapToTickEnabled="True" />
+                <Slider Minimum="150" Maximum="2000" Value="{Binding HoldMilliseconds}" TickFrequency="50" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource triggers.hold_ms}" />
               </StackPanel>
             </StackPanel>
           </Border>

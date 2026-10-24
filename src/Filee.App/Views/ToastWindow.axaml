@@ -83,7 +83,8 @@
         <Border Classes="card" Padding="14,12">
           <StackPanel Spacing="8">
             <DockPanel>
-              <Button DockPanel.Dock="Right" Classes="icon" Command="{Binding DismissCommand}" Padding="4" VerticalAlignment="Top">
+              <Button DockPanel.Dock="Right" Classes="icon" Command="{Binding DismissCommand}" Padding="4" VerticalAlignment="Top"
+                      AutomationProperties.Name="{DynamicResource common.close}">
                 <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
               </Button>
               <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />

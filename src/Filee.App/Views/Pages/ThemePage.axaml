@@ -136,7 +136,7 @@
         <Border Classes="card">
           <StackPanel Spacing="8">
             <TextBlock Classes="label" Text="{DynamicResource theme.mode}" />
-            <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}" MinWidth="220" />
+            <ComboBox ItemsSource="{Binding Modes}" SelectedItem="{Binding Mode}" MinWidth="220" AutomationProperties.Name="{DynamicResource theme.mode}" />
           </StackPanel>
         </Border>
 
@@ -237,7 +237,7 @@
               <TextBlock DockPanel.Dock="Right" FontWeight="SemiBold" Text="{Binding CornerRadius, StringFormat={}{0:0}}" />
               <TextBlock Classes="label" Text="{DynamicResource theme.corner_radius}" />
             </DockPanel>
-            <Slider Minimum="0" Maximum="28" Value="{Binding CornerRadius}" TickFrequency="1" IsSnapToTickEnabled="True" />
+            <Slider Minimum="0" Maximum="28" Value="{Binding CornerRadius}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource theme.corner_radius}" />
           </StackPanel>
         </Border>
 
@@ -249,7 +249,7 @@
               <TextBlock Classes="label" Text="{DynamicResource theme.donut_opacity}" />
             </DockPanel>
             <Slider x:Name="DonutOpacitySlider" Minimum="10" Maximum="100" Value="{Binding DonutOpacity}"
-                    TickFrequency="1" IsSnapToTickEnabled="True" />
+                    TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource theme.donut_opacity}" />
           </StackPanel>
         </Border>
 

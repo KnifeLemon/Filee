@@ -111,11 +111,11 @@
               <StackPanel Spacing="10">
                 <DockPanel>
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
-                    <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}"
+                    <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}" AutomationProperties.Name="{DynamicResource engines.move_up}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
                       <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
                     </Button>
-                    <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_down}"
+                    <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_down}" AutomationProperties.Name="{DynamicResource engines.move_down}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
                       <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
                     </Button>
