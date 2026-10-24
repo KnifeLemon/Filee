@@ -64,7 +64,11 @@ public partial class SetupTextsTests
     [InlineData(null, "ne-NP", "ne")]
     [InlineData(null, "th-TH", "th")]
     [InlineData(null, "ja-JP", "ja")]
-    [InlineData("xx", "de-DE", "en")]
+    [InlineData("xx", "de-DE", "de")]
+    [InlineData("de", "en-US", "de")]
+    [InlineData("auto", "de-AT", "de")]
+    [InlineData("auto", "de-CH", "de")]
+    [InlineData("xx", "it-IT", "en")]
     [InlineData("klingon", "pl-PL", "pl")]
     public void Languages_resolve_like_the_app_and_like_inno_setup(string? setting, string windows, string expected) =>
         Assert.Equal(expected, SetupTexts.Resolve(setting, () => windows));

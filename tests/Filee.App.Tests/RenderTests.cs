@@ -25,6 +25,8 @@ public class RenderTests
 {
     public static TheoryData<string, string> Pages => new()
     {
+        { "home", "de" }, { "general", "de" }, { "triggers", "de" }, { "toolbar", "de" },
+        { "presets", "de" }, { "theme", "de" }, { "engines", "de" }, { "about", "de" }, { "watch", "de" },
         { "home", "tr" }, { "general", "tr" }, { "triggers", "tr" }, { "toolbar", "tr" },
         { "presets", "tr" }, { "theme", "tr" }, { "engines", "tr" }, { "about", "tr" }, { "watch", "tr" },
         { "home", "ar" }, { "general", "ar" }, { "triggers", "ar" }, { "toolbar", "ar" },

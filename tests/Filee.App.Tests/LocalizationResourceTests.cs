@@ -124,6 +124,10 @@ public class LocalizationResourceTests
         Assert.Equal("ホーム", text.Text);
         Assert.Equal("オン", toggle.OnContent);
         Assert.Equal("オフ", toggle.OffContent);
+        TestServices.EnsureInitialized("de");
+        Assert.Equal("Start", text.Text);
+        Assert.Equal("Ein", toggle.OnContent);
+        Assert.Equal("Aus", toggle.OffContent);
         window.Close();
     }
 }
