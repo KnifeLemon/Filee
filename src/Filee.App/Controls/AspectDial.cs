@@ -1,5 +1,5 @@
-// The crop overlay's aspect dial: a small donut whose slices are the ratios (free, the picture's own, 1:1, 4:3, 3:2,
-// 16:9), each with a tiny outline of its shape, and a hub that swaps portrait and landscape. The slices are real
+// The crop overlay's aspect dial: a small donut whose slices are the ratios (free, the picture's own, 1:1, 5:4, 4:3,
+// 3:2, 16:9), each with a tiny outline of its shape, and a hub that swaps portrait and landscape. The slices are real
 // buttons (focus, keyboard, screen readers) that only answer inside their wedge. AspectGlyph is the dial in miniature
 // on the toolbar button that opens it.
 

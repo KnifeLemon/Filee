@@ -289,6 +289,25 @@ public class CropOverlayTests
     }
 
     [AvaloniaFact]
+    public void An_upright_picture_crops_at_instagrams_4_to_5_from_the_5_to_4_slice()
+    {
+        WithOverlay("en", false, ["tall.jpg"], (window, vm, _suffix) =>
+        {
+            Settle(window);
+            var slice = window.AspectDial.Segments.Single(s => s.Mode == "5:4");
+            slice.Command!.Execute(slice.CommandParameter);
+            Settle(window);
+            Assert.Equal("4:5", vm.AspectLabel);
+            Assert.Equal(0.8, window.CropCanvas.AspectRatio, 6);
+            var frame = window.CropCanvas.NormalizedCropRect;
+            Assert.Equal(0.8, frame.Width * 1000 / (frame.Height * 1600), 2);
+            vm.ToggleAspectDial();
+            Settle(window);
+            RenderTests.Save(window, "crop-dial-4-5.png");
+        });
+    }
+
+    [AvaloniaFact]
     public void The_next_file_starts_free_and_full_in_view_and_canvas_alike()
     {
         WithOverlay("en", false, ["harbour.jpg", "tall.jpg"], (window, vm, _suffix) =>

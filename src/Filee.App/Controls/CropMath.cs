@@ -10,13 +10,13 @@ public static class CropMath
     /// <summary>The aspect dial's choices, clockwise from the top.</summary>
     public static IReadOnlyList<string> AspectModes => Modes;
 
-    private static readonly string[] Modes = ["free", "original", "1:1", "4:3", "3:2", "16:9"];
+    private static readonly string[] Modes = ["free", "original", "1:1", "5:4", "4:3", "3:2", "16:9"];
 
     /// <summary>Where the mode sits on the dial, -1 for none.</summary>
     public static int AspectIndex(string mode) => Array.IndexOf(Modes, mode);
 
     /// <summary>A fixed ratio with a portrait and a landscape form (not free, the picture's own or square).</summary>
-    public static bool CanSwap(string mode) => mode is "4:3" or "3:2" or "16:9";
+    public static bool CanSwap(string mode) => mode is "5:4" or "4:3" or "3:2" or "16:9";
 
     /// <summary>Width / height of the mode, 0 for free. Portrait turns a swappable ratio around (4:3 → 3:4).</summary>
     public static double Ratio(string mode, bool portrait, int originalWidth, int originalHeight)
@@ -25,6 +25,7 @@ public static class CropMath
         {
             "original" => originalWidth > 0 && originalHeight > 0 ? (double)originalWidth / originalHeight : 0,
             "1:1" => 1.0,
+            "5:4" => 5.0 / 4.0, // upright: 4:5, Instagram's portrait size (#542)
             "4:3" => 4.0 / 3.0,
             "3:2" => 3.0 / 2.0,
             "16:9" => 16.0 / 9.0,

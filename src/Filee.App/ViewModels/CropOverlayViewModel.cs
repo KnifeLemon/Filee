@@ -62,7 +62,7 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(IsAspectFree))]
     private string _selectedAspect = "free";
 
-    /// <summary>The fixed ratios (4:3, 3:2, 16:9) turned upright: 3:4, 2:3, 9:16.</summary>
+    /// <summary>The fixed ratios (5:4, 4:3, 3:2, 16:9) turned upright: 4:5, 3:4, 2:3, 9:16.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AspectLabel))]
     [NotifyPropertyChangedFor(nameof(AspectToolTip))]
@@ -318,7 +318,7 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
         CloseRequested?.Invoke();
     }
 
-    /// <summary>Locks the frame to a ratio of the dial ("free", "original", "1:1", "4:3", "3:2", "16:9") and closes the dial.</summary>
+    /// <summary>Locks the frame to a ratio of the dial ("free", "original", "1:1", "5:4", "4:3", "3:2", "16:9") and closes the dial.</summary>
     [RelayCommand]
     public void SetAspect(string mode)
     {

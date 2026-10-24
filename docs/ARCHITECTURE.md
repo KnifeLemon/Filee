@@ -165,7 +165,7 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
   `CropService.LoadPreviewAsync`; nothing is decoded again while dragging. Programmatic changes (reset, a ratio, a
   new picture) ease in with tweens read against the clock, so a lost frame never leaves one half done; dragging and
   arrow-key nudges follow at once, and `PlayAnimations` (from `Motion.Enabled`) turns all of it off.
-- `Controls/AspectDial` is a small donut of the ratios (free, original, 1:1, 4:3, 3:2, 16:9): each slice a
+- `Controls/AspectDial` is a small donut of the ratios (free, original, 1:1, 5:4, 4:3, 3:2, 16:9): each slice a
   `RingSegment` button that answers only inside its wedge (`DonutGeometry.Wedge`, rounded by the softness), the hub
   swaps portrait and landscape. A with the pointer over the stage opens it around the pointer, as the donut opens,
   growing from its middle and kept inside the window; A without a pointer there (the keyboard) and its toolbar button

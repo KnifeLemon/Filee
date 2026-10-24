@@ -11,6 +11,8 @@ public class CropMathTests
     [Theory]
     [InlineData("free", false, 0.0)]
     [InlineData("1:1", true, 1.0)]
+    [InlineData("5:4", false, 5.0 / 4.0)]
+    [InlineData("5:4", true, 4.0 / 5.0)] // Instagram's portrait size
     [InlineData("4:3", false, 4.0 / 3.0)]
     [InlineData("4:3", true, 3.0 / 4.0)]
     [InlineData("3:2", true, 2.0 / 3.0)]
@@ -43,13 +45,14 @@ public class CropMathTests
     [Fact]
     public void Only_fixed_ratios_that_arent_square_swap()
     {
-        Assert.Equal(["4:3", "3:2", "16:9"], CropMath.AspectModes.Where(CropMath.CanSwap));
+        Assert.Equal(["5:4", "4:3", "3:2", "16:9"], CropMath.AspectModes.Where(CropMath.CanSwap));
+        Assert.Equal("4:5", CropMath.Numbers("5:4", portrait: true));
         Assert.Equal("9:16", CropMath.Numbers("16:9", portrait: true));
         Assert.Equal("16:9", CropMath.Numbers("16:9", portrait: false));
         Assert.Equal("1:1", CropMath.Numbers("1:1", portrait: true));
         Assert.Equal(0, CropMath.Ratio("original", false, 0, 0));
-        Assert.Equal(3, CropMath.AspectIndex("4:3"));
-        Assert.Equal(-1, CropMath.AspectIndex("5:4"));
+        Assert.Equal(4, CropMath.AspectIndex("4:3"));
+        Assert.Equal(-1, CropMath.AspectIndex("21:9"));
     }
 
     [Fact]

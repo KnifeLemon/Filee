@@ -407,6 +407,7 @@
         <c:RingSegment Mode="free" Content="{DynamicResource crop.aspect_free}" Command="{Binding SetAspectCommand}" CommandParameter="free" />
         <c:RingSegment Mode="original" Content="{DynamicResource crop.aspect_original}" Command="{Binding SetAspectCommand}" CommandParameter="original" />
         <c:RingSegment Mode="1:1" Command="{Binding SetAspectCommand}" CommandParameter="1:1" />
+        <c:RingSegment Mode="5:4" Command="{Binding SetAspectCommand}" CommandParameter="5:4" />
         <c:RingSegment Mode="4:3" Command="{Binding SetAspectCommand}" CommandParameter="4:3" />
         <c:RingSegment Mode="3:2" Command="{Binding SetAspectCommand}" CommandParameter="3:2" />
         <c:RingSegment Mode="16:9" Command="{Binding SetAspectCommand}" CommandParameter="16:9" />
