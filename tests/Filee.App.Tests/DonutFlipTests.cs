@@ -455,7 +455,6 @@ public class DonutFlipTests
     [AvaloniaFact]
     public void T5_group_ring_is_retained_only_for_drawing()
     {
-        Assert.SkipWhen(OperatingSystem.IsMacOS(), "The sub-slice isn't drawn highlighted on macOS here (#533).");
         var (donut, window) = Wave();
         try
         {
@@ -475,17 +474,20 @@ public class DonutFlipTests
             var sub = donut.SubSliceCenter(0, 0);
             Assert.Equal(DonutHitKind.SubSegment, donut.HitTest(sub).Kind);
             donut.SetExternalHit(donut.HitTest(sub), sub);
-            var highlighted = PixelAt(donut, sub);
-            Assert.True(highlighted[2] > highlighted[0], $"The selected sub-slice is red: {string.Join(',', highlighted)}");
+            var center = new Point(donut.Bounds.Width / 2, donut.Bounds.Height / 2);
+            var sample = center + (sub - center) * ((donut.OuterRadius + 23) / (donut.OuterRadius + 36));
+            donut.FinishAnimations();
+            var highlighted = PixelAt(donut, sample);
+            Assert.True(highlighted[2] - highlighted[0] >= 32, $"The selected sub-slice is red: {string.Join(',', highlighted)}");
             donut.Flip();
             Assert.True(donut.HasOldGroupRing);
             Assert.NotEqual(DonutHitKind.SubSegment, donut.HitTest(sub).Kind);
-            var retained = PixelAt(donut, sub);
+            var retained = PixelAt(donut, sample);
             Assert.All(Enumerable.Range(0, 4), i => Assert.InRange((int)retained[i] - highlighted[i], -2, 2));
-            Assert.True(retained[2] > retained[0], "The snapshot retains the selected sub-slice highlight");
+            Assert.True(retained[2] - retained[0] >= 32, $"The snapshot retains the selected sub-slice highlight: {string.Join(',', retained)}");
             donut.Advance(0.061);
             Assert.Equal(0, donut.SliceFlipWidth(true, 0));
-            Assert.Equal(0, AlphaAt(donut, sub));
+            Assert.Equal(0, AlphaAt(donut, sample));
             donut.Advance(DonutMenu.FlipDuration);
             Assert.False(donut.HasOldGroupRing);
         }
