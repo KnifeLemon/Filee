@@ -163,7 +163,7 @@ Para desfazer, remova essas entradas em Segurança do Windows → Controle de ap
 | **Fontes**: TTF, OTF, WOFF, WOFF2, EOT | entre si |
 | **Dados**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | entre si, CSV e XLSX (tabelas);<br>vCard, iCalendar ↔ CSV |
 | **Modelos 3D**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>leitura de FBX | entre si, prévia em PNG |
-| **Vetores geoespaciais**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV com coordenadas | entre si e CSV / XLSX / JSON;<br>dados projetados (UTM, Web Mercator, Lambert, Albers) saem como longitude / latitude em WGS 84 |
+| **Vetores geoespaciais**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV com coordenadas;<br>leitura de Garmin FIT | entre si e CSV / XLSX / JSON;<br>dados projetados (UTM, Web Mercator, Lambert, Albers) saem como longitude / latitude em WGS 84 |
 
 Formatos sem marca funcionam na hora, sem Office, Hancom Office ou LibreOffice.
 Os marcados precisam de um motor opcional, baixado só quando necessário: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalhes](docs/ENGINES.md)).

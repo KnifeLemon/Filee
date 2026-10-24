@@ -163,7 +163,7 @@ Aby to cofnąć, usuń te wpisy w Zabezpieczenia Windows → Kontrola aplikacji 
 | **Czcionki**: TTF, OTF, WOFF, WOFF2, EOT | między sobą |
 | **Dane**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | między sobą, CSV i XLSX (tabele);<br>vCard, iCalendar ↔ CSV |
 | **Modele 3D**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>FBX tylko odczyt | między sobą, podgląd PNG |
-| **Dane geoprzestrzenne (wektorowe)**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV ze współrzędnymi | między sobą oraz CSV / XLSX / JSON;<br>dane w odwzorowaniach (UTM, Web Mercator, Lambert, Albers) wychodzą jako długość / szerokość geograficzna WGS 84 |
+| **Dane geoprzestrzenne (wektorowe)**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV ze współrzędnymi;<br>Garmin FIT tylko odczyt | między sobą oraz CSV / XLSX / JSON;<br>dane w odwzorowaniach (UTM, Web Mercator, Lambert, Albers) wychodzą jako długość / szerokość geograficzna WGS 84 |
 
 Formaty bez oznaczenia działają od razu, bez pakietu Office, Hancom Office i LibreOffice.
 Oznaczone wymagają opcjonalnego silnika, pobieranego tylko wtedy, gdy jest potrzebny: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([szczegóły](docs/ENGINES.md)).

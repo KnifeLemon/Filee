@@ -164,7 +164,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **글꼴**: TTF, OTF, WOFF, WOFF2, EOT | 서로 변환 |
 | **데이터**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | 서로 변환, CSV·XLSX(표 모양 데이터);<br>vCard, iCalendar ↔ CSV |
 | **3D 모델**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>FBX는 읽기 | 서로 변환, PNG 미리보기 |
-| **지리 정보(벡터)**: Shapefile, GeoJSON, KML, KMZ, GPX<br>좌표가 있는 CSV | 서로 변환, CSV·XLSX·JSON;<br>투영 좌표계(UTM, 웹 메르카토르, 람베르트, 알버스)는 WGS 84 경위도로 변환 |
+| **지리 정보(벡터)**: Shapefile, GeoJSON, KML, KMZ, GPX<br>좌표가 있는 CSV;<br>Garmin FIT는 읽기 | 서로 변환, CSV·XLSX·JSON;<br>투영 좌표계(UTM, 웹 메르카토르, 람베르트, 알버스)는 WGS 84 경위도로 변환 |
 
 표시가 없는 형식은 오피스·한컴오피스·LibreOffice 없이 바로 변환돼요.
 표시가 있는 형식은 추가 엔진이 필요하고, 필요할 때만 내려받아요: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([자세히](docs/ENGINES.md)).

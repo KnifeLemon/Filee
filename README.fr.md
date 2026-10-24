@@ -163,7 +163,7 @@ Pour annuler, supprimez ces entrées dans Sécurité Windows → Contrôle des a
 | **Polices** : TTF, OTF, WOFF, WOFF2, EOT | entre elles |
 | **Données** : JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | entre eux, CSV et XLSX (tableaux) ;<br>vCard, iCalendar ↔ CSV |
 | **Modèles 3D** : GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ;<br>FBX en lecture | entre eux, aperçu PNG |
-| **Données géospatiales vectorielles** : Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV avec coordonnées | entre eux et CSV / XLSX / JSON ;<br>les données projetées (UTM, Web Mercator, Lambert, Albers) sortent en longitude / latitude WGS 84 |
+| **Données géospatiales vectorielles** : Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV avec coordonnées ;<br>Garmin FIT en lecture | entre eux et CSV / XLSX / JSON ;<br>les données projetées (UTM, Web Mercator, Lambert, Albers) sortent en longitude / latitude WGS 84 |
 
 Les formats sans marque fonctionnent d'emblée, sans Office, Hancom Office ni LibreOffice.
 Les formats marqués nécessitent un moteur facultatif, téléchargé seulement en cas de besoin : ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([détails](docs/ENGINES.md)).

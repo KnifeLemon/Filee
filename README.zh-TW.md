@@ -163,7 +163,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **字型** TTF、OTF、WOFF、WOFF2、EOT | 互相轉換 |
 | **資料** JSON、JSON Lines、YAML、TOML、XML<br>vCard、iCalendar | 互相轉換、CSV 和 XLSX（表格資料）、<br>vCard、iCalendar ↔ CSV |
 | **3D 模型** GLB、glTF、STL、OBJ（+ MTL）、3MF、PLY，<br>FBX 僅讀取 | 互相轉換、PNG 預覽 |
-| **地理資訊（向量）** Shapefile、GeoJSON、KML、KMZ、GPX<br>帶座標的 CSV | 互相轉換、CSV / XLSX / JSON，<br>投影座標系統（UTM、Web 麥卡托、蘭伯特、阿爾伯斯）會轉換為 WGS 84 經緯度 |
+| **地理資訊（向量）** Shapefile、GeoJSON、KML、KMZ、GPX<br>帶座標的 CSV，<br>Garmin FIT 僅讀取 | 互相轉換、CSV / XLSX / JSON，<br>投影座標系統（UTM、Web 麥卡托、蘭伯特、阿爾伯斯）會轉換為 WGS 84 經緯度 |
 
 未標註的格式裝好即用，無需 Office、韓文文書軟體或 LibreOffice。
 標註的格式需要可選引擎，只在需要時下載，分別是 ¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg（[詳情](docs/ENGINES.md)）。

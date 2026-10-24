@@ -169,7 +169,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **الخطوط**: TTF, OTF, WOFF, WOFF2, EOT | فيما بينها |
 | **البيانات**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | فيما بينها، وإلى CSV وXLSX (للجداول)؛<br>vCard, iCalendar ↔ CSV |
 | **النماذج ثلاثية الأبعاد**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY؛<br>وFBX للقراءة | فيما بينها، معاينة PNG |
-| **البيانات الجغرافية المتجهية**: Shapefile, GeoJSON, KML, KMZ, GPX<br>ملفات CSV فيها إحداثيات | فيما بينها، وإلى CSV / XLSX / JSON؛<br>وتُحوَّل البيانات المُسقَطة (UTM, Web Mercator, Lambert, Albers) إلى خطوط الطول والعرض في WGS 84 |
+| **البيانات الجغرافية المتجهية**: Shapefile, GeoJSON, KML, KMZ, GPX<br>ملفات CSV فيها إحداثيات؛<br>وGarmin FIT للقراءة | فيما بينها، وإلى CSV / XLSX / JSON؛<br>وتُحوَّل البيانات المُسقَطة (UTM, Web Mercator, Lambert, Albers) إلى خطوط الطول والعرض في WGS 84 |
 
 الصيغ غير المعلَّمة تعمل مباشرةً، دون Office أو Hancom Office أو LibreOffice.
 أما المعلَّمة فتحتاج إلى محرك اختياري لا يُنزَّل إلا عند الحاجة: ¹ Ghostscript، ² LibreOffice، ³ Pandoc، ⁴ calibre، ⁵ FFmpeg ([التفاصيل](docs/ENGINES.md)).

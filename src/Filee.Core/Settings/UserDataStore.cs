@@ -872,6 +872,9 @@ internal static class SettingsMigrations
                 changed = true;
             }
         }
+        // v47: Garmin FIT activities (.fit) learn the geospatial donut; custom claims stay put.
+        if (from < 47)
+            changed |= LearnExtensions(profiles, out _, ["fit"]);
         return changed;
     }
 

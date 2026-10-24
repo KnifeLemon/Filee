@@ -163,7 +163,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **फ़ॉन्ट**: TTF, OTF, WOFF, WOFF2, EOT | आपस में |
 | **डेटा**: JSON, JSON Lines, YAML, TOML, XML<br>vCard, iCalendar | आपस में, CSV और XLSX (टेबल);<br>vCard, iCalendar ↔ CSV |
 | **3D मॉडल**: GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY;<br>FBX सिर्फ़ पढ़ने के लिए | आपस में, PNG प्रीव्यू |
-| **भू-स्थानिक वेक्टर**: Shapefile, GeoJSON, KML, KMZ, GPX<br>निर्देशांक वाली CSV | आपस में और CSV / XLSX / JSON;<br>प्रोजेक्टेड डेटा (UTM, Web Mercator, Lambert, Albers) WGS 84 देशांतर / अक्षांश में बदलकर आता है |
+| **भू-स्थानिक वेक्टर**: Shapefile, GeoJSON, KML, KMZ, GPX<br>निर्देशांक वाली CSV;<br>Garmin FIT सिर्फ़ पढ़ने के लिए | आपस में और CSV / XLSX / JSON;<br>प्रोजेक्टेड डेटा (UTM, Web Mercator, Lambert, Albers) WGS 84 देशांतर / अक्षांश में बदलकर आता है |
 
 बिना निशान वाले फ़ॉर्मैट तुरंत काम करते हैं, Office, Hancom Office या LibreOffice की ज़रूरत नहीं।
 निशान वाले फ़ॉर्मैट के लिए एक वैकल्पिक इंजन चाहिए, जो ज़रूरत पड़ने पर ही डाउनलोड होता है: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([विवरण](docs/ENGINES.md))।

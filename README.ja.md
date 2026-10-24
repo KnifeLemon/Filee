@@ -166,7 +166,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **フォント**：TTF、OTF、WOFF、WOFF2、EOT | 相互変換 |
 | **データ**：JSON、JSON Lines、YAML、TOML、XML<br>vCard、iCalendar | 相互変換、CSVとXLSX（表形式のデータ）。<br>vCard、iCalendar ↔ CSV |
 | **3Dモデル**：GLB、glTF、STL、OBJ（+ MTL）、3MF、PLY。<br>FBXは読み込みのみ | 相互変換、PNGプレビュー |
-| **地理空間ベクターデータ**：Shapefile、GeoJSON、KML、KMZ、GPX<br>座標付きのCSV | 相互変換、CSV/XLSX/JSON。<br>投影座標系（UTM、Webメルカトル、ランベルト、アルベルス）のデータはWGS 84の経度/緯度で出力 |
+| **地理空間ベクターデータ**：Shapefile、GeoJSON、KML、KMZ、GPX<br>座標付きのCSV。<br>Garmin FITは読み込みのみ | 相互変換、CSV/XLSX/JSON。<br>投影座標系（UTM、Webメルカトル、ランベルト、アルベルス）のデータはWGS 84の経度/緯度で出力 |
 
 印のない形式は、Office、Hancom Office、LibreOfficeなしですぐに使えます。
 印のある形式には追加の変換エンジンが必要で、必要なときにだけダウンロードされます：¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg（[詳細](docs/ENGINES.md)）。

@@ -874,7 +874,7 @@ public class UserDataStoreTests
         Assert.Equal(ids.IndexOf("models") + 1, ids.IndexOf("geo"));
         Assert.Equal(ids.IndexOf("mixed") - 1, ids.IndexOf("geo"));
         var geo = profiles.Single(p => p.Id == "geo");
-        Assert.Equal(["geojson", "kml", "kmz", "gpx", "shp"], geo.Extensions);
+        Assert.Equal(["geojson", "kml", "kmz", "gpx", "shp", "fit"], geo.Extensions);
         Assert.Equal(BuiltInData.GeoProfile().PresetIds, geo.PresetIds);
         Assert.All(geo.PresetIds, id => Assert.Contains(presets, p => p.Id == id));
         Assert.False(SettingsMigrations.ApplyToLibrary(24, presets, profiles)); // once only
@@ -888,10 +888,10 @@ public class UserDataStoreTests
         profiles.Insert(0, new ToolbarProfile { Id = "earth", Name = "Earth", Extensions = ["kml", "kmz"] });
 
         Assert.True(SettingsMigrations.ApplyToLibrary(24, presets, profiles));
-        Assert.Equal(["geojson", "gpx", "shp"], profiles.Single(p => p.Id == "geo").Extensions);
+        Assert.Equal(["geojson", "gpx", "shp", "fit"], profiles.Single(p => p.Id == "geo").Extensions);
 
         var taken = BuiltInData.CreateProfiles().Where(p => p.Id != "geo").ToList();
-        taken.Insert(0, new ToolbarProfile { Id = "all", Name = "All", Extensions = ["geojson", "kml", "kmz", "gpx", "shp"] });
+        taken.Insert(0, new ToolbarProfile { Id = "all", Name = "All", Extensions = ["geojson", "kml", "kmz", "gpx", "shp", "fit"] });
         var geoIds = BuiltInData.GeoPresets().Select(p => p.Id).ToHashSet();
         var withoutPresets = BuiltInData.CreatePresets().Where(p => !geoIds.Contains(p.Id)).ToList();
 
@@ -914,7 +914,7 @@ public class UserDataStoreTests
         var geo = profiles.Single(p => p.Id == "geo");
         Assert.Equal(["to-kml"], geo.PresetIds);
         // The extensions of the default donut that no donut takes yet are added to it, after the user's own.
-        Assert.Equal(["kml", "geojson", "kmz", "gpx", "shp"], geo.Extensions);
+        Assert.Equal(["kml", "geojson", "kmz", "gpx", "shp", "fit"], geo.Extensions);
     }
 
     [Fact]

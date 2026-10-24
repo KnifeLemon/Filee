@@ -54,12 +54,14 @@ internal sealed class GeoMultiPoint(IReadOnlyList<Coord> points) : GeoGeometry
     public override IEnumerable<GeoGeometry> Parts() => Points.Select(p => new GeoPoint(p));
 }
 
-internal sealed class GeoLineString(IReadOnlyList<Coord> points) : GeoGeometry
+internal sealed class GeoLineString(IReadOnlyList<Coord> points, IReadOnlyList<DateTime?>? times = null) : GeoGeometry
 {
     public IReadOnlyList<Coord> Points { get; } = points;
+    /// <summary>UTC times aligned with <see cref="Points"/>, or null when point times are unknown.</summary>
+    public IReadOnlyList<DateTime?>? Times { get; } = times;
     public override string TypeName => "LineString";
     public override IEnumerable<Coord> Coordinates() => Points;
-    public override GeoGeometry Map(Func<Coord, Coord> map) => new GeoLineString(Map(Points, map));
+    public override GeoGeometry Map(Func<Coord, Coord> map) => new GeoLineString(Map(Points, map), Times);
 }
 
 internal sealed class GeoMultiLineString(IReadOnlyList<IReadOnlyList<Coord>> lines) : GeoGeometry
@@ -143,6 +145,9 @@ internal sealed class GeoDataset
 
     /// <summary>True if some rows of a CSV had no usable location and so have no geometry.</summary>
     public bool RowsWithoutLocation { get; set; }
+
+    /// <summary>True when a missing height must stay absent rather than be written as zero.</summary>
+    public bool SparseHeights { get; set; }
 
     /// <summary>The attribute names of all features, in the order they first appear.</summary>
     public List<string> Columns()
