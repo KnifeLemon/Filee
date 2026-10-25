@@ -98,8 +98,32 @@ public sealed class SystemCopyTests : IDisposable
     [InlineData("ghostscript", "10.04.0\r\n", "10.4")]
     [InlineData("libreoffice", "[Version]\nAllLanguages=en-US\nMsiProductVersion=25.2.4.3\n", "25.2")]
     [InlineData("libreoffice", "LibreOffice 26.2.6.2 98d5f8\n", "26.2")]
+    // LibreOffice 26.8's version.ini has no MsiProductVersion; Installed adds soffice.exe's product version to it.
+    [InlineData("libreoffice", "[Version]\nUpdateID=LibreOffice_26_en-US_de\nVendor=The Document Foundation\n", null)]
+    [InlineData("libreoffice", "[Version]\nUpdateID=LibreOffice_26_en-US_de\nVendor=The Document Foundation\nLibreOffice 26.8.1.1", "26.8")]
     public void Versions_are_read_from_each_program(string id, string output, string? expected) =>
         Assert.Equal(expected is null ? null : Version.Parse(expected), CopyVersions.ParseVersion(id, output));
+
+    [Fact]
+    public void A_libreoffice_without_msi_version_is_told_by_its_program()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "version.ini is read on Windows only");
+        // Any program with a version resource stands in for soffice.exe.
+        var program = Environment.ProcessPath!;
+        var folder = Directory.CreateTempSubdirectory("filee-lo-version-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(folder, "version.ini"), "[Version]\nVendor=The Document Foundation\n");
+            File.Copy(program, Path.Combine(folder, "soffice.exe"));
+            var product = System.Diagnostics.FileVersionInfo.GetVersionInfo(program);
+
+            Assert.Equal(new Version(product.ProductMajorPart, product.ProductMinorPart), CopyVersions.Installed("libreoffice", folder));
+        }
+        finally
+        {
+            Directory.Delete(folder, true);
+        }
+    }
 
     [Fact]
     public void Expected_versions_come_from_engines_json() =>

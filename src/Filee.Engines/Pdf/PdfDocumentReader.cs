@@ -206,6 +206,9 @@ internal sealed partial class PdfDocumentReader
         public List<Item> Items { get; set; } = [];
         public bool Scanned { get; set; }
         public string? ScanPath { get; set; }
+
+        /// <summary>Pictures covering most of a page with visible text on it: page backgrounds, kept behind the text (#433).</summary>
+        public List<(string Path, PdfRectangle Bounds)> Backgrounds { get; } = [];
     }
 
     // ───────────────────────── Document ─────────────────────────
@@ -435,7 +438,10 @@ internal sealed partial class PdfDocumentReader
 
     // ───────────────────────── Pictures ─────────────────────────
 
-    /// <summary>Pictures of a text page. A picture covering the page behind text is the scan under an OCR layer: skipped.</summary>
+    /// <summary>
+    /// Pictures of a text page. A picture covering most of the page is its background (#433) and goes behind the text;
+    /// only with the OCR layer as the page's text (PdfOptions.Ocr) is it the scan under that layer, and skipped.
+    /// </summary>
     private IEnumerable<Item> Pictures(Page page, PageContent content, PdfRectangle crop)
     {
         var result = new List<Item>();
@@ -448,7 +454,8 @@ internal sealed partial class PdfDocumentReader
                 bounds = new PdfRectangle(Math.Max(0, bounds.Left), Math.Max(0, bounds.Bottom), Math.Min(content.Width, bounds.Right), Math.Min(content.Height, bounds.Top));
                 if (bounds.Width < 6 || bounds.Height < 6 || image.IsImageMask)
                     continue;
-                if (bounds.Width * bounds.Height > 0.85 * content.Width * content.Height)
+                var background = bounds.Width * bounds.Height > 0.85 * content.Width * content.Height;
+                if (background && _ocrLayer)
                     continue;
 
                 string? path = null;
@@ -468,7 +475,9 @@ internal sealed partial class PdfDocumentReader
                     rendered ??= Render(content.Index);
                     path = Crop(rendered, bounds, content);
                 }
-                if (path is not null)
+                if (path is not null && background)
+                    content.Backgrounds.Add((path, bounds));
+                else if (path is not null)
                     result.Add(new Item { PicturePath = path, PictureBounds = bounds });
             }
         }
@@ -656,6 +665,20 @@ internal sealed partial class PdfDocumentReader
             }
             else
             {
+                // A page background (#433): floating behind the text where it was on the page, so it never pushes text.
+                foreach (var (path, bounds) in page.Backgrounds)
+                {
+                    var picture = new HImage(path)
+                    {
+                        Width = Hwp(bounds.Width),
+                        Height = Hwp(bounds.Height),
+                        Anchor = new HAnchor("PAPER", "LEFT", Hwp(bounds.Left), "PAPER", "TOP", Hwp(page.Height - bounds.Top),
+                            "BEHIND_TEXT", AllowOverlap: true),
+                    };
+                    var holder = new HParagraph { MarkFormat = new HCharFormat(Size: 100) };
+                    holder.Inlines.Add(picture);
+                    blocks.Add(holder);
+                }
                 Item? previous = null;
                 foreach (var item in page.Items)
                 {

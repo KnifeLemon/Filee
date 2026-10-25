@@ -27,7 +27,7 @@ Each component remains under its own license.
 | PdfPig (PDF text, layout and pictures) | Apache-2.0 | https://github.com/UglyToad/PdfPig |
 | MimeKitLite (e-mail / MIME parsing) | MIT | https://github.com/jstedfast/MimeKit |
 | MsgReader (Outlook .msg reading) | MIT, Copyright (c) Kees van Spelde | https://github.com/Sicos1977/MSGReader |
-| OpenMcdf (OLE compound files, used by MsgReader) | MPL-2.0 (source: the project page) | https://github.com/openmcdf/openmcdf |
+| OpenMcdf (OLE compound files: MsgReader, and the macro check of DOC, XLS and PPT files) | MPL-2.0 (source: the project page) | https://github.com/openmcdf/openmcdf |
 | RtfPipe (RTF → HTML, used by MsgReader) | MIT, Copyright (c) 2018 Eric Domke | https://github.com/erdomke/RtfPipe |
 | UTF.Unknown (charset detection, used by MsgReader) | MPL-1.1 (source: the project page) | https://github.com/CharsetDetector/UTF-unknown |
 | Microsoft.Maui.Graphics, Microsoft.IO.RecyclableMemoryStream (used by MsgReader) | MIT | https://github.com/dotnet/maui, https://github.com/microsoft/Microsoft.IO.RecyclableMemoryStream |

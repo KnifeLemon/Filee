@@ -251,12 +251,27 @@ internal sealed partial class DocxReader
         Add(footers, section.Footers);
 
         // "Different first page": 한글 can only hide the header/footer on the first page, which is what an empty
-        // (or missing) first-page header means in Word.
+        // (or missing) first-page header means in Word. A first-page header with its own content (a letterhead, #416)
+        // can't be a header there: the regular one is hidden on that page, and the first-page header is a text box at
+        // the header's place, in front of the empty header area, rather than the regular header showing instead.
+        List<HBlock>? firstPageHeader = null;
         if (sectPr?.Element(W + "titlePg") is { } titlePg && Val(titlePg) is not ("0" or "false"))
         {
-            section.HideFirstHeader = IsBlank(headers.GetValueOrDefault("first"));
+            var firstHeader = headers.GetValueOrDefault("first");
+            section.HideFirstHeader = IsBlank(firstHeader) || !SameText(firstHeader, headers.GetValueOrDefault("default"));
+            if (!IsBlank(firstHeader) && section.HideFirstHeader)
+                firstPageHeader = firstHeader;
             section.HideFirstFooter = IsBlank(footers.GetValueOrDefault("first"));
         }
+
+        // Word pushes the body down when the header is taller than the space the margins leave it (#416); 한글 keeps the
+        // header area as set, and the header runs into the body. The area grows to the header's estimated height.
+        var tallest = section.Headers.Select(h => EstimatedHeight(h.Blocks, page.TextWidth))
+            .Append(firstPageHeader is null ? 0 : EstimatedHeight(firstPageHeader, page.TextWidth)).Max();
+        if (tallest > page.Header)
+            section.Page = page with { Header = tallest };
+        if (firstPageHeader is not null)
+            section.Blocks.Insert(0, FirstPageHeaderBox(firstPageHeader, section.Page!));
         if (int.TryParse(Attr(sectPr?.Element(W + "pgNumType"), "start"), out var start))
             section.StartPageNumber = start;
 
@@ -283,6 +298,73 @@ internal sealed partial class DocxReader
             });
         }
         return blocks;
+    }
+
+    /// <summary>
+    /// A tiny paragraph holding <paramref name="blocks"/> in a borderless text box at the header's place on the page:
+    /// Word's first-page header, which 한글 has no header type for.
+    /// </summary>
+    private static HParagraph FirstPageHeaderBox(List<HBlock> blocks, HPage page)
+    {
+        var box = new HTextBox
+        {
+            Width = page.TextWidth,
+            Height = page.Header,
+            Anchor = new HAnchor("PAPER", "LEFT", page.Left + page.Gutter, "PAPER", "TOP", page.Top, "IN_FRONT_OF_TEXT", AllowOverlap: true),
+            Line = HBorder.None,
+            Padding = new HInsets(0, 0, 0, 0),
+        };
+        box.Blocks.AddRange(blocks);
+        var holder = new HParagraph { MarkFormat = new HCharFormat(Size: 100) };
+        holder.Inlines.Add(box);
+        return holder;
+    }
+
+    private static bool SameText(List<HBlock>? a, List<HBlock>? b) =>
+        a is not null && b is not null && Text(a) == Text(b);
+
+    private static string Text(List<HBlock> blocks) =>
+        string.Join("\n", blocks.OfType<HParagraph>().Select(p => HDocumentWalker.Text(p.Inlines)));
+
+    /// <summary>
+    /// A generous estimate of how tall <paramref name="blocks"/> lay out (HWPX units), from their font sizes, line
+    /// spacing, line count at about half an em per character, paragraph spacing, inline pictures and table rows. Only
+    /// used to grow a header area that is too small: a little too much just leaves some space.
+    /// </summary>
+    internal static int EstimatedHeight(IEnumerable<HBlock> blocks, int textWidth)
+    {
+        const double defaultSize = 10; // points
+        double total = 0;
+        foreach (var block in blocks)
+        {
+            switch (block)
+            {
+                case HParagraph paragraph:
+                    var texts = paragraph.Inlines.OfType<HText>().ToList();
+                    var size = texts.Select(t => (t.Format.Size ?? defaultSize * 100) / 100.0).DefaultIfEmpty(defaultSize).Max();
+                    var perLine = Math.Max(1, textWidth / 100.0 / (size * 0.5));
+                    var lines = Math.Max(1, Math.Ceiling(texts.Sum(t => t.Text.Length) / perLine)
+                                            + paragraph.Inlines.Count(i => i is HLineBreak));
+                    var lineHeight = paragraph.Format.LineSpacing switch
+                    {
+                        { Kind: HLineSpacingKind.Percent, Value: var percent } => size * percent / 100.0,
+                        { Kind: HLineSpacingKind.Fixed, Value: var fixedHeight } => fixedHeight / 100.0,
+                        { Kind: HLineSpacingKind.AtLeast, Value: var least } => Math.Max(least / 100.0, size * 1.3),
+                        _ => size * 1.6, // 한글's default line spacing
+                    };
+                    var pictures = paragraph.Inlines.OfType<HImage>().Where(i => i.Anchor is null).Select(i => (i.Height ?? 0) / 100.0)
+                        .DefaultIfEmpty(0).Max();
+                    total += Math.Max(lines * lineHeight, pictures)
+                             + (paragraph.Format.Before ?? 0) / 100.0 + (paragraph.Format.After ?? 0) / 100.0;
+                    break;
+                case HTable table:
+                    total += table.Rows.Sum(r => Math.Max((r.Height ?? 0) / 100.0,
+                        r.Cells.Select(c => EstimatedHeight(c.Blocks, textWidth / Math.Max(1, table.ColumnCount)) / 100.0).DefaultIfEmpty(0).Max()));
+                    break;
+            }
+        }
+        // A few points between the header and the body, as Word leaves.
+        return (int)Math.Round((total + 4) * 100);
     }
 
     private static bool IsBlank(List<HBlock>? blocks) =>

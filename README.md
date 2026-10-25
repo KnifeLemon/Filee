@@ -96,6 +96,8 @@ This happens on Windows 10 that hasn't been updated for a long time, on a PC who
 Windows turns that protection on but lacks a part that .NET needs, so Filee and Setup stop right away.
 
 - **Recommended:** install the available Windows updates (the latest cumulative update).
+- **Setup does the next step by itself** for an install for all users: it starts on such a PC, notices when Filee
+  can't, and turns the protection off for Filee's two programs only. Uninstalling turns it back on.
 - **If updating isn't possible:** turning the protection off for Filee alone usually works.
   Run this in PowerShell as administrator:
 

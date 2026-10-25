@@ -130,7 +130,7 @@ public sealed class SetupBench : IDisposable
     public MemoryRegistry Registry { get; } = new();
     public FakeSystem System { get; } = new();
     public SetupLog Log { get; } = new(null);
-    public SetupContext Context { get; }
+    public SetupContext Context { get; set; }
     public string AppFolder { get; }
     public string SetupExe { get; private set; }
     public TempFolder Temp => _temp;

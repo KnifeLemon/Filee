@@ -24,7 +24,7 @@ namespace Filee.Engines.Media;
 
 /// <summary>Converts video and audio files with Filee's own copy of FFmpeg.</summary>
 /// <param name="logger">Receives which hardware encoders work and why a hardware encode was redone in software.</param>
-public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer, IMediaJoiner
+public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter, IImageTransformer, IMediaJoiner, IHasOwnTimeout
 {
     private static readonly ConcurrentDictionary<string, string> Versions = new();
 

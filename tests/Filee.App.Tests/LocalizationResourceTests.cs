@@ -126,4 +126,35 @@ public class LocalizationResourceTests
         Assert.Equal("オフ", toggle.OffContent);
         window.Close();
     }
+
+    [AvaloniaFact]
+    public void A_language_switch_replaces_the_texts_at_once_and_the_same_language_leaves_them()
+    {
+        // Written one by one, each of the thousand texts made every DynamicResource in every open window look its key
+        // up again: a switch took seconds with a few windows open.
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<LocalizationService>();
+        var merged = Application.Current!.Resources.MergedDictionaries;
+        ResourceDictionary Texts() => merged.OfType<ResourceDictionary>().Single(d => d.ContainsKey("general.title"));
+        var label = new TextBlock();
+        label.Bind(TextBlock.TextProperty, label.GetResourceObservable("general.title"));
+        var window = new Window { Content = label };
+        window.Show();
+        try
+        {
+            var english = Texts();
+            loc.SetLanguage("en");
+            Assert.Same(english, Texts());
+
+            loc.SetLanguage("ko");
+            Assert.NotSame(english, Texts());
+            Assert.Equal(loc["general.title"], label.Text);
+            Assert.NotEqual("General", label.Text);
+        }
+        finally
+        {
+            window.Close();
+            TestServices.EnsureInitialized("en");
+        }
+    }
 }

@@ -1,0 +1,32 @@
+# CI skips the LibreOffice tests to save time (the engine with H2Orestart and Java is ~420 MB). This runs them once a
+# week, and on demand, with every engine fetched, so a LibreOffice route that broke shows up before a release.
+name: Engine tests (weekly)
+
+on:
+  schedule:
+    - cron: '41 3 * * 0'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  engines:
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Fetch every engine
+        shell: pwsh
+        run: ./build/fetch-engines.ps1
+
+      - name: Build
+        run: dotnet build Filee.slnx -c Release
+
+      - name: Engine tests
+        run: dotnet test tests/Filee.Engines.Tests --no-build -c Release --blame-hang-timeout 10m --logger "console;verbosity=normal"

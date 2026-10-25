@@ -1,10 +1,12 @@
 // Reads source images with ImageMagick, handling the formats that need more than "open the file": camera RAW
-// (LibRaw settings), layered PSD/PSB/XCF (one flattened picture instead of one file per layer) and Windows
+// (LibRaw settings), layered PSD/PSB/XCF (one flattened picture instead of one file per layer; a PSD whose composite
+// lacks its layers' transparency is composed from the layers) and Windows
 // metafiles (rendered at the preset's DPI), APNG (Filee's own reader composes the frames) and uncompressed DICOM
 // (Filee's own reader, as ImageMagick's Q8 build reads only 8-bit DICOM), FITS (Filee's own reader, stretched and
 // debayered as the preset says) and the photo of an iPhone LIVP. Used by every engine that takes a raster image as input.
 
 using System.Buffers.Binary;
+using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using ImageMagick;
 using ImageMagick.Formats;
@@ -34,9 +36,16 @@ internal static class ImageReader
 
         var images = new MagickImageCollection();
         var settings = Settings(formatId, preset);
+        // Settings → Security and limits: a picture too large is refused from its header, before it is decoded.
+        MagickLimits.Check(path, formatId, settings);
         try
         {
             images.Read(path, settings);
+        }
+        catch (MagickResourceLimitErrorException ex)
+        {
+            images.Dispose();
+            throw new ConversionRefusedException("error.image_too_large", ex.Message);
         }
         catch (MagickException ex) when (formatId == "dcm")
         {
@@ -56,6 +65,15 @@ internal static class ImageReader
         {
             images.Dispose();
             throw;
+        }
+
+        // #468: Photoshop's composite (frame 0) can lack the transparency its layers have (a file saved without it in
+        // the merged image): then the layers are composed onto a transparent canvas, as Photoshop shows them.
+        if (formatId is "psd" or "psb" && images.Count == 1 && !images[0].HasAlpha
+            && FlattenPsdLayers(path, formatId, images[0].Width, images[0].Height) is { } layered)
+        {
+            images.Dispose();
+            return [layered];
         }
 
         // The metafile was rendered at this density, but ImageMagick doesn't record it on the image: without it,
@@ -150,6 +168,29 @@ internal static class ImageReader
     /// their offsets, blend mode as compose operator and hidden layers marked <see cref="CompositeOperator.No"/>, but
     /// not the canvas size, which comes from the file header.
     /// </summary>
+    /// <summary>
+    /// The visible layers of a PSD / PSB composed onto a transparent <paramref name="width"/> × <paramref name="height"/>
+    /// canvas at their offsets, with their blend modes. Null when the file has no layers, or none of them has
+    /// transparency: then the composite is right.
+    /// </summary>
+    internal static MagickImage? FlattenPsdLayers(string path, string formatId, uint width, uint height)
+    {
+        using var all = new MagickImageCollection();
+        all.Read(path, new MagickReadSettings { Format = formatId == "psb" ? MagickFormat.Psb : MagickFormat.Psd });
+        if (all.Count < 2 || !all.Skip(1).Any(layer => layer.HasAlpha))
+            return null;
+        var canvas = new MagickImage(MagickColors.Transparent, width, height);
+        foreach (var layer in all.Skip(1))
+        {
+            if (layer.Compose == CompositeOperator.No)
+                continue; // hidden layer
+            var compose = layer.Compose == CompositeOperator.Undefined ? CompositeOperator.Over : layer.Compose;
+            canvas.Composite(layer, layer.Page.X, layer.Page.Y, compose);
+        }
+        canvas.Page = new MagickGeometry(0, 0, width, height);
+        return canvas;
+    }
+
     private static MagickImage FlattenXcf(MagickImageCollection layers, (uint Width, uint Height)? canvasSize)
     {
         var (width, height) = canvasSize ?? (layers[0].Page.Width is > 0 ? layers[0].Page.Width : layers[0].Width,

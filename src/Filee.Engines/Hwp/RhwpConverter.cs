@@ -21,7 +21,7 @@ using Filee.Engines.Office;
 namespace Filee.Engines.Hwp;
 
 /// <summary>Renders HWP and HWPX documents to PDF and converts between the two 한글 formats.</summary>
-public sealed class RhwpConverter : IConverter, ITextShapingCheck
+public sealed class RhwpConverter : IConverter, ITextShapingCheck, IHasOwnTimeout
 {
     // rhwp renders text slowly: about 1 s per KB of section XML (some 4 s per page of a novel) with rhwp 0.8.7 on an
     // i7-1185G7, so a 640-page book takes some 48 minutes; export-hwpx and convert take seconds for the same book. The

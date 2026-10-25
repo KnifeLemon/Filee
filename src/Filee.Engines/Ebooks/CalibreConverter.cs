@@ -17,7 +17,7 @@ using Filee.Engines.Infrastructure;
 namespace Filee.Engines.Ebooks;
 
 /// <summary>Conversions through calibre's ebook-convert.</summary>
-public sealed partial class CalibreConverter : IConverter
+public sealed partial class CalibreConverter : IConverter, IHasOwnTimeout
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 

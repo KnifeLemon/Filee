@@ -255,7 +255,14 @@ public sealed class Installer(SetupContext context, SetupPayload payload)
         // The uninstall entry: the Inno Setup key, rewritten (its "Inno Setup: …" values and unins000.exe are gone).
         var before = Snapshot(hive, SetupNames.UninstallKey);
         undo.Push(("uninstall entry", () => Restore(hive, SetupNames.UninstallKey, before)));
+        // An exception an earlier Setup made (#486) stays noted: Filee starts now because of it, so the check below passes.
+        var shadowStackOff = Registry.Get(hive, SetupNames.UninstallKey, SetupNames.ShadowStackOffValue) is not null;
         WriteUninstallEntry(hive, folder, choices);
+
+        // #486: Filee stops at start on old Windows 10 with Hardware-enforced Stack Protection; then it is turned off for
+        // Filee's programs only, and the uninstall entry notes it so the uninstaller turns it back on.
+        if (CetCheck.Run(context, folder, elevated: choices.Scope == InstallScope.Machine) || shadowStackOff)
+            Registry.SetNumber(hive, SetupNames.UninstallKey, SetupNames.ShadowStackOffValue, 1);
 
         // Shortcuts.
         var startMenu = Path.Combine(Paths.StartMenu(choices.Scope), SetupNames.ShortcutName);

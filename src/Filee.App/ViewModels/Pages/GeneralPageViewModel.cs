@@ -161,7 +161,25 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         if (!Choices.Restore(oldValue, newValue, v => Language = v))
             Save(s => s.Language = newValue.Value);
     }
-    partial void OnStartWithSystemChanged(bool value) => Save(s => s.StartWithSystem = value);
+    partial void OnStartWithSystemChanged(bool value)
+    {
+        Save(s => s.StartWithSystem = value);
+        OnPropertyChanged(nameof(StartupDisabledBySystem));
+    }
+
+    /// <summary>
+    /// The switch is on, but Windows turned Filee's start at sign-in off in Task Manager → Startup apps (#450): without
+    /// this the switch would look right while Filee doesn't start.
+    /// </summary>
+    public bool StartupDisabledBySystem => StartWithSystem && _platform.StartupDisabledBySystem;
+
+    /// <summary>Turns it on again in Task Manager's list. Only on request: Filee never overrides that choice by itself.</summary>
+    [RelayCommand]
+    private void ReenableStartup()
+    {
+        _platform.ReenableStartup();
+        OnPropertyChanged(nameof(StartupDisabledBySystem));
+    }
 
     partial void OnShowInDockChanged(bool value)
     {

@@ -17,7 +17,7 @@ using ImageMagick;
 namespace Filee.Engines.Office;
 
 /// <summary>Markdown, HTML, DOCX, ODT, RTF and markup language conversions through Pandoc.</summary>
-public sealed class PandocConverter : IConverter
+public sealed class PandocConverter : IConverter, IHasOwnTimeout
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(2);
 

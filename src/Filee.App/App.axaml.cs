@@ -283,6 +283,8 @@ public partial class App : Application
         AppHost.Get<ThemeService>().Apply(settings.Theme, loc.Language, custom);
         AppHost.Get<TriggerService>().Apply(settings);
         AppHost.Get<ConverterCatalog>().Priority = settings.EnginePriority;
+        // Settings → Security and limits: picture limits, files at once, step time limit, documents with active content.
+        SecurityAndLimits.Apply(settings, AppHost.Get<JobQueue>());
         if (ownCopiesChanged || routesChanged)
         {
             AppHost.Get<ConverterCatalog>().Refresh();

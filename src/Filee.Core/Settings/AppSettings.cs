@@ -262,6 +262,15 @@ public sealed class AppSettings
     public double UiScale { get; set; } = 1;
 
     /// <summary>
+    /// Documents with macros or other active content (Settings → Security and limits). Missing in settings from before
+    /// it: the defaults apply, so it needs no schema step.
+    /// </summary>
+    public SecuritySettings Security { get; set; } = new();
+
+    /// <summary>Picture size and memory, files converted at once and time per step (Settings → Security and limits).</summary>
+    public LimitSettings Limits { get; set; } = new();
+
+    /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
     /// <see cref="DefaultOutput"/> when the preset's location is <see cref="OutputLocation.Default"/>, and keeps the
     /// original dates when <see cref="KeepFileDates"/> is on and is saved as a ZIP when <see cref="ZipGeoResults"/> is on and the

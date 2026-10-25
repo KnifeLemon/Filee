@@ -1,0 +1,60 @@
+<!-- Documents with macros or other active content: shown before a job opens them in LibreOffice (JobQueue asks through
+     WindowService.AskActiveContentAsync). "Trust and convert" converts them, "Without these files" converts the job's
+     other files, Cancel or closing the window cancels the job. Nothing in a document is ever run. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.ActiveContentWindow"
+        x:DataType="vm:ActiveContentViewModel"
+        Title="{DynamicResource active.title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="620" Height="520" MinWidth="460" MinHeight="340"
+        WindowStartupLocation="CenterScreen">
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            Background="{DynamicResource SurfaceBrush}">
+      <DockPanel>
+        <CheckBox x:Name="RememberChoice" DockPanel.Dock="Left" VerticalAlignment="Center" Content="{DynamicResource active.remember}" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+          <Button x:Name="CancelJob" Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
+          <Button x:Name="SkipFiles" Content="{DynamicResource active.skip}" Click="OnSkip" />
+          <Button x:Name="TrustFiles" Classes="accent" Content="{DynamicResource active.trust}" Click="OnTrust" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+    <DockPanel Margin="20,18,20,14">
+      <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,12">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <PathIcon Width="20" Height="20" Data="{StaticResource Icon.Shield}" Foreground="{DynamicResource WarningBrush}" />
+          <TextBlock Classes="h2" Text="{Binding Summary}" TextWrapping="Wrap" />
+        </StackPanel>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource active.hint}" />
+      </StackPanel>
+      <ListBox x:Name="FileList" ItemsSource="{Binding Files}" ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+               AutomationProperties.Name="{DynamicResource active.title}">
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+          </Style>
+        </ListBox.Styles>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:ActiveContentFile">
+            <StackPanel Spacing="3" Margin="4,6" ToolTip.Tip="{Binding Path}">
+              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="caption" Text="{Binding Folder}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap"
+                         Text="{DynamicResource active.starts_by_itself}" IsVisible="{Binding StartsByItself}" />
+              <ItemsControl ItemsSource="{Binding Findings}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="12,1,0,0" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+  </DockPanel>
+</Window>

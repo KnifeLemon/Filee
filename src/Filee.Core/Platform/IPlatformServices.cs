@@ -102,6 +102,17 @@ public interface IPlatformServices
     /// </summary>
     void SetStartWithSystem(bool enabled, string executablePath);
 
+    /// <summary>
+    /// True when the system itself keeps Filee's startup entry from running although it is there: on Windows the user
+    /// (or a tool) turned it off in Task Manager → Startup apps, which Filee's own switch doesn't show (#450).
+    /// </summary>
+    bool StartupDisabledBySystem => false;
+
+    /// <summary>Turns a startup entry the system disabled (<see cref="StartupDisabledBySystem"/>) on again. Only on request.</summary>
+    void ReenableStartup()
+    {
+    }
+
     /// <summary>Adds or removes the file manager context-menu entry ("Convert with Filee") and Send To shortcut.</summary>
     void SetContextMenu(bool enabled, string executablePath, string label);
 

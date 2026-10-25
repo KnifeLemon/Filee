@@ -75,5 +75,14 @@
       <_Parameter1>FileeRelease</_Parameter1>
       <_Parameter2>true</_Parameter2>
     </AssemblyAttribute>
+    <!-- What an update must be signed with (Directory.Build.props): UpdateService.ExpectedPublisher / UpdatePublicKey. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(FileeExpectedPublisher)' != ''">
+      <_Parameter1>FileeExpectedPublisher</_Parameter1>
+      <_Parameter2>$(FileeExpectedPublisher)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(FileeUpdatePublicKey)' != ''">
+      <_Parameter1>FileeUpdatePublicKey</_Parameter1>
+      <_Parameter2>$(FileeUpdatePublicKey)</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 </Project>

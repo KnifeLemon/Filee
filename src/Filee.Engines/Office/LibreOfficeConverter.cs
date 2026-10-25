@@ -16,6 +16,8 @@
 //  * soffice reports no progress: ProgressEstimate keeps the progress ring moving while it runs.
 //  * Its ZIP reader refuses some containers other readers open (Tencent Docs exports, issue #141), saying only "source
 //    file could not be loaded": an Office Open XML / OpenDocument file is tried once more as a repacked copy.
+//  * Every profile is locked down before each run (LibreOfficeSecurity): macros never run, links are never updated.
+//    JobQueue checks documents for active content before a step through here (IOpensDocumentsInOfficeSuite).
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -29,7 +31,7 @@ using PdfSharp.Pdf.IO;
 namespace Filee.Engines.Office;
 
 /// <summary>Word processor, spreadsheet, presentation and drawing conversions (and HWP / HWPX) through LibreOffice.</summary>
-public sealed class LibreOfficeConverter : IConverter
+public sealed class LibreOfficeConverter : IConverter, IOpensDocumentsInOfficeSuite, IHasOwnTimeout
 {
     private const int Workers = 2;
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(3);
@@ -100,9 +102,21 @@ public sealed class LibreOfficeConverter : IConverter
         return _soffice is null
             ? EngineStatus.Unavailable("engine.reason.not_installed")
             : !EngineEnvironment.UsesFileesCopy("libreoffice")
-                ? EngineStatus.Available(_soffice, _hasHwpFilter ? "H2Orestart" : null)
+                ? EngineStatus.Available(_soffice, OtherCopyVersion())
                 : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice")
                                                    + (_hasHwpFilter ? $" · H2Orestart {EngineVersions.Component("h2orestart")}" : ""));
+    }
+
+    /// <summary>
+    /// "26.8 · H2Orestart" for a LibreOffice Filee didn't download. The version only on Windows: there it is read from
+    /// files (cached); elsewhere it would mean starting LibreOffice.
+    /// </summary>
+    private string? OtherCopyVersion()
+    {
+        var version = OperatingSystem.IsWindows() && Path.GetDirectoryName(_soffice) is { } folder
+            ? CopyVersions.Installed("libreoffice", folder)?.ToString(2)
+            : null;
+        return !_hasHwpFilter ? version : version is null ? "H2Orestart" : $"{version} · H2Orestart";
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -273,8 +287,11 @@ public sealed class LibreOfficeConverter : IConverter
 
     private string ProfileDirectory(int slot) => Path.Combine(_env.DataDirectory, "libreoffice-profiles", $"worker-{slot}");
 
-    /// <summary>LibreOffice has started with this profile before (it creates the "user" folder).</summary>
-    private bool IsPrepared(int slot) => Directory.Exists(Path.Combine(ProfileDirectory(slot), "user"));
+    /// <summary>
+    /// LibreOffice has started with this profile before. It creates "user/config"; the "user" folder alone may only hold
+    /// the settings <see cref="LibreOfficeSecurity"/> wrote before the first start.
+    /// </summary>
+    private bool IsPrepared(int slot) => Directory.Exists(Path.Combine(ProfileDirectory(slot), "user", "config"));
 
     private async Task<int> TakeProfileAsync(CancellationToken cancellationToken)
     {
@@ -294,6 +311,16 @@ public sealed class LibreOfficeConverter : IConverter
     {
         var profileDir = ProfileDirectory(slot);
         Directory.CreateDirectory(profileDir);
+        try
+        {
+            LibreOfficeSecurity.Apply(profileDir);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Xml.XmlException)
+        {
+            // Defense in depth only: the conversion mode doesn't run macros either way. A profile whose settings file
+            // can't be read or written still converts, and the log says why it wasn't locked down.
+            _logger.LogWarning("LibreOffice profile {Profile} could not be locked down: {Message}", profileDir, e.Message);
+        }
         var args = new List<string>
         {
             "--headless", "--norestore", "--nologo", "--nodefault", "--nolockcheck", "--nofirststartwizard",

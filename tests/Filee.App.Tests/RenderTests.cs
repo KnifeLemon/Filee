@@ -1,6 +1,7 @@
 // Renders real windows headlessly (Skia) to catch XAML / binding errors and to produce screenshots
 // in bin/.../screenshots for visual review.
 
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -14,6 +15,7 @@ using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 using Filee.App.Views;
 using Filee.App.Views.Pages;
+using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Profiles;
 using Filee.Core.Settings;
@@ -50,6 +52,7 @@ public class RenderTests
         { "home", "pt-BR" }, { "general", "pt-BR" }, { "triggers", "pt-BR" }, { "toolbar", "pt-BR" },
         { "presets", "pt-BR" }, { "theme", "pt-BR" }, { "engines", "pt-BR" }, { "about", "pt-BR" }, { "watch", "pt-BR" },
         { "home", "ne" }, { "general", "ne" }, { "toolbar", "ne" }, { "presets", "ne" }, { "engines", "ne" },
+        { "security", "en" }, { "security", "ko" }, { "security", "ar" }, { "security", "ja" }, { "security", "ru" },
     };
 
     [AvaloniaTheory]
@@ -1385,6 +1388,7 @@ public class RenderTests
     public void Preset_editor_saves_every_frame_only_for_png_and_jpg()
     {
         TestServices.EnsureInitialized("en");
+        using var culture = new CultureScope("en-US"); // "100,000": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
 
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "jpg" };
@@ -1412,6 +1416,7 @@ public class RenderTests
     public void Preset_editor_shows_playback_speed_only_for_targets_that_keep_animations()
     {
         TestServices.EnsureInitialized("ko");
+        using var culture = new CultureScope("ko-KR"); // "0.25×": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "gif", Name = "Slow GIF" };
         var vm = new PresetEditorViewModel(preset, loc);
@@ -2442,6 +2447,37 @@ public class RenderTests
         });
     }
 
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ko")]
+    [InlineData("ar")]
+    public void The_active_content_warning_lists_what_each_document_carries(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        IReadOnlyList<ActiveContentReport> reports =
+        [
+            new(@"C:\Users\me\Downloads\invoice.docm",
+            [
+                new(ActiveContentKind.Macro, "NewMacros"),
+                new(ActiveContentKind.AutoRunMacro, "AutoOpen", "NewMacros"),
+                new(ActiveContentKind.ExternalLink, "attachedTemplate", "http://example.com/template.dotm"),
+            ]),
+            new(@"C:\Users\me\Downloads\budget.xls", [new(ActiveContentKind.Macro, "Macro1", "Excel 4.0")]),
+        ];
+        var vm = new ActiveContentViewModel(reports, AppHost.Get<ILocalizer>());
+        var window = new ActiveContentWindow { DataContext = vm };
+        window.Show();
+        Pump();
+
+        Assert.Equal(2, vm.Files.Count);
+        Assert.True(vm.Files[0].StartsByItself);
+        Assert.False(vm.Files[1].StartsByItself);
+        Assert.Equal(ActiveContentDecision.Cancel, window.Result); // closing the window cancels
+        Assert.False(window.Remember);
+        Save(window, $"active-content-{language}.png");
+        window.Close();
+    }
+
     internal static void Pump()
     {
         // Let layout, bindings and a few animation frames run.
@@ -2450,6 +2486,16 @@ public class RenderTests
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         }
+    }
+
+    /// <summary>The regional format until disposed: numbers in labels follow it, not the UI language.</summary>
+    private sealed class CultureScope : IDisposable
+    {
+        private readonly CultureInfo _before = CultureInfo.CurrentCulture;
+
+        public CultureScope(string name) => CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(name);
+
+        public void Dispose() => CultureInfo.CurrentCulture = _before;
     }
 
     internal static void Save(TopLevel window, string name)

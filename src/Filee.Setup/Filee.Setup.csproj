@@ -18,6 +18,11 @@
     <!-- Kept trim- and AOT-safe (no reflection, compiled bindings, source-generated COM), so the publish can be
          trimmed and could become Native AOT later. -->
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- #486: on Windows 10 that hasn't been updated for a long time, a processor with Hardware-enforced Stack
+         Protection makes every .NET program stop at start. Setup runs only briefly and must start there to help:
+         it turns the protection off for Filee alone when Filee can't start (Installation/CetCheck.cs). Filee itself
+         keeps the protection. -->
+    <CETCompat>false</CETCompat>
     <InvariantGlobalization>true</InvariantGlobalization>
     <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
     <Product>Filee Setup</Product>

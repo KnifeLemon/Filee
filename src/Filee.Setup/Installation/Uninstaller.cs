@@ -75,6 +75,9 @@ public sealed class Uninstaller(SetupContext context)
                 FileSwap.DeleteTree(work, System, Log);
         }
 
+        // Setup turned Hardware-enforced Stack Protection off for Filee's programs (#486): turn it back on.
+        if (Registry.Get(hive, SetupNames.UninstallKey, SetupNames.ShadowStackOffValue) is not null)
+            CetCheck.Remove(context);
         Registry.DeleteKey(hive, SetupNames.UninstallKey);
         progress?.Report(new SetupProgress(SetupStep.Removing, 0.95));
         if (deleteSettings)

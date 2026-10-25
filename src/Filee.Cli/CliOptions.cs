@@ -1,6 +1,7 @@
 // Parses the "filee" command line. Kept dependency-free: a handful of commands and options.
 
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 
 namespace Filee.Cli;
 
@@ -21,6 +22,9 @@ internal sealed record CliOptions
     public bool KeepDates { get; set; }
 
     public bool Zip { get; set; }
+
+    /// <summary>--active-content: overrides Settings → Security and limits for documents with macros and the like.</summary>
+    public ActiveContentPolicy? ActiveContent { get; set; }
     public double? SettleSeconds { get; set; }
     public string? Error { get; set; }
 
@@ -99,6 +103,16 @@ internal sealed record CliOptions
                     break;
                 case "--zip":
                     options.Zip = true;
+                    break;
+                case "--active-content":
+                    var policy = Value();
+                    if (policy is not null)
+                    {
+                        if (Enum.TryParse<ActiveContentPolicy>(policy, ignoreCase: true, out var p) && Enum.IsDefined(p))
+                            options.ActiveContent = p;
+                        else
+                            options.Error ??= "--active-content must be ask, convert or refuse.";
+                    }
                     break;
                 case "--settle":
                     var settle = Value();

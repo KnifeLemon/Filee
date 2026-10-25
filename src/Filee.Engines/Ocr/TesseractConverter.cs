@@ -26,7 +26,7 @@ using UglyToad.PdfPig.Exceptions;
 namespace Filee.Engines.Ocr;
 
 /// <summary>Scans and pictures → searchable PDF through Tesseract.</summary>
-public sealed class TesseractConverter : IConverter
+public sealed class TesseractConverter : IConverter, IHasOwnTimeout
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(10);
 

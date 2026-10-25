@@ -22,6 +22,14 @@
     <!-- Single source of truth for the GitHub repository (used by the updater and the About page). -->
     <FileeRepositoryUrl>https://github.com/KnifeLemon/Filee</FileeRepositoryUrl>
     <RepositoryUrl>$(FileeRepositoryUrl)</RepositoryUrl>
+
+    <!-- Update checks (UpdateService). FileeExpectedPublisher: the Authenticode publisher (certificate subject, as
+         Windows shows it) every installer must be signed by, also for a copy that isn't signed itself (built from
+         source); empty until releases are signed. FileeUpdatePublicKey: the ECDSA P-256 public key (base64
+         SubjectPublicKeyInfo) whose private key signs every release's SHA256SUMS file (build/sign-checksums.ps1);
+         empty while checksum files aren't signed. With a key, a checksum file without a valid signature is refused. -->
+    <FileeExpectedPublisher></FileeExpectedPublisher>
+    <FileeUpdatePublicKey></FileeUpdatePublicKey>
   </PropertyGroup>
 
   <!-- Libraries their makers sign: ReadyToRun recompiles an assembly and drops its Authenticode signature, so these

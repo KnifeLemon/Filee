@@ -240,6 +240,38 @@ public sealed class WindowsPlatformServices : IPlatformServices
         CheckStartupEntry(command, key.GetValue(AppName));
     }
 
+    /// <summary>Where Task Manager → Startup apps keeps "disabled" for an entry of the Run key (a REG_BINARY per name).</summary>
+    private const string StartupApprovedKey = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+    /// <inheritdoc />
+    public bool StartupDisabledBySystem
+    {
+        get
+        {
+            using var run = Registry.CurrentUser.OpenSubKey(RunKey);
+            if (run?.GetValue(AppName) is null)
+                return false;
+            using var approved = Registry.CurrentUser.OpenSubKey(StartupApprovedKey);
+            return IsDisabledFlag(approved?.GetValue(AppName));
+        }
+    }
+
+    /// <summary>
+    /// Task Manager's flag: the first byte is even (2, 6) for "enabled" and odd (3, 7) for "disabled", followed by the
+    /// time it was disabled. No value means enabled.
+    /// </summary>
+    internal static bool IsDisabledFlag(object? value) => value is byte[] { Length: > 0 } bytes && (bytes[0] & 1) == 1;
+
+    /// <inheritdoc />
+    public void ReenableStartup()
+    {
+        using var approved = Registry.CurrentUser.CreateSubKey(StartupApprovedKey);
+        // What Task Manager writes for "Enabled": 2 and eleven zero bytes.
+        approved.SetValue(AppName, EnabledFlag, RegistryValueKind.Binary);
+    }
+
+    internal static readonly byte[] EnabledFlag = [2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+
     /// <summary>Throws <see cref="StartupEntryNotKeptException"/> unless <paramref name="readBack"/> is the command written.</summary>
     internal static void CheckStartupEntry(string written, object? readBack)
     {

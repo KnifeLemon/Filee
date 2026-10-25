@@ -67,6 +67,33 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         return dialog.Result;
     }
 
+    /// <summary>
+    /// Asks about a job's documents with macros or other active content (JobQueue.ActiveContentPrompt). Callable from
+    /// any thread; the window opens on the UI thread. "Don't ask again" makes the choice the setting. Closing the
+    /// window, or the job being cancelled meanwhile, cancels the job.
+    /// </summary>
+    public Task<ActiveContentDecision> AskActiveContentAsync(ConversionJob job, IReadOnlyList<ActiveContentReport> reports,
+        CancellationToken cancellationToken) =>
+        Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var dialog = new ActiveContentWindow { DataContext = new ActiveContentViewModel(reports, loc) };
+            PrepareWindow(dialog);
+            var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            dialog.Closed += (_, _) => closed.TrySetResult();
+            using var cancel = cancellationToken.Register(() => Avalonia.Threading.Dispatcher.UIThread.Post(dialog.Close));
+            dialog.Show();
+            dialog.Activate();
+            await closed.Task;
+            if (dialog.Remember && dialog.Result != ActiveContentDecision.Cancel && services.GetService<UserDataStore>() is { } store)
+            {
+                store.Settings.Security.ActiveContent = dialog.Result == ActiveContentDecision.Trust
+                    ? ActiveContentPolicy.Convert
+                    : ActiveContentPolicy.Refuse;
+                store.SaveSettings();
+            }
+            return dialog.Result;
+        });
+
     public MainWindow? Main => _main;
 
     /// <summary>

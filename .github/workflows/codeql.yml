@@ -1,0 +1,42 @@
+# Static analysis of the C# code with GitHub CodeQL: on pushes to main, on pull requests and once a week (new queries
+# find old code too). Findings appear under Security > Code scanning. Built on Windows like CI (Windows-only projects).
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 4 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      security-events: write   # upload the results
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          languages: csharp
+          build-mode: manual
+          queries: security-and-quality
+
+      - name: Build
+        run: dotnet build Filee.slnx -c Release
+
+      - uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # v4.39.1
+        with:
+          category: /language:csharp

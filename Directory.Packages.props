@@ -54,6 +54,8 @@
     <!-- 6.2 no longer reads files an attachment only links to (ATTACH_BY_REFERENCE) and caps nested messages and
          stream sizes of untrusted .msg files; brings OpenMcdf (MPL-2.0), RtfPipe and UTF.Unknown (MPL-1.1). -->
     <PackageVersion Include="MsgReader" Version="6.2.0" />
+    <!-- Compound files (Office 97-2003): the VBA storage and Excel 4.0 macro sheets for ActiveContentScanner. Same version MsgReader brings. -->
+    <PackageVersion Include="OpenMcdf" Version="3.3.0" />
     <PackageVersion Include="SharpGLTF.Core" Version="1.0.7" />
   </ItemGroup>
 

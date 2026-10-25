@@ -58,6 +58,8 @@ public partial class ToolbarPage : UserControl
             if (Vm is not null)
                 await Vm.EditAsync(index);
         };
+        // Ctrl + arrow on the focused donut (DonutMenu.HandleEditKey).
+        Donut.SegmentMoveRequested += (_, move) => Vm?.Move(move.From, move.To);
         DataContextChanged += (_, _) =>
         {
             if (_subscribed is not null)

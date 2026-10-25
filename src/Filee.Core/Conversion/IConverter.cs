@@ -183,6 +183,16 @@ public interface IImageTransformer
 }
 
 /// <summary>
+/// An engine that stops a conversion running too long on its own: it runs another program (LibreOffice, FFmpeg,
+/// Ghostscript, …) under a time limit fitting that program, or packs archives that can take hours. The step time limit
+/// of Settings → Security and limits (<see cref="JobQueue.StepTimeout"/>) applies only to the other, built-in engines,
+/// which run inside Filee and have none.
+/// </summary>
+public interface IHasOwnTimeout
+{
+}
+
+/// <summary>
 /// The scripts of a file's text an engine would draw wrong, from one scan.
 /// </summary>
 /// <param name="NeedsShaping">

@@ -41,6 +41,12 @@ public static class SetupNames
     public const string TasksValue = "Filee Setup: Tasks";
     public const string LanguageValue = "Filee Setup: Language";
     public const string ScopeValue = "Filee Setup: Scope";
+
+    /// <summary>
+    /// Set when Setup turned Hardware-enforced Stack Protection off for Filee's programs (#486, CetCheck): the
+    /// uninstaller removes that exception again.
+    /// </summary>
+    public const string ShadowStackOffValue = "Filee Setup: Shadow stack off";
     public const string InnoTasksValue = "Inno Setup: Selected Tasks";
     public const string InnoAppPathValue = "Inno Setup: App Path";
     public const string InnoVersionValue = "Inno Setup: Setup Version";

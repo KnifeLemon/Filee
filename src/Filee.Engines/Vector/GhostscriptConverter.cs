@@ -14,7 +14,7 @@ using PdfSharp.Pdf.IO;
 namespace Filee.Engines.Vector;
 
 /// <summary>EPS, PS and PostScript-based AI ↔ PDF through Ghostscript.</summary>
-public sealed class GhostscriptConverter : IConverter, IImageTransformer
+public sealed class GhostscriptConverter : IConverter, IImageTransformer, IHasOwnTimeout
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
 
