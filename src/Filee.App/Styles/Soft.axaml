@@ -381,6 +381,12 @@
     <Setter Property="Padding" Value="6" />
     <Setter Property="ClipToBounds" Value="True" />
   </Style>
+  <!-- Keep the ComboBox popup scrollbar visible and prevent horizontal scrolling.
+       Note: a separate scrollbar column may require changing the popup's ScrollViewer template. -->
+  <Style Selector="ComboBox /template/ ScrollViewer">
+    <Setter Property="AllowAutoHide" Value="False" />
+    <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
+  </Style>
   <Style Selector="ComboBoxItem">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
     <Setter Property="Margin" Value="0,1" />
