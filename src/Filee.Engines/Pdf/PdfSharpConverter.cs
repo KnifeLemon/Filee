@@ -49,15 +49,42 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
         Task.Run(() =>
         {
-            using var output = new PdfDocument();
-            foreach (var input in inputPaths)
+            using (var output = new PdfDocument())
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                using var source = Open(input, PdfDocumentOpenMode.Import);
-                foreach (var page in source.Pages)
-                    output.AddPage(page);
+                foreach (var input in inputPaths)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    using var source = Open(input, PdfDocumentOpenMode.Import);
+                    foreach (var page in source.Pages)
+                        output.AddPage(page);
+                }
+                output.Save(outputPath);
             }
-            output.Save(outputPath);
+
+            // #377: some PDFs come out of PDFsharp's page import with pages that are blank in the merged file but not
+            // in their source. Then PdfPig merges them instead, and its file is kept when it lost no page; else
+            // PDFsharp's stays, as before.
+            if (PdfMergeCheck.FindLostPage(inputPaths, outputPath, cancellationToken) is null)
+                return;
+            var fallback = outputPath + ".pdfpig";
+            try
+            {
+                File.WriteAllBytes(fallback, UglyToad.PdfPig.Writer.PdfMerger.Merge([.. inputPaths]));
+                if (PdfMergeCheck.FindLostPage(inputPaths, fallback, cancellationToken) is null)
+                {
+                    File.Move(fallback, outputPath, overwrite: true);
+                    return;
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException and not OutOfMemoryException)
+            {
+                // An encrypted or damaged source PdfPig can't merge: PDFsharp's file stays.
+            }
+            finally
+            {
+                if (File.Exists(fallback))
+                    File.Delete(fallback);
+            }
         }, cancellationToken);
 
     /// <summary>Places every frame of an image (TIFF pages, ...) on its own PDF page.</summary>

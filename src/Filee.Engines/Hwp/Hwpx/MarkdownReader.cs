@@ -4,6 +4,9 @@
 // superscript / inserted / marked text, code, lists (1. / a. / i. / A. / I. with the start number, nested levels),
 // task lists, block quotes, pipe and grid tables with spans, definition lists, links, images, footnotes and math.
 // The YAML front matter's "title" becomes the document title. Raw HTML is skipped, except <br>.
+// Code blocks and block quotes are one-cell boxes, as Markdown renderers show them (#406): code shaded and framed in
+// a monospace font without paragraph spacing, quotes with a bar on the left. Blocks inside a list item line up with
+// the item's text.
 
 using Markdig;
 using Markdig.Extensions.DefinitionLists;
@@ -31,6 +34,27 @@ internal sealed class MarkdownReader
 
     private static readonly HCharFormat Plain = default;
     private static readonly HCharFormat CodeFormat = new(Shade: "#F1F0F5");
+
+    /// <summary>
+    /// Code block text: a monospace font at 9 pt. Where Consolas isn't installed, rhwp draws it with the installed
+    /// monospace fallback (RhwpInput.PdfOptions).
+    /// </summary>
+    private static readonly HCharFormat CodeBlockFormat = new(Font: "Consolas", Size: 900);
+
+    /// <summary>Code block lines: no space between them, a little more than single line spacing.</summary>
+    private static readonly HParaFormat CodeLineFormat = new(Align: HAlign.Left, Before: 0, After: 0,
+        LineSpacing: new HLineSpacing(HLineSpacingKind.Percent, 130));
+
+    private const string CodeFill = "#F6F8FA";
+    private static readonly HBorder CodeFrame = new(HBorderStyle.Solid, 0.12, "#D0D7DE");
+    private const string QuoteFill = "#F7F7F9";
+    private static readonly HBorder QuoteBar = new(HBorderStyle.Solid, 1.0, "#C9CED6");
+
+    /// <summary>Padding inside code and quote boxes (HWP units: 1.5 mm left and right, 1 mm top and bottom).</summary>
+    private static readonly HInsets BoxPadding = new(425, 425, 283, 283);
+
+    /// <summary>Indent per list level of blocks inside a list item, so they line up with the item's text.</summary>
+    private const int ListIndent = 2000;
     private readonly string _baseFolder;
     private readonly string? _resourceRoot;
 
@@ -83,13 +107,13 @@ internal sealed class MarkdownReader
                 List(list, output, context);
                 break;
             case QuoteBlock quote:
-                Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent });
+                output.Add(QuoteBox(quote, context));
                 break;
             case MathBlock math:
                 CodeLines(math, output, context, Plain with { Italic = true });
                 break;
             case CodeBlock code:
-                CodeLines(code, output, context, CodeFormat);
+                output.Add(CodeBox(code, context));
                 break;
             case ThematicBreakBlock:
                 output.Add(NewParagraph(context));
@@ -138,6 +162,54 @@ internal sealed class MarkdownReader
                 paragraph.Inlines.Add(new HText(line, format));
             output.Add(paragraph);
         }
+    }
+
+    /// <summary>
+    /// A code block as one shaded, framed cell (#406): every line its own paragraph in a monospace font, without
+    /// paragraph spacing, so the block reads as one piece rather than a stack of paragraphs.
+    /// </summary>
+    private static HTable CodeBox(LeafBlock code, Context context)
+    {
+        var cell = new HCell
+        {
+            Fill = CodeFill,
+            Borders = new HBorders(CodeFrame, CodeFrame, CodeFrame, CodeFrame),
+        };
+        foreach (var line in code.Lines.ToString().Replace("\r\n", "\n").TrimEnd('\n').Split('\n'))
+        {
+            var paragraph = new HParagraph { Format = CodeLineFormat };
+            if (line.Length > 0)
+                paragraph.Inlines.Add(new HText(line, CodeBlockFormat));
+            cell.Blocks.Add(paragraph);
+        }
+        return Box(cell, context);
+    }
+
+    /// <summary>A block quote as one cell with a bar on its left and a light background (#406).</summary>
+    private HTable QuoteBox(QuoteBlock quote, Context context)
+    {
+        var cell = new HCell
+        {
+            Fill = QuoteFill,
+            Borders = new HBorders(QuoteBar, HBorder.None, HBorder.None, HBorder.None),
+        };
+        // Inside the box the text starts at its left edge; nested quotes get a box of their own.
+        Blocks(quote, cell.Blocks, context with { Indent = 0 });
+        if (cell.Blocks.Count == 0)
+            cell.Blocks.Add(new HParagraph());
+        return Box(cell, context);
+    }
+
+    /// <summary>A one-cell table without outer borders holding <paramref name="cell"/>, at the context's indent.</summary>
+    private static HTable Box(HCell cell, Context context)
+    {
+        var none = new HBorders(HBorder.None, HBorder.None, HBorder.None, HBorder.None);
+        // The padding is the table's: a margin all cells share reads back as the table's (HwpxReader).
+        var table = new HTable { ColumnCount = 1, Indent = context.Indent, Borders = none, CellMargin = BoxPadding };
+        var row = new HRow();
+        row.Cells.Add(cell);
+        table.Rows.Add(row);
+        return table;
     }
 
     private static HNumbering Numbering(ListBlock list)
@@ -191,7 +263,8 @@ internal sealed class MarkdownReader
                         List(nested, output, context with { ListLevel = context.ListLevel + 1 });
                         break;
                     default:
-                        Block(block, output, context);
+                        // A code block, quote or table of the item lines up with its text (#406).
+                        Block(block, output, context with { Indent = context.Indent + ListIndent * (context.ListLevel + 1) });
                         first = false;
                         break;
                 }

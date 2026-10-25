@@ -1,0 +1,21 @@
+# Pull requests for new versions of the GitHub Actions (pinned to commits, so they don't update by themselves) and of
+# the NuGet packages (Directory.Packages.props). Grouped weekly so they arrive as one pull request each.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: nuget
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      nuget:
+        patterns: ['*']
+        update-types: [minor, patch]
+    open-pull-requests-limit: 5

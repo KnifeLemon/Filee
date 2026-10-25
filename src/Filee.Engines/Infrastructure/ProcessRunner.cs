@@ -11,6 +11,9 @@ public sealed record ProcessResult(int ExitCode, string StandardOutput, string S
 /// <summary>Helper for starting external tools safely.</summary>
 public static class ProcessRunner
 {
+    /// <summary>How long output may take to drain after the program exited.</summary>
+    private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(30);
+
     /// <summary>
     /// Starts <paramref name="executable"/> with the given arguments (no shell, arguments are escaped),
     /// waits for it to exit and kills the whole process tree on timeout or cancellation.
@@ -68,8 +71,14 @@ public static class ProcessRunner
             throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
         }
 
-        // Make sure the async output readers have drained.
-        process.WaitForExit();
+        // Make sure the async output readers have drained. A child the program left running can keep the pipes open
+        // (soffice.bin after soffice.exe exits), so stop waiting after a while rather than block the conversion forever:
+        // the program has exited, only the rest of its output is lost.
+        var drained = Task.Run(() => process.WaitForExit(), CancellationToken.None);
+        _ = drained.ContinueWith(t => _ = t.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
+        if (await Task.WhenAny(drained, Task.Delay(DrainTimeout, CancellationToken.None)) != drained)
+            lock (stderr)
+                stderr.AppendLine($"(output not complete: a process {Path.GetFileName(executable)} started still holds it)");
         AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
         return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString());
     }

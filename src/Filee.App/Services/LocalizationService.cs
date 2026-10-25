@@ -18,7 +18,11 @@ public sealed class LocalizationService : ILocalizer
     /// <summary>Languages shipped with Filee: code → native name (shown in the language picker; see AppLanguages).</summary>
     public static readonly IReadOnlyList<(string Code, string NativeName)> Languages = AppLanguages.All;
 
-    private readonly ResourceDictionary _resources = new();
+    private ResourceDictionary _resources = new();
+
+    /// <summary>The merged dictionaries <see cref="_resources"/> is in (the application's).</summary>
+    private readonly List<IList<IResourceProvider>> _owners = [];
+
     private readonly Dictionary<string, string> _english;
     private Dictionary<string, string> _current;
 
@@ -55,7 +59,11 @@ public sealed class LocalizationService : ILocalizer
     }
 
     /// <summary>Registers the string dictionary with the application so XAML can use DynamicResource.</summary>
-    public void Attach(Application app) => app.Resources.MergedDictionaries.Add(_resources);
+    public void Attach(Application app)
+    {
+        app.Resources.MergedDictionaries.Add(_resources);
+        _owners.Add(app.Resources.MergedDictionaries);
+    }
 
     /// <summary>
     /// Switches the UI language. <paramref name="setting"/> is a language code or <c>"auto"</c>
@@ -64,19 +72,38 @@ public sealed class LocalizationService : ILocalizer
     public void SetLanguage(string setting)
     {
         var code = Resolve(setting);
-        _current = code == "en" ? _english : LoadStrings(code);
-        Language = code;
+        if (!_initialized || code != Language)
+        {
+            _current = code == "en" ? _english : LoadStrings(code);
+            Language = code;
+            Publish();
+        }
 
         var culture = CultureInfo.GetCultureInfo(code);
         CultureInfo.CurrentUICulture = culture;
         CultureInfo.DefaultThreadCurrentUICulture = culture;
 
-        // Every key is published (English fallback for missing translations) so DynamicResource never breaks.
-        foreach (var key in _english.Keys.Concat(_current.Keys).Distinct())
-            _resources[key] = this[key];
-
         _initialized = true;
         LanguageChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// Publishes every key (English fallback for missing translations, so DynamicResource never breaks) in a new
+    /// dictionary that takes the old one's place at once. Written key by key, each of the thousand writes would make
+    /// every DynamicResource in every open window look its key up again.
+    /// </summary>
+    private void Publish()
+    {
+        var next = new ResourceDictionary();
+        foreach (var key in _english.Keys.Concat(_current.Keys).Distinct())
+            next[key] = this[key];
+        foreach (var owner in _owners)
+        {
+            var index = owner.IndexOf(_resources);
+            if (index >= 0)
+                owner[index] = next;
+        }
+        _resources = next;
     }
 
     /// <summary>

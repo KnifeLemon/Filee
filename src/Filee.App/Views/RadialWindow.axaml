@@ -39,7 +39,7 @@
     </Style>
   </Window.Styles>
   <Panel x:Name="Root" Background="{Binding HitBackground}" DragDrop.AllowDrop="True">
-    <c:DonutMenu x:Name="Donut"
+    <c:DonutMenu x:Name="Donut" AutomationProperties.Name="{DynamicResource nav.toolbar}"
                  Opacity="{Binding DonutOpacity}"
                  Items="{Binding Items}"
                  CenterTitle="{Binding CenterTitle}"

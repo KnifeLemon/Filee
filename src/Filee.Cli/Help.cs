@@ -57,6 +57,10 @@ internal static class Help
               --skip             Leave existing output files alone
               --keep-dates       Give converted files the created and modified dates of the originals
               --zip              Save the result of each file as one ZIP (a Shapefile's files together)
+              --active-content <ask|convert|refuse>
+                                 Documents with macros, ActiveX, external links or DDE fields: convert them
+                                 (ask and convert; the result lists what they carry) or refuse them.
+                                 Default: Settings > Security and limits. Nothing in a document is ever run.
               --json             Print the result as JSON (for scripts and other programs)
               --quiet            Print nothing but errors
 
@@ -78,6 +82,10 @@ internal static class Help
               --settle <seconds> How long a file must stay unchanged (default {FolderWatcher.DefaultSettleTime.TotalSeconds})
               --keep-dates       Give converted files the created and modified dates of the originals
               --zip              Save the result of each file as one ZIP (a Shapefile's files together)
+              --active-content <ask|convert|refuse>
+                                 Documents with macros, ActiveX, external links or DDE fields: convert them
+                                 (ask and convert; the result lists what they carry) or refuse them.
+                                 Default: Settings > Security and limits. Nothing in a document is ever run.
               --quiet            Print nothing but errors
 
         """);

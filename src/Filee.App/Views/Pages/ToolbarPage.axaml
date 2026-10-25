@@ -236,6 +236,8 @@
               <TextBlock Classes="caption" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap"
                          Margin="12,6,12,0" Text="{Binding FaceHint}" />
               <c:DonutMenu x:Name="Donut" IsEditMode="True" HorizontalAlignment="Center"
+                           AutomationProperties.Name="{DynamicResource nav.toolbar}"
+                           AutomationProperties.HelpText="{DynamicResource toolbar.keyboard_hint}"
                            Items="{Binding DonutItems}"
                            CenterTitle="{Binding CenterTitle}"
                            CenterSubtitle="{Binding CenterSubtitle}"

@@ -5,6 +5,7 @@
 
 using System.IO.Compression;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -598,21 +599,28 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
         foreach (var (name, book) in books)
         {
             var sales = book.Sheets[0];
+            // An ODS by LibreOffice keeps the text Calc showed (text:p), with the separators of Calc's locale
+            // ("1.350.000원", "12,8%" on a German system): compare those without the separators.
+            Func<string, string> shown = name == "ODS by LibreOffice" ? WithoutSeparators : text => text;
             Assert.True(new[] { "매출", "메모", "넓은 표" }.SequenceEqual(book.Sheets.Select(s => s.Name)), name);
-            Assert.True(sales.Get(2, 1)!.Text == "1,350,000원", $"{name}: {sales.Get(2, 1)!.Text}");
-            Assert.True(sales.Get(2, 3)!.Text == "12.8%", $"{name}: {sales.Get(2, 3)!.Text}");
+            Assert.True(shown(sales.Get(2, 1)!.Text) == shown("1,350,000원"), $"{name}: {sales.Get(2, 1)!.Text}");
+            Assert.True(shown(sales.Get(2, 3)!.Text) == shown("12.8%"), $"{name}: {sales.Get(2, 3)!.Text}");
             // LibreOffice shows built-in dates in its own locale's order: compare the value.
             Assert.True(sales.Get(2, 2)!.Value == October1, $"{name}: {sales.Get(2, 2)!.Value}");
-            Assert.True(sales.Get(4, 1)!.Text == "2,220,000원", $"{name}: {sales.Get(4, 1)!.Text}");
+            Assert.True(shown(sales.Get(4, 1)!.Text) == shown("2,220,000원"), $"{name}: {sales.Get(4, 1)!.Text}");
             Assert.True(new CellRange(0, 0, 0, 3) == Assert.Single(sales.Merges), name);
             Assert.True(sales.Get(1, 0)!.Style.Align == CellAlign.Center, name);
-            // LibreOffice measures character widths with its own fonts, so widths through ODS move by up to a fifth;
-            // XLS keeps Excel's own unit.
-            var tolerance = name.StartsWith("XLS", StringComparison.Ordinal) ? 0.01 : 0.25;
-            Assert.True(Math.Abs(sales.ColumnWidth(0) - 14) <= 14 * tolerance, $"{name}: {sales.ColumnWidth(0)}");
+            // LibreOffice measures character widths with its own fonts, so widths it writes move by up to a fifth. XLS
+            // keeps Excel's unit, but for Korean text LibreOffice measures with its locale's default East Asian font
+            // (Microsoft YaHei on a German system: 15.27 for 14). The ratio of the columns stays.
+            Assert.True(Math.Abs(sales.ColumnWidth(0) - 14) <= 14 * 0.25, $"{name}: {sales.ColumnWidth(0)}");
             Assert.True(Math.Abs(sales.ColumnWidth(0) / sales.ColumnWidth(1) - 14.0 / 12) < 0.02, $"{name}: {sales.ColumnWidth(0)} / {sales.ColumnWidth(1)}");
         }
     }
+
+    /// <summary>"1.350.000원" and "1,350,000원" as "1350000원", "12,8 %" and "12.8%" as "12.8%".</summary>
+    private static string WithoutSeparators(string text) =>
+        Regex.Replace(Regex.Replace(text, @"(?<=\d)[.,\u00A0\u202F' ](?=\d{3}(?!\d))", ""), @"(?<=\d),(?=\d)", ".").Replace(" %", "%");
 
     private async Task<string> LibreOfficeAsync(IConverter libreOffice, string input, string from, string to)
     {

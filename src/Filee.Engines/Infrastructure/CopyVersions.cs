@@ -65,7 +65,12 @@ public static partial class CopyVersions
     private static string Read(string id, string program)
     {
         if (id == "libreoffice" && OperatingSystem.IsWindows())
-            return File.ReadAllText(program);
+        {
+            // LibreOffice 26 dropped MsiProductVersion from version.ini; soffice.exe next to it still says it.
+            var soffice = Path.Combine(Path.GetDirectoryName(program)!, "soffice.exe");
+            var product = File.Exists(soffice) ? FileVersionInfo.GetVersionInfo(soffice).ProductVersion : null;
+            return File.ReadAllText(program) + (product is null ? "" : $"\nLibreOffice {product}");
+        }
         var arguments = id == "ffmpeg" ? "-hide_banner -version" : "--version";
         try
         {

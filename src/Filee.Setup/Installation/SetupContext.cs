@@ -5,7 +5,9 @@ using Filee.Setup.Platform;
 namespace Filee.Setup.Installation;
 
 /// <param name="Sandbox">A /SANDBOX run: Filee is never started.</param>
-public sealed record SetupContext(ISetupRegistry Registry, ISetupSystem System, SetupPaths Paths, SetupLog Log, bool Sandbox = false);
+/// <param name="WindowsVersion">The Windows version (tests set it); null for the one Setup runs on.</param>
+public sealed record SetupContext(ISetupRegistry Registry, ISetupSystem System, SetupPaths Paths, SetupLog Log, bool Sandbox = false,
+    Version? WindowsVersion = null);
 
 /// <summary>What the user chose (or the command line said).</summary>
 /// <param name="Folder">The install folder.</param>

@@ -1,0 +1,77 @@
+<!-- Settings → Security and limits: documents with macros or other active content, limits for pictures, files converted
+     at once and the time a built-in engine may spend on one step (SecurityPageViewModel). 0 means "automatic". -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             x:Class="Filee.App.Views.Pages.SecurityPage"
+             x:DataType="vm:SecurityPageViewModel">
+  <StackPanel Spacing="18">
+    <TextBlock Classes="h1" Text="{DynamicResource security.title}" />
+
+    <Border Classes="card">
+      <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="{DynamicResource security.active_content}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource security.active_content_hint}" />
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource security.policy}" />
+          <ComboBox x:Name="PolicyChoice" ItemsSource="{Binding Policies}" SelectedItem="{Binding Policy}" MinWidth="320"
+                    AutomationProperties.Name="{DynamicResource security.policy}" />
+        </StackPanel>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding Policy.Detail}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource security.never_run}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="card">
+      <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="{DynamicResource security.images}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource security.images_hint}" />
+        <WrapPanel>
+          <StackPanel Margin="0,0,24,8">
+            <TextBlock Classes="label" Text="{DynamicResource security.max_megapixels}" />
+            <NumericUpDown x:Name="MaxMegapixels" Value="{Binding MaxImageMegapixels}" Minimum="0" Maximum="{Binding MaxMegapixels}"
+                           Increment="50" FormatString="0" MinWidth="180" AutomationProperties.Name="{DynamicResource security.max_megapixels}" />
+          </StackPanel>
+          <StackPanel Margin="0,0,24,8">
+            <TextBlock Classes="label" Text="{DynamicResource security.max_side}" />
+            <NumericUpDown x:Name="MaxSide" Value="{Binding MaxImageSide}" Minimum="0" Maximum="{Binding MaxSide}"
+                           Increment="1000" FormatString="0" MinWidth="180" AutomationProperties.Name="{DynamicResource security.max_side}" />
+          </StackPanel>
+          <StackPanel Margin="0,0,24,8">
+            <TextBlock Classes="label" Text="{DynamicResource security.max_memory}" />
+            <NumericUpDown x:Name="MaxMemory" Value="{Binding MaxImageMemoryMb}" Minimum="0" Maximum="{Binding MaxMegabytes}"
+                           Increment="256" FormatString="0" MinWidth="180" AutomationProperties.Name="{DynamicResource security.max_memory}" />
+          </StackPanel>
+          <StackPanel Margin="0,0,24,8">
+            <TextBlock Classes="label" Text="{DynamicResource security.max_disk}" />
+            <NumericUpDown x:Name="MaxDisk" Value="{Binding MaxImageDiskMb}" Minimum="0" Maximum="{Binding MaxMegabytes}"
+                           Increment="1024" FormatString="0" MinWidth="180" AutomationProperties.Name="{DynamicResource security.max_disk}" />
+          </StackPanel>
+        </WrapPanel>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource security.zero_auto}" />
+      </StackPanel>
+    </Border>
+
+    <Border Classes="card">
+      <StackPanel Spacing="12">
+        <TextBlock Classes="h2" Text="{DynamicResource security.conversions}" />
+        <WrapPanel>
+          <StackPanel Margin="0,0,24,8">
+            <TextBlock Classes="label" Text="{DynamicResource security.parallel_files}" />
+            <NumericUpDown x:Name="ParallelFiles" Value="{Binding MaxParallelFiles}" Minimum="0" Maximum="{Binding MaxFiles}"
+                           Increment="1" FormatString="0" MinWidth="180" AutomationProperties.Name="{DynamicResource security.parallel_files}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding ParallelHint}" MaxWidth="300" />
+          </StackPanel>
+          <StackPanel Margin="0,0,24,8">
+            <TextBlock Classes="label" Text="{DynamicResource security.step_timeout}" />
+            <NumericUpDown x:Name="StepTimeout" Value="{Binding StepTimeoutMinutes}" Minimum="0" Maximum="{Binding MaxTimeoutMinutes}"
+                           Increment="5" FormatString="0" MinWidth="180" AutomationProperties.Name="{DynamicResource security.step_timeout}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource security.step_timeout_hint}" MaxWidth="300" />
+          </StackPanel>
+        </WrapPanel>
+        <Button x:Name="ResetLimits" HorizontalAlignment="Left" Content="{DynamicResource security.reset_limits}"
+                Command="{Binding ResetLimitsCommand}" />
+      </StackPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

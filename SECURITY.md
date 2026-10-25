@@ -43,10 +43,22 @@ Out of scope:
 - **Updates:** an installed copy downloads the new installer from GitHub Releases and checks it against the release's
   `SHA256SUMS` file before it runs it. It also checks that Windows trusts the installer's Authenticode signature and
   that the publisher who signed the installed Filee signed it; an installer signed by anyone else is discarded.
+  Builds made with `FileeExpectedPublisher` accept only that publisher, even when the installed copy is unsigned.
+  Builds made with `FileeUpdatePublicKey` also check the checksum file's signature (`SHA256SUMS.txt.sig`, ECDSA
+  P-256) and refuse an update without a valid one, on every platform (see
+  [Release security](docs/RELEASE-SECURITY.md)).
 - **Engines:** every engine comes from the official location pinned in
   [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), with its SHA-256 and size. A download that doesn't
   match is discarded.
 - **Release files:** each release lists the SHA-256 of every package in `Filee-<version>-SHA256SUMS.txt`.
+
+## Documents with macros and links
+
+Filee never runs a document's macros. Before a document goes through LibreOffice, Filee looks for macros (and those
+that run on opening), ActiveX controls, DDE fields and links to outside files. Settings → Security and limits decides
+whether Filee asks first (the default), converts such documents anyway, or refuses them; folder watching and the
+command line never ask (`filee-cli --active-content`). LibreOffice itself runs with macros disabled and doesn't update
+links.
 
 Filee converts files on your own computer and never uploads them. See the
 [Privacy policy](README.md#privacy-policy).

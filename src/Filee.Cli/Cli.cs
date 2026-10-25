@@ -41,6 +41,9 @@ internal static class Cli
         }
 
         await using var host = (createHost ?? (() => CliHost.Create()))();
+        // The command line can't ask: "ask" converts such documents and says what they carry, like a watch folder.
+        if (options.ActiveContent is { } activeContent)
+            host.Queue.ActiveContentPolicy = activeContent;
         return options.Command switch
         {
             "convert" => await ConvertAsync(options, host, output, errors, cancellationToken),
@@ -158,7 +161,9 @@ internal static class Cli
             FileState.Done => $"ok    {source} -> {string.Join(", ", file.Outputs.Select(Shorten))}"
                 + (file.NoticeKey is null ? "" : $" ({Notice(file, texts)})")
                 + (file.MissingFonts.Count == 0 ? "" : $" (missing fonts: {string.Join(", ", file.MissingFonts)})"),
-            FileState.Skipped => $"skip  {source} (the output file already exists)",
+            FileState.Skipped => file.NoticeKey is null
+                ? $"skip  {source} (the output file already exists)"
+                : $"skip  {source} ({Notice(file, texts)})",
             FileState.Cancelled => $"stop  {source} (cancelled)",
             _ => $"fail  {source}: {Error(file, texts)}",
         };
@@ -209,6 +214,20 @@ internal static class Cli
                     json.WriteStartArray("missingFonts");
                     foreach (var font in file.MissingFonts)
                         json.WriteStringValue(font);
+                    json.WriteEndArray();
+                }
+                if (file.ActiveContent.Count > 0)
+                {
+                    json.WriteStartArray("activeContent");
+                    foreach (var finding in file.ActiveContent)
+                    {
+                        json.WriteStartObject();
+                        json.WriteString("kind", finding.Kind.ToString());
+                        json.WriteString("name", finding.Name);
+                        if (finding.Detail is not null)
+                            json.WriteString("detail", finding.Detail);
+                        json.WriteEndObject();
+                    }
                     json.WriteEndArray();
                 }
                 json.WriteEndObject();

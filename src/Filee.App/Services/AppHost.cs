@@ -58,7 +58,13 @@ public static class AppHost
             EngineRegistry.FindFileCombiner(sp.GetRequiredService<IReadOnlyList<IConverter>>()),
             EngineRegistry.FindTiffMerger(sp.GetRequiredService<IReadOnlyList<IConverter>>()),
             EngineRegistry.FindMediaJoiner(sp.GetRequiredService<IReadOnlyList<IConverter>>()),
-            sp.GetRequiredService<IPlatformServices>().MoveToTrash));
+            sp.GetRequiredService<IPlatformServices>().MoveToTrash)
+        {
+            // Documents with macros or other active content: the user is asked in a window (resolved when first
+            // needed, as WindowService depends on services that need the queue). The rest of Settings → Security and
+            // limits is applied with the other settings (App.ApplySettings).
+            ActiveContentPrompt = (job, reports, ct) => sp.GetRequiredService<WindowService>().AskActiveContentAsync(job, reports, ct),
+        });
 
         // Files dragged from a browser with only an address are downloaded without the browser's cookies.
         services.AddSingleton(_ => new WebDownloader(userAgent: $"Filee/{typeof(AppHost).Assembly.GetName().Version?.ToString(3)}"));

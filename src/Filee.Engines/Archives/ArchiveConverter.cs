@@ -11,7 +11,7 @@ using Filee.Engines.Infrastructure;
 namespace Filee.Engines.Archives;
 
 /// <summary>The archive engine.</summary>
-public sealed class ArchiveConverter : IConverter, IFileCombiner
+public sealed class ArchiveConverter : IConverter, IFileCombiner, IHasOwnTimeout
 {
     /// <summary>Archive formats Filee writes (plus <see cref="FormatRegistry.Folder"/>).</summary>
     private static readonly string[] ArchiveTargets = ["zip", "7z", "tar", "tgz", "tbz2", "txz"];

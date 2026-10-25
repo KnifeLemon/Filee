@@ -369,6 +369,14 @@ public sealed class EngineInstaller
                 _ => $"Unpacking {id} failed (msiexec exit code {process.ExitCode}, log: {log}).",
             });
         }
+        // The verbose log is only worth keeping when unpacking failed (the error names it); else it would pile up in %TEMP%.
+        try
+        {
+            File.Delete(log);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>

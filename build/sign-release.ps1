@@ -13,14 +13,20 @@
      SHA-256 sums;
   3. installs the signed Setup into a sandbox (nothing on the PC is touched) and checks that Filee.exe and
      uninstall.exe come out signed, then uninstalls it;
-  4. uploads Filee-<version>-win-Setup.exe, the portable zip and Filee-<version>-SHA256SUMS.txt to the draft, and
-     with -Publish publishes the release.
+  4. signs Filee-<version>-SHA256SUMS.txt with the update key when there is one (sign-checksums.ps1), so copies
+     built with FileeUpdatePublicKey accept the installer;
+  5. uploads Filee-<version>-win-Setup.exe, the portable zip, Filee-<version>-SHA256SUMS.txt (and its .sig) to the
+     draft, and with -Publish publishes the release.
+
+  The certificate is found as in sign-windows.ps1 (signing-certificate.ps1). Without one the script stops, unless
+  -AllowUnsigned says to publish the tested build unsigned ("sign only if possible").
 
   Needs gh (signed in), git and the .NET SDK. Output: build/.cache/release-<version>/out.
 
 .EXAMPLE
   pwsh build/sign-release.ps1 -Version 2.1.0 -CertificateThumbprint <sha1>
   pwsh build/sign-release.ps1 -Version 2.1.0 -Publish
+  pwsh build/sign-release.ps1 -Version 2.1.0 -AllowUnsigned
 #>
 [CmdletBinding()]
 param(
@@ -28,12 +34,22 @@ param(
     [string]$Version,
     # Defaults to $env:FILEE_SIGNING_CERT (see sign-windows.ps1).
     [string]$CertificateThumbprint = $env:FILEE_SIGNING_CERT,
-    [switch]$Publish
+    [switch]$Publish,
+    # Publish the tested build unsigned when there is no certificate, instead of stopping.
+    [switch]$AllowUnsigned
 )
 
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'Windows releases are signed on Windows.' }
-if (-not $CertificateThumbprint) { throw 'Pass -CertificateThumbprint or set FILEE_SIGNING_CERT.' }
+. (Join-Path $PSScriptRoot 'signing-certificate.ps1')
+$certificate = Find-FileeSigningCertificate -Thumbprint $CertificateThumbprint
+if (-not $certificate) {
+    if (-not $AllowUnsigned) {
+        throw 'No code signing certificate: sign in to SimplySign Desktop, pass -CertificateThumbprint, or pass -AllowUnsigned to release unsigned.'
+    }
+    Write-Warning 'No code signing certificate: this release stays unsigned (SmartScreen and Smart App Control will warn).'
+}
+$signing = if ($certificate) { @{ CertificateThumbprint = $certificate.Thumbprint } } else { @{} }
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $Version = $Version.TrimStart('v')
 $tag = "v$Version"
@@ -65,7 +81,7 @@ try {
     $out = Join-Path $work 'out'
     & (Join-Path $source 'build\build-installer.ps1') -Version $Version -Portable -OutputDir $out `
         -PublishDir (Join-Path $work 'unsigned\app') -SetupProgram (Join-Path $work 'unsigned\Filee.Setup.exe') `
-        -CertificateThumbprint $CertificateThumbprint
+        @signing
 }
 finally {
     git -C $root worktree remove --force $source
@@ -74,6 +90,11 @@ finally {
 $setup = Join-Path $out "Filee-$Version-win-Setup.exe"
 $files = @($setup, (Join-Path $out "Filee-$Version-win-Portable.zip"), (Join-Path $out "Filee-$Version-SHA256SUMS.txt"))
 foreach ($file in $files) { if (-not (Test-Path $file)) { throw "$file was not written." } }
+
+# The checksum file's signature (UpdateService checks it in copies built with FileeUpdatePublicKey).
+& (Join-Path $PSScriptRoot 'sign-checksums.ps1') -Path (Join-Path $out "Filee-$Version-SHA256SUMS.txt")
+$signature = Join-Path $out "Filee-$Version-SHA256SUMS.txt.sig"
+if (Test-Path $signature) { $files += $signature }
 
 # The signed Setup still finds its payload, and what it installs is signed, the uninstaller too.
 $sandbox = Join-Path $work 'sandbox'
@@ -85,8 +106,10 @@ Write-Host 'install the signed Setup into a sandbox'
 Invoke-Setup $setup
 $installed = Join-Path $sandbox 'Program Files\Filee'
 foreach ($file in 'Filee.exe', 'filee-cli.exe', 'uninstall.exe', 'engines\rhwp\rhwp.exe') {
-    $signature = Get-AuthenticodeSignature (Join-Path $installed $file)
-    if ($signature.Status -ne 'Valid') { throw "$file is not signed after installing ($($signature.Status))." }
+    if (-not (Test-Path (Join-Path $installed $file))) { throw "$file is missing after installing." }
+    if (-not $certificate) { continue }
+    $authenticode = Get-AuthenticodeSignature (Join-Path $installed $file)
+    if ($authenticode.Status -ne 'Valid') { throw "$file is not signed after installing ($($authenticode.Status))." }
 }
 Invoke-Setup (Join-Path $installed 'uninstall.exe')
 Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue

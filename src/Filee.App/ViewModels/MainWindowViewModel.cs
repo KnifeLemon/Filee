@@ -56,6 +56,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             new("watch", "nav.watch", "Icon.Folder", typeof(WatchFoldersPageViewModel)),
             new("theme", "nav.theme", "Icon.Palette", typeof(ThemePageViewModel)),
             new("engines", "nav.engines", "Icon.Engine", typeof(EnginesPageViewModel)),
+            new("security", "nav.security", "Icon.Shield", typeof(SecurityPageViewModel)),
             new("about", "nav.about", "Icon.Info", typeof(AboutPageViewModel)),
         ];
         foreach (var item in Items)

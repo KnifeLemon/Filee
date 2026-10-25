@@ -13,6 +13,13 @@
           <ComboBox ItemsSource="{Binding Languages}" SelectedItem="{Binding Language}" MinWidth="240" AutomationProperties.Name="{DynamicResource general.language}" />
         </StackPanel>
         <ToggleSwitch Content="{DynamicResource general.start_with_system}" IsChecked="{Binding StartWithSystem}" />
+        <!-- #450: on, but turned off in Task Manager → Startup apps. -->
+        <StackPanel Spacing="6" Margin="0,-6,0,0" IsVisible="{Binding StartupDisabledBySystem}">
+          <TextBlock Classes="caption" TextWrapping="Wrap" Foreground="{DynamicResource WarningBrush}"
+                     Text="{DynamicResource general.startup_disabled}" />
+          <Button x:Name="ReenableStartup" HorizontalAlignment="Left" Content="{DynamicResource general.startup_enable}"
+                  Command="{Binding ReenableStartupCommand}" />
+        </StackPanel>
         <ToggleSwitch x:Name="ShowInDockSwitch" Content="{DynamicResource general.show_in_dock}"
                       IsChecked="{Binding ShowInDock}" IsVisible="{Binding SupportsDockVisibility}" />
         <ToggleSwitch x:Name="ShowMenuBarIconSwitch" Content="{DynamicResource general.show_menu_bar_icon}"

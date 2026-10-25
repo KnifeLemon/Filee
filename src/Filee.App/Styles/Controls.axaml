@@ -21,4 +21,13 @@
     <Setter Property="DangerBrush" Value="{DynamicResource DangerBrush}" />
     <Setter Property="SuccessBrush" Value="{DynamicResource SuccessBrush}" />
   </Style>
+
+  <!-- The system asks for high contrast (DonutMenu.Accessibility.cs sets the class): the theme's text colour for
+       outlines, labels and the hovered slice, on its background, so nothing depends on tinted surfaces. -->
+  <Style Selector="c|DonutMenu.high-contrast">
+    <Setter Property="SliceBorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="AccentBrush" Value="{DynamicResource TextPrimaryBrush}" />
+    <Setter Property="OnAccentBrush" Value="{DynamicResource SurfaceBrush}" />
+    <Setter Property="SecondaryForeground" Value="{DynamicResource TextPrimaryBrush}" />
+  </Style>
 </Styles>

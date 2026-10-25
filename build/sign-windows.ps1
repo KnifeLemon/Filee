@@ -11,9 +11,16 @@
   SimplySign phone app) before running this. signtool comes from the Microsoft.Windows.SDK.BuildTools NuGet package,
   downloaded once into build/.cache.
 
+  Signs only if possible: without a certificate (none named and none found, see signing-certificate.ps1) or off
+  Windows, it warns and leaves the files unsigned, so a build without the certificate still finishes. -RequireSignature
+  makes that an error.
+
 .PARAMETER CertificateThumbprint
   SHA-1 thumbprint of the certificate ("Cert Hash(sha1)" in certutil -user -store My). Defaults to
-  $env:FILEE_SIGNING_CERT.
+  $env:FILEE_SIGNING_CERT; without one, the current user's store is searched.
+
+.PARAMETER RequireSignature
+  Fail instead of leaving the files unsigned when there is no certificate.
 
 .EXAMPLE
   pwsh build/sign-windows.ps1 -Path publish\win-x64 -CertificateThumbprint <sha1>
@@ -22,19 +29,22 @@
 param(
     [Parameter(Mandatory)]
     [string[]]$Path,
-    [string]$CertificateThumbprint = $env:FILEE_SIGNING_CERT
+    [string]$CertificateThumbprint = $env:FILEE_SIGNING_CERT,
+    [switch]$RequireSignature
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not $IsWindows) { throw 'Authenticode signing needs Windows.' }
-if (-not $CertificateThumbprint) { throw 'Pass -CertificateThumbprint or set FILEE_SIGNING_CERT.' }
-$CertificateThumbprint = $CertificateThumbprint -replace '\s', ''
+. (Join-Path $PSScriptRoot 'signing-certificate.ps1')
 
-$certificate = Get-Item "Cert:\CurrentUser\My\$CertificateThumbprint" -ErrorAction SilentlyContinue
+$certificate = Find-FileeSigningCertificate -Thumbprint $CertificateThumbprint
 if (-not $certificate) {
-    throw "Certificate $CertificateThumbprint is not in the current user's store. Sign in to SimplySign Desktop first."
+    $why = if ($IsWindows) { 'no code signing certificate (sign in to SimplySign Desktop, or pass -CertificateThumbprint)' } else { 'Authenticode signing needs Windows' }
+    if ($RequireSignature) { throw "Can't sign: $why." }
+    Write-Warning "Not signing: $why. The programs stay unsigned (SmartScreen and Smart App Control may warn about them)."
+    return
 }
-if ($certificate.NotAfter -lt (Get-Date)) { throw "Certificate $CertificateThumbprint expired on $($certificate.NotAfter)." }
+$CertificateThumbprint = $certificate.Thumbprint
+Write-Host "sign with $($certificate.Subject), valid until $($certificate.NotAfter.ToString('yyyy-MM-dd'))"
 
 # signtool from the Windows SDK build tools, pinned by version and SHA-256 like the engines (fetch-engines.ps1).
 $sdkVersion = '10.0.28000.2526'

@@ -68,6 +68,15 @@ public sealed class FileResult
     /// renderer's substitutions; the UI can offer trusted sources afterwards.
     /// </summary>
     public IReadOnlyList<string> MissingFonts { get; set; } = [];
+
+    /// <summary>
+    /// Macros, ActiveX controls, external links or DDE fields the source carries, found before a step through an office
+    /// suite (<see cref="IOpensDocumentsInOfficeSuite"/>); empty when none were found or the file wasn't checked.
+    /// </summary>
+    public IReadOnlyList<ActiveContentFinding> ActiveContent { get; set; } = [];
+
+    /// <summary>The source was checked for active content before the job ran (JobQueue doesn't check it again).</summary>
+    internal bool ActiveContentChecked { get; set; }
 }
 
 /// <summary>A batch of files converted with one preset.</summary>
@@ -76,8 +85,11 @@ public sealed class ConversionJob
     private readonly CancellationTokenSource _cts = new();
 
     /// <param name="fetcher">Saves sources that aren't files yet before they are converted (files from a browser).</param>
-    public ConversionJob(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null)
+    /// <param name="unattended">Nobody is there to answer a question (a watch folder): see <see cref="Unattended"/>.</param>
+    public ConversionJob(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null,
+        bool unattended = false)
     {
+        Unattended = unattended;
         // A Shapefile's .dbf, .shx, .prj, ... dropped with its .shp are part of it, not files to convert on their own.
         sources = Formats.CompanionFiles.WithoutCompanions(sources);
         Preset = preset.Clone(); // later edits of the preset must not affect a running job
@@ -94,6 +106,12 @@ public sealed class ConversionJob
 
     /// <summary>Saves the sources that aren't files yet when the job runs; null when all of them are files.</summary>
     public ISourceFetcher? Fetcher { get; }
+
+    /// <summary>
+    /// The job runs without anybody to ask (a watch folder): documents with active content follow the setting, and
+    /// "Ask" converts them, with what they carry in the file's result.
+    /// </summary>
+    public bool Unattended { get; }
     public Preset Preset { get; }
     public string PresetDisplayName { get; }
     public IReadOnlyList<FileResult> Files { get; }

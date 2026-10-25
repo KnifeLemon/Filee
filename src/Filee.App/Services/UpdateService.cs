@@ -174,6 +174,22 @@ public sealed partial class UpdateService : ObservableObject
     /// <summary>This copy of Filee, whose publisher must have signed the installer too (tests set it).</summary>
     internal string? OwnProgram { get; init; } = Environment.ProcessPath;
 
+    /// <summary>
+    /// The publisher every installer must be signed by when this copy isn't signed itself (FileeExpectedPublisher in
+    /// Directory.Build.props), or null. Tests set it.
+    /// </summary>
+    internal string? ExpectedPublisher { get; init; } = BuildMetadata("FileeExpectedPublisher");
+
+    /// <summary>
+    /// The public key (base64 SubjectPublicKeyInfo, ECDSA P-256) that signs every release's checksum file
+    /// (FileeUpdatePublicKey in Directory.Build.props), or null while releases don't sign it. Tests set it.
+    /// </summary>
+    internal string? UpdatePublicKey { get; init; } = BuildMetadata("FileeUpdatePublicKey");
+
+    private static string? BuildMetadata(string key) =>
+        typeof(UpdateService).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == key)?.Value is { Length: > 0 } value ? value.Trim() : null;
+
     /// <summary>The newer version found by the last check (e.g. "1.0.2"), or null when up to date / unknown.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsUpdateAvailable))]
@@ -480,72 +496,6 @@ public sealed partial class UpdateService : ObservableObject
         throw new PlatformNotSupportedException("In-app update is only supported on Windows and Linux");
     }
 
-    /// <summary>
-    /// Downloads the installer of the latest release into <paramref name="folder"/> and checks its SHA-256 against
-    /// the release's checksum file. Returns the verified file; throws <see cref="InvalidDataException"/> when it does
-    /// not match.
-    /// </summary>
-    internal async Task<string> DownloadInstallerAsync(string folder, IProgress<int>? progress,
-        CancellationToken cancellationToken = default)
-    {
-        var installer = _installer ?? throw new InvalidOperationException("No installer in the latest release");
-        var checksums = _checksums ?? throw new InvalidOperationException("No checksum file in the latest release");
-
-        var sums = await GetTextAsync(checksums.Url, cancellationToken);
-        var expected = ParseChecksum(sums, installer.Name)
-                       ?? throw new InvalidDataException($"{checksums.Name} has no line for {installer.Name}");
-
-        Directory.CreateDirectory(folder);
-        var target = Path.Combine(folder, installer.Name);
-        // Downloaded already (Update pressed again after a declined prompt): reuse it if it is still intact.
-        if (File.Exists(target) && await Sha256Async(target, cancellationToken) == expected)
-        {
-            progress?.Report(100);
-            return target;
-        }
-        foreach (var old in Directory.EnumerateFiles(folder))
-            TryDelete(old);
-
-        var partial = target + ".part";
-        TryDelete(partial);
-        await DownloadAsync(installer, partial, progress, cancellationToken);
-        var actual = await Sha256Async(partial, cancellationToken);
-        if (actual != expected)
-        {
-            TryDelete(partial);
-            throw new InvalidDataException($"{installer.Name}: SHA-256 {actual} does not match {expected}");
-        }
-        File.Move(partial, target, overwrite: true);
-        return target;
-    }
-
-    /// <summary>
-    /// Throws <see cref="InvalidDataException"/> (and deletes the installer) unless the publisher that signed this copy
-    /// of Filee signed <paramref name="installer"/> as well. The checksum file sits on the same release as the
-    /// installer, so it can't tell a replaced installer from the real one; the signature can. A copy that is not
-    /// signed itself (built from source) has no publisher to compare with and keeps to the checksum.
-    /// </summary>
-    internal void CheckPublisher(string installer)
-    {
-        var publisher = OwnProgram is null ? null : SignerOf(OwnProgram, false);
-        if (publisher is null)
-        {
-            _log.LogInformation("This copy of Filee is not signed: the installer is checked by its SHA-256 only");
-            return;
-        }
-        var signer = SignerOf(installer, true);
-        if (signer == publisher)
-            return;
-        // A signature that holds without the revocation check failed only that check: the certificate authority
-        // could not be reached (offline, a proxy or a firewall) or the certificate was revoked.
-        var reason = signer is null && SignerOf(installer, false) == publisher
-            ? $"is signed by {publisher}, but the revocation check failed (the certificate authority could not be " +
-              "reached, or the certificate was revoked)"
-            : $"is signed by {signer ?? "no publisher Windows trusts"}, not by {publisher}";
-        TryDelete(installer);
-        throw new InvalidDataException($"{Path.GetFileName(installer)} {reason}");
-    }
-
     private async Task DownloadAsync(ReleaseFile file, string path, IProgress<int>? progress, CancellationToken cancellationToken)
     {
         using var stall = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -575,13 +525,17 @@ public sealed partial class UpdateService : ObservableObject
             throw new IOException($"{file.Name}: got {received} of {file.Size} bytes");
     }
 
-    private async Task<string> GetTextAsync(string url, CancellationToken cancellationToken)
+    private async Task<string> GetTextAsync(string url, CancellationToken cancellationToken) =>
+        System.Text.Encoding.UTF8.GetString(await GetBytesAsync(url, cancellationToken)).TrimStart('﻿');
+
+    /// <summary>A small file as it is on the server: a signature covers its exact bytes.</summary>
+    private async Task<byte[]> GetBytesAsync(string url, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.ParseAdd("application/octet-stream");
         using var response = await _http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync(cancellationToken);
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
     /// <summary>Opens a download page: the website for installed copies, the release page (portable zip) otherwise.</summary>
@@ -715,257 +669,8 @@ public sealed partial class UpdateService : ObservableObject
         UnixFileMode.GroupRead | UnixFileMode.GroupWrite | UnixFileMode.GroupExecute |
         UnixFileMode.OtherRead | UnixFileMode.OtherWrite | UnixFileMode.OtherExecute;
 
-    /// <summary>
-    /// Extracts a Linux release archive (.tar.gz) into <paramref name="destinationDirectory"/> with security validation
-    /// (rejecting path traversal, absolute paths, unsafe entry types, directory symlinks, and escaping/component symlinks).
-    /// Returns the path to the extracted payload folder containing <c>install.sh</c>.
-    /// </summary>
-    internal static string ExtractLinuxArchive(string archivePath, string destinationDirectory)
-    {
-        if (!File.Exists(archivePath))
-            throw new FileNotFoundException("Archive file not found", archivePath);
-
-        var fullDestRoot = Path.GetFullPath(destinationDirectory);
-        if (!fullDestRoot.EndsWith(Path.DirectorySeparatorChar))
-            fullDestRoot += Path.DirectorySeparatorChar;
-
-        Directory.CreateDirectory(fullDestRoot);
-
-        using (var fileStream = File.OpenRead(archivePath))
-        using (var gzipStream = new GZipStream(fileStream, CompressionMode.Decompress))
-        using (var tarReader = new TarReader(gzipStream))
-        {
-            while (tarReader.GetNextEntry() is { } entry)
-            {
-                if (entry.EntryType is TarEntryType.GlobalExtendedAttributes or TarEntryType.ExtendedAttributes)
-                    continue;
-
-                if (string.IsNullOrWhiteSpace(entry.Name))
-                    throw new InvalidDataException("Archive contains an entry with an empty name.");
-
-                if (Path.IsPathRooted(entry.Name) || entry.Name.StartsWith('/') || entry.Name.StartsWith('\\') || entry.Name.Contains('\\'))
-                    throw new InvalidDataException($"Archive entry '{entry.Name}' has an invalid or rooted path.");
-
-                var destinationPath = Path.GetFullPath(Path.Combine(fullDestRoot, entry.Name));
-                if (!destinationPath.StartsWith(fullDestRoot, StringComparison.Ordinal))
-                    throw new InvalidDataException($"Archive entry '{entry.Name}' attempts path traversal outside destination.");
-
-                // Validate that no ancestor directory component between fullDestRoot and destinationPath is a symlink on disk
-                ValidateNoSymlinkComponents(fullDestRoot, destinationPath);
-
-                switch (entry.EntryType)
-                {
-                    case TarEntryType.Directory:
-                        if (Path.Exists(destinationPath))
-                        {
-                            var info = new DirectoryInfo(destinationPath);
-                            if (info.LinkTarget is not null || info.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                                throw new InvalidDataException($"Archive entry '{entry.Name}' conflicts with an existing symbolic link.");
-                        }
-                        Directory.CreateDirectory(destinationPath);
-                        break;
-
-                    case TarEntryType.RegularFile:
-                    case TarEntryType.V7RegularFile:
-                        if (Directory.Exists(destinationPath))
-                            throw new InvalidDataException($"Archive entry '{entry.Name}' conflicts with an existing directory.");
-
-                        var parentDir = Path.GetDirectoryName(destinationPath);
-                        if (!string.IsNullOrEmpty(parentDir))
-                            Directory.CreateDirectory(parentDir);
-
-                        // If destinationPath already exists and is a symlink, delete it rather than writing through it
-                        if (Path.Exists(destinationPath))
-                        {
-                            var existingInfo = new FileInfo(destinationPath);
-                            if (existingInfo.LinkTarget is not null || existingInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                                File.Delete(destinationPath);
-                        }
-
-                        entry.ExtractToFile(destinationPath, overwrite: true);
-
-                        if (OperatingSystem.IsLinux())
-                        {
-                            var mode = (entry.Mode & RwxMask) | UnixFileMode.UserRead | UnixFileMode.UserWrite;
-                            File.SetUnixFileMode(destinationPath, mode);
-                        }
-                        break;
-
-                    case TarEntryType.SymbolicLink:
-                        if (string.IsNullOrWhiteSpace(entry.LinkName)
-                            || Path.IsPathRooted(entry.LinkName)
-                            || entry.LinkName.StartsWith('/')
-                            || entry.LinkName.StartsWith('\\')
-                            || entry.LinkName.Contains('\\'))
-                        {
-                            throw new InvalidDataException($"Tar symlink '{entry.Name}' has an invalid target '{entry.LinkName}'.");
-                        }
-
-                        var linkParent = Path.GetDirectoryName(destinationPath)!;
-                        var linkTarget = Path.GetFullPath(Path.Combine(linkParent, entry.LinkName));
-                        if (!linkTarget.StartsWith(fullDestRoot, StringComparison.Ordinal))
-                        {
-                            throw new InvalidDataException($"Tar symlink '{entry.Name}' points outside destination directory: '{entry.LinkName}'.");
-                        }
-
-                        // Directory symlinks are disallowed to prevent symlink-component traversal and link-order attacks
-                        if (Directory.Exists(linkTarget))
-                        {
-                            throw new InvalidDataException($"Tar symlink '{entry.Name}' points to a directory, which is prohibited.");
-                        }
-
-                        if (Directory.Exists(destinationPath))
-                            throw new InvalidDataException($"Archive symlink '{entry.Name}' conflicts with an existing directory.");
-
-                        if (!string.IsNullOrEmpty(linkParent))
-                            Directory.CreateDirectory(linkParent);
-
-                        if (Path.Exists(destinationPath))
-                            File.Delete(destinationPath);
-
-                        File.CreateSymbolicLink(destinationPath, entry.LinkName);
-                        break;
-
-                    case TarEntryType.HardLink:
-                        if (string.IsNullOrWhiteSpace(entry.LinkName)
-                            || Path.IsPathRooted(entry.LinkName)
-                            || entry.LinkName.StartsWith('/')
-                            || entry.LinkName.StartsWith('\\')
-                            || entry.LinkName.Contains('\\'))
-                        {
-                            throw new InvalidDataException($"Tar hard link '{entry.Name}' has an invalid target '{entry.LinkName}'.");
-                        }
-
-                        var hardTarget = Path.GetFullPath(Path.Combine(fullDestRoot, entry.LinkName));
-                        if (!hardTarget.StartsWith(fullDestRoot, StringComparison.Ordinal))
-                        {
-                            throw new InvalidDataException($"Tar hard link '{entry.Name}' points outside destination directory: '{entry.LinkName}'.");
-                        }
-
-                        if (Directory.Exists(hardTarget))
-                        {
-                            throw new InvalidDataException($"Tar hard link '{entry.Name}' points to a directory, which is prohibited.");
-                        }
-
-                        if (!File.Exists(hardTarget))
-                        {
-                            throw new InvalidDataException($"Tar hard link '{entry.Name}' target '{entry.LinkName}' does not exist.");
-                        }
-
-                        if (Directory.Exists(destinationPath))
-                            throw new InvalidDataException($"Archive hard link '{entry.Name}' conflicts with an existing directory.");
-
-                        var hardParent = Path.GetDirectoryName(destinationPath);
-                        if (!string.IsNullOrEmpty(hardParent))
-                            Directory.CreateDirectory(hardParent);
-
-                        if (Path.Exists(destinationPath))
-                            File.Delete(destinationPath);
-
-                        File.Copy(hardTarget, destinationPath, overwrite: true);
-                        break;
-
-                    default:
-                        throw new InvalidDataException($"Unsupported or unsafe tar entry type '{entry.EntryType}' for entry '{entry.Name}'.");
-                }
-            }
-        }
-
-        var rootTrimmed = Path.TrimEndingDirectorySeparator(fullDestRoot);
-        string payloadDir;
-        if (File.Exists(Path.Combine(rootTrimmed, "install.sh")))
-        {
-            payloadDir = rootTrimmed;
-        }
-        else
-        {
-            var candidates = Directory.GetDirectories(rootTrimmed)
-                .Where(d => File.Exists(Path.Combine(d, "install.sh")))
-                .ToList();
-            if (candidates.Count == 1)
-            {
-                payloadDir = candidates[0];
-            }
-            else
-            {
-                throw new InvalidDataException("Archive does not contain a single valid Filee payload with install.sh");
-            }
-        }
-
-        var installSh = Path.Combine(payloadDir, "install.sh");
-        var fileeExe = Path.Combine(payloadDir, "Filee");
-        if (!File.Exists(installSh) || !File.Exists(fileeExe))
-        {
-            throw new InvalidDataException("Archive is missing install.sh or Filee executable in the payload directory.");
-        }
-
-        if (OperatingSystem.IsLinux())
-        {
-            EnsureExecutable(installSh);
-            EnsureExecutable(fileeExe);
-            var cli = Path.Combine(payloadDir, "filee-cli");
-            if (File.Exists(cli))
-                EnsureExecutable(cli);
-            var uninstall = Path.Combine(payloadDir, "uninstall.sh");
-            if (File.Exists(uninstall))
-                EnsureExecutable(uninstall);
-        }
-
-        return payloadDir;
-    }
-
-    /// <summary>
-    /// Verifies that no intermediate directory component between <paramref name="rootPath"/> and <paramref name="targetPath"/> is a symbolic link.
-    /// </summary>
-    private static void ValidateNoSymlinkComponents(string rootPath, string targetPath)
-    {
-        var current = rootPath.TrimEnd(Path.DirectorySeparatorChar);
-        var relative = Path.GetRelativePath(current, targetPath);
-        var segments = relative.Split(Path.DirectorySeparatorChar, StringSplitOptions.RemoveEmptyEntries);
-
-        for (var i = 0; i < segments.Length - 1; i++)
-        {
-            current = Path.Combine(current, segments[i]);
-            if (Path.Exists(current))
-            {
-                var dirInfo = new DirectoryInfo(current);
-                if (dirInfo.LinkTarget is not null || dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                {
-                    throw new InvalidDataException($"Archive path component '{segments[i]}' in '{relative}' is a symbolic link.");
-                }
-            }
-        }
-    }
-
-    private static void EnsureExecutable(string path)
-    {
-        if (OperatingSystem.IsLinux() && File.Exists(path))
-        {
-            var mode = (File.GetUnixFileMode(path) & RwxMask) | UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
-            File.SetUnixFileMode(path, mode);
-        }
-    }
-
-    /// <summary>Finds the hash for <paramref name="fileName"/> in a <c>sha256sum</c>-style file ("hash  name" lines).</summary>
-    internal static string? ParseChecksum(string sums, string fileName)
-    {
-        foreach (var line in sums.Split('\n'))
-        {
-            var parts = line.Trim().Split(' ', 2, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 2 && parts[1].Trim().TrimStart('*') == fileName && parts[0].Length == 64)
-                return parts[0].ToLowerInvariant();
-        }
-        return null;
-    }
-
     /// <summary>Lets tests hand in a release without calling GitHub.</summary>
     internal void UseRelease(ReleaseFile? installer, ReleaseFile? checksums) => (_installer, _checksums) = (installer, checksums);
-
-    private static async Task<string> Sha256Async(string path, CancellationToken cancellationToken)
-    {
-        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, useAsync: true);
-        return Convert.ToHexStringLower(await SHA256.HashDataAsync(stream, cancellationToken));
-    }
 
     private void TryDelete(string path)
     {
@@ -977,199 +682,6 @@ public sealed partial class UpdateService : ObservableObject
         {
             _log.LogInformation("Could not delete {Path}: {Message}", path, ex.Message);
         }
-    }
-
-    /// <summary>Gets the default root directory where secure workspaces are allocated.</summary>
-    internal static string GetDefaultWorkspaceBaseDirectory()
-    {
-        if (OperatingSystem.IsLinux())
-        {
-            var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-            var root = !string.IsNullOrWhiteSpace(dataHome)
-                ? dataHome
-                : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Path.Combine(root, "filee");
-        }
-        return Path.GetTempPath();
-    }
-
-    /// <summary>
-    /// Creates a private, dedicated temporary workspace for this update instance.
-    /// Mode 0700 on Unix, inaccessible to other local users, non-predictable, and never reusing pre-existing paths.
-    /// </summary>
-    internal static string CreateSecureWorkspace(string? baseDir = null)
-    {
-        baseDir = string.IsNullOrWhiteSpace(baseDir) ? GetDefaultWorkspaceBaseDirectory() : baseDir;
-
-        Directory.CreateDirectory(baseDir);
-
-        for (var attempt = 0; attempt < 100; attempt++)
-        {
-            var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-            var candidate = Path.Combine(baseDir, $".update-{Environment.ProcessId}-{token}");
-            if (Path.Exists(candidate))
-                continue;
-
-            if (OperatingSystem.IsLinux())
-            {
-                Directory.CreateDirectory(candidate, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-                File.SetUnixFileMode(candidate, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-            }
-            else
-            {
-                Directory.CreateDirectory(candidate);
-            }
-
-            var dirInfo = new DirectoryInfo(candidate);
-            if (dirInfo.LinkTarget is not null || dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            {
-                throw new InvalidOperationException($"Secure workspace candidate '{candidate}' is a symbolic link.");
-            }
-
-            return candidate;
-        }
-
-        throw new IOException("Failed to create a unique secure workspace directory after multiple attempts.");
-    }
-
-    /// <summary>Safely deletes a secure workspace directory created by this update, refusing to follow symlinks.</summary>
-    internal static void DeleteSecureWorkspace(string? workspacePath)
-    {
-        if (string.IsNullOrWhiteSpace(workspacePath) || !Path.Exists(workspacePath))
-            return;
-
-        var dirInfo = new DirectoryInfo(workspacePath);
-        if (dirInfo.LinkTarget is not null || dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
-            return;
-
-        try
-        {
-            Directory.Delete(workspacePath, recursive: true);
-        }
-        catch
-        {
-            // Best effort cleanup
-        }
-    }
-
-    /// <summary>
-    /// Checks whether a process with the given <paramref name="pid"/> is currently running.
-    /// Used to protect active update workspaces from being swept.
-    /// </summary>
-    internal static bool IsProcessAlive(int pid)
-    {
-        if (pid <= 0)
-            return false;
-
-        try
-        {
-            if (OperatingSystem.IsLinux())
-                return Directory.Exists($"/proc/{pid}");
-
-            using var proc = Process.GetProcessById(pid);
-            return !proc.HasExited;
-        }
-        catch (ArgumentException)
-        {
-            return false;
-        }
-        catch (InvalidOperationException)
-        {
-            return false;
-        }
-        catch (Exception)
-        {
-            // If in doubt (e.g. access denied), assume alive to safeguard against deleting active workspaces
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// Checks whether <paramref name="name"/> matches the Filee-owned workspace pattern
-    /// <c>.update-&lt;pid&gt;-&lt;32-hex-characters&gt;</c> and extracts the valid positive process ID.
-    /// </summary>
-    internal static bool TryParseWorkspaceName(string name, out int pid)
-    {
-        pid = 0;
-        var parts = name.Split('-');
-        if (parts.Length != 3 || parts[0] != ".update")
-            return false;
-
-        // The final component must contain exactly 32 hexadecimal characters (0-9, a-f, or A-F)
-        if (parts[2].Length != 32 || !parts[2].All(char.IsAsciiHexDigit))
-            return false;
-
-        // <pid> must be a valid positive process ID in decimal (digits only, no signs)
-        if (parts[1].Length == 0 || !parts[1].All(char.IsAsciiDigit) || !int.TryParse(parts[1], out var parsedPid) || parsedPid <= 0)
-            return false;
-
-        pid = parsedPid;
-        return true;
-    }
-
-    /// <summary>
-    /// Deletes stale update workspaces left behind by crashes, forced kills, or aborted updates.
-    /// Protects active workspaces by checking both an age threshold (default 1 day) and process liveness
-    /// (never deleting a workspace belonging to a running PID). Restricts cleanup strictly to Filee-owned
-    /// workspace directories matching <c>.update-&lt;pid&gt;-&lt;32-hex-characters&gt;</c>.
-    /// </summary>
-    public static void DeleteStaleWorkspaces(string? root = null, TimeSpan? age = null, ILogger? log = null)
-    {
-        // Workspaces are only made on Linux, under Filee's own data folder. Elsewhere the default root is the shared
-        // temp folder, where other programs' folders live.
-        if (root is null && !OperatingSystem.IsLinux())
-            return;
-        var threshold = age ?? TimeSpan.FromDays(1);
-        try
-        {
-            var baseDir = root ?? GetDefaultWorkspaceBaseDirectory();
-            var dirInfo = new DirectoryInfo(baseDir);
-            if (!dirInfo.Exists || dirInfo.LinkTarget is not null || dirInfo.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                return;
-
-            foreach (var folder in dirInfo.EnumerateDirectories(".update-*"))
-            {
-                if (folder.LinkTarget is not null || folder.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                    continue;
-
-                // Restrict cleanup strictly to Filee-owned workspace names: .update-<pid>-<32-hex-chars>
-                // Foreign directories (e.g. .update-something or .update-cache) are rejected immediately.
-                if (!TryParseWorkspaceName(folder.Name, out var pid))
-                    continue;
-
-                try
-                {
-                    if (IsProcessAlive(pid))
-                        continue;
-
-                    if (DateTime.UtcNow - folder.LastWriteTimeUtc > threshold)
-                    {
-                        DeleteSecureWorkspace(folder.FullName);
-                        log?.LogInformation("Deleted stale update workspace {Workspace}", folder.FullName);
-                    }
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    log?.LogWarning(ex, "Could not delete stale update workspace {Workspace}", folder.FullName);
-                }
-            }
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            log?.LogWarning(ex, "Failed to enumerate update workspaces in {Root}", root);
-        }
-    }
-
-    /// <summary>Locates the installation directory on Linux.</summary>
-    internal static string GetLinuxInstallDirectory()
-    {
-        if (IsLinuxInstalled(AppContext.BaseDirectory))
-            return AppContext.BaseDirectory;
-        var dataHome = Environment.GetEnvironmentVariable("XDG_DATA_HOME");
-        var root = !string.IsNullOrWhiteSpace(dataHome)
-            ? dataHome
-            : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        return Path.Combine(root, "filee", "application");
     }
 
     /// <summary>True when release tag <paramref name="tag"/> ("v1.2.0") is a higher version than <paramref name="current"/>.</summary>

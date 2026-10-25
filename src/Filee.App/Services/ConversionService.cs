@@ -65,8 +65,13 @@ public sealed class ConversionService
     /// The browser drop <paramref name="files"/> stand for: the job saves them first, into the folder Settings ›
     /// General names for files from a browser. The job owns it from now on (disposed here when nothing starts).
     /// </param>
+    /// <param name="unattended">
+    /// Nobody is there to answer a question (a watch folder): documents with macros or other active content follow
+    /// Settings → Security and limits without asking.
+    /// </param>
     /// <returns>The job's view model, or null when there was nothing to convert.</returns>
-    public JobViewModel? Start(IReadOnlyList<string> files, Preset preset, bool showInToast = true, WebDrop? web = null)
+    public JobViewModel? Start(IReadOnlyList<string> files, Preset preset, bool showInToast = true, WebDrop? web = null,
+        bool unattended = false)
     {
         if (files.Count == 0 || preset.IsGroup || preset.IsTool)
         {
@@ -82,7 +87,7 @@ public sealed class ConversionService
             // "Next to the source" is the download folder, also when the original is only kept until converted.
             preset = fetcher.Apply(preset);
         }
-        var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher);
+        var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher, unattended);
         var vm = new JobViewModel(job, _loc, _platform, Remove, RetryFailed);
         _byId[job.Id] = vm;
         Jobs.Insert(0, vm);
@@ -180,7 +185,7 @@ public sealed class ConversionService
     {
         var vm = await Dispatcher.UIThread.InvokeAsync(() =>
         {
-            var started = Start(files, preset);
+            var started = Start(files, preset, unattended: watchRuleId is not null);
             if (started is not null && watchRuleId is not null)
                 _watchJobs[started.Job.Id] = watchRuleId;
             return started;
