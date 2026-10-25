@@ -55,6 +55,149 @@
 
       <!-- Springy easing used by press/hover transitions ("말랑말랑"). -->
       <BackEaseOut x:Key="SoftEase" />
+
+      <!-- Slim accent scrollbar (replaces Fluent's classic one: arrow buttons, grey track, widens on hover).
+           Applied to every ScrollBar by the "ScrollBar" style further down. The thumb has its own small theme so
+           that hover and drag styles only need to reach through one template (Avalonia allows no more). -->
+      <ControlTheme x:Key="SoftScrollThumbTheme" TargetType="Thumb">
+        <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+        <Setter Property="CornerRadius" Value="999" />
+        <Setter Property="Opacity" Value="0.45" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" />
+          </ControlTemplate>
+        </Setter>
+        <Setter Property="Transitions">
+          <Transitions>
+            <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
+          </Transitions>
+        </Setter>
+      </ControlTheme>
+
+      <!-- Arrow button of the scrollbar: just a thin chevron in the accent colour, faint at rest. -->
+      <ControlTheme x:Key="SoftScrollArrowTheme" TargetType="RepeatButton">
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Opacity" Value="0.35" />
+        <Setter Property="Template">
+          <ControlTemplate>
+            <Border Background="Transparent">
+              <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </ControlTemplate>
+        </Setter>
+        <Style Selector="^:pointerover">
+          <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="^:pressed">
+          <Setter Property="Opacity" Value="1" />
+        </Style>
+      </ControlTheme>
+
+      <ControlTheme x:Key="SoftScrollBarTheme" TargetType="ScrollBar">
+        <Setter Property="Background" Value="Transparent" />
+        <Style Selector="^:vertical">
+          <Setter Property="Width" Value="14" />
+          <Setter Property="MinWidth" Value="14" />
+          <Setter Property="Template">
+            <ControlTemplate>
+              <Border Background="Transparent">
+                <Grid RowDefinitions="Auto,*,Auto">
+                  <RepeatButton Name="PART_LineUpButton" Theme="{StaticResource SoftScrollArrowTheme}" Grid.Row="0" Width="14" Height="14">
+                    <Path Data="M0,3 L2.5,0.5 L5,3" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </RepeatButton>
+                <Track Grid.Row="1" Minimum="{TemplateBinding Minimum}"
+                       Maximum="{TemplateBinding Maximum}"
+                       Value="{TemplateBinding Value, Mode=TwoWay}"
+                       ViewportSize="{TemplateBinding ViewportSize}"
+                       Orientation="{TemplateBinding Orientation}"
+                       IsDirectionReversed="True"
+                       DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}">
+                  <Track.DecreaseButton>
+                    <RepeatButton Name="PART_PageUpButton" Focusable="False" Background="Transparent" BorderThickness="0">
+                      <RepeatButton.Template>
+                        <ControlTemplate><Border Background="Transparent" /></ControlTemplate>
+                      </RepeatButton.Template>
+                    </RepeatButton>
+                  </Track.DecreaseButton>
+                  <Track.IncreaseButton>
+                    <RepeatButton Name="PART_PageDownButton" Focusable="False" Background="Transparent" BorderThickness="0">
+                      <RepeatButton.Template>
+                        <ControlTemplate><Border Background="Transparent" /></ControlTemplate>
+                      </RepeatButton.Template>
+                    </RepeatButton>
+                  </Track.IncreaseButton>
+                  <Thumb Name="PART_Thumb" Theme="{StaticResource SoftScrollThumbTheme}" MinHeight="32" />
+                </Track>
+                  <RepeatButton Name="PART_LineDownButton" Theme="{StaticResource SoftScrollArrowTheme}" Grid.Row="2" Width="14" Height="14">
+                    <Path Data="M0,0.5 L2.5,3 L5,0.5" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </RepeatButton>
+                </Grid>
+              </Border>
+            </ControlTemplate>
+          </Setter>
+        </Style>
+        <Style Selector="^:horizontal">
+          <Setter Property="Height" Value="14" />
+          <Setter Property="MinHeight" Value="14" />
+          <Setter Property="Template">
+            <ControlTemplate>
+              <Border Background="Transparent">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <RepeatButton Name="PART_LineUpButton" Theme="{StaticResource SoftScrollArrowTheme}" Grid.Column="0" Width="14" Height="14">
+                    <Path Data="M3,0 L0.5,2.5 L3,5" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </RepeatButton>
+                <Track Grid.Column="1" Minimum="{TemplateBinding Minimum}"
+                       Maximum="{TemplateBinding Maximum}"
+                       Value="{TemplateBinding Value, Mode=TwoWay}"
+                       ViewportSize="{TemplateBinding ViewportSize}"
+                       Orientation="{TemplateBinding Orientation}"
+                       DeferThumbDrag="{TemplateBinding ScrollViewer.IsDeferredScrollingEnabled}">
+                  <Track.DecreaseButton>
+                    <RepeatButton Name="PART_PageUpButton" Focusable="False" Background="Transparent" BorderThickness="0">
+                      <RepeatButton.Template>
+                        <ControlTemplate><Border Background="Transparent" /></ControlTemplate>
+                      </RepeatButton.Template>
+                    </RepeatButton>
+                  </Track.DecreaseButton>
+                  <Track.IncreaseButton>
+                    <RepeatButton Name="PART_PageDownButton" Focusable="False" Background="Transparent" BorderThickness="0">
+                      <RepeatButton.Template>
+                        <ControlTemplate><Border Background="Transparent" /></ControlTemplate>
+                      </RepeatButton.Template>
+                    </RepeatButton>
+                  </Track.IncreaseButton>
+                  <Thumb Name="PART_Thumb" Theme="{StaticResource SoftScrollThumbTheme}" MinWidth="32" />
+                </Track>
+                  <RepeatButton Name="PART_LineDownButton" Theme="{StaticResource SoftScrollArrowTheme}" Grid.Column="2" Width="14" Height="14">
+                    <Path Data="M0.5,0 L3,2.5 L0.5,5" Stroke="{DynamicResource AccentBrush}" StrokeThickness="1.3" StrokeLineCap="Round" StrokeJoin="Round" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </RepeatButton>
+                </Grid>
+              </Border>
+            </ControlTemplate>
+          </Setter>
+        </Style>
+        <!-- Resting size and position of the pill -->
+        <Style Selector="^:vertical /template/ Thumb#PART_Thumb">
+          <Setter Property="Width" Value="6" />
+          <Setter Property="HorizontalAlignment" Value="Right" />
+          <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+        <Style Selector="^:horizontal /template/ Thumb#PART_Thumb">
+          <Setter Property="Height" Value="6" />
+          <Setter Property="VerticalAlignment" Value="Bottom" />
+          <Setter Property="Margin" Value="0,0,0,4" />
+        </Style>
+        <!-- Hover or drag: the same size, only the faded accent becomes the full accent colour. -->
+        <Style Selector="^:pointerover /template/ Thumb#PART_Thumb">
+          <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="^ /template/ Thumb#PART_Thumb:pressed">
+          <Setter Property="Opacity" Value="1" />
+        </Style>
+      </ControlTheme>
     </ResourceDictionary>
   </Styles.Resources>
 
@@ -217,6 +360,9 @@
   <!-- Generic rounded list items (profiles, presets) -->
   <Style Selector="ListBox.soft">
     <Setter Property="Background" Value="Transparent" />
+    <!-- The scrollbar gets its own column instead of floating over the list, so the selected / hovered row ends
+         before the scrollbar. -->
+    <Setter Property="ScrollViewer.AllowAutoHide" Value="False" />
   </Style>
   <Style Selector="ListBox.soft ListBoxItem">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
@@ -225,6 +371,19 @@
   </Style>
   <Style Selector="ListBox.soft ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+  </Style>
+
+  <!-- ───────── Dropdown lists (ComboBox): rows are rounded and inset, so the selected / hovered row sits inside the
+       rounded popup instead of poking out of its corners. The popup takes the Softness radius (SoftRadius) and the
+       rows the smaller one (SoftRadiusSmall), so both follow the Theme page's Softness, down to sharp corners. ───────── -->
+  <Style Selector="ComboBox /template/ Border#PopupBorder">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+    <Setter Property="Padding" Value="6" />
+    <Setter Property="ClipToBounds" Value="True" />
+  </Style>
+  <Style Selector="ComboBoxItem">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+    <Setter Property="Margin" Value="0,1" />
   </Style>
 
   <!-- ───────── Page content fade-in (keyframes can't animate RenderTransform, so Margin slides) ───────── -->
@@ -521,8 +680,13 @@
     <Setter Property="BorderThickness" Value="0" />
   </Style>
 
+  <!-- ───────── Scrollbars: use the slim accent theme above everywhere ───────── -->
+  <Style Selector="ScrollBar">
+    <Setter Property="Theme" Value="{StaticResource SoftScrollBarTheme}" />
+  </Style>
+
   <!-- ───────── Reduced motion: remove every transition and animation above ───────── -->
-  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill">
+  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill, Window.reduced-motion ScrollBar /template/ Thumb#PART_Thumb">
     <Setter Property="Transitions" Value="{x:Null}" />
   </Style>
   <Style Selector="Window.reduced-motion Button:pressed, Window.reduced-motion ToggleButton:pressed, Window.reduced-motion Border.chip:pointerover, Window.reduced-motion ListBox.nav ListBoxItem:pointerover, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pointerover, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pressed, Window.reduced-motion ToggleSwitch:pointerover, Window.reduced-motion Button.choice-card:pointerover, Window.reduced-motion Button.preset-pill:pointerover, Window.reduced-motion Button.preset-pill:pressed">
