@@ -27,15 +27,6 @@
           <SolidColorBrush x:Key="AccentFaintBrush" Color="#177F77DD" />
           <SolidColorBrush x:Key="AccentStrongBrush" Color="#5F59A6" />
           <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
-          <!-- Plain buttons: the surface with a thin border, so only a disabled control is a flat grey (#524).
-               ThemeService gives them a theme's own surface (Material You, theme.json). -->
-
-          <SolidColorBrush x:Key="ButtonBackground" Color="#FFFFFF" />
-          <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#EFEDE6" />
-          <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#E6E3DA" />
-          <SolidColorBrush x:Key="ButtonBorderBrush" Color="#29000000" />
-          <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#3D000000" />
-          <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#3D000000" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Dark">
           <SolidColorBrush x:Key="PageBrush" Color="#1B1B19" />
@@ -53,12 +44,6 @@
           <SolidColorBrush x:Key="AccentFaintBrush" Color="#177F77DD" />
           <SolidColorBrush x:Key="AccentStrongBrush" Color="#5F59A6" />
           <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
-          <SolidColorBrush x:Key="ButtonBackground" Color="#262624" />
-          <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#31312E" />
-          <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3A3A36" />
-          <SolidColorBrush x:Key="ButtonBorderBrush" Color="#38FFFFFF" />
-          <SolidColorBrush x:Key="ButtonBorderBrushPointerOver" Color="#4DFFFFFF" />
-          <SolidColorBrush x:Key="ButtonBorderBrushPressed" Color="#4DFFFFFF" />
         </ResourceDictionary>
       </ResourceDictionary.ThemeDictionaries>
 
@@ -236,10 +221,26 @@
   <Style Selector="ListBox.soft ListBoxItem">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
     <Setter Property="Padding" Value="10,7" />
-    <Setter Property="Margin" Value="0,1" />
+    <!-- 16px on the right is kept free for the scrollbar (it floats over the list and grows on hover), so the
+         selected / hovered row ends before it. -->
+    <Setter Property="Margin" Value="0,1,16,1" />
   </Style>
   <Style Selector="ListBox.soft ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+  </Style>
+
+  <!-- ───────── Dropdown lists (ComboBox): rows are rounded and inset, so the selected / hovered row sits inside the
+       rounded popup instead of poking out of its corners. The popup takes the Softness radius (SoftRadius) and the
+       rows the smaller one (SoftRadiusSmall), so both follow the Theme page's Softness, down to sharp corners. ───────── -->
+  <!-- No padding on the right of the popup and 16px of margin on the right of each row instead: the scrollbar floats
+       over the list (thin, growing on hover), so the rows end before it rather than running underneath. -->
+  <Style Selector="ComboBox /template/ Border#PopupBorder">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+    <Setter Property="Padding" Value="6,6,0,6" />
+  </Style>
+  <Style Selector="ComboBoxItem">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+    <Setter Property="Margin" Value="0,1,16,1" />
   </Style>
 
   <!-- ───────── Page content fade-in (keyframes can't animate RenderTransform, so Margin slides) ───────── -->
@@ -459,13 +460,13 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="6" />
+    <Setter Property="Padding" Value="6,6,0,6" />
     <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
   </Style>
   <Style Selector="Window.material-you ComboBoxItem">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
     <Setter Property="Padding" Value="14,8" />
-    <Setter Property="Margin" Value="0,1" />
+    <Setter Property="Margin" Value="0,1,16,1" />
   </Style>
   <Style Selector="Window.material-you ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
