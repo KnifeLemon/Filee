@@ -215,4 +215,61 @@ public sealed class ExtensionChangeWatcherTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task ConvertSafely_succeeds_even_when_destination_file_is_read_only()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "FileeWatcherTest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var filePath = Path.Combine(dir, "photo.pdf");
+            await File.WriteAllBytesAsync(filePath, PngHeader, TestContext.Current.CancellationToken);
+
+            // Mark destination file as ReadOnly (which normally causes UnauthorizedAccessException on overwrite)
+            File.SetAttributes(filePath, FileAttributes.ReadOnly);
+
+            var watcher = new ExtensionChangeWatcher(
+                CreatePlanner,
+                async (_, _, output, ct) =>
+                {
+                    await File.WriteAllBytesAsync(output, PdfHeader, ct);
+                    return true;
+                });
+
+            var pngFormat = FormatRegistry.Get("png");
+            var pdfFormat = FormatRegistry.Get("pdf");
+
+            var success = await watcher.ConvertSafelyAsync(filePath, pngFormat, pdfFormat, TestContext.Current.CancellationToken);
+            Assert.True(success);
+
+            // Verify file was replaced with PDF content
+            var finalBytes = await File.ReadAllBytesAsync(filePath, TestContext.Current.CancellationToken);
+            Assert.Equal(PdfHeader, finalBytes);
+        }
+        finally
+        {
+            // Clear ReadOnly attribute before directory deletion
+            var filePath = Path.Combine(dir, "photo.pdf");
+            if (File.Exists(filePath))
+            {
+                File.SetAttributes(filePath, FileAttributes.Normal);
+            }
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ShouldIgnorePath_filters_unix_virtual_and_system_files()
+    {
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath("/proc/1/mounts"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath("/sys/devices/system/cpu"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath("/dev/shm/file.png"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath("/Users/User/._file.png"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath("/home/user/.cache/file.png"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath("/Users/User/Library/Caches/file.png"));
+
+        Assert.False(ExtensionChangeWatcher.ShouldIgnorePath("/home/user/Downloads/document.pdf"));
+        Assert.False(ExtensionChangeWatcher.ShouldIgnorePath("/Users/User/Desktop/photo.jpg"));
+    }
 }

@@ -432,7 +432,7 @@
   "general.zip_geo": "地理空間データの変換結果はすべてZIPで保存する",
   "general.zip_geo_hint": "どのプリセットでも、Shapefile、GeoJSON、KML、GPXなどの地理空間データの変換結果をファイルごとに1つのZIPにまとめます。\nオフの場合は、「変換結果をZIPで保存」を有効にしたプリセットだけに適用されます。",
   "general.extension_change": "ファイル拡張子の変更",
-  "general.extension_change_hint": "ファイルの拡張子を変更したとき（例: .png を .pdf に変更）、自動的に新しい形式に変換します。",
+  "general.extension_change_hint": "拡張子を対応フォーマットに変更したとき（画像から画像、動画から動画、文書からPDFなど）、自動的に新しいフォーマットへ変換します。非対応の形式は無視されます。",
   "general.convert_on_extension_change": "拡張子変更時にファイルを変換する",
   "general.confirm_extension_change": "変換前に確認メッセージを表示する",
   "general.confirm_extension_change_hint": "名前を変更したファイルを変換する前に確認ダイアログを表示します。",

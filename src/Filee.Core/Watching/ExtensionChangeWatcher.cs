@@ -12,6 +12,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.Core.Watching;
 
+/// <summary>Folder to monitor for file extension changes.</summary>
+public sealed record WatchedFolder(string Directory, bool IncludeSubdirectories = true);
+
 /// <summary>Details of a detected file extension change candidate ready for conversion.</summary>
 public sealed class ExtensionChangeCandidate
 {
@@ -91,40 +94,65 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
         }
     }
 
-    /// <summary>Starts watching the given folders (and their subdirectories).</summary>
-    public void Start(IEnumerable<string> directories)
+    /// <summary>Starts watching the given folder targets.</summary>
+    public void Start(IEnumerable<WatchedFolder> targets)
     {
         lock (_lock)
         {
             Stop();
-            foreach (var dir in directories.Distinct(FileSystemPaths.Comparer))
+            var sorted = targets
+                .GroupBy(t => t.Directory, FileSystemPaths.Comparer)
+                .Select(g => g.First())
+                .OrderBy(t => t.Directory.Length)
+                .ToList();
+
+            foreach (var target in sorted)
             {
-                if (!Directory.Exists(dir))
+                if (!Directory.Exists(target.Directory))
+                    continue;
+
+                // If an active watcher already covers this folder recursively, skip redundant child watcher
+                if (target.IncludeSubdirectories && _watchers.Any(w => w.IncludeSubdirectories && IsSubpath(target.Directory, w.Path)))
                     continue;
 
                 try
                 {
-                    var watcher = new FileSystemWatcher(dir)
+                    var watcher = new FileSystemWatcher(target.Directory)
                     {
-                        IncludeSubdirectories = true,
-                        NotifyFilter = NotifyFilters.FileName,
+                        IncludeSubdirectories = target.IncludeSubdirectories,
+                        NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
                         InternalBufferSize = 64 * 1024,
                     };
                     watcher.Renamed += OnRenamed;
                     watcher.Error += (_, e) =>
                     {
-                        _log.LogWarning(e.GetException(), "Filesystem watcher error on {Directory}", dir);
+                        _log.LogWarning(e.GetException(), "Filesystem watcher error on {Directory}", target.Directory);
                     };
                     watcher.EnableRaisingEvents = true;
                     _watchers.Add(watcher);
-                    _log.LogInformation("Watching extension changes in {Directory}", dir);
+                    _log.LogInformation("Watching extension changes in {Directory} (recursive: {Recursive})",
+                        target.Directory, target.IncludeSubdirectories);
                 }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException)
                 {
-                    _log.LogWarning(ex, "Could not start extension watcher on {Directory}", dir);
+                    _log.LogWarning(ex, "Could not start extension watcher on {Directory}", target.Directory);
                 }
             }
         }
+    }
+
+    /// <summary>Starts watching the given directory paths recursively.</summary>
+    public void Start(IEnumerable<string> directories) =>
+        Start(directories.Select(d => new WatchedFolder(d, true)));
+
+    private static bool IsSubpath(string path, string parent)
+    {
+        var fullPath = Path.GetFullPath(path);
+        var fullParent = Path.GetFullPath(parent);
+        if (!fullParent.EndsWith(Path.DirectorySeparatorChar) && !fullParent.EndsWith(Path.AltDirectorySeparatorChar))
+            fullParent += Path.DirectorySeparatorChar;
+
+        return fullPath.StartsWith(fullParent, FileSystemPaths.Comparison);
     }
 
     /// <summary>Stops all active directory watchers.</summary>
@@ -150,7 +178,17 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
 
     private void OnRenamed(object sender, RenamedEventArgs e)
     {
-        _ = HandleRenameAsync(e.OldFullPath, e.FullPath);
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await HandleRenameAsync(e.OldFullPath, e.FullPath).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _log.LogWarning(ex, "Error handling extension rename from {Old} to {New}", e.OldFullPath, e.FullPath);
+            }
+        });
     }
 
     /// <summary>
@@ -246,6 +284,7 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
     /// <summary>
     /// Executes a safe conversion: writes to a temporary output file, validates it,
     /// and replaces the destination file atomically while preserving the original on failure.
+    /// Handles read-only files, cross-device filesystem moves, and temporary file locks.
     /// </summary>
     public async Task<bool> ConvertSafelyAsync(
         string filePath,
@@ -256,8 +295,19 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
         if (!File.Exists(filePath))
             return false;
 
-        var workDir = Path.Combine(Path.GetTempPath(), "Filee-ExtensionChange", Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(workDir);
+        string workDir;
+        try
+        {
+            workDir = Path.Combine(Path.GetTempPath(), "Filee-ExtensionChange", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(workDir);
+        }
+        catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+        {
+            // Fallback to user app data if system temp directory is restricted
+            var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            workDir = Path.Combine(localAppData, "Filee", "Temp", Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(workDir);
+        }
 
         var tempSource = Path.Combine(workDir, $"{FormatRegistry.NameWithoutExtension(filePath)}.{sourceFormat.Id}");
         var tempOutput = Path.Combine(workDir, $"{FormatRegistry.NameWithoutExtension(filePath)}.{targetFormat.Id}");
@@ -268,8 +318,28 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
 
         try
         {
-            // Copy source to temporary working location with correct source extension
-            File.Copy(filePath, tempSource, overwrite: true);
+            // Copy source to temporary working location with retries for locks
+            var sourceCopied = false;
+            for (var attempt = 1; attempt <= 3; attempt++)
+            {
+                try
+                {
+                    File.Copy(filePath, tempSource, overwrite: true);
+                    sourceCopied = true;
+                    break;
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    if (attempt == 3) throw;
+                    await Task.Delay(attempt * 100, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            if (!sourceCopied || !File.Exists(tempSource))
+            {
+                _log.LogWarning("Could not copy source file {File} due to lock or permission restrictions", filePath);
+                return false;
+            }
 
             var success = await _convertFile(tempSource, targetFormat.Id, tempOutput, cancellationToken).ConfigureAwait(false);
             if (!success || !File.Exists(tempOutput))
@@ -294,10 +364,94 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
                 return false;
             }
 
-            // Atomically replace destination file with converted output
-            File.Move(tempOutput, filePath, overwrite: true);
+            // If destination file is read-only, clear attribute so move/copy can overwrite
+            FileAttributes? originalAttrs = null;
+            try
+            {
+                if (File.Exists(filePath))
+                {
+                    originalAttrs = File.GetAttributes(filePath);
+                    if ((originalAttrs.Value & FileAttributes.ReadOnly) != 0)
+                    {
+                        File.SetAttributes(filePath, originalAttrs.Value & ~FileAttributes.ReadOnly);
+                    }
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                _log.LogDebug(ex, "Could not check or clear ReadOnly attribute on {File}", filePath);
+            }
+
+            // Safely replace the destination file.
+            // Retries handle momentary locks by file managers/antivirus/indexers.
+            // Fallback handles cross-device links (EXDEV on Linux/macOS when temp is tmpfs).
+            var replaced = false;
+            Exception? lastError = null;
+
+            for (var attempt = 1; attempt <= 5; attempt++)
+            {
+                try
+                {
+                    File.Move(tempOutput, filePath, overwrite: true);
+                    replaced = true;
+                    break;
+                }
+                catch (IOException ioEx)
+                {
+                    lastError = ioEx;
+                    // Attempt copy fallback for cross-device or move locking issues
+                    try
+                    {
+                        File.Copy(tempOutput, filePath, overwrite: true);
+                        try { File.Delete(tempOutput); } catch { }
+                        replaced = true;
+                        break;
+                    }
+                    catch (Exception copyEx)
+                    {
+                        lastError = copyEx;
+                    }
+                }
+                catch (UnauthorizedAccessException uaEx)
+                {
+                    lastError = uaEx;
+                    try
+                    {
+                        File.Copy(tempOutput, filePath, overwrite: true);
+                        try { File.Delete(tempOutput); } catch { }
+                        replaced = true;
+                        break;
+                    }
+                    catch (Exception copyEx)
+                    {
+                        lastError = copyEx;
+                    }
+                }
+
+                if (attempt < 5)
+                {
+                    await Task.Delay(attempt * 100, cancellationToken).ConfigureAwait(false);
+                }
+            }
+
+            if (!replaced)
+            {
+                _log.LogWarning(lastError, "Could not replace destination file {File} after conversion (permission declined or locked)", filePath);
+                // Restore original ReadOnly attribute if replacement failed
+                if (originalAttrs.HasValue && (originalAttrs.Value & FileAttributes.ReadOnly) != 0)
+                {
+                    try { File.SetAttributes(filePath, originalAttrs.Value); } catch { }
+                }
+                return false;
+            }
+
             _log.LogInformation("Successfully converted {File} from {Source} to {Target}", filePath, sourceFormat.Id, targetFormat.Id);
             return true;
+        }
+        catch (UnauthorizedAccessException uaEx)
+        {
+            _log.LogWarning(uaEx, "Permission declined during extension change conversion on {File}", filePath);
+            return false;
         }
         catch (Exception ex)
         {
@@ -336,7 +490,8 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
             return true;
 
         // Temporary or system files
-        if (name.StartsWith('.') || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
+        if (name.StartsWith('.') || name.StartsWith("._")
+            || name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(".temp", StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(".crdownload", StringComparison.OrdinalIgnoreCase)
             || name.EndsWith(".part", StringComparison.OrdinalIgnoreCase)
@@ -363,7 +518,11 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
                 || part.Equals("$Recycle.Bin", StringComparison.OrdinalIgnoreCase)
                 || part.Equals("System Volume Information", StringComparison.OrdinalIgnoreCase)
                 || part.Equals("Windows", StringComparison.OrdinalIgnoreCase)
-                || (!isTemp && part.Equals("Library", StringComparison.OrdinalIgnoreCase)))
+                || (!isTemp && part.Equals("Library", StringComparison.OrdinalIgnoreCase))
+                || part.Equals("proc", StringComparison.OrdinalIgnoreCase)
+                || part.Equals("sys", StringComparison.OrdinalIgnoreCase)
+                || part.Equals("dev", StringComparison.OrdinalIgnoreCase)
+                || part.Equals("run", StringComparison.OrdinalIgnoreCase))
             {
                 return true;
             }
@@ -378,6 +537,7 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
         var deadline = DateTime.UtcNow + timeout;
         long lastLength = -1;
         var stableCount = 0;
+        var consecutiveDenied = 0;
 
         while (DateTime.UtcNow < deadline && !cancellationToken.IsCancellationRequested)
         {
@@ -391,6 +551,7 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
 
                 using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
+                    consecutiveDenied = 0;
                     if (length == lastLength && length > 0)
                     {
                         stableCount++;
@@ -407,16 +568,21 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
             catch (IOException)
             {
                 stableCount = 0;
+                consecutiveDenied = 0;
             }
             catch (UnauthorizedAccessException)
             {
                 stableCount = 0;
+                consecutiveDenied++;
+                // Stop waiting if access is repeatedly declined for over a second
+                if (consecutiveDenied >= 10)
+                    return false;
             }
 
-            await Task.Delay(50, cancellationToken).ConfigureAwait(false);
+            await Task.Delay(100, cancellationToken).ConfigureAwait(false);
         }
 
-        return File.Exists(path) && new FileInfo(path).Length > 0;
+        return stableCount >= 1 && File.Exists(path) && new FileInfo(path).Length > 0;
     }
 
     private static byte[] ReadHeader(string path, int maxBytes)

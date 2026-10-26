@@ -432,7 +432,7 @@
   "general.zip_geo": "حفظ كل نتيجة جغرافية بصيغة ZIP",
   "general.zip_geo_hint": "تُجمَّع نتائج Shapefile وGeoJSON وKML وGPX وغيرها من البيانات الجغرافية في ZIP واحد لكل ملف، مع كل إعداد مسبق.\nعند التعطيل: يُطبَّق ذلك فقط على الإعدادات المسبقة التي تفعّل «حفظ النتيجة بصيغة ZIP».",
   "general.extension_change": "تغيير امتداد الملف",
-  "general.extension_change_hint": "تحويل الملف تلقائيًا إلى صيغته الجديدة عند تغيير امتداده (مثل تغيير .png إلى .pdf).",
+  "general.extension_change_hint": "تحويل الملف تلقائيًا إلى صيغته الجديدة عند تغيير امتداده إلى صيغة مدعومة (مثل صورة إلى صورة أو فيديو إلى فيديو أو مستند إلى PDF). يتم تجاهل الصيغ غير المدعومة.",
   "general.convert_on_extension_change": "تحويل الملفات عند تغيير الامتداد",
   "general.confirm_extension_change": "طلب التأكيد قبل التحويل",
   "general.confirm_extension_change_hint": "إظهار مربع حوار للتأكيد قبل تحويل الملف المعاد تسميته.",

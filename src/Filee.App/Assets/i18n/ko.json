@@ -444,7 +444,7 @@
   "general.zip_geo": "지리 정보 결과를 모두 ZIP으로 저장",
   "general.zip_geo_hint": "Shapefile, GeoJSON, KML, GPX 등 지리 정보 결과를 모든 프리셋에서 파일마다 ZIP 하나로 묶어요.\n꺼 두면 \"결과를 ZIP으로 저장\"을 켠 프리셋만 묶어요.",
   "general.extension_change": "파일 확장자 이름 변경",
-  "general.extension_change_hint": "파일 확장자를 변경할 때(예: .png를 .pdf로) 자동으로 새 형식으로 변환합니다.",
+  "general.extension_change_hint": "지원되는 형식으로 확장자를 변경할 때(예: 이미지 간 변환, 비디오 간 변환 또는 문서를 PDF로 변환) 파일을 새 형식으로 자동 변환합니다. 지원되지 않는 형식은 무시됩니다.",
   "general.convert_on_extension_change": "확장자 변경 시 파일 변환",
   "general.confirm_extension_change": "변환하기 전에 확인 메시지 표시",
   "general.confirm_extension_change_hint": "이름이 바뀐 파일을 변환하기 전에 확인 대화 상자를 표시합니다.",

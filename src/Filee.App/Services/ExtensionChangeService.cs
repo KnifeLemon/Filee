@@ -74,9 +74,50 @@ public sealed class ExtensionChangeService : IAsyncDisposable
         }
     }
 
-    private IReadOnlyList<string> GetWatchRoots()
+    private IReadOnlyList<WatchedFolder> GetWatchRoots()
     {
-        var roots = new HashSet<string>(FileSystemPaths.Comparer);
+        var result = new List<WatchedFolder>();
+        var seen = new HashSet<string>(FileSystemPaths.Comparer);
+
+        void AddFolder(string? path, bool includeSubdirectories = true)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            try
+            {
+                if (Directory.Exists(path) && seen.Add(Path.GetFullPath(path)))
+                {
+                    result.Add(new WatchedFolder(path, includeSubdirectories));
+                }
+            }
+            catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
+            {
+                _log.LogWarning(ex, "Could not access folder for extension change watching: {Folder}", path);
+            }
+        }
+
+        // Standard user locations (Desktop, Documents, Downloads, Pictures, Music, Videos)
+        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
+        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
+        AddFolder(_platform.DownloadsFolder);
+        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures));
+        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic));
+        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos));
+
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            if (OperatingSystem.IsMacOS())
+            {
+                var movies = Path.Combine(userProfile, "Movies");
+                AddFolder(movies);
+            }
+
+            // On Linux and macOS, watch user profile root non-recursively to avoid inotify exhaustion
+            // and permission issues on hidden system/auth directories (.ssh, .gnupg, .cache).
+            AddFolder(userProfile, includeSubdirectories: OperatingSystem.IsWindows());
+        }
 
         if (OperatingSystem.IsWindows())
         {
@@ -85,7 +126,9 @@ public sealed class ExtensionChangeService : IAsyncDisposable
                 foreach (var drive in DriveInfo.GetDrives())
                 {
                     if (drive.DriveType == DriveType.Fixed && drive.IsReady)
-                        roots.Add(drive.RootDirectory.FullName);
+                    {
+                        AddFolder(drive.RootDirectory.FullName, includeSubdirectories: true);
+                    }
                 }
             }
             catch (Exception ex)
@@ -94,33 +137,14 @@ public sealed class ExtensionChangeService : IAsyncDisposable
             }
         }
 
-        if (roots.Count == 0)
-        {
-            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-            if (!string.IsNullOrWhiteSpace(userProfile))
-                roots.Add(userProfile);
-        }
-
-        // Standard user locations
-        var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
-        if (!string.IsNullOrWhiteSpace(desktop))
-            roots.Add(desktop);
-
-        var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-        if (!string.IsNullOrWhiteSpace(docs))
-            roots.Add(docs);
-
-        if (!string.IsNullOrWhiteSpace(_platform.DownloadsFolder))
-            roots.Add(_platform.DownloadsFolder);
-
         // User watch folders
         foreach (var rule in _store.Settings.WatchFolders)
         {
-            if (!string.IsNullOrWhiteSpace(rule.Folder) && Directory.Exists(rule.Folder))
-                roots.Add(rule.Folder);
+            if (!string.IsNullOrWhiteSpace(rule.Folder))
+                AddFolder(rule.Folder, includeSubdirectories: rule.IncludeSubfolders);
         }
 
-        return roots.Where(Directory.Exists).ToList();
+        return result;
     }
 
     private async Task OnExtensionChangeDetectedAsync(ExtensionChangeCandidate candidate)
@@ -158,7 +182,11 @@ public sealed class ExtensionChangeService : IAsyncDisposable
                     candidate.TargetFormat.DisplayName);
             });
 
-            await candidate.PerformConversionAsync(CancellationToken.None).ConfigureAwait(false);
+            var success = await candidate.PerformConversionAsync(CancellationToken.None).ConfigureAwait(false);
+            if (!success)
+            {
+                _log.LogWarning("Extension change conversion for {File} did not complete (permission decline or error). Original file preserved.", candidate.NewPath);
+            }
         }
         finally
         {

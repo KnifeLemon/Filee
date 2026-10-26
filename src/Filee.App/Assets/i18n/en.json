@@ -444,7 +444,7 @@
   "general.zip_geo": "Save every geospatial result as a ZIP",
   "general.zip_geo_hint": "Shapefile, GeoJSON, KML, GPX and the other geospatial results are packed into one ZIP per file, with every preset.\nOff: only presets with \"Save the result as a ZIP\" do it.",
   "general.extension_change": "File extension rename",
-  "general.extension_change_hint": "Automatically convert a file to its new format when you change its extension (such as .png to .pdf).",
+  "general.extension_change_hint": "Automatically convert a file to its new format when you rename its extension to a supported format (such as image to image, video to video, or document to PDF). Unsupported formats are ignored.",
   "general.convert_on_extension_change": "Convert files when extension is changed",
   "general.confirm_extension_change": "Ask for confirmation before converting",
   "general.confirm_extension_change_hint": "Show a dialog to confirm before converting the renamed file.",

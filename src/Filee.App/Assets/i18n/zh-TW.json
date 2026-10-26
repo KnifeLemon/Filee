@@ -444,7 +444,7 @@
   "general.zip_geo": "將所有地理資訊結果儲存為 ZIP",
   "general.zip_geo_hint": "無論使用哪個預設，Shapefile、GeoJSON、KML、GPX 等地理資訊結果都會按每個檔案打包成一個 ZIP。\n關閉後，只有開啟了「將結果儲存為 ZIP」的預設會這樣做。",
   "general.extension_change": "重新命名副檔名",
-  "general.extension_change_hint": "當您變更檔案副檔名（例如將 .png 改為 .pdf）時，自動將其轉換為新格式。",
+  "general.extension_change_hint": "當將副檔名重新命名為支援的格式（如圖片轉圖片、影片轉影片或文件轉 PDF）時，自動將其轉換為新格式。不支援的格式將被忽略。",
   "general.convert_on_extension_change": "變更副檔名時自動轉換檔案",
   "general.confirm_extension_change": "轉換前詢問確認",
   "general.confirm_extension_change_hint": "在轉換已重新命名的檔案前顯示確認對話方塊。",

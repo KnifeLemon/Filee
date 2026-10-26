@@ -432,7 +432,7 @@
   "general.zip_geo": "Her coğrafi veri sonucunu ZIP olarak kaydet",
   "general.zip_geo_hint": "Tüm ön ayarlarda Shapefile, GeoJSON, KML, GPX ve diğer coğrafi veri sonuçları dosya başına tek bir ZIP'e paketlenir.\nKapalıysa yalnızca “Sonucu ZIP olarak kaydet” seçili ön ayarlar bunu yapar.",
   "general.extension_change": "Dosya uzantısı yeniden adlandırma",
-  "general.extension_change_hint": "Uzantısını değiştirdiğinizde (.png yerine .pdf gibi) dosyayı otomatik olarak yeni biçimine dönüştürün.",
+  "general.extension_change_hint": "Uzantısını desteklenen bir biçime değiştirdiğinizde (örneğin resimden resme, videodan videoya veya belgeden PDF'ye) dosyayı otomatik olarak yeni biçimine dönüştürün. Desteklenmeyen biçimler yoksayılır.",
   "general.convert_on_extension_change": "Uzantı değiştirildiğinde dosyaları dönüştür",
   "general.confirm_extension_change": "Dönüştürmeden önce onay iste",
   "general.confirm_extension_change_hint": "Yeniden adlandırılan dosyayı dönüştürmeden önce bir onay iletişim kutusu gösterin.",

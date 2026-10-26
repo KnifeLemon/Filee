@@ -444,7 +444,7 @@
   "general.zip_geo": "Zapisuj każdy wynik geoprzestrzenny jako ZIP",
   "general.zip_geo_hint": "Shapefile, GeoJSON, KML, GPX i inne wyniki geoprzestrzenne są pakowane do jednego ZIP na plik, w każdym ustawieniu.\nWyłączone: robią to tylko ustawienia z opcją „Zapisz wynik jako ZIP”.",
   "general.extension_change": "Zmiana rozszerzenia pliku",
-  "general.extension_change_hint": "Automatycznie konwertuj plik na nowy format po zmianie jego rozszerzenia (np. z .png na .pdf).",
+  "general.extension_change_hint": "Automatycznie konwertuj plik na nowy format po zmianie rozszerzenia na obsługiwany format (np. obraz na obraz, wideo na wideo lub dokument na PDF). Nieobsługiwane formaty są ignorowane.",
   "general.convert_on_extension_change": "Konwertuj pliki po zmianie rozszerzenia",
   "general.confirm_extension_change": "Pytaj o potwierdzenie przed konwersją",
   "general.confirm_extension_change_hint": "Wyświetl okno dialogowe z prośbą o potwierdzenie przed konwersją pliku o zmienionej nazwie.",
