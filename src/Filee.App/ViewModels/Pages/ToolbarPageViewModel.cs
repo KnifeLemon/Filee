@@ -60,6 +60,7 @@ public sealed record PaletteChip(string PresetId, string Label, string? Caption,
 {
     public bool IsDimmed => Use != PresetUse.Usable;
     public bool CanAdd => Use != PresetUse.Unusable;
+    public object? Tip { get; init; }
 }
 
 public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
@@ -92,6 +93,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     }
 
     private readonly Dictionary<string, PaletteJudging> _judgingByProfile = [];
+    private readonly Dictionary<string, PresetFormatTip> _tipsByPreset = [];
     private object? _pass;
     private bool _disposed;
     private bool _savingOwnLibrary;
@@ -142,6 +144,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         _store.LibraryChanged -= OnLibraryChanged;
         StopJudging();
         _judgingByProfile.Clear();
+        _tipsByPreset.Clear();
     }
 
     private void StopJudging()
@@ -153,7 +156,10 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     {
         StopJudging();
         if (profileId is null)
+        {
             _judgingByProfile.Clear();
+            _tipsByPreset.Clear();
+        }
         else
             _judgingByProfile.Remove(profileId);
     }
@@ -464,6 +470,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     internal void PresetEdited(Preset preset)
     {
         StopJudging();
+        _tipsByPreset.Remove(preset.Id);
         foreach (var judging in _judgingByProfile.Values)
             judging.Judged.Remove(preset.Id);
         Commit();
@@ -586,6 +593,18 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         Rebuild();
     }
 
+    private object? TipFor(Preset preset, PresetUse use, string? reason)
+    {
+        if (preset.IsGroup)
+            return null;
+        if (use != PresetUse.Usable)
+            return reason;
+        if (!_tipsByPreset.TryGetValue(preset.Id, out var tip))
+            _tipsByPreset[preset.Id] = tip =
+                new PresetFormatTip(preset, _availability, _catalog.CreatePlanner, _loc);
+        return tip;
+    }
+
     /// <summary>Rebuilds the donut slices (of the face being edited) and the palette from the model.</summary>
     private void Rebuild()
     {
@@ -640,7 +659,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             // "GIF  GIF" says nothing twice: only show the format when the name doesn't already.
             if (caption is not null && label.Contains(caption, StringComparison.OrdinalIgnoreCase))
                 caption = null;
-            var chip = new PaletteChip(preset.Id, label, caption, reason, use);
+            var chip = new PaletteChip(preset.Id, label, caption, reason, use)
+            { Tip = TipFor(preset, use, reason) };
             if (use != PresetUse.Unusable)
                 Palette.Add(chip);
             if ((query.Length == 0 && use != PresetUse.Unusable)
@@ -730,7 +750,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             if (query.Length > 0 && !label.Contains(query, StringComparison.CurrentCultureIgnoreCase)
                 && caption?.Contains(query, StringComparison.CurrentCultureIgnoreCase) != true)
                 continue;
-            candidates.Add((new PaletteChip(preset.Id, label, caption, judgement.Reason, judgement.Use),
+            candidates.Add((new PaletteChip(preset.Id, label, caption, judgement.Reason, judgement.Use)
+            { Tip = TipFor(preset, judgement.Use, judgement.Reason) },
                 preset.IsGroup ? PaletteTab.All : TabOf(preset), preset.IsGroup));
         }
         RefreshVisiblePalette(candidates);

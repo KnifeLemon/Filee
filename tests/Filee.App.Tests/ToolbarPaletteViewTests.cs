@@ -440,7 +440,11 @@ public class ToolbarPaletteViewTests
             Assert.Equal(expected.Use, chip.Use);
             Assert.Equal(expected.Use != PresetUse.Usable, border.Classes.Contains("dimmed"));
             Assert.Equal(expected.Use != PresetUse.Usable ? 0.55 : 1, border.Opacity);
-            Assert.Equal(expected.Reason, ToolTip.GetTip(border));
+            // A usable chip's tip lists the formats it takes (#548); a dimmed one keeps its reason.
+            if (expected.Use == PresetUse.Usable)
+                Assert.IsType<PresetFormatTip>(ToolTip.GetTip(border));
+            else
+                Assert.Equal(expected.Reason, ToolTip.GetTip(border));
         }
         Assert.Equal(PresetUse.Usable, ((PaletteChip)view.Chip("test-wav").DataContext!).Use);
     }
