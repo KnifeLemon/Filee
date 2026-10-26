@@ -35,12 +35,15 @@ public sealed class ExtensionChangeWatcherTests
     {
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\folder\file.tmp"));
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\folder\.hidden"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"/folder/.hidden"));
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\folder\file.crdownload"));
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\folder\test.filee-conv.tmp"));
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\folder\desktop.ini"));
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\AppData\Local\file.png"));
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\repo\.git\hooks\file.png"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"/repo/.git/hooks/file.png"));
         Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\repo\bin\Debug\file.png"));
+        Assert.True(ExtensionChangeWatcher.ShouldIgnorePath(@"/repo/bin/Debug/file.png"));
 
         Assert.False(ExtensionChangeWatcher.ShouldIgnorePath(@"C:\Users\User\Documents\report.pdf"));
         Assert.False(ExtensionChangeWatcher.ShouldIgnorePath(@"/home/user/desktop/photo.png"));

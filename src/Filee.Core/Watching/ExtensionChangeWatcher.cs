@@ -373,7 +373,8 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
                     originalAttrs = File.GetAttributes(filePath);
                     if ((originalAttrs.Value & FileAttributes.ReadOnly) != 0)
                     {
-                        File.SetAttributes(filePath, originalAttrs.Value & ~FileAttributes.ReadOnly);
+                        var newAttrs = originalAttrs.Value & ~FileAttributes.ReadOnly;
+                        File.SetAttributes(filePath, newAttrs == 0 ? FileAttributes.Normal : newAttrs);
                     }
                 }
             }
@@ -479,13 +480,16 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
         }
     }
 
+    private static readonly char[] PathSeparators = ['/', '\\'];
+
     /// <summary>Checks whether a path belongs to system, temp, or ignored folders.</summary>
     public static bool ShouldIgnorePath(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
             return true;
 
-        var name = Path.GetFileName(path);
+        var lastSep = path.LastIndexOfAny(PathSeparators);
+        var name = lastSep >= 0 ? path[(lastSep + 1)..] : path;
         if (string.IsNullOrWhiteSpace(name))
             return true;
 
@@ -506,7 +510,7 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
         var isTemp = path.StartsWith(Path.GetTempPath(), StringComparison.OrdinalIgnoreCase);
 
         // Ignored system and build directories
-        var parts = path.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+        var parts = path.Split(PathSeparators, StringSplitOptions.RemoveEmptyEntries);
         foreach (var part in parts)
         {
             if (part.StartsWith('.') && part.Length > 1)
