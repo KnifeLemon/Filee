@@ -12,7 +12,7 @@ public sealed class ExtensionChangeSettingsTests
     private sealed class MockLocalizer : ILocalizer
     {
         public string Language => "en";
-        public event EventHandler? LanguageChanged;
+        public event EventHandler? LanguageChanged { add { } remove { } }
         public string this[string key] => key;
         public string Format(string key, params object[] args) => string.Format(key, args);
     }

@@ -50,7 +50,7 @@ public sealed class ExtensionChangeWatcherTests
     public async Task HandleRename_ignores_same_extension()
     {
         var watcher = new ExtensionChangeWatcher(CreatePlanner, (_, _, _, _) => Task.FromResult(true));
-        var candidate = await watcher.HandleRenameAsync(@"C:\folder\photo1.png", @"C:\folder\photo2.png");
+        var candidate = await watcher.HandleRenameAsync(@"C:\folder\photo1.png", @"C:\folder\photo2.png", TestContext.Current.CancellationToken);
         Assert.Null(candidate);
     }
 
@@ -58,7 +58,7 @@ public sealed class ExtensionChangeWatcherTests
     public async Task HandleRename_ignores_unsupported_target_format()
     {
         var watcher = new ExtensionChangeWatcher(CreatePlanner, (_, _, _, _) => Task.FromResult(true));
-        var candidate = await watcher.HandleRenameAsync(@"C:\folder\photo.png", @"C:\folder\photo.xyzrandom");
+        var candidate = await watcher.HandleRenameAsync(@"C:\folder\photo.png", @"C:\folder\photo.xyzrandom", TestContext.Current.CancellationToken);
         Assert.Null(candidate);
     }
 
@@ -67,7 +67,7 @@ public sealed class ExtensionChangeWatcherTests
     {
         // DummyConverter has no route from png to mp4
         var watcher = new ExtensionChangeWatcher(CreatePlanner, (_, _, _, _) => Task.FromResult(true));
-        var candidate = await watcher.HandleRenameAsync(@"C:\folder\photo.png", @"C:\folder\photo.mp4");
+        var candidate = await watcher.HandleRenameAsync(@"C:\folder\photo.png", @"C:\folder\photo.mp4", TestContext.Current.CancellationToken);
         Assert.Null(candidate);
     }
 
@@ -79,7 +79,7 @@ public sealed class ExtensionChangeWatcherTests
         watcher.MarkInProgress(path);
 
         Assert.True(watcher.IsInProgress(path));
-        var candidate = await watcher.HandleRenameAsync(@"C:\folder\busy.png", path);
+        var candidate = await watcher.HandleRenameAsync(@"C:\folder\busy.png", path, TestContext.Current.CancellationToken);
         Assert.Null(candidate);
 
         watcher.UnmarkInProgress(path);
@@ -97,10 +97,10 @@ public sealed class ExtensionChangeWatcherTests
             var newPath = Path.Combine(dir, "doc.pdf");
 
             // Write PDF bytes even though old name was png
-            await File.WriteAllBytesAsync(newPath, PdfHeader);
+            await File.WriteAllBytesAsync(newPath, PdfHeader, TestContext.Current.CancellationToken);
 
             var watcher = new ExtensionChangeWatcher(CreatePlanner, (_, _, _, _) => Task.FromResult(true), settleTimeout: TimeSpan.FromSeconds(1));
-            var candidate = await watcher.HandleRenameAsync(oldPath, newPath);
+            var candidate = await watcher.HandleRenameAsync(oldPath, newPath, TestContext.Current.CancellationToken);
 
             // Sniff shows it is already a PDF internally, so it should NOT convert!
             Assert.Null(candidate);
@@ -122,7 +122,7 @@ public sealed class ExtensionChangeWatcherTests
             var newPath = Path.Combine(dir, "doc.pdf");
 
             // Write PNG bytes (the user renamed doc.png to doc.pdf, so doc.pdf has PNG data inside)
-            await File.WriteAllBytesAsync(newPath, PngHeader);
+            await File.WriteAllBytesAsync(newPath, PngHeader, TestContext.Current.CancellationToken);
 
             var detected = false;
             var watcher = new ExtensionChangeWatcher(
@@ -139,7 +139,7 @@ public sealed class ExtensionChangeWatcherTests
                 return Task.CompletedTask;
             };
 
-            var candidate = await watcher.HandleRenameAsync(oldPath, newPath);
+            var candidate = await watcher.HandleRenameAsync(oldPath, newPath, TestContext.Current.CancellationToken);
             Assert.NotNull(candidate);
             Assert.True(detected);
             Assert.Equal("png", candidate.SourceFormat.Id);
@@ -159,25 +159,25 @@ public sealed class ExtensionChangeWatcherTests
         try
         {
             var filePath = Path.Combine(dir, "photo.pdf");
-            await File.WriteAllBytesAsync(filePath, PngHeader);
+            await File.WriteAllBytesAsync(filePath, PngHeader, TestContext.Current.CancellationToken);
 
             var watcher = new ExtensionChangeWatcher(
                 CreatePlanner,
-                async (_, _, output, _) =>
+                async (_, _, output, ct) =>
                 {
                     // Mock conversion producing valid PDF
-                    await File.WriteAllBytesAsync(output, PdfHeader);
+                    await File.WriteAllBytesAsync(output, PdfHeader, ct);
                     return true;
                 });
 
             var pngFormat = FormatRegistry.Get("png");
             var pdfFormat = FormatRegistry.Get("pdf");
 
-            var success = await watcher.ConvertSafelyAsync(filePath, pngFormat, pdfFormat);
+            var success = await watcher.ConvertSafelyAsync(filePath, pngFormat, pdfFormat, TestContext.Current.CancellationToken);
             Assert.True(success);
 
             // Verify file was replaced with PDF content
-            var finalBytes = await File.ReadAllBytesAsync(filePath);
+            var finalBytes = await File.ReadAllBytesAsync(filePath, TestContext.Current.CancellationToken);
             Assert.Equal(PdfHeader, finalBytes);
         }
         finally
@@ -194,7 +194,7 @@ public sealed class ExtensionChangeWatcherTests
         try
         {
             var filePath = Path.Combine(dir, "photo.pdf");
-            await File.WriteAllBytesAsync(filePath, PngHeader);
+            await File.WriteAllBytesAsync(filePath, PngHeader, TestContext.Current.CancellationToken);
 
             var watcher = new ExtensionChangeWatcher(
                 CreatePlanner,
@@ -203,11 +203,11 @@ public sealed class ExtensionChangeWatcherTests
             var pngFormat = FormatRegistry.Get("png");
             var pdfFormat = FormatRegistry.Get("pdf");
 
-            var success = await watcher.ConvertSafelyAsync(filePath, pngFormat, pdfFormat);
+            var success = await watcher.ConvertSafelyAsync(filePath, pngFormat, pdfFormat, TestContext.Current.CancellationToken);
             Assert.False(success);
 
             // Verify file was preserved with original PNG bytes
-            var finalBytes = await File.ReadAllBytesAsync(filePath);
+            var finalBytes = await File.ReadAllBytesAsync(filePath, TestContext.Current.CancellationToken);
             Assert.Equal(PngHeader, finalBytes);
         }
         finally
