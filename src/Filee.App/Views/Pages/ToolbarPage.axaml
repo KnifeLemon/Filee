@@ -482,7 +482,6 @@
                   <Border Classes="chip" Classes.dimmed="{Binding IsDimmed}" ToolTip.Tip="{Binding Tip}"
                           ToolTip.ToolTipOpening="OnChipTipOpening" PropertyChanged="OnChipPropertyChanged"
                           PointerPressed="OnChipPressed" DoubleTapped="OnChipDoubleTapped"
-                          GotFocus="OnChipGotFocus" LostFocus="OnChipLostFocus"
                           Focusable="True" KeyDown="OnChipKeyDown" AutomationProperties.Name="{Binding Label}">
                     <!-- A chip wider than the palette ends its caption with "…" instead of being cut at the edge. -->
                     <DockPanel>

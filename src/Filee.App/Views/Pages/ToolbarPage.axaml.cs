@@ -199,20 +199,6 @@ public partial class ToolbarPage : UserControl
         }
     }
 
-    /// <summary>Tab or an arrow key on a chip shows its tip as hovering does; leaving the chip hides it.</summary>
-    private void OnChipGotFocus(object? sender, FocusChangedEventArgs e)
-    {
-        if (sender is Control chip && e.NavigationMethod is NavigationMethod.Tab or NavigationMethod.Directional
-            && ToolTip.GetTip(chip) is not null)
-            ToolTip.SetIsOpen(chip, true);
-    }
-
-    private void OnChipLostFocus(object? sender, FocusChangedEventArgs e)
-    {
-        if (sender is Control chip)
-            ToolTip.SetIsOpen(chip, false);
-    }
-
     /// <summary>Down / Up in the wrapped tab row: the tab on the next / previous row nearest below / above this one.</summary>
     private void OnTabsKeyDown(object? sender, KeyEventArgs e)
     {

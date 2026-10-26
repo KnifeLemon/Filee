@@ -102,17 +102,8 @@ public class PaletteChipTipViewTests
             RenderTests.Pump();
         }
 
-        public void Tab()
-        {
-            Window.KeyPress(Avalonia.Input.Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
-            Window.KeyRelease(Avalonia.Input.Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
-            RenderTests.Pump();
-        }
-
         public Point Center(Control control) =>
             control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), Window)!.Value;
-
-        public Border Focused => Assert.IsType<Border>(Window.FocusManager?.GetFocusedElement());
 
         public void Dispose() => Window.Close();
     }
@@ -588,66 +579,6 @@ public class PaletteChipTipViewTests
     }
 
     [AvaloniaFact]
-    public void T6_tab_opens_the_focused_chip_tip_and_closes_it_when_focus_leaves()
-    {
-        using var f = new Fixture(TipsConverter());
-        AddTipPresets(f);
-        using var vm = f.PageWithPalette();
-        using var view = new View(vm);
-        var (first, next) = TippedPair(view);
-
-        Assert.True(first.Focus(NavigationMethod.Tab));
-        RenderTests.Pump();
-        Assert.True(ToolTip.GetIsOpen(first));
-        view.Tab();
-        Assert.Same(next, view.Focused);
-        Assert.False(ToolTip.GetIsOpen(first));
-        Assert.True(ToolTip.GetIsOpen(next));
-
-        // Shift works on a tip opened with the keyboard as on a hovered one.
-        var tip = (PresetFormatTip)ToolTip.GetTip(next)!;
-        view.Key(Key.LeftShift, down: true);
-        Assert.Equal(tip.CanExpand, tip.IsExpanded);
-        view.Key(Key.LeftShift, down: false);
-        Assert.False(tip.IsExpanded);
-        Assert.True(ToolTip.GetIsOpen(next));
-        View.Close(next);
-    }
-
-    [AvaloniaFact]
-    public void T6_an_arrow_key_focus_opens_the_tip_and_a_click_focus_does_not()
-    {
-        using var f = new Fixture(TipsConverter());
-        AddTipPresets(f);
-        using var vm = f.PageWithPalette();
-        using var view = new View(vm);
-        var (first, next) = TippedPair(view);
-
-        // On 34a854bf the arrow keys don't move between chips (a wrap panel in an items control), so the focus moves the
-        // way directional navigation would.
-        Assert.True(first.Focus(NavigationMethod.Tab));
-        RenderTests.Pump();
-        view.Window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
-        view.Window.KeyRelease(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
-        RenderTests.Pump();
-        Assert.Same(first, view.Focused);
-        Assert.True(next.Focus(NavigationMethod.Directional));
-        RenderTests.Pump();
-        Assert.False(ToolTip.GetIsOpen(first));
-        Assert.True(ToolTip.GetIsOpen(next));
-        Assert.True(first.Focus(NavigationMethod.Directional));
-        RenderTests.Pump();
-        Assert.False(ToolTip.GetIsOpen(next));
-        Assert.True(ToolTip.GetIsOpen(first));
-
-        // Focus from a click doesn't open a tip.
-        Assert.True(next.Focus(NavigationMethod.Pointer));
-        RenderTests.Pump();
-        Assert.False(ToolTip.GetIsOpen(first));
-        Assert.False(ToolTip.GetIsOpen(next));
-    }
-
-    [AvaloniaFact]
     public void T7_pressing_dragging_or_double_clicking_a_chip_closes_its_tip()
     {
         using var f = new Fixture(TipsConverter());
@@ -656,12 +587,10 @@ public class PaletteChipTipViewTests
         using var view = new View(vm);
         var (first, next) = TippedPair(view);
 
-        // Press on a chip whose tip the keyboard opened.
-        Assert.True(first.Focus(NavigationMethod.Tab));
-        RenderTests.Pump();
-        Assert.True(ToolTip.GetIsOpen(first));
+        // Press on a chip whose tip is showing.
         var at = view.Center(first);
         view.Window.MouseMove(at);
+        View.Open(first);
         view.Window.MouseDown(at, MouseButton.Left);
         Assert.False(ToolTip.GetIsOpen(first));
         view.Window.MouseUp(at, MouseButton.Left);
