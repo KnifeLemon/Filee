@@ -8,7 +8,6 @@
 // CSV → vCard reads those columns (and common other names for them, also in Korean and Chinese) and writes vCard 3.0
 // in UTF-8, which phones and mail programs import.
 
-using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -560,19 +559,15 @@ internal static partial class VCard
     private static void Line(StringBuilder sb, string line)
     {
         var bytes = 0;
-        var limit = 75;
-        var e = StringInfo.GetTextElementEnumerator(line);
-        while (e.MoveNext())
+        foreach (var rune in line.EnumerateRunes())
         {
-            var element = e.GetTextElement();
-            var size = Encoding.UTF8.GetByteCount(element);
-            if (bytes + size > limit)
+            var size = rune.Utf8SequenceLength;
+            if (bytes + size > 75)
             {
                 sb.Append("\r\n ");
                 bytes = 1;
-                limit = 75;
             }
-            sb.Append(element);
+            sb.Append(rune.ToString());
             bytes += size;
         }
         sb.Append("\r\n");

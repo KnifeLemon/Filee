@@ -5,6 +5,7 @@
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Engines.Data;
 
 namespace Filee.Engines.Tests;
 
@@ -135,5 +136,17 @@ public class VCardTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var job = await fx.ConvertAsync([path], new Preset { TargetFormat = "vcf" });
         Assert.Equal(JobState.Failed, job.State);
         Assert.Contains("No contact columns", job.Files.Single().ErrorDetail);
+    }
+
+    [Fact]
+    public void Long_combining_sequence_folds_within_seventy_five_octets_and_roundtrips()
+    {
+        var name = "e" + new string('\u0301', 40);
+        var text = VCard.Write([new Contact { FullName = name }]);
+
+        Assert.Contains("\r\n ", text);
+        Assert.All(text.Split("\r\n", StringSplitOptions.RemoveEmptyEntries),
+            line => Assert.True(Encoding.UTF8.GetByteCount(line) <= 75, line));
+        Assert.Equal(name, Assert.Single(VCard.Read(Encoding.UTF8.GetBytes(text))).FullName);
     }
 }
