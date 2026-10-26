@@ -649,6 +649,25 @@ public class PaletteChipTipViewTests
     }
 
     [AvaloniaFact]
+    public void T7_a_tip_closes_when_the_pointer_moves_onto_it()
+    {
+        using var f = new Fixture(TipsConverter());
+        AddTipPresets(f);
+        using var vm = f.PageWithPalette();
+        using var view = new View(vm);
+        var chip = view.Chip("test-tip-xlsx");
+        var at = chip.TranslatePoint(new Point(chip.Bounds.Width / 2, 5), view.Window)!.Value;
+        view.Window.MouseMove(at);
+        var tip = View.Open(chip);
+        var origin = tip.TranslatePoint(default, view.Window)!.Value;
+
+        // Down from the chip onto the tip, which Avalonia would otherwise keep open over the next rows.
+        view.Window.MouseMove(new Point(origin.X + tip.Bounds.Width / 2, origin.Y + tip.Bounds.Height / 2));
+        RenderTests.Pump();
+        Assert.False(ToolTip.GetIsOpen(chip));
+    }
+
+    [AvaloniaFact]
     public void T9_a_group_chip_has_no_tip_by_hover_or_focus()
     {
         using var f = new Fixture();

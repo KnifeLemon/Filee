@@ -186,8 +186,20 @@ public partial class ToolbarPage : UserControl
         if (sender is Control { DataContext: PresetFormatTip } content && content.FindAncestorOfType<ToolTip>() is { } toolTip)
         {
             toolTip.Classes.Set("formats", true);
+            toolTip.PointerEntered -= OnFormatTipPointerEntered;
+            toolTip.PointerEntered += OnFormatTipPointerEntered;
             content.Tag = toolTip;
         }
+    }
+
+    /// <summary>
+    /// The pointer on a format tip closes it. Avalonia keeps a tip open while the pointer is over it, and this one opens
+    /// just below the chip, over the chips of the next rows.
+    /// </summary>
+    private void OnFormatTipPointerEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is ToolTip { Content: PresetFormatTip tip } && _openTips.FirstOrDefault(p => p.Value == tip).Key is { } chip)
+            ToolTip.SetIsOpen(chip, false);
     }
 
     private void OnFormatTipDetached(object? sender, VisualTreeAttachmentEventArgs e)
@@ -195,6 +207,7 @@ public partial class ToolbarPage : UserControl
         if (sender is Control { Tag: ToolTip toolTip } content && toolTip.Content is not PresetFormatTip)
         {
             toolTip.Classes.Set("formats", false);
+            toolTip.PointerEntered -= OnFormatTipPointerEntered;
             content.Tag = null;
         }
     }
