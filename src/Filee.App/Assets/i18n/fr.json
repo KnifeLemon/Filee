@@ -66,8 +66,8 @@
   "donut.empty": "Glissez des préréglages ici",
   "donut.same_format": "Inchangé",
   "donut.group_caption": "{0} options",
-  "donut.flip_to_back": "{0} ↻ verso",
-  "donut.flip_to_front": "{0} ↻ recto",
+  "donut.flip_to_back": "{0} verso",
+  "donut.flip_to_front": "{0} recto",
 
   "toast.converting": "{0} → {1}",
   "toast.done": "Terminé",

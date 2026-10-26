@@ -1,6 +1,6 @@
 // Flipping the donut to its other face: every profile has a front and a back list of slices, and Tab turns the open
 // donut over. Each slice folds about its spoke, starting under the pointer and spreading both ways; the hub stays
-// where it is and says how to flip ("Tab ↻ back").
+// where it is and says how to flip ("⟳ Tab back").
 //
 // The flip key (Tab unless the user records another in Settings → Shortcuts) and the mouse wheel flip it:
 //   Click mode → the key reaches the focused window (HandleKey), the wheel the donut (OnPointerWheelChanged).
@@ -23,7 +23,7 @@ public sealed partial class DonutMenu
     public static readonly StyledProperty<bool> CanFlipProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(CanFlip));
 
-    /// <summary>Small line at the bottom of the hub, e.g. "Tab ↻ back" (null for none).</summary>
+    /// <summary>Small line at the bottom of the hub, e.g. "⟳ Tab back" (null for none).</summary>
     public static readonly StyledProperty<string?> CenterHintProperty =
         AvaloniaProperty.Register<DonutMenu, string?>(nameof(CenterHint));
 

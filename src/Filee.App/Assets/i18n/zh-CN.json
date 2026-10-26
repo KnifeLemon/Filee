@@ -66,8 +66,8 @@
   "donut.empty": "把预设拖到这里",
   "donut.same_format": "同格式",
   "donut.group_caption": "组 · {0} 项",
-  "donut.flip_to_back": "{0} ↻ 背面",
-  "donut.flip_to_front": "{0} ↻ 正面",
+  "donut.flip_to_back": "{0} 背面",
+  "donut.flip_to_front": "{0} 正面",
 
   "toast.converting": "{0} → {1}",
   "toast.done": "完成",

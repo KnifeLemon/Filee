@@ -66,8 +66,8 @@
   "donut.empty": "Перетащите пресеты сюда",
   "donut.same_format": "Тот же формат",
   "donut.group_caption": "Группа: {0}",
-  "donut.flip_to_back": "{0} ↻ оборот",
-  "donut.flip_to_front": "{0} ↻ лицо",
+  "donut.flip_to_back": "{0} оборот",
+  "donut.flip_to_front": "{0} лицо",
 
   "toast.converting": "{0} → {1}",
   "toast.done": "Готово",

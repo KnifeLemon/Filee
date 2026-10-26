@@ -66,8 +66,8 @@
   "donut.empty": "Arraste predefinições para cá",
   "donut.same_format": "Mesmo formato",
   "donut.group_caption": "Grupo de {0}",
-  "donut.flip_to_back": "{0} ↻ verso",
-  "donut.flip_to_front": "{0} ↻ frente",
+  "donut.flip_to_back": "{0} verso",
+  "donut.flip_to_front": "{0} frente",
 
   "toast.converting": "{0} → {1}",
   "toast.done": "Concluído",

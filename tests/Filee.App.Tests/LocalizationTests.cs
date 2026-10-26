@@ -52,6 +52,22 @@ public partial class LocalizationTests
     }
 
 
+    [Fact]
+    public void The_flip_hint_leaves_its_arrow_to_the_donut()
+    {
+        // The hub draws the arrow itself (#554): as a character, fonts without "↻" (Linux's bundled Noto Sans) showed
+        // a box. The key stays first, so every language still reads "Tab back".
+        foreach (var code in LocalizationService.Languages.Select(l => l.Code))
+        {
+            var strings = Load(code);
+            foreach (var key in new[] { "donut.flip_to_back", "donut.flip_to_front" })
+            {
+                Assert.DoesNotContain("↻", strings[key]);
+                Assert.StartsWith("{0} ", strings[key]);
+            }
+        }
+    }
+
     [Theory]
     [MemberData(nameof(Languages))]
     public void Every_language_has_exactly_the_english_keys(string code)

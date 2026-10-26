@@ -29,7 +29,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private bool _canFlip;
 
     /// <summary>
-    /// "Tab ↻ back" / "Tab ↻ front" in the hub (with the flip key of the settings) while <see cref="CanFlip"/> and a key
+    /// "⟳ Tab back" / "⟳ Tab front" (the arrow drawn, #554) in the hub (with the flip key of the settings) while <see cref="CanFlip"/> and a key
     /// or the wheel flips; else null.
     /// </summary>
     [ObservableProperty] private string? _flipHint;

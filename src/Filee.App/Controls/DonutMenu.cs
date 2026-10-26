@@ -953,8 +953,9 @@ public sealed partial class DonutMenu : Control
         var maxWidth = radius * 1.6;
         var title = MakeText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
         var subtitle = MakeText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
-        // "Tab ↻ back": small, under the rest, a little narrower (the hub is round).
-        var hint = string.IsNullOrEmpty(CenterHint) ? null : MakeText(CenterHint, regular, 10.5, SecondaryForeground, maxWidth * 0.85);
+        // "⟳ Tab back": small, under the rest, a little narrower (the hub is round), with room for its icons.
+        var hintIcons = FlipArrowSize + (CenterHintWheel ? MouseWidth + MouseGap : 0) + IconGap;
+        var hint = string.IsNullOrEmpty(CenterHint) ? null : MakeText(CenterHint, regular, 10.5, SecondaryForeground, maxWidth * 0.85 - hintIcons);
         var total = title.Height + (string.IsNullOrEmpty(CenterSubtitle) ? 0 : subtitle.Height + 2) + (hint is null ? 0 : hint.Height + 5);
         var y = center.Y - total / 2;
         DrawCentered(context, title, center.X, y);
@@ -968,20 +969,62 @@ public sealed partial class DonutMenu : Control
         {
             using (context.PushOpacity(0.85))
             {
-                if (!CenterHintWheel)
+                // The flip arrow is drawn, not typed: a font without "↻" showed a box in its place (#554). A small mouse
+                // comes first when the wheel flips and no key does. The icons stand at the start of the line: on its
+                // left, or on its right in a right-to-left language, in reading order there too.
+                var left = center.X - (hintIcons + hint.Width) / 2;
+                var rtl = TextDirection == FlowDirection.RightToLeft;
+                var textLeft = rtl ? left : left + hintIcons;
+                var middle = y + 5 + hint.Height / 2;
+                var x = rtl ? left + hint.Width + IconGap : left;
+                var arrowFirst = rtl && CenterHintWheel;
+                if (CenterHintWheel && !arrowFirst)
                 {
-                    DrawCentered(context, hint, center.X, y + 5);
+                    DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
+                    x += MouseWidth + MouseGap;
                 }
-                else
-                {
-                    // A small mouse in front: "🖱 ↻ back" when the wheel flips and no key does.
-                    const double iconWidth = 7, gap = 4;
-                    var left = center.X - (hint.Width + iconWidth + gap) / 2;
-                    DrawMouse(context, new Rect(left, y + 5 + (hint.Height - 10) / 2, iconWidth, 10), SecondaryForeground);
-                    DrawCentered(context, hint, center.X + (iconWidth + gap) / 2, y + 5);
-                }
+                DrawFlipArrow(context, new Point(x + FlipArrowSize / 2, middle), FlipArrowSize / 2, SecondaryForeground);
+                x += FlipArrowSize + (arrowFirst ? MouseGap : IconGap);
+                if (arrowFirst)
+                    DrawMouse(context, new Rect(x, middle - 5, MouseWidth, 10), SecondaryForeground);
+                DrawCentered(context, hint, textLeft + hint.Width / 2, y + 5);
             }
         }
+    }
+
+    // The hub hint's icons: the flip arrow, the mouse (wheel only) and the room between them and before the text. The
+    // arrow's head reaches a little past its circle towards the mouse, so that gap is wider.
+    private const double FlipArrowSize = 9, MouseWidth = 7, IconGap = 4, MouseGap = 6;
+
+    /// <summary>
+    /// A small arrow turning clockwise round <paramref name="center"/>, the "flip" in the hub hint: most of a circle with
+    /// its head at the end.
+    /// </summary>
+    internal static void DrawFlipArrow(DrawingContext context, Point center, double radius, IBrush? brush)
+    {
+        var pen = new Pen(brush, 1.2, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        // Angles in radians from 3 o'clock, growing clockwise on screen (y points down). From 1 o'clock almost round to
+        // 11 o'clock, leaving a gap at the top where the head points into.
+        const double start = -Math.PI / 3, sweep = Math.PI * 5 / 3;
+        Point At(double angle) => new(center.X + radius * Math.Cos(angle), center.Y + radius * Math.Sin(angle));
+        var end = start + sweep;
+        var arc = new StreamGeometry();
+        using (var g = arc.Open())
+        {
+            g.BeginFigure(At(start), false);
+            g.ArcTo(At(end), new Size(radius, radius), 0, sweep > Math.PI, SweepDirection.Clockwise);
+            g.EndFigure(false);
+        }
+        context.DrawGeometry(null, pen, arc);
+
+        // The head: two strokes back from the end, along the circle's tangent there and either side of it.
+        var tip = At(end);
+        var along = new Vector(-Math.Sin(end), Math.Cos(end)); // clockwise
+        var outward = new Vector(Math.Cos(end), Math.Sin(end));
+        var head = radius * 0.75;
+        var back = tip - along * head;
+        context.DrawLine(pen, back + outward * head * 0.6, tip);
+        context.DrawLine(pen, back - outward * head * 0.6, tip);
     }
 
     /// <summary>An outline of a mouse with its wheel, filling <paramref name="box"/>.</summary>

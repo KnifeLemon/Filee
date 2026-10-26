@@ -66,8 +66,8 @@
   "donut.empty": "Drag presets here",
   "donut.same_format": "Same format",
   "donut.group_caption": "Group of {0}",
-  "donut.flip_to_back": "{0} ↻ back",
-  "donut.flip_to_front": "{0} ↻ front",
+  "donut.flip_to_back": "{0} back",
+  "donut.flip_to_front": "{0} front",
 
   "toast.converting": "{0} → {1}",
   "toast.done": "Done",

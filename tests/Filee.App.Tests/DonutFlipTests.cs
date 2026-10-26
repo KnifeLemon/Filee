@@ -904,10 +904,15 @@ public class DonutFlipTests
             window.Close();
         });
 
-    /// <summary>No key, the wheel on: the hub shows a mouse; neither: no hint and the donut doesn't flip by input.</summary>
-    [AvaloniaFact]
-    public void The_hub_shows_a_mouse_when_only_the_wheel_flips_and_nothing_when_nothing_does() =>
-        With(animations: false, back: null, flipKey: "", wheel: true, test: () =>
+    /// <summary>
+    /// No key, the wheel on: the hub shows a mouse and the flip arrow; neither: no hint and the donut doesn't flip by
+    /// input. Arabic puts the icons at the right, where its line starts (#554).
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("ar")]
+    public void The_hub_shows_a_mouse_when_only_the_wheel_flips_and_nothing_when_nothing_does(string language) =>
+        With(animations: false, back: null, language: language, flipKey: "", wheel: true, test: () =>
         {
             var (vm, window, donut) = OpenClickMode();
             Assert.Null(donut.FlipKey);
@@ -915,7 +920,7 @@ public class DonutFlipTests
             Assert.Equal(AppHost.Get<ILocalizer>().Format("donut.flip_to_back", "").Trim(), vm.FlipHint);
             Assert.False(donut.HandleKey(Key.Tab));
             RenderTests.Pump();
-            RenderTests.Save(window, "donut-front-hint-wheel-en.png");
+            RenderTests.Save(window, $"donut-front-hint-wheel-{language}.png");
             window.Close();
 
             Store.Settings.Donut.FlipWithWheel = false;

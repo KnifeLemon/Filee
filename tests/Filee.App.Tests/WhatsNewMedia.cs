@@ -157,7 +157,7 @@ public class WhatsNewMedia
     }
 
     /// <summary>
-    /// The donut's back face (#262): the images donut with "Tab ↻ back" in the hub turns over to its back face and,
+    /// The donut's back face (#262): the images donut with "⟳ Tab back" in the hub turns over to its back face and,
     /// after a moment, to the front again.
     /// </summary>
     private static Clip DonutFlip()
@@ -171,7 +171,7 @@ public class WhatsNewMedia
             Pump(); // the back face is checked once the front is on screen
             Assert.True(vm.CanFlip);
             Settle(donut);
-            // Frame 0: the front with its "Tab ↻ back" hint.
+            // Frame 0: the front with its "⟳ Tab back" hint.
             clip.Add(Capture(window), 1600);
             for (var turn = 0; turn < 2; turn++)
             {

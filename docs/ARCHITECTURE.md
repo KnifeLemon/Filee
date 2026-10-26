@@ -132,7 +132,7 @@ vertical axis in 200 ms, an open group's ring folding first, and halfway, edge-o
 `RadialViewModel` show the other face, so slices, hit tests and drops always belong to the face that is drawn.
 *Reduce animations* swaps the faces at once. `RadialViewModel` builds both faces with the same `PresetAvailability`
 check (the back right after the front is on screen); a face with no slice for the files (or none at all) isn't
-flipped to, and only then does the hub leave out its "Tab ↻ back" hint (a mouse in place of the key when only the
+flipped to, and only then does the hub leave out its "⟳ Tab back" hint (a mouse in place of the key when only the
 wheel flips). In click mode the focused window gets the key (`DonutMenu.HandleKey`) and the donut the wheel. During a
 drag the donut's window has no keyboard focus, so `RadialController` turns on `TriggerService.WatchFlipKey` while
 the drag donut shows files and flips on `FlipKeyPressed` / `FlipWheelTurned`: the global hook only listens (it

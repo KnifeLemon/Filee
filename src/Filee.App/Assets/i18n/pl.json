@@ -66,8 +66,8 @@
   "donut.empty": "Przeciągnij tu ustawienia",
   "donut.same_format": "Ten sam format",
   "donut.group_caption": "Grupa: {0}",
-  "donut.flip_to_back": "{0} ↻ tył",
-  "donut.flip_to_front": "{0} ↻ przód",
+  "donut.flip_to_back": "{0} tył",
+  "donut.flip_to_front": "{0} przód",
 
   "toast.converting": "{0} → {1}",
   "toast.done": "Gotowe",
