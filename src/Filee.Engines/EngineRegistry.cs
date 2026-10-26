@@ -46,6 +46,7 @@ public static class EngineRegistry
         new RhwpConverter(),
         new UnhwpConverter(),
         new MarkdownConverter(),
+        new SqlTextConverter(),
         new SpreadsheetConverter(),
         new OoxmlConverter(),
         new HwpxConverter(),
