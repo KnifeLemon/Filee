@@ -69,6 +69,8 @@ public static class CropService
                 ? new MagickImage(inputPath, readSettings)
                 : new MagickImage(inputPath);
 
+            if (readSettings.Format == MagickFormat.Dds)
+                DdsChannelOrder.Correct(inputPath, image);
             image.AutoOrient();
             var origWidth = (int)image.Width;
             var origHeight = (int)image.Height;
@@ -141,6 +143,8 @@ public static class CropService
                     ? new MagickImage(inputPath, readSettings)
                     : new MagickImage(inputPath);
 
+                if (readSettings.Format == MagickFormat.Dds)
+                    DdsChannelOrder.Correct(inputPath, image);
                 image.AutoOrient();
 
                 var clampedX = Math.Clamp(x, 0, Math.Max(0, (int)image.Width - 1));

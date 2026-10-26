@@ -266,6 +266,86 @@ public class CropServiceTests
         }
     }
 
+    /// <summary>An uncompressed DDS stored R, G, B, A (masks 0xFF … 0xFF000000), which ImageMagick reads with red and blue swapped.</summary>
+    private static string WriteRgbaDds(string folder, string name, uint width, uint flags, byte[] pixels)
+    {
+        var data = new byte[128 + pixels.Length];
+        var header = data.AsSpan();
+        "DDS "u8.CopyTo(header);
+        foreach (var (offset, value) in new (int, uint)[]
+                 {
+                     (4, 124), (8, 0x100F), (12, 4), (16, width), (20, width * 4), (76, 32), (80, flags), (88, 32),
+                     (92, 0xFF), (96, 0xFF00), (100, 0xFF0000), (104, 0xFF000000), (108, 0x1000),
+                 })
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(header[offset..], value);
+        pixels.CopyTo(data, 128);
+        var path = Path.Combine(folder, name);
+        File.WriteAllBytes(path, data);
+        return path;
+    }
+
+    private static byte[] PreviewPixel(Avalonia.Media.Imaging.Bitmap bitmap, int x, int y)
+    {
+        var buffer = new byte[4];
+        var native = System.Runtime.InteropServices.Marshal.AllocHGlobal(4);
+        try
+        {
+            bitmap.CopyPixels(new Avalonia.PixelRect(x, y, 1, 1), native, 4, 4);
+            System.Runtime.InteropServices.Marshal.Copy(native, buffer, 0, 4);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(native);
+        }
+        return bitmap.Format == Avalonia.Platform.PixelFormat.Rgba8888 ? buffer : [buffer[2], buffer[1], buffer[0], buffer[3]];
+    }
+
+    /// <summary>#621: the crop tool shows and saves a DDS stored R, G, B, A in its own colours.</summary>
+    [AvaloniaTheory]
+    [InlineData(0x41u)]
+    [InlineData(0x40u)]
+    public async Task Dds_stored_rgba_is_previewed_and_cropped_in_its_own_colours(uint flags)
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Directory.CreateTempSubdirectory("filee-dds-crop-test-").FullName;
+        try
+        {
+            byte[] red = [255, 0, 0, 255], green = [0, 255, 0, 255], blue = [0, 0, 255, 255];
+            byte[][] colours = [red, green, blue];
+            // Three 4 × 4 blocks side by side, matching DXT blocks so the saved DDS keeps each colour pure.
+            var pixels = Enumerable.Range(0, 4).SelectMany(_ => colours.SelectMany(c => Enumerable.Repeat(c, 4).SelectMany(p => p))).ToArray();
+            var source = WriteRgbaDds(folder, "rgba.dds", 12, flags, pixels);
+            var store = AppHost.Get<UserDataStore>();
+            var loc = AppHost.Get<ILocalizer>();
+            var preset = BuiltInData.CreatePresets().Single(p => p.Id == "tool-crop");
+
+            var preview = await CropService.LoadPreviewAsync(source);
+            using (preview.Bitmap)
+            {
+                for (var block = 0; block < 3; block++)
+                    Assert.Equal(colours[block], PreviewPixel(preview.Bitmap, block * 4 + 1, 1));
+            }
+
+            for (var block = 0; block < 3; block++)
+            {
+                var result = await CropService.CropFileAsync(source, block * 4, 0, 4, 4, preset, store, loc);
+
+                Assert.Equal(CropStatus.Success, result.Status);
+                using (var cropped = new MagickImage(result.OutputPath!, new MagickReadSettings { Format = MagickFormat.Dds }))
+                {
+                    var rgb = cropped.GetPixels().ToByteArray(PixelMapping.RGB)!;
+                    Assert.All(rgb.Chunk(3), p => Assert.All(Enumerable.Range(0, 3).Where(c => c != block),
+                        c => Assert.True(p[block] - p[c] >= 128, $"block {block}: {string.Join(',', p)}")));
+                }
+                File.Delete(result.OutputPath!);
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
     private static async Task WaitFor(Func<bool> condition)
     {
         for (var i = 0; i < 500 && !condition(); i++)
