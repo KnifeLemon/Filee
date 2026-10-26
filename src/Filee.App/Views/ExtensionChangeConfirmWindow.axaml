@@ -1,0 +1,25 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="Filee.App.Views.ExtensionChangeConfirmWindow"
+        Title="Filee"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="460"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        ShowInTaskbar="True">
+  <StackPanel Margin="22" Spacing="14">
+    <StackPanel Spacing="6">
+      <TextBlock Classes="h2" Text="{DynamicResource extension_confirm.title}" />
+      <TextBlock x:Name="MessageText" Classes="caption" TextWrapping="Wrap" />
+    </StackPanel>
+    <CheckBox x:Name="DontAsk" Content="{DynamicResource extension_confirm.dont_ask}" />
+    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+      <Button MinWidth="88" HorizontalContentAlignment="Center" Content="{DynamicResource common.cancel}"
+              Click="OnCancel" IsCancel="True" />
+      <Button Classes="accent" MinWidth="88" HorizontalContentAlignment="Center" Content="{DynamicResource extension_confirm.convert}"
+              Click="OnConvert" IsDefault="True" />
+    </StackPanel>
+  </StackPanel>
+</Window>

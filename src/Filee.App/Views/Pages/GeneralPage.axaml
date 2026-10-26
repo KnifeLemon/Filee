@@ -79,6 +79,19 @@
       </StackPanel>
     </Border>
 
+    <!-- Convert on file extension rename (AppSettings.ConvertOnExtensionChange). -->
+    <Border Classes="card">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource general.extension_change}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.extension_change_hint}" />
+        <ToggleSwitch Content="{DynamicResource general.convert_on_extension_change}" IsChecked="{Binding ConvertOnExtensionChange}" />
+        <StackPanel IsVisible="{Binding ConvertOnExtensionChange}" Margin="24,0,0,0" Spacing="6">
+          <ToggleSwitch Content="{DynamicResource general.confirm_extension_change}" IsChecked="{Binding ConfirmExtensionChange}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.confirm_extension_change_hint}" Margin="0,-6,0,0" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
     <Border Classes="card">
       <StackPanel Spacing="12">
         <TextBlock Classes="h2" Text="{DynamicResource general.history}" />

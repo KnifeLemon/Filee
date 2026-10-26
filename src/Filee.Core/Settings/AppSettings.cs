@@ -262,6 +262,18 @@ public sealed class AppSettings
     public double UiScale { get; set; } = 1;
 
     /// <summary>
+    /// When a user renames a file by changing its extension (e.g. xyz.png -> xyz.pdf), convert the file
+    /// to the new format if supported.
+    /// </summary>
+    public bool ConvertOnExtensionChange { get; set; }
+
+    /// <summary>
+    /// When <see cref="ConvertOnExtensionChange"/> is on, ask for confirmation before converting the renamed file.
+    /// When false, convert directly.
+    /// </summary>
+    public bool ConfirmExtensionChange { get; set; } = true;
+
+    /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
     /// <see cref="DefaultOutput"/> when the preset's location is <see cref="OutputLocation.Default"/>, and keeps the
     /// original dates when <see cref="KeepFileDates"/> is on and is saved as a ZIP when <see cref="ZipGeoResults"/> is on and the

@@ -50,6 +50,8 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _browserFolder = store.Settings.BrowserDrops.Folder;
         _saveOnlyConverted = store.Settings.BrowserDrops.SaveOnlyConverted;
         _zipGeoResults = store.Settings.ZipGeoResults;
+        _convertOnExtensionChange = store.Settings.ConvertOnExtensionChange;
+        _confirmExtensionChange = store.Settings.ConfirmExtensionChange;
         CloseChoices = Enum.GetValues<CloseAction>().Select(v => new Choice<CloseAction>(v, loc[$"general.close.{v}"])).ToList();
         _closeChoice = CloseChoices.First(c => c.Value == store.Settings.CloseAction);
         store.SettingsChanged += OnSettingsChanged;
@@ -120,11 +122,21 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
             Save(s => s.CloseAction = newValue.Value);
     }
 
+    [ObservableProperty] private bool _convertOnExtensionChange;
+    [ObservableProperty] private bool _confirmExtensionChange;
+
+    partial void OnConvertOnExtensionChangeChanged(bool value) => Save(s => s.ConvertOnExtensionChange = value);
+    partial void OnConfirmExtensionChangeChanged(bool value) => Save(s => s.ConfirmExtensionChange = value);
+
     // The close dialog may answer "Don't ask again" while this page stays open behind the hidden window.
     private void OnSettingsChanged(object? sender, EventArgs e)
     {
         if (CloseChoice.Value != _store.Settings.CloseAction)
             CloseChoice = CloseChoices.First(c => c.Value == _store.Settings.CloseAction);
+        if (ConvertOnExtensionChange != _store.Settings.ConvertOnExtensionChange)
+            ConvertOnExtensionChange = _store.Settings.ConvertOnExtensionChange;
+        if (ConfirmExtensionChange != _store.Settings.ConfirmExtensionChange)
+            ConfirmExtensionChange = _store.Settings.ConfirmExtensionChange;
     }
 
     public void Dispose() => _store.SettingsChanged -= OnSettingsChanged;

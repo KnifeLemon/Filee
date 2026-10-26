@@ -118,6 +118,28 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         }
     }
 
+    /// <summary>Asks the user whether they want to convert a file whose extension was changed.</summary>
+    public async Task<bool> ConfirmExtensionChangeAsync(string fileName, string sourceFormat, string targetFormat)
+    {
+        var message = loc.Format("extension_confirm.text", fileName, sourceFormat, targetFormat);
+        var dialog = new ExtensionChangeConfirmWindow(message);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (dialog.DontAskAgain)
+            {
+                var store = services.GetRequiredService<UserDataStore>();
+                store.Settings.ConfirmExtensionChange = false;
+                store.SaveSettings();
+            }
+            closed.TrySetResult(dialog.Tag as bool? == true);
+        };
+        dialog.Show();
+        dialog.Activate();
+        return await closed.Task;
+    }
+
     public MainWindow? Main => _main;
 
     /// <summary>
@@ -699,3 +721,4 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         }
     }
 }
+
