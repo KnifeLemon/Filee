@@ -126,13 +126,22 @@ internal static class NativeMethods
         const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
         var behavior = Send(window, sel_registerName("collectionBehavior"));
         behavior = (behavior & ~(moveToActiveSpace | fullScreenPrimary | fullScreenNone)) | canJoinAllSpaces | fullScreenAuxiliary;
-        if (OperatingSystem.IsMacOSVersionAtLeast(13))
-        {
-            const nint primary = 1 << 16, auxiliary = 1 << 17, canJoinAllApplications = 1 << 18;
-            behavior = (behavior & ~(primary | auxiliary)) | canJoinAllApplications;
-        }
+        // macOS 13's primary, auxiliary and canJoinAllApplications: with canJoinAllApplications set the donut still
+        // stays off a full-screen Finder Space, even as a panel (#251).
+        behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
         // Finder can occupy a full-screen Space that would otherwise hide another app's toolbar.
         SendInteger(window, sel_registerName("setCollectionBehavior:"), behavior);
+        // While Filee shows in the Dock, AppKit keeps its windows off another app's full-screen Space and lets only a
+        // non-activating panel join it (#251). AvnPanel is Avalonia's NSPanel build of AvnWindow, same ivars and methods
+        // but canBecomeMainWindow, so the donut becomes one in place.
+        var panel = objc_getClass("AvnPanel");
+        if (panel != 0 && object_getClass(window) == objc_getClass("AvnWindow"))
+        {
+            object_setClass(window, panel);
+            const nint nonactivatingPanel = 1 << 7;
+            SendInteger(window, sel_registerName("setStyleMask:"), Send(window, sel_registerName("styleMask")) | nonactivatingPanel);
+            SendInteger(window, sel_registerName("setHidesOnDeactivate:"), 0);
+        }
         SendInteger(window, sel_registerName("setLevel:"), 3);
         SendVoid(window, sel_registerName("orderFrontRegardless"));
     }
@@ -416,6 +425,12 @@ internal static class NativeMethods
 
     [DllImport(ObjC)]
     private static extern nint objc_getClass([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
+
+    [DllImport(ObjC)]
+    private static extern nint object_getClass(nint instance);
+
+    [DllImport(ObjC)]
+    private static extern nint object_setClass(nint instance, nint cls);
 
     [DllImport(ObjC)]
     private static extern nint sel_registerName([MarshalAs(UnmanagedType.LPUTF8Str)] string name);
