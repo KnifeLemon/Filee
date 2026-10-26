@@ -35,14 +35,3 @@ public class SqlTextConverterTests
         Assert.Equal("café", SqlTextConverter.Decode(bytes));
     }
 }
-
-// End-to-end check, same style as the other engine tests. Add it inside a class that has the `fx` EngineFixture:
-//
-// [Fact]
-// public async Task Sql_to_txt()
-// {
-//     var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.sql");
-//     await File.WriteAllTextAsync(path, "SELECT 1;", Encoding.Unicode);
-//     var job = await fx.ConvertAsync([path], new Preset { TargetFormat = "txt" });
-//     Assert.Equal(JobState.Completed, job.State);
-// }
