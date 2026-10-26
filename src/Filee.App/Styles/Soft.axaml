@@ -6,7 +6,7 @@
   Styles for Filee's own controls go into Controls.axaml.
 -->
 <Styles xmlns="https://github.com/avaloniaui"
-  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
   <Styles.Resources>
     <ResourceDictionary>
@@ -247,16 +247,20 @@
   <!-- ───────── Dropdown lists (ComboBox): rows are rounded and inset, so the selected / hovered row sits inside the
        rounded popup instead of poking out of its corners. The popup takes the Softness radius (SoftRadius) and the
        rows the smaller one (SoftRadiusSmall), so both follow the Theme page's Softness, down to sharp corners. ───────── -->
-  <!-- No padding on the right of the popup and 16px of margin on the right of each row instead: the scrollbar floats
-       over the list (thin, growing on hover), so the rows end before it rather than running underneath. -->
   <Style Selector="ComboBox /template/ Border#PopupBorder">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
-    <Setter Property="Padding" Value="6,6,0,6" />
+    <Setter Property="Padding" Value="6" />
   </Style>
   <Style Selector="ComboBoxItem">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
-    <Setter Property="Margin" Value="0,1,16,1" />
+    <Setter Property="Margin" Value="0,1" />
   </Style>
+  <!-- The popup's scrollbar takes its own column (only when the list is long enough to need one), so the selected /
+       hovered row ends before it and a short dropdown keeps its full width. -->
+  <Style Selector="ComboBox /template/ ScrollViewer">
+    <Setter Property="AllowAutoHide" Value="False" />
+  </Style>
+
 
   <!-- ───────── Page content fade-in (keyframes can't animate RenderTransform, so Margin slides) ───────── -->
   <Style Selector="ContentControl.page > :is(Control)">
@@ -475,13 +479,13 @@
     <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
     <Setter Property="BorderThickness" Value="1" />
-    <Setter Property="Padding" Value="6,6,0,6" />
+    <Setter Property="Padding" Value="6" />
     <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
   </Style>
   <Style Selector="Window.material-you ComboBoxItem">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
     <Setter Property="Padding" Value="14,8" />
-    <Setter Property="Margin" Value="0,1,16,1" />
+    <Setter Property="Margin" Value="0,1" />
   </Style>
   <Style Selector="Window.material-you ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
