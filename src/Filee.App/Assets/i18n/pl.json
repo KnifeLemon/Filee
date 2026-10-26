@@ -452,6 +452,8 @@
   "extension_confirm.text": "Rozszerzenie pliku „{0}” zostało zmienione z {1} na {2}. Czy chcesz, aby Filee przekonwertowało ten plik na {2}?",
   "extension_confirm.convert": "Konwertuj",
   "extension_confirm.dont_ask": "Zawsze konwertuj bezpośrednio bez pytania",
+  "extension_progress.title": "Konwertowanie pliku...",
+  "extension_progress.text": "Konwertowanie „{0}” na {1}...",
   "general.check_updates": "Automatycznie sprawdzaj aktualizacje",
   "general.close_action": "Po zamknięciu okna",
   "general.close.Ask": "Pytaj za każdym razem",

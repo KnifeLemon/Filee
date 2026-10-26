@@ -452,6 +452,8 @@
   "extension_confirm.text": "Расширение файла «{0}» было изменено с {1} на {2}. Вы хотите, чтобы Filee конвертировал файл в {2}?",
   "extension_confirm.convert": "Конвертировать",
   "extension_confirm.dont_ask": "Всегда конвертировать напрямую без запроса",
+  "extension_progress.title": "Конвертация файла…",
+  "extension_progress.text": "Конвертация «{0}» в {1}…",
   "general.check_updates": "Проверять обновления автоматически",
   "general.close_action": "Когда я закрываю окно",
   "general.close.Ask": "Спрашивать каждый раз",

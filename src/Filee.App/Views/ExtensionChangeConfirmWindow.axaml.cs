@@ -1,4 +1,5 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Filee.App.Services;
 
@@ -19,6 +20,12 @@ public partial class ExtensionChangeConfirmWindow : Window
 
     /// <summary>True if "Always convert directly without asking" is checked.</summary>
     public bool DontAskAgain => DontAsk.IsChecked == true;
+
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
+    }
 
     private void OnConvert(object? sender, RoutedEventArgs e)
     {

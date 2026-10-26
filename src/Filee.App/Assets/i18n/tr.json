@@ -440,6 +440,8 @@
   "extension_confirm.text": "\"{0}\" dosyasının uzantısı {1} yerine {2} olarak değiştirildi. Filee'nin bu dosyayı {2} biçimine dönüştürmesini ister misiniz?",
   "extension_confirm.convert": "Dönüştür",
   "extension_confirm.dont_ask": "Her zaman sormadan doğrudan dönüştür",
+  "extension_progress.title": "Dosya dönüştürülüyor...",
+  "extension_progress.text": "\"{0}\" dosyası {1} biçimine dönüştürülüyor...",
   "general.check_updates": "Güncellemeleri otomatik denetle",
   "general.close_action": "Pencereyi kapattığımda",
   "general.close.Ask": "Her seferinde sor",

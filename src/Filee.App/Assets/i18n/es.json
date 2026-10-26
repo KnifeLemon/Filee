@@ -440,6 +440,8 @@
   "extension_confirm.text": "La extensión del archivo \"{0}\" se cambió de {1} a {2}. ¿Deseas que Filee convierta el archivo a {2}?",
   "extension_confirm.convert": "Convertir",
   "extension_confirm.dont_ask": "Convertir siempre directamente sin preguntar",
+  "extension_progress.title": "Convirtiendo archivo...",
+  "extension_progress.text": "Convirtiendo \"{0}\" a {1}...",
   "general.check_updates": "Buscar actualizaciones automáticamente",
   "general.close_action": "Al cerrar la ventana",
   "general.close.Ask": "Preguntar cada vez",

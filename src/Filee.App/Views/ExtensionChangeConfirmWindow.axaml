@@ -7,19 +7,30 @@
         SizeToContent="Height"
         CanResize="False"
         WindowStartupLocation="CenterScreen"
+        WindowDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
         Topmost="True"
-        ShowInTaskbar="True">
-  <StackPanel Margin="22" Spacing="14">
-    <StackPanel Spacing="6">
-      <TextBlock Classes="h2" Text="{DynamicResource extension_confirm.title}" />
-      <TextBlock x:Name="MessageText" Classes="caption" TextWrapping="Wrap" />
-    </StackPanel>
-    <CheckBox x:Name="DontAsk" Content="{DynamicResource extension_confirm.dont_ask}" />
-    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
-      <Button MinWidth="88" HorizontalContentAlignment="Center" Content="{DynamicResource common.cancel}"
-              Click="OnCancel" IsCancel="True" />
-      <Button Classes="accent" MinWidth="88" HorizontalContentAlignment="Center" Content="{DynamicResource extension_confirm.convert}"
-              Click="OnConvert" IsDefault="True" />
-    </StackPanel>
-  </StackPanel>
+        ShowInTaskbar="True"
+        PointerPressed="OnPointerPressed">
+  <Border Classes="card" Margin="16" Padding="22,20" BoxShadow="{DynamicResource CardShadow}"
+          Background="{DynamicResource SurfaceBrush}" CornerRadius="{DynamicResource SoftRadius}">
+    <DockPanel>
+      <Image DockPanel.Dock="Left" Source="avares://Filee/Assets/Icons/filee.png" Width="44" Height="44"
+             VerticalAlignment="Top" Margin="0,2,16,0" />
+      <StackPanel Spacing="14">
+        <StackPanel Spacing="4">
+          <TextBlock Classes="h2" FontWeight="SemiBold" Text="{DynamicResource extension_confirm.title}" />
+          <TextBlock x:Name="MessageText" Classes="caption" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+        </StackPanel>
+        <CheckBox x:Name="DontAsk" Content="{DynamicResource extension_confirm.dont_ask}" />
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8" Margin="0,4,0,0">
+          <Button MinWidth="88" HorizontalContentAlignment="Center" Content="{DynamicResource common.cancel}"
+                  Click="OnCancel" IsCancel="True" />
+          <Button Classes="accent" MinWidth="88" HorizontalContentAlignment="Center" Content="{DynamicResource extension_confirm.convert}"
+                  Click="OnConvert" IsDefault="True" />
+        </StackPanel>
+      </StackPanel>
+    </DockPanel>
+  </Border>
 </Window>

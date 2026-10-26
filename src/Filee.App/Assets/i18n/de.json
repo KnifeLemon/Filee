@@ -440,6 +440,8 @@
   "extension_confirm.text": "Die Dateiendung von „{0}“ wurde von {1} in {2} geändert. Möchten Sie, dass Filee die Datei in {2} konvertiert?",
   "extension_confirm.convert": "Konvertieren",
   "extension_confirm.dont_ask": "Immer direkt konvertieren, ohne nachzufragen",
+  "extension_progress.title": "Datei wird konvertiert …",
+  "extension_progress.text": "„{0}“ wird in {1} konvertiert …",
   "general.check_updates": "Automatisch nach Updates suchen",
   "general.close_action": "Beim Schließen des Fensters",
   "general.close.Ask": "Jedes Mal fragen",

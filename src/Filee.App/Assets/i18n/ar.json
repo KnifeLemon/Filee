@@ -440,6 +440,8 @@
   "extension_confirm.text": "تم تغيير امتداد الملف \"{0}\" من {1} إلى {2}. هل ترغب في أن يقوم Filee بتحويل الملف إلى {2}؟",
   "extension_confirm.convert": "تحويل",
   "extension_confirm.dont_ask": "التحويل دائمًا مباشرة دون السؤال مجددًا",
+  "extension_progress.title": "جارٍ تحويل الملف...",
+  "extension_progress.text": "جارٍ تحويل \"{0}\" إلى {1}...",
   "general.check_updates": "التحقق من التحديثات تلقائيًا",
   "general.close_action": "عند إغلاق النافذة",
   "general.close.Ask": "السؤال كل مرة",

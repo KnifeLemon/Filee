@@ -440,6 +440,8 @@
   "extension_confirm.text": "「{0}」の拡張子が {1} から {2} に変更されました。Filee でこのファイルを {2} に変換しますか？",
   "extension_confirm.convert": "変換",
   "extension_confirm.dont_ask": "確認せずに常に直接変換する",
+  "extension_progress.title": "ファイルを変換中…",
+  "extension_progress.text": "「{0}」を {1} に変換しています…",
   "general.check_updates": "更新を自動で確認",
   "general.close_action": "ウィンドウを閉じたとき",
   "general.close.Ask": "毎回確認",

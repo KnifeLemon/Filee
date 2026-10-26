@@ -452,6 +452,8 @@
   "extension_confirm.text": "A extensão de \"{0}\" foi alterada de {1} para {2}. Deseja que o Filee converta o arquivo para {2}?",
   "extension_confirm.convert": "Converter",
   "extension_confirm.dont_ask": "Sempre converter diretamente sem perguntar",
+  "extension_progress.title": "Convertendo arquivo...",
+  "extension_progress.text": "Convertendo \"{0}\" para {1}...",
   "general.check_updates": "Procurar atualizações automaticamente",
   "general.close_action": "Quando eu fechar a janela",
   "general.close.Ask": "Perguntar sempre",

@@ -452,6 +452,8 @@
   "extension_confirm.text": "“{0}”的文件扩展名已从 {1} 改为 {2}。是否让 Filee 将该文件转换为 {2}？",
   "extension_confirm.convert": "转换",
   "extension_confirm.dont_ask": "始终直接转换，不再询问",
+  "extension_progress.title": "正在转换文件…",
+  "extension_progress.text": "正在将“{0}”转换为 {1}…",
   "general.check_updates": "自动检查更新",
   "general.close_action": "关闭窗口时",
   "general.close.Ask": "每次询问",

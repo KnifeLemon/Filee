@@ -452,6 +452,8 @@
   "extension_confirm.text": "\"{0}\"의 파일 확장자가 {1}에서 {2}(으)로 변경되었습니다. Filee에서 파일을 {2}(으)로 변환할까요?",
   "extension_confirm.convert": "변환",
   "extension_confirm.dont_ask": "묻지 않고 항상 직접 변환",
+  "extension_progress.title": "파일 변환 중…",
+  "extension_progress.text": "\"{0}\"을(를) {1}(으)로 변환하는 중…",
   "general.check_updates": "자동으로 업데이트 확인",
   "general.close_action": "창을 닫을 때",
   "general.close.Ask": "매번 묻기",

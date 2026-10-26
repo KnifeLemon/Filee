@@ -440,6 +440,8 @@
   "extension_confirm.text": "\"{0}\" को फाइल विस्तार {1} बाट {2} मा परिवर्तन गरिएको थियो। के तपाईं Filee ले फाइललाई {2} मा रूपान्तरण गरोस् भन्ने चाहनुहुन्छ?",
   "extension_confirm.convert": "रूपान्तरण गर्नुहोस्",
   "extension_confirm.dont_ask": "सोधपुछ नगरी सधैं सिधै रूपान्तरण गर्नुहोस्",
+  "extension_progress.title": "फाइल रूपान्तरण हुँदैछ...",
+  "extension_progress.text": "\"{0}\" लाई {1} मा रूपान्तरण गरिँदैछ...",
   "general.check_updates": "स्वचालित रूपमा अपडेटहरू जाँच गर्नुहोस्",
   "general.close_action": "जब म विन्डो बन्द गर्छु",
   "general.close.Ask": "प्रत्येक पटक सोध्नुहोस्",

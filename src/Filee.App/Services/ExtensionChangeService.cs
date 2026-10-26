@@ -148,7 +148,25 @@ public sealed class ExtensionChangeService : IAsyncDisposable
         _log.LogInformation("Executing extension conversion for {File} from {Source} to {Target}",
             candidate.NewPath, candidate.SourceFormat.Id, candidate.TargetFormat.Id);
 
-        await candidate.PerformConversionAsync(CancellationToken.None).ConfigureAwait(false);
+        IDisposable? progress = null;
+        try
+        {
+            progress = await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                return _windowService.ShowExtensionChangeProgress(
+                    candidate.FileName,
+                    candidate.TargetFormat.DisplayName);
+            });
+
+            await candidate.PerformConversionAsync(CancellationToken.None).ConfigureAwait(false);
+        }
+        finally
+        {
+            if (progress is not null)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => progress.Dispose());
+            }
+        }
     }
 
     public async ValueTask DisposeAsync()

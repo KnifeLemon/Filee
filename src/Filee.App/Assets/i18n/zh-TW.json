@@ -452,6 +452,8 @@
   "extension_confirm.text": "「{0}」的副檔名已從 {1} 變更為 {2}。是否讓 Filee 將該檔案轉換為 {2}？",
   "extension_confirm.convert": "轉換",
   "extension_confirm.dont_ask": "一律直接轉換，不再詢問",
+  "extension_progress.title": "正在轉換檔案…",
+  "extension_progress.text": "正在將「{0}」轉換為 {1}…",
   "general.check_updates": "自動檢查更新",
   "general.close_action": "關閉視窗時",
   "general.close.Ask": "每次詢問",

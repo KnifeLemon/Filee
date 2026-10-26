@@ -440,6 +440,8 @@
   "extension_confirm.text": "\"{0}\" का फ़ाइल एक्सटेंशन {1} से बदलकर {2} कर दिया गया है। क्या आप चाहते हैं कि Filee फ़ाइल को {2} में बदल दे?",
   "extension_confirm.convert": "बदलें",
   "extension_confirm.dont_ask": "बिना पूछे हमेशा सीधे बदलें",
+  "extension_progress.title": "फ़ाइल बदली जा रही है...",
+  "extension_progress.text": "\"{0}\" को {1} में बदला जा रहा है...",
   "general.check_updates": "अपडेट अपने-आप जाँचें",
   "general.close_action": "जब मैं विंडो बंद करूँ",
   "general.close.Ask": "हर बार पूछें",

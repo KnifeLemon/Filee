@@ -440,6 +440,8 @@
   "extension_confirm.text": "นามสกุลไฟล์ของ \"{0}\" เปลี่ยนจาก {1} เป็น {2} คุณต้องการให้ Filee แปลงไฟล์เป็น {2} หรือไม่?",
   "extension_confirm.convert": "แปลงไฟล์",
   "extension_confirm.dont_ask": "แปลงไฟล์โดยตรงเสมอโดยไม่ต้องถาม",
+  "extension_progress.title": "กำลังแปลงไฟล์...",
+  "extension_progress.text": "กำลังแปลง \"{0}\" เป็น {1}...",
   "general.check_updates": "ตรวจสอบการอัปเดตอัตโนมัติ",
   "general.close_action": "เมื่อปิดหน้าต่าง",
   "general.close.Ask": "ถามทุกครั้ง",

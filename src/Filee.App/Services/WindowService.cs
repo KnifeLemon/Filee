@@ -6,6 +6,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.Threading;
 using Filee.App.ViewModels;
 using Filee.App.Views;
 using Filee.Core.Conversion;
@@ -138,6 +139,29 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         dialog.Show();
         dialog.Activate();
         return await closed.Task;
+    }
+
+    /// <summary>Shows a progress dialog while converting a file whose extension was changed, and returns a disposable handle to close it.</summary>
+    public IDisposable ShowExtensionChangeProgress(string fileName, string targetFormat)
+    {
+        var message = loc.Format("extension_progress.text", fileName, targetFormat);
+        var dialog = new ExtensionChangeProgressWindow(message);
+        PrepareWindow(dialog);
+        dialog.Show();
+        return new ExtensionChangeProgressScope(dialog);
+    }
+
+    private sealed class ExtensionChangeProgressScope(Window window) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) == 0)
+            {
+                Dispatcher.UIThread.Post(() => window.Close());
+            }
+        }
     }
 
     public MainWindow? Main => _main;
