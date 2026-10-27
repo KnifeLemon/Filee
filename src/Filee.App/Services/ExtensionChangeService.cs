@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 namespace Filee.App.Services;
 
 /// <summary>
-/// Monitors file extension changes across the filesystem and automatically converts them
+/// Monitors file extension changes across user-configured watch folders and automatically converts them
 /// according to user settings.
 /// </summary>
 public sealed class ExtensionChangeService : IAsyncDisposable
@@ -19,7 +19,10 @@ public sealed class ExtensionChangeService : IAsyncDisposable
     private readonly IPlatformServices _platform;
     private readonly ILogger<ExtensionChangeService> _log;
     private readonly ExtensionChangeWatcher _watcher;
+    private readonly EventHandler _settingsChangedHandler;
+    private bool _started;
     private bool _isWatching;
+    private List<WatchedFolder> _currentRoots = [];
 
     public ExtensionChangeService(
         UserDataStore store,
@@ -45,33 +48,72 @@ public sealed class ExtensionChangeService : IAsyncDisposable
                 var job = await conversions.RunAsync([sourcePath], preset).ConfigureAwait(false);
                 return job is not null && job.Files.Any(f => f.State == FileState.Done);
             },
+            platform.MoveToTrash,
             log);
 
         _watcher.ExtensionChangeDetected += OnExtensionChangeDetectedAsync;
+        _settingsChangedHandler = (_, _) => UpdateWatcherState();
     }
 
     public void Start()
     {
+        if (_started)
+            return;
+
+        _started = true;
+        _store.SettingsChanged += _settingsChangedHandler;
         UpdateWatcherState();
-        _store.SettingsChanged += (_, _) => UpdateWatcherState();
     }
 
     private void UpdateWatcherState()
     {
         var enabled = _store.Settings.ConvertOnExtensionChange;
-        if (enabled && !_isWatching)
+        if (!enabled)
         {
-            var roots = GetWatchRoots();
-            _watcher.Start(roots);
+            if (_isWatching)
+            {
+                _watcher.Stop();
+                _isWatching = false;
+                _currentRoots.Clear();
+                _log.LogInformation("Extension change auto-conversion stopped");
+            }
+            return;
+        }
+
+        var newRoots = GetWatchRoots();
+        if (_isWatching && RootsEqual(_currentRoots, newRoots))
+            return;
+
+        _watcher.Stop();
+        if (newRoots.Count > 0)
+        {
+            _watcher.Start(newRoots);
             _isWatching = true;
-            _log.LogInformation("Extension change auto-conversion started on {Count} roots", roots.Count);
+            _currentRoots = [.. newRoots];
+            _log.LogInformation("Extension change auto-conversion started on {Count} roots", newRoots.Count);
         }
-        else if (!enabled && _isWatching)
+        else
         {
-            _watcher.Stop();
             _isWatching = false;
-            _log.LogInformation("Extension change auto-conversion stopped");
+            _currentRoots.Clear();
+            _log.LogInformation("Extension change auto-conversion has no active watch roots");
         }
+    }
+
+    private static bool RootsEqual(IReadOnlyList<WatchedFolder> a, IReadOnlyList<WatchedFolder> b)
+    {
+        if (a.Count != b.Count)
+            return false;
+
+        for (var i = 0; i < a.Count; i++)
+        {
+            if (!string.Equals(a[i].Directory, b[i].Directory, FileSystemPaths.Comparison) ||
+                a[i].IncludeSubdirectories != b[i].IncludeSubdirectories)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 
     private IReadOnlyList<WatchedFolder> GetWatchRoots()
@@ -79,69 +121,23 @@ public sealed class ExtensionChangeService : IAsyncDisposable
         var result = new List<WatchedFolder>();
         var seen = new HashSet<string>(FileSystemPaths.Comparer);
 
-        void AddFolder(string? path, bool includeSubdirectories = true)
+        // Only watch folders the user explicitly picks in Settings → Watch folders
+        foreach (var rule in _store.Settings.WatchFolders)
         {
-            if (string.IsNullOrWhiteSpace(path))
-                return;
+            if (!rule.Enabled || string.IsNullOrWhiteSpace(rule.Folder))
+                continue;
 
             try
             {
-                if (Directory.Exists(path) && seen.Add(Path.GetFullPath(path)))
+                if (Directory.Exists(rule.Folder) && seen.Add(Path.GetFullPath(rule.Folder)))
                 {
-                    result.Add(new WatchedFolder(path, includeSubdirectories));
+                    result.Add(new WatchedFolder(rule.Folder, rule.IncludeSubfolders));
                 }
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
-                _log.LogWarning(ex, "Could not access folder for extension change watching: {Folder}", path);
+                _log.LogWarning(ex, "Could not access folder for extension change watching: {Folder}", rule.Folder);
             }
-        }
-
-        // Standard user locations (Desktop, Documents, Downloads, Pictures, Music, Videos)
-        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.Desktop));
-        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments));
-        AddFolder(_platform.DownloadsFolder);
-        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures));
-        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyMusic));
-        AddFolder(Environment.GetFolderPath(Environment.SpecialFolder.MyVideos));
-
-        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        if (!string.IsNullOrWhiteSpace(userProfile))
-        {
-            if (OperatingSystem.IsMacOS())
-            {
-                var movies = Path.Combine(userProfile, "Movies");
-                AddFolder(movies);
-            }
-
-            // On Linux and macOS, watch user profile root non-recursively to avoid inotify exhaustion
-            // and permission issues on hidden system/auth directories (.ssh, .gnupg, .cache).
-            AddFolder(userProfile, includeSubdirectories: OperatingSystem.IsWindows());
-        }
-
-        if (OperatingSystem.IsWindows())
-        {
-            try
-            {
-                foreach (var drive in DriveInfo.GetDrives())
-                {
-                    if (drive.DriveType == DriveType.Fixed && drive.IsReady)
-                    {
-                        AddFolder(drive.RootDirectory.FullName, includeSubdirectories: true);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _log.LogWarning(ex, "Could not enumerate fixed drives for extension change monitoring");
-            }
-        }
-
-        // User watch folders
-        foreach (var rule in _store.Settings.WatchFolders)
-        {
-            if (!string.IsNullOrWhiteSpace(rule.Folder))
-                AddFolder(rule.Folder, includeSubdirectories: rule.IncludeSubfolders);
         }
 
         return result;
@@ -185,7 +181,7 @@ public sealed class ExtensionChangeService : IAsyncDisposable
             var success = await candidate.PerformConversionAsync(CancellationToken.None).ConfigureAwait(false);
             if (!success)
             {
-                _log.LogWarning("Extension change conversion for {File} did not complete (permission decline or error). Original file preserved.", candidate.NewPath);
+                _log.LogWarning("Extension change conversion for {File} did not complete. Original file preserved.", candidate.NewPath);
             }
         }
         finally
@@ -199,7 +195,10 @@ public sealed class ExtensionChangeService : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _store.SettingsChanged -= (_, _) => UpdateWatcherState();
+        _store.SettingsChanged -= _settingsChangedHandler;
+        _watcher.Stop();
+        _isWatching = false;
+        _currentRoots.Clear();
         await _watcher.DisposeAsync();
     }
 }

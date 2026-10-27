@@ -36,6 +36,7 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
 
     private readonly Func<RoutePlanner> _createPlanner;
     private readonly Func<string, string, string, CancellationToken, Task<bool>> _convertFile;
+    private readonly Func<string, TrashRefusal?>? _moveToTrash;
     private readonly ILogger _log;
     private readonly TimeSpan _settleTimeout;
     private readonly List<FileSystemWatcher> _watchers = [];
@@ -51,16 +52,19 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
 
     /// <param name="createPlanner">Factory for route planner to test whether conversion is possible.</param>
     /// <param name="convertFile">Delegate: (sourceFile, targetFormat, outputFile, ct) -> bool success.</param>
+    /// <param name="moveToTrash">Optional delegate to move the original file to Recycle Bin / Trash when replacing.</param>
     /// <param name="log">Logger instance.</param>
     /// <param name="settleTimeout">Maximum time to wait for the renamed file to unlock and settle.</param>
     public ExtensionChangeWatcher(
         Func<RoutePlanner> createPlanner,
         Func<string, string, string, CancellationToken, Task<bool>> convertFile,
+        Func<string, TrashRefusal?>? moveToTrash = null,
         ILogger? log = null,
         TimeSpan? settleTimeout = null)
     {
         _createPlanner = createPlanner;
         _convertFile = convertFile;
+        _moveToTrash = moveToTrash;
         _log = log ?? NullLogger.Instance;
         _settleTimeout = settleTimeout ?? DefaultSettleTimeout;
     }
@@ -383,10 +387,46 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
                 _log.LogDebug(ex, "Could not check or clear ReadOnly attribute on {File}", filePath);
             }
 
-            // Safely replace the destination file.
+            // Move the original file to Recycle Bin / Trash, or preserve it as a backup file if trash is refused
+            string? backupPath = null;
+            var movedToTrash = false;
+
+            if (_moveToTrash is not null)
+            {
+                try
+                {
+                    var refusal = _moveToTrash(filePath);
+                    movedToTrash = refusal is null && !File.Exists(filePath);
+                    if (refusal is not null)
+                    {
+                        _log.LogInformation("Trash refused original {File} ({Reason}); preserving as backup file", filePath, refusal.ReasonKey);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Could not move original {File} to trash; preserving as backup file", filePath);
+                }
+            }
+
+            // If not moved to trash, rename original to backup path to ensure it is never overwritten or lost
+            if (!movedToTrash && File.Exists(filePath))
+            {
+                backupPath = GetBackupPath(filePath, sourceFormat.Id);
+                try
+                {
+                    File.Move(filePath, backupPath);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _log.LogWarning(ex, "Could not preserve original file {File} before replacing; aborting conversion to prevent data loss", filePath);
+                    return false;
+                }
+            }
+
+            // Safely place the converted output at filePath.
             // Retries handle momentary locks by file managers/antivirus/indexers.
             // Fallback handles cross-device links (EXDEV on Linux/macOS when temp is tmpfs).
-            var replaced = false;
+            var placed = false;
             Exception? lastError = null;
 
             for (var attempt = 1; attempt <= 5; attempt++)
@@ -394,18 +434,17 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
                 try
                 {
                     File.Move(tempOutput, filePath, overwrite: true);
-                    replaced = true;
+                    placed = true;
                     break;
                 }
                 catch (IOException ioEx)
                 {
                     lastError = ioEx;
-                    // Attempt copy fallback for cross-device or move locking issues
                     try
                     {
                         File.Copy(tempOutput, filePath, overwrite: true);
                         try { File.Delete(tempOutput); } catch { }
-                        replaced = true;
+                        placed = true;
                         break;
                     }
                     catch (Exception copyEx)
@@ -420,7 +459,7 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
                     {
                         File.Copy(tempOutput, filePath, overwrite: true);
                         try { File.Delete(tempOutput); } catch { }
-                        replaced = true;
+                        placed = true;
                         break;
                     }
                     catch (Exception copyEx)
@@ -435,18 +474,22 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
                 }
             }
 
-            if (!replaced)
+            if (!placed)
             {
-                _log.LogWarning(lastError, "Could not replace destination file {File} after conversion (permission declined or locked)", filePath);
-                // Restore original ReadOnly attribute if replacement failed
-                if (originalAttrs.HasValue && (originalAttrs.Value & FileAttributes.ReadOnly) != 0)
+                _log.LogWarning(lastError, "Could not place converted output at {File}", filePath);
+                // Restore original file so it is not lost
+                if (backupPath is not null && File.Exists(backupPath) && !File.Exists(filePath))
                 {
-                    try { File.SetAttributes(filePath, originalAttrs.Value); } catch { }
+                    try { File.Move(backupPath, filePath); } catch { }
+                }
+                else if (movedToTrash && !File.Exists(filePath) && File.Exists(tempSource))
+                {
+                    try { File.Copy(tempSource, filePath); } catch { }
                 }
                 return false;
             }
 
-            _log.LogInformation("Successfully converted {File} from {Source} to {Target}", filePath, sourceFormat.Id, targetFormat.Id);
+            _log.LogInformation("Successfully converted {File} from {Source} to {Target} (original preserved)", filePath, sourceFormat.Id, targetFormat.Id);
             return true;
         }
         catch (UnauthorizedAccessException uaEx)
@@ -604,6 +647,24 @@ public sealed class ExtensionChangeWatcher : IAsyncDisposable
         {
             return [];
         }
+    }
+
+    private static string GetBackupPath(string filePath, string sourceFormatId)
+    {
+        var dir = Path.GetDirectoryName(Path.GetFullPath(filePath)) ?? "";
+        var nameWithoutExt = FormatRegistry.NameWithoutExtension(filePath);
+        var candidate = Path.Combine(dir, $"{nameWithoutExt}.original.{sourceFormatId}");
+        if (!File.Exists(candidate))
+            return candidate;
+
+        for (var i = 2; i <= 100; i++)
+        {
+            candidate = Path.Combine(dir, $"{nameWithoutExt}.original ({i}).{sourceFormatId}");
+            if (!File.Exists(candidate))
+                return candidate;
+        }
+
+        return Path.Combine(dir, $"{nameWithoutExt}.original.{Guid.NewGuid().ToString("N")[..6]}.{sourceFormatId}");
     }
 
     public ValueTask DisposeAsync()

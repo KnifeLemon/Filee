@@ -1,5 +1,6 @@
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Watching;
 using Xunit;
 
@@ -274,5 +275,156 @@ public sealed class ExtensionChangeWatcherTests
 
         Assert.False(ExtensionChangeWatcher.ShouldIgnorePath("/home/user/Downloads/document.pdf"));
         Assert.False(ExtensionChangeWatcher.ShouldIgnorePath("/Users/User/Desktop/photo.jpg"));
+    }
+
+    [Fact]
+    public async Task ConvertSafely_moves_original_to_trash_when_trash_available()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "FileeWatcherTest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var filePath = Path.Combine(dir, "photo.pdf");
+            await File.WriteAllBytesAsync(filePath, PngHeader, TestContext.Current.CancellationToken);
+
+            string? trashedPath = null;
+            TrashRefusal? MockTrash(string path)
+            {
+                trashedPath = path;
+                File.Delete(path);
+                return null;
+            }
+
+            var watcher = new ExtensionChangeWatcher(
+                CreatePlanner,
+                async (_, _, output, ct) =>
+                {
+                    await File.WriteAllBytesAsync(output, PdfHeader, ct);
+                    return true;
+                },
+                moveToTrash: MockTrash);
+
+            var pngFormat = FormatRegistry.Get("png");
+            var pdfFormat = FormatRegistry.Get("pdf");
+
+            var success = await watcher.ConvertSafelyAsync(filePath, pngFormat, pdfFormat, TestContext.Current.CancellationToken);
+            Assert.True(success);
+
+            Assert.Equal(filePath, trashedPath);
+
+            var finalBytes = await File.ReadAllBytesAsync(filePath, TestContext.Current.CancellationToken);
+            Assert.Equal(PdfHeader, finalBytes);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ConvertSafely_preserves_original_file_as_backup_when_trash_is_not_available()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "FileeWatcherTest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var filePath = Path.Combine(dir, "photo.pdf");
+            await File.WriteAllBytesAsync(filePath, PngHeader, TestContext.Current.CancellationToken);
+
+            var watcher = new ExtensionChangeWatcher(
+                CreatePlanner,
+                async (_, _, output, ct) =>
+                {
+                    await File.WriteAllBytesAsync(output, PdfHeader, ct);
+                    return true;
+                },
+                moveToTrash: null);
+
+            var pngFormat = FormatRegistry.Get("png");
+            var pdfFormat = FormatRegistry.Get("pdf");
+
+            var success = await watcher.ConvertSafelyAsync(filePath, pngFormat, pdfFormat, TestContext.Current.CancellationToken);
+            Assert.True(success);
+
+            var backupPath = Path.Combine(dir, "photo.original.png");
+            Assert.True(File.Exists(backupPath));
+            var backupBytes = await File.ReadAllBytesAsync(backupPath, TestContext.Current.CancellationToken);
+            Assert.Equal(PngHeader, backupBytes);
+
+            var finalBytes = await File.ReadAllBytesAsync(filePath, TestContext.Current.CancellationToken);
+            Assert.Equal(PdfHeader, finalBytes);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task WaitForFileReady_waits_for_locked_file_to_become_accessible()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "FileeWatcherTest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var filePath = Path.Combine(dir, "locked.pdf");
+            await File.WriteAllBytesAsync(filePath, PngHeader, TestContext.Current.CancellationToken);
+
+            var stream = new FileStream(filePath, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(300, TestContext.Current.CancellationToken);
+                stream.Dispose();
+            });
+
+            var ready = await ExtensionChangeWatcher.WaitForFileReadyAsync(filePath, TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+            Assert.True(ready);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Real_FileSystemWatcher_detects_extension_rename_on_disk()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "FileeWatcherTest-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var watcher = new ExtensionChangeWatcher(CreatePlanner, (_, _, _, _) => Task.FromResult(true), settleTimeout: TimeSpan.FromSeconds(2));
+        try
+        {
+            var tcs = new TaskCompletionSource<ExtensionChangeCandidate>(TaskCreationOptions.RunContinuationsAsynchronously);
+            watcher.ExtensionChangeDetected += candidate =>
+            {
+                tcs.TrySetResult(candidate);
+                return Task.CompletedTask;
+            };
+
+            watcher.Start([dir]);
+
+            var oldPath = Path.Combine(dir, "sample.png");
+            var newPath = Path.Combine(dir, "sample.pdf");
+
+            await File.WriteAllBytesAsync(oldPath, PngHeader, TestContext.Current.CancellationToken);
+            await Task.Delay(200, TestContext.Current.CancellationToken);
+
+            File.Move(oldPath, newPath);
+
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            var detected = await tcs.Task.WaitAsync(cts.Token);
+
+            Assert.NotNull(detected);
+            Assert.Equal("png", detected.SourceFormat.Id);
+            Assert.Equal("pdf", detected.TargetFormat.Id);
+            Assert.Equal("sample.pdf", detected.FileName);
+        }
+        finally
+        {
+            watcher.Stop();
+            await watcher.DisposeAsync();
+            Directory.Delete(dir, recursive: true);
+        }
     }
 }
