@@ -1,0 +1,13 @@
+{
+  "dark": {
+    "page": "#1E1F1C",
+    "surface": "#272822",
+    "surfaceAlt": "#414339",
+    "border": "#75715E",
+    "text": "#F8F8F2",
+    "textSecondary": "#AEAEAA",
+    "danger": "#FC8AB3",
+    "success": "#A6E22E",
+    "warning": "#E6DB74"
+  }
+}

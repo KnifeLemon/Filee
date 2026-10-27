@@ -9,6 +9,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels.Pages"
+             xmlns:m="using:Filee.App.ViewModels"
              xmlns:c="using:Filee.App.Controls"
              x:Class="Filee.App.Views.Pages.ToolbarPage"
              x:DataType="vm:ToolbarPageViewModel">
@@ -20,6 +21,18 @@
     <Style Selector="Border.chip:focus-visible">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
       <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+    </Style>
+    <!-- An available chip's format tooltip is a card; ToolbarPage.axaml.cs gives only that tooltip the class, so the
+         other tooltips (a dimmed chip's reason included) keep the app's look. -->
+    <Style Selector="ToolTip.formats">
+      <Setter Property="FontFamily" Value="{DynamicResource AppFontFamily}" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+      <Setter Property="Padding" Value="14,12" />
+      <Setter Property="MaxWidth" Value="420" />
     </Style>
     <Style Selector="Border#PaletteBox.over">
       <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
@@ -172,6 +185,50 @@
       <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}" />
     </Style>
   </UserControl.Styles>
+
+  <UserControl.DataTemplates>
+    <!-- An available chip's tooltip: the preset, what it makes and the kinds of file it takes (Shift shows them all).
+         Read-only: nothing in it takes focus. -->
+    <DataTemplate DataType="m:PresetFormatTip" x:DataType="m:PresetFormatTip">
+      <StackPanel Spacing="8" AttachedToVisualTree="OnFormatTipAttached" DetachedFromVisualTree="OnFormatTipDetached">
+        <TextBlock x:Name="TipReason" Text="{Binding Reason}" TextWrapping="Wrap"
+                   IsVisible="{Binding Reason, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock x:Name="TipTitle" Text="{Binding Title}" FontWeight="Bold" FontSize="15" TextWrapping="Wrap"
+                   IsVisible="{Binding Title, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock x:Name="TipMakes" Classes="muted" TextWrapping="Wrap"
+                   IsVisible="{Binding Title, Converter={x:Static ObjectConverters.IsNotNull}}"><Run Text="{Binding MakesBefore}" /><Run Text="{Binding MakesName}" FontWeight="Bold" /><Run Text="{Binding MakesAfter}" /></TextBlock>
+        <Border Height="1" Background="{DynamicResource SubtleBorderBrush}"
+                IsVisible="{Binding Title, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock x:Name="TipAnyFile" Classes="caption" FontWeight="SemiBold" Text="{Binding AnyFile}"
+                   IsVisible="{Binding AnyFile, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <TextBlock x:Name="TipWorksWith" Classes="caption" FontWeight="SemiBold" Text="{Binding WorksWith}"
+                   IsVisible="{Binding WorksWith, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        <!-- Kind (count) | names: the kind column is as wide as its widest name in every row. -->
+        <ItemsControl x:Name="TipRows" ItemsSource="{Binding Rows}" Grid.IsSharedSizeScope="True"
+                      IsVisible="{Binding WorksWith, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="5" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="m:PresetFormatTipRow">
+              <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="TipKind" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="TipKind" Classes="caption" FontWeight="Bold" Text="{Binding Kind}" />
+                <TextBlock x:Name="TipNames" Grid.Column="1" Classes="caption" Text="{Binding Names}" TextWrapping="Wrap" />
+              </Grid>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock x:Name="TipFooter" Classes="caption muted" Text="{Binding Footer}" TextWrapping="Wrap"
+                   IsVisible="{Binding ShowFooter}" />
+      </StackPanel>
+    </DataTemplate>
+  </UserControl.DataTemplates>
 
   <ScrollViewer x:Name="EditorScroller" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
     <Grid x:Name="Root" RowDefinitions="Auto,*" MinWidth="786" Width="{Binding #EditorScroller.Viewport.Width}" HorizontalAlignment="Left">
@@ -421,7 +478,9 @@
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:PaletteChip">
-                  <Border Classes="chip" Classes.dimmed="{Binding IsDimmed}" ToolTip.Tip="{Binding Reason}"
+                  <!-- Tip: the formats it takes (PresetFormatTip), a dimmed chip's reason, or none for a group. -->
+                  <Border Classes="chip" Classes.dimmed="{Binding IsDimmed}" ToolTip.Tip="{Binding Tip}"
+                          ToolTip.ToolTipOpening="OnChipTipOpening" PropertyChanged="OnChipPropertyChanged"
                           PointerPressed="OnChipPressed" DoubleTapped="OnChipDoubleTapped"
                           Focusable="True" KeyDown="OnChipKeyDown" AutomationProperties.Name="{Binding Label}">
                     <!-- A chip wider than the palette ends its caption with "…" instead of being cut at the edge. -->

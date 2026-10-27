@@ -112,3 +112,9 @@ app as its payload. Filee 1.x's installer was built with Inno Setup, which is no
 
 The GitHub Sponsors, Patreon, Ko-fi and PayPal names and logos are trademarks of their owners and are used only to link
 to each service.
+
+## Documentation theme examples
+
+The optional JSON recipes in `docs/themes/` adapt palette data from Catppuccin, Nord, Dracula and VS Code's classic
+Monokai theme. Their source links, colour adjustments and copyright/license notices are in
+[docs/themes/NOTICE.md](docs/themes/NOTICE.md). These are documentation examples, not runtime dependencies.

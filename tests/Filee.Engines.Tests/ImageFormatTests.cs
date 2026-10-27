@@ -155,4 +155,74 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var cursor = new MagickImage(job.Outputs.Single(), new MagickReadSettings { Format = MagickFormat.Cur });
         Assert.Equal((256u, 128u), (cursor.Width, cursor.Height));
     }
+
+    /// <summary>4 × 4 RGBA pixels: red, green, blue and half-transparent yellow, four times.</summary>
+    private static readonly byte[] DdsColours =
+        [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 128], 4).SelectMany(b => b)];
+
+    /// <summary>An uncompressed 4 × 4 DDS without a DX10 header: pixel format flags, channel masks and pixel bytes.</summary>
+    private static byte[] Dds(uint flags, uint red, uint green, uint blue, uint alpha, byte[] pixels)
+    {
+        var data = new byte[128 + pixels.Length];
+        var header = data.AsSpan();
+        "DDS "u8.CopyTo(header);
+        foreach (var (offset, value) in new (int, uint)[]
+                 {
+                     (4, 124), (8, 0x100F), (12, 4), (16, 4), (20, 16), (76, 32), (80, flags), (88, 32),
+                     (92, red), (96, green), (100, blue), (104, alpha), (108, 0x1000),
+                 })
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(header[offset..], value);
+        pixels.CopyTo(data, 128);
+        return data;
+    }
+
+    /// <summary>
+    /// #621: 32-bit DDS pixels stored R, G, B, A (masks 0xFF … 0xFF000000), which ImageMagick reads with red and blue
+    /// swapped, keep their colours whether or not the file says it has alpha (without, the fourth byte is padding).
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Dds_stored_rgba_converts_with_its_own_colours(bool alphaFlag)
+    {
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "rgba.dds");
+        File.WriteAllBytes(source, Dds(alphaFlag ? 0x41u : 0x40u, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, DdsColours));
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "png" });
+
+        AssertDone(job);
+        using var png = new MagickImage(job.Outputs.Single());
+        var expected = alphaFlag ? DdsColours : [.. DdsColours.Where((_, i) => i % 4 != 3)];
+        Assert.Equal(expected, png.GetPixels().ToByteArray(alphaFlag ? PixelMapping.RGBA : PixelMapping.RGB));
+    }
+
+    /// <summary>The usual layout, stored B, G, R, A, is read right by ImageMagick and left as it is.</summary>
+    [Fact]
+    public async Task Dds_stored_bgra_keeps_its_colours()
+    {
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "bgra.dds");
+        byte[] bgra = [.. DdsColours.Chunk(4).SelectMany(p => new[] { p[2], p[1], p[0], p[3] })];
+        File.WriteAllBytes(source, Dds(0x41, 0xFF0000, 0xFF00, 0xFF, 0xFF000000, bgra));
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "png" });
+
+        AssertDone(job);
+        using var png = new MagickImage(job.Outputs.Single());
+        Assert.Equal(DdsColours, png.GetPixels().ToByteArray(PixelMapping.RGBA));
+    }
+
+    /// <summary>The swap only happens when ImageMagick was found to read the layout swapped, so a fixed coder is left alone.</summary>
+    [Fact]
+    public void Dds_red_and_blue_are_swapped_only_when_imagemagick_reads_them_swapped()
+    {
+        using var image = new MagickImage(MagickColors.Red, 1, 1);
+
+        DdsChannelOrder.Swap(image, readsSwapped: false);
+        Assert.Equal([255, 0, 0], image.GetPixels().ToByteArray(PixelMapping.RGB));
+
+        DdsChannelOrder.Swap(image, readsSwapped: true);
+        Assert.Equal([0, 0, 255], image.GetPixels().ToByteArray(PixelMapping.RGB));
+    }
 }

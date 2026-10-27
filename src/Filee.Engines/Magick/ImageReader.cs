@@ -37,6 +37,8 @@ internal static class ImageReader
         try
         {
             images.Read(path, settings);
+            if (formatId == "dds")
+                DdsChannelOrder.Correct(path, images);
         }
         catch (MagickException ex) when (formatId == "dcm")
         {

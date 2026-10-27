@@ -40,6 +40,23 @@ public sealed class PresetAvailability
         Evaluate(preset, formats, _catalog.CreatePlanner,
             possible => PackageEnabling(possible, p => _catalog.CreatePlanner(p.Package.ConverterIds))).Reason;
 
+    /// <summary>Formats for which this preset is usable, in the input order.</summary>
+    public IReadOnlyList<FileFormat> UsableFormats(Preset preset, IReadOnlyList<FileFormat> formats)
+    {
+        RoutePlanner? installed = null;
+        var packagePlanners = new Dictionary<EnginePackageState, RoutePlanner>();
+        RoutePlanner Installed() => installed ??= _catalog.CreatePlanner();
+        EnginePackageState? Enabling(Func<RoutePlanner, bool> possible) =>
+            PackageEnabling(possible, p => packagePlanners.TryGetValue(p, out var planner)
+                ? planner : packagePlanners[p] = _catalog.CreatePlanner(p.Package.ConverterIds));
+
+        var usable = new List<FileFormat>();
+        foreach (var format in formats)
+            if (Evaluate(preset, [format], Installed, Enabling).Use == PresetUse.Usable)
+                usable.Add(format);
+        return usable;
+    }
+
     private EnginePackageState? PackageEnabling(Func<RoutePlanner, bool> possible, Func<EnginePackageState, RoutePlanner> plannerFor) =>
         _packages.FirstOrDefault(p => !p.IsInstalled && possible(plannerFor(p)));
 

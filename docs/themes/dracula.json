@@ -1,0 +1,24 @@
+{
+  "light": {
+    "page": "#FFFBEB",
+    "surface": "#EFEDDC",
+    "surfaceAlt": "#ECE9DF",
+    "border": "#CFCFDE",
+    "text": "#1F1F1F",
+    "textSecondary": "#6C664B",
+    "danger": "#B2462A",
+    "success": "#077A07",
+    "warning": "#746A0E"
+  },
+  "dark": {
+    "page": "#21222C",
+    "surface": "#282A36",
+    "surfaceAlt": "#343746",
+    "border": "#6272A4",
+    "text": "#F8F8F2",
+    "textSecondary": "#96A1C2",
+    "danger": "#E7866E",
+    "success": "#57B457",
+    "warning": "#AFA333"
+  }
+}

@@ -6,6 +6,10 @@
 // A floating "ghost" chip follows the pointer, and the donut opens a gap where the drop would land, with a
 // translucent slice of the dragged preset in it (DonutMenu.SetDropPreview). The Front / Back switch shows the other
 // face of the profile, and the donut turns in to it as the open donut does on Tab.
+//
+// Chip tooltips: an available chip's tip lists the formats it takes (PresetFormatTip), as a card. Holding either Shift
+// shows the whole list while it is open; Tab or the arrow keys open a chip's tip as hover does, and pressing or
+// double-clicking a chip closes it.
 
 using System.ComponentModel;
 using Avalonia;
@@ -14,6 +18,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using Filee.App.Controls;
+using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 
 namespace Filee.App.Views.Pages;
@@ -32,6 +37,15 @@ public partial class ToolbarPage : UserControl
 
     private DragState? _drag;
     private ToolbarPageViewModel? _subscribed;
+
+    // Each Shift key on its own: letting go of one while the other is held keeps the list whole.
+    private bool _leftShift;
+    private bool _rightShift;
+    private TopLevel? _topLevel;
+    // The format tips open now, by chip: hover and keyboard focus can each have one open.
+    private readonly Dictionary<Control, PresetFormatTip> _openTips = [];
+
+    private bool ShiftDown => _leftShift || _rightShift;
 
     public ToolbarPage()
     {
@@ -79,6 +93,124 @@ public partial class ToolbarPage : UserControl
     }
 
     private ToolbarPageViewModel? Vm => DataContext as ToolbarPageViewModel;
+
+    // Shift is watched on the whole window: the pointer can be on a chip while the keyboard focus is elsewhere.
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+        _topLevel = TopLevel.GetTopLevel(this);
+        if (_topLevel is null)
+            return;
+        _topLevel.AddHandler(KeyDownEvent, OnWindowShiftKey, RoutingStrategies.Tunnel, handledEventsToo: true);
+        _topLevel.AddHandler(KeyUpEvent, OnWindowShiftKey, RoutingStrategies.Tunnel, handledEventsToo: true);
+        if (_topLevel is WindowBase window)
+        {
+            window.Activated += OnWindowActivationChanged;
+            window.Deactivated += OnWindowActivationChanged;
+        }
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+        if (_topLevel is not null)
+        {
+            _topLevel.RemoveHandler(KeyDownEvent, OnWindowShiftKey);
+            _topLevel.RemoveHandler(KeyUpEvent, OnWindowShiftKey);
+            if (_topLevel is WindowBase window)
+            {
+                window.Activated -= OnWindowActivationChanged;
+                window.Deactivated -= OnWindowActivationChanged;
+            }
+        }
+        _topLevel = null;
+        _leftShift = _rightShift = false;
+    }
+
+    private void OnWindowShiftKey(object? sender, KeyEventArgs e)
+    {
+        var down = e.RoutedEvent == KeyDownEvent;
+        switch (e.Key)
+        {
+            case Key.LeftShift:
+                _leftShift = down;
+                break;
+            case Key.RightShift:
+                _rightShift = down;
+                break;
+            default:
+                return;
+        }
+        ExpandOpenTips();
+    }
+
+    /// <summary>
+    /// A Shift let go in another window never reaches this one, so the keys count as up once the window loses (or,
+    /// where the platform only reports that, regains) the keyboard.
+    /// </summary>
+    private void OnWindowActivationChanged(object? sender, EventArgs e)
+    {
+        _leftShift = _rightShift = false;
+        ExpandOpenTips();
+    }
+
+    private void ExpandOpenTips()
+    {
+        foreach (var tip in _openTips.Values)
+            tip.IsExpanded = ShiftDown;
+    }
+
+    /// <summary>Built when first shown; opens whole while Shift is held.</summary>
+    private void OnChipTipOpening(object? sender, CancelRoutedEventArgs e)
+    {
+        if (sender is not Control chip || ToolTip.GetTip(chip) is not PresetFormatTip tip)
+            return;
+        tip.EnsureBuilt();
+        tip.IsExpanded = ShiftDown;
+        _openTips[chip] = tip;
+    }
+
+    /// <summary>
+    /// A closed tip no longer follows Shift. Watched on IsOpen: Avalonia 12.1 raises ToolTipClosing while a tip opens and
+    /// not when it closes.
+    /// </summary>
+    private void OnChipPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == ToolTip.IsOpenProperty && e.NewValue is false && sender is Control chip)
+            _openTips.Remove(chip);
+    }
+
+    /// <summary>The card look goes on the tooltip that shows a format tip (and comes off if it shows something else).</summary>
+    private void OnFormatTipAttached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is Control { DataContext: PresetFormatTip } content && content.FindAncestorOfType<ToolTip>() is { } toolTip)
+        {
+            toolTip.Classes.Set("formats", true);
+            toolTip.PointerEntered -= OnFormatTipPointerEntered;
+            toolTip.PointerEntered += OnFormatTipPointerEntered;
+            content.Tag = toolTip;
+        }
+    }
+
+    /// <summary>
+    /// The pointer on a format tip closes it. Avalonia keeps a tip open while the pointer is over it, and this one opens
+    /// just below the chip, over the chips of the next rows.
+    /// </summary>
+    private void OnFormatTipPointerEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is ToolTip { Content: PresetFormatTip tip } && _openTips.FirstOrDefault(p => p.Value == tip).Key is { } chip)
+            ToolTip.SetIsOpen(chip, false);
+    }
+
+    private void OnFormatTipDetached(object? sender, VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is Control { Tag: ToolTip toolTip } content && toolTip.Content is not PresetFormatTip)
+        {
+            toolTip.Classes.Set("formats", false);
+            toolTip.PointerEntered -= OnFormatTipPointerEntered;
+            content.Tag = null;
+        }
+    }
 
     /// <summary>Down / Up in the wrapped tab row: the tab on the next / previous row nearest below / above this one.</summary>
     private void OnTabsKeyDown(object? sender, KeyEventArgs e)
