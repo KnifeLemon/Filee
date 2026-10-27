@@ -32,6 +32,17 @@ public enum CloseAction
     Quit,
 }
 
+/// <summary>Scope of filesystem watching for extension-change conversion.</summary>
+public enum ExtensionChangeScope
+{
+    /// <summary>Watch only explicitly configured watch folders (default and recommended).</summary>
+    WatchFolders,
+
+    /// <summary>Watch the entire computer (all fixed drives on Windows, or user home roots on POSIX).</summary>
+    EntireSystem,
+}
+
+
 /// <summary>Look and feel.</summary>
 public sealed class ThemeSettings
 {
@@ -260,6 +271,25 @@ public sealed class AppSettings
     /// 1 as designed, 0.7 to 1.8. A missing value (settings from before it) reads as 1, so it needs no schema step.
     /// </summary>
     public double UiScale { get; set; } = 1;
+
+    /// <summary>
+    /// When a user renames a file by changing its extension (e.g. xyz.png -> xyz.pdf), convert the file
+    /// to the new format if supported.
+    /// </summary>
+    public bool ConvertOnExtensionChange { get; set; }
+
+    /// <summary>
+    /// When <see cref="ConvertOnExtensionChange"/> is on, ask for confirmation before converting the renamed file.
+    /// When false, convert directly.
+    /// </summary>
+    public bool ConfirmExtensionChange { get; set; } = true;
+
+    /// <summary>
+    /// Scope of folders to watch for file extension renames: configured watch folders only, or the entire computer.
+    /// </summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<ExtensionChangeScope>))]
+    public ExtensionChangeScope ExtensionChangeScope { get; set; } = ExtensionChangeScope.WatchFolders;
+
 
     /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to

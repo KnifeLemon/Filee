@@ -68,6 +68,7 @@ public static class AppHost
         services.AddSingleton<ConversionService>();
         services.AddSingleton<SpreadsheetPrintService>();
         services.AddSingleton<WatchFolderService>();
+        services.AddSingleton<ExtensionChangeService>();
         services.AddSingleton<TriggerService>();
         services.AddSingleton<RadialController>();
         services.AddSingleton<TrayService>();
