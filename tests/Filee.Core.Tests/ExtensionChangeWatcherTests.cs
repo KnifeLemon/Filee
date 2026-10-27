@@ -376,7 +376,7 @@ public sealed class ExtensionChangeWatcherTests
             {
                 await Task.Delay(300, TestContext.Current.CancellationToken);
                 stream.Dispose();
-            });
+            }, TestContext.Current.CancellationToken);
 
             var ready = await ExtensionChangeWatcher.WaitForFileReadyAsync(filePath, TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
             Assert.True(ready);
