@@ -27,12 +27,15 @@ public sealed class ExtensionChangeSettingsTests
             var store = new UserDataStore(tempDir, NullLogger<UserDataStore>.Instance);
             Assert.False(store.Settings.ConvertOnExtensionChange);
             Assert.True(store.Settings.ConfirmExtensionChange);
+            Assert.Equal(ExtensionChangeScope.WatchFolders, store.Settings.ExtensionChangeScope);
 
             var loc = new MockLocalizer();
             var vm = new GeneralPageViewModel(store, loc, new NullPlatformServices(), NullLogger<GeneralPageViewModel>.Instance);
 
             Assert.False(vm.ConvertOnExtensionChange);
             Assert.True(vm.ConfirmExtensionChange);
+            Assert.True(vm.ScopeWatchFolders);
+            Assert.False(vm.ScopeEntireSystem);
 
             // Toggle ConvertOnExtensionChange
             vm.ConvertOnExtensionChange = true;
@@ -42,11 +45,26 @@ public sealed class ExtensionChangeSettingsTests
             vm.ConfirmExtensionChange = false;
             Assert.False(store.Settings.ConfirmExtensionChange);
 
-            // React to external change (e.g. from dialog)
+            // Toggle Scope to EntireSystem
+            vm.ScopeEntireSystem = true;
+            Assert.True(vm.ScopeEntireSystem);
+            Assert.False(vm.ScopeWatchFolders);
+            Assert.Equal(ExtensionChangeScope.EntireSystem, store.Settings.ExtensionChangeScope);
+
+            // Toggle Scope back to WatchFolders
+            vm.ScopeWatchFolders = true;
+            Assert.True(vm.ScopeWatchFolders);
+            Assert.False(vm.ScopeEntireSystem);
+            Assert.Equal(ExtensionChangeScope.WatchFolders, store.Settings.ExtensionChangeScope);
+
+            // React to external change (e.g. from dialog or external setting reload)
             store.Settings.ConfirmExtensionChange = true;
+            store.Settings.ExtensionChangeScope = ExtensionChangeScope.EntireSystem;
             store.SaveSettings();
 
             Assert.True(vm.ConfirmExtensionChange);
+            Assert.True(vm.ScopeEntireSystem);
+            Assert.False(vm.ScopeWatchFolders);
         }
         finally
         {

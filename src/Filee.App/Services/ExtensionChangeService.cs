@@ -118,29 +118,102 @@ public sealed class ExtensionChangeService : IAsyncDisposable
 
     private IReadOnlyList<WatchedFolder> GetWatchRoots()
     {
-        var result = new List<WatchedFolder>();
+        var folders = new List<WatchedFolder>();
         var seen = new HashSet<string>(FileSystemPaths.Comparer);
 
-        // Only watch folders the user explicitly picks in Settings → Watch folders
-        foreach (var rule in _store.Settings.WatchFolders)
+        void AddFolder(string folder, bool recursive)
         {
-            if (!rule.Enabled || string.IsNullOrWhiteSpace(rule.Folder))
-                continue;
+            if (string.IsNullOrWhiteSpace(folder))
+                return;
 
             try
             {
-                if (Directory.Exists(rule.Folder) && seen.Add(Path.GetFullPath(rule.Folder)))
+                if (Directory.Exists(folder))
                 {
-                    result.Add(new WatchedFolder(rule.Folder, rule.IncludeSubfolders));
+                    var full = Path.GetFullPath(folder);
+                    if (seen.Add(full))
+                    {
+                        folders.Add(new WatchedFolder(full, recursive));
+                    }
                 }
             }
             catch (Exception ex) when (ex is UnauthorizedAccessException or IOException)
             {
-                _log.LogWarning(ex, "Could not access folder for extension change watching: {Folder}", rule.Folder);
+                _log.LogWarning(ex, "Could not access folder for extension change watching: {Folder}", folder);
             }
         }
 
+        // Always include user-configured watch folders
+        foreach (var rule in _store.Settings.WatchFolders)
+        {
+            if (rule.Enabled && !string.IsNullOrWhiteSpace(rule.Folder))
+                AddFolder(rule.Folder, rule.IncludeSubfolders);
+        }
+
+        // If configured to watch the entire computer, include fixed drives or user roots
+        if (_store.Settings.ExtensionChangeScope == ExtensionChangeScope.EntireSystem)
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                try
+                {
+                    foreach (var drive in DriveInfo.GetDrives())
+                    {
+                        if (drive.DriveType == DriveType.Fixed && drive.IsReady)
+                        {
+                            AddFolder(drive.RootDirectory.FullName, recursive: true);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Could not enumerate fixed drives for extension change monitoring");
+                }
+            }
+
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(userProfile))
+                AddFolder(userProfile, recursive: true);
+
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+            if (!string.IsNullOrWhiteSpace(desktop))
+                AddFolder(desktop, recursive: true);
+
+            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            if (!string.IsNullOrWhiteSpace(docs))
+                AddFolder(docs, recursive: true);
+
+            if (!string.IsNullOrWhiteSpace(_platform.DownloadsFolder))
+                AddFolder(_platform.DownloadsFolder, recursive: true);
+        }
+
+        // Avoid duplicate watchers by eliminating folders already covered by a recursive parent
+        var result = new List<WatchedFolder>();
+        foreach (var candidate in folders)
+        {
+            var isCovered = folders.Any(other =>
+                !ReferenceEquals(other, candidate) &&
+                other.IncludeSubdirectories &&
+                IsDescendant(candidate.Directory, other.Directory));
+
+            if (!isCovered)
+                result.Add(candidate);
+        }
+
         return result;
+    }
+
+    private static bool IsDescendant(string childPath, string parentPath)
+    {
+        try
+        {
+            var rel = Path.GetRelativePath(parentPath, childPath);
+            return rel != "." && !rel.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(rel);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private async Task OnExtensionChangeDetectedAsync(ExtensionChangeCandidate candidate)

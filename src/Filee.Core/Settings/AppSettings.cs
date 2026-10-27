@@ -32,6 +32,17 @@ public enum CloseAction
     Quit,
 }
 
+/// <summary>Scope of filesystem watching for extension-change conversion.</summary>
+public enum ExtensionChangeScope
+{
+    /// <summary>Watch only explicitly configured watch folders (default and recommended).</summary>
+    WatchFolders,
+
+    /// <summary>Watch the entire computer (all fixed drives on Windows, or user home roots on POSIX).</summary>
+    EntireSystem,
+}
+
+
 /// <summary>Look and feel.</summary>
 public sealed class ThemeSettings
 {
@@ -272,6 +283,13 @@ public sealed class AppSettings
     /// When false, convert directly.
     /// </summary>
     public bool ConfirmExtensionChange { get; set; } = true;
+
+    /// <summary>
+    /// Scope of folders to watch for file extension renames: configured watch folders only, or the entire computer.
+    /// </summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<ExtensionChangeScope>))]
+    public ExtensionChangeScope ExtensionChangeScope { get; set; } = ExtensionChangeScope.WatchFolders;
+
 
     /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
