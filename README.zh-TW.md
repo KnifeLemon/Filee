@@ -77,9 +77,11 @@
 
 ## 安裝
 
-從 [Releases](https://github.com/KnifeLemon/Filee/releases/latest) 下載。
-
-<a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/zh-tw%20dark.svg" alt="Microsoft Store" width="200"></a>
+<p align="center">
+  <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="docs/images/get-it-from-microsoft-store.svg" alt="<Get it from Microsoft Store, in this language>" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/KnifeLemon/Filee/releases/latest"><img src="docs/images/get-it-on-github.svg" alt="<Get it on GitHub, in this language>" height="40"></a>
+</p>
 
 - **Windows 10/11** 執行 `Filee-<version>-win-Setup.exe`，或解壓縮 `win-Portable.zip` 後執行 `Filee.exe`。
   - 安裝程式是 Filee 自己的，使用與 Filee 相同的語言，電腦上無需另外安裝任何元件。
