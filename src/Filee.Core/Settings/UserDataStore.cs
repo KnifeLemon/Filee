@@ -931,6 +931,14 @@ internal static class SettingsMigrations
         //      donut; custom claims stay put.
         if (from < 54)
             changed |= LearnExtensions(profiles, out _, ["001", "7z.001", "zip.001", "tar.001"]);
+        // v55: offer CSV on the text donut for FreeMASTER oscilloscope exports when a slot is free (#571).
+        if (from < 55 && presets.Any(p => p.Id == "to-csv")
+            && profiles.FirstOrDefault(p => p.Id == "text") is { BackPresetIds: { } textBack } textProfile
+            && !textProfile.PresetIds.Contains("to-csv") && !textBack.Contains("to-csv") && textBack.Count < ToolbarProfile.MaxSlices)
+        {
+            InsertBefore(textBack, "to-csv", "merge-pdf");
+            changed = true;
+        }
         return changed;
     }
 

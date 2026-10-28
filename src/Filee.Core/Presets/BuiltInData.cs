@@ -651,7 +651,7 @@ public static class BuiltInData
         NameKey = "profile.text",
         Extensions = ExtensionsOf(FormatCategory.Text),
         PresetIds = ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt", "to-epub"],
-        BackPresetIds = ["to-md", "to-odt", "to-rtf", "to-kepub", "merge-pdf", "zip-all"],
+        BackPresetIds = ["to-md", "to-odt", "to-rtf", "to-kepub", "to-csv", "merge-pdf", "zip-all"],
     };
 
     /// <summary>Donuts of the categories added in settings schema 6, in the order they follow "text".</summary>

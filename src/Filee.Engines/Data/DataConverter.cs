@@ -32,6 +32,7 @@ public sealed class DataConverter : IConverter
         .. Trees.Append("csv").Select(to => new ConversionEdge("har", to)),
         new("ics", "csv"),
         new("csv", "ics"),
+        new("txt", "csv", DirectOnly: true),
     ];
 
     public EngineStatus GetStatus() =>
@@ -45,6 +46,17 @@ public sealed class DataConverter : IConverter
         Task.Run<IReadOnlyList<string>>(() =>
         {
             progress?.Report(0.1);
+            if (step.From == "txt" && step.To == "csv")
+            {
+                var source = HwpxConverter.DecodeText(File.ReadAllBytes(step.InputPath));
+                var table = FreeMasterText.Read(source);
+                cancellationToken.ThrowIfCancellationRequested();
+                if (step.Output.Allocate("csv") is not { } csv)
+                    return [];
+                CsvFormat.WriteRows(table, csv);
+                progress?.Report(1);
+                return [csv];
+            }
             if (step.From == "vcf")
             {
                 var contacts = VCard.Read(File.ReadAllBytes(step.InputPath));
