@@ -77,9 +77,11 @@
 
 ## Установка
 
-Скачайте со страницы [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
-
-<a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/ru%20dark.svg" alt="Microsoft Store" width="200"></a>
+<p align="center">
+  <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="docs/images/get-it-from-microsoft-store.svg" alt="<Get it from Microsoft Store, in this language>" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/KnifeLemon/Filee/releases/latest"><img src="docs/images/get-it-on-github.svg" alt="<Get it on GitHub, in this language>" height="40"></a>
+</p>
 
 - **Windows 10/11**: запустите `Filee-<version>-win-Setup.exe` или распакуйте `win-Portable.zip` и запустите `Filee.exe`.
   - Setup — собственный установщик Filee: он говорит на тех же языках, что и Filee, и ничего не требует от компьютера.
