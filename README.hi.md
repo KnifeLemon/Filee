@@ -77,9 +77,11 @@
 
 ## इंस्टॉल
 
-[Releases](https://github.com/KnifeLemon/Filee/releases/latest) से डाउनलोड करें।
-
-<a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/hi%20dark.svg" alt="Microsoft Store" width="200"></a>
+<p align="center">
+  <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="docs/images/get-it-from-microsoft-store.svg" alt="<Get it from Microsoft Store, in this language>" height="40"></a>
+  &nbsp;&nbsp;
+  <a href="https://github.com/KnifeLemon/Filee/releases/latest"><img src="docs/images/get-it-on-github.svg" alt="<Get it on GitHub, in this language>" height="40"></a>
+</p>
 
 - **Windows 10/11**: `Filee-<version>-win-Setup.exe` चलाएँ, या `win-Portable.zip` को अनज़िप करके `Filee.exe` चलाएँ।
   - सेटअप Filee का अपना इंस्टॉलर है, Filee की ही भाषाओं में, और PC पर इसके लिए कुछ और नहीं चाहिए।
