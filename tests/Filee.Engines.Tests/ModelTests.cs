@@ -815,4 +815,25 @@ public class ModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         return (facets, min, max);
     }
+
+    [Fact]
+    public async Task Image_to_3d_stl_and_glb()
+    {
+        var folder = fx.NewFolder();
+        var img = EngineFixture.MakeImage(folder, "sample.png", MagickFormat.Png);
+
+        var jobStl = await RunAsync(img, "stl");
+        Assert.Equal(JobState.Completed, jobStl.State);
+        Assert.True(File.Exists(jobStl.Outputs.Single()));
+        Assert.True(new FileInfo(jobStl.Outputs.Single()).Length > 100);
+
+        var jobGlb = await RunAsync(img, "glb");
+        Assert.Equal(JobState.Completed, jobGlb.State);
+        Assert.True(File.Exists(jobGlb.Outputs.Single()));
+        Assert.True(new FileInfo(jobGlb.Outputs.Single()).Length > 100);
+
+        var jobObj = await RunAsync(img, "obj");
+        Assert.Equal(JobState.Completed, jobObj.State);
+        Assert.True(File.Exists(jobObj.Outputs.First()));
+    }
 }

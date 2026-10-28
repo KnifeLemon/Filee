@@ -64,6 +64,7 @@ public static class EngineRegistry
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
         new ModelConverter(),
+        new ImageTo3DConverter(),
         new GeoConverter(),
         new EbookConverter(),
         new PandocConverter(),
