@@ -1,0 +1,298 @@
+// The less common raster formats ImageMagick (Magick.NET Q8) reads and writes for Filee: every one is checked against
+// the coders the bundled build really has, then converted there and back. Inputs are generated in the tests.
+
+using Filee.Core.Conversion;
+using Filee.Core.Formats;
+using Filee.Core.Presets;
+using Filee.Engines.Magick;
+using ImageMagick;
+
+namespace Filee.Engines.Tests;
+
+public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
+{
+    /// <summary>Formats Filee reads and writes with ImageMagick's own coders (APNG is Filee's, see ApngTests).</summary>
+    private static readonly string[] ReadWrite = ["mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff"];
+
+    private static readonly string[] ReadOnly = ["dcm", "pcd", "exr", "hdr"];
+
+    private static void AssertDone(ConversionJob job)
+    {
+        var errors = string.Join("; ", job.Files.Where(f => f.State == FileState.Failed).Select(f => $"{f.ErrorKey} {f.ErrorDetail}"));
+        Assert.True(job.State == JobState.Completed, $"{job.State}: {errors}");
+        Assert.All(job.Outputs, o => Assert.True(new FileInfo(o).Length > 0, o));
+    }
+
+    [Fact]
+    public void The_bundled_imagemagick_has_a_coder_for_every_format()
+    {
+        var formats = MagickNET.SupportedFormats.ToDictionary(f => f.Format);
+        foreach (var id in ReadWrite.Concat(ReadOnly))
+        {
+            var info = formats[ImageEncoder.ToMagickFormat(id)];
+            Assert.True(info.SupportsReading, $"{id} read");
+            Assert.Equal(ReadWrite.Contains(id), FormatRegistry.Get(id).Writable);
+            if (ReadWrite.Contains(id))
+                Assert.True(info.SupportsWriting, $"{id} write");
+        }
+        Assert.Equal(ReadWrite.Order(), ImageEncoder.Writable.Intersect(ReadWrite.Concat(ReadOnly)).Order());
+        Assert.Equal(ReadWrite.Concat(ReadOnly).Order(), ImageEncoder.Readable.Intersect(ReadWrite.Concat(ReadOnly)).Order());
+    }
+
+    /// <summary>
+    /// PNG → format → PNG. <paramref name="maxError"/> is the root mean square error (0–1) of the round trip against the
+    /// source, both flattened onto white like formats without transparency do: lossless formats give 0, DDS (DXT
+    /// blocks) a little, the 1-bit XBM and WBMP a lot.
+    /// </summary>
+    [Theory]
+    [InlineData("mng", 0.001)]
+    [InlineData("qoi", 0.001)]
+    [InlineData("dds", 0.05)]
+    [InlineData("pcx", 0.001)]
+    [InlineData("cur", 0.02)] // scaled to 256 px
+    [InlineData("xpm", 0.02)]
+    [InlineData("xbm", 0.7)]
+    [InlineData("wbmp", 0.7)]
+    [InlineData("pam", 0.001)]
+    [InlineData("pfm", 0.01)]
+    [InlineData("sgi", 0.001)]
+    [InlineData("ras", 0.001)]
+    [InlineData("miff", 0.001)]
+    public async Task Png_converts_to_the_format_and_back(string format, double maxError)
+    {
+        var dir = fx.NewFolder();
+        var source = EngineFixture.MakeImage(dir, "a.png", MagickFormat.Png);
+
+        var to = await fx.ConvertAsync([source], new Preset { TargetFormat = format });
+
+        AssertDone(to);
+        var converted = to.Outputs.Single();
+        Assert.Equal("." + FormatRegistry.Get(format).PrimaryExtension, Path.GetExtension(converted));
+        var expectedWidth = format == "cur" ? 256u : 320u;
+        using (var image = new MagickImage(converted, new MagickReadSettings { Format = ImageEncoder.ToMagickFormat(format) }))
+            Assert.Equal(expectedWidth, image.Width);
+
+        var back = await fx.ConvertAsync([converted], new Preset { TargetFormat = "png", Output = { FileNamePattern = "{name}_back" } });
+
+        AssertDone(back);
+        using var result = new MagickImage(back.Outputs.Single());
+        using var original = new MagickImage(source);
+        Assert.Equal((expectedWidth, original.Height * expectedWidth / original.Width), (result.Width, result.Height));
+        if (format == "cur")
+            original.Resize(result.Width, result.Height);
+        Assert.InRange(OnWhite(original).Compare(OnWhite(result), ErrorMetric.RootMeanSquared), 0, maxError);
+    }
+
+    private static MagickImage OnWhite(MagickImage image)
+    {
+        var flat = (MagickImage)image.Clone();
+        flat.BackgroundColor = MagickColors.White;
+        flat.Alpha(AlphaOption.Remove);
+        flat.ColorSpace = ColorSpace.sRGB;
+        return flat;
+    }
+
+    [Fact]
+    public async Task An_animated_gif_becomes_an_animated_mng_and_back()
+    {
+        var dir = fx.NewFolder();
+        var gif = Path.Combine(dir, "anim.gif");
+        using (var frames = new MagickImageCollection())
+        {
+            foreach (var (color, delay) in new[] { (MagickColors.Red, 20u), (MagickColors.Lime, 30u), (MagickColors.Blue, 40u) })
+                frames.Add(new MagickImage(color, 64, 48) { AnimationDelay = delay });
+            frames.Write(gif, MagickFormat.Gif);
+        }
+
+        var mng = await fx.ConvertAsync([gif], new Preset { TargetFormat = "mng" });
+        AssertDone(mng);
+        var back = await fx.ConvertAsync([mng.Outputs.Single()], new Preset { TargetFormat = "gif", Output = { FileNamePattern = "{name}_back" } });
+
+        AssertDone(back);
+        using var again = new MagickImageCollection(back.Outputs.Single());
+        Assert.Equal(3, again.Count);
+        Assert.Equal([20u, 30u, 40u], again.Select(f => f.AnimationDelay));
+    }
+
+    [Theory]
+    [InlineData("exr", MagickFormat.Exr, 320u)]
+    [InlineData("hdr", MagickFormat.Hdr, 320u)]
+    [InlineData("pcd", MagickFormat.Pcd, 768u)] // Photo CD's base resolution
+    public async Task Read_only_formats_convert_to_png(string format, MagickFormat magickFormat, uint expectedWidth)
+    {
+        var dir = fx.NewFolder();
+        var source = EngineFixture.MakeImage(dir, "picture." + format, magickFormat);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "png" });
+
+        AssertDone(job);
+        using var png = new MagickImage(job.Outputs.Single());
+        Assert.Equal(expectedWidth, png.Width);
+    }
+
+    [Fact]
+    public async Task Sgi_files_named_rgb_are_read_as_sgi_not_as_raw_pixels()
+    {
+        var dir = fx.NewFolder();
+        var source = EngineFixture.MakeImage(dir, "texture.rgb", MagickFormat.Sgi);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "png" });
+
+        AssertDone(job);
+        using var png = new MagickImage(job.Outputs.Single());
+        Assert.Equal((320u, 200u), (png.Width, png.Height));
+    }
+
+    [Fact]
+    public async Task Large_pictures_become_cursors_of_at_most_256_pixels()
+    {
+        var dir = fx.NewFolder();
+        var source = EngineFixture.MakeImage(dir, "big.png", MagickFormat.Png, 600, 300);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "cur" });
+
+        AssertDone(job);
+        using var cursor = new MagickImage(job.Outputs.Single(), new MagickReadSettings { Format = MagickFormat.Cur });
+        Assert.Equal((256u, 128u), (cursor.Width, cursor.Height));
+    }
+
+    /// <summary>4 × 4 RGBA pixels: red, green, blue and half-transparent yellow, four times.</summary>
+    private static readonly byte[] DdsColours =
+        [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 128], 4).SelectMany(b => b)];
+
+    /// <summary>An uncompressed 4 × 4 DDS without a DX10 header: pixel format flags, channel masks and pixel bytes.</summary>
+    internal static byte[] Dds(uint flags, uint red, uint green, uint blue, uint alpha, byte[] pixels)
+    {
+        var data = new byte[128 + pixels.Length];
+        var header = data.AsSpan();
+        "DDS "u8.CopyTo(header);
+        foreach (var (offset, value) in new (int, uint)[]
+                 {
+                     (4, 124), (8, 0x100F), (12, 4), (16, 4), (20, 16), (76, 32), (80, flags), (88, 32),
+                     (92, red), (96, green), (100, blue), (104, alpha), (108, 0x1000),
+                 })
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(header[offset..], value);
+        pixels.CopyTo(data, 128);
+        return data;
+    }
+
+    [Fact]
+    public void Dds_invalid_bytes_do_not_request_or_apply_a_swap()
+    {
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        var valid = Dds(0x41, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels);
+        var expected = pixels.Where((_, i) => i % 4 != 3).ToArray();
+        void Unchanged(ReadOnlySpan<byte> data)
+        {
+            Assert.False(DdsChannelOrder.NeedsCorrection(data));
+            using var image = new MagickImage(MagickColors.Red, 4, 4);
+            DdsChannelOrder.Correct(data, image);
+            Assert.Equal(expected, image.GetPixels().ToByteArray(PixelMapping.RGB));
+        }
+
+        Unchanged(default);
+        Unchanged((byte[]?)null);
+        Unchanged([]);
+        for (var length = 1; length < 128; length++)
+            Unchanged(valid.AsSpan(0, length));
+        foreach (var (offset, value) in new (int, uint)[]
+                 {
+                     (0, 0), (4, 123), (76, 31), (80, 0x1), (80, 0x45), (88, 24),
+                     (92, 0), (96, 0), (100, 0), (104, 0),
+                 })
+        {
+            var invalid = valid.ToArray();
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(invalid.AsSpan(offset), value);
+            Unchanged(invalid.AsSpan(0, 128));
+            Unchanged(invalid);
+        }
+        var dx10 = valid.ToArray();
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(dx10.AsSpan(80), 0x45);
+        "DX10"u8.CopyTo(dx10.AsSpan(84));
+        Unchanged(dx10.AsSpan(0, 128));
+        Unchanged(dx10);
+        var bgra = Dds(0x41, 0xFF0000, 0xFF00, 0xFF, 0xFF000000, pixels);
+        Unchanged(bgra.AsSpan(0, 128));
+        Unchanged(bgra);
+    }
+
+    [Theory]
+    [InlineData(0x41u)]
+    [InlineData(0x40u)]
+    public void Dds_byte_and_file_correction_use_the_same_probe(uint flags)
+    {
+        var dir = fx.NewFolder();
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        var data = Dds(flags, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels);
+        var header = data.AsSpan(0, 128);
+        var path = Path.Combine(dir, "red.dds");
+        File.WriteAllBytes(path, data);
+        using var fromFile = new MagickImage(path);
+        var color = fromFile.GetPixels().GetPixel(0, 0).ToColor()!;
+        var readsSwapped = color.B > color.R;
+        TestContext.Current.TestOutputHelper!.WriteLine($"flags=0x{flags:X2}: R={color.R}, B={color.B}, B > R={readsSwapped}");
+        Assert.Equal(readsSwapped, DdsChannelOrder.NeedsCorrection(data));
+        Assert.Equal(readsSwapped, DdsChannelOrder.NeedsCorrection(header));
+        using var fromBytes = new MagickImage(data);
+        using var fromHeader = new MagickImage(data);
+
+        DdsChannelOrder.Correct(path, fromFile);
+        DdsChannelOrder.Correct(data, fromBytes);
+        DdsChannelOrder.Correct(header, fromHeader);
+
+        var expected = pixels.Where((_, i) => i % 4 != 3).ToArray();
+        Assert.Equal(expected, fromFile.GetPixels().ToByteArray(PixelMapping.RGB));
+        Assert.Equal(expected, fromBytes.GetPixels().ToByteArray(PixelMapping.RGB));
+        Assert.Equal(expected, fromHeader.GetPixels().ToByteArray(PixelMapping.RGB));
+    }
+
+    /// <summary>
+    /// #621: 32-bit DDS pixels stored R, G, B, A (masks 0xFF … 0xFF000000), which ImageMagick reads with red and blue
+    /// swapped, keep their colours whether or not the file says it has alpha (without, the fourth byte is padding).
+    /// </summary>
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Dds_stored_rgba_converts_with_its_own_colours(bool alphaFlag)
+    {
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "rgba.dds");
+        File.WriteAllBytes(source, Dds(alphaFlag ? 0x41u : 0x40u, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, DdsColours));
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "png" });
+
+        AssertDone(job);
+        using var png = new MagickImage(job.Outputs.Single());
+        var expected = alphaFlag ? DdsColours : [.. DdsColours.Where((_, i) => i % 4 != 3)];
+        Assert.Equal(expected, png.GetPixels().ToByteArray(alphaFlag ? PixelMapping.RGBA : PixelMapping.RGB));
+    }
+
+    /// <summary>The usual layout, stored B, G, R, A, is read right by ImageMagick and left as it is.</summary>
+    [Fact]
+    public async Task Dds_stored_bgra_keeps_its_colours()
+    {
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "bgra.dds");
+        byte[] bgra = [.. DdsColours.Chunk(4).SelectMany(p => new[] { p[2], p[1], p[0], p[3] })];
+        File.WriteAllBytes(source, Dds(0x41, 0xFF0000, 0xFF00, 0xFF, 0xFF000000, bgra));
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "png" });
+
+        AssertDone(job);
+        using var png = new MagickImage(job.Outputs.Single());
+        Assert.Equal(DdsColours, png.GetPixels().ToByteArray(PixelMapping.RGBA));
+    }
+
+    /// <summary>The swap only happens when ImageMagick was found to read the layout swapped, so a fixed coder is left alone.</summary>
+    [Fact]
+    public void Dds_red_and_blue_are_swapped_only_when_imagemagick_reads_them_swapped()
+    {
+        using var image = new MagickImage(MagickColors.Red, 1, 1);
+
+        DdsChannelOrder.Swap(image, readsSwapped: false);
+        Assert.Equal([255, 0, 0], image.GetPixels().ToByteArray(PixelMapping.RGB));
+
+        DdsChannelOrder.Swap(image, readsSwapped: true);
+        Assert.Equal([0, 0, 255], image.GetPixels().ToByteArray(PixelMapping.RGB));
+    }
+}

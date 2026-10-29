@@ -1,0 +1,150 @@
+<!-- Merge order: shown before files merge into one PDF, video or image from the donut (RadialController, issue #268).
+     Merge starts the conversion in the order shown; Cancel or closing the window starts nothing. Pictures merged into
+     one image (#645) also get their layout here, below the list. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.MergeOrderWindow"
+        x:DataType="vm:MergeOrderViewModel"
+        Title="{DynamicResource merge.order_title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="560" Height="480" MinWidth="440" MinHeight="320"
+        WindowStartupLocation="CenterScreen">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveUpCommand}" />
+    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveDownCommand}" />
+  </Window.KeyBindings>
+  <Window.Styles>
+    <!-- One under another / side by side: two segments in a pill, the chosen one filled with the accent (as the
+         toolbar editor's Front / Back switch). -->
+    <Style Selector="Border.directions">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="3" />
+    </Style>
+    <Style Selector="RadioButton.direction">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" CornerRadius="999" Padding="12,5">
+            <ContentPresenter Content="{TemplateBinding Content}" ContentTemplate="{TemplateBinding ContentTemplate}"
+                              Foreground="{TemplateBinding Foreground}" />
+          </Border>
+        </ControlTemplate>
+      </Setter>
+    </Style>
+    <Style Selector="RadioButton.direction:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="RadioButton.direction:checked">
+      <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+    </Style>
+    <Style Selector="RadioButton.direction:focus-visible /template/ Border">
+      <Setter Property="BorderBrush" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
+    <!-- The colour's swatch fills the button: a white one would vanish into a white button, so the button keeps the
+         card's colour around it. -->
+    <Style Selector="ColorPicker#BackgroundPicker /template/ DropDownButton">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource TextSecondaryBrush}" />
+    </Style>
+    <Style Selector="WrapPanel.layout > :is(Control)">
+      <Setter Property="Margin" Value="0,0,12,0" />
+      <Setter Property="MinHeight" Value="36" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+  </Window.Styles>
+  <DockPanel>
+    <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            Background="{DynamicResource SurfaceBrush}">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
+          <Button x:Name="MoveUp" Classes="icon" Command="{Binding MoveUpCommand}"
+                  ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}">
+            <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
+          </Button>
+          <Button x:Name="MoveDown" Classes="icon" Command="{Binding MoveDownCommand}"
+                  ToolTip.Tip="{DynamicResource group.move_down}" AutomationProperties.Name="{DynamicResource group.move_down}">
+            <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
+          </Button>
+        </StackPanel>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+          <Button x:Name="CancelMerge" Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
+          <Button x:Name="StartMerge" Classes="accent" Content="{DynamicResource preset.merge_pdf}" Click="OnMerge" IsDefault="True" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+    <DockPanel Margin="20,18,20,14">
+      <StackPanel DockPanel.Dock="Top" Spacing="6" Margin="0,0,0,12">
+        <TextBlock Classes="h2" Text="{DynamicResource merge.order_title}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource merge.order_hint}" IsVisible="{Binding !MergesImages}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource merge.images_hint}" IsVisible="{Binding MergesImages}" />
+      </StackPanel>
+      <!-- "Merge images": how the pictures are laid out. -->
+      <Border x:Name="MergeLayout" DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="14,12" CornerRadius="10"
+              Background="{DynamicResource SurfaceAltBrush}" IsVisible="{Binding MergesImages}">
+        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto" ColumnSpacing="12" RowSpacing="10">
+          <!-- The direction, and next to it (below it when there's no room) whether the sizes line up. -->
+          <WrapPanel Grid.ColumnSpan="2" Classes="layout">
+            <Border Classes="directions">
+              <StackPanel Orientation="Horizontal">
+                <RadioButton x:Name="TopToBottom" Classes="direction" GroupName="MergeDirection" IsChecked="{Binding TopToBottom}"
+                             Content="{DynamicResource merge.vertical}" AutomationProperties.Name="{DynamicResource merge.vertical}" />
+                <RadioButton x:Name="SideBySide" Classes="direction" GroupName="MergeDirection" IsChecked="{Binding SideBySide}"
+                             Content="{DynamicResource merge.horizontal}" AutomationProperties.Name="{DynamicResource merge.horizontal}" />
+              </StackPanel>
+            </Border>
+            <Panel>
+              <CheckBox x:Name="SameWidth" Content="{DynamicResource merge.same_width}" IsChecked="{Binding SameSize}"
+                        IsVisible="{Binding TopToBottom}" ToolTip.Tip="{DynamicResource merge.same_size_tip}" />
+              <CheckBox x:Name="SameHeight" Content="{DynamicResource merge.same_height}" IsChecked="{Binding SameSize}"
+                        IsVisible="{Binding SideBySide}" ToolTip.Tip="{DynamicResource merge.same_size_tip}" />
+            </Panel>
+          </WrapPanel>
+          <TextBlock Grid.Row="1" Classes="label" Margin="0" VerticalAlignment="Center" Text="{DynamicResource merge.gap}" />
+          <NumericUpDown x:Name="GapBox" Grid.Row="1" Grid.Column="1" HorizontalAlignment="Left" Value="{Binding Gap}" Minimum="0"
+                         Maximum="1000" Increment="1" FormatString="0" Width="64" ShowButtonSpinner="False" HorizontalContentAlignment="Center"
+                         AutomationProperties.Name="{DynamicResource merge.gap}" />
+          <TextBlock Grid.Row="2" Classes="label" Margin="0" VerticalAlignment="Center" Text="{DynamicResource merge.background}" />
+          <!-- The colour, picked or typed as on the Theme page, or none. -->
+          <WrapPanel Grid.Row="2" Grid.Column="1" Classes="layout">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsEnabled="{Binding PicksColor}">
+              <ColorPicker x:Name="BackgroundPicker" Color="{Binding BackgroundColor, Mode=TwoWay}"
+                           IsAlphaEnabled="False" IsAlphaVisible="False" IsColorSpectrumVisible="True" IsColorPaletteVisible="False"
+                           IsColorComponentsVisible="False" IsColorModelVisible="False" IsColorPreviewVisible="True"
+                           FlowDirection="LeftToRight" MinWidth="64" AutomationProperties.Name="{DynamicResource merge.background}" />
+              <TextBox x:Name="BackgroundHex" Text="{Binding BackgroundHex}" Width="84" PlaceholderText="#FFFFFF" FlowDirection="LeftToRight"
+                       AutomationProperties.Name="{DynamicResource merge.background}" />
+            </StackPanel>
+            <CheckBox x:Name="Transparent" Content="{DynamicResource merge.transparent}" IsChecked="{Binding Transparent}"
+                      ToolTip.Tip="{DynamicResource merge.transparent_tip}" />
+          </WrapPanel>
+        </Grid>
+      </Border>
+      <ListBox x:Name="FileOrder" ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
+               ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.Styles>
+          <Style Selector="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+          </Style>
+        </ListBox.Styles>
+        <ListBox.ItemTemplate>
+          <DataTemplate x:DataType="vm:MergeSource">
+            <StackPanel Spacing="2" Margin="4,6" ToolTip.Tip="{Binding Path}">
+              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="caption" Text="{Binding Folder}" TextTrimming="CharacterEllipsis"
+                         IsVisible="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            </StackPanel>
+          </DataTemplate>
+        </ListBox.ItemTemplate>
+      </ListBox>
+    </DockPanel>
+  </DockPanel>
+</Window>

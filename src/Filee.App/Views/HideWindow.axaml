@@ -1,0 +1,431 @@
+<!-- "Pixelate / blur": the crop overlay's frameless soft-rounded stage, with the picture large on the dimmed theme
+     backdrop and frames over the parts to hide, already pixelated or blurred. Floating on it: the file chip (top left),
+     the strip of files (top, several files), size and close (top right), "Drag over what you want to hide" on a picture
+     without frames, and the toolbar pill at the bottom with Pixelate / Blur, the strength, undo, remove, clear, Skip and
+     "Hide & save" / "Hide & next". After the last file with problems, the crop overlay's summary card. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        xmlns:c="using:Filee.App.Controls"
+        xmlns:p="using:Filee.Core.Presets"
+        x:Class="Filee.App.Views.HideWindow"
+        x:DataType="vm:HideWindowViewModel"
+        Title="{DynamicResource preset.hide}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="1040" Height="720" MinWidth="680" MinHeight="500"
+        WindowDecorations="None"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent"
+        Topmost="True"
+        CanResize="True">
+
+  <Window.Resources>
+    <StreamGeometry x:Key="Hide.Blur">M12,2.6C12.3,2.6 12.55,2.73 12.74,2.96C14.9,5.6 19,10.4 19,14.2A7,7 0 0,1 5,14.2C5,10.4 9.1,5.6 11.26,2.96A0.95,0.95 0 0,1 12,2.6Z</StreamGeometry>
+    <StreamGeometry x:Key="Hide.Redo">M11.5,8C14.15,8 16.55,9 18.4,10.6L22,7V16H13L16.62,12.38C15.23,11.22 13.46,10.5 11.5,10.5C7.96,10.5 4.95,12.81 3.9,16L1.53,15.22C2.92,11.03 6.85,8 11.5,8Z</StreamGeometry>
+    <StreamGeometry x:Key="Hide.Maximize">M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z M7 6.2a.8.8 0 0 0-.8.8v10c0 .44.36.8.8.8h10a.8.8 0 0 0 .8-.8V7a.8.8 0 0 0-.8-.8z</StreamGeometry>
+    <StreamGeometry x:Key="Hide.Grip">M18 10a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M18 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M12 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z</StreamGeometry>
+  </Window.Resources>
+
+  <Window.Styles>
+    <!-- The frame of the window; none when maximized -->
+    <Style Selector="Border#Shell">
+      <Setter Property="Margin" Value="12" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusLarge}" />
+    </Style>
+    <Style Selector="Window.maximized Border#Shell">
+      <Setter Property="Margin" Value="0" />
+      <Setter Property="CornerRadius" Value="0" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+
+    <!-- Floating pieces on the stage -->
+    <Style Selector="Border.float">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
+    </Style>
+
+    <!-- Toolbar buttons: quiet, round, a soft tint on hover; the style in use tinted -->
+    <Style Selector="Button.tool">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="12,8" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="Button.tool.open /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="Button.tool:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.tool:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Button.round">
+      <Setter Property="Padding" Value="9" />
+      <Setter Property="Width" Value="34" />
+      <Setter Property="Height" Value="34" />
+    </Style>
+    <Style Selector="Button.primary">
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="16,8" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.divider">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="Margin" Value="3,0" />
+      <Setter Property="Background" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Keycaps: the shortcut beside a button's name -->
+    <Style Selector="Border.key">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="CornerRadius" Value="5" />
+      <Setter Property="Padding" Value="5,0" />
+      <Setter Property="MinWidth" Value="18" />
+      <Setter Property="Height" Value="18" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.key > TextBlock">
+      <Setter Property="FontSize" Value="10.5" />
+      <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.key.onaccent">
+      <Setter Property="Background" Value="#2EFFFFFF" />
+    </Style>
+    <Style Selector="Border.key.onaccent > TextBlock">
+      <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
+    </Style>
+
+    <!-- The strip of files -->
+    <Style Selector="Border.tile">
+      <Setter Property="Width" Value="38" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Margin" Value="3,0" />
+      <Setter Property="CornerRadius" Value="7" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="RenderTransform" Value="scale(0.86)" />
+      <Setter Property="Opacity" Value="0.9" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.32" Easing="{StaticResource SoftEase}" />
+          <DoubleTransition Property="Opacity" Duration="0:0:0.2" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border.tile.current">
+      <Setter Property="RenderTransform" Value="scale(1.08)" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Border.tile.skipped, Border.tile.failed">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Border.badge-dot">
+      <Setter Property="Width" Value="13" />
+      <Setter Property="Height" Value="13" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="HorizontalAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Bottom" />
+      <Setter Property="Margin" Value="0,0,1,1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+    </Style>
+
+    <!-- "Drag over what you want to hide": fades in on a picture without frames -->
+    <Style Selector="Border#EmptyHint">
+      <Setter Property="Opacity" Value="0" />
+      <Setter Property="Transitions">
+        <Transitions>
+          <DoubleTransition Property="Opacity" Duration="0:0:0.22" />
+        </Transitions>
+      </Setter>
+    </Style>
+    <Style Selector="Border#EmptyHint.shown">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+
+    <!-- A narrow window (or long names, or wide fonts): the toolbar gives up names in two steps (HideWindow.FitToolbar),
+         first those of Clear all and Skip and the keycaps, then those of Pixelate and Blur; the tooltips keep them -->
+    <Style Selector="Window.tight TextBlock.minor, Window.tight Border.minor, Window.compact TextBlock.major">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="Window.tight Button.tool:not(.round)">
+      <Setter Property="Padding" Value="10,8" />
+    </Style>
+    <Style Selector="Slider#StrengthSlider">
+      <Setter Property="Width" Value="96" />
+    </Style>
+    <Style Selector="Window.compact Slider#StrengthSlider">
+      <Setter Property="Width" Value="72" />
+    </Style>
+
+    <!-- Reduced motion: everything here appears at once -->
+    <Style Selector="Window.reduced-motion Border.tile, Window.reduced-motion Border#EmptyHint">
+      <Setter Property="Transitions" Value="{x:Null}" />
+    </Style>
+  </Window.Styles>
+
+  <Border x:Name="Shell" ClipToBounds="True"
+          Background="{DynamicResource PageBrush}"
+          BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
+          BoxShadow="{DynamicResource CardShadow}">
+    <Grid x:Name="Stage">
+      <!-- The picture, the frames and the backdrop -->
+      <c:HideCanvas x:Name="Canvas"
+                    SourceImage="{Binding PreviewImage}"
+                    CoverImage="{Binding CoverImage}"
+                    Areas="{Binding Areas}"
+                    PixelSize="{Binding PixelSize}"
+                    ImagePadding="36,70,36,118"
+                    AccentBrush="{DynamicResource AccentBrush}"
+                    StageBrush="{DynamicResource PageBrush}"
+                    ChipBackground="{DynamicResource SurfaceBrush}"
+                    ChipForeground="{DynamicResource TextPrimaryBrush}" />
+
+      <!-- A picture without frames: what to do, in the middle of the picture (it never takes a click) -->
+      <Border x:Name="EmptyHint" Classes="float" Classes.shown="{Binding ShowEmptyHint}" IsHitTestVisible="False"
+              HorizontalAlignment="Center" VerticalAlignment="Center" Margin="36,70,36,118" Padding="8,7,16,7" MaxWidth="460">
+        <StackPanel Orientation="Horizontal" Spacing="10">
+          <Border Width="28" Height="28" CornerRadius="999" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Center">
+            <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Pixelate}" Foreground="{DynamicResource AccentBrush}" />
+          </Border>
+          <TextBlock Text="{DynamicResource hide.empty_hint}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                     TextWrapping="Wrap" MaxWidth="400" Foreground="{DynamicResource TextPrimaryBrush}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Top: the file, the strip of files, size and close -->
+      <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Top" Margin="14,14,14,0">
+        <StackPanel Spacing="8" HorizontalAlignment="Left">
+          <Border Classes="float" Padding="5,5,12,5" IsVisible="{Binding IsEditing}" HorizontalAlignment="Left">
+            <StackPanel Orientation="Horizontal" Spacing="9">
+              <Border Width="26" Height="26" CornerRadius="999" Background="{DynamicResource AccentSoftBrush}">
+                <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Pixelate}" Foreground="{DynamicResource AccentBrush}" />
+              </Border>
+              <TextBlock Text="{Binding CurrentFileName}" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center"
+                         TextTrimming="CharacterEllipsis" MaxWidth="260" Foreground="{DynamicResource TextPrimaryBrush}" />
+              <Border IsVisible="{Binding HasMultipleFiles}" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="999"
+                      Padding="8,2" VerticalAlignment="Center">
+                <TextBlock Text="{Binding CounterText}" FontSize="11.5" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </Border>
+            </StackPanel>
+          </Border>
+
+          <!-- The last file that could not be opened -->
+          <Border Classes="float" Padding="10,6,12,6" IsVisible="{Binding HasStatusNotice}" HorizontalAlignment="Left"
+                  CornerRadius="{DynamicResource SoftRadius}" MaxWidth="420">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Alert}" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Center" />
+              <TextBlock Text="{Binding StatusNotice}" FontSize="12" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                         Foreground="{DynamicResource TextSecondaryBrush}" MaxWidth="380" />
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Several files: a thumbnail each, the current one lifted, done / skipped / failed marked -->
+        <Border Grid.Column="1" Classes="float" Padding="6" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16,0"
+                IsVisible="{Binding HasMultipleFiles}">
+          <ScrollViewer x:Name="StripScroller" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled" MaxWidth="440">
+            <ItemsControl x:Name="Strip" ItemsSource="{Binding Queue}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Orientation="Horizontal" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CropQueueItem">
+                  <Panel ToolTip.Tip="{Binding AccessibleName}" AutomationProperties.Name="{Binding AccessibleName}">
+                    <Border Classes="tile" Classes.current="{Binding IsCurrent}" Classes.skipped="{Binding IsSkipped}"
+                            Classes.failed="{Binding IsFailed}">
+                      <Panel>
+                        <TextBlock Text="{Binding Number}" FontSize="10.5" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding !HasThumbnail}" />
+                        <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+                      </Panel>
+                    </Border>
+                    <Border Classes="badge-dot" Background="{DynamicResource AccentBrush}" IsVisible="{Binding IsDone}">
+                      <PathIcon Width="7" Height="7" Data="{StaticResource Icon.Check}" Foreground="{DynamicResource OnAccentBrush}" />
+                    </Border>
+                    <Border Classes="badge-dot" Background="{DynamicResource TextSecondaryBrush}" IsVisible="{Binding IsSkipped}">
+                      <Border Width="6" Height="1.5" Background="{DynamicResource SurfaceBrush}" />
+                    </Border>
+                    <Border Classes="badge-dot" Background="{DynamicResource DangerBrush}" IsVisible="{Binding IsFailed}">
+                      <TextBlock Text="!" FontSize="9" FontWeight="Bold" Foreground="{DynamicResource SurfaceBrush}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                  </Panel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
+
+        <Border Grid.Column="2" Classes="float" Padding="3" VerticalAlignment="Top">
+          <StackPanel Orientation="Horizontal" Spacing="2">
+            <Button x:Name="MaximizeButton" Classes="tool round" Click="OnMaximize"
+                    ToolTip.Tip="{DynamicResource crop.maximize}" AutomationProperties.Name="{DynamicResource crop.maximize}">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Hide.Maximize}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+            <Button Classes="tool round" Command="{Binding CancelCommand}"
+                    ToolTip.Tip="{DynamicResource crop.close_hint}" AutomationProperties.Name="{DynamicResource common.close}">
+              <PathIcon Width="11" Height="11" Data="{StaticResource Icon.Close}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+          </StackPanel>
+        </Border>
+      </Grid>
+
+      <!-- Bottom: the toolbar pill and the keys -->
+      <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7" IsVisible="{Binding IsEditing}">
+        <Border x:Name="Toolbar" Classes="float" Padding="5">
+          <StackPanel x:Name="ToolbarContent" Orientation="Horizontal" Spacing="3">
+            <!-- Pixelate or blur: the one in use tinted -->
+            <Button x:Name="PixelateButton" Classes="tool" Classes.open="{Binding IsPixelate}" Padding="10,8,12,8"
+                    Command="{Binding SetStyleCommand}" CommandParameter="{x:Static p:HideStyle.Pixelate}"
+                    ToolTip.Tip="{DynamicResource hide.pixelate_hint}" AutomationProperties.Name="{DynamicResource hide.pixelate}">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Pixelate}" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Classes="major" Text="{DynamicResource hide.pixelate}" FontSize="13" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+            <Button x:Name="BlurButton" Classes="tool" Classes.open="{Binding IsBlur}" Padding="10,8,12,8"
+                    Command="{Binding SetStyleCommand}" CommandParameter="{x:Static p:HideStyle.Blur}"
+                    ToolTip.Tip="{DynamicResource hide.blur_hint}" AutomationProperties.Name="{DynamicResource hide.blur}">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Hide.Blur}" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Classes="major" Text="{DynamicResource hide.blur}" FontSize="13" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+
+            <!-- How strongly: small squares to large, a light blur to a heavy one -->
+            <StackPanel Orientation="Horizontal" Spacing="7" Margin="8,0,6,0" VerticalAlignment="Center"
+                        ToolTip.Tip="{Binding StrengthText}">
+              <Ellipse Width="5" Height="5" Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+              <Slider x:Name="StrengthSlider" Minimum="{Binding MinStrength}" Maximum="{Binding MaxStrength}"
+                      TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="2"
+                      Value="{Binding Strength}" VerticalAlignment="Center"
+                      AutomationProperties.Name="{DynamicResource hide.strength}" />
+              <Ellipse Width="11" Height="11" Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <Border Classes="divider" />
+
+            <Button Classes="tool round" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
+                    ToolTip.Tip="{DynamicResource clip.undo}" AutomationProperties.Name="{DynamicResource clip.undo}">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Undo}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+            <Button Classes="tool round" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}"
+                    ToolTip.Tip="{DynamicResource clip.redo}" AutomationProperties.Name="{DynamicResource clip.redo}">
+              <PathIcon Width="14" Height="14" Data="{StaticResource Hide.Redo}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+            <Button x:Name="RemoveButton" Classes="tool round" Command="{Binding RemoveSelectedCommand}" IsEnabled="{Binding HasSelection}"
+                    ToolTip.Tip="{DynamicResource hide.remove_hint}" AutomationProperties.Name="{DynamicResource hide.remove}">
+              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Delete}" Foreground="{DynamicResource TextSecondaryBrush}" />
+            </Button>
+            <Button Classes="tool" Command="{Binding ClearCommand}" IsEnabled="{Binding HasAreas}"
+                    ToolTip.Tip="{DynamicResource hide.clear}" AutomationProperties.Name="{DynamicResource hide.clear}">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Refresh}" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Classes="minor" Text="{DynamicResource hide.clear}" FontSize="13" VerticalAlignment="Center" />
+                <Border Classes="key minor"><TextBlock Text="R" /></Border>
+              </StackPanel>
+            </Button>
+            <Button Classes="tool" Command="{Binding SkipCommand}" IsVisible="{Binding HasMultipleFiles}"
+                    ToolTip.Tip="{DynamicResource crop.skip}" AutomationProperties.Name="{DynamicResource crop.skip}">
+              <StackPanel Orientation="Horizontal" Spacing="5">
+                <TextBlock Classes="minor" Text="{DynamicResource crop.skip}" FontSize="13" VerticalAlignment="Center" />
+                <PathIcon Width="11" Height="11" Data="{StaticResource Icon.ChevronRight}" Foreground="{DynamicResource TextSecondaryBrush}" />
+              </StackPanel>
+            </Button>
+
+            <Button x:Name="PrimaryButton" Classes="accent primary" Margin="4,0,0,0" Command="{Binding SaveCommand}"
+                    AutomationProperties.Name="{Binding SaveText}">
+              <StackPanel Orientation="Horizontal" Spacing="9">
+                <TextBlock Text="{Binding SaveText}" FontSize="13" VerticalAlignment="Center" />
+                <Border Classes="key onaccent minor"><TextBlock Text="Enter" /></Border>
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+        <TextBlock Text="{DynamicResource hide.hint_keys}" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="760" Opacity="0.8" Foreground="{DynamicResource TextSecondaryBrush}" />
+      </StackPanel>
+
+      <!-- Drag the bottom-right corner to resize -->
+      <Border x:Name="ResizeGrip" Width="22" Height="22" Background="Transparent" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+              Margin="0,0,4,4" Cursor="BottomRightCorner">
+        <PathIcon Width="14" Height="14" Data="{StaticResource Hide.Grip}" Foreground="{DynamicResource TextSecondaryBrush}" Opacity="0.6" />
+      </Border>
+
+      <!-- After the last file, when files could not be opened -->
+      <Border Classes="card" IsVisible="{Binding IsFinished}" HorizontalAlignment="Center" VerticalAlignment="Center"
+              MaxWidth="540" Margin="24" Padding="26,24">
+        <StackPanel Spacing="14">
+          <c:CropSummaryRing Width="112" Height="112" HorizontalAlignment="Center"
+                             Done="{Binding DoneCount}" Skipped="{Binding SkippedCount}" Failed="{Binding FailedCount}"
+                             AccentBrush="{DynamicResource AccentBrush}" MutedBrush="{DynamicResource TextSecondaryBrush}"
+                             DangerBrush="{DynamicResource DangerBrush}" HubBrush="{DynamicResource SurfaceBrush}"
+                             Foreground="{DynamicResource TextPrimaryBrush}" />
+          <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" FontSize="16" TextAlignment="Center" TextWrapping="Wrap"
+                     Foreground="{DynamicResource TextPrimaryBrush}" />
+          <WrapPanel HorizontalAlignment="Center">
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,2" IsVisible="{Binding HasDone}">
+              <Ellipse Width="9" Height="9" Fill="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
+              <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}">
+                <Run Text="{DynamicResource hide.state_done}" /><Run Text=" " /><Run Text="{Binding DoneCount}" FontWeight="SemiBold" />
+              </TextBlock>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,2" IsVisible="{Binding HasSkipped}">
+              <Ellipse Width="9" Height="9" Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+              <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}">
+                <Run Text="{DynamicResource crop.state_skipped}" /><Run Text=" " /><Run Text="{Binding SkippedCount}" FontWeight="SemiBold" />
+              </TextBlock>
+            </StackPanel>
+            <StackPanel Orientation="Horizontal" Spacing="6" Margin="8,2" IsVisible="{Binding HasFailed}">
+              <Ellipse Width="9" Height="9" Fill="{DynamicResource DangerBrush}" VerticalAlignment="Center" />
+              <TextBlock FontSize="12.5" Foreground="{DynamicResource TextSecondaryBrush}">
+                <Run Text="{DynamicResource crop.state_failed}" /><Run Text=" " /><Run Text="{Binding FailedCount}" FontWeight="SemiBold" />
+              </TextBlock>
+            </StackPanel>
+          </WrapPanel>
+          <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="{DynamicResource SoftRadiusSmall}" Padding="14,10">
+            <ScrollViewer MaxHeight="220">
+              <ItemsControl ItemsSource="{Binding Problems}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding}" FontSize="12" Margin="0,2" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </ScrollViewer>
+          </Border>
+          <Button x:Name="CloseButton" Classes="accent primary" HorizontalAlignment="Center" MinWidth="120"
+                  HorizontalContentAlignment="Center" Content="{DynamicResource common.close}" Command="{Binding CancelCommand}" />
+        </StackPanel>
+      </Border>
+
+      <!-- Loading a picture -->
+      <Border Classes="float" IsVisible="{Binding IsBusy}" HorizontalAlignment="Center" VerticalAlignment="Center" Padding="18,14">
+        <ProgressBar Classes="soft" IsIndeterminate="True" Width="96" />
+      </Border>
+    </Grid>
+  </Border>
+</Window>

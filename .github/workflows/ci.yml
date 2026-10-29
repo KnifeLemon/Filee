@@ -1,0 +1,192 @@
+# Build, test and style check on every push and pull request.
+name: CI
+
+# Changes to documentation and repository metadata only skip the build and tests (see the changes job).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# A newer push cancels the run it replaces, on pull requests and on main. Main cancels too because macOS runners are
+# few and queue: when several PRs are merged in a row, the older main runs would keep them busy for hours. Only the
+# last commit on main runs to the end, and since it contains all the commits before it, nothing goes untested. A
+# docs-only push can't hide a code push it cancelled: the changes job compares a push to main with the last main run
+# whose build passed, so the cancelled code is still in the file list and gets built.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Decides what the change needs. The workflow always runs, so the required build check always reports: a job
+  # skipped by its condition counts as passed for the branch rules.
+  # - code: anything besides documentation and repository metadata. When the file list can't be read, everything runs.
+  # - macos: the macOS packages and tests. macOS runners are few and queue, so a pull request runs them only when it
+  #   touches macOS files, code that branches on macOS, the projects, packages or build scripts, or carries the
+  #   `macos` label (add it, then re-run the workflow). Pushes to main always run them.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      code: ${{ steps.files.outputs.code }}
+      macos: ${{ steps.files.outputs.macos }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - id: files
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          AFTER: ${{ github.sha }}
+        run: |
+          everything() { echo "code=true" >> "$GITHUB_OUTPUT"; echo "macos=true" >> "$GITHUB_OUTPUT"; echo "$1"; exit 0; }
+
+          if [ -n "$PR" ]; then
+            files=$(gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[].filename') || everything "File list unreadable"
+          else
+            # A push to main can cancel the run of an earlier push. So compare with the last main run whose build
+            # passed, not only with the previous commit: a docs-only push then still builds the code that was cancelled.
+            base=""
+            runs=$(gh api "repos/$REPO/actions/workflows/ci.yml/runs?branch=main&event=push&status=completed&per_page=30" \
+              --jq '.workflow_runs[] | select(.conclusion == "success") | "\(.id) \(.head_sha)"') || everything "Run list unreadable"
+            while read -r id sha; do
+              [ -z "$id" ] && continue
+              built=$(gh api "repos/$REPO/actions/runs/$id/jobs" \
+                --jq '[.jobs[] | select(.name == "build" and .conclusion == "success")] | length') || built=0
+              if [ "$built" != 0 ]; then base=$sha; break; fi
+            done <<< "$runs"
+            if [ -z "$base" ]; then everything "No earlier main run that built"; fi
+            # The compare API lists at most 300 files.
+            files=$(gh api "repos/$REPO/compare/$base...$AFTER" \
+              --jq 'if (.files | length) >= 300 then "(too many)" else .files[].filename end') || everything "File list unreadable"
+          fi
+          if [ "$files" = "(too many)" ]; then everything "Too many files to list"; fi
+
+          code=false
+          macos=false
+          if [ -z "$PR" ]; then
+            macos=true
+          else
+            labels=$(gh api "repos/$REPO/issues/$PR/labels" --jq '.[].name') || labels=macos
+            if grep -qx macos <<< "$labels"; then macos=true; echo "Labelled macos"; fi
+          fi
+
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            case "$f" in
+              *.md|docs/*|LICENSE|.mailmap|.github/CODEOWNERS|.github/ISSUE_TEMPLATE/*|.github/labeler.yml|.github/FUNDING.yml|.github/release.yml|.github/PULL_REQUEST_TEMPLATE*|.github/workflows/label-issue.yml|.github/workflows/label-pr.yml)
+                continue ;;
+            esac
+            if [ "$code" = false ]; then echo "Needs the build: $f"; fi
+            code=true
+            if [ "$macos" = true ]; then continue; fi
+            case "$f" in
+              .github/workflows/*|build/*|installer/macos/*|*MacOS*|*.csproj|*.props|*.targets|*.slnx|global.json|src/Filee.Engines/Infrastructure/engines.json)
+                macos=true ;;
+              *.cs|*.axaml)
+                # Shared code with a macOS branch. A deleted file has no content and only counts by its name.
+                if [ -f "$f" ] && grep -qE 'IsMacOS|OSPlatform\.OSX|"osx' "$f"; then macos=true; fi ;;
+            esac
+            if [ "$macos" = true ]; then echo "Needs macOS: $f"; fi
+          done <<< "$files"
+
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "macos=$macos" >> "$GITHUB_OUTPUT"
+
+  portable:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    uses: ./.github/workflows/portable.yml
+    with:
+      macos: ${{ needs.changes.outputs.macos != 'false' }}
+
+  build:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore Filee.slnx
+
+      - name: Check formatting
+        run: dotnet format Filee.slnx --verify-no-changes --no-restore --severity warn
+
+      # The release embeds the Noto fonts, so the tests run with them here too: the headless UI tests load them.
+      - name: Fonts
+        shell: pwsh
+        run: ./build/fetch-fonts.ps1
+
+      - name: Build
+        run: dotnet build Filee.slnx --no-restore -c Release
+
+      # Windows 11 Explorer menu (native DLL + unsigned sparse package); its tests load the DLL in-process.
+      # The toolchain (~100 MB) is saved right after it is downloaded, even if a later step fails, so it is
+      # downloaded once and not on every run. Release builds restore the same cache.
+      - name: Restore Zig toolchain
+        id: zig
+        uses: actions/cache/restore@v5
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
+      - name: Build Explorer menu extension
+        shell: pwsh
+        run: ./build/build-explorer-menu.ps1
+
+      - name: Save Zig toolchain
+        if: steps.zig.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
+      # rhwp, Pandoc and 7-Zip are small; with them the HWP/HWPX and archive engine tests run too (LibreOffice is
+      # skipped to save time).
+      - name: Fetch rhwp, Pandoc and 7-Zip for engine tests
+        shell: pwsh
+        run: ./build/fetch-engines.ps1 -Only rhwp,pandoc,7zip
+
+      # The UI tests on their own first, as the release runs them (there they crashed with 0xC0000005): a crash
+      # names the test that was running and leaves a dump in TestResults.
+      - name: Test UI on its own
+        run: dotnet test tests/Filee.App.Tests --no-build -c Release --blame-crash --blame-hang-timeout 5m --logger "console;verbosity=normal" --results-directory TestResults/app
+
+      - name: Test
+        run: dotnet test Filee.slnx --no-build -c Release --filter "FullyQualifiedName!~Filee.App.Tests" --logger "trx" --results-directory TestResults
+
+      # Builds Setup (src/Filee.Setup) around a stub app and runs it in a sandbox: install, update and uninstall into a
+      # scratch folder with a registry file of its own, without administrator rights.
+      - name: Check the installer
+        shell: pwsh
+        run: ./build/build-installer.ps1 -CheckOnly
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-windows
+          path: TestResults/
+          if-no-files-found: ignore
+
+      - name: Upload UI screenshots
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ui-screenshots
+          path: |
+            tests/Filee.App.Tests/bin/Release/net10.0/screenshots/
+            tests/Filee.Setup.Tests/bin/Release/net10.0/screenshots/
+          if-no-files-found: ignore
