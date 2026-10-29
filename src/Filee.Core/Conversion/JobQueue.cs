@@ -760,10 +760,11 @@ public sealed class JobQueue : IAsyncDisposable
         var frames = finalOutput && runWith.SavesFramesOf(source.Id);
         var motionPhoto = finalOutput && runWith.ExtractsMotionOf(source.Id);
         var livePhoto = finalOutput && runWith.MakesLivePhotoOf(source.Id);
+        var caption = finalOutput && runWith.CaptionsVideo(source.Id);
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(source.Id);
-        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr);
+        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption);
         if (route is null)
             return Fail(file, "error.no_route", $"{source.Id} → {target}");
 
@@ -860,7 +861,7 @@ public sealed class JobQueue : IAsyncDisposable
                                 file.MissingFonts = file.MissingFonts.Concat(fonts)
                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                                 Notify(job);
-                            }, file.SourcePath);
+                            }, file.SourcePath, Caption: step.Caption);
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally

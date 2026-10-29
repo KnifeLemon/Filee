@@ -77,6 +77,20 @@
       "sha256": "C885FFF6998E0608BA4BB8AB51436E1C6775C2BAFC2559A19B423E18678B60C9",
       "size": 50175248,
       "kind": "nsis"
+    },
+    "whisper": {
+      "version": "b5454",
+      "url": "https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip",
+      "sha256": "6BA69E3482D7826214F90A6A9C84CA07782AEC1E1D0C6A7C30C994FD5D816CCB",
+      "size": 8928640,
+      "kind": "zip"
+    },
+    "whisper-model": {
+      "version": "base",
+      "url": "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin",
+      "sha256": "60ED5BC3DD14EEA856493D334349B405782DDCAF0028D4B5DF4088345FBA2EFE",
+      "size": 147951465,
+      "kind": "model"
     }
   },
   "platforms": {

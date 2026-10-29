@@ -52,13 +52,16 @@ namespace Filee.Core.Conversion;
 /// </param>
 /// <param name="Ocr">
 /// The edge recognizes the text of a scan or a picture and writes a searchable PDF (<see cref="Presets.PdfOptions.Ocr"/>).
-/// It is never part of an ordinary route, and with <see cref="RoutePlanner.Plan(string, string, bool, bool, bool, bool, bool)"/>
+/// It is never part of an ordinary route, and with <see cref="RoutePlanner.Plan(string, string, bool, bool, bool, bool, bool, bool)"/>
 /// asking for it the route starts with it.
+/// </param>
+/// <param name="Caption">
+/// The edge generates speech-to-text captions using Whisper and burns styled captions into the video (<see cref="Presets.MediaOptions.Caption"/>).
 /// </param>
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
     bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false,
-    bool Ocr = false);
+    bool Ocr = false, bool Caption = false);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's
@@ -128,6 +131,7 @@ public interface IOutputAllocator
 /// The step takes a <see cref="ConversionEdge.LivePhoto"/> edge: a clip of the video becomes a Live / Motion Photo
 /// (<see cref="Presets.MediaOptions.LivePhoto"/> says which kind).
 /// </param>
+/// <param name="Caption">The step takes a <see cref="ConversionEdge.Caption"/> edge to transcribe speech and burn captions into the video.</param>
 public sealed record ConversionStep(
     string InputPath,
     string From,
@@ -140,7 +144,8 @@ public sealed record ConversionStep(
     bool MotionPhoto = false,
     bool LivePhoto = false,
     Action<IReadOnlyList<string>>? MissingFonts = null,
-    string? OriginalSourcePath = null);
+    string? OriginalSourcePath = null,
+    bool Caption = false);
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).

@@ -435,6 +435,9 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
+        if (!settings.EnginePriority.Contains("whisper"))
+            InsertBefore(settings.EnginePriority, "whisper", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
+
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
 
@@ -1358,6 +1361,12 @@ internal static class SettingsMigrations
 
         changed |= Offer(presets, profiles, "pdf", "to-docx", "to-jpg");
         changed |= Offer(presets, profiles, profiles.FirstOrDefault(p => p.IsFallback)?.Id ?? "mixed", "zip-all", "merge-pdf");
+        if (presets.All(p => p.Id != "caption-video") && BuiltInData.CreatePresets().FirstOrDefault(p => p.Id == "caption-video") is { } captionPreset)
+        {
+            presets.Add(captionPreset);
+            changed = true;
+        }
+        changed |= Offer(presets, profiles, "video", "caption-video", "extract-subtitles");
         return changed;
     }
 

@@ -195,6 +195,20 @@ public sealed class PresetAvailability
                 : new(PresetUse.Unusable, _loc["error.no_route"]);
         }
 
+        // "Caption video": Whisper transcribes audio and burns styled yellow captions into the video.
+        if (formats.Any(f => preset.CaptionsVideo(f.Id)))
+        {
+            var videos = formats.Where(f => f.Category == FormatCategory.Video).ToList();
+            if (videos.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+            bool CanCaption(RoutePlanner planner) => videos.Any(f => planner.CanConvert(f.Id, preset.TargetFormat, caption: true));
+            if (CanCaption(installedPlanner()))
+                return new(PresetUse.Usable, null);
+            return packageEnabling(CanCaption) is { } needed
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", needed.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
         // "Merge videos" / "Merge audio" / "Video from images": FFmpeg joins the files, so a route into the target (or,
         // for pictures, into PNG and from PNG into a video) says whether it is installed.
         if (preset.JoinsIntoOneMedia)

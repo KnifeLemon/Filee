@@ -381,6 +381,12 @@ public static class BuiltInData
 
         // Subtitles; on the video donut, SRT takes the first text subtitle track out of the video.
         new() { Id = "extract-subtitles", NameKey = "preset.extract_subtitles", TargetFormat = "srt" },
+        // AI Captions: transcribes speech and burns high-visibility yellow captions into the video.
+        new()
+        {
+            Id = "caption-video", NameKey = "preset.caption_video", TargetFormat = "mp4",
+            Media = { Caption = true }, Output = { FileNamePattern = "{name}_captioned" },
+        },
         new() { Id = "to-srt", Name = "SRT", TargetFormat = "srt" },
         new() { Id = "to-vtt", Name = "WebVTT", TargetFormat = "vtt" },
         new() { Id = "to-ass", Name = "ASS", TargetFormat = "ass" },
@@ -668,7 +674,7 @@ public static class BuiltInData
         {
             Id = "video", NameKey = "profile.video",
             Extensions = ExtensionsOf(FormatCategory.Video),
-            PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "to-mkv", "to-avi"],
+            PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video", "to-mkv", "to-avi"],
             // Every frame as pictures is on no front (a long video gives thousands of files): behind a flip, a drop that
             // misses its slice doesn't start it. Live / Motion Photos of a clip are there too, and "Cut a clip" first
             // (in place of FLAC, which stays in the library).

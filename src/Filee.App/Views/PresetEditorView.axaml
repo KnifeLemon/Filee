@@ -292,6 +292,10 @@
           <CheckBox Content="{DynamicResource presets.hardware_encoding}" IsChecked="{Binding HardwareEncoding}" />
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.hardware_encoding_hint}" />
         </StackPanel>
+        <StackPanel Spacing="2" IsVisible="{Binding ShowCaption}">
+          <CheckBox Content="{DynamicResource presets.caption_video}" IsChecked="{Binding Caption}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.caption_video_hint}" />
+        </StackPanel>
       </StackPanel>
     </Border>
 
