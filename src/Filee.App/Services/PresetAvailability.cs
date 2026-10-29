@@ -195,13 +195,13 @@ public sealed class PresetAvailability
                 : new(PresetUse.Unusable, _loc["error.no_route"]);
         }
 
-        // "Caption video": Whisper transcribes audio and burns styled yellow captions into the video.
+        // "Caption": Whisper transcribes speech in video and audio into SRT subtitles.
         if (formats.Any(f => preset.CaptionsVideo(f.Id)))
         {
-            var videos = formats.Where(f => f.Category == FormatCategory.Video).ToList();
-            if (videos.Count == 0)
+            var mediaFiles = formats.Where(f => f.Category is FormatCategory.Video or FormatCategory.Audio).ToList();
+            if (mediaFiles.Count == 0)
                 return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
-            bool CanCaption(RoutePlanner planner) => videos.Any(f => planner.CanConvert(f.Id, preset.TargetFormat, caption: true));
+            bool CanCaption(RoutePlanner planner) => mediaFiles.Any(f => planner.CanConvert(f.Id, preset.TargetFormat, caption: true));
             if (CanCaption(installedPlanner()))
                 return new(PresetUse.Usable, null);
             return packageEnabling(CanCaption) is { } needed

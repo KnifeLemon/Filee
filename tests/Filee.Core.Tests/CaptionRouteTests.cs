@@ -1,4 +1,5 @@
-// "Video Captioning" with Whisper: Whisper's caption edges start a route only when the preset asks for them (Caption = true).
+// "AI Captioning" with Whisper: Whisper's caption edges start a route only when the preset asks for them (Caption = true).
+// Supports both video and audio files directly to SRT subtitles.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -10,17 +11,20 @@ public class CaptionRouteTests
 {
     private static readonly ConversionEdge[] CaptionEdges =
     [
-        new("mp4", "mp4", Caption: true),
-        new("mkv", "mp4", Caption: true),
-        new("mov", "mp4", Caption: true),
-        new("webm", "mp4", Caption: true),
+        new("mp4", "srt", Caption: true),
+        new("mkv", "srt", Caption: true),
+        new("mov", "srt", Caption: true),
+        new("webm", "srt", Caption: true),
+        new("mp3", "srt", Caption: true),
+        new("wav", "srt", Caption: true),
+        new("m4a", "srt", Caption: true),
     ];
 
     private static string Steps(Route? route) => string.Join(", ", route!.Steps.Select(s => $"{s.Converter.Id}:{s.From}→{s.To}"));
 
     private static RoutePlanner Planner() => new([
         new FakeConverter("whisper", CaptionEdges),
-        new FakeConverter("ffmpeg", new ConversionEdge("mp4", "mp4"), new ConversionEdge("mov", "mp4"), new ConversionEdge("mkv", "mp4")),
+        new FakeConverter("ffmpeg", new ConversionEdge("mp4", "mp4"), new ConversionEdge("mov", "mp4"), new ConversionEdge("mp3", "wav")),
     ]);
 
     [Fact]
@@ -29,18 +33,25 @@ public class CaptionRouteTests
         var planner = Planner();
 
         Assert.Equal("ffmpeg:mp4→mp4", Steps(planner.Plan("mp4", "mp4")));
-        Assert.Equal("ffmpeg:mov→mp4", Steps(planner.Plan("mov", "mp4")));
+        Assert.Equal("ffmpeg:mp3→wav", Steps(planner.Plan("mp3", "wav")));
     }
 
     [Fact]
-    public void Asking_for_caption_routes_to_whisper()
+    public void Asking_for_caption_routes_to_whisper_for_both_video_and_audio()
     {
         var planner = Planner();
 
-        Assert.Equal("whisper:mp4→mp4", Steps(planner.Plan("mp4", "mp4", caption: true)));
-        Assert.Equal("whisper:mov→mp4", Steps(planner.Plan("mov", "mp4", caption: true)));
-        Assert.Equal("whisper:webm→mp4", Steps(planner.Plan("webm", "mp4", caption: true)));
-        Assert.True(planner.CanConvert("mp4", "mp4", caption: true));
+        // Video -> SRT
+        Assert.Equal("whisper:mp4→srt", Steps(planner.Plan("mp4", "srt", caption: true)));
+        Assert.Equal("whisper:mov→srt", Steps(planner.Plan("mov", "srt", caption: true)));
+        Assert.Equal("whisper:webm→srt", Steps(planner.Plan("webm", "srt", caption: true)));
+        Assert.True(planner.CanConvert("mp4", "srt", caption: true));
+
+        // Audio -> SRT
+        Assert.Equal("whisper:mp3→srt", Steps(planner.Plan("mp3", "srt", caption: true)));
+        Assert.Equal("whisper:wav→srt", Steps(planner.Plan("wav", "srt", caption: true)));
+        Assert.Equal("whisper:m4a→srt", Steps(planner.Plan("m4a", "srt", caption: true)));
+        Assert.True(planner.CanConvert("mp3", "srt", caption: true));
     }
 
     [Fact]
@@ -48,34 +59,40 @@ public class CaptionRouteTests
     {
         var planner = new RoutePlanner([new FakeConverter("ffmpeg", new ConversionEdge("mp4", "mp4"))]);
 
-        Assert.Null(planner.Plan("mp4", "mp4", caption: true));
-        Assert.False(planner.CanConvert("mp4", "mp4", caption: true));
+        Assert.Null(planner.Plan("mp4", "srt", caption: true));
+        Assert.False(planner.CanConvert("mp4", "srt", caption: true));
+        Assert.Null(planner.Plan("mp3", "srt", caption: true));
+        Assert.False(planner.CanConvert("mp3", "srt", caption: true));
     }
 
     [Fact]
-    public void BuiltIn_caption_preset_has_caption_flag_and_output_pattern()
+    public void BuiltIn_caption_preset_has_caption_flag_and_targets_srt()
     {
         var preset = BuiltInData.CreatePresets().First(p => p.Id == "caption-video");
 
-        Assert.Equal("mp4", preset.TargetFormat);
+        Assert.Equal("srt", preset.TargetFormat);
         Assert.True(preset.Media.Caption);
         Assert.True(preset.CaptionsVideo("mp4"));
+        Assert.True(preset.CaptionsVideo("mp3"));
         Assert.False(preset.CaptionsVideo("png"));
-        Assert.Equal("{name}_captioned", preset.Output.FileNamePattern);
+        Assert.Equal("{name}", preset.Output.FileNamePattern);
         Assert.Equal("preset.caption_video", preset.NameKey);
     }
 
     [Fact]
-    public void Schema_55_library_gets_caption_preset_on_video_donut()
+    public void Schema_56_library_gets_caption_preset_on_both_video_and_audio_donuts()
     {
         var presets = BuiltInData.CreatePresets().Where(p => p.Id != "caption-video").ToList();
         var profiles = BuiltInData.CreateProfiles();
         var video = profiles.Single(p => p.Id == "video");
         video.PresetIds.Remove("caption-video");
+        var audio = profiles.Single(p => p.Id == "audio");
+        audio.PresetIds.Remove("caption-video");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(55, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(56, presets, profiles));
 
         Assert.Contains(presets, p => p.Id == "caption-video");
         Assert.Contains("caption-video", video.PresetIds);
+        Assert.Contains("caption-video", audio.PresetIds);
     }
 }

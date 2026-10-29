@@ -435,8 +435,6 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
-        if (!settings.EnginePriority.Contains("whisper"))
-            InsertBefore(settings.EnginePriority, "whisper", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
@@ -938,7 +936,8 @@ internal static class SettingsMigrations
         if (from < 55)
             changed |= LearnExtensions(profiles, out _, ["qta"]);
         // v56: "Caption" video preset (Whisper AI)
-        if (from < 56)
+        // v57: "Caption" outputs SRT directly; added to Audio donut profile too
+        if (from < 57)
             changed |= AddCaptionPreset(presets, profiles);
         return changed;
     }
@@ -953,6 +952,15 @@ internal static class SettingsMigrations
             presets.Insert(at < 0 ? presets.Count : at + 1, caption);
             changed = true;
         }
+        else if (presets.FirstOrDefault(p => p.Id == caption.Id) is { } existing)
+        {
+            if (existing.TargetFormat != "srt" || existing.Output.FileNamePattern == "{name}_captioned")
+            {
+                existing.TargetFormat = "srt";
+                existing.Output.FileNamePattern = "{name}";
+                changed = true;
+            }
+        }
         if (profiles.FirstOrDefault(p => p.Id == "video") is { } video
             && !video.PresetIds.Contains(caption.Id)
             && (video.BackPresetIds is null || !video.BackPresetIds.Contains(caption.Id)))
@@ -965,6 +973,21 @@ internal static class SettingsMigrations
             else if (video.BackPresetIds is not null && video.BackPresetIds.Count < ToolbarProfile.MaxSlices)
             {
                 video.BackPresetIds.Add(caption.Id);
+                changed = true;
+            }
+        }
+        if (profiles.FirstOrDefault(p => p.Id == "audio") is { } audio
+            && !audio.PresetIds.Contains(caption.Id)
+            && (audio.BackPresetIds is null || !audio.BackPresetIds.Contains(caption.Id)))
+        {
+            if (audio.PresetIds.Count < ToolbarProfile.MaxSlices)
+            {
+                audio.PresetIds.Add(caption.Id);
+                changed = true;
+            }
+            else if (audio.BackPresetIds is not null && audio.BackPresetIds.Count < ToolbarProfile.MaxSlices)
+            {
+                audio.BackPresetIds.Add(caption.Id);
                 changed = true;
             }
         }

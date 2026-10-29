@@ -633,8 +633,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowVideoCodec => TargetIsVideo && VideoCodecs.Count > 1;
     /// <summary>Hardware encoding applies to H.264, HEVC and AV1 only (not VP9, MPEG-2, …).</summary>
     public bool ShowHardwareEncoding => TargetIsVideo && MediaCodecs.TakesHardwareEncoding(TargetId, _videoCodecValue);
-    /// <summary>Burn Whisper AI recognized speech as yellow captions into the video.</summary>
-    public bool ShowCaption => TargetIsVideo;
+    /// <summary>Generate Whisper AI subtitles for speech.</summary>
+    public bool ShowCaption => TargetIsVideo || TargetId == "srt";
     /// <summary>M4A / M4B can hold Apple Lossless besides AAC.</summary>
     public bool ShowAudioCodec => AudioCodecs.Count > 1;
     public bool ShowMediaQuality => TargetIsLossyMedia;

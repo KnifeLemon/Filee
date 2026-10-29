@@ -1234,5 +1234,13 @@
 "whats_new.2_0_0.languages.text": "Spagnolo, hindi, giapponese, russo, arabo e portoghese brasiliano si uniscono a inglese, coreano, cinese e polacco.",
 "whats_new.2_0_0.more.title": "E qualcosa in più",
 "whats_new.2_0_0.more.text": "Ripristina un singolo donut ai valori predefiniti, cerca in tutta la cronologia e converti documenti in gujarati, hindi o arabo tramite LibreOffice.",
-"preset.extract_motion.donut": "Estrai video"
+"preset.extract_motion.donut": "Estrai video",
+"engine.whisper.name": "Whisper (built-in AI)",
+"engine.whisper.description": "Speech-to-text transcription powered by OpenAI Whisper. Automatically generates subtitles for video and audio in any language.",
+"preset.caption_video": "Caption",
+"preset.caption_video.donut": "Caption",
+"presets.caption_video": "Generate subtitles (Whisper AI)",
+"presets.caption_video_hint": "Transcribes speech in videos and audio in any language to an SRT subtitle file using Whisper AI.",
+"engines.package.whisper.name": "Whisper (AI Captions)",
+"engines.package.whisper.description": "Transcribes speech in video and audio in any language to SRT subtitle files."
 }

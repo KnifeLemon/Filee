@@ -123,7 +123,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 56;
+    public const int CurrentSchemaVersion = 57;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -195,7 +195,7 @@ public sealed class AppSettings
     [
         "magick", "pdfium", "pdfsharp", "rhwp", "unhwp", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer",
         "pdf-text", "pdf-slides", "email", "data", "vector", "icns", "font", "cad", "model3d", "geo", "archive", "ebook",
-        "subtitle", "wic", "whisper", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice",
+        "subtitle", "wic", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice",
     ];
 
     /// <summary>Set once the first-run welcome has been shown.</summary>

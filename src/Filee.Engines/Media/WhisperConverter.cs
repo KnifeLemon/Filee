@@ -1,6 +1,7 @@
-// Transcribes speech in video/audio using OpenAI Whisper (whisper.cpp) and burns
-// styled yellow captions into videos. Supports any language with auto-detection.
+// Transcribes speech in video and audio using OpenAI Whisper (whisper.cpp) into SRT subtitles.
+// Supports any language with auto-detection and Hindi/Devanagari script restoration.
 
+using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Engines.Infrastructure;
@@ -10,7 +11,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Filee.Engines.Media;
 
 /// <summary>
-/// AI-powered speech transcription and video captioning engine powered by Whisper.
+/// AI-powered speech transcription and captioning engine powered by Whisper.
+/// Directly outputs .srt subtitles for both video and audio files.
 /// </summary>
 public sealed class WhisperConverter : IConverter
 {
@@ -30,12 +32,17 @@ public sealed class WhisperConverter : IConverter
     private static IReadOnlyList<ConversionEdge> BuildEdges()
     {
         var videos = FormatRegistry.Known.Where(f => f.Category == FormatCategory.Video).Select(f => f.Id).ToList();
+        var audios = FormatRegistry.Known.Where(f => f.Category == FormatCategory.Audio).Select(f => f.Id).ToList();
         return
         [
-            // Video -> MP4 with captions burned in
-            .. videos.Select(v => new ConversionEdge(v, "mp4", Cost: 10, Caption: true)),
             // Video -> SRT transcription directly
-            .. videos.Select(v => new ConversionEdge(v, "srt", Cost: 12, NotForImageSources: true)),
+            .. videos.Select(v => new ConversionEdge(v, "srt", Cost: 10, Caption: true)),
+            // Audio -> SRT transcription directly
+            .. audios.Select(a => new ConversionEdge(a, "srt", Cost: 10, Caption: true)),
+            // Audio -> SRT fallback (without explicit Caption flag)
+            .. audios.Select(a => new ConversionEdge(a, "srt", Cost: 12, NotForImageSources: true)),
+            // Video -> MP4 with captions burned in (legacy fallback if target is mp4)
+            .. videos.Select(v => new ConversionEdge(v, "mp4", Cost: 14, Caption: true)),
         ];
     }
 
@@ -171,7 +178,7 @@ public sealed class WhisperConverter : IConverter
         cancellationToken.ThrowIfCancellationRequested();
         progress?.Report(0.05);
 
-        // 1. Extract 16kHz mono WAV for Whisper inference
+        // 1. Extract 16kHz mono WAV for Whisper inference (works for both video and audio files)
         var audioWav = Path.Combine(step.WorkDirectory, $"whisper_audio_{Guid.NewGuid():N}.wav");
         var extractArgs = new[]
         {
@@ -204,26 +211,35 @@ public sealed class WhisperConverter : IConverter
         var whisperResult = await ProcessRunner.RunAsync(whisperCli, whisperArgs, TimeSpan.FromMinutes(30), cancellationToken);
         var srtPath = outPrefix + ".srt";
 
-        if (!File.Exists(srtPath))
+        string srtContent = string.Empty;
+        if (File.Exists(srtPath))
         {
-            // If empty audio or no speech detected, create empty SRT
-            File.WriteAllText(srtPath, string.Empty);
+            srtContent = await File.ReadAllTextAsync(srtPath, cancellationToken);
+        }
+
+        // Clean Hindi / Urdu transcription: if Urdu Perso-Arabic characters were generated,
+        // convert them to natural Hindi Devanagari script.
+        if (UrduToDevanagari.ContainsUrdu(srtContent))
+        {
+            srtContent = UrduToDevanagari.ConvertSrt(srtContent);
+            await File.WriteAllTextAsync(srtPath, srtContent, Encoding.UTF8, cancellationToken);
         }
 
         progress?.Report(0.70);
         cancellationToken.ThrowIfCancellationRequested();
 
-        // 3. Produce output
+        // 3. Produce output: if target is SRT (default for caption), output the SRT file directly!
         if (step.To == "srt")
         {
             var srtOutput = step.Output.Allocate("srt");
             if (srtOutput is null)
                 return [];
-            File.Copy(srtPath, srtOutput, overwrite: true);
+            await File.WriteAllTextAsync(srtOutput, srtContent, Encoding.UTF8, cancellationToken);
             progress?.Report(1.0);
             return [srtOutput];
         }
 
+        // Fallback for custom presets targeting video output with burned subtitles:
         var outputExt = FormatRegistry.Get(step.To).PrimaryExtension;
         var videoOutput = step.Output.Allocate(outputExt);
         if (videoOutput is null)
@@ -232,11 +248,6 @@ public sealed class WhisperConverter : IConverter
         // Escape path for FFmpeg subtitles filter on Windows (escaped colons and backslashes)
         var escapedSrt = srtPath.Replace('\\', '/').Replace(":", "\\:");
 
-        // High-contrast yellow caption style:
-        // PrimaryColour: &H0000FFFF (Bright Yellow in ASS BGR format)
-        // OutlineColour: &H00000000 (Black outline)
-        // Font: Impact (bold, modern social-media caption look)
-        // Alignment: 2 (Bottom center)
         var vf = $"subtitles='{escapedSrt}':force_style='Fontname=Impact,Fontsize=28,PrimaryColour=&H0000FFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=2.5,Shadow=1.5,Bold=1,Alignment=2,MarginV=35'";
 
         var burnArgs = new[]

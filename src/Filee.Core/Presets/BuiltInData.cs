@@ -381,11 +381,11 @@ public static class BuiltInData
 
         // Subtitles; on the video donut, SRT takes the first text subtitle track out of the video.
         new() { Id = "extract-subtitles", NameKey = "preset.extract_subtitles", TargetFormat = "srt" },
-        // AI Captions: transcribes speech and burns high-visibility yellow captions into the video.
+        // AI Captions: transcribes speech in video and audio to SRT subtitles using Whisper AI.
         new()
         {
-            Id = "caption-video", NameKey = "preset.caption_video", TargetFormat = "mp4",
-            Media = { Caption = true }, Output = { FileNamePattern = "{name}_captioned" },
+            Id = "caption-video", NameKey = "preset.caption_video", TargetFormat = "srt",
+            Media = { Caption = true },
         },
         new() { Id = "to-srt", Name = "SRT", TargetFormat = "srt" },
         new() { Id = "to-vtt", Name = "WebVTT", TargetFormat = "vtt" },
@@ -685,7 +685,7 @@ public static class BuiltInData
         {
             Id = "audio", NameKey = "profile.audio",
             Extensions = ExtensionsOf(FormatCategory.Audio),
-            PresetIds = ["to-mp3", "mp3-128", "to-m4a", "to-wav", "to-flac", "to-ogg", "to-opus", "to-aac"],
+            PresetIds = ["to-mp3", "mp3-128", "to-m4a", "to-wav", "to-flac", "to-ogg", "to-opus", "to-aac", "caption-video"],
             BackPresetIds = ["to-alac", "compress-audio", "merge-audio", "remove-metadata", "zip-all"],
         },
         new()

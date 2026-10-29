@@ -1,7 +1,6 @@
 {
   "app.name": "Filee",
   "app.tagline": "Przeciągnij, upuść, gotowe.",
-
   "nav.home": "Start",
   "nav.general": "Ogólne",
   "nav.triggers": "Skróty",
@@ -11,7 +10,6 @@
   "nav.theme": "Motyw",
   "nav.engines": "Silniki",
   "nav.about": "O programie",
-
   "tray.open": "Otwórz Filee",
   "tray.pause": "Wstrzymaj skróty",
   "tray.resume": "Wznów skróty",
@@ -23,7 +21,6 @@
   "close.tray": "Zostaw w zasobniku",
   "close.quit": "Zakończ",
   "close.dont_ask": "Nie pytaj ponownie",
-
   "home.title": "Start",
   "home.drop_title": "Upuść pliki tutaj",
   "home.drop_select": "Kliknij dwukrotnie, aby wybrać pliki",
@@ -52,7 +49,6 @@
   "home.undone": "Cofnięto: wyniki są w Koszu",
   "home.undone_original": "Cofnięto: wyniki są w Koszu, tak jak oryginały, które zastąpiły",
   "home.undo_failed": "Nie udało się przenieść {0} do Kosza: {1}",
-
   "donut.center_drag": "Przenieś pliki tutaj",
   "donut.files_same": "{0} × {1}",
   "donut.files_mixed": "Pliki: {0}",
@@ -68,7 +64,6 @@
   "donut.group_caption": "Grupa: {0}",
   "donut.flip_to_back": "{0} tył",
   "donut.flip_to_front": "{0} przód",
-
   "toast.converting": "{0} → {1}",
   "toast.done": "Gotowe",
   "toast.done_errors": "Nieudane: {0} z {1}",
@@ -81,7 +76,6 @@
   "toast.get_fonts": "Pobierz czcionki",
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · plik {1} z {2}",
-
   "error.unsupported_source": "Ten typ pliku nie jest obsługiwany",
   "error.empty_file": "Plik jest pusty (0 bajtów). Plik utworzony przez „Nowy” w menu kontekstowym pozostaje pusty, dopóki nie otworzysz go w jego aplikacji i nie zapiszesz",
   "format_request.request": "Poproś o ten format",
@@ -161,7 +155,6 @@
   "notice.geo_field_names": "Nazwy pól Shapefile mają najwyżej 10 znaków: niektóre skrócono",
   "notice.geo_shapefile_split": "Shapefile przechowuje jeden rodzaj kształtu, więc punkty, linie i poligony zapisano w osobnych plikach",
   "notice.geo_heights_dropped": "Niektóre punkty nie mają wysokości, a Shapefile nie może pominąć tylko jednej, więc pominięto wszystkie wysokości",
-
   "engine.reason.not_installed": "Nie zainstalowano",
   "engine.reason.error": "Błąd podczas sprawdzania",
   "engine.reason.unsupported_platform": "Niedostępne na tej platformie",
@@ -217,7 +210,6 @@
   "engine.vision.description": "Rozpoznaje tekst skanów i obrazów wbudowanym rozpoznawaniem tekstu macOS (OCR): przeszukiwalny PDF, DOCX, TXT. Nic nie trzeba pobierać.",
   "engine.calibre.description": "Rzadkie formaty e-booków (LIT, LRF, CHM, PDB, RB…) i zapis dla Kindle (MOBI, AZW3).\nUmieszczony nad HWPX writer tworzy też PDF-y e-booków (znacznie szybciej przy długich książkach).",
   "engine.libreoffice.description": "Odczytuje starsze i rzadsze formaty: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nZapisuje też jako DOC, XLS, PPT, ODT, ODP, szablony OpenDocument i EMF.",
-
   "profile.images": "Obrazy",
   "profile.pdf": "PDF",
   "profile.office": "Dokumenty",
@@ -237,7 +229,6 @@
   "profile.models": "Modele 3D",
   "profile.geo": "Geoprzestrzenne",
   "profile.mixed": "Różne pliki",
-
   "preset.crop": "Kadruj",
   "crop.save": "Kadruj i zapisz",
   "crop.reset": "Resetuj",
@@ -339,7 +330,6 @@
   "clip.silence_removed": "Usunięto ciszę: {0}",
   "clip.no_silence": "Nie znaleziono ciszy",
   "clip.cannot_play": "Nie można odtworzyć klipu",
-
   "preset.half_size": "Połowa rozmiaru",
   "preset.half_size.donut": "Połowa rozmiaru",
   "preset.image_edit": "Edytuj obrazy",
@@ -431,7 +421,6 @@
   "preset.merge_audio": "Połącz dźwięk",
   "preset.merge_images": "Połącz obrazy",
   "preset.remove_metadata": "Usuń metadane",
-
   "format.folder": "Folder",
   "format.category.Image": "Obraz",
   "format.category.Pdf": "PDF",
@@ -451,7 +440,6 @@
   "format.category.Data": "Dane",
   "format.category.Model3D": "Model 3D",
   "format.category.Geo": "Geoprzestrzenne",
-
   "general.title": "Ogólne",
   "general.language": "Język",
   "general.language_auto": "Domyślny systemu",
@@ -534,7 +522,6 @@
   "general.reset_library": "Przywróć domyślne",
   "general.reset_confirm": "Zastąpić wszystkie ustawienia wstępne i profile pasków domyślnymi?",
   "general.imported": "Zaimportowano elementów: {0}",
-
   "triggers.title": "Skróty",
   "triggers.description": "Wybierz, jak otwiera się pasek-pierścień. Możesz dodać dowolnie wiele gestów.",
   "triggers.macos_permissions": "Zezwól Filee w Ustawienia systemowe > Prywatność i ochrona > Dostępność.\nJeśli Filee jest już włączony, a gesty się nie uruchamiają, usuń go przyciskiem − i dodaj ponownie przyciskiem +.\nFinder poprosi też o uprawnienie Automatyzacji przy pierwszym użyciu skrótu zaznaczenia.",
@@ -590,7 +577,6 @@
   "triggers.excluded_none_running": "Żadna inna aplikacja nie ma otwartego okna.",
   "triggers.excluded_note": "Gesty i skróty nic nie robią, gdy wskaźnik jest nad tymi aplikacjami.",
   "triggers.paused": "Skróty są wstrzymane",
-
   "toolbar.title": "Pasek-pierścień",
   "toolbar.step_profile": "1. Wybierz profil",
   "toolbar.step_arrange": "2. Ułóż ustawienia",
@@ -658,18 +644,17 @@
   "toolbar.mixed_covered": "„{0}” jest pierwszy i dopuszcza każde zaznaczone tu rozszerzenie, więc ten profil nigdy nie jest używany.",
   "toolbar.mixed_others": "Inne mieszanki plików otwierają „{0}”.",
   "toolbar.mixed_others_self": "Nie został żaden mieszany profil bez zaznaczeń, więc ten jest używany także dla każdej innej mieszanki.",
-   "toolbar.chip_tip.makes": "→ {0} · {1}",
-   "toolbar.chip_tip.makes_same": "→ Ten sam format",
-   "toolbar.chip_tip.makes_name": "→ {0}",
-   "toolbar.chip_tip.works_with": "Obsługiwane formaty: {0}",
-   "toolbar.chip_tip.kind": "{0} ({1})",
-   "toolbar.chip_tip.name_separator": ", ",
-   "toolbar.chip_tip.names_more": "{0} +{1}",
-   "toolbar.chip_tip.more_shift": "+{0} dodatkowo · Shift pokazuje wszystkie",
-   "toolbar.chip_tip.shift_all": "Shift pokazuje wszystkie",
-   "toolbar.chip_tip.any_file": "Dowolny plik",
-   "tags.remove": "Usuń",
-
+  "toolbar.chip_tip.makes": "→ {0} · {1}",
+  "toolbar.chip_tip.makes_same": "→ Ten sam format",
+  "toolbar.chip_tip.makes_name": "→ {0}",
+  "toolbar.chip_tip.works_with": "Obsługiwane formaty: {0}",
+  "toolbar.chip_tip.kind": "{0} ({1})",
+  "toolbar.chip_tip.name_separator": ", ",
+  "toolbar.chip_tip.names_more": "{0} +{1}",
+  "toolbar.chip_tip.more_shift": "+{0} dodatkowo · Shift pokazuje wszystkie",
+  "toolbar.chip_tip.shift_all": "Shift pokazuje wszystkie",
+  "toolbar.chip_tip.any_file": "Dowolny plik",
+  "tags.remove": "Usuń",
   "presets.title": "Ustawienia wstępne",
   "presets.add": "Nowe",
   "presets.add_empty": "Pusty preset",
@@ -887,7 +872,6 @@
   "presets.delete_confirm": "Usunąć „{0}”? Zostanie też usunięte z każdego paska i grupy.",
   "presets.name_required": "Podaj nazwę",
   "presets.select": "Wybierz ustawienie, aby je edytować",
-
   "theme.title": "Motyw",
   "theme.style": "Styl motywu",
   "theme.style.Soft": "Filee Soft",
@@ -924,7 +908,6 @@
   "theme.preview": "Podgląd",
   "theme.preview_toggle": "Przykładowy przełącznik (tylko podgląd, nie ustawienie)",
   "theme.preview_toggle_hint": "Pokazuje, jak wyglądają przełączniki w tym motywie. Nie zmienia żadnego ustawienia.",
-
   "engines.title": "Silniki konwersji",
   "engines.description": "Filee wybiera najlepszy dostępny silnik dla każdej konwersji.\nGdy kilka potrafi to samo, wygrywa wyższy.",
   "engines.available": "Gotowy",
@@ -999,7 +982,6 @@
   "engines.state.unpacking": "Instalowanie…",
   "engines.state.installed": "Zainstalowano",
   "engines.state.failed": "Błąd: {0}",
-
   "about.title": "O programie",
   "about.updates": "Aktualizacje",
   "common.search": "Szukaj",
@@ -1024,7 +1006,6 @@
   "feedback.notice_text": "Gwiazdka na GitHubie pomaga innym znaleźć Filee.\nProblemy i pomysły też są mile widziane.",
   "feedback.star": "Gwiazdka na GitHubie",
   "feedback.issue": "Zgłoś problem lub pomysł",
-
   "common.ok": "OK",
   "common.cancel": "Anuluj",
   "common.save": "Zapisz",
@@ -1034,7 +1015,6 @@
   "common.no": "Nie",
   "common.on": "Wł.",
   "common.off": "Wył.",
-
   "setup.title": "Wybierz silniki konwersji",
   "setup.description": "Obrazy, PDF, dokumenty Office, HWP, e-booki, archiwa, czcionki, CAD i modele 3D już się konwertują.\nPobieraj silniki tylko dla wideo i audio lub rzadkich formatów.",
   "setup.note": "Silniki możesz w każdej chwili zainstalować lub usunąć w Ustawienia → Silniki.",
@@ -1196,7 +1176,6 @@
   "watch.status_starting": "Uruchamianie…",
   "watch.status_error": "Nie można obserwować tego folderu: {0}",
   "watch.cli_hint": "Także w wierszu poleceń: filee watch <folder> --to <format>",
-
   "preset.sheet_studio": "PDF + Edycja",
   "sheet_studio.title": "Studio wydruku arkuszy",
   "sheet_studio.sheets": "Arkusze i kolejność wyjściowa",
@@ -1236,7 +1215,6 @@
   "sheet_studio.apply_fix": "Zastosuj sugerowany układ",
   "sheet_studio.add_region": "+ Dodaj kolejny obszar",
   "sheet_studio.region_name": "{0} · obszar {1}",
-
   "whats_new.title": "Nowości w Filee {0}",
   "whats_new.previous": "Wstecz",
   "whats_new.next": "Dalej",
@@ -1256,5 +1234,13 @@
   "whats_new.2_0_0.languages.text": "Do angielskiego, koreańskiego, chińskiego i polskiego dołączają hiszpański, hindi, japoński, rosyjski, arabski i portugalski brazylijski.",
   "whats_new.2_0_0.more.title": "I jeszcze trochę",
   "whats_new.2_0_0.more.text": "Przywróć domyślne ustawienia jednego pierścienia, przeszukuj całą historię i konwertuj dokumenty w gudżarati, hindi lub arabskim przez LibreOffice.",
-  "preset.extract_motion.donut": "Wyodrębnij wideo z Live Photo"
+  "preset.extract_motion.donut": "Wyodrębnij wideo z Live Photo",
+  "engine.whisper.name": "Whisper (built-in AI)",
+  "engine.whisper.description": "Speech-to-text transcription powered by OpenAI Whisper. Automatically generates subtitles for video and audio in any language.",
+  "preset.caption_video": "Caption",
+  "preset.caption_video.donut": "Caption",
+  "presets.caption_video": "Generate subtitles (Whisper AI)",
+  "presets.caption_video_hint": "Transcribes speech in videos and audio in any language to an SRT subtitle file using Whisper AI.",
+  "engines.package.whisper.name": "Whisper (AI Captions)",
+  "engines.package.whisper.description": "Transcribes speech in video and audio in any language to SRT subtitle files."
 }

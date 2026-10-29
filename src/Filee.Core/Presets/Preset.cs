@@ -181,11 +181,11 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
     /// <summary>
-    /// True if converting a <paramref name="sourceFormat"/> file transcribes speech and burns styled captions into the video
-    /// (<see cref="MediaOptions.Caption"/>): the file is a video.
+    /// True if converting a <paramref name="sourceFormat"/> file transcribes speech into captions
+    /// (<see cref="MediaOptions.Caption"/>): the file is a video or audio.
     /// </summary>
     public bool CaptionsVideo(string sourceFormat) =>
-        Media.Caption && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+        Media.Caption && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file recognizes its text first (<see cref="PdfOptions.Ocr"/>):
