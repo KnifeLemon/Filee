@@ -1,6 +1,7 @@
 // Verifies that retrying gestures waits for the previous native hook to release its shared callback, that
 // Wayland's relative mouse motion still starts a drag gesture, and that Tab is reported (to flip the drag donut) only
-// while asked for.
+// while asked for; and that on macOS a press takes the modifiers the system reports when the hook's mask lost them
+// (another app holding Secure Input).
 
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -173,6 +174,44 @@ public sealed class TriggerServiceLifecycleTests
     }
 
     [AvaloniaFact]
+    public void A_press_takes_the_modifiers_the_platform_reports_when_the_hook_mask_lost_them()
+    {
+        // macOS while another app holds Secure Input: the hook's mask has the button but no modifier, while the system
+        // still reports Ctrl held.
+        var (provider, _, started) = StartGesture(wayland: false, modifiers: ModifierKeys.Ctrl);
+        provider.PostMouse(EventType.MousePressed, 50, 60, EventMask.Button1);
+        provider.PostMouse(EventType.MouseDragged, 60, 60, EventMask.Button1);
+        Assert.Equal((60, 60), (WaitForStart(started).X, WaitForStart(started).Y));
+    }
+
+    [AvaloniaFact]
+    public void A_modifier_pressed_after_the_button_counts_when_the_platform_reports_it()
+    {
+        var platform = new NullPlatformServicesForHooks { Modifiers = ModifierKeys.None };
+        var (provider, _, started) = StartGesture(wayland: false, platform: platform);
+        provider.PostMouse(EventType.MousePressed, 50, 60, EventMask.Button1);
+        Assert.Null(Settle(started)); // the press is handled (on the hook's thread) before Ctrl goes down
+        platform.Modifiers = ModifierKeys.Ctrl; // Ctrl pressed while the button is held; the hook's mask doesn't show it
+        provider.PostMouse(EventType.MouseDragged, 52, 60, EventMask.Button1);
+        provider.PostMouse(EventType.MouseDragged, 60, 60, EventMask.Button1);
+        WaitForStart(started);
+    }
+
+    [AvaloniaFact]
+    public void Without_a_platform_reading_the_hook_mask_decides()
+    {
+        // Windows and Linux report nothing: a press without the modifier in its mask arms nothing, one with it drags.
+        var (provider, _, started) = StartGesture(wayland: false);
+        provider.PostMouse(EventType.MousePressed, 50, 60, EventMask.Button1);
+        provider.PostMouse(EventType.MouseDragged, 60, 60, EventMask.Button1);
+        provider.PostMouse(EventType.MouseReleased, 60, 60, EventMask.None);
+        Assert.Null(Settle(started));
+        provider.PostMouse(EventType.MousePressed, 50, 60, Held);
+        provider.PostMouse(EventType.MouseDragged, 60, 60, Held);
+        WaitForStart(started);
+    }
+
+    [AvaloniaFact]
     public void Off_Wayland_presses_and_the_cursor_keep_their_coordinates()
     {
         var (provider, service, started) = StartGesture(wayland: false);
@@ -252,11 +291,13 @@ public sealed class TriggerServiceLifecycleTests
         return read();
     }
 
-    private static (DelayedProvider Provider, TriggerService Service, Func<GestureEventArgs?> Started) StartGesture(bool wayland)
+    private static (DelayedProvider Provider, TriggerService Service, Func<GestureEventArgs?> Started) StartGesture(bool wayland,
+        ModifierKeys? modifiers = null, NullPlatformServicesForHooks? platform = null)
     {
         var provider = new DelayedProvider();
         provider.AllowExit.Set();
-        var service = Create(provider, () => { }, wayland);
+        var service = Create(provider, () => { }, wayland,
+            platform ?? new NullPlatformServicesForHooks { PressCarriesPosition = !wayland, Modifiers = modifiers });
         // Ctrl + left drag on every OS: the default drag gesture uses Option on macOS, which these presses don't hold.
         service.Apply(new AppSettings { Triggers = [new TriggerGesture { Modifiers = ModifierKeys.Ctrl }] });
         GestureEventArgs? started = null;
@@ -272,8 +313,9 @@ public sealed class TriggerServiceLifecycleTests
         return started()!;
     }
 
-    internal static TriggerService Create(DelayedProvider provider, Action key, bool wayland = false) =>
-        new(new NullPlatformServicesForHooks { PressCarriesPosition = !wayland }, NullLogger<TriggerService>.Instance, () =>
+    internal static TriggerService Create(DelayedProvider provider, Action key, bool wayland = false,
+        NullPlatformServicesForHooks? platform = null) =>
+        new(platform ?? new NullPlatformServicesForHooks { PressCarriesPosition = !wayland }, NullLogger<TriggerService>.Instance, () =>
         {
             var hook = new QueuedGlobalHook(provider);
             hook.KeyPressed += (_, _) => key();
@@ -365,6 +407,11 @@ public sealed class TriggerServiceLifecycleTests
         public bool PressCarriesPosition { get; init; } = true;
         public bool FileManager { get; set; } = true;
         public string? Process { get; set; } = "explorer";
+
+        /// <summary>What <see cref="CurrentModifiers"/> reports (null: the hook's mask decides, as on Windows and Linux).</summary>
+        public ModifierKeys? Modifiers { get; set; }
+
+        public ModifierKeys? CurrentModifiers() => Modifiers;
         public bool IsFileManagerAt(int x, int y) => FileManager;
         public string? ProcessNameAt(int x, int y) => Process;
         public IReadOnlyList<string> GetFileManagerSelection() => [];

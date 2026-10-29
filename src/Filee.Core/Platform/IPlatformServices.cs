@@ -1,3 +1,5 @@
+using Filee.Core.Settings;
+
 namespace Filee.Core.Platform;
 
 /// <summary>Operating-system specific services.</summary>
@@ -35,6 +37,12 @@ public interface IPlatformServices
     /// Null where the platform can't tell, and the pointer decides.
     /// </summary>
     ForegroundWindowInfo? GetForegroundWindow() => null;
+
+    /// <summary>
+    /// The modifier keys held now, as the system reports them, for matching mouse gestures; null where the global hook's
+    /// own event mask is right (it isn't on macOS while another app holds Secure Input, see the macOS implementation).
+    /// </summary>
+    ModifierKeys? CurrentModifiers() => null;
 
     /// <summary>
     /// Names of the apps that have a window open now, as <see cref="ProcessNameAt"/> reports them, sorted, without

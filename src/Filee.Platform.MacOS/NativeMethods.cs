@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Filee.Core.Settings;
 
 namespace Filee.Platform.MacOS;
 
@@ -21,6 +22,18 @@ internal static class NativeMethods
 
     private static nint CoreFoundationConstant(string name) =>
         Marshal.ReadIntPtr(NativeLibrary.GetExport(NativeLibrary.Load(CoreFoundation), name));
+
+    /// <summary>The modifier keys held now (kCGEventSourceStateCombinedSessionState: every keyboard, including posted keys).</summary>
+    internal static ModifierKeys CurrentModifiers()
+    {
+        var flags = CGEventSourceFlagsState(0);
+        var keys = ModifierKeys.None;
+        if ((flags & 0x20000) != 0) keys |= ModifierKeys.Shift;   // kCGEventFlagMaskShift
+        if ((flags & 0x40000) != 0) keys |= ModifierKeys.Ctrl;    // kCGEventFlagMaskControl
+        if ((flags & 0x80000) != 0) keys |= ModifierKeys.Alt;     // kCGEventFlagMaskAlternate (Option)
+        if ((flags & 0x100000) != 0) keys |= ModifierKeys.Meta;   // kCGEventFlagMaskCommand
+        return keys;
+    }
 
     /// <summary>Process names of the app windows on screen (layer 0), front to back.</summary>
     internal static IEnumerable<string> WindowOwnerNames()
@@ -395,6 +408,9 @@ internal static class NativeMethods
 
     [DllImport(CoreGraphics)]
     private static extern nint CGWindowListCopyWindowInfo(uint option, uint relativeToWindow);
+
+    [DllImport(CoreGraphics)]
+    private static extern ulong CGEventSourceFlagsState(int stateId);
 
     [DllImport(CoreGraphics)]
     [return: MarshalAs(UnmanagedType.I1)]
