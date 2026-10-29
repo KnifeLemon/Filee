@@ -937,6 +937,37 @@ internal static class SettingsMigrations
         // v55: Apple Voice Memos recordings (.qta, #646) learn the audio donut; custom claims stay put.
         if (from < 55)
             changed |= LearnExtensions(profiles, out _, ["qta"]);
+        // v56: "Caption" video preset (Whisper AI)
+        if (from < 56)
+            changed |= AddCaptionPreset(presets, profiles);
+        return changed;
+    }
+
+    private static bool AddCaptionPreset(List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        var caption = BuiltInData.CreatePresets().First(p => p.Id == "caption-video");
+        if (presets.FirstOrDefault(p => p.Id == caption.Id) is null)
+        {
+            var at = presets.FindLastIndex(p => p.Id is "extract-subtitles" or "to-srt" or "to-vtt" or "to-mp4");
+            presets.Insert(at < 0 ? presets.Count : at + 1, caption);
+            changed = true;
+        }
+        if (profiles.FirstOrDefault(p => p.Id == "video") is { } video
+            && !video.PresetIds.Contains(caption.Id)
+            && (video.BackPresetIds is null || !video.BackPresetIds.Contains(caption.Id)))
+        {
+            if (video.PresetIds.Count < ToolbarProfile.MaxSlices)
+            {
+                InsertBefore(video.PresetIds, caption.Id, video.PresetIds.Contains("to-mkv") ? "to-mkv" : "to-avi");
+                changed = true;
+            }
+            else if (video.BackPresetIds is not null && video.BackPresetIds.Count < ToolbarProfile.MaxSlices)
+            {
+                video.BackPresetIds.Add(caption.Id);
+                changed = true;
+            }
+        }
         return changed;
     }
 

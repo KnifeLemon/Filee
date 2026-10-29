@@ -2,6 +2,7 @@
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 
 namespace Filee.Core.Tests;
 
@@ -62,5 +63,19 @@ public class CaptionRouteTests
         Assert.False(preset.CaptionsVideo("png"));
         Assert.Equal("{name}_captioned", preset.Output.FileNamePattern);
         Assert.Equal("preset.caption_video", preset.NameKey);
+    }
+
+    [Fact]
+    public void Schema_55_library_gets_caption_preset_on_video_donut()
+    {
+        var presets = BuiltInData.CreatePresets().Where(p => p.Id != "caption-video").ToList();
+        var profiles = BuiltInData.CreateProfiles();
+        var video = profiles.Single(p => p.Id == "video");
+        video.PresetIds.Remove("caption-video");
+
+        Assert.True(SettingsMigrations.ApplyToLibrary(55, presets, profiles));
+
+        Assert.Contains(presets, p => p.Id == "caption-video");
+        Assert.Contains("caption-video", video.PresetIds);
     }
 }
