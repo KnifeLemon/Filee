@@ -64,9 +64,12 @@ public class LineBreakerTests
     [Theory]
     [InlineData("한글 |문서는 |줄을 |나눕니다.")]
     [InlineData("Filee는 |한글 |문서를 |PDF로 |바꿉니다.")]
-    [InlineData("한글|漢|字 |섞어 |쓰기")] // ideographs still break apart from Hangul
-    public void Keeps_hangul_words_whole(string expected) =>
-        Assert.Equal(expected, Mark(Unmark(expected), new LineBreakRules(KeepHangulWords: true)));
+    // As 한글 keeps them in that setting: ideographs, kana, East Asian punctuation and quotes are a word's letters too.
+    [InlineData("한글漢字 |섞어 |쓰기")]
+    [InlineData("文件转换工具，“引号”和‘单引号’。 |下一句")]
+    [InlineData("「かぎ括弧」と『二重』。 |次の文")]
+    public void Keeps_non_latin_words_whole(string expected) =>
+        Assert.Equal(expected, Mark(Unmark(expected), new LineBreakRules(KeepNonLatinWords: true)));
 
     [Theory]
     [InlineData("F|i|l|e|e |l|a|y|s |1|2|3 |п|р|и|в|е|т.")]

@@ -100,7 +100,7 @@ internal sealed class ParagraphLayouter
 
         var breaking = format.Layout?.Breaking;
         var rules = new LineBreakRules(
-            KeepHangulWords: breaking?.NonLatin == HNonLatinBreak.KeepWord,
+            KeepNonLatinWords: breaking?.NonLatin == HNonLatinBreak.KeepWord,
             BreakLatinWords: breaking?.Latin == HLatinBreak.BreakWord,
             _notAtLineStart,
             _notAtLineEnd);

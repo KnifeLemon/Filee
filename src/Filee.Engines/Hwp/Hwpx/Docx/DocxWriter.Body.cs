@@ -251,7 +251,8 @@ internal sealed partial class DocxWriter
                     "SOLID" => " w:leader=\"underscore\"",
                     _ => "",
                 };
-                sb.Append($"<w:tab w:val=\"{kind}\"{leader} w:pos=\"{Number(Twips(tab.Position))}\"/>");
+                // 한글 measures tab stops from the paragraph's left indent, Word from the left margin.
+                sb.Append($"<w:tab w:val=\"{kind}\"{leader} w:pos=\"{Number(Twips(tab.Position + (format.Left ?? 0)))}\"/>");
             }
             sb.Append("</w:tabs>");
         }
