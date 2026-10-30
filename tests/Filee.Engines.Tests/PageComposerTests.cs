@@ -208,6 +208,157 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Equal(["three"], Texts(pages[1]));
     }
 
+    // ───────────────────────── Tables ─────────────────────────
+
+    [Fact]
+    public void Table_columns_take_absolute_relative_or_equal_widths()
+    {
+        var absolute = Table("a1", "b1");
+        absolute.ColumnWidths = [4000, 12000];
+        var relative = Table("a2", "b2", "c2");
+        relative.RelativeWidths = [0.5, 0, 0];
+        var equal = Table("a3", "b3", "c3", "d3");
+
+        // A body 280 pt wide; every cell starts its text after the same padding.
+        var page = Assert.Single(Compose(Section(Small with { Width = 30000 }, absolute, relative, equal)).Pages);
+
+        float X(string text) => Runs(page).Single(r => r.Text == text).Positions[0].X;
+        Assert.Equal(40, X("b1") - X("a1"), 0.05f);
+        Assert.Equal(140, X("b2") - X("a2"), 0.05f);
+        Assert.Equal(70, X("c2") - X("b2"), 0.05f);
+        Assert.Equal(70, X("b3") - X("a3"), 0.05f);
+    }
+
+    [Fact]
+    public void A_wide_table_of_another_format_is_scaled_to_the_text_width_and_hangul_keeps_its_widths()
+    {
+        var table = Table("left", "right");
+        table.ColumnWidths = [10000, 10000]; // 200 pt in an 80 pt body
+        var document = new HDocument();
+        document.Sections.Add(Section(Small, table));
+
+        var scaled = new PageComposer(new FontResolver(_fonts), _shaper, styles: StyleResolver.FromTemplate()).Compose(document, TestContext.Current.CancellationToken).Pages[0];
+        var kept = Compose(document).Pages[0];
+
+        Assert.Equal(40, Runs(scaled).Single(r => r.Text == "right").Positions[0].X - Runs(scaled).Single(r => r.Text == "left").Positions[0].X, 0.5f);
+        Assert.Equal(100, Runs(kept).Single(r => r.Text == "right").Positions[0].X - Runs(kept).Single(r => r.Text == "left").Positions[0].X, 0.5f);
+    }
+
+    [Fact]
+    public void Rows_are_as_high_as_their_tallest_cell_and_cells_align_their_content()
+    {
+        var table = Table("top", "one two three four five six");
+        table.ColumnWidths = [4000, 4000];
+        table.Rows[0].Cells[0].VerticalAlign = HVerticalAlign.Bottom;
+        var page = Assert.Single(Compose(Section(Small, table)).Pages);
+
+        // The long cell wraps into several 16 pt lines; the short one sits at the row's bottom, on its last line.
+        var lines = Runs(page).Where(r => r.Text != "top").Select(r => r.Positions[0].Y).Distinct().OrderBy(y => y).ToList();
+        Assert.True(lines.Count > 2);
+        Assert.Equal(lines[^1], Runs(page).Single(r => r.Text == "top").Positions[0].Y, 0.5f);
+    }
+
+    [Fact]
+    public void A_cell_spanning_rows_stretches_them_and_the_next_cell_skips_its_column()
+    {
+        var table = new HTable { ColumnCount = 2, ColumnWidths = [4000, 4000] };
+        var first = new HRow();
+        first.Cells.Add(Cell(Sentence, rowSpan: 2));
+        first.Cells.Add(Cell("b"));
+        var second = new HRow();
+        second.Cells.Add(Cell("c")); // auto-placed in column 1, the first column taken by the span
+        table.Rows.AddRange([first, second]);
+
+        var page = Assert.Single(Compose(Section(Small, table)).Pages);
+
+        var b = Runs(page).Single(r => r.Text == "b").Positions[0];
+        var c = Runs(page).Single(r => r.Text == "c").Positions[0];
+        Assert.Equal(b.X, c.X, 0.01f);
+        Assert.True(Runs(page).Where(r => r.Text != "b" && r.Text != "c").Max(r => r.Positions[0].Y) > c.Y, "the spanning cell reaches into the second row");
+    }
+
+    [Fact]
+    public void A_table_that_must_not_split_moves_to_the_next_page_whole()
+    {
+        var table = Rows(4, "row");
+        table.PageBreak = HTablePageBreak.None;
+        HBlock[] blocks = [.. Enumerable.Range(0, 7).Select(i => Paragraph($"line {i}")), table];
+
+        var pages = Compose(Section(Small, blocks)).Pages;
+
+        Assert.Equal(2, pages.Count);
+        Assert.Equal(4, Runs(pages[1]).Count(r => r.Text.StartsWith("row")));
+    }
+
+    [Fact]
+    public void A_table_splits_between_rows_and_repeats_its_header_rows()
+    {
+        var table = Rows(12, "row");
+        table.Rows.Insert(0, Row(Cell("Head")));
+        table.Rows[0].Header = true;
+        table.PageBreak = HTablePageBreak.Cell;
+
+        var pages = Compose(Section(Small, table)).Pages;
+
+        Assert.True(pages.Count > 1);
+        Assert.All(pages, page => Assert.Equal("Head", Texts(page)[0]));
+        Assert.Equal(12, pages.Sum(p => Runs(p).Count(r => r.Text.StartsWith("row"))));
+    }
+
+    [Fact]
+    public void A_row_taller_than_the_page_left_splits_inside_its_cells_unless_it_must_not()
+    {
+        var text = string.Join(" ", Enumerable.Repeat(Sentence, 4));
+        HBlock[] Blocks(bool cantSplit)
+        {
+            var table = new HTable { ColumnCount = 1, ColumnWidths = [8000] };
+            table.Rows.Add(Row(Cell(text)));
+            table.Rows[0].CantSplit = cantSplit;
+            return [.. Enumerable.Range(0, 6).Select(i => Paragraph($"line {i}")), table];
+        }
+
+        var split = Compose(Section(Small, Blocks(cantSplit: false))).Pages;
+        var whole = Compose(Section(Small, Blocks(cantSplit: true))).Pages;
+
+        Assert.True(Runs(split[0]).Count() > 6, "part of the row on the first page");
+        Assert.Equal(6, Runs(whole[0]).Count());
+    }
+
+    [Fact]
+    public void A_table_in_a_cell_is_laid_out_inside_it()
+    {
+        var inner = Table("x", "y");
+        var outer = new HTable { ColumnCount = 1, ColumnWidths = [8000] };
+        var cell = new HCell();
+        cell.Blocks.Add(inner);
+        outer.Rows.Add(Row(cell));
+
+        var page = Assert.Single(Compose(Section(Small, outer)).Pages);
+
+        var x = Runs(page).Single(r => r.Text == "x").Positions[0];
+        var y = Runs(page).Single(r => r.Text == "y").Positions[0];
+        Assert.Equal(x.Y, y.Y, 0.01f);
+        Assert.True(y.X > x.X);
+    }
+
+    [Fact]
+    public void A_table_hangul_keeps_in_an_empty_paragraph_takes_that_line_its_margin_and_offset()
+    {
+        // The model's empty part of the 한글 paragraph before the table takes no line; the table keeps 1 pt of outer
+        // margin and a 5 pt offset from its paragraph.
+        var holder = Paragraph("");
+        holder.Inlines.Clear();
+        holder.Lines = new HLineLayout([new HLineSegment(0, 0, 1000, 1000, 850, 600, 0, 8000, 0)], false);
+        var table = Table("cell");
+        table.OuterMargin = new HInsets(0, 0, 100, 100);
+        table.VerticalOffset = 500;
+
+        var page = Assert.Single(Compose(Section(Small, holder, table)).Pages);
+
+        // Body top 20 + offset 5 + margin 1 + padding 1.41 + baseline 8.5.
+        Assert.Equal(20 + 5 + 1 + 1.41f + 8.5f, Runs(page).Single().Positions[0].Y, 0.05f);
+    }
+
     // ───────────────────────── Other formats ─────────────────────────
 
     public static TheoryData<string> Formats => ["txt", "md", "html", "epub", "fb2", "mobi"];
@@ -272,11 +423,42 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         return new PageComposer(new FontResolver(_fonts), _shaper).Compose(document, TestContext.Current.CancellationToken);
     }
 
-    private static HSection Section(HPage page, params HParagraph[] paragraphs)
+    private static HSection Section(HPage page, params HBlock[] blocks)
     {
         var section = new HSection { Page = page };
-        section.Blocks.AddRange(paragraphs);
+        section.Blocks.AddRange(blocks);
         return section;
+    }
+
+    /// <summary>A one-row table with a cell per text, its columns sharing the width.</summary>
+    private static HTable Table(params string[] texts)
+    {
+        var table = new HTable { ColumnCount = texts.Length };
+        table.Rows.Add(Row([.. texts.Select(t => Cell(t))]));
+        return table;
+    }
+
+    /// <summary>A one-column table of <paramref name="count"/> rows, "prefix 0", "prefix 1", ...</summary>
+    private static HTable Rows(int count, string prefix)
+    {
+        var table = new HTable { ColumnCount = 1 };
+        for (var i = 0; i < count; i++)
+            table.Rows.Add(Row(Cell($"{prefix} {i}")));
+        return table;
+    }
+
+    private static HRow Row(params HCell[] cells)
+    {
+        var row = new HRow();
+        row.Cells.AddRange(cells);
+        return row;
+    }
+
+    private static HCell Cell(string text, int rowSpan = 1)
+    {
+        var cell = new HCell { RowSpan = rowSpan };
+        cell.Blocks.Add(Paragraph(text));
+        return cell;
     }
 
     private static HCharFormat Format() => new(Size: 1000, Font: RepositoryFonts.Latin, EastAsianFont: RepositoryFonts.Korean, Color: "#000000");

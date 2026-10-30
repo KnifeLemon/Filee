@@ -793,8 +793,28 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     and stand on the baseline; links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
     with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
-  - Tables are laid out by a later item; until then their cells are stacked as paragraphs across the text width.
-    Columns, notes, floating objects and master pages are later items too.
+  - Columns, notes, floating objects and master pages are later items.
+- **Tables** (`TableLayout.cs`, GitHub Project 4 item *Layout engine: tables*):
+  - Grid: cells take their column (or the next free one past cells spanning down from above) and their row and column
+    spans. Columns take the table's absolute widths, else its relative ones (columns without one share the rest), else
+    equal shares; tables of other formats (a spreadsheet's columns) are scaled down to the text width when wider, 한글's
+    keep the widths 한글 gave them.
+  - Cells: padding (the cell's, the table's, else 한글's 1.8 × 0.5 mm), content laid out at the column width less it,
+    nested tables included; lines on 한글's stored layout take their stored place in the cell. A row is as high as its
+    own height or its tallest single-row cell, whose height is its content without the spacing below its last line (as
+    한글 sizes cells); a cell spanning rows stretches its last row. Content sits at the top, middle or bottom.
+  - Drawing: fills, content, then borders (the cell's, the table's, else a thin grid) as solid, dashed, dotted, dash-dot
+    or double lines at their width; captions under the table.
+  - Pages: rows bound by spanning cells move together; a table that must not split (한글 나누지 않음) moves whole when it
+    fits on a page; others split between rows (한글 셀 단위로 나눔) or, where rows may split (한글 나눔 and sources that
+    don't say), inside a row's cells unless the row must not split; header rows repeat on every page.
+  - 한글's placement: the outer margin (`hp:outMargin`) around the table, the offset of a table placed at its paragraph
+    (`vertOffset`), the paragraph a table sits in as a character (the model's empty part before it takes no line; the
+    table takes the paragraph's stored place and line spacing), and the text after a table that starts its paragraph
+    (its stored lines still map, `HTable.OpensParagraph`).
+  - Measured against 한글's own PDFs (exported by 한글 automation) of the HWPX files attached to Filee's issues: the
+    form of #49 (행정정보동의서) breaks every line where 한글 does, on one page as 한글, every line within 0.8 pt of
+    한글's; the other form (강사카드) now takes one page like 한글's, 97% of its lines the same.
   - Measured: those formats compose without losing text (read back from the PDF), and some 650 pages of Korean text
     compose in about 6 seconds (the item asks for 640 pages in 30 s; rhwp took some 48 minutes, #127).
 

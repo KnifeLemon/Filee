@@ -173,10 +173,18 @@ internal sealed partial class HwpxReader
 
         public void Table(HTable table)
         {
-            _split = true;
             // Breaks and column changes have no place on a table, so they keep an empty paragraph in front of it.
             if (HasContent || Current.PageBreakBefore || Current.ColumnBreakBefore || Current.ColumnsChange is not null)
+            {
                 Emit();
+                _split = true;
+            }
+            else if (!_split)
+            {
+                // Nothing of the paragraph before the table: the part after it is the paragraph, and its text starts
+                // where the model's count does (the table is no text), so the stored lines still map.
+                table.OpensParagraph = true;
+            }
             _output.Add(table);
             // The rest of a list item is not numbered again.
             Current = NewParagraph(_list is null ? null : _list with { Numbered = false });
@@ -594,7 +602,11 @@ internal sealed partial class HwpxReader
             };
             if (table.Align == HAlign.Left && Attr(pos, "horzRelTo") is null or "COLUMN" or "PARA")
                 table.Indent = Math.Max(0, Int(pos, "horzOffset"));
+            if (Attr(pos, "vertRelTo") is null or "PARA" && Attr(pos, "vertAlign") is null or "TOP")
+                table.VerticalOffset = Math.Max(0, Int(pos, "vertOffset"));
         }
+        if (Child(tbl, "outMargin") is { } outMargin)
+            table.OuterMargin = new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"));
         if (Child(tbl, "inMargin") is { } inMargin)
             table.CellMargin = new HInsets(Int(inMargin, "left"), Int(inMargin, "right"), Int(inMargin, "top"), Int(inMargin, "bottom"));
         table.Borders = BorderFill(Attr(tbl, "borderFillIDRef"))?.Borders;

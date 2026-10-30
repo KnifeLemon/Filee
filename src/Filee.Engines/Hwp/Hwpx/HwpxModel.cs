@@ -141,6 +141,21 @@ internal sealed class HTable : HBlock
     /// <summary>Cell padding; null = 한글 default.</summary>
     public HInsets? CellMargin { get; set; }
 
+    /// <summary>Space kept free around the table (한글 hp:outMargin); null = none. Only the layout engine uses it.</summary>
+    public HInsets? OuterMargin { get; set; }
+
+    /// <summary>
+    /// Distance from its paragraph's top to a table 한글 places at the paragraph rather than as a character (hp:pos
+    /// vertRelTo PARA, vertOffset). Only the layout engine uses it.
+    /// </summary>
+    public int VerticalOffset { get; set; }
+
+    /// <summary>
+    /// The table is the first thing of its 한글 paragraph, whose text is the model paragraph after the table (it keeps
+    /// the paragraph's stored lines). Only the layout engine uses it.
+    /// </summary>
+    public bool OpensParagraph { get; set; }
+
     /// <summary>Borders used where a cell does not define its own; null = thin solid grid.</summary>
     public HBorders? Borders { get; set; }
 

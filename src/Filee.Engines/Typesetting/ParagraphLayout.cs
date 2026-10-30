@@ -684,6 +684,7 @@ internal sealed class ParagraphLayouter
             Bookmarks = bookmarks,
             Pictures = pictures,
             StoredTop = stored is var (top, _) ? top.VerticalPosition / 100f : null,
+            Below = stored is var (spaced, _) ? spaced.Spacing / 100f : Math.Max(0, height - textHeight),
             StoredPageStart = stored is var (flagged, _) && (flagged.Flags & 1) != 0,
         };
     }
