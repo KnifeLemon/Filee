@@ -1,6 +1,11 @@
 // Paragraphs, runs and their content: text with tabs and line breaks, fields (hyperlinks), bookmarks, notes, page
 // numbers, section controls and tables. 한글 keeps tables inside runs like characters; in the model a table is a
 // block of its own, so the paragraph around it is split.
+//
+// 한글's stored line layout (hp:linesegarray) gives text positions in 한글's own count: one per character, line break,
+// non-breaking, fixed-width space and hyphen, eight per control (section and column definitions, fields, tabs, tables,
+// objects, notes, headers and footers, numbers, bookmarks), as Hancom's HWP 5.0 format document defines them. While a
+// paragraph is read, the builder counts both ways, so the stored positions convert to the model's (HLineLayout.Starts).
 
 using System.Text;
 using System.Xml.Linq;
@@ -67,6 +72,12 @@ internal sealed partial class HwpxReader
         private readonly bool _keepLayoutRuns;
         private bool _afterTable;
 
+        /// <summary>What the paragraph holds so far in 한글's text positions, with where each thing starts in the model.</summary>
+        private readonly List<Anchor> _anchors = [];
+        private int _hangul;
+        private int _model;
+        private bool _split;
+
         /// <param name="keepLayoutRuns">Texts are joined only when their layout detail is the same too (read for layout).</param>
         public ParagraphBuilder(List<HBlock> output, List<OpenField> fields, HParaFormat format, int heading, HListRef? list, bool keepLayoutRuns)
         {
@@ -86,13 +97,59 @@ internal sealed partial class HwpxReader
 
         private List<HInline> Sink => _sinks.Count > 0 ? _sinks.Peek() : Current.Inlines;
 
-        public void Add(HInline inline) => Sink.Add(inline);
+        public void Add(HInline inline)
+        {
+            Sink.Add(inline);
+            if (inline is HTab or HLineBreak)
+                _model++;
+        }
+
+        /// <summary>
+        /// Counts the next thing of the paragraph: <paramref name="units"/> of 한글's text positions; <paramref name="text"/>
+        /// when they are characters the model keeps one to one.
+        /// </summary>
+        public void Count(int units, bool text = false)
+        {
+            _anchors.Add(new Anchor(_hangul, _model, text));
+            _hangul += units;
+        }
+
+        /// <summary>
+        /// 한글's stored line starts as positions in the model's paragraph text, or null when one falls inside an object or
+        /// past the end, or a table split the paragraph.
+        /// </summary>
+        public IReadOnlyList<int>? Starts(IEnumerable<int> positions)
+        {
+            if (_split)
+                return null;
+            var starts = new List<int>();
+            foreach (var position in positions)
+            {
+                if (position == _hangul)
+                {
+                    starts.Add(_model);
+                    continue;
+                }
+                var index = _anchors.FindLastIndex(a => a.Hangul <= position);
+                if (index < 0 || position > _hangul)
+                    return null;
+                var anchor = _anchors[index];
+                var offset = position - anchor.Hangul;
+                if (offset > 0 && !anchor.Text)
+                    return null;
+                starts.Add(anchor.Model + offset);
+            }
+            return starts;
+        }
+
+        private readonly record struct Anchor(int Hangul, int Model, bool Text);
 
         /// <summary>Adds text, joined to the previous text when it has the same format.</summary>
         public void AddText(string text, HCharFormat format)
         {
             if (text.Length == 0)
                 return;
+            _model += text.Length;
             var sink = Sink;
             if (sink.Count > 0 && sink[^1] is HText last && (_keepLayoutRuns ? last.Format.SameLayout(format) : last.Format == format))
                 sink[^1] = new HText(last.Text + text, format);
@@ -115,6 +172,7 @@ internal sealed partial class HwpxReader
 
         public void Table(HTable table)
         {
+            _split = true;
             // Breaks and column changes have no place on a table, so they keep an empty paragraph in front of it.
             if (HasContent || Current.PageBreakBefore || Current.ColumnBreakBefore || Current.ColumnsChange is not null)
                 Emit();
@@ -178,7 +236,7 @@ internal sealed partial class HwpxReader
         builder.Finish();
         // The stored lines belong to the whole 한글 paragraph: they go with its first part when a table splits it.
         if (lines is not null && output.Skip(first).OfType<HParagraph>().FirstOrDefault() is { } part)
-            part.Lines = lines;
+            part.Lines = lines with { Starts = builder.Starts(lines.Segments.Select(s => s.TextPosition)) };
     }
 
     /// <summary>The layout cache 한글 stores with a paragraph (hp:linesegarray); null when it holds no lines.</summary>
@@ -233,18 +291,25 @@ internal sealed partial class HwpxReader
                     Text(item, builder, format);
                     break;
                 case "secPr":
+                    builder.Count(8);
                     break; // read by ReadTopParagraph
                 case "ctrl":
                     foreach (var control in Elements(item))
+                    {
+                        builder.Count(8);
                         Control(control, builder, format, section);
+                    }
                     break;
                 case "tbl":
+                    builder.Count(8);
                     builder.Table(Table(item));
                     break;
                 case "colPr" or "header" or "footer" or "footNote" or "endNote" or "fieldBegin" or "fieldEnd" or "bookmark" or "autoNum" or "newNum" or "pageNum":
+                    builder.Count(8);
                     Control(item, builder, format, section); // controls outside hp:ctrl (other producers)
                     break;
                 default:
+                    builder.Count(8);
                     DrawingObject(item, builder, format);
                     break;
             }
@@ -267,6 +332,7 @@ internal sealed partial class HwpxReader
                         continue;
                     value = value.Replace("\r", "", StringComparison.Ordinal).Replace("\n", "", StringComparison.Ordinal);
                 }
+                builder.Count(value.Length, text: !_deleted);
                 if (!_deleted)
                     builder.AddText(value, Highlighted(format));
                 continue;
@@ -276,22 +342,27 @@ internal sealed partial class HwpxReader
             switch (element.Name.LocalName)
             {
                 case "tab":
+                    builder.Count(8);
                     if (!_deleted)
                         builder.Add(new HTab(Highlighted(format)));
                     break;
                 case "lineBreak" or "columnBreak":
+                    builder.Count(1);
                     if (!_deleted)
                         builder.Add(new HLineBreak(format));
                     break;
                 case "nbSpace":
+                    builder.Count(1, text: !_deleted);
                     if (!_deleted)
                         builder.AddText(" ", Highlighted(format));
                     break;
                 case "fwSpace":
+                    builder.Count(1, text: !_deleted);
                     if (!_deleted)
                         builder.AddText(" ", Highlighted(format)); // fixed-width space: as wide as a digit
                     break;
                 case "hyphen":
+                    builder.Count(1, text: !_deleted);
                     if (!_deleted)
                         builder.AddText("­", Highlighted(format)); // soft hyphen, shown only at a line end
                     break;
@@ -307,8 +378,11 @@ internal sealed partial class HwpxReader
                 case "deleteEnd":
                     _deleted = false;
                     break;
-                case "insertBegin" or "insertEnd" or "titleMark":
-                    break; // inserted text is shown as it is; title marks only feed a table of contents
+                case "titleMark":
+                    builder.Count(8);
+                    break; // title marks only feed a table of contents
+                case "insertBegin" or "insertEnd":
+                    break; // inserted text is shown as it is
                 default:
                     Skip(element);
                     break;

@@ -405,6 +405,99 @@ public sealed class ParagraphLayoutTests : IDisposable
         Assert.Equal(text.Replace(" ", ""), string.Concat(box.Lines.SelectMany(l => l.Runs).Select(r => r.Text)).Replace(" ", ""));
     }
 
+    // ───────────────────────── 한글's stored lines ─────────────────────────
+
+    [Fact]
+    public void Stored_lines_start_where_hangul_started_them_with_their_stored_height()
+    {
+        // Line starts Filee's own breaking wouldn't choose, 20 pt apart with the baseline at 15 pt.
+        var paragraph = Stored(Paragraph(English), [0, 6, 30]);
+
+        var (box, text) = Layout(paragraph, 200);
+
+        Assert.True(box.StoredLines);
+        Assert.Equal([0, 6, 30], box.Lines.Select(l => l.Start));
+        Assert.Equal(text.Length, box.Lines[^1].End);
+        Assert.All(box.Lines, line => Assert.Equal((20f, 15f), (line.Height, line.Baseline)));
+    }
+
+    [Fact]
+    public void A_stored_line_wider_than_the_line_now_is_squeezed_between_its_characters()
+    {
+        var text = new string('-', 80);
+        var paragraph = Stored(Paragraph(text), [0]);
+
+        var (box, _) = Layout(paragraph, 200);
+
+        var line = Assert.Single(box.Lines);
+        Assert.True(Width(text, Latin) > 200);
+        Assert.Equal(200, line.Width, 0.05f);
+    }
+
+    [Fact]
+    public void A_list_number_comes_before_the_stored_positions()
+    {
+        var paragraph = Stored(Paragraph(English, new HParaFormat(Left: 2000, FirstLine: -2000)), [0, 20]);
+
+        var (box, text) = Layout(paragraph, 250, marker: "1.");
+
+        Assert.Equal(20 + "1.\t".Length, box.Lines[1].Start);
+        Assert.Equal("1.\t", text[..3]);
+    }
+
+    [Fact]
+    public void A_stored_line_beside_an_object_keeps_its_place()
+    {
+        var segments = new List<HLineSegment> { Segment(0), Segment(20, left: 5000, width: 15000) };
+        var paragraph = Paragraph(English);
+        paragraph.Lines = new HLineLayout(segments, false, [0, 20]);
+
+        var (box, _) = Layout(paragraph, 200);
+
+        Assert.Equal(50, box.Lines[1].Left, 0.01f);
+        Assert.True(box.Lines[1].Width <= 150.05f);
+    }
+
+    [Fact]
+    public void Stored_lines_are_not_used_when_filee_estimated_them_or_a_font_is_missing_or_they_dont_map()
+    {
+        var estimated = Paragraph(English);
+        estimated.Lines = new HLineLayout([Segment(0), Segment(6)], true, [0, 6]);
+        var missing = Stored(Paragraph(English, format: Format(font: "No Such Font")), [0, 6]);
+        var unmapped = Paragraph(English);
+        unmapped.Lines = new HLineLayout([Segment(0), Segment(6)], false);
+
+        foreach (var (paragraph, reason) in new[] { (estimated, "estimated"), (missing, "No Such Font"), (unmapped, "map") })
+        {
+            var (box, _) = Layout(paragraph, 200);
+            Assert.False(box.StoredLines);
+            Assert.Contains(reason, box.StoredLinesIgnored);
+            Assert.NotEqual(6, box.Lines[1].Start);
+        }
+    }
+
+    [Fact]
+    public void A_layouter_can_leave_stored_lines_aside()
+    {
+        Assert.SkipUnless(_fonts.Has(Latin) && _fonts.Has(Korean), "Noto Sans and Noto Sans KR are not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        var paragraph = Stored(Paragraph(English), [0, 6]);
+
+        var box = new ParagraphLayouter(new FontResolver(_fonts), _shaper, storedLines: false).Layout(paragraph, 200);
+
+        Assert.False(box.StoredLines);
+        Assert.Null(box.StoredLinesIgnored);
+        Assert.NotEqual(6, box.Lines[1].Start);
+    }
+
+    /// <summary>A line 한글 stored: 20 pt high with its spacing, the baseline 15 pt down, 200 pt wide.</summary>
+    private static HLineSegment Segment(int position, int left = 0, int width = 20000) => new(position, 0, 1600, 1600, 1500, 400, left, width, 0);
+
+    private static HParagraph Stored(HParagraph paragraph, int[] starts)
+    {
+        paragraph.Lines = new HLineLayout([.. starts.Select(s => Segment(s))], false, starts);
+        return paragraph;
+    }
+
     // ───────────────────────── Helpers ─────────────────────────
 
     private static HCharFormat Format(int size = 1000, int spacing = 0, string font = Latin) =>

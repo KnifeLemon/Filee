@@ -12,6 +12,12 @@ namespace Filee.Engines.Typesetting;
 /// <param name="SpaceAfter">Space below the last line, in points.</param>
 internal sealed record ParagraphBox(float SpaceBefore, float SpaceAfter, IReadOnlyList<LineBox> Lines)
 {
+    /// <summary>The lines follow 한글's stored line layout.</summary>
+    public bool StoredLines { get; init; }
+
+    /// <summary>Why the paragraph's stored lines weren't used, or null (used, or there were none).</summary>
+    public string? StoredLinesIgnored { get; init; }
+
     /// <summary>The paragraph's whole height with its spacing.</summary>
     public float Height => SpaceBefore + Lines.Sum(l => l.Height) + SpaceAfter;
 }

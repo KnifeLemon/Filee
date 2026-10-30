@@ -18,11 +18,12 @@ internal static class FileeRenderer
     private static readonly HPage DefaultPage = new(59528, 84186, 8504, 8504, 5669, 4252, 4252, 4252, 0);
 
     /// <summary>The document as a PDF.</summary>
-    public static byte[] ToPdf(HDocument document, CancellationToken cancellationToken = default)
+    /// <param name="storedLines">Paragraphs follow 한글's stored line layout where it can be used.</param>
+    public static byte[] ToPdf(HDocument document, CancellationToken cancellationToken = default, bool storedLines = true)
     {
         using var shaper = new Shaper();
         var outline = new List<OutlineEntry>();
-        var pages = Pages(document, new FontResolver(), shaper, outline, cancellationToken);
+        var pages = Pages(document, new FontResolver(), shaper, outline, cancellationToken, storedLines);
         using var output = new MemoryStream();
         PdfPageWriter.Write(output, pages, new PdfDocumentInfo { Title = document.Title, Outline = outline }, cancellationToken: cancellationToken);
         return output.ToArray();
@@ -30,10 +31,10 @@ internal static class FileeRenderer
 
     /// <summary>The document's pages; headings are added to <paramref name="outline"/>.</summary>
     public static List<PageContent> Pages(HDocument document, FontResolver fonts, Shaper shaper, List<OutlineEntry> outline,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default, bool storedLines = true)
     {
         var guard = new LayoutGuard(DocumentLimits.Default, cancellationToken);
-        var layouter = new ParagraphLayouter(fonts, shaper, document.Kinsoku);
+        var layouter = new ParagraphLayouter(fonts, shaper, document.Kinsoku, storedLines);
         var numbers = new ListNumbers();
         var pages = new List<PageContent>();
         PageContent? page = null;

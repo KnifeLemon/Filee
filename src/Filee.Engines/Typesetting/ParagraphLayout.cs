@@ -17,6 +17,13 @@
 //    the baseline at 0.85 × the text height); Word's multiple, and 한글 "글꼴에 어울리는 줄 높이", measure from the
 //    font's own ascent and descent (OS/2 win metrics, as Word on Windows).
 //
+// 한글's own line layout: an HWPX that 한글 saved stores where each line of a paragraph starts and how high it is
+// (HLineLayout), and 한글 draws from it when it opens the file instead of breaking the lines again. Where the stored
+// starts convert to the model's text and every font of the paragraph is installed (by its name or another of its names),
+// the lines start where 한글's started and take their stored height and baseline; a stored line wider than the line
+// now (a font a little wider than where the file was saved) is squeezed between its characters, as 한글 squeezes it.
+// Lines Filee estimated are never used; otherwise the paragraph is broken again and ParagraphBox says why.
+//
 // Bidirectional text gets a simplified UBA: strong characters and numbers set the levels, neutrals between two runs of
 // one direction take it and the paragraph's otherwise; parts are reordered by level (rule L2). The full algorithm
 // (explicit embeddings, isolates, brackets) is a later milestone, as is dictionary breaking for Thai and its kin.
@@ -47,11 +54,15 @@ internal sealed class ParagraphLayouter
     private readonly string? _notAtLineEnd;
     private readonly Dictionary<(string? Family, FontStyle Style, string Language), ResolvedFont> _resolved = [];
 
+    private readonly bool _storedLines;
+
     /// <param name="kinsoku">The document's own characters forbidden at a line's start or end (Word settings).</param>
-    public ParagraphLayouter(FontResolver fonts, Shaper shaper, IReadOnlyList<HKinsoku>? kinsoku = null)
+    /// <param name="storedLines">Lay paragraphs out on 한글's stored lines where they can be used.</param>
+    public ParagraphLayouter(FontResolver fonts, Shaper shaper, IReadOnlyList<HKinsoku>? kinsoku = null, bool storedLines = true)
     {
         _fonts = fonts;
         _shaper = shaper;
+        _storedLines = storedLines;
         if (kinsoku is { Count: > 0 })
         {
             _notAtLineStart = string.Concat(kinsoku.Select(k => k.NotAtLineStart));
@@ -90,6 +101,22 @@ internal sealed class ParagraphLayouter
             format.Layout?.LineHeight ?? HLineHeight.From(format.LineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, 160)),
             format.Layout?.FontLineHeight == true);
         var mark = MarkStyle(paragraph, language);
+        var before = (format.Before ?? 0) / 100f;
+        var after = (format.After ?? 0) / 100f;
+
+        var (stored, ignored) = _storedLines ? StoredStarts(paragraph, text, marker, items) : (null, null);
+        if (stored is not null)
+        {
+            var segments = paragraph.Lines!.Segments;
+            var storedLines = new List<LineBox>();
+            for (var i = 0; i < stored.Count; i++)
+            {
+                var end = i + 1 < stored.Count ? stored[i + 1] : text.Length;
+                var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
+                storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], segments[0])));
+            }
+            return new ParagraphBox(before, after, storedLines) { StoredLines = true };
+        }
 
         var lines = new List<LineBox>();
         var start = 0;
@@ -108,7 +135,37 @@ internal sealed class ParagraphLayouter
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
             lines.Add(Place(source, items, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
-        return new ParagraphBox((format.Before ?? 0) / 100f, (format.After ?? 0) / 100f, lines);
+        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored };
+    }
+
+    /// <summary>
+    /// Where the stored lines of <paramref name="paragraph"/> start in <paramref name="text"/> (the first at 0), or null
+    /// with the reason they can't be used (null too when there are none).
+    /// </summary>
+    private (List<int>? Starts, string? Ignored) StoredStarts(HParagraph paragraph, string text, string? marker, List<Item> items)
+    {
+        if (paragraph.Lines is not { } lines)
+            return (null, null);
+        if (lines.Estimated)
+            return (null, "the stored lines were estimated by Filee");
+        if (lines.Starts is not { Count: > 0 } positions || positions.Count != lines.Segments.Count || positions[0] != 0)
+            return (null, "the stored line starts don't map to the text (a table splits the paragraph, or one falls inside an object)");
+        foreach (var item in items)
+        {
+            if (item.Kind == ItemKind.Text && item.Style.Family is { } family && _fonts.Find(family, item.Style.Style) is null)
+                return (null, $"the font {family} is not installed");
+        }
+        // A list item's number and the tab or space after it come first in the text, not in 한글's.
+        var shift = marker is { Length: > 0 } ? marker.Length + 1 : 0;
+        var starts = new List<int> { 0 };
+        foreach (var position in positions.Skip(1))
+        {
+            var start = position + shift;
+            if (start <= starts[^1] || start > text.Length)
+                return (null, "the stored line starts are out of order");
+            starts.Add(start);
+        }
+        return (starts, null);
     }
 
     /// <summary>The paragraph settings the line steps share (lengths in points).</summary>
@@ -389,8 +446,9 @@ internal sealed class ParagraphLayouter
         public float Width { get; set; }
     }
 
+    /// <param name="stored">The stored line this line follows, with the paragraph's first one, or null.</param>
     private LineBox Place(ParagraphText source, List<Item> items, int start, int end, bool forced, bool firstLine, float width, Settings settings,
-        TextStyle mark)
+        TextStyle mark, (HLineSegment Line, HLineSegment First)? stored = null)
     {
         var text = source.Text;
         var contentEnd = end;
@@ -398,6 +456,14 @@ internal sealed class ParagraphLayouter
             contentEnd--;
         var indent = firstLine ? settings.FirstLine : 0;
         var available = width - settings.Left - settings.Right - indent;
+        // A stored line that starts or ends off the paragraph's first one goes around an object.
+        var shiftLeft = 0f;
+        if (stored is var (line, first))
+        {
+            shiftLeft = (line.HorizontalPosition - first.HorizontalPosition) / 100f;
+            var shiftRight = (first.HorizontalPosition + first.HorizontalSize - line.HorizontalPosition - line.HorizontalSize) / 100f;
+            available -= shiftLeft + shiftRight;
+        }
 
         // The line's parts, shaped with their context, and each cluster's advance.
         var parts = new List<Part>();
@@ -470,7 +536,14 @@ internal sealed class ParagraphLayouter
             align = HAlign.Left;
         var clusterIndices = Enumerable.Range(start, contentEnd - start).Where(i => starts[i - start]).ToList();
         var spaces = clusterIndices.Where(i => IsStretchable(text[i])).ToList();
-        if (settings.Wrap == HLineWrap.Squeeze && extra < 0 && natural > 0)
+        if (stored is not null && extra < 0 && clusterIndices.Count > 1)
+        {
+            // 한글 squeezes a stored line that no longer fits between all of its characters.
+            foreach (var i in clusterIndices.Take(clusterIndices.Count - 1))
+                gaps[i - start] = extra / (clusterIndices.Count - 1);
+            extra = 0;
+        }
+        else if (settings.Wrap == HLineWrap.Squeeze && extra < 0 && natural > 0)
         {
             squeeze = available / natural;
             extra = 0;
@@ -504,7 +577,7 @@ internal sealed class ParagraphLayouter
             _ => 0f,
         });
         // A right-to-left paragraph's start indent is on the right.
-        var lineLeft = settings.RightToLeft ? settings.Right : settings.Left + indent;
+        var lineLeft = (settings.RightToLeft ? settings.Right : settings.Left + indent) + shiftLeft;
 
         // Glyph positions, parts in visual order; the runs are kept in logical order, so the PDF's text reads in the
         // order it was written whatever the direction.
@@ -557,7 +630,9 @@ internal sealed class ParagraphLayouter
             }
         }
 
-        var (height, baseline, textHeight) = LineHeight(parts, settings, mark);
+        var (height, baseline, textHeight) = stored is var (segment, _)
+            ? ((segment.VerticalSize + segment.Spacing) / 100f, segment.Baseline / 100f, segment.TextHeight / 100f)
+            : LineHeight(parts, settings, mark);
         var bookmarks = source.Bookmarks.Where(b => b.Position >= start && (b.Position < end || b.Position == end && end == text.Length))
             .Select(b => (lineLeft + offset, b.Name)).ToList();
         return new LineBox

@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Text;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Typesetting;
 using ImageMagick;
 using static Filee.Engines.Tests.DocxBuilder;
 
@@ -225,6 +226,46 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         var estimated = Paragraphs(ReadHwpx(Package(Path.Combine(dir, "estimated.hwpx"), RefList(), section, estimatedLines: true)));
         Assert.True(estimated[1].Lines!.Estimated);
+    }
+
+    [Fact]
+    public void Hwpx_stored_line_starts_convert_from_hangul_positions_to_the_text()
+    {
+        // 한글 counts every control as eight positions (a tab, a footnote, an equation) and a line break as one; the
+        // model's text has one character for a tab and a line break, none for a note, and an equation's script.
+        static string Seg(int position) =>
+            $"<hp:lineseg textpos=\"{position}\" vertpos=\"0\" vertsize=\"1000\" textheight=\"1000\" baseline=\"850\" spacing=\"600\" horzpos=\"0\" horzsize=\"42520\" flags=\"0\"/>";
+        static string Lines(params int[] positions) => $"<hp:linesegarray>{string.Concat(positions.Select(Seg))}</hp:linesegarray>";
+        var runs = Hr(Ht("가나<hp:tab width=\"4000\" leader=\"0\" type=\"1\"/>다") +
+                      $"<hp:ctrl><hp:footNote number=\"1\" suffixChar=\"41\" instId=\"1\">{SubList(Hp(Hr(Ht(" 주석"))))}</hp:footNote></hp:ctrl>" +
+                      Ht("라<hp:lineBreak/>마") +
+                      "<hp:equation id=\"9\" zOrder=\"0\" numberingType=\"EQUATION\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" version=\"Equation Version 60\" baseLine=\"85\" textColor=\"#000000\" baseUnit=\"1000\" lineMode=\"CHAR\" font=\"HYhwpEQ\"><hp:script>x over y</hp:script></hp:equation>" +
+                      Ht("바사"));
+        var section = Hp(runs, lines: Lines(0, 10, 19, 21, 22, 30)) + Hp(runs, lines: Lines(0, 25)) + Hp(Hr(Ht("짧은")), lines: Lines(0, 2));
+
+        var paragraphs = Paragraphs(ReadHwpx(Package(Path.Combine(fx.NewFolder(), "starts.hwpx"), RefList(), section)));
+
+        Assert.Equal("가나\t다라" + ParagraphText.LineSeparator + "마x over y바사", ParagraphText.From(paragraphs[1]).Text);
+        Assert.Equal([0, 3, 4, 6, 7, 15], paragraphs[1].Lines!.Starts!);
+        Assert.Null(paragraphs[2].Lines!.Starts); // a line can't start inside the equation
+        Assert.Equal([0, 2], paragraphs[3].Lines!.Starts!); // the end of the text
+    }
+
+    [Fact]
+    public void Hwpx_stored_line_starts_are_dropped_when_a_table_splits_the_paragraph()
+    {
+        var table =
+            "<hp:tbl id=\"20\" zOrder=\"0\" numberingType=\"TABLE\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" pageBreak=\"CELL\" repeatHeader=\"0\" rowCnt=\"1\" colCnt=\"1\" cellSpacing=\"0\" borderFillIDRef=\"1\" noAdjust=\"0\">" +
+            "<hp:sz width=\"6000\" widthRelTo=\"ABSOLUTE\" height=\"1000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" + FloatingPos + "<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/>" +
+            "<hp:tr><hp:tc name=\"\" header=\"0\" hasMargin=\"0\" protect=\"0\" editable=\"0\" dirty=\"0\" borderFillIDRef=\"1\">" + SubList(Hp(Hr(Ht("칸")))) +
+            "<hp:cellAddr colAddr=\"0\" rowAddr=\"0\"/><hp:cellSpan colSpan=\"1\" rowSpan=\"1\"/><hp:cellSz width=\"6000\" height=\"1000\"/><hp:cellMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:tc></hp:tr></hp:tbl>";
+        const string Lines =
+            "<hp:linesegarray><hp:lineseg textpos=\"0\" vertpos=\"0\" vertsize=\"1000\" textheight=\"1000\" baseline=\"850\" spacing=\"600\" horzpos=\"0\" horzsize=\"42520\" flags=\"0\"/></hp:linesegarray>";
+
+        var paragraphs = Paragraphs(ReadHwpx(Package(Path.Combine(fx.NewFolder(), "split.hwpx"), RefList(), Hp(Hr(Ht("앞") + table + Ht("뒤")), lines: Lines))));
+
+        Assert.NotNull(paragraphs[1].Lines);
+        Assert.Null(paragraphs[1].Lines!.Starts);
     }
 
     [Fact]
