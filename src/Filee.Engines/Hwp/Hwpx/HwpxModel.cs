@@ -196,6 +196,15 @@ internal sealed class HTable : HBlock
     /// </summary>
     public bool OpensParagraph { get; set; }
 
+    /// <summary>
+    /// 한글's stored line of a paragraph that holds nothing but the table, as a character (treatAsChar): where the
+    /// table's line is and how far it moves the text on (its height and line spacing). Only the layout engine uses it.
+    /// </summary>
+    public HLineSegment? Line { get; set; }
+
+    /// <summary>한글 lays the table out like a character of its paragraph (treatAsChar). Only the layout engine uses it.</summary>
+    public bool AsCharacter { get; set; }
+
     /// <summary>Borders used where a cell does not define its own; null = thin solid grid.</summary>
     public HBorders? Borders { get; set; }
 
@@ -236,6 +245,9 @@ internal sealed class HCell
     public int ColSpan { get; set; } = 1;
     public HVerticalAlign VerticalAlign { get; set; }
     public string? Fill { get; set; }
+
+    /// <summary>A picture filling the cell, stretched over it (한글 imgBrush). Read for layout only; the writers have none.</summary>
+    public string? FillPicture { get; set; }
     public HBorders? Borders { get; set; }
     /// <summary>Cell-specific padding; null inherits the table's padding.</summary>
     public HInsets? CellMargin { get; set; }
@@ -351,6 +363,13 @@ internal sealed class HImage(string path) : HInline
 
     /// <summary>Parts of the picture cut away; null = the whole picture.</summary>
     public HCrop? Crop { get; set; }
+
+    /// <summary>
+    /// Space between the object's box (Width × Height) and the picture in it (한글 inMargin), and the outline drawn
+    /// around the box. Read for layout only; the writers write neither.
+    /// </summary>
+    public HInsets Margin { get; set; }
+    public HBorder Line { get; set; } = HBorder.None;
 
     /// <summary>Rotation and mirroring; null = none.</summary>
     public HTransform? Transform { get; set; }

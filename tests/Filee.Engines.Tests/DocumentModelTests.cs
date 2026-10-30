@@ -294,6 +294,78 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Hwpx_table_that_is_all_its_paragraph_as_a_character_keeps_the_paragraphs_line()
+    {
+        var table =
+            "<hp:tbl id=\"20\" zOrder=\"0\" numberingType=\"TABLE\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" pageBreak=\"CELL\" repeatHeader=\"0\" rowCnt=\"1\" colCnt=\"1\" cellSpacing=\"0\" borderFillIDRef=\"1\" noAdjust=\"0\">" +
+            "<hp:sz width=\"6000\" widthRelTo=\"ABSOLUTE\" height=\"1000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" +
+            "<hp:pos treatAsChar=\"1\" affectLSpacing=\"0\" flowWithText=\"1\" allowOverlap=\"0\" holdAnchorAndSO=\"0\" vertRelTo=\"PARA\" horzRelTo=\"PARA\" vertAlign=\"TOP\" horzAlign=\"LEFT\" vertOffset=\"0\" horzOffset=\"0\"/>" +
+            "<hp:outMargin left=\"283\" right=\"283\" top=\"283\" bottom=\"283\"/>" +
+            "<hp:tr><hp:tc name=\"\" header=\"0\" hasMargin=\"0\" protect=\"0\" editable=\"0\" dirty=\"0\" borderFillIDRef=\"1\">" + SubList(Hp(Hr(Ht("칸")))) +
+            "<hp:cellAddr colAddr=\"0\" rowAddr=\"0\"/><hp:cellSpan colSpan=\"1\" rowSpan=\"1\"/><hp:cellSz width=\"6000\" height=\"1000\"/><hp:cellMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:tc></hp:tr></hp:tbl>";
+        const string Lines =
+            "<hp:linesegarray><hp:lineseg textpos=\"0\" vertpos=\"1200\" vertsize=\"1566\" textheight=\"1566\" baseline=\"1331\" spacing=\"-600\" horzpos=\"0\" horzsize=\"42520\" flags=\"0\"/></hp:linesegarray>";
+
+        var blocks = ReadHwpx(Package(Path.Combine(fx.NewFolder(), "line.hwpx"), RefList(), Hp(Hr(table + Ht("")), lines: Lines) + Hp(Hr(Ht("다음"))))).Sections[0].Blocks;
+
+        // The table's line (its place, its height with the outer margins, the negative line spacing) stays with it, and
+        // the next 한글 paragraph is not taken for the rest of the table's.
+        var read = Assert.Single(blocks.OfType<HTable>());
+        Assert.True(read.AsCharacter);
+        Assert.Equal((1200, 1566, -600), (read.Line!.Value.VerticalPosition, read.Line.Value.VerticalSize, read.Line.Value.Spacing));
+        Assert.Null(TableLayout.Follower(blocks, blocks.IndexOf(read)));
+    }
+
+    [Fact]
+    public void Hwpx_pictures_keep_their_margin_and_outline_cells_their_picture_fill_and_sections_their_note_shapes()
+    {
+        var png = TinyPng();
+        var fill = "<hc:fillBrush><hc:imgBrush mode=\"TOTAL\"><hc:img binaryItemIDRef=\"image1\" bright=\"0\" contrast=\"0\" effect=\"REAL_PIC\" alpha=\"0\"/></hc:imgBrush></hc:fillBrush>";
+        var picture =
+            "<hp:pic id=\"5\" zOrder=\"1\" numberingType=\"PICTURE\" textWrap=\"SQUARE\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" href=\"\" groupLevel=\"0\" instid=\"6\" reverse=\"0\">" +
+            "<hp:offset x=\"0\" y=\"0\"/><hp:orgSz width=\"1000\" height=\"1000\"/><hp:curSz width=\"800\" height=\"800\"/><hp:flip horizontal=\"0\" vertical=\"0\"/>" +
+            "<hp:rotationInfo angle=\"0\" centerX=\"0\" centerY=\"0\" rotateimage=\"1\"/><hc:img binaryItemIDRef=\"image1\" bright=\"0\" contrast=\"0\" effect=\"REAL_PIC\" alpha=\"0\"/>" +
+            "<hp:lineShape color=\"#0000FF\" width=\"100\" style=\"SOLID\" endCap=\"ROUND\" headStyle=\"NORMAL\" tailStyle=\"NORMAL\" headfill=\"0\" tailfill=\"0\" headSz=\"SMALL_SMALL\" tailSz=\"SMALL_SMALL\" outlineStyle=\"NORMAL\" alpha=\"0\"/>" +
+            "<hp:inMargin left=\"100\" right=\"100\" top=\"100\" bottom=\"100\"/>" +
+            "<hp:sz width=\"1000\" widthRelTo=\"ABSOLUTE\" height=\"1000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" + FloatingPos + "<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:pic>";
+        var table =
+            "<hp:tbl id=\"20\" zOrder=\"0\" numberingType=\"TABLE\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" pageBreak=\"CELL\" repeatHeader=\"0\" rowCnt=\"1\" colCnt=\"1\" cellSpacing=\"0\" borderFillIDRef=\"1\" noAdjust=\"0\">" +
+            "<hp:sz width=\"6000\" widthRelTo=\"ABSOLUTE\" height=\"1000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" + FloatingPos + "<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/>" +
+            "<hp:tr><hp:tc name=\"\" header=\"0\" hasMargin=\"0\" protect=\"0\" editable=\"0\" dirty=\"0\" borderFillIDRef=\"2\">" + SubList(Hp(Hr(Ht("칸")))) +
+            "<hp:cellAddr colAddr=\"0\" rowAddr=\"0\"/><hp:cellSpan colSpan=\"1\" rowSpan=\"1\"/><hp:cellSz width=\"6000\" height=\"1000\"/><hp:cellMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:tc></hp:tr></hp:tbl>";
+        const string Notes =
+            "<hp:footNotePr><hp:autoNumFormat type=\"ROMAN_CAPITAL\" userChar=\"\" prefixChar=\"&lt;\" suffixChar=\"&gt;\" supscript=\"0\"/><hp:noteLine length=\"-2\" type=\"SOLID\" width=\"0.12 mm\" color=\"#000000\"/>" +
+            "<hp:noteSpacing betweenNotes=\"300\" belowLine=\"400\" aboveLine=\"500\"/><hp:numbering type=\"CONTINUOUS\" newNum=\"1\"/><hp:placement place=\"EACH_COLUMN\" beneathText=\"0\"/></hp:footNotePr>" +
+            "<hp:endNotePr><hp:autoNumFormat type=\"DIGIT\" userChar=\"\" prefixChar=\"\" suffixChar=\")\" supscript=\"0\"/><hp:noteLine length=\"0\" type=\"NONE\" width=\"0.12 mm\" color=\"#000000\"/>" +
+            "<hp:noteSpacing betweenNotes=\"0\" belowLine=\"567\" aboveLine=\"850\"/><hp:numbering type=\"CONTINUOUS\" newNum=\"1\"/><hp:placement place=\"END_OF_DOCUMENT\" beneathText=\"1\"/></hp:endNotePr>";
+        var note = "<hp:ctrl><hp:footNote number=\"7\" suffixChar=\"41\" instId=\"9\">" + SubList(Hp(Hr(Ht("주")))) + "</hp:footNote></hp:ctrl>";
+
+        var path = Package(Path.Combine(fx.NewFolder(), "objects.hwpx"), RefList(BorderFill("2", "type=\"NONE\" width=\"0.1 mm\" color=\"#000000\"", fill)),
+            Hp(Hr(picture + Ht("글") + note)) + Hp(Hr(table + Ht(""))), Notes, picture: png);
+        var document = ReadHwpx(path, forLayout: true);
+
+        var image = Assert.Single(Inlines(document).OfType<HImage>());
+        Assert.Equal(new HInsets(100, 100, 100, 100), image.Margin);
+        Assert.Equal(("#0000FF", HBorderStyle.Solid), (image.Line.Color, image.Line.Style));
+        var cell = document.Sections[0].Blocks.OfType<HTable>().Single().Rows[0].Cells[0];
+        Assert.True(File.Exists(cell.FillPicture));
+        var section = document.Sections[0];
+        Assert.Equal((new HNoteFormat("ROMAN_CAPITAL", "<", ">", false), -2, 300, 400, 500), (section.Footnotes.Format, section.Footnotes.Line, section.Footnotes.Between, section.Footnotes.Below, section.Footnotes.Above));
+        Assert.Equal((0, true), (section.Endnotes.Line, section.Endnotes.BeneathText));
+        Assert.Equal(7, Assert.Single(Inlines(document).OfType<HNote>()).Number);
+    }
+
+    private static IEnumerable<HInline> Inlines(HDocument document) => Paragraphs(document).SelectMany(p => HDocumentWalker.InlinesOf(p.Inlines));
+
+    private static byte[] TinyPng()
+    {
+        using var bitmap = new SkiaSharp.SKBitmap(4, 4);
+        bitmap.Erase(SkiaSharp.SKColors.Red);
+        using var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+        return data.ToArray();
+    }
+
+    [Fact]
     public void Hwpx_sections_keep_their_grid_and_tables_their_page_break_mode()
     {
         var table =

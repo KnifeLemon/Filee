@@ -794,7 +794,7 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     and stand on the baseline; links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
     with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
-  - Floating objects and master pages are later items.
+  - Master pages are a later item.
 - **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
   footnotes and endnotes*):
   - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;
@@ -828,20 +828,47 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     nested tables included; lines on 한글's stored layout take their stored place in the cell. A row is as high as its
     own height or its tallest single-row cell, whose height is its content without the spacing below its last line (as
     한글 sizes cells); a cell spanning rows stretches its last row. Content sits at the top, middle or bottom.
-  - Drawing: fills, content, then borders (the cell's, the table's, else a thin grid) as solid, dashed, dotted, dash-dot
-    or double lines at their width; captions under the table.
+  - Drawing: fills (a colour, or a picture stretched over the cell: 한글 imgBrush), content, then borders (the cell's,
+    the table's, else a thin grid) as solid, dashed, dotted, dash-dot or double lines at their width; captions under
+    the table.
   - Pages: rows bound by spanning cells move together; a table that must not split (한글 나누지 않음) moves whole when it
     fits on a page; others split between rows (한글 셀 단위로 나눔) or, where rows may split (한글 나눔 and sources that
     don't say), inside a row's cells unless the row must not split; header rows repeat on every page.
   - 한글's placement: the outer margin (`hp:outMargin`) around the table, the offset of a table placed at its paragraph
     (`vertOffset`), the paragraph a table sits in as a character (the model's empty part before it takes no line; the
-    table takes the paragraph's stored place and line spacing), and the text after a table that starts its paragraph
-    (its stored lines still map, `HTable.OpensParagraph`).
+    table takes the paragraph's stored place and line spacing), the text after a table that starts its paragraph (its
+    stored lines still map, `HTable.OpensParagraph`), and a table that is all its paragraph holds as a character: it
+    takes that line's stored place, height and line spacing (`HTable.Line`; 한글 often stacks such tables with a negative
+    spacing). A table as high as 한글's line for it keeps the page on 한글's stored places.
   - Measured against 한글's own PDFs (exported by 한글 automation) of the HWPX files attached to Filee's issues: the
     form of #49 (행정정보동의서) breaks every line where 한글 does, on one page as 한글, every line within 0.8 pt of
     한글's; the other form (강사카드) now takes one page like 한글's, 97% of its lines the same.
   - Measured: those formats compose without losing text (read back from the PDF), and some 650 pages of Korean text
     compose in about 6 seconds (the item asks for 640 pages in 30 s; rhwp took some 48 minutes, #127).
+- **Floating objects** (`FloatingObjects.cs`, GitHub Project 4 item *Layout engine: floating objects*):
+  - Placement as 한글 places objects, measured on 한글's PDFs of written test files: across, against the paper, the text
+    area between the margins (PAGE), the column or the paragraph within its indents; LEFT from the left edge, RIGHT the
+    offset in from the right edge, CENTER from the centre; INSIDE and OUTSIDE by the page's side. Down, against the
+    paper or the body (PAGE) the same way, or from the top of the paragraph's first line (PARA: whatever the alignment,
+    never above it).
+  - Drawing: pictures with their crop inside their inner margin (`hp:inMargin`) under their outline; rectangles
+    (rounded), ellipses, lines, polygons, curves (smooth through their points, as 한글 draws them) and arcs
+    (counterclockwise from the first axis point) with a colour or gradient fill and their outline style; rotation and
+    mirroring about the centre; text boxes as their shape with their paragraphs and tables inside their padding, at
+    the top, middle or bottom. Objects behind the text are drawn under the page's text, the others over it, by z-order.
+  - Where: objects of body paragraphs on their page; of table cells, headers, footers and text boxes in their list
+    (against the list, or against the paper or page for those that say so), a cell growing and a text box centring to
+    hold the objects placed at their paragraph. Pictures, shapes and text boxes laid out like characters take their
+    place on the line.
+  - Text wrap: lines on 한글's stored layout already leave the room 한글 left. Lines laid out anew go beside objects
+    text goes around (on the object's wider side) and below objects text goes above and below; a paragraph's own
+    objects are placed before its lines for that.
+  - Measured against 한글's PDFs: every anchor of a written test file within 0.7 pt; hwplib's 곡선·호 sample as 한글
+    draws it; hwpxlib's rectangle-in-rectangle sample with every line where 한글 has it (SSIM 0.91); a 보도자료 from
+    issue files with the ministry emblem in its header cell and every body line within 0.4 pt; a stamped certificate
+    with its seals (against the paper, beside the paragraph, in a table cell over "(인)") where 한글 puts them.
+  - Not yet: pictures' effects (shadow, glow, soft edge, reflection), objects' captions, text in a text box turned
+    with it, text on both sides of an object, and the distance objects keep from text (outer margins).
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
 radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as

@@ -24,7 +24,7 @@ internal sealed partial class HwpxReader
     private readonly Dictionary<string, HCharFormat> _charFormats = new(StringComparer.Ordinal);
     private readonly Dictionary<string, ParaShape> _paraShapes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, HNumbering?> _numberings = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (HBorders Borders, string? Fill)?> _borderFills = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (HBorders Borders, string? Fill, string? Picture)?> _borderFills = new(StringComparer.Ordinal);
 
     /// <summary>A paragraph shape: format plus the list or outline it belongs to.</summary>
     /// <param name="HeadingType">OWPML heading type: NONE, OUTLINE, NUMBER or BULLET.</param>
@@ -192,7 +192,7 @@ internal sealed partial class HwpxReader
             Condense: Int(paraPr, "condense"));
 
         var border = HParaBorder.None;
-        if (Child(paraPr, "border") is { } element && BorderFill(Attr(element, "borderFillIDRef")) is (var borders, var fill))
+        if (Child(paraPr, "border") is { } element && BorderFill(Attr(element, "borderFillIDRef")) is (var borders, var fill, _))
         {
             border = new HParaBorder(borders, fill,
                 new HInsets(Int(element, "offsetLeft"), Int(element, "offsetRight"), Int(element, "offsetTop"), Int(element, "offsetBottom")),
@@ -355,21 +355,26 @@ internal sealed partial class HwpxReader
 
     // ───────────────────────── Borders and fills ─────────────────────────
 
-    /// <summary>Borders and background of a borderFill id; null when the id is unknown.</summary>
-    private (HBorders Borders, string? Fill)? BorderFill(string? id)
+    /// <summary>
+    /// Borders and background of a borderFill id; null when the id is unknown. Read for layout, a picture fill
+    /// (hc:imgBrush) comes as the picture's file.
+    /// </summary>
+    private (HBorders Borders, string? Fill, string? Picture)? BorderFill(string? id)
     {
         if (id is null)
             return null;
         if (_borderFills.TryGetValue(id, out var cached))
             return cached;
-        (HBorders, string?)? result = null;
+        (HBorders, string?, string?)? result = null;
         if (_borderFillElements.TryGetValue(id, out var element))
         {
             HBorder Edge(string name) => Border(Child(element, name));
             var brush = Child(element, "fillBrush");
+            var picture = _forLayout ? ExtractBinary(Attr(Child(Child(brush, "imgBrush"), "img"), "binaryItemIDRef")) : null;
             result = (new HBorders(Edge("leftBorder"), Edge("rightBorder"), Edge("topBorder"), Edge("bottomBorder")),
                 Color(Attr(Child(brush, "winBrush"), "faceColor"))
-                ?? Children(Child(brush, "gradation"), "color").Select(c => Color(Attr(c, "value"))).FirstOrDefault(c => c is not null));
+                ?? Children(Child(brush, "gradation"), "color").Select(c => Color(Attr(c, "value"))).FirstOrDefault(c => c is not null),
+                picture);
         }
         return _borderFills[id] = result;
     }

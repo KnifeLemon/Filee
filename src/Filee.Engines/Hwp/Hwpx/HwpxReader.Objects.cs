@@ -136,6 +136,10 @@ internal sealed partial class HwpxReader
                 Crop = Crop(pic),
                 Transform = Transform(pic),
                 ZOrder = ZOrder(pic),
+                Margin = Child(pic, "inMargin") is { } margin
+                    ? new HInsets(Int(margin, "left"), Int(margin, "right"), Int(margin, "top"), Int(margin, "bottom"))
+                    : default,
+                Line = LineShape(Child(pic, "lineShape")),
             }
             : null;
     }

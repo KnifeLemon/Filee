@@ -101,7 +101,7 @@ internal sealed partial class HwpxReader
         {
             Sink.Add(inline);
             // The layout's text has a character for each of these (Typesetting/ParagraphText.cs).
-            if (inline is HTab or HLineBreak or HImage { Anchor: null })
+            if (inline is HTab or HLineBreak or HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null })
                 _model++;
         }
 
@@ -243,9 +243,12 @@ internal sealed partial class HwpxReader
             }
         }
         builder.Finish();
-        // The stored lines belong to the whole 한글 paragraph: they go with its first part when a table splits it.
+        // The stored lines belong to the whole 한글 paragraph: they go with its first part when a table splits it. A
+        // table that is all the paragraph holds, as a character, is its line.
         if (lines is not null && output.Skip(first).OfType<HParagraph>().FirstOrDefault() is { } part)
             part.Lines = lines with { Starts = builder.Starts(lines.Segments.Select(s => s.TextPosition)) };
+        if (lines is not null && output.Count == first + 1 && output[first] is HTable { OpensParagraph: true, AsCharacter: true } opening)
+            opening.Line = lines.Segments[0];
     }
 
     /// <summary>The layout cache 한글 stores with a paragraph (hp:linesegarray); null when it holds no lines.</summary>
@@ -593,7 +596,8 @@ internal sealed partial class HwpxReader
             },
         };
         var pos = Child(tbl, "pos");
-        if (pos is not null && !Flag(pos, "treatAsChar"))
+        table.AsCharacter = pos is null || Flag(pos, "treatAsChar");
+        if (!table.AsCharacter)
         {
             table.Align = Attr(pos, "horzAlign") switch
             {
@@ -636,7 +640,7 @@ internal sealed partial class HwpxReader
                     VerticalAlign = VerticalAlign(Attr(subList, "vertAlign")),
                 };
                 if (BorderFill(Attr(tc, "borderFillIDRef")) is { } borderFill)
-                    (cell.Borders, cell.Fill) = borderFill;
+                    (cell.Borders, cell.Fill, cell.FillPicture) = borderFill;
                 cell.Blocks.AddRange(ReadSubList(subList));
                 row.Cells.Add(cell);
 

@@ -38,6 +38,9 @@ internal sealed class CellBox
     public required HVerticalAlign VerticalAlign { get; init; }
     public required HBorders Borders { get; init; }
     public SKColor? Fill { get; init; }
+
+    /// <summary>A picture stretched over the cell (한글 picture fill), over its colour.</summary>
+    public string? FillPicture { get; init; }
     public required IReadOnlyList<Piece> Content { get; init; }
 
     /// <summary>Height of the content.</summary>
@@ -88,7 +91,8 @@ internal sealed record TableBox(float Offset, float Width, IReadOnlyList<RowBox>
 }
 
 /// <summary>Lays out tables and paragraph lists for a layout job.</summary>
-internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragraph, bool fitToWidth)
+/// <param name="frame">The page areas floating objects relative to the paper or the page are placed in; null places them in the list.</param>
+internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragraph, bool fitToWidth, Func<AnchorFrame>? frame = null)
 {
     /// <summary>한글's default cell padding: 1.8 mm left and right, 0.5 mm top and bottom (HWPUNIT).</summary>
     private static readonly HInsets DefaultPadding = new(510, 510, 141, 141);
@@ -102,11 +106,18 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
 
     /// <summary>
     /// The blocks of a paragraph list stacked from the top in a column <paramref name="width"/> wide. Lines on 한글's
-    /// stored layout take their stored place while the list so far follows it, as on a page.
+    /// stored layout take their stored place while the list so far follows it, as on a page. Floating objects come
+    /// first (behind the text) or last (in front of it).
     /// </summary>
     public List<Piece> Stack(IReadOnlyList<HBlock> blocks, float width)
     {
         var pieces = new List<Piece>();
+        var (behind, front) = (new List<(int, Piece)>(), new List<(int, Piece)>());
+        void Objects(HParagraph p, float top)
+        {
+            foreach (var (order, piece, under) in FloatingObjects.Pieces(p, top, width, frame?.Invoke(), Stack))
+                (under ? behind : front).Add((order, piece));
+        }
         float y = 0;
         var inStep = true;
         var skipBefore = false;
@@ -122,10 +133,14 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     var box = paragraph(p, width);
                     y += skipBefore ? 0 : box.SpaceBefore;
                     skipBefore = false;
+                    if (box.Lines.Count == 0)
+                        Objects(p, y);
                     foreach (var line in box.Lines)
                     {
                         if (box.StoredLines && inStep && line.StoredTop is { } top)
                             y = Math.Max(y, top);
+                        if (line == box.Lines[0])
+                            Objects(p, y);
                         pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
                         y += line.Height;
                     }
@@ -136,10 +151,18 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     _depth++;
                     try
                     {
-                        var line = holder?.Lines?.Segments.FirstOrDefault();
-                        if (holder is not null)
-                            y = inStep && line is { } stored ? Math.Max(y, stored.VerticalPosition / 100f) : y + (holder.Format.Before ?? 0) / 100f;
-                        else if (Follower(blocks, i) is not null)
+                        // The 한글 line the table is: the holder's, or the table's own when it is all its paragraph holds.
+                        var follower = Follower(blocks, i);
+                        var line = holder?.Lines?.Segments.FirstOrDefault() ?? (follower is null ? t.Line : null);
+                        var lineTop = y;
+                        if (holder is not null || line is not null)
+                        {
+                            y = inStep && line is { } stored ? Math.Max(y, stored.VerticalPosition / 100f) : y + (holder?.Format.Before ?? 0) / 100f;
+                            lineTop = y;
+                            if (holder is not null)
+                                Objects(holder, y);
+                        }
+                        else if (follower is not null)
                         {
                             // The table starts its 한글 paragraph, placed from the paragraph's top by its offset; 한글
                             // puts the paragraph's text right under it, without the space before.
@@ -160,10 +183,14 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                             pieces.Add(piece with { Top = y + piece.Top });
                         y += table.Caption.Count == 0 ? 0 : table.Caption.Max(p => p.Top + p.Height);
                         y += margin.Bottom / 100f;
-                        if (holder is not null)
-                            y += (line?.Spacing ?? 0) / 100f + (holder.Format.After ?? 0) / 100f;
+                        // Filee's rows are not 한글's unless the table is as high as 한글's line for it.
+                        var kept = line is { } own && Math.Abs(y - lineTop - own.VerticalSize / 100f) <= 1;
+                        if (line is { } rest)
+                            y = Math.Max(y, lineTop + rest.VerticalSize / 100f) + rest.Spacing / 100f + (holder?.Format.After ?? 0) / 100f;
+                        else if (holder is not null)
+                            y += (holder.Format.After ?? 0) / 100f;
                         holder = null;
-                        inStep = false;
+                        inStep &= kept;
                     }
                     finally
                     {
@@ -172,6 +199,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                     break;
             }
         }
+        pieces.InsertRange(0, behind.OrderBy(o => o.Item1).Select(o => o.Item2));
+        pieces.AddRange(front.OrderBy(o => o.Item1).Select(o => o.Item2));
         return pieces;
     }
 
@@ -185,7 +214,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
 
     /// <summary>The paragraph after the table at <paramref name="index"/> when it is the rest of the 한글 paragraph the table starts.</summary>
     public static HParagraph? Follower(IReadOnlyList<HBlock> blocks, int index) =>
-        blocks[index] is HTable { OpensParagraph: true } && index + 1 < blocks.Count && blocks[index + 1] is HParagraph next ? next : null;
+        blocks[index] is HTable { OpensParagraph: true, Line: null } && index + 1 < blocks.Count && blocks[index + 1] is HParagraph next ? next : null;
 
     // ───────────────────────── Tables ─────────────────────────
 
@@ -220,6 +249,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 VerticalAlign = cell.VerticalAlign,
                 Borders = cell.Borders ?? table.Borders ?? HBorders.Grid,
                 Fill = ParagraphText.Color(cell.Fill),
+                FillPicture = cell.FillPicture,
                 Content = Stack(cell.Blocks, contentWidth),
             });
         }
@@ -363,6 +393,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         VerticalAlign = HVerticalAlign.Top,
         Borders = cell.Borders,
         Fill = cell.Fill,
+        FillPicture = cell.FillPicture,
         Content = content,
     };
 
@@ -384,7 +415,7 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 cells.Add((cell, new SKRect(x + cell.X, tops[r], x + cell.X + cell.Width, bottom)));
             }
         }
-        var fills = cells.Where(c => c.Cell.Fill is not null).ToList();
+        var fills = cells.Where(c => c.Cell.Fill is not null || c.Cell.FillPicture is not null).ToList();
         if (fills.Count > 0)
         {
             page.Draw(canvas =>
@@ -392,8 +423,16 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                 using var paint = new SKPaint { Style = SKPaintStyle.Fill, IsAntialias = false };
                 foreach (var (cell, area) in fills)
                 {
-                    paint.Color = cell.Fill!.Value;
-                    canvas.DrawRect(area, paint);
+                    if (cell.Fill is { } color)
+                    {
+                        paint.Color = color;
+                        canvas.DrawRect(area, paint);
+                    }
+                    if (cell.FillPicture is { } path && File.Exists(path) && SKImage.FromEncodedData(path) is { } image)
+                    {
+                        using (image)
+                            canvas.DrawImage(image, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+                    }
                 }
             });
         }

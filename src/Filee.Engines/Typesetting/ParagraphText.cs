@@ -71,19 +71,19 @@ internal sealed class ParagraphText
     /// <summary>Size of text whose format leaves it open, in points (한글's default).</summary>
     public const float DefaultSize = 10;
 
-    private ParagraphText(string text, List<TextSpan> spans, List<(int Position, string Name)> bookmarks, Dictionary<int, HImage> pictures,
+    private ParagraphText(string text, List<TextSpan> spans, List<(int Position, string Name)> bookmarks, Dictionary<int, HInline> pictures,
         Dictionary<int, HNote> notes, List<(int Position, int Length)> insertions)
     {
         Text = text;
         Spans = spans;
         Bookmarks = bookmarks;
-        Pictures = pictures;
+        Objects = pictures;
         Notes = notes;
         Insertions = insertions;
     }
 
-    /// <summary>Pictures laid out like characters, by the position of their U+FFFC.</summary>
-    public IReadOnlyDictionary<int, HImage> Pictures { get; }
+    /// <summary>Pictures, shapes and text boxes laid out like characters, by the position of their U+FFFC.</summary>
+    public IReadOnlyDictionary<int, HInline> Objects { get; }
 
     /// <summary>Notes by the text position of their reference.</summary>
     public IReadOnlyDictionary<int, HNote> Notes { get; }
@@ -117,7 +117,7 @@ internal sealed class ParagraphText
         var text = new StringBuilder();
         var spans = new List<TextSpan>();
         var bookmarks = new List<(int, string)>();
-        var pictures = new Dictionary<int, HImage>();
+        var pictures = new Dictionary<int, HInline>();
         var references = new Dictionary<int, HNote>();
         var insertions = new List<(int, int)>();
         var markerLength = 0;
@@ -163,8 +163,8 @@ internal sealed class ParagraphText
                     case HBookmark bookmark:
                         bookmarks.Add((text.Length, bookmark.Name));
                         break;
-                    case HImage { Anchor: null } picture:
-                        pictures[text.Length] = picture;
+                    case HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null }:
+                        pictures[text.Length] = inline;
                         Add(ObjectReplacement.ToString(), paragraph.MarkFormat, link);
                         break;
                     case HField field:

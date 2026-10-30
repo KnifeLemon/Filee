@@ -50,6 +50,12 @@ internal sealed class ParagraphLayouter
 
     private readonly FontResolver _fonts;
     private readonly Shaper _shaper;
+
+    /// <summary>
+    /// Lays out the content of a text box laid out like a character (TableLayout.Stack, which the page composer sets);
+    /// without it such a box is drawn empty.
+    /// </summary>
+    public Func<IReadOnlyList<HBlock>, float, List<Piece>> Stack { get; set; } = (_, _) => [];
     private readonly string? _notAtLineStart;
     private readonly string? _notAtLineEnd;
     private readonly Dictionary<(string? Family, FontStyle Style, string Language), ResolvedFont> _resolved = [];
@@ -74,8 +80,12 @@ internal sealed class ParagraphLayouter
     /// <param name="marker">The list item's number or bullet, or null.</param>
     /// <param name="fields">The text of page number and total pages fields; null leaves them out.</param>
     /// <param name="notes">The number a note reference shows; null leaves note references out.</param>
+    /// <param name="wrap">
+    /// Room objects take beside the lines laid out anew (text wrap): for a line at a height below the first line's top
+    /// and its height, how far in from the left and right it starts and ends. Null leaves the lines whole.
+    /// </param>
     public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null,
-        Func<HNote, string>? notes = null)
+        Func<HNote, string>? notes = null, Func<float, float, (float Left, float Right)>? wrap = null)
     {
         var format = paragraph.Format;
         var source = ParagraphText.From(paragraph, marker, fields, notes);
@@ -118,19 +128,24 @@ internal sealed class ParagraphLayouter
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
                 storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], segments[0])));
             }
-            return new ParagraphBox(before, after, storedLines) { StoredLines = true };
+            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker };
         }
 
         var lines = new List<LineBox>();
         var start = 0;
+        var y = 0f;
         do
         {
             var first = lines.Count == 0;
-            var available = width - paragraphLayout.Left - paragraphLayout.Right - (first ? paragraphLayout.FirstLine : 0);
-            var (end, forced) = paragraphLayout.Wrap == HLineWrap.Break
-                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(paragraphLayout, first, x), paragraphLayout.Condense)
+            var settings = paragraphLayout;
+            if (wrap?.Invoke(y, lines.Count > 0 ? lines[^1].Height : mark.FontSize * 1.6f) is var (left, right) && left + right > 0)
+                settings = settings with { Left = settings.Left + left, Right = settings.Right + right };
+            var available = width - settings.Left - settings.Right - (first ? settings.FirstLine : 0);
+            var (end, forced) = settings.Wrap == HLineWrap.Break
+                ? Fit(text, breaks, advances, starts, start, available, x => NextStop(settings, first, x), settings.Condense)
                 : (text.Length, true);
-            lines.Add(Place(source, items, start, end, forced, first, width, paragraphLayout, mark));
+            lines.Add(Place(source, items, start, end, forced, first, width, settings, mark));
+            y += lines[^1].Height;
             start = end;
         }
         while (start < text.Length);
@@ -138,7 +153,7 @@ internal sealed class ParagraphLayouter
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
             lines.Add(Place(source, items, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
-        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored };
+        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker };
     }
 
     /// <summary>
@@ -326,9 +341,9 @@ internal sealed class ParagraphLayouter
     private (float[] Advances, bool[] Starts) Measure(ParagraphText source, List<Item> items) =>
         Measure(source, items, (text, start, length, item) => Shape(text, item, start, length));
 
-    /// <summary>The size of the picture at <paramref name="position"/>; nothing for one whose size isn't known.</summary>
+    /// <summary>The size of the object at <paramref name="position"/>; nothing for a picture whose size isn't known.</summary>
     private static (float Width, float Height) ObjectSize(ParagraphText source, int position) =>
-        source.Pictures.TryGetValue(position, out var picture) && ParagraphText.PictureSize(picture) is { } size ? size : (0, 0);
+        source.Objects.TryGetValue(position, out var item) && FloatingObjects.Size(item) is { } size ? size : (0, 0);
 
     // ───────────────────────── Breaking ─────────────────────────
 
@@ -612,7 +627,7 @@ internal sealed class ParagraphLayouter
         var fills = new List<Decoration>();
         var strokes = new List<Decoration>();
         var links = new List<LineLink>();
-        var pictures = new List<LinePicture>();
+        var pictures = new List<LineObject>();
         var x = lineLeft + offset;
         foreach (var part in Visual(parts))
         {
@@ -620,8 +635,8 @@ internal sealed class ParagraphLayouter
             if (part.Item.Kind == ItemKind.Object)
             {
                 var (pictureWidth, pictureHeight) = (part.Size.Width * squeeze, part.Size.Height);
-                if (source.Pictures.TryGetValue(part.Start, out var picture) && pictureWidth > 0)
-                    pictures.Add(new LinePicture(new SKRect(x, -pictureHeight, x + pictureWidth, 0), picture.Path, picture.Crop));
+                if (source.Objects.TryGetValue(part.Start, out var item) && pictureWidth > 0)
+                    pictures.Add(new LineObject(new SKRect(x, -pictureHeight, x + pictureWidth, 0), item, Stack));
                 x += pictureWidth + gaps[part.Start - start] * squeeze;
             }
             else if (part.Item.Kind == ItemKind.Tab)
@@ -683,7 +698,7 @@ internal sealed class ParagraphLayouter
             Decorations = [.. fills, .. strokes],
             Links = links,
             Bookmarks = bookmarks,
-            Pictures = pictures,
+            Objects = pictures,
             Notes = [.. source.Notes.Where(n => n.Key >= start && n.Key < Math.Max(end, start + 1)).OrderBy(n => n.Key).Select(n => n.Value)],
             StoredTop = stored is var (top, _) ? top.VerticalPosition / 100f : null,
             Below = stored is var (spaced, _) ? spaced.Spacing / 100f : Math.Max(0, height - textHeight),
