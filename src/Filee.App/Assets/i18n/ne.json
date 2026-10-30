@@ -215,6 +215,7 @@
   "engine.tesseract.description": "स्क्यान र तस्बिरको पाठ पहिचान गर्छ (OCR): खोज्न मिल्ने PDF, DOCX, TXT।",
   "engine.vision.description": "macOS को आफ्नै पाठ पहिचानले स्क्यान र तस्बिरको पाठ पहिचान गर्छ (OCR): खोज्न मिल्ने PDF, DOCX, TXT। केही डाउनलोड गर्नु पर्दैन।",
   "engine.calibre.description": "दुर्लभ इ-पुस्तक ढाँचाहरू (LIT, LRF, CHM, PDB, RB…) र Kindle आउटपुट (MOBI, AZW3)।\nHWPX writer भन्दा माथि राख्दा, यसले इ-पुस्तकका PDF पनि बनाउँछ (लामो पुस्तकका लागि धेरै छिटो)।",
+  "engine.kugou.description": "KuGou Music को इन्क्रिप्ट गरिएको अडियो (.kgm, .kgma, .vpr)।\nबिल्ट-इन KGM V2 ले डिक्रिप्ट गरेर MP3, M4A, FLAC, WAV, OGG र अन्यमा रूपान्तरण गरिन्छ।",
   "engine.libreoffice.description": "पुराना र कम प्रचलित ढाँचाहरू पढ्छ: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nसाथै DOC, XLS, PPT, ODT, ODP, OpenDocument टेम्प्लेट र EMF को रूपमा सुरक्षित गर्दछ।",
   "profile.images": "छविहरू",
   "profile.pdf": "PDF",

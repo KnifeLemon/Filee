@@ -215,6 +215,7 @@
   "engine.tesseract.description": "يتعرّف على نص الصور والمستندات الممسوحة (OCR): PDF قابل للبحث وDOCX وTXT.",
   "engine.vision.description": "يتعرّف على نص الصور والمستندات الممسوحة بأداة التعرّف على النص المدمجة في macOS (OCR): PDF قابل للبحث وDOCX وTXT. لا حاجة إلى أي تنزيل.",
   "engine.calibre.description": "صيغ الكتب الإلكترونية النادرة (LIT وLRF وCHM وPDB وRB…) وإخراج Kindle ‏(MOBI وAZW3).\nعند وضعه فوق محرك كتابة HWPX، يُنشئ أيضًا PDF من الكتب الإلكترونية (بسرعة أكبر بكثير للكتب الطويلة).",
+  "engine.kugou.description": "صوت KuGou Music المشفّر (‎.kgm، ‎.kgma، ‎.vpr).\nيُفك تشفيره باستخدام KGM V2 المدمج ثم يُحوَّل إلى MP3 وM4A وFLAC وWAV وOGG وغيرها.",
   "engine.libreoffice.description": "قراءة الصيغ القديمة والأقل شيوعًا: DOC وPPT وPages وKeynote وNumbers وWordPerfect وClarisWorks وPublisher وVisio…\nوالحفظ بصيغ DOC وXLS وPPT وODT وODP وقوالب OpenDocument وEMF.",
   "profile.images": "الصور",
   "profile.pdf": "PDF",

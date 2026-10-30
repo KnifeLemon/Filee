@@ -222,6 +222,7 @@
   "engine.tesseract.description": "Reconhece o texto de digitalizações e imagens (OCR): PDF pesquisável, DOCX, TXT.",
   "engine.vision.description": "Reconhece o texto de digitalizações e imagens com o reconhecimento de texto do próprio macOS (OCR): PDF pesquisável, DOCX, TXT. Nada para baixar.",
   "engine.calibre.description": "Formatos raros de e-book (LIT, LRF, CHM, PDB, RB…) e saída Kindle (MOBI, AZW3).\nAcima do gravador de HWPX, também gera os PDFs de e-books (bem mais rápido em livros longos).",
+  "engine.kugou.description": "Áudio criptografado do KuGou Music (.kgm, .kgma, .vpr).\nDescriptografado com o KGM V2 integrado e depois convertido para MP3, M4A, FLAC, WAV, OGG e mais.",
   "engine.libreoffice.description": "Lê formatos antigos e menos comuns: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nTambém salva como DOC, XLS, PPT, ODT, ODP, modelos OpenDocument e EMF.",
 
   "profile.images": "Imagens",

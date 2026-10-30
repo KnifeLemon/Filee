@@ -215,6 +215,7 @@
   "engine.tesseract.description": "อ่านข้อความจากภาพสแกนและรูปภาพ (OCR): PDF ที่ค้นหาได้, DOCX, TXT",
   "engine.vision.description": "อ่านข้อความจากภาพสแกนและรูปภาพด้วยระบบรู้จำข้อความในตัวของ macOS (OCR): PDF ที่ค้นหาได้, DOCX, TXT ไม่ต้องดาวน์โหลดอะไรเพิ่ม",
   "engine.calibre.description": "ฟอร์แมตอีบุ๊กที่หาได้ยาก (LIT, LRF, CHM, PDB, RB…) และไฟล์สำหรับ Kindle (MOBI, AZW3)\nเมื่อวางไว้เหนือตัวเขียน HWPX จะทำหน้าที่สร้าง PDF ของอีบุ๊กด้วย (เร็วกว่ามากสำหรับหนังสือเล่มหนา)",
+  "engine.kugou.description": "เสียงที่เข้ารหัสของ KuGou Music (.kgm, .kgma, .vpr)\nถอดรหัสด้วย KGM V2 ในตัว แล้วแปลงเป็น MP3, M4A, FLAC, WAV, OGG และอื่นๆ",
   "engine.libreoffice.description": "อ่านฟอร์แมตรุ่นเก่าและฟอร์แมตที่พบน้อย: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nและบันทึกเป็น DOC, XLS, PPT, ODT, ODP, แม่แบบ OpenDocument และ EMF",
   "profile.images": "รูปภาพ",
   "profile.pdf": "PDF",

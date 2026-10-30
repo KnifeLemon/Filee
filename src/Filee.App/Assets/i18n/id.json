@@ -215,6 +215,7 @@
   "engine.tesseract.description": "Mengenali teks dari hasil pindai dan gambar (OCR): PDF yang dapat dicari, DOCX, TXT.",
   "engine.vision.description": "Mengenali teks dari hasil pindai dan gambar dengan pengenal teks bawaan macOS (OCR): PDF yang dapat dicari, DOCX, TXT. Tanpa perlu mengunduh apa pun.",
   "engine.calibre.description": "Format e-book langka (LIT, LRF, CHM, PDB, RB…) dan output Kindle (MOBI, AZW3).\nBila diposisikan di atas pembuat HWPX, Calibre juga membuat PDF dari e-book (jauh lebih cepat untuk buku tebal).",
+  "engine.kugou.description": "Audio terenkripsi KuGou Music (.kgm, .kgma, .vpr).\nDidekripsi dengan KGM V2 bawaan, lalu dikonversi ke MP3, M4A, FLAC, WAV, OGG, dan lainnya.",
   "engine.libreoffice.description": "Membaca format lama dan jarang digunakan: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nJuga menyimpan sebagai DOC, XLS, PPT, ODT, ODP, templat OpenDocument, dan EMF.",
   "profile.images": "Gambar",
   "profile.pdf": "PDF",

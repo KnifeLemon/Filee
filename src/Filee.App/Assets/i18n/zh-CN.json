@@ -222,6 +222,7 @@
   "engine.tesseract.description": "识别扫描件和图片中的文字（OCR）：可搜索的 PDF、DOCX、TXT。",
   "engine.vision.description": "使用 macOS 自带的文字识别来识别扫描件和图片中的文字（OCR）：可搜索的 PDF、DOCX、TXT。无需下载。",
   "engine.calibre.description": "少见的电子书格式（LIT、LRF、CHM、PDB、RB…）以及 Kindle 输出（MOBI、AZW3）。\n排在 HWPX writer 之上时，也由它把电子书转为 PDF（长书快得多）。",
+  "engine.kugou.description": "酷狗音乐加密音频（.kgm、.kgma、.vpr）。\n使用内置的 KGM V2 解密，然后转换为 MP3、M4A、FLAC、WAV、OGG 等格式。",
   "engine.libreoffice.description": "读取较旧或少见的格式，如 DOC、PPT、Pages、Keynote、Numbers、WordPerfect、ClarisWorks、Publisher、Visio。\n也能保存为 DOC、XLS、PPT、ODT、ODP、OpenDocument 模板或 EMF。",
 
   "profile.images": "图片",

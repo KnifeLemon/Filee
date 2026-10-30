@@ -215,6 +215,7 @@
   "engine.tesseract.description": "Erkennt Text in Scans und Bildern (OCR): durchsuchbare PDF, DOCX, TXT.",
   "engine.vision.description": "Erkennt Text in Scans und Bildern mit der Texterkennung von macOS (OCR): durchsuchbare PDF, DOCX, TXT. Kein Download nötig.",
   "engine.calibre.description": "Seltene E-Book-Formate (LIT, LRF, CHM, PDB, RB…) und Kindle-Ausgabe (MOBI, AZW3).\nOberhalb des HWPX-Writers erstellt es auch PDFs aus E-Books (bei langen Büchern deutlich schneller).",
+  "engine.kugou.description": "Verschlüsseltes KuGou-Music-Audio (.kgm, .kgma, .vpr).\nWird mit dem integrierten KGM V2 entschlüsselt und dann in MP3, M4A, FLAC, WAV, OGG und mehr umgewandelt.",
   "engine.libreoffice.description": "Liest ältere und weniger verbreitete Formate: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nSpeichert auch als DOC, XLS, PPT, ODT, ODP, OpenDocument-Vorlagen und EMF.",
   "profile.images": "Bilder",
   "profile.pdf": "PDF",
