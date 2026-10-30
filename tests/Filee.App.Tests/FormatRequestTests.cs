@@ -47,22 +47,23 @@ public sealed class FormatRequestTests : IDisposable
         Directory.CreateDirectory(folder);
         var paths = new[]
         {
-            File("song.NCM"), File("other.ncm"), File("photo.jpg"), File("README"), File("track.kgm"), folder,
+            File("song.NCM"), File("other.ncm"), File("photo.jpg"), File("README"), File("track.kwm"), folder,
             File("a.qmc0"), File("b.mflac"),
         };
 
         // Known types, a folder and a file without an extension have nothing to request; at most three per request.
-        Assert.Equal([".ncm", ".kgm", ".qmc0"], FormatRequest.UnknownExtensions(paths));
+        // .kgm is now a known format (KuGou support); use other still-unknown Chinese DRM extensions.
+        Assert.Equal([".ncm", ".kwm", ".qmc0"], FormatRequest.UnknownExtensions(paths));
     }
 
     [Fact]
     public void The_link_opens_the_format_request_form_with_only_the_extension()
     {
-        var url = FormatRequest.Url([".ncm", ".kgm"]).AbsoluteUri;
+        var url = FormatRequest.Url([".ncm", ".kwm"]).AbsoluteUri;
 
         Assert.StartsWith(UpdateService.RepositoryUrl.TrimEnd('/') + "/issues/new?template=format_request.yml&", url);
-        Assert.Contains("&title=%5BFormat%5D%3A%20.ncm%2C%20.kgm", url);
-        Assert.Contains("&extension=.ncm%2C%20.kgm", url);
+        Assert.Contains("&title=%5BFormat%5D%3A%20.ncm%2C%20.kwm", url);
+        Assert.Contains("&extension=.ncm%2C%20.kwm", url);
     }
 
     [AvaloniaFact]
