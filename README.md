@@ -249,6 +249,8 @@ One-time supporters can ask to be listed too.
 MIT, © 2026 Myeonggu Kim (KnifeLemon) and Filee contributors.
 Bundled third-party components keep their own licenses, listed in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
+본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다. (Filee's HWP and HWPX code was developed with reference to Hancom's published HWP file format document.)
+
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>
 </p>

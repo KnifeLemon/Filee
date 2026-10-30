@@ -22,6 +22,8 @@
 // (explicit embeddings, isolates, brackets) is a later milestone, as is dictionary breaking for Thai and its kin.
 // Tab positions are measured from the paragraph's left indent, as 한글 measures them; a hanging indent is a tab stop
 // on the first line (the text after a list number starts there).
+//
+// 본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
 
 using Filee.Engines.Hwp.Hwpx;
 using SkiaSharp;

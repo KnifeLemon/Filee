@@ -722,6 +722,10 @@ into precomposed syllables, a dotted circle only for a broken cluster).
 
 ## Filee renderer: line breaking and paragraph layout
 
+본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다. (The layout engine's HWP and HWPX handling was checked against Hancom's published HWP 5.0 file format
+document, whose license asks for this notice in the product's interface, manuals, help and source; it is also in
+THIRD-PARTY-NOTICES.md, which the About page shows.)
+
 Paragraph layout of Filee's own renderer (GitHub Project 4, item *Layout engine: paragraph layout and line breaking*),
 in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality harness measures it against rhwp.
 
