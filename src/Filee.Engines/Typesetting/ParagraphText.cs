@@ -5,8 +5,10 @@
 // - Tabs are '\t', line breaks U+2028 (a mandatory break for the line breaker), links keep their target on the pieces
 //   inside them, bookmarks their position. A list item's number or bullet starts the text, followed by a tab when the
 //   paragraph has a hanging indent (the text then starts at the indent, as in 한글 and Word) and a space otherwise.
-// - Objects (pictures, text boxes, shapes), note references and fields belong to later layout milestones and are left
-//   out; an equation is drawn as its linear text.
+// - A picture laid out like a character (no anchor) is U+FFFC, which the layout gives the picture's size. Page number
+//   and total pages fields are the text the page composer gives them.
+// - Floating objects, text boxes, shapes and note references belong to later layout milestones and are left out; an
+//   equation is drawn as its linear text.
 // - 한글's language slots: each character takes the font, 장평, 자간, relative size and 글자 위치 of its slot
 //   (FontSlots.Hwp); a slot without a font takes the format's Latin font (영문, 외국어, 사용자) or East Asian font
 //   (한글, 한자, 일어, 기호). Word's run fonts: the character's run font (FontSlots.Word), its scale (w:w), absolute
@@ -62,15 +64,27 @@ internal sealed class ParagraphText
     /// <summary>A line break inside a paragraph (U+2028 LINE SEPARATOR).</summary>
     public const char LineSeparator = (char)0x2028;
 
+    /// <summary>A picture laid out like a character (U+FFFC OBJECT REPLACEMENT CHARACTER).</summary>
+    public const char ObjectReplacement = (char)0xFFFC;
+
     /// <summary>Size of text whose format leaves it open, in points (한글's default).</summary>
     public const float DefaultSize = 10;
 
-    private ParagraphText(string text, List<TextSpan> spans, List<(int Position, string Name)> bookmarks)
+    private ParagraphText(string text, List<TextSpan> spans, List<(int Position, string Name)> bookmarks, Dictionary<int, HImage> pictures,
+        bool fields)
     {
         Text = text;
         Spans = spans;
         Bookmarks = bookmarks;
+        Pictures = pictures;
+        HasFields = fields;
     }
+
+    /// <summary>Pictures laid out like characters, by the position of their U+FFFC.</summary>
+    public IReadOnlyDictionary<int, HImage> Pictures { get; }
+
+    /// <summary>The paragraph has page number or total pages fields (their text depends on the page).</summary>
+    public bool HasFields { get; }
 
     public string Text { get; }
 
@@ -81,11 +95,14 @@ internal sealed class ParagraphText
     public IReadOnlyList<(int Position, string Name)> Bookmarks { get; }
 
     /// <param name="marker">The list item's number or bullet, or null.</param>
-    public static ParagraphText From(HParagraph paragraph, string? marker = null)
+    /// <param name="fields">The text of a page number or total pages field; null leaves fields out.</param>
+    public static ParagraphText From(HParagraph paragraph, string? marker = null, Func<HField, string>? fields = null)
     {
         var text = new StringBuilder();
         var spans = new List<TextSpan>();
         var bookmarks = new List<(int, string)>();
+        var pictures = new Dictionary<int, HImage>();
+        var hasFields = false;
 
         void Add(string piece, HCharFormat format, string? link)
         {
@@ -117,6 +134,15 @@ internal sealed class ParagraphText
                     case HBookmark bookmark:
                         bookmarks.Add((text.Length, bookmark.Name));
                         break;
+                    case HImage { Anchor: null } picture:
+                        pictures[text.Length] = picture;
+                        Add(ObjectReplacement.ToString(), paragraph.MarkFormat, link);
+                        break;
+                    case HField field:
+                        hasFields = true;
+                        if (fields is not null)
+                            Add(fields(field), field.Format, link);
+                        break;
                 }
             }
         }
@@ -127,7 +153,19 @@ internal sealed class ParagraphText
             Add(marker + ((paragraph.Format.FirstLine ?? 0) < 0 ? "\t" : " "), format, null);
         }
         Inlines(paragraph.Inlines, null);
-        return new ParagraphText(text.ToString(), spans, bookmarks);
+        return new ParagraphText(text.ToString(), spans, bookmarks, pictures, hasFields);
+    }
+
+    /// <summary>
+    /// The size a picture is drawn at, in points: its own, else its pixels at 96 dpi; null when neither is known.
+    /// </summary>
+    public static (float Width, float Height)? PictureSize(HImage picture)
+    {
+        if (picture is { Width: > 0, Height: > 0 })
+            return (picture.Width.Value / 100f, picture.Height.Value / 100f);
+        if (Documents.PictureSize.Read(picture.Path) is not var (width, height) || width <= 0 || height <= 0)
+            return null;
+        return (width * 0.75f, height * 0.75f);
     }
 
     private static string Clean(string text)

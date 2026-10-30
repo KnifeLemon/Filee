@@ -100,7 +100,8 @@ internal sealed partial class HwpxReader
         public void Add(HInline inline)
         {
             Sink.Add(inline);
-            if (inline is HTab or HLineBreak)
+            // The layout's text has a character for each of these (Typesetting/ParagraphText.cs).
+            if (inline is HTab or HLineBreak or HImage { Anchor: null })
                 _model++;
         }
 
