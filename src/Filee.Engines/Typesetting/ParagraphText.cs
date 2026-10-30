@@ -36,6 +36,9 @@ internal readonly record struct TextSpan(int Start, int Length, HCharFormat Form
 /// <param name="Language">"ko", "ja", "zh-Hans", "zh-Hant" or "": picks fonts and language forms.</param>
 /// <param name="SpaceWidth">Width of a space before <paramref name="Scale"/>, or null for the font's own.</param>
 /// <param name="Kerning">The font's kerning applies.</param>
+/// <param name="SpacingRatio">
+/// Space added after each character as a share of its own advance (한글's 자간), on top of <paramref name="LetterSpacing"/>.
+/// </param>
 internal sealed record TextStyle(
     string? Family,
     FontStyle Style,
@@ -50,7 +53,8 @@ internal sealed record TextStyle(
     bool Strike,
     string Language,
     float? SpaceWidth = null,
-    bool Kerning = true);
+    bool Kerning = true,
+    float SpacingRatio = 0);
 
 /// <summary>A paragraph's text with the character format of each piece.</summary>
 internal sealed class ParagraphText
@@ -177,7 +181,9 @@ internal sealed class ParagraphText
         var fontSize = (format.Size ?? DefaultSize * 100) / 100f;
         var size = fontSize * (own.RelativeSize ?? 100) / 100f;
         var scale = (own.Ratio ?? format.Layout?.Scale ?? 100) / 100f;
-        var spacing = (own.Spacing ?? format.Spacing ?? 0) / 100f * size;
+        // 자간 is a share of each character's own width (with 장평 applied), not of the font size: a space or a narrowed
+        // character closes up less. 한글's stored line layout breaks where this puts the line end.
+        var spacing = (own.Spacing ?? format.Spacing ?? 0) / 100f;
         // 글자 위치: percent of the size, negative raises.
         var rise = -(own.Offset ?? 0) / 100f * size + (format.Layout?.Position ?? 0) / 100f;
         var slotLanguage = slot switch
@@ -187,7 +193,7 @@ internal sealed class ParagraphText
             HLanguage.Hanja => language,
             _ => "",
         };
-        return Finish(format, family, fontSize, size, scale, spacing, rise, slotLanguage);
+        return Finish(format, family, fontSize, size, scale, 0, rise, slotLanguage, spacing);
     }
 
     /// <summary>The style of a character drawn with Word run font <paramref name="slot"/>.</summary>
@@ -201,7 +207,8 @@ internal sealed class ParagraphText
         return Finish(format, family, fontSize, fontSize, scale, spacing, rise, slot == WordFontSlot.EastAsia ? language : "");
     }
 
-    private static TextStyle Finish(HCharFormat format, string? family, float fontSize, float size, float scale, float spacing, float rise, string language)
+    private static TextStyle Finish(HCharFormat format, string? family, float fontSize, float size, float scale, float spacing, float rise, string language,
+        float spacingRatio = 0)
     {
         // Super- and subscript: two thirds of the size, raised a third of it or lowered a seventh.
         if (format.Superscript == true)
@@ -230,7 +237,8 @@ internal sealed class ParagraphText
             language,
             // 한글 without "글꼴에 어울리는 빈칸": a space is half the size wide.
             format.Layout?.FontSpace == false ? size / 2 : null,
-            format.Layout?.Kerning != false);
+            format.Layout?.Kerning != false,
+            spacingRatio);
     }
 
     /// <summary>A "#RRGGBB" colour, or null for none or an unreadable one.</summary>

@@ -305,12 +305,24 @@ public sealed class ParagraphLayoutTests : IDisposable
     // ───────────────────────── Characters ─────────────────────────
 
     [Fact]
-    public void Letter_spacing_widens_each_character()
+    public void Letter_spacing_widens_each_character_by_a_share_of_its_own_width()
     {
         var plain = Single(Paragraph("abcd")).Width;
         var spaced = Single(Paragraph("abcd", format: Format(spacing: 10))).Width;
+        var narrow = Single(Paragraph("abcd", format: Format(spacing: 10) with { Layout = new HCharLayout(HLanguageSlots.All(new HSlotFormat(Ratio: 50))) })).Width;
 
-        Assert.Equal(plain + 4 * 1f, spaced, 0.01f); // 10% of 10 pt after each of four characters
+        // 한글's 자간: 10% of each character's width, the width ratio applied.
+        Assert.Equal(plain * 1.1f, spaced, 0.01f);
+        Assert.Equal(plain / 2 * 1.1f, narrow, 0.01f);
+    }
+
+    [Fact]
+    public void Word_letter_spacing_is_an_absolute_distance()
+    {
+        var plain = Single(Paragraph("abcd")).Width;
+        var spaced = Single(Paragraph("abcd", format: Format() with { Layout = new HCharLayout(WordFonts: new HWordFonts(Latin, Latin, Korean, Latin), LetterSpacing: 100) })).Width;
+
+        Assert.Equal(plain + 4, spaced, 0.01f); // 1 pt after each of four characters
     }
 
     [Fact]

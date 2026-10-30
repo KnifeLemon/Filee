@@ -736,7 +736,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
 - **Paragraph text** (`ParagraphText.cs`): the inlines as one string (tabs, line breaks as U+2028, links and bookmarks
   kept, a list item's number or bullet in front, followed by a tab when the paragraph hangs) and each character's style:
   the font, 장평, 자간, relative size and 글자 위치 of its 한글 language slot, or Word's run font, scale, absolute
-  spacing and raise. 한글's "글꼴에 어울리는 빈칸" off (`useFontSpace="0"`, as in Filee's template) makes a space half the size
+  spacing and raise. 한글's 자간 is a share of each character's own width (장평 applied), not of the font size, so a
+  space or a narrowed character closes up less (한글's stored line layout breaks where this puts the line end). 한글's
+  "글꼴에 어울리는 빈칸" off (`useFontSpace="0"`, as in Filee's template) makes a space half the size
   wide, and `useKerning="0"` turns the font's kerning off; both are read into `HCharLayout`.
 - **Layout** (`ParagraphLayout.cs`, output in `LineBox.cs`): items of one style, font, script and direction are shaped
   (`Shaper`), lines fill greedily to the column width and break at the last opportunity (a word wider than the line
@@ -770,8 +772,9 @@ render quality harness, where the renderer is `DocumentRenderers.Candidate`. Aga
 and tabs break into the same lines on the same baselines; rhwp splits some Korean words even in 어절 paragraphs. The
 rest waits for the page composer. Against 한글 itself, `HangulLineBreakTests` compares the line starts 한글 stored in
 its HWPX files (`hp:linesegarray`) with Filee's, for the plain-text paragraphs of a private corpus
-(`FILEE_RENDER_CORPUS`): on the HWPX files attached to Filee's issues, 148 of 152 paragraphs break where 한글 broke
-them; one font wasn't installed, and two lines take one or two characters more than 한글's.
+(`FILEE_RENDER_CORPUS`): on the HWPX files attached to Filee's issues, 150 of 152 paragraphs break where 한글 broke
+them. Of the other two, one uses a font that isn't installed, and the other is a run of 75 hyphens wider than the
+line, which 한글 keeps on one line.
 
 ## DOCX writer
 

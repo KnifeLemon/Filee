@@ -215,6 +215,9 @@ internal sealed class ParagraphLayouter
             item.Style.Language.Length > 0 ? item.Style.Language : null,
             item.Style.Kerning ? null : NoKerning));
 
+    /// <summary>The space added after a character whose advance is <paramref name="advance"/>.</summary>
+    private static float Spacing(TextStyle style, float advance) => style.LetterSpacing + style.SpacingRatio * advance;
+
     /// <summary>A glyph's advance in points before the style's scale: a space's as the style sets it.</summary>
     private static float Advance(ShapedRun run, int glyph, string text, int start, TextStyle style) =>
         style.SpaceWidth is { } space && text[start + run.Clusters[glyph]] == ' '
@@ -243,7 +246,7 @@ internal sealed class ParagraphLayouter
             for (var i = item.Start; i < item.End; i++)
             {
                 if (starts[i])
-                    advances[i] += item.Style.LetterSpacing;
+                    advances[i] += Spacing(item.Style, advances[i]);
             }
         }
         return (advances, starts);
@@ -397,6 +400,7 @@ internal sealed class ParagraphLayouter
         // The line's parts, shaped with their context, and each cluster's advance.
         var parts = new List<Part>();
         var advances = new float[contentEnd - start];
+        var spacing = new float[contentEnd - start];
         var starts = new bool[contentEnd - start];
         foreach (var item in items)
         {
@@ -418,10 +422,12 @@ internal sealed class ParagraphLayouter
                 starts[index] = true;
                 advances[index] += Advance(part.Run, g, text, from, item.Style) * item.Style.Scale;
             }
-            for (var i = from; i < to; i++)
+            for (var i = from - start; i < to - start; i++)
             {
-                if (starts[i - start])
-                    advances[i - start] += item.Style.LetterSpacing;
+                if (!starts[i])
+                    continue;
+                spacing[i] = Spacing(item.Style, advances[i]);
+                advances[i] += spacing[i];
             }
         }
 
@@ -525,12 +531,12 @@ internal sealed class ParagraphLayouter
                 for (var g = 0; g < run.Glyphs.Length; g++)
                 {
                     if (g > 0 && run.Clusters[g] != run.Clusters[g - 1])
-                        x += (style.LetterSpacing + gaps[part.Start - start + run.Clusters[g - 1]]) * squeeze;
+                        x += (spacing[part.Start - start + run.Clusters[g - 1]] + gaps[part.Start - start + run.Clusters[g - 1]]) * squeeze;
                     positions[g] = new SKPoint(x + run.XOffsets[g] * scale * scaleX, -style.Rise - run.YOffsets[g] * scale);
                     x += Advance(run, g, text, part.Start, style) * scaleX;
                 }
                 if (run.Glyphs.Length > 0)
-                    x += (style.LetterSpacing + gaps[part.Start - start + run.Clusters[^1]]) * squeeze;
+                    x += (spacing[part.Start - start + run.Clusters[^1]] + gaps[part.Start - start + run.Clusters[^1]]) * squeeze;
                 runs.Add((part.Start, new PlacedRun(part.Item.Font.Font, style.Size, run.Glyphs, positions, text.Substring(part.Start, part.Length), run.Clusters)
                 {
                     Color = style.Color,
