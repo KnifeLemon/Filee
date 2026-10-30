@@ -763,6 +763,21 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - Direction: a simplified bidirectional algorithm (strong letters and numbers set the levels, neutrals take the
     direction around them, rule L2 reorders). The runs stay in logical order in the page, so the PDF's text reads as
     it was written. Explicit embeddings, isolates and brackets come with the bidi milestone.
+- **한글's stored lines** (GitHub Project 4, item *Layout engine: honor stored HWP/HWPX line layout*): an HWPX that
+  한글 saved stores each line's start, height and baseline (`hp:linesegarray`), and 한글 draws from them when it opens
+  the file rather than breaking the lines again (checked with 한글: a paragraph whose stored line no longer fits is
+  squeezed into it; without the stored lines 한글 breaks it like Filee).
+  - The reader converts 한글's text positions, which count every control (tab, field, object, note, equation, section
+    and column definition, bookmark) as eight and line breaks and special spaces as one, as Hancom's HWP 5.0 document
+    defines them, into positions in the layout's text (`HLineLayout.Starts`). A paragraph a table splits, or a start
+    inside an object, keeps no positions.
+  - The layout uses them when the lines weren't estimated by Filee and every font of the paragraph is installed by its
+    name or another of its names; otherwise it breaks the paragraph itself and says why (`ParagraphBox.StoredLinesIgnored`).
+    Each line then takes its stored height and baseline, its place beside an object, and a stored line wider than the
+    line is now squeezed between its characters.
+  - On the HWPX files attached to Filee's issues, 768 of 769 stored paragraphs convert. The body text of the one
+    single-column document breaks exactly where 한글's own PDF of it does; the rest of the pages differ where tables,
+    columns and equations are, which later items lay out.
 - **Interim page flow** (`FileeRenderer.cs`): each section's pages with its paper and margins, paragraphs stacked down
   the body with a new page where the next line doesn't fit, headings as the PDF outline. It stands in for the page
   composer; table cells are stacked as paragraphs and objects left out until then.

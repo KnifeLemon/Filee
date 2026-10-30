@@ -245,7 +245,13 @@ internal sealed record HKinsoku(string? Language, string? NotAtLineStart, string
 /// in the model keeps the array on its first part, with text positions counted over the whole stored paragraph.
 /// </summary>
 /// <param name="Estimated">The values were estimated by Filee, not laid out by 한글, so they must not be trusted.</param>
-internal sealed record HLineLayout(IReadOnlyList<HLineSegment> Segments, bool Estimated);
+/// <param name="Starts">
+/// Where each segment starts in the paragraph's text as the layout engine counts it (Typesetting/ParagraphText.cs: one
+/// character per text character, tab and line break, none for objects, notes, fields and bookmarks), converted from
+/// 한글's text positions, in which every object and control takes eight. Null when they can't be: the paragraph was
+/// split by a table, or a position falls inside something the model doesn't keep.
+/// </param>
+internal sealed record HLineLayout(IReadOnlyList<HLineSegment> Segments, bool Estimated, IReadOnlyList<int>? Starts = null);
 
 /// <summary>One stored line (all lengths HWPUNIT).</summary>
 /// <param name="TextPosition">First character of the line in the paragraph's text.</param>
