@@ -46,7 +46,7 @@ public class CropServiceTests
             var exif = new ExifProfile();
             exif.SetValue(ExifTag.Orientation, (ushort)6);
             image.SetProfile(exif);
-            image.Orientation = OrientationType.RightTop;
+            image.Orientation = Orientation.RightTop;
             image.Quality = 95;
         }
         image.Write(path);

@@ -28,7 +28,7 @@ public class PdfCompressionTests(EngineFixture fx) : IClassFixture<EngineFixture
         image.AddNoise(NoiseType.Gaussian, 0.6);
         if (transparentCorner)
         {
-            image.Alpha(AlphaOption.Set);
+            image.Alpha(AlphaAction.Set);
             using var pixels = image.GetPixels();
             pixels.SetArea(0, 0, width / 4, height / 4, new byte[width / 4 * (height / 4) * image.ChannelCount]);
         }

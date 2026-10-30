@@ -155,6 +155,12 @@ jobs:
           ./build/fetch-portable-engines.ps1 -Runtime '${{ matrix.rid }}' -Destination engines
           dotnet build Filee.slnx -c Release
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          # Magick.NET 15 has no ImageMagick library for Intel Macs: the one the package gets goes next to each build.
+          if ('${{ matrix.rid }}' -eq 'osx-x64') {
+            $builds = Get-ChildItem -Path src, tests -Recurse -File -Filter Magick.NET-Q8-AnyCPU.dll |
+              Where-Object { $_.DirectoryName -match '[\\/]bin[\\/]Release[\\/]' } | ForEach-Object DirectoryName | Sort-Object -Unique
+            ./build/fetch-magick-native.ps1 -Runtime osx-x64 -Destination $builds
+          }
           $projects = @('Filee.Core.Tests', 'Filee.Platform.Tests', 'Filee.Engines.Tests', 'Filee.Cli.Tests', 'Filee.App.Tests')
           foreach ($project in $projects) {
             $testArguments = @('test', "tests/$project/$project.csproj", '--no-build', '-c', 'Release', '--logger', 'trx', '--results-directory', "TestResults/${{ matrix.rid }}",

@@ -113,7 +113,7 @@ public sealed class IcnsConverter : IConverter, IImageTransformer
     /// <summary>Pads the shorter side with transparency so the picture becomes a centred square.</summary>
     private static void MakeSquare(IMagickImage<byte> image)
     {
-        image.Alpha(AlphaOption.Set);
+        image.Alpha(AlphaAction.Set);
         if (image.Width == image.Height)
             return;
         var side = Math.Max(image.Width, image.Height);

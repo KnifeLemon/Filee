@@ -138,7 +138,7 @@ public static class BackgroundRemover
         if (width >= MinSpeckSize && height >= MinSpeckSize)
             RemoveSpecks(pixels, width, height);
 
-        image.Alpha(AlphaOption.Set);
+        image.Alpha(AlphaAction.Set);
         image.ImportPixels(pixels, new PixelImportSettings((uint)width, (uint)height, StorageType.Char, PixelMapping.RGBA));
     }
 

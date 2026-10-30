@@ -135,7 +135,7 @@ internal static class Apng
             {
                 var frame = frames[i];
                 using var picture = new MagickImage(FramePng(header, shared, frame), new MagickReadSettings { Format = MagickFormat.Png });
-                picture.Alpha(AlphaOption.Set);
+                picture.Alpha(AlphaAction.Set);
 
                 var dispose = i == 0 && frame.Dispose == DisposePrevious ? DisposeBackground : frame.Dispose;
                 using var previous = dispose == DisposePrevious ? canvas.Clone() : null;
@@ -237,7 +237,7 @@ internal static class Apng
                 image.Page = new MagickGeometry(0, 0, image.Width, image.Height);
                 if (image.Width != width || image.Height != height)
                 {
-                    image.Alpha(AlphaOption.Set);
+                    image.Alpha(AlphaAction.Set);
                     image.BackgroundColor = MagickColors.Transparent;
                     image.Extent(width, height, Gravity.Northwest);
                 }

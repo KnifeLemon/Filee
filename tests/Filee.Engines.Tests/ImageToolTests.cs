@@ -59,13 +59,13 @@ public class ImageToolTests(EngineFixture fx) : IClassFixture<EngineFixture>
         {
             // Stored landscape, shown turned right (EXIF orientation 6): on screen 20 × 40, red at the top right.
             var exif = new ExifProfile();
-            exif.SetValue(ExifTag.Orientation, (ushort)OrientationType.RightTop);
+            exif.SetValue(ExifTag.Orientation, (ushort)Orientation.RightTop);
             image.SetProfile(exif);
-            image.Orientation = OrientationType.RightTop; // ImageMagick writes this into the profile
+            image.Orientation = Orientation.RightTop; // ImageMagick writes this into the profile
             image.Write(source, MagickFormat.Jpeg);
         }
         using (var written = new MagickImage(source))
-            Assert.Equal(OrientationType.RightTop, written.Orientation); // the test photo is what it says
+            Assert.Equal(Orientation.RightTop, written.Orientation); // the test photo is what it says
 
         var job = await fx.ConvertAsync([source], Tool("rotate-left"));
 
@@ -74,7 +74,7 @@ public class ImageToolTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // Turned left from how it looked: back to 40 × 20 with red at the top left, and no tag turning it again.
         Assert.Equal((40u, 20u), (result.Width, result.Height));
         Assert.True(IsRed(result, 3, 3));
-        Assert.True(result.Orientation is OrientationType.TopLeft or OrientationType.Undefined, $"{result.Orientation}");
+        Assert.True(result.Orientation is Orientation.TopLeft or Orientation.Undefined, $"{result.Orientation}");
     }
 
     /// <summary>
