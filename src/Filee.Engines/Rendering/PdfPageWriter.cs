@@ -89,24 +89,26 @@ internal static class PdfPageWriter
     /// <summary>One subset typeface per font the pages use.</summary>
     private static SubsetTypefaces SubsetFonts(IReadOnlyList<PageContent> pages, CancellationToken cancellationToken)
     {
-        var glyphs = new Dictionary<PageFont, HashSet<int>>(ReferenceEqualityComparer.Instance);
+        var glyphs = new Dictionary<PageFont, (HashSet<int> Glyphs, HashSet<int> CodePoints)>(ReferenceEqualityComparer.Instance);
         foreach (var page in pages)
         {
             foreach (var item in page.Items)
             {
                 if (item is not GlyphItem { Run: var run })
                     continue;
-                if (!glyphs.TryGetValue(run.Font, out var set))
-                    glyphs[run.Font] = set = [];
+                if (!glyphs.TryGetValue(run.Font, out var used))
+                    glyphs[run.Font] = used = ([], []);
                 foreach (var glyph in run.Glyphs)
-                    set.Add(glyph);
+                    used.Glyphs.Add(glyph);
+                foreach (var rune in run.Text.EnumerateRunes())
+                    used.CodePoints.Add(rune.Value);
             }
         }
         var result = new SubsetTypefaces();
         foreach (var (font, used) in glyphs)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            result.Add(font, SubsetTypeface(font, used, cancellationToken));
+            result.Add(font, SubsetTypeface(font, used.Glyphs, used.CodePoints, cancellationToken));
         }
         return result;
     }
@@ -115,11 +117,11 @@ internal static class PdfPageWriter
     /// A typeface over the subset of <paramref name="font"/>; the whole font when it can't be subset (Skia then
     /// embeds it whole or as a Type 3 font, still with its text).
     /// </summary>
-    private static SKTypeface SubsetTypeface(PageFont font, IEnumerable<int> glyphs, CancellationToken cancellationToken = default)
+    private static SKTypeface SubsetTypeface(PageFont font, IEnumerable<int> glyphs, IReadOnlySet<int> codePoints, CancellationToken cancellationToken = default)
     {
         if (!FontSubsetter.CanSubset(font.Sfnt, out _))
             return font.Typeface;
-        var subset = FontSubsetter.Subset(font.Sfnt, glyphs, cancellationToken).Write();
+        var subset = FontSubsetter.Subset(font.Sfnt, glyphs, cancellationToken, codePoints).Write();
         return SKTypeface.FromData(SKData.CreateCopy(subset)) ?? font.Typeface;
     }
 

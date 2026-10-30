@@ -43,7 +43,7 @@ $project = Join-Path $repository 'tests/Filee.Engines.Tests/Filee.Engines.Tests.
 $env:FILEE_RENDER_CORPUS = (Resolve-Path $Corpus).Path
 $env:FILEE_RENDER_REPORT = [IO.Path]::GetFullPath($Report)
 try {
-    dotnet test $project -c $Configuration --filter 'FullyQualifiedName~RenderQuality.RenderCorpusTests' --logger 'console;verbosity=normal'
+    dotnet test $project -c $Configuration --filter 'FullyQualifiedName~RenderQuality.RenderCorpusTests|FullyQualifiedName~RenderQuality.HangulLineBreakTests' --logger 'console;verbosity=normal'
     if ($LASTEXITCODE -ne 0) { throw "The compare failed (exit $LASTEXITCODE)." }
 }
 finally {

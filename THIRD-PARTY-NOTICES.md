@@ -108,6 +108,15 @@ Windows headers, without a C runtime. Pieces of these projects that can end up i
 the x86 branch filter of the LZMA SDK (public domain, Igor Pavlov, https://www.7-zip.org/sdk.html), and the published
 app as its payload. Filee 1.x's installer was built with Inno Setup, which is no longer used.
 
+## Hancom HWP document format
+
+Filee's own HWP and HWPX code (the layout engine and the readers it uses) was developed with reference to Hancom's
+published document on the HWP file format, 「한글 문서 파일 형식 5.0」, which asks for this notice:
+
+본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
+
+(This product was developed with reference to Hancom's published document on the Hangul (.hwp) file format.)
+
 ## Unicode data
 
 `src/Filee.Engines/Typesetting/UnicodeData.Generated.cs` holds Line_Break, Bidi_Class, Script and East_Asian_Width

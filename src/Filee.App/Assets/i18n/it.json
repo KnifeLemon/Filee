@@ -132,6 +132,7 @@
 "error.fon_unsupported": "Questo tipo di font .fon non è supportato",
 "error.fon_too_large": "Il font .fon è troppo grande per essere convertito",
 "error.fon_damaged": "Il file .fon è danneggiato o troncato",
+"error.document_too_complex": "Il documento è troppo grande o troppo complesso per essere letto in sicurezza",
 "error.m4s_needs_init": "Questo .m4s è un frammento di un video in streaming: non può essere letto senza il suo segmento iniziale (init) separato",
 "notice.pdf_not_smaller": "Impossibile ridurlo, quindi è stato copiato così com'è",
 "notice.under_min_size": "Salvato, ma più piccolo della dimensione minima del file",

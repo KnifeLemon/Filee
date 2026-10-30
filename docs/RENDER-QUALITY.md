@@ -22,9 +22,9 @@ internal sealed record DocumentRenderer(string Name, IReadOnlySet<string> Format
 (`RhwpInput`'s fixes, then `rhwp export-pdf` with Filee's fallback fonts). rhwp is only the yardstick here; nothing in
 the harness adds a conversion path through it.
 
-`DocumentRenderers.Candidate` is Filee's layout engine. It is null until the first layout milestone sets it, and until
-then the compare test is skipped with that reason. Once it is set, its PDFs get the same read-back checks and are
-compared with rhwp's, with no other change.
+`DocumentRenderers.Candidate` is Filee's layout engine: paragraph layout on an interim page flow
+(`Typesetting/FileeRenderer.cs`) until the page composer replaces it. Its PDFs get the same read-back checks and are
+compared with rhwp's; set to null, the compare test is skipped.
 
 ## The feature matrix
 
@@ -111,6 +111,9 @@ shaping.
   holds documents next to the PDFs 한글 printed of them (`doc.hwpx` + `doc.pdf`, `doc.hwp` + `doc.pdf`). Each renderer
   is compared with 한글's PDF and read back. An HTML report goes to the temp folder, with the page that differs most of
   each document side by side. The corpus run only reports; it never fails on the numbers.
+  `HangulLineBreakTests` runs on the same folder: for every HWPX 한글 saved (no PDF needed), the plain-text
+  paragraphs are laid out by Filee at the width 한글 used, and their line starts are compared with the ones 한글
+  stored (`hp:linesegarray`).
 
 ## rhwp today
 

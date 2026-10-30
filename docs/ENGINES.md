@@ -720,6 +720,66 @@ properties) with every installed font of the script, against recorded HarfBuzz o
 font (joining forms and lam-alef, vowel signs drawn before their consonant, conjuncts, the SARA AM split, jamo composed
 into precomposed syllables, a dotted circle only for a broken cluster).
 
+## Filee renderer: line breaking and paragraph layout
+
+본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다. (The layout engine's HWP and HWPX handling was checked against Hancom's published HWP 5.0 file format
+document, whose license asks for this notice in the product's interface, manuals, help and source; it is also in
+THIRD-PARTY-NOTICES.md, which the About page shows.)
+
+Paragraph layout of Filee's own renderer (GitHub Project 4, item *Layout engine: paragraph layout and line breaking*),
+in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality harness measures it against rhwp.
+
+- **Line breaking** (`LineBreaker.cs`): UAX #14 at Unicode 16.0, rules LB1–LB31; it passes all 16,672 cases of
+  Unicode's `LineBreakTest.txt` (checked when written; the file isn't kept, `LineBreakerTests` covers each rule
+  family). Tailorings: 한글 어절 keeps Hangul words whole, 글자 breaks between syllables as UAX #14 does (한글 writes
+  them the other way round from the names: `breakNonLatinWord` BREAK_WORD is 어절, KEEP_WORD 글자; the binary HWP
+  of the same document and 한글's own line layout say so); Latin words broken anywhere (`breakLatinWord` BREAK_WORD,
+  Word without `w:wordWrap`); a document's own characters forbidden at a line's start or end (Word
+  `w:noLineBreaksBefore` / `After`). Hyphenation keeps words whole (no dictionaries), and Thai, Lao, Khmer and Myanmar
+  break only at spaces until there is dictionary breaking.
+- **Paragraph text** (`ParagraphText.cs`): the inlines as one string (tabs, line breaks as U+2028, links and bookmarks
+  kept, a list item's number or bullet in front, followed by a tab when the paragraph hangs) and each character's style:
+  the font, 장평, 자간, relative size and 글자 위치 of its 한글 language slot, or Word's run font, scale, absolute
+  spacing and raise. 한글's 자간 is a share of each character's own width (장평 applied), not of the font size, so a
+  space or a narrowed character closes up less (한글's stored line layout breaks where this puts the line end). 한글's
+  "글꼴에 어울리는 빈칸" off (`useFontSpace="0"`, as in Filee's template) makes a space half the size
+  wide, and `useKerning="0"` turns the font's kerning off; both are read into `HCharLayout`.
+- **Layout** (`ParagraphLayout.cs`, output in `LineBox.cs`): items of one style, font, script and direction are shaped
+  (`Shaper`), lines fill greedily to the column width and break at the last opportunity (a word wider than the line
+  between clusters), spaces hang at the line end. 최소 공백 (`condense`) keeps a word that fits once the spaces
+  shrink; `lineWrap` KEEP and SQUEEZE hold the paragraph on one line. Each line's parts are shaped again with their
+  context, so a break inside an Arabic word or after an Indic cluster shapes as it ends.
+  - Alignment: left, right, centre; justify widens the spaces (the clusters where a line has none) on all but the last
+    line; distribute (배분) widens between all clusters, the last line too. Indents and hanging indents as the model
+    has them; the start indent of a right-to-left paragraph is on the right.
+  - Tabs: left, right, centre and decimal stops with dot, dash and solid leaders, measured from the paragraph's left
+    indent as 한글 does; default stops every 40 pt; a hanging indent is a stop on the first line.
+  - Line height by the paragraph's rule: 한글's percent, fixed, at least and between lines measure from the font size
+    with the baseline at 85% of the text height (as 한글's stored line segments put it); Word's multiple and 한글's
+    "글꼴에 어울리는 줄 높이" from the fonts' OS/2 win ascent and descent.
+  - Characters: size, ratio, letter spacing, baseline shift, super- and subscript, colour, shade, underline,
+    strike-through, links and bookmarks; synthetic bold and italic (`GlyphRun.Embolden` / `SkewX`) for faces a family
+    lacks.
+  - Direction: a simplified bidirectional algorithm (strong letters and numbers set the levels, neutrals take the
+    direction around them, rule L2 reorders). The runs stay in logical order in the page, so the PDF's text reads as
+    it was written. Explicit embeddings, isolates and brackets come with the bidi milestone.
+- **Interim page flow** (`FileeRenderer.cs`): each section's pages with its paper and margins, paragraphs stacked down
+  the body with a new page where the next line doesn't fit, headings as the PDF outline. It stands in for the page
+  composer; table cells are stacked as paragraphs and objects left out until then.
+
+The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
+radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as
+radicals.
+
+Tests: `LineBreakerTests`, `ParagraphLayoutTests` (with the pinned Noto fonts of `build/fetch-fonts.ps1`), and the
+render quality harness, where the renderer is `DocumentRenderers.Candidate`. Against rhwp, Japanese, Chinese, lists
+and tabs break into the same lines on the same baselines; rhwp splits some Korean words even in 어절 paragraphs. The
+rest waits for the page composer. Against 한글 itself, `HangulLineBreakTests` compares the line starts 한글 stored in
+its HWPX files (`hp:linesegarray`) with Filee's, for the plain-text paragraphs of a private corpus
+(`FILEE_RENDER_CORPUS`): on the HWPX files attached to Filee's issues, 150 of 152 paragraphs break where 한글 broke
+them. Of the other two, one uses a font that isn't installed, and the other is a run of 75 hyphens wider than the
+line, which 한글 keeps on one line.
+
 ## DOCX writer
 
 The counterpart of the HWPX writer: `Hwp/Hwpx/Docx/DocxWriter*.cs` writes WordprocessingML by hand from the same

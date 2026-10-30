@@ -21,6 +21,15 @@ internal sealed record GlyphRun(PageFont Font, float Size, ushort[] Glyphs, SKPo
     /// <summary>Horizontal scale of the glyphs (1 = as designed; 한글's 장평).</summary>
     public float ScaleX { get; init; } = 1;
 
+    /// <summary>Bold the font lacks, drawn by thickening the outlines.</summary>
+    public bool Embolden { get; init; }
+
+    /// <summary>Horizontal skew of the glyphs (italic the font lacks: <see cref="SyntheticSlant"/>), 0 = upright.</summary>
+    public float SkewX { get; init; }
+
+    /// <summary>The skew of synthetic italic, as Skia and browsers slant (about 12°).</summary>
+    public const float SyntheticSlant = -0.2f;
+
     /// <summary>Throws when the arrays don't describe the same glyphs or a cluster points outside the text.</summary>
     public void Validate()
     {
@@ -119,6 +128,8 @@ internal sealed class PageContent(float width, float height)
         using var font = new SKFont(typeface, run.Size)
         {
             ScaleX = run.ScaleX,
+            SkewX = run.SkewX,
+            Embolden = run.Embolden,
             Subpixel = true,
             Edging = SKFontEdging.Antialias,
             Hinting = SKFontHinting.None,

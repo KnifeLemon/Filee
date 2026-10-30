@@ -98,7 +98,7 @@ internal sealed partial class HwpxReader
             Color: Color(Attr(charPr, "textColor")) ?? "#000000",
             Shade: Color(Attr(charPr, "shadeColor")),
             Spacing: Int(Child(charPr, "spacing"), "hangul"),
-            Layout: new HCharLayout(Slots(charPr, Face)));
+            Layout: new HCharLayout(Slots(charPr, Face), FontSpace: Flag(charPr, "useFontSpace"), Kerning: Flag(charPr, "useKerning")));
         return _charFormats[id] = format;
     }
 
@@ -175,7 +175,12 @@ internal sealed partial class HwpxReader
                 "BREAK_WORD" => HLatinBreak.BreakWord,
                 _ => HLatinBreak.KeepWord,
             },
-            NonLatin: Attr(breaks, "breakNonLatinWord") == "BREAK_WORD" ? HNonLatinBreak.BreakWord : HNonLatinBreak.KeepWord,
+            // 한글 writes the 한글 단위 setting the other way round from its names: KEEP_WORD for 글자 (a break at any
+            // syllable) and BREAK_WORD for 어절. The binary HWP of the same document has bit 7 of the paragraph shape set
+            // (1 = 글자 in Hancom's HWP 5.0 format document) where the HWPX says KEEP_WORD, and 한글's own line layout of
+            // KEEP_WORD paragraphs breaks inside words.
+            // 본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
+            NonLatin: Attr(breaks, "breakNonLatinWord") == "BREAK_WORD" ? HNonLatinBreak.KeepWord : HNonLatinBreak.BreakWord,
             LineWrap: Attr(breaks, "lineWrap") switch
             {
                 "SQUEEZE" => HLineWrap.Squeeze,

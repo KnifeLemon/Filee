@@ -196,7 +196,8 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var layout = boxed.Layout!;
         Assert.Equal(new HLineHeight(HLineHeightRule.BetweenLines, 500), layout.LineHeight);
         Assert.Equal((false, true), (layout.SnapToGrid, layout.FontLineHeight));
-        Assert.Equal(new HLineBreaking(HLatinBreak.Hyphenation, HNonLatinBreak.BreakWord, HLineWrap.Squeeze, AutoSpaceLatin: true, AutoSpaceDigits: false, Condense: 25), layout.Breaking);
+        // breakNonLatinWord BREAK_WORD is 한글's 어절 (whole words): 한글 names the two the other way round.
+        Assert.Equal(new HLineBreaking(HLatinBreak.Hyphenation, HNonLatinBreak.KeepWord, HLineWrap.Squeeze, AutoSpaceLatin: true, AutoSpaceDigits: false, Condense: 25), layout.Breaking);
         var border = layout.Border!;
         Assert.Equal(new HBorder(HBorderStyle.Solid, 0.4, "#0000FF"), border.Borders.Top);
         Assert.Equal(("#FFF2CC", new HInsets(100, 200, 300, 400), true, true), (border.Fill, border.Offsets, border.Connect, border.IgnoreMargin));
