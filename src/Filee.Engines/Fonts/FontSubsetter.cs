@@ -55,9 +55,14 @@ internal static class FontSubsetter
     /// A TrueType font with the outlines of <paramref name="glyphs"/> (plus .notdef and the components they use) at
     /// their original glyph IDs and every other glyph empty.
     /// </summary>
+    /// <param name="codePoints">
+    /// The characters drawn with the font, or null: the cmap then keeps only these, so a glyph several characters share
+    /// (文 and the Kangxi radical ⽂ in CJK fonts) maps back to the character the text has, not the lowest one.
+    /// </param>
     /// <exception cref="NotSupportedException">The font is one <see cref="CanSubset"/> refuses.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A glyph ID is outside the font.</exception>
-    public static SfntFont Subset(SfntFont font, IEnumerable<int> glyphs, CancellationToken cancellationToken = default)
+    public static SfntFont Subset(SfntFont font, IEnumerable<int> glyphs, CancellationToken cancellationToken = default,
+        IReadOnlySet<int>? codePoints = null)
     {
         if (!CanSubset(font, out var reason))
             throw new NotSupportedException(reason);
@@ -95,7 +100,8 @@ internal static class FontSubsetter
         if (source["cmap"] is { } cmap)
         {
             var map = CmapTable.Read(cmap, out var symbol);
-            subset.Tables["cmap"] = CmapTable.Build(map.Where(p => used.Contains(p.Value)).ToDictionary(), symbol);
+            subset.Tables["cmap"] = CmapTable.Build(
+                map.Where(p => used.Contains(p.Value) && (codePoints is null || codePoints.Contains(p.Key))).ToDictionary(), symbol);
         }
         else
         {

@@ -90,6 +90,24 @@ public class FontSubsetterTests
     }
 
     [Fact]
+    public void A_glyph_two_characters_share_maps_back_to_the_one_the_text_has()
+    {
+        // As CJK fonts map 文 and the Kangxi radical ⽂ to one glyph: a PDF's ToUnicode would take the lower code point.
+        var source = Load(TrueType);
+        var map = CmapTable.Read(source.Require("cmap"), out var symbol);
+        var h = map['H'];
+        map[0x2F42] = h;
+        source.Tables["cmap"] = CmapTable.Build(map, symbol);
+
+        var all = CmapTable.Read(FontSubsetter.Subset(source, [h], TestContext.Current.CancellationToken).Require("cmap"), out _);
+        var text = CmapTable.Read(FontSubsetter.Subset(source, [h], TestContext.Current.CancellationToken, codePoints: new HashSet<int> { 'H' })
+            .Require("cmap"), out _);
+
+        Assert.Equal(h, all[0x2F42]);
+        Assert.Equal(new Dictionary<int, int> { ['H'] = h }, text);
+    }
+
+    [Fact]
     public void Subset_keeps_only_what_a_pdf_needs()
     {
         var source = Load(TrueType);
