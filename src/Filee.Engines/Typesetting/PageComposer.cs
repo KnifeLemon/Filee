@@ -95,6 +95,9 @@ internal sealed class PageComposer
     {
         /// <summary>The floating objects on the page, drawn when the page is done.</summary>
         public List<PlacedObject> Objects { get; } = [];
+
+        /// <summary>What a paragraph on the page hides of it (한글 쪽 감추기).</summary>
+        public HPageHiding? Hiding { get; set; }
     }
 
     /// <summary>One composition of a document.</summary>
@@ -267,10 +270,11 @@ internal sealed class PageComposer
                 if (_pages.Count > 0)
                     EndRegion(balance: false);
                 _section = section;
+                _lastStored = null;
                 _geometry = Geometry.Of(section.Page ?? DefaultPage);
                 if (section.StartPageNumber is { } start)
                     _number = start - 1;
-                NewPage(firstOfSection: true, section.Columns);
+                HangulPage(firstOfSection: true, section.Columns);
                 Body(section.Blocks);
                 if (s == document.Sections.Count - 1)
                     Endnotes();
@@ -289,6 +293,13 @@ internal sealed class PageComposer
                 HeadersAndFooters(page);
             }
             return new ComposedDocument([.. _pages.Select(p => p.Content)], _outline);
+        }
+
+        /// <summary>A page 한글 starts too (a section's first, a page break, a stored page start).</summary>
+        private void HangulPage(bool firstOfSection = false, HColumns? columns = null)
+        {
+            NewPage(firstOfSection, columns);
+            _hangulStart = (_pages.Count, 0);
         }
 
         private void NewPage(bool firstOfSection = false, HColumns? columns = null)
@@ -359,9 +370,14 @@ internal sealed class PageComposer
                     StartRegion(change);
                 }
                 if (paragraph.PageBreakBefore && !_empty)
-                    NewPage();
+                    HangulPage();
                 else if (paragraph.ColumnBreakBefore && !_columnEmpty)
+                {
+                    // 한글's own column break: its stored places, measured from the column's top, hold again.
                     NextColumn();
+                    _hangulStart = (_pages.Count, _column);
+                    _inStep = true;
+                }
                 var box = next as ParagraphBox ?? Layout(paragraph, ColumnWidth);
                 next = null;
                 if (!box.StoredLines && Wrapped(paragraph, box) is { } wrapped)
@@ -410,7 +426,9 @@ internal sealed class PageComposer
         private void PlaceTable(HTable table, TableBox box, HParagraph? holder, HParagraph? follower)
         {
             if (table.PageBreakBefore && !_empty)
-                NewPage();
+                HangulPage();
+            if (table.PageHiding is { } hiding)
+                Current.Hiding = hiding;
             // The 한글 line the table is: the holder's, or the table's own when it is all its paragraph holds.
             var line = holder?.Lines?.Segments.FirstOrDefault() ?? (follower is null ? table.Line : null);
             var (lineTop, linePage) = (0f, _pages.Count);
@@ -434,9 +452,9 @@ internal sealed class PageComposer
             }
             var margin = table.OuterMargin ?? default;
             _y += (table.VerticalOffset + margin.Top) / 100f;
-            // Filee's rows are not 한글's unless the table is as high as 한글's line for it; else the stored places
-            // hold again on 한글's next page.
-            _inStep = _inStep && line is { } kept && Math.Abs(box.Height + (margin.Top + margin.Bottom) / 100f - kept.VerticalSize / 100f) <= 1;
+            // Filee's rows are not 한글's unless the table is as high as 한글's (its line for it, else its stored size);
+            // else the stored places hold again on 한글's next page.
+            _inStep = _inStep && TableLayout.AsStored(table, box.Height, line);
             var x = box.Offset + margin.Left / 100f;
             var header = box.Rows.Take(box.HeaderRows).ToList();
             // A table that must not split goes to the next column whole when it fits in one.
@@ -535,11 +553,22 @@ internal sealed class PageComposer
             if (!_columnEmpty && !_skipSpaceBefore)
                 _y += box.SpaceBefore;
             _skipSpaceBefore = false;
+            // In columns, 한글's stored places start over (a smaller one than the last) where 한글 started the next
+            // column. Filee follows unless it moved on by itself since 한글's last start, and the stored places hold
+            // again. (A page 한글 started is left to Filee's own page breaks: tables crossing pages make many.)
+            if (_columns.Count > 1 && box.StoredLines && lines.Count > 0 && lines[0] is { StoredTop: { } first, StoredPageStart: false } && _lastStored is { } last
+                && first < last - 1)
+            {
+                if (_hangulStart == (_pages.Count, _column) && !_columnEmpty && _column + 1 < _columns.Count)
+                    NextColumn();
+                _hangulStart = (_pages.Count, _column);
+                _inStep = true;
+            }
             for (var i = 0; i < lines.Count;)
             {
                 var stored = box.StoredLines && _inStep;
                 if (stored && lines[i].StoredPageStart && !_empty)
-                    NewPage();
+                    HangulPage();
                 else if (stored && lines[i].StoredColumnStart && !_columnEmpty && _columns.Count > 1)
                     NextColumn();
                 // How many of the remaining lines fit in this column, with the footnotes they bring.
@@ -596,8 +625,16 @@ internal sealed class PageComposer
             _y += box.SpaceAfter;
         }
 
+        /// <summary>The stored top of the last line placed from 한글's stored lines.</summary>
+        private float? _lastStored;
+
+        /// <summary>The page and column where 한글's last column or page started.</summary>
+        private (int Page, int Column) _hangulStart;
+
         private void PlaceLine(HParagraph paragraph, LineBox line, bool first, bool stored)
         {
+            if (line.StoredTop is { } storedTop)
+                _lastStored = storedTop;
             if (stored && line.StoredTop is { } top)
                 _y = Math.Max(_y, _regionTop + top);
             else if (!stored)
@@ -606,6 +643,8 @@ internal sealed class PageComposer
                 _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, _y, paragraph.HeadingLevel - 1));
             if (first && !_anchored.Remove(paragraph))
                 Anchor(paragraph, _y);
+            if (first && paragraph.PageHiding is { } hiding)
+                Current.Hiding = hiding;
             Put(0, line.Height, line.Draw);
             _y += line.Height;
             foreach (var note in line.Notes)
@@ -886,9 +925,9 @@ internal sealed class PageComposer
             var section = page.Section;
             // Fields in headers and footers show the number of the page they are on.
             _number = page.Number;
-            if (!(page.FirstOfSection && section.HideFirstHeader) && Pick(section.Headers, page.Number) is { } header)
+            if (!(page.FirstOfSection && section.HideFirstHeader) && page.Hiding?.Header != true && Pick(section.Headers, page.Number) is { } header)
                 Area(page, header.Blocks, page.Geometry.HeaderTop);
-            if (!(page.FirstOfSection && section.HideFirstFooter) && Pick(section.Footers, page.Number) is { } footer)
+            if (!(page.FirstOfSection && section.HideFirstFooter) && page.Hiding?.Footer != true && Pick(section.Footers, page.Number) is { } footer)
                 Area(page, footer.Blocks, page.Geometry.FooterTop);
         }
 
@@ -955,6 +994,7 @@ internal sealed class PageComposer
             PageBreakBefore = paragraph.PageBreakBefore,
             ColumnBreakBefore = paragraph.ColumnBreakBefore,
             ColumnsChange = paragraph.ColumnsChange,
+            PageHiding = paragraph.PageHiding,
             Lines = paragraph.Lines,
         };
         resolved.Inlines.AddRange(Inlines(paragraph.Inlines, paragraph, link: false));
@@ -969,7 +1009,14 @@ internal sealed class PageComposer
             switch (inline)
             {
                 case HEquation equation:
-                    yield return new HEquation(equation.Math, Format(equation.Format));
+                    yield return new HEquation(equation.Math, Format(equation.Format))
+                    {
+                        Width = equation.Width,
+                        Height = equation.Height,
+                        BaseLine = equation.BaseLine,
+                        Size = equation.Size,
+                        Color = equation.Color,
+                    };
                     break;
                 case HText text:
                     yield return new HText(text.Text, Format(text.Format));

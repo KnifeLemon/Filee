@@ -74,10 +74,10 @@ internal readonly record struct Decoration(DecorationKind Kind, float Left, floa
 internal readonly record struct LineLink(float Left, float Right, string Target);
 
 /// <summary>
-/// An object laid out like a character (a picture, shape or text box): <c>Area</c> relative to the line's origin;
-/// <c>Stack</c> lays out a text box's content.
+/// An object laid out like a character (a picture, shape, text box or equation): <c>Area</c> relative to the line's
+/// origin, and what draws it there.
 /// </summary>
-internal sealed record LineObject(SKRect Area, HInline Object, Func<IReadOnlyList<HBlock>, float, List<Piece>> Stack);
+internal sealed record LineObject(SKRect Area, Action<PageContent, SKRect> Draw);
 
 /// <summary>One line of a paragraph.</summary>
 internal sealed class LineBox
@@ -139,7 +139,7 @@ internal sealed class LineBox
         {
             var area = item.Area;
             area.Offset(x, baseline);
-            FloatingObjects.Draw(page, item.Object, area, item.Stack);
+            item.Draw(page, area);
         }
         foreach (var run in Runs)
             page.DrawGlyphs(run.At(x, baseline));

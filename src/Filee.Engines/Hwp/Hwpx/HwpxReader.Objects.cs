@@ -22,16 +22,44 @@ internal sealed partial class HwpxReader
         var name = element.Name.LocalName;
         if (ShapeNames.Contains(name))
         {
-            foreach (var inline in Shapes(element, PlacementOf(element)))
+            var placement = PlacementOf(element);
+            var margin = Child(element, "outMargin") is { } outMargin
+                ? new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"))
+                : default;
+            foreach (var inline in Shapes(element, placement))
+            {
+                // Laid out like a character, 한글 sets the object like a character as high as it is with its margins.
+                if (_forLayout && inline is HObject item)
+                {
+                    item.OuterMargin = margin;
+                    if (placement.Anchor is null)
+                        item.BaseLine = 85;
+                }
                 builder.Add(inline);
+            }
             return;
         }
         switch (name)
         {
             case "equation":
+                if (Child(element, "script")?.Value.Trim() is not { Length: > 0 } script)
+                    break;
+                if (_forLayout)
+                {
+                    // Read for layout: the equation tree in the box 한글 laid it out in.
+                    var size = Child(element, "sz");
+                    builder.Add(new HEquation(EquationParser.Parse(script), format)
+                    {
+                        Width = Int(size, "width") is > 0 and var width ? width : null,
+                        Height = Int(size, "height") is > 0 and var height ? height : null,
+                        BaseLine = Attr(element, "baseLine") is not null ? Math.Clamp(Int(element, "baseLine"), 0, 100) : null,
+                        Size = Int(element, "baseUnit") is > 0 and var unit ? unit : null,
+                        Color = Color(Attr(element, "textColor")),
+                    });
+                    break;
+                }
                 // The equation script (한글's equation language, e.g. "x over y") is the closest text form.
-                if (Child(element, "script")?.Value.Trim() is { Length: > 0 } script)
-                    builder.AddText(script, format);
+                builder.AddText(script, format);
                 break;
             case "textart":
                 if ((Attr(element, "text") ?? Child(element, "text")?.Value) is { Length: > 0 } art)
@@ -286,10 +314,22 @@ internal sealed partial class HwpxReader
         return ((int)Math.Round(Int(original, "width") * Double(scale, "e1", 1)), (int)Math.Round(Int(original, "height") * Double(scale, "e5", 1)));
     }
 
+    /// <summary>
+    /// An object's size and position. Drawings other than pictures take the size 한글 laid them out at (hp:curSz) where
+    /// it is given: hp:sz may be relative (a share of the column) or not grown to the text; a picture's hp:sz is its box
+    /// with the inner margin, which hp:curSz leaves out.
+    /// </summary>
     private static Placement PlacementOf(XElement element)
     {
         var size = Child(element, "sz");
         var (width, height) = (Int(size, "width"), Int(size, "height"));
+        if (element.Name.LocalName != "pic" && Child(element, "curSz") is { } current)
+        {
+            if (Int(current, "width") is > 0 and var w)
+                width = w;
+            if (Int(current, "height") is > 0 and var h)
+                height = h;
+        }
         if (width <= 0 || height <= 0)
             (width, height) = MemberSize(element);
         return new Placement(width, height, Anchor(element));

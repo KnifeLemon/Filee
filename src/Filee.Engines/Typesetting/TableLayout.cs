@@ -183,8 +183,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                             pieces.Add(piece with { Top = y + piece.Top });
                         y += table.Caption.Count == 0 ? 0 : table.Caption.Max(p => p.Top + p.Height);
                         y += margin.Bottom / 100f;
-                        // Filee's rows are not 한글's unless the table is as high as 한글's line for it.
-                        var kept = line is { } own && Math.Abs(y - lineTop - own.VerticalSize / 100f) <= 1;
+                        // Filee's rows are not 한글's unless the table is as high as 한글's.
+                        var kept = AsStored(t, table.Height, line);
                         if (line is { } rest)
                             y = Math.Max(y, lineTop + rest.VerticalSize / 100f) + rest.Spacing / 100f + (holder?.Format.After ?? 0) / 100f;
                         else if (holder is not null)
@@ -211,6 +211,18 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
     public static bool HoldsTable(IReadOnlyList<HBlock> blocks, int index) =>
         blocks[index] is HParagraph { Lines.Starts: null } paragraph && index + 1 < blocks.Count && blocks[index + 1] is HTable &&
         ParagraphText.From(paragraph).Text.Length == 0;
+
+    /// <summary>
+    /// A table laid out <paramref name="height"/> high is as high as 한글 laid it out: as its line for it (outer margins
+    /// included) or, placed at its paragraph, as its stored size.
+    /// </summary>
+    public static bool AsStored(HTable table, float height, HLineSegment? line)
+    {
+        var margin = table.OuterMargin ?? default;
+        return line is { } own
+            ? Math.Abs(height + (margin.Top + margin.Bottom) / 100f - own.VerticalSize / 100f) <= 1
+            : table.StoredHeight is { } stored && Math.Abs(height - stored / 100f) <= 1;
+    }
 
     /// <summary>The paragraph after the table at <paramref name="index"/> when it is the rest of the 한글 paragraph the table starts.</summary>
     public static HParagraph? Follower(IReadOnlyList<HBlock> blocks, int index) =>

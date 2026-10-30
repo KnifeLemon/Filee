@@ -147,7 +147,7 @@ internal sealed class ParagraphText
             {
                 switch (inline)
                 {
-                    case HText run:
+                    case HText run when run is not HEquation:
                         // Paragraph and line feeds inside a run are line breaks; other controls are left out.
                         Add(Clean(run.Text), run.Format, link);
                         break;
@@ -163,7 +163,7 @@ internal sealed class ParagraphText
                     case HBookmark bookmark:
                         bookmarks.Add((text.Length, bookmark.Name));
                         break;
-                    case HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null }:
+                    case HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null } or HEquation:
                         pictures[text.Length] = inline;
                         Add(ObjectReplacement.ToString(), paragraph.MarkFormat, link);
                         break;
@@ -173,7 +173,7 @@ internal sealed class ParagraphText
                         break;
                     case HNote note when notes is not null:
                         references[text.Length] = note;
-                        var around = spans.Count > 0 ? spans[^1].Format : paragraph.MarkFormat;
+                        var around = note.Format ?? (spans.Count > 0 ? spans[^1].Format : paragraph.MarkFormat);
                         Insert(notes(note), around with { Superscript = true, Subscript = false }, link);
                         break;
                 }
@@ -182,7 +182,9 @@ internal sealed class ParagraphText
 
         if (marker is { Length: > 0 })
         {
-            var format = paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
+            var format = paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count && levels[level].MarkerFormat is { } own
+                ? own
+                : paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
             Add(marker + ((paragraph.Format.FirstLine ?? 0) < 0 ? "\t" : " "), format, null);
             markerLength = text.Length;
         }

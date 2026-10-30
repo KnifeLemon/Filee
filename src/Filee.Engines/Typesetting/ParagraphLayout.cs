@@ -33,6 +33,7 @@
 // 본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
 
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Rendering;
 using SkiaSharp;
 
 namespace Filee.Engines.Typesetting;
@@ -50,6 +51,7 @@ internal sealed class ParagraphLayouter
 
     private readonly FontResolver _fonts;
     private readonly Shaper _shaper;
+    private readonly MathLayout _math;
 
     /// <summary>
     /// Lays out the content of a text box laid out like a character (TableLayout.Stack, which the page composer sets);
@@ -68,6 +70,7 @@ internal sealed class ParagraphLayouter
     {
         _fonts = fonts;
         _shaper = shaper;
+        _math = new MathLayout(fonts, shaper);
         _storedLines = storedLines;
         if (kinsoku is { Count: > 0 })
         {
@@ -113,11 +116,18 @@ internal sealed class ParagraphLayouter
             Math.Clamp(breaking?.Condense ?? 0, 0, 100) / 100f,
             format.Layout?.LineHeight ?? HLineHeight.From(format.LineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, 160)),
             format.Layout?.FontLineHeight == true);
+        // A number that indents its paragraph (한글 autoIndent): the lines after the first hang under the text after it.
+        if (marker is { Length: > 0 } && paragraph.List is { Numbering.Levels: var levels, Level: var level } && level >= 0 && level < levels.Count
+            && levels[level].AutoIndent && marker.Length + 1 <= text.Length)
+        {
+            var hang = advances.AsSpan(0, marker.Length + 1).ToArray().Sum();
+            paragraphLayout = paragraphLayout with { Left = paragraphLayout.Left + hang, FirstLine = paragraphLayout.FirstLine - hang };
+        }
         var mark = MarkStyle(paragraph, language);
         var before = (format.Before ?? 0) / 100f;
         var after = (format.After ?? 0) / 100f;
 
-        var (stored, ignored) = _storedLines ? StoredStarts(paragraph, source, marker, items) : (null, null);
+        var (stored, ignored) = _storedLines ? StoredStarts(paragraph, source, marker, items, advances) : (null, null);
         if (stored is not null)
         {
             var segments = paragraph.Lines!.Segments;
@@ -158,9 +168,11 @@ internal sealed class ParagraphLayouter
 
     /// <summary>
     /// Where the stored lines of <paramref name="paragraph"/> start in <paramref name="text"/> (the first at 0), or null
-    /// with the reason they can't be used (null too when there are none).
+    /// with the reason they can't be used (null too when there are none). Text in a font that isn't installed takes
+    /// 한글's lines in the font standing in for it while each line's text fits its stored width (Hangul is as wide in
+    /// nearly every font); the lines are then squeezed or spread to that width.
     /// </summary>
-    private (List<int>? Starts, string? Ignored) StoredStarts(HParagraph paragraph, ParagraphText source, string? marker, List<Item> items)
+    private (List<int>? Starts, string? Ignored) StoredStarts(HParagraph paragraph, ParagraphText source, string? marker, List<Item> items, float[] advances)
     {
         var text = source.Text;
         if (paragraph.Lines is not { } lines)
@@ -169,11 +181,7 @@ internal sealed class ParagraphLayouter
             return (null, "the stored lines were estimated by Filee");
         if (lines.Starts is not { Count: > 0 } positions || positions.Count != lines.Segments.Count || positions[0] != 0)
             return (null, "the stored line starts don't map to the text (a table splits the paragraph, or one falls inside an object)");
-        foreach (var item in items)
-        {
-            if (item.Kind == ItemKind.Text && item.Style.Family is { } family && _fonts.Find(family, item.Style.Style) is null)
-                return (null, $"the font {family} is not installed");
-        }
+        var missing = items.FirstOrDefault(item => item.Kind == ItemKind.Text && item.Style.Family is { } family && _fonts.Find(family, item.Style.Style) is null)?.Style.Family;
         // A list item's number and the tab or space after it come first in the text, not in 한글's; fields' text and
         // note numbers are the layout's own too.
         var shift = marker is { Length: > 0 } ? marker.Length + 1 : 0;
@@ -184,6 +192,19 @@ internal sealed class ParagraphLayouter
             if (start <= starts[^1] || start > text.Length)
                 return (null, "the stored line starts are out of order");
             starts.Add(start);
+        }
+        if (missing is not null)
+        {
+            for (var i = 0; i < starts.Count; i++)
+            {
+                var end = i + 1 < starts.Count ? starts[i + 1] : text.Length;
+                while (end > starts[i] && IsSpace(text[end - 1]))
+                    end--;
+                var width = advances.AsSpan(starts[i], end - starts[i]).ToArray().Sum();
+                var room = lines.Segments[i].HorizontalSize / 100f;
+                if (room > 0 && width > room * 1.08f + 1)
+                    return (null, $"the font {missing} is not installed and the font standing in for it doesn't fit 한글's lines");
+            }
         }
         return (starts, null);
     }
@@ -308,7 +329,7 @@ internal sealed class ParagraphLayouter
             : run.XAdvances[glyph] * style.Size / run.UnitsPerEm;
 
     /// <summary>Per UTF-16 index: the advance of the cluster starting there (0 elsewhere) and whether one starts there.</summary>
-    private static (float[] Advances, bool[] Starts) Measure(ParagraphText source, List<Item> items, Func<string, int, int, Item, ShapedRun> shape)
+    private (float[] Advances, bool[] Starts) Measure(ParagraphText source, List<Item> items, Func<string, int, int, Item, ShapedRun> shape)
     {
         var text = source.Text;
         var advances = new float[text.Length];
@@ -341,9 +362,72 @@ internal sealed class ParagraphLayouter
     private (float[] Advances, bool[] Starts) Measure(ParagraphText source, List<Item> items) =>
         Measure(source, items, (text, start, length, item) => Shape(text, item, start, length));
 
-    /// <summary>The size of the object at <paramref name="position"/>; nothing for a picture whose size isn't known.</summary>
-    private static (float Width, float Height) ObjectSize(ParagraphText source, int position) =>
-        source.Objects.TryGetValue(position, out var item) && FloatingObjects.Size(item) is { } size ? size : (0, 0);
+    /// <summary>
+    /// The size of the object at <paramref name="position"/>: its width, height above the baseline (objects stand on it)
+    /// and depth below it (an equation's); nothing for a picture whose size isn't known.
+    /// </summary>
+    private (float Width, float Height, float Depth) ObjectSize(ParagraphText source, int position)
+    {
+        if (!source.Objects.TryGetValue(position, out var item))
+            return (0, 0, 0);
+        if (item is HEquation equation)
+        {
+            // The box 한글 laid the equation out in, with its baseline; else the equation's own.
+            if (equation is { Width: { } width, Height: { } height })
+            {
+                var above = height / 100f * (equation.BaseLine ?? 85) / 100f;
+                return (width / 100f, above, height / 100f - above);
+            }
+            var box = Equation(equation);
+            return (box.Width, box.Ascent, box.Descent);
+        }
+        if (FloatingObjects.Size(item) is not var (w, h))
+            return (0, 0, 0);
+        if (item is HObject { BaseLine: { } baseLine } character)
+        {
+            // 한글's: a character as high as the object with its margins, the baseline that far down.
+            var margin = character.OuterMargin;
+            var full = h + (margin.Top + margin.Bottom) / 100f;
+            var above = full * baseLine / 100f;
+            return (w + (margin.Left + margin.Right) / 100f, above, full - above);
+        }
+        return (w, h, 0);
+    }
+
+    private readonly Dictionary<HEquation, EquationBox> _equations = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>An equation laid out at its size (its own, else its text's) in its colour.</summary>
+    private EquationBox Equation(HEquation equation)
+    {
+        if (_equations.TryGetValue(equation, out var box))
+            return box;
+        var size = (equation.Size ?? equation.Format.Size ?? 1000) / 100f;
+        var color = ParagraphText.Color(equation.Color ?? equation.Format.Color) ?? SKColors.Black;
+        if (_equations.Count > 10_000)
+            _equations.Clear();
+        return _equations[equation] = _math.Layout(equation.Math, size, color);
+    }
+
+    /// <summary>Draws an object laid out like a character into its area.</summary>
+    private Action<PageContent, SKRect> ObjectDrawing(HInline item)
+    {
+        if (item is HObject { BaseLine: not null, OuterMargin: var margin })
+        {
+            return (page, area) => FloatingObjects.Draw(page, item, new SKRect(area.Left + margin.Left / 100f, area.Top + margin.Top / 100f,
+                area.Right - margin.Right / 100f, area.Bottom - margin.Bottom / 100f), Stack);
+        }
+        if (item is not HEquation equation)
+            return (page, area) => FloatingObjects.Draw(page, item, area, Stack);
+        var box = Equation(equation);
+        // In 한글's box on its baseline (its own box: on the line's), centred across, and narrowed to the box when 한글
+        // laid it out narrower (its glyphs take less room than the fonts' advances).
+        return (page, area) =>
+        {
+            var baseline = equation is { Height: { } height } ? area.Top + height / 100f * (equation.BaseLine ?? 85) / 100f : area.Top + box.Ascent;
+            var scale = box.Width > area.Width && area.Width > 0 ? Math.Max(0.7f, area.Width / box.Width) : 1;
+            box.Paint(page, area.Left + (area.Width - box.Width * scale) / 2, baseline, scale);
+        };
+    }
 
     // ───────────────────────── Breaking ─────────────────────────
 
@@ -479,8 +563,8 @@ internal sealed class ParagraphLayouter
         public ShapedRun? Run { get; set; }
         public float Width { get; set; }
 
-        /// <summary>A picture's size.</summary>
-        public (float Width, float Height) Size { get; set; }
+        /// <summary>An object's size: width, height above the baseline, depth below it.</summary>
+        public (float Width, float Height, float Depth) Size { get; set; }
     }
 
     /// <param name="stored">The stored line this line follows, with the paragraph's first one, or null.</param>
@@ -636,7 +720,7 @@ internal sealed class ParagraphLayouter
             {
                 var (pictureWidth, pictureHeight) = (part.Size.Width * squeeze, part.Size.Height);
                 if (source.Objects.TryGetValue(part.Start, out var item) && pictureWidth > 0)
-                    pictures.Add(new LineObject(new SKRect(x, -pictureHeight, x + pictureWidth, 0), item, Stack));
+                    pictures.Add(new LineObject(new SKRect(x, -pictureHeight, x + pictureWidth, part.Size.Depth), ObjectDrawing(item)));
                 x += pictureWidth + gaps[part.Start - start] * squeeze;
             }
             else if (part.Item.Kind == ItemKind.Tab)
@@ -758,8 +842,9 @@ internal sealed class ParagraphLayouter
         {
             if (part.Item.Kind == ItemKind.Object)
             {
-                // A picture stands on the baseline.
+                // A picture stands on the baseline; an equation reaches below it.
                 ascent = Math.Max(ascent, part.Size.Height);
+                descent = Math.Max(descent, part.Size.Depth);
                 any = true;
                 continue;
             }
