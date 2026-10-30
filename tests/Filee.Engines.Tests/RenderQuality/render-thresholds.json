@@ -36,8 +36,29 @@
       "script-gu.hwp": { "overlaps": 0.6387 },
       "script-th.hwp": { "text": 0.9734, "overlaps": 0.1709 }
     },
-    // Filee's layout engine (DocumentRenderers.Candidate): its own read-back checks and vs-rhwp-* compares.
-    "filee": {}
+    // Filee's layout engine (DocumentRenderers.Candidate): its own read-back checks and vs-rhwp-* compares, with
+    // paragraph layout on the interim page flow (Typesetting/FileeRenderer.cs).
+    "filee": {
+      // The paragraphs say 글자 (breakNonLatinWord BREAK_WORD): Filee breaks Korean between syllables, rhwp keeps
+      // Korean words whole whatever the setting. With 어절 both break the left, right, centred and justified lines
+      // alike; rhwp's distributed lines still split some words.
+      "line-spacing-percent": { "vs-rhwp-lines": 0.8, "vs-rhwp-placed": 0.8, "vs-rhwp-ssim": 0.5224 },
+      "line-spacing-fixed": { "vs-rhwp-lines": 0.8, "vs-rhwp-placed": 0.8, "vs-rhwp-ssim": 0.5208 },
+      "line-spacing-at-least": { "vs-rhwp-lines": 0.8, "vs-rhwp-placed": 0.8, "vs-rhwp-ssim": 0.5221 },
+      "script-ko": { "vs-rhwp-lines": 0, "vs-rhwp-placed": 0, "vs-rhwp-ssim": 0.3179 },
+      // Same lines and baselines; rhwp draws its leaders as short dashes at other heights and puts the text a little
+      // apart (pictures differ by fractions of a point).
+      "tabs": { "vs-rhwp-ssim": 0.3844 },
+      "lists": { "vs-rhwp-ssim": 0.2697 },
+      "script-zh": { "vs-rhwp-ssim": 0.9923 },
+      "script-ja": { "vs-rhwp-ssim": 0.9933 },
+      // Left to the page composer: tables (cells are stacked as paragraphs for now), headers and footers, notes and
+      // columns.
+      "tables": { "vs-rhwp-lines": 0.1538, "vs-rhwp-placed": 0.0769, "vs-rhwp-ssim": 0.1915 },
+      "headers-footers": { "vs-rhwp-lines": 0.3333, "vs-rhwp-placed": 0.3333, "vs-rhwp-ssim": 0.5714 },
+      "notes": { "vs-rhwp-lines": 0.25, "vs-rhwp-placed": 0.25, "vs-rhwp-ssim": 0.2707 },
+      "columns": { "vs-rhwp-lines": 0, "vs-rhwp-placed": 0, "vs-rhwp-ssim": 0.0755 }
+    }
   },
   "allow": [
     // Where rhwp is wrong, Filee's renderer can't agree with it: the compare is reported, never failed.

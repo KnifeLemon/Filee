@@ -15,12 +15,19 @@ namespace Filee.Engines.Hwp.Hwpx;
 /// <param name="Scale">Word character scale (w:w) in percent: the width of every glyph, like 한글's 장평.</param>
 /// <param name="LetterSpacing">Word letter spacing (w:spacing) as an absolute distance added after each character.</param>
 /// <param name="Position">Word baseline shift (w:position): positive raises the text.</param>
+/// <param name="FontSpace">
+/// 한글 "글꼴에 어울리는 빈칸" (useFontSpace): a space is as wide as the font's own; off, it is half the font size.
+/// Null where the source has no such setting (the font's own width).
+/// </param>
+/// <param name="Kerning">한글 "커닝" (useKerning): the font's kerning applies; null = it does (as in Word).</param>
 internal sealed record HCharLayout(
     HLanguageSlots? Slots = null,
     HWordFonts? WordFonts = null,
     int? Scale = null,
     int? LetterSpacing = null,
-    int? Position = null)
+    int? Position = null,
+    bool? FontSpace = null,
+    bool? Kerning = null)
 {
     /// <summary>This layout with the members it leaves open taken from <paramref name="baseline"/>.</summary>
     public HCharLayout Over(HCharLayout? baseline) => baseline is null ? this : new HCharLayout(
@@ -28,7 +35,9 @@ internal sealed record HCharLayout(
         WordFonts ?? baseline.WordFonts,
         Scale ?? baseline.Scale,
         LetterSpacing ?? baseline.LetterSpacing,
-        Position ?? baseline.Position);
+        Position ?? baseline.Position,
+        FontSpace ?? baseline.FontSpace,
+        Kerning ?? baseline.Kerning);
 }
 
 /// <summary>한글's seven language slots (글꼴 언어): each character takes the properties of the slot its script falls into.</summary>

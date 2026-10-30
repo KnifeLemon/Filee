@@ -22,9 +22,9 @@ internal sealed record DocumentRenderer(string Name, IReadOnlySet<string> Format
 (`RhwpInput`'s fixes, then `rhwp export-pdf` with Filee's fallback fonts). rhwp is only the yardstick here; nothing in
 the harness adds a conversion path through it.
 
-`DocumentRenderers.Candidate` is Filee's layout engine. It is null until the first layout milestone sets it, and until
-then the compare test is skipped with that reason. Once it is set, its PDFs get the same read-back checks and are
-compared with rhwp's, with no other change.
+`DocumentRenderers.Candidate` is Filee's layout engine: paragraph layout on an interim page flow
+(`Typesetting/FileeRenderer.cs`) until the page composer replaces it. Its PDFs get the same read-back checks and are
+compared with rhwp's; set to null, the compare test is skipped.
 
 ## The feature matrix
 

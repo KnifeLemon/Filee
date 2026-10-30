@@ -98,7 +98,7 @@ internal sealed partial class HwpxReader
             Color: Color(Attr(charPr, "textColor")) ?? "#000000",
             Shade: Color(Attr(charPr, "shadeColor")),
             Spacing: Int(Child(charPr, "spacing"), "hangul"),
-            Layout: new HCharLayout(Slots(charPr, Face)));
+            Layout: new HCharLayout(Slots(charPr, Face), FontSpace: Flag(charPr, "useFontSpace"), Kerning: Flag(charPr, "useKerning")));
         return _charFormats[id] = format;
     }
 

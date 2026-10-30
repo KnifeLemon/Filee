@@ -9,6 +9,7 @@
 using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Typesetting;
 
 namespace Filee.Engines.Tests.RenderQuality;
 
@@ -40,14 +41,15 @@ internal sealed record DocumentRenderer(string Name, IReadOnlySet<string> Format
 internal static class DocumentRenderers
 {
     /// <summary>
-    /// Filee's layout engine, measured against <see cref="Reference"/>; null until its first milestone registers a
-    /// renderer here (for example <c>new("filee", Hwpx, (input, ct) =&gt; Task.FromResult(FileeRenderer.ToPdf(input.Document, ct)))</c>).
+    /// Filee's layout engine, measured against <see cref="Reference"/>: paragraph layout on the interim page flow
+    /// (Typesetting/FileeRenderer.cs) until the page composer replaces it. Null would skip the compare.
     /// </summary>
-    public static DocumentRenderer? Candidate => null;
+    public static DocumentRenderer? Candidate =>
+        new("filee", Hwpx, (input, ct) => Task.FromResult(FileeRenderer.ToPdf(input.Document, ct)));
 
     /// <summary>Why the differential compare doesn't run while <see cref="Candidate"/> is null.</summary>
     public const string NoCandidate =
-        "Filee's layout engine has no renderer yet: the first layout milestone registers one in DocumentRenderers.Candidate";
+        "Filee's layout engine has no renderer registered in DocumentRenderers.Candidate";
 
     public static readonly IReadOnlySet<string> Hwpx = new HashSet<string>(["hwpx"]);
     public static readonly IReadOnlySet<string> HwpxAndHwp = new HashSet<string>(["hwpx", "hwp"]);
