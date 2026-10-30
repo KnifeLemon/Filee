@@ -175,7 +175,10 @@ internal sealed partial class HwpxReader
                 "BREAK_WORD" => HLatinBreak.BreakWord,
                 _ => HLatinBreak.KeepWord,
             },
-            NonLatin: Attr(breaks, "breakNonLatinWord") == "BREAK_WORD" ? HNonLatinBreak.BreakWord : HNonLatinBreak.KeepWord,
+            // 한글 writes the 한글 단위 setting the other way round from its names: KEEP_WORD for 글자 (a break at any
+            // syllable) and BREAK_WORD for 어절. The binary HWP of the same document has bit 7 of the paragraph shape set
+            // (글자) where the HWPX says KEEP_WORD, and 한글's own line layout of KEEP_WORD paragraphs breaks inside words.
+            NonLatin: Attr(breaks, "breakNonLatinWord") == "BREAK_WORD" ? HNonLatinBreak.KeepWord : HNonLatinBreak.BreakWord,
             LineWrap: Attr(breaks, "lineWrap") switch
             {
                 "SQUEEZE" => HLineWrap.Squeeze,

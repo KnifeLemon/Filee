@@ -727,8 +727,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
 
 - **Line breaking** (`LineBreaker.cs`): UAX #14 at Unicode 16.0, rules LB1–LB31; it passes all 16,672 cases of
   Unicode's `LineBreakTest.txt` (checked when written; the file isn't kept, `LineBreakerTests` covers each rule
-  family). Tailorings: 한글 어절 (`breakNonLatinWord` KEEP_WORD) keeps Hangul words whole, the default 글자
-  (BREAK_WORD) breaks between syllables as UAX #14 does; Latin words broken anywhere (`breakLatinWord` BREAK_WORD,
+  family). Tailorings: 한글 어절 keeps Hangul words whole, 글자 breaks between syllables as UAX #14 does (한글 writes
+  them the other way round from the names: `breakNonLatinWord` BREAK_WORD is 어절, KEEP_WORD 글자; the binary HWP
+  of the same document and 한글's own line layout say so); Latin words broken anywhere (`breakLatinWord` BREAK_WORD,
   Word without `w:wordWrap`); a document's own characters forbidden at a line's start or end (Word
   `w:noLineBreaksBefore` / `After`). Hyphenation keeps words whole (no dictionaries), and Thai, Lao, Khmer and Myanmar
   break only at spaces until there is dictionary breaking.
@@ -766,8 +767,11 @@ radicals.
 
 Tests: `LineBreakerTests`, `ParagraphLayoutTests` (with the pinned Noto fonts of `build/fetch-fonts.ps1`), and the
 render quality harness, where the renderer is `DocumentRenderers.Candidate`. Against rhwp, Japanese, Chinese, lists
-and tabs break into the same lines on the same baselines. Korean differs where the paragraph says 글자: rhwp keeps
-Korean words whole whatever the setting (with 어절 both break alike). The rest waits for the page composer.
+and tabs break into the same lines on the same baselines; rhwp splits some Korean words even in 어절 paragraphs. The
+rest waits for the page composer. Against 한글 itself, `HangulLineBreakTests` compares the line starts 한글 stored in
+its HWPX files (`hp:linesegarray`) with Filee's, for the plain-text paragraphs of a private corpus
+(`FILEE_RENDER_CORPUS`): on the HWPX files attached to Filee's issues, 148 of 152 paragraphs break where 한글 broke
+them; one font wasn't installed, and two lines take one or two characters more than 한글's.
 
 ## DOCX writer
 

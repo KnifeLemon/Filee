@@ -185,7 +185,10 @@ internal sealed record HParaBorder(HBorders Borders, string? Fill, HInsets Offse
 
 /// <summary>Where lines may break and how they are fitted. Null members are left to the style (or the default rules).</summary>
 /// <param name="Latin">Latin words: kept whole (어절), hyphenated or broken anywhere (한글 breakLatinWord, Word w:wordWrap).</param>
-/// <param name="NonLatin">Korean words: kept whole (어절) or broken at any syllable (글자) (한글 breakNonLatinWord).</param>
+/// <param name="NonLatin">
+/// Korean words: kept whole (어절) or broken at any syllable (글자) (한글 breakNonLatinWord, whose BREAK_WORD is 어절 and
+/// KEEP_WORD 글자).
+/// </param>
 /// <param name="LineWrap">한글 lineWrap: wrap, squeeze the line, or keep it on one line.</param>
 /// <param name="Kinsoku">East Asian line start / end rules apply (Word w:kinsoku; 한글 applies its 금칙 characters).</param>
 /// <param name="OverflowPunctuation">Punctuation may hang past the line end (Word w:overflowPunct).</param>

@@ -1,8 +1,7 @@
 // Line break opportunities by the Unicode line breaking algorithm (UAX #14, Unicode 16.0, rules LB1–LB31), with the
 // tailorings documents ask for:
-// - 한글 "어절" (breakNonLatinWord KEEP_WORD): Hangul syllables and jamo stay together like letters of a word, so a
-//   Korean line breaks only where a Latin one would (spaces, after hyphens ...). The default, "글자" (BREAK_WORD), is
-//   UAX #14's own: a break between any two syllables.
+// - 한글 "어절": Hangul syllables and jamo stay together like letters of a word, so a Korean line breaks only where a
+//   Latin one would (spaces, after hyphens ...). "글자" is UAX #14's own: a break between any two syllables.
 // - Breaking Latin words anywhere (한글 breakLatinWord BREAK_WORD, Word without w:wordWrap): letters and digits of
 //   Latin, Greek and Cyrillic text break like ideographs. Hyphenation needs dictionaries Filee doesn't have, so it
 //   keeps words whole.
