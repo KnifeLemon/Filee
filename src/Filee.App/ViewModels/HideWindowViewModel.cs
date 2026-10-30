@@ -1,6 +1,6 @@
 // State of the "Pixelate / blur" window: one picture at a time, as in the crop overlay, with frames drawn over the parts
-// to hide, each showing them already pixelated or blurred; the choice of the two and how strongly (kept in the tool for
-// the next time); and the conversion that writes the picture with those parts covered, which runs in the toast like
+// to hide, each showing them already pixelated, blurred or blacked out (each frame its own style); the last style picked
+// and how strongly (kept in the tool for the next time); and the conversion that writes the picture with those parts covered, which runs in the toast like
 // any other. The frames carry on to the next picture of a batch (screenshots of one app put names in the same place).
 
 using System.Collections.ObjectModel;
@@ -34,15 +34,22 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
     private int _coverShown;
     private bool _closed;
 
-    /// <summary>The frames of the last picture saved, for the next one.</summary>
-    private List<Rect> _carried = [];
+    /// <summary>The frames of the last picture saved, with their styles, for the next one.</summary>
+    private List<(Rect, HideStyle)> _carried = [];
+
+    /// <summary>The styles the covers were last asked for, so a frame moved or added in one of them asks for nothing.</summary>
+    private string _coverStyles = "";
 
     [ObservableProperty] private int _currentIndex;
     [ObservableProperty] private string _currentFileName = "";
     [ObservableProperty] private string _counterText = "";
     [ObservableProperty] private bool _hasMultipleFiles;
     [ObservableProperty] private Bitmap? _previewImage;
+    /// <summary>The preview pixelated all over: what a pixelate frame shows inside it.</summary>
     [ObservableProperty] private Bitmap? _coverImage;
+
+    /// <summary>The preview blurred all over: what a blur frame shows inside it.</summary>
+    [ObservableProperty] private Bitmap? _blurCoverImage;
     [ObservableProperty] private string _saveText = "";
 
     [ObservableProperty]
@@ -58,8 +65,9 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
     private bool _isBusy;
 
+    /// <summary>The style the buttons show: the selected frame's, else the one a new frame gets.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsPixelate), nameof(IsBlur))]
+    [NotifyPropertyChangedFor(nameof(IsPixelate), nameof(IsBlur), nameof(IsBox), nameof(CanChangeStrength))]
     private HideStyle _style;
 
     [ObservableProperty]
@@ -139,6 +147,19 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         }
     }
 
+    public bool IsBox
+    {
+        get => Style == HideStyle.Box;
+        set
+        {
+            if (value)
+                Style = HideStyle.Box;
+        }
+    }
+
+    /// <summary>A black box has no strength: the slider is greyed while it is the style shown.</summary>
+    public bool CanChangeStrength => Style != HideStyle.Box;
+
     /// <summary>"Strength: 5", for the slider's tooltip and screen readers.</summary>
     public string StrengthText => _loc.Format("hide.strength_value", Strength);
 
@@ -162,6 +183,7 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         _export = export;
         _log = log;
         _style = tool.Image.HideStyle;
+        Areas.DefaultStyle = _style;
         _strength = HideTool.ClampStrength(tool.Image.HideStrength);
         _hasMultipleFiles = files.Count > 1;
         for (var i = 0; i < files.Count; i++)
@@ -171,7 +193,7 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         _ = LoadFileAsync(0);
     }
 
-    partial void OnStyleChanged(HideStyle value) => RefreshCover();
+    partial void OnStyleChanged(HideStyle value) => RefreshCoverIfStylesChanged();
 
     partial void OnStrengthChanged(int value)
     {
@@ -195,6 +217,19 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanSave));
         OnPropertyChanged(nameof(ShowEmptyHint));
         SaveCommand.NotifyCanExecuteChanged();
+        // Selecting a frame shows its style; with none selected, the style a new frame gets.
+        Style = Areas.Selected >= 0 ? Areas.Styles[Areas.Selected] : Areas.DefaultStyle;
+        RefreshCoverIfStylesChanged();
+    }
+
+    /// <summary>The styles that need a cover: those of the frames and the one shown (a frame is drawn in it next).</summary>
+    private List<HideStyle> CoverStyles() =>
+        [.. Areas.Styles.Append(Style).Where(s => s != HideStyle.Box).Distinct().Order()];
+
+    private void RefreshCoverIfStylesChanged()
+    {
+        if (string.Join(",", CoverStyles()) != _coverStyles)
+            RefreshCover();
     }
 
     /// <summary>Opens picture <paramref name="index"/>; past the last one, the end.</summary>
@@ -257,19 +292,21 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Covers the preview again as chosen, off the window's thread: the frames show the picture as it is until then
-    /// (softly blurred). Only the newest result is kept, so dragging the strength never queues up work.
+    /// Covers the preview again for each style in use (pixelate, blur; a black box needs none), off the window's thread:
+    /// the frames show the picture as it is until then (softly blurred). Only the newest result is kept, so dragging the
+    /// strength never queues up work.
     /// </summary>
     private void RefreshCover()
     {
         if (_preview is not { } preview || _closed)
             return;
         var version = ++_coverVersion;
-        var style = Style;
-        var size = HideService.PreviewEffectSize(style, Strength, OriginalWidth, OriginalHeight, (int)preview.Width);
+        var styles = CoverStyles();
+        _coverStyles = string.Join(",", styles);
+        var sizes = styles.Select(style => (style, HideService.PreviewEffectSize(style, Strength, OriginalWidth, OriginalHeight, (int)preview.Width))).ToList();
         _ = Task.Run(() =>
         {
-            Bitmap? cover = null;
+            var covers = new Dictionary<HideStyle, Bitmap>();
             try
             {
                 lock (preview)
@@ -277,31 +314,39 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
                     // A newer choice, or another picture (this one disposed): nothing to do.
                     if (version != Volatile.Read(ref _coverVersion) || !ReferenceEquals(preview, Volatile.Read(ref _preview)))
                         return;
-                    cover = HideService.Cover(preview, style, size);
+                    foreach (var (style, size) in sizes)
+                        covers[style] = HideService.Cover(preview, style, size);
                 }
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
                 _log?.LogDebug(ex, "Could not cover the preview");
+                foreach (var made in covers.Values)
+                    made.Dispose();
                 return;
             }
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 if (version != _coverVersion || _closed || !ReferenceEquals(preview, _preview))
                 {
-                    cover.Dispose();
+                    foreach (var made in covers.Values)
+                        made.Dispose();
                     return;
                 }
-                var old = CoverImage;
-                CoverImage = cover;
+                var oldPixelate = CoverImage;
+                var oldBlur = BlurCoverImage;
+                CoverImage = covers.GetValueOrDefault(HideStyle.Pixelate);
+                BlurCoverImage = covers.GetValueOrDefault(HideStyle.Blur);
                 _coverShown = version;
-                old?.Dispose();
+                oldPixelate?.Dispose();
+                oldBlur?.Dispose();
             });
         });
     }
 
-    /// <summary>Waits for the covered preview of the current choice (tests capture it).</summary>
-    internal bool IsCoverCurrent => CoverImage is not null && _coverShown == _coverVersion;
+    /// <summary>Waits for the covered previews of the current choice (tests capture them).</summary>
+    internal bool IsCoverCurrent => _coverShown == _coverVersion
+        && CoverStyles().All(style => (style == HideStyle.Blur ? BlurCoverImage : CoverImage) is not null);
 
     private void ReplacePreview(MagickImage? preview)
     {
@@ -313,8 +358,12 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
                 old.Dispose();
         }
         var cover = CoverImage;
+        var blur = BlurCoverImage;
         CoverImage = null;
+        BlurCoverImage = null;
+        _coverStyles = "";
         cover?.Dispose();
+        blur?.Dispose();
     }
 
     // ───────────────────────── Commands ─────────────────────────
@@ -329,7 +378,7 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         if (!CanSave || _closed || CurrentIndex >= _files.Count)
             return;
         var path = _files[CurrentIndex];
-        var areas = Areas.Areas.Select(a => new HiddenArea { X = a.X, Y = a.Y, Width = a.Width, Height = a.Height }).ToList();
+        var areas = Areas.Areas.Select((a, i) => new HiddenArea { X = a.X, Y = a.Y, Width = a.Width, Height = a.Height, Style = Areas.Styles[i] }).ToList();
         Remember();
         try
         {
@@ -342,9 +391,11 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
             AddProblem(path, "error.conversion_failed");
             Queue[CurrentIndex].State = CropItemState.Failed;
         }
-        _carried = [.. Areas.Areas];
+        _carried = Carried();
         await LoadFileAsync(CurrentIndex + 1);
     }
+
+    private List<(Rect, HideStyle)> Carried() => [.. Areas.Areas.Zip(Areas.Styles)];
 
     /// <summary>Leaves this picture as it is and opens the next one.</summary>
     [RelayCommand]
@@ -354,7 +405,7 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
             return;
         Queue[CurrentIndex].State = CropItemState.Skipped;
         // The frames stay for the next picture, as drawn.
-        _carried = [.. Areas.Areas];
+        _carried = Carried();
         await LoadFileAsync(CurrentIndex + 1);
     }
 
@@ -366,11 +417,18 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         CloseRequested?.Invoke();
     }
 
+    /// <summary>
+    /// Covers the selected frame as <paramref name="style"/> (one undo step); either way, frames drawn next get it too.
+    /// </summary>
     [RelayCommand]
     public void SetStyle(HideStyle style)
     {
-        if (IsEditing)
-            Style = style;
+        if (!IsEditing)
+            return;
+        Areas.DefaultStyle = style;
+        if (Areas.Selected >= 0)
+            Areas.SetStyle(Areas.Selected, style);
+        Style = style;
     }
 
     /// <summary>Removes every frame (R); Ctrl+Z brings them back.</summary>
@@ -411,14 +469,15 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
 
     // ───────────────────────── Files, messages and the end ─────────────────────────
 
-    /// <summary>Keeps pixelate or blur and the strength in the tool, as saved and as given to this window.</summary>
+    /// <summary>Keeps the style picked last and the strength in the tool, as saved and as given to this window.</summary>
     private void Remember()
     {
-        HideTool.Remember(_tool, Style, Strength);
+        var style = Areas.DefaultStyle;
+        HideTool.Remember(_tool, style, Strength);
         if (_store.FindPreset(_tool.Id) is not { IsHideTool: true } saved
-            || (saved.Image.HideStyle == Style && saved.Image.HideStrength == Strength))
+            || (saved.Image.HideStyle == style && saved.Image.HideStrength == Strength))
             return;
-        HideTool.Remember(saved, Style, Strength);
+        HideTool.Remember(saved, style, Strength);
         try
         {
             _store.SaveLibrary();

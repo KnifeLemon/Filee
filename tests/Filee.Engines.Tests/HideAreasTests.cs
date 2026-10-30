@@ -1,5 +1,5 @@
-// "Pixelate / blur" through the real image engine: the parts become squares of their average colour or a blur that
-// leaves none of their detail, the rest of the picture keeps every pixel, the parts land on the picture as it is seen
+// "Pixelate / blur" through the real image engine: the parts become squares of their average colour, a blur that
+// leaves none of their detail or opaque black boxes, each part as its own style says, the rest of the picture keeps every pixel, the parts land on the picture as it is seen
 // (EXIF orientation), the format stays, and the previews a file carries of the uncovered picture go.
 
 using Filee.Core.Conversion;
@@ -82,6 +82,39 @@ public class HideAreasTests(EngineFixture fx) : IClassFixture<EngineFixture>
                     sum += a[Index(x, y) + c];
             Assert.Equal((byte)((sum + 128) / 256), b[Index(70, 50) + c]);
         }
+    }
+
+    [Fact]
+    public async Task A_black_box_is_opaque_black_and_each_part_takes_its_own_style()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "noise.png");
+        using (var source = Noise(400, 200))
+        {
+            // Half transparent everywhere: a box must not let any of what was there show through.
+            source.Alpha(AlphaOption.Set);
+            source.Evaluate(Channels.Alpha, EvaluateOperator.Set, Quantum.Max / 2);
+            source.Write(path, MagickFormat.Png);
+        }
+        var box = Area(0.1, 0.1, 0.3, 0.5);                                    // 40, 20, 120 × 100
+        box.Style = HideStyle.Box;
+        var pixelated = Area(0.6, 0.1, 0.3, 0.5);                              // no style of its own: the preset's
+
+        var output = await RunAsync(path, Hide(HideStyle.Pixelate, 5, box, pixelated));
+
+        using var before = new MagickImage(path);
+        using var after = new MagickImage(output);
+        var a = before.GetPixels().ToByteArray(PixelMapping.RGBA)!;
+        var b = after.GetPixels().ToByteArray(PixelMapping.RGBA)!;
+        int Index(int x, int y) => (y * 400 + x) * 4;
+        for (var y = 20; y < 120; y++)
+            for (var x = 40; x < 160; x++)
+                Assert.Equal((0, 0, 0, 255), (b[Index(x, y)], b[Index(x, y) + 1], b[Index(x, y) + 2], b[Index(x, y) + 3]));
+        // Just outside the box, as it was; the other part pixelated (two neighbours in one square alike, unlike before).
+        Assert.Equal(a[Index(39, 50)], b[Index(39, 50)]);
+        Assert.Equal(a[Index(160, 50)], b[Index(160, 50)]);
+        Assert.Equal(b[Index(250, 50)], b[Index(251, 50)]);
+        Assert.NotEqual((0, 0, 0), (b[Index(250, 50)], b[Index(250, 50) + 1], b[Index(250, 50) + 2]));
     }
 
     [Fact]

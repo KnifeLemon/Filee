@@ -1,5 +1,5 @@
-// "Pixelate / blur": covers parts of a picture (ImageOptions.HiddenAreas) so what was there can't be read back. Each
-// part is changed on its own; the rest of the picture keeps its pixels. Also used on the window's preview, so what the
+// "Pixelate / blur": covers parts of a picture (ImageOptions.HiddenAreas) so what was there can't be read back, each
+// pixelated, blurred or blacked out as its style says. Each part is changed on its own; the rest of the picture keeps its pixels. Also used on the window's preview, so what the
 // user sees while drawing the parts is what the file gets.
 
 using Filee.Core.Presets;
@@ -7,7 +7,7 @@ using ImageMagick;
 
 namespace Filee.Engines.Magick;
 
-/// <summary>Pixelates or blurs parts of a picture for good.</summary>
+/// <summary>Pixelates, blurs or blacks out parts of a picture for good.</summary>
 public static class AreaHider
 {
     /// <summary>
@@ -24,10 +24,18 @@ public static class AreaHider
         {
             if (HideTool.PixelBounds(area, width, height) is not { } bounds)
                 continue;
-            if (options.HideStyle == HideStyle.Blur)
-                Blur(image, bounds, size);
-            else
-                Pixelate(image, bounds, Math.Round(size));
+            switch (area.Style ?? options.HideStyle)
+            {
+                case HideStyle.Blur:
+                    Blur(image, bounds, size);
+                    break;
+                case HideStyle.Box:
+                    Box(image, bounds);
+                    break;
+                default:
+                    Pixelate(image, bounds, Math.Round(size));
+                    break;
+            }
         }
         DropPreviews(image);
     }
@@ -127,6 +135,21 @@ public static class AreaHider
         using var squares = new MagickImage();
         squares.ReadPixels(data, new PixelReadSettings((uint)regionWidth, (uint)regionHeight, StorageType.Char, mapping));
         image.Composite(squares, left, top, CompositeOperator.Copy);
+    }
+
+    /// <summary>
+    /// <paramref name="bounds"/> filled with opaque black: every pixel of the part is replaced, transparency included, so
+    /// nothing of it is left to recover.
+    /// </summary>
+    public static void Box(IMagickImage<byte> image, (int X, int Y, int Width, int Height) bounds)
+    {
+        var (x, y, w, h) = bounds;
+        if (w <= 0 || h <= 0)
+            return;
+        using var black = new MagickImage(MagickColors.Black, (uint)w, (uint)h);
+        if (image.HasAlpha)
+            black.Alpha(AlphaOption.Opaque);
+        image.Composite(black, x, y, CompositeOperator.Copy);
     }
 
     /// <summary>

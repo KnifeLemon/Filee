@@ -277,6 +277,8 @@
   "hide.pixelate_hint": "Cubrir con cuadros del color medio (P)",
   "hide.blur": "Difuminar",
   "hide.blur_hint": "Cubrir con un desenfoque fuerte (B)",
+  "hide.box": "Bloque negro",
+  "hide.box_hint": "Cubrir con un bloque negro opaco (X)",
   "hide.strength": "Intensidad",
   "hide.strength_value": "Intensidad {0} de 10 (− / +)",
   "hide.remove": "Quitar marco",
