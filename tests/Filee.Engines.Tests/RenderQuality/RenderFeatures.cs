@@ -193,6 +193,7 @@ internal static class RenderFeatures
         }), string.Concat(body), Pages: 2);
     }
 
+    /// <summary>A footnote and an endnote; 한글 starts the endnotes on a page of their own (2 pages).</summary>
     private static RenderFeature Notes()
     {
         return new RenderFeature("notes", folder => Model(folder, "notes", section =>
@@ -207,7 +208,7 @@ internal static class RenderFeatures
             paragraph.Inlines.Add(endnote);
             paragraph.Inlines.Add(new HText(".", default));
             section.Blocks.Add(paragraph);
-        }), "각주가 달린 문장입니다. A sentence with an endnote.");
+        }), "각주가 달린 문장입니다. A sentence with an endnote.", Pages: 2);
     }
 
     private static RenderFeature Columns()

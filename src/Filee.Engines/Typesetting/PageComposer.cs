@@ -2,8 +2,8 @@
 // paper size, margins and gutter, its body filled with laid out paragraphs, and its headers and footers.
 //
 // - Pages: a section starts a page; the body runs from the top margin and header area down to the footer area. A
-//   paragraph starts a page when it asks for one (page break before, or a column break while there is one column), and
-//   a line that doesn't fit goes to the next page.
+//   paragraph starts a page when it asks for one, a column when it asks for a column break, and a line that doesn't fit
+//   goes to the next column or page.
 // - Keep rules: "keep lines together" moves a paragraph that would split to the next page, "keep with next" a paragraph
 //   whose next one wouldn't start on the same page, and widow / orphan control keeps at least two lines of a split
 //   paragraph on either page. None of them moves anything off an empty page.
@@ -19,8 +19,20 @@
 //
 // - Tables (TableLayout): rows bound by spanning cells move to a page together, header rows repeat, and a table splits
 //   by its page break mode.
+// - Columns: a section's newspaper columns, with their gap and separator line; what doesn't fit in a column goes on in
+//   the next, and after the last on the next page. Columns change without a new page where the model says (Word's
+//   continuous section break, 한글's 다단 설정 나누기); the columns before are balanced then, so they end at about the
+//   same height. At the end of a section they are not (neither 한글 nor Word does). 한글's stored lines that start a
+//   column (stored flag) start one.
+// - Notes: a note reference shows its number, raised, in the section's note format (한글 각주/미주 모양); footnotes go
+//   to the foot of the page their reference is on, under the section's separator line and spacing, and a line whose
+//   footnotes don't fit there moves on with them. Endnotes follow the last section's body on a new page, or right under
+//   it when the section says so. Footnotes and endnotes take 한글's numbers, else they are numbered on through the
+//   document. 한글 sets each note as high as its text, without the spacing below its last line, the last ending at the
+//   body's bottom; that is measured against 한글's own PDFs. Footnotes go across the page's text width, also in
+//   columns (한글 puts them under each column).
 //
-// Columns, notes, floating objects and master pages are later milestones.
+// Floating objects and master pages are later milestones.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
@@ -99,37 +111,193 @@ internal sealed class PageComposer
         /// <summary>The next paragraph's space before went before the table that starts it.</summary>
         private bool _skipSpaceBefore;
 
+        // ───────────────────────── Regions and columns ─────────────────────────
+
+        /// <summary>Something put into a column, drawn when its region is finished (columns may be balanced first).</summary>
+        private sealed record Placed(int Column, float X, float Y, float Height, Action<PageContent, float, float> Draw);
+
+        /// <summary>The columns of the region being filled: from <see cref="_regionTop"/> down, side by side.</summary>
+        private HColumns _columns = HColumns.Single;
+        private int _column;
+        private bool _columnEmpty = true;
+        private float _regionTop;
+        private readonly List<Placed> _placed = [];
+
+        private float Gap => _columns.Count > 1 ? _columns.Gap / 100f : 0;
+
+        private float ColumnWidth => (_geometry.TextWidth - Gap * (_columns.Count - 1)) / Math.Max(1, _columns.Count);
+
+        private float ColumnLeft(int column) => _geometry.Left + column * (ColumnWidth + Gap);
+
+        /// <summary>Where the body ends on this page: above the footnotes.</summary>
+        private float Bottom => _geometry.BodyBottom - FootnotesHeight([]);
+
+        private float ColumnHeight => _geometry.BodyBottom - _regionTop;
+
+        /// <summary>Puts something into the current column at the current position.</summary>
+        private void Put(float x, float height, Action<PageContent, float, float> draw)
+        {
+            _placed.Add(new Placed(_column, x, _y, height, draw));
+            _empty = false;
+            _columnEmpty = false;
+        }
+
+        private void StartRegion(HColumns columns)
+        {
+            _columns = columns.Count > 1 ? columns : HColumns.Single;
+            _column = 0;
+            _columnEmpty = true;
+            _regionTop = _y;
+        }
+
+        /// <summary>
+        /// Draws what the region holds, its columns balanced first when <paramref name="balance"/> (columns changing on
+        /// the page), and moves below it.
+        /// </summary>
+        private void EndRegion(bool balance)
+        {
+            if (_placed.Count == 0)
+            {
+                _column = 0;
+                return;
+            }
+            var placed = balance && _columns.Count > 1 ? Balance(_placed) : _placed;
+            var page = Current.Content;
+            foreach (var item in placed)
+                item.Draw(page, ColumnLeft(item.Column) + item.X, item.Y);
+            var bottom = placed.Max(p => p.Y + p.Height);
+            if (_columns.Separator && _columns.Count > 1)
+            {
+                var (top, gap, width, count, left) = (_regionTop, Gap, ColumnWidth, _columns.Count, _geometry.Left);
+                page.Draw(canvas =>
+                {
+                    using var paint = new SkiaSharp.SKPaint { Style = SkiaSharp.SKPaintStyle.Stroke, StrokeWidth = 0.5f, Color = SkiaSharp.SKColors.Black, IsAntialias = true };
+                    for (var c = 1; c < count; c++)
+                    {
+                        var x = left + c * (width + gap) - gap / 2;
+                        canvas.DrawLine(x, top, x, bottom, paint);
+                    }
+                });
+            }
+            _placed.Clear();
+            _y = bottom;
+            _column = 0;
+            _columnEmpty = true;
+        }
+
+        /// <summary>
+        /// The region's content spread over its columns as evenly as it goes: the lowest column height at which
+        /// everything still fits, keeping the order and the space between things.
+        /// </summary>
+        private List<Placed> Balance(List<Placed> placed)
+        {
+            // The space above each thing in its column (none at a column's top).
+            var units = new List<(Placed Item, float Gap)>();
+            var bottoms = new Dictionary<int, float>();
+            foreach (var item in placed)
+            {
+                var gap = bottoms.TryGetValue(item.Column, out var bottom) ? Math.Max(0, item.Y - bottom) : 0;
+                units.Add((item, gap));
+                bottoms[item.Column] = item.Y + item.Height;
+            }
+            var total = units.Sum(u => u.Gap + u.Item.Height);
+            var capacity = Bottom - _regionTop;
+            List<Placed>? Try(float target)
+            {
+                var result = new List<Placed>(units.Count);
+                var (column, y, first) = (0, _regionTop, true);
+                foreach (var (item, gap) in units)
+                {
+                    var top = first ? y : y + gap;
+                    if (!first && top + item.Height > _regionTop + target + Epsilon)
+                    {
+                        // Past the target height: on in the next column, the last one too high means the target is.
+                        if (column + 1 == _columns.Count)
+                            return null;
+                        (column, top) = (column + 1, _regionTop);
+                    }
+                    result.Add(item with { Column = column, Y = top });
+                    y = top + item.Height;
+                    first = false;
+                }
+                return result;
+            }
+            // The first columns take the more (as 한글 balances): the lowest target at which everything fits.
+            float low = total / _columns.Count, high = capacity;
+            if (Try(high) is null)
+                return placed;
+            for (var step = 0; step < 24 && high - low > 0.5f; step++)
+            {
+                var middle = (low + high) / 2;
+                if (Try(middle) is null)
+                    low = middle;
+                else
+                    high = middle;
+            }
+            return Try(high) ?? placed;
+        }
+
+        /// <summary>Moves to the next column, or to the next page after the last one.</summary>
+        private void NextColumn()
+        {
+            if (_column + 1 < _columns.Count)
+            {
+                _column++;
+                _y = _regionTop;
+                _columnEmpty = true;
+            }
+            else
+            {
+                NewPage();
+            }
+        }
+
+        // ───────────────────────── Pages ─────────────────────────
+
         public ComposedDocument Compose()
         {
-            foreach (var section in document.Sections)
+            for (var s = 0; s < document.Sections.Count; s++)
             {
+                var section = document.Sections[s];
+                if (_pages.Count > 0)
+                    EndRegion(balance: false);
                 _section = section;
                 _geometry = Geometry.Of(section.Page ?? DefaultPage);
                 if (section.StartPageNumber is { } start)
                     _number = start - 1;
-                NewPage(firstOfSection: true);
+                NewPage(firstOfSection: true, section.Columns);
                 Body(section.Blocks);
+                if (s == document.Sections.Count - 1)
+                    Endnotes();
             }
             if (_pages.Count == 0)
             {
                 _section = new HSection();
                 NewPage(firstOfSection: true);
             }
+            EndRegion(balance: false);
+            FinishPage();
             _guard.PageFinished(_empty);
             foreach (var page in _pages)
                 HeadersAndFooters(page);
             return new ComposedDocument([.. _pages.Select(p => p.Content)], _outline);
         }
 
-        private void NewPage(bool firstOfSection = false)
+        private void NewPage(bool firstOfSection = false, HColumns? columns = null)
         {
+            var keep = columns ?? _columns;
             if (_pages.Count > 0)
+            {
+                EndRegion(balance: false);
+                FinishPage();
                 _guard.PageFinished(_empty);
+            }
             _number++;
             _pages.Add(new Page(new PageContent(_geometry.Width, _geometry.Height), _section!, _geometry, _number, firstOfSection));
             _y = _geometry.BodyTop;
             _empty = true;
             _inStep = true;
+            StartRegion(keep);
         }
 
         private Page Current => _pages[^1];
@@ -150,7 +318,7 @@ internal sealed class PageComposer
                 _guard.Paragraph();
                 if (blocks[i] is HTable table)
                 {
-                    var tableBox = next as TableBox ?? Tables.Layout(table, _geometry.TextWidth);
+                    var tableBox = next as TableBox ?? Tables.Layout(table, ColumnWidth);
                     next = null;
                     PlaceTable(table, tableBox, holder, holder is null ? TableLayout.Follower(blocks, i) : null);
                     holder = null;
@@ -167,25 +335,33 @@ internal sealed class PageComposer
                     continue;
                 }
                 var paragraph = composer.Resolve(source);
-                // A column break moves to the next page only where there is one column (columns are a later milestone).
-                if ((paragraph.PageBreakBefore || paragraph.ColumnBreakBefore && _section!.Columns.Count <= 1) && !_empty)
+                // Columns change here without a new page (Word's continuous section break): the columns so far are
+                // balanced and the new ones start under them.
+                if (paragraph.ColumnsChange is { } change)
+                {
+                    EndRegion(balance: true);
+                    StartRegion(change);
+                }
+                if (paragraph.PageBreakBefore && !_empty)
                     NewPage();
-                var box = next as ParagraphBox ?? Layout(paragraph, _geometry.TextWidth);
+                else if (paragraph.ColumnBreakBefore && !_columnEmpty)
+                    NextColumn();
+                var box = next as ParagraphBox ?? Layout(paragraph, ColumnWidth);
                 next = null;
 
-                // Keep with next: this paragraph and the start of the next block on one page.
-                if (paragraph.Format.KeepWithNext == true && !_empty && i + 1 < blocks.Count && !(box.StoredLines && _inStep))
+                // Keep with next: this paragraph and the start of the next block in one column.
+                if (paragraph.Format.KeepWithNext == true && !_columnEmpty && i + 1 < blocks.Count && !(box.StoredLines && _inStep))
                 {
                     float start;
                     switch (blocks[i + 1])
                     {
                         case HParagraph following:
-                            var nextBox = Layout(composer.Resolve(following), _geometry.TextWidth);
+                            var nextBox = Layout(composer.Resolve(following), ColumnWidth);
                             next = nextBox;
                             start = nextBox.SpaceBefore + (nextBox.Lines.Count > 0 ? nextBox.Lines[0].Height : 0);
                             break;
                         case HTable following:
-                            var nextTable = Tables.Layout(following, _geometry.TextWidth);
+                            var nextTable = Tables.Layout(following, ColumnWidth);
                             next = nextTable;
                             start = nextTable.Groups() is [var (first, count), ..] ? nextTable.Rows.Skip(first).Take(count).Sum(r => r.Height) : 0;
                             break;
@@ -194,13 +370,13 @@ internal sealed class PageComposer
                             break;
                     }
                     var together = box.Height + start;
-                    if (_y + together > _geometry.BodyBottom + Epsilon && together <= BodyHeight)
-                        NewPage();
+                    if (_y + together > Bottom + Epsilon && together <= ColumnHeight)
+                        NextColumn();
                 }
-                // Keep lines together: a paragraph that would split starts on the next page.
-                if (paragraph.Format.KeepLines == true && !_empty && !(box.StoredLines && _inStep) &&
-                    _y + box.Height > _geometry.BodyBottom + Epsilon && box.Height <= BodyHeight)
-                    NewPage();
+                // Keep lines together: a paragraph that would split starts in the next column.
+                if (paragraph.Format.KeepLines == true && !_columnEmpty && !(box.StoredLines && _inStep) &&
+                    _y + box.Height > Bottom + Epsilon && box.Height <= ColumnHeight)
+                    NextColumn();
 
                 Place(paragraph, box);
                 if (!box.StoredLines)
@@ -209,8 +385,8 @@ internal sealed class PageComposer
         }
 
         /// <summary>
-        /// Puts a table's rows on pages from the current position on, repeating its header rows; <paramref name="holder"/>
-        /// is the 한글 paragraph whose line the table is, or null.
+        /// Puts a table's rows into columns and pages from the current position on, repeating its header rows;
+        /// <paramref name="holder"/> is the 한글 paragraph whose line the table is, or null.
         /// </summary>
         /// <param name="follower">The rest of the 한글 paragraph the table starts, whose text follows right under it.</param>
         private void PlaceTable(HTable table, TableBox box, HParagraph? holder, HParagraph? follower)
@@ -222,8 +398,8 @@ internal sealed class PageComposer
             {
                 // Where 한글 put the line while the page follows 한글, else after the paragraph's space before.
                 if (_inStep && line is { } stored)
-                    _y = Math.Max(_y, _geometry.BodyTop + stored.VerticalPosition / 100f);
-                else if (!_empty)
+                    _y = Math.Max(_y, _regionTop + stored.VerticalPosition / 100f);
+                else if (!_columnEmpty)
                     _y += (holder.Format.Before ?? 0) / 100f;
             }
             else if (follower is not null)
@@ -236,23 +412,23 @@ internal sealed class PageComposer
             _y += (table.VerticalOffset + margin.Top) / 100f;
             // Filee's rows are not 한글's: the stored places hold again on 한글's next page.
             _inStep = false;
-            var x = _geometry.Left + box.Offset + margin.Left / 100f;
+            var x = box.Offset + margin.Left / 100f;
             var header = box.Rows.Take(box.HeaderRows).ToList();
-            // A table that must not split goes to the next page whole when it fits on one.
-            if (box.PageBreak == HTablePageBreak.None && !_empty && _y + box.Height > _geometry.BodyBottom + Epsilon && box.Height <= BodyHeight)
-                NewPage();
+            // A table that must not split goes to the next column whole when it fits in one.
+            if (box.PageBreak == HTablePageBreak.None && !_columnEmpty && _y + box.Height > Bottom + Epsilon && box.Height <= ColumnHeight)
+                NextColumn();
 
-            // The page holds nothing yet but, perhaps, this table's repeated header rows.
-            var fresh = _empty;
+            // The column holds nothing yet but, perhaps, this table's repeated header rows.
+            var fresh = _columnEmpty;
             void Draw(IReadOnlyList<RowBox> rows)
             {
-                TableLayout.Draw(Current.Content, rows, x, _y);
-                _y += rows.Sum(r => r.Height);
-                _empty = false;
+                var height = rows.Sum(r => r.Height);
+                Put(x, height, (page, left, top) => TableLayout.Draw(page, rows, left, top));
+                _y += height;
             }
             void NextPage(bool repeat)
             {
-                NewPage();
+                NextColumn();
                 _inStep = false;
                 if (repeat && header.Count > 0)
                     Draw(header);
@@ -265,7 +441,7 @@ internal sealed class PageComposer
                 var repeat = first >= header.Count;
                 while (true)
                 {
-                    var room = _geometry.BodyBottom - _y;
+                    var room = Bottom - _y;
                     if (rows.Sum(r => r.Height) <= room + Epsilon)
                     {
                         Draw(rows);
@@ -287,7 +463,7 @@ internal sealed class PageComposer
                         NextPage(repeat);
                         continue;
                     }
-                    // Taller than an empty page and it can't split: placed as it is.
+                    // Taller than an empty column and it can't split: placed as it is.
                     Draw(rows);
                     fresh = false;
                     break;
@@ -295,81 +471,87 @@ internal sealed class PageComposer
             }
             foreach (var piece in box.Caption)
             {
-                if (!_empty && _y + piece.Height > _geometry.BodyBottom + Epsilon)
-                    NewPage();
-                piece.Draw(Current.Content, x, _y);
+                if (!_columnEmpty && _y + piece.Height > Bottom + Epsilon)
+                    NextColumn();
+                Put(x, piece.Height, piece.Draw);
                 _y += piece.Height;
-                _empty = false;
             }
             _y += margin.Bottom / 100f;
             // The rest of the table's line: its line spacing and the paragraph's space after.
             if (holder is not null)
                 _y += (line?.Spacing ?? 0) / 100f + (holder.Format.After ?? 0) / 100f;
+            // Notes referenced inside the table's cells go to the foot of the page the table ends on.
+            foreach (var note in _numbered.Where(n => !_notesPlaced.Contains(n)).ToList())
+                AddNote(note);
         }
 
-        private float BodyHeight => _geometry.BodyBottom - _geometry.BodyTop;
-
-        private ParagraphBox Layout(HParagraph paragraph, float width)
+        private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null)
         {
-            var marker = paragraph.List is { Numbered: true } list ? _numbers.Next(list) : null;
-            return composer._layouter.Layout(paragraph, width, marker, FieldText);
+            marker ??= paragraph.List is { Numbered: true } list ? _numbers.Next(list) : null;
+            return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText);
         }
 
-        /// <summary>Puts a paragraph's lines on pages from the current position on.</summary>
+        /// <summary>Puts a paragraph's lines into columns and pages from the current position on.</summary>
         private void Place(HParagraph paragraph, ParagraphBox box)
         {
             var lines = box.Lines;
             var widowOrphan = paragraph.Format.WidowOrphan == true;
-            if (!_empty && !_skipSpaceBefore)
+            if (!_columnEmpty && !_skipSpaceBefore)
                 _y += box.SpaceBefore;
             _skipSpaceBefore = false;
             for (var i = 0; i < lines.Count;)
             {
                 var stored = box.StoredLines && _inStep;
                 if (stored && lines[i].StoredPageStart && !_empty)
-                {
                     NewPage();
-                }
-                // How many of the remaining lines fit on this page.
+                else if (stored && lines[i].StoredColumnStart && !_columnEmpty && _columns.Count > 1)
+                    NextColumn();
+                // How many of the remaining lines fit in this column, with the footnotes they bring.
                 var fit = 0;
                 var y = _y;
+                var notes = new List<HNote>();
                 for (var j = i; j < lines.Count; j++)
                 {
-                    if (j > i && stored && lines[j].StoredPageStart)
+                    if (j > i && stored && (lines[j].StoredPageStart || lines[j].StoredColumnStart && _columns.Count > 1))
                         break;
-                    var top = stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _geometry.BodyTop + storedTop) : y;
-                    if (top + lines[j].Height > _geometry.BodyBottom + Epsilon)
+                    var top = stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : y;
+                    notes.AddRange(NewNotes(lines[j]));
+                    if (top + lines[j].Height > _geometry.BodyBottom - FootnotesHeight(notes) + Epsilon)
                         break;
                     y = top + lines[j].Height;
                     fit++;
                 }
                 if (widowOrphan && !stored && fit < lines.Count - i)
                 {
-                    // At least two lines of the paragraph on this page (or none) and two on the next.
-                    if (i == 0 && fit < MinimumLines && !_empty)
+                    // At least two lines of the paragraph in this column (or none) and two in the next.
+                    if (i == 0 && fit < MinimumLines && !_columnEmpty)
                         fit = 0;
                     else if (lines.Count - i - fit < MinimumLines && fit > MinimumLines - 1 + (i == 0 ? 1 : 0))
                         fit -= MinimumLines - (lines.Count - i - fit);
                 }
                 if (fit == 0)
                 {
-                    if (!_empty)
+                    if (!_columnEmpty)
                     {
-                        NewPage();
+                        NextColumn();
                         _inStep = false;
                         continue;
                     }
-                    fit = 1; // a line higher than the page: placed anyway
+                    fit = 1; // a line higher than the column: placed anyway
                 }
                 for (var j = i; j < i + fit; j++)
                     PlaceLine(paragraph, lines[j], j == 0, stored);
                 i += fit;
                 if (i < lines.Count)
                 {
-                    NewPage();
-                    // A break Filee made, not 한글: the stored places no longer hold until 한글's next page.
-                    if (!lines[i].StoredPageStart)
-                        _inStep = false;
+                    var stays = lines[i].StoredPageStart || lines[i].StoredColumnStart;
+                    if (!(stored && stays))
+                    {
+                        NextColumn();
+                        // A break Filee made, not 한글: the stored places no longer hold until 한글's next page.
+                        if (!stays)
+                            _inStep = false;
+                    }
                 }
             }
             _y += box.SpaceAfter;
@@ -378,12 +560,170 @@ internal sealed class PageComposer
         private void PlaceLine(HParagraph paragraph, LineBox line, bool first, bool stored)
         {
             if (stored && line.StoredTop is { } top)
-                _y = Math.Max(_y, _geometry.BodyTop + top);
+                _y = Math.Max(_y, _regionTop + top);
             if (first && paragraph.HeadingLevel > 0)
                 _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, _y, paragraph.HeadingLevel - 1));
-            line.Draw(Current.Content, _geometry.Left, _y);
+            Put(0, line.Height, line.Draw);
             _y += line.Height;
-            _empty = false;
+            foreach (var note in line.Notes)
+                AddNote(note);
+        }
+
+        // ───────────────────────── Notes ─────────────────────────
+
+        private readonly Dictionary<HNote, string> _noteNumbers = new(ReferenceEqualityComparer.Instance);
+        private readonly List<HNote> _numbered = [];
+        private readonly HashSet<HNote> _notesPlaced = new(ReferenceEqualityComparer.Instance);
+        private readonly Dictionary<HNote, (List<Piece> Lines, float Height)> _noteLayouts = new(ReferenceEqualityComparer.Instance);
+        private readonly List<HNote> _footnotes = [];
+        private readonly List<HNote> _endnotes = [];
+        private int _footnoteCount;
+        private int _endnoteCount;
+
+        private HNoteShape Shape(HNote note) => note.Endnote ? _section!.Endnotes : _section!.Footnotes;
+
+        /// <summary>
+        /// The number a note reference shows: 한글's own number, else footnotes and endnotes counted on separately
+        /// through the document; in the section's note format.
+        /// </summary>
+        private string NoteText(HNote note)
+        {
+            if (!_noteNumbers.TryGetValue(note, out var text))
+            {
+                var number = note.Number ?? (note.Endnote ? _endnoteCount + 1 : _footnoteCount + 1);
+                if (note.Endnote)
+                    _endnoteCount = number;
+                else
+                    _footnoteCount = number;
+                var format = Shape(note).Format;
+                _noteNumbers[note] = text = format.Prefix + ListNumbers.Format(number, format.Type) + format.Suffix;
+                _numbered.Add(note);
+            }
+            return text;
+        }
+
+        /// <summary>
+        /// A note's paragraphs laid out across the text width, its number in front of the first, and its height: from
+        /// the first paragraph's space before down to its last line's text, without the spacing below it (as 한글
+        /// stacks notes).
+        /// </summary>
+        private (List<Piece> Lines, float Height) NoteLayout(HNote note)
+        {
+            if (_noteLayouts.TryGetValue(note, out var layout))
+                return layout;
+            var marker = NoteText(note);
+            var pieces = new List<Piece>();
+            float y = 0, height = 0;
+            var first = true;
+            foreach (var paragraph in note.Blocks.OfType<HParagraph>())
+            {
+                var box = Layout(composer.Resolve(paragraph), _geometry.TextWidth, first ? marker : null);
+                y += box.SpaceBefore;
+                first = false;
+                foreach (var line in box.Lines)
+                {
+                    pieces.Add(new Piece(y, line.Height, line.Draw, line.Below));
+                    height = y + line.TextHeight;
+                    y += line.Height;
+                }
+                y += box.SpaceAfter;
+            }
+            return _noteLayouts[note] = (pieces, height);
+        }
+
+        /// <summary>The height the footnotes of this page take with <paramref name="more"/> added: space and line above included.</summary>
+        private float FootnotesHeight(IReadOnlyCollection<HNote> more)
+        {
+            var count = _footnotes.Count + more.Count;
+            if (count == 0)
+                return 0;
+            var shape = _section!.Footnotes;
+            return _footnotes.Concat(more).Sum(n => NoteLayout(n).Height) + (count - 1) * shape.Between / 100f + (shape.Above + shape.Below) / 100f;
+        }
+
+        /// <summary>The footnotes a line brings that this page doesn't hold yet.</summary>
+        private IEnumerable<HNote> NewNotes(LineBox line) => line.Notes.Where(n => !n.Endnote && !_notesPlaced.Contains(n));
+
+        private void AddNote(HNote note)
+        {
+            if (!_notesPlaced.Add(note))
+                return;
+            if (note.Endnote)
+                _endnotes.Add(note);
+            else
+                _footnotes.Add(note);
+        }
+
+        /// <summary>Draws the page's footnotes at the foot of its body, under their separator line.</summary>
+        private void FinishPage()
+        {
+            if (_footnotes.Count == 0 || _pages.Count == 0)
+                return;
+            var page = Current.Content;
+            var shape = _section!.Footnotes;
+            var top = _geometry.BodyBottom - FootnotesHeight([]) + shape.Above / 100f;
+            SeparatorLine(page, shape, _geometry.Left, top);
+            top += shape.Below / 100f;
+            foreach (var note in _footnotes)
+            {
+                var (lines, height) = NoteLayout(note);
+                foreach (var piece in lines)
+                    piece.Draw(page, _geometry.Left, top + piece.Top);
+                top += height + shape.Between / 100f;
+            }
+            _footnotes.Clear();
+        }
+
+        private void SeparatorLine(PageContent page, HNoteShape shape, float left, float y)
+        {
+            var length = shape.LineLength(_geometry.TextWidth);
+            if (length <= 0)
+                return;
+            page.Draw(canvas =>
+            {
+                using var paint = new SkiaSharp.SKPaint { Style = SkiaSharp.SKPaintStyle.Stroke, StrokeWidth = 0.34f, Color = SkiaSharp.SKColors.Black, IsAntialias = true };
+                canvas.DrawLine(left, y, left + length, y, paint);
+            });
+        }
+
+        /// <summary>
+        /// The endnotes, after the last section's body: on a page of their own, or right under the text and a separator
+        /// line when the section says so.
+        /// </summary>
+        private void Endnotes()
+        {
+            if (_endnotes.Count == 0)
+                return;
+            var shape = _section!.Endnotes;
+            if (!shape.BeneathText)
+            {
+                if (!_empty)
+                    NewPage();
+            }
+            else if (!_columnEmpty)
+            {
+                _y += shape.Above / 100f;
+                Put(0, 0, (page, left, top) => SeparatorLine(page, shape, left, top));
+                _y += shape.Below / 100f;
+            }
+            foreach (var note in _endnotes.ToList())
+            {
+                var (lines, height) = NoteLayout(note);
+                var start = _y;
+                foreach (var piece in lines)
+                {
+                    if (!_columnEmpty && _y + piece.Height > Bottom + Epsilon)
+                    {
+                        NextColumn();
+                        start = _y - piece.Top;
+                    }
+                    _y = start + piece.Top;
+                    Put(0, piece.Height, piece.Draw);
+                    _y += piece.Height;
+                }
+                _y = start + height + shape.Between / 100f;
+            }
+            _endnotes.Clear();
         }
 
         // ───────────────────────── Headers and footers ─────────────────────────

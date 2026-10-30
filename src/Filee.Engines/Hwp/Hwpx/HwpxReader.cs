@@ -406,8 +406,29 @@ internal sealed partial class HwpxReader
             HideFirstHeader = Flag(visibility, "hideFirstHeader"),
             HideFirstFooter = Flag(visibility, "hideFirstFooter"),
             StartPageNumber = start > 0 ? start : null,
+            Footnotes = NoteShape(Child(secPr, "footNotePr"), HNoteShape.Footnote),
+            Endnotes = NoteShape(Child(secPr, "endNotePr"), HNoteShape.Endnote),
         };
     }
+
+    /// <summary>A section's footnote or endnote shape (hp:footNotePr, hp:endNotePr).</summary>
+    private static HNoteShape NoteShape(XElement? shape, HNoteShape fallback)
+    {
+        if (shape is null)
+            return fallback;
+        var line = Child(shape, "noteLine");
+        var spacing = Child(shape, "noteSpacing");
+        return new HNoteShape(
+            NoteFormat(Child(shape, "autoNumFormat")) ?? fallback.Format,
+            line is null || Attr(line, "type") == "NONE" ? 0 : Int(line, "length", fallback.Line),
+            Int(spacing, "betweenNotes", fallback.Between), Int(spacing, "belowLine", fallback.Below), Int(spacing, "aboveLine", fallback.Above),
+            Flag(Child(shape, "placement"), "beneathText"));
+    }
+
+    /// <summary>A note number's format (hp:autoNumFormat); null when there is none.</summary>
+    private static HNoteFormat? NoteFormat(XElement? format) => format is null
+        ? null
+        : new HNoteFormat(Attr(format, "type") ?? "DIGIT", Attr(format, "prefixChar") ?? "", Attr(format, "suffixChar") ?? "", Flag(format, "supscript"));
 
     private static HColumns Columns(XElement colPr)
     {

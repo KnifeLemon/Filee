@@ -1,7 +1,8 @@
 // The layout engine's page composer (Typesetting/PageComposer.cs): page geometry, page breaks and keep rules, headers
-// and footers with page numbers, pictures laid out like characters, 한글's stored page breaks, and documents of other
-// formats (TXT, Markdown, HTML, EPUB, FB2, MOBI) composed without losing text. Documents are built here and laid out
-// with the Noto fonts of build/fetch-fonts.ps1 (RepositoryFonts); without them the tests skip.
+// and footers with page numbers, pictures laid out like characters, 한글's stored page breaks, tables, columns, footnotes
+// and endnotes, and documents of other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI) composed without losing text.
+// Documents are built here and laid out with the Noto fonts of build/fetch-fonts.ps1 (RepositoryFonts); without them the
+// tests skip.
 
 using System.Diagnostics;
 using System.Text;
@@ -359,6 +360,183 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Equal(20 + 5 + 1 + 1.41f + 8.5f, Runs(page).Single().Positions[0].Y, 0.05f);
     }
 
+    // ───────────────────────── Columns ─────────────────────────
+
+    /// <summary>Two columns 35 pt wide with a 10 pt gap: the second starts at x = 55.</summary>
+    private static readonly HColumns Two = new(2, 1000, false);
+
+    [Fact]
+    public void Text_fills_a_column_then_the_next_and_the_section_end_leaves_them_as_they_are()
+    {
+        var section = Section(Small, [.. Enumerable.Range(0, 14).Select(i => Paragraph($"p{i}"))]);
+        section.Columns = Two;
+
+        var page = Assert.Single(Compose(section).Pages);
+
+        var left = Runs(page).Where(r => r.Positions[0].X < 30).Select(r => r.Text).ToList();
+        var right = Runs(page).Where(r => r.Positions[0].X > 50).Select(r => r.Text).ToList();
+        // Fourteen 16 pt lines: ten fit in a column, the other four start the next (한글 doesn't balance at the end).
+        Assert.Equal([.. Enumerable.Range(0, 10).Select(i => $"p{i}")], left);
+        Assert.Equal([.. Enumerable.Range(10, 4).Select(i => $"p{i}")], right);
+        Assert.Equal(55f, Runs(page).First(r => r.Text == "p10").Positions[0].X, 0.5f);
+        Assert.Equal(Runs(page).First(r => r.Text == "p0").Positions[0].Y, Runs(page).First(r => r.Text == "p10").Positions[0].Y, 0.01f);
+    }
+
+    [Fact]
+    public void Columns_flow_on_to_the_next_page_after_the_last_column()
+    {
+        var section = Section(Small, [.. Enumerable.Range(0, 24).Select(i => Paragraph($"p{i}"))]);
+        section.Columns = Two;
+
+        var pages = Compose(section).Pages;
+
+        Assert.Equal(2, pages.Count);
+        // The full page holds ten lines a column; the last page's four stay in its first.
+        Assert.Equal(20, Runs(pages[0]).Count());
+        Assert.Equal(["p20", "p21", "p22", "p23"], Runs(pages[1]).Where(r => r.Positions[0].X < 30).Select(r => r.Text));
+    }
+
+    [Fact]
+    public void A_column_break_starts_the_next_column()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"));
+        section.Columns = Two;
+        ((HParagraph)section.Blocks[1]).ColumnBreakBefore = true;
+
+        var page = Assert.Single(Compose(section).Pages);
+
+        Assert.Equal(["one"], Runs(page).Where(r => r.Positions[0].X < 30).Select(r => r.Text));
+        Assert.Equal(["two", "three"], Runs(page).Where(r => r.Positions[0].X > 50).Select(r => r.Text));
+    }
+
+    [Fact]
+    public void A_separated_section_draws_a_line_between_its_columns()
+    {
+        HSection Of(bool separator)
+        {
+            var section = Section(Small, [.. Enumerable.Range(0, 4).Select(i => Paragraph($"p{i}"))]);
+            section.Columns = Two with { Separator = separator };
+            return section;
+        }
+
+        var plain = Assert.Single(Compose(Of(false)).Pages).Items.OfType<DrawingItem>().Count();
+        var separated = Assert.Single(Compose(Of(true)).Pages).Items.OfType<DrawingItem>().Count();
+
+        Assert.Equal(plain + 1, separated);
+    }
+
+    [Fact]
+    public void Columns_changing_on_a_page_start_under_the_balanced_columns_before()
+    {
+        var blocks = Enumerable.Range(0, 5).Select(i => Paragraph($"a{i}")).ToList();
+        var wide = Paragraph("wide");
+        wide.ColumnsChange = HColumns.Single;
+        blocks.Add(wide);
+        var section = Section(Small, [.. blocks]);
+        section.Columns = Two;
+
+        var page = Assert.Single(Compose(section).Pages);
+
+        // a0 a1 a2 | a3 a4 (the first column takes the odd line, as in 한글), then the one-column paragraph under both,
+        // at the left margin.
+        var runs = Runs(page).ToDictionary(r => r.Text);
+        Assert.Equal(runs["a0"].Positions[0].Y, runs["a3"].Positions[0].Y, 0.01f);
+        Assert.Equal(55f, runs["a4"].Positions[0].X, 0.5f);
+        Assert.Equal(runs["a2"].Positions[0].Y + 16, runs["wide"].Positions[0].Y, 0.01f);
+        Assert.Equal(10f, runs["wide"].Positions[0].X, 0.5f);
+    }
+
+    // ───────────────────────── Notes ─────────────────────────
+
+    [Fact]
+    public void A_footnote_goes_to_the_foot_of_the_page_its_reference_is_on()
+    {
+        var paragraph = Paragraph("Text");
+        paragraph.Inlines.Add(Note(endnote: false, "Note"));
+        var section = Section(Small, paragraph, Paragraph("After"));
+
+        var page = Assert.Single(Compose(section).Pages);
+
+        var runs = Runs(page).ToList();
+        // The reference shows the number, raised and smaller, right after the text.
+        var reference = runs.First(r => r.Text == "1)");
+        Assert.True(reference.Size < 10);
+        Assert.True(reference.Positions[0].Y < runs.First(r => r.Text == "Text").Positions[0].Y);
+        // The note's line ends at the body's bottom (180 pt), its number in front.
+        var note = runs.Single(r => r.Text.Contains("Note"));
+        Assert.InRange(note.Positions[0].Y, 170f, 180f);
+        Assert.Contains("1)", Texts(page)[^1]);
+        Assert.Contains(page.Items, i => i is DrawingItem);
+    }
+
+    [Fact]
+    public void A_line_whose_footnote_does_not_fit_moves_to_the_next_page_with_it()
+    {
+        // Nine lines take 144 of 160 pt: the tenth would fit alone, not with its note and the separator.
+        var blocks = Enumerable.Range(0, 9).Select(i => Paragraph($"line {i}")).ToList();
+        var last = Paragraph("Noted");
+        last.Inlines.Add(Note(endnote: false, "Note"));
+        blocks.Add(last);
+
+        var pages = Compose(Section(Small, [.. blocks])).Pages;
+
+        Assert.Equal(2, pages.Count);
+        Assert.DoesNotContain(Runs(pages[0]), r => r.Text.Contains("Note"));
+        Assert.Contains(Runs(pages[1]), r => r.Text == "Noted");
+        Assert.Contains(Runs(pages[1]), r => r.Text.Contains("Note") && r.Text != "Noted");
+    }
+
+    [Fact]
+    public void Footnotes_and_endnotes_are_numbered_on_and_endnotes_start_a_page_after_the_body()
+    {
+        var section = NotesSection();
+
+        var pages = Compose(section).Pages;
+
+        // The raised references are a line of their own here (Texts groups by baseline): footnote 1 and endnote 1, then 2 and 2.
+        Assert.Equal(["One", "1)1)", "Two", "2)2)", "Last", "1)FootA", "2)FootB"], Texts(pages[0]));
+        Assert.Equal(["1)EndA", "2)EndB"], Texts(pages[1]));
+    }
+
+    [Fact]
+    public void Endnotes_follow_the_text_when_the_section_says_so_in_its_number_format()
+    {
+        var section = NotesSection();
+        section.Endnotes = HNoteShape.Endnote with { Format = new HNoteFormat("ROMAN_SMALL", "[", "]", false), BeneathText = true };
+        section.Footnotes = HNoteShape.Footnote with { Format = new HNoteFormat("LATIN_CAPITAL", "", "", true) };
+
+        var page = Assert.Single(Compose(section).Pages);
+
+        Assert.Equal(["One", "A[i]", "Two", "B[ii]", "Last", "[i]EndA", "[ii]EndB", "AFootA", "BFootB"], Texts(page));
+    }
+
+    [Fact]
+    public void Footnotes_stack_at_the_foot_of_the_body_as_hangul_sets_them()
+    {
+        var section = NotesSection();
+
+        var page = Compose(section).Pages[0];
+
+        // 한글's spacing: 2.83 pt between notes, each as high as its text (10 pt) without the line's spacing below, the
+        // last ending at the body's bottom (180 pt); the separator 5.67 pt above the first, 5 cm long or the text width.
+        var runs = Runs(page).ToList();
+        var a = runs.First(r => r.Text.Contains("Foot A")).Positions[0].Y;
+        var b = runs.First(r => r.Text.Contains("Foot B")).Positions[0].Y;
+        Assert.Equal(12.83f, b - a, 0.01f);
+        Assert.Equal(180f - 1.5f, b, 0.01f);
+    }
+
+    private static HSection NotesSection()
+    {
+        var first = Paragraph("One");
+        first.Inlines.Add(Note(endnote: false, "Foot A"));
+        first.Inlines.Add(Note(endnote: true, "End A"));
+        var second = Paragraph("Two");
+        second.Inlines.Add(Note(endnote: false, "Foot B"));
+        second.Inlines.Add(Note(endnote: true, "End B"));
+        return Section(Small, first, second, Paragraph("Last"));
+    }
+
     // ───────────────────────── Other formats ─────────────────────────
 
     public static TheoryData<string> Formats => ["txt", "md", "html", "epub", "fb2", "mobi"];
@@ -472,6 +650,13 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         };
         paragraph.Inlines.Add(new HText(text, chars ?? Format()));
         return paragraph;
+    }
+
+    private static HNote Note(bool endnote, string text)
+    {
+        var note = new HNote(endnote);
+        note.Blocks.Add(Paragraph(text));
+        return note;
     }
 
     private static HHeaderFooter HeaderFooter(HPageType pages, params object[] content)
