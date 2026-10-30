@@ -227,6 +227,16 @@ public sealed class RadialController(
         var window = new RadialWindow { DataContext = viewModel };
         var donut = window.DonutControl;
 
+        // macOS uses a panel while the donut is shown over a full-screen app. Restore its original window class
+        // after any hide and before Avalonia releases it at quit, including a quit while it is still visible (#805).
+        void RestoreNativeWindow() => platform.RestoreWindow(window.TryGetPlatformHandle()?.Handle ?? 0);
+        window.Closing += (_, _) => RestoreNativeWindow();
+        window.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == RadialWindow.IsVisibleProperty && !change.GetNewValue<bool>())
+                RestoreNativeWindow();
+        };
+
         // On native Wayland, hiding an xdg_toplevel surface causes the compositor to destroy its surface,
         // and re-showing raises an InvalidOperationException. Track Closed to re-create on the next gesture.
         if (Filee.Platform.Linux.WaylandSupport.NativeWaylandRequested)

@@ -136,6 +136,13 @@ public sealed class MacOSPlatformServices : IPlatformServices
             NativeMethods.RaiseTopmost(windowHandle);
     }
 
+    /// <summary>Restores a topmost window's native class and style after it hides or before it closes.</summary>
+    public void RestoreWindow(nint windowHandle)
+    {
+        if (windowHandle != 0)
+            NativeMethods.RestoreWindow(windowHandle);
+    }
+
     // The app the donut took the keyboard from (its process id), 0 for none.
     private int _focusFrom;
 

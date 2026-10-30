@@ -48,7 +48,8 @@
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
   <a href="README.tr.md">Türkçe</a> ·
-  <b>Bahasa Indonesia</b>
+  <b>Bahasa Indonesia</b> ·
+  <a href="README.it.md">Italiano</a>
 </p>
 
 <table>

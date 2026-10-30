@@ -1,5 +1,6 @@
 // Central list of supported formats and extension lookup.
-// To add a new format: add one line to Known and give at least one converter an edge for it.
+// To add a new format: add one line to Known and give at least one converter an edge for it. Then give it a grade, and
+// any fields beyond its category's, in FormatFields.
 
 namespace Filee.Core.Formats;
 

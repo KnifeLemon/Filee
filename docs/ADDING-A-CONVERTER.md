@@ -12,6 +12,13 @@ If the format is new, add one line to `FormatRegistry.Known` (`src/Filee.Core/Fo
 new("epub", "EPUB", FormatCategory.Document, ["epub"]),
 ```
 
+Then add its id to one grade list in `FormatFields` (`src/Filee.Core/Formats/FormatFields.cs`): everyday, general,
+specialist or legacy, by how widely files in it are made today. The full criteria, tie-breaks and close calls are in
+[#844](https://github.com/KnifeLemon/Filee/issues/844). It belongs to its category's field; if it belongs to
+other fields too, or only to a field that can be turned off, give it an `Overlaps` row. A new output format graded
+specialist or legacy must belong only to fields that can be turned off and are off by default. `FormatFieldsTests` fails
+until the format has a grade.
+
 ## 2. Write the converter
 
 Create `src/Filee.Engines/<Area>/<Name>Converter.cs`:

@@ -160,6 +160,9 @@ public interface IPlatformServices
     /// </summary>
     void RaiseTopmost(nint windowHandle);
 
+    /// <summary>Restores temporary native window configuration after a raised window hides or before it closes.</summary>
+    void RestoreWindow(nint windowHandle) { }
+
     /// <summary>
     /// Remembers the app in front now, so <see cref="ReturnFocus"/> can give it the keyboard back: on macOS the donut
     /// takes the keyboard during a drag. Elsewhere, and when this app is the one in front, nothing is remembered.
