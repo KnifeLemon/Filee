@@ -781,7 +781,8 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
 - **Page composer** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: page composer*; `FileeRenderer.cs`
   writes its pages as a PDF):
   - Pages: each section starts a page with its paper, margins and gutter; the body runs from the top margin and header
-    area to the footer area; a page break before a paragraph, or a column break in a one-column section, starts a page.
+    area to the footer area; a page break before a paragraph starts a page, a column break the next column (a page in
+    a one-column section).
   - Keep rules: keep lines together, keep with next and widow / orphan control (two lines on either page); none moves
     anything off an empty page.
   - 한글's stored layout: lines on it take 한글's page breaks (the stored first-line-of-page flag) and their stored place
@@ -793,7 +794,31 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     and stand on the baseline; links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
     with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
-  - Columns, notes, floating objects and master pages are later items.
+  - Floating objects and master pages are later items.
+- **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
+  footnotes and endnotes*):
+  - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;
+    text fills a column, then the next, then the next page. A column break starts the next column; 한글's stored lines
+    that started a column (the stored first-line-of-column flag) start one.
+  - Columns changing on a page (한글 다단 설정 나누기, Word's continuous section break): the columns before are balanced,
+    the first ones taking the odd line as 한글 does, and the new ones start under them. At the end of a section they
+    are left as they are (neither 한글 nor Word balances there).
+  - Note references show their number raised, in the section's note format (한글 각주 모양 / 미주 모양: number type,
+    the characters around it); 한글's own numbers, else counted on through the document. The number also starts the
+    note.
+  - Footnotes go to the foot of the page their reference is on. As 한글 sets them, each is as high as its text from
+    its first paragraph's space before, without the spacing below its last line; they stack with the section's space
+    between notes, the last ending at the body's bottom, under the separator line (5 cm, 2 cm, a third of the column,
+    the column, or a length) with the section's space above and below it. A line whose footnotes don't fit goes on
+    with them; footnotes referenced in table cells go to the page the table ends on.
+  - Endnotes follow the last section's body on a page of their own, or right under the text after the separator line
+    when the section says so (한글 "beneathText").
+  - Measured against 한글's own PDFs: hwplib's 각주미주 sample breaks and numbers every line as 한글 (<I>, <II> under a
+    full-width line, the endnote on page 2 at 한글's baseline), its separator line at 한글's place and footnotes within
+    0.8 pt; hwpxlib's three-column sample has every line as 한글's, on two pages, in the same columns.
+  - Not yet: columns of different widths (한글 sameSz="0") share the width equally; footnotes go across the text
+    width also in columns (한글 puts them under each column); the separator line is solid; a note's own number is not
+    raised where the section asks for it.
 - **Tables** (`TableLayout.cs`, GitHub Project 4 item *Layout engine: tables*):
   - Grid: cells take their column (or the next free one past cells spanning down from above) and their row and column
     spans. Columns take the table's absolute widths, else its relative ones (columns without one share the rest), else

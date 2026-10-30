@@ -6,9 +6,10 @@
 //   inside them, bookmarks their position. A list item's number or bullet starts the text, followed by a tab when the
 //   paragraph has a hanging indent (the text then starts at the indent, as in 한글 and Word) and a space otherwise.
 // - A picture laid out like a character (no anchor) is U+FFFC, which the layout gives the picture's size. Page number
-//   and total pages fields are the text the page composer gives them.
-// - Floating objects, text boxes, shapes and note references belong to later layout milestones and are left out; an
-//   equation is drawn as its linear text.
+//   and total pages fields are the text the page composer gives them, and a note reference its number, raised. Both
+//   are text the model doesn't count (Insertions), so 한글's stored line starts are moved past them.
+// - Floating objects, text boxes and shapes belong to a later layout milestone and are left out; an equation is drawn
+//   as its linear text.
 // - 한글's language slots: each character takes the font, 장평, 자간, relative size and 글자 위치 of its slot
 //   (FontSlots.Hwp); a slot without a font takes the format's Latin font (영문, 외국어, 사용자) or East Asian font
 //   (한글, 한자, 일어, 기호). Word's run fonts: the character's run font (FontSlots.Word), its scale (w:w), absolute
@@ -71,20 +72,34 @@ internal sealed class ParagraphText
     public const float DefaultSize = 10;
 
     private ParagraphText(string text, List<TextSpan> spans, List<(int Position, string Name)> bookmarks, Dictionary<int, HImage> pictures,
-        bool fields)
+        Dictionary<int, HNote> notes, List<(int Position, int Length)> insertions)
     {
         Text = text;
         Spans = spans;
         Bookmarks = bookmarks;
         Pictures = pictures;
-        HasFields = fields;
+        Notes = notes;
+        Insertions = insertions;
     }
 
     /// <summary>Pictures laid out like characters, by the position of their U+FFFC.</summary>
     public IReadOnlyDictionary<int, HImage> Pictures { get; }
 
-    /// <summary>The paragraph has page number or total pages fields (their text depends on the page).</summary>
-    public bool HasFields { get; }
+    /// <summary>Notes by the text position of their reference.</summary>
+    public IReadOnlyDictionary<int, HNote> Notes { get; }
+
+    /// <summary>
+    /// Text the model doesn't count (a field's text, a note's number): where it goes in the model's count (the count
+    /// HLineLayout.Starts are in, the list marker left out) and how long it is.
+    /// </summary>
+    public IReadOnlyList<(int Position, int Length)> Insertions { get; }
+
+    /// <summary>
+    /// The text position of model position <paramref name="position"/>: after the list marker of
+    /// <paramref name="marker"/> characters and the inserted text before it.
+    /// </summary>
+    public int FromModel(int position, int marker) =>
+        position + marker + Insertions.Where(i => i.Position < position).Sum(i => i.Length);
 
     public string Text { get; }
 
@@ -96,13 +111,27 @@ internal sealed class ParagraphText
 
     /// <param name="marker">The list item's number or bullet, or null.</param>
     /// <param name="fields">The text of a page number or total pages field; null leaves fields out.</param>
-    public static ParagraphText From(HParagraph paragraph, string? marker = null, Func<HField, string>? fields = null)
+    /// <param name="notes">The number a note reference shows; null leaves note references out.</param>
+    public static ParagraphText From(HParagraph paragraph, string? marker = null, Func<HField, string>? fields = null, Func<HNote, string>? notes = null)
     {
         var text = new StringBuilder();
         var spans = new List<TextSpan>();
         var bookmarks = new List<(int, string)>();
         var pictures = new Dictionary<int, HImage>();
-        var hasFields = false;
+        var references = new Dictionary<int, HNote>();
+        var insertions = new List<(int, int)>();
+        var markerLength = 0;
+        var inserted = 0;
+
+        // Text of the layout's own, which the model's count doesn't hold.
+        void Insert(string piece, HCharFormat format, string? link)
+        {
+            if (piece.Length == 0)
+                return;
+            insertions.Add((text.Length - markerLength - inserted, piece.Length));
+            inserted += piece.Length;
+            Add(piece, format, link);
+        }
 
         void Add(string piece, HCharFormat format, string? link)
         {
@@ -139,9 +168,13 @@ internal sealed class ParagraphText
                         Add(ObjectReplacement.ToString(), paragraph.MarkFormat, link);
                         break;
                     case HField field:
-                        hasFields = true;
                         if (fields is not null)
-                            Add(fields(field), field.Format, link);
+                            Insert(fields(field), field.Format, link);
+                        break;
+                    case HNote note when notes is not null:
+                        references[text.Length] = note;
+                        var around = spans.Count > 0 ? spans[^1].Format : paragraph.MarkFormat;
+                        Insert(notes(note), around with { Superscript = true, Subscript = false }, link);
                         break;
                 }
             }
@@ -151,9 +184,10 @@ internal sealed class ParagraphText
         {
             var format = paragraph.Inlines.OfType<HText>().FirstOrDefault()?.Format ?? paragraph.MarkFormat;
             Add(marker + ((paragraph.Format.FirstLine ?? 0) < 0 ? "\t" : " "), format, null);
+            markerLength = text.Length;
         }
         Inlines(paragraph.Inlines, null);
-        return new ParagraphText(text.ToString(), spans, bookmarks, pictures, hasFields);
+        return new ParagraphText(text.ToString(), spans, bookmarks, pictures, references, insertions);
     }
 
     /// <summary>

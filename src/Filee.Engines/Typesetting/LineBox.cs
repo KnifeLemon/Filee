@@ -110,11 +110,17 @@ internal sealed class LineBox
 
     public IReadOnlyList<LinePicture> Pictures { get; init; } = [];
 
+    /// <summary>The notes whose references are on the line, in order.</summary>
+    public IReadOnlyList<HNote> Notes { get; init; } = [];
+
     /// <summary>Where 한글 put the line's top on its page (from the body's top), for a line on its stored layout.</summary>
     public float? StoredTop { get; init; }
 
     /// <summary>한글 started a page with this line (a line on its stored layout).</summary>
     public bool StoredPageStart { get; init; }
+
+    /// <summary>한글 started a column with this line (a line on its stored layout).</summary>
+    public bool StoredColumnStart { get; init; }
 
     /// <summary>Draws the line with its top-left corner (column edge, line top) at (<paramref name="x"/>, <paramref name="top"/>).</summary>
     public void Draw(PageContent page, float x, float top)

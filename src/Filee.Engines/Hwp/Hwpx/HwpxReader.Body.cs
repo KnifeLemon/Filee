@@ -489,7 +489,8 @@ internal sealed partial class HwpxReader
 
     private HNote Note(XElement control, bool endnote)
     {
-        var note = new HNote(endnote);
+        // The number shows in the section's note format (the autoNum in the note keeps a copy of it).
+        var note = new HNote(endnote) { Number = Attr(control, "number") is not null ? Math.Max(1, Int(control, "number")) : null };
         note.Blocks.AddRange(ReadSubList(Child(control, "subList")));
         // The note starts with its number (an autoNum, skipped) and a space.
         if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FirstOrDefault() is HText { Text: [' ', ..] } lead)

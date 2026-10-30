@@ -51,12 +51,12 @@
       "lists": { "vs-rhwp-ssim": 0.2697 },
       "script-zh": { "vs-rhwp-ssim": 0.9923 },
       "script-ja": { "vs-rhwp-ssim": 0.9933 },
-      // The table breaks into rhwp's lines; one line sits a little apart from rhwp's. Notes and columns are later
-      // milestones. The headers and footers break into rhwp's lines; rhwp puts the footer elsewhere in its area.
+      // The table breaks into rhwp's lines; one line sits a little apart from rhwp's. The headers and footers break
+      // into rhwp's lines; rhwp puts the footer elsewhere in its area. Columns: the same lines and baselines; rhwp
+      // draws the separator line elsewhere.
       "tables": { "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.9678 },
       "headers-footers": { "vs-rhwp-placed": 0.6666, "vs-rhwp-ssim": 0.8266 },
-      "notes": { "vs-rhwp-lines": 0.25, "vs-rhwp-placed": 0.25, "vs-rhwp-ssim": 0.2707 },
-      "columns": { "vs-rhwp-lines": 0, "vs-rhwp-placed": 0, "vs-rhwp-ssim": 0.0864 }
+      "columns": { "vs-rhwp-ssim": 0.3664 }
     }
   },
   "allow": [
@@ -67,6 +67,8 @@
     { "renderer": "filee", "feature": "script-he", "check": "vs-rhwp-*", "reason": "rhwp draws Hebrew left to right at fixed widths (rhwp#8143)" },
     { "renderer": "filee", "feature": "script-hi", "check": "vs-rhwp-*", "reason": "rhwp draws Devanagari unshaped (#185)" },
     { "renderer": "filee", "feature": "script-gu", "check": "vs-rhwp-*", "reason": "rhwp draws Gujarati unshaped (#185)" },
-    { "renderer": "filee", "feature": "script-th", "check": "vs-rhwp-*", "reason": "rhwp draws Thai marks at fixed widths and breaks lines without a dictionary" }
+    { "renderer": "filee", "feature": "script-th", "check": "vs-rhwp-*", "reason": "rhwp draws Thai marks at fixed widths and breaks lines without a dictionary" },
+    { "renderer": "filee", "feature": "notes", "check": "vs-rhwp-*", "reason": "rhwp puts the endnotes under the text and numbers notes 1), 한글 starts them on a new page in the section's note format (1, i)" },
+    { "renderer": "rhwp", "feature": "notes", "check": "pages", "reason": "rhwp puts the endnotes under the text, 한글 starts them on a new page" }
   ]
 }

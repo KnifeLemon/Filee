@@ -43,6 +43,10 @@ internal sealed class HSection
     /// <summary>Master pages (한글 바탕쪽) drawn behind the body of the section's pages.</summary>
     public List<HMasterPage> MasterPages { get; } = [];
 
+    /// <summary>How the section's footnotes and endnotes are numbered and set (한글 각주 모양, 미주 모양).</summary>
+    public HNoteShape Footnotes { get; set; } = HNoteShape.Footnote;
+    public HNoteShape Endnotes { get; set; } = HNoteShape.Endnote;
+
     public List<HBlock> Blocks { get; } = [];
 }
 
@@ -63,6 +67,42 @@ internal sealed record HPage(int Width, int Height, int Left, int Right, int Top
 internal sealed record HColumns(int Count, int Gap, bool Separator)
 {
     public static readonly HColumns Single = new(1, 0, false);
+}
+
+/// <summary>How a note's number shows: a numbering type (as list numbers, "DIGIT", "ROMAN_SMALL", ...) between characters.</summary>
+/// <param name="Superscript">The number in front of the note's text is raised (the reference always is); the layout
+/// doesn't raise it yet.</param>
+internal sealed record HNoteFormat(string Type, string Prefix, string Suffix, bool Superscript)
+{
+    public static readonly HNoteFormat Default = new("DIGIT", "", ")", false);
+}
+
+/// <summary>
+/// The footnotes or endnotes of a section (한글 각주 모양, 미주 모양), with 한글's defaults. Lengths in HWPUNIT.
+/// </summary>
+/// <param name="Line">
+/// Length of the separator line above the notes: 0 = none, -1 = 5 cm, -2 = 2 cm, -3 = a third of the column, -4 = the
+/// column (한글's choices), else the length.
+/// </param>
+/// <param name="Between">Space between two notes.</param>
+/// <param name="Below">Space between the separator line and the first note.</param>
+/// <param name="Above">Space between the text and the separator line.</param>
+/// <param name="BeneathText">Endnotes follow the text (else they start a page); footnotes go right under the text.</param>
+internal sealed record HNoteShape(HNoteFormat Format, int Line, int Between, int Below, int Above, bool BeneathText)
+{
+    public static readonly HNoteShape Footnote = new(HNoteFormat.Default, -1, 283, 567, 850, false);
+    public static readonly HNoteShape Endnote = new(HNoteFormat.Default, 0, 0, 567, 850, false);
+
+    /// <summary>The separator line's length in points for a column <paramref name="width"/> points wide.</summary>
+    public float LineLength(float width) => Line switch
+    {
+        0 or < -4 => 0,
+        -1 => Math.Min(width, 5 * 72 / 2.54f),
+        -2 => Math.Min(width, 2 * 72 / 2.54f),
+        -3 => width / 3,
+        -4 => width,
+        _ => Math.Min(width, Line / 100f),
+    };
 }
 
 /// <summary>Which pages a header or footer applies to.</summary>
@@ -279,6 +319,9 @@ internal sealed class HNote(bool endnote) : HInline
 {
     public bool Endnote { get; } = endnote;
     public List<HBlock> Blocks { get; } = [];
+
+    /// <summary>The number 한글 gave the note (its numbering may restart by section or page); null = counted on.</summary>
+    public int? Number { get; set; }
 }
 
 internal enum HFieldKind

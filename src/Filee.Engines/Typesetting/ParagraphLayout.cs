@@ -73,10 +73,12 @@ internal sealed class ParagraphLayouter
     /// <summary>Lays out <paramref name="paragraph"/> in a column <paramref name="width"/> points wide.</summary>
     /// <param name="marker">The list item's number or bullet, or null.</param>
     /// <param name="fields">The text of page number and total pages fields; null leaves them out.</param>
-    public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null)
+    /// <param name="notes">The number a note reference shows; null leaves note references out.</param>
+    public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null,
+        Func<HNote, string>? notes = null)
     {
         var format = paragraph.Format;
-        var source = ParagraphText.From(paragraph, marker, fields);
+        var source = ParagraphText.From(paragraph, marker, fields, notes);
         var text = source.Text;
         var language = FontSubstitution.Language(text);
         var rightToLeft = format.RightToLeft ?? FirstStrongIsRightToLeft(text);
@@ -152,19 +154,18 @@ internal sealed class ParagraphLayouter
             return (null, "the stored lines were estimated by Filee");
         if (lines.Starts is not { Count: > 0 } positions || positions.Count != lines.Segments.Count || positions[0] != 0)
             return (null, "the stored line starts don't map to the text (a table splits the paragraph, or one falls inside an object)");
-        if (source.HasFields)
-            return (null, "the paragraph has page number fields, whose text changes the positions");
         foreach (var item in items)
         {
             if (item.Kind == ItemKind.Text && item.Style.Family is { } family && _fonts.Find(family, item.Style.Style) is null)
                 return (null, $"the font {family} is not installed");
         }
-        // A list item's number and the tab or space after it come first in the text, not in 한글's.
+        // A list item's number and the tab or space after it come first in the text, not in 한글's; fields' text and
+        // note numbers are the layout's own too.
         var shift = marker is { Length: > 0 } ? marker.Length + 1 : 0;
         var starts = new List<int> { 0 };
         foreach (var position in positions.Skip(1))
         {
-            var start = position + shift;
+            var start = source.FromModel(position, shift);
             if (start <= starts[^1] || start > text.Length)
                 return (null, "the stored line starts are out of order");
             starts.Add(start);
@@ -683,9 +684,11 @@ internal sealed class ParagraphLayouter
             Links = links,
             Bookmarks = bookmarks,
             Pictures = pictures,
+            Notes = [.. source.Notes.Where(n => n.Key >= start && n.Key < Math.Max(end, start + 1)).OrderBy(n => n.Key).Select(n => n.Value)],
             StoredTop = stored is var (top, _) ? top.VerticalPosition / 100f : null,
             Below = stored is var (spaced, _) ? spaced.Spacing / 100f : Math.Max(0, height - textHeight),
             StoredPageStart = stored is var (flagged, _) && (flagged.Flags & 1) != 0,
+            StoredColumnStart = stored is var (column, _) && (column.Flags & 2) != 0,
         };
     }
 
