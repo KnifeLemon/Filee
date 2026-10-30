@@ -52,6 +52,9 @@ internal sealed class PageContent(float width, float height)
 {
     private readonly List<PageItem> _items = [];
 
+    /// <summary>How many items lie under everything else (<see cref="Add"/> with under).</summary>
+    private int _under;
+
     /// <summary>Page width in points.</summary>
     public float Width { get; } = width;
 
@@ -69,6 +72,21 @@ internal sealed class PageContent(float width, float height)
 
     /// <summary>Draws something other than text (paths, fills, pictures) with Skia.</summary>
     public void Draw(Action<SKCanvas> drawing) => _items.Add(new DrawingItem(drawing));
+
+    /// <summary>
+    /// Adds what <paramref name="layer"/> holds: over everything so far, or <paramref name="under"/> it (over what was
+    /// added under before).
+    /// </summary>
+    public void Add(PageContent layer, bool under)
+    {
+        if (!under)
+        {
+            _items.AddRange(layer._items);
+            return;
+        }
+        _items.InsertRange(_under, layer._items);
+        _under += layer._items.Count;
+    }
 
     /// <summary>Makes <paramref name="area"/> a link to <paramref name="url"/>.</summary>
     public void LinkToUrl(SKRect area, string url) => _items.Add(new UrlLinkItem(area, url));

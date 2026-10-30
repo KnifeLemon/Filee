@@ -537,6 +537,103 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         return Section(Small, first, second, Paragraph("Last"));
     }
 
+    // ───────────────────────── Floating objects ─────────────────────────
+
+    [Fact]
+    public void Floating_objects_go_where_hangul_places_them_against_the_paper_the_page_and_the_paragraph()
+    {
+        // Paper 100 × 200 pt; the page (text area) from (10, 20) to (90, 180); the third paragraph's line at y = 52 (a
+        // blank one, so no letters are in the way).
+        var third = Paragraph(" ");
+        third.Format = third.Format with { Left = 1000 };
+        third.Inlines.Add(Box(1000, 500, new HAnchor("PAPER", "RIGHT", 500, "PAPER", "TOP", 300, "IN_FRONT_OF_TEXT", true)));
+        third.Inlines.Add(Box(1000, 500, new HAnchor("PAGE", "CENTER", 0, "PAGE", "BOTTOM", 0, "IN_FRONT_OF_TEXT", true)));
+        third.Inlines.Add(Box(1000, 500, new HAnchor("PARA", "LEFT", 200, "PARA", "TOP", 100, "IN_FRONT_OF_TEXT", true)));
+        var page = Assert.Single(Compose(Section(Small, Paragraph("one"), Paragraph("two"), third)).Pages);
+
+        using var pixels = Pixels(page);
+        // PAPER RIGHT 5 → x 85..95, TOP 3 → y 3..8; PAGE CENTER → x 45..55, BOTTOM → y 175..180; PARA: the paragraph's
+        // left indent (20) plus 2, the line's top (52) plus 1.
+        Assert.True(Dark(pixels, 90, 5) && !Dark(pixels, 84, 5) && !Dark(pixels, 96, 5));
+        Assert.True(Dark(pixels, 50, 177) && !Dark(pixels, 50, 173));
+        Assert.True(Dark(pixels, 25, 55) && !Dark(pixels, 21, 55) && !Dark(pixels, 25, 52));
+    }
+
+    [Fact]
+    public void Objects_behind_the_text_are_drawn_before_it_and_the_others_after_it()
+    {
+        var paragraph = Paragraph("Text");
+        paragraph.Inlines.Add(Box(1000, 500, new HAnchor("PARA", "LEFT", 0, "PARA", "TOP", 0, "BEHIND_TEXT", true)));
+        paragraph.Inlines.Add(Box(1000, 500, new HAnchor("PARA", "RIGHT", 0, "PARA", "TOP", 0, "IN_FRONT_OF_TEXT", true)));
+
+        var items = Assert.Single(Compose(Section(Small, paragraph)).Pages).Items.ToList();
+
+        var text = items.FindIndex(i => i is GlyphItem);
+        Assert.IsType<DrawingItem>(items[0]);
+        Assert.True(text > 0);
+        Assert.IsType<DrawingItem>(items[^1]);
+    }
+
+    [Fact]
+    public void Text_laid_out_anew_goes_beside_square_objects_and_below_top_and_bottom_ones()
+    {
+        // A 30 × 40 pt object at the left of the first paragraph: its lines start right of it (x 40) while beside it,
+        // then at the margin again. A 20 pt high object above and below the second paragraph's text pushes it down.
+        var first = Paragraph(string.Join(' ', Enumerable.Repeat("word", 12)));
+        first.Inlines.Insert(0, Box(3000, 4000, new HAnchor("COLUMN", "LEFT", 0, "PARA", "TOP", 0, "SQUARE", true)));
+        var second = Paragraph("below");
+        second.Inlines.Insert(0, Box(5000, 2000, new HAnchor("COLUMN", "CENTER", 0, "PARA", "TOP", 0, "TOP_AND_BOTTOM", true)));
+
+        var page = Compose(Section(Small, first, second)).Pages[0];
+
+        var lines = Runs(page).Where(r => r.Text.Contains("word")).Select(r => (r.Positions[0].X, r.Positions[0].Y)).ToList();
+        Assert.All(lines.Where(l => l.Y < 60), l => Assert.True(l.X >= 40 - 0.5f, $"{l}"));
+        Assert.Contains(lines, l => l.Y > 60 && l.X < 11);
+        var last = lines.Max(l => l.Y);
+        var below = Runs(page).Single(r => r.Text == "below").Positions[0].Y;
+        // The paragraph's line starts under the object (its top at the line's place, 20 pt high).
+        Assert.True(below > last + 20, $"{below} after {last}");
+    }
+
+    [Fact]
+    public void Shapes_and_text_boxes_laid_out_like_characters_take_their_place_on_the_line()
+    {
+        var paragraph = Paragraph("a");
+        paragraph.Inlines.Add(Box(1500, 800, null));
+        paragraph.Inlines.Add(new HText("b", Format()));
+        var page = Assert.Single(Compose(Section(Small, paragraph)).Pages);
+
+        var (a, b) = (Runs(page).Single(r => r.Text == "a"), Runs(page).Single(r => r.Text == "b"));
+        // The box is 15 pt wide between the letters, standing on the baseline.
+        Assert.InRange(b.Positions[0].X - a.Positions[0].X, 15, 25);
+        using var pixels = Pixels(page);
+        Assert.True(Dark(pixels, (int)(a.Positions[0].X + 12), (int)a.Positions[0].Y - 3));
+    }
+
+    [Fact]
+    public void Text_boxes_and_table_cells_hold_their_text_and_objects()
+    {
+        var box = new HTextBox { Width = 4000, Height = 3000, Padding = new HInsets(200, 200, 200, 200), Anchor = new HAnchor("PAPER", "LEFT", 1000, "PAPER", "TOP", 10000, "IN_FRONT_OF_TEXT", true) };
+        box.Blocks.Add(Paragraph("boxed"));
+        var holder = Paragraph("body");
+        holder.Inlines.Add(box);
+        var cell = Cell("cell");
+        ((HParagraph)cell.Blocks[0]).Inlines.Add(Box(1000, 1000, new HAnchor("PARA", "LEFT", 0, "PARA", "TOP", 0, "TOP_AND_BOTTOM", true)));
+        var table = new HTable { ColumnCount = 1 };
+        table.Rows.Add(Row(cell));
+
+        var page = Assert.Single(Compose(Section(Small, holder, table)).Pages);
+
+        // The box's text at its padding inside it (x 12, from y 102); the cell's object at its paragraph's top, over the
+        // first letters.
+        var boxed = Runs(page).Single(r => r.Text == "boxed");
+        Assert.Equal(12f, boxed.Positions[0].X, 0.5f);
+        Assert.InRange(boxed.Positions[0].Y, 102, 130);
+        using var pixels = Pixels(page);
+        var cellText = Runs(page).Single(r => r.Text == "cell").Positions[0];
+        Assert.True(Dark(pixels, (int)cellText.X + 1, (int)cellText.Y - 6) && Dark(pixels, (int)cellText.X + 8, (int)cellText.Y - 1));
+    }
+
     // ───────────────────────── Other formats ─────────────────────────
 
     public static TheoryData<string> Formats => ["txt", "md", "html", "epub", "fb2", "mobi"];
@@ -658,6 +755,22 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         note.Blocks.Add(Paragraph(text));
         return note;
     }
+
+    /// <summary>A black rectangle <paramref name="width"/> × <paramref name="height"/> (HWPUNIT), floating or (no anchor) laid out like a character.</summary>
+    private static HShape Box(int width, int height, HAnchor? anchor) =>
+        new(HShapeKind.Rectangle) { Width = width, Height = height, Fill = "#000000", Line = HBorder.None, Anchor = anchor };
+
+    /// <summary>The page drawn at one pixel per point on white.</summary>
+    private static SKBitmap Pixels(PageContent page)
+    {
+        var bitmap = new SKBitmap((int)page.Width, (int)page.Height);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.White);
+        page.Draw(canvas);
+        return bitmap;
+    }
+
+    private static bool Dark(SKBitmap pixels, int x, int y) => pixels.GetPixel(x, y).Red < 100;
 
     private static HHeaderFooter HeaderFooter(HPageType pages, params object[] content)
     {

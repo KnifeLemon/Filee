@@ -19,6 +19,9 @@ internal sealed record ParagraphBox(float SpaceBefore, float SpaceAfter, IReadOn
     /// <summary>Why the paragraph's stored lines weren't used, or null (used, or there were none).</summary>
     public string? StoredLinesIgnored { get; init; }
 
+    /// <summary>The list item's number or bullet the paragraph was laid out with, or null.</summary>
+    public string? Marker { get; init; }
+
     /// <summary>The paragraph's whole height with its spacing.</summary>
     public float Height => SpaceBefore + Lines.Sum(l => l.Height) + SpaceAfter;
 }
@@ -70,8 +73,11 @@ internal readonly record struct Decoration(DecorationKind Kind, float Left, floa
 /// <summary>A link area on a line: from <c>Left</c> to <c>Right</c>, the line's height.</summary>
 internal readonly record struct LineLink(float Left, float Right, string Target);
 
-/// <summary>A picture on a line: <c>Area</c> relative to the line's origin, the file it is drawn from, its crop.</summary>
-internal sealed record LinePicture(SKRect Area, string Path, HCrop? Crop);
+/// <summary>
+/// An object laid out like a character (a picture, shape or text box): <c>Area</c> relative to the line's origin;
+/// <c>Stack</c> lays out a text box's content.
+/// </summary>
+internal sealed record LineObject(SKRect Area, HInline Object, Func<IReadOnlyList<HBlock>, float, List<Piece>> Stack);
 
 /// <summary>One line of a paragraph.</summary>
 internal sealed class LineBox
@@ -108,7 +114,7 @@ internal sealed class LineBox
 
     public IReadOnlyList<(float X, string Name)> Bookmarks { get; init; } = [];
 
-    public IReadOnlyList<LinePicture> Pictures { get; init; } = [];
+    public IReadOnlyList<LineObject> Objects { get; init; } = [];
 
     /// <summary>The notes whose references are on the line, in order.</summary>
     public IReadOnlyList<HNote> Notes { get; init; } = [];
@@ -129,11 +135,11 @@ internal sealed class LineBox
         var fills = Decorations.Where(d => d.Kind == DecorationKind.Fill).ToList();
         if (fills.Count > 0)
             page.Draw(canvas => DrawDecorations(canvas, fills, x, baseline));
-        foreach (var picture in Pictures)
+        foreach (var item in Objects)
         {
-            var area = picture.Area;
+            var area = item.Area;
             area.Offset(x, baseline);
-            page.Draw(canvas => DrawPicture(canvas, picture, area));
+            FloatingObjects.Draw(page, item.Object, area, item.Stack);
         }
         foreach (var run in Runs)
             page.DrawGlyphs(run.At(x, baseline));
@@ -150,19 +156,6 @@ internal sealed class LineBox
         }
         foreach (var (position, name) in Bookmarks)
             page.Destination(new SKPoint(x + position, top), name);
-    }
-
-    /// <summary>Draws a picture into <paramref name="area"/>; nothing when the file can't be decoded.</summary>
-    private static void DrawPicture(SKCanvas canvas, LinePicture picture, SKRect area)
-    {
-        using var image = File.Exists(picture.Path) ? SKImage.FromEncodedData(picture.Path) : null;
-        if (image is null)
-            return;
-        var crop = picture.Crop ?? default;
-        var source = new SKRect(
-            (float)(crop.Left * image.Width), (float)(crop.Top * image.Height),
-            (float)((1 - crop.Right) * image.Width), (float)((1 - crop.Bottom) * image.Height));
-        canvas.DrawImage(image, source, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
     }
 
     private static void DrawDecorations(SKCanvas canvas, List<Decoration> decorations, float x, float y)

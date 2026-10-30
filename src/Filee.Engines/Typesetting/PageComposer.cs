@@ -37,6 +37,7 @@
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;
+using SkiaSharp;
 
 namespace Filee.Engines.Typesetting;
 
@@ -90,7 +91,11 @@ internal sealed class PageComposer
     }
 
     /// <summary>A page and what its headers and footers need.</summary>
-    private sealed record Page(PageContent Content, HSection Section, Geometry Geometry, int Number, bool FirstOfSection);
+    private sealed record Page(PageContent Content, HSection Section, Geometry Geometry, int Number, bool FirstOfSection)
+    {
+        /// <summary>The floating objects on the page, drawn when the page is done.</summary>
+        public List<PlacedObject> Objects { get; } = [];
+    }
 
     /// <summary>One composition of a document.</summary>
     private sealed class Run(PageComposer composer, HDocument document, int? total, CancellationToken cancellationToken)
@@ -279,7 +284,10 @@ internal sealed class PageComposer
             FinishPage();
             _guard.PageFinished(_empty);
             foreach (var page in _pages)
+            {
+                DrawObjects(page);
                 HeadersAndFooters(page);
+            }
             return new ComposedDocument([.. _pages.Select(p => p.Content)], _outline);
         }
 
@@ -307,7 +315,15 @@ internal sealed class PageComposer
         private TableLayout? _tables;
 
         /// <summary>Tables and paragraph lists inside cells, headers and footers, laid out with this run's numbering and fields.</summary>
-        private TableLayout Tables => _tables ??= new TableLayout((p, width) => Layout(composer.Resolve(p), width), composer._styles is not null);
+        private TableLayout Tables => _tables ??= CreateTables();
+
+        private TableLayout CreateTables()
+        {
+            var tables = new TableLayout((p, width) => Layout(composer.Resolve(p), width), composer._styles is not null, () => Frame(_y));
+            // Text boxes laid out like characters stack their content as cells do.
+            composer._layouter.Stack = tables.Stack;
+            return tables;
+        }
 
         private void Body(List<HBlock> blocks)
         {
@@ -348,6 +364,8 @@ internal sealed class PageComposer
                     NextColumn();
                 var box = next as ParagraphBox ?? Layout(paragraph, ColumnWidth);
                 next = null;
+                if (!box.StoredLines && Wrapped(paragraph, box) is { } wrapped)
+                    box = wrapped;
 
                 // Keep with next: this paragraph and the start of the next block in one column.
                 if (paragraph.Format.KeepWithNext == true && !_columnEmpty && i + 1 < blocks.Count && !(box.StoredLines && _inStep))
@@ -393,14 +411,20 @@ internal sealed class PageComposer
         {
             if (table.PageBreakBefore && !_empty)
                 NewPage();
-            var line = holder?.Lines?.Segments.FirstOrDefault();
-            if (holder is not null)
+            // The 한글 line the table is: the holder's, or the table's own when it is all its paragraph holds.
+            var line = holder?.Lines?.Segments.FirstOrDefault() ?? (follower is null ? table.Line : null);
+            var (lineTop, linePage) = (0f, _pages.Count);
+            if (holder is not null || line is not null)
             {
                 // Where 한글 put the line while the page follows 한글, else after the paragraph's space before.
                 if (_inStep && line is { } stored)
                     _y = Math.Max(_y, _regionTop + stored.VerticalPosition / 100f);
                 else if (!_columnEmpty)
-                    _y += (holder.Format.Before ?? 0) / 100f;
+                    _y += (holder?.Format.Before ?? 0) / 100f;
+                lineTop = _y;
+                // The objects floating at the table belong to the line the table is.
+                if (holder is not null)
+                    Anchor(holder, _y);
             }
             else if (follower is not null)
             {
@@ -410,8 +434,9 @@ internal sealed class PageComposer
             }
             var margin = table.OuterMargin ?? default;
             _y += (table.VerticalOffset + margin.Top) / 100f;
-            // Filee's rows are not 한글's: the stored places hold again on 한글's next page.
-            _inStep = false;
+            // Filee's rows are not 한글's unless the table is as high as 한글's line for it; else the stored places
+            // hold again on 한글's next page.
+            _inStep = _inStep && line is { } kept && Math.Abs(box.Height + (margin.Top + margin.Bottom) / 100f - kept.VerticalSize / 100f) <= 1;
             var x = box.Offset + margin.Left / 100f;
             var header = box.Rows.Take(box.HeaderRows).ToList();
             // A table that must not split goes to the next column whole when it fits in one.
@@ -477,24 +502,35 @@ internal sealed class PageComposer
                 _y += piece.Height;
             }
             _y += margin.Bottom / 100f;
-            // The rest of the table's line: its line spacing and the paragraph's space after.
-            if (holder is not null)
-                _y += (line?.Spacing ?? 0) / 100f + (holder.Format.After ?? 0) / 100f;
+            // The rest of the table's line: down to its stored height while the table stayed on its page, its line
+            // spacing and the paragraph's space after.
+            if (line is { } own)
+            {
+                if (_pages.Count == linePage)
+                    _y = Math.Max(_y, lineTop + own.VerticalSize / 100f);
+                _y += own.Spacing / 100f + (holder?.Format.After ?? 0) / 100f;
+            }
+            else if (holder is not null)
+            {
+                _y += (holder.Format.After ?? 0) / 100f;
+            }
             // Notes referenced inside the table's cells go to the foot of the page the table ends on.
             foreach (var note in _numbered.Where(n => !_notesPlaced.Contains(n)).ToList())
                 AddNote(note);
         }
 
-        private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null)
+        private ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<float, float, (float, float)>? wrap = null)
         {
             marker ??= paragraph.List is { Numbered: true } list ? _numbers.Next(list) : null;
-            return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText);
+            return composer._layouter.Layout(paragraph, width, marker, FieldText, NoteText, wrap);
         }
 
         /// <summary>Puts a paragraph's lines into columns and pages from the current position on.</summary>
         private void Place(HParagraph paragraph, ParagraphBox box)
         {
             var lines = box.Lines;
+            if (lines.Count == 0)
+                Anchor(paragraph, _y);
             var widowOrphan = paragraph.Format.WidowOrphan == true;
             if (!_columnEmpty && !_skipSpaceBefore)
                 _y += box.SpaceBefore;
@@ -514,7 +550,7 @@ internal sealed class PageComposer
                 {
                     if (j > i && stored && (lines[j].StoredPageStart || lines[j].StoredColumnStart && _columns.Count > 1))
                         break;
-                    var top = stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : y;
+                    var top = stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : stored ? y : Clear(y, lines[j].Height);
                     notes.AddRange(NewNotes(lines[j]));
                     if (top + lines[j].Height > _geometry.BodyBottom - FootnotesHeight(notes) + Epsilon)
                         break;
@@ -533,6 +569,9 @@ internal sealed class PageComposer
                 {
                     if (!_columnEmpty)
                     {
+                        // Objects placed ahead with the paragraph go on with it.
+                        if (i == 0 && _anchored.Remove(paragraph, out var ahead))
+                            Current.Objects.RemoveAll(ahead.Contains);
                         NextColumn();
                         _inStep = false;
                         continue;
@@ -561,12 +600,125 @@ internal sealed class PageComposer
         {
             if (stored && line.StoredTop is { } top)
                 _y = Math.Max(_y, _regionTop + top);
+            else if (!stored)
+                _y = Clear(_y, line.Height);
             if (first && paragraph.HeadingLevel > 0)
                 _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, _y, paragraph.HeadingLevel - 1));
+            if (first && !_anchored.Remove(paragraph))
+                Anchor(paragraph, _y);
             Put(0, line.Height, line.Draw);
             _y += line.Height;
             foreach (var note in line.Notes)
                 AddNote(note);
+        }
+
+        // ───────────────────────── Floating objects ─────────────────────────
+
+        private int _objects;
+
+        /// <summary>Paragraphs whose objects were placed before their lines were laid out (to wrap the lines around them).</summary>
+        private readonly Dictionary<HParagraph, List<PlacedObject>> _anchored = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>The column's left and right edge.</summary>
+        private (float Left, float Right) ColumnEdges => (ColumnLeft(_column), ColumnLeft(_column) + ColumnWidth);
+
+        /// <summary>The objects on the page text goes around (beside or above and below) that reach into the column.</summary>
+        private IEnumerable<PlacedObject> InTheWay(string wrap)
+        {
+            var (left, right) = ColumnEdges;
+            return Current.Objects.Where(o => o.Wrap == wrap && o.Area.Right > left + Epsilon && o.Area.Left < right - Epsilon);
+        }
+
+        /// <summary>Where a line laid out anew from <paramref name="top"/> goes: below the objects text goes above and below.</summary>
+        private float Clear(float top, float height)
+        {
+            var moved = true;
+            while (moved)
+            {
+                moved = false;
+                foreach (var item in InTheWay("TOP_AND_BOTTOM"))
+                {
+                    if (item.Area.Top < top + height - Epsilon && item.Area.Bottom > top + Epsilon)
+                    {
+                        top = item.Area.Bottom;
+                        moved = true;
+                    }
+                }
+            }
+            return top;
+        }
+
+        /// <summary>
+        /// A paragraph laid out anew again with its lines beside the objects text goes around (on each object's wider
+        /// side), its own objects placed first; null when none is beside it.
+        /// </summary>
+        private ParagraphBox? Wrapped(HParagraph paragraph, ParagraphBox box)
+        {
+            var top = _y + (_columnEmpty || _skipSpaceBefore ? 0 : box.SpaceBefore);
+            if (FloatingObjects.Of(paragraph).Any(o => o.Anchor.Wrap is "SQUARE" or "TOP_AND_BOTTOM"))
+                _anchored[paragraph] = Anchor(paragraph, top);
+            var (left, right) = ColumnEdges;
+            var beside = InTheWay("SQUARE").Where(o => o.Area.Bottom > top + Epsilon).ToList();
+            if (beside.Count == 0)
+                return null;
+            // Lines go below the objects text goes above and below first (as they will be placed), and then beside.
+            var shift = 0f;
+            (float, float) Insets(float y, float height)
+            {
+                var at = Clear(top + y + shift, height);
+                shift = at - top - y;
+                var (inLeft, inRight) = (0f, 0f);
+                foreach (var item in beside.Where(o => o.Area.Top < at + height - Epsilon && o.Area.Bottom > at + Epsilon))
+                {
+                    if (item.Area.Left - left >= right - item.Area.Right)
+                        inRight = Math.Max(inRight, right - item.Area.Left);
+                    else
+                        inLeft = Math.Max(inLeft, item.Area.Right - left);
+                }
+                return (inLeft, inRight);
+            }
+            return Layout(paragraph, ColumnWidth, box.Marker, Insets);
+        }
+
+        /// <summary>The page's areas for anchors, with the current column; a paragraph at <paramref name="top"/> as wide as the column.</summary>
+        private AnchorFrame Frame(float top, HParagraph? paragraph = null)
+        {
+            var g = _geometry;
+            var (left, width) = (ColumnLeft(_column), ColumnWidth);
+            return new AnchorFrame(
+                new SKRect(0, 0, g.Width, g.Height),
+                new SKRect(g.Left, g.BodyTop, g.Left + g.TextWidth, g.BodyBottom),
+                new SKRect(left, g.BodyTop, left + width, g.BodyBottom),
+                new SKRect(left + (paragraph?.Format.Left ?? 0) / 100f, top, left + width - (paragraph?.Format.Right ?? 0) / 100f, g.BodyBottom),
+                _number % 2 == 1);
+        }
+
+        /// <summary>Places the floating objects of a paragraph whose first line starts at <paramref name="top"/>.</summary>
+        private List<PlacedObject> Anchor(HParagraph paragraph, float top)
+        {
+            var frame = Frame(top, paragraph);
+            var placed = new List<PlacedObject>();
+            foreach (var (item, anchor) in FloatingObjects.Of(paragraph))
+            {
+                if (FloatingObjects.Size(item) is not var (w, h))
+                    continue;
+                placed.Add(new PlacedObject(item, FloatingObjects.Place(anchor, w, h, frame), anchor.Wrap, FloatingObjects.ZOrder(item), _objects++));
+            }
+            Current.Objects.AddRange(placed);
+            return placed;
+        }
+
+        /// <summary>Draws a page's floating objects, behind or in front of its text, lower z-order first.</summary>
+        private void DrawObjects(Page page)
+        {
+            _geometry = page.Geometry;
+            _number = page.Number;
+            foreach (var item in page.Objects.OrderBy(o => o.Order).ThenBy(o => o.Sequence))
+            {
+                var layer = new PageContent(page.Content.Width, page.Content.Height);
+                FloatingObjects.Draw(layer, item.Object, item.Area, (blocks, width) => Tables.Stack(blocks, width));
+                page.Content.Add(layer, item.Behind);
+            }
         }
 
         // ───────────────────────── Notes ─────────────────────────
