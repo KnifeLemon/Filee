@@ -159,6 +159,18 @@ public interface IPlatformServices
     /// window below normal ones (seen after the Photos app opened) while it still reports itself as topmost.
     /// </summary>
     void RaiseTopmost(nint windowHandle);
+
+    /// <summary>
+    /// Remembers the app in front now, so <see cref="ReturnFocus"/> can give it the keyboard back: on macOS the donut
+    /// takes the keyboard during a drag. Elsewhere, and when this app is the one in front, nothing is remembered.
+    /// </summary>
+    void RememberFrontApp() { }
+
+    /// <summary>
+    /// Gives the keyboard back to the app <see cref="RememberFrontApp"/> remembered, if this app still has it (the user
+    /// didn't click elsewhere meanwhile) and that app still runs; forgets it either way.
+    /// </summary>
+    void ReturnFocus() { }
 }
 
 /// <summary>

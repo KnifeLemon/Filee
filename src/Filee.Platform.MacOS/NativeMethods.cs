@@ -126,6 +126,24 @@ internal static class NativeMethods
         return Marshal.PtrToStringUTF8(Send(bundle, sel_registerName("UTF8String"))) == "com.apple.finder";
     }
 
+    /// <summary>The process id of the app in front (NSWorkspace.frontmostApplication), 0 if none.</summary>
+    internal static int FrontmostProcessId()
+    {
+        using var pool = new AutoreleasePool();
+        var workspace = Send(objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
+        var application = Send(workspace, sel_registerName("frontmostApplication"));
+        return application == 0 ? 0 : (int)Send(application, sel_registerName("processIdentifier"));
+    }
+
+    /// <summary>Brings the app with process id <paramref name="pid"/> to the front, if it still runs.</summary>
+    internal static void ActivateProcess(int pid)
+    {
+        using var pool = new AutoreleasePool();
+        var application = Send(objc_getClass("NSRunningApplication"), sel_registerName("runningApplicationWithProcessIdentifier:"), pid);
+        if (application != 0)
+            SendBool(application, sel_registerName("activateWithOptions:"), 0);
+    }
+
     internal static bool PrefersReducedMotion()
     {
         using var pool = new AutoreleasePool();

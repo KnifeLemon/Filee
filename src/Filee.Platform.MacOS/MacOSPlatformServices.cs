@@ -136,6 +136,23 @@ public sealed class MacOSPlatformServices : IPlatformServices
             NativeMethods.RaiseTopmost(windowHandle);
     }
 
+    // The app the donut took the keyboard from (its process id), 0 for none.
+    private int _focusFrom;
+
+    public void RememberFrontApp()
+    {
+        var front = NativeMethods.FrontmostProcessId();
+        _focusFrom = front != Environment.ProcessId ? front : 0;
+    }
+
+    public void ReturnFocus()
+    {
+        var from = _focusFrom;
+        _focusFrom = 0;
+        if (from != 0 && NativeMethods.FrontmostProcessId() == Environment.ProcessId)
+            NativeMethods.ActivateProcess(from);
+    }
+
     /// <summary>
     /// Lets drags that offer file paths or file promises in older forms reach the window (the donut), not just ones
     /// offering file URLs: other file managers than Finder write those (issue #160).

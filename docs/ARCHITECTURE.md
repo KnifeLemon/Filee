@@ -140,7 +140,14 @@ flipped to, and only then does the hub leave out its "⟳ Tab back" hint (a mous
 wheel flips). In click mode the focused window gets the key (`DonutMenu.HandleKey`) and the donut the wheel. During a
 drag the donut's window has no keyboard focus, so `RadialController` turns on `TriggerService.WatchFlipKey` while
 the drag donut shows files and flips on `FlipKeyPressed` / `FlipWheelTurned`: the global hook only listens (it
-can't hold an event back; Explorer and Finder ignore Tab during a drag) and reports one flip per key press.
+can't hold an event back; Explorer and Finder ignore Tab during a drag) and reports one flip per key press. On
+macOS the drag donut takes the keyboard once files are on it (`RadialController.TakeKeyboard`), and the key reaches
+its window as in click mode: while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it
+from the background) macOS gives no keys to a hook, only to the app in front. The hook's copy of a press is ignored
+while the window has the keyboard (`HookFlipsKey`, one flip per press, following `IsActive`); the keyboard goes back
+to the app that had it once a conversion starts or the donut closes (`IPlatformServices.RememberFrontApp` /
+`ReturnFocus`), unless the user clicked elsewhere meanwhile, and stays with Filee when the drop opens a window of its
+own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools

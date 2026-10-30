@@ -424,5 +424,9 @@ public sealed class TriggerServiceLifecycleTests
         public void RevealInFileManager(string path) { }
         public void OpenFile(string path) { }
         public void RaiseTopmost(nint windowHandle) { }
+        public int Remembered { get; private set; }
+        public int Returned { get; private set; }
+        public void RememberFrontApp() => Remembered++;
+        public void ReturnFocus() => Returned++;
     }
 }
