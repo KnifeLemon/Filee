@@ -1287,5 +1287,10 @@
   "whats_new.2_0_0.languages.text": "Spanish, Hindi, Japanese, Russian, Arabic and Brazilian Portuguese join English, Korean, Chinese and Polish.",
   "whats_new.2_0_0.more.title": "And a little more",
   "whats_new.2_0_0.more.text": "Reset a single donut to its defaults, search your whole history, and convert Gujarati, Hindi or Arabic documents through LibreOffice.",
-  "preset.extract_motion.donut": "Extract video"
+  "preset.extract_motion.donut": "Extract video",
+  "presets.copy_to_folder": "Copy to folder",
+  "presets.copy_hint": "Copy files and folders without conversion. Originals stay where they are; existing names get a number.",
+  "presets.copy_choose_folder": "Choose a destination folder, or Ask every time.",
+  "presets.copy_back": "Copy to folder belongs on the back face. Switch to Back to add it.",
+  "presets.copy_action": "Action"
 }

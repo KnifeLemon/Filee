@@ -213,6 +213,14 @@ public sealed class EngineInstaller
                     File.Copy(file, Path.Combine(staging, component.Id + ".traineddata"));
                     Replace(component.Id, staging);
                     break;
+                case "model":
+                case "bin":
+                    // Standalone AI model file (e.g. Whisper ggml-base.bin): copied directly into its component folder.
+                    Directory.CreateDirectory(staging);
+                    var modelFileName = Path.GetFileName(new Uri(component.Url).LocalPath);
+                    File.Copy(file, Path.Combine(staging, modelFileName));
+                    Replace(component.Id, staging);
+                    break;
                 case "nsis":
                     var sevenZip = Archives.SevenZip.Locate()
                                    ?? throw new InvalidOperationException($"{component.Id} needs Filee's 7-Zip, which is missing.");

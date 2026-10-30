@@ -116,6 +116,16 @@ public sealed class UserDataStore
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
     }
 
+    /// <summary>
+    /// Remembers whether the main window's navigation is collapsed (<see cref="AppSettings.NavCollapsed"/>), quietly as
+    /// <see cref="SaveUiScale"/>: the window already shows it.
+    /// </summary>
+    public void SaveNavCollapsed(bool collapsed)
+    {
+        Settings.NavCollapsed = collapsed;
+        Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+    }
+
     public void SaveLibrary()
     {
         EnsureConsistency();
@@ -434,6 +444,7 @@ internal static class SettingsMigrations
         //      ties. (Schema 21 may be renumbered if another change takes it first.)
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
+
 
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
@@ -934,6 +945,35 @@ internal static class SettingsMigrations
         // v55: Apple Voice Memos recordings (.qta, #646) learn the audio donut; custom claims stay put.
         if (from < 55)
             changed |= LearnExtensions(profiles, out _, ["qta"]);
+        // v56: Bink videos (.bik, #751) learn the video donut; custom claims stay put.
+        if (from < 56)
+            changed |= LearnExtensions(profiles, out _, ["bik"]);
+        // v57: "Caption" preset (Whisper AI) outputs SRT directly; added to Video and Audio donut profiles
+        if (from < 57)
+            changed |= AddCaptionPreset(presets, profiles);
+        return changed;
+    }
+
+    private static bool AddCaptionPreset(List<Preset> presets, List<ToolbarProfile> profiles)
+    {
+        var changed = false;
+        var caption = BuiltInData.CreatePresets().First(p => p.Id == "caption-video");
+        if (presets.FirstOrDefault(p => p.Id == caption.Id) is { } existing)
+        {
+            if (!existing.Media.Caption && existing.TargetFormat == caption.TargetFormat)
+            {
+                existing.Media.Caption = true;
+                changed = true;
+            }
+        }
+        else
+        {
+            var at = presets.FindLastIndex(p => p.Id is "extract-audio" or "to-mp3");
+            presets.Insert(at < 0 ? presets.Count : at + 1, caption);
+            changed = true;
+        }
+        changed |= Offer(presets, profiles, "video", caption.Id, "extract-subtitles");
+        changed |= Offer(presets, profiles, "audio", caption.Id, "to-aac");
         return changed;
     }
 

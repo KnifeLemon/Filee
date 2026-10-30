@@ -209,8 +209,12 @@
   </Style>
   <Style Selector="ListBox.nav ListBoxItem">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
-    <Setter Property="Padding" Value="12,9" />
+    <!-- The row's padding is in the item template (12,9), so its tooltip covers the whole row -->
+    <Setter Property="Padding" Value="0" />
     <Setter Property="Margin" Value="0,1" />
+  </Style>
+  <!-- On hover only the icon nudges right; the row's background stays where it is -->
+  <Style Selector="ListBox.nav PathIcon.navicon">
     <Setter Property="RenderTransform" Value="none" />
     <Setter Property="Transitions">
       <Transitions>
@@ -218,7 +222,7 @@
       </Transitions>
     </Setter>
   </Style>
-  <Style Selector="ListBox.nav ListBoxItem:pointerover">
+  <Style Selector="ListBox.nav ListBoxItem:pointerover PathIcon.navicon">
     <Setter Property="RenderTransform" Value="translateX(3px)" />
   </Style>
   <Style Selector="ListBox.nav ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
@@ -227,6 +231,34 @@
   </Style>
   <Style Selector="ListBox.nav ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+  </Style>
+
+  <!-- Collapsible navigation (main window): the pane animates between full width and an icon rail -->
+  <Style Selector="Border.navpane">
+    <Setter Property="Transitions">
+      <Transitions>
+        <DoubleTransition Property="Width" Duration="0:0:0.2" Easing="{StaticResource SoftEase}" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Button.navtoggle">
+    <Setter Property="Padding" Value="12,9" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="HorizontalContentAlignment" Value="Left" />
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+  </Style>
+  <Style Selector="StackPanel.navheader">
+    <Setter Property="Margin" Value="8,0,0,20" />
+  </Style>
+  <Style Selector="Border.navpane.collapsed Button.navtoggle">
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.navpane.collapsed StackPanel.navheader">
+    <Setter Property="Margin" Value="0,0,0,20" />
+    <Setter Property="HorizontalAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Border.navpane.collapsed StackPanel.navitem">
+    <Setter Property="HorizontalAlignment" Value="Center" />
   </Style>
 
   <!-- Generic rounded list items (profiles, presets) -->
@@ -557,10 +589,10 @@
   </Style>
 
   <!-- ───────── Reduced motion: remove every transition and animation above ───────── -->
-  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill">
+  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill, Window.reduced-motion Border.navpane, Window.reduced-motion ListBox.nav PathIcon.navicon">
     <Setter Property="Transitions" Value="{x:Null}" />
   </Style>
-  <Style Selector="Window.reduced-motion Button:pressed, Window.reduced-motion ToggleButton:pressed, Window.reduced-motion Border.chip:pointerover, Window.reduced-motion ListBox.nav ListBoxItem:pointerover, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pointerover, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pressed, Window.reduced-motion ToggleSwitch:pointerover, Window.reduced-motion Button.choice-card:pointerover, Window.reduced-motion Button.preset-pill:pointerover, Window.reduced-motion Button.preset-pill:pressed">
+  <Style Selector="Window.reduced-motion Button:pressed, Window.reduced-motion ToggleButton:pressed, Window.reduced-motion Border.chip:pointerover, Window.reduced-motion ListBox.nav ListBoxItem:pointerover PathIcon.navicon, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pointerover, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pressed, Window.reduced-motion ToggleSwitch:pointerover, Window.reduced-motion Button.choice-card:pointerover, Window.reduced-motion Button.preset-pill:pointerover, Window.reduced-motion Button.preset-pill:pressed">
     <Setter Property="RenderTransform" Value="none" />
   </Style>
   <Style Selector="Window.reduced-motion ContentControl.page > :is(Control), Window.reduced-motion Border.history-card">

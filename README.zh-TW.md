@@ -47,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -58,7 +59,7 @@
       只顯示適合當前拖曳檔案的格式，就在你所在的位置。
     </td>
     <td width="33%" valign="top">
-      <b>269 種格式，無需其他軟體</b><br>
+      <b>270 種格式，無需其他軟體</b><br>
       圖片、PDF、Word、Excel、PowerPoint、HWP、電子書、壓縮檔、字型、CAD、3D 模型和地理資訊資料，無需 Office、韓文文書軟體或 LibreOffice。
     </td>
     <td width="33%" valign="top">
@@ -132,7 +133,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **監視資料夾**，放入的檔案自動轉換。
 - **最近的轉換**顯示在首頁上，每項都有縮圖，可以直接「開啟檔案」，也可以用「開啟方式」換個應用程式開啟。
 - **其他方式** 右鍵選單、鍵盤快速鍵、拖放區域和 [`filee` 命令](#命令列)。
-- 淺色和深色主題，可自選強調色和環形工具列不透明度，支援 English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（從右到左）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italiano。
+- 淺色和深色主題，可自選強調色和環形工具列不透明度，支援 English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（從右到左）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italiano、Bahasa Indonesia。
 
 ## 截圖
 

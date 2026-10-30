@@ -472,6 +472,9 @@
                 <TextBlock Text="{DynamicResource toolbar.new_group}" />
               </StackPanel>
             </Button>
+            <Button x:Name="NewFolderCopyButton" Margin="0,0,0,6" Padding="6,6"
+                    Command="{Binding NewFolderCopyCommand}" Content="{DynamicResource presets.copy_to_folder}"
+                    ToolTip.Tip="{DynamicResource presets.copy_hint}" />
           </WrapPanel>
           <TextBox x:Name="PaletteSearchBox" Classes="search clearButton" Text="{Binding PaletteSearch}" Watermark="{DynamicResource common.search}">
             <TextBox.InnerLeftContent>

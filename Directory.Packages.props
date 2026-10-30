@@ -5,7 +5,7 @@
 <Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
-    <AvaloniaVersion>12.1.3</AvaloniaVersion>
+    <AvaloniaVersion>12.1.4</AvaloniaVersion>
   </PropertyGroup>
 
   <ItemGroup Label="UI">
@@ -21,22 +21,23 @@
   </ItemGroup>
 
   <ItemGroup Label="Infrastructure">
-    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.12" />
-    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.12" />
+    <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.14" />
+    <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.14" />
     <PackageVersion Include="SharpHook" Version="8.0.1" />
   </ItemGroup>
 
   <ItemGroup Label="Conversion engines">
     <PackageVersion Include="Magick.NET-Q8-AnyCPU" Version="14.17.2" />
+    <!-- Stay on 6.2: 6.5 is AGPL-3.0-only (6.2 is MIT) and checks for a license at run time (PdfSharpLicenseException). -->
     <PackageVersion Include="PDFsharp" Version="6.2.4" />
     <!-- PDFsharp asks for 8.0.1, which has two denial-of-service advisories (GHSA-846f-f764-76mx,
          GHSA-2fmv-rv2c-59x7); 10.0.13 is fixed. Drop when PDFsharp depends on a fixed version itself. -->
-    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
+    <PackageVersion Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <!-- 5.3+ requires SkiaSharp 4, which conflicts with Avalonia 12.1 (SkiaSharp 3.119). -->
     <PackageVersion Include="PDFtoImage" Version="5.2.1" />
     <PackageVersion Include="Unhwp" Version="0.13.0" />
-    <PackageVersion Include="Markdig" Version="1.4.0" />
+    <PackageVersion Include="Markdig" Version="1.5.1" />
     <PackageVersion Include="ExcelNumberFormat" Version="1.1.0" />
     <!-- 5.2+ requires SkiaSharp 4 (see PDFtoImage above); 5.1.1 uses SkiaSharp 3.119 and HarfBuzzSharp 8.3 like Avalonia. -->
     <PackageVersion Include="Svg.Skia" Version="5.1.1" />
@@ -47,8 +48,8 @@
     <PackageVersion Include="ExcelDataReader" Version="3.9.0" />
     <PackageVersion Include="PdfPig" Version="0.1.16" />
     <PackageVersion Include="MimeKitLite" Version="4.18.1" />
-    <PackageVersion Include="ACadSharp" Version="3.8.0" />
-    <PackageVersion Include="AngleSharp" Version="1.8.2" />
+    <PackageVersion Include="ACadSharp" Version="3.8.35" />
+    <PackageVersion Include="AngleSharp" Version="1.8.6" />
     <PackageVersion Include="YamlDotNet" Version="18.1.0" />
     <PackageVersion Include="Tomlyn" Version="2.10.1" />
     <!-- 6.2 no longer reads files an attachment only links to (ATTACH_BY_REFERENCE) and caps nested messages and
@@ -58,7 +59,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Tests">
-    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.10.1" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.11.0" />
     <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <!-- Tests only: validates generated DOCX files against the Office Open XML schemas. -->

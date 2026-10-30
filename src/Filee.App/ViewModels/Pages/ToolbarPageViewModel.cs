@@ -472,6 +472,11 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool Insert(string presetId, int index)
     {
+        if (!EditingBack && BelongsOnBack(_store.FindPreset(presetId)))
+        {
+            Message = _loc["presets.copy_back"];
+            return false;
+        }
         if (Slices is not { } slices || slices.Contains(presetId))
             return false;
         if (slices.Count >= ToolbarProfile.MaxSlices)
@@ -548,6 +553,30 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     {
         _store.Presets.Add(group);
         PaletteSearch = "";
+        Commit();
+    }
+
+    private bool BelongsOnBack(Preset? preset) => preset is not null && (preset.IsCopyToFolder
+        || preset.IsGroup && preset.SubPresetIds.Any(id => _store.FindPreset(id)?.IsCopyToFolder == true));
+
+    [RelayCommand]
+    private async Task NewFolderCopy()
+    {
+        var preset = new Preset
+        {
+            Name = _loc["presets.copy_to_folder"],
+            Kind = PresetKind.CopyToFolder,
+            TargetFormat = Preset.CopyTarget,
+            Output = new OutputRule { Location = OutputLocation.CustomFolder }
+        };
+        if (!await _windows.EditPresetAsync(preset, _windows.Main))
+            return;
+        _store.Presets.Add(preset);
+        EditingBack = true;
+        if (Slices is { Count: < ToolbarProfile.MaxSlices } slices)
+            slices.Add(preset.Id);
+        else
+            _newPresetToSelect = preset.Id;
         Commit();
     }
 
@@ -871,5 +900,6 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
 
     private string? Caption(Preset p) =>
         p.IsGroup ? _loc.Format("donut.group_caption", p.SubPresetIds.Count)
+        : p.IsCopyToFolder ? _loc["presets.copy_to_folder"]
         : p.TargetFormat == BuiltInData.SameAsSource ? _loc["donut.same_format"] : FormatLabels.NameOf(_loc, p.TargetFormat);
 }

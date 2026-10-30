@@ -47,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <div dir="rtl">
@@ -60,7 +61,7 @@
       تظهر الصيغ حيث أنت، ولا يظهر منها إلا ما يناسب الملفات التي تسحبها.
     </td>
     <td width="33%" valign="top">
-      <b>269 صيغة دون برامج أخرى</b><br>
+      <b>270 صيغة دون برامج أخرى</b><br>
       الصور وPDF وWord وExcel وPowerPoint وHWP والكتب الإلكترونية والأرشيفات والخطوط وCAD والنماذج ثلاثية الأبعاد والبيانات الجغرافية، كلها تعمل دون Office أو Hancom Office أو LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -138,7 +139,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **مراقبة المجلدات**: يُحوَّل كل ملف يصل إلى المجلد المراقَب.
 - **التحويلات الأخيرة** في الصفحة الرئيسية، لكل نتيجة صورة مصغّرة: افتح الملف، أو افتحه باستخدام تطبيق آخر.
 - **طرق أخرى**: قائمة النقر بالزر الأيمن، واختصار لوحة المفاتيح، ومنطقة الإفلات، و[الأمر `filee`](#سطر-الأوامر).
-- مظهر فاتح وداكن، باللون المميّز وشفافية الشريط الدائري اللذين تختارهما، وباللغات: English · Español · 日本語 · 한국어 · 简体中文 · 繁體中文 · Polski · हिन्दी · Русский · العربية (من اليمين إلى اليسار) · Português (Brasil) · Français · नेपाली · ไทย · Türkçe · Português (Portugal) · Deutsch · Italiano.
+- مظهر فاتح وداكن، باللون المميّز وشفافية الشريط الدائري اللذين تختارهما، وباللغات: English · Español · 日本語 · 한국어 · 简体中文 · 繁體中文 · Polski · हिन्दी · Русский · العربية (من اليمين إلى اليسار) · Português (Brasil) · Français · नेपाली · ไทย · Türkçe · Português (Portugal) · Deutsch · Italiano · Bahasa Indonesia.
 
 ## لقطات الشاشة
 

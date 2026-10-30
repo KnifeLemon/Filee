@@ -24,6 +24,8 @@ public static class AskedLocation
     /// </summary>
     public static string SuggestedName(Preset preset, string presetName, string source)
     {
+        if (preset.IsCopyToFolder)
+            return Path.GetFileName(Path.TrimEndingDirectorySeparator(source));
         var tokens = new OutputPathResolver.Tokens(source, presetName, 1, DateTime.Now);
         var name = OutputPathResolver.Sanitize(
             OutputPathResolver.Rename(OutputPathResolver.ExpandPattern(preset.Output.FileNamePattern, tokens), preset.Output.Renames),
@@ -37,7 +39,8 @@ public static class AskedLocation
     /// source", empty for a folder ("Extract"). The preset is the one that runs, with Settings › General applied.
     /// </summary>
     public static string Extension(Preset preset, string source) =>
-        preset.Output.ZipResult ? "zip"
+        preset.IsCopyToFolder ? Path.GetExtension(source).TrimStart('.')
+        : preset.Output.ZipResult ? "zip"
         : preset.TargetFormat == BuiltInData.SameAsSource ? FormatRegistry.ExtensionOf(source)
         : FormatRegistry.FindById(preset.TargetFormat)?.Extensions.FirstOrDefault() ?? "";
 

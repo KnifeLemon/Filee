@@ -11,6 +11,7 @@ using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 
 namespace Filee.App.Tests;
 
@@ -206,7 +207,7 @@ public class PortugueseLocalizationTests
     public void Descriptive_engine_names_are_localized_and_brands_are_preserved(string language)
     {
         TestServices.EnsureInitialized(language);
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         try
         {
             vm.Navigate("engines");

@@ -47,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <b>Türkçe</b>
+  <b>Türkçe</b> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -58,7 +59,7 @@
       Formatlar zaten bulunduğunuz yerde görünür; yalnızca sürüklediğiniz dosyalara uygun olanlar listelenir.
     </td>
     <td width="33%" valign="top">
-      <b>269 format, başka yazılım gerekmez</b><br>
+      <b>270 format, başka yazılım gerekmez</b><br>
       Görseller, PDF, Word, Excel, PowerPoint, HWP, e-kitaplar, arşivler, yazı tipleri, CAD, 3B modeller ve coğrafi veriler; Office, Hancom Office veya LibreOffice olmadan çalışır.
     </td>
     <td width="33%" valign="top">
@@ -132,7 +133,7 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 - **İzlenen klasörler**: İçine bırakılan her dosyayı otomatik olarak dönüştürür.
 - **Ana sayfada son dönüştürmeler**, her biri küçük resim önizlemesiyle: sonucu açın veya başka bir uygulamayla başlatın.
 - **Diğer erişim yolları**: Sağ tık menüsü, klavye kısayolu, bırakma alanı ve [`filee` komutu](#komut-satırı).
-- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch ve Italiano dillerinde.
+- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano ve Bahasa Indonesia dillerinde.
 
 ## Ekran Görüntüleri
 

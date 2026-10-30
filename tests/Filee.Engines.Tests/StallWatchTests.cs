@@ -18,23 +18,28 @@ public sealed class StallWatchTests
         var token = TestContext.Current.CancellationToken;
         // A limit far above the 50 ms between lines: a busy CI runner can delay a 50 ms wait by a few hundred ms.
         var watch = new StallWatch(TimeSpan.FromSeconds(1));
-        var exited = new TaskCompletionSource();
+        // Asynchronously: the test must not go on on the output thread, which it joins at the end.
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var started = Stopwatch.StartNew();
 
-        // "34% Running transforms on e-book..." every 50 ms for three seconds, three times the limit.
-        var output = Task.Run(async () =>
+        // "34% Running transforms on e-book..." every 50 ms for three seconds, three times the limit. On a thread of its
+        // own, like the real output reader: a Task.Delay loop waits for the thread pool, which the other test classes
+        // running in parallel can keep busy for over a second on a CI runner, and the watch then sees a stall.
+        var output = new Thread(() =>
         {
-            while (started.Elapsed < TimeSpan.FromSeconds(3))
+            while (started.Elapsed < TimeSpan.FromSeconds(3) && !token.IsCancellationRequested)
             {
                 watch.Touch();
-                await Task.Delay(50, token);
+                Thread.Sleep(50);
             }
             exited.SetResult();
-        }, token);
+        })
+        { IsBackground = true };
+        output.Start();
 
         Assert.True(await watch.WaitAsync(exited.Task, token, Interval));
         Assert.True(started.Elapsed >= TimeSpan.FromSeconds(3));
-        await output;
+        output.Join();
     }
 
     [Fact]

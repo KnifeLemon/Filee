@@ -71,6 +71,14 @@ public sealed partial class PresetFormatTip(
         if (preset.IsGroup)
             return;
 
+        if (preset.IsCopyToFolder)
+        {
+            Title = loc.DisplayName(preset);
+            AnyFile = loc["toolbar.chip_tip.any_file"];
+            MakesBefore = loc["presets.copy_hint"];
+            return;
+        }
+
         if (!preset.PacksIntoOneArchive)
         {
             var usable = availability.UsableFormats(preset, FormatRegistry.Known);

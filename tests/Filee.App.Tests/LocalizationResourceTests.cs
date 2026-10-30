@@ -8,6 +8,7 @@ using Filee.App.Services;
 using Filee.App.ViewModels;
 using Filee.App.Views;
 using Filee.Core.Localization;
+using Filee.Core.Settings;
 
 namespace Filee.App.Tests;
 
@@ -33,7 +34,7 @@ public class LocalizationResourceTests
     public void Arabic_mirrors_the_main_window_and_english_brings_it_back()
     {
         TestServices.EnsureInitialized("en");
-        using var model = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        using var model = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         model.Navigate("general");
         var window = new MainWindow { DataContext = model, Width = 1080, Height = 820 };
         window.Show();

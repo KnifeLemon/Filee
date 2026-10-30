@@ -62,6 +62,12 @@ public sealed class MacOSPlatformServices : IPlatformServices
         }
     }
 
+    public bool SupportsClipboard => true;
+
+    public ClipboardContent? ReadClipboard() => MacOSClipboard.Read();
+
+    public bool CopyToClipboard(IReadOnlyList<string> paths) => MacOSClipboard.Write(paths);
+
     // AppKit exposes no public system drag-distance preference; match its usual four-point threshold.
     public int SystemDragThreshold => 4;
 

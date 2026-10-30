@@ -367,7 +367,7 @@ public class RecentConversionTests
             newest.Undoable = [Stamp(photo)];
             store.AddHistory(newest);
 
-            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate("home");
             var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
             window.Show();

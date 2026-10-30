@@ -1287,5 +1287,10 @@
   "whats_new.2_0_0.languages.text": "영어, 한국어, 중국어, 폴란드어에 스페인어, 힌디어, 일본어, 러시아어, 아랍어, 브라질 포르투갈어가 더해졌어요.",
   "whats_new.2_0_0.more.title": "그리고 조금 더",
   "whats_new.2_0_0.more.text": "원형 툴바 하나만 기본값으로 초기화하고, 기록 전체를 검색하고, 구자라트어·힌디어·아랍어 문서를 LibreOffice로 변환할 수 있어요.",
-  "preset.extract_motion.donut": "라이브 포토 동영상 추출"
+  "preset.extract_motion.donut": "라이브 포토 동영상 추출",
+  "presets.copy_to_folder": "Copy to folder",
+  "presets.copy_hint": "Copy files and folders without conversion. Originals stay where they are; existing names get a number.",
+  "presets.copy_choose_folder": "Choose a destination folder, or Ask every time.",
+  "presets.copy_back": "Copy to folder belongs on the back face. Switch to Back to add it.",
+  "presets.copy_action": "Action"
 }

@@ -109,7 +109,10 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         try
         {
             var storage = host.StorageProvider;
-            var start = await storage.TryGetFolderFromPathAsync(Path.GetDirectoryName(Path.GetFullPath(sources[0]))!);
+            var startFolder = Path.GetDirectoryName(Path.GetFullPath(sources[0]))!;
+            if (preset.IsCopyToFolder && !Directory.Exists(startFolder))
+                startFolder = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>().DownloadsFolder;
+            var start = await storage.TryGetFolderFromPathAsync(startFolder);
             if (oneResult)
             {
                 var extension = AskedLocation.Extension(preset, sources[0]);
@@ -119,7 +122,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                     SuggestedStartLocation = start,
                     SuggestedFileName = AskedLocation.SuggestedName(preset, loc.DisplayName(preset), sources[0]),
                     DefaultExtension = extension.Length == 0 ? null : extension,
-                    ShowOverwritePrompt = true,
+                    ShowOverwritePrompt = !preset.IsCopyToFolder,
                 });
                 return file?.TryGetLocalPath() is { } path ? AskedLocation.ForFile(preset, path) : null;
             }

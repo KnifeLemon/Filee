@@ -119,6 +119,28 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     // ───────────────────────── Merge videos ─────────────────────────
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Separate_m4s_video_and_audio_are_muxed_without_reencoding(bool audioFirst)
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var video = await MakeClipAsync(folder, "画面.m4s", 2, audio: false,
+            extra: ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "frag_keyframe+empty_moov", "-f", "mp4"]);
+        var audio = await MakeToneAsync(folder, "声音.m4s", 2,
+            extra: ["-c:a", "aac", "-movflags", "frag_keyframe+empty_moov", "-f", "mp4"]);
+
+        var output = await RunAsync(audioFirst ? [audio, video] : [video, audio], BuiltIn("merge-videos"));
+
+        var info = await ProbeAsync(output);
+        Assert.Equal("h264", info.Video!.Codec);
+        Assert.Equal("aac", info.Audio!.Codec);
+        Assert.InRange(info.Duration, 1.9, 2.2);
+        Assert.Equal(await StreamHashAsync(video, "v"), await StreamHashAsync(output, "v"));
+        Assert.Equal(await StreamHashAsync(audio, "a"), await StreamHashAsync(output, "a"));
+    }
+
     [Fact]
     public async Task Clips_from_one_camera_are_merged_without_an_encode()
     {

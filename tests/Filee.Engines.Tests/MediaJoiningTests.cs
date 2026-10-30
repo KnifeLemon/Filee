@@ -16,6 +16,25 @@ public class MediaJoiningTests
     private static string After(IReadOnlyList<string> args, string option) => args[args.ToList().IndexOf(option) + 1];
 
     [Fact]
+    public void Separate_m4s_streams_are_identified_in_either_order()
+    {
+        var video = ("picture.m4s", Clip(PhoneVideo));
+        var audio = ("sound.M4S", Clip(audio: new AudioStreamInfo(2, 48000, "aac", 1)));
+        foreach (var clips in new[] { new[] { video, audio }, new[] { audio, video } })
+        {
+            var pair = MediaJoining.M4sPair(clips)!.Value;
+            Assert.Equal(video.Item1, pair.Video.Path);
+            var args = MediaJoining.MuxM4sPair(pair.Video, pair.Audio, "out.mp4");
+            Assert.Contains("0:V:0", args);
+            Assert.Contains("1:a:1", args);
+            Assert.Equal("copy", After(args, "-c"));
+        }
+        Assert.Null(MediaJoining.M4sPair([video, ("sound.mp4", audio.Item2)]));
+        Assert.Null(MediaJoining.M4sPair([video, video]));
+        Assert.Null(MediaJoining.M4sPair([video]));
+    }
+
+    [Fact]
     public void Clips_from_one_phone_are_copied()
     {
         var clip = Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac"));

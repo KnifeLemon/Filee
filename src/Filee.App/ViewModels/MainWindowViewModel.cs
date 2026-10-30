@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
 using Filee.App.ViewModels.Pages;
 using Filee.Core.Localization;
+using Filee.Core.Settings;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Filee.App.ViewModels;
@@ -21,7 +22,19 @@ public sealed partial class NavItem(string key, string titleKey, string iconKey,
     public Geometry? Icon { get; } = Application.Current?.FindResource(iconKey) as Geometry;
     public Type PageType { get; } = pageType;
 
-    [ObservableProperty] private string _title = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Tip))]
+    private string _title = "";
+
+    /// <summary>The navigation is collapsed to icons: the title is hidden and shown as a tooltip instead.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Tip), nameof(ShowTitle))]
+    private bool _collapsed;
+
+    public bool ShowTitle => !Collapsed;
+
+    /// <summary>The tooltip: the title while collapsed (no text is shown then), else none.</summary>
+    public string? Tip => Collapsed ? Title : null;
 
     public void Refresh(ILocalizer loc) => Title = loc[TitleKey];
 }
@@ -34,15 +47,22 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
 {
     private readonly IServiceProvider _services;
     private readonly ILocalizer _loc;
+    private readonly UserDataStore _store;
     private bool _disposed;
+
+    /// <summary>Width of the navigation with its titles, and collapsed to icons.</summary>
+    private const double NavExpandedWidth = 230;
+    private const double NavCollapsedWidth = 64;
 
     /// <summary>The repository, for the GitHub button above the version.</summary>
     public string RepositoryUrl => UpdateService.RepositoryUrl;
 
-    public MainWindowViewModel(IServiceProvider services, ILocalizer loc, UpdateService updates)
+    public MainWindowViewModel(IServiceProvider services, ILocalizer loc, UpdateService updates, UserDataStore store)
     {
         _services = services;
         _loc = loc;
+        _store = store;
+        _isNavCollapsed = store.Settings.NavCollapsed;
         Updates = updates;
         updates.PropertyChanged += OnUpdatesChanged;
         RefreshVersionTexts();
@@ -59,13 +79,39 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             new("about", "nav.about", "Icon.Info", typeof(AboutPageViewModel)),
         ];
         foreach (var item in Items)
+        {
             item.Refresh(loc);
+            item.Collapsed = _isNavCollapsed;
+        }
         loc.LanguageChanged += OnLanguageChanged;
         _selectedItem = Items[0];
         _currentPage = CreatePage(Items[0]);
     }
 
     public IReadOnlyList<NavItem> Items { get; }
+
+    /// <summary>The navigation shows only icons (with tooltips), as the user left it (<see cref="AppSettings.NavCollapsed"/>).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NavWidth), nameof(NavPadding), nameof(NavToggleTip))]
+    private bool _isNavCollapsed;
+
+    public double NavWidth => IsNavCollapsed ? NavCollapsedWidth : NavExpandedWidth;
+
+    /// <summary>Room around the navigation's content; less when collapsed, so an icon fits the rail.</summary>
+    public Thickness NavPadding => new(IsNavCollapsed ? 10 : 14, 18);
+
+    /// <summary>Tooltip and screen-reader name of the button that collapses or expands the navigation.</summary>
+    public string NavToggleTip => _loc[IsNavCollapsed ? "nav.expand" : "nav.collapse"];
+
+    [RelayCommand]
+    private void ToggleNav() => IsNavCollapsed = !IsNavCollapsed;
+
+    partial void OnIsNavCollapsedChanged(bool value)
+    {
+        foreach (var item in Items)
+            item.Collapsed = value;
+        _store.SaveNavCollapsed(value);
+    }
 
     /// <summary>Update state for the bottom of the navigation (version, "update available" button).</summary>
     public UpdateService Updates { get; }
@@ -98,6 +144,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
     {
         foreach (var item in Items)
             item.Refresh(_loc);
+        OnPropertyChanged(nameof(NavToggleTip));
         RefreshVersionTexts();
         CurrentPage = CreatePage(SelectedItem); // rebuild so code-generated labels update too
     }

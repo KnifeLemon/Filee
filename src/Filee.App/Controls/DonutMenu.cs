@@ -92,8 +92,9 @@ public sealed partial class DonutMenu : Control
     /// <summary>Gap between slices in pixels (keeps the donut "full" while separating slices).</summary>
     private const double GapPixels = 3;
     private const double PopOut = 7;
-    private const double OpenDuration = 0.42;
-    private const double OpenStagger = 0.028;
+    private const double OpenDuration = 0.30;
+    private const double OpenStagger = 0.012;
+    private double[] _closeFrom = [];
     private const double DragStartDistance = 5;
 
     // Pencil (Material "edit") path in a 24×24 box.
@@ -229,6 +230,7 @@ public sealed partial class DonutMenu : Control
             return;
         }
         Array.Fill(_open, 0);
+        _lastFrame = null;
         _openClock = 0;
         StartAnimation();
     }
@@ -243,6 +245,7 @@ public sealed partial class DonutMenu : Control
             done();
             return;
         }
+        _closeFrom = (double[])_open.Clone();
         _closing = true;
         _closeCallback = done;
         _openClock = 0;
@@ -711,9 +714,10 @@ public sealed partial class DonutMenu : Control
         if (loop != _loop)
             return; // a loop that was given up on as stalled, replaced by a newer one
         _lastTick = Environment.TickCount64;
-        var dt = _lastFrame is { } last ? Math.Clamp((time - last).TotalSeconds, 0, 0.05) : 1 / 60.0;
+        var elapsed = _lastFrame is { } last ? Math.Max(0, (time - last).TotalSeconds) : 0;
+        var dt = Math.Min(elapsed, 0.05);
         _lastFrame = time;
-        var active = Advance(dt);
+        var active = Advance(dt, elapsed);
 
         InvalidateVisual();
         if (active && TopLevel.GetTopLevel(this) is { } top)
@@ -726,7 +730,7 @@ public sealed partial class DonutMenu : Control
     /// Advances every animation by <paramref name="dt"/> seconds. Returns true while more frames are needed.
     /// Internal so tests can step time deterministically.
     /// </summary>
-    internal bool Advance(double dt)
+    internal bool Advance(double dt, double? elapsed = null)
     {
         var active = false;
 
@@ -762,16 +766,20 @@ public sealed partial class DonutMenu : Control
                 _shownExpanded = -1;
             active |= StepProgress(dt);
             active |= StepLayout(dt);
-            active |= StepFlip(dt);
+            active |= StepFlip(elapsed ?? dt);
 
             if (_openClock < double.MaxValue)
             {
-                _openClock += dt;
+                _openClock += elapsed ?? dt;
                 var done = true;
                 for (var i = 0; i < _open.Length; i++)
                 {
-                    var t = Math.Clamp((_openClock - i * (_closing ? 0.01 : OpenStagger)) / (_closing ? 0.16 : OpenDuration), 0, 1);
-                    _open[i] = _closing ? 1 - EaseInCubic(t) : EaseOutBack(t);
+                    // Keep the wave brief even with many slices; a late frame must not stretch its duration.
+                    var delay = _closing ? 0 : Math.Min(i * OpenStagger, 0.072);
+                    var t = Math.Clamp((_openClock - delay) / (_closing ? 0.14 : OpenDuration), 0, 1);
+                    _open[i] = _closing
+                        ? (i < _closeFrom.Length ? _closeFrom[i] : 1) * (1 - EaseInCubic(t))
+                        : EaseOutBack(t);
                     done &= t >= 1;
                 }
                 if (done)
@@ -800,7 +808,7 @@ public sealed partial class DonutMenu : Control
 
     private static double EaseOutBack(double t)
     {
-        const double c1 = 1.55;
+        const double c1 = 0.8;
         const double c3 = c1 + 1;
         return 1 + c3 * Math.Pow(t - 1, 3) + c1 * Math.Pow(t - 1, 2);
     }
@@ -871,8 +879,8 @@ public sealed partial class DonutMenu : Control
             var offset = DonutGeometry.PointAt(new Point(0, 0), hover * PopOut, mid);
 
             // Open animation: scale up from the centre with a small twist.
-            var scale = 0.55 + 0.45 * open;
-            var rotate = (1 - Math.Min(open, 1)) * -0.35;
+            var scale = 0.78 + 0.22 * open;
+            var rotate = (1 - Math.Min(open, 1)) * -0.12;
             var transform =
                 Matrix.CreateTranslation(-center.X, -center.Y) *
                 Matrix.CreateRotation(rotate) *
@@ -904,8 +912,8 @@ public sealed partial class DonutMenu : Control
                 if (SliceFlipWidth(true, i) == 0 || slice.Open <= 0.001)
                     continue;
                 var offset = DonutGeometry.PointAt(new Point(0, 0), slice.Hover * PopOut, slice.Mid);
-                var scale = 0.55 + 0.45 * slice.Open;
-                var rotate = (1 - Math.Min(slice.Open, 1)) * -0.35;
+                var scale = 0.78 + 0.22 * slice.Open;
+                var rotate = (1 - Math.Min(slice.Open, 1)) * -0.12;
                 var transform = Matrix.CreateTranslation(-center.X, -center.Y) * Matrix.CreateRotation(rotate) *
                                 Matrix.CreateScale(scale * (1 + slice.Hover * 0.025), scale * (1 + slice.Hover * 0.025)) *
                                 Matrix.CreateTranslation(center.X + offset.X, center.Y + offset.Y) *
@@ -956,11 +964,11 @@ public sealed partial class DonutMenu : Control
             context.DrawEllipse(WithOpacity(DangerBrush, 0.18), null, center, radius, radius);
 
         var maxWidth = radius * 1.6;
-        var title = MakeText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
-        var subtitle = MakeText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
+        var title = CachedText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
+        var subtitle = CachedText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
         // "⟳ Tab back": small, under the rest, a little narrower (the hub is round), with room for its icons.
         var hintIcons = FlipArrowSize + (CenterHintWheel ? MouseWidth + MouseGap : 0) + IconGap;
-        var hint = string.IsNullOrEmpty(CenterHint) ? null : MakeText(CenterHint, regular, 10.5, SecondaryForeground, maxWidth * 0.85 - hintIcons);
+        var hint = string.IsNullOrEmpty(CenterHint) ? null : CachedText(CenterHint, regular, 10.5, SecondaryForeground, maxWidth * 0.85 - hintIcons);
         var total = title.Height + (string.IsNullOrEmpty(CenterSubtitle) ? 0 : subtitle.Height + 2) + (hint is null ? 0 : hint.Height + 5);
         var y = center.Y - total / 2;
         DrawCentered(context, title, center.X, y);
@@ -1046,12 +1054,13 @@ public sealed partial class DonutMenu : Control
         var foreground = hot ? OnAccentBrush : item.IsEnabled ? Foreground : SecondaryForeground;
         var width = Math.Clamp(maxWidth, 30, 120);
         var text = KeepKoreanWords(item.Label);
-        var label = MakeText(text, bold, LabelSize(text, bold, width), foreground, width, maxLines: 2);
+        var label = CachedText(text, bold, LabelSize(text, bold, width), foreground, width, maxLines: 2);
         var showCaption = !string.IsNullOrEmpty(item.Caption) &&
                           !string.Equals(item.Caption, item.Label, StringComparison.OrdinalIgnoreCase) &&
                           label.Height + 14 < maxHeight;
         var caption = showCaption
-            ? MakeCaption(item.Caption!, regular, hot ? OnAccentBrush : SecondaryForeground, width, label.Height, maxHeight)
+            ? CachedText(item.Caption!, regular, 10.5, hot ? OnAccentBrush : SecondaryForeground, width,
+                maxLines: label.Height + 28 < maxHeight ? 2 : 1)
             : null;
 
         var total = label.Height + (caption?.Height ?? 0);
@@ -1147,6 +1156,18 @@ public sealed partial class DonutMenu : Control
         context.DrawText(text, new Point(centerX - text.MaxTextWidth / 2, top));
 
     private Pen? BorderPen() => SliceBorderBrush is null ? null : new Pen(SliceBorderBrush, 1);
+
+    // Text shaping is much more expensive than the slice transforms. Keep layouts across frames,
+    // with all layout/paint inputs in the key so language, theme and hover changes remain correct.
+    private readonly Dictionary<(string Text, Typeface Typeface, double Size, IBrush? Brush, double Width, int Lines, string Culture), FormattedText> _textLayouts = new();
+
+    private FormattedText CachedText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1)
+    {
+        var key = (text, typeface, size, brush, maxWidth, maxLines, CultureInfo.CurrentUICulture.Name);
+        if (_textLayouts.TryGetValue(key, out var layout)) return layout;
+        if (_textLayouts.Count >= 512) _textLayouts.Clear();
+        return _textLayouts[key] = MakeText(text, typeface, size, brush, maxWidth, maxLines);
+    }
 
     private static FormattedText MakeText(string text, Typeface typeface, double size, IBrush? brush, double maxWidth, int maxLines = 1) =>
         new(text, CultureInfo.CurrentUICulture, TextDirection, typeface, size, brush)

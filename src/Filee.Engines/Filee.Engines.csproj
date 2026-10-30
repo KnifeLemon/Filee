@@ -35,6 +35,16 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
 
+  <!--
+    Unhwp's package has no native library for linux-arm64 and win-arm64. build/build-native.py builds it from the
+    package's source; the build passes it in (dotnet build/publish -p:UnhwpNativeLibrary=<path to libunhwp.so or
+    unhwp.dll>) and it lands next to the app, where Unhwp looks for it. Unset everywhere else.
+  -->
+  <ItemGroup Condition="'$(UnhwpNativeLibrary)' != ''">
+    <None Include="$(UnhwpNativeLibrary)" Link="$([System.IO.Path]::GetFileName('$(UnhwpNativeLibrary)'))"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
+
   <ItemGroup>
     <InternalsVisibleTo Include="Filee" />
     <InternalsVisibleTo Include="Filee.Engines.Tests" />

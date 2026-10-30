@@ -5,6 +5,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -306,6 +307,30 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task A_video_whose_first_sound_ffprobe_cannot_name_keeps_the_next_one()
+    {
+        SkipUnlessInstalled();
+        var video = Path.Combine(fx.NewFolder(), "clip.mov");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=2",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a", "-ac:a:0", "4",
+            "-c:v", "mjpeg", "-c:a", "aac", "-f", "mov", video]);
+        WithoutDecoder(video, tag: "zzzz");
+        var result = await ProcessRunner.RunAsync(Tools.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "json", video],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        using var json = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal([null, "aac"], json.RootElement.GetProperty("streams").EnumerateArray()
+            .Select(s => s.TryGetProperty("codec_name", out var codec) ? codec.GetString() : null));
+        var probed = await ProbeAsync(await ConvertAsync(video, "mkv"));
+        Assert.Equal(1, Assert.Single(probed.Streams, s => s.Type == "audio").Channels);
+        Assert.Single(probed.Streams, s => s.Type == "video");
+    }
+
+    [Fact]
     public async Task A_video_whose_later_sound_ffmpeg_cannot_decode_keeps_only_the_first()
     {
         SkipUnlessInstalled();
@@ -343,8 +368,9 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.InRange(probed.Duration, 3.5, 4.6);
     }
 
-    /// <summary>Marks one AAC QuickTime track as APAC, which the bundled FFmpeg identifies but cannot decode.</summary>
-    internal static void WithoutDecoder(string path, int track = 0)
+    /// <summary>Marks one AAC QuickTime track as APAC, which the bundled FFmpeg identifies but cannot decode,
+    /// or a tag ffprobe knows no codec for ("zzzz").</summary>
+    internal static void WithoutDecoder(string path, int track = 0, string tag = "apac")
     {
         var bytes = File.ReadAllBytes(path);
         var at = 0;
@@ -354,7 +380,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.True(index >= 0, "AAC sample entry not found.");
             at += index;
             if (i >= track * 3)
-                "apac"u8.CopyTo(bytes.AsSpan(at));
+                Encoding.ASCII.GetBytes(tag).CopyTo(bytes.AsSpan(at));
             at += 4;
         }
         at = 0;
@@ -910,7 +936,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var decodable = new HashSet<string> { "h264", "aac" };
         var info = MediaInfo.Parse(json, decodable);
         Assert.Equal(new AudioStreamInfo(0, 0, "aac", 1), info.Audio);
-        Assert.Equal([1, 2, 3], info.AudioTracks.Select(t => t.Ordinal));
+        Assert.Equal([1, 2], info.AudioTracks.Select(t => t.Ordinal));
         var unknown = MediaInfo.Parse(json);
         Assert.Equal(new AudioStreamInfo(4, 48000, "apple_apac"), unknown.Audio);
         Assert.Equal([0, 1, 2, 3], unknown.AudioTracks.Select(t => t.Ordinal));
@@ -919,6 +945,9 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             """, decodable);
         Assert.Equal(new AudioStreamInfo(4, 48000, "apple_apac"), only.Audio);
         Assert.Equal([0], only.AudioTracks.Select(t => t.Ordinal));
+        var unnamed = MediaInfo.Parse("""{ "streams": [{ "codec_type": "audio", "channels": 2 }] }""", decodable);
+        Assert.Equal(0, unnamed.Audio!.Ordinal);
+        Assert.Equal([0], unnamed.AudioTracks.Select(t => t.Ordinal));
     }
 
     [Fact]

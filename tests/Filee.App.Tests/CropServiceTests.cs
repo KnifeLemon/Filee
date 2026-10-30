@@ -1,8 +1,11 @@
-// Tests for CropService and the crop overlay: output resolving, conflict policies, quality, failures and skips.
+// Tests for CropService and the crop overlay: output resolving, conflict policies, quality, failures and skips, and the
+// perspective crop (straightening, orientation, a plain rectangle saved without resampling).
 
 using System.IO;
+using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.ViewModels;
 using Filee.Core.Conversion;
@@ -18,6 +21,195 @@ namespace Filee.App.Tests;
 
 public class CropServiceTests
 {
+    private static readonly CropQuad TiltedCorners = new(
+        new Point(120.0 / 800, 80.0 / 600), new Point(690.0 / 800, 140.0 / 600),
+        new Point(650.0 / 800, 520.0 / 600), new Point(90.0 / 800, 470.0 / 600));
+
+    private static string Tilted(string folder, string name, bool oriented = false)
+    {
+        var path = Path.Combine(folder, name);
+        using var image = new MagickImage(MagickColors.Red, 400, 300);
+        using (var green = new MagickImage(MagickColors.Lime, 200, 150))
+            image.Composite(green, 200, 0, CompositeOperator.Over);
+        using (var blue = new MagickImage(MagickColors.Blue, 200, 150))
+            image.Composite(blue, 200, 150, CompositeOperator.Over);
+        using (var yellow = new MagickImage(MagickColors.Yellow, 200, 150))
+            image.Composite(yellow, 0, 150, CompositeOperator.Over);
+        image.BackgroundColor = MagickColors.Gray;
+        image.VirtualPixelMethod = VirtualPixelMethod.Background;
+        image.Distort(new DistortSettings(DistortMethod.Perspective) { Viewport = new MagickGeometry(0, 0, 800, 600) },
+            [0, 0, 120, 80, 400, 0, 690, 140, 400, 300, 650, 520, 0, 300, 90, 470]);
+        image.ResetPage();
+        if (oriented)
+        {
+            image.Rotate(-90);
+            var exif = new ExifProfile();
+            exif.SetValue(ExifTag.Orientation, (ushort)6);
+            image.SetProfile(exif);
+            image.Orientation = OrientationType.RightTop;
+            image.Quality = 95;
+        }
+        image.Write(path);
+        return path;
+    }
+
+    private static void AssertColour(MagickImage image, int x, int y, IMagickColor<byte> expected)
+    {
+        using var pixels = image.GetPixels();
+        var actual = pixels.GetPixel(x, y).ToColor()!;
+        Assert.InRange(Math.Abs(actual.R - expected.R), 0, 30);
+        Assert.InRange(Math.Abs(actual.G - expected.G), 0, 30);
+        Assert.InRange(Math.Abs(actual.B - expected.B), 0, 30);
+    }
+
+    private static void AssertQuadrants(MagickImage image)
+    {
+        Assert.Equal(573u, image.Width);
+        Assert.Equal(391u, image.Height);
+        foreach (var (x, y, colour) in new[]
+        {
+            (0.1, 0.1, MagickColors.Red), (0.9, 0.1, MagickColors.Lime),
+            (0.9, 0.9, MagickColors.Blue), (0.1, 0.9, MagickColors.Yellow),
+            (0.45, 0.45, MagickColors.Red), (0.55, 0.45, MagickColors.Lime),
+            (0.55, 0.55, MagickColors.Blue), (0.45, 0.55, MagickColors.Yellow),
+        })
+            AssertColour(image, (int)(x * (image.Width - 1)), (int)(y * (image.Height - 1)), colour);
+    }
+
+    [AvaloniaFact]
+    public async Task A_perspective_crop_straightens_a_tilted_picture()
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Directory.CreateTempSubdirectory("filee-perspective-").FullName;
+        try
+        {
+            var source = Tilted(folder, "tilted.png");
+            var preset = BuiltInData.CreatePresets().Single(p => p.Id == "tool-crop");
+            var result = await CropService.CropFileAsync(source, 0, 0, 800, 600, preset,
+                AppHost.Get<UserDataStore>(), AppHost.Get<ILocalizer>(), corners: TiltedCorners);
+            Assert.Equal(CropStatus.Success, result.Status);
+            Assert.EndsWith("tilted_cropped.png", result.OutputPath);
+            using var image = new MagickImage(result.OutputPath!);
+            Assert.Equal(MagickFormat.Png, image.Format);
+            AssertQuadrants(image);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task A_perspective_crop_of_a_plain_rectangle_is_not_resampled()
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Directory.CreateTempSubdirectory("filee-perspective-rectangle-").FullName;
+        try
+        {
+            var preset = BuiltInData.CreatePresets().Single(p => p.Id == "tool-crop");
+            var plain = Tilted(Directory.CreateDirectory(Path.Combine(folder, "plain")).FullName, "tilted.png");
+            var quad = Tilted(Directory.CreateDirectory(Path.Combine(folder, "quad")).FullName, "tilted.png");
+            var rectangle = new CropQuad(new Point(100.0 / 800, 60.0 / 600), new Point(500.0 / 800, 60.0 / 600),
+                new Point(500.0 / 800, 420.0 / 600), new Point(100.0 / 800, 420.0 / 600));
+            var expected = await CropService.CropFileAsync(plain, 100, 60, 400, 360, preset,
+                AppHost.Get<UserDataStore>(), AppHost.Get<ILocalizer>());
+            var actual = await CropService.CropFileAsync(quad, 0, 0, 800, 600, preset,
+                AppHost.Get<UserDataStore>(), AppHost.Get<ILocalizer>(), corners: rectangle);
+            Assert.Equal(CropStatus.Success, expected.Status);
+            Assert.Equal(CropStatus.Success, actual.Status);
+            using var want = new MagickImage(expected.OutputPath!);
+            using var got = new MagickImage(actual.OutputPath!);
+            Assert.Equal(400u, got.Width);
+            Assert.Equal(360u, got.Height);
+            Assert.Equal(0, got.Compare(want, ErrorMetric.Absolute));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task A_perspective_crop_follows_the_pictures_orientation()
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Directory.CreateTempSubdirectory("filee-perspective-orientation-").FullName;
+        try
+        {
+            var source = Tilted(folder, "tilted.jpg", oriented: true);
+            var preview = await CropService.LoadPreviewAsync(source);
+            using (preview.Bitmap)
+            {
+                Assert.Equal(800, preview.Width);
+                Assert.Equal(600, preview.Height);
+            }
+            using (var oriented = new MagickImage(source))
+            {
+                Assert.Equal(600u, oriented.Width);
+                Assert.Equal(800u, oriented.Height);
+                oriented.AutoOrient();
+                AssertColour(oriented, 160, 120, MagickColors.Red);
+            }
+            var preset = BuiltInData.CreatePresets().Single(p => p.Id == "tool-crop");
+            var result = await CropService.CropFileAsync(source, 0, 0, 800, 600, preset,
+                AppHost.Get<UserDataStore>(), AppHost.Get<ILocalizer>(), corners: TiltedCorners);
+            Assert.Equal(CropStatus.Success, result.Status);
+            using var image = new MagickImage(result.OutputPath!);
+            AssertQuadrants(image);
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
+    [AvaloniaFact]
+    public async Task A_perspective_crop_keeps_quality_dates_and_the_conflict_policy()
+    {
+        TestServices.EnsureInitialized("en");
+        var folder = Directory.CreateTempSubdirectory("filee-perspective-quality-").FullName;
+        try
+        {
+            var store = AppHost.Get<UserDataStore>();
+            var loc = AppHost.Get<ILocalizer>();
+            var preset = BuiltInData.CreatePresets().Single(p => p.Id == "tool-crop").Clone();
+            preset.Output.KeepDates = true;
+            var jpeg = Path.Combine(folder, "photo.jpg");
+            using (var image = new MagickImage("plasma:", 120, 90))
+            {
+                image.Quality = 75;
+                image.Write(jpeg, MagickFormat.Jpeg);
+            }
+            File.SetLastWriteTimeUtc(jpeg, new DateTime(2020, 1, 2, 3, 4, 5, DateTimeKind.Utc));
+            var jpegResult = await CropService.CropFileAsync(jpeg, 0, 0, 120, 90, preset, store, loc, corners: CropQuad.Full);
+            Assert.Equal(CropStatus.Success, jpegResult.Status);
+            using (var cropped = new MagickImage(jpegResult.OutputPath!))
+                Assert.InRange(cropped.Quality, 73u, 77u);
+            Assert.Equal(File.GetLastWriteTimeUtc(jpeg), File.GetLastWriteTimeUtc(jpegResult.OutputPath!));
+
+            var webp = Path.Combine(folder, "logo.webp");
+            using (var image = new MagickImage("plasma:", 120, 90))
+            {
+                image.Settings.SetDefine(MagickFormat.WebP, "lossless", true);
+                image.Write(webp, MagickFormat.WebP);
+            }
+            Assert.True(IsLosslessWebp(webp));
+            var webpResult = await CropService.CropFileAsync(webp, 0, 0, 120, 90, preset, store, loc, corners: CropQuad.Full);
+            Assert.Equal(CropStatus.Success, webpResult.Status);
+            Assert.True(IsLosslessWebp(webpResult.OutputPath!));
+
+            var existing = File.ReadAllBytes(jpegResult.OutputPath!);
+            preset.Output.Conflict = ConflictPolicy.Skip;
+            var skipped = await CropService.CropFileAsync(jpeg, 0, 0, 120, 90, preset, store, loc, corners: CropQuad.Full);
+            Assert.Equal(CropStatus.SkippedExists, skipped.Status);
+            Assert.Equal(existing, File.ReadAllBytes(jpegResult.OutputPath!));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, true); } catch (IOException) { }
+        }
+    }
+
     private static string CreateTestImage(string folder, string name, int width = 100, int height = 80)
     {
         var path = Path.Combine(folder, name);

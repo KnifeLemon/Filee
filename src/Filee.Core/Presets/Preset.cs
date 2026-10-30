@@ -22,6 +22,9 @@ public enum PresetKind
     /// <see cref="Preset.Tool"/>). Like a group, never offered where a conversion is picked.
     /// </summary>
     Tool,
+
+    /// <summary>Copies files and folders byte for byte to a chosen destination.</summary>
+    CopyToFolder,
 }
 
 /// <summary>
@@ -181,6 +184,16 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
     /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file transcribes speech into captions
+    /// (<see cref="MediaOptions.Caption"/>): the file is a video or audio.
+    /// </summary>
+    public bool CaptionsVideo(string sourceFormat) =>
+        Media.Caption && TargetFormat == "srt" && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
+
+
+
+
+    /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file recognizes its text first (<see cref="PdfOptions.Ocr"/>):
     /// the file is a PDF or a picture and the target one of <see cref="PdfOptions.OcrTargets"/>.
     /// </summary>
@@ -208,7 +221,12 @@ public sealed class Preset
 
     /// <summary>True for a <see cref="PresetKind.Tool"/>.</summary>
     [JsonIgnore]
-    public bool IsTool => Kind == PresetKind.Tool;
+    public bool IsTool => Kind is PresetKind.Tool or PresetKind.CopyToFolder;
+
+    [JsonIgnore]
+    public bool IsCopyToFolder => Kind == PresetKind.CopyToFolder;
+
+    public const string CopyTarget = "copy-to-folder";
 
     /// <summary><see cref="Tool"/> of the interactive crop (also a tool saved without one, from before clips).</summary>
     public const string CropTool = "crop";
@@ -236,7 +254,7 @@ public sealed class Preset
 
     /// <summary>True for the interactive crop.</summary>
     [JsonIgnore]
-    public bool IsCropTool => IsTool && Tool is null or CropTool;
+    public bool IsCropTool => Kind == PresetKind.Tool && Tool is null or CropTool;
 
     /// <summary>True for "Cut a clip".</summary>
     [JsonIgnore]
@@ -411,6 +429,12 @@ public sealed class ImageOptions
     /// quality, then smaller (down to a long edge of 640 px), until it fits (#553).
     /// </summary>
     public double MaxSizeMb { get; set; }
+
+    /// <summary>
+    /// Keep each picture at least this many MB of 1,000,000 bytes; 0 = no minimum. A smaller one in a lossy format is
+    /// saved again at a higher quality (never padded or enlarged); one that stays under it is kept, with a notice (#662).
+    /// </summary>
+    public double MinSizeMb { get; set; }
 
     /// <summary>
     /// How the picture is scaled. A preset with <see cref="CustomSize"/> or <see cref="MinShortEdge"/> set stores None
@@ -949,6 +973,17 @@ public sealed class MediaOptions
     /// fails with <c>error.no_motion_photo</c>.
     /// </summary>
     public bool ExtractMotionPhoto { get; set; }
+
+    /// <summary>
+    /// Transcribes speech using Whisper AI to an SRT subtitle file.
+    /// </summary>
+    public bool Caption { get; set; }
+
+    /// <summary>
+    /// Spoken language code for transcription (e.g. "auto", "en", "hi", "es", "fr", "de", "ja", "zh").
+    /// Passed to whisper.cpp (-l). Defaults to "auto".
+    /// </summary>
+    public string SpokenLanguage { get; set; } = "auto";
 
     /// <summary>
     /// Video → JPG (or HEIC for an iPhone): a Live / Motion Photo of a short clip instead of one still frame. Only for

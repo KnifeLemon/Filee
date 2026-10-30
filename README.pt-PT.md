@@ -47,7 +47,8 @@
   <b>Português (Portugal)</b> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -58,7 +59,7 @@
       Os formatos aparecem onde estás, apenas os que fazem sentido para os ficheiros que arrastas.
     </td>
     <td width="33%" valign="top">
-      <b>269 formatos, sem outro software</b><br>
+      <b>270 formatos, sem outro software</b><br>
       Imagens, PDF, Word, Excel, PowerPoint, HWP, livros digitais, arquivos, tipos de letra, CAD, modelos 3D e dados geoespaciais funcionam sem Office, Hancom Office ou LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -132,7 +133,7 @@ Para reverter a alteração, remove as entradas em Segurança do Windows → Con
 - **Pastas monitorizadas** convertem todos os ficheiros que nelas entram.
 - **Conversões recentes** na Página inicial, cada uma com uma miniatura: abre o resultado ou escolhe outra aplicação para o abrir.
 - **Outras formas de converter**: o menu de contexto, um atalho de teclado, a zona de largada e o [comando `filee`](#linha-de-comandos).
-- Temas claro e escuro, com a tua cor de destaque e a opacidade da barra circular à tua escolha, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch e Italiano.
+- Temas claro e escuro, com a tua cor de destaque e a opacidade da barra circular à tua escolha, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano e Bahasa Indonesia.
 
 ## Capturas de ecrã
 

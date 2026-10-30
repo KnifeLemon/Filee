@@ -47,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -58,7 +59,7 @@
       いま作業している場所に、ドラッグ中のファイルに合う形式だけが表示されます。
     </td>
     <td width="33%" valign="top">
-      <b>269形式、ほかのソフトは不要</b><br>
+      <b>270形式、ほかのソフトは不要</b><br>
       画像、PDF、Word、Excel、PowerPoint、HWP、電子書籍、アーカイブ、フォント、CAD、3Dモデル、地理空間データを、Office、Hancom Office、LibreOfficeなしで変換できます。
     </td>
     <td width="33%" valign="top">
@@ -135,7 +136,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **ほかの使い方**：右クリックメニュー、キーボードショートカット、ドロップ領域、[`filee`コマンド](#コマンドライン)。
 - ライトテーマとダークテーマ。
   アクセントカラーとドーナツメニューの不透明度も選べます。
-  English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（右から左へ表示）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italianoに対応。
+  English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（右から左へ表示）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italiano、Bahasa Indonesiaに対応。
 
 ## スクリーンショット
 

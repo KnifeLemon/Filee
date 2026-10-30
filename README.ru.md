@@ -47,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -58,7 +59,7 @@
       Форматы появляются там, где вы уже работаете, и только те, что подходят перетаскиваемым файлам.
     </td>
     <td width="33%" valign="top">
-      <b>269 форматов без лишних программ</b><br>
+      <b>270 форматов без лишних программ</b><br>
       Изображения, PDF, Word, Excel, PowerPoint, HWP, электронные книги, архивы, шрифты, чертежи CAD, 3D-модели и геоданные работают без Office, Hancom Office и LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -132,7 +133,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **Папки наблюдения** конвертируют каждый файл, который в них попадает.
 - **Недавние конвертации** на главной, у каждой миниатюра: результат можно открыть («Открыть файл») или открыть в другой программе («Открыть с помощью»).
 - **Другие способы**: контекстное меню, горячая клавиша, зона перетаскивания и [команда `filee`](#командная-строка).
-- Светлая и тёмная темы со своим акцентным цветом и непрозрачностью кругового меню, интерфейс на языках English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (справа налево), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch и Italiano.
+- Светлая и тёмная темы со своим акцентным цветом и непрозрачностью кругового меню, интерфейс на языках English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (справа налево), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano и Bahasa Indonesia.
 
 ## Скриншоты
 

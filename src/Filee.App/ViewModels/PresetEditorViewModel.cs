@@ -20,6 +20,15 @@ public interface IChoice
     string? Detail { get; }
 }
 
+/// <summary>The unit of a picture's size range in the preset editor (#662); the preset itself keeps megabytes.</summary>
+public enum FileSizeUnit
+{
+    /// <summary>1,000 bytes.</summary>
+    KB,
+    /// <summary>1,000,000 bytes.</summary>
+    MB,
+}
+
 /// <summary>A value with a localized label for combo boxes.</summary>
 public sealed record Choice<T>(T Value, string Label, string? Detail = null) : IChoice
 {
@@ -77,6 +86,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
                     f.Id == FormatRegistry.Folder ? loc["presets.target_folder"] : f.DisplayName,
                     FormatLabels.Category(loc, f.Category))),
         ];
+        if (preset.IsCopyToFolder)
+            Targets = [new Choice<string>(Preset.CopyTarget, loc["presets.copy_to_folder"])];
         ResizeModes = Enum.GetValues<ResizeMode>().Select(v => new Choice<ResizeMode>(v, loc[$"presets.resize.{v}"])).ToList();
         Rotations = Enum.GetValues<ImageRotation>().Select(v => new Choice<ImageRotation>(v, loc[$"presets.rotation.{v}"])).ToList();
         Flips = Enum.GetValues<ImageFlip>().Select(v => new Choice<ImageFlip>(v, loc[$"presets.flip.{v}"])).ToList();
@@ -95,6 +106,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         Locations = [.. Enum.GetValues<OutputLocation>().Select(v => new Choice<OutputLocation?>(v, loc[$"presets.location.{v}"])),
             new Choice<OutputLocation?>(null, loc["presets.location.Ask"])];
         Conflicts = Enum.GetValues<ConflictPolicy>().Select(v => new Choice<ConflictPolicy>(v, loc[$"presets.conflict.{v}"])).ToList();
+        if (preset.IsCopyToFolder)
+        {
+            Locations = Locations.Where(l => l.Value is null or OutputLocation.CustomFolder).ToList();
+            Conflicts = Conflicts.Where(c => c.Value == ConflictPolicy.Rename).ToList();
+            _edit.Output.Location = OutputLocation.CustomFolder;
+            _edit.Output.Conflict = ConflictPolicy.Rename;
+        }
         TiffCompressions = Enum.GetValues<TiffCompression>().Select(v => new Choice<TiffCompression>(v, v.ToString().ToUpperInvariant())).ToList();
         FitsTiffModes = Enum.GetValues<FitsTiffMode>().Select(v => new Choice<FitsTiffMode>(v, loc[$"presets.fits_tiff.{v}"])).ToList();
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
@@ -113,6 +131,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // A speed set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
         AnimationSpeeds = [.. ImageOptions.AnimationSpeeds.Append(_edit.Image.PlaybackSpeed).Distinct().Order()
             .Select(s => new Choice<double>(s, s == 1 ? loc["presets.animation_speed.original"] : SpeedLabel(s)))];
+        SpokenLanguageChoices =
+        [
+            new Choice<string>(WhisperLanguages.Auto, loc["presets.spoken_language.auto"]),
+            .. WhisperLanguages.All
+                .OrderBy(l => l.DisplayName, StringComparer.CurrentCulture)
+                .Select(l => new Choice<string>(l.Code, l.DisplayName))
+        ];
 
         _name = string.IsNullOrWhiteSpace(_edit.Name) ? loc.DisplayName(_edit) : _edit.Name;
         _target = Targets.FirstOrDefault(t => t.Value == _edit.TargetFormat) ?? Targets[1];
@@ -144,6 +169,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _videoCodecValue = _edit.Media.VideoCodec;
         _audioCodecValue = _edit.Media.AudioCodec;
         _hardwareEncoding = _edit.Media.HardwareEncoding;
+        _caption = _edit.Media.Caption;
+        _spokenLanguage = SpokenLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Media.SpokenLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? SpokenLanguageChoices[0];
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -163,7 +191,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _traceColors = Math.Clamp(_edit.Trace.Colors, TracingOptions.MinColors, TracingOptions.MaxColors);
         _traceDetail = Math.Clamp(_edit.Trace.Detail, 0, 100);
         _quality = _edit.Image.Quality;
-        _imageMaxSizeMb = (decimal)_edit.Image.MaxSizeMb;
+        // In KB when the size that's set (the maximum, else the minimum) is under 1 MB: 0.05 MB reads as 50 KB.
+        var shown = _edit.Image.MaxSizeMb > 0 ? _edit.Image.MaxSizeMb : _edit.Image.MinSizeMb;
+        _imageSizeUnit = SizeUnits[shown is > 0 and < 1 ? 0 : 1];
+        var perMegabyte = _imageSizeUnit.Value == FileSizeUnit.KB ? 1000m : 1m;
+        _imageMaxSize = (decimal)_edit.Image.MaxSizeMb * perMegabyte;
+        _imageMinSize = (decimal)_edit.Image.MinSizeMb * perMegabyte;
         _videoMaxSizeMb = (decimal)_edit.Media.MaxSizeMb;
         _resizePercent = _edit.Image.ResizePercent;
         _longEdge = _edit.Image.LongEdge;
@@ -204,6 +237,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     }
 
     public string PresetId => _original.Id;
+    public bool IsCopyToFolder => _original.IsCopyToFolder;
+    public bool ShowConversionOutput => !IsCopyToFolder;
+    public string? DestinationError => IsCopyToFolder && Location.Value is not null && string.IsNullOrWhiteSpace(CustomFolder)
+        ? _loc["presets.copy_choose_folder"] : null;
+
     public bool IsTool => _original.IsTool;
     public bool CanChangeTarget => !IsTool;
 
@@ -217,6 +255,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>Languages Tesseract reads (PdfOptions.OcrLanguage), English first.</summary>
     public IReadOnlyList<Choice<string>> OcrLanguageChoices { get; }
+    /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
+    public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
 
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
@@ -256,11 +296,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPdfCombine),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
-        nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding),
+        nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
         nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
-        nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint))]
+        nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
+        nameof(ShowImageSize), nameof(SizeRangeError), nameof(IsValid))]
     private Choice<string> _target;
 
     private LivePhotoKind _livePhotoValue;
@@ -287,7 +328,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
                 return;
             _livePhotoValue = value.Value;
             OnPropertyChanged();
-            foreach (var name in (string[])[nameof(IsLivePhoto), nameof(LivePhotoHint), nameof(ShowImage), nameof(ShowPdf), nameof(ShowSaveEveryFrame)])
+            foreach (var name in (string[])[nameof(IsLivePhoto), nameof(LivePhotoHint), nameof(ShowImage), nameof(ShowPdf), nameof(ShowSaveEveryFrame), nameof(ShowImageSize), nameof(SizeRangeError), nameof(IsValid)])
                 OnPropertyChanged(name);
         }
     }
@@ -388,6 +429,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private Choice<PdfPageSize> _pageSize;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowSubfolder), nameof(ShowCustomFolder))]
+    [NotifyPropertyChangedFor(nameof(DestinationError), nameof(IsValid))]
     private Choice<OutputLocation?> _location;
 
     [ObservableProperty] private Choice<ConflictPolicy> _conflict;
@@ -398,8 +440,30 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _fitsDebayer;
     [ObservableProperty] private int _quality;
 
-    /// <summary>"Size limit (MB)" for a picture or a video (0 = none, #553).</summary>
-    [ObservableProperty] private decimal? _imageMaxSizeMb;
+    /// <summary>A picture's size range (#553, #662) in <see cref="ImageSizeUnit"/>; 0 or empty = none.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(SizeRangeError), nameof(IsValid))] private decimal? _imageMinSize;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(SizeRangeError), nameof(IsValid))] private decimal? _imageMaxSize;
+
+    /// <summary>KB or MB, for both ends of the range; not saved (the preset keeps megabytes).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(SizeFormat), nameof(SizeIncrement))] private Choice<FileSizeUnit> _imageSizeUnit;
+
+    public IReadOnlyList<Choice<FileSizeUnit>> SizeUnits { get; } =
+        [new(FileSizeUnit.KB, "KB"), new(FileSizeUnit.MB, "MB")];
+
+    /// <summary>Every byte shows: 50.5 KB, or a precise size saved before.</summary>
+    public string SizeFormat => ImageSizeUnit.Value == FileSizeUnit.KB ? "0.####" : "0.#######";
+    public decimal SizeIncrement => ImageSizeUnit.Value == FileSizeUnit.KB ? 10 : 0.5m;
+
+    /// <summary>4096 MB in either unit, as the video's box: what the boxes show is what is saved.</summary>
+    public decimal SizeMaximum => ImageSizeUnit.Value == FileSizeUnit.KB ? 4_096_000 : 4096;
+
+    /// <summary>The size range's boxes are shown (not for a Live / Motion Photo, nor a format without a quality).</summary>
+    public bool ShowImageSize => ShowImage && ShowQuality;
+
+    /// <summary>A minimum over the maximum, while the boxes are shown; a maximum of 0 is no maximum.</summary>
+    public string? SizeRangeError => ShowImageSize && ImageMaxSize > 0 && ImageMinSize > ImageMaxSize ? _loc["presets.size_range_invalid"] : null;
+
+    /// <summary>"Size limit (MB)" for a video (0 = none, #553).</summary>
     [ObservableProperty] private decimal? _videoMaxSizeMb;
     [ObservableProperty] private int _resizePercent;
     [ObservableProperty] private int _longEdge;
@@ -493,7 +557,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private string _subfolderName;
     /// <summary>The subfolder only for a file that becomes several (OutputRule.SubfolderOnlyForSeveralFiles).</summary>
     [ObservableProperty] private bool _subfolderOnlyForSeveralFiles;
-    [ObservableProperty] private string _customFolder;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DestinationError), nameof(IsValid))]
+    private string _customFolder;
     [ObservableProperty] private string _pattern;
     [ObservableProperty] private bool _keepDates;
     /// <summary>Geospatial targets: the result is saved as one ZIP (OutputRule.ZipResult).</summary>
@@ -510,6 +576,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>Encode H.264 / HEVC / AV1 on the graphics chip when one works (MediaOptions.HardwareEncoding).</summary>
     [ObservableProperty] private bool _hardwareEncoding;
+    /// <summary>Burn subtitles from speech recognized by Whisper AI (MediaOptions.Caption).</summary>
+    [ObservableProperty] private bool _caption;
+    /// <summary>Language spoken in the audio for Whisper transcription (MediaOptions.SpokenLanguage).</summary>
+    [ObservableProperty] private Choice<string> _spokenLanguage;
     [ObservableProperty] private Choice<ArchiveLevel> _archiveLevel;
     [ObservableProperty] private bool _combineIntoOne;
     [ObservableProperty] private bool _saveEveryFrame;
@@ -538,6 +608,24 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     // A combo box that loses its selection sets null: every choice keeps its value (see Choices.Restore).
     partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => Target = v);
+
+    /// <summary>
+    /// Both ends keep their size in the other unit: 500 KB becomes 0.5 MB. The boxes' maximum is raised before the
+    /// values grow and lowered after they shrink, so a box never cuts a value to the other unit's maximum.
+    /// </summary>
+    partial void OnImageSizeUnitChanged(Choice<FileSizeUnit>? oldValue, Choice<FileSizeUnit> newValue)
+    {
+        if (Choices.Restore(oldValue, newValue, v => ImageSizeUnit = v) || oldValue is null || oldValue.Value == newValue.Value)
+            return;
+        var toKilobytes = newValue.Value == FileSizeUnit.KB;
+        if (toKilobytes)
+            OnPropertyChanged(nameof(SizeMaximum));
+        var factor = toKilobytes ? 1000m : 0.001m;
+        ImageMinSize *= factor;
+        ImageMaxSize *= factor;
+        if (!toKilobytes)
+            OnPropertyChanged(nameof(SizeMaximum));
+    }
     partial void OnResizeChanged(Choice<ResizeMode>? oldValue, Choice<ResizeMode> newValue) => Choices.Restore(oldValue, newValue, v => Resize = v);
     partial void OnRotationChanged(Choice<ImageRotation>? oldValue, Choice<ImageRotation> newValue) => Choices.Restore(oldValue, newValue, v => Rotation = v);
     partial void OnFlipChanged(Choice<ImageFlip>? oldValue, Choice<ImageFlip> newValue) => Choices.Restore(oldValue, newValue, v => Flip = v);
@@ -621,7 +709,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowDocument => TargetId == "pdf";
     /// <summary>Markdown can't hold pictures: they go into a folder next to it, or are left out.</summary>
     public bool ShowLeaveOutPictures => TargetId == "md";
-    public bool ShowMedia => ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec;
+    public bool ShowMedia => ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption;
     /// <summary>Mono / stereo for every audio target but AMR, which is mono by definition.</summary>
     public bool ShowAudioChannels => TargetIsAudio && TargetId != "amr";
     /// <summary>Sample rate and sample format: the PCM of WAV and W64 takes any.</summary>
@@ -630,6 +718,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowVideoCodec => TargetIsVideo && VideoCodecs.Count > 1;
     /// <summary>Hardware encoding applies to H.264, HEVC and AV1 only (not VP9, MPEG-2, …).</summary>
     public bool ShowHardwareEncoding => TargetIsVideo && MediaCodecs.TakesHardwareEncoding(TargetId, _videoCodecValue);
+    /// <summary>Generate Whisper AI subtitles for speech.</summary>
+    public bool ShowCaption => TargetId == "srt";
     /// <summary>M4A / M4B can hold Apple Lossless besides AAC.</summary>
     public bool ShowAudioCodec => AudioCodecs.Count > 1;
     public bool ShowMediaQuality => TargetIsLossyMedia;
@@ -680,7 +770,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private static double SizeLimit(decimal? megabytes) => (double)Math.Clamp(megabytes ?? 0, 0, 4096);
 
     public string? NameError => string.IsNullOrWhiteSpace(Name) ? _loc["presets.name_required"] : null;
-    public bool IsValid => NameError is null;
+    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null;
+
+    /// <summary>A size from the range's boxes in megabytes.</summary>
+    private decimal? Megabytes(decimal? size) => ImageSizeUnit.Value == FileSizeUnit.KB ? size / 1000 : size;
 
     /// <summary>Writes the edits into the original preset. Returns false if the input is invalid.</summary>
     public bool Apply()
@@ -696,7 +789,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var image = _original.Image;
         image.Quality = Math.Clamp(Quality, 1, 100);
         // Only where the field is shown, as with SaveEveryFrame below: a limit left behind by a JPG target fits nothing.
-        image.MaxSizeMb = ShowQuality ? SizeLimit(ImageMaxSizeMb) : 0;
+        image.MaxSizeMb = ShowQuality ? SizeLimit(Megabytes(ImageMaxSize)) : 0;
+        image.MinSizeMb = ShowImageSize ? SizeLimit(Megabytes(ImageMinSize)) : 0;
         if (Resize.Value == ResizeMode.Custom)
         {
             // Custom sizing is stored as CustomSize with Resize None, never as a resize name an older version rejects
@@ -798,6 +892,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             : MediaCodecs.Effective(TargetId, _videoCodecValue);
         media.AudioCodec = MediaCodecs.Effective(TargetId, _audioCodecValue);
         media.HardwareEncoding = HardwareEncoding;
+        media.Caption = ShowCaption && Caption;
+        media.SpokenLanguage = SpokenLanguage.Value;
         // Only where the option is shown: a box ticked for PNG and left behind by another target saves nothing.
         media.SaveEveryFrame = ShowSaveEveryFrame && SaveEveryFrame;
         media.FrameInterval = media.SaveEveryFrame ? Math.Clamp(FrameInterval, 1, 1000) : 1;
@@ -837,7 +933,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         output.KeepDates = KeepDates;
         // Only for geospatial targets, where it is offered: a box ticked for Shapefile must not zip a later PNG.
         output.ZipResult = ShowZipResult && ZipResult;
-        output.ReplaceOriginal = ReplaceOriginal;
+        output.ReplaceOriginal = !IsCopyToFolder && ReplaceOriginal;
         return true;
     }
 

@@ -55,6 +55,32 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _aspectRatio;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPerspectiveOn))]
+    private bool _isPerspective;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsPerspectiveOn), nameof(CanUsePerspective), nameof(PerspectiveToolTip))]
+    private bool _isPdf;
+
+    public bool IsPerspectiveOn => IsPerspective && !IsPdf && IsEditing;
+    public bool CanUsePerspective => !IsPdf;
+    public string PerspectiveToolTip => _loc[IsPdf ? "crop.perspective_pdf" : "crop.perspective_tip"];
+
+    partial void OnIsPerspectiveChanged(bool value)
+    {
+        IsAspectDialOpen = false;
+        if (value)
+        {
+            CornersResetRequested?.Invoke();
+            PerspectiveTurnedOn?.Invoke();
+        }
+        else
+        {
+            UpdateDimensions(CurrentCropRect);
+        }
+    }
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(AspectLabel))]
     [NotifyPropertyChangedFor(nameof(AspectToolTip))]
     [NotifyPropertyChangedFor(nameof(SelectedAspectIndex))]
@@ -120,6 +146,7 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditing))]
+    [NotifyPropertyChangedFor(nameof(IsPerspectiveOn))]
     private bool _isFinished;
 
     public bool IsEditing => !IsFinished;
@@ -176,6 +203,8 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
     /// <summary>The frame starts over: the whole picture, or the frame given (a ratio carried from the last picture).</summary>
     public event Action<Rect?>? ResetRequested;
     public event Action<double>? AspectRatioChanged;
+    public event Action? CornersResetRequested;
+    public event Action? PerspectiveTurnedOn;
 
     /// <summary>
     /// The ratio the user picked, kept for the next pictures of the batch (#542), and its orientation; null while none
@@ -185,6 +214,7 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
     private bool _batchPortrait;
 
     public Rect CurrentCropRect { get; set; } = new(0.05, 0.05, 0.9, 0.9);
+    public CropQuad CurrentCorners { get; private set; } = CropQuad.Full;
 
     public CropOverlayViewModel(IReadOnlyList<string> files, Preset preset, ILocalizer loc, UserDataStore store, ILogger? log = null)
     {
@@ -213,6 +243,7 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
         CurrentIndex = index;
         var path = _files[index];
         CurrentFileName = Path.GetFileName(path);
+        IsPdf = Path.GetExtension(path).Equals(".pdf", StringComparison.OrdinalIgnoreCase);
         CounterText = _loc.Format("crop.page_counter", index + 1, _files.Count);
         SaveText = _loc[index < _files.Count - 1 ? "crop.save_next" : "crop.save"];
         Queue[index].State = CropItemState.Current;
@@ -244,6 +275,8 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
             var frame = CropMath.Centered(AspectRatio, origW, origH);
             UpdateDimensions(frame);
             ResetRequested?.Invoke(frame);
+            if (IsPerspectiveOn)
+                CornersResetRequested?.Invoke();
         }
         catch (Exception ex)
         {
@@ -272,7 +305,18 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
     public void UpdateDimensions(Rect norm)
     {
         CurrentCropRect = norm;
+        if (IsPerspectiveOn)
+            return;
         var size = CropMath.PixelSize(norm, OriginalWidth, OriginalHeight);
+        DimensionsText = $"{size.Width} × {size.Height} px";
+    }
+
+    public void UpdateCorners(CropQuad corners)
+    {
+        CurrentCorners = corners;
+        if (!IsPerspectiveOn)
+            return;
+        var size = CropMath.PerspectiveSize(corners, OriginalWidth, OriginalHeight);
         DimensionsText = $"{size.Width} × {size.Height} px";
     }
 
@@ -296,7 +340,7 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
         try
         {
             var result = await CropService.CropFileAsync(path, x, y, w, h, _preset, _store, _loc, _log,
-                OriginalWidth, OriginalHeight);
+                OriginalWidth, OriginalHeight, corners: IsPerspectiveOn ? CurrentCorners : null);
             if (result.Status == CropStatus.Success && result.OutputPath is not null)
             {
                 _outputs.Add(result.OutputPath);
@@ -353,6 +397,11 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void Reset()
     {
+        if (IsPerspectiveOn)
+        {
+            CornersResetRequested?.Invoke();
+            return;
+        }
         _batchAspect = null; // the next pictures start free again
         SelectedAspect = "free";
         IsPortrait = OriginalHeight > OriginalWidth;
@@ -495,6 +544,7 @@ public sealed partial class CropOverlayViewModel : ObservableObject, IDisposable
         }
         OnPropertyChanged(nameof(AspectLabel));
         OnPropertyChanged(nameof(AspectToolTip));
+        OnPropertyChanged(nameof(PerspectiveToolTip));
         OnPropertyChanged(nameof(OrientationText));
         foreach (var item in Queue)
             item.RefreshTexts();

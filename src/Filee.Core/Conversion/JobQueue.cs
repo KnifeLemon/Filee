@@ -11,7 +11,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 namespace Filee.Core.Conversion;
 
 /// <summary>Background queue that executes <see cref="ConversionJob"/>s one after another.</summary>
-public sealed class JobQueue : IAsyncDisposable
+public sealed partial class JobQueue : IAsyncDisposable
 {
     private readonly ConverterCatalog _catalog;
     private readonly IPdfMerger? _pdfMerger;
@@ -101,36 +101,41 @@ public sealed class JobQueue : IAsyncDisposable
             if (job.Fetcher is { } fetcher)
                 await FetchSourcesAsync(job, fetcher);
 
-            var planner = _catalog.CreatePlanner();
-            var merge = job.Preset.Pdf.MergeIntoSingle
-                        && job.Preset.TargetFormat == "pdf"
-                        && job.Files.Count > 1
-                        && _pdfMerger is not null;
-            // Any files, one of them or many, archives or not: they go into the archive as they are.
-            var combine = job.Preset.PacksIntoOneArchive && _combiner is not null;
-
-            // One file is enough: a 10-page PDF becomes one 10-page TIFF.
-            var multiPageTiff = job.Preset.Image.MultiPageTiff && job.Preset.TargetFormat == "tiff" && _tiffMerger is not null;
-            // Clips back to back, or pictures one after the other, in the order they were dropped.
-            var join = job.Preset.JoinsIntoOneMedia && _mediaJoiner is not null;
-            // Pictures one under another or side by side, in the order they were dropped.
-            var imageJoiner = job.Preset.JoinsImages ? _catalog.All.OfType<IImageJoiner>().FirstOrDefault() : null;
-
-            if (join)
-                await RunJoinedMediaAsync(job, planner, workDir);
-            else if (imageJoiner is not null)
-                await RunMergedImagesAsync(job, planner, workDir, imageJoiner);
-            else if (merge)
-                await RunMergedAsync(job, planner, workDir);
-            else if (multiPageTiff)
-                await RunMultiPageTiffAsync(job, planner, workDir);
-            else if (combine)
-                await RunCombinedAsync(job, workDir);
+            if (job.Preset.IsCopyToFolder)
+                await RunCopiesAsync(job);
             else
-                await Parallel.ForEachAsync(
-                    job.Files.Select((f, i) => (File: f, Index: i + 1)),
-                    new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = CancellationToken.None },
-                    async (item, _) => await RunFileAsync(job, item.File, item.Index, planner, workDir, finalOutput: true));
+            {
+                var planner = _catalog.CreatePlanner();
+                var merge = job.Preset.Pdf.MergeIntoSingle
+                            && job.Preset.TargetFormat == "pdf"
+                            && job.Files.Count > 1
+                            && _pdfMerger is not null;
+                // Any files, one of them or many, archives or not: they go into the archive as they are.
+                var combine = job.Preset.PacksIntoOneArchive && _combiner is not null;
+
+                // One file is enough: a 10-page PDF becomes one 10-page TIFF.
+                var multiPageTiff = job.Preset.Image.MultiPageTiff && job.Preset.TargetFormat == "tiff" && _tiffMerger is not null;
+                // Clips back to back, or pictures one after the other, in the order they were dropped.
+                var join = job.Preset.JoinsIntoOneMedia && _mediaJoiner is not null;
+                // Pictures one under another or side by side, in the order they were dropped.
+                var imageJoiner = job.Preset.JoinsImages ? _catalog.All.OfType<IImageJoiner>().FirstOrDefault() : null;
+
+                if (join)
+                    await RunJoinedMediaAsync(job, planner, workDir);
+                else if (imageJoiner is not null)
+                    await RunMergedImagesAsync(job, planner, workDir, imageJoiner);
+                else if (merge)
+                    await RunMergedAsync(job, planner, workDir);
+                else if (multiPageTiff)
+                    await RunMultiPageTiffAsync(job, planner, workDir);
+                else if (combine)
+                    await RunCombinedAsync(job, workDir);
+                else
+                    await Parallel.ForEachAsync(
+                        job.Files.Select((f, i) => (File: f, Index: i + 1)),
+                        new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = CancellationToken.None },
+                        async (item, _) => await RunFileAsync(job, item.File, item.Index, planner, workDir, finalOutput: true));
+            }
 
             job.State = job.CancellationToken.IsCancellationRequested ? JobState.Cancelled
                 : job.Files.All(f => f.State is FileState.Done or FileState.Skipped) ? JobState.Completed
@@ -356,6 +361,9 @@ public sealed class JobQueue : IAsyncDisposable
             allocator.Discard();
             throw;
         }
+        // Not checked against the maximum (as before), but a picture under the minimum gets its notice (#662).
+        if (SizeLimit.IsUnderMinimum(job.Preset, [output]))
+            first.UnderMinimumSize = true;
         first.Outputs.Add(output);
         foreach (var f in job.Files.Where(f => f.State != FileState.Failed))
         {
@@ -532,6 +540,8 @@ public sealed class JobQueue : IAsyncDisposable
         {
             await write(output, progress);
             SizeLimit.Check(job.Preset, [output]); // joined media aren't fitted: one over the limit is refused (#553)
+            if (SizeLimit.IsUnderMinimum(job.Preset, [output]))
+                first.UnderMinimumSize = true;
             first.Outputs.Add(output);
             foreach (var f in joined)
             {
@@ -760,12 +770,14 @@ public sealed class JobQueue : IAsyncDisposable
         var frames = finalOutput && runWith.SavesFramesOf(source.Id);
         var motionPhoto = finalOutput && runWith.ExtractsMotionOf(source.Id);
         var livePhoto = finalOutput && runWith.MakesLivePhotoOf(source.Id);
+        var caption = finalOutput && runWith.CaptionsVideo(source.Id);
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(source.Id);
-        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr);
+        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption);
         if (route is null)
-            return Fail(file, "error.no_route", $"{source.Id} → {target}");
+            return Fail(file, "error.no_route", $"{source.Id} → {target}",
+                new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
@@ -850,7 +862,7 @@ public sealed class JobQueue : IAsyncDisposable
                         if (preset.Image.ChangesSpeed && !(isLast && finalOutput))
                             preset = AtOriginalSpeed(preset);
                         // Likewise the size limit: only the result has to fit, not a picture passed to the next engine.
-                        if ((preset.Image.MaxSizeMb > 0 || preset.Media.MaxSizeMb > 0) && !(isLast && finalOutput))
+                        if ((preset.Image.MaxSizeMb > 0 || preset.Image.MinSizeMb > 0 || preset.Media.MaxSizeMb > 0) && !(isLast && finalOutput))
                             preset = WithoutSizeLimit(preset);
                         var stepInfo = new ConversionStep(input, step.From, step.To, preset, allocator, workDir, step.FrameSequence,
                             key => file.NoticeKey = key, step.MotionPhoto, step.LivePhoto, fonts =>
@@ -860,7 +872,7 @@ public sealed class JobQueue : IAsyncDisposable
                                 file.MissingFonts = file.MissingFonts.Concat(fonts)
                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                                 Notify(job);
-                            }, file.SourcePath);
+                            }, file.SourcePath, Caption: step.Caption);
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally
@@ -883,6 +895,9 @@ public sealed class JobQueue : IAsyncDisposable
             // The size limit (#553): a result the engine couldn't fit (HEIC, a render, an animation) isn't handed over.
             if (finalOutput)
                 SizeLimit.Check(runWith, inputs);
+            // The minimum (#662), on the pictures themselves: after the source was copied over, before they go into a ZIP.
+            if (finalOutput && SizeLimit.IsUnderMinimum(runWith, inputs))
+                file.UnderMinimumSize = true;
 
             if (zipResult && inputs.Count > 0)
                 inputs = PackZip(job, file, index, inputs, ct);
@@ -948,15 +963,17 @@ public sealed class JobQueue : IAsyncDisposable
         {
             var copy = preset.Clone();
             copy.Image.MaxSizeMb = 0;
+            copy.Image.MinSizeMb = 0;
             copy.Media.MaxSizeMb = 0;
             return copy;
         }
 
-        IReadOnlyList<string> Fail(FileResult f, string key, string? detail)
+        IReadOnlyList<string> Fail(FileResult f, string key, string? detail, RouteRequest? failedRoute = null)
         {
             f.State = FileState.Failed;
             f.ErrorKey = key;
             f.ErrorDetail = detail;
+            f.FailedRoute = failedRoute;
             f.Progress = 1;
             Notify(job);
             return [];

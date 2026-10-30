@@ -12,7 +12,7 @@ namespace Filee.Cli;
 
 internal sealed class CliHost : IAsyncDisposable
 {
-    private CliHost(UserDataStore store, ConverterCatalog catalog, JobQueue queue)
+    internal CliHost(UserDataStore store, ConverterCatalog catalog, JobQueue queue)
     {
         Store = store;
         Catalog = catalog;

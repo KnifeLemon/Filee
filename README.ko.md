@@ -48,7 +48,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -59,7 +60,7 @@
       끌고 있는 파일에 맞는 형식만 지금 있는 자리에 나타나요.
     </td>
     <td width="33%" valign="top">
-      <b>269가지 형식, 다른 프로그램 없이</b><br>
+      <b>270가지 형식, 다른 프로그램 없이</b><br>
       이미지, PDF, 워드, 엑셀, 파워포인트, HWP, 전자책, 압축 파일, 글꼴, CAD, 3D 모델, 지리 정보 데이터를 오피스·한컴오피스·LibreOffice 없이 변환해요.
     </td>
     <td width="33%" valign="top">
@@ -133,7 +134,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **자동 변환 폴더**에 들어온 파일을 바로 변환해요.
 - **최근 변환**: 홈에서 결과를 썸네일과 함께 보여 주고, 바로 열거나 연결 프로그램으로 열 수 있어요.
 - **다른 방법**: 우클릭 메뉴, 키보드 단축키, 드롭 영역, [`filee` 명령](#명령줄)
-- 밝은·어두운 테마, 원하는 강조색과 원형 툴바 불투명도, English · Español · 日本語 · 한국어 · 简体中文 · 繁體中文 · Polski · हिन्दी · Русский · العربية(오른쪽에서 왼쪽으로) · Português (Brasil) · Français · नेपाली · ไทย · Türkçe · Português (Portugal) · Deutsch · Italiano
+- 밝은·어두운 테마, 원하는 강조색과 원형 툴바 불투명도, English · Español · 日本語 · 한국어 · 简体中文 · 繁體中文 · Polski · हिन्दी · Русский · العربية(오른쪽에서 왼쪽으로) · Português (Brasil) · Français · नेपाली · ไทย · Türkçe · Português (Portugal) · Deutsch · Italiano · Bahasa Indonesia
 
 ## 스크린샷
 

@@ -112,7 +112,8 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<EngineItemViewModel> Engines { get; } = [];
 
-    [RelayCommand]
+    // Any number of rows can be clicked; the service queues them and installs one at a time (#819).
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private Task Install(EnginePackageState package) => _downloads.InstallAsync(package);
 
     [RelayCommand]

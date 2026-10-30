@@ -93,6 +93,55 @@ public class BrowserDropTests
         }
     }
 
+    [AvaloniaFact]
+    public void Browser_drop_on_a_back_face_folder_slice_copies_the_original_bytes()
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var destination = Directory.CreateTempSubdirectory("filee-copy-drop-").FullName;
+        var preset = new Filee.Core.Presets.Preset
+        {
+            Name = "Folder",
+            Kind = Filee.Core.Presets.PresetKind.CopyToFolder,
+            TargetFormat = Filee.Core.Presets.Preset.CopyTarget,
+            Output = new() { Location = Filee.Core.Presets.OutputLocation.CustomFolder, CustomFolder = destination }
+        };
+        var profile = store.Profiles.Single(p => p.Id == "images");
+        var before = profile.BackPresetIds;
+        var radial = AppHost.Get<RadialController>();
+        var motion = Motion.Enabled;
+        try
+        {
+            store.Presets.Add(preset); profile.BackPresetIds = [preset.Id];
+            Motion.Set(false);
+            var file = VirtualFile.Create("cat.png", Png);
+            using var data = ChromePicture(file);
+            radial.ShowForDrag(500, 500);
+            var window = radial.Window!;
+            var root = window.FindControl<Panel>("Root")!;
+            var donut = window.DonutControl;
+            root.RaiseEvent(new DragEventArgs(DragDrop.DragEnterEvent, data, root, new Point(5, 5), KeyModifiers.Control));
+            Pump(); donut.Flip(); Pump();
+            var model = AppHost.Get<RadialViewModel>();
+            Assert.True(model.IsBackFace);
+            var (at, id) = FirstSlice(donut, model);
+            Assert.Equal(preset.Id, id);
+            root.RaiseEvent(new DragEventArgs(DragDrop.DropEvent, data, root, donut.TranslatePoint(at, root)!.Value, KeyModifiers.Control));
+            var job = WaitFor(AppHost.Get<ConversionService>().Jobs[0]);
+            Assert.Equal(JobState.Completed, job.State);
+            var output = Assert.Single(job.Outputs);
+            Assert.Equal(Path.Combine(destination, "cat.png"), output);
+            Assert.Equal(Png, File.ReadAllBytes(output));
+            Assert.True(file.Disposed);
+        }
+        finally
+        {
+            radial.Close(animate: false); Motion.Set(motion);
+            profile.BackPresetIds = before; store.Presets.Remove(preset);
+            Directory.Delete(destination, recursive: true);
+        }
+    }
+
     private static ConversionJob WaitFor(JobViewModel vm)
     {
         var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(60);
@@ -241,8 +290,88 @@ public class BrowserDropTests
         }
     }
 
+    [AvaloniaTheory]
+    [InlineData("png", false)]
+    [InlineData("pdf", false)]
+    [InlineData("png", true)]
+    [InlineData("pdf", true)]
+    public void Standalone_svg_drag_reaches_png_and_pdf_or_reports_missing_resources(string target, bool external)
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var folder = UseFolder(store, saveOnlyConverted: true);
+        var radial = AppHost.Get<RadialController>();
+        var conversions = AppHost.Get<ConversionService>();
+        try
+        {
+            using var data = new DataTransfer();
+            var drawing = external ? "<image href='missing.png' width='20' height='20'/>"
+                : "<rect width='20' height='20' fill='red'/>";
+            data.Add(DataTransferItem.CreateText("<svg width='20' height='20'>" + drawing + "</svg>"));
+            Assert.True(DraggedFiles.Offered(data));
+            radial.ShowForDrag(500, 500);
+            var window = radial.Window!;
+            var root = window.FindControl<Panel>("Root")!;
+            var donut = window.DonutControl;
+            root.RaiseEvent(new DragEventArgs(DragDrop.DragEnterEvent, data, root, new Point(5, 5), KeyModifiers.Control));
+            Pump();
+            var model = AppHost.Get<RadialViewModel>();
+            Assert.EndsWith(".svg", Assert.Single(model.Files));
+            var (at, _) = FirstSlice(donut, model, target);
+            var before = conversions.Jobs.Count;
+            root.RaiseEvent(new DragEventArgs(DragDrop.DropEvent, data, root, donut.TranslatePoint(at, root)!.Value, KeyModifiers.Control));
+            Assert.Equal(before + 1, conversions.Jobs.Count);
+            var job = WaitFor(conversions.Jobs[0]);
+            if (external)
+            {
+                Assert.Equal(FileState.Failed, Assert.Single(job.Files).State);
+                Assert.Contains("external", job.Files[0].ErrorDetail);
+                Assert.Empty(job.Outputs);
+                Assert.Empty(Directory.GetFiles(folder));
+            }
+            else
+            {
+                Assert.Equal(JobState.Completed, job.State);
+                var output = Assert.Single(job.Outputs);
+                Assert.Equal("." + target, Path.GetExtension(output));
+                if (target == "png")
+                {
+                    using var bitmap = SkiaSharp.SKBitmap.Decode(output);
+                    Assert.NotNull(bitmap);
+                    Assert.Equal(SkiaSharp.SKColors.Red, bitmap.GetPixel(bitmap.Width / 2, bitmap.Height / 2));
+                }
+                else
+                {
+                    using var pdf = UglyToad.PdfPig.PdfDocument.Open(output);
+                    Assert.Equal(1, pdf.NumberOfPages);
+                    Assert.NotEmpty(pdf.GetPage(1).Paths);
+                }
+            }
+        }
+        finally
+        {
+            radial.Close(animate: false);
+            Reset(store, folder);
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("ordinary text")]
+    [InlineData("https://example.com/image.svg")]
+    [InlineData("<svg><rect></svg>")]
+    [InlineData("<div><svg></svg></div>")]
+    [InlineData("<svg></svg><svg></svg>")]
+    [InlineData("&lt;svg&gt;&lt;/svg&gt;")]
+    public void Other_text_does_not_offer_files_to_the_donut(string text)
+    {
+        using var data = new DataTransfer();
+        data.Add(DataTransferItem.CreateText(text));
+        Assert.False(DraggedFiles.Offered(data));
+        Assert.Empty(DraggedFiles.Read(data, forDrop: true).Files);
+    }
+
     /// <summary>A point on a slice that converts these files, and its preset.</summary>
-    private static (Point At, string Preset) FirstSlice(DonutMenu donut, RadialViewModel model)
+    private static (Point At, string Preset) FirstSlice(DonutMenu donut, RadialViewModel model, string? target = null)
     {
         var center = new Point(donut.Bounds.Width / 2, donut.Bounds.Height / 2);
         var radius = model.OuterRadius * 0.75;
@@ -251,7 +380,8 @@ public class BrowserDropTests
             var angle = degrees * Math.PI / 180;
             var p = new Point(center.X + radius * Math.Cos(angle), center.Y + radius * Math.Sin(angle));
             var hit = donut.HitTest(p);
-            if (hit.Kind == DonutHitKind.Segment && model.PresetAt(hit.Index, -1) is { } preset && donut.Converts(hit))
+            if (hit.Kind == DonutHitKind.Segment && model.PresetAt(hit.Index, -1) is { } preset && donut.Converts(hit)
+                && (target is null || preset.TargetFormat == target))
                 return (p, preset.Id);
         }
         throw new InvalidOperationException("No slice converts a PNG.");
@@ -261,7 +391,7 @@ public class BrowserDropTests
     public void A_picture_dropped_on_the_drop_zone_opens_the_donut_for_it_and_closing_lets_it_go()
     {
         TestServices.EnsureInitialized("en");
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("home");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
@@ -303,7 +433,7 @@ public class BrowserDropTests
         TestServices.EnsureInitialized(language);
         var store = AppHost.Get<UserDataStore>();
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
-        var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("general");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();

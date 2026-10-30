@@ -65,6 +65,7 @@ public sealed class RadialController(
     private bool _converted;   // a conversion started from the files on the donut now
     private readonly HashSet<string> _formatRequestsOffered = new(StringComparer.OrdinalIgnoreCase);
     private WebDrop? _web;      // the browser drop the click-mode donut's files stand for, until a conversion takes it
+    private bool _toClipboard;  // the click-mode donut's files came from the clipboard: their results go back on it
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -86,6 +87,7 @@ public sealed class RadialController(
         ReleaseProgressToToast();
         _grace.Cancel();
         ReplaceWeb(null);
+        _toClipboard = false;
         var window = EnsureWindow();
         // A ring from an earlier conversion (finished or handed to the toast) must not keep this gesture's window up.
         window.DonutControl.LeaveProgressMode();
@@ -109,9 +111,11 @@ public sealed class RadialController(
     /// Opens the donut for known files (click mode). Shortcuts among them stand for the files they point to.
     /// <paramref name="forAnotherProcess"/>: the files came from a later launch or the Services menu, so on macOS the
     /// donut may lose focus once while Filee becomes the active app. <paramref name="web"/>: the files are placeholders
-    /// of this browser drop (the drop zone), which the donut now owns.
+    /// of this browser drop (the drop zone, a picture on the clipboard), which the donut now owns.
+    /// <paramref name="toClipboard"/>: the files came from the clipboard, and their results go back on it.
     /// </summary>
-    public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null)
+    public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
+        bool toClipboard = false)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -122,6 +126,7 @@ public sealed class RadialController(
         }
         ReleaseProgressToToast();
         ReplaceWeb(web);
+        _toClipboard = toClipboard;
         if (forAnotherProcess && OperatingSystem.IsMacOS())
             _grace.Start();
         else
@@ -132,9 +137,10 @@ public sealed class RadialController(
         viewModel.Load(files, clickMode: true);
         viewModel.FitToThisDonut();
         window.DonutControl.AllowContextEdit = true;
+        // Set the initial pose before showing the reused window, avoiding a fully-open flash.
+        window.DonutControl.PlayOpenAnimation();
         PlaceAndShow(window, x, y, activate: true);
         WatchFlipKey();
-        window.DonutControl.PlayOpenAnimation();
     }
 
     /// <summary>The mouse button of the drag gesture was released somewhere.</summary>
@@ -262,10 +268,10 @@ public sealed class RadialController(
             }
         };
         // One line per drag, to tell "the drag never reached the donut" from "it did but nothing lit up" when someone
-        // reports a donut that doesn't react.
-        window.DragSummary += (events, hit, lit) =>
-            log.LogInformation("Drag over the donut: {Events} move event(s), ended on {Kind} {Index}, drawn lit {Lit:0.00}",
-                events, hit.Kind, hit.Index, lit);
+        // reports a donut that doesn't react, and a drop from a drag the system ended without one (#784).
+        window.DragSummary += (events, hit, lit, dropped) =>
+            log.LogInformation("Drag over the donut: {Events} move event(s), ended on {Kind} {Index}, drawn lit {Lit:0.00}{Drop}",
+                events, hit.Kind, hit.Index, lit, dropped ? "" : ", left without a drop");
         window.EscapePressed += () => Close();
         window.Deactivated += (_, _) =>
         {
@@ -322,13 +328,19 @@ public sealed class RadialController(
         var orphaned = web is null && files.Any(WebDrop.IsPlaceholder);
         if (viewModel.PresetAt(index, sub) is not { } preset || SourcesFor(preset, files) is not { Count: > 0 } sources || orphaned)
         {
+            // Said in the log, as a drop that closes the donut looks the same as one the system never delivered (#784).
+            log.LogInformation("The donut closed without converting: {Reason}",
+                viewModel.PresetAt(index, sub) is not { } slice ? $"no preset at slice {index}/{sub}"
+                : orphaned ? "the browser drop behind the files is gone"
+                : $"none of the {files.Count} file(s) fit preset {slice.Id}");
             web?.Dispose();
             Close();
             return;
         }
 
-        if (preset.IsTool)
+        if (preset.IsTool && !preset.IsCopyToFolder)
         {
+            log.LogInformation("Opening {Preset} for {Count} file(s)", preset.Id, sources.Count);
             var near = _window?.Position;
             Close(animate: false);
             if (web is null)
@@ -342,22 +354,22 @@ public sealed class RadialController(
         if ((preset.TargetFormat == "pdf" && preset.Pdf.MergeIntoSingle || preset.JoinsIntoOneMedia || preset.JoinsImages) && sources.Count > 1)
         {
             Close(animate: false);
-            _ = MergeInOrderAsync(sources, preset.Clone(), web);
+            _ = MergeInOrderAsync(sources, preset.Clone(), web, _toClipboard);
             return;
         }
 
         // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
         // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
-        if (preset.Output.AskEveryTime && web is null)
+        if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
         {
             Close(animate: false);
-            _ = AskThenConvertAsync(sources, preset);
+            _ = AskThenConvertAsync(sources, preset, _toClipboard, web);
             return;
         }
 
-        log.LogInformation("Converting {Count} file(s) with preset {Preset}{Web}", sources.Count, preset.Id,
-            web is null ? "" : " (from a browser)");
-        var job = conversions.Start(sources, preset, showInToast: false, web);
+        log.LogInformation("Converting {Count} file(s) with preset {Preset}{Web}{Clipboard}", sources.Count, preset.Id,
+            web is null ? "" : " (from a browser)", _toClipboard ? " (from the clipboard)" : "");
+        var job = conversions.Start(sources, preset, showInToast: false, web, _toClipboard);
         if (job is null || _window is null)
         {
             Close();
@@ -367,7 +379,7 @@ public sealed class RadialController(
         ShowProgress(job);
     }
 
-    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web)
+    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard)
     {
         try
         {
@@ -375,10 +387,10 @@ public sealed class RadialController(
             if (ordered is not null && preset.JoinsImages)
                 RememberMergeLayout(preset);
             if (ordered is not null && preset.Output.AskEveryTime && web is null)
-                await AskThenConvertAsync(ordered, preset);
+                await AskThenConvertAsync(ordered, preset, toClipboard);
             else if (ordered is not null)
             {
-                conversions.Start(ordered, preset, web: web);
+                conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
                 web = null; // the conversion owns the browser drop now
             }
         }
@@ -418,17 +430,12 @@ public sealed class RadialController(
         }
     }
 
-    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset)
+    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null)
     {
         try
         {
-            // Asked as it will run (a ZIP from Settings › General is a .zip), for one file or a folder as the job makes them.
-            var running = store.Settings.WithDefaultOutput(preset);
-            if (await windows.AskSaveLocationAsync(sources, running, AskedLocation.MakesOneResult(running, sources.Count)) is { } asked)
-            {
-                log.LogInformation("Converting {Count} file(s) with preset {Preset} where the user chose", sources.Count, preset.Id);
-                conversions.Start(sources, asked);
-            }
+            await conversions.AskThenStartAsync(sources, preset, web,
+                (running, one) => windows.AskSaveLocationAsync(sources, running, one), toClipboard);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -450,7 +457,7 @@ public sealed class RadialController(
     /// archive"; any other preset converts the files beside them (issue #186).
     /// </summary>
     internal static IReadOnlyList<string> SourcesFor(Preset preset, IReadOnlyList<string> files) =>
-        preset.PacksIntoOneArchive ? files : [.. files.Where(path => !Directory.Exists(path))];
+        preset.PacksIntoOneArchive || preset.IsCopyToFolder ? files : [.. files.Where(path => !Directory.Exists(path))];
 
     // ───────── Progress ring ─────────
 

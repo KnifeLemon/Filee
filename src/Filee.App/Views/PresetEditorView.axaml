@@ -34,7 +34,8 @@
         <TextBlock Classes="caption danger" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
       <StackPanel Grid.Column="2">
-        <TextBlock Classes="label" Text="{DynamicResource presets.target}" />
+        <TextBlock Classes="label" Text="{DynamicResource presets.target}" IsVisible="{Binding ShowConversionOutput}" />
+        <TextBlock Classes="label" Text="{DynamicResource presets.copy_action}" IsVisible="{Binding IsCopyToFolder}" />
         <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}"
                   IsEnabled="{Binding CanChangeTarget}"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.target}">
@@ -111,11 +112,22 @@
           </DockPanel>
           <Slider Minimum="1" Maximum="100" Value="{Binding Quality}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource presets.quality}" />
         </StackPanel>
-        <Grid ColumnDefinitions="Auto,12,170" IsVisible="{Binding ShowQuality}">
-          <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource presets.max_size}" />
-          <NumericUpDown Grid.Column="2" Value="{Binding ImageMaxSizeMb}" Minimum="0" Maximum="4096" Increment="0.5" FormatString="0.#"
-                         ToolTip.Tip="{DynamicResource presets.max_size_hint_image}" AutomationProperties.Name="{DynamicResource presets.max_size}" />
-        </Grid>
+        <!-- File size range (#553, #662): both ends in one unit; the preset keeps megabytes. -->
+        <StackPanel IsVisible="{Binding ShowQuality}" Spacing="4">
+          <TextBlock Classes="label" Text="{DynamicResource presets.size_range}" />
+          <Grid ColumnDefinitions="*,8,Auto,8,*,8,Auto">
+            <NumericUpDown Name="ImageMinSize" Value="{Binding ImageMinSize}" Minimum="0" Maximum="{Binding SizeMaximum}"
+                           Increment="{Binding SizeIncrement}" FormatString="{Binding SizeFormat}"
+                           ToolTip.Tip="{DynamicResource presets.min_size_hint_image}" AutomationProperties.Name="{DynamicResource presets.min_size}" />
+            <TextBlock Grid.Column="2" Text="~" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Column="4" Name="ImageMaxSize" Value="{Binding ImageMaxSize}" Minimum="0" Maximum="{Binding SizeMaximum}"
+                           Increment="{Binding SizeIncrement}" FormatString="{Binding SizeFormat}"
+                           ToolTip.Tip="{DynamicResource presets.max_size_hint_image}" AutomationProperties.Name="{DynamicResource presets.max_size_short}" />
+            <ComboBox Grid.Column="6" Name="ImageSizeUnit" ItemsSource="{Binding SizeUnits}" SelectedItem="{Binding ImageSizeUnit}"
+                      AutomationProperties.Name="{DynamicResource presets.size_unit}" />
+          </Grid>
+          <TextBlock Classes="caption danger" Text="{Binding SizeRangeError}" IsVisible="{Binding SizeRangeError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.resize}" />
@@ -291,6 +303,23 @@
         <StackPanel Spacing="2" IsVisible="{Binding ShowHardwareEncoding}">
           <CheckBox Content="{DynamicResource presets.hardware_encoding}" IsChecked="{Binding HardwareEncoding}" />
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.hardware_encoding_hint}" />
+        </StackPanel>
+        <StackPanel Spacing="2" IsVisible="{Binding ShowCaption}">
+          <CheckBox Content="{DynamicResource presets.caption_video}" IsChecked="{Binding Caption}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.caption_video_hint}" />
+          <Grid ColumnDefinitions="*,12,*" Margin="28,6,0,0" IsVisible="{Binding Caption}">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.spoken_language}" />
+              <ComboBox ItemsSource="{Binding SpokenLanguageChoices}" SelectedItem="{Binding SpokenLanguage}" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.spoken_language}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:IChoice">
+                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+          </Grid>
         </StackPanel>
       </StackPanel>
     </Border>
@@ -482,6 +511,8 @@
       </StackPanel>
     </Border>
 
+    <TextBlock Text="{DynamicResource presets.copy_hint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
+
     <!-- Output -->
     <Border Classes="card" Padding="14">
       <StackPanel Spacing="10">
@@ -496,6 +527,8 @@
             <ComboBox ItemsSource="{Binding Conflicts}" SelectedItem="{Binding Conflict}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.conflict}" />
           </StackPanel>
         </Grid>
+        <TextBlock Classes="caption danger" Text="{Binding DestinationError}" TextWrapping="Wrap"
+                   IsVisible="{Binding DestinationError, Converter={x:Static ObjectConverters.IsNotNull}}" />
         <StackPanel IsVisible="{Binding ShowSubfolder}">
           <TextBlock Classes="label" Text="{DynamicResource presets.subfolder}" />
           <TextBox Text="{Binding SubfolderName}" PlaceholderText="converted" AutomationProperties.Name="{DynamicResource presets.subfolder}" />
@@ -509,16 +542,16 @@
             <TextBox Text="{Binding CustomFolder}" AutomationProperties.Name="{DynamicResource presets.custom_folder}" />
           </DockPanel>
         </StackPanel>
-        <StackPanel>
+        <StackPanel IsVisible="{Binding ShowConversionOutput}">
           <TextBlock Classes="label" Text="{DynamicResource presets.pattern}" />
           <TextBox Text="{Binding Pattern}" PlaceholderText="{}{name}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.pattern_hint}" Margin="2,4,0,0" />
         </StackPanel>
-        <CheckBox Content="{DynamicResource presets.keep_dates}" IsChecked="{Binding KeepDates}"
+        <CheckBox IsVisible="{Binding ShowConversionOutput}" Content="{DynamicResource presets.keep_dates}" IsChecked="{Binding KeepDates}"
                   ToolTip.Tip="{DynamicResource presets.keep_dates_hint}" />
         <CheckBox Content="{DynamicResource presets.zip_result}" IsChecked="{Binding ZipResult}" IsVisible="{Binding ShowZipResult}"
                   ToolTip.Tip="{DynamicResource presets.zip_result_hint}" />
-        <StackPanel>
+        <StackPanel IsVisible="{Binding ShowConversionOutput}">
           <CheckBox Content="{DynamicResource presets.replace_original}" IsChecked="{Binding ReplaceOriginal}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.replace_original_hint}" TextWrapping="Wrap"
                      IsVisible="{Binding ReplaceOriginal}" Margin="28,2,0,0" />

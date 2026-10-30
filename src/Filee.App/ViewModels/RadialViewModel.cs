@@ -243,6 +243,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 // On a group's ring the group's name gives the context: "Rotate" → Left / Right / 180°.
                 Label = caption ? loc.DonutName(p) : loc.RingName(p),
                 Caption = !caption ? null
+                    : p.IsCopyToFolder ? loc["presets.copy_to_folder"]
                     : p.TargetFormat == BuiltInData.SameAsSource
                         ? string.Join("/", formats.Select(f => f.DisplayName).Take(2))
                         : FormatLabels.NameOf(loc, p.TargetFormat),

@@ -77,7 +77,7 @@ public static partial class ClipPreview
         {
             if ((info.Audio is not null || clip.Music is not null) && Player() is { } ffplay)
             {
-                decoder = Start(ffmpeg, MediaEncoding.ClipPreviewAudio(input, clip, video, info.Audio is not null, info.Audio?.Ordinal ?? 0), stdin: false);
+                decoder = Start(ffmpeg, await PreviewSoundArgumentsAsync(ffprobe, input, clip, video, info.Audio, stop.Token).ConfigureAwait(false), stdin: false);
                 player = Start(ffplay, ["-hide_banner", "-loglevel", "error", "-nodisp", "-autoexit",
                     .. PlayerVolume is { } volume ? new[] { "-volume", volume.ToString(CultureInfo.InvariantCulture) } : [], "-i", "-"], stdin: true);
                 pump = Pump(decoder, player, stop.Token);
@@ -131,7 +131,18 @@ public static partial class ClipPreview
     }
 
     /// <summary>
-    /// How loud the sound of the video at <paramref name="path"/> is over its <paramref name="duration"/> seconds, in
+    /// The arguments of the preview's sound: the music's track probed like the video's.
+    /// </summary>
+    internal static async Task<List<string>> PreviewSoundArgumentsAsync(string ffprobe, string input, ClipEdit clip,
+        VideoStreamInfo video, AudioStreamInfo? audio, CancellationToken cancellationToken)
+    {
+        var musicTrack = clip.Music is { } song
+            ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken).ConfigureAwait(false) : 0;
+        return MediaEncoding.ClipPreviewAudio(input, clip, video, audio is not null, audio?.Ordinal ?? 0, musicTrack);
+    }
+
+    /// <summary>
+    /// How loud the sound (the track conversions use) of the video at <paramref name="path"/> is over its <paramref name="duration"/> seconds, in
     /// <paramref name="count"/> steps from 0 (silent) to 1 (its loudest step); empty when it has no sound.
     /// </summary>
     /// <param name="workFolder">Where the samples are written for a moment.</param>
@@ -139,14 +150,22 @@ public static partial class ClipPreview
         ReadLoudnessAsync(path, 0, duration, count, workFolder, cancellationToken);
 
     /// <summary>
-    /// How loud the sound of the file at <paramref name="path"/> is from <paramref name="start"/> to
+    /// How loud the sound (the track conversions use) of the file at <paramref name="path"/> is from <paramref name="start"/> to
     /// <paramref name="end"/> seconds, in <paramref name="count"/> steps from 0 to 1 (its loudest step); empty
     /// without sound.
     /// </summary>
     public static async Task<float[]> ReadLoudnessAsync(string path, double start, double end, int count, string workFolder,
         CancellationToken cancellationToken)
     {
-        var (ffmpeg, _) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
+        return await ReadLoudnessAsync(FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found."),
+            path, start, end, count, workFolder, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static async Task<float[]> ReadLoudnessAsync((string Ffmpeg, string Ffprobe) tools, string path, double start, double end,
+        int count, string workFolder, CancellationToken cancellationToken)
+    {
+        var input = Path.GetFullPath(path);
+        var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
         var samples = Path.Combine(workFolder, Guid.NewGuid().ToString("N") + ".f32");
         try
         {
@@ -155,9 +174,9 @@ public static partial class ClipPreview
                 args.AddRange(["-ss", ClipRange.Ffmpeg(start)]);
             if (end > start)
                 args.AddRange(["-to", ClipRange.Ffmpeg(end)]);
-            args.AddRange(["-i", Path.GetFullPath(path), "-map", "0:a:0", "-ac", "1", "-ar", PeakRate.ToString(CultureInfo.InvariantCulture),
+            args.AddRange(["-i", input, "-map", $"0:a:{track}", "-ac", "1", "-ar", PeakRate.ToString(CultureInfo.InvariantCulture),
                 "-c:a", "pcm_f32le", "-f", "f32le", samples]);
-            var result = await FfmpegRunner.RunAsync(ffmpeg, args, null, cancellationToken);
+            var result = await FfmpegRunner.RunAsync(tools.Ffmpeg, args, null, cancellationToken);
             if (result.ExitCode != 0 || !File.Exists(samples))
                 return []; // no sound
             var bytes = await File.ReadAllBytesAsync(samples, cancellationToken);
@@ -186,18 +205,27 @@ public static partial class ClipPreview
     /// <summary>The silent stretches of the video at <paramref name="path"/> between <paramref name="start"/> and <paramref name="end"/>.</summary>
     public static async Task<IReadOnlyList<ClipRange>> FindSilencesAsync(string path, double start, double end, CancellationToken cancellationToken)
     {
-        var (ffmpeg, _) = FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found.");
-        var result = await ProcessRunner.RunAsync(ffmpeg, SilenceArguments(Path.GetFullPath(path), start, end), TimeSpan.FromMinutes(10), cancellationToken);
+        return await FindSilencesAsync(FfmpegConverter.Locate() ?? throw new InvalidOperationException("FFmpeg was not found."),
+            path, start, end, cancellationToken).ConfigureAwait(false);
+    }
+
+    internal static async Task<IReadOnlyList<ClipRange>> FindSilencesAsync((string Ffmpeg, string Ffprobe) tools, string path,
+        double start, double end, CancellationToken cancellationToken)
+    {
+        var input = Path.GetFullPath(path);
+        var track = await MediaInfo.AudioTrackAsync(tools.Ffprobe, input, cancellationToken).ConfigureAwait(false);
+        var result = await ProcessRunner.RunAsync(tools.Ffmpeg, SilenceArguments(input, start, end, track), TimeSpan.FromMinutes(10), cancellationToken);
         if (result.ExitCode != 0)
             throw new InvalidOperationException("FFmpeg failed: " + FfmpegRunner.Summarize(result.StandardError));
         return ParseSilences(result.StandardError, start, end);
     }
 
     /// <summary>FFmpeg's silencedetect over <paramref name="start"/> to <paramref name="end"/> of the video, reported on stderr.</summary>
-    internal static List<string> SilenceArguments(string input, double start, double end) =>
+    /// <param name="audioTrack">The selected audio track's ordinal in the input file.</param>
+    internal static List<string> SilenceArguments(string input, double start, double end, int audioTrack = 0) =>
     [
         "-hide_banner", "-nostdin", "-nostats", "-v", "info", "-ss", ClipRange.Ffmpeg(start), "-to", ClipRange.Ffmpeg(end), "-i", input,
-        "-map", "0:a:0", "-af", $"silencedetect=noise={SilenceThreshold.ToString(CultureInfo.InvariantCulture)}dB:d={ClipCutter.MinSilence.ToString(CultureInfo.InvariantCulture)}",
+        "-map", $"0:a:{audioTrack}", "-af", $"silencedetect=noise={SilenceThreshold.ToString(CultureInfo.InvariantCulture)}dB:d={ClipCutter.MinSilence.ToString(CultureInfo.InvariantCulture)}",
         "-f", "null", "-",
     ];
 

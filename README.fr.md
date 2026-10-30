@@ -47,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <b>Français</b> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -58,7 +59,7 @@
       Les formats apparaissent là où vous êtes déjà, et seulement ceux qui ont un sens pour les fichiers que vous faites glisser.
     </td>
     <td width="33%" valign="top">
-      <b>269 formats, sans autre logiciel</b><br>
+      <b>270 formats, sans autre logiciel</b><br>
       Images, PDF, Word, Excel, PowerPoint, HWP, livres numériques, archives, polices, CAO, modèles 3D et données géospatiales fonctionnent sans Office, Hancom Office ni LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -132,7 +133,7 @@ Pour annuler, supprimez ces entrées dans Sécurité Windows → Contrôle des a
 - **Des dossiers surveillés** convertissent chaque fichier qui y arrive.
 - **Conversions récentes** dans l'Accueil, chacune avec sa miniature : ouvrez le résultat, ou ouvrez-le avec une autre application.
 - **D'autres points d'entrée** : le menu contextuel, un raccourci clavier, la zone de dépôt et la [commande `filee`](#ligne-de-commande).
-- Thèmes clair et sombre avec votre propre couleur d'accentuation et l'opacité du menu circulaire, en English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (de droite à gauche), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch et Italiano.
+- Thèmes clair et sombre avec votre propre couleur d'accentuation et l'opacité du menu circulaire, en English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (de droite à gauche), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano et Bahasa Indonesia.
 
 ## Captures d'écran
 

@@ -2,10 +2,18 @@
 # disk image (Filee.app next to an Applications link, to drag it there), signed and notarized as the app is.
 #
 # Linux packages must run on Ubuntu 22.04 (glibc 2.35). rhwp's Linux release needs a newer glibc, so CI builds it from
-# source on Ubuntu 22.04 (build/build-linux-native.py) and passes it in:
-#   -RhwpOverride <dir>  a folder with the rhwp program (rhwp's release archive layout) used instead of the rhwp
-#                        download pinned in engines.json
+# source on Ubuntu 22.04 (build/build-native.py) and passes it in:
+#   -RhwpOverride <dir>     a folder with the rhwp program (rhwp's release archive layout) used instead of the rhwp
+#                           download pinned in engines.json
 # Without it (local builds) the package uses the download, which needs a newer glibc.
+# Unhwp's NuGet package has no linux-arm64 library; CI builds it the same way and passes it in:
+#   -UnhwpOverride <file>   libunhwp.so, put next to the app (dotnet publish -p:UnhwpNativeLibrary)
+# Without it a linux-arm64 package has no Unhwp (HWP/HWPX to text, Markdown and HTML).
+#
+# macOS packages must run on macOS 13 (LSMinimumSystemVersion). Magick.NET's own macOS ImageMagick library needs macOS
+# 14 (Apple silicon) or 15 (Intel), so it is replaced by the same Magick.Native release built for macOS 13
+# (.github/workflows/magick-native-macos.yml), pinned below. Every Mach-O file is then checked against
+# LSMinimumSystemVersion (build/check-macho-minos.py) before signing.
 [CmdletBinding()]
 param(
     [ValidateSet('linux-x64', 'linux-arm64', 'osx-x64', 'osx-arm64')][string]$Runtime,
@@ -13,7 +21,8 @@ param(
     [string]$OutputDir = (Join-Path $PSScriptRoot '../Releases'),
     [string]$SigningIdentity = '-',
     [switch]$SkipFonts,
-    [string]$RhwpOverride
+    [string]$RhwpOverride,
+    [string]$UnhwpOverride
 )
 
 $ErrorActionPreference = 'Stop'
@@ -28,6 +37,15 @@ if (($Runtime.StartsWith('osx-') -and -not $IsMacOS) -or ($Runtime.StartsWith('l
 }
 if ($RhwpOverride -and -not $Runtime.StartsWith('linux-')) {
     throw '-RhwpOverride is for Linux packages.'
+}
+if ($UnhwpOverride -and $Runtime -ne 'linux-arm64') {
+    throw '-UnhwpOverride is for linux-arm64 packages (the others get the library from the Unhwp package).'
+}
+$native = @()
+if ($UnhwpOverride) {
+    $UnhwpOverride = (Resolve-Path -LiteralPath $UnhwpOverride).Path
+    if ((Split-Path $UnhwpOverride -Leaf) -ne 'libunhwp.so') { throw "-UnhwpOverride: $UnhwpOverride is not libunhwp.so." }
+    $native = @("-p:UnhwpNativeLibrary=$UnhwpOverride")
 }
 if ($RhwpOverride) {
     $RhwpOverride = (Resolve-Path -LiteralPath $RhwpOverride).Path
@@ -53,6 +71,17 @@ $sums = Join-Path $OutputDir "$packageName-SHA256SUMS.txt"
 if ((Test-Path -LiteralPath $archive) -or (Test-Path -LiteralPath $sums) -or (Test-Path -LiteralPath $diskImage)) {
     throw "Package $packageName already exists. Use another output folder or version."
 }
+# Magick.Native for Magick.NET 14.17.2 built for macOS 13 (#600). A Magick.NET update needs a new build and new pins.
+$magickNative = @{
+    'osx-arm64' = @{
+        url = 'https://dl.filee.sh/engines/magick-native/2026.927.1314/Magick.Native-Q8-arm64.dll.dylib'
+        sha256 = '2299d76696d6c78dfbe856fc00118fbe30d684299524bbce328cc76003aa9c02'
+    }
+    'osx-x64' = @{
+        url = 'https://dl.filee.sh/engines/magick-native/2026.927.1314/Magick.Native-Q8-x64.dll.dylib'
+        sha256 = '11f5e26da1bc67bab6e3c0fdd0375bb756ac2db273356cd0e8f76248137fc5f6'
+    }
+}
 $stage = Join-Path $root ('build/.cache/portable/' + [Guid]::NewGuid().ToString('N'))
 $package = Join-Path $stage $packageName
 $appBundle = Join-Path $package 'Filee.app'
@@ -68,7 +97,7 @@ if (-not $SkipFonts) { & (Join-Path $PSScriptRoot 'fetch-fonts.ps1') }
 foreach ($project in @('Filee.App', 'Filee.Cli')) {
     Invoke-Checked "Publish $project" {
         dotnet publish (Join-Path $root "src/$project/$project.csproj") -c Release -r $Runtime --self-contained true `
-            "-p:Version=$Version" -p:FileeRelease=true -p:PublishReadyToRun=false -o $publish
+            "-p:Version=$Version" -p:FileeRelease=true -p:PublishReadyToRun=false @native -o $publish
     }
 }
 $engines = Join-Path $publish 'engines'
@@ -93,6 +122,29 @@ foreach ($notice in @('LICENSE', 'THIRD-PARTY-NOTICES.md')) {
 }
 
 if ($Runtime.StartsWith('osx-')) {
+    $pin = $magickNative[$Runtime]
+    $library = Join-Path $publish "Magick.Native-Q8-$($Runtime.Substring(4)).dll.dylib"
+    if (-not (Test-Path -LiteralPath $library -PathType Leaf)) { throw "Publish did not produce $(Split-Path $library -Leaf)" }
+    if ($pin.sha256 -notmatch '^[0-9a-fA-F]{64}$') { throw "A pinned Magick.Native download is missing for $Runtime." }
+    $cache = Join-Path $root 'build/.cache/portable-downloads'
+    $cached = Join-Path $cache "$($pin.sha256).dylib"
+    if (-not (Test-Path -LiteralPath $cached)) {
+        New-Item -ItemType Directory -Force -Path $cache | Out-Null
+        $download = "$cached.$([Guid]::NewGuid().ToString('N')).partial"
+        Invoke-WebRequest -Uri $pin.url -OutFile $download
+        if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $pin.sha256) {
+            Remove-Item -LiteralPath $download
+            throw "Checksum mismatch for Magick.Native ($Runtime)."
+        }
+        Move-Item -LiteralPath $download -Destination $cached
+    }
+    if ((Get-FileHash -LiteralPath $cached -Algorithm SHA256).Hash -ne $pin.sha256) {
+        throw "Cached Magick.Native checksum mismatch: $cached"
+    }
+    Copy-Item -LiteralPath $cached -Destination $library -Force
+    Write-Host "Magick.Native for macOS 13 from $($pin.url)"
+    Invoke-Checked 'Check minimum macOS' { python3 (Join-Path $PSScriptRoot 'check-macho-minos.py') $publish }
+
     $contents = Join-Path $appBundle 'Contents'
     $resources = Join-Path $contents 'Resources'
     New-Item -ItemType Directory -Path $resources | Out-Null

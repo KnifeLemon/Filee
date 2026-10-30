@@ -25,6 +25,30 @@ internal static class MediaJoining
 
     // ───────────────────────── Videos ─────────────────────────
 
+    /// <summary>A self-contained video-only and audio-only M4S pair, in either selection order.</summary>
+    public static ((string Path, MediaInfo Info) Video, (string Path, MediaInfo Info) Audio)? M4sPair(
+        IReadOnlyList<(string Path, MediaInfo Info)> clips)
+    {
+        if (clips.Count != 2 || clips.Any(c => !Path.GetExtension(c.Path).Equals(".m4s", StringComparison.OrdinalIgnoreCase)))
+            return null;
+        var video = clips.Where(c => c.Info.Video is not null && c.Info.Audio is null).ToList();
+        var audio = clips.Where(c => c.Info.Video is null && c.Info.Audio is not null).ToList();
+        return video.Count == 1 && audio.Count == 1 ? (video[0], audio[0]) : null;
+    }
+
+    /// <summary>Copy the selected streams into MP4 without re-encoding.</summary>
+    public static List<string> MuxM4sPair((string Path, MediaInfo Info) video, (string Path, MediaInfo Info) audio, string output)
+    {
+        List<string> args = [.. MediaEncoding.Common, "-i", video.Path, "-i", audio.Path,
+            "-map", "0:V:0", "-map", $"1:a:{audio.Info.Audio!.Ordinal}", "-c", "copy"];
+        if (video.Info.Video?.Codec == "hevc")
+            args.AddRange(["-tag:v", "hvc1"]);
+        args.AddRange(MediaEncoding.MetadataArguments());
+        args.AddRange(MediaEncoding.ContainerArguments("mp4"));
+        args.AddRange(["-max_muxing_queue_size", "4096", "-f", "mp4", "-progress", "pipe:1", output]);
+        return args;
+    }
+
     /// <summary>
     /// True when the clips can be joined without an encode: every one is a video MP4 takes as it is, all with the same
     /// codec setup (parameter sets: the MP4 keeps only the first clip's), picture size, pixel format, frame rate, turn

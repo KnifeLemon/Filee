@@ -105,6 +105,9 @@ public sealed class PresetAvailability
     private PresetJudgement Evaluate(Preset preset, IReadOnlyList<FileFormat> formats,
         Func<RoutePlanner> installedPlanner, Func<Func<RoutePlanner, bool>, EnginePackageState?> packageEnabling)
     {
+        if (preset.IsCopyToFolder)
+            return new(PresetUse.Usable, null);
+
         if (preset.IsClipTool)
         {
             // Any video among the files: the others are left out when the clip window opens.
@@ -192,6 +195,23 @@ public sealed class PresetAvailability
                 return new(PresetUse.Usable, null);
             return packageEnabling(Readable) is { } reader
                 ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", reader.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
+        // "Caption": Whisper transcribes speech in video and audio into SRT subtitles.
+        if (formats.Any(f => preset.CaptionsVideo(f.Id)))
+        {
+            if (!OperatingSystem.IsWindows())
+                return new(PresetUse.Unusable, _loc["engine.reason.unsupported_platform"]);
+
+            var mediaFiles = formats.Where(f => f.Category is FormatCategory.Video or FormatCategory.Audio).ToList();
+            if (mediaFiles.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+            bool CanCaption(RoutePlanner planner) => mediaFiles.Any(f => planner.CanConvert(f.Id, preset.TargetFormat, caption: true));
+            if (CanCaption(installedPlanner()))
+                return new(PresetUse.Usable, null);
+            return packageEnabling(CanCaption) is { } needed
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", needed.Name))
                 : new(PresetUse.Unusable, _loc["error.no_route"]);
         }
 

@@ -82,7 +82,7 @@ public static class MacOSServicesProvider
     ], PasteboardPaths.Exists);
 
     /// <summary>File URLs read as NSURL objects (AppKit resolves file reference URLs).</summary>
-    private static List<string> FileUrls(nint pasteboard)
+    internal static List<string> FileUrls(nint pasteboard)
     {
         var files = new List<string>();
         var classes = Send(objc_getClass("NSArray"), sel_registerName("arrayWithObject:"), objc_getClass("NSURL"));
@@ -121,7 +121,7 @@ public static class MacOSServicesProvider
     }
 
     /// <summary>The strings in an NSArray (anything else in it is skipped); none for nil or any other object.</summary>
-    private static List<string> Strings(nint array)
+    internal static List<string> Strings(nint array)
     {
         var values = new List<string>();
         if (array == 0 || !SendBool(array, sel_registerName("isKindOfClass:"), objc_getClass("NSArray")))

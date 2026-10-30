@@ -37,6 +37,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
+| Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 
 DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
 and rendered by rhwp. Anything the built-in readers understand (including PDF) is written as DOCX by the DOCX writer.
@@ -134,7 +135,8 @@ table, e.g. `dumpbin /dependents`) and look for `MSVCP140*.dll`, `VCRUNTIME140*.
 
 To bump a version, change `url`, `sha256` and `size` in engines.json together, run
 `pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. For rhwp, also update `RHWP_VERSION`,
-`RHWP_COMMIT` and `RUST_TOOLCHAIN` in `build/build-linux-native.py` (see below); CI fails until they match. When the
+`RHWP_COMMIT` and `RUST_TOOLCHAIN` in `build/build-native.py` (see below); CI fails until they match. The Windows
+ARM64 builds of rhwp and Unhwp need a new build and pin too (see [Windows on ARM64](#windows-on-arm64)). When the
 LibreOffice team retires a version from `download.documentfoundation.org/libreoffice/stable/`, its URL stops working:
 keep the pinned version current.
 
@@ -142,13 +144,17 @@ keep the pinned version current.
 
 Linux packages run on Ubuntu 22.04 (glibc 2.35). rhwp's Linux release is linked on Ubuntu 24.04 (needs glibc 2.39).
 The `linux-native` job of `.github/workflows/portable.yml` builds it from its pinned, unmodified source on Ubuntu 22.04
-(x64 and arm64) with `build/build-linux-native.py`:
+(x64 and arm64) with `build/build-native.py`:
 
 - `rhwp`: `cargo build --release --locked --bin rhwp` at the tag's commit with its pinned Rust toolchain, in the
   layout of rhwp's release archive.
-- `check` (also run on its own): fails when engines.json pins another rhwp version than the script builds.
+- `unhwp` (arm64 only): Unhwp's NuGet package ships no linux-arm64 library, so `libunhwp.so` is built from the commit
+  the package's nuspec names (`cargo build --release --locked -p unhwp --lib --features ffi`, as upstream builds it).
+- `check` (also run on its own): fails when engines.json pins another rhwp version, or Directory.Packages.props
+  another Unhwp version, than the script builds.
 
-The Linux package jobs pass the result to `build/build-portable.ps1 -RhwpOverride <dir>`. Local builds without it use
+The Linux package jobs pass the result to `build/build-portable.ps1 -RhwpOverride <dir>` (arm64 also
+`-UnhwpOverride <libunhwp.so>`, which the arm64 tests are built with too: `-p:UnhwpNativeLibrary`). Local builds without it use
 the downloaded rhwp (fine on the machine that builds it). SharpHook's native libraries are packaged as they come
 from NuGet: SharpHook 8.0.0 built its X11 back ends against glibc 2.38, 8.0.1 needs glibc 2.34 at most again.
 
@@ -156,7 +162,29 @@ from NuGet: SharpHook 8.0.0 built its X11 back ends against glibc 2.38, 8.0.1 ne
 and the packages are unpacked and started on Ubuntu 22.04 (`build/smoke-portable.ps1`: CLI, rhwp conversions, loading
 the X11 input hook back end; `build/smoke-launch-app.py`: the app under Xvfb). If a SharpHook or engine update fails
 these checks, keep the previous version until upstream builds for an older glibc again, or build the binary from its
-pinned source in `build/build-linux-native.py` like rhwp (PR #113 did this for SharpHook 8.0.0's libuiohook back ends).
+pinned source in `build/build-native.py` like rhwp (PR #113 did this for SharpHook 8.0.0's libuiohook back ends).
+
+## Windows on ARM64
+
+`build/build-installer.ps1 -Runtime win-arm64` builds `Filee-<version>-win-arm64-Setup.exe` (and `-Portable.zip`): the
+app, the command line and Setup for win-arm64, the Explorer menu DLL for ARM64 (`build-explorer-menu.ps1
+-Architecture arm64`, packaged as `arm64`), and ARM64 builds of the bundled engines (`fetch-engines.ps1 -Runtime
+win-arm64`). The engines the app downloads stay x64: on Windows 11 on ARM, which runs them under emulation, the app
+offers the win-x64 downloads (`EngineDownloads.DownloadRuntime`); Windows 10 on ARM can't run them and gets none.
+Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so the ARM64 Setup offers the x64 one.
+
+- **7-Zip**: the official ARM64 installer of the version engines.json pins, a 7z self-extracting archive unpacked by
+  the x64 7-Zip (Windows' `tar.exe` can't undo its ARM64 executable filter).
+- **rhwp** and **Unhwp's library** have no ARM64 release. `.github/workflows/windows-arm64-native.yml` (run it from the
+  Actions tab once per version) builds them on a Windows ARM64 runner with `build/build-native.py`, from the same
+  pinned commits as above, with the C runtime linked statically (`+crt-static`): they import no Visual C++ runtime DLL,
+  so the ARM64 build ships none. Its artifact is hosted on dl.filee.sh and pinned by SHA-256 in `$arm64Pins` of
+  `build/fetch-engines.ps1`; until a pin is filled in, a win-arm64 build stops and says so. `unhwp.dll` goes next to
+  `Filee.exe` through the build (`-p:UnhwpNativeLibrary`).
+
+`UnhwpConverter` reports Unhwp as available where its library loads, so a build without it shows the engine as not
+available on this platform. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
+in it also builds the package (artifact `windows-arm64-package`).
 
 ## Images and vector graphics
 
@@ -797,8 +825,12 @@ in the preset library only). Video and audio need FFmpeg.
   is encoded to AAC.
 - **Merge videos** copies the clips with the concat demuxer only when all share the codec setup (ffprobe's extradata
   hash), size, pixel format, frame rate, turn and kind of sound; otherwise every clip is fitted into the first clip's
-  frame and encoded, a clip without sound silent for its length. **Merge audio** always decodes and joins the sound
+  frame and encoded, a clip without sound silent for its length. Sound tracks FFmpeg can't decode are skipped: each
+  clip gives its first track FFmpeg can decode, and the clips are copied only when that track has the same number in
+  every clip. **Merge audio** always decodes and joins the sound
   into one M4A, so no encoder padding or gap is left between files. Both are in `Media/MediaJoining.cs`.
+  As a special case, a pair of self-contained `.m4s` files, one with only video and one with only audio, is muxed
+  together into one MP4 without re-encoding (in either order). Both codecs and the preset's settings must allow copying.
 - **Video from images**: each picture is fitted into 1920 × 1080 as a JPEG, then shown for the preset's seconds with
   crossfades (`xfade`) of 1 s, at most half a picture's time, or cuts. At most `MediaOptions.MaxSlides` (300)
   pictures, not counting downloads that failed; the queue refuses more before any is converted. A filter graph too
@@ -1477,6 +1509,8 @@ Dahua DVR / NVR recordings (`.dav`, read only, #594) are read by FFmpeg's `dhav`
 the target and preset allow it (`CanCopyVideo`), like any other container's; G.711 sound is encoded for targets that
 can't hold it. The chunks carry the camera's wall-clock time, so FFmpeg reports the recording date as the start time;
 the output starts at zero.
+Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
+decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
 A Video CD's `MPEGAV/AVSEQ01.DAT` (MPEG-1 in a RIFF/CDXA wrapper) counts as MPEG: `.dat` is an extension of that
 format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fails instead of making a file.
 
@@ -1576,7 +1610,9 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   subtitle engine (ASS and WebVTT extraction cost 11 so SRT is the hub).
 - The first video stream (cover pictures excluded) is converted. Video to video keeps every audio track (languages,
   commentary), each copied where the target takes its codec or encoded on its own, with its language tag; FLV and DV
-  hold one and keep the first. Video to audio takes the first. Files without sound still convert to video. Title, artist
+  hold one and keep the first. Video to audio takes the first. Tracks FFmpeg can't decode (no decoder, like the spatial
+  APAC track of iPhone recordings, or a codec ffprobe can't name) are skipped, unless the file has no other sound; the
+  clip window's waveform, *Remove silence* and clip music take the same track. Files without sound still convert to video. Title, artist
   and other tags and chapters are kept, album art too for MP3, M4A, M4B and FLAC. Portrait phone videos are turned
   upright. Odd sizes are evened out, frame rates that MPEG-2/MXF/MPEG-4 part 2 cannot store are converted, and channels
   WMA or AMR cannot hold are mixed down.
@@ -1754,3 +1790,18 @@ Tesseract and is registered before it, so the route planner takes it; on Windows
   autorelease pool per page. A cancelled job cancels the running request.
 - Tests: `VisionLanguageTests`, `OcrTextLayerTests` and `VisionConverterTests` (a stand-in recognizer) run everywhere;
   `AppleVisionTests` read real pictures on macOS (CI's Apple silicon and Intel jobs).
+
+## Whisper
+
+Filee transcribes speech in video and audio files into SRT subtitle files using OpenAI Whisper (`whisper.cpp`).
+Transcription runs entirely locally and offline on your computer; no audio or data is sent to external servers.
+
+- **Platform**: Windows only (x64). On macOS and Linux, the Whisper package is not offered and the engine reports
+  `engine.reason.unsupported_platform` ("Not available on this platform").
+- **Download size**: ~157 MB total (~9 MB for `whisper-cli.exe` and ~148 MB for the default `ggml-base.bin` model; ~160 MB on disk).
+  Downloads are pinned by SHA-256 in `engines.json`. Users can also place larger Whisper models (such as `ggml-small.bin`
+  or `ggml-large-v3-turbo.bin`) into the engine directory or point to a custom installation in Settings → *Engines*.
+- **FFmpeg requirement**: Whisper operates on 16 kHz mono 16-bit WAV audio. Extracting audio from arbitrary video and audio
+  formats requires FFmpeg. FFmpeg must be installed (via Settings → *Engines*, bundled, or found on `PATH`).
+- **Languages**: Whisper supports auto-detection (`auto`) as well as specific language codes (`-l <code>`, e.g. `hi` for
+  Hindi, `en` for English, `es` for Spanish, `fr` for French, `ja` for Japanese, `zh` for Chinese).

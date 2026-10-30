@@ -180,6 +180,9 @@ public sealed class EngineDownloadService
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
     private int _warmingUp;
 
+    /// <summary>Downloads and unpacks one package; tests swap it to hold an install open.</summary>
+    internal Func<EnginePackage, IProgress<EngineInstallProgress>, CancellationToken, Task> InstallPackage { get; set; }
+
     public EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger)
     {
         _catalog = catalog;
@@ -189,6 +192,7 @@ public sealed class EngineDownloadService
         var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
         http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(EngineDownloadService).Assembly.GetName().Version}");
         _installer = new EngineInstaller(http, logger: logger);
+        InstallPackage = _installer.InstallAsync;
         Packages = EngineDownloads.Packages.Select(p => new EnginePackageState(p, loc)).ToList();
         if (loc is LocalizationService localization)
             localization.LanguageChanged += (_, _) => Packages.ToList().ForEach(p => p.Relocalize());
@@ -278,7 +282,7 @@ public sealed class EngineDownloadService
                         state.ProgressDetail = "";
                     }
                 });
-                await Task.Run(() => _installer.InstallAsync(state.Package, progress, cancellation.Token), cancellation.Token);
+                await Task.Run(() => InstallPackage(state.Package, progress, cancellation.Token), cancellation.Token);
             }
             finally
             {

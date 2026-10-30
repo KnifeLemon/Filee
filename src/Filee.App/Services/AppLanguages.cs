@@ -26,6 +26,7 @@ internal static class AppLanguages
         ("ne", "नेपाली"),
         ("th", "ไทย"),
         ("it", "Italiano"),
+        ("id", "Bahasa Indonesia"),
     ];
 
     /// <summary>Shared Portuguese region policy for the app and Setup, including legacy Inno language codes.</summary>

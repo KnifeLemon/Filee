@@ -47,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -58,7 +59,7 @@
       फ़ॉर्मैट वहीं दिखते हैं जहाँ आप पहले से हैं, और सिर्फ़ वही जो आपकी खींची जा रही फ़ाइलों के लिए सही हों।
     </td>
     <td width="33%" valign="top">
-      <b>269 फ़ॉर्मैट, कोई और सॉफ़्टवेयर नहीं</b><br>
+      <b>270 फ़ॉर्मैट, कोई और सॉफ़्टवेयर नहीं</b><br>
       इमेज, PDF, Word, Excel, PowerPoint, HWP, ई-बुक, आर्काइव, फ़ॉन्ट, CAD, 3D मॉडल और भू-स्थानिक डेटा Office, Hancom Office या LibreOffice के बिना काम करते हैं।
     </td>
     <td width="33%" valign="top">
@@ -132,7 +133,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **वॉच फ़ोल्डर** में आने वाली हर फ़ाइल अपने-आप कन्वर्ट हो जाती है।
 - **हाल के कन्वर्ज़न** होम पर, हर एक के थंबनेल के साथ: नतीजे को "फ़ाइल खोलें" से खोलें, या "इसके साथ खोलें" से किसी दूसरे ऐप में।
 - **दूसरे तरीके**: राइट-क्लिक मेनू, कीबोर्ड शॉर्टकट, ड्रॉप ज़ोन और [`filee` कमांड](#कमांड-लाइन)।
-- लाइट और डार्क थीम, अपने एक्सेंट रंग और डोनट की अपारदर्शिता के साथ, English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (दाएँ से बाएँ), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch और Italiano में।
+- लाइट और डार्क थीम, अपने एक्सेंट रंग और डोनट की अपारदर्शिता के साथ, English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (दाएँ से बाएँ), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano और Bahasa Indonesia में।
 
 ## स्क्रीनशॉट
 

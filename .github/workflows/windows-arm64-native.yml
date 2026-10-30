@@ -1,0 +1,88 @@
+name: Windows ARM64 native
+
+# rhwp has no Windows ARM64 release and Unhwp's NuGet package no win-arm64 library (#236). This builds both on a
+# Windows ARM64 runner from their pinned sources (build/build-native.py: the commit of rhwp's release tag, the commit
+# Unhwp's nuspec names) with the C runtime linked statically, so they need no Visual C++ Redistributable, and uploads
+# them with their SHA-256.
+#
+# Run it once per rhwp or Unhwp version (Actions > Windows ARM64 native > Run workflow; a pull request that changes the
+# build runs it too). Then host the two files of the artifact at the URLs in build/fetch-engines.ps1 ($arm64Pins) and
+# fill in their sha256 from SHA256SUMS.txt: build/build-installer.ps1 -Runtime win-arm64 and CI's win-arm64 job use
+# them from then on.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - .github/workflows/windows-arm64-native.yml
+      - build/build-native.py
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: rhwp and Unhwp (win-arm64)
+    runs-on: windows-11-arm
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # An ARM64 Python, so build-native.py can load the ARM64 unhwp.dll to check it.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+          architecture: arm64
+
+      - name: Check pinned sources
+        run: python build/build-native.py check
+
+      - name: Rust
+        run: |
+          if (-not (Get-Command rustup -ErrorAction SilentlyContinue)) {
+            $installer = Join-Path $env:RUNNER_TEMP 'rustup-init.exe'
+            Invoke-WebRequest https://static.rust-lang.org/rustup/dist/aarch64-pc-windows-msvc/rustup-init.exe -OutFile $installer
+            & $installer -y --profile minimal --default-toolchain none --no-modify-path
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Join-Path $env:USERPROFILE '.cargo\bin' >> $env:GITHUB_PATH
+          }
+
+      - name: Build rhwp
+        run: python build/build-native.py rhwp --output "$env:RUNNER_TEMP/native/rhwp" --work "$env:RUNNER_TEMP/work"
+
+      - name: Build Unhwp
+        run: python build/build-native.py unhwp --output "$env:RUNNER_TEMP/native/unhwp" --work "$env:RUNNER_TEMP/work"
+
+      # The file names build/fetch-engines.ps1 pins: rhwp in the layout of its release archives, Unhwp's library as is.
+      - name: Package
+        run: |
+          $version = { param($name) (Select-String -Path build/build-native.py -Pattern "^$name = `"(.+)`"").Matches[0].Groups[1].Value }
+          $out = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'out')
+          $rhwp = Join-Path $out "rhwp-v$(& $version RHWP_VERSION)-windows-aarch64.zip"
+          $unhwp = Join-Path $out "unhwp-$(& $version UNHWP_VERSION)-win-arm64.dll"
+          Compress-Archive -Path "$env:RUNNER_TEMP/native/rhwp/*" -DestinationPath $rhwp
+          Copy-Item "$env:RUNNER_TEMP/native/unhwp/unhwp.dll" $unhwp
+          # Unhwp's license and the source note go next to the file for whoever hosts it.
+          Copy-Item "$env:RUNNER_TEMP/native/unhwp/LICENSE" (Join-Path $out 'unhwp-LICENSE.txt')
+          Copy-Item "$env:RUNNER_TEMP/native/unhwp/SOURCE.txt" (Join-Path $out 'unhwp-SOURCE.txt')
+          foreach ($file in $rhwp, $unhwp) {
+            $name = Split-Path $file -Leaf
+            if (-not (Select-String -Path build/fetch-engines.ps1 -SimpleMatch -Pattern "/$name'")) {
+              Write-Host "::error::build/fetch-engines.ps1 doesn't pin ${name}: update the url in `$arm64Pins."
+              exit 1
+            }
+          }
+          Get-ChildItem $out -File | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLowerInvariant())  $($_.Name)" } |
+            Set-Content (Join-Path $out 'SHA256SUMS.txt') -Encoding ascii
+          Get-Content (Join-Path $out 'SHA256SUMS.txt')
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: windows-arm64-native
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error

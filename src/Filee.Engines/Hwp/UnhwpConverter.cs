@@ -34,16 +34,45 @@ public sealed class UnhwpConverter : IConverter
         new("hwp", "html", 14), new("hwpx", "html", 14),
     ];
 
-    public EngineStatus GetStatus()
-    {
-        // The native library only ships for win-x64, osx-x64/arm64 and linux-x64.
-        var arch = System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture;
-        var supported = arch == System.Runtime.InteropServices.Architecture.X64
-                        || (OperatingSystem.IsMacOS() && arch == System.Runtime.InteropServices.Architecture.Arm64);
-        return supported
+    public EngineStatus GetStatus() =>
+        NativeLibraryUsable.Value
             ? EngineStatus.Available(version: EngineVersions.Library("Unhwp", typeof(UnhwpDocument)))
             : EngineStatus.Unavailable("engine.reason.unsupported_platform");
+
+    /// <summary>
+    /// Whether this process has Unhwp's native library. The package ships it for win-x64, linux-x64 and macOS; Filee's
+    /// own build adds linux-arm64 and win-arm64 (build/build-native.py). Decided once, by loading it.
+    /// </summary>
+    private static readonly Lazy<bool> NativeLibraryUsable = new(() =>
+        NativeLibraryLoads() || (OperatingSystem.IsWindows() && NativeLibraryShipped(NativeSearchDirectories())));
+
+    /// <summary>Asks the library its version, through Unhwp's own P/Invoke and library resolver.</summary>
+    private static bool NativeLibraryLoads()
+    {
+        try
+        {
+            _ = UnhwpDocument.Version;
+            return true;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return false;
+        }
     }
+
+    /// <summary>
+    /// True when unhwp.dll is in one of <paramref name="directories"/>. It is there but doesn't load when Windows lacks
+    /// the C++ runtime it imports: the engine then stays listed and the conversion says what is missing (see
+    /// <see cref="Parse"/>), as before the library was probed.
+    /// </summary>
+    internal static bool NativeLibraryShipped(IEnumerable<string> directories) =>
+        directories.Any(directory => File.Exists(Path.Combine(directory, "unhwp.dll")));
+
+    /// <summary>Where .NET looks for this app's native libraries: its folder and the deps.json native asset folders.</summary>
+    private static IEnumerable<string> NativeSearchDirectories() =>
+        ((AppContext.GetData("NATIVE_DLL_SEARCH_DIRECTORIES") as string) ?? "")
+        .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Append(AppContext.BaseDirectory);
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         Task.Run<IReadOnlyList<string>>(() =>

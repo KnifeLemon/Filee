@@ -176,6 +176,9 @@ public partial class LocalizationTests
     [InlineData("it-CH", "it")]
     [InlineData("it", "it")]
     [InlineData("itl-RU", "en")]
+    [InlineData("id-ID", "id")]
+    [InlineData("id", "id")]
+    [InlineData("idu-NG", "en")]
     [InlineData("sv-SE", "en")]
     [InlineData("", "en")] // Linux without LANG: the invariant culture
     public void Auto_follows_the_language_the_user_reads_the_os_in(string os, string expected) =>
@@ -185,6 +188,7 @@ public partial class LocalizationTests
     [InlineData("ko")]
     [InlineData("de")]
     [InlineData("it")]
+    [InlineData("id")]
     [InlineData("ar")]
     [InlineData("ne")]
     [InlineData("en")]
@@ -245,6 +249,13 @@ public partial class LocalizationTests
     {
         Assert.Contains(("it", "Italiano"), LocalizationService.Languages);
         Assert.Equal("it", LocalizationService.Resolve("IT"));
+    }
+
+    [Fact]
+    public void Indonesian_is_offered_under_its_own_name()
+    {
+        Assert.Contains(("id", "Bahasa Indonesia"), LocalizationService.Languages);
+        Assert.Equal("id", LocalizationService.Resolve("ID"));
     }
 
     [Fact]

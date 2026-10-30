@@ -36,7 +36,7 @@ public class AutomationNameTests
         store.Settings.WatchFolders.Add(rule);
         try
         {
-            using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+            using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate(page);
             var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
             window.Show();
@@ -66,7 +66,7 @@ public class AutomationNameTests
         store.Settings.WatchFolders.Add(rule);
         try
         {
-            using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+            using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate("watch");
             var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
             window.Show();
@@ -85,6 +85,37 @@ public class AutomationNameTests
         }
     }
 
+    [AvaloniaFact]
+    public void A_collapsed_navigation_names_every_item_by_its_title_for_the_tooltip_and_screen_readers()
+    {
+        TestServices.EnsureInitialized("en");
+        using var dir = new TempNavDirectory();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), store);
+        vm.IsNavCollapsed = true;
+        var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+        window.Show();
+        RenderTests.Pump();
+
+        // The row that carries the tooltip is the item template's Border, one per navigation item.
+        var rows = window.GetVisualDescendants().OfType<Border>().Where(b => b.DataContext is NavItem && ToolTip.GetTip(b) is not null).ToList();
+        Assert.Equal(vm.Items.Count, rows.Count);
+        foreach (var row in rows)
+        {
+            var item = (NavItem)row.DataContext!;
+            Assert.False(string.IsNullOrWhiteSpace(item.Title));
+            Assert.Equal(item.Title, ToolTip.GetTip(row));
+            Assert.Equal(item.Title, AutomationProperties.GetName(row));
+        }
+
+        // Expanded, the title is on screen, so there is no tooltip repeating it.
+        vm.IsNavCollapsed = false;
+        RenderTests.Pump();
+        Assert.All(vm.Items, i => Assert.Null(i.Tip));
+        window.Close();
+    }
+
     private static bool NeedsName(Control c) => c switch
     {
         ToggleSwitch t => t.Content is null,
@@ -95,4 +126,17 @@ public class AutomationNameTests
         Button b => b.Content is not string && !b.GetVisualDescendants().OfType<TextBlock>().Any(t => !string.IsNullOrWhiteSpace(t.Text)),
         _ => false,
     };
+}
+
+/// <summary>A throwaway data folder, so a test that changes settings never touches the real ones.</summary>
+internal sealed class TempNavDirectory : IDisposable
+{
+    public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "filee-nav-" + Guid.NewGuid().ToString("N"));
+
+    public TempNavDirectory() => Directory.CreateDirectory(Path);
+
+    public void Dispose()
+    {
+        try { Directory.Delete(Path, recursive: true); } catch (IOException) { }
+    }
 }

@@ -2,6 +2,7 @@
 // when a hardware encode fails, and the time limit of FFmpeg's quick queries. Real hardware encodes run only on a
 // computer with a working GPU encoder and Filee's FFmpeg; CI has neither, so those tests skip there.
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -414,7 +415,7 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
         var ffmpeg = Tools!.Value.Ffmpeg;
         var logger = new ListLogger();
-        var hardware = await HardwareProbe.SelectAsync(ffmpeg, codec, false, FfmpegConverter.EncodersOf(ffmpeg), logger, CancellationToken.None);
+        var hardware = await HardwareProbe.SelectAsync(ffmpeg, codec, false, await FfmpegConverter.EncodersOfAsync(ffmpeg), logger, CancellationToken.None);
         Assert.SkipUnless(hardware is not null, $"No {codec} hardware encoder works on this computer");
 
         var folder = fx.NewFolder();
@@ -452,24 +453,95 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
     // ───────────────────────── Quick queries ─────────────────────────
 
     [Fact]
-    public void Version_and_encoder_queries_give_up_on_an_ffmpeg_that_hangs()
+    public async Task Version_and_encoder_queries_give_up_on_an_ffmpeg_that_hangs()
     {
         var hanging = HangingProgram(fx.NewFolder());
         var watch = Stopwatch.StartNew();
         Assert.Throws<InvalidOperationException>(() => FfmpegConverter.VersionOf(hanging, TimeSpan.FromSeconds(1)));
-        Assert.Null(FfmpegConverter.EncodersOf(hanging, TimeSpan.FromSeconds(1)));
+        Assert.Null(await FfmpegConverter.EncodersOfAsync(hanging, TimeSpan.FromSeconds(1)));
         // Before, both read the output to its end first and waited as long as the program hung (here a minute).
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
     }
 
     [Fact]
-    public void Decoder_queries_give_up_on_a_missing_or_hanging_ffmpeg()
+    public async Task Decoder_queries_give_up_on_a_missing_or_hanging_ffmpeg()
     {
-        Assert.Null(FfmpegConverter.DecodableCodecsOf(Path.Combine(fx.NewFolder(), "missing-ffmpeg"), TimeSpan.FromSeconds(1)));
+        Assert.Null(await FfmpegConverter.DecodableCodecsOfAsync(Path.Combine(fx.NewFolder(), "missing-ffmpeg"), TimeSpan.FromSeconds(1)));
         var hanging = HangingProgram(fx.NewFolder());
         var watch = Stopwatch.StartNew();
-        Assert.Null(FfmpegConverter.DecodableCodecsOf(hanging, TimeSpan.FromSeconds(1)));
+        Assert.Null(await FfmpegConverter.DecodableCodecsOfAsync(hanging, TimeSpan.FromSeconds(1)));
         Assert.True(watch.Elapsed < TimeSpan.FromSeconds(20), $"took {watch.Elapsed}");
+    }
+
+    [Fact]
+    public async Task A_probe_leaves_its_callers_thread_free_while_ffmpeg_lists_its_codecs()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The gated FFmpeg uses Unix scripts and FIFOs.");
+        var folder = fx.NewFolder();
+        var (_, ffprobe) = await GatedFfmpeg(folder);
+        using var pump = new SingleThreadContext();
+        var probe = pump.Run(() => MediaInfo.ProbeAsync(ffprobe, Path.Combine(folder, "in.mov"), TestContext.Current.CancellationToken));
+        await Task.Run(() => File.ReadAllText(Path.Combine(folder, "started")), TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        var free = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stillWaiting = false;
+        pump.Post(_ =>
+        {
+            stillWaiting = !probe.IsCompleted;
+            free.SetResult();
+        }, null);
+        await free.Task.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.True(stillWaiting);
+        await Release(folder);
+        var info = await probe.WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.Equal(("aac", 1), (info.Audio!.Codec, info.Audio.Ordinal));
+    }
+
+    [Fact]
+    public async Task Overlapping_codec_and_encoder_queries_run_once()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The gated FFmpeg uses Unix scripts and FIFOs.");
+        foreach (var codecs in new[] { true, false })
+        {
+            var folder = fx.NewFolder();
+            var (ffmpeg, _) = await GatedFfmpeg(folder);
+            var first = codecs ? FfmpegConverter.DecodableCodecsOfAsync(ffmpeg) : FfmpegConverter.EncodersOfAsync(ffmpeg);
+            await Task.Run(() => File.ReadAllText(Path.Combine(folder, "started")), TestContext.Current.CancellationToken)
+                .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+            var second = codecs ? FfmpegConverter.DecodableCodecsOfAsync(ffmpeg) : FfmpegConverter.EncodersOfAsync(ffmpeg);
+            await Release(folder);
+            var results = await Task.WhenAll(first, second).WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+            Assert.Single(File.ReadAllLines(Path.Combine(folder, "runs")));
+            foreach (var result in results)
+            {
+                Assert.NotNull(result);
+                Assert.Contains(codecs ? "aac" : "libx264", result);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task A_failed_codec_or_encoder_query_is_asked_again()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The gated FFmpeg uses Unix scripts and FIFOs.");
+        var folder = fx.NewFolder();
+        var (ffmpeg, _) = await GatedFfmpeg(folder);
+        File.Delete(Path.Combine(folder, "started"));
+        File.Delete(Path.Combine(folder, "release"));
+        var fail = Path.Combine(folder, "fail");
+        File.WriteAllText(fail, "");
+        Assert.Null(await FfmpegConverter.DecodableCodecsOfAsync(ffmpeg));
+        Assert.Null(await FfmpegConverter.EncodersOfAsync(ffmpeg));
+        File.Delete(fail);
+        var codecs = await FfmpegConverter.DecodableCodecsOfAsync(ffmpeg);
+        var encoders = await FfmpegConverter.EncodersOfAsync(ffmpeg);
+        Assert.NotNull(codecs);
+        Assert.NotNull(encoders);
+        Assert.Contains("aac", codecs);
+        Assert.Contains("libx264", encoders);
+        Assert.Contains("aac", (await FfmpegConverter.DecodableCodecsOfAsync(ffmpeg))!);
+        Assert.Contains("libx264", (await FfmpegConverter.EncodersOfAsync(ffmpeg))!);
+        Assert.Equal(["-hide_banner -codecs", "-hide_banner -encoders"], File.ReadAllLines(Path.Combine(folder, "runs")));
     }
 
     [Fact]
@@ -515,6 +587,87 @@ public class HardwareEncodingTests(EngineFixture fx) : IClassFixture<EngineFixtu
         File.WriteAllText(shell, "#!/bin/sh\nsleep 60\n");
         File.SetUnixFileMode(shell, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         return shell;
+    }
+
+    private static async Task<(string Ffmpeg, string Ffprobe)> GatedFfmpeg(string folder)
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "The gated FFmpeg uses Unix scripts and FIFOs.");
+        var ffmpeg = Path.Combine(folder, "ffmpeg");
+        var ffprobe = Path.Combine(folder, "ffprobe");
+        File.WriteAllText(ffmpeg, """
+            #!/bin/sh
+            d=$(dirname "$0")
+            [ -e "$d/fail" ] && exit 1
+            echo "$*" >> "$d/runs"
+            [ -p "$d/started" ] && { echo started > "$d/started"; read go < "$d/release"; }
+            printf ' DEA.L. aac                  AAC (Advanced Audio Coding)\n ..A.L. apple_apac           Apple Positional Audio Codec\n V....D libx264              libx264 H.264\n'
+
+            """);
+        File.WriteAllText(ffprobe, """
+            #!/bin/sh
+            cat <<'JSON'
+            {"streams":[{"codec_type":"audio","codec_name":"apple_apac","channels":4,"sample_rate":"48000"},{"codec_type":"audio","codec_name":"aac","channels":2,"sample_rate":"48000"}],"format":{"duration":"8"}}
+            JSON
+
+            """);
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(ffmpeg, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+            File.SetUnixFileMode(ffprobe, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+        var result = await ProcessRunner.RunAsync("/usr/bin/mkfifo", [Path.Combine(folder, "started"), Path.Combine(folder, "release")],
+            TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        return (ffmpeg, ffprobe);
+    }
+
+    private static Task Release(string folder) =>
+        Task.Run(() => File.WriteAllText(Path.Combine(folder, "release"), "go\n"), TestContext.Current.CancellationToken)
+            .WaitAsync(TimeSpan.FromSeconds(30), TestContext.Current.CancellationToken);
+
+    private sealed class SingleThreadContext : SynchronizationContext, IDisposable
+    {
+        private readonly BlockingCollection<(SendOrPostCallback Callback, object? State)> _queue = new();
+        private readonly Thread _thread;
+
+        public SingleThreadContext()
+        {
+            _thread = new Thread(() =>
+            {
+                SetSynchronizationContext(this);
+                foreach (var (callback, state) in _queue.GetConsumingEnumerable())
+                    callback(state);
+            })
+            { IsBackground = true };
+            _thread.Start();
+        }
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Add((d, state));
+
+        public Task<T> Run<T>(Func<Task<T>> action)
+        {
+            var result = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Post(async _ =>
+            {
+                try
+                {
+                    result.SetResult(await action());
+                }
+                catch (Exception ex)
+                {
+                    result.SetException(ex);
+                }
+            }, null);
+            return result.Task;
+        }
+
+        public void Dispose()
+        {
+            _queue.CompleteAdding();
+            if (!_thread.Join(TimeSpan.FromSeconds(30)))
+                throw new TimeoutException("The single-thread context did not stop.");
+            _queue.Dispose();
+        }
     }
 
     // ───────────────────────── Helpers ─────────────────────────

@@ -21,6 +21,14 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Built with a self-built Unhwp library (-p:UnhwpNativeLibrary, ARM64 CI): UnhwpNativeTests then expect Unhwp. -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>UnhwpNativeLibrary</_Parameter1>
+      <_Parameter2>$(UnhwpNativeLibrary)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <!-- Small OFL test fonts for FontTests (see Fonts/OFL.txt and Fonts/make-test-fonts.py). -->
     <None Update="Fonts\*.ttf;Fonts\*.otf;Fonts\*.woff2" CopyToOutputDirectory="PreserveNewest" />
     <!-- Small Shapefiles written by GDAL for the geospatial tests (synthetic data; Geo/make-test-geo.py recreates them). -->
