@@ -51,9 +51,9 @@
       "lists": { "vs-rhwp-ssim": 0.2697 },
       "script-zh": { "vs-rhwp-ssim": 0.9923 },
       "script-ja": { "vs-rhwp-ssim": 0.9933 },
-      // Left to later milestones: tables (cells are stacked as paragraphs for now), notes and columns. The headers and
-      // footers break into rhwp's lines; rhwp puts the footer elsewhere in its area.
-      "tables": { "vs-rhwp-lines": 0.1538, "vs-rhwp-placed": 0.0769, "vs-rhwp-ssim": 0.1915 },
+      // The table breaks into rhwp's lines; one line sits a little apart from rhwp's. Notes and columns are later
+      // milestones. The headers and footers break into rhwp's lines; rhwp puts the footer elsewhere in its area.
+      "tables": { "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.9678 },
       "headers-footers": { "vs-rhwp-placed": 0.6666, "vs-rhwp-ssim": 0.8266 },
       "notes": { "vs-rhwp-lines": 0.25, "vs-rhwp-placed": 0.25, "vs-rhwp-ssim": 0.2707 },
       "columns": { "vs-rhwp-lines": 0, "vs-rhwp-placed": 0, "vs-rhwp-ssim": 0.0864 }

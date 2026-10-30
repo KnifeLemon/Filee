@@ -269,6 +269,31 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Hwpx_table_starting_its_paragraph_keeps_the_paragraphs_stored_lines_and_its_place()
+    {
+        var table =
+            "<hp:tbl id=\"20\" zOrder=\"0\" numberingType=\"TABLE\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" pageBreak=\"CELL\" repeatHeader=\"0\" rowCnt=\"1\" colCnt=\"1\" cellSpacing=\"0\" borderFillIDRef=\"1\" noAdjust=\"0\">" +
+            "<hp:sz width=\"6000\" widthRelTo=\"ABSOLUTE\" height=\"1000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" +
+            "<hp:pos treatAsChar=\"0\" affectLSpacing=\"0\" flowWithText=\"1\" allowOverlap=\"0\" holdAnchorAndSO=\"0\" vertRelTo=\"PARA\" horzRelTo=\"COLUMN\" vertAlign=\"TOP\" horzAlign=\"LEFT\" vertOffset=\"508\" horzOffset=\"559\"/>" +
+            "<hp:outMargin left=\"141\" right=\"141\" top=\"142\" bottom=\"143\"/>" +
+            "<hp:tr><hp:tc name=\"\" header=\"0\" hasMargin=\"0\" protect=\"0\" editable=\"0\" dirty=\"0\" borderFillIDRef=\"1\">" + SubList(Hp(Hr(Ht("칸")))) +
+            "<hp:cellAddr colAddr=\"0\" rowAddr=\"0\"/><hp:cellSpan colSpan=\"1\" rowSpan=\"1\"/><hp:cellSz width=\"6000\" height=\"1000\"/><hp:cellMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:tc></hp:tr></hp:tbl>";
+        const string Lines =
+            "<hp:linesegarray><hp:lineseg textpos=\"0\" vertpos=\"2000\" vertsize=\"1000\" textheight=\"1000\" baseline=\"850\" spacing=\"600\" horzpos=\"0\" horzsize=\"42520\" flags=\"0\"/>" +
+            "<hp:lineseg textpos=\"12\" vertpos=\"3600\" vertsize=\"1000\" textheight=\"1000\" baseline=\"850\" spacing=\"600\" horzpos=\"0\" horzsize=\"42520\" flags=\"0\"/></hp:linesegarray>";
+
+        var blocks = ReadHwpx(Package(Path.Combine(fx.NewFolder(), "opens.hwpx"), RefList(), Hp(Hr(table + Ht("뒤 문단입니다")), lines: Lines))).Sections[0].Blocks;
+
+        // The table starts the paragraph: no part before it, its place kept, and the text after it keeps the lines,
+        // which still map (the table is eight positions of 한글's and no text of the model's).
+        var read = Assert.Single(blocks.OfType<HTable>());
+        Assert.True(read.OpensParagraph);
+        Assert.Equal((508, 559, new HInsets(141, 141, 142, 143)), (read.VerticalOffset, read.Indent, read.OuterMargin));
+        var after = (HParagraph)blocks[blocks.IndexOf(read) + 1];
+        Assert.Equal([0, 4], after.Lines!.Starts!);
+    }
+
+    [Fact]
     public void Hwpx_sections_keep_their_grid_and_tables_their_page_break_mode()
     {
         var table =

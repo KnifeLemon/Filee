@@ -91,6 +91,9 @@ internal sealed class LineBox
     /// <summary>Height of the text itself (ascent and descent).</summary>
     public required float TextHeight { get; init; }
 
+    /// <summary>The line spacing below the text: the part of <see cref="Height"/> after it.</summary>
+    public float Below { get; init; }
+
     /// <summary>Left edge of the line's content from the column edge.</summary>
     public required float Left { get; init; }
 

@@ -17,8 +17,10 @@
 // - Styles: models read from other formats leave formats to the 한글 style (null members); with a StyleResolver every
 //   paragraph and run is resolved before layout, as the HWPX writer would write it.
 //
-// Tables are laid out by a later milestone; until then their cells are stacked as paragraphs across the text width.
-// Columns, notes, floating objects and master pages are later milestones too.
+// - Tables (TableLayout): rows bound by spanning cells move to a page together, header rows repeat, and a table splits
+//   by its page break mode.
+//
+// Columns, notes, floating objects and master pages are later milestones.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
@@ -94,6 +96,9 @@ internal sealed class PageComposer
         /// <summary>The page so far follows 한글's stored layout, so stored lines may take their stored place.</summary>
         private bool _inStep;
 
+        /// <summary>The next paragraph's space before went before the table that starts it.</summary>
+        private bool _skipSpaceBefore;
+
         public ComposedDocument Compose()
         {
             foreach (var section in document.Sections)
@@ -103,7 +108,7 @@ internal sealed class PageComposer
                 if (section.StartPageNumber is { } start)
                     _number = start - 1;
                 NewPage(firstOfSection: true);
-                Body(Flow(section.Blocks));
+                Body(section.Blocks);
             }
             if (_pages.Count == 0)
             {
@@ -131,59 +136,64 @@ internal sealed class PageComposer
 
         // ───────────────────────── Body ─────────────────────────
 
-        /// <summary>A paragraph to flow, and whether it is a table cell's (stacked until tables are laid out).</summary>
-        private readonly record struct FlowParagraph(HParagraph Paragraph, bool InTable);
+        private TableLayout? _tables;
 
-        private static IEnumerable<FlowParagraph> Flow(IEnumerable<HBlock> blocks, bool inTable = false)
-        {
-            foreach (var block in blocks)
-            {
-                switch (block)
-                {
-                    case HParagraph paragraph:
-                        yield return new FlowParagraph(paragraph, inTable);
-                        break;
-                    case HTable table:
-                        var first = true;
-                        foreach (var cell in table.Rows.SelectMany(r => r.Cells))
-                        {
-                            foreach (var item in Flow(cell.Blocks, inTable: true))
-                            {
-                                if (first && table.PageBreakBefore)
-                                    item.Paragraph.PageBreakBefore = true;
-                                first = false;
-                                yield return item;
-                            }
-                        }
-                        foreach (var item in Flow(table.Caption, inTable: true))
-                            yield return item;
-                        break;
-                }
-            }
-        }
+        /// <summary>Tables and paragraph lists inside cells, headers and footers, laid out with this run's numbering and fields.</summary>
+        private TableLayout Tables => _tables ??= new TableLayout((p, width) => Layout(composer.Resolve(p), width), composer._styles is not null);
 
-        private void Body(IEnumerable<FlowParagraph> flow)
+        private void Body(List<HBlock> blocks)
         {
-            var paragraphs = flow.ToList();
-            ParagraphBox? next = null;
-            for (var i = 0; i < paragraphs.Count; i++)
+            object? next = null;
+            HParagraph? holder = null;
+            for (var i = 0; i < blocks.Count; i++)
             {
                 _guard.Paragraph();
-                var (source, inTable) = paragraphs[i];
+                if (blocks[i] is HTable table)
+                {
+                    var tableBox = next as TableBox ?? Tables.Layout(table, _geometry.TextWidth);
+                    next = null;
+                    PlaceTable(table, tableBox, holder, holder is null ? TableLayout.Follower(blocks, i) : null);
+                    holder = null;
+                    continue;
+                }
+                if (blocks[i] is not HParagraph source)
+                    continue;
+                // 한글 keeps a table inside a paragraph, which the model splits around it. With no text before the
+                // table (only objects floating at it), 한글's line is the table's: the part takes no line of its own,
+                // and the table takes its spacing and stored place.
+                if (TableLayout.HoldsTable(blocks, i))
+                {
+                    holder = composer.Resolve(source);
+                    continue;
+                }
                 var paragraph = composer.Resolve(source);
                 // A column break moves to the next page only where there is one column (columns are a later milestone).
                 if ((paragraph.PageBreakBefore || paragraph.ColumnBreakBefore && _section!.Columns.Count <= 1) && !_empty)
                     NewPage();
-                var box = next ?? Layout(paragraph);
+                var box = next as ParagraphBox ?? Layout(paragraph, _geometry.TextWidth);
                 next = null;
-                if (inTable)
-                    _inStep = false;
 
-                // Keep with next: this paragraph and the next one's first line start on one page.
-                if (paragraph.Format.KeepWithNext == true && !_empty && i + 1 < paragraphs.Count && !(box.StoredLines && _inStep))
+                // Keep with next: this paragraph and the start of the next block on one page.
+                if (paragraph.Format.KeepWithNext == true && !_empty && i + 1 < blocks.Count && !(box.StoredLines && _inStep))
                 {
-                    next = Layout(composer.Resolve(paragraphs[i + 1].Paragraph));
-                    var together = box.Height + next.SpaceBefore + (next.Lines.Count > 0 ? next.Lines[0].Height : 0);
+                    float start;
+                    switch (blocks[i + 1])
+                    {
+                        case HParagraph following:
+                            var nextBox = Layout(composer.Resolve(following), _geometry.TextWidth);
+                            next = nextBox;
+                            start = nextBox.SpaceBefore + (nextBox.Lines.Count > 0 ? nextBox.Lines[0].Height : 0);
+                            break;
+                        case HTable following:
+                            var nextTable = Tables.Layout(following, _geometry.TextWidth);
+                            next = nextTable;
+                            start = nextTable.Groups() is [var (first, count), ..] ? nextTable.Rows.Skip(first).Take(count).Sum(r => r.Height) : 0;
+                            break;
+                        default:
+                            start = 0;
+                            break;
+                    }
+                    var together = box.Height + start;
                     if (_y + together > _geometry.BodyBottom + Epsilon && together <= BodyHeight)
                         NewPage();
                 }
@@ -198,12 +208,111 @@ internal sealed class PageComposer
             }
         }
 
+        /// <summary>
+        /// Puts a table's rows on pages from the current position on, repeating its header rows; <paramref name="holder"/>
+        /// is the 한글 paragraph whose line the table is, or null.
+        /// </summary>
+        /// <param name="follower">The rest of the 한글 paragraph the table starts, whose text follows right under it.</param>
+        private void PlaceTable(HTable table, TableBox box, HParagraph? holder, HParagraph? follower)
+        {
+            if (table.PageBreakBefore && !_empty)
+                NewPage();
+            var line = holder?.Lines?.Segments.FirstOrDefault();
+            if (holder is not null)
+            {
+                // Where 한글 put the line while the page follows 한글, else after the paragraph's space before.
+                if (_inStep && line is { } stored)
+                    _y = Math.Max(_y, _geometry.BodyTop + stored.VerticalPosition / 100f);
+                else if (!_empty)
+                    _y += (holder.Format.Before ?? 0) / 100f;
+            }
+            else if (follower is not null)
+            {
+                // The table starts its 한글 paragraph, placed from the paragraph's top by its offset; 한글 puts the
+                // paragraph's text right under it, without the space before.
+                _skipSpaceBefore = true;
+            }
+            var margin = table.OuterMargin ?? default;
+            _y += (table.VerticalOffset + margin.Top) / 100f;
+            // Filee's rows are not 한글's: the stored places hold again on 한글's next page.
+            _inStep = false;
+            var x = _geometry.Left + box.Offset + margin.Left / 100f;
+            var header = box.Rows.Take(box.HeaderRows).ToList();
+            // A table that must not split goes to the next page whole when it fits on one.
+            if (box.PageBreak == HTablePageBreak.None && !_empty && _y + box.Height > _geometry.BodyBottom + Epsilon && box.Height <= BodyHeight)
+                NewPage();
+
+            // The page holds nothing yet but, perhaps, this table's repeated header rows.
+            var fresh = _empty;
+            void Draw(IReadOnlyList<RowBox> rows)
+            {
+                TableLayout.Draw(Current.Content, rows, x, _y);
+                _y += rows.Sum(r => r.Height);
+                _empty = false;
+            }
+            void NextPage(bool repeat)
+            {
+                NewPage();
+                _inStep = false;
+                if (repeat && header.Count > 0)
+                    Draw(header);
+                fresh = true;
+            }
+
+            foreach (var (first, count) in box.Groups())
+            {
+                IReadOnlyList<RowBox> rows = [.. box.Rows.Skip(first).Take(count)];
+                var repeat = first >= header.Count;
+                while (true)
+                {
+                    var room = _geometry.BodyBottom - _y;
+                    if (rows.Sum(r => r.Height) <= room + Epsilon)
+                    {
+                        Draw(rows);
+                        fresh = false;
+                        break;
+                    }
+                    // Rows may split inside their cells unless the table splits between rows only (한글 셀 단위로
+                    // 나눔), must not split, or the row says so.
+                    var splits = rows.Count == 1 && !rows[0].CantSplit && box.PageBreak is not (HTablePageBreak.Cell or HTablePageBreak.None);
+                    if ((splits || fresh) && rows.Count == 1 && TableLayout.Split(rows[0], room) is var (part, rest))
+                    {
+                        Draw([part]);
+                        NextPage(repeat);
+                        rows = [rest];
+                        continue;
+                    }
+                    if (!fresh)
+                    {
+                        NextPage(repeat);
+                        continue;
+                    }
+                    // Taller than an empty page and it can't split: placed as it is.
+                    Draw(rows);
+                    fresh = false;
+                    break;
+                }
+            }
+            foreach (var piece in box.Caption)
+            {
+                if (!_empty && _y + piece.Height > _geometry.BodyBottom + Epsilon)
+                    NewPage();
+                piece.Draw(Current.Content, x, _y);
+                _y += piece.Height;
+                _empty = false;
+            }
+            _y += margin.Bottom / 100f;
+            // The rest of the table's line: its line spacing and the paragraph's space after.
+            if (holder is not null)
+                _y += (line?.Spacing ?? 0) / 100f + (holder.Format.After ?? 0) / 100f;
+        }
+
         private float BodyHeight => _geometry.BodyBottom - _geometry.BodyTop;
 
-        private ParagraphBox Layout(HParagraph paragraph)
+        private ParagraphBox Layout(HParagraph paragraph, float width)
         {
             var marker = paragraph.List is { Numbered: true } list ? _numbers.Next(list) : null;
-            return composer._layouter.Layout(paragraph, _geometry.TextWidth, marker, FieldText);
+            return composer._layouter.Layout(paragraph, width, marker, FieldText);
         }
 
         /// <summary>Puts a paragraph's lines on pages from the current position on.</summary>
@@ -211,8 +320,9 @@ internal sealed class PageComposer
         {
             var lines = box.Lines;
             var widowOrphan = paragraph.Format.WidowOrphan == true;
-            if (!_empty)
+            if (!_empty && !_skipSpaceBefore)
                 _y += box.SpaceBefore;
+            _skipSpaceBefore = false;
             for (var i = 0; i < lines.Count;)
             {
                 var stored = box.StoredLines && _inStep;
@@ -282,10 +392,12 @@ internal sealed class PageComposer
         {
             _geometry = page.Geometry;
             var section = page.Section;
+            // Fields in headers and footers show the number of the page they are on.
+            _number = page.Number;
             if (!(page.FirstOfSection && section.HideFirstHeader) && Pick(section.Headers, page.Number) is { } header)
-                Area(page, header.Blocks, page.Geometry.HeaderTop, page.Number);
+                Area(page, header.Blocks, page.Geometry.HeaderTop);
             if (!(page.FirstOfSection && section.HideFirstFooter) && Pick(section.Footers, page.Number) is { } footer)
-                Area(page, footer.Blocks, page.Geometry.FooterTop, page.Number);
+                Area(page, footer.Blocks, page.Geometry.FooterTop);
         }
 
         /// <summary>The header or footer for a page: the one for odd or even pages, else the one for both.</summary>
@@ -295,32 +407,19 @@ internal sealed class PageComposer
             return list.LastOrDefault(h => h.Pages == side) ?? list.LastOrDefault(h => h.Pages == HPageType.Both);
         }
 
-        /// <summary>Lays out a header's or footer's paragraphs from <paramref name="top"/> down.</summary>
-        private void Area(Page page, List<HBlock> blocks, float top, int number)
+        /// <summary>Lays out a header's or footer's blocks from <paramref name="top"/> down.</summary>
+        private void Area(Page page, List<HBlock> blocks, float top)
         {
-            var y = top;
-            foreach (var (source, _) in Flow(blocks))
-            {
-                var paragraph = composer.Resolve(source);
-                var box = composer._layouter.Layout(paragraph, page.Geometry.TextWidth, null, f => Field(f, number));
-                y += box.SpaceBefore;
-                foreach (var line in box.Lines)
-                {
-                    line.Draw(page.Content, page.Geometry.Left, y);
-                    y += line.Height;
-                }
-                y += box.SpaceAfter;
-            }
+            foreach (var piece in Tables.Stack(blocks, page.Geometry.TextWidth))
+                piece.Draw(page.Content, page.Geometry.Left, top + piece.Top);
         }
 
         // ───────────────────────── Fields ─────────────────────────
 
-        private string FieldText(HField field) => Field(field, _number);
-
-        private string Field(HField field, int number) => field.Kind switch
+        private string FieldText(HField field) => field.Kind switch
         {
             HFieldKind.TotalPages => (total ?? _pages.Count).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            _ => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _ => _number.ToString(System.Globalization.CultureInfo.InvariantCulture),
         };
     }
 
