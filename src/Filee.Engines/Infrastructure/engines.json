@@ -9,24 +9,24 @@
       "kind": "zip"
     },
     "7zip": {
-      "version": "26.03",
-      "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-x64.msi",
-      "sha256": "C0680064D698A62DD4A5A47F403DB356A6531A5473E4C4B1D090EA2590513926",
-      "size": 2007040,
+      "version": "26.05",
+      "url": "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-x64.msi",
+      "sha256": "3FE4AB99FA15629C652944309A2B2BC6E41FC933FC6B63F5DF1EBCF3AEA68263",
+      "size": 2008576,
       "kind": "msi"
     },
     "pandoc": {
-      "version": "3.12",
-      "url": "https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-windows-x86_64.zip",
-      "sha256": "2A77EBC2517D13E95056E76B1CD5B574CFE958AC61AA6058117D80C22CA19B79",
-      "size": 42114462,
+      "version": "3.13",
+      "url": "https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-windows-x86_64.zip",
+      "sha256": "23E1F2E978A3DF80DB8BF65C9C59534F41A23140480CFB4F783A882AB7DC6A4E",
+      "size": 42983200,
       "kind": "zip"
     },
     "jre": {
-      "version": "21.0.12.1",
-      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12.1%2B1/OpenJDK21U-jre_x64_windows_hotspot_21.0.12.1_1.zip",
-      "sha256": "D35F31E712F0FCF6AC5A093EDC90204FBFF22F720BA3950BD09D331D5E621636",
-      "size": 48999141,
+      "version": "21.0.13",
+      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip",
+      "sha256": "2332C0B4CFF6BED722DA3567C91D5E47568BCBA863FA4945D0A8D6FC76158628",
+      "size": 49106397,
       "kind": "zip"
     },
     "libreoffice": {
@@ -37,10 +37,10 @@
       "kind": "msi"
     },
     "h2orestart": {
-      "version": "0.7.14",
-      "url": "https://github.com/ebandal/H2Orestart/releases/download/v0.7.14/H2Orestart.oxt",
-      "sha256": "CBEA23BC37861361BBC534BC0675E5BC67B36F712072490F82A9BF410D7C04D8",
-      "size": 606257,
+      "version": "0.8.0",
+      "url": "https://github.com/ebandal/H2Orestart/releases/download/v0.8.0/H2Orestart.oxt",
+      "sha256": "F36C19FA6B7DFF1CF34114D926BDC088E6BCFA7FDC93D67EAAFD3F572BE1D62C",
+      "size": 611297,
       "kind": "oxt"
     },
     "ghostscript": {
@@ -65,10 +65,10 @@
       "kind": "zip"
     },
     "calibre": {
-      "version": "9.15.0",
-      "url": "https://download.calibre-ebook.com/9.15.0/calibre-64bit-9.15.0.msi",
-      "sha256": "0F96AE06165C2419607C1C66726C091A78E89E08EA69F077CF3E2C884E800853",
-      "size": 226549760,
+      "version": "9.17.0",
+      "url": "https://download.calibre-ebook.com/9.17.0/calibre-64bit-9.17.0.msi",
+      "sha256": "A91EA9B26AF6CD057D8B193B86EDB66D1535F7C5CB0A106965FA74F8168A6BD5",
+      "size": 240201728,
       "kind": "msi"
     },
     "tesseract": {
@@ -104,17 +104,17 @@
           "kind": "tar.gz"
         },
         "7zip": {
-          "version": "26.03",
-          "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-linux-x64.tar.xz",
-          "sha256": "DC99EFF5008F1AB79BD7084C68513701547A808A89502BF4133683535AB3C695",
-          "size": 1575072,
+          "version": "26.05",
+          "url": "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-linux-x64.tar.xz",
+          "sha256": "22CF82FCC6EB7474F1D5BB4F02C0F8EBD573A718089D6833DC30F8350A3B232E",
+          "size": 1579976,
           "kind": "tar.xz"
         },
         "pandoc": {
-          "version": "3.12",
-          "url": "https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-linux-amd64.tar.gz",
-          "sha256": "67D7D011FED8C8543306022B985B9B2499AB9B74818DF91D8727C7E9EBC5BA06",
-          "size": 35326100,
+          "version": "3.13",
+          "url": "https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-linux-amd64.tar.gz",
+          "sha256": "38AA33B325A2BC96A4C39409631212DB55702F564250BCDBEAD180B3BF646389",
+          "size": 36101020,
           "kind": "tar.gz"
         },
         "ffmpeg": {
@@ -125,10 +125,10 @@
           "kind": "tar.xz"
         },
         "calibre": {
-          "version": "9.15.0",
-          "url": "https://download.calibre-ebook.com/9.15.0/calibre-9.15.0-x86_64.txz",
-          "sha256": "3F5301C0AA51E5FB2D5F6DCD04024BA4E86501AB328CE5D9D6760EFCCB887990",
-          "size": 194998300,
+          "version": "9.17.0",
+          "url": "https://download.calibre-ebook.com/9.17.0/calibre-9.17.0-x86_64.txz",
+          "sha256": "953E4512A6482848CD803C88B6D942E6AFCA65DC3B67C7D1353AE048D616DE53",
+          "size": 201590724,
           "kind": "tar.xz"
         }
       }
@@ -143,17 +143,17 @@
           "kind": "tar.gz"
         },
         "7zip": {
-          "version": "26.03",
-          "url": "https://github.com/ip7z/7zip/releases/download/26.03/7z2603-linux-arm64.tar.xz",
-          "sha256": "2389BA20E4D8295E8709C20B6263B69BD1EC4972FE38A04AD7A1BADBF595B996",
-          "size": 1328620,
+          "version": "26.05",
+          "url": "https://github.com/ip7z/7zip/releases/download/26.05/7z2605-linux-arm64.tar.xz",
+          "sha256": "0B71F6CFC34669B3BF69F2347EFD3429F77020665003A13B9CDC53B784270421",
+          "size": 1317128,
           "kind": "tar.xz"
         },
         "pandoc": {
-          "version": "3.12",
-          "url": "https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-linux-arm64.tar.gz",
-          "sha256": "6CEFCF7100E23A99447C26F89D1FF5B253F3407FCEF99A9E27AE06F3ED16CB82",
-          "size": 37857559,
+          "version": "3.13",
+          "url": "https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-linux-arm64.tar.gz",
+          "sha256": "21E1D4BA09BD0B334590D204580FD4F6629B21BE4AB6A32B26CC98982E9E0C68",
+          "size": 38662042,
           "kind": "tar.gz"
         },
         "ffmpeg": {
@@ -164,10 +164,10 @@
           "kind": "tar.xz"
         },
         "calibre": {
-          "version": "9.15.0",
-          "url": "https://download.calibre-ebook.com/9.15.0/calibre-9.15.0-arm64.txz",
-          "sha256": "15AB887F9D787809BC834CA0EA6408E981B409F0B23046C41C18DE948EB50A38",
-          "size": 182488416,
+          "version": "9.17.0",
+          "url": "https://download.calibre-ebook.com/9.17.0/calibre-9.17.0-arm64.txz",
+          "sha256": "3C72BB26196F8339CFB0914224D824CCBACCBB635F0DF9C3A55540AE316199BD",
+          "size": 188047576,
           "kind": "tar.xz"
         }
       }
@@ -189,17 +189,17 @@
           "kind": "tar.xz"
         },
         "pandoc": {
-          "version": "3.12",
-          "url": "https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-x86_64-macOS.zip",
-          "sha256": "18577F9460C3DC5D2651AD3BAB37D513BC2034A5A777FBE18FA0A5ACF2E936EA",
-          "size": 26442035,
+          "version": "3.13",
+          "url": "https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-x86_64-macOS.zip",
+          "sha256": "1823278715AA405AAF21B59CDE5DC789346AA8D4FC307467F9A9EE84162BEDC5",
+          "size": 26891866,
           "kind": "zip"
         },
         "calibre": {
-          "version": "9.15.0",
-          "url": "https://download.calibre-ebook.com/9.15.0/calibre-9.15.0.dmg",
-          "sha256": "1B3A7451175B73AE2BAA28FE1BC1C53EE34D65B489881E7EC02C20F9E0FF6019",
-          "size": 350293492,
+          "version": "9.17.0",
+          "url": "https://download.calibre-ebook.com/9.17.0/calibre-9.17.0.dmg",
+          "sha256": "FDAB4BD1400996C381845B7A95026F96BD9F68BFEC68CF3D49AFD458B4717842",
+          "size": 357816630,
           "kind": "dmg",
           "minimumMacOS": "14.0"
         },
@@ -229,17 +229,17 @@
           "kind": "tar.xz"
         },
         "pandoc": {
-          "version": "3.12",
-          "url": "https://github.com/jgm/pandoc/releases/download/3.12/pandoc-3.12-arm64-macOS.zip",
-          "sha256": "F148CA09C9F36594DB527A9FC988AD736290CE428F79594C50208CD1EC58B3C0",
-          "size": 42267373,
+          "version": "3.13",
+          "url": "https://github.com/jgm/pandoc/releases/download/3.13/pandoc-3.13-arm64-macOS.zip",
+          "sha256": "F436D18BEBBFB3DDD326597686DACAB9FAC5DC23BD060495020F35A28A43A7C3",
+          "size": 43148194,
           "kind": "zip"
         },
         "calibre": {
-          "version": "9.15.0",
-          "url": "https://download.calibre-ebook.com/9.15.0/calibre-9.15.0.dmg",
-          "sha256": "1B3A7451175B73AE2BAA28FE1BC1C53EE34D65B489881E7EC02C20F9E0FF6019",
-          "size": 350293492,
+          "version": "9.17.0",
+          "url": "https://download.calibre-ebook.com/9.17.0/calibre-9.17.0.dmg",
+          "sha256": "FDAB4BD1400996C381845B7A95026F96BD9F68BFEC68CF3D49AFD458B4717842",
+          "size": 357816630,
           "kind": "dmg",
           "minimumMacOS": "14.0"
         },

@@ -39,8 +39,9 @@ internal static class Help
           filee convert D:\Scans --recursive --preset to-pdf
           filee watch D:\Inbox --to pdf --move-originals
 
-        Presets and engines are the ones in the Filee app. Exit codes: 0 all converted, 1 some failed,
-        2 wrong arguments or a missing input, 3 nothing to convert.
+        Presets and engines are the ones in the Filee app. Exit codes: 0 nothing failed (skipped
+        files included), 1 some failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to
+        convert.
 
         """;
 
