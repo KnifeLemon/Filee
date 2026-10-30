@@ -132,6 +132,7 @@
   "error.fon_unsupported": "Jenis font .fon ini tidak didukung",
   "error.fon_too_large": "Font .fon terlalu besar untuk dikonversi",
   "error.fon_damaged": "File .fon rusak atau terpotong",
+  "error.document_too_complex": "Dokumen terlalu besar atau terlalu rumit untuk dibaca dengan aman",
   "error.m4s_needs_init": "File .m4s ini adalah salah satu pecahan video streaming: tidak dapat dibaca tanpa segmen awal (init) terpisahnya",
   "notice.pdf_not_smaller": "Ukuran tidak dapat diperkecil lagi, sehingga disalin apa adanya",
   "notice.under_min_size": "Disimpan, tetapi lebih kecil dari ukuran file minimum",
