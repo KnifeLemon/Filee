@@ -12,6 +12,12 @@ public sealed class HistoryEntry
     public DateTime FinishedAt { get; set; }
     public string PresetId { get; set; } = "";
     public string PresetName { get; set; } = "";
+
+    /// <summary>
+    /// The built-in preset's name key when the job showed its translated name, so the entry follows the language Filee
+    /// is in now (#744); null for the user's own names and in entries from before.
+    /// </summary>
+    public string? PresetNameKey { get; set; }
     public JobState State { get; set; }
     public List<string> Sources { get; set; } = [];
     public List<string> Outputs { get; set; } = [];

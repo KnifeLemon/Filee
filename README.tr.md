@@ -29,6 +29,7 @@
 <p align="center">
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/weekly?language=C%23&v=2" alt="Filee: Trendshift'te haftanın #1 C# deposu" width="250" height="55"></a>
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: Trendshift'te günün #1 C# deposu" width="250" height="55"></a>
+  <a href="https://hellogithub.com/repository/KnifeLemon/Filee" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=0847caedd5bd4077a70b90f83afdf83c&claim_uid=jAlIvVMhn0kcEsU" alt="Featured｜HelloGitHub" width="250" height="54" /></a>
 </p>
 
 <p align="center">
@@ -46,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <b>Türkçe</b>
+  <b>Türkçe</b> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -57,7 +59,7 @@
       Formatlar zaten bulunduğunuz yerde görünür; yalnızca sürüklediğiniz dosyalara uygun olanlar listelenir.
     </td>
     <td width="33%" valign="top">
-      <b>268 format, başka yazılım gerekmez</b><br>
+      <b>270 format, başka yazılım gerekmez</b><br>
       Görseller, PDF, Word, Excel, PowerPoint, HWP, e-kitaplar, arşivler, yazı tipleri, CAD, 3B modeller ve coğrafi veriler; Office, Hancom Office veya LibreOffice olmadan çalışır.
     </td>
     <td width="33%" valign="top">
@@ -78,6 +80,8 @@
 ## Kurulum
 
 [Sürümler (Releases)](https://github.com/KnifeLemon/Filee/releases/latest) sayfasından indirin.
+
+<a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/tr%20dark.svg" alt="Microsoft Store" width="200"></a>
 
 - **Windows 10/11**: `Filee-<sürüm>-win-Setup.exe` dosyasını çalıştırın veya `win-Portable.zip` arşivini açıp `Filee.exe` dosyasını başlatın.
   - Kurulum sihirbazı, Filee'nin kendi dillerini içeren yerel yükleyicisidir ve bilgisayarda başka hiçbir şeye ihtiyaç duymaz.
@@ -129,7 +133,7 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 - **İzlenen klasörler**: İçine bırakılan her dosyayı otomatik olarak dönüştürür.
 - **Ana sayfada son dönüştürmeler**, her biri küçük resim önizlemesiyle: sonucu açın veya başka bir uygulamayla başlatın.
 - **Diğer erişim yolları**: Sağ tık menüsü, klavye kısayolu, bırakma alanı ve [`filee` komutu](#komut-satırı).
-- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal) ve Deutsch dillerinde.
+- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano ve Bahasa Indonesia dillerinde.
 
 ## Ekran Görüntüleri
 

@@ -5,7 +5,10 @@
 // the PC (on the PATH or where its installer puts it), so nobody has to download a second FFmpeg they already have.
 
 using System.Collections.Concurrent;
+using System.Runtime.Versioning;
+using System.Security;
 using Filee.Core.Settings;
+using Microsoft.Win32;
 
 namespace Filee.Engines.Infrastructure;
 
@@ -85,6 +88,7 @@ public sealed class EngineEnvironment(string dataDirectory)
         ["rhwp"] = [windows ? "rhwp.exe" : "rhwp"],
         ["7zip"] = [windows ? "7z.exe" : "7zz"],
         ["tesseract"] = [windows ? "tesseract.exe" : "tesseract"],
+        ["whisper"] = [windows ? "whisper-cli.exe" : "whisper-cli"],
     };
 
     public static string ProgramName(string name) => OperatingSystem.IsWindows() ? name
@@ -219,6 +223,8 @@ public sealed class EngineEnvironment(string dataDirectory)
             if (id == "calibre")
                 folders.AddRange(["/Applications/calibre.app", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Applications", "calibre.app"), "/opt/calibre"]);
         }
+        else if (id == "libreoffice")
+            folders.AddRange(RegisteredFolders(LibreOfficeInstallPathKey));
         foreach (var root in (OperatingSystem.IsWindows()
                      ? new[] { Environment.SpecialFolder.ProgramFiles, Environment.SpecialFolder.ProgramFilesX86 }
                      : [])
@@ -254,6 +260,37 @@ public sealed class EngineEnvironment(string dataDirectory)
         var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
         return folders.Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal)
             .Where(f => !IsWithin(f, DownloadRoot, comparison) && !IsWithin(f, AppContext.BaseDirectory, comparison));
+    }
+
+    /// <summary>Where LibreOffice's Windows installer records its program folder (the key's default value).</summary>
+    internal const string LibreOfficeInstallPathKey = @"SOFTWARE\LibreOffice\UNO\InstallPath";
+
+    /// <summary>
+    /// The folders recorded as the default value of <paramref name="keyPath"/>, for this user and for all users, in
+    /// the 64-bit and 32-bit views. LibreOffice installed somewhere else than Program Files (another drive, a folder
+    /// of its own) is found this way without being on the PATH.
+    /// </summary>
+    [SupportedOSPlatform("windows")]
+    internal static List<string> RegisteredFolders(string keyPath)
+    {
+        var found = new List<string>();
+        foreach (var hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+        {
+            foreach (var view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+            {
+                try
+                {
+                    using var root = RegistryKey.OpenBaseKey(hive, view);
+                    using var key = root.OpenSubKey(keyPath);
+                    if (key?.GetValue(null) is string folder && folder.Trim().Trim('"') is { Length: > 0 } trimmed)
+                        found.Add(Environment.ExpandEnvironmentVariables(trimmed));
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
+                {
+                }
+            }
+        }
+        return found;
     }
 
     private static bool IsWithin(string path, string root, StringComparison comparison) =>

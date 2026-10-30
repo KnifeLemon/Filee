@@ -89,6 +89,30 @@ public sealed class SystemCopyTests : IDisposable
         Assert.Equal(Path.Combine(_folder, EngineEnvironment.ProgramName("ffmpeg.exe")), EngineEnvironment.SystemProgram("ffmpeg", "ffmpeg.exe"));
     }
 
+    [Fact]
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")] // skips elsewhere
+    public void LibreOffice_is_found_in_the_folder_its_installer_recorded()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Windows registry.");
+        const string key = @"Software\FileeTests\LibreOffice\UNO\InstallPath";
+        File.WriteAllBytes(Path.Combine(_folder, "soffice.exe"), [0x4D, 0x5A]);
+        try
+        {
+            using (var written = Microsoft.Win32.Registry.CurrentUser.CreateSubKey(key))
+                written.SetValue(null, $"\"{_folder}\"");
+
+            var folders = EngineEnvironment.RegisteredFolders(key);
+
+            Assert.Contains(_folder, folders);
+            Assert.Equal(_folder, EngineEnvironment.FolderWithPrograms("libreoffice", _folder));
+            Assert.Empty(EngineEnvironment.RegisteredFolders(@"Software\FileeTests\Missing"));
+        }
+        finally
+        {
+            Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(@"Software\FileeTests", throwOnMissingSubKey: false);
+        }
+    }
+
     [Theory]
     [InlineData("ffmpeg", "ffmpeg version 7.1.1-full_build-www.gyan.dev Copyright (c) 2000-2025", "7.1")]
     [InlineData("ffmpeg", "ffmpeg version n8.0 Copyright (c) 2000-2025", "8.0")]

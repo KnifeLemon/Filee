@@ -1,5 +1,5 @@
 // Packs FileeExplorerMenu.msix, the unsigned sparse package behind the Windows 11 "Convert with Filee" menu entry.
-// Run by build/build-explorer-menu.ps1:  dotnet run build/tools/make-explorer-package.cs -- <output folder>
+// Run by build/build-explorer-menu.ps1:  dotnet run build/tools/make-explorer-package.cs -- <output folder> [x64|arm64]
 // Uses the Windows packaging API (AppxPackaging.dll, part of Windows 10/11): it validates the manifest and writes the
 // block map and content types exactly like MakeAppx, so no Windows SDK is needed. The manifest comes from
 // ExplorerMenuPackage.CreateManifest (unit tested).
@@ -11,11 +11,12 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Filee.Platform.Windows;
 
-if (args.Length != 1)
+if (args.Length is < 1 or > 2 || (args.Length == 2 && !ExplorerMenuPackage.Architectures.Contains(args[1])))
 {
-    Console.Error.WriteLine("usage: dotnet run build/tools/make-explorer-package.cs -- <output folder>");
+    Console.Error.WriteLine("usage: dotnet run build/tools/make-explorer-package.cs -- <output folder> [x64|arm64]");
     return 2;
 }
+var architecture = args.Length == 2 ? args[1] : ExplorerMenuPackage.Architecture;
 
 var output = Path.GetFullPath(args[0]);
 Directory.CreateDirectory(output);
@@ -27,11 +28,11 @@ var work = Directory.CreateTempSubdirectory("filee-msix-");
 try
 {
     var manifestPath = Path.Combine(work.FullName, "AppxManifest.xml");
-    File.WriteAllText(manifestPath, ExplorerMenuPackage.CreateManifest(), new UTF8Encoding(false));
+    File.WriteAllText(manifestPath, ExplorerMenuPackage.CreateManifest(architecture), new UTF8Encoding(false));
     var packagePath = Path.Combine(output, ExplorerMenuPackage.PackageFileName);
     var logo = Path.Combine(repo, "src", "Filee.App", "Assets", "Icons", "filee.png");
     Appx.Pack(packagePath, manifestPath, [(ExplorerMenuPackage.LogoPath, logo, "image/png")]);
-    Console.WriteLine($"Wrote {packagePath} ({new FileInfo(packagePath).Length:N0} bytes, manifest {ExplorerMenuPackage.ManifestVersion})");
+    Console.WriteLine($"Wrote {packagePath} ({new FileInfo(packagePath).Length:N0} bytes, manifest {ExplorerMenuPackage.ManifestVersion}, {architecture})");
 }
 finally
 {

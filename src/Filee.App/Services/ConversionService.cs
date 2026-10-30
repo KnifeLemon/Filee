@@ -12,6 +12,7 @@ using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Core.Web;
+using Microsoft.Extensions.Logging;
 
 namespace Filee.App.Services;
 
@@ -28,14 +29,20 @@ public sealed class ConversionService
     private readonly ILocalizer _loc;
     private readonly IPlatformServices _platform;
     private readonly WebDownloader _downloader;
+    private readonly ILogger<ConversionService>? _log;
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, JobViewModel> _byId = new();
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, TaskCompletionSource<ConversionJob>> _waiting = new();
 
     /// <summary>Jobs that came from a watch folder: job id → rule id (for the history and for retrying).</summary>
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _watchJobs = new();
 
-    public ConversionService(JobQueue queue, UserDataStore store, ILocalizer loc, IPlatformServices platform, WebDownloader downloader)
+    /// <summary>Jobs whose results go on the clipboard when they finish (the clipboard shortcut).</summary>
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> _clipboardJobs = new();
+
+    public ConversionService(JobQueue queue, UserDataStore store, ILocalizer loc, IPlatformServices platform, WebDownloader downloader,
+        ILogger<ConversionService>? log = null)
     {
+        _log = log;
         _queue = queue;
         _store = store;
         _loc = loc;
@@ -65,8 +72,10 @@ public sealed class ConversionService
     /// The browser drop <paramref name="files"/> stand for: the job saves them first, into the folder Settings ›
     /// General names for files from a browser. The job owns it from now on (disposed here when nothing starts).
     /// </param>
+    /// <param name="toClipboard">The results go on the clipboard when the job has finished (the clipboard shortcut).</param>
     /// <returns>The job's view model, or null when there was nothing to convert.</returns>
-    public JobViewModel? Start(IReadOnlyList<string> files, Preset preset, bool showInToast = true, WebDrop? web = null)
+    public JobViewModel? Start(IReadOnlyList<string> files, Preset preset, bool showInToast = true, WebDrop? web = null,
+        bool toClipboard = false)
     {
         if (files.Count == 0 || preset.IsGroup || preset.IsTool)
         {
@@ -78,11 +87,21 @@ public sealed class ConversionService
         WebDropFetcher? fetcher = null;
         if (web is not null)
         {
-            fetcher = web.CreateFetcher(BrowserDropOptions(), _downloader);
+            var options = BrowserDropOptions();
+            if (web.SaveOnlyConverted is { } only)
+                options = options with { SaveOnlyConverted = only };
+            fetcher = web.CreateFetcher(options, _downloader);
             // "Next to the source" is the download folder, also when the original is only kept until converted.
             preset = fetcher.Apply(preset);
         }
         var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher);
+        if (toClipboard)
+        {
+            _clipboardJobs[job.Id] = 0;
+            // It may have finished already (nothing to convert): OnJobFinished found no mark then.
+            if (job.State is not (JobState.Queued or JobState.Running) && _clipboardJobs.TryRemove(job.Id, out _))
+                Dispatcher.UIThread.Post(() => CopyResults(job));
+        }
         var vm = new JobViewModel(job, _loc, _platform, Remove, RetryFailed);
         _byId[job.Id] = vm;
         Jobs.Insert(0, vm);
@@ -213,12 +232,17 @@ public sealed class ConversionService
     private void OnJobFinished(object? sender, ConversionJob job)
     {
         var entry = HistoryEntry.From(job);
+        if (string.IsNullOrWhiteSpace(job.Preset.Name) && job.Preset.NameKey is { } key && _loc[key] == job.PresetDisplayName)
+            entry.PresetNameKey = key;
         entry.WatchRuleId = _watchJobs.GetValueOrDefault(job.Id);
         _store.AddHistory(entry);
         if (_waiting.TryGetValue(job.Id, out var waiting))
             waiting.TrySetResult(job);
+        var toClipboard = _clipboardJobs.TryRemove(job.Id, out _);
         Dispatcher.UIThread.Post(() =>
         {
+            if (toClipboard)
+                CopyResults(job);
             if (!_byId.TryGetValue(job.Id, out var vm))
                 return;
             vm.Refresh();
@@ -227,6 +251,29 @@ public sealed class ConversionService
             if (!vm.HasErrors && CountSuccess(job))
                 DispatcherTimer.RunOnce(() => FeedbackDue?.Invoke(this, EventArgs.Empty), keep + TimeSpan.FromSeconds(1));
         });
+    }
+
+    /// <summary>
+    /// Puts what a clipboard shortcut's job made on the clipboard, in place of what it was made from. A cancelled job,
+    /// or one that made nothing, leaves the clipboard alone. A partly failed job still puts its outputs on the
+    /// clipboard; the log carries the failed count, so it shows why fewer files are pasted than were copied. UI thread.
+    /// </summary>
+    internal void CopyResults(ConversionJob job)
+    {
+        if (job.State == JobState.Cancelled)
+            return;
+        var failed = job.Files.Count(f => f.State == FileState.Failed);
+        var outputs = job.Outputs.Where(File.Exists).Distinct(StringComparer.Ordinal).ToList();
+        if (outputs.Count == 0)
+        {
+            if (failed > 0)
+                _log?.LogInformation("The clipboard job made nothing to put on the clipboard; {Failed} file(s) failed", failed);
+            return;
+        }
+        if (!_platform.CopyToClipboard(outputs))
+            _log?.LogWarning("Could not put {Count} converted file(s) on the clipboard; {Failed} file(s) failed", outputs.Count, failed);
+        else
+            _log?.LogInformation("Put {Count} converted file(s) on the clipboard; {Failed} file(s) failed", outputs.Count, failed);
     }
 
     /// <summary>Counts a fully successful conversion; true when the feedback card is due now (only once).</summary>
@@ -247,5 +294,6 @@ public sealed class ConversionService
         ToastJobs.Remove(vm);
         _byId.TryRemove(vm.Job.Id, out _);
         _watchJobs.TryRemove(vm.Job.Id, out _);
+        _clipboardJobs.TryRemove(vm.Job.Id, out _);
     }
 }

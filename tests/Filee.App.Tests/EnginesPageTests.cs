@@ -12,8 +12,11 @@ using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 using Filee.App.Views;
 using Filee.App.Views.Pages;
+using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Settings;
+using Filee.Engines.Infrastructure;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
 
@@ -60,7 +63,7 @@ public class EnginesPageTests
         TestServices.EnsureInitialized("en");
         var store = AppHost.Get<UserDataStore>();
         var saved = store.Settings.EnginePriority.ToList();
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("engines");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
@@ -113,7 +116,7 @@ public class EnginesPageTests
     public void Font_card_describes_fon_input_only()
     {
         TestServices.EnsureInitialized("en");
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("engines");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
@@ -166,6 +169,57 @@ public class EnginesPageTests
         finally
         {
             vm.LibreOfficeForSheets = before;
+            vm.Dispose();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_second_engine_can_be_installed_while_one_downloads_and_waits_its_turn()
+    {
+        // #819: one install running must not turn off the Install button on the other cards.
+        TestServices.EnsureInitialized("en");
+        var downloads = new EngineDownloadService(AppHost.Get<ConverterCatalog>(), AppHost.Get<ILocalizer>(), NullLogger<EngineDownloadService>.Instance);
+        var started = new List<string>();
+        downloads.InstallPackage = (package, _, token) =>
+        {
+            Dispatcher.UIThread.Post(() => started.Add(package.Id));
+            return Task.Delay(Timeout.Infinite, token);
+        };
+        var vm = new EnginesPageViewModel(AppHost.Get<UserDataStore>(), AppHost.Get<ConverterCatalog>(), AppHost.Get<ILocalizer>(), downloads);
+        var (first, second) = (downloads.Packages.Where(p => p.CanInstall).ElementAt(0), downloads.Packages.Where(p => p.CanInstall).ElementAt(1));
+        try
+        {
+            vm.InstallCommand.Execute(first);
+            for (var i = 0; i < 200 && started.Count == 0; i++)
+            {
+                Thread.Sleep(10);
+                Pump();
+            }
+            Assert.Equal([first.Package.Id], started);
+            Assert.True(first.IsBusy);
+
+            Assert.True(vm.InstallCommand.CanExecute(second));
+            vm.InstallCommand.Execute(second);
+            Pump();
+            Assert.Equal(EnginePackageStatus.Queued, second.Status);
+            Assert.Equal([first.Package.Id], started); // waits for the first one
+
+            // Cancel on the first card stops only the first; the second then gets its turn.
+            vm.CancelCommand.Execute(first);
+            for (var i = 0; i < 200 && started.Count < 2; i++)
+            {
+                Thread.Sleep(10);
+                Pump();
+            }
+            Assert.False(first.IsBusy);
+            Assert.True(second.IsBusy);
+            Assert.Equal([first.Package.Id, second.Package.Id], started);
+        }
+        finally
+        {
+            downloads.Cancel(first);
+            downloads.Cancel(second);
+            Pump();
             vm.Dispose();
         }
     }

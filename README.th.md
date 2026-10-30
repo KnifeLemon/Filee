@@ -29,6 +29,7 @@
 <p align="center">
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/weekly?language=C%23&v=2" alt="Filee: คลัง C# อันดับ 1 ประจำสัปดาห์บน Trendshift" width="250" height="55"></a>
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: คลัง C# อันดับ 1 ประจำวันบน Trendshift" width="250" height="55"></a>
+  <a href="https://hellogithub.com/repository/KnifeLemon/Filee" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=0847caedd5bd4077a70b90f83afdf83c&claim_uid=jAlIvVMhn0kcEsU" alt="Featured｜HelloGitHub" width="250" height="54" /></a>
 </p>
 
 <p align="center">
@@ -46,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <b>ไทย</b> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -57,7 +59,7 @@
       ฟอร์แมตที่เหมาะสมจะแสดงขึ้นตรงจุดที่คุณทำงานอยู่ โดยแสดงเฉพาะฟอร์แมตที่ใช้ได้กับไฟล์ที่คุณลากเท่านั้น
     </td>
     <td width="33%" valign="top">
-      <b>268 ฟอร์แมต โดยไม่ต้องลงโปรแกรมอื่นเพิ่ม</b><br>
+      <b>270 ฟอร์แมต โดยไม่ต้องลงโปรแกรมอื่นเพิ่ม</b><br>
       รูปภาพ, PDF, Word, Excel, PowerPoint, HWP, อีบุ๊ก, ไฟล์บีบอัด, ฟอนต์, CAD, โมเดล 3D และข้อมูลเชิงพื้นที่ ทำงานได้โดยไม่ต้องมี Microsoft Office, Hancom Office หรือ LibreOffice
     </td>
     <td width="33%" valign="top">
@@ -78,6 +80,8 @@
 ## การติดตั้ง
 
 ดาวน์โหลดจากหน้า [Releases](https://github.com/KnifeLemon/Filee/releases/latest)
+
+<a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/th%20dark.svg" alt="Microsoft Store" width="200"></a>
 
 - **Windows 10/11**: รัน `Filee-<version>-win-Setup.exe` หรือแตกไฟล์ `win-Portable.zip` แล้วเปิด `Filee.exe`
   - ตัวติดตั้ง Setup เป็นของ Filee เอง มีเมนูภาษาไทย และไม่ต้องติดตั้งโปรแกรมเสริมใดๆ
@@ -129,7 +133,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **ประวัติการแปลงล่าสุด**: แสดงในหน้าแรกพร้อมรูปตัวอย่าง เปิดดูผลลัพธ์หรือเปิดด้วยแอปอื่นได้ทันที
 - **ช่องทางอื่นในการแปลง**: เมนูคลิกขวา, ปุ่มลัดแป้นพิมพ์, พื้นที่วางไฟล์ในหน้าแรก และคำสั่ง [`filee`](#การใช้งานผ่านบรรทัดคำสั่ง-command-line)
 - รองรับธีมสว่างและมืด ปรับสีเน้น (accent colour) และความโปร่งใสของโดนัทได้ตามใจ
-  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal) และ Deutsch
+  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano และ Bahasa Indonesia
 
 ## ภาพหน้าจอ
 

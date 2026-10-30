@@ -25,7 +25,7 @@ public class AudioTracksTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void Every_track_is_mapped_and_each_gets_its_own_options()
     {
         var info = new MediaInfo(TimeSpan.FromMinutes(24), Hd, new AudioStreamInfo(2, 48000, "aac"), null,
-            AudioStreams: [new(2, 48000, "aac"), new(6, 48000, "flac"), new(2, 48000, "opus")]);
+            AudioStreams: [new(2, 48000, "aac", 0), new(6, 48000, "flac", 1), new(2, 48000, "opus", 2)]);
 
         var args = Plan("mp4", info, new MediaOptions { MaxHeight = 720 });
 
@@ -36,6 +36,19 @@ public class AudioTracksTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("aac", After(args, "-c:a:2"));
         Assert.Equal("192k", After(args, "-b:a:2"));
         Assert.DoesNotContain("-c:a", args); // nothing left unaddressed
+    }
+
+    [Fact]
+    public void Tracks_ffmpeg_cannot_decode_are_left_out_and_the_rest_keep_their_numbers()
+    {
+        var info = new MediaInfo(TimeSpan.FromSeconds(1), Hd, new AudioStreamInfo(2, 48000, "aac", 1), null,
+            AudioStreams: [new(2, 48000, "aac", 1), new(2, 48000, "opus", 3)]);
+        var args = Plan("mp4", info);
+        Assert.Equal(["0:V:0", "0:a:1", "0:a:3"], args.Where((a, i) => i > 0 && args[i - 1] == "-map"));
+        Assert.Equal("copy", After(args, "-c:a:0"));
+        Assert.Equal("aac", After(args, "-c:a:1"));
+        var flv = Plan("flv", info);
+        Assert.Equal(["0:V:0", "0:a:1"], flv.Where((a, i) => i > 0 && flv[i - 1] == "-map"));
     }
 
     [Fact]

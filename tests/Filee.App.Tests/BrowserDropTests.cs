@@ -261,7 +261,7 @@ public class BrowserDropTests
     public void A_picture_dropped_on_the_drop_zone_opens_the_donut_for_it_and_closing_lets_it_go()
     {
         TestServices.EnsureInitialized("en");
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("home");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
@@ -303,7 +303,7 @@ public class BrowserDropTests
         TestServices.EnsureInitialized(language);
         var store = AppHost.Get<UserDataStore>();
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
-        var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("general");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();

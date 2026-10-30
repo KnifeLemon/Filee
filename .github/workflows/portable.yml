@@ -1,10 +1,12 @@
 name: Linux and macOS packages
 
 # Linux packages are built on Ubuntu 24.04 but must run on Ubuntu 22.04 (glibc 2.35). The rhwp CLI release needs a
-# newer glibc, so it is built from pinned source on Ubuntu 22.04 first (linux-native, build/build-linux-native.py) and
-# replaces the download in the package. SharpHook (>= 8.0.1) ships libuiohook builds for glibc 2.34 and is packaged as
-# is. Every ELF file in a Linux package is then checked against glibc 2.35, and the x64 and arm64 packages are tried on
-# Ubuntu 22.04, which also catches a SharpHook or engine update that raises the requirement again.
+# newer glibc, so it is built from pinned source on Ubuntu 22.04 first (linux-native, build/build-native.py) and
+# replaces the download in the package. Unhwp's NuGet package has no linux-arm64 library: linux-native builds it from
+# the package's source too, and the arm64 tests and package use it. SharpHook (>= 8.0.1) ships libuiohook builds for
+# glibc 2.34 and is packaged as is. Every ELF file in a Linux package is then checked against glibc 2.35, and the x64
+# and arm64 packages are tried on Ubuntu 22.04, which also catches a SharpHook or engine update that raises the
+# requirement again.
 
 on:
   workflow_call:
@@ -43,6 +45,7 @@ jobs:
             rid: linux-x64
           - runner: ubuntu-22.04-arm
             rid: linux-arm64
+            unhwp: true
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     defaults:
@@ -53,19 +56,19 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Fails when engines.json moved to another rhwp version while build/build-linux-native.py still builds the old
-      # source (also when the build below comes from the cache).
+      # Fails when engines.json or Directory.Packages.props moved to another rhwp or Unhwp version while
+      # build/build-native.py still builds the old source (also when the build below comes from the cache).
       - name: Check pinned sources
-        run: python3 build/build-linux-native.py check
+        run: python3 build/build-native.py check
 
       - name: Restore native builds
         id: native-cache
         uses: actions/cache@v5
         with:
           path: build/.cache/linux-native/${{ matrix.rid }}
-          key: linux-native-${{ matrix.rid }}-ubuntu-22.04-${{ hashFiles('build/build-linux-native.py') }}
+          key: linux-native-${{ matrix.rid }}-ubuntu-22.04-${{ hashFiles('build/build-native.py') }}
 
-      # rhwp's default features are pure Rust: a C toolchain for the linker and build scripts is enough.
+      # rhwp's default features are pure Rust; Unhwp's zstd-sys compiles C. A C toolchain is enough for both.
       - name: Build dependencies
         if: steps.native-cache.outputs.cache-hit != 'true'
         run: |
@@ -85,12 +88,16 @@ jobs:
             ~/.cargo/registry/index
             ~/.cargo/registry/cache
             ~/.cargo/git/db
-          key: cargo-registry-${{ matrix.rid }}-${{ hashFiles('build/build-linux-native.py') }}
+          key: cargo-registry-${{ matrix.rid }}-${{ hashFiles('build/build-native.py') }}
           restore-keys: cargo-registry-${{ matrix.rid }}-
 
       - name: Build rhwp
         if: steps.native-cache.outputs.cache-hit != 'true'
-        run: python3 build/build-linux-native.py rhwp --output "$NATIVE_OUT/rhwp" --work "$RUNNER_TEMP/rhwp"
+        run: python3 build/build-native.py rhwp --output "$NATIVE_OUT/rhwp" --work "$RUNNER_TEMP/rhwp"
+
+      - name: Build Unhwp
+        if: matrix.unhwp && steps.native-cache.outputs.cache-hit != 'true'
+        run: python3 build/build-native.py unhwp --output "$NATIVE_OUT/unhwp" --work "$RUNNER_TEMP/unhwp"
 
       - name: Check glibc requirements
         run: python3 build/check-elf-glibc.py --max 2.35 --needed "$NATIVE_OUT"
@@ -150,10 +157,15 @@ jobs:
           path: build/.cache/portable-downloads
           key: portable-engines-${{ matrix.rid }}-${{ hashFiles('src/Filee.Engines/Infrastructure/engines.json') }}
 
+      # linux-arm64: Unhwp from linux-native (see the top), so its tests run there too.
       - name: Build and test native projects
         run: |
           ./build/fetch-portable-engines.ps1 -Runtime '${{ matrix.rid }}' -Destination engines
-          dotnet build Filee.slnx -c Release
+          $native = @()
+          if ('${{ matrix.rid }}' -eq 'linux-arm64') {
+            $native = @("-p:UnhwpNativeLibrary=$(Join-Path $env:RUNNER_TEMP 'linux-native/unhwp/libunhwp.so')")
+          }
+          dotnet build Filee.slnx -c Release @native
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $projects = @('Filee.Core.Tests', 'Filee.Platform.Tests', 'Filee.Engines.Tests', 'Filee.Cli.Tests', 'Filee.App.Tests')
           foreach ($project in $projects) {
@@ -171,7 +183,7 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
-      # Linux: rhwp from linux-native instead of the download (see the top).
+      # Linux: rhwp from linux-native instead of the download, and on arm64 Unhwp's library (see the top).
       - name: Build portable package
         env:
           PACKAGE_VERSION: ${{ inputs.version }}
@@ -179,6 +191,9 @@ jobs:
           $native = @{}
           if ($IsLinux) {
             $native = @{ RhwpOverride = Join-Path $env:RUNNER_TEMP 'linux-native/rhwp' }
+          }
+          if ('${{ matrix.rid }}' -eq 'linux-arm64') {
+            $native.UnhwpOverride = Join-Path $env:RUNNER_TEMP 'linux-native/unhwp/libunhwp.so'
           }
           ./build/build-portable.ps1 -Runtime '${{ matrix.rid }}' -Version $env:PACKAGE_VERSION -SkipFonts @native
 

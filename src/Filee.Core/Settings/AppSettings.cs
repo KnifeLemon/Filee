@@ -123,7 +123,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 54;
+    public const int CurrentSchemaVersion = 57;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -260,6 +260,12 @@ public sealed class AppSettings
     /// 1 as designed, 0.7 to 1.8. A missing value (settings from before it) reads as 1, so it needs no schema step.
     /// </summary>
     public double UiScale { get; set; } = 1;
+
+    /// <summary>
+    /// The main window's navigation is collapsed to an icon rail (the button at its bottom). A missing value (settings from
+    /// before it) reads as expanded, so it needs no schema step.
+    /// </summary>
+    public bool NavCollapsed { get; set; }
 
     /// <summary>
     /// Where the main window was when it last closed, so the next start opens it there (#586). Null until it has closed

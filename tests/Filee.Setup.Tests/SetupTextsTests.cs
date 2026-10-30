@@ -3,6 +3,9 @@
 extern alias app;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Headless.XUnit;
 using Filee.Engines.Infrastructure;
 using Filee.Setup.Platform;
 using LocalizationService = app::Filee.App.Services.LocalizationService;
@@ -68,7 +71,13 @@ public partial class SetupTextsTests
     [InlineData("de", "en-US", "de")]
     [InlineData("auto", "de-AT", "de")]
     [InlineData("auto", "de-CH", "de")]
-    [InlineData("xx", "it-IT", "en")]
+    [InlineData("auto", "it-IT", "it")]
+    [InlineData("it", "en-US", "it")]
+    [InlineData("auto", "id-ID", "id")]
+    [InlineData("id", "en-US", "id")]
+    [InlineData(null, "idu-NG", "en")]
+    [InlineData(null, "itl-RU", "en")]
+    [InlineData("xx", "sv-SE", "en")]
     [InlineData("klingon", "pl-PL", "pl")]
     [InlineData("auto", "pt-BR", "pt-BR")]
     [InlineData("auto", "pt-PT", "pt-PT")]
@@ -104,6 +113,74 @@ public partial class SetupTextsTests
         texts.SetLanguage("en");
         Assert.Equal(1, changed);
         Assert.Equal("Install", texts["installer.install"]);
+    }
+
+    [AvaloniaFact]
+    public void Publishing_a_language_switch_raises_one_resource_change()
+    {
+        var app = Application.Current!;
+        Assert.IsType<ResourceDictionary>(app.Resources); // Setup publishes to this dictionary in ApplyLook.
+        var resources = new ResourceDictionary();
+        resources["unrelated"] = "kept";
+        var texts = new SetupTexts("en");
+        texts.Publish(resources);
+        app.Resources.MergedDictionaries.Add(resources);
+        var changes = 0;
+        void Count(object? sender, ResourcesChangedEventArgs e) => changes++;
+        app.ResourcesChanged += Count;
+        try
+        {
+            texts.SetLanguage("ko");
+            texts.Publish(resources);
+
+            Assert.Equal(1, changes);
+            Assert.True(resources.TryGetResource("installer.install", null, out var install));
+            Assert.Equal(texts["installer.install"], install);
+            Assert.NotEqual("Install", install);
+            Assert.True(resources.TryGetResource("general.language", null, out var language));
+            Assert.Equal(texts["general.language"], language);
+            Assert.Equal("kept", resources["unrelated"]);
+        }
+        finally
+        {
+            app.ResourcesChanged -= Count;
+            app.Resources.MergedDictionaries.Remove(resources);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_language_switch_through_apply_look_shows_the_new_texts()
+    {
+        var app = Application.Current!;
+        var texts = new SetupTexts("en");
+        App.ApplyLook(app, texts);
+        var block = new TextBlock();
+        block.Bind(TextBlock.TextProperty, block.GetResourceObservable("installer.install"));
+        var window = new Window { Content = block };
+        window.Show();
+        var changes = 0;
+        void Count(object? sender, ResourcesChangedEventArgs e) => changes++;
+        try
+        {
+            Assert.Equal("Install", block.Text);
+
+            app.ResourcesChanged += Count;
+            texts.SetLanguage("ko");
+
+            var korean = new SetupTexts("ko")["installer.install"];
+            Assert.True(app.TryGetResource("installer.install", null, out var install));
+            Assert.Equal(korean, install);
+            Assert.Equal(korean, block.Text);
+            // The texts are one change; the font and the flow direction add a few more. None of them grows with the
+            // number of keys (one change per key was over a thousand).
+            Assert.InRange(changes, 1, 10);
+        }
+        finally
+        {
+            window.Close();
+            app.ResourcesChanged -= Count;
+            texts.SetLanguage("en");
+        }
     }
 
     [Fact]

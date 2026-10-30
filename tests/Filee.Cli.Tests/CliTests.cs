@@ -3,7 +3,12 @@
 using System.Buffers.Binary;
 using System.Text.Json;
 using System.Xml.Linq;
+using Filee.Core.Conversion;
+using Filee.Core.Formats;
+using Filee.Core.Localization;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Tests;
 
 namespace Filee.Cli.Tests;
@@ -317,6 +322,55 @@ public sealed class CliTests : IDisposable
     }
 
     [Fact]
+    public async Task Archives_list_folder_as_a_target()
+    {
+        var catalog = ArchiveCatalog();
+        var (code, output, _) = await RunWith(catalog, "formats", "zip");
+        Assert.Equal(Cli.Success, code);
+        Assert.Contains("folder", output);
+
+        (code, output, _) = await RunWith(catalog, "formats", "png");
+        Assert.Equal(Cli.Success, code);
+        Assert.DoesNotContain("folder", output);
+    }
+
+    [Fact]
+    public async Task Formats_json_lists_every_format()
+    {
+        var (code, output, _) = await Run("formats", "--json");
+        Assert.Equal(Cli.Success, code);
+
+        using var json = JsonDocument.Parse(output);
+        var formats = json.RootElement.GetProperty("formats").EnumerateArray().ToList();
+        var png = Assert.Single(formats, f => f.GetProperty("id").GetString() == "png");
+        Assert.Equal("image", png.GetProperty("category").GetString());
+        Assert.Contains("png", png.GetProperty("extensions").EnumerateArray().Select(e => e.GetString()));
+        Assert.True(png.GetProperty("writable").GetBoolean());
+        Assert.DoesNotContain(formats, f => f.GetProperty("id").GetString() == "folder");
+    }
+
+    [Fact]
+    public async Task Formats_json_of_one_format_matches_the_text()
+    {
+        var catalog = ArchiveCatalog();
+        var (code, text, _) = await RunWith(catalog, "formats", "zip");
+        Assert.Equal(Cli.Success, code);
+        (code, var output, _) = await RunWith(catalog, "formats", "zip", "--json");
+        Assert.Equal(Cli.Success, code);
+
+        using var json = JsonDocument.Parse(output);
+        var root = json.RootElement;
+        Assert.Equal("zip", root.GetProperty("id").GetString());
+        Assert.Equal("archive", root.GetProperty("category").GetString());
+        var targets = root.GetProperty("targets").EnumerateArray().Select(e => e.GetString()!).ToList();
+        var withEngines = root.GetProperty("withEngines").EnumerateArray().Select(e => e.GetString()!).ToList();
+        Assert.Contains("folder", targets.Concat(withEngines));
+        Assert.Empty(targets.Intersect(withEngines));
+        foreach (var id in targets.Concat(withEngines))
+            Assert.Contains(id, text);
+    }
+
+    [Fact]
     public async Task Jpeg_xr_converts_on_windows_and_is_no_download_away_elsewhere()
     {
         var (code, output, _) = await Run("formats", "jxr");
@@ -325,6 +379,51 @@ public sealed class CliTests : IDisposable
         Assert.Equal(OperatingSystem.IsWindows(), output.Contains("png, jpg", StringComparison.Ordinal));
         // Elsewhere no download would help (on Windows, FFmpeg adds HEIC and video).
         Assert.Equal(OperatingSystem.IsWindows(), output.Contains("optional engines", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_picture_under_the_minimum_is_written_with_its_notice_also_after_a_step_on_the_way()
+    {
+        // #662. A multi-page TIFF and a merge first turn the files into pages or PNGs: the line for the file the result
+        // belongs to is printed once, at the end, with the result and the notice.
+        AddPresets(
+            new Preset { Id = "min-png", Name = "Min PNG", TargetFormat = "png", Image = { MinSizeMb = 1 } },
+            new Preset { Id = "min-tiff", Name = "Min TIFF", TargetFormat = "tiff", Image = { MultiPageTiff = true, MinSizeMb = 1 } },
+            new Preset
+            {
+                Id = "min-merge",
+                Name = "Min merge",
+                TargetFormat = "png",
+                Image = { JoinIntoOne = true, MinSizeMb = 1 },
+                Output = { FileNamePattern = "{name}_merged" }
+            });
+        string notice;
+        await using (var host = CliHost.Create(_settings))
+            notice = host.Texts["notice.under_min_size"];
+        var a = Png("a.png");
+        var b = Png("b.png");
+        var logo = Path.Combine(_folder, "logo.svg");
+        File.WriteAllText(logo, "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"40\" height=\"30\"><rect width=\"40\" height=\"30\" fill=\"teal\"/></svg>");
+
+        foreach (var (args, first, result) in new (string[], string, string)[]
+                 {
+                     (["convert", a, "--preset", "min-png", "--output", Path.Combine(_folder, "out")], "a.png", Path.Combine("out", "a.png")),
+                     (["convert", a, b, "--preset", "min-tiff"], "a.png", "a.tiff"),
+                     (["convert", logo, b, "--preset", "min-merge"], "logo.svg", "logo_merged.png"),
+                 })
+        {
+            var (code, output, errors) = await Run(args);
+            Assert.True(code == Cli.Success, errors + output);
+            var line = Assert.Single(output.Split('\n'), l => l.StartsWith("ok", StringComparison.Ordinal) && l.Contains(first, StringComparison.Ordinal)
+                && l.IndexOf(first, StringComparison.Ordinal) < l.IndexOf("->", StringComparison.Ordinal));
+            Assert.Contains(result, line, StringComparison.Ordinal);
+            Assert.Contains(notice, line, StringComparison.Ordinal);
+
+            (code, output, _) = await Run([.. args, "--json", "--overwrite"]);
+            Assert.Equal(Cli.Success, code);
+            using var json = System.Text.Json.JsonDocument.Parse(output);
+            Assert.Equal(notice, json.RootElement.GetProperty("files")[0].GetProperty("notice").GetString());
+        }
     }
 
     /// <summary>Adds presets to the settings folder the CLI runs with.</summary>
@@ -575,5 +674,481 @@ public sealed class CliTests : IDisposable
 
         Assert.Equal(Cli.UsageError, code);
         Assert.Contains("is an interactive tool, not a conversion", errors);
+    }
+
+    private static ConverterCatalog ArchiveCatalog() =>
+        new([new ControlledConverter("archive", true, [new("zip", "folder")])]);
+
+    private CliHost ControlledHost(ConverterCatalog catalog)
+    {
+        var store = new UserDataStore(_settings);
+        store.Load();
+        var joins = new UnexpectedMerger();
+        return new CliHost(store, catalog, new JobQueue(catalog, joins, tiffMerger: joins, mediaJoiner: joins));
+    }
+
+    private async Task<(int Code, string Output, string Errors)> RunWith(ConverterCatalog catalog, params string[] args)
+    {
+        var output = new StringWriter();
+        var errors = new StringWriter();
+        var code = await Cli.RunAsync(args, output, errors, TestContext.Current.CancellationToken, () => ControlledHost(catalog));
+        return (code, output.ToString(), errors.ToString());
+    }
+
+    private string Input(string extension, string content = "input")
+    {
+        var path = Path.Combine(_folder, "input." + extension);
+        File.WriteAllText(path, content);
+        return path;
+    }
+
+    private static ControlledConverter Package(string package, bool available, params ConversionEdge[] edges) =>
+        new(EngineDownloads.Packages.Single(p => p.Id == package).ConverterIds[0], available, edges);
+
+    private static JsonElement Result(string output)
+    {
+        using var json = JsonDocument.Parse(output);
+        return json.RootElement.Clone();
+    }
+
+    private static JsonElement FileResultOf(string output) => Result(output).GetProperty("files")[0];
+
+    private static string[] Strings(JsonElement value) => value.EnumerateArray().Select(e => e.GetString()!).ToArray();
+
+    private static void Hints(JsonElement file, params string[] packages)
+    {
+        Assert.Equal("failed", file.GetProperty("state").GetString());
+        Assert.Equal("error.no_route", file.GetProperty("errorKey").GetString());
+        if (packages.Length == 0)
+            Assert.False(file.TryGetProperty("needsEngines", out _));
+        else
+            Assert.Equal(packages, Strings(file.GetProperty("needsEngines")));
+    }
+
+    [Fact]
+    public async Task Presets_json_has_one_envelope_and_explicit_fields()
+    {
+        var (code, output, errors) = await RunWith(new([]), "presets", "--json");
+        Assert.Equal(0, code);
+        Assert.Equal("", errors);
+        using var json = JsonDocument.Parse(output);
+        Assert.Equal(["presets"], json.RootElement.EnumerateObject().Select(p => p.Name));
+        Assert.NotEmpty(json.RootElement.GetProperty("presets").EnumerateArray());
+        foreach (var preset in json.RootElement.GetProperty("presets").EnumerateArray())
+        {
+            Assert.Equal(["id", "name", "target"], preset.EnumerateObject().Select(p => p.Name));
+            Assert.All(preset.EnumerateObject(), p => Assert.Equal(JsonValueKind.String, p.Value.ValueKind));
+        }
+        Assert.EndsWith(Environment.NewLine, output);
+    }
+
+    [Fact]
+    public async Task Presets_json_preserves_visible_presets_and_order()
+    {
+        AddPresets(
+            new() { Id = "z-custom", Name = "공백 \"quoted\" name", TargetFormat = "*" },
+            new() { Id = "a-key", NameKey = "preset.merge_pdf", TargetFormat = "folder" },
+            new() { Id = "unnamed", TargetFormat = "jpg" },
+            new() { Id = "hidden-group", Kind = PresetKind.Group },
+            new() { Id = "hidden-tool", Kind = PresetKind.Tool });
+        var store = new UserDataStore(_settings);
+        store.Load();
+        var texts = new EnglishTexts();
+        var expected = store.Presets.Where(p => !p.IsGroup && !p.IsTool).ToArray();
+        var (_, output, _) = await RunWith(new([]), "presets", "--json");
+        var actual = Result(output).GetProperty("presets").EnumerateArray().ToArray();
+        Assert.Equal(expected.Select(p => p.Id), actual.Select(p => p.GetProperty("id").GetString()));
+        Assert.Equal(expected.Select(p => texts.DisplayName(p)), actual.Select(p => p.GetProperty("name").GetString()));
+        Assert.Equal(expected.Select(p => p.TargetFormat), actual.Select(p => p.GetProperty("target").GetString()));
+        var (_, text, _) = await RunWith(new([]), "presets");
+        Assert.Equal(expected.Select(p => p.Id), text.Split('\n').Skip(1).Take(expected.Length)
+            .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries)[0]));
+    }
+
+    [Fact]
+    public async Task Convert_json_keeps_existing_fields()
+    {
+        var converter = new ControlledConverter("built-in", true, [new("md", "html")])
+        {
+            Convert = (step, _) =>
+            {
+                step.Notice?.Invoke("notice.pdf_not_smaller");
+                step.MissingFonts?.Invoke(["Missing Family"]);
+                return ControlledConverter.Write(step);
+            },
+        };
+        var source = Input("md");
+        var catalog = new ConverterCatalog([converter]);
+        var (code, output, errors) = await RunWith(catalog, "convert", source, "--to", "html", "--json");
+        Assert.Equal(0, code);
+        Assert.Equal("", errors);
+        var root = Result(output);
+        Assert.Equal(["preset", "target", "converted", "skipped", "failed", "files"], root.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("HTML", root.GetProperty("preset").GetString());
+        Assert.Equal("html", root.GetProperty("target").GetString());
+        Assert.Equal(1, root.GetProperty("converted").GetInt32());
+        Assert.Equal(0, root.GetProperty("skipped").GetInt32());
+        Assert.Equal(0, root.GetProperty("failed").GetInt32());
+        var done = FileResultOf(output);
+        Assert.Equal(["source", "state", "outputs", "notice", "missingFonts"], done.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(source, done.GetProperty("source").GetString());
+        Assert.Equal("done", done.GetProperty("state").GetString());
+        Assert.Equal([Path.ChangeExtension(source, "html")], Strings(done.GetProperty("outputs")));
+        Assert.Equal(new EnglishTexts()["notice.pdf_not_smaller"], done.GetProperty("notice").GetString());
+        Assert.Equal(["Missing Family"], Strings(done.GetProperty("missingFonts")));
+
+        // An allocator skip returns no outputs, notice or fonts.
+        converter.Convert = null;
+        (_, output, _) = await RunWith(catalog, "convert", source, "--to", "html", "--skip", "--json");
+        var skipped = FileResultOf(output);
+        Assert.Equal(["source", "state", "outputs"], skipped.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("skipped", skipped.GetProperty("state").GetString());
+        Assert.Empty(Strings(skipped.GetProperty("outputs")));
+        (_, output, _) = await RunWith(new([]), "convert", source, "--to", "mp3", "--json");
+        var failed = FileResultOf(output);
+        Assert.Equal(["source", "state", "outputs", "error", "errorKey"], failed.EnumerateObject().Select(p => p.Name));
+        Assert.Equal(new EnglishTexts()["error.no_route"] + " (md → mp3)", failed.GetProperty("error").GetString());
+        Assert.Empty(Strings(failed.GetProperty("outputs")));
+        // Cancellation's exact old fields and values are asserted by the event-driven cancellation test.
+        await Cancelled_files_do_not_invent_failure_metadata();
+    }
+
+    [Fact]
+    public async Task Convert_exit_codes_remain_compatible()
+    {
+        var source = Input("md");
+        var catalog = new ConverterCatalog([new ControlledConverter("built-in", true, [new("md", "html")])]);
+        var (code, output, _) = await RunWith(catalog, "convert", source, "--to", "html", "--json");
+        Assert.Equal(0, code);
+        Assert.Equal("done", FileResultOf(output).GetProperty("state").GetString());
+        (code, output, _) = await RunWith(catalog, "convert", source, "--to", "html", "--skip", "--json");
+        Assert.Equal(0, code);
+        Assert.Equal(1, Result(output).GetProperty("skipped").GetInt32());
+        Assert.Equal("skipped", FileResultOf(output).GetProperty("state").GetString());
+        (code, output, _) = await RunWith(catalog, "convert", source, "--to", "mp3", "--json");
+        Assert.Equal(1, code);
+        Assert.Equal("failed", FileResultOf(output).GetProperty("state").GetString());
+        Assert.Equal(2, (await RunWith(catalog, "convert", source + ".missing", "--to", "html")).Code);
+        Assert.Equal(2, (await RunWith(catalog, "convert", source, "--wrong")).Code);
+        var empty = Directory.CreateDirectory(Path.Combine(_folder, "empty")).FullName;
+        Assert.Equal(3, (await RunWith(catalog, "convert", empty, "--to", "html")).Code);
+        await Cancelled_files_do_not_invent_failure_metadata();
+    }
+
+    [Fact]
+    public async Task No_route_distinguishes_missing_packages_from_impossible_targets()
+    {
+        var catalog = new ConverterCatalog([Package("pandoc", false, new ConversionEdge("md", "pptx"))]);
+        var (code, output, errors) = await RunWith(catalog, "convert", Input("md"), "--to", "pptx", "--json");
+        Assert.Equal(1, code);
+        Assert.Equal("", errors);
+        Hints(FileResultOf(output), "pandoc");
+        (code, output, _) = await RunWith(catalog, "convert", Input("txt"), "--to", "mp3", "--json");
+        Assert.Equal(1, code);
+        Hints(FileResultOf(output));
+    }
+
+    [Fact]
+    public async Task Optional_targets_and_failure_hints_agree()
+    {
+        var catalog = new ConverterCatalog([
+            new ControlledConverter("built-in", true, [new("md", "html")]),
+            new ControlledConverter("rhwp", false, [new("md", "pptx", 1), new("md", "png")]),
+            Package("pandoc", false, new ConversionEdge("md", "pptx", 30)),
+        ])
+        { Priority = ["rhwp", "pandoc", "built-in"] };
+        var (_, output, _) = await RunWith(catalog, "formats", "md", "--json");
+        var formats = Result(output);
+        Assert.Equal(["html"], Strings(formats.GetProperty("targets")));
+        Assert.Equal(["pptx"], Strings(formats.GetProperty("withEngines")));
+        var optional = Strings(formats.GetProperty("withEngines"));
+        var source = Input("md");
+        foreach (var target in FormatRegistry.Known.Where(t => t.Writable && t.Id != "md"))
+        {
+            (_, output, _) = await RunWith(catalog, "convert", source, "--to", target.Id, "--json");
+            var file = FileResultOf(output);
+            var hasHints = file.TryGetProperty("needsEngines", out var hints);
+            Assert.Equal(optional.Contains(target.Id), hasHints);
+            if (hasHints)
+            {
+                Assert.NotEmpty(Strings(hints));
+                Hints(file, "pandoc");
+            }
+        }
+    }
+
+    [Fact]
+    public async Task Multi_step_failure_lists_all_missing_packages_once()
+    {
+        var pandoc = Package("pandoc", false, new("md", "html"), new("wav", "pptx"));
+        var ffmpeg = Package("ffmpeg", false, new ConversionEdge("html", "wav"));
+        var source = Input("md");
+        var (_, output, _) = await RunWith(new([pandoc, ffmpeg]), "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(output), "pandoc", "ffmpeg");
+        ffmpeg.Available = true;
+        (_, output, _) = await RunWith(new([pandoc, ffmpeg]), "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(output), "pandoc");
+
+        var direct = Package("libreoffice", false, new ConversionEdge("md", "pptx", 40));
+        var catalog = new ConverterCatalog([pandoc, ffmpeg, direct]) { Priority = ["pandoc", "ffmpeg", "libreoffice"] };
+        (_, output, _) = await RunWith(catalog, "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(output), "pandoc");
+        direct.Edges = [new("md", "pptx", 1)];
+        (_, output, _) = await RunWith(catalog, "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(output), "libreoffice");
+
+        var a = Package("pandoc", false, new ConversionEdge("md", "pptx"));
+        var b = Package("libreoffice", false, new ConversionEdge("md", "pptx"));
+        catalog = new([a, b]) { Priority = [b.Id, a.Id] };
+        (_, output, _) = await RunWith(catalog, "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(output), "libreoffice");
+        catalog.Priority = [a.Id, b.Id];
+        (_, output, _) = await RunWith(catalog, "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(output), "pandoc");
+    }
+
+    [Fact]
+    public async Task Engine_hints_exclude_unsupported_and_nonpackage_converters()
+    {
+        var source = Input("md");
+        foreach (var id in new[] { "archive", "rhwp", "wic", "vision", "7zip", "h2orestart", "jre", "vcruntime" })
+        {
+            var catalog = new ConverterCatalog([new ControlledConverter(id, false, [new("md", "pptx")])]);
+            var (_, formats, _) = await RunWith(catalog, "formats", "md", "--json");
+            Assert.Empty(Strings(Result(formats).GetProperty("withEngines")));
+            var (_, output, _) = await RunWith(catalog, "convert", source, "--to", "pptx", "--json");
+            Hints(FileResultOf(output));
+        }
+        var unsupported = Package("pandoc", false, new ConversionEdge("md", "pptx"));
+        unsupported.Reason = "engine.reason.unsupported_platform";
+        var (_, listing, _) = await RunWith(new([unsupported]), "formats", "md", "--json");
+        Assert.Empty(Strings(Result(listing).GetProperty("withEngines")));
+        var (_, failed, _) = await RunWith(new([unsupported]), "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(failed));
+
+        var bridge = new ControlledConverter("built-in", true, [new("md", "html")]);
+        var catalogWithBridge = new ConverterCatalog([bridge, Package("pandoc", false, new ConversionEdge("html", "pptx"))]);
+        (_, failed, _) = await RunWith(catalogWithBridge, "convert", source, "--to", "pptx", "--json");
+        Hints(FileResultOf(failed), "pandoc");
+        // A cheaper missing non-package alternative must be filtered before choosing the route.
+        await Optional_targets_and_failure_hints_agree();
+    }
+
+    [Fact]
+    public async Task Non_route_failures_do_not_suggest_packages()
+    {
+        var magick = new Filee.Engines.Magick.MagickImageConverter();
+        var catalog = new ConverterCatalog([magick, Package("pandoc", false, new ConversionEdge("png", "jpg"))]);
+        Assert.NotNull(catalog.CreatePlanner().Plan("png", "jpg"));
+        var (_, output, _) = await RunWith(catalog, "convert", Input("png", "not a png"), "--to", "jpg", "--json");
+        Assert.Equal("error.conversion_failed", FileResultOf(output).GetProperty("errorKey").GetString());
+        Assert.False(FileResultOf(output).TryGetProperty("needsEngines", out _));
+        foreach (var (extension, content, key) in new[] {
+            ("png", "", "error.empty_file"), ("unknown", "bytes", "error.unsupported_source") })
+        {
+            (_, output, _) = await RunWith(catalog, "convert", Input(extension, content), "--to", "jpg", "--json");
+            var file = FileResultOf(output);
+            Assert.Equal(key, file.GetProperty("errorKey").GetString());
+            Assert.False(file.TryGetProperty("needsEngines", out _));
+        }
+        foreach (var key in new[] { "error.no_route", "error.needs_shaping", "error.cannot_turn", "" })
+        {
+            var refusal = new ControlledConverter("built-in", true, [new("md", "pptx")])
+            {
+                Convert = (_, _) => throw new ConversionRefusedException(key, "not a route request"),
+            };
+            (_, output, _) = await RunWith(new([refusal]), "convert", Input("md"), "--to", "pptx", "--json");
+            Assert.Equal(key, FileResultOf(output).GetProperty("errorKey").GetString());
+            Assert.False(FileResultOf(output).TryGetProperty("needsEngines", out _));
+        }
+        var unshaped = new ControlledConverter("rhwp", true, [new("md", "pptx", Unshaped: true)]) { NeedsShaping = true };
+        (_, output, _) = await RunWith(new([unshaped]), "convert", Input("md"), "--to", "pptx", "--json");
+        Assert.Equal("error.needs_shaping", FileResultOf(output).GetProperty("errorKey").GetString());
+        Assert.False(FileResultOf(output).TryGetProperty("needsEngines", out _));
+        AddPresets(new Preset { Id = "turn", TargetFormat = "pptx", Image = { Rotation = ImageRotation.Right90 } });
+        (_, output, _) = await RunWith(new([new ControlledConverter("built-in", true, [new("md", "pptx")])]),
+            "convert", Input("md"), "--preset", "turn", "--json");
+        Assert.Equal("error.cannot_turn", FileResultOf(output).GetProperty("errorKey").GetString());
+        Assert.False(FileResultOf(output).TryGetProperty("needsEngines", out _));
+    }
+
+    [Fact]
+    public async Task Cancelled_files_do_not_invent_failure_metadata()
+    {
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var converter = new ControlledConverter("built-in", true, [new("md", "html")])
+        {
+            Convert = async (_, token) =>
+            {
+                var cancelled = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                using var registration = token.Register(() => cancelled.TrySetCanceled(token));
+                started.TrySetResult();
+                try { await cancelled.Task; }
+                finally { ended.TrySetResult(); }
+                return [];
+            },
+        };
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var output = new StringWriter();
+        var errors = new StringWriter();
+        var running = Cli.RunAsync(["convert", Input("md"), "--to", "html", "--json"], output, errors, stop.Token,
+            () => ControlledHost(new([converter])));
+        try
+        {
+            await started.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        }
+        finally { stop.Cancel(); }
+        Assert.Equal(1, await running.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
+        await ended.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+        var root = Result(output.ToString());
+        Assert.Equal(1, root.GetProperty("failed").GetInt32());
+        Assert.Equal(0, root.GetProperty("converted").GetInt32());
+        Assert.Equal("", errors.ToString());
+        var file = root.GetProperty("files")[0];
+        Assert.Equal(["source", "state", "outputs", "error"], file.EnumerateObject().Select(p => p.Name));
+        Assert.Equal("cancelled", file.GetProperty("state").GetString());
+        Assert.Equal("conversion failed", file.GetProperty("error").GetString());
+        Assert.Empty(Strings(file.GetProperty("outputs")));
+        Assert.False(file.TryGetProperty("errorKey", out _));
+        Assert.False(file.TryGetProperty("needsEngines", out _));
+    }
+
+    [Fact]
+    public async Task Engine_hints_follow_the_failed_operation()
+    {
+        var mp3 = Input("mp3");
+        var catalog = new ConverterCatalog([Package("ffmpeg", false, new ConversionEdge("mp3", "mp3"))]);
+        var (_, output, _) = await RunWith(catalog, "convert", mp3, "--to", "mp3", "--json");
+        Hints(FileResultOf(output), "ffmpeg");
+        AddPresets(new Preset { Id = "same", TargetFormat = "*" });
+        (_, output, _) = await RunWith(catalog, "convert", mp3, "--preset", "same", "--json");
+        Hints(FileResultOf(output), "ffmpeg");
+        (_, output, _) = await RunWith(catalog, "formats", "mp3", "--json");
+        Assert.DoesNotContain("mp3", Strings(Result(output).GetProperty("withEngines")));
+
+        var cases = new (string Source, Preset Preset, ConversionEdge Edge, string Package)[] {
+            ("mp4", new() { TargetFormat = "png", Media = { SaveEveryFrame = true } }, new("mp4", "png", FrameSequence: true), "ffmpeg"),
+            ("jpg", new() { TargetFormat = "mp4", Media = { ExtractMotionPhoto = true } }, new("jpg", "mp4", MotionPhoto: true), "ffmpeg"),
+            ("mp4", new() { TargetFormat = "jpg", Media = { LivePhoto = LivePhotoKind.Android } }, new("mp4", "jpg", LivePhoto: true), "ffmpeg"),
+            ("png", new() { TargetFormat = "pdf", Pdf = { Ocr = true } }, new("png", "pdf", Ocr: true), "tesseract"),
+        };
+        foreach (var (source, preset, edge, package) in cases)
+        {
+            preset.Id = "special-" + Guid.NewGuid().ToString("N");
+            AddPresets(preset);
+            var specialCatalog = new ConverterCatalog([
+                new ControlledConverter("ordinary", true, [new(edge.From, edge.To)]),
+                Package(package, false, edge),
+            ]);
+            (_, output, _) = await RunWith(specialCatalog, "convert", Input(source), "--preset", preset.Id, "--json");
+            Hints(FileResultOf(output), package);
+            (_, output, _) = await RunWith(specialCatalog, "convert", Input(source), "--to", preset.TargetFormat, "--json");
+            Assert.Equal("done", FileResultOf(output).GetProperty("state").GetString());
+            Assert.False(FileResultOf(output).TryGetProperty("needsEngines", out _));
+        }
+
+        // Intermediate PDF, TIFF and slideshow PNG requests discard final-output-only flags.
+        var intermediateCases = new (Preset Preset, string Target)[] {
+            (new() { TargetFormat = "pdf", Pdf = { MergeIntoSingle = true, Ocr = true } }, "pdf"),
+            (new() { TargetFormat = "tiff", Image = { MultiPageTiff = true }, Media = { SaveEveryFrame = true } }, "tiff"),
+            (new() { TargetFormat = "mp4", Media = { Slideshow = true, ExtractMotionPhoto = true } }, "png"),
+        };
+        foreach (var (preset, target) in intermediateCases)
+        {
+            preset.Id = "intermediate-" + target;
+            AddPresets(preset);
+            var edge = new ConversionEdge("jpg", target, Ocr: preset.Pdf.Ocr);
+            var package = preset.Pdf.Ocr ? "tesseract" : "pandoc";
+            catalog = new([Package(package, false, edge)]);
+            var source = Input("jpg");
+            var second = Path.Combine(_folder, "second.jpg");
+            File.WriteAllText(second, "input");
+            (_, output, _) = await RunWith(catalog, "convert", source, second, "--preset", preset.Id, "--json");
+            Assert.All(Result(output).GetProperty("files").EnumerateArray(), file => Hints(file, package));
+        }
+
+        var imageJoiner = new ControlledConverter("joiner", true, []) { ReadsImages = false };
+        var merge = new Preset { Id = "plain-merge", TargetFormat = "jpg", Image = { JoinIntoOne = true }, Pdf = { Ocr = true } };
+        AddPresets(merge);
+        catalog = new([imageJoiner, Package("pandoc", false, new ConversionEdge("heic", "png")), Package("tesseract", false, new ConversionEdge("heic", "pdf", Ocr: true))]);
+        (_, output, _) = await RunWith(catalog, "convert", Input("heic"), "--preset", merge.Id, "--json");
+        Hints(FileResultOf(output), "pandoc");
+        // The image joiner cannot write the target. An ordinary package route is irrelevant.
+        imageJoiner.ReadsImages = true;
+        catalog = new([imageJoiner, Package("pandoc", false, new ConversionEdge("heic", "jpg"))]);
+        (_, output, _) = await RunWith(catalog, "convert", Input("heic"), "--preset", merge.Id, "--json");
+        Hints(FileResultOf(output));
+    }
+
+    [Fact]
+    public async Task Engine_less_cli_discovery_is_verified()
+    {
+        var packageIds = EngineDownloads.Packages.SelectMany(p => p.ConverterIds).ToHashSet();
+        if (Environment.GetEnvironmentVariable("FILEE_753_VERIFY_NO_ENGINES") == "1")
+        {
+            await using var host = CliHost.Create(_settings);
+            TestContext.Current.TestOutputHelper!.WriteLine($"BaseDirectory={AppContext.BaseDirectory}; Data={host.Store.Directory}; " +
+                $"DownloadRoot={EngineEnvironment.DownloadRoot}; SearchSystem={EngineEnvironment.SearchSystem}; " +
+                $"OwnCopies={string.Join(",", EngineEnvironment.OwnCopies)}; CWD={Environment.CurrentDirectory}");
+            var converters = host.Catalog.All.Where(c => packageIds.Contains(c.Id)).ToArray();
+            Assert.Equal(packageIds.Order(), converters.Select(c => c.Id).Order());
+            foreach (var converter in converters)
+            {
+                var status = host.Catalog.StatusOf(converter);
+                TestContext.Current.TestOutputHelper.WriteLine($"{converter.Id}: available={status.IsAvailable}, reason={status.ReasonKey}, detail={status.Detail}");
+                Assert.False(status.IsAvailable);
+            }
+        }
+        else
+        {
+            var catalog = new ConverterCatalog(EngineDownloads.Packages.Select(p => Package(p.Id, false)));
+            Assert.Equal(packageIds.Order(), catalog.All.Select(c => c.Id).Order());
+            Assert.All(catalog.All, c => Assert.False(catalog.StatusOf(c).IsAvailable));
+            var (code, output, errors) = await RunWith(catalog, "formats", "md", "--json");
+            Assert.Equal(0, code);
+            Assert.Equal("", errors);
+            Assert.Empty(Strings(Result(output).GetProperty("withEngines")));
+        }
+    }
+
+    private sealed class ControlledConverter(string id, bool available, IReadOnlyList<ConversionEdge> edges)
+        : IConverter, ITextShapingCheck, IImageJoiner
+    {
+        public string Id => id;
+        public string DisplayName => id;
+        public int MaxParallelism => 1;
+        public bool Available { get; set; } = available;
+        public string Reason { get; set; } = "engine.reason.not_installed";
+        public IReadOnlyList<ConversionEdge> Edges { get; set; } = edges;
+        public bool NeedsShaping { get; init; }
+        public bool ReadsImages { get; set; }
+        public Func<ConversionStep, CancellationToken, Task<IReadOnlyList<string>>>? Convert { get; set; }
+        public EngineStatus GetStatus() => Available ? EngineStatus.Available() : EngineStatus.Unavailable(Reason);
+        public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
+            Convert?.Invoke(step, cancellationToken) ?? Write(step);
+        public static Task<IReadOnlyList<string>> Write(ConversionStep step)
+        {
+            if (step.Output.Allocate(step.To) is not { } path)
+                return Task.FromResult<IReadOnlyList<string>>([]);
+            File.WriteAllText(path, "converted");
+            return Task.FromResult<IReadOnlyList<string>>([path]);
+        }
+        public TextScripts ScanScripts(string sourcePath, string sourceFormat) => new(NeedsShaping ? "Arabic" : null, null);
+        public bool CanRead(string format) => ReadsImages;
+        public bool CanWrite(string format) => false;
+        public Task JoinAsync(IReadOnlyList<(string Path, string Format)> inputs, string outputPath, string format, ImageOptions options,
+            IProgress<double>? progress, CancellationToken cancellationToken) => throw new InvalidOperationException("Unexpected image join");
+    }
+
+    private sealed class UnexpectedMerger : IPdfMerger, ITiffMerger, IMediaJoiner
+    {
+        public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Unexpected PDF merge");
+        public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, ImageOptions options, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Unexpected TIFF merge");
+        public Task JoinAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
+            string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken) =>
+            throw new InvalidOperationException("Unexpected media join");
     }
 }

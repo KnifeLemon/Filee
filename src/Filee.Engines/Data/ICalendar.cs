@@ -232,8 +232,9 @@ internal static partial class ICalendar
     {
         if (zones.TryGetValue(id, out var definition) && !definition.HasRule && definition.Transitions.Count > 0)
         {
-            var ordered = definition.Transitions.OrderBy(t => new DateTimeOffset(t.Local, t.From)).ToList();
-            var found = ordered.LastOrDefault(t => new DateTimeOffset(t.Local, t.From) <= instant);
+            // DateTimeOffset only accepts whole-minute offsets; VTIMEZONE also allows seconds.
+            var ordered = definition.Transitions.OrderBy(t => t.Local - t.From).ToList();
+            var found = ordered.LastOrDefault(t => t.Local - t.From <= instant.UtcDateTime);
             return found == default ? ordered[0].From : found.To;
         }
         try { return TimeZoneInfo.FindSystemTimeZoneById(id).GetUtcOffset(instant); }
@@ -254,7 +255,17 @@ internal static partial class ICalendar
             return text + "Z";
         var id = property.Parameter("TZID");
         var offset = id.Length == 0 ? null : Offset(id, value, zones);
-        return offset is null ? text : new DateTimeOffset(value, offset.Value).ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+        return offset is null ? text : DateCellAtOffset(value, offset.Value);
+    }
+
+    private static string DateCellAtOffset(DateTime local, TimeSpan offset)
+    {
+        // ISO offset strings in our CSV and DateTimeOffset cannot represent offset seconds or offsets beyond 14 hours.
+        // A UTC cell preserves the instant without rounding it.
+        if (offset.Ticks % TimeSpan.TicksPerMinute != 0 || offset.Duration() > TimeSpan.FromHours(14))
+            return (local - offset).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture);
+        return new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), offset)
+            .ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
     }
 
     private readonly record struct CalendarDuration(TimeSpan Days, TimeSpan Clock);
@@ -333,9 +344,9 @@ internal static partial class ICalendar
                 if (!date && !utc && duration.Clock != TimeSpan.Zero && zone.Length > 0
                     && Offset(zone, dayEnd, component.Zones) is { } dayOffset)
                 {
-                    var instant = new DateTimeOffset(dayEnd, dayOffset).Add(duration.Clock);
+                    var instant = new DateTimeOffset(dayEnd - dayOffset, TimeSpan.Zero).Add(duration.Clock);
                     if (OffsetAtInstant(zone, instant, component.Zones) is { } endOffset)
-                        endCell = instant.ToOffset(endOffset).ToString("yyyy-MM-dd'T'HH:mm:sszzz", CultureInfo.InvariantCulture);
+                        endCell = DateCellAtOffset(instant.UtcDateTime + endOffset, endOffset);
                 }
             }
             rows.Add(

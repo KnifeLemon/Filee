@@ -367,7 +367,7 @@ public class RecentConversionTests
             newest.Undoable = [Stamp(photo)];
             store.AddHistory(newest);
 
-            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate("home");
             var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
             window.Show();
@@ -397,6 +397,25 @@ public class RecentConversionTests
             theme.Apply(new ThemeSettings(), language);
             try { Directory.Delete(folder, true); } catch (IOException) { }
         }
+    }
+
+    [AvaloniaFact]
+    public void A_built_in_preset_name_follows_the_language_filee_is_in_now()
+    {
+        // #744: converted while Filee was in Chinese, looked at in English.
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<ILocalizer>();
+        var platform = new OpeningPlatform(false);
+        var builtIn = Entry([], "长图");
+        builtIn.PresetNameKey = "preset.long_image";
+        Assert.Equal(loc["preset.long_image"], new HistoryItemViewModel(builtIn, loc, platform).Title);
+        Assert.NotEqual("长图", loc["preset.long_image"]);
+
+        // The user's own name, an older entry and a key Filee no longer has keep the saved name.
+        Assert.Equal("My PNG", new HistoryItemViewModel(Entry([], "My PNG"), loc, platform).Title);
+        var gone = Entry([], "旧名");
+        gone.PresetNameKey = "preset.no_such_preset";
+        Assert.Equal("旧名", new HistoryItemViewModel(gone, loc, platform).Title);
     }
 
     private static HistoryEntry Entry(List<string> outputs, string preset = "PNG", List<string>? sources = null) => new()

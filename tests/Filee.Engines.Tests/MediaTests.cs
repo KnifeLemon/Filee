@@ -5,6 +5,7 @@
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.Json;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -186,6 +187,213 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var file = Assert.Single(job.Files);
         Assert.Equal((FileState.Failed, "error.m4s_needs_init"), (file.State, file.ErrorKey));
         Assert.Empty(Directory.GetFiles(folder, "segment*.mp4"));
+    }
+
+    [Fact]
+    public void Voice_memo_qta_goes_to_every_audio_target_in_one_ffmpeg_step()
+    {
+        // #646: Apple Voice Memos' QuickTime audio, read through FFmpeg's mov demuxer; never a target.
+        foreach (var target in MediaEncoding.AudioTargets.Keys)
+        {
+            var route = Planner().Plan("qta", target);
+            Assert.True(route is not null, target);
+            Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        }
+        Assert.DoesNotContain(new FfmpegConverter().Edges, e => e.To == "qta");
+        Assert.Null(Planner().Plan("mp3", "qta"));
+    }
+
+    [Fact]
+    public async Task A_voice_memo_qta_converts_to_audio()
+    {
+        SkipUnlessInstalled();
+        var memo = Path.Combine(fx.NewFolder(), "memo.qta");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi",
+            "-i", "sine=frequency=440:sample_rate=44100:duration=2", "-c:a", "aac", "-f", "mov", memo]);
+
+        foreach (var target in new[] { "mp3", "wav", "m4a" })
+        {
+            var probed = await ProbeAsync(await ConvertAsync(memo, target));
+            var audio = Assert.Single(probed.Streams, s => s.Type == "audio");
+            Assert.InRange(probed.Duration, 1.7, 2.4);
+            if (target == "m4a")
+                Assert.Equal("aac", audio.Codec);
+        }
+    }
+
+    [Fact]
+    public async Task A_qta_with_more_tracks_converts_its_first_audio_track()
+    {
+        // #646: audio targets take the first sound track (-map 0:a:0), not the second one or a mix of both, and leave
+        // text and timecode (data) tracks out. The tracks differ in channels and length so the result tells them apart.
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var srt = Path.Combine(folder, "words.srt");
+        await File.WriteAllTextAsync(srt, "1\n00:00:00,000 --> 00:00:00,900\nhello\n", TestContext.Current.CancellationToken);
+        // FFmpeg writes a timecode (tmcd) track only beside a video track, so the memo is copied out of a clip with one.
+        var stage = Path.Combine(folder, "stage.mov");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=1",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=2",
+            "-i", srt, "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=1:duration=1",
+            "-ac:a:1", "2", "-map", "0:a", "-map", "1:a", "-map", "2:s", "-map", "3:v",
+            "-c:a", "aac", "-c:s", "mov_text", "-c:v", "mjpeg", "-timecode", "00:00:00:00", "-f", "mov", stage]);
+        var memo = Path.Combine(folder, "memo.qta");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y", "-i", stage,
+            "-map", "0:a", "-map", "0:s", "-map", "0:d", "-c", "copy", "-f", "mov", memo]);
+        var source = await ProbeAsync(memo);
+        Assert.Equal(["audio", "audio", "subtitle", "data"], source.Streams.Select(s => s.Type));
+        Assert.Equal([1, 2], source.Streams.Where(s => s.Type == "audio").Select(s => s.Channels));
+
+        var probed = await ProbeAsync(await ConvertAsync(memo, "mka"));
+        var audio = Assert.Single(probed.Streams);
+        Assert.Equal(("audio", 1), (audio.Type, audio.Channels));
+        Assert.InRange(probed.Duration, 0.8, 1.3);
+    }
+
+    [Fact]
+    public async Task A_qta_whose_first_track_ffmpeg_cannot_decode_converts_the_next_one()
+    {
+        SkipUnlessInstalled();
+        var memo = Path.Combine(fx.NewFolder(), "memo.qta");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=1",
+            "-ac:a:0", "4", "-map", "0:a", "-map", "1:a", "-c:a", "aac", "-f", "mov", memo]);
+        WithoutDecoder(memo);
+        Assert.Equal(["apple_apac", "aac"], (await ProbeAsync(memo)).Streams.Select(s => s.Codec));
+
+        foreach (var target in new[] { "mp3", "wav", "m4a" })
+        {
+            var probed = await ProbeAsync(await ConvertAsync(memo, target));
+            var audio = Assert.Single(probed.Streams);
+            Assert.Equal(("audio", 1), (audio.Type, audio.Channels));
+            Assert.InRange(probed.Duration, 0.8, 1.3);
+        }
+    }
+
+    [Fact]
+    public async Task A_qta_whose_only_sound_ffmpeg_cannot_decode_fails_naming_the_codec()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var memo = Path.Combine(folder, "memo.qta");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "sine=frequency=440:duration=2", "-c:a", "aac", "-f", "mov", memo]);
+        WithoutDecoder(memo);
+        var job = await fx.ConvertAsync([memo], new Preset { TargetFormat = "mp3" });
+        var file = Assert.Single(job.Files);
+        Assert.Equal(FileState.Failed, file.State);
+        Assert.Contains("apple_apac", file.ErrorDetail);
+        Assert.Empty(Directory.GetFiles(folder, "*.mp3"));
+    }
+
+    [Fact]
+    public async Task A_video_whose_first_sound_ffmpeg_cannot_decode_keeps_the_next_one()
+    {
+        SkipUnlessInstalled();
+        var video = Path.Combine(fx.NewFolder(), "clip.mov");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=2",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a", "-ac:a:0", "4",
+            "-c:v", "mjpeg", "-c:a", "aac", "-f", "mov", video]);
+        WithoutDecoder(video);
+        Assert.Equal(["apple_apac", "aac"], (await ProbeAsync(video)).Streams.Where(s => s.Type == "audio").Select(s => s.Codec));
+        var probed = await ProbeAsync(await ConvertAsync(video, "mkv"));
+        Assert.Equal(1, Assert.Single(probed.Streams, s => s.Type == "audio").Channels);
+        Assert.Single(probed.Streams, s => s.Type == "video");
+    }
+
+    [Fact]
+    public async Task A_video_whose_first_sound_ffprobe_cannot_name_keeps_the_next_one()
+    {
+        SkipUnlessInstalled();
+        var video = Path.Combine(fx.NewFolder(), "clip.mov");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=2",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a", "-ac:a:0", "4",
+            "-c:v", "mjpeg", "-c:a", "aac", "-f", "mov", video]);
+        WithoutDecoder(video, tag: "zzzz");
+        var result = await ProcessRunner.RunAsync(Tools.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "json", video],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        using var json = JsonDocument.Parse(result.StandardOutput);
+        Assert.Equal([null, "aac"], json.RootElement.GetProperty("streams").EnumerateArray()
+            .Select(s => s.TryGetProperty("codec_name", out var codec) ? codec.GetString() : null));
+        var probed = await ProbeAsync(await ConvertAsync(video, "mkv"));
+        Assert.Equal(1, Assert.Single(probed.Streams, s => s.Type == "audio").Channels);
+        Assert.Single(probed.Streams, s => s.Type == "video");
+    }
+
+    [Fact]
+    public async Task A_video_whose_later_sound_ffmpeg_cannot_decode_keeps_only_the_first()
+    {
+        SkipUnlessInstalled();
+        var video = Path.Combine(fx.NewFolder(), "clip.mov");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=2",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a", "-ac:a:1", "4",
+            "-c:v", "mjpeg", "-c:a", "aac", "-f", "mov", video]);
+        WithoutDecoder(video, track: 1);
+        Assert.Equal(["aac", "apple_apac"], (await ProbeAsync(video)).Streams.Where(s => s.Type == "audio").Select(s => s.Codec));
+        var probed = await ProbeAsync(await ConvertAsync(video, "mkv"));
+        Assert.Equal(1, Assert.Single(probed.Streams, s => s.Type == "audio").Channels);
+        Assert.Single(probed.Streams, s => s.Type == "video");
+    }
+
+    [Fact]
+    public async Task A_late_starting_first_sound_stays_the_first_track()
+    {
+        SkipUnlessInstalled();
+        var late = Path.Combine(fx.NewFolder(), "late.ts");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=64x64:rate=10:duration=12",
+            "-itsoffset", "8", "-f", "lavfi", "-i", "sine=frequency=440:duration=4",
+            "-f", "lavfi", "-i", "sine=frequency=880:duration=12",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a", "-c:v", "mpeg2video", "-c:a", "aac", "-f", "mpegts", late]);
+        var info = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, late, TestContext.Current.CancellationToken);
+        Assert.Equal(("aac", 0), (info.Audio!.Codec, info.Audio.Ordinal));
+        Assert.Equal([0, 1], info.AudioTracks.Select(t => t.Ordinal));
+        var args = Args("mkv", info: info);
+        Assert.Equal(["0:V:0", "0:a:0", "0:a:1"], args.Where((a, i) => i > 0 && args[i - 1] == "-map"));
+        var probed = await ProbeAsync(await ConvertAsync(late, "mp3"));
+        Assert.Single(probed.Streams, s => s.Type == "audio");
+        Assert.InRange(probed.Duration, 3.5, 4.6);
+    }
+
+    /// <summary>Marks one AAC QuickTime track as APAC, which the bundled FFmpeg identifies but cannot decode,
+    /// or a tag ffprobe knows no codec for ("zzzz").</summary>
+    internal static void WithoutDecoder(string path, int track = 0, string tag = "apac")
+    {
+        var bytes = File.ReadAllBytes(path);
+        var at = 0;
+        for (var i = 0; i < (track + 1) * 3; i++)
+        {
+            var index = bytes.AsSpan(at).IndexOf("mp4a"u8);
+            Assert.True(index >= 0, "AAC sample entry not found.");
+            at += index;
+            if (i >= track * 3)
+                Encoding.ASCII.GetBytes(tag).CopyTo(bytes.AsSpan(at));
+            at += 4;
+        }
+        at = 0;
+        for (var i = 0; i <= track; i++)
+        {
+            var index = bytes.AsSpan(at).IndexOf("esds"u8);
+            Assert.True(index >= 0, "AAC descriptor not found.");
+            at += index;
+            if (i == track)
+                "free"u8.CopyTo(bytes.AsSpan(at));
+            at += 4;
+        }
+        File.WriteAllBytes(path, bytes);
     }
 
     /// <summary>The top-level boxes of a short MP4 (32-bit sizes, as FFmpeg writes them for small files).</summary>
@@ -394,6 +602,13 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             info ?? new MediaInfo(TimeSpan.FromSeconds(10), Hd, new AudioStreamInfo(6, 44100), null), "work").Single().Arguments;
 
     private static string After(IReadOnlyList<string> args, string option) => args[args.ToList().IndexOf(option) + 1];
+
+    [Fact]
+    public void Audio_targets_map_the_track_the_probe_chose()
+    {
+        var info = new MediaInfo(TimeSpan.FromSeconds(1), null, new AudioStreamInfo(1, 44100, "aac", 1), null);
+        Assert.Equal("0:a:1", After(Args("mp3", info: info), "-map"));
+    }
 
     [Fact]
     public void Quality_bitrate_and_size_options_reach_the_encoders()
@@ -704,6 +919,35 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var raw = MediaInfo.Parse("""{ "streams": [ { "index": 0, "codec_type": "audio", "channels": 1, "sample_rate": "8000" } ], "format": {} }""");
         Assert.Null(raw.Duration);
         Assert.Null(raw.Video);
+    }
+
+    [Fact]
+    public void Probe_skips_audio_ffmpeg_cannot_decode()
+    {
+        const string json = """
+            { "streams": [
+              { "index": 0, "codec_type": "video", "codec_name": "h264" },
+              { "index": 1, "codec_type": "audio", "codec_name": "apple_apac", "channels": 4, "sample_rate": "48000" },
+              { "index": 2, "codec_type": "audio", "codec_name": "aac", "channels": 0, "sample_rate": "0" },
+              { "index": 3, "codec_type": "audio", "codec_name": "aac", "channels": 2, "sample_rate": "48000", "sample_fmt": "fltp" },
+              { "index": 4, "codec_type": "audio", "channels": 2 }
+            ] }
+            """;
+        var decodable = new HashSet<string> { "h264", "aac" };
+        var info = MediaInfo.Parse(json, decodable);
+        Assert.Equal(new AudioStreamInfo(0, 0, "aac", 1), info.Audio);
+        Assert.Equal([1, 2], info.AudioTracks.Select(t => t.Ordinal));
+        var unknown = MediaInfo.Parse(json);
+        Assert.Equal(new AudioStreamInfo(4, 48000, "apple_apac"), unknown.Audio);
+        Assert.Equal([0, 1, 2, 3], unknown.AudioTracks.Select(t => t.Ordinal));
+        var only = MediaInfo.Parse("""
+            { "streams": [{ "codec_type": "audio", "codec_name": "apple_apac", "channels": 4, "sample_rate": "48000" }] }
+            """, decodable);
+        Assert.Equal(new AudioStreamInfo(4, 48000, "apple_apac"), only.Audio);
+        Assert.Equal([0], only.AudioTracks.Select(t => t.Ordinal));
+        var unnamed = MediaInfo.Parse("""{ "streams": [{ "codec_type": "audio", "channels": 2 }] }""", decodable);
+        Assert.Equal(0, unnamed.Audio!.Ordinal);
+        Assert.Equal([0], unnamed.AudioTracks.Select(t => t.Ordinal));
     }
 
     [Fact]

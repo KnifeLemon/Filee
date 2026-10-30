@@ -16,6 +16,7 @@ public class FileManagerScopeTests
     [InlineData("dopus.lister", "dopus")]
     [InlineData("TTOTAL_CMD", "TOTALCMD64")]
     [InlineData("ThunderRT6FormDC", "XYplorer")]
+    [InlineData("Unknown", "FPilot")] // File Pilot: found by its process name alone
     public void Explorer_the_desktop_and_other_file_managers_count(string windowClass, string process) =>
         Assert.True(WindowsPlatformServices.IsFileManager(windowClass, process));
 

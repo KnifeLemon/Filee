@@ -240,7 +240,7 @@ internal static partial class MediaEncoding
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         // An input without sound is fine: the output simply has no audio track. Every track is kept (languages,
         // commentary, issue #396), except in containers that hold one and in a clip, which keeps the first one as a
-        // copied or edited clip does.
+        // copied or edited clip does. MediaInfo has already left out tracks FFmpeg cannot decode.
         IReadOnlyList<AudioStreamInfo> tracks = options.RemoveAudio ? []
             : clip is not null || SingleAudioTargets.Contains(target) ? [.. info.AudioTracks.Take(1)]
             : info.AudioTracks;
@@ -248,7 +248,7 @@ internal static partial class MediaEncoding
         // A clip: FFmpeg seeks the input and decodes from the key frame before the start, so the first frame is exact.
         List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
-            args.AddRange(["-map", $"0:a:{i}"]);
+            args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
 
         if (clip is null && !info.RawStream && CanCopyVideo(target, video, options))
         {
@@ -322,7 +322,7 @@ internal static partial class MediaEncoding
 
         List<string> args = [.. Common, .. ClipInput(clip), "-i", input, "-map", "0:V:0"];
         if (audio)
-            args.AddRange(["-map", "0:a:0"]);
+            args.AddRange(["-map", $"0:a:{info.Audio!.Ordinal}"]);
         args.AddRange(["-c", "copy"]);
         // Apple plays HEVC in MP4/MOV only under the "hvc1" tag (FFmpeg keeps "hev1" from some sources).
         if (video.Codec == "hevc" && target is "mp4" or "m4v" or "mov")
@@ -679,7 +679,7 @@ internal static partial class MediaEncoding
         // Ogg: the tags, and the picture as a comment, come from a metadata file (input 1) instead of the source.
         if (extras?.MetadataFile is { } metadata)
             args.AddRange(["-i", metadata]);
-        args.AddRange(["-map", "0:a:0"]);
+        args.AddRange(["-map", $"0:a:{audio.Ordinal}"]);
         if (info.CoverStreamIndex is { } cover && CoverTargets.Contains(target))
             args.AddRange(["-map", $"0:{cover}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]);
         if (extras is { AttachmentFile: { } picture, AttachmentMime: { } mime })

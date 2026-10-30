@@ -110,6 +110,12 @@ public sealed class LocalizationService : ILocalizer
         var ui = osLanguage();
         if (ui.Equals("de", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("de-", StringComparison.OrdinalIgnoreCase))
             return "de";
+        // "it" and every region ("it-IT", "it-CH", …), but not Itelmen "itl".
+        if (ui.Equals("it", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("it-", StringComparison.OrdinalIgnoreCase))
+            return "it";
+        // "id" and "id-ID", but not Idoma "idu" or other codes starting with "id".
+        if (ui.Equals("id", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("id-", StringComparison.OrdinalIgnoreCase))
+            return "id";
         if (AppLanguages.PortugueseVariant(ui) is { } portuguese)
             return portuguese;
         if (ui.Equals("tr", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("tr-", StringComparison.OrdinalIgnoreCase))

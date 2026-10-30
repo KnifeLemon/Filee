@@ -111,11 +111,22 @@
           </DockPanel>
           <Slider Minimum="1" Maximum="100" Value="{Binding Quality}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource presets.quality}" />
         </StackPanel>
-        <Grid ColumnDefinitions="Auto,12,170" IsVisible="{Binding ShowQuality}">
-          <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource presets.max_size}" />
-          <NumericUpDown Grid.Column="2" Value="{Binding ImageMaxSizeMb}" Minimum="0" Maximum="4096" Increment="0.5" FormatString="0.#"
-                         ToolTip.Tip="{DynamicResource presets.max_size_hint_image}" AutomationProperties.Name="{DynamicResource presets.max_size}" />
-        </Grid>
+        <!-- File size range (#553, #662): both ends in one unit; the preset keeps megabytes. -->
+        <StackPanel IsVisible="{Binding ShowQuality}" Spacing="4">
+          <TextBlock Classes="label" Text="{DynamicResource presets.size_range}" />
+          <Grid ColumnDefinitions="*,8,Auto,8,*,8,Auto">
+            <NumericUpDown Name="ImageMinSize" Value="{Binding ImageMinSize}" Minimum="0" Maximum="{Binding SizeMaximum}"
+                           Increment="{Binding SizeIncrement}" FormatString="{Binding SizeFormat}"
+                           ToolTip.Tip="{DynamicResource presets.min_size_hint_image}" AutomationProperties.Name="{DynamicResource presets.min_size}" />
+            <TextBlock Grid.Column="2" Text="~" VerticalAlignment="Center" />
+            <NumericUpDown Grid.Column="4" Name="ImageMaxSize" Value="{Binding ImageMaxSize}" Minimum="0" Maximum="{Binding SizeMaximum}"
+                           Increment="{Binding SizeIncrement}" FormatString="{Binding SizeFormat}"
+                           ToolTip.Tip="{DynamicResource presets.max_size_hint_image}" AutomationProperties.Name="{DynamicResource presets.max_size_short}" />
+            <ComboBox Grid.Column="6" Name="ImageSizeUnit" ItemsSource="{Binding SizeUnits}" SelectedItem="{Binding ImageSizeUnit}"
+                      AutomationProperties.Name="{DynamicResource presets.size_unit}" />
+          </Grid>
+          <TextBlock Classes="caption danger" Text="{Binding SizeRangeError}" IsVisible="{Binding SizeRangeError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.resize}" />
@@ -291,6 +302,23 @@
         <StackPanel Spacing="2" IsVisible="{Binding ShowHardwareEncoding}">
           <CheckBox Content="{DynamicResource presets.hardware_encoding}" IsChecked="{Binding HardwareEncoding}" />
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.hardware_encoding_hint}" />
+        </StackPanel>
+        <StackPanel Spacing="2" IsVisible="{Binding ShowCaption}">
+          <CheckBox Content="{DynamicResource presets.caption_video}" IsChecked="{Binding Caption}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.caption_video_hint}" />
+          <Grid ColumnDefinitions="*,12,*" Margin="28,6,0,0" IsVisible="{Binding Caption}">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.spoken_language}" />
+              <ComboBox ItemsSource="{Binding SpokenLanguageChoices}" SelectedItem="{Binding SpokenLanguage}" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.spoken_language}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="vm:IChoice">
+                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+              </ComboBox>
+            </StackPanel>
+          </Grid>
         </StackPanel>
       </StackPanel>
     </Border>

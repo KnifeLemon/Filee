@@ -41,8 +41,8 @@ install/uninstall scripts. `Filee-<version>-<rid>-SHA256SUMS.txt` verifies the a
 and notarization. `-SigningIdentity` can supply a signing identity, but does not perform notarization.
 
 Linux release packages must run on Ubuntu 22.04 (glibc 2.35). CI builds rhwp from source on Ubuntu 22.04
-(`build/build-linux-native.py`) and passes it with `-RhwpOverride`; a local package without it needs the glibc of the
-machine that built it. Check a package with
+(`build/build-native.py`) and passes it with `-RhwpOverride` (and on ARM64 Unhwp's library with `-UnhwpOverride`); a
+local package without it needs the glibc of the machine that built it. Check a package with
 `python3 build/check-elf-glibc.py --max 2.35 <unpacked package>`. See [docs/ENGINES.md](docs/ENGINES.md#linux-builds-for-older-glibc).
 
 - **Linux:** drag gestures require X11 by default. Install the Avalonia desktop dependencies (fontconfig, FreeType, X11,

@@ -60,10 +60,21 @@ public sealed partial class ImageEditViewModel : ObservableObject
         ResizeModes = ImageEditTool.ResizeModes.Select(v => new Choice<ResizeMode>(v, loc[$"presets.resize.{v}"])).ToList();
         Rotations = Enum.GetValues<ImageRotation>().Select(v => new Choice<ImageRotation>(v, loc[$"presets.rotation.{v}"])).ToList();
         Flips = Enum.GetValues<ImageFlip>().Select(v => new Choice<ImageFlip>(v, loc[$"presets.flip.{v}"])).ToList();
+        Units = Enum.GetValues<SizeUnit>().Select(v => new Choice<SizeUnit>(v, loc[$"image_edit.unit.{v}"])).ToList();
 
         var image = tool.Image;
         _target = Targets.FirstOrDefault(t => t.Value == tool.TargetFormat) ?? Targets[0];
-        _resize = ResizeModes.FirstOrDefault(r => r.Value == image.Resize) ?? ResizeModes[0];
+        // A free width × height is stored as CustomSize with Resize None (as presets store it, #576).
+        _resize = image.CustomSize is not null
+            ? ResizeModes.First(r => r.Value == ResizeMode.Custom)
+            : ResizeModes.FirstOrDefault(r => r.Value == image.Resize) ?? ResizeModes[0];
+        // Until one is chosen: the shape kept, so a first try never squeezes a photo.
+        var custom = image.CustomSize ?? new CustomImageSize { LockAspect = true };
+        _unit = Units.FirstOrDefault(u => u.Value == custom.Unit) ?? Units[0];
+        _dpi = Math.Clamp(custom.Dpi, CustomImageSize.MinDpi, CustomImageSize.MaxDpi);
+        _customWidth = (decimal)CustomImageSize.FromPixels(custom.ClampedWidth, _unit.Value, _dpi);
+        _customHeight = (decimal)CustomImageSize.FromPixels(custom.ClampedHeight, _unit.Value, _dpi);
+        _lockAspect = custom.LockAspect;
         _rotation = Rotations.FirstOrDefault(r => r.Value == image.Rotation) ?? Rotations[0];
         _flip = Flips.FirstOrDefault(f => f.Value == image.Flip) ?? Flips[0];
         _resizePercent = image.ResizePercent;
@@ -79,13 +90,14 @@ public sealed partial class ImageEditViewModel : ObservableObject
     public IReadOnlyList<Choice<ResizeMode>> ResizeModes { get; }
     public IReadOnlyList<Choice<ImageRotation>> Rotations { get; }
     public IReadOnlyList<Choice<ImageFlip>> Flips { get; }
+    public IReadOnlyList<Choice<SizeUnit>> Units { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowQuality), nameof(SizeAfter))]
     private Choice<string> _target;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowPercent), nameof(ShowLongEdge), nameof(ShowWidth), nameof(SizeAfter))]
+    [NotifyPropertyChangedFor(nameof(ShowPercent), nameof(ShowLongEdge), nameof(ShowWidth), nameof(ShowCustom), nameof(ShowDpi), nameof(SizeAfter))]
     private Choice<ResizeMode> _resize;
 
     [ObservableProperty]
@@ -106,6 +118,30 @@ public sealed partial class ImageEditViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(SizeAfter))]
     private int _width;
 
+    /// <summary>With <see cref="ResizeMode.Custom"/>: the width, in <see cref="Unit"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SizeAfter))]
+    private decimal _customWidth;
+
+    /// <summary>With <see cref="ResizeMode.Custom"/>: the height, in <see cref="Unit"/>.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SizeAfter))]
+    private decimal _customHeight;
+
+    /// <summary>With <see cref="ResizeMode.Custom"/>: fit inside the width × height instead of stretching to it.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SizeAfter))]
+    private bool _lockAspect;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowDpi), nameof(SizeFormat), nameof(SizeAfter))]
+    private Choice<SizeUnit> _unit;
+
+    /// <summary>The resolution a size in cm, mm or inches becomes pixels at; also written into the pictures.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SizeAfter))]
+    private int _dpi;
+
     [ObservableProperty] private bool _grayscale;
     [ObservableProperty] private int _quality;
 
@@ -114,9 +150,31 @@ public sealed partial class ImageEditViewModel : ObservableObject
     partial void OnRotationChanged(Choice<ImageRotation>? oldValue, Choice<ImageRotation> newValue) => Choices.Restore(oldValue, newValue, v => Rotation = v);
     partial void OnFlipChanged(Choice<ImageFlip>? oldValue, Choice<ImageFlip> newValue) => Choices.Restore(oldValue, newValue, v => Flip = v);
 
+    partial void OnUnitChanged(Choice<SizeUnit>? oldValue, Choice<SizeUnit> newValue)
+    {
+        if (Choices.Restore(oldValue, newValue, v => Unit = v) || oldValue is null || oldValue.Value == newValue.Value)
+            return;
+        // The same pixels shown in the new unit, so switching the unit never changes the size by itself.
+        var dpi = Math.Clamp(Dpi, CustomImageSize.MinDpi, CustomImageSize.MaxDpi);
+        CustomWidth = (decimal)CustomImageSize.FromPixels(CustomImageSize.ToPixels((double)CustomWidth, oldValue.Value, dpi), newValue.Value, dpi);
+        CustomHeight = (decimal)CustomImageSize.FromPixels(CustomImageSize.ToPixels((double)CustomHeight, oldValue.Value, dpi), newValue.Value, dpi);
+    }
+
     public bool ShowPercent => Resize.Value == ResizeMode.Percent;
     public bool ShowLongEdge => Resize.Value == ResizeMode.LongEdge;
     public bool ShowWidth => Resize.Value == ResizeMode.Width;
+    public bool ShowCustom => Resize.Value == ResizeMode.Custom;
+
+    /// <summary>A size in cm, mm or inches needs a resolution to become pixels.</summary>
+    public bool ShowDpi => ShowCustom && Unit.Value != SizeUnit.Pixels;
+
+    /// <summary>The width and height boxes: whole pixels, one decimal for mm, two for cm and inches.</summary>
+    public string SizeFormat => Unit.Value switch
+    {
+        SizeUnit.Pixels => "0",
+        SizeUnit.Millimetres => "0.#",
+        _ => "0.##",
+    };
 
     /// <summary>
     /// JPG, WEBP, AVIF and HEIC; with "Same format", when one of the pictures is one of them (a PNG has no quality).
@@ -150,8 +208,16 @@ public sealed partial class ImageEditViewModel : ObservableObject
             return null;
         var options = Options();
         var (width, height) = options.Rotation is ImageRotation.Left90 or ImageRotation.Right90 ? (size.Height, size.Width) : size;
-        var scale = ImageEncoder.ResizeScale(width, height, options);
-        (width, height) = (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
+        if (options.CustomSize is { Width: > 0, Height: > 0, LockAspect: false } stretched)
+        {
+            // Stretched to exactly that size, not scaled.
+            (width, height) = (stretched.ClampedWidth, stretched.ClampedHeight);
+        }
+        else
+        {
+            var scale = ImageEncoder.ResizeScale(width, height, options);
+            (width, height) = (Math.Max(1, (int)Math.Round(width * scale)), Math.Max(1, (int)Math.Round(height * scale)));
+        }
         var target = _targetFor(Pictures[0], Target.Value) is var chosen && chosen == BuiltInData.SameAsSource ? _sourceFormats[0] : chosen;
         var fit = Math.Min(1, ImageEncoder.MaxSide(target) / Math.Max(width, height));
         if (fit < 1)
@@ -166,6 +232,27 @@ public sealed partial class ImageEditViewModel : ObservableObject
     {
         var image = _tool.Image.Clone();
         image.Resize = Resize.Value;
+        image.CustomSize = null;
+        image.MinShortEdge = null;
+        if (Resize.Value == ResizeMode.Custom)
+        {
+            // Stored as presets store it, CustomSize with Resize None, so an older version reads the tool (#576).
+            var dpi = Math.Clamp(Dpi, CustomImageSize.MinDpi, CustomImageSize.MaxDpi);
+            int Side(decimal value) =>
+                Math.Clamp(CustomImageSize.ToPixels((double)value, Unit.Value, dpi), CustomImageSize.MinSide, CustomImageSize.MaxSide);
+            image.Resize = ResizeMode.None;
+            image.CustomSize = new CustomImageSize
+            {
+                Width = Side(CustomWidth),
+                Height = Side(CustomHeight),
+                LockAspect = LockAspect,
+                Unit = Unit.Value,
+                Dpi = dpi,
+            };
+            // A printed size: the pictures say how large they are meant to be printed.
+            if (Unit.Value != SizeUnit.Pixels)
+                image.Dpi = dpi;
+        }
         image.ResizePercent = Math.Clamp(ResizePercent, 1, 1000);
         image.LongEdge = Math.Clamp(LongEdge, 16, 20000);
         image.Width = Math.Clamp(Width, 16, 20000);

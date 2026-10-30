@@ -97,4 +97,25 @@ public sealed class PasteboardPathsTests
         Assert.Contains(PasteboardPaths.FilenamesType, PasteboardPaths.DragTypes);
         Assert.Contains(PasteboardPaths.FileUrlType, PasteboardPaths.DragTypes);
     }
+
+    [Fact]
+    public void AScreenshotOnTheClipboardIsReadAsPngBeforeTiff()
+    {
+        var types = PasteboardPaths.PictureTypes.Select(t => t.Type).ToList();
+
+        Assert.Equal("public.png", types[0]);
+        Assert.Equal("public.tiff", types[^1]);
+        Assert.Equal(types.Count, types.Distinct().Count());
+    }
+
+    [Theory]
+    [InlineData("/Users/a/shot_compressed.png", "public.png")]
+    [InlineData("/Users/a/shot.JPEG", "public.jpeg")]
+    [InlineData("/Users/a/shot.jpg", "public.jpeg")]
+    [InlineData("/Users/a/shot.webp", "org.webmproject.webp")]
+    [InlineData("/Users/a/scan.tif", "public.tiff")]
+    [InlineData("/Users/a/report.pdf", null)]
+    [InlineData("/Users/a/no-extension", null)]
+    public void AConvertedPictureGoesOnTheClipboardUnderItsOwnType(string path, string? type) =>
+        Assert.Equal(type, PasteboardPaths.PictureTypeOf(path));
 }

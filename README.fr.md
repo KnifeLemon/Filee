@@ -29,6 +29,7 @@
 <p align="center">
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/weekly?language=C%23&v=2" alt="Filee: #1 C# repository of the week on Trendshift" width="250" height="55"></a>
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
+  <a href="https://hellogithub.com/repository/KnifeLemon/Filee" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=0847caedd5bd4077a70b90f83afdf83c&claim_uid=jAlIvVMhn0kcEsU" alt="Featured｜HelloGitHub" width="250" height="54" /></a>
 </p>
 
 <p align="center">
@@ -46,7 +47,8 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <b>Français</b> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a>
 </p>
 
 <table>
@@ -57,7 +59,7 @@
       Les formats apparaissent là où vous êtes déjà, et seulement ceux qui ont un sens pour les fichiers que vous faites glisser.
     </td>
     <td width="33%" valign="top">
-      <b>268 formats, sans autre logiciel</b><br>
+      <b>270 formats, sans autre logiciel</b><br>
       Images, PDF, Word, Excel, PowerPoint, HWP, livres numériques, archives, polices, CAO, modèles 3D et données géospatiales fonctionnent sans Office, Hancom Office ni LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -78,6 +80,8 @@
 ## Installation
 
 Téléchargez Filee depuis les [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
+
+<a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/fr%20dark.svg" alt="Microsoft Store" width="200"></a>
 
 - **Windows 10/11** : exécutez `Filee-<version>-win-Setup.exe`, ou décompressez `win-Portable.zip` et lancez `Filee.exe`.
   - Le programme d'installation est celui de Filee, dans les langues de Filee, et ne demande rien d'autre sur le PC.
@@ -129,7 +133,7 @@ Pour annuler, supprimez ces entrées dans Sécurité Windows → Contrôle des a
 - **Des dossiers surveillés** convertissent chaque fichier qui y arrive.
 - **Conversions récentes** dans l'Accueil, chacune avec sa miniature : ouvrez le résultat, ou ouvrez-le avec une autre application.
 - **D'autres points d'entrée** : le menu contextuel, un raccourci clavier, la zone de dépôt et la [commande `filee`](#ligne-de-commande).
-- Thèmes clair et sombre avec votre propre couleur d'accentuation et l'opacité du menu circulaire, en English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (de droite à gauche), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal) et Deutsch.
+- Thèmes clair et sombre avec votre propre couleur d'accentuation et l'opacité du menu circulaire, en English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (de droite à gauche), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano et Bahasa Indonesia.
 
 ## Captures d'écran
 

@@ -136,6 +136,33 @@ public class OcrTextLayerTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var text = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
         Assert.Contains("The quarterly report is ready", text);
     }
+
+    [Fact]
+    public async Task Chinese_and_japanese_words_of_the_layer_join_without_spaces_and_korean_keeps_them()
+    {
+        // Tesseract writes a space after every word, also between the Han characters of one sentence (#691).
+        var folder = fx.NewFolder();
+        var picture = VisionFakes.Picture(folder, "scan.png", 600, 800);
+        var pdf = Path.Combine(folder, "scan.pdf");
+        using (var writer = new OcrPdfWriter())
+        {
+            writer.AddPage(picture, 144, 192,
+            [
+                OcrLine.Estimate("本 书 是 为 USB 入门 和 提高 者 编写 。", 0.1, 0.8, 0.8, 0.04),
+                OcrLine.Estimate("これ は テスト です", 0.1, 0.6, 0.8, 0.04),
+                OcrLine.Estimate("검색 가능한 문서", 0.1, 0.4, 0.8, 0.04),
+            ]);
+            writer.Save(pdf);
+        }
+
+        var job = await fx.ConvertAsync([pdf], new Preset { TargetFormat = "txt" });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var text = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
+        Assert.Contains("本书是为 USB 入门和提高者编写。", text);
+        Assert.Contains("これはテストです", text);
+        Assert.Contains("검색 가능한 문서", text);
+    }
 }
 
 public class VisionConverterTests(EngineFixture fx) : IClassFixture<EngineFixture>

@@ -12,6 +12,7 @@ using System.IO.Compression;
 using System.Security;
 using System.Text;
 using System.Xml.Linq;
+using Filee.Engines.Magick;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx;
@@ -119,6 +120,7 @@ internal sealed partial class HwpxWriter
                 {
                     // WEBP, TIFF, SVG, EMF, WMF ... → PNG, which 한글 always displays.
                     using var image = new MagickImage(path);
+                    DdsChannelOrder.Correct(path, image);
                     image.Write(target, MagickFormat.Png);
                 }
             }

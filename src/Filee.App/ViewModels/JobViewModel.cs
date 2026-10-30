@@ -120,7 +120,7 @@ public sealed partial class JobViewModel : ObservableObject
         if (!unknown.SequenceEqual(UnknownExtensions))
             UnknownExtensions = unknown;
 
-        var noted = Job.Files.Where(f => f.State == FileState.Done && f.NoticeKey is not null).ToList();
+        var noted = Job.Files.Where(f => f.State == FileState.Done && f.HasNotice).ToList();
         HasNotices = noted.Count > 0;
         Notices = noted.Count == 0 ? null : string.Join(Environment.NewLine,
             noted.Select(f => $"{Path.GetFileName(f.SourcePath)} — {_loc.Notice(f)}"));

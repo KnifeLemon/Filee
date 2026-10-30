@@ -8,6 +8,10 @@
 // the result is complete. With "Recognize text" (PdfOptions.Ocr) Tesseract reads the scans first, and their invisible
 // OCR layer is the page's text (ReadWithOcrLayer).
 //
+// A page turned with /Rotate is read as it is shown: landscape pages that printer drivers (PScript5, Acrobat
+// Distiller) write as a portrait page turned by 90° keep their text, tables and pictures. Only a page whose text runs
+// sideways as shown (a portrait page turned in a viewer) has no lines to read and becomes the rendered page.
+//
 // Rows laid out with tab stops (a number, a label and a date far to the right) stay one line with tabs at the PDF's
 // positions, and a line that ends early although the next line's first word would have fitted (an address) keeps its
 // line break.
@@ -280,14 +284,14 @@ internal sealed partial class PdfDocumentReader
 
     private PageContent ReadPage(Page page)
     {
-        var crop = page.CropBox.Bounds;
-        // A page turned by 90° is shown (and rendered) with width and height swapped.
-        var rotated = page.Rotation.Value % 180 != 0;
-        var content = new PageContent(page.Number - 1, rotated ? crop.Height : crop.Width, rotated ? crop.Width : crop.Height);
+        // PdfPig gives every position (letters, lines, pictures, links) on the page as it is shown: turned by its
+        // /Rotate and measured from the bottom-left corner of its visible part (the crop box). Page.Width and Height
+        // are that part's size, width and height swapped on a page turned by 90°, as PDFium renders it.
+        var content = new PageContent(page.Number - 1, page.Width, page.Height);
 
         var links = page.GetHyperlinks()
             .Where(h => h.Uri is { } uri && (uri.StartsWith("http://", StringComparison.OrdinalIgnoreCase) || uri.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || uri.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)))
-            .Select(h => (Bounds: Shift(h.Bounds, crop), Uri: h.Uri!))
+            .Select(h => (h.Bounds, Uri: h.Uri!))
             .ToList();
 
         // Text that needs shaping (Arabic, Indic, ...) is read in content-stream order (PdfDocumentReader.ComplexText).
@@ -311,7 +315,7 @@ internal sealed partial class PdfDocumentReader
             if (!_textOnly && !_ocrLayer && invisible)
                 continue;
             var lead = string.IsNullOrWhiteSpace(word.Lead.Value) ? letters[0] : word.Lead;
-            var box = Shift(word.Box, crop);
+            var box = word.Box;
             var size = Median(letters.Select(LetterSize));
             var center = new PdfPoint((box.Left + box.Right) / 2, (box.Top + box.Bottom) / 2);
             var link = links.FirstOrDefault(l => Inside(l.Bounds, center)).Uri;
@@ -320,12 +324,13 @@ internal sealed partial class PdfDocumentReader
             if (invisible)
                 format = format with { Font = null, Bold = false, Italic = false };
             words.Add(new TextWord(CleanText(word.Text), box.Left, box.Right, box.Top, box.Bottom,
-                lead.StartBaseLine.Y - crop.Bottom, Math.Max(1, size), format, link));
+                lead.StartBaseLine.Y, Math.Max(1, size), format, link));
         }
 
-        if (words.Count == 0 || (rotated && !_textOnly))
+        if (words.Count == 0)
         {
-            // A scan, a page of drawings, or a turned page: the rendered page keeps everything.
+            // A scan, a page of drawings, or a page whose text runs sideways as shown (a portrait page turned by
+            // /Rotate): the rendered page keeps everything.
             content.Scanned = true;
             if (!_textOnly)
                 content.ScanPath = RenderScan(page.Number - 1);
@@ -333,11 +338,11 @@ internal sealed partial class PdfDocumentReader
         }
 
         // Plain text (TXT, page texts for slides) keeps table cells as paragraphs in reading order.
-        var tables = _textOnly ? [] : RuledTables(page.Paths, crop, words);
+        var tables = _textOnly ? [] : RuledTables(page.Paths, words);
         content.Items = words.Count > 0 ? TextItems(words) : [];
         content.Items.AddRange(tables.Select(t => new Item { Table = t }));
         if (!_textOnly)
-            content.Items.AddRange(Pictures(page, content, crop));
+            content.Items.AddRange(Pictures(page, content));
         return content;
     }
 
@@ -350,9 +355,6 @@ internal sealed partial class PdfDocumentReader
             items = Paragraphs(joined);
         return items;
     }
-
-    private static PdfRectangle Shift(PdfRectangle box, PdfRectangle crop) =>
-        new(box.Left - crop.Left, box.Bottom - crop.Bottom, box.Right - crop.Left, box.Top - crop.Bottom);
 
     private static bool Inside(PdfRectangle box, PdfPoint point) =>
         point.X >= box.Left && point.X <= box.Right && point.Y >= box.Bottom && point.Y <= box.Top;
@@ -436,7 +438,7 @@ internal sealed partial class PdfDocumentReader
     // ───────────────────────── Pictures ─────────────────────────
 
     /// <summary>Pictures of a text page. A picture covering the page behind text is the scan under an OCR layer: skipped.</summary>
-    private IEnumerable<Item> Pictures(Page page, PageContent content, PdfRectangle crop)
+    private IEnumerable<Item> Pictures(Page page, PageContent content)
     {
         var result = new List<Item>();
         SKBitmap? rendered = null;
@@ -444,8 +446,8 @@ internal sealed partial class PdfDocumentReader
         {
             foreach (var image in page.GetImages().Take(200))
             {
-                var bounds = Shift(image.BoundingBox, crop);
-                bounds = new PdfRectangle(Math.Max(0, bounds.Left), Math.Max(0, bounds.Bottom), Math.Min(content.Width, bounds.Right), Math.Min(content.Height, bounds.Top));
+                var box = image.BoundingBox;
+                var bounds = new PdfRectangle(Math.Max(0, box.Left), Math.Max(0, box.Bottom), Math.Min(content.Width, box.Right), Math.Min(content.Height, box.Top));
                 if (bounds.Width < 6 || bounds.Height < 6 || image.IsImageMask)
                     continue;
                 if (bounds.Width * bounds.Height > 0.85 * content.Width * content.Height)
@@ -821,7 +823,8 @@ internal sealed partial class PdfDocumentReader
     }
 
     /// <summary>
-    /// Words joined into runs of equal formatting; line ends become spaces (not inside CJK text or after a hyphen), or
+    /// Words joined into runs of equal formatting, with a space between words (not between two CJK words); line ends
+    /// become spaces (not inside CJK text or after a hyphen), or
     /// line breaks where the line ended early on purpose. Tabs of a tabbed row stay tabs.
     /// </summary>
     private static void Runs(Item item, List<HInline> output, bool rightToLeft)
@@ -845,7 +848,10 @@ internal sealed partial class PdfDocumentReader
                     }
                     else if (w > 0)
                     {
-                        pieces[^1] = (previousText + " ", previousFormat, previousLink);
+                        // Not between two Chinese or Japanese words: an OCR layer (Tesseract's) puts a space after
+                        // every word it found, also inside a sentence of Han characters (#691). Korean keeps them.
+                        if (!(IsCjk(previousText[^1]) && IsCjk(text[0])))
+                            pieces[^1] = (previousText + " ", previousFormat, previousLink);
                     }
                     else if (previousText.EndsWith('-') && previousText.Length > 1 && char.IsLetter(previousText[^2]) && text.Length > 0 && char.IsLower(text[0]))
                     {

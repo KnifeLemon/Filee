@@ -16,6 +16,25 @@ public class MediaJoiningTests
     private static string After(IReadOnlyList<string> args, string option) => args[args.ToList().IndexOf(option) + 1];
 
     [Fact]
+    public void Separate_m4s_streams_are_identified_in_either_order()
+    {
+        var video = ("picture.m4s", Clip(PhoneVideo));
+        var audio = ("sound.M4S", Clip(audio: new AudioStreamInfo(2, 48000, "aac", 1)));
+        foreach (var clips in new[] { new[] { video, audio }, new[] { audio, video } })
+        {
+            var pair = MediaJoining.M4sPair(clips)!.Value;
+            Assert.Equal(video.Item1, pair.Video.Path);
+            var args = MediaJoining.MuxM4sPair(pair.Video, pair.Audio, "out.mp4");
+            Assert.Contains("0:V:0", args);
+            Assert.Contains("1:a:1", args);
+            Assert.Equal("copy", After(args, "-c"));
+        }
+        Assert.Null(MediaJoining.M4sPair([video, ("sound.mp4", audio.Item2)]));
+        Assert.Null(MediaJoining.M4sPair([video, video]));
+        Assert.Null(MediaJoining.M4sPair([video]));
+    }
+
+    [Fact]
     public void Clips_from_one_phone_are_copied()
     {
         var clip = Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac"));
@@ -42,6 +61,30 @@ public class MediaJoiningTests
         Assert.False(MediaJoining.CanCopyVideos([clip, clip with { Video = PhoneVideo with { FrameRate = 60 } }], options));
         var unknown = clip with { Video = PhoneVideo with { HeaderHash = null } };
         Assert.False(MediaJoining.CanCopyVideos([unknown, unknown], options));
+    }
+
+    [Fact]
+    public void Clips_whose_chosen_sound_is_another_track_are_encoded()
+    {
+        var first = Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac", 1));
+        var second = Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac", 0));
+        Assert.False(MediaJoining.CanCopyVideos([first, second], new MediaOptions()));
+        Assert.True(MediaJoining.CanCopyVideos([first, first], new MediaOptions()));
+    }
+
+    [Fact]
+    public void Joined_files_take_the_sound_track_the_probe_chose()
+    {
+        var clip = Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac", 1));
+        Assert.Contains("0:a:1", MediaJoining.CopyVideos("clips.txt", "out.mp4", clip));
+        var video = MediaJoining.EncodeVideos([("a.mov", clip), ("b.mp4", Clip(PhoneVideo, new AudioStreamInfo(2, 48000, "aac")))],
+            "out.mp4", new MediaOptions(), "libx264", "work");
+        Assert.Contains("[0:a:1]", After(video, "-filter_complex"));
+        Assert.Contains("[1:a:0]", After(video, "-filter_complex"));
+        var audio = MediaJoining.EncodeAudio([("a.mp3", Clip(audio: new AudioStreamInfo(2, 48000, "mp3"))),
+            ("b.qta", Clip(audio: new AudioStreamInfo(2, 48000, "aac", 2)))], "out.m4a", new MediaOptions(), "work");
+        Assert.Contains("[0:a:0]", After(audio, "-filter_complex"));
+        Assert.Contains("[1:a:2]", After(audio, "-filter_complex"));
     }
 
     [Fact]

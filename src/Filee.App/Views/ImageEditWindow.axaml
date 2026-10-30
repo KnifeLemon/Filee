@@ -48,6 +48,35 @@
           <NumericUpDown Value="{Binding Width}" Minimum="16" Maximum="20000" Increment="100" FormatString="0" ShowButtonSpinner="False" AutomationProperties.Name="{DynamicResource presets.width}" />
         </StackPanel>
       </Grid>
+      <!-- Width × height (#725), in px, cm, mm or inches; a size in cm, mm or inches becomes pixels at the DPI. -->
+      <StackPanel x:Name="CustomSize" Spacing="8" IsVisible="{Binding ShowCustom}">
+        <Grid ColumnDefinitions="*,8,Auto,8,*,12,Auto">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource image_edit.width}" />
+            <NumericUpDown x:Name="CustomWidthBox" Value="{Binding CustomWidth}" Minimum="0.1" Maximum="16384" Increment="1" FormatString="{Binding SizeFormat}"
+                           ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource image_edit.width}" />
+          </StackPanel>
+          <TextBlock Grid.Column="2" Text="×" VerticalAlignment="Bottom" Margin="0,0,0,8" />
+          <StackPanel Grid.Column="4">
+            <TextBlock Classes="label" Text="{DynamicResource image_edit.height}" />
+            <NumericUpDown x:Name="CustomHeightBox" Value="{Binding CustomHeight}" Minimum="0.1" Maximum="16384" Increment="1" FormatString="{Binding SizeFormat}"
+                           ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource image_edit.height}" />
+          </StackPanel>
+          <StackPanel Grid.Column="6">
+            <TextBlock Classes="label" Text="{DynamicResource image_edit.unit}" />
+            <ComboBox x:Name="UnitChoice" ItemsSource="{Binding Units}" SelectedItem="{Binding Unit}" MinWidth="110"
+                      AutomationProperties.Name="{DynamicResource image_edit.unit}" />
+          </StackPanel>
+        </Grid>
+        <DockPanel>
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" IsVisible="{Binding ShowDpi}">
+            <TextBlock Text="{DynamicResource presets.dpi}" VerticalAlignment="Center" />
+            <NumericUpDown x:Name="DpiBox" Value="{Binding Dpi}" Minimum="1" Maximum="9600" Increment="10" FormatString="0" Width="90"
+                           ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource presets.dpi}" />
+          </StackPanel>
+          <CheckBox x:Name="LockAspectBox" Content="{DynamicResource presets.lock_aspect}" IsChecked="{Binding LockAspect}" VerticalAlignment="Center" />
+        </DockPanel>
+      </StackPanel>
       <!-- The first picture's size before and after. Each size stays "width × height" in Arabic too; the arrow and their
            order follow the reading direction. -->
       <StackPanel x:Name="SizeChange" Orientation="Horizontal" Spacing="6" IsVisible="{Binding ShowSize}">
@@ -77,7 +106,7 @@
         <Slider Minimum="1" Maximum="100" Value="{Binding Quality}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource presets.quality}" />
       </StackPanel>
 
-      <CheckBox Content="{DynamicResource presets.grayscale}" IsChecked="{Binding Grayscale}" />
+      <CheckBox x:Name="GrayscaleBox" Content="{DynamicResource presets.grayscale}" IsChecked="{Binding Grayscale}" />
     </StackPanel>
   </DockPanel>
 </Window>

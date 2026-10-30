@@ -381,6 +381,12 @@ public static class BuiltInData
 
         // Subtitles; on the video donut, SRT takes the first text subtitle track out of the video.
         new() { Id = "extract-subtitles", NameKey = "preset.extract_subtitles", TargetFormat = "srt" },
+        // AI Captions: transcribes speech in video and audio to SRT subtitles using Whisper AI.
+        new()
+        {
+            Id = "caption-video", NameKey = "preset.caption_video", TargetFormat = "srt",
+            Media = { Caption = true },
+        },
         new() { Id = "to-srt", Name = "SRT", TargetFormat = "srt" },
         new() { Id = "to-vtt", Name = "WebVTT", TargetFormat = "vtt" },
         new() { Id = "to-ass", Name = "ASS", TargetFormat = "ass" },
@@ -668,7 +674,7 @@ public static class BuiltInData
         {
             Id = "video", NameKey = "profile.video",
             Extensions = ExtensionsOf(FormatCategory.Video),
-            PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "to-mkv", "to-avi"],
+            PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video", "to-mkv", "to-avi"],
             // Every frame as pictures is on no front (a long video gives thousands of files): behind a flip, a drop that
             // misses its slice doesn't start it. Live / Motion Photos of a clip are there too, and "Cut a clip" first
             // (in place of FLAC, which stays in the library).
@@ -679,7 +685,7 @@ public static class BuiltInData
         {
             Id = "audio", NameKey = "profile.audio",
             Extensions = ExtensionsOf(FormatCategory.Audio),
-            PresetIds = ["to-mp3", "mp3-128", "to-m4a", "to-wav", "to-flac", "to-ogg", "to-opus", "to-aac"],
+            PresetIds = ["to-mp3", "mp3-128", "to-m4a", "to-wav", "to-flac", "to-ogg", "to-opus", "to-aac", "caption-video"],
             BackPresetIds = ["to-alac", "compress-audio", "merge-audio", "remove-metadata", "zip-all"],
         },
         new()

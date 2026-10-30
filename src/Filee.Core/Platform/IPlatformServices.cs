@@ -79,6 +79,23 @@ public interface IPlatformServices
     IReadOnlyList<string> GetFileManagerSelection();
 
     /// <summary>
+    /// Whether a keyboard shortcut can read the clipboard and put results back on it (<see cref="Settings.TriggerGesture.Clipboard"/>).
+    /// </summary>
+    bool SupportsClipboard => false;
+
+    /// <summary>
+    /// What is on the clipboard for a conversion: the existing files copied there, else a picture (a screenshot);
+    /// null for anything else (text, nothing). Call it on the UI thread.
+    /// </summary>
+    ClipboardContent? ReadClipboard() => null;
+
+    /// <summary>
+    /// Puts <paramref name="paths"/> on the clipboard as files, a single picture also as itself, so it pastes into
+    /// a file manager, a chat or a document. Call it on the UI thread. False when it couldn't.
+    /// </summary>
+    bool CopyToClipboard(IReadOnlyList<string> paths) => false;
+
+    /// <summary>
     /// For the log when a shortcut found no selected files: the foreground window's class and process
     /// ("CabinetWClass / explorer"). Empty where the platform can't tell.
     /// </summary>
@@ -141,6 +158,17 @@ public interface IPlatformServices
 /// usually) took it away. The message is English, for the log; the UI says it in the user's language.
 /// </summary>
 public sealed class StartupEntryNotKeptException(string message) : IOException(message);
+
+/// <summary>
+/// What <see cref="IPlatformServices.ReadClipboard"/> found: <see cref="Files"/>, or else the bytes of a picture in
+/// <see cref="PictureExtension"/>'s format ("png").
+/// </summary>
+public sealed record ClipboardContent(IReadOnlyList<string> Files, byte[]? Picture = null, string? PictureExtension = null)
+{
+    public static ClipboardContent OfFiles(IReadOnlyList<string> files) => new(files);
+
+    public static ClipboardContent OfPicture(byte[] bytes, string extension) => new([], bytes, extension);
+}
 
 /// <summary>The window in front: its process name as <see cref="IPlatformServices.ProcessNameAt"/> reports it, and whether it belongs to the file manager or desktop.</summary>
 public sealed record ForegroundWindowInfo(string? ProcessName, bool IsFileManager);

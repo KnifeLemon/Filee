@@ -105,9 +105,99 @@ public class ImageEditWindowTests
     [AvaloniaFact]
     public void The_window_offers_the_resizes_it_has_fields_for()
     {
-        // A resize mode added later (#593's free width × height) needs its fields here before it is offered.
+        // A resize mode added later needs its fields here before it is offered: the free width × height has them (#725).
         WithWindow(["icon.png"], (_, vm, _) =>
-            Assert.Equal([ResizeMode.None, ResizeMode.Percent, ResizeMode.LongEdge, ResizeMode.Width], vm.ResizeModes.Select(r => r.Value)));
+            Assert.Equal([ResizeMode.None, ResizeMode.Percent, ResizeMode.LongEdge, ResizeMode.Width, ResizeMode.Custom],
+                vm.ResizeModes.Select(r => r.Value)));
+    }
+
+    public static TheoryData<string, bool> SizeLooks => new()
+    {
+        { "en", false }, { "en", true }, { "ko", false }, { "ar", false }, { "ru", false }, { "de", true }, { "th", false },
+    };
+
+    [AvaloniaTheory]
+    [MemberData(nameof(SizeLooks))]
+    public void The_width_and_height_render(string language, bool dark)
+    {
+        WithWindow(["passport.jpg"], (window, vm, _) =>
+        {
+            vm.Resize = vm.ResizeModes.Single(r => r.Value == ResizeMode.Custom);
+            vm.Unit = vm.Units.Single(u => u.Value == SizeUnit.Centimetres);
+            vm.CustomWidth = 3.5m;
+            vm.CustomHeight = 4.5m;
+            Pump();
+            Assert.True(window.FindControl<NumericUpDown>("DpiBox")!.IsEffectivelyVisible);
+            Assert.All(window.GetVisualDescendants().OfType<NumericUpDown>(), box => Assert.False(box.ShowButtonSpinner));
+            Save(window, $"window-image-edit-size-{language}-{(dark ? "dark" : "light")}.png");
+        }, language: language, dark: dark);
+    }
+
+    [AvaloniaFact]
+    public void A_width_and_height_in_pixels_stretch_or_fit()
+    {
+        WithWindow(["icon.png"], (window, vm, starts) =>
+        {
+            vm.Resize = vm.ResizeModes.Single(r => r.Value == ResizeMode.Custom);
+            Assert.True(vm.ShowCustom);
+            Assert.False(vm.ShowDpi); // pixels need no resolution
+            Assert.False(window.FindControl<NumericUpDown>("DpiBox")!.IsEffectivelyVisible);
+            Assert.True(vm.LockAspect); // the shape is kept until the user says otherwise
+
+            vm.CustomWidth = 100;
+            vm.CustomHeight = 100;
+            Assert.Equal("100 × 50", vm.SizeAfter); // 512 × 256 fitted inside
+            vm.LockAspect = false;
+            Assert.Equal("100 × 100", vm.SizeAfter); // stretched to exactly that
+
+            vm.Convert();
+
+            var image = Assert.Single(starts).Preset.Image;
+            Assert.Equal(ResizeMode.None, image.Resize); // stored as presets store it, readable by an older version
+            Assert.Equal((100, 100, false, SizeUnit.Pixels), (image.CustomSize!.Width, image.CustomSize.Height, image.CustomSize.LockAspect, image.CustomSize.Unit));
+            Assert.Null(image.Dpi); // the source's resolution is kept
+        });
+    }
+
+    [AvaloniaFact]
+    public void A_printed_size_becomes_pixels_at_the_dpi_and_the_pictures_carry_it()
+    {
+        WithWindow(["icon.png"], (_, vm, starts) =>
+        {
+            vm.Resize = vm.ResizeModes.Single(r => r.Value == ResizeMode.Custom);
+            vm.LockAspect = false;
+            vm.Unit = vm.Units.Single(u => u.Value == SizeUnit.Centimetres);
+            Assert.True(vm.ShowDpi);
+            Assert.Equal(300, vm.Dpi);
+            vm.CustomWidth = 3.5m; // a passport photo, 35 × 45 mm
+            vm.CustomHeight = 4.5m;
+            Assert.Equal("413 × 531", vm.SizeAfter);
+            vm.Dpi = 600;
+            Assert.Equal("827 × 1063", vm.SizeAfter);
+
+            vm.Convert();
+
+            var image = Assert.Single(starts).Preset.Image;
+            Assert.Equal((827, 1063, SizeUnit.Centimetres, 600), (image.CustomSize!.Width, image.CustomSize.Height, image.CustomSize.Unit, image.CustomSize.Dpi));
+            Assert.Equal(600, image.Dpi);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Switching_the_unit_keeps_the_size()
+    {
+        WithWindow(["icon.png"], (_, vm, _) =>
+        {
+            vm.Resize = vm.ResizeModes.Single(r => r.Value == ResizeMode.Custom);
+            vm.CustomWidth = 600;
+            vm.CustomHeight = 300;
+            vm.Unit = vm.Units.Single(u => u.Value == SizeUnit.Inches);
+            Assert.Equal((2m, 1m, "0.##"), (vm.CustomWidth, vm.CustomHeight, vm.SizeFormat));
+            vm.Unit = vm.Units.Single(u => u.Value == SizeUnit.Millimetres);
+            Assert.Equal((50.8m, 25.4m, "0.#"), (vm.CustomWidth, vm.CustomHeight, vm.SizeFormat));
+            vm.Unit = vm.Units.Single(u => u.Value == SizeUnit.Pixels);
+            Assert.Equal((600m, 300m, "0"), (vm.CustomWidth, vm.CustomHeight, vm.SizeFormat));
+        });
     }
 
     [AvaloniaFact]
@@ -139,7 +229,7 @@ public class ImageEditWindowTests
         });
         WithWindow(["icon.png"], (window, _, starts) =>
         {
-            var grayscale = window.GetVisualDescendants().OfType<CheckBox>().Single();
+            var grayscale = window.FindControl<CheckBox>("GrayscaleBox")!;
             grayscale.Focus();
             Press(window, Key.Enter);
             Assert.Single(starts);
@@ -186,6 +276,7 @@ public class ImageEditWindowTests
                 vm.Convert();
             }, saved);
             Assert.Equal(("webp", ResizeMode.Width, 640), (saved.TargetFormat, saved.Image.Resize, saved.Image.Width));
+            Assert.Null(saved.Image.CustomSize);
 
             // Opened again: as left.
             WithWindow(["icon.png"], (_, vm, _) =>
@@ -193,6 +284,24 @@ public class ImageEditWindowTests
                 Assert.Equal("webp", vm.Target.Value);
                 Assert.Equal((ResizeMode.Width, 640), (vm.Resize.Value, vm.Width));
                 Assert.True(vm.ShowWidth);
+
+                // A printed size is kept in its unit and at its resolution.
+                vm.Resize = vm.ResizeModes.Single(r => r.Value == ResizeMode.Custom);
+                vm.Unit = vm.Units.Single(u => u.Value == SizeUnit.Millimetres);
+                vm.Dpi = 350;
+                vm.CustomWidth = 35;
+                vm.CustomHeight = 45;
+                vm.LockAspect = false;
+                vm.Convert();
+            }, saved);
+            Assert.Equal((ResizeMode.None, 482, 620, SizeUnit.Millimetres, 350),
+                (saved.Image.Resize, saved.Image.CustomSize!.Width, saved.Image.CustomSize.Height, saved.Image.CustomSize.Unit, saved.Image.CustomSize.Dpi));
+            Assert.Null(saved.Image.Dpi); // only the conversions write it; the tool keeps its own
+
+            WithWindow(["icon.png"], (_, vm, _) =>
+            {
+                Assert.Equal((ResizeMode.Custom, SizeUnit.Millimetres, 350, 35m, 45m, false),
+                    (vm.Resize.Value, vm.Unit.Value, vm.Dpi, vm.CustomWidth, vm.CustomHeight, vm.LockAspect));
             }, saved);
         }
         finally

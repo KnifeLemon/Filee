@@ -10,7 +10,7 @@
         x:DataType="vm:CropOverlayViewModel"
         Title="{DynamicResource preset.crop}"
         Icon="avares://Filee/Assets/Icons/filee.ico"
-        Width="1040" Height="720" MinWidth="680" MinHeight="500"
+        Width="1040" Height="720" MinWidth="720" MinHeight="500"
         WindowDecorations="None"
         Background="Transparent"
         TransparencyLevelHint="Transparent"
@@ -18,6 +18,7 @@
         CanResize="True">
 
   <Window.Resources>
+    <StreamGeometry x:Key="Crop.Perspective">M5 4L20 6L18 20L3 17Z M5 6L5 4L7 4L7 6Z M18 5L21 5L21 8L18 8Z M16 18L19 18L19 21L16 21Z M2 15L5 15L5 18L2 18Z</StreamGeometry>
     <StreamGeometry x:Key="Crop.Swap">M7 3.5h8.5A4.5 4.5 0 0 1 20 8v2.2h2.2l-3.7 4.3-3.7-4.3H17V8a1.5 1.5 0 0 0-1.5-1.5H7z M17 20.5H8.5A4.5 4.5 0 0 1 4 16v-2.2H1.8l3.7-4.3 3.7 4.3H7V16a1.5 1.5 0 0 0 1.5 1.5H17z</StreamGeometry>
     <StreamGeometry x:Key="Crop.Maximize">M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z M7 6.2a.8.8 0 0 0-.8.8v10c0 .44.36.8.8.8h10a.8.8 0 0 0 .8-.8V7a.8.8 0 0 0-.8-.8z</StreamGeometry>
     <StreamGeometry x:Key="Crop.Grip">M18 10a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M18 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z M12 16a1.5 1.5 0 1 1 0 3 1.5 1.5 0 0 1 0-3z</StreamGeometry>
@@ -45,7 +46,7 @@
     </Style>
 
     <!-- Toolbar buttons: quiet, round, a soft tint on hover -->
-    <Style Selector="Button.tool">
+    <Style Selector="Button.tool, ToggleButton.tool">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="BorderThickness" Value="0" />
@@ -54,14 +55,34 @@
       <Setter Property="VerticalAlignment" Value="Center" />
       <Setter Property="Cursor" Value="Hand" />
     </Style>
-    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter, ToggleButton.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
     <Style Selector="Button.tool.open /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
     </Style>
-    <Style Selector="Button.round">
+    <Style Selector="ToggleButton.tool:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <!-- Only the ratio button (off in the perspective mode) and the perspective toggle (off for a PDF) fade; the other
+         tool buttons keep their usual look while disabled, and the ratio boxes the usual look of a disabled number box. -->
+    <Style Selector="Button#DialButton:disabled /template/ ContentPresenter#PART_ContentPresenter, ToggleButton#PerspectiveButton:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Button#DialButton:disabled, ToggleButton#PerspectiveButton:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Button.corner">
+      <Setter Property="Width" Value="24" />
+      <Setter Property="Height" Value="24" />
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="FocusAdorner" Value="{x:Null}" />
+    </Style>
+    <Style Selector="Button.round, ToggleButton.round">
       <Setter Property="Padding" Value="9" />
       <Setter Property="Width" Value="34" />
       <Setter Property="Height" Value="34" />
@@ -204,8 +225,15 @@
           BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
           BoxShadow="{DynamicResource CardShadow}">
     <Grid x:Name="Stage">
+      <Canvas x:Name="CornerLayer" IsVisible="{Binding IsPerspectiveOn}" FlowDirection="LeftToRight">
+        <Button x:Name="CornerTopLeft" Classes="corner" AutomationProperties.Name="{DynamicResource crop.corner_top_left}" />
+        <Button x:Name="CornerTopRight" Classes="corner" AutomationProperties.Name="{DynamicResource crop.corner_top_right}" />
+        <Button x:Name="CornerBottomRight" Classes="corner" AutomationProperties.Name="{DynamicResource crop.corner_bottom_right}" />
+        <Button x:Name="CornerBottomLeft" Classes="corner" AutomationProperties.Name="{DynamicResource crop.corner_bottom_left}" />
+      </Canvas>
       <!-- The picture, the frame and the backdrop -->
       <c:CropCanvas x:Name="Canvas"
+                    IsPerspective="{Binding IsPerspectiveOn}"
                     SourceImage="{Binding PreviewImage}"
                     SizeText="{Binding DimensionsText}"
                     PixelSize="{Binding PixelSize}"
@@ -300,6 +328,7 @@
         <Border Classes="float" Padding="5">
           <StackPanel Orientation="Horizontal" Spacing="3">
             <Button x:Name="DialButton" Classes="tool" Classes.open="{Binding IsAspectDialOpen}" Padding="8,6,12,6"
+                    IsEnabled="{Binding !IsPerspectiveOn}"
                     Command="{Binding ToggleAspectDialCommand}"
                     ToolTip.Tip="{Binding AspectToolTip}" AutomationProperties.Name="{Binding AspectToolTip}">
               <StackPanel Orientation="Horizontal" Spacing="8">
@@ -309,13 +338,21 @@
                 <Border Classes="key"><TextBlock Text="A" /></Border>
               </StackPanel>
             </Button>
+            <!-- Icon only, to keep the toolbar narrow; the name is in the tooltip and for screen readers. -->
+            <ToggleButton x:Name="PerspectiveButton" Classes="tool round" IsChecked="{Binding IsPerspective}"
+                          IsEnabled="{Binding CanUsePerspective}" ToolTip.Tip="{Binding PerspectiveToolTip}" ToolTip.ShowOnDisabled="True"
+                          AutomationProperties.Name="{DynamicResource crop.perspective}">
+              <PathIcon Width="16" Height="16" Data="{StaticResource Crop.Perspective}" Foreground="{DynamicResource AccentBrush}" />
+            </ToggleButton>
             <!-- The custom ratio: W × H, only while it's the one in use. -->
             <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" IsVisible="{Binding IsCustomAspect}">
               <NumericUpDown x:Name="CustomWidthBox" Value="{Binding CustomWidth}" Minimum="1" Maximum="99999" Increment="1"
+                             IsEnabled="{Binding !IsPerspectiveOn}"
                              FormatString="0" Width="64" ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource crop.custom_width}"
                              ToolTip.Tip="{DynamicResource crop.custom_width}" />
               <TextBlock Text="×" VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}" />
               <NumericUpDown x:Name="CustomHeightBox" Value="{Binding CustomHeight}" Minimum="1" Maximum="99999" Increment="1"
+                             IsEnabled="{Binding !IsPerspectiveOn}"
                              FormatString="0" Width="64" ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource crop.custom_height}"
                              ToolTip.Tip="{DynamicResource crop.custom_height}" />
             </StackPanel>
@@ -346,7 +383,11 @@
             </Button>
           </StackPanel>
         </Border>
-        <TextBlock Text="{DynamicResource crop.hint_keys}" FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"
+        <TextBlock x:Name="RectangularHint" Text="{DynamicResource crop.hint_keys}" IsVisible="{Binding !IsPerspectiveOn}"
+                   FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"
+                   TextWrapping="Wrap" MaxWidth="560" Opacity="0.8" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <TextBlock x:Name="PerspectiveHint" Text="{DynamicResource crop.hint_keys_perspective}" IsVisible="{Binding IsPerspectiveOn}"
+                   FontSize="11" HorizontalAlignment="Center" TextAlignment="Center"
                    TextWrapping="Wrap" MaxWidth="560" Opacity="0.8" Foreground="{DynamicResource TextSecondaryBrush}" />
       </StackPanel>
 
@@ -411,6 +452,7 @@
       <!-- The aspect dial over everything; a click beside it closes it -->
       <Border x:Name="DialScrim" Background="Transparent" IsVisible="{Binding IsAspectDialOpen}" PointerPressed="OnScrimPressed" />
       <c:AspectDial x:Name="Dial" HorizontalAlignment="Left" VerticalAlignment="Top" IsVisible="False"
+                    IsEnabled="{Binding !IsPerspectiveOn}"
                     Classes.open="{Binding IsAspectDialOpen}"
                     CornerRadius="{DynamicResource SoftRadius}"
                     SelectedMode="{Binding SelectedAspect}" IsPortrait="{Binding IsPortrait}" OriginalRatio="{Binding OriginalRatio}"

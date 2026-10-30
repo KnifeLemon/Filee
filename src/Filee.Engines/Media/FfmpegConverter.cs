@@ -124,7 +124,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         if (step.MotionPhoto)
             return await ExtractMotionAsync(step, progress, cancellationToken);
         if (step.LivePhoto)
-            return await LivePhotoWriter.ConvertAsync(ffmpeg, ffprobe, step, EncodersOf(ffmpeg), filter => HasFilter(ffmpeg, filter),
+            return await LivePhotoWriter.ConvertAsync(ffmpeg, ffprobe, step, await EncodersOfAsync(ffmpeg), filter => HasFilter(ffmpeg, filter),
                 progress, cancellationToken);
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
@@ -135,7 +135,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         if (step.FrameSequence)
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
         if (step.Preset.CutsClipOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
-            return await CutClipAsync(ffmpeg, step, input, info, progress, cancellationToken);
+            return await CutClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
 
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
@@ -179,7 +179,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 throw new ConversionRefusedException("error.over_size_limit", $"{info.Duration.Value.TotalSeconds:0} s in {media.MaxSizeMb:0.##} MB");
         }
 
-        var encoders = still ? null : EncodersOf(ffmpeg);
+        var encoders = still ? null : await EncodersOfAsync(ffmpeg);
         // Hardware encoding (preset option): the first GPU encoder that passes its test encode, if any.
         HardwareEncoder? hardware = null;
         if (!still && MediaEncoding.HardwareCodec(step.To, media, info) is { } codec)
@@ -260,7 +260,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         if (media.Slideshow)
         {
             var slides = await PrepareSlidesAsync(ffmpeg, inputPaths, scratch, progress, cancellationToken);
-            var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, EncodersOf(ffmpeg));
+            var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, await EncodersOfAsync(ffmpeg));
             args = MediaJoining.Slideshow(slides, outputPath, media, encoder, scratch);
             duration = MediaJoining.SlideshowDuration(slides.Count, media);
             start = 0.2;
@@ -277,7 +277,15 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             }
             duration = TimeSpan.FromSeconds(clips.Sum(c => c.Info.Duration?.TotalSeconds ?? 0));
             start = 0.05;
-            if (format == "m4a")
+            if (format == "mp4" && MediaJoining.M4sPair(clips) is { } pair)
+            {
+                if (!MediaEncoding.CanCopyVideo("mp4", pair.Video.Info.Video!, media)
+                    || !MediaEncoding.CanCopyAudio("mp4", pair.Audio.Info.Audio!, media))
+                    throw new InvalidOperationException("The selected streams or settings cannot be copied into MP4.");
+                args = MediaJoining.MuxM4sPair(pair.Video, pair.Audio, outputPath);
+                duration = pair.Video.Info.Duration ?? TimeSpan.Zero;
+            }
+            else if (format == "m4a")
             {
                 if (clips.FirstOrDefault(c => c.Info.Audio is null && c.Info.Video is null) is { Path: { } silent })
                     throw new InvalidOperationException($"{Path.GetFileName(silent)} has no sound.");
@@ -291,7 +299,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             }
             else
             {
-                var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, EncodersOf(ffmpeg));
+                var encoder = MediaEncoding.VideoEncoder("mp4", "libx264", media.VideoCodec, await EncodersOfAsync(ffmpeg));
                 args = MediaJoining.EncodeVideos(clips, outputPath, media, encoder, scratch);
             }
         }
@@ -343,7 +351,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     /// the target can't take (a codec its container doesn't hold) is encoded exactly instead, like the preset's other
     /// videos. Several parts, speeds, volumes, pauses or fades are encoded through one filter graph.
     /// </summary>
-    private async Task<IReadOnlyList<string>> CutClipAsync(string ffmpeg, ConversionStep step, string input, MediaInfo info,
+    private async Task<IReadOnlyList<string>> CutClipAsync(string ffmpeg, string ffprobe, ConversionStep step, string input, MediaInfo info,
         IProgress<double>? progress, CancellationToken cancellationToken)
     {
         if (info.Video is null)
@@ -359,7 +367,10 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             // Parts, speeds, volumes, pauses or fades: one filter graph, always encoded.
             try
             {
-                var pass = new FfmpegPass(MediaEncoding.ClipEditArguments(input, output, step.To, edit, media, info, EncodersOf(ffmpeg)), 1);
+                var musicTrack = edit.Music is { } song && !media.RemoveAudio
+                    ? await MediaInfo.AudioTrackAsync(ffprobe, Path.GetFullPath(song.Path), cancellationToken) : 0;
+                var pass = new FfmpegPass(MediaEncoding.ClipEditArguments(input, output, step.To, edit, media, info,
+                    await EncodersOfAsync(ffmpeg), musicTrack), 1);
                 await RunPassesAsync(ffmpeg, [pass], output, duration, progress, cancellationToken);
             }
             catch
@@ -390,7 +401,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
                 }
             }
 
-            var encoders = EncodersOf(ffmpeg);
+            var encoders = await EncodersOfAsync(ffmpeg);
             HardwareEncoder? hardware = null;
             if (MediaEncoding.HardwareCodec(step.To, media, info, encode: true) is { } codec)
             {
@@ -557,25 +568,58 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     [GeneratedRegex(@"version\s+n?(\d+(?:\.\d+)+|\S+)")]
     private static partial Regex VersionPattern();
 
-    private static readonly ConcurrentDictionary<string, IReadOnlySet<string>?> Encoders = new();
+    private static readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlySet<string>?>>> Encoders = new();
 
     /// <summary>
     /// The encoders of <paramref name="ffmpeg"/> (<c>ffmpeg -encoders</c>), cached per executable: a copy the user
     /// picked may lack x265 or SVT-AV1. Null (assume Filee's build) when the list can't be read.
+    /// Queried once at a time and kept when read; asked again after a failure.
     /// </summary>
-    internal static IReadOnlySet<string>? EncodersOf(string ffmpeg, TimeSpan? timeout = null) =>
-        Encoders.GetOrAdd($"{ffmpeg}|{File.GetLastWriteTimeUtc(ffmpeg).Ticks}", _ =>
+    internal static Task<IReadOnlySet<string>?> EncodersOfAsync(string ffmpeg, TimeSpan? timeout = null) =>
+        QueryOnceAsync(Encoders, ffmpeg, "-encoders", timeout, ParseEncoders);
+
+    private static readonly ConcurrentDictionary<string, Lazy<Task<IReadOnlySet<string>?>>> Decoders = new();
+
+    /// <summary>
+    /// The decodable codec names of this ffmpeg, cached per executable. Null assumes every codec can be decoded
+    /// when the table cannot be read.
+    /// Queried once at a time and kept when read; asked again after a failure.
+    /// </summary>
+    internal static Task<IReadOnlySet<string>?> DecodableCodecsOfAsync(string ffmpeg, TimeSpan? timeout = null) =>
+        QueryOnceAsync(Decoders, ffmpeg, "-codecs", timeout, ParseDecodableCodecs);
+
+    private static async Task<IReadOnlySet<string>?> QueryOnceAsync(
+        ConcurrentDictionary<string, Lazy<Task<IReadOnlySet<string>?>>> cache, string ffmpeg, string option,
+        TimeSpan? timeout, Func<string, IReadOnlySet<string>> parse)
+    {
+        var key = $"{ffmpeg}|{File.GetLastWriteTimeUtc(ffmpeg).Ticks}";
+        var entry = cache.GetOrAdd(key, _ => new Lazy<Task<IReadOnlySet<string>?>>(() => Task.Run(Query)));
+        try
+        {
+            var result = await entry.Value.ConfigureAwait(false);
+            if (result is null)
+                cache.TryRemove(KeyValuePair.Create(key, entry));
+            return result;
+        }
+        catch
+        {
+            cache.TryRemove(KeyValuePair.Create(key, entry));
+            throw;
+        }
+
+        IReadOnlySet<string>? Query()
         {
             try
             {
-                var result = FfmpegRunner.RunBriefly(ffmpeg, ["-hide_banner", "-encoders"], timeout ?? QueryTimeout);
-                return result.ExitCode == 0 ? ParseEncoders(result.StandardOutput) : null;
+                var result = FfmpegRunner.RunBriefly(ffmpeg, ["-hide_banner", option], timeout ?? QueryTimeout);
+                return result.ExitCode == 0 ? parse(result.StandardOutput) : null;
             }
             catch (Exception ex) when (ex is TimeoutException or InvalidOperationException or System.ComponentModel.Win32Exception or IOException)
             {
                 return null;
             }
-        });
+        }
+    }
 
     private static readonly ConcurrentDictionary<string, IReadOnlySet<string>?> Filters = new();
 
@@ -612,6 +656,17 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         list.Split('\n')
             .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             .Where(parts => parts.Length >= 2 && parts[0].Length == 6 && parts[0][0] is 'V' or 'A' or 'S')
+            .Select(parts => parts[1])
+            .ToHashSet(StringComparer.Ordinal);
+
+    /// <summary>The decodable codec names in <c>ffmpeg -codecs</c> output.</summary>
+    internal static IReadOnlySet<string> ParseDecodableCodecs(string list) =>
+        // " DEA.L. aac  AAC (Advanced Audio Coding) (decoders: aac aac_fixed)"
+        // " ..A.L. apple_apac  Apple Positional Audio Codec"
+        list.Split('\n')
+            .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+            .Where(parts => parts.Length >= 2 && parts[0].Length == 6 && parts[0][0] == 'D'
+                && parts[0][2] is 'V' or 'A' or 'S' or 'D' or 'T')
             .Select(parts => parts[1])
             .ToHashSet(StringComparer.Ordinal);
 

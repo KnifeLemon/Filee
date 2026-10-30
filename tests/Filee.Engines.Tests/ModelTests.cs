@@ -215,6 +215,59 @@ public class ModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(ModelBuilders.Checker(), File.ReadAllBytes(png));
     }
 
+    [Theory]
+    [InlineData(0x41u)]
+    [InlineData(0x40u)]
+    public async Task Obj_dds_texture_keeps_its_colours_in_glb(uint flags)
+    {
+        var folder = fx.NewFolder();
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        File.WriteAllBytes(Path.Combine(folder, "red.dds"), ImageFormatTests.Dds(flags, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels));
+        await File.WriteAllTextAsync(Path.Combine(folder, "model.mtl"), "newmtl red\nmap_Kd red.dds\n", TestContext.Current.CancellationToken);
+        var obj = Path.Combine(folder, "model.obj");
+        await File.WriteAllTextAsync(obj, """
+            mtllib model.mtl
+            v 0 0 0
+            v 1 0 0
+            v 0 1 0
+            vt 0 0
+            vt 1 0
+            vt 0 1
+            usemtl red
+            f 1/1 2/2 3/3
+            """, TestContext.Current.CancellationToken);
+
+        var job = await RunAsync(obj, "glb");
+
+        var data = await File.ReadAllBytesAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
+        Assert.Equal(0x46546C67u, BinaryPrimitives.ReadUInt32LittleEndian(data));
+        Assert.Equal(2u, BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(4)));
+        Assert.Equal((uint)data.Length, BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(8)));
+        var jsonLength = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(12));
+        Assert.Equal(0x4E4F534Au, BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(16)));
+        var json = JsonNode.Parse(data.AsSpan(20, jsonLength))!;
+        var binHeader = 20 + jsonLength;
+        var binLength = BinaryPrimitives.ReadInt32LittleEndian(data.AsSpan(binHeader));
+        Assert.Equal(0x004E4942u, BinaryPrimitives.ReadUInt32LittleEndian(data.AsSpan(binHeader + 4)));
+        Assert.Equal(data.Length, binHeader + 8 + binLength);
+        var material = Assert.Single(json["materials"]!.AsArray())!;
+        var textureIndex = (int)material["pbrMetallicRoughness"]!["baseColorTexture"]!["index"]!;
+        var imageIndex = (int)json["textures"]![textureIndex]!["source"]!;
+        var embedded = json["images"]![imageIndex]!;
+        Assert.Equal("image/png", (string)embedded["mimeType"]!);
+        var view = json["bufferViews"]![(int)embedded["bufferView"]!]!;
+        Assert.Equal(0, (int)view["buffer"]!);
+        var offset = (int?)view["byteOffset"] ?? 0;
+        var length = (int)view["byteLength"]!;
+        Assert.InRange(offset, 0, binLength - length);
+        var png = data.AsSpan(binHeader + 8 + offset, length).ToArray();
+        Assert.Equal(new byte[] { 137, 80, 78, 71, 13, 10, 26, 10 }, png[..8]);
+        using var image = new MagickImage(png);
+        Assert.Equal(MagickFormat.Png, image.Format);
+        Assert.Equal((4u, 4u), (image.Width, image.Height));
+        Assert.Equal(pixels.Where((_, i) => i % 4 != 3).ToArray(), image.GetPixels().ToByteArray(PixelMapping.RGB));
+    }
+
     [Fact]
     public async Task Gltf_output_is_one_file_with_the_buffer_inside()
     {

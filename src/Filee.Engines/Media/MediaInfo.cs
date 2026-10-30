@@ -1,8 +1,9 @@
-// What the FFmpeg engine needs to know about a media file before encoding it (duration, first video and audio
-// stream, cover picture), read from ffprobe's JSON output.
+// What the FFmpeg engine needs to know about a media file before encoding it (duration, first video and first
+// decodable audio stream, cover picture), read from ffprobe's JSON output.
 
 using System.Globalization;
 using System.Text.Json;
+using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Media;
@@ -65,14 +66,16 @@ internal sealed record VideoColor(string? Primaries, string? Transfer, string? M
 /// <param name="Language">The language tag (<c>kor</c>, <c>eng</c>, …), null when the file doesn't say.</param>
 internal sealed record SubtitleStreamInfo(int Index, string? Codec, string? Language);
 
-/// <summary>The first audio stream of a file.</summary>
+/// <summary>An audio stream of a file.</summary>
 /// <param name="Codec">FFmpeg's codec name (<c>aac</c>, <c>opus</c>, …), null when unknown.</param>
-internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Codec = null);
+/// <param name="Ordinal">The audio track number in the file, including undecodable tracks (for <c>-map 0:a:Ordinal</c>).</param>
+internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Codec = null, int Ordinal = 0);
 
 /// <summary>Summary of a media file.</summary>
 /// <param name="Duration">Playing time, null when the container does not say (raw streams).</param>
 /// <param name="Video">First video stream that is not a cover picture, if any.</param>
-/// <param name="Audio">First audio stream, if any.</param>
+/// <param name="Audio">First audio stream FFmpeg can decode, or the first audio stream when none can be decoded;
+/// a stream ffprobe names no codec for counts as undecodable when the codec table is known.</param>
 /// <param name="CoverStreamIndex">Index of an embedded cover picture (JPEG or PNG) such as album art, if any.</param>
 /// <param name="SubtitleStreams">Every subtitle stream in file order, null when there is none.</param>
 /// <param name="RawStream">
@@ -80,12 +83,14 @@ internal sealed record AudioStreamInfo(int Channels, int SampleRate, string? Cod
 /// always encoded, never copied into a container.
 /// </param>
 /// <param name="HasAttachments">The file carries attachments (an MKV's subtitle fonts).</param>
-/// <param name="AudioStreams">Every audio stream in file order (languages, commentary), null for none or only one.</param>
+/// <param name="AudioStreams">Decodable audio streams in file order (all when none can be decoded), null for none or only one;
+/// a stream ffprobe names no codec for counts as undecodable when the codec table is known.</param>
 internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, AudioStreamInfo? Audio, int? CoverStreamIndex,
     IReadOnlyList<SubtitleStreamInfo>? SubtitleStreams = null, bool RawStream = false, bool HasAttachments = false,
     IReadOnlyList<AudioStreamInfo>? AudioStreams = null)
 {
-    /// <summary>Every audio stream, in file order: <see cref="Audio"/> first.</summary>
+    /// <summary>Decodable audio streams in file order (all when none can be decoded): <see cref="Audio"/> first;
+    /// a stream ffprobe names no codec for counts as undecodable when the codec table is known.</summary>
     public IReadOnlyList<AudioStreamInfo> AudioTracks => AudioStreams ?? (Audio is null ? [] : [Audio]);
 
     /// <summary>Every subtitle stream, in file order.</summary>
@@ -95,7 +100,8 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
 
     /// <summary>
     /// Runs ffprobe on <paramref name="input"/>; throws with FFmpeg's message when the file cannot be read, or refuses an
-    /// .m4s media segment that needs its init segment (<see cref="DashSegment"/>).
+    /// .m4s media segment that needs its init segment (<see cref="DashSegment"/>). Audio selection follows the codecs
+    /// that the ffmpeg beside this ffprobe can decode; the codec table is read on a worker thread, never on the caller's.
     /// </summary>
     public static async Task<MediaInfo> ProbeAsync(string ffprobe, string input, CancellationToken cancellationToken)
     {
@@ -108,20 +114,40 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
             var reason = FfmpegRunner.Summarize(result.StandardError);
             throw new InvalidOperationException($"FFmpeg cannot read this file{(reason.Length > 0 ? ": " + reason : ".")}");
         }
-        return Parse(result.StandardOutput);
+        var ffmpeg = Path.Combine(Path.GetDirectoryName(ffprobe) ?? "", EngineEnvironment.ProgramName("ffmpeg.exe"));
+        return Parse(result.StandardOutput, await FfmpegConverter.DecodableCodecsOfAsync(ffmpeg).ConfigureAwait(false));
     }
 
-    /// <summary>Parses the output of <c>ffprobe -print_format json -show_format -show_streams</c>.</summary>
-    public static MediaInfo Parse(string json)
+    /// <summary>
+    /// The audio track Filee maps for the file (the first one FFmpeg can decode); 0 when it can't be probed,
+    /// so FFmpeg reports the problem as before.
+    /// </summary>
+    internal static async Task<int> AudioTrackAsync(string ffprobe, string input, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return (await ProbeAsync(ffprobe, input, cancellationToken).ConfigureAwait(false)).Audio?.Ordinal ?? 0;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or TimeoutException or System.ComponentModel.Win32Exception
+            or IOException or ConversionRefusedException)
+        {
+            return 0;
+        }
+    }
+
+    /// <summary>Parses ffprobe's JSON; null <paramref name="decodable"/> assumes every codec can be decoded;
+    /// a stream ffprobe names no codec for counts as undecodable when the codec table is known.</summary>
+    public static MediaInfo Parse(string json, IReadOnlySet<string>? decodable = null)
     {
         using var document = JsonDocument.Parse(json);
         var root = document.RootElement;
 
         VideoStreamInfo? video = null;
-        AudioStreamInfo? audio = null;
         int? cover = null;
         List<SubtitleStreamInfo> subtitles = [];
         List<AudioStreamInfo> audios = [];
+        List<AudioStreamInfo> undecodable = [];
+        var audioOrdinal = 0;
         var attachments = false;
         double longestStream = 0;
         if (root.TryGetProperty("streams", out var streams) && streams.ValueKind == JsonValueKind.Array)
@@ -149,9 +175,12 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
                             Text(stream, "extradata_hash"));
                         break;
                     case "audio":
-                        audios.Add(new AudioStreamInfo((int)Number(stream, "channels"), (int)Number(stream, "sample_rate"),
-                            Text(stream, "codec_name")));
-                        audio ??= audios[0];
+                        var sound = new AudioStreamInfo((int)Number(stream, "channels"), (int)Number(stream, "sample_rate"),
+                            Text(stream, "codec_name"), audioOrdinal++);
+                        if (decodable is null || sound.Codec is { } name && decodable.Contains(name))
+                            audios.Add(sound);
+                        else
+                            undecodable.Add(sound);
                         break;
                     case "attachment":
                         attachments = true;
@@ -164,6 +193,9 @@ internal sealed record MediaInfo(TimeSpan? Duration, VideoStreamInfo? Video, Aud
             }
         }
 
+        if (audios.Count == 0)
+            audios = undecodable;
+        var audio = audios.FirstOrDefault();
         var seconds = root.TryGetProperty("format", out var format) ? Number(format, "duration") : 0;
         if (seconds <= 0)
             seconds = longestStream;

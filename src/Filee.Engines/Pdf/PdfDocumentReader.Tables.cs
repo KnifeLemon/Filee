@@ -79,9 +79,9 @@ internal sealed partial class PdfDocumentReader
 
     /// <summary>
     /// The rules of a page (stroked lines and edges, thin filled rectangles) and the larger filled rectangles that
-    /// may be cell shading, shifted like the words. Invisible (white, clipping) paths are left out.
+    /// may be cell shading, placed like the words. Invisible (white, clipping) paths are left out.
     /// </summary>
-    private static (List<Rule> Rules, List<(PdfRectangle Bounds, string Color)> Shades) PageRules(IEnumerable<PdfPath> paths, PdfRectangle crop)
+    private static (List<Rule> Rules, List<(PdfRectangle Bounds, string Color)> Shades) PageRules(IEnumerable<PdfPath> paths)
     {
         var rules = new List<Rule>();
         var shades = new List<(PdfRectangle, string)>();
@@ -123,12 +123,11 @@ internal sealed partial class PdfDocumentReader
                 segments += lines.Count;
                 if (segments > MaxSegments)
                     return ([], []);
-                var shifted = lines.Select(l => (From: new PdfPoint(l.From.X - crop.Left, l.From.Y - crop.Bottom), To: new PdfPoint(l.To.X - crop.Left, l.To.Y - crop.Bottom))).ToList();
 
                 if (stroke is not null && !IsWhite(stroke))
                 {
                     var thickness = Math.Max(0.25, path.LineWidth);
-                    foreach (var (from, to) in shifted)
+                    foreach (var (from, to) in lines)
                     {
                         if (Math.Abs(from.Y - to.Y) <= 0.5 && Math.Abs(from.X - to.X) >= MinRuleLength)
                             rules.Add(new Rule(true, (from.Y + to.Y) / 2, Math.Min(from.X, to.X), Math.Max(from.X, to.X), thickness, stroke, dashed));
@@ -138,13 +137,13 @@ internal sealed partial class PdfDocumentReader
                 }
 
                 // A filled shape of straight, upright edges: a thin one is a rule, a larger one may shade a cell.
-                if (fill is null || curved || shifted.Count < 3 || IsWhite(fill)
-                    || !shifted.All(l => Math.Abs(l.From.X - l.To.X) <= 0.5 || Math.Abs(l.From.Y - l.To.Y) <= 0.5))
+                if (fill is null || curved || lines.Count < 3 || IsWhite(fill)
+                    || !lines.All(l => Math.Abs(l.From.X - l.To.X) <= 0.5 || Math.Abs(l.From.Y - l.To.Y) <= 0.5))
                     continue;
-                var left = shifted.Min(l => Math.Min(l.From.X, l.To.X));
-                var right = shifted.Max(l => Math.Max(l.From.X, l.To.X));
-                var bottom = shifted.Min(l => Math.Min(l.From.Y, l.To.Y));
-                var top = shifted.Max(l => Math.Max(l.From.Y, l.To.Y));
+                var left = lines.Min(l => Math.Min(l.From.X, l.To.X));
+                var right = lines.Max(l => Math.Max(l.From.X, l.To.X));
+                var bottom = lines.Min(l => Math.Min(l.From.Y, l.To.Y));
+                var top = lines.Max(l => Math.Max(l.From.Y, l.To.Y));
                 var (width, height) = (right - left, top - bottom);
                 if (height <= MaxRuleThickness && width >= MinRuleLength && width > 2 * height)
                     rules.Add(new Rule(true, (top + bottom) / 2, left, right, Math.Max(0.25, height), fill, false));
@@ -207,9 +206,9 @@ internal sealed partial class PdfDocumentReader
     /// Ruled tables of a page; the words in them are taken out of <paramref name="words"/>. Grids are tried largest
     /// first, and a grid inside a table already found (a table in a cell) stays part of that cell.
     /// </summary>
-    private static List<RuledTable> RuledTables(IEnumerable<PdfPath> paths, PdfRectangle crop, List<TextWord> words)
+    private static List<RuledTable> RuledTables(IEnumerable<PdfPath> paths, List<TextWord> words)
     {
-        var (rules, shades) = PageRules(paths, crop);
+        var (rules, shades) = PageRules(paths);
         var tables = new List<RuledTable>();
         foreach (var group in Grids(rules).OrderByDescending(g => Area(Extent(g))))
         {

@@ -9,6 +9,7 @@ using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Watching;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Cli;
 
@@ -46,7 +47,7 @@ internal static class Cli
             "convert" => await ConvertAsync(options, host, output, errors, cancellationToken),
             "watch" => await WatchAsync(options, host, output, errors, cancellationToken),
             "formats" => ListFormats(options, host, output, errors),
-            _ => ListPresets(host, output),
+            _ => ListPresets(options, host, output),
         };
     }
 
@@ -73,7 +74,7 @@ internal static class Cli
         var done = job.Files.Count(f => f.State == FileState.Done);
         var failed = job.Files.Count(f => f.State is FileState.Failed or FileState.Cancelled);
         if (options.Json)
-            WriteJson(job, host.Texts, output);
+            WriteJson(job, host.Texts, host.Catalog, output);
         else if (!options.Quiet)
             output.WriteLine(failed == 0
                 ? $"Converted {done} of {job.Files.Count} file(s)."
@@ -131,7 +132,11 @@ internal static class Cli
                 return;
             lock (printed)
             {
-                foreach (var file in job.Files.Where(f => f.State is not (FileState.Pending or FileState.Running) && printed.Add(f)))
+                // While the job runs, a file done with no output yet is only a step on the way (a page of a multi-page TIFF,
+                // a picture made PNG to be joined): it is printed at the end, with what it became and its notice. The queue
+                // always raises the event as itself; only the last call below, after the job, has no sender.
+                foreach (var file in job.Files.Where(f => f.State is not (FileState.Pending or FileState.Running)
+                             && (sender is null || f.State != FileState.Done || f.Outputs.Count > 0) && printed.Add(f)))
                     output.WriteLine(Describe(file, host.Texts));
             }
         }
@@ -156,7 +161,7 @@ internal static class Cli
         return file.State switch
         {
             FileState.Done => $"ok    {source} -> {string.Join(", ", file.Outputs.Select(Shorten))}"
-                + (file.NoticeKey is null ? "" : $" ({Notice(file, texts)})")
+                + (file.HasNotice ? $" ({Notice(file, texts)})" : "")
                 + (file.MissingFonts.Count == 0 ? "" : $" (missing fonts: {string.Join(", ", file.MissingFonts)})"),
             FileState.Skipped => $"skip  {source} (the output file already exists)",
             FileState.Cancelled => $"stop  {source} (cancelled)",
@@ -179,8 +184,9 @@ internal static class Cli
         return relative.StartsWith("..", StringComparison.Ordinal) || Path.IsPathRooted(relative) ? path : relative;
     }
 
-    private static void WriteJson(ConversionJob job, ILocalizer texts, TextWriter output)
+    private static void WriteJson(ConversionJob job, ILocalizer texts, ConverterCatalog catalog, TextWriter output)
     {
+        var optional = new OptionalEngineRoutes(catalog);
         using var stream = new MemoryStream();
         using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
         {
@@ -202,7 +208,7 @@ internal static class Cli
                 json.WriteEndArray();
                 if (file.State is FileState.Failed or FileState.Cancelled)
                     json.WriteString("error", Error(file, texts));
-                else if (file.NoticeKey is not null)
+                else if (file.HasNotice)
                     json.WriteString("notice", Notice(file, texts));
                 if (file.MissingFonts.Count > 0)
                 {
@@ -211,6 +217,11 @@ internal static class Cli
                         json.WriteStringValue(font);
                     json.WriteEndArray();
                 }
+                if (file.State is FileState.Failed or FileState.Cancelled && file.ErrorKey is not null)
+                    json.WriteString("errorKey", file.ErrorKey);
+                if (file.State == FileState.Failed && file.ErrorKey == "error.no_route"
+                    && file.FailedRoute is { } request && optional.MissingPackages(request) is { Count: > 0 } packages)
+                    WriteStrings(json, "needsEngines", packages);
                 json.WriteEndObject();
             }
             json.WriteEndArray();
@@ -332,17 +343,45 @@ internal static class Cli
                 return UsageError;
             }
             var installed = host.Catalog.CreatePlanner();
-            // Engines a download would add, not those this platform lacks (JPEG XR is read with Windows' own codec).
-            var everything = host.Catalog.CreatePlanner(host.Catalog.All
-                .Where(c => host.Catalog.StatusOf(c).ReasonKey != "engine.reason.unsupported_platform")
-                .Select(c => c.Id).ToList());
-            var targets = FormatRegistry.Known.Where(t => t.Writable && t.Id != from.Id && t.Id != FormatRegistry.Folder).ToList();
+            var optional = new OptionalEngineRoutes(host.Catalog);
+            var targets = FormatRegistry.Known.Where(t => t.Writable && t.Id != from.Id).ToList();
             var now = targets.Where(t => installed.CanConvert(from.Id, t.Id)).Select(t => t.Id).ToList();
-            var later = targets.Where(t => !now.Contains(t.Id) && everything.CanConvert(from.Id, t.Id)).Select(t => t.Id).ToList();
+            var later = targets.Where(t => !now.Contains(t.Id)
+                && optional.MissingPackages(new RouteRequest(from.Id, t.Id)) is not null).Select(t => t.Id).ToList();
+            if (options.Json)
+            {
+                WriteJsonDocument(output, json =>
+                {
+                    json.WriteStartObject();
+                    WriteFormatFields(json, from);
+                    WriteStrings(json, "targets", now);
+                    WriteStrings(json, "withEngines", later);
+                    json.WriteEndObject();
+                });
+                return Success;
+            }
             output.WriteLine($"{from.DisplayName} ({string.Join(", ", from.Extensions)}) converts to:");
             output.WriteLine(now.Count > 0 ? "  " + string.Join(", ", now) : "  (nothing with the engines installed now)");
             if (later.Count > 0)
                 output.WriteLine($"With optional engines (install them in Filee, Settings → Engines):{Environment.NewLine}  {string.Join(", ", later)}");
+            return Success;
+        }
+
+        if (options.Json)
+        {
+            WriteJsonDocument(output, json =>
+            {
+                json.WriteStartObject();
+                json.WriteStartArray("formats");
+                foreach (var format in FormatRegistry.Known.Where(f => f.Id != FormatRegistry.Folder))
+                {
+                    json.WriteStartObject();
+                    WriteFormatFields(json, format);
+                    json.WriteEndObject();
+                }
+                json.WriteEndArray();
+                json.WriteEndObject();
+            });
             return Success;
         }
 
@@ -357,13 +396,89 @@ internal static class Cli
         return Success;
     }
 
-    private static int ListPresets(CliHost host, TextWriter output)
+    /// <summary>The fields of one format in the JSON of 'formats': the same names for the list and for one format.</summary>
+    private static void WriteFormatFields(Utf8JsonWriter json, FileFormat format)
     {
+        json.WriteString("id", format.Id);
+        json.WriteString("name", format.DisplayName);
+        json.WriteString("category", format.Category.ToString().ToLowerInvariant());
+        WriteStrings(json, "extensions", format.Extensions);
+        json.WriteBoolean("writable", format.Writable);
+    }
+
+    private static void WriteStrings(Utf8JsonWriter json, string name, IEnumerable<string> values)
+    {
+        json.WriteStartArray(name);
+        foreach (var value in values)
+            json.WriteStringValue(value);
+        json.WriteEndArray();
+    }
+
+    private static void WriteJsonDocument(TextWriter output, Action<Utf8JsonWriter> write)
+    {
+        using var stream = new MemoryStream();
+        using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))
+            write(json);
+        output.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+    }
+
+    private static int ListPresets(CliOptions options, CliHost host, TextWriter output)
+    {
+        if (options.Json)
+        {
+            WriteJsonDocument(output, json =>
+            {
+                json.WriteStartObject();
+                json.WriteStartArray("presets");
+                foreach (var preset in host.Store.Presets.Where(p => !p.IsGroup && !p.IsTool))
+                {
+                    json.WriteStartObject();
+                    json.WriteString("id", preset.Id);
+                    json.WriteString("name", host.Texts.DisplayName(preset));
+                    json.WriteString("target", preset.TargetFormat);
+                    json.WriteEndObject();
+                }
+                json.WriteEndArray();
+                json.WriteEndObject();
+            });
+            return Success;
+        }
         output.WriteLine($"{"ID",-24} {"NAME",-28} TARGET");
         foreach (var preset in host.Store.Presets.Where(p => !p.IsGroup && !p.IsTool))
             output.WriteLine($"{preset.Id,-24} {host.Texts.DisplayName(preset),-28} {preset.TargetFormat}");
         output.WriteLine();
         output.WriteLine("Use one with: filee convert <files> --preset <id or name>");
         return Success;
+    }
+
+    private sealed class OptionalEngineRoutes
+    {
+        private readonly ConverterCatalog _catalog;
+        private readonly RoutePlanner _installed;
+        private readonly RoutePlanner _optional;
+        private readonly Dictionary<string, IReadOnlyList<string>> _packages;
+
+        public OptionalEngineRoutes(ConverterCatalog catalog)
+        {
+            _catalog = catalog;
+            _packages = EngineDownloads.Packages.SelectMany(p => p.ConverterIds.Select(id => (Converter: id, Package: p.Id)))
+                .GroupBy(p => p.Converter).ToDictionary(g => g.Key, g => (IReadOnlyList<string>)g.Select(p => p.Package).ToList());
+            _installed = catalog.CreatePlanner();
+            _optional = catalog.CreatePlanner(catalog.All
+                .Where(c => _packages.ContainsKey(c.Id) && catalog.StatusOf(c).ReasonKey != "engine.reason.unsupported_platform")
+                .Select(c => c.Id).ToList());
+        }
+
+        public IReadOnlyList<string>? MissingPackages(RouteRequest request)
+        {
+            if (Plan(_installed) is not null || Plan(_optional) is not { } route)
+                return null;
+            var packages = route.Steps.Where(s => !_catalog.StatusOf(s.Converter).IsAvailable)
+                .SelectMany(s => _packages[s.Converter.Id]).Distinct().ToList();
+            return packages.Count > 0 ? packages : null;
+
+            Route? Plan(RoutePlanner planner) => planner.Plan(request.Source, request.Target, frames: request.Frames,
+                shaping: request.Shaping, motionPhoto: request.MotionPhoto, livePhoto: request.LivePhoto, ocr: request.Ocr);
+        }
     }
 }

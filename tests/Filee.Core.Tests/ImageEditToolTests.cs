@@ -69,6 +69,39 @@ public class ImageEditToolTests
     }
 
     [Fact]
+    public void A_width_and_height_is_kept_in_the_tool_with_its_unit_and_survives_saving()
+    {
+        var tool = Tool();
+        var image = tool.Image.Clone();
+        image.CustomSize = new CustomImageSize { Width = 413, Height = 531, Unit = SizeUnit.Centimetres, Dpi = 300 };
+        ImageEditTool.Remember(tool, "jpg", image);
+        image.CustomSize.Width = 1; // the tool has its own copy
+
+        Assert.Equal((413, SizeUnit.Centimetres, 300), (tool.Image.CustomSize!.Width, tool.Image.CustomSize.Unit, tool.Image.CustomSize.Dpi));
+        var clone = tool.Image.Clone().CustomSize!;
+        Assert.Equal((SizeUnit.Centimetres, 300), (clone.Unit, clone.Dpi));
+
+        var json = JsonSerializer.Serialize(new List<Preset> { tool }, FileeJsonContext.Default.ListPreset);
+        var read = JsonSerializer.Deserialize(json, FileeJsonContext.Default.ListPreset)!.Single().Image.CustomSize!;
+        Assert.Equal((413, 531, SizeUnit.Centimetres, 300), (read.Width, read.Height, read.Unit, read.Dpi));
+
+        // A unit a later version adds reads as pixels, instead of the whole presets file failing to read.
+        var later = json.Replace("\"Centimetres\"", "\"Points\"", StringComparison.Ordinal);
+        Assert.Equal(SizeUnit.Pixels, JsonSerializer.Deserialize(later, FileeJsonContext.Default.ListPreset)!.Single().Image.CustomSize!.Unit);
+    }
+
+    [Theory]
+    [InlineData(3.5, SizeUnit.Centimetres, 300, 413)]
+    [InlineData(45, SizeUnit.Millimetres, 300, 531)]
+    [InlineData(2, SizeUnit.Inches, 300, 600)]
+    [InlineData(640, SizeUnit.Pixels, 300, 640)]
+    public void A_printed_size_is_turned_into_pixels_and_back(double value, SizeUnit unit, int dpi, int pixels)
+    {
+        Assert.Equal(pixels, CustomImageSize.ToPixels(value, unit, dpi));
+        Assert.Equal(value, CustomImageSize.FromPixels(pixels, unit, dpi), 1);
+    }
+
+    [Fact]
     public void A_picture_keeps_its_format_where_it_can_be_written_else_becomes_png()
     {
         var magick = new FakeConverter("magick", new ConversionEdge("png", "png"), new ConversionEdge("jpg", "jpg"),

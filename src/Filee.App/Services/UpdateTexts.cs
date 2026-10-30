@@ -12,10 +12,13 @@ public static class UpdateTexts
     /// <summary>What the update button does, for the notice and tooltips.</summary>
     public static string HowKey => UpdateService.IsInstalled ? "update.notice_text" : "update.notice_text_portable";
 
-    /// <summary>Short label for the sidebar button and the tray menu ("Update to 1.4.0", "Downloading… 42%").</summary>
+    /// <summary>
+    /// Short label for the sidebar button and the tray menu ("Update to 1.4.0", "Downloading… 42%"). The download has a
+    /// key of its own, without the article of the full sentence that <see cref="Status"/> shows.
+    /// </summary>
     public static string Short(UpdateService updates, ILocalizer loc) => updates.Step switch
     {
-        UpdateStep.Downloading => loc.Format("update.downloading", updates.DownloadPercent),
+        UpdateStep.Downloading => loc.Format("update.downloading_short", updates.DownloadPercent),
         UpdateStep.Installing => loc["update.installing_short"],
         _ => updates.LatestVersion is { } latest ? loc.Format("update.sidebar", latest) : "",
     };

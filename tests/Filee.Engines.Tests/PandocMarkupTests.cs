@@ -94,6 +94,8 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("adoc", FormatRegistry.FindByExtension("asciidoc")!.Id);
 
         Assert.SkipUnless(PandocConverter.Locate() is not null, "Pandoc not found (pwsh build/fetch-engines.ps1 -Only pandoc)");
+        // rhwp lays out the PDF; without it (Windows ARM64 until its build is pinned) Pandoc takes another route.
+        Assert.SkipUnless(fx.Converters.Any(c => c.Id == "rhwp" && fx.Catalog.StatusOf(c).IsAvailable), "rhwp not found");
         // Not through slides and LibreOffice's PPTX → PDF.
         Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("org", "pdf")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("md", "pdf")!.Steps.Select(s => s.Converter.Id));

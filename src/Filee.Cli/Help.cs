@@ -14,8 +14,10 @@ internal static class Help
     {
         "convert" => Convert,
         "watch" => Watch,
-        "formats" => "Usage: filee formats [<format>]\n\nLists every format, or what one format converts to.\n",
-        "presets" => "Usage: filee presets\n\nLists the presets saved in Filee (built-in and your own).\n",
+        "formats" => "Usage: filee formats [<format>] [--json]\n\nLists every format, or what one format converts to.\n" +
+                     "With --json, prints the same as JSON (for scripts and other programs).\n",
+        "presets" => "Usage: filee presets [--json]\n\nLists the presets saved in Filee (built-in and your own).\n" +
+                     "With --json, prints the same as JSON (for scripts and other programs).\n",
         _ => General,
     };
 
@@ -26,8 +28,8 @@ internal static class Help
           filee convert <files or folders...> --to <format> [options]
           filee convert <files or folders...> --preset <preset> [options]
           filee watch <folder> --to <format> [options]
-          filee formats [<format>]
-          filee presets
+          filee formats [<format>] [--json]
+          filee presets [--json]
           filee help [<command>]
           filee version
 
@@ -37,8 +39,9 @@ internal static class Help
           filee convert D:\Scans --recursive --preset to-pdf
           filee watch D:\Inbox --to pdf --move-originals
 
-        Presets and engines are the ones in the Filee app. Exit codes: 0 all converted, 1 some failed,
-        2 wrong arguments or a missing input, 3 nothing to convert.
+        Presets and engines are the ones in the Filee app. Exit codes: 0 nothing failed (skipped
+        files included), 1 some failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to
+        convert.
 
         """;
 

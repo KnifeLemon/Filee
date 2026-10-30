@@ -1,0 +1,161 @@
+# Flags a new issue that may repeat an earlier one: a short comment links it (mentioning only the author) and the
+# issue gets the `possible duplicate` label. Nothing is closed. It runs for newly opened issues only, never for pull
+# requests.
+# Same request: for format requests the same "File extension" answer, for other issues the same title (ignoring case
+# and punctuation). Short or template-only titles are skipped.
+# Earlier issue still open: "may be the same request". Earlier issue closed by a pull request merged after the
+# latest release: the comment also links that pull request and says it comes in the next release. Issues closed any
+# other way are ignored.
+name: Flag possible duplicate issue
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write
+  # Read-only: the date of the latest release, and the pull request that closed an earlier issue.
+  contents: read
+  pull-requests: read
+
+jobs:
+  duplicate:
+    if: ${{ github.event.issue.user.type != 'Bot' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number }}
+    steps:
+      - name: Find an earlier issue that asks for the same thing
+        id: find
+        env:
+          # Passed as environment variables, never written into the script, so the text can't run as code.
+          TITLE: ${{ github.event.issue.title }}
+          BODY: ${{ github.event.issue.body }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, sys
+
+          def norm(text):
+              return re.sub(r'[\W_]+', ' ', text.lower()).strip()
+
+          def core(text):
+              # The title without the leading template tags such as "[Bug]:" or "[Format]:".
+              return re.sub(r'^\s*(\[[^\]]*\]\s*:?\s*)+', '', text)
+
+          def extensions(body):
+              # The "File extension" answer of the format request form, as a set such as {"ncm"}; None when the issue
+              # has no such field, it was left empty, or it holds anything but plain extensions.
+              m = re.search(r'###[ \t]+File extension[ \t]*\r?\n(?:[ \t]*\r?\n)*([^\r\n]+)', body or '')
+              if not m or m.group(1).strip() == '_No response_':
+                  return None
+              found = set()
+              for part in re.split(r'[,;/\s]+', m.group(1).strip()):
+                  part = part.lstrip('.*').lower()
+                  if not part:
+                      continue
+                  if not re.fullmatch(r'[a-z0-9_+\-]{1,12}', part):
+                      return None
+                  found.add(part)
+              return frozenset(found) or None
+
+          QUERY = ('query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){'
+                   'issue(number:$number){closedByPullRequestsReferences(first:10,includeClosedPrs:true){'
+                   'nodes{number merged mergedAt}}}}}')
+
+          def closing_pr(number):
+              # The latest merged pull request that closes this issue, or None when no merged pull request does.
+              owner, name = os.environ['GH_REPO'].split('/', 1)
+              result = subprocess.run(
+                  ['gh', 'api', 'graphql', '-f', f'query={QUERY}', '-f', f'owner={owner}', '-f', f'name={name}',
+                   '-F', f'number={number}'], capture_output=True, text=True)
+              if result.returncode != 0:
+                  return None
+              try:
+                  issue = json.loads(result.stdout)['data']['repository']['issue']
+                  nodes = issue['closedByPullRequestsReferences']['nodes']
+              except (KeyError, TypeError, ValueError):
+                  return None
+              merged = [n for n in nodes or [] if n and n.get('merged') and n.get('mergedAt')]
+              return max(merged, key=lambda n: n['mergedAt']) if merged else None
+
+          title = os.environ['TITLE']
+          me = int(os.environ['ISSUE'])
+          mine = extensions(os.environ.get('BODY', ''))
+          key = norm(title)
+          if mine is None and len(norm(core(title))) < 8:
+              print('Title is too short or generic: not checking for duplicates')
+              sys.exit(0)
+
+          # When the latest published release was made (drafts and pre-releases don't count). None: no release yet.
+          latest = subprocess.run(
+              ['gh', 'api', f"repos/{os.environ['GH_REPO']}/releases/latest", '--jq', '.published_at'],
+              capture_output=True, text=True)
+          released_at = latest.stdout.strip() if latest.returncode == 0 and latest.stdout.strip() else None
+
+          listing = subprocess.run(
+              ['gh', 'issue', 'list', '--state', 'all', '--limit', '5000', '--json', 'number,title,body,state'],
+              check=True, capture_output=True, text=True).stdout
+          unreleased, duplicates, closed = [], [], []
+          for issue in json.loads(listing):
+              if issue['number'] >= me:
+                  continue
+              if mine is not None:
+                  same = extensions(issue.get('body')) == mine
+              else:
+                  same = norm(issue['title']) == key
+              if not same:
+                  continue
+              (duplicates if issue['state'] == 'OPEN' else closed).append(issue['number'])
+
+          # Closed issues count only when a merged pull request closed them, after the latest release. The newest
+          # ten are checked: those are the ones a pull request since the release can have closed.
+          for number in sorted(closed, reverse=True)[:10]:
+              pr = closing_pr(number)
+              if pr and (released_at is None or pr['mergedAt'] > released_at):
+                  unreleased.append((number, pr['number']))
+
+          if unreleased:
+              kind = 'release'
+              original, pull = min(unreleased)
+          elif duplicates:
+              kind, original, pull = 'duplicate', min(duplicates), ''
+          else:
+              print('No duplicate found')
+              sys.exit(0)
+
+          ext = ', '.join('.' + e for e in sorted(mine)) if mine is not None else ''
+          print(f'{kind} #{original} pr={pull or "-"} ({ext or "same title"})')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write(f'original={original}\n')
+              out.write(f'kind={kind}\n')
+              out.write(f'pull={pull}\n')
+              out.write(f'ext={ext}\n')
+          PY
+
+      - name: Comment with a link to the earlier issue and add the label
+        if: ${{ steps.find.outputs.original != '' }}
+        env:
+          ORIGINAL: ${{ steps.find.outputs.original }}
+          KIND: ${{ steps.find.outputs.kind }}
+          PULL: ${{ steps.find.outputs.pull }}
+          EXT: ${{ steps.find.outputs.ext }}
+          AUTHOR: ${{ github.event.issue.user.login }}
+        run: |
+          if [ -n "$EXT" ]; then
+            reason="same file extension: $EXT"
+          else
+            reason="same title"
+          fi
+          if [ "$KIND" = release ]; then
+            # Case 1: a merged pull request closed the earlier issue and it is not released yet.
+            body="@$AUTHOR, this may be the same request as #$ORIGINAL ($reason). It was added in #$PULL, which is merged but not released yet, so it will be available in the next release. If it's something different, please say how, and a maintainer will take a look."
+          else
+            # Case 2: the earlier issue is still open.
+            body="@$AUTHOR, this may be the same request as #$ORIGINAL ($reason). If it's something different, please say how, and a maintainer will take a look."
+          fi
+          gh issue comment "$ISSUE" --body "$body"
+          gh label create "possible duplicate" --description "May repeat an earlier issue; not confirmed by a maintainer" --color fbca04 2>/dev/null || true
+          gh issue edit "$ISSUE" --add-label "possible duplicate"

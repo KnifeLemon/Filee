@@ -70,6 +70,10 @@ if ($IsLinux) {
     Invoke-Checked 'Load libuiohook-xrecord.so' {
         python3 -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1]); print("Loaded " + sys.argv[1])' $backend
     }
+    # Unhwp: from its package on x64, Filee's own build on ARM64 (build/build-native.py, -UnhwpOverride).
+    Invoke-Checked 'Load libunhwp.so' {
+        python3 -c 'import ctypes, sys; f = ctypes.CDLL(sys.argv[1]).unhwp_version; f.restype = ctypes.c_char_p; print("Loaded " + sys.argv[1] + ", unhwp " + f().decode())' (Join-Path $bin 'libunhwp.so')
+    }
 }
 
 if ($env:GITHUB_ENV) {

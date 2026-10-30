@@ -7,6 +7,7 @@
 
 using System.Numerics;
 using System.Text.Json.Nodes;
+using Filee.Engines.Magick;
 using ImageMagick;
 using SharpGLTF.Memory;
 using SharpGLTF.Schema2;
@@ -314,6 +315,7 @@ internal static class GltfFormat
         try
         {
             using var image = new MagickImage(texture.Data);
+            DdsChannelOrder.Correct(texture.Data, image);
             return image.ToByteArray(MagickFormat.Png);
         }
         catch (MagickException ex)

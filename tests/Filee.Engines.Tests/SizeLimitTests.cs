@@ -102,6 +102,232 @@ public class SizeLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.InRange(Math.Max(fitted.Width, fitted.Height), (uint)ImageEncoder.MinFittedLongEdge, 1439u);
     }
 
+    /// <summary>Bytes of <paramref name="source"/> saved as <paramref name="format"/> at <paramref name="quality"/>.</summary>
+    private static long Encoded(string source, MagickFormat format, uint quality)
+    {
+        using var image = new MagickImage(source);
+        image.Quality = quality;
+        return image.ToByteArray(format).LongLength;
+    }
+
+    /// <summary>A noisy PNG to convert: noise keeps quality steps far apart in bytes.</summary>
+    private string NoisySource(uint width = 300, uint height = 200)
+    {
+        var path = Path.Combine(fx.NewFolder(), "noise.png");
+        using var image = Noisy(width, height);
+        image.Write(path, MagickFormat.Png);
+        return path;
+    }
+
+    private static string Done(ConversionJob job)
+    {
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        return job.Outputs.First();
+    }
+
+    [Theory]
+    [InlineData("jpg", MagickFormat.Jpeg)]
+    [InlineData("webp", MagickFormat.WebP)]
+    public async Task A_picture_under_the_minimum_is_saved_again_at_a_higher_quality_with_the_same_pixels(string target, MagickFormat format)
+    {
+        var source = NoisySource();
+        var minimum = (Encoded(source, format, 30) + Encoded(source, format, 100)) / 2;
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = target, Image = { Quality = 30, MinSizeMb = minimum / 1e6 } });
+
+        var output = Done(job);
+        Assert.True(new FileInfo(output).Length >= minimum, $"{new FileInfo(output).Length} < {minimum}");
+        Assert.False(job.Files[0].UnderMinimumSize);
+        using var result = new MagickImage(output);
+        Assert.Equal((300u, 200u), (result.Width, result.Height));
+    }
+
+    [Fact]
+    public async Task A_range_is_met_by_quality_alone()
+    {
+        var source = NoisySource();
+        var minimum = (Encoded(source, MagickFormat.Jpeg, 30) + Encoded(source, MagickFormat.Jpeg, 100)) / 2;
+        var maximum = Encoded(source, MagickFormat.Jpeg, 100) * 105 / 100;
+
+        var output = Done(await fx.ConvertAsync([source],
+            new Preset { TargetFormat = "jpg", Image = { Quality = 30, MinSizeMb = minimum / 1e6, MaxSizeMb = maximum / 1e6 } }));
+
+        Assert.InRange(new FileInfo(output).Length, minimum, maximum);
+        using var result = new MagickImage(output);
+        Assert.Equal((300u, 200u), (result.Width, result.Height));
+    }
+
+    [Fact]
+    public void The_minimum_goes_on_from_the_picture_the_maximum_fitted_not_the_one_handed_in()
+    {
+        // Too large at first, then quality and pixels cut until it fits: raising the quality again from there must not
+        // bring back the pixels (or the file) of the picture handed in.
+        var path = Path.Combine(fx.NewFolder(), "noise.jpg");
+        using var image = Noisy(1600, 1200);
+        image.Quality = 95;
+        image.Write(path, MagickFormat.Jpeg);
+        const long limit = 200 * 1024;
+
+        ImageEncoder.FitToSize(image, path, MagickFormat.Jpeg, limit, limit);
+
+        Assert.InRange(new FileInfo(path).Length, 1, limit);
+        using var fitted = new MagickImage(path);
+        Assert.True(fitted.Width < 1600);
+    }
+
+    [Fact]
+    public async Task A_minimum_the_maximum_cuts_short_keeps_the_maximum_and_gets_the_notice()
+    {
+        var source = NoisySource();
+        var (q80, q90, q100) = (Encoded(source, MagickFormat.Jpeg, 80), Encoded(source, MagickFormat.Jpeg, 90), Encoded(source, MagickFormat.Jpeg, 100));
+        Assert.True(q80 < q90 && q90 < q100, $"{q80} {q90} {q100}");
+        var maximum = (q80 + q90) / 2;   // 90 breaks it…
+        var minimum = (q90 + q100) / 2;  // …before the minimum is reached
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "jpg", Image = { Quality = 30, MinSizeMb = minimum / 1e6, MaxSizeMb = maximum / 1e6 } });
+
+        Assert.InRange(new FileInfo(Done(job)).Length, 1, maximum);
+        Assert.True(job.Files[0].UnderMinimumSize);
+    }
+
+    [Fact]
+    public async Task A_picture_too_plain_for_the_minimum_is_kept_at_the_highest_quality_with_the_notice()
+    {
+        var source = Path.Combine(fx.NewFolder(), "plain.png");
+        using (var image = new MagickImage(MagickColors.SteelBlue, 32, 32))
+            image.Write(source, MagickFormat.Png);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "jpg", Image = { Quality = 50, MinSizeMb = 1 } });
+
+        using var result = new MagickImage(Done(job));
+        Assert.Equal(100u, result.Quality);
+        Assert.Equal((32u, 32u), (result.Width, result.Height));
+        Assert.True(job.Files[0].UnderMinimumSize);
+    }
+
+    [Theory]
+    [InlineData("png")] // no quality: never made larger
+    [InlineData("gif")] // an animation: not fitted at all
+    public async Task A_format_that_cannot_be_raised_is_kept_with_the_notice(string target)
+    {
+        var dir = fx.NewFolder();
+        var source = Path.Combine(dir, "frames.gif");
+        using (var frames = new MagickImageCollection())
+        {
+            frames.Add(new MagickImage(MagickColors.Coral, 40, 30) { AnimationDelay = 20 });
+            frames.Add(new MagickImage(MagickColors.Teal, 40, 30) { AnimationDelay = 20 });
+            frames.Write(source, MagickFormat.Gif);
+        }
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = target, Image = { MinSizeMb = 1 } });
+
+        Done(job);
+        Assert.Equal(FileState.Done, job.Files[0].State);
+        Assert.True(job.Files[0].UnderMinimumSize);
+    }
+
+    [Fact]
+    public async Task One_page_of_a_tiff_under_the_minimum_is_enough_for_the_notice()
+    {
+        var source = Path.Combine(fx.NewFolder(), "pages.tiff");
+        using (var pages = new MagickImageCollection())
+        {
+            pages.Add(Noisy(600, 400));
+            pages.Add(new MagickImage(MagickColors.White, 600, 400));
+            pages.Write(source, MagickFormat.Tiff);
+        }
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "jpg", Image = { MinSizeMb = 0.02 } });
+
+        Done(job);
+        Assert.Equal(2, job.Files[0].Outputs.Count);
+        Assert.True(new FileInfo(job.Files[0].Outputs[0]).Length >= 20_000);
+        Assert.True(job.Files[0].UnderMinimumSize);
+    }
+
+    [Fact]
+    public async Task Merged_pictures_are_raised_in_quality_to_the_range_too()
+    {
+        var originals = fx.NewFolder();
+        foreach (var name in new[] { "1.png", "2.png" })
+        {
+            using var image = Noisy(200, 100);
+            image.Write(Path.Combine(originals, name), MagickFormat.Png);
+        }
+        async Task<(ConversionJob Job, string Output)> Merge(Action<ImageOptions> set)
+        {
+            var dir = fx.NewFolder();
+            var sources = new[] { "1.png", "2.png" }.Select(n => { var to = Path.Combine(dir, n); File.Copy(Path.Combine(originals, n), to); return to; }).ToList();
+            var preset = BuiltInData.CreatePresets().Single(p => p.Id == "merge-images").Clone();
+            preset.TargetFormat = "jpg";
+            set(preset.Image);
+            var job = await fx.ConvertAsync(sources, preset);
+            return (job, Done(job));
+        }
+
+        var low = new FileInfo((await Merge(i => i.Quality = 30)).Output).Length;
+        var high = new FileInfo((await Merge(i => i.Quality = 100)).Output).Length;
+        var minimum = (low + high) / 2;
+
+        var (alone, aloneOutput) = await Merge(i => { i.Quality = 30; i.MinSizeMb = minimum / 1e6; });
+        var (ranged, rangedOutput) = await Merge(i => { i.Quality = 30; i.MinSizeMb = minimum / 1e6; i.MaxSizeMb = high * 1.05 / 1e6; });
+        var (unreachable, _) = await Merge(i => { i.Quality = 30; i.MinSizeMb = high * 3 / 1e6; });
+
+        Assert.True(new FileInfo(aloneOutput).Length >= minimum);
+        Assert.InRange(new FileInfo(rangedOutput).Length, minimum, (long)(high * 1.05));
+        Assert.False(alone.Files[0].UnderMinimumSize || ranged.Files[0].UnderMinimumSize);
+        using (var merged = new MagickImage(aloneOutput))
+            Assert.Equal((200u, 200u), (merged.Width, merged.Height));
+        Assert.True(unreachable.Files[0].UnderMinimumSize);
+    }
+
+    [Fact]
+    public async Task Compress_image_keeping_a_smaller_original_still_tells_it_is_under_the_minimum()
+    {
+        var source = Path.Combine(fx.NewFolder(), "small.jpg");
+        using (var image = new MagickImage(MagickColors.SteelBlue, 64, 64) { Quality = 10 })
+            image.Write(source, MagickFormat.Jpeg);
+        var preset = BuiltInData.CreatePresets().Single(p => p.Id == "compress-image").Clone();
+        preset.Image.MinSizeMb = 1;
+
+        var job = await fx.ConvertAsync([source], preset);
+
+        Done(job);
+        Assert.Equal("notice.pdf_not_smaller", job.Files[0].NoticeKey);
+        Assert.True(job.Files[0].UnderMinimumSize);
+    }
+
+    [Fact]
+    public async Task A_limit_in_kilobytes_is_kept()
+    {
+        var source = Path.Combine(fx.NewFolder(), "photo.png");
+        using (var image = new MagickImage("gradient:#C04020-#2060C0", 1200, 900))
+        {
+            image.AddNoise(NoiseType.Gaussian, 0.3);
+            image.Write(source, MagickFormat.Png);
+        }
+
+        var output = Done(await fx.ConvertAsync([source], new Preset { TargetFormat = "jpg", Image = { MaxSizeMb = 0.05 } }));
+
+        Assert.InRange(new FileInfo(output).Length, 1, 50_000);
+    }
+
+    [Fact]
+    public async Task Video_frames_saved_into_a_folder_are_left_out_of_the_minimum()
+    {
+        Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
+        var source = Path.Combine(fx.NewFolder(), "clip.mp4");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=5:duration=1", "-pix_fmt", "yuv420p", source],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "jpg", Image = { MinSizeMb = 1 }, Media = { SaveEveryFrame = true } });
+
+        Assert.True(Directory.Exists(Done(job)));
+        Assert.False(job.Files[0].UnderMinimumSize);
+    }
+
     [Fact]
     public void Megabytes_are_a_million_bytes_as_the_services_count_them()
     {

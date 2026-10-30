@@ -1,7 +1,7 @@
 // PDF → DOCX / HWPX / TXT / Markdown with the built-in PDF reader (PdfPig): paragraphs in reading order (two-column
 // pages too), headings from font sizes, bold / italic / colour, links, pictures (JPEG kept as it is; next to a
 // Markdown file in "<name>_files"), repeated headers, footers, page numbers and logos left out, scanned pages as page
-// pictures, and a clear error for password-protected files.
+// pictures, turned (/Rotate) and cropped pages read as they are shown, and a clear error for password-protected files.
 // The test PDFs use the standard 14 fonts, so no installed font is needed (only the Korean test embeds one, if any).
 
 using System.IO.Compression;
@@ -212,6 +212,87 @@ public class PdfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
         // Nothing to extract as text from the scan, but the text page still is.
         Assert.Equal("Text after the scan\r\n", await File.ReadAllTextAsync(await ConvertAsync(path, "txt"), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// A landscape page (842 × 595) with a heading, a ruled 3 × 2 table, a picture and a paragraph, 80 pt from the left
+    /// edge, written as <see cref="PdfBuilder.Turn"/> turns it.
+    /// </summary>
+    private static string LandscapePage(string folder, int rotate, bool drawTurned = true, double inset = 0)
+    {
+        var pdf = new PdfBuilder().NewPage(842, 595);
+        var regular = pdf.Font();
+        pdf.Line("Supplier comparison", 16, pdf.Font(bold: true), 80, 90);
+        double[] xs = [80, 300, 520, 760];
+        double[] ys = [120, 145, 170];
+        foreach (var y in ys)
+            pdf.Rule(xs[0], y, xs[^1], y);
+        foreach (var x in xs)
+            pdf.Rule(x, ys[0], x, ys[^1]);
+        string[][] cells = [["Supplier", "A", "B"], ["Price", "100", "200"]];
+        for (var r = 0; r < 2; r++)
+        {
+            for (var c = 0; c < 3; c++)
+                pdf.Line(cells[r][c], 10, regular, xs[c] + 4, ys[r] + 16);
+        }
+        pdf.Picture(PdfBuilder.Photo(folder, "product.png", MagickFormat.Png, 150, 100), 80, 200, 150, 100);
+        pdf.Line("Prices include delivery.", 11, regular, 80, 340);
+        var path = pdf.Save(Path.Combine(folder, $"landscape-{rotate}.pdf"));
+        PdfBuilder.Turn(path, rotate, drawTurned, inset);
+        return path;
+    }
+
+    /// <summary>
+    /// Issue #740: printer drivers write a landscape page as a portrait page with turned content and /Rotate. Such a
+    /// page was taken for a scan and came out as one picture without text.
+    /// </summary>
+    [Theory]
+    [InlineData(90, 0)]
+    [InlineData(270, 0)]
+    [InlineData(90, 40)]
+    [InlineData(0, 40)]
+    public async Task Turned_and_cropped_pages_keep_their_text_tables_and_pictures(int rotate, double inset)
+    {
+        var path = LandscapePage(fx.NewFolder(), rotate, inset: inset);
+
+        var docx = await ConvertAsync(path, "docx");
+
+        ValidPackage(docx);
+        var section = Assert.Single(ReadBack(docx).Sections);
+        // The page as it is shown: landscape, less the cropped edges; the left margin is measured from the crop box.
+        var size = (Width: (int)((842 - 2 * inset) * 100), Height: (int)((595 - 2 * inset) * 100));
+        Assert.Equal(size, (section.Page!.Width, section.Page!.Height));
+        Assert.Equal((int)((80 - inset) * 100), section.Page.Left);
+        var blocks = section.Blocks.Where(b => b is HTable || (b is HParagraph p && (TextOf(p).Trim().Length > 0 || p.Inlines.OfType<HImage>().Any()))).ToList();
+        Assert.Equal("Supplier comparison", TextOf(Assert.IsType<HParagraph>(blocks[0])).Trim());
+        var table = Assert.IsType<HTable>(blocks[1]);
+        Assert.Equal([["Supplier", "A", "B"], ["Price", "100", "200"]],
+            table.Rows.Select(r => r.Cells.Select(c => string.Concat(Paragraphs(c.Blocks).Select(TextOf)).Trim()).ToArray()));
+        var picture = Assert.Single(Assert.IsType<HParagraph>(blocks[2]).Inlines.OfType<HImage>());
+        Assert.Equal((15000, 10000), (picture.Width, picture.Height));
+        Assert.Equal("Prices include delivery.", TextOf(Assert.IsType<HParagraph>(blocks[3])).Trim());
+        Assert.Equal(4, blocks.Count);
+
+        var hwpx = await ConvertAsync(path, "hwpx");
+        HwpxAssert.ValidPackage(hwpx, expectImages: 1);
+        Assert.Contains("Supplier comparison", HwpxAssert.Xml(hwpx).Value);
+
+        var text = await File.ReadAllTextAsync(await ConvertAsync(path, "txt"), TestContext.Current.CancellationToken);
+        Assert.Contains("Supplier comparison", text);
+        Assert.Contains("Prices include delivery.", text);
+    }
+
+    [Fact]
+    public async Task Page_turned_in_a_viewer_with_sideways_text_stays_a_page_picture()
+    {
+        var path = LandscapePage(fx.NewFolder(), 90, drawTurned: false);
+
+        var docx = await ConvertAsync(path, "docx");
+
+        var section = Assert.Single(ReadBack(docx).Sections);
+        var scan = section.Blocks.OfType<HParagraph>().Single().Inlines.OfType<HImage>().Single();
+        // The landscape page turned by 90° is shown upright, 595 wide and 842 high.
+        Assert.Equal((59500, 84200), (scan.Width, scan.Height));
     }
 
     [Fact]

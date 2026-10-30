@@ -28,10 +28,14 @@ public static class ExplorerMenuRegistration
     /// <param name="ExternalLocation">Folder the package points at (null when Windows does not say).</param>
     public sealed record RegisteredPackage(string FullName, Version Version, string? ExternalLocation);
 
-    /// <summary>Windows 11 on x64: the new context menu exists and Explorer can load the x64 DLL.</summary>
+    /// <summary>
+    /// Windows 11 on x64 or ARM64: the new context menu exists, and Explorer can load the DLL shipped with this build
+    /// (built for the same architecture as Filee itself, so not an x64 Filee on ARM64 Windows).
+    /// </summary>
     public static bool IsSupportedOs =>
         OperatingSystem.IsWindowsVersionAtLeast(10, 0, ExplorerMenuPackage.MinimumBuild)
-        && RuntimeInformation.OSArchitecture == Architecture.X64;
+        && RuntimeInformation.OSArchitecture is Architecture.X64 or Architecture.Arm64
+        && RuntimeInformation.OSArchitecture == RuntimeInformation.ProcessArchitecture;
 
     /// <summary>The title file the DLL reads (see <see cref="ExplorerMenuPackage.TitleFileName"/>).</summary>
     public static string TitleFilePath => Path.Combine(UserDataStore.DefaultDirectory, ExplorerMenuPackage.TitleFileName);

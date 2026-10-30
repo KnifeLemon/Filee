@@ -20,10 +20,11 @@ public static class ImageEditTool
     public static readonly IReadOnlySet<string> LossyTargets = new HashSet<string> { "jpg", "webp", "avif", "heic" };
 
     /// <summary>
-    /// The resizes the window offers, named rather than every <see cref="ResizeMode"/>: a mode added later (a free
-    /// width × height, #593) needs fields of its own in the window before it can be offered there.
+    /// The resizes the window offers, named rather than every <see cref="ResizeMode"/>: a mode added later needs fields
+    /// of its own in the window before it can be offered there. <see cref="ResizeMode.Custom"/> is the free width ×
+    /// height, in pixels, cm, mm or inches (#725).
     /// </summary>
-    public static readonly IReadOnlyList<ResizeMode> ResizeModes = [ResizeMode.None, ResizeMode.Percent, ResizeMode.LongEdge, ResizeMode.Width];
+    public static readonly IReadOnlyList<ResizeMode> ResizeModes = [ResizeMode.None, ResizeMode.Percent, ResizeMode.LongEdge, ResizeMode.Width, ResizeMode.Custom];
 
     /// <summary>True when a <paramref name="sourceFormat"/> file is a picture the tool can open.</summary>
     public static bool CanEdit(string sourceFormat) =>
@@ -78,6 +79,8 @@ public static class ImageEditTool
         kept.ResizePercent = image.ResizePercent;
         kept.LongEdge = image.LongEdge;
         kept.Width = image.Width;
+        kept.CustomSize = image.Clone().CustomSize;
+        kept.MinShortEdge = image.MinShortEdge;
         kept.Rotation = image.Rotation;
         kept.Flip = image.Flip;
         kept.Grayscale = image.Grayscale;

@@ -116,6 +116,12 @@ public sealed class WebDrop : IDisposable
     /// <summary>This drop's own folder inside the work root.</summary>
     public string WorkFolder { get; }
 
+    /// <summary>
+    /// Whether only the converted file is kept, whatever Settings says (<see cref="WebDropOptions.SaveOnlyConverted"/>);
+    /// null follows Settings. A picture from the clipboard keeps only its result: the original was never a file.
+    /// </summary>
+    public bool? SaveOnlyConverted { get; init; }
+
     /// <summary>The paths the files stand as until they are saved.</summary>
     public IReadOnlyList<string> Placeholders => _placeholders;
 

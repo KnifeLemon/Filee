@@ -2,7 +2,9 @@
 // the gesture ends without files, even after a conversion left the ring behind (issue: desktop icons stopped reacting
 // to clicks until Filee quit).
 
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.Core.Presets;
@@ -57,6 +59,26 @@ public class RadialControllerTests
 
         Assert.False(radial.IsVisible);
         Assert.False(radial.Window.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void Click_mode_focuses_the_donut_for_tab_flip()
+    {
+        TestServices.EnsureInitialized("en");
+        var radial = AppHost.Get<RadialController>();
+        try
+        {
+            radial.ShowForFiles(400, 400, [@"C:\photos\a.jpg"]);
+            var window = radial.Window!;
+
+            Assert.True(window.DonutControl.IsFocused);
+            window.KeyPress(Key.Tab, RawInputModifiers.None, PhysicalKey.Tab, null);
+            Assert.True(AppHost.Get<Filee.App.ViewModels.RadialViewModel>().IsBackFace);
+        }
+        finally
+        {
+            radial.Close(animate: false);
+        }
     }
 
     [Fact]

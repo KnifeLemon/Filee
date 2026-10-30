@@ -23,6 +23,12 @@ internal sealed class FakeConverter(string id, params ConversionEdge[] edges) : 
     /// <summary>The picture folder is taken from the allocator (MarkdownPictures) rather than just written (Pandoc).</summary>
     public bool ReservesPictureFolder { get; set; } = true;
 
+    /// <summary>What output i holds, instead of the input name and target (to make outputs of given sizes).</summary>
+    public Func<int, string>? Content { get; set; }
+
+    /// <summary>Returns a folder at the output's name instead of writing a file (a folder of video frames).</summary>
+    public bool OutputIsFolder { get; set; }
+
     /// <summary>Thrown instead of converting, when set.</summary>
     public Exception? Failure { get; set; }
 
@@ -52,7 +58,13 @@ internal sealed class FakeConverter(string id, params ConversionEdge[] edges) : 
             var path = step.Output.Allocate(step.To, OutputsPerInput > 1 ? $"_p{i + 1}" : null);
             if (path is null)
                 continue;
-            File.WriteAllText(path, $"{Path.GetFileName(step.InputPath)}→{step.To} by {id}");
+            if (OutputIsFolder)
+            {
+                Directory.CreateDirectory(path);
+                written.Add(path);
+                continue;
+            }
+            File.WriteAllText(path, Content?.Invoke(i) ?? $"{Path.GetFileName(step.InputPath)}→{step.To} by {id}");
             written.Add(path);
             if (PictureFolder)
             {

@@ -139,7 +139,7 @@ public class SelectionGuardTests
     public void Ctrl_clicking_the_open_page_in_the_navigation_keeps_it_open()
     {
         TestServices.EnsureInitialized("en");
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
         Pump();
@@ -233,7 +233,7 @@ public class SelectionGuardTests
         AssertKeeps(editor, nameof(editor.AudioCodecChoice), () => editor.AudioCodecChoice, v => editor.AudioCodecChoice = v);
         Assert.True(editor.Apply());
 
-        var nav = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>());
+        var nav = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         AssertKeeps(nav, nameof(nav.SelectedItem), () => nav.SelectedItem, v => nav.SelectedItem = v);
 
         var rename = new RenameToolViewModel("", "{name}", [new RenameStep()], [], (_, _, name) => name, loc);

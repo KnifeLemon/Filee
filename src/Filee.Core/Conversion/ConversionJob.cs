@@ -39,6 +39,9 @@ public sealed class FileResult
     /// <summary>Localization key of the error (e.g. <c>error.no_route</c>), if any.</summary>
     public string? ErrorKey { get; set; }
 
+    /// <summary>The actual request whose initial route planning failed, or null for other failures.</summary>
+    public RouteRequest? FailedRoute { get; set; }
+
     /// <summary>The job's fetcher saves this source first (a file from a browser).</summary>
     public bool NeedsFetch { get; init; }
 
@@ -63,6 +66,15 @@ public sealed class FileResult
     /// <summary>The system's own words after <see cref="NoticeReasonKey"/> (not localized), or null.</summary>
     public string? NoticeDetail { get; set; }
 
+    /// <summary>
+    /// A picture it became stayed under the preset's minimum size (#662). Apart from <see cref="NoticeKey"/>, which a
+    /// later note (the original kept or copied) replaces: both are shown.
+    /// </summary>
+    public bool UnderMinimumSize { get; set; }
+
+    /// <summary>There is a note to show: <see cref="NoticeKey"/>, <see cref="UnderMinimumSize"/> or both.</summary>
+    public bool HasNotice => NoticeKey is not null || UnderMinimumSize;
+
     /// <summary>"Replace the original" sent the source to the Recycle Bin / Trash (its path may now hold the result).</summary>
     public bool OriginalInTrash { get; set; }
 
@@ -72,6 +84,10 @@ public sealed class FileResult
     /// </summary>
     public IReadOnlyList<string> MissingFonts { get; set; } = [];
 }
+
+/// <summary>The source, target and constraints of a route planning request.</summary>
+public sealed record RouteRequest(string Source, string Target, bool Frames = false, bool Shaping = false,
+    bool MotionPhoto = false, bool LivePhoto = false, bool Ocr = false);
 
 /// <summary>A batch of files converted with one preset.</summary>
 public sealed class ConversionJob

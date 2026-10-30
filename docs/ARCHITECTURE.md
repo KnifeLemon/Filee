@@ -332,6 +332,18 @@ can't be received through Avalonia; for a browser drag Filee reads the address a
 registers too (see "Files dragged from a web browser"). A click-mode donut opened for a later launch or the service forgives one loss of
 focus within a second of opening (`ActivationGrace`): Filee becoming the active app can take focus away from it.
 
+A keyboard shortcut with `TriggerGesture.Clipboard` reads the clipboard instead of the selection
+(`IPlatformServices.ReadClipboard`, `MacOSClipboard`): copied files (file URLs, then `NSFilenamesPboardType`; copied
+files that are gone give nothing, not Finder's icon), else a picture (`PasteboardPaths.PictureTypes`, PNG first, TIFF
+last). With neither on the clipboard the shortcut does nothing — it never falls back to the file manager's selection,
+which for an Everywhere shortcut could sit in a Finder window in the background. A picture becomes a one-item `WebDrop`
+with `SaveOnlyConverted`, so it is saved into the browser-drop folder when it converts and only the result stays. The
+donut's jobs are started with `toClipboard`, and `ConversionService` puts their outputs back on the clipboard when they
+finish (`CopyToClipboard`: a file URL per item, a single picture also as itself; the log also carries how many files
+failed). No shortcut has `Clipboard` on by default and no settings migration adds one: the global hook can't hold the
+keys back, so a preset combination would also reach the app in front (Shift + Cmd + V is Paste and Match Style in most
+text fields). Whoever wants it turns the switch on in Settings → Shortcuts for a shortcut with keys of their own choosing.
+
 The donut, the toast and the notices are transparent windows. On Windows Filee keeps Avalonia's rendering defaults
 (ANGLE on Direct3D 11 composed through WinUI composition, then DirectComposition, then the window's redirection
 surface; software rendering when Direct3D 11 fails): each of them keeps per-pixel transparency. The log says what was

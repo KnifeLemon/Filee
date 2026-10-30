@@ -3,6 +3,7 @@
 // installed, converted to PDF by it as an independent reader. The round trip DOCX → model → DOCX → model checks that
 // the layout the model carries survives (page setup, sections, headers, tables, objects, notes, formatting).
 
+using System.IO.Compression;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Hwp.Hwpx;
@@ -37,6 +38,28 @@ public class DocxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.DoesNotContain(fx.Converters.Single(c => c.Id == "docx-writer").Edges, e => e.From == "docx");
         // No optional engine needed.
         Assert.Equal("docx-writer", Assert.Single(BuiltInPlanner().Plan("md", "docx")!.Steps).Converter.Id);
+    }
+
+    [Theory]
+    [InlineData(0x41u)]
+    [InlineData(0x40u)]
+    public async Task Markdown_dds_picture_keeps_its_colours_in_docx(uint flags)
+    {
+        var dir = fx.NewFolder();
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        File.WriteAllBytes(Path.Combine(dir, "red.dds"), ImageFormatTests.Dds(flags, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels));
+        var md = Path.Combine(dir, "document.md");
+        await File.WriteAllTextAsync(md, "![red](red.dds)", TestContext.Current.CancellationToken);
+
+        var docx = await ConvertAsync(md);
+
+        using var zip = ZipFile.OpenRead(docx);
+        using var stream = Assert.Single(zip.Entries, e => e.FullName.StartsWith("word/media/", StringComparison.Ordinal)
+            && e.FullName.EndsWith(".png", StringComparison.Ordinal)).Open();
+        using var image = new MagickImage(stream);
+        Assert.Equal(MagickFormat.Png, image.Format);
+        Assert.Equal((4u, 4u), (image.Width, image.Height));
+        Assert.Equal(pixels.Where((_, i) => i % 4 != 3).ToArray(), image.GetPixels().ToByteArray(PixelMapping.RGB));
     }
 
     [Fact]

@@ -58,8 +58,13 @@ Bundled with the installer:
 
 The Linux packages contain an rhwp built by Filee's CI from the unmodified source of the same release (tag `v0.8.7`,
 commit `1a76570e833917d15817415a53c09ad61ab3203f`, `cargo build --release --locked --bin rhwp` on Ubuntu 22.04), so it
-runs on older Linux systems than rhwp's own Linux build. It is under the same MIT license; its `LICENSE` is next to it
-(`engines/rhwp`). Windows and macOS use rhwp's release builds.
+runs on older Linux systems than rhwp's own Linux build. The Windows ARM64 build contains an rhwp built the same way
+on Windows ARM64 (with the C runtime linked statically), as rhwp has no ARM64 release. Both are under the same MIT
+license; its `LICENSE` is next to them (`engines/rhwp`). Windows x64 and macOS use rhwp's release builds.
+
+Unhwp's NuGet package has no native library for Linux ARM64 and Windows ARM64. Those builds contain one built by
+Filee's CI from the unmodified source the package was built from (commit `405b17e137b3ca06299dcbc8a156599ac7027e91`,
+`cargo build --release --locked -p unhwp --lib --features ffi`), under Unhwp's MIT license.
 
 7-Zip is Copyright (C) 1999-2026 Igor Pavlov; its `License.txt` is installed next to it (`engines/7zip`). The RAR
 decompression code in `7z.dll` is under the unRAR license restriction: it may be used to unpack RAR archives, but not
@@ -81,6 +86,8 @@ Downloaded from their official release pages when the user chooses to install th
 | calibre (ebook-convert) | GPL-3.0 | https://calibre-ebook.com |
 | Tesseract OCR 5.4 (UB Mannheim Windows build, with Leptonica and the MinGW libraries it ships; their notices are in its `doc` folder) | Apache-2.0 (Tesseract); Leptonica BSD-2-Clause; others as listed in the build | https://github.com/tesseract-ocr/tesseract, build: https://github.com/UB-Mannheim/tesseract |
 | Tesseract language data (tessdata_fast 4.1.0), downloaded per language when used | Apache-2.0 | https://github.com/tesseract-ocr/tessdata_fast |
+| whisper.cpp (whisper-cli.exe Windows build) | MIT | https://github.com/ggml-org/whisper.cpp |
+| ggml Whisper base model (`ggml-base.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 
 These programs run as separate processes. Their source code is available from the linked projects.
 

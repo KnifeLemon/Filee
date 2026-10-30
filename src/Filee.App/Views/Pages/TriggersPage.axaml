@@ -98,6 +98,17 @@
                 </StackPanel>
               </Grid>
 
+              <!-- Clipboard shortcut: converts the files or the picture on the clipboard and puts the results back -->
+              <DockPanel IsVisible="{Binding UsesClipboard}">
+                <ToggleSwitch DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0" Margin="12,0,0,0"
+                              VerticalAlignment="Center" IsChecked="{Binding Clipboard}"
+                              AutomationProperties.Name="{DynamicResource triggers.clipboard}" />
+                <StackPanel Spacing="2">
+                  <TextBlock Text="{DynamicResource triggers.clipboard}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{DynamicResource triggers.clipboard_note}" TextWrapping="Wrap" />
+                </StackPanel>
+              </DockPanel>
+
               <StackPanel IsVisible="{Binding UsesThreshold}">
                 <DockPanel>
                   <TextBlock DockPanel.Dock="Right" Text="{Binding ThresholdText}" FontWeight="SemiBold" />

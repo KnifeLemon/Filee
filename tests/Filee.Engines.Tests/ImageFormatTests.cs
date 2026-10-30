@@ -161,7 +161,7 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
         [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255, 255, 255, 0, 128], 4).SelectMany(b => b)];
 
     /// <summary>An uncompressed 4 × 4 DDS without a DX10 header: pixel format flags, channel masks and pixel bytes.</summary>
-    private static byte[] Dds(uint flags, uint red, uint green, uint blue, uint alpha, byte[] pixels)
+    internal static byte[] Dds(uint flags, uint red, uint green, uint blue, uint alpha, byte[] pixels)
     {
         var data = new byte[128 + pixels.Length];
         var header = data.AsSpan();
@@ -174,6 +174,76 @@ public class ImageFormatTests(EngineFixture fx) : IClassFixture<EngineFixture>
             System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(header[offset..], value);
         pixels.CopyTo(data, 128);
         return data;
+    }
+
+    [Fact]
+    public void Dds_invalid_bytes_do_not_request_or_apply_a_swap()
+    {
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        var valid = Dds(0x41, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels);
+        var expected = pixels.Where((_, i) => i % 4 != 3).ToArray();
+        void Unchanged(ReadOnlySpan<byte> data)
+        {
+            Assert.False(DdsChannelOrder.NeedsCorrection(data));
+            using var image = new MagickImage(MagickColors.Red, 4, 4);
+            DdsChannelOrder.Correct(data, image);
+            Assert.Equal(expected, image.GetPixels().ToByteArray(PixelMapping.RGB));
+        }
+
+        Unchanged(default);
+        Unchanged((byte[]?)null);
+        Unchanged([]);
+        for (var length = 1; length < 128; length++)
+            Unchanged(valid.AsSpan(0, length));
+        foreach (var (offset, value) in new (int, uint)[]
+                 {
+                     (0, 0), (4, 123), (76, 31), (80, 0x1), (80, 0x45), (88, 24),
+                     (92, 0), (96, 0), (100, 0), (104, 0),
+                 })
+        {
+            var invalid = valid.ToArray();
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(invalid.AsSpan(offset), value);
+            Unchanged(invalid.AsSpan(0, 128));
+            Unchanged(invalid);
+        }
+        var dx10 = valid.ToArray();
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(dx10.AsSpan(80), 0x45);
+        "DX10"u8.CopyTo(dx10.AsSpan(84));
+        Unchanged(dx10.AsSpan(0, 128));
+        Unchanged(dx10);
+        var bgra = Dds(0x41, 0xFF0000, 0xFF00, 0xFF, 0xFF000000, pixels);
+        Unchanged(bgra.AsSpan(0, 128));
+        Unchanged(bgra);
+    }
+
+    [Theory]
+    [InlineData(0x41u)]
+    [InlineData(0x40u)]
+    public void Dds_byte_and_file_correction_use_the_same_probe(uint flags)
+    {
+        var dir = fx.NewFolder();
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        var data = Dds(flags, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels);
+        var header = data.AsSpan(0, 128);
+        var path = Path.Combine(dir, "red.dds");
+        File.WriteAllBytes(path, data);
+        using var fromFile = new MagickImage(path);
+        var color = fromFile.GetPixels().GetPixel(0, 0).ToColor()!;
+        var readsSwapped = color.B > color.R;
+        TestContext.Current.TestOutputHelper!.WriteLine($"flags=0x{flags:X2}: R={color.R}, B={color.B}, B > R={readsSwapped}");
+        Assert.Equal(readsSwapped, DdsChannelOrder.NeedsCorrection(data));
+        Assert.Equal(readsSwapped, DdsChannelOrder.NeedsCorrection(header));
+        using var fromBytes = new MagickImage(data);
+        using var fromHeader = new MagickImage(data);
+
+        DdsChannelOrder.Correct(path, fromFile);
+        DdsChannelOrder.Correct(data, fromBytes);
+        DdsChannelOrder.Correct(header, fromHeader);
+
+        var expected = pixels.Where((_, i) => i % 4 != 3).ToArray();
+        Assert.Equal(expected, fromFile.GetPixels().ToByteArray(PixelMapping.RGB));
+        Assert.Equal(expected, fromBytes.GetPixels().ToByteArray(PixelMapping.RGB));
+        Assert.Equal(expected, fromHeader.GetPixels().ToByteArray(PixelMapping.RGB));
     }
 
     /// <summary>

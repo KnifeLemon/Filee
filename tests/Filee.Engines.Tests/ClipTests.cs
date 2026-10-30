@@ -49,6 +49,20 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Clips_take_the_sound_track_the_probe_chose()
+    {
+        var info = Movie with { Audio = new AudioStreamInfo(2, 48000, "aac", 1) };
+        var fast = MediaEncoding.ClipCopy("in.mp4", "out.mp4", "mp4", new ClipRange(12.5, 42.5), new MediaOptions(), info);
+        Assert.Equal(["0:V:0", "0:a:1"], fast.Where((a, i) => i > 0 && fast[i - 1] == "-map"));
+        var exact = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work",
+            clip: new ClipRange(12.5, 42.5)).Single().Arguments;
+        Assert.Equal(["0:V:0", "0:a:1"], exact.Where((a, i) => i > 0 && exact[i - 1] == "-map"));
+        var edited = MediaEncoding.ClipEditArguments("in.mp4", "out.mp4", "mp4", Parts(), new MediaOptions(), info);
+        Assert.Contains("[0:a:1]asplit=2", After(edited, "-filter_complex"));
+        Assert.Contains("[0:a:1]", After(MediaEncoding.ClipPreviewAudio("in.mp4", Parts(), Hd, audioTrack: 1), "-filter_complex"));
+    }
+
+    [Fact]
     public void A_fast_clip_without_sound_leaves_the_audio_out()
     {
         var args = MediaEncoding.ClipCopy("in.mkv", "out.mkv", "mkv", new ClipRange(0, 15), new MediaOptions { RemoveAudio = true }, Movie);
@@ -426,6 +440,8 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal([new ClipRange(60, 61.25), new ClipRange(63.5, 65), new ClipRange(69.75, 70)], ClipPreview.ParseSilences(log, 60, 70));
         Assert.Empty(ClipPreview.ParseSilences("nothing here", 0, 10));
         var args = ClipPreview.SilenceArguments("in.mp4", 60, 70);
+        Assert.Equal("0:a:0", After(args, "-map"));
+        Assert.Equal("0:a:1", After(ClipPreview.SilenceArguments("in.mp4", 60, 70, audioTrack: 1), "-map"));
         Assert.Equal("60.000", After(args, "-ss"));
         Assert.StartsWith("silencedetect=noise=-35dB:d=0.4", After(args, "-af"));
     }
@@ -494,6 +510,71 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(loudness[3] < 0.1 && loudness[4] < 0.1, string.Join(", ", loudness));
         Assert.True(loudness[1] > 0.8 && loudness[6] > 0.8, string.Join(", ", loudness));
         Assert.Single(Directory.GetFiles(folder)); // the samples are gone
+    }
+
+    [Fact]
+    public async Task The_waveform_and_silences_come_from_the_first_sound_ffmpeg_can_decode()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = Path.Combine(folder, "talk.mov");
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+        [
+            "-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=25:duration=8",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=8",
+            "-f", "lavfi", "-i", "aevalsrc='if(between(t,3,5),0,0.5*sin(2*PI*440*t))':s=48000:d=8",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a", "-ac:a:0", "4",
+            "-c:v", "mjpeg", "-c:a", "aac", "-f", "mov", source,
+        ], TimeSpan.FromMinutes(2), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        MediaTests.WithoutDecoder(source);
+        var probed = await ProcessRunner.RunAsync(Tools.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "a", "-show_entries", "stream=codec_name", "-of", "json", source],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(probed.ExitCode == 0, probed.StandardError);
+        using var json = JsonDocument.Parse(probed.StandardOutput);
+        Assert.Equal(["apple_apac", "aac"], json.RootElement.GetProperty("streams").EnumerateArray().Select(s => s.GetProperty("codec_name").GetString()));
+
+        var silence = Assert.Single(await ClipPreview.FindSilencesAsync(source, 1, 7, CancellationToken.None));
+        Assert.InRange(silence.Start, 2.9, 3.2);
+        Assert.InRange(silence.End, 4.9, 5.2);
+        var loudness = await ClipPreview.ReadLoudnessAsync(source, 8, 8, folder, CancellationToken.None);
+        Assert.Equal(8, loudness.Length);
+        Assert.True(loudness[3] < 0.1 && loudness[4] < 0.1, string.Join(", ", loudness));
+        Assert.True(loudness[1] > 0.8 && loudness[6] > 0.8, string.Join(", ", loudness));
+        Assert.Single(Directory.GetFiles(folder)); // the samples are gone
+    }
+
+    [Fact]
+    public async Task The_waveform_and_silences_go_on_with_track_0_when_the_file_cant_be_probed()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var notMedia = Path.Combine(folder, "not-media.mp4");
+        await File.WriteAllTextAsync(notMedia, "not media", TestContext.Current.CancellationToken);
+        Assert.Empty(await ClipPreview.ReadLoudnessAsync(notMedia, 8, 8, folder, CancellationToken.None));
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            ClipPreview.FindSilencesAsync(notMedia, 1, 7, CancellationToken.None));
+        Assert.StartsWith("FFmpeg failed", error.Message);
+
+        var source = Path.Combine(folder, "talk.mp4");
+        var result = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+        [
+            "-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=25:duration=8",
+            "-f", "lavfi", "-i", "aevalsrc='if(between(t,3,5),0,0.5*sin(2*PI*440*t))':s=48000:d=8",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", source,
+        ], TimeSpan.FromMinutes(2), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        var tools = (Tools.Value.Ffmpeg, Path.Combine(folder, "no-ffprobe", "ffprobe"));
+        var silence = Assert.Single(await ClipPreview.FindSilencesAsync(tools, source, 1, 7, CancellationToken.None));
+        Assert.InRange(silence.Start, 2.9, 3.2);
+        Assert.InRange(silence.End, 4.9, 5.2);
+        var loudness = await ClipPreview.ReadLoudnessAsync(tools, source, 0, 8, 8, folder, CancellationToken.None);
+        Assert.Equal(8, loudness.Length);
+        Assert.True(loudness[3] < 0.1 && loudness[4] < 0.1, string.Join(", ", loudness));
+        Assert.True(loudness[1] > 0.8 && loudness[6] > 0.8, string.Join(", ", loudness));
     }
 
     [Fact]
@@ -597,6 +678,9 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("[as0]atrim=start=0:end=10,asetpts=PTS-STARTPTS,volume=0,", filter); // muted: silent, still there
         // 17 s of clip, from 2.5 s: 14.5 s of music, faded a second at its ends, 2.5 s late.
         Assert.Contains("[1:a:0]atrim=duration=14.5,asetpts=PTS-STARTPTS,volume=0.5,afade=t=in:st=0:d=1,afade=t=out:st=13.5:d=1,adelay=2500:all=1,", filter);
+        var nextTrack = MediaEncoding.ClipGraphOf("in.mp4", edit, audio: true, 1920, 1080, "30", musicTrack: 1).Filter;
+        Assert.Contains("[1:a:1]atrim=duration=14.5", nextTrack);
+        Assert.DoesNotContain("[1:a:0]", nextTrack);
         Assert.Contains("[ac][m]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[am]", filter);
         Assert.EndsWith("[am]afade=t=in:st=0:d=1,afade=t=out:st=15:d=2[a]", filter);
 
@@ -665,5 +749,44 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var probed = await ProbeAsync(Assert.Single(job.Outputs));
         Assert.Equal(("h264", "aac"), (probed.VideoCodec, probed.AudioCodec));
         Assert.InRange(probed.Duration, 2.9, 3.15);
+    }
+
+    [Fact]
+    public async Task Music_whose_first_sound_ffmpeg_cannot_decode_plays_its_next_one()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var song = Path.Combine(folder, "song.mov");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+        [
+            "-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=8",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=44100:duration=8",
+            "-ac:a:0", "4", "-map", "0:a", "-map", "1:a", "-c:a", "aac", "-f", "mov", song,
+        ], TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        MediaTests.WithoutDecoder(song);
+        var source = await MakeVideoAsync(folder, "silent.mp4", "-c:v", "libx264", "-g", "25", "-pix_fmt", "yuv420p", "-an");
+        var edit = ClipEdit.Of(new ClipRange(2, 5));
+        edit.Music = new ClipMusic { Path = song, Length = 8 };
+
+        var job = await fx.ConvertAsync([source],
+            ClipTool.ConversionOf(BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip"), "mp4", edit));
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var probed = await ProbeAsync(Assert.Single(job.Outputs));
+        Assert.Equal(("h264", "aac"), (probed.VideoCodec, probed.AudioCodec));
+        Assert.InRange(probed.Duration, 2.85, 3.15);
+
+        var info = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, source, CancellationToken.None);
+        var clip = edit.Clamped(info.Duration?.TotalSeconds);
+        var args = await ClipPreview.PreviewSoundArgumentsAsync(Tools.Value.Ffprobe, source, clip, info.Video!, info.Audio, CancellationToken.None);
+        var filter = After(args, "-filter_complex");
+        Assert.Contains("[1:a:1]atrim=", filter);
+        Assert.DoesNotContain("[1:a:0]", filter);
+        var wav = Path.Combine(folder, "sound.wav");
+        args[^1] = wav;
+        var result = await ProcessRunner.RunAsync(Tools.Value.Ffmpeg, args, TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(result.ExitCode == 0, result.StandardError);
+        Assert.InRange(new FileInfo(wav).Length, 3 * 48000 * 4 * 0.95, 3 * 48000 * 4 * 1.05);
     }
 }
