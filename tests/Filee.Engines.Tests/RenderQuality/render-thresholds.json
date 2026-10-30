@@ -16,8 +16,10 @@
       // E = mc²: m and c of the inline equation overlap.
       "equations": { "overlaps": 0.0304 },
       // Unshaped text at rhwp's fixed widths (#185, #202, rhwp#8143). Overlaps are a share of neighbouring glyphs.
-      "script-ar": { "overlaps": 0.487 },
+      "script-ar": { "overlaps": 0.4867 },
       "script-he": { "overlaps": 0.6 },
+      // ‘ and ’ drawn half a character narrow in Chinese, over the next character (#237).
+      "script-zh": { "overlaps": 0.024 },
       "script-hi": { "overlaps": 0.6725 },
       "script-gu": { "overlaps": 0.6404 },
       // ำ (SARA AM) is drawn as its two parts, so the text doesn't round-trip.
@@ -44,13 +46,11 @@
       "line-spacing-percent": { "vs-rhwp-lines": 0.875, "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.6268 },
       "line-spacing-fixed": { "vs-rhwp-lines": 0.875, "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.6273 },
       "line-spacing-at-least": { "vs-rhwp-lines": 0.875, "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.6259 },
-      "script-ko": { "vs-rhwp-lines": 0.6, "vs-rhwp-placed": 0.6, "vs-rhwp-ssim": 0.4694 },
+      "script-ko": { "vs-rhwp-ssim": 0.5456 },
       // Same lines and baselines; rhwp draws its leaders as short dashes at other heights and puts the text a little
       // apart (pictures differ by fractions of a point).
       "tabs": { "vs-rhwp-ssim": 0.3844 },
       "lists": { "vs-rhwp-ssim": 0.2697 },
-      "script-zh": { "vs-rhwp-ssim": 0.9923 },
-      "script-ja": { "vs-rhwp-ssim": 0.9933 },
       // The table breaks into rhwp's lines; one line sits a little apart from rhwp's. The headers and footers break
       // into rhwp's lines; rhwp puts the footer elsewhere in its area. Columns: the same lines and baselines; rhwp
       // draws the separator line elsewhere.
@@ -64,6 +64,8 @@
     { "renderer": "filee", "feature": "floating", "check": "vs-rhwp-*", "reason": "rhwp ignores square wrap and overlaps the paragraphs after floating objects" },
     { "renderer": "filee", "feature": "equations", "check": "vs-rhwp-*", "reason": "rhwp lays out equations itself, Filee's engine draws them its own way" },
     { "renderer": "filee", "feature": "script-ar", "check": "vs-rhwp-*", "reason": "rhwp draws Arabic unshaped, left to right (#202)" },
+    { "renderer": "filee", "feature": "script-zh", "check": "vs-rhwp-*", "reason": "rhwp breaks Chinese between characters in 한글's 어절 setting, where 한글 (and Filee) keep a run without spaces together, and draws ‘ ’ over the next character (#237)" },
+    { "renderer": "filee", "feature": "script-ja", "check": "vs-rhwp-*", "reason": "rhwp breaks Japanese between characters in 한글's 어절 setting, where 한글 (and Filee) keep a run without spaces together" },
     { "renderer": "filee", "feature": "script-he", "check": "vs-rhwp-*", "reason": "rhwp draws Hebrew left to right at fixed widths (rhwp#8143)" },
     { "renderer": "filee", "feature": "script-hi", "check": "vs-rhwp-*", "reason": "rhwp draws Devanagari unshaped (#185)" },
     { "renderer": "filee", "feature": "script-gu", "check": "vs-rhwp-*", "reason": "rhwp draws Gujarati unshaped (#185)" },

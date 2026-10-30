@@ -29,6 +29,27 @@ public class DocxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Tab_stops_go_from_word_s_margin_to_hangul_s_indent_and_back()
+    {
+        // A table of contents entry indented 480 twips with its page number at a right tab on the right margin (8312):
+        // 한글 measures the stop from the indent (7832 twips), Word from the margin, and the stop before the indent goes.
+        var source = new DocxBuilder();
+        source.Paragraph(P(R("1.1 欢迎界面") + "<w:r><w:tab/></w:r>" + R("1"),
+            "<w:tabs><w:tab w:val=\"left\" w:pos=\"200\"/><w:tab w:val=\"right\" w:leader=\"dot\" w:pos=\"8312\"/></w:tabs><w:ind w:left=\"480\"/>"));
+        var sourcePath = source.Save(Path.Combine(fx.NewFolder(), "toc.docx"));
+
+        var read = DocxReader.Read(sourcePath, Path.Combine(Path.GetDirectoryName(sourcePath)!, "media"));
+        var paragraph = read.Sections[0].Blocks.OfType<HParagraph>().Single();
+        Assert.Equal(new HTabStop(HwpxUnits.FromTwips(8312 - 480), HTabKind.Right, "DOT"), Assert.Single(paragraph.Format.Tabs!));
+
+        var written = Path.Combine(Path.GetDirectoryName(sourcePath)!, "written.docx");
+        DocxWriter.Write(read, written);
+        using var zip = ZipFile.OpenRead(written);
+        using var reader = new StreamReader(zip.GetEntry("word/document.xml")!.Open());
+        Assert.Contains("w:pos=\"8312\"", reader.ReadToEnd());
+    }
+
+    [Fact]
     public void Built_in_writer_is_preferred_for_docx()
     {
         var planner = fx.Catalog.CreatePlanner(["pandoc", "libreoffice"]);

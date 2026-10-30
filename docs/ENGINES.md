@@ -731,7 +731,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
 
 - **Line breaking** (`LineBreaker.cs`): UAX #14 at Unicode 16.0, rules LB1–LB31; it passes all 16,672 cases of
   Unicode's `LineBreakTest.txt` (checked when written; the file isn't kept, `LineBreakerTests` covers each rule
-  family). Tailorings: 한글 어절 keeps Hangul words whole, 글자 breaks between syllables as UAX #14 does (한글 writes
+  family). Tailorings: 한글 어절 keeps non-Latin words whole (Hangul, and as 한글 does Chinese and Japanese characters,
+  East Asian punctuation and quotation marks: a run without spaces is one word, broken between characters only when
+  longer than a line), 글자 breaks between syllables as UAX #14 does (한글 writes
   them the other way round from the names: `breakNonLatinWord` BREAK_WORD is 어절, KEEP_WORD 글자; the binary HWP
   of the same document and 한글's own line layout say so); Latin words broken anywhere (`breakLatinWord` BREAK_WORD,
   Word without `w:wordWrap`); a document's own characters forbidden at a line's start or end (Word
@@ -897,6 +899,21 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     page as 한글's (the first paper takes 11 pages to 한글's 10); hwplib's 수식 and hwpxlib's SimpleEquation samples
     drawn as 한글 draws them. Filee's equations come out a median 9% wider than 한글's boxes, so they are narrowed.
   - Not yet: 한글's own character widths for equations, equation captions, colour and font changes inside an equation.
+- **CJK typography** (GitHub Project 4 item *Layout engine: CJK typography*):
+  - No overlapping glyphs in Chinese, Japanese and Korean paragraphs with curly and corner quotes, brackets, book title
+    marks and Latin in between: glyphs take the advances HarfBuzz gives with the font that draws them, and with Word's
+    `w:hint="eastAsia"` ambiguous characters (curly quotes, dashes, ellipsis) take the East Asian font (`FontSlots`).
+    The render matrix's Chinese, Japanese and Korean paragraphs hold such text; rhwp draws ‘ ’ in Chinese over the next
+    character there (#237), Filee draws #237's document without overlaps.
+  - Line breaking in 한글's 어절 setting keeps Chinese and Japanese runs together like Hangul words, as 한글 does: the
+    matrix's Chinese and Korean paragraphs break on 한글's lines and baselines (from 한글's own PDFs; the Japanese one
+    as well, its PDF writing Kangxi radicals for some characters).
+  - Word's tab stops (measured from the margin) become 한글's (from the paragraph's indent) and back: the indented
+    entries of #280's table of contents keep their page numbers on their line at the right margin instead of wrapping
+    them onto a line of their own.
+  - Not yet: punctuation compression (Word's and 한글's 문장 부호 압축), Word's choice of the East Asian font for
+    ambiguous characters by the run's language without a hint, and Word's document grid (lines on #280's grid follow
+    the reader's estimate; without Word to check against it is left as it is).
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
 radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as

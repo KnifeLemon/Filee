@@ -449,9 +449,10 @@ internal sealed partial class DocxReader
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,
             WidowOrphan: p.WidowControl ?? true,
+            // Word measures tab stops from the left margin, 한글 from the paragraph's left indent.
             Tabs: p.Tabs.Count == 0 ? null : p.Tabs
-                .Where(t => t.Kind is not ("bar" or "num"))
-                .Select(t => new HTabStop(HwpxUnits.FromTwips(t.Position), t.Kind switch
+                .Where(t => t.Kind is not ("bar" or "num") && t.Position > (left ?? 0))
+                .Select(t => new HTabStop(HwpxUnits.FromTwips(t.Position - (left ?? 0)), t.Kind switch
                 {
                     "right" or "end" => HTabKind.Right,
                     "center" => HTabKind.Center,

@@ -29,12 +29,16 @@ internal enum LineBreak : byte
 }
 
 /// <summary>Tailorings of the line breaking rules.</summary>
-/// <param name="KeepHangulWords">Hangul breaks only between words (한글 어절), not between syllables (글자).</param>
+/// <param name="KeepNonLatinWords">
+/// Non-Latin text breaks only between words (한글 어절), not between characters (글자): Hangul, and as 한글 treats them
+/// in that setting Chinese and Japanese characters, East Asian punctuation and quotation marks, so a run without spaces is
+/// one word (broken between characters only when it is longer than a line).
+/// </param>
 /// <param name="BreakLatinWords">Latin, Greek and Cyrillic words may break between any two letters.</param>
 /// <param name="NotAtLineStart">Characters that may not start a line, besides UAX #14's.</param>
 /// <param name="NotAtLineEnd">Characters that may not end a line, besides UAX #14's.</param>
 internal sealed record LineBreakRules(
-    bool KeepHangulWords = false,
+    bool KeepNonLatinWords = false,
     bool BreakLatinWords = false,
     string? NotAtLineStart = null,
     string? NotAtLineEnd = null)
@@ -150,7 +154,8 @@ internal static class LineBreaker
             LineBreakClass.CJ => LineBreakClass.NS,
             _ => cls,
         };
-        if (rules.KeepHangulWords && cls is LineBreakClass.H2 or LineBreakClass.H3 or LineBreakClass.JL or LineBreakClass.JV or LineBreakClass.JT)
+        if (rules.KeepNonLatinWords && (cls is LineBreakClass.H2 or LineBreakClass.H3 or LineBreakClass.JL or LineBreakClass.JV or LineBreakClass.JT
+                                        or LineBreakClass.QU || EastAsian(codePoint, cls)))
             return LineBreakClass.AL;
         if (rules.BreakLatinWords && cls is LineBreakClass.AL or LineBreakClass.NU &&
             UnicodeData.GetScript(codePoint) is UnicodeScript.Latin or UnicodeScript.Greek or UnicodeScript.Cyrillic or UnicodeScript.Common &&
@@ -158,6 +163,13 @@ internal static class LineBreaker
             return LineBreakClass.ID;
         return cls;
     }
+
+    /// <summary>Chinese and Japanese characters and East Asian punctuation (a word's letters in 한글's 어절 setting).</summary>
+    private static bool EastAsian(int codePoint, LineBreakClass cls) =>
+        cls is LineBreakClass.ID or LineBreakClass.CL or LineBreakClass.OP or LineBreakClass.NS or LineBreakClass.EX or LineBreakClass.IS
+        && (codePoint is >= 0x3000 and <= 0x303F or >= 0xFF00 and <= 0xFFEF
+            || UnicodeData.GetScript(codePoint) is UnicodeScript.Han or UnicodeScript.Hiragana or UnicodeScript.Katakana
+                or UnicodeScript.KatakanaOrHiragana or UnicodeScript.Bopomofo);
 
     /// <summary>Blocks whose unassigned code points are Extended_Pictographic (reserved for emoji).</summary>
     private static bool IsPictographicBlock(int codePoint) => codePoint is >= 0x1F000 and <= 0x1FAFF or >= 0x1FC00 and <= 0x1FFFD;
