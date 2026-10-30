@@ -101,7 +101,7 @@ internal sealed partial class HwpxReader
         {
             Sink.Add(inline);
             // The layout's text has a character for each of these (Typesetting/ParagraphText.cs).
-            if (inline is HTab or HLineBreak or HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null })
+            if (inline is HTab or HLineBreak or HImage { Anchor: null } or HShape { Anchor: null } or HTextBox { Anchor: null } or HEquation)
                 _model++;
         }
 
@@ -152,7 +152,8 @@ internal sealed partial class HwpxReader
                 return;
             _model += text.Length;
             var sink = Sink;
-            if (sink.Count > 0 && sink[^1] is HText last && (_keepLayoutRuns ? last.Format.SameLayout(format) : last.Format == format))
+            // Text joins the run before it, not an equation (which is text too).
+            if (sink.Count > 0 && sink[^1] is HText last and not HEquation && (_keepLayoutRuns ? last.Format.SameLayout(format) : last.Format == format))
                 sink[^1] = new HText(last.Text + text, format);
             else
                 sink.Add(new HText(text, format));
@@ -184,6 +185,8 @@ internal sealed partial class HwpxReader
                 // Nothing of the paragraph before the table: the part after it is the paragraph, and its text starts
                 // where the model's count does (the table is no text), so the stored lines still map.
                 table.OpensParagraph = true;
+                // What the paragraph's controls asked of its page goes with the table that starts it.
+                table.PageHiding = Current.PageHiding;
             }
             _output.Add(table);
             // The rest of a list item is not numbered again.
@@ -425,8 +428,12 @@ internal sealed partial class HwpxReader
                 HeaderFooter(control, section.Current);
                 break;
             case "footNote" or "endNote":
-                builder.Add(Note(control, endnote: control.Name.LocalName == "endNote"));
-                break;
+                {
+                    var note = Note(control, endnote: control.Name.LocalName == "endNote");
+                    note.Format = format;
+                    builder.Add(note);
+                    break;
+                }
             case "fieldBegin":
                 FieldBegin(control, builder);
                 break;
@@ -463,6 +470,9 @@ internal sealed partial class HwpxReader
                 break;
             case "pageNum" when section is not null:
                 section.PageNumber = control;
+                break;
+            case "pageHiding" when _forLayout:
+                builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"));
                 break;
             default:
                 Skip(control); // hidden comments, index marks, page hiding, page number control, ...
@@ -595,6 +605,8 @@ internal sealed partial class HwpxReader
                 _ => null,
             },
         };
+        if (Int(Child(tbl, "sz"), "height") is > 0 and var storedHeight)
+            table.StoredHeight = storedHeight;
         var pos = Child(tbl, "pos");
         table.AsCharacter = pos is null || Flag(pos, "treatAsChar");
         if (!table.AsCharacter)

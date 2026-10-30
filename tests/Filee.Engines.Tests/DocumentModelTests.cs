@@ -269,6 +269,63 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Hwpx_equations_read_for_layout_are_their_tree_in_hangul_s_box_and_one_character_of_the_text()
+    {
+        static string Lines(params int[] positions) => "<hp:linesegarray>" + string.Concat(positions.Select(p =>
+            $"<hp:lineseg textpos=\"{p}\" vertpos=\"0\" vertsize=\"1000\" textheight=\"1000\" baseline=\"850\" spacing=\"600\" horzpos=\"0\" horzsize=\"42520\" flags=\"0\"/>")) + "</hp:linesegarray>";
+        var equation =
+            "<hp:equation id=\"9\" zOrder=\"0\" numberingType=\"EQUATION\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" version=\"Equation Version 60\" baseLine=\"88\" textColor=\"#0000FF\" baseUnit=\"1100\" lineMode=\"CHAR\" font=\"HYhwpEQ\">" +
+            "<hp:sz width=\"2600\" widthRelTo=\"ABSOLUTE\" height=\"2400\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/><hp:script>x over y</hp:script></hp:equation>";
+        var section = Hp(Hr(Ht("가나") + equation + Ht("다라")), lines: Lines(0, 10));
+
+        var paragraph = Paragraphs(ReadHwpx(Package(Path.Combine(fx.NewFolder(), "equation.hwpx"), RefList(), section), forLayout: true))[1];
+
+        // The equation is its tree and box; the text after it is text of its own (not joined to the equation).
+        Assert.Collection(paragraph.Inlines,
+            i => Assert.Equal("가나", Assert.IsType<HText>(i).Text),
+            i =>
+            {
+                var read = Assert.IsType<HEquation>(i);
+                Assert.Equal("{{x} over {y}}", EquationScript.Script(read.Math));
+                Assert.Equal((2600, 2400, 88, 1100, "#0000FF"), (read.Width, read.Height, read.BaseLine, read.Size, read.Color));
+            },
+            i => Assert.Equal("다라", Assert.IsType<HText>(i).Text));
+        // One character of the layout's text: 한글's line start after the equation (eight positions) maps past it.
+        Assert.Equal([0, 3], paragraph.Lines!.Starts!);
+    }
+
+    [Fact]
+    public void Hwpx_read_for_layout_keeps_list_marker_formats_note_formats_page_hiding_and_object_boxes()
+    {
+        var numbering = "<hh:numberings itemCnt=\"1\"><hh:numbering id=\"1\" start=\"0\">" +
+                        "<hh:paraHead start=\"1\" level=\"1\" align=\"LEFT\" useInstWidth=\"1\" autoIndent=\"1\" widthAdjust=\"0\" textOffsetType=\"PERCENT\" textOffset=\"50\" numFormat=\"DIGIT\" charPrIDRef=\"1\" checkable=\"0\">^1.</hh:paraHead>" +
+                        "</hh:numbering></hh:numberings>";
+        var refList = RefList(charPrs: CharPr("1").Replace("height=\"1000\"", "height=\"1400\""),
+            paraPrs: ParaPr("1", LineSpacing("PERCENT", 160)).Replace("<hh:heading type=\"NONE\" idRef=\"0\" level=\"0\"/>", "<hh:heading type=\"NUMBER\" idRef=\"1\" level=\"0\"/>")) + numbering;
+        var note = "<hp:ctrl><hp:endNote number=\"1\" suffixChar=\"41\" instId=\"3\">" + SubList(Hp(Hr(Ht("풀이")))) + "</hp:endNote></hp:ctrl>";
+        var hiding = "<hp:ctrl><hp:pageHiding hideHeader=\"1\" hideFooter=\"0\" hideMasterPage=\"0\" hideBorder=\"0\" hideFill=\"0\" hidePageNum=\"0\"/></hp:ctrl>";
+        var box =
+            "<hp:rect id=\"1\" zOrder=\"0\" numberingType=\"PICTURE\" textWrap=\"TOP_AND_BOTTOM\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" href=\"\" groupLevel=\"0\" instid=\"2\" ratio=\"0\">" +
+            "<hp:offset x=\"0\" y=\"0\"/><hp:orgSz width=\"1000\" height=\"1000\"/><hp:curSz width=\"6000\" height=\"8000\"/>" +
+            "<hp:sz width=\"9500\" widthRelTo=\"COLUMN\" height=\"1000\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" +
+            "<hp:pos treatAsChar=\"1\" affectLSpacing=\"0\" flowWithText=\"1\" allowOverlap=\"0\" holdAnchorAndSO=\"0\" vertRelTo=\"PARA\" horzRelTo=\"PARA\" vertAlign=\"TOP\" horzAlign=\"LEFT\" vertOffset=\"0\" horzOffset=\"0\"/>" +
+            "<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"567\"/></hp:rect>";
+        var section = Hp(Hr(hiding + note + Ht("문제") + box), paraPr: "1");
+
+        var document = ReadHwpx(Package(Path.Combine(fx.NewFolder(), "detail.hwpx"), refList, section), forLayout: true);
+        var paragraph = Paragraphs(document)[1];
+
+        // The number in its own format, hanging the lines after it; the note's reference in its run's format.
+        var level = paragraph.List!.Numbering.Levels[0];
+        Assert.Equal((1400, true), (level.MarkerFormat?.Size, level.AutoIndent));
+        Assert.Equal(1000, Assert.Single(paragraph.Inlines.OfType<HNote>()).Format?.Size);
+        Assert.Equal(new HPageHiding(Header: true, Footer: false), paragraph.PageHiding);
+        // The box 한글 laid out (curSz, not the share of the column in sz), set like a character with its margin.
+        var shape = Assert.Single(paragraph.Inlines.OfType<HShape>());
+        Assert.Equal((6000, 8000, 85, 567), (shape.Width, shape.Height, shape.BaseLine, shape.OuterMargin.Bottom));
+    }
+
+    [Fact]
     public void Hwpx_table_starting_its_paragraph_keeps_the_paragraphs_stored_lines_and_its_place()
     {
         var table =

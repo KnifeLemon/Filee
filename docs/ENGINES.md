@@ -771,8 +771,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     and column definition, bookmark) as eight and line breaks and special spaces as one, as Hancom's HWP 5.0 document
     defines them, into positions in the layout's text (`HLineLayout.Starts`). A paragraph a table splits, or a start
     inside an object, keeps no positions.
-  - The layout uses them when the lines weren't estimated by Filee and every font of the paragraph is installed by its
-    name or another of its names; otherwise it breaks the paragraph itself and says why (`ParagraphBox.StoredLinesIgnored`).
+  - The layout uses them when the lines weren't estimated by Filee and, for text in a font that isn't installed, the
+    font standing in for it still fits each stored line (within 8%: Hangul is as wide in nearly every font); otherwise
+    it breaks the paragraph itself and says why (`ParagraphBox.StoredLinesIgnored`).
     Each line then takes its stored height and baseline, its place beside an object, and a stored line wider than the
     line is now squeezed between its characters.
   - On the HWPX files attached to Filee's issues, 768 of 769 stored paragraphs convert. The body text of the one
@@ -786,12 +787,19 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - Keep rules: keep lines together, keep with next and widow / orphan control (two lines on either page); none moves
     anything off an empty page.
   - 한글's stored layout: lines on it take 한글's page breaks (the stored first-line-of-page flag) and their stored place
-    on the page, while the page so far follows it; a paragraph broken again or a table ends that until 한글's next page.
+    on the page, while the page so far follows it; a paragraph broken again, or a table not as high as 한글 laid it out
+    (its line for it, else its stored size), ends that until 한글's next page or column (a column break, or in columns
+    a stored place smaller than the last: where 한글 started the next column, Filee does too unless it moved on by
+    itself).
+  - 한글's numbers: a list number in its own character format (paraHead charPrIDRef), the lines after it hanging under
+    the text when the number indents its paragraph (autoIndent); a note's reference in its run's format (an exam's
+    endnote numbers are white); a page that hides its header or footer (hp:pageHiding) shows none.
   - Headers and footers: both, odd or even pages by page number, none on a section's first page where it hides them,
     laid out in the header and footer areas. Page numbers count on across sections unless one restarts them; page
     number fields show their page's number, total pages fields the count (a first pass finds it when the body has one).
   - Pictures laid out like characters (no anchor) take their size on the line (their own, else their pixels at 96 dpi)
-    and stand on the baseline; links, bookmarks and headings (the PDF outline) as before.
+    and stand on the baseline, 한글's objects set like a character as high as they are with their outer margins (85%
+    above the baseline, as 한글's stored lines have them); links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
     with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
   - Master pages are a later item.
@@ -867,8 +875,28 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     draws it; hwpxlib's rectangle-in-rectangle sample with every line where 한글 has it (SSIM 0.91); a 보도자료 from
     issue files with the ministry emblem in its header cell and every body line within 0.4 pt; a stamped certificate
     with its seals (against the paper, beside the paragraph, in a table cell over "(인)") where 한글 puts them.
+  - Sizes: drawings other than pictures take the size 한글 laid them out at (hp:curSz) where it is given, as hp:sz may be
+    a share of the column or not grown to the text.
   - Not yet: pictures' effects (shadow, glow, soft edge, reflection), objects' captions, text in a text box turned
     with it, text on both sides of an object, and the distance objects keep from text (outer margins).
+- **Equations** (`MathLayout.cs`, `Hwp/Hwpx/EquationParser.cs`, GitHub Project 4 item *Layout engine: equations*):
+  - 한글's equation script is read into the equation tree Word math is read into, the way 한글 reads it: command words
+    split off the start of a run of letters ("rmA" → rm A, "cupB" → cup B, "itn" → it n), the letters left one
+    variable; over and atop between neighbours, sqrt and root … of, LEFT … RIGHT (a missing side empty), matrices,
+    cases and piles, sums and integrals with _ ^ or from to, lim, accents, rm / it / bold to the end of their group,
+    symbol words and "<=" "!=" "->". Nothing written is lost: what can't be read stays text.
+  - Layout with the document's fonts (한글's equation fonts HancomEQN and HYhwpEQ when installed, else Times New Roman
+    or another serif, with fallback): italic variables, upright numbers, functions and symbols; relations and binary
+    operators spaced unless a sign; scripts at 0.7 raised or lowered; fractions and big operators on the math axis;
+    drawn radicals, brackets as tall as their content, accents.
+  - On the line, an equation takes the box 한글 laid it out in (hp:sz) with its baseline (baseLine), at its own size
+    (baseUnit) and colour, drawn narrowed to the box where Filee's comes out wider (한글 sets equations tighter than the
+    fonts' advances); Word's equations take their own box.
+  - Measured against 한글's PDFs: two two-column exam papers from Filee's issue files (488 and 249 equations): the
+    problems' text and equations on 한글's lines and in 한글's columns, the second paper on 한글's 9 pages, its first
+    page as 한글's (the first paper takes 11 pages to 한글's 10); hwplib's 수식 and hwpxlib's SimpleEquation samples
+    drawn as 한글 draws them. Filee's equations come out a median 9% wider than 한글's boxes, so they are narrowed.
+  - Not yet: 한글's own character widths for equations, equation captions, colour and font changes inside an equation.
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
 radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as

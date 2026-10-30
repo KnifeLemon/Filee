@@ -634,6 +634,82 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.True(Dark(pixels, (int)cellText.X + 1, (int)cellText.Y - 6) && Dark(pixels, (int)cellText.X + 8, (int)cellText.Y - 1));
     }
 
+    // ───────────────────────── 한글's pages and lists ─────────────────────────
+
+    [Fact]
+    public void A_page_that_hides_its_header_shows_none_and_the_next_page_its_own()
+    {
+        var first = Paragraph("one");
+        first.PageHiding = new HPageHiding(Header: true, Footer: false);
+        var second = Paragraph("two");
+        second.PageBreakBefore = true;
+        var section = Section(Small, first, second);
+        section.Headers.Add(HeaderFooter(HPageType.Both, "Head"));
+
+        var pages = Compose(section).Pages;
+
+        Assert.Equal(["one"], Texts(pages[0]));
+        Assert.Equal(["Head", "two"], Texts(pages[1]).Order());
+    }
+
+    [Fact]
+    public void Where_hangul_s_stored_places_start_over_hangul_started_a_column_and_so_does_filee()
+    {
+        // Three lines on 한글's stored layout in two columns: the third's place (0) is above the second's (16), so 한글
+        // put it at the top of the next column although the first had room.
+        static HParagraph At(string text, int top)
+        {
+            var paragraph = Paragraph(text);
+            paragraph.Lines = new HLineLayout([new HLineSegment(0, top, 1000, 1000, 850, 600, 0, 3500, 0)], false, [0]);
+            return paragraph;
+        }
+        var section = Section(Small, At("p0", 0), At("p1", 1600), At("p2", 0));
+        section.Columns = Two;
+
+        var page = Assert.Single(Compose(section).Pages);
+
+        var p2 = Runs(page).Single(r => r.Text == "p2").Positions[0];
+        Assert.Equal(55f, p2.X, 0.5f);
+        Assert.Equal(Runs(page).Single(r => r.Text == "p0").Positions[0].Y, p2.Y, 0.01f);
+    }
+
+    [Fact]
+    public void A_number_that_indents_its_paragraph_hangs_the_lines_after_it_under_the_text()
+    {
+        var numbering = new HNumbering();
+        numbering.Levels.Add(new HNumberingLevel("DIGIT", "^1.", 1, false) { AutoIndent = true });
+        var paragraph = Paragraph(string.Join(' ', Enumerable.Repeat("word", 12)));
+        paragraph.List = new HListRef(numbering, 0, Numbered: true);
+
+        var page = Assert.Single(Compose(Section(Small, paragraph)).Pages);
+
+        // The first line's text starts after "1. "; every line after it starts there too.
+        var lines = Runs(page).GroupBy(r => r.Positions[0].Y).OrderBy(g => g.Key).ToList();
+        var text = lines[0].First(r => r.Text.Contains("word")).Positions[0].X;
+        Assert.True(text > 15);
+        Assert.All(lines.Skip(1), l => Assert.Equal(text, l.Min(r => r.Positions[0].X), 0.5f));
+    }
+
+    [Fact]
+    public void Hangul_objects_laid_out_like_characters_sit_like_characters_of_their_height_with_their_margins()
+    {
+        // A 20 pt box with 4 pt below it (its outer margin): a character 24 pt high, 85% of it above the baseline.
+        var paragraph = Paragraph("a");
+        var box = Box(1000, 2000, null);
+        box.BaseLine = 85;
+        box.OuterMargin = new HInsets(0, 0, 0, 400);
+        paragraph.Inlines.Add(box);
+
+        var page = Assert.Single(Compose(Section(Small, paragraph)).Pages);
+
+        var baseline = Runs(page).Single(r => r.Text == "a").Positions[0].Y;
+        using var pixels = Pixels(page);
+        // The box from 20.4 above the baseline to 0.4 above it (the margin is the 3.6 pt below the baseline).
+        var x = (int)Runs(page).Single(r => r.Text == "a").Positions[0].X + 9;
+        Assert.True(Dark(pixels, x, (int)(baseline - 19)) && Dark(pixels, x, (int)(baseline - 2)));
+        Assert.False(Dark(pixels, x, (int)(baseline + 2)));
+    }
+
     // ───────────────────────── Other formats ─────────────────────────
 
     public static TheoryData<string> Formats => ["txt", "md", "html", "epub", "fb2", "mobi"];

@@ -24,7 +24,7 @@ internal sealed record MathRow(IReadOnlyList<MathNode> Items) : MathNode
     public static readonly MathRow Empty = new([]);
 }
 
-/// <summary>One character of a variable or text: italic Latin letters, upright CJK.</summary>
+/// <summary>A variable (one letter, or a word of letters 한글 keeps together) or text: italic Latin letters, upright CJK.</summary>
 internal sealed record MathText(string Text) : MathNode;
 
 internal sealed record MathNumber(string Digits) : MathNode;
@@ -65,8 +65,11 @@ internal sealed record MathMatrix(string Command, IReadOnlyList<IReadOnlyList<Ma
 /// <summary>Cases: rows of cells after one large left brace.</summary>
 internal sealed record MathCases(IReadOnlyList<IReadOnlyList<MathNode>> Rows) : MathNode;
 
-/// <summary>Lines stacked and centred (PILE).</summary>
-internal sealed record MathPile(IReadOnlyList<MathNode> Rows) : MathNode;
+/// <summary>Lines stacked and centred (PILE), or to the left (LPILE) or right (RPILE): <c>Align</c> names which.</summary>
+internal sealed record MathPile(IReadOnlyList<MathNode> Rows) : MathNode
+{
+    public string Align { get; init; } = "pile";
+}
 
 /// <summary>Brackets that grow with their content (LEFT ... RIGHT); an empty side has no bracket.</summary>
 internal sealed record MathBrackets(string Left, string Right, MathNode Body) : MathNode;
@@ -77,8 +80,8 @@ internal sealed record MathAccent(string Command, MathNode Body) : MathNode;
 /// <summary>Upright (rm) or bold content.</summary>
 internal sealed record MathStyled(string Command, MathNode Body) : MathNode;
 
-/// <summary>A normal space (~).</summary>
-internal sealed record MathSpace : MathNode;
+/// <summary>A space: a normal one (~, <c>Width</c> 1) or a quarter of one (`, 0.25).</summary>
+internal sealed record MathSpace(double Width = 1) : MathNode;
 
 /// <summary>An alignment mark (&amp;) of a Word equation array: the cell boundary of cases, nothing elsewhere.</summary>
 internal sealed record MathAlign : MathNode;

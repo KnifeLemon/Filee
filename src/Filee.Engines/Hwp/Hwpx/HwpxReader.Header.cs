@@ -316,7 +316,11 @@ internal sealed partial class HwpxReader
                 var text = head.Value;
                 // A level without a counter (^n) is a symbol: Filee writes bullets that way.
                 var bullet = text.Length > 0 && !HasCounter(text);
-                numbering.Levels.Add(new HNumberingLevel(Attr(head, "numFormat") ?? "DIGIT", text, Int(head, "start", Math.Max(start, 1)), bullet));
+                numbering.Levels.Add(new HNumberingLevel(Attr(head, "numFormat") ?? "DIGIT", text, Int(head, "start", Math.Max(start, 1)), bullet)
+                {
+                    MarkerFormat = Attr(head, "charPrIDRef") is { } marker && _charPrs.ContainsKey(marker) ? CharFormat(marker) : null,
+                    AutoIndent = Flag(head, "autoIndent"),
+                });
             }
         }
         return _numberings["n" + id] = numbering;

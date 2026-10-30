@@ -459,11 +459,13 @@ public sealed class ParagraphLayoutTests : IDisposable
     }
 
     [Fact]
-    public void Stored_lines_are_not_used_when_filee_estimated_them_or_a_font_is_missing_or_they_dont_map()
+    public void Stored_lines_are_not_used_when_filee_estimated_them_or_a_missing_fonts_stand_in_doesnt_fit_or_they_dont_map()
     {
         var estimated = Paragraph(English);
         estimated.Lines = new HLineLayout([Segment(0), Segment(6)], true, [0, 6]);
-        var missing = Stored(Paragraph(English, format: Format(font: "No Such Font")), [0, 6]);
+        // The stand-in's second line is far wider than the 50 pt 한글 kept for it.
+        var missing = Paragraph(English, format: Format(font: "No Such Font"));
+        missing.Lines = new HLineLayout([Segment(0, width: 5000), Segment(6, width: 5000)], false, [0, 6]);
         var unmapped = Paragraph(English);
         unmapped.Lines = new HLineLayout([Segment(0), Segment(6)], false);
 
@@ -474,6 +476,18 @@ public sealed class ParagraphLayoutTests : IDisposable
             Assert.Contains(reason, box.StoredLinesIgnored);
             Assert.NotEqual(6, box.Lines[1].Start);
         }
+    }
+
+    [Fact]
+    public void A_missing_fonts_stand_in_takes_hangul_s_lines_where_the_text_fits_them()
+    {
+        Assert.SkipUnless(_fonts.Has(Latin) && _fonts.Has(Korean), "Noto Sans and Noto Sans KR are not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        var paragraph = Stored(Paragraph("한글 문단입니다. 줄은 한글이 나눈 자리에서", format: Format(font: "한양신명조")), [0, 10]);
+
+        var (box, _) = Layout(paragraph, 200);
+
+        Assert.True(box.StoredLines, box.StoredLinesIgnored);
+        Assert.Equal(10, box.Lines[1].Start);
     }
 
     [Fact]

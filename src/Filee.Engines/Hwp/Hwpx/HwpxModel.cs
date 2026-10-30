@@ -64,6 +64,9 @@ internal sealed record HPage(int Width, int Height, int Left, int Right, int Top
 }
 
 /// <summary>Newspaper-style columns.</summary>
+/// <summary>What a page hides (한글 hp:pageHiding).</summary>
+internal sealed record HPageHiding(bool Header, bool Footer);
+
 internal sealed record HColumns(int Count, int Gap, bool Separator)
 {
     public static readonly HColumns Single = new(1, 0, false);
@@ -121,7 +124,11 @@ internal sealed class HHeaderFooter(HPageType pages)
 
 // ───────────────────────── Blocks ─────────────────────────
 
-internal abstract class HBlock;
+internal abstract class HBlock
+{
+    /// <summary>The page this block is on hides its header or footer (한글 쪽 감추기); null = none. Read for layout only.</summary>
+    public HPageHiding? PageHiding { get; set; }
+}
 
 internal sealed class HParagraph : HBlock
 {
@@ -141,6 +148,7 @@ internal sealed class HParagraph : HBlock
 
     /// <summary>Columns change here without a new page (DOCX continuous section break); null = unchanged.</summary>
     public HColumns? ColumnsChange { get; set; }
+
 
     /// <summary>Line layout stored with the paragraph (HWPX hp:linesegarray), or null.</summary>
     public HLineLayout? Lines { get; set; }
@@ -162,7 +170,14 @@ internal sealed class HNumbering
 
 /// <param name="Format">OWPML numFormat: DIGIT, LATIN_SMALL, HANGUL_SYLLABLE, ... (ignored for bullets).</param>
 /// <param name="Text">Number text with <c>^n</c> for the level-n counter ("^1.", "(^2)"), or the bullet character.</param>
-internal sealed record HNumberingLevel(string Format, string Text, int Start, bool Bullet);
+internal sealed record HNumberingLevel(string Format, string Text, int Start, bool Bullet)
+{
+    /// <summary>The character format the number or bullet is drawn in (한글 paraHead charPrIDRef); null = the text's.</summary>
+    public HCharFormat? MarkerFormat { get; init; }
+
+    /// <summary>The lines after the first start under the text after the number (한글 paraHead autoIndent).</summary>
+    public bool AutoIndent { get; init; }
+}
 
 internal sealed class HTable : HBlock
 {
@@ -204,6 +219,9 @@ internal sealed class HTable : HBlock
 
     /// <summary>한글 lays the table out like a character of its paragraph (treatAsChar). Only the layout engine uses it.</summary>
     public bool AsCharacter { get; set; }
+
+    /// <summary>The height 한글 laid the table out at (hp:sz), in HWPUNIT; null when unknown. Only the layout engine uses it.</summary>
+    public int? StoredHeight { get; set; }
 
     /// <summary>Borders used where a cell does not define its own; null = thin solid grid.</summary>
     public HBorders? Borders { get; set; }
@@ -290,6 +308,20 @@ internal readonly record struct HBorders(HBorder Left, HBorder Right, HBorder To
 
 internal abstract class HInline;
 
+/// <summary>A picture, shape or text box.</summary>
+internal abstract class HObject : HInline
+{
+    /// <summary>Space kept around the object (한글 hp:outMargin). Read for layout only.</summary>
+    public HInsets OuterMargin { get; set; }
+
+    /// <summary>
+    /// Laid out like a character, where the baseline crosses it, in percent of its height with the outer margins from
+    /// the top (한글 sets such objects like characters of that height: 85); null = it stands on the baseline (Word).
+    /// Read for layout only.
+    /// </summary>
+    public int? BaseLine { get; set; }
+}
+
 internal class HText(string text, HCharFormat format) : HInline
 {
     public string Text { get; } = text;
@@ -303,6 +335,16 @@ internal class HText(string text, HCharFormat format) : HInline
 internal sealed class HEquation(MathNode math, HCharFormat format) : HText(EquationScript.Linear(math), format)
 {
     public MathNode Math { get; } = math;
+
+    /// <summary>
+    /// The box 한글 laid the equation out in (hp:sz), with its baseline in percent of the height from the top
+    /// (baseLine), its font size (baseUnit) and colour; null where the source doesn't say. Read for layout only.
+    /// </summary>
+    public int? Width { get; init; }
+    public int? Height { get; init; }
+    public int? BaseLine { get; init; }
+    public int? Size { get; init; }
+    public string? Color { get; init; }
 }
 
 internal sealed class HLineBreak(HCharFormat format) : HInline
@@ -334,6 +376,9 @@ internal sealed class HNote(bool endnote) : HInline
 
     /// <summary>The number 한글 gave the note (its numbering may restart by section or page); null = counted on.</summary>
     public int? Number { get; set; }
+
+    /// <summary>The format of the run the reference is in (its colour, size ...); null = the text's around it.</summary>
+    public HCharFormat? Format { get; set; }
 }
 
 internal enum HFieldKind
@@ -350,7 +395,7 @@ internal sealed class HField(HFieldKind kind, HCharFormat format) : HInline
 }
 
 /// <summary>Picture from a local file.</summary>
-internal sealed class HImage(string path) : HInline
+internal sealed class HImage(string path) : HObject
 {
     public string Path { get; } = path;
 
@@ -379,7 +424,7 @@ internal sealed class HImage(string path) : HInline
 }
 
 /// <summary>A box with its own paragraphs (DOCX text box, 한글 글상자).</summary>
-internal sealed class HTextBox : HInline
+internal sealed class HTextBox : HObject
 {
     public int Width { get; set; }
     public int Height { get; set; }
@@ -425,7 +470,7 @@ internal enum HShapeKind
 }
 
 /// <summary>A drawing without text: rectangle, ellipse or straight line (and, read for layout, polygon, curve or arc).</summary>
-internal sealed class HShape(HShapeKind kind) : HInline
+internal sealed class HShape(HShapeKind kind) : HObject
 {
     public HShapeKind Kind { get; } = kind;
     public int Width { get; set; }
