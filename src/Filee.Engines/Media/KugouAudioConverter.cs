@@ -43,7 +43,7 @@ public sealed class KugouAudioConverter(ILogger? logger = null) : IConverter
         // Always available: pure managed code. FFmpeg is only needed when the
         // target differs from the inner format; the UI already greys out media
         // targets when FFmpeg is missing.
-        return EngineStatus.Available("KGM V2 (built-in)");
+        return EngineStatus.Available("KGM V2 (built-in)", EngineVersions.BuiltIn);
     }
 
     public Task<IReadOnlyList<string>> ConvertAsync(
