@@ -2,6 +2,7 @@
 // placed relative to the line (x from the left edge of the column, y from the baseline, downwards). The page
 // composer stacks lines and draws each at its place on a page.
 
+using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Rendering;
 using SkiaSharp;
 
@@ -69,6 +70,9 @@ internal readonly record struct Decoration(DecorationKind Kind, float Left, floa
 /// <summary>A link area on a line: from <c>Left</c> to <c>Right</c>, the line's height.</summary>
 internal readonly record struct LineLink(float Left, float Right, string Target);
 
+/// <summary>A picture on a line: <c>Area</c> relative to the line's origin, the file it is drawn from, its crop.</summary>
+internal sealed record LinePicture(SKRect Area, string Path, HCrop? Crop);
+
 /// <summary>One line of a paragraph.</summary>
 internal sealed class LineBox
 {
@@ -101,6 +105,14 @@ internal sealed class LineBox
 
     public IReadOnlyList<(float X, string Name)> Bookmarks { get; init; } = [];
 
+    public IReadOnlyList<LinePicture> Pictures { get; init; } = [];
+
+    /// <summary>Where 한글 put the line's top on its page (from the body's top), for a line on its stored layout.</summary>
+    public float? StoredTop { get; init; }
+
+    /// <summary>한글 started a page with this line (a line on its stored layout).</summary>
+    public bool StoredPageStart { get; init; }
+
     /// <summary>Draws the line with its top-left corner (column edge, line top) at (<paramref name="x"/>, <paramref name="top"/>).</summary>
     public void Draw(PageContent page, float x, float top)
     {
@@ -108,6 +120,12 @@ internal sealed class LineBox
         var fills = Decorations.Where(d => d.Kind == DecorationKind.Fill).ToList();
         if (fills.Count > 0)
             page.Draw(canvas => DrawDecorations(canvas, fills, x, baseline));
+        foreach (var picture in Pictures)
+        {
+            var area = picture.Area;
+            area.Offset(x, baseline);
+            page.Draw(canvas => DrawPicture(canvas, picture, area));
+        }
         foreach (var run in Runs)
             page.DrawGlyphs(run.At(x, baseline));
         var lines = Decorations.Where(d => d.Kind != DecorationKind.Fill).ToList();
@@ -123,6 +141,19 @@ internal sealed class LineBox
         }
         foreach (var (position, name) in Bookmarks)
             page.Destination(new SKPoint(x + position, top), name);
+    }
+
+    /// <summary>Draws a picture into <paramref name="area"/>; nothing when the file can't be decoded.</summary>
+    private static void DrawPicture(SKCanvas canvas, LinePicture picture, SKRect area)
+    {
+        using var image = File.Exists(picture.Path) ? SKImage.FromEncodedData(picture.Path) : null;
+        if (image is null)
+            return;
+        var crop = picture.Crop ?? default;
+        var source = new SKRect(
+            (float)(crop.Left * image.Width), (float)(crop.Top * image.Height),
+            (float)((1 - crop.Right) * image.Width), (float)((1 - crop.Bottom) * image.Height));
+        canvas.DrawImage(image, source, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
     }
 
     private static void DrawDecorations(SKCanvas canvas, List<Decoration> decorations, float x, float y)

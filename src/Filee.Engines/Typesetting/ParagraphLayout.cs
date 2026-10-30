@@ -72,15 +72,16 @@ internal sealed class ParagraphLayouter
 
     /// <summary>Lays out <paramref name="paragraph"/> in a column <paramref name="width"/> points wide.</summary>
     /// <param name="marker">The list item's number or bullet, or null.</param>
-    public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null)
+    /// <param name="fields">The text of page number and total pages fields; null leaves them out.</param>
+    public ParagraphBox Layout(HParagraph paragraph, float width, string? marker = null, Func<HField, string>? fields = null)
     {
         var format = paragraph.Format;
-        var source = ParagraphText.From(paragraph, marker);
+        var source = ParagraphText.From(paragraph, marker, fields);
         var text = source.Text;
         var language = FontSubstitution.Language(text);
         var rightToLeft = format.RightToLeft ?? FirstStrongIsRightToLeft(text);
         var items = Itemize(source, language, Levels(text, rightToLeft));
-        var (advances, starts) = Measure(text, items);
+        var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;
         var rules = new LineBreakRules(
@@ -104,7 +105,7 @@ internal sealed class ParagraphLayouter
         var before = (format.Before ?? 0) / 100f;
         var after = (format.After ?? 0) / 100f;
 
-        var (stored, ignored) = _storedLines ? StoredStarts(paragraph, text, marker, items) : (null, null);
+        var (stored, ignored) = _storedLines ? StoredStarts(paragraph, source, marker, items) : (null, null);
         if (stored is not null)
         {
             var segments = paragraph.Lines!.Segments;
@@ -142,14 +143,17 @@ internal sealed class ParagraphLayouter
     /// Where the stored lines of <paramref name="paragraph"/> start in <paramref name="text"/> (the first at 0), or null
     /// with the reason they can't be used (null too when there are none).
     /// </summary>
-    private (List<int>? Starts, string? Ignored) StoredStarts(HParagraph paragraph, string text, string? marker, List<Item> items)
+    private (List<int>? Starts, string? Ignored) StoredStarts(HParagraph paragraph, ParagraphText source, string? marker, List<Item> items)
     {
+        var text = source.Text;
         if (paragraph.Lines is not { } lines)
             return (null, null);
         if (lines.Estimated)
             return (null, "the stored lines were estimated by Filee");
         if (lines.Starts is not { Count: > 0 } positions || positions.Count != lines.Segments.Count || positions[0] != 0)
             return (null, "the stored line starts don't map to the text (a table splits the paragraph, or one falls inside an object)");
+        if (source.HasFields)
+            return (null, "the paragraph has page number fields, whose text changes the positions");
         foreach (var item in items)
         {
             if (item.Kind == ItemKind.Text && item.Style.Family is { } family && _fonts.Find(family, item.Style.Style) is null)
@@ -179,6 +183,9 @@ internal sealed class ParagraphLayouter
         Text,
         Tab,
         Break,
+
+        /// <summary>A picture laid out like a character.</summary>
+        Object,
     }
 
     /// <summary>Text shaped in one go, or a tab or line break.</summary>
@@ -241,6 +248,7 @@ internal sealed class ParagraphLayouter
     {
         '\t' => ItemKind.Tab,
         ParagraphText.LineSeparator => ItemKind.Break,
+        ParagraphText.ObjectReplacement => ItemKind.Object,
         _ => ItemKind.Text,
     };
 
@@ -284,8 +292,9 @@ internal sealed class ParagraphLayouter
             : run.XAdvances[glyph] * style.Size / run.UnitsPerEm;
 
     /// <summary>Per UTF-16 index: the advance of the cluster starting there (0 elsewhere) and whether one starts there.</summary>
-    private (float[] Advances, bool[] Starts) Measure(string text, List<Item> items)
+    private static (float[] Advances, bool[] Starts) Measure(ParagraphText source, List<Item> items, Func<string, int, int, Item, ShapedRun> shape)
     {
+        var text = source.Text;
         var advances = new float[text.Length];
         var starts = new bool[text.Length];
         foreach (var item in items)
@@ -293,9 +302,11 @@ internal sealed class ParagraphLayouter
             if (item.Kind != ItemKind.Text)
             {
                 starts[item.Start] = true;
+                if (item.Kind == ItemKind.Object)
+                    advances[item.Start] = ObjectSize(source, item.Start).Width;
                 continue;
             }
-            var run = Shape(text, item, item.Start, item.Length);
+            var run = shape(text, item.Start, item.Length, item);
             for (var g = 0; g < run.Glyphs.Length; g++)
             {
                 var index = item.Start + run.Clusters[g];
@@ -310,6 +321,13 @@ internal sealed class ParagraphLayouter
         }
         return (advances, starts);
     }
+
+    private (float[] Advances, bool[] Starts) Measure(ParagraphText source, List<Item> items) =>
+        Measure(source, items, (text, start, length, item) => Shape(text, item, start, length));
+
+    /// <summary>The size of the picture at <paramref name="position"/>; nothing for one whose size isn't known.</summary>
+    private static (float Width, float Height) ObjectSize(ParagraphText source, int position) =>
+        source.Pictures.TryGetValue(position, out var picture) && ParagraphText.PictureSize(picture) is { } size ? size : (0, 0);
 
     // ───────────────────────── Breaking ─────────────────────────
 
@@ -444,6 +462,9 @@ internal sealed class ParagraphLayouter
         public int Length { get; } = length;
         public ShapedRun? Run { get; set; }
         public float Width { get; set; }
+
+        /// <summary>A picture's size.</summary>
+        public (float Width, float Height) Size { get; set; }
     }
 
     /// <param name="stored">The stored line this line follows, with the paragraph's first one, or null.</param>
@@ -481,6 +502,11 @@ internal sealed class ParagraphLayouter
             if (item.Kind != ItemKind.Text)
             {
                 starts[from - start] = true;
+                if (item.Kind == ItemKind.Object)
+                {
+                    part.Size = ObjectSize(source, from);
+                    advances[from - start] = part.Size.Width;
+                }
                 continue;
             }
             part.Run = Shape(text, item, from, to - from);
@@ -585,11 +611,19 @@ internal sealed class ParagraphLayouter
         var fills = new List<Decoration>();
         var strokes = new List<Decoration>();
         var links = new List<LineLink>();
+        var pictures = new List<LinePicture>();
         var x = lineLeft + offset;
         foreach (var part in Visual(parts))
         {
             var x0 = x;
-            if (part.Item.Kind == ItemKind.Tab)
+            if (part.Item.Kind == ItemKind.Object)
+            {
+                var (pictureWidth, pictureHeight) = (part.Size.Width * squeeze, part.Size.Height);
+                if (source.Pictures.TryGetValue(part.Start, out var picture) && pictureWidth > 0)
+                    pictures.Add(new LinePicture(new SKRect(x, -pictureHeight, x + pictureWidth, 0), picture.Path, picture.Crop));
+                x += pictureWidth + gaps[part.Start - start] * squeeze;
+            }
+            else if (part.Item.Kind == ItemKind.Tab)
             {
                 var (stop, tabWidth) = tabs.GetValueOrDefault(part.Start);
                 tabWidth *= squeeze;
@@ -648,6 +682,9 @@ internal sealed class ParagraphLayouter
             Decorations = [.. fills, .. strokes],
             Links = links,
             Bookmarks = bookmarks,
+            Pictures = pictures,
+            StoredTop = stored is var (top, _) ? top.VerticalPosition / 100f : null,
+            StoredPageStart = stored is var (flagged, _) && (flagged.Flags & 1) != 0,
         };
     }
 
@@ -700,6 +737,13 @@ internal sealed class ParagraphLayouter
         var any = false;
         foreach (var part in parts)
         {
+            if (part.Item.Kind == ItemKind.Object)
+            {
+                // A picture stands on the baseline.
+                ascent = Math.Max(ascent, part.Size.Height);
+                any = true;
+                continue;
+            }
             if (part.Item.Kind != ItemKind.Text)
                 continue;
             // 한글's line height follows the font size alone; raised or lowered text takes room only with font metrics.

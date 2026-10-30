@@ -41,8 +41,8 @@ internal sealed record DocumentRenderer(string Name, IReadOnlySet<string> Format
 internal static class DocumentRenderers
 {
     /// <summary>
-    /// Filee's layout engine, measured against <see cref="Reference"/>: paragraph layout on the interim page flow
-    /// (Typesetting/FileeRenderer.cs) until the page composer replaces it. Null would skip the compare.
+    /// Filee's layout engine, measured against <see cref="Reference"/>: the page composer and paragraph layout
+    /// (Typesetting/FileeRenderer.cs, PageComposer.cs). Null would skip the compare.
     /// </summary>
     public static DocumentRenderer? Candidate =>
         new("filee", Hwpx, (input, ct) => Task.FromResult(FileeRenderer.ToPdf(input.Document, ct)));

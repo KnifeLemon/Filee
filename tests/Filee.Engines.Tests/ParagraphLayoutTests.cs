@@ -13,9 +13,9 @@ namespace Filee.Engines.Tests;
 
 public sealed class ParagraphLayoutTests : IDisposable
 {
-    private const string Latin = "Noto Sans";
-    private const string Korean = "Noto Sans KR";
-    private const string Arabic = "Noto Sans Arabic";
+    private const string Latin = RepositoryFonts.Latin;
+    private const string Korean = RepositoryFonts.Korean;
+    private const string Arabic = RepositoryFonts.Arabic;
 
     private const string English = "Filee lays out every paragraph the way the document asks: line spacing, alignment and the place where each line ends.";
     private const string Hangul = "한글 문서는 줄 간격과 정렬에 따라 줄이 나뉘는 자리가 달라집니다. 같은 문단을 몇 번 그려도 줄은 같은 자리에서 끝나야 합니다.";
@@ -541,59 +541,5 @@ public sealed class ParagraphLayoutTests : IDisposable
                 dot = x;
         }
         return (start, end, dot);
-    }
-
-    /// <summary>The Noto fonts of src/Filee.App/Assets/Fonts as the only fonts there are.</summary>
-    private sealed class RepositoryFonts : IFontCollection
-    {
-        private readonly Dictionary<string, List<FontFace>> _families = new(StringComparer.OrdinalIgnoreCase);
-        private readonly Dictionary<string, PageFont> _fonts = new(StringComparer.OrdinalIgnoreCase);
-
-        public static RepositoryFonts Load()
-        {
-            var fonts = new RepositoryFonts();
-            var folder = Folder();
-            if (folder is null)
-                return fonts;
-            (string File, string Family, int Weight)[] files =
-            [
-                ("NotoSans-Regular.ttf", Latin, 400), ("NotoSans-Bold.ttf", Latin, 700),
-                ("NotoSansKR-Regular.otf", Korean, 400), ("NotoSansKR-Bold.otf", Korean, 700),
-                ("NotoSansArabic-Regular.ttf", Arabic, 400),
-            ];
-            foreach (var (file, family, weight) in files)
-            {
-                var path = Path.Combine(folder, file);
-                if (!File.Exists(path))
-                    continue;
-                var font = PageFont.FromFile(path);
-                var typeface = font.Typeface;
-                if (weight == 400)
-                    fonts._fonts[family] = font;
-                if (!fonts._families.TryGetValue(family, out var faces))
-                    fonts._families[family] = faces = [];
-                faces.Add(new FontFace(family, weight, false, c => typeface.ContainsGlyph(c), () => font));
-            }
-            return fonts;
-        }
-
-        public bool Has(string family) => _fonts.ContainsKey(family);
-
-        public PageFont Font(string family) => _fonts[family];
-
-        public IReadOnlyList<FontFace> Family(string name) => _families.GetValueOrDefault(name) ?? [];
-
-        public FontFace? ForCharacter(int codePoint, FontStyle style, string? language) =>
-            _families.Values.SelectMany(f => f).FirstOrDefault(f => f.Weight == 400 && f.Has(codePoint));
-
-        private static string? Folder()
-        {
-            for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
-            {
-                if (File.Exists(Path.Combine(dir.FullName, "Filee.slnx")))
-                    return Path.Combine(dir.FullName, "src", "Filee.App", "Assets", "Fonts");
-            }
-            return null;
-        }
     }
 }

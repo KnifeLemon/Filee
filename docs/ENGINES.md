@@ -778,9 +778,25 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - On the HWPX files attached to Filee's issues, 768 of 769 stored paragraphs convert. The body text of the one
     single-column document breaks exactly where 한글's own PDF of it does; the rest of the pages differ where tables,
     columns and equations are, which later items lay out.
-- **Interim page flow** (`FileeRenderer.cs`): each section's pages with its paper and margins, paragraphs stacked down
-  the body with a new page where the next line doesn't fit, headings as the PDF outline. It stands in for the page
-  composer; table cells are stacked as paragraphs and objects left out until then.
+- **Page composer** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: page composer*; `FileeRenderer.cs`
+  writes its pages as a PDF):
+  - Pages: each section starts a page with its paper, margins and gutter; the body runs from the top margin and header
+    area to the footer area; a page break before a paragraph, or a column break in a one-column section, starts a page.
+  - Keep rules: keep lines together, keep with next and widow / orphan control (two lines on either page); none moves
+    anything off an empty page.
+  - 한글's stored layout: lines on it take 한글's page breaks (the stored first-line-of-page flag) and their stored place
+    on the page, while the page so far follows it; a paragraph broken again or a table ends that until 한글's next page.
+  - Headers and footers: both, odd or even pages by page number, none on a section's first page where it hides them,
+    laid out in the header and footer areas. Page numbers count on across sections unless one restarts them; page
+    number fields show their page's number, total pages fields the count (a first pass finds it when the body has one).
+  - Pictures laid out like characters (no anchor) take their size on the line (their own, else their pixels at 96 dpi)
+    and stand on the baseline; links, bookmarks and headings (the PDF outline) as before.
+  - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
+    with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
+  - Tables are laid out by a later item; until then their cells are stacked as paragraphs across the text width.
+    Columns, notes, floating objects and master pages are later items too.
+  - Measured: those formats compose without losing text (read back from the PDF), and some 650 pages of Korean text
+    compose in about 6 seconds (the item asks for 640 pages in 30 s; rhwp took some 48 minutes, #127).
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
 radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as
