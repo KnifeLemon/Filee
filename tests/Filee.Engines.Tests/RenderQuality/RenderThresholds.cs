@@ -87,5 +87,11 @@ internal sealed class RenderThresholds
         return value.ToString("0.####", CultureInfo.InvariantCulture);
     }
 
-    private static string Base(string name) => name.StartsWith(Versus, StringComparison.Ordinal) ? name[Versus.Length..] : name;
+    /// <summary>Prefix of the slide renderer's compares with LibreOffice's rendering (SlideQualityTests).</summary>
+    public const string VersusLibreOffice = "vs-libreoffice-";
+
+    private static string Base(string name) =>
+        name.StartsWith(Versus, StringComparison.Ordinal) ? name[Versus.Length..]
+        : name.StartsWith(VersusLibreOffice, StringComparison.Ordinal) ? name[VersusLibreOffice.Length..]
+        : name;
 }

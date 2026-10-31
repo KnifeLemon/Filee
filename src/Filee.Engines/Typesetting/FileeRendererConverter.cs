@@ -2,12 +2,14 @@
 // records become, Hwp/Binary) and the documents Filee reads into its document model (Word, ODT, RTF, text, Markdown,
 // HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF in one step, read, laid out and written in-process.
 // A preview the user turns on in Settings → Engines; off, the engine is unavailable and every route stays as it was.
-// Spreadsheets, presentations, PDF and OFD keep their own routes.
+// Slide decks (PPTX, PPTM, POTX, PPSX) → PDF, PNG and JPG go through Filee's slide renderer (Slides/): a page or a
+// picture per slide. Spreadsheets, other presentations, PDF and OFD keep their own routes.
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
 // doesn't draw yet (OLE objects and charts, vertical text, form controls, SmartArt), and such a file takes the route
-// it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes. Pictures of
-// the pages go on from the PDF through PDFium, which applies the image options.
+// it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes; a deck by
+// SlideCapabilities (charts, effects, ...). Pictures of document pages go on from the PDF through PDFium, which applies
+// the image options; pictures of slides are drawn directly, with the image options applied here.
 
 using System.IO.Compression;
 using System.Text;
@@ -16,12 +18,15 @@ using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Magick;
 using Filee.Engines.Office;
+using Filee.Engines.Slides;
+using ImageMagick;
 
 namespace Filee.Engines.Typesetting;
 
 /// <summary>Lays documents out with Filee's layout engine and writes them as PDF.</summary>
-public sealed partial class FileeRendererConverter : IConverter, ICapabilityCheck
+public sealed partial class FileeRendererConverter : IConverter, ICapabilityCheck, IImageTransformer
 {
     /// <summary>
     /// Below rhwp's HWPX → PDF (10) even with the most an engine left out of the priority list adds (9), so it wins
@@ -39,6 +44,19 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz",
     ];
 
+    /// <summary>
+    /// Slide decks the slide renderer reads, to PDF and pictures. Cost 0: with the priority list's penalty it ties
+    /// LibreOffice's slides edge (0, Settings → Engines → presentations through LibreOffice) at the bottom of the list,
+    /// and the planner keeps the edge it met first, this engine's (registered before LibreOffice). Moving LibreOffice up
+    /// the list keeps LibreOffice.
+    /// </summary>
+    private static readonly string[] Slides = ["pptx", "pptm", "potx", "ppsx"];
+
+    private static readonly string[] SlideTargets = ["pdf", "png", "jpg"];
+
+    /// <summary>Pixels of one slide picture at most; a larger picture is drawn at a lower resolution.</summary>
+    private const long MaxSlidePixels = 200_000_000;
+
     private static readonly HashSet<string> WordFormats = new(StringComparer.OrdinalIgnoreCase) { "docx", "docm", "dotx", "dotm" };
 
     private bool? _pandoc;
@@ -52,7 +70,11 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         Documents.Where(DocumentReaders.BuiltInFormats.Contains)
             .Concat((_pandoc ??= PandocConverter.Locate() is not null) ? DocumentReaders.PandocFormats : [])
             .Select(from => new ConversionEdge(from, "pdf", Cost, Checked: true))
+            .Concat(Slides.SelectMany(from => SlideTargets.Select(to => new ConversionEdge(from, to, 0, Checked: true))))
             .ToList();
+
+    /// <summary>Pictures of slides are drawn here, with the image options (turn, mirror, size) applied.</summary>
+    public bool Transforms(string from, string to) => Slides.Contains(from) && to != "pdf";
 
     public EngineStatus GetStatus()
     {
@@ -68,6 +90,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// </summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat)
     {
+        if (Slides.Contains(sourceFormat))
+            return SlideCapabilities.FirstUnsupported(sourcePath);
         if (sourceFormat == "hwp")
             return HwpUnsupported(sourcePath);
         var markers = sourceFormat == "hwpx" ? HwpxMarkers : sourceFormat == "odt" ? OdtMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
@@ -139,6 +163,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     {
         if (DocumentFonts.Missing(step.OriginalSourcePath ?? step.InputPath) is [_, ..] missing)
             step.MissingFonts?.Invoke(missing);
+        if (Slides.Contains(step.From))
+            return await ConvertSlidesAsync(step, progress, cancellationToken);
         HDocument document;
         StyleResolver? styles = null;
         if (step.From == "hwpx")
@@ -167,6 +193,53 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         await File.WriteAllBytesAsync(target, pdf, cancellationToken);
         progress?.Report(1);
         return [target];
+    }
+
+    /// <summary>A deck → one PDF, or a picture per slide (the PDF options' page range and resolution, then the image options).</summary>
+    private static async Task<IReadOnlyList<string>> ConvertSlidesAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var deck = await Task.Run(() => PptxSlideReader.Read(step.InputPath, cancellationToken: cancellationToken), cancellationToken);
+        progress?.Report(0.2);
+        var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
+        if (step.To == "pdf")
+        {
+            var pdf = await Task.Run(() => SlideOutput.ToPdf(deck, pages, cancellationToken), cancellationToken);
+            if (step.Output.Allocate("pdf") is not { } target)
+                return [];
+            await File.WriteAllBytesAsync(target, pdf, cancellationToken);
+            progress?.Report(1);
+            return [target];
+        }
+        return await Task.Run<IReadOnlyList<string>>(() =>
+        {
+            var slides = PageRange.Parse(step.Preset.Pdf.PageRange, deck.Slides.Count);
+            var dpi = (float)Math.Clamp(step.Preset.Pdf.RenderDpi, 36, 1200);
+            // A large slide at a high resolution would take gigabytes: the resolution comes down to fit.
+            var inches = deck.Width / 72.0 * (deck.Height / 72.0);
+            dpi = (float)Math.Min(dpi, Math.Sqrt(MaxSlidePixels / Math.Max(inches, 1e-6)));
+            var (_, extension) = ImageEncoder.OutputFormat(step.To, step.Preset.Image);
+            var written = new List<string>();
+            var done = 0;
+            foreach (var bitmap in SlideOutput.ToBitmaps(deck, dpi, slides, cancellationToken))
+            {
+                var number = slides[done] + 1;
+                using (bitmap)
+                using (var data = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100))
+                using (var image = new MagickImage(data.ToArray()))
+                {
+                    image.Density = new Density(dpi, dpi, DensityUnit.PixelsPerInch);
+                    ImageEncoder.ApplyOptions(image, step.Preset.Image, step.To);
+                    if (step.Output.Allocate(extension, slides.Count > 1 ? $"_p{number}" : null) is { } path)
+                    {
+                        ImageEncoder.WriteImage(image, path, step.To);
+                        written.Add(path);
+                    }
+                }
+                done++;
+                progress?.Report(0.2 + 0.8 * done / slides.Count);
+            }
+            return written;
+        }, cancellationToken);
     }
 
     [GeneratedRegex(@"<\w+:(?:ole|chart)\b")]

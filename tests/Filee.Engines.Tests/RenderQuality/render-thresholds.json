@@ -63,6 +63,25 @@
       "tables": { "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.9678 },
       "headers-footers": { "vs-rhwp-placed": 0.6666, "vs-rhwp-ssim": 0.8266 },
       "columns": { "vs-rhwp-ssim": 0.3664 }
+    },
+    // Filee's slide renderer on the slide feature deck (SlideQualityTests): read back, and compared slide by slide
+    // with LibreOffice 26.2's PDF of the same deck where LibreOffice is installed (Windows 11, Office fonts).
+    "filee-slides": {
+      // Calibri's own kerning ("Tr" 0.06 em), an italic "f." and Japanese "す。" (Yu Gothic's 。 sits close).
+      "deck": { "overlaps": 0.0063 },
+      // Text slides differ by a point or two in line placement, which SSIM on text weighs heavily. LibreOffice
+      // recomputes "shrink text on overflow" instead of using the stored scale (the text slide's orange box), draws
+      // Korean in another font (NanumGothic for 맑은 고딕) and Japanese in another face, and leaves out double lines.
+      "title": { "vs-libreoffice-ssim": 0.6275 },
+      "shapes": { "vs-libreoffice-ssim": 0.9819 },
+      "lines": { "vs-libreoffice-ssim": 0.8743 },
+      "text": { "vs-libreoffice-ssim": 0.6238 },
+      "vertical-text": { "vs-libreoffice-ssim": 0.9598 },
+      "scripts": { "vs-libreoffice-ssim": 0.3005 },
+      "pictures": { "vs-libreoffice-ssim": 0.8807 },
+      "tables": { "vs-libreoffice-ssim": 0.92 },
+      "fills": { "vs-libreoffice-ssim": 0.8571 },
+      "smartart-chart": { "vs-libreoffice-ssim": 0.9682 }
     }
   },
   "allow": [

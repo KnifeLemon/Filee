@@ -115,6 +115,53 @@ shaping.
   paragraphs are laid out by Filee at the width 한글 used, and their line starts are compared with the ones 한글
   stored (`hp:linesegarray`).
 
+## Slides
+
+The [slide renderer](ENGINES.md#filee-renderer-slides) has its own section of the harness, `SlideQualityTests.cs`
+(renderer `filee-slides` in `render-thresholds.json`). `SlideFeatures.cs` writes one deck with `SlideDeckBuilder`: an
+Office theme (colour, font and format schemes with fill, line, effect and background styles), a master with text
+styles, placeholders and a decorative bar, three layouts, and one slide per feature.
+
+| Feature | What the slide holds |
+|---|---|
+| `title` | the title layout's centred title and subtitle placeholders, the master's background reference and bar |
+| `shapes` | 16 presets with PowerPoint's default shape style (theme fill, line and text colour) and labels, and again with their own fills and 2 pt lines |
+| `lines` | straight connectors with every arrowhead, sizes and preset dashes; a double line; bent and curved connectors; a round-capped dashed line; a freeform with lines, an arc, a quadratic and a cubic curve |
+| `text` | the content layout's body with bullets on two levels and auto numbers; shrink text on overflow (stored scale and spacing reduction); two columns; right-aligned italic text with a hyperlink |
+| `vertical-text` | frames turned 90° and 270°, a shape turned 30° with its text, a mirrored arrow and a flipped triangle |
+| `scripts` | Korean, Japanese, Arabic (right to left) and Hindi through the theme's script fonts |
+| `pictures` | a picture as it is, cropped, turned with an outline, in an ellipse, grey, half transparent, and tiled into a rounded rectangle |
+| `tables` | PowerPoint's default table style (header row, banded rows, a cell merged across) and a table with its own lines and fills |
+| `fills` | linear (angle, scaled), circle and rectangle gradients; six patterns; transparent overlapping fills; a turned group; a gradient background |
+| `smartart-chart` | SmartArt through its stored drawing, a chart through its fallback picture |
+
+- **Read-back** (`Slide_features_read_back`, always): each slide's text on its page (`/ActualText` included), one page
+  per slide, no glyph outside a slide, overlapping glyphs, every font embedded and subset.
+- **Against LibreOffice** (`Slide_features_compared_with_libreoffice`): LibreOffice converts the same deck to PDF and
+  each slide is compared (`vs-libreoffice-ssim`, PDFium at 100 dpi, as for documents). LibreOffice is looked for in
+  `FILEE_LIBREOFFICE` (soffice itself), the repository's `engines/` folder (`pwsh build/fetch-engines.ps1 -Only
+  libreoffice`) and the usual install folders; without it the test is skipped. CI doesn't fetch LibreOffice, so there
+  the slides get the read-back only. With `FILEE_RENDER_OUT`, the deck, both PDFs and a Filee | LibreOffice picture of
+  every slide (`slides-<feature>.png`) are kept.
+
+Measured with LibreOffice 26.2 on Windows 11 (Office fonts installed):
+
+| Slide | SSIM | What differs |
+|---|---|---|
+| `title` | 0.6275 | the text sits about a point apart |
+| `shapes` | 0.9819 | |
+| `lines` | 0.8743 | LibreOffice draws the double line as one thick line and arrowheads a little larger |
+| `text` | 0.6238 | LibreOffice recomputes "shrink text on overflow" (larger text in the orange box); lines a point or two apart |
+| `vertical-text` | 0.9598 | |
+| `scripts` | 0.3005 | LibreOffice draws 맑은 고딕 as NanumGothic and Japanese in another face |
+| `pictures` | 0.8807 | LibreOffice tiles the picture smaller |
+| `tables` | 0.92 | |
+| `fills` | 0.8571 | rectangle gradients (an ellipse in Filee), pattern cells |
+| `smartart-chart` | 0.9682 | |
+
+The deck read back: every slide's text found, nothing outside a slide, every font embedded and subset, overlaps 0.0063
+(Calibri's own kerning of "Tr", an italic "f." and Yu Gothic's "す。").
+
 ## rhwp today
 
 rhwp 0.8.7 on Windows, the CI matrix. Every feature not listed meets the ideal in every check. That covers the

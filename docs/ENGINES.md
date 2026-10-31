@@ -29,7 +29,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
+| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, PPSX → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
@@ -669,12 +669,15 @@ as it was.
   Word documents (DOCX, DOCM, DOTX, DOTM), ODT, RTF, text,
   Markdown, HTML and MHTML, EPUB, KEPUB, MOBI / AZW3 / AZW / PRC, FB2, HTMLZ, TXTZ, and Pandoc's formats when Pandoc
   is installed, to PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
-- **What keeps its route:** spreadsheets (the print route), presentations (slides), PDF and OFD.
+- **Slide decks:** PPTX, PPTM, POTX and PPSX to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides):
+  a page or a picture per slide, the pictures drawn directly (no PDF → PDFium step) with the image options applied.
+- **What keeps its route:** spreadsheets (the print route), other presentations (PPT, ODP), PDF and OFD.
 - **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list.
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
   or ODT package (an HWP as the HWPX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical
-  text, form controls, videos, SmartArt — and `JobQueue` plans again without it, so such a file takes its usual route
-  (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
+  text, form controls, videos, SmartArt — and a deck for what the slide renderer doesn't draw (charts without a
+  stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
+  without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
 - Its edges aren't `Unshaped`: with it on, Arabic, Hebrew, Indic and Thai documents are shaped by it instead of
   going to LibreOffice.
@@ -1084,6 +1087,98 @@ its HWPX files (`hp:linesegarray`) with Filee's, for the plain-text paragraphs o
 (`FILEE_RENDER_CORPUS`): on the HWPX files attached to Filee's issues, 150 of 152 paragraphs break where 한글 broke
 them. Of the other two, one uses a font that isn't installed, and the other is a run of 75 hyphens wider than the
 line, which 한글 keeps on one line.
+
+## Filee renderer: slides
+
+Filee's own slide renderer (GitHub Project 4, item *Built-in slide renderer (PPTX → PDF / PNG)*), in
+`src/Filee.Engines/Slides`: a deck read into a slide model and drawn with the layout engine's text services onto the
+page record PDF and pictures are written from, without LibreOffice. It is part of the Filee renderer preview: with
+*Use the Filee renderer (preview)* on, PPTX, PPTM, POTX and PPSX → PDF, PNG and JPG take it (`FileeRendererConverter`,
+edges `Checked`); off, every route stays as it was. `PptxReader` (Hwp/Hwpx/Pptx) stays the reader the document writers
+use: it turns a deck into flowing pages of text boxes, which is right for DOCX or HWPX output but not for a picture of
+a slide.
+
+- **Cost 0:** with the priority list's penalty it ties LibreOffice's slides edge (0 when Settings → Engines sends
+  presentations to LibreOffice, the default) at the bottom of the list, and the planner keeps the edge it met first,
+  the Filee renderer's (registered before LibreOffice). A user who moves LibreOffice up the list keeps LibreOffice.
+- **Slide model** (`SlideModel.cs`): the deck's size and slides; each slide's background and elements in drawing order
+  (the master's and layout's own shapes first). Elements have a box in their parent's coordinates, a rotation and
+  mirroring: shapes (outlines with a fill, a line and a text frame; a picture is a shape filled with its picture),
+  groups (a child space mapped onto their box) and tables (columns, rows, cells with spans, fills, borders and text).
+  Fills are solid, gradient (linear, circle, rectangle), picture (crop, fill rectangle, tiles, recolouring) or
+  pattern; lines have width, dash, cap, join, compound lines and arrowheads; colours are final (alpha included).
+- **Other formats fill the same model.** Geometry is resolved to outlines in the element's own box, so each format
+  brings its own geometry language to the same place: DrawingML presets and custom geometry today
+  (`ShapeGeometry`), ODF's `draw:enhanced-geometry` (the same kind of guide formulas and path commands, translated
+  into a `GeometryDefinition`), Visio's Geometry sections (MoveTo / LineTo / ArcTo / NURBS rows in shape units), PPT's
+  escher shapes (preset numbers map to the same presets, their vertices to custom geometry). Text is the document
+  model's paragraphs (`HParagraph`), which the ODT and DOCX readers already make, with bullets and numbers resolved
+  into the text by the reader. Masters, layouts, themes and placeholders are inherited by the reader, so ODP master
+  pages and Visio masters resolve the same way before the renderer sees an element.
+- **PPTX reader** (`PptxSlideReader*.cs`): slides in order, hidden ones left out (as PowerPoint's PDF export); each
+  slide's layout, master and theme; backgrounds (slide → layout → master, `bgPr` fills and `bgRef` theme styles);
+  `showMasterSp`; placeholders inheriting position, geometry, fill, line, body properties and list styles from the
+  layout's and master's placeholders (by index, else by type); text properties along PowerPoint's chain (run →
+  paragraph → shape list style → layout placeholder → master placeholder → shape style font and colour → master
+  title / body / other style → presentation default); theme colours under the colour map and its overrides, with
+  every colour transform (`DrawingColors`: lumMod/lumOff, sat, hue, tint and shade in linear RGB, alpha, ...); theme
+  fonts (`+mj-lt`, `+mn-ea`, script fonts by the run's language); theme style references (`fillRef`, `lnRef`,
+  `fontRef`, `bgRef`); tables with `tableStyles.xml` styles (PowerPoint's default *Medium Style 2 – Accent 1* is built
+  in, as files often name it without writing it out); SmartArt through the drawing PowerPoint keeps with it (the data
+  part's `dsp:dataModelExt`); OLE objects and charts through their stored picture; `mc:AlternateContent` through its
+  fallback.
+- **Text frames:** insets, the geometry's text rectangle, anchoring (top, middle, bottom, centred across),
+  wrapping on or off, columns, vertical frames (`vert`, `vert270`), the body's own rotation; "shrink text on overflow"
+  with the font scale and line spacing reduction PowerPoint stored; line spacing as a multiple of the fonts' own line
+  height (taken above the text, as PowerPoint does: less than single lets a line reach into the one before) or exact;
+  space before (not before a frame's first paragraph) and after; bullets in their own font, colour and size followed
+  by a tab to the hanging indent, auto numbers per level; tab stops; right-to-left paragraphs; hyperlinks in the
+  theme's hyperlink colour; slide number fields; Latin, East Asian and complex-script fonts per character
+  (`HWordFonts`), symbol fonts as the Unicode characters they show. Text turns with its shape but isn't mirrored; a
+  vertically flipped shape turns it upside down, as PowerPoint does.
+- **Geometry** (`ShapeGeometry.cs`, `PresetShapes.cs`): the guide formula language and path commands of ECMA-376
+  (20.1.9), with arc angles turned into the ellipse's parameter. 107 presets are written from the standard's
+  definitions in Filee's own compact notation (rectangles and rounded / snipped variants, ellipses, polygons, stars of
+  4 to 32 points, arrows, callouts, brackets and braces, connectors, flowchart shapes, can, cube, bevel, frame, donut,
+  pie, chord, arc, heart, smiley, math signs, wave, ...). Damage stays contained: unknown names count as 0, a
+  division by zero gives 0, values are clamped, guides and path commands are limited per shape and per deck.
+- **Drawing** (`SlideRenderer.cs`, `SlidePaint.cs`): on `PageContent`, which now also draws glyph runs and layers
+  through a matrix (`GlyphRun.Transform`, `PageContent.Add(layer, matrix)`), so turned shapes and vertical frames keep
+  real text in the PDF. Paths filled (the lighter and darker parts of 3D-looking presets as a white or black veil),
+  then stroked; double lines as the stroke's outline less its middle third; dashes shortened for round and square
+  caps; arrowheads (triangle, stealth, diamond, oval, open arrow) at the first path's start and the last's end, a line
+  stopping short under a pointed head. Pictures are decoded once per deck and keep their encoded data (a JPEG goes
+  into the PDF as it is); EMF / WMF through the [metafile renderer](#emf--wmf-renderer). Text is laid out by
+  `ParagraphLayouter` (shaping, font fallback, bidi, line breaking, tabs, alignment). Tables: rows as high as their
+  text needs at least, fills, text, then borders.
+- **Pictures of slides:** the PDF options' page range and resolution (`RenderDpi`, lowered so one picture stays within
+  200 million pixels), then the image options (`ImageEncoder.ApplyOptions`), one file per slide (`_p2`, ...).
+- **The check** (`SlideCapabilities.cs`) looks at the shown slides and the layouts and masters they use, leaving out
+  what a fallback replaces, and names: charts without a stored picture, SmartArt without its drawing, OLE objects and
+  other embedded content without a picture, ink, shadows and other effects (on shapes, pictures and text, or through
+  the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, presets not in
+  `PresetShapes`, and TIFF and JPEG XR pictures.
+- **Hostile input:** parts through `DocumentPackage` (part and package sizes, inflate ratio, XML depth and elements),
+  `DocumentBudget` for paragraphs, objects and group nesting, pictures whose header claims more than
+  `MaxPicturePixels` left out, slide sizes clamped to PowerPoint's range; a file that is no deck, or a damaged part, is
+  `InvalidDataException`. `DocumentFuzzTests` fuzzes the reader, the check and the renderer together.
+- **Font styles:** the slide work found that `FontStyle.Regular` (`new()` of a record struct with a defaulted
+  primary constructor) had weight 0, so a family name with a style word ("Calibri Light", Office's heading font) never
+  took its own weight. It is now 400.
+
+Measured on the slide feature deck of the [render quality harness](RENDER-QUALITY.md#slides) (10 slides written in
+code), against LibreOffice 26.2's PDF of the same deck on Windows 11: SSIM per slide at 100 dpi from 0.98 (shapes),
+0.97 (SmartArt and chart), 0.96 (turned and vertical text), 0.92 (tables), 0.88 (pictures, lines), 0.86 (fills) to
+0.62–0.63 for the text slides and 0.30 for the scripts slide, where text sits a point or two apart, LibreOffice
+recomputes "shrink text on overflow" instead of using the stored scale and picks other Korean and Japanese fonts.
+Every slide's text reads back, nothing is outside a slide, every font is embedded and subset; the deck takes about
+6 s (most of it loading fonts), LibreOffice about 60 s with a fresh profile.
+
+Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines; East Asian
+vertical text (upright characters); gradient-filled text (the first stop's colour); tiled pictures at their own
+resolution (taken as 96 dpi); a gradient that doesn't turn with its shape; "rect" path gradients (drawn as an ellipse
+through the corners); the remaining presets (block arcs, no-smoking signs, clouds, ribbons, scrolls, curved and
+circular arrows, action buttons, border callouts, gears, ...); charts drawn from their data; notes pages and handouts.
 
 ## DOCX writer
 
