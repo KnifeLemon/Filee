@@ -161,6 +161,16 @@ internal sealed partial class PdfDocumentReader
         public double Bottom => Words.Min(w => w.Bottom);
         public double Baseline => Words[0].Baseline;
         public double Size => Words.Max(w => w.Size);
+
+        private double? _mainSize;
+
+        /// <summary>
+        /// Size of most of the line's characters (rounded to half points), like <see cref="Item.Size"/>: one larger word
+        /// (an emphasised word or a name) does not change it, a line that is larger throughout does.
+        /// </summary>
+        public double MainSize => _mainSize ??= Words.GroupBy(w => Math.Round(w.Size * 2) / 2)
+            .OrderByDescending(g => g.Sum(w => w.Text.Length)).ThenByDescending(g => g.Key).Select(g => g.Key).First();
+
         public string Text => string.Join(' ', Words.Select(w => w.Text));
 
         private bool? _rightToLeft;
