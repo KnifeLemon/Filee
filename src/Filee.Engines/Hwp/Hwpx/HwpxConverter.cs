@@ -9,9 +9,11 @@
 //    as images.
 //  * HTML (HtmlReader, AngleSharp), EPUB, MOBI / AZW3, FB2, HTMLZ and TXTZ (Ebooks) and HWPX (HwpxReader) are read
 //    directly.
+//  * HWP 5.0 needs no model: its records are written out as the HWPX package 한글 saves (Hwp/Binary/HwpToHwpx).
 //  * ODT, RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
 
 using Filee.Core.Conversion;
+using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
 
@@ -29,7 +31,19 @@ public sealed class HwpxConverter : IConverter
     public IReadOnlyList<ConversionEdge> Edges =>
         DocumentReaders.Formats(_pandoc ?? PandocConverter.Locate() is not null)
             .Where(from => from != "hwpx") // HWPX is read only to write other formats (DOCX, HTML, EPUB, ...)
-            .Select(from => new ConversionEdge(from, "hwpx", from == "pdf" ? 10 + DocumentReaders.PdfPenalty : 10)).ToList();
+            .Select(from => new ConversionEdge(from, "hwpx", from switch
+            {
+                "pdf" => 10 + DocumentReaders.PdfPenalty,
+                // HWP's records written out as the package 한글 saves (Hwp/Binary), ranked above rhwp's export-hwpx.
+                "hwp" => HwpCost,
+                _ => 10,
+            })).ToList();
+
+    /// <summary>
+    /// HWP → HWPX: Filee's own reader writes the package rather than rhwp. Routes add the engine's place in the default
+    /// order (rhwp 3, this writer 8), so the edge must cost less than rhwp's 10 by more than that: 4 + 8 against 10 + 3.
+    /// </summary>
+    internal const int HwpCost = 4;
 
     public EngineStatus GetStatus()
     {
@@ -45,6 +59,16 @@ public sealed class HwpxConverter : IConverter
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         progress?.Report(0.1);
+        if (step.From == "hwp")
+        {
+            // The package straight from the records, without the model in between (it keeps what the model can't hold).
+            var package = step.Output.Allocate("hwpx");
+            if (package is null)
+                return [];
+            await Task.Run(() => HwpReader.ToHwpx(step.InputPath, package), cancellationToken);
+            progress?.Report(1);
+            return [package];
+        }
         var document = await DocumentReaders.ReadAsync(step.InputPath, step.From, step.WorkDirectory, cancellationToken,
             ocrLayer: step.Preset.Pdf.Ocr);
         progress?.Report(0.6);

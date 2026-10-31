@@ -1,12 +1,14 @@
-// Hostile HWPX and DOCX packages for the document readers and the limits they share (Documents/DocumentLimits): ZIP
-// bombs, XML nested or repeated far beyond real documents, DTDs, tables, groups, notes and fields nested without end,
-// pictures that claim gigapixels, and the inputs the fuzzer (DocumentFuzzTests) found. Each must be refused or read
+// Hostile HWPX and DOCX packages and HWP 5.0 compound files for the document readers and the limits they share
+// (Documents/DocumentLimits): ZIP and deflate bombs, XML nested or repeated far beyond real documents, DTDs, tables,
+// groups, notes and fields nested without end, pictures that claim gigapixels, sector chains and directories that loop
+// or leave the file, records cut short, and the inputs the fuzzer (DocumentFuzzTests) found. Each must be refused or read
 // within the limits, quickly and on the smallest stack a conversion runs on. The layout loop guards are tested here too.
 
 using System.IO.Compression;
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Engines.Documents;
+using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Infrastructure;
@@ -520,6 +522,109 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
         var media = Media();
         Reads(() => DocxReader.Read(withFont, media));
         Assert.False(Directory.Exists(media) && Directory.EnumerateFiles(media).Any());
+    }
+
+    // ───────────────────────── HWP 5.0 ─────────────────────────
+
+    private string Hwp(HwpBuilder builder)
+    {
+        var path = Path.Combine(fx.NewFolder(), "hostile.hwp");
+        File.WriteAllBytes(path, builder.Build());
+        return path;
+    }
+
+    /// <summary>A plain HWP whose section stream spans several sectors (a long paragraph).</summary>
+    private static HwpBuilder LongHwp() => new HwpBuilder().PlainDocInfo().SectionStart().Paragraph(new string('가', 1500));
+
+    private string Damaged(HwpBuilder builder, DocumentLimits? limits = null) =>
+        Assert.IsType<InvalidDataException>(OnSmallStack(() => HwpReader.Read(Hwp(builder), Media(), null, limits))).Message;
+
+    [Fact]
+    public void Hwp_sector_chains_that_loop_or_leave_the_file_are_refused()
+    {
+        const string Section = "BodyText/Section0";
+        var loop = LongHwp();
+        loop.EditFat = (fat, starts) => fat[starts[Section] + 2] = starts[Section];
+        Assert.Contains("loops", Damaged(loop));
+
+        var outside = LongHwp();
+        outside.EditFat = (fat, starts) => fat[starts[Section] + 1] = 0x00FFFFFF;
+        Assert.Contains("points outside the file", Damaged(outside));
+
+        // A stream that claims more than its chain holds.
+        var cutShort = LongHwp();
+        cutShort.DeclaredSizes[Section] = 64 * 1024;
+        Assert.Contains("cut short", Damaged(cutShort));
+    }
+
+    [Fact]
+    public void Hwp_directories_that_loop_or_point_outside_are_refused()
+    {
+        var loop = LongHwp();
+        // The first member of the root names itself as its right sibling.
+        loop.EditDirectory = directory => System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(directory.AsSpan(128 + 72), 1);
+        Assert.Contains("loops", Damaged(loop));
+
+        var outside = LongHwp();
+        outside.EditDirectory = directory => System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(directory.AsSpan(128 + 72), 5000);
+        Assert.Contains("outside the directory", Damaged(outside));
+    }
+
+    [Fact]
+    public void Hwp_streams_beyond_the_limits_are_refused()
+    {
+        var huge = LongHwp();
+        huge.DeclaredSizes["BodyText/Section0"] = 0xF0000000;
+        Refused(() => HwpReader.Read(Hwp(huge), Media()));
+
+        // Deflated zeros: a few KB that unpack to megabytes.
+        var bomb = new HwpBuilder { Flags = 1 }.PlainDocInfo();
+        bomb.SectionBytes = HwpBuilder.Pack(new byte[8 << 20], compress: true);
+        var refusal = Refused(() => HwpReader.Read(Hwp(bomb), Media(), null, DocumentLimits.Default with { InflateRatioFloor = 1 << 20 }));
+        Assert.Contains("times its packed size", refusal.Detail);
+
+        var limits = DocumentLimits.Default with { MaxParagraphs = 100 };
+        var paragraphs = new HwpBuilder().PlainDocInfo().SectionStart();
+        for (var i = 0; i < 120; i++)
+            paragraphs.Paragraph("문단");
+        Assert.Contains("more than 100 paragraphs", Refused(() => HwpReader.Read(Hwp(paragraphs), Media(), null, limits)).Detail);
+    }
+
+    [Fact]
+    public void Hwp_records_cut_cutShortor_badly_packed_are_refused()
+    {
+        var header = new HwpBuilder().PlainDocInfo();
+        header.SectionBytes = [0x42, 0x00];
+        Assert.Contains("record header is cut short", Damaged(header));
+
+        var record = new HwpBuilder().PlainDocInfo();
+        record.SectionBytes = HwpBuilder.Record(67, 0, new byte[100])[..40];
+        Assert.Contains("longer than its stream", Damaged(record));
+
+        var packing = new HwpBuilder { Flags = 1 }.PlainDocInfo();
+        packing.SectionBytes = [0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x13, 0x37];
+        Assert.Contains("can't be unpacked", Damaged(packing));
+    }
+
+    [Fact]
+    public void Hwp_paragraph_lists_nested_without_end_are_refused_on_a_small_stack()
+    {
+        // Hidden comments (숨은 설명) inside hidden comments: each a control with a paragraph list.
+        var builder = new HwpBuilder().PlainDocInfo().SectionStart();
+        void Nest(int depth, int level)
+        {
+            var text = depth == 0 ? System.Text.Encoding.Unicode.GetBytes("끝\r") : HwpBuilder.Bytes(HwpBuilder.Control(15, "tcmt"), (ushort)13);
+            builder.Section.Add(HwpBuilder.Record(66, level, HwpBuilder.Bytes(text.Length / 2, 0, (ushort)0, (byte)0, (byte)0, (ushort)1, (ushort)0, (ushort)0, 0, (ushort)0)));
+            builder.Section.Add(HwpBuilder.Record(67, level + 1, text));
+            builder.Section.Add(HwpBuilder.Record(68, level + 1, HwpBuilder.Bytes(0, 0)));
+            if (depth == 0)
+                return;
+            builder.Section.Add(HwpBuilder.Record(71, level + 1, HwpBuilder.Bytes(HwpBuilder.Id("tcmt"))));
+            builder.Section.Add(HwpBuilder.Record(72, level + 2, HwpBuilder.Bytes(1, 0)));
+            Nest(depth - 1, level + 2);
+        }
+        Nest(200, 0);
+        Assert.Contains("nested more than", Refused(() => HwpReader.Read(Hwp(builder), Media())).Detail);
     }
 
     // ───────────────────────── What the fuzzer found ─────────────────────────

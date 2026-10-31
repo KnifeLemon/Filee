@@ -1,5 +1,6 @@
 // Reads HWPX (한글 / OWPML, KS X 6101) packages into the HDocument model — the inverse of HwpxWriter — so HWP and
-// HWPX can become DOCX, HTML or EPUB without Hancom Office or LibreOffice (HWP is turned into HWPX by rhwp first).
+// HWPX can become DOCX, HTML or EPUB without Hancom Office or LibreOffice (HWP's records are written out as HWPX
+// first, Hwp/Binary).
 //
 // Files come from 한글 itself, from rhwp's export-hwpx and from Filee's own writer, which differ in details. The
 // reader therefore matches elements by local name (any prefix, any namespace version), resolves hp:switch blocks and
@@ -30,7 +31,8 @@ internal sealed partial class HwpxReader
     /// <summary>
     /// content.hpf metadata (opf:meta with this name and content "estimated") that marks the stored line layouts as
     /// estimated by Filee rather than laid out by 한글. HwpxWriter stores no line segments today; a writer that
-    /// estimates them must add this marker so the layout engine does not trust them.
+    /// estimates them must add this marker so the layout engine does not trust them. The HWP reader adds it for HWP files
+    /// rhwp wrote, whose lines are rhwp's estimate (Hwp/Binary/HwpToHwpx).
     /// </summary>
     internal const string EstimatedLinesMeta = "FileeLineSegments";
 
