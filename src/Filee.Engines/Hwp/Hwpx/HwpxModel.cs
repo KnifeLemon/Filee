@@ -43,6 +43,19 @@ internal sealed class HSection
     /// <summary>Master pages (한글 바탕쪽) drawn behind the body of the section's pages.</summary>
     public List<HMasterPage> MasterPages { get; } = [];
 
+    /// <summary>No master page on the section's first page (한글 hideFirstMasterPage).</summary>
+    public bool HideFirstMasterPage { get; set; }
+
+    /// <summary>The section's automatic page number (read for layout); null for none.</summary>
+    public HPageNumber? PageNumber { get; set; }
+
+    /// <summary>Page borders and backgrounds (한글 쪽 테두리/배경) for both, odd or even pages.</summary>
+    public List<HPageBorder> PageBorders { get; } = [];
+
+    /// <summary>Which of the section's pages show their page border and their page background (hp:visibility).</summary>
+    public HFirstPageRule PageBorderShows { get; set; }
+    public HFirstPageRule PageFillShows { get; set; }
+
     /// <summary>How the section's footnotes and endnotes are numbered and set (한글 각주 모양, 미주 모양).</summary>
     public HNoteShape Footnotes { get; set; } = HNoteShape.Footnote;
     public HNoteShape Endnotes { get; set; } = HNoteShape.Endnote;
@@ -65,7 +78,45 @@ internal sealed record HPage(int Width, int Height, int Left, int Right, int Top
 
 /// <summary>Newspaper-style columns.</summary>
 /// <summary>What a page hides (한글 hp:pageHiding).</summary>
-internal sealed record HPageHiding(bool Header, bool Footer);
+internal sealed record HPageHiding(bool Header, bool Footer, bool MasterPage = false, bool Border = false, bool Fill = false, bool PageNumber = false);
+
+/// <summary>Pages of a section something shows on: all, all but the first, or only the first.</summary>
+internal enum HFirstPageRule
+{
+    All,
+    HideFirst,
+    OnlyFirst,
+}
+
+/// <summary>Where a page background is painted (한글 채울 영역).</summary>
+internal enum HPageFillArea
+{
+    /// <summary>The whole paper.</summary>
+    Paper,
+
+    /// <summary>The page inside its margins (header and footer areas included).</summary>
+    Page,
+
+    /// <summary>Inside the page border.</summary>
+    Border,
+}
+
+/// <summary>
+/// A page border and background (한글 hp:pageBorderFill). The border lies around the body, grown by
+/// <paramref name="Offsets"/> (and around the header and footer areas when they are inside), or
+/// <paramref name="Offsets"/> in from the paper's edges.
+/// </summary>
+/// <param name="AroundBody">
+/// The border is placed against the body (OWPML textBorder="PAPER", as 한글 prints it), else against the paper's
+/// edges ("CONTENT").
+/// </param>
+/// <param name="Picture">A picture filling the area (a file read for layout), drawn over <paramref name="Fill"/>.</param>
+internal sealed record HPageBorder(HPageType Pages, HBorders Borders, string? Fill, string? Picture, HInsets Offsets, bool AroundBody,
+    bool HeaderInside, bool FooterInside, HPageFillArea FillArea)
+{
+    /// <summary>Draws nothing.</summary>
+    public bool IsEmpty => Fill is null && Picture is null && Borders == HBorders.Empty;
+}
 
 internal sealed record HColumns(int Count, int Gap, bool Separator)
 {
@@ -128,6 +179,12 @@ internal abstract class HBlock
 {
     /// <summary>The page this block is on hides its header or footer (한글 쪽 감추기); null = none. Read for layout only.</summary>
     public HPageHiding? PageHiding { get; set; }
+
+    /// <summary>
+    /// The page this block is on is numbered so, and the pages after it on from there (한글 새 번호로 시작 in the middle
+    /// of a section); null = none. Read for layout only.
+    /// </summary>
+    public int? NewPageNumber { get; set; }
 }
 
 internal sealed class HParagraph : HBlock
@@ -392,7 +449,20 @@ internal sealed class HField(HFieldKind kind, HCharFormat format) : HInline
 {
     public HFieldKind Kind { get; } = kind;
     public HCharFormat Format { get; } = format;
+
+    /// <summary>The number's OWPML format (DIGIT, LATIN_CAPITAL, ROMAN_SMALL, ...); null for digits. Read for layout only.</summary>
+    public string? NumberFormat { get; init; }
 }
+
+/// <summary>
+/// 한글's automatic page number (쪽 번호 매기기, hp:pageNum), drawn on every page of its section apart from the
+/// header and footer; read for layout only (the converters get it as a header or footer paragraph).
+/// </summary>
+/// <param name="Position">BOTTOM_CENTER, TOP_LEFT, INSIDE_BOTTOM, ... (OWPML).</param>
+/// <param name="NumberFormat">OWPML number format.</param>
+/// <param name="Side">The character on either side of the number ("-" for "- 1 -"), or null.</param>
+/// <param name="Format">The character format of 한글's "쪽 번호" style.</param>
+internal sealed record HPageNumber(string Position, string? NumberFormat, string? Side, HCharFormat Format);
 
 /// <summary>Picture from a local file.</summary>
 internal sealed class HImage(string path) : HObject

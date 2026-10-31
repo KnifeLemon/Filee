@@ -462,7 +462,14 @@ internal sealed partial class HwpxReader
                 }
                 break;
             case "newNum" when section is not null:
-                if (Attr(control, "numType") == "PAGE" && !section.StartNumberSet)
+                if (Attr(control, "numType") != "PAGE")
+                    break;
+                // Read for layout, a new number past the section's first paragraph numbers its own page on.
+                if (_forLayout && section.Current.Blocks.Count > 0)
+                {
+                    builder.Current.NewPageNumber = Math.Max(1, Int(control, "num", 1));
+                }
+                else if (!section.StartNumberSet)
                 {
                     section.Current.StartPageNumber = Math.Max(1, Int(control, "num", 1));
                     section.StartNumberSet = true;
@@ -472,7 +479,8 @@ internal sealed partial class HwpxReader
                 section.PageNumber = control;
                 break;
             case "pageHiding" when _forLayout:
-                builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"));
+                builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"), Flag(control, "hideMasterPage"),
+                    Flag(control, "hideBorder"), Flag(control, "hideFill"), Flag(control, "hidePageNum"));
                 break;
             default:
                 Skip(control); // hidden comments, index marks, page hiding, page number control, ...

@@ -266,7 +266,8 @@ internal sealed partial class HwpxReader
     /// State of the section being read. A secPr starts a 한글 section (구역); its first colPr gives the columns and
     /// later ones change them mid-page. Header, footer and page number controls may sit in any body paragraph.
     /// </summary>
-    private sealed class SectionState(HDocument document)
+    /// <param name="layoutPageNumber">Read for layout: the page number control as the section's own page number.</param>
+    private sealed class SectionState(HDocument document, Func<XElement, HPageNumber?>? layoutPageNumber = null)
     {
         public HSection? Section;
         public bool ColumnsSet;
@@ -292,6 +293,11 @@ internal sealed partial class HwpxReader
             if (Section is null || PageNumber is not { } control)
                 return;
             PageNumber = null;
+            if (layoutPageNumber is not null)
+            {
+                Section.PageNumber = layoutPageNumber(control);
+                return;
+            }
             var position = Attr(control, "pos") ?? "BOTTOM_CENTER";
             if (position == "NONE")
                 return;
@@ -321,9 +327,24 @@ internal sealed partial class HwpxReader
         }
     }
 
+    /// <summary>
+    /// An automatic page number for the layout engine: its position, number format and side characters, in the
+    /// character format of 한글's "쪽 번호" (Page Number) style, the one 한글 draws it in.
+    /// </summary>
+    private HPageNumber? LayoutPageNumber(XElement control)
+    {
+        var position = Attr(control, "pos") ?? "BOTTOM_CENTER";
+        if (position == "NONE")
+            return null;
+        var style = _styles.Values.FirstOrDefault(s => Attr(s, "engName") == "Page Number" || Attr(s, "name") == "쪽 번호");
+        return new HPageNumber(position, Attr(control, "formatType"),
+            Attr(control, "sideChar") is { Length: > 0 } side && side != "\0" ? side : null,
+            CharFormat(Attr(style, "charPrIDRef")));
+    }
+
     private void ReadSection(XElement root, HDocument document)
     {
-        var state = new SectionState(document);
+        var state = new SectionState(document, _forLayout ? LayoutPageNumber : null);
         foreach (var element in Elements(root))
         {
             if (element.Name.LocalName == "p")
@@ -345,7 +366,10 @@ internal sealed partial class HwpxReader
             var section = state.Begin(Section(secPr));
             _outlineNumberingId = Attr(secPr, "outlineShapeIDRef");
             if (_forLayout)
+            {
                 MasterPages(secPr, section);
+                PageBorders(secPr, section);
+            }
         }
         ReadParagraph(p, state.Current.Blocks, state);
     }
@@ -381,6 +405,46 @@ internal sealed partial class HwpxReader
         }
     }
 
+    /// <summary>Page borders and backgrounds (hp:pageBorderFill), and which pages show them (hp:visibility).</summary>
+    private void PageBorders(XElement secPr, HSection section)
+    {
+        foreach (var element in Children(secPr, "pageBorderFill"))
+        {
+            if (BorderFill(Attr(element, "borderFillIDRef")) is not var (borders, fill, picture))
+                continue;
+            var offset = Child(element, "offset");
+            var border = new HPageBorder(
+                Attr(element, "type") switch
+                {
+                    "EVEN" => HPageType.Even,
+                    "ODD" => HPageType.Odd,
+                    _ => HPageType.Both,
+                },
+                borders, fill, picture,
+                new HInsets(Int(offset, "left"), Int(offset, "right"), Int(offset, "top"), Int(offset, "bottom")),
+                AroundBody: Attr(element, "textBorder") != "CONTENT",
+                HeaderInside: Flag(element, "headerInside"),
+                FooterInside: Flag(element, "footerInside"),
+                Attr(element, "fillArea") switch
+                {
+                    "PAGE" => HPageFillArea.Page,
+                    "BORDER" => HPageFillArea.Border,
+                    _ => HPageFillArea.Paper,
+                });
+            if (!border.IsEmpty)
+                section.PageBorders.Add(border);
+        }
+        var visibility = Child(secPr, "visibility");
+        static HFirstPageRule Rule(string? value) => value switch
+        {
+            "HIDE_FIRST" => HFirstPageRule.HideFirst,
+            "SHOW_FIRST" => HFirstPageRule.OnlyFirst,
+            _ => HFirstPageRule.All,
+        };
+        section.PageBorderShows = Rule(Attr(visibility, "border"));
+        section.PageFillShows = Rule(Attr(visibility, "fill"));
+    }
+
     private static HSection Section(XElement secPr)
     {
         var pagePr = Child(secPr, "pagePr");
@@ -407,6 +471,7 @@ internal sealed partial class HwpxReader
                 Gutter: Int(margin, "gutter")),
             HideFirstHeader = Flag(visibility, "hideFirstHeader"),
             HideFirstFooter = Flag(visibility, "hideFirstFooter"),
+            HideFirstMasterPage = Flag(visibility, "hideFirstMasterPage"),
             StartPageNumber = start > 0 ? start : null,
             Footnotes = NoteShape(Child(secPr, "footNotePr"), HNoteShape.Footnote),
             Endnotes = NoteShape(Child(secPr, "endNotePr"), HNoteShape.Endnote),
