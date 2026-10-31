@@ -1805,3 +1805,17 @@ Transcription runs entirely locally and offline on your computer; no audio or da
   formats requires FFmpeg. FFmpeg must be installed (via Settings → *Engines*, bundled, or found on `PATH`).
 - **Languages**: Whisper supports auto-detection (`auto`) as well as specific language codes (`-l <code>`, e.g. `hi` for
   Hindi, `en` for English, `es` for Spanish, `fr` for French, `ja` for Japanese, `zh` for Chinese).
+
+## Document & Book Translator (Offline AI)
+
+Filee translates documents, books, and text files (.pdf, .docx, .epub, .md, .txt, .hwpx, .srt) locally using Ollama or local offline models. Translation runs entirely on the user's computer: no text or document data is ever uploaded or sent to third-party web services.
+
+- **Offline privacy**: Adheres strictly to Filee's offline promise: "Filee converts files on your own computer and never uploads them." Works with Ollama running locally (`http://localhost:11434`) or bundled offline models. Cloud-forwarded models (`*-cloud`) are refused with a security warning to ensure privacy.
+- **Where it lives**:
+  - Available as the **Translate** preset in Settings → *Presets*, where the target language (e.g. English, Spanish, Hindi, French, German, Chinese, Japanese, etc.) is configured as the single source of truth.
+  - Sits cleanly on the back face (`BackPresetIds`) of document and text profiles for fresh installs, keeping front faces clean and untouched (#806 compliance).
+  - Configurable in Settings → *Engines* under **Translator (Offline AI)** with direct controls to manage local models, pull offline models, and start/stop the local Ollama server without requiring manual terminal commands.
+- **Format and layout preservation**:
+  - **DOCX & HWPX**: The document XML AST structure is parsed into paragraphs, runs, and tables. Headings, font sizes, margins, bullet lists, bold/italic markup, images, and hyperlinks are preserved; only text runs are translated in place.
+  - **PDF**: The high-fidelity document layout pipeline translates structured text blocks in place and renders them preserving page dimensions, font metrics, margins, and layout flow without clipping or file corruption.
+  - **Markdown, Plain text & Subtitles**: Source formatting, code blocks, tables, and subtitle timing cues (`00:01:20,000 --> 00:01:23,000`) are preserved.

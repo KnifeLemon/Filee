@@ -281,6 +281,11 @@ public sealed class UserDataStore
     /// <summary>Removes dangling preset references and guarantees at least one mixed-selection profile.</summary>
     private void EnsureConsistency()
     {
+        if (Presets.All(p => p.Id != "translate"))
+        {
+            if (BuiltInData.CreatePresets().FirstOrDefault(p => p.Id == "translate") is { } translatePreset)
+                Presets.Add(translatePreset);
+        }
         var ids = Presets.Select(p => p.Id).ToHashSet();
         foreach (var profile in Profiles)
         {

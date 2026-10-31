@@ -240,6 +240,34 @@
       </StackPanel>
     </Border>
 
+    <!-- Translation options -->
+
+    <Border x:Name="TranslateCard" Classes="card" IsVisible="{Binding ShowTranslate}" Padding="14">
+
+      <StackPanel Spacing="10">
+
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.translate}" />
+
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.translate_hint}" />
+
+        <Grid ColumnDefinitions="*,12,*">
+
+          <StackPanel>
+
+            <TextBlock Classes="label" Text="{DynamicResource presets.target_language}" />
+
+            <ComboBox ItemsSource="{Binding TranslationLanguageChoices}" SelectedItem="{Binding TargetLanguage}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.target_language}" />
+
+          </StackPanel>
+
+        </Grid>
+
+      </StackPanel>
+
+    </Border>
+
+
+
     <!-- Video & audio options -->
     <Border x:Name="MediaCard" Classes="card" IsVisible="{Binding ShowMedia}" Padding="14">
       <StackPanel Spacing="10">

@@ -172,6 +172,27 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _caption = _edit.Media.Caption;
         _spokenLanguage = SpokenLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Media.SpokenLanguage, StringComparison.OrdinalIgnoreCase))
             ?? SpokenLanguageChoices[0];
+        TranslationLanguageChoices =
+        [
+            new Choice<string>("en", "English"),
+            new Choice<string>("es", "Spanish (Español)"),
+            new Choice<string>("fr", "French (Français)"),
+            new Choice<string>("de", "German (Deutsch)"),
+            new Choice<string>("zh", "Chinese (中文)"),
+            new Choice<string>("hi", "Hindi (हिन्दी)"),
+            new Choice<string>("ja", "Japanese (日本語)"),
+            new Choice<string>("ko", "Korean (한국어)"),
+            new Choice<string>("ru", "Russian (Русский)"),
+            new Choice<string>("pt", "Portuguese (Português)"),
+            new Choice<string>("ar", "Arabic (العربية)"),
+            new Choice<string>("it", "Italian (Italiano)"),
+            new Choice<string>("nl", "Dutch (Nederlands)"),
+            new Choice<string>("pl", "Polish (Polski)"),
+            new Choice<string>("tr", "Turkish (Türkçe)"),
+            new Choice<string>("ne", "Nepali (नेपाली)")
+        ];
+        _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? TranslationLanguageChoices[0];
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -257,6 +278,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<string>> OcrLanguageChoices { get; }
     /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
     public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
+
+    public IReadOnlyList<Choice<string>> TranslationLanguageChoices { get; }
+
+    [ObservableProperty] private Choice<string> _targetLanguage;
+
+    public bool ShowTranslate => _original.Id == "translate" || _edit.Translate.Enabled;
 
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
