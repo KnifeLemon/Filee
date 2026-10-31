@@ -41,8 +41,8 @@ install/uninstall scripts. `Filee-<version>-<rid>-SHA256SUMS.txt` verifies the a
 and notarization. `-SigningIdentity` can supply a signing identity, but does not perform notarization.
 
 Linux release packages must run on Ubuntu 22.04 (glibc 2.35). CI builds rhwp from source on Ubuntu 22.04
-(`build/build-native.py`) and passes it with `-RhwpOverride` (and on ARM64 Unhwp's library with `-UnhwpOverride`); a
-local package without it needs the glibc of the machine that built it. Check a package with
+(`build/build-native.py`) and passes it with `-RhwpOverride`; a local package without it needs the glibc of the
+machine that built it. Check a package with
 `python3 build/check-elf-glibc.py --max 2.35 <unpacked package>`. See [docs/ENGINES.md](docs/ENGINES.md#linux-builds-for-older-glibc).
 
 - **Linux:** drag gestures require X11 by default. Install the Avalonia desktop dependencies (fontconfig, FreeType, X11,
@@ -60,8 +60,9 @@ local package without it needs the glibc of the machine that built it. Check a p
   Keep the development `.app` at a stable path while testing these permissions. Finder integration is a Quick
   Action under Services; auto-start uses a per-user LaunchAgent.
 - **Engines:** packages are selected by OS and architecture. Linux LibreOffice/Ghostscript and macOS
-  FFmpeg/Ghostscript currently use system or user-selected installations. Linux ARM64 has no Unhwp native binary.
-  The macOS LibreOffice package does not include H2Orestart; native rhwp/Unhwp provide the supported HWP routes.
+  FFmpeg/Ghostscript currently use system or user-selected installations. HWP / HWPX → TXT, Markdown and HTML are
+  built in on every platform. The macOS LibreOffice package does not include H2Orestart; native rhwp provides the
+  supported HWP → PDF route.
   Use Settings > Engines to inspect actual availability before comparing formats.
 
 The reusable `portable.yml` workflow builds and tests all four targets and starts the Linux packages on Ubuntu 22.04.

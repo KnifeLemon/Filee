@@ -11,7 +11,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF, merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
-| Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
+| **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
@@ -123,25 +123,26 @@ the runtime next to every program that needs it and does not ship it (`Infrastru
 | Binary | Runtime |
 |---|---|
 | `engines/rhwp/rhwp.exe` (bundled) | `vcruntime` component copied next to it by `fetch-engines.ps1` (#248) |
-| `unhwp.dll` (NuGet, loaded into Filee.exe and filee-cli.exe) | `vcruntime` component copied next to `Filee.exe` (`build-installer.ps1` → `fetch-engines.ps1 -RuntimeTo`) |
 | Ghostscript (download) | `vcruntime` component copied next to `gswin64c.exe` (`EngineInstaller`, `fetch-engines.ps1`) |
 | LibreOffice (download) | its own copy, which the administrative install leaves in `System64`, copied into `program/` (`EngineInstaller`, `fetch-engines.ps1`; `LibreOfficeConverter` also repairs a copy installed by an earlier Filee) |
 | calibre, Java (downloads) | ship their own next to their programs (`app/bin`, `bin`) |
 | 7-Zip, FFmpeg (GyanD), Tesseract (UB Mannheim, MinGW), Pandoc, PDFium, SkiaSharp / HarfBuzz, Magick.Native, the Explorer menu DLL, .NET | import neither (static runtime or MinGW / GHC builds) |
+
+Nothing loaded into `Filee.exe` or `filee-cli.exe` imports the runtime (Unhwp's `unhwp.dll` did, until the built-in
+[HWP text](#hwp-text-markdown-and-html) export replaced it), so none is copied next to them.
 
 The installer and the portable zip are made from the same publish folder, so both have the DLLs. Filee installed in
 Program Files cannot repair its own bundled files, so an older installation gets them by installing the new version.
 When a DLL is still missing, Windows does not start the program and reports `0xC0000135` (STATUS_DLL_NOT_FOUND;
 `0xC0000139` for an outdated one) as its exit code: `ProcessRunner` and `FfmpegRunner` turn that into
 `error.runtime_missing` ("A Microsoft Visual C++ runtime file this engine needs is missing or outdated …", with the
-program and the code in brackets) instead of the raw exit code, and `UnhwpConverter` does the same when `unhwp.dll`
-cannot be loaded. To check binaries after an engine update, list the DLLs each `.exe` / `.dll` imports (its PE import
+program and the code in brackets) instead of the raw exit code. To check binaries after an engine update, list the DLLs each `.exe` / `.dll` imports (its PE import
 table, e.g. `dumpbin /dependents`) and look for `MSVCP140*.dll`, `VCRUNTIME140*.dll` or `CONCRT140.dll`.
 
 To bump a version, change `url`, `sha256` and `size` in engines.json together, run
 `pwsh build/fetch-engines.ps1`, test, and update `THIRD-PARTY-NOTICES.md`. For rhwp, also update `RHWP_VERSION`,
 `RHWP_COMMIT` and `RUST_TOOLCHAIN` in `build/build-native.py` (see below); CI fails until they match. The Windows
-ARM64 builds of rhwp and Unhwp need a new build and pin too (see [Windows on ARM64](#windows-on-arm64)). When the
+ARM64 build of rhwp needs a new build and pin too (see [Windows on ARM64](#windows-on-arm64)). When the
 LibreOffice team retires a version from `download.documentfoundation.org/libreoffice/stable/`, its URL stops working:
 keep the pinned version current.
 
@@ -153,18 +154,14 @@ The `linux-native` job of `.github/workflows/portable.yml` builds it from its pi
 
 - `rhwp`: `cargo build --release --locked --bin rhwp` at the tag's commit with its pinned Rust toolchain, in the
   layout of rhwp's release archive.
-- `unhwp` (arm64 only): Unhwp's NuGet package ships no linux-arm64 library, so `libunhwp.so` is built from the commit
-  the package's nuspec names (`cargo build --release --locked -p unhwp --lib --features ffi`, as upstream builds it).
-- `check` (also run on its own): fails when engines.json pins another rhwp version, or Directory.Packages.props
-  another Unhwp version, than the script builds.
+- `check` (also run on its own): fails when engines.json pins another rhwp version than the script builds.
 
-The Linux package jobs pass the result to `build/build-portable.ps1 -RhwpOverride <dir>` (arm64 also
-`-UnhwpOverride <libunhwp.so>`, which the arm64 tests are built with too: `-p:UnhwpNativeLibrary`). Local builds without it use
+The Linux package jobs pass the result to `build/build-portable.ps1 -RhwpOverride <dir>`. Local builds without it use
 the downloaded rhwp (fine on the machine that builds it). SharpHook's native libraries are packaged as they come
 from NuGet: SharpHook 8.0.0 built its X11 back ends against glibc 2.38, 8.0.1 needs glibc 2.34 at most again.
 
 `build/check-elf-glibc.py` lists the newest GLIBC version every ELF file in the package needs and fails above 2.35,
-and the packages are unpacked and started on Ubuntu 22.04 (`build/smoke-portable.ps1`: CLI, rhwp conversions, loading
+and the packages are unpacked and started on Ubuntu 22.04 (`build/smoke-portable.ps1`: CLI, rhwp conversions, HWP → Markdown, loading
 the X11 input hook back end; `build/smoke-launch-app.py`: the app under Xvfb). If a SharpHook or engine update fails
 these checks, keep the previous version until upstream builds for an older glibc again, or build the binary from its
 pinned source in `build/build-native.py` like rhwp (PR #113 did this for SharpHook 8.0.0's libuiohook back ends).
@@ -180,16 +177,15 @@ Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so 
 
 - **7-Zip**: the official ARM64 installer of the version engines.json pins, a 7z self-extracting archive unpacked by
   the x64 7-Zip (Windows' `tar.exe` can't undo its ARM64 executable filter).
-- **rhwp** and **Unhwp's library** have no ARM64 release. `.github/workflows/windows-arm64-native.yml` (run it from the
-  Actions tab once per version) builds them on a Windows ARM64 runner with `build/build-native.py`, from the same
-  pinned commits as above, with the C runtime linked statically (`+crt-static`): they import no Visual C++ runtime DLL,
-  so the ARM64 build ships none. Its artifact is hosted on dl.filee.sh and pinned by SHA-256 in `$arm64Pins` of
-  `build/fetch-engines.ps1`; until a pin is filled in, a win-arm64 build stops and says so. `unhwp.dll` goes next to
-  `Filee.exe` through the build (`-p:UnhwpNativeLibrary`).
+- **rhwp** has no ARM64 release. `.github/workflows/windows-arm64-native.yml` (run it from the Actions tab once per
+  version) builds it on a Windows ARM64 runner with `build/build-native.py`, from the same pinned commit as above, with
+  the C runtime linked statically (`+crt-static`): it imports no Visual C++ runtime DLL, so the ARM64 build ships none.
+  Its artifact is hosted on dl.filee.sh and pinned by SHA-256 in `$arm64Pins` of `build/fetch-engines.ps1`; until the
+  pin is filled in, a win-arm64 build stops and says so.
 
-`UnhwpConverter` reports Unhwp as available where its library loads, so a build without it shows the engine as not
-available on this platform. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
-in it also builds the package (artifact `windows-arm64-package`).
+HWP / HWPX → TXT, Markdown and HTML are managed code ([HWP text](#hwp-text-markdown-and-html)) and work on ARM64 like
+everywhere else. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once the pins are filled in it also
+builds the package (artifact `windows-arm64-package`).
 
 ## Images and vector graphics
 
@@ -542,8 +538,8 @@ Element order and attribute values follow files saved by 한글 where the schema
 - object offsets are unsigned: objects reaching into the margin are anchored to the paper instead;
 - layout caches (table row heights, inline tab widths) are estimated, because simpler readers use them as-is.
 
-Every generated file is checked in the tests with three independent readers: rhwp (renders it), Unhwp (reads the
-text) and LibreOffice + H2Orestart (opens it), see `tests/Filee.Engines.Tests/DocxToHwpxTests.cs` and
+Every generated file is checked in the tests with independent readers: rhwp (renders it) and LibreOffice +
+H2Orestart (opens it), and its text is read back with Filee's HWPX reader, see `tests/Filee.Engines.Tests/DocxToHwpxTests.cs` and
 `OfficeTests.cs`.
 
 Not converted: Word charts, SmartArt, free-form shapes, tracked changes and comments.
@@ -1313,7 +1309,7 @@ them into a folder next to it, reserved through the output allocator like any ou
 show them and the pair can be moved together; JPEGs are the PDF's own, a scanned page is the picture of the page.
 The preset option *Leave out pictures* (`DocumentOptions.LeaveOutPictures`, Documents card, shown for Markdown)
 writes the text only, read like PDF → TXT (the invisible OCR layer of scans included) and without a folder. The same
-option applies to every Markdown writer: e-books (`EbookConverter`), HWP / HWPX (`UnhwpConverter`) and Pandoc (a
+option applies to every Markdown writer: e-books (`EbookConverter`), HWP / HWPX (`HwpTextConverter`) and Pandoc (a
 Lua filter drops the pictures, figures keep their captions).
 
 ## OFD reader
@@ -2037,6 +2033,47 @@ check doesn't see them in an HWP.
 
 The format document asks that products made with it say so: "본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를
 참고하여 개발하였습니다." (already in `HwpxReader.Header.cs`).
+
+## HWP text, Markdown and HTML
+
+`Hwp/HwpTextConverter.cs` (engine id `hwp-text`) writes HWP and HWPX as plain text, Markdown or one HTML page with
+managed code only, so it works on every platform Filee runs on (Windows, Linux and macOS, x64 and ARM64). The
+[HWP reader](#hwp-reader) or [HWPX reader](#hwpx-reader) reads the document model (with their limits for hostile
+files); the e-book writers write it out:
+
+- **TXT** (`PlainTextWriter`, UTF-8 with a byte order mark): paragraphs separated by an empty line; list items with the
+  number or bullet 한글 shows ("1.", "가)", "●") and indented by level; table rows as tab-separated cells; a text box
+  on lines of its own; footnotes and endnotes as `[1]` with their text after a `----` line at the end; equations as
+  their script. Headers, footers and page numbers are left out, as are tracked deletions.
+- **Markdown** (`MarkdownWriter`): headings (outline paragraphs and heading styles), bold / italic / strikeout /
+  super- and subscript, lists (numbered ones as `1.`, nested by level), pipe tables, links, footnotes (`[^1]`), and
+  pictures in a `<name>_files` folder next to the Markdown file (`MarkdownPictures`: `img0001.png`, formats editors
+  don't show become PNG or JPEG). No title block: the text starts with the document. *Leave out pictures* (the
+  preset's document options) leaves every picture out and makes no folder.
+- **HTML** (`XhtmlWriter`): one page with the embedded style sheet, pictures inlined as `data:` URIs, the title from
+  the document's summary (else its first heading, else the file name) and the language guessed from its text.
+
+The edges cost what Unhwp's did (TXT and Markdown 10, HTML 14) and the engine took Unhwp's place in the engine order
+(settings schema 58 renames `unhwp` to `hwp-text`), so every route keeps its cost.
+
+Unhwp (a native Rust library through NuGet) did this before. It needed the Visual C++ runtime next to Filee.exe and
+had no Linux or Windows ARM64 build of its own (Filee built one, #236). Measured before it was removed,
+on the 30 documents generated in code by the tests (the rich DOCX of `DocumentFuzzTests` written as HWPX, the 24
+documents of the render feature matrix, the hand-made 한글-style package of `HwpxReaderTests`, a text and a Markdown
+document written as HWPX, and three HWP files built by `HwpBuilder`):
+
+- the text equals Unhwp's (whitespace-normalised) for 22 of them, among them all three HWP files, every script (Korean,
+  Chinese, Japanese, Arabic, Hebrew, Hindi, Gujarati, Thai, Lao, Khmer, Myanmar, mixed right-to-left), tables, tabs,
+  columns and line spacing;
+- for 27, all of Unhwp's text is in Filee's in the same order (counted per character, without whitespace); Filee adds
+  what Unhwp leaves out: list numbers and bullets, equations, note markers and the text after a text box in the
+  same paragraph;
+- the other three lose only text Filee leaves out on purpose: headers, footers and page numbers (Unhwp writes the
+  footer once, and an automatic page number as "- -"), the deleted text of tracked changes, and notes moved from where
+  they are referenced to the end. In one of them Unhwp skipped the body text of the first page, which Filee keeps.
+
+Unhwp's Markdown had no lists (items became plain paragraphs, the second level a `#` heading) and made headings of
+endnotes; Filee's keeps the headings, lists, tables and pictures of the document.
 
 ## E-books
 
