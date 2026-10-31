@@ -187,6 +187,8 @@
   "engine.hwpx-writer.description": "Cria HWPX a partir de Word, Excel, PowerPoint, PDF, OFD, HTML, livros digitais e Markdown.\nO primeiro passo para converter documentos em PDF sem o Office.",
   "engine.docx-writer.name": "Gerador DOCX (motor integrado)",
   "engine.docx-writer.description": "Cria documentos Word (DOCX) a partir de PDF, OFD, HWP/HWPX, Markdown, HTML, folhas de cálculo, diapositivos e livros digitais.",
+  "engine.odt-writer.name": "Gerador ODT (motor integrado)",
+  "engine.odt-writer.description": "Cria documentos de texto OpenDocument (ODT) a partir de documentos Word, PDF, OFD, HWP/HWPX, Markdown, HTML, folhas de cálculo, diapositivos e livros digitais.",
   "engine.pdf-text.name": "Texto de PDF (motor integrado)",
   "engine.pdf-text.description": "Extrai o texto de PDF pela ordem de leitura, incluindo páginas com duas colunas (sem OCR para digitalizações).",
   "engine.pdf-slides.name": "Diapositivos de PDF (motor integrado)",

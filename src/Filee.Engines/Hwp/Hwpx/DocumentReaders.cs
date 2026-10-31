@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Ofd;
@@ -32,6 +33,7 @@ internal static class DocumentReaders
         ["docm"] = DocxReader.Read,
         ["dotx"] = DocxReader.Read,
         ["dotm"] = DocxReader.Read,
+        ["odt"] = OdtReader.Read,
         ["txt"] = (path, _) => TextDocument(File.ReadAllBytes(path)),
         ["md"] = (path, _) => MarkdownReader.Read(DecodeText(File.ReadAllBytes(path)), Path.GetDirectoryName(Path.GetFullPath(path))!),
         ["xlsx"] = (path, _) => SheetDocument.Build(XlsxReader.Read(path)),
@@ -70,7 +72,6 @@ internal static class DocumentReaders
     /// </summary>
     private static readonly Dictionary<string, string> ThroughPandoc = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["odt"] = "odt",
         ["rtf"] = "rtf",
         ["html"] = "html",
         ["rst"] = "rst",

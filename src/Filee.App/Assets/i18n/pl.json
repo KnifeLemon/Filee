@@ -187,6 +187,8 @@
   "engine.hwpx-writer.description": "Zapisuje HWPX z Worda, Excela, PowerPointa, PDF, OFD, HTML, e-booków i Markdown.\nPierwszy krok zamiany dokumentów na PDF bez Office.",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "Zapisuje dokumenty Word (DOCX) z PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy, slajdów i e-booków.",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "Zapisuje dokumenty tekstowe OpenDocument (ODT) z dokumentów Word, PDF, OFD, HWP/HWPX, Markdown, HTML, arkuszy, slajdów i e-booków.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Wyodrębnia tekst z PDF w kolejności czytania, także ze stron dwukolumnowych (bez OCR skanów).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

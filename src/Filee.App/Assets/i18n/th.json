@@ -180,6 +180,8 @@
   "engine.hwpx-writer.description": "เขียนไฟล์ HWPX จาก Word, Excel, PowerPoint, PDF, OFD, HTML, อีบุ๊ก และ Markdown\nขั้นตอนแรกของการแปลงเอกสารเป็น PDF โดยไม่ต้องติดตั้ง Office",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "เขียนเอกสาร Word (DOCX) จาก PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "เขียนเอกสารข้อความ OpenDocument (ODT) จากเอกสาร Word, PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "แยกข้อความของ PDF ตามลำดับการอ่าน รวมถึงหน้าที่มีสองคอลัมน์ (ไม่มี OCR สำหรับเอกสารสแกน)",
   "engine.pdf-slides.name": "PDF slides (built-in)",

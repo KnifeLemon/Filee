@@ -180,6 +180,8 @@
   "engine.hwpx-writer.description": "Word, Excel, PowerPoint, PDF, OFD, HTML, e-kitap ve Markdown'dan HWPX oluşturur.\nBelgeleri Office olmadan PDF'ye dönüştürmenin ilk adımıdır.",
   "engine.docx-writer.name": "DOCX oluşturucu (yerleşik)",
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, Markdown, HTML, elektronik tablo, slayt ve e-kitaplardan Word belgesi (DOCX) oluşturur.",
+  "engine.odt-writer.name": "ODT oluşturucu (yerleşik)",
+  "engine.odt-writer.description": "Word belgeleri, PDF, OFD, HWP/HWPX, Markdown, HTML, elektronik tablo, slayt ve e-kitaplardan OpenDocument metin belgesi (ODT) oluşturur.",
   "engine.pdf-text.name": "PDF metin (yerleşik)",
   "engine.pdf-text.description": "İki sütunlu sayfalar dahil PDF metnini okuma sırasıyla çıkarır (taramalar için OCR yoktur).",
   "engine.pdf-slides.name": "PDF slayt (yerleşik)",

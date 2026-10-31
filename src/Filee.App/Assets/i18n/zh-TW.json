@@ -187,6 +187,8 @@
   "engine.hwpx-writer.description": "把 Word、Excel、PowerPoint、PDF、OFD、HTML、電子書和 Markdown 寫成 HWPX。\n這是不用 Office 把文件轉為 PDF 的第一步。",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "用 PDF、OFD、HWP/HWPX、Markdown、HTML、表格、投影片和電子書產生 Word 文件（DOCX）。",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "用 Word 文件、PDF、OFD、HWP/HWPX、Markdown、HTML、表格、投影片和電子書產生 OpenDocument 文字文件（ODT）。",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "按閱讀順序擷取 PDF 中的文字，雙欄頁面也能正確排序（不對掃描檔做文字辨識）。",
   "engine.pdf-slides.name": "PDF slides (built-in)",

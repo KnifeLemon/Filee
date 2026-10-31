@@ -180,6 +180,8 @@
   "engine.hwpx-writer.description": "Erstellt HWPX aus Word, Excel, PowerPoint, PDF, OFD, HTML, E-Books und Markdown.\nDer erste Schritt zur PDF-Konvertierung von Dokumenten ohne Office.",
   "engine.docx-writer.name": "DOCX-Writer (integriert)",
   "engine.docx-writer.description": "Erstellt Word-Dokumente (DOCX) aus PDF, OFD, HWP/HWPX, Markdown, HTML, Tabellen, Folien und E-Books.",
+  "engine.odt-writer.name": "ODT-Writer (integriert)",
+  "engine.odt-writer.description": "Erstellt OpenDocument-Textdokumente (ODT) aus Word-Dokumenten, PDF, OFD, HWP/HWPX, Markdown, HTML, Tabellen, Folien und E-Books.",
   "engine.pdf-text.name": "PDF-Text (integriert)",
   "engine.pdf-text.description": "Extrahiert PDF-Text in Lesereihenfolge, auch aus zweispaltigen Seiten (keine Texterkennung für Scans).",
   "engine.pdf-slides.name": "PDF-Folien (integriert)",

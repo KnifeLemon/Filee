@@ -180,6 +180,8 @@
   "engine.hwpx-writer.description": "Word, Excel, PowerPoint, PDF, OFD, HTML, इ-पुस्तक र Markdown बाट HWPX लेख्छ।\nOffice बिना कागजातहरूलाई PDF मा रूपान्तरण गर्ने पहिलो चरण।",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडसिट, स्लाइड र इ-पुस्तकबाट Word कागजातहरू (DOCX) लेख्छ।",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "Word कागजात, PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडसिट, स्लाइड र इ-पुस्तकबाट OpenDocument पाठ (ODT) लेख्छ।",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "पढ्ने क्रममा PDF को पाठ निकाल्छ, दुई-स्तम्भ पृष्ठहरूबाट पनि (स्क्यानका लागि OCR होइन)।",
   "engine.pdf-slides.name": "PDF slides (built-in)",
