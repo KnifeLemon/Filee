@@ -24,7 +24,7 @@ internal sealed record CliOptions
     public double? SettleSeconds { get; set; }
     public string? Error { get; set; }
 
-    public static readonly string[] Commands = ["convert", "watch", "formats", "presets", "help", "version"];
+    public static readonly string[] Commands = ["convert", "watch", "formats", "presets", "engines", "help", "version"];
 
     public static CliOptions Parse(IReadOnlyList<string> args)
     {
@@ -127,6 +127,10 @@ internal sealed record CliOptions
             "convert" when options.Inputs.Count == 0 => "Give at least one file or folder to convert.",
             "convert" or "watch" when options.To is null == (options.Preset is null) => "Use either --to <format> or --preset <preset>.",
             "watch" when options.Inputs.Count != 1 => "Give exactly one folder to watch.",
+            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove") =>
+                $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>' or 'filee engines remove <id>'.",
+            "engines" when options.Inputs.Count == 1 => $"Give the engine to {options.Inputs[0].ToLowerInvariant()}, e.g. 'filee engines {options.Inputs[0].ToLowerInvariant()} pandoc'.",
+            "engines" when options.Inputs.Count > 2 => "Give one engine at a time.",
             _ => null,
         };
         return options;

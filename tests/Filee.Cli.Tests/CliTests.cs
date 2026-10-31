@@ -13,6 +13,7 @@ using Filee.Engines.Tests;
 
 namespace Filee.Cli.Tests;
 
+[Collection("Cli")] // shares EngineEnvironment state with EnginesCommandTests
 public sealed class CliTests : IDisposable
 {
     private readonly string _folder = Directory.CreateTempSubdirectory("filee-cli-").FullName;
