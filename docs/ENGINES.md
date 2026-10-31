@@ -19,6 +19,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
 | **DOCX writer** | built in | **ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
 | **ODT writer** | built in | **DOCX (+ variants), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → ODT** (OpenDocument text, LibreOffice Writer) |
+| **PPTX writer** | built in | **Markdown, DOCX (+ variants), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed) |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
@@ -33,7 +34,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
-| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
+| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
@@ -43,7 +44,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 DOCX, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written
 as HWPX and rendered by rhwp. Anything the built-in readers understand (including PDF) is written as DOCX by the DOCX
-writer and as ODT by the ODT writer.
+writer, as ODT by the ODT writer and as PPTX slides by the PPTX writer (PDF keeps its picture slides).
 LibreOffice's and Pandoc's costs are set so the built-in route always wins where one exists.
 
 Except for text that needs shaping. rhwp draws one glyph per character from left to right without OpenType shaping,
@@ -69,7 +70,8 @@ Japanese and Korean keep the built-in route; a binary HWP is not scanned and sta
 
 All built-in document readers are registered in one place, `Hwp/Hwpx/DocumentReaders.cs` (format id → reader, and
 which formats need Pandoc). The HWPX, DOCX and ODT writers take their input formats from it: adding a reader there is
-one line and makes every writer (and every route through them) accept the format.
+one line and makes every writer (the PPTX writer too, which leaves out PDF and the presentations themselves) and
+every route through them accept the format.
 
 Every engine is built in, bundled with the installer or downloaded into Filee's own folder, so a conversion behaves
 the same on every PC. An external engine is looked for in this order:
@@ -1173,6 +1175,71 @@ of headings (`text:outline-style`), different first-page headers with content, g
 start colour), rotated or cropped pictures, charts and other OLE objects, drop caps, change tracking, fields other
 than page number / count (their text is kept), flat ODT (`.fodt`) and templates (`.ott`, still LibreOffice's).
 
+## PPTX writer
+
+`Hwp/Hwpx/Pptx/PptxWriter*.cs` writes PowerPoint slides from the document model, so Markdown and every reader in
+`DocumentReaders` reach PPTX without Pandoc (`Office/PptxWriterConverter.cs`, engine `pptx-writer`). The package is
+written by hand on the code the PDF picture decks use (`Hwp/Hwpx/Pptx/PresentationPackage.cs`, shared with
+`Pdf/PictureDeckWriter.cs`): presentation, one slide master with PowerPoint's "Title Slide", "Title and Content" and
+"Section Header" layouts, Office's theme, the slides, pictures, notes master and notes slides, document properties
+(title, authors). Slides are 16:9 (13.33 × 7.5 in, PowerPoint's default).
+
+**Which blocks make a slide** follows Pandoc's PowerPoint writer, so a Markdown file gives the deck it gave through
+Pandoc:
+
+- the slide level is the highest heading level followed directly by content (not by a heading or a rule) somewhere
+  in the document, else 6. A heading at that level starts a slide titled with it; a heading above it gets a
+  "Section Header" slide of its own, and what follows it before the next heading an untitled slide; headings below
+  it are bold paragraphs on the slide. Content before the first heading is an untitled slide;
+- a horizontal rule ends the slide;
+- a paragraph that starts with a picture: right after a title the picture joins that slide, else (after text) it
+  gets an untitled slide of its own; the slide ends after it. A table joins a slide that has only its title (and
+  ends it), starts a new slide when the slide holds a picture or a table already, else joins the slide;
+- the YAML front matter's (or Pandoc meta's) title, subtitle, author(s) and date make the "Title Slide": the title,
+  the subtitle with one line per author under it, the date in the date placeholder;
+- `::: notes` divs (Markdown custom containers, Pandoc divs with the `notes` class) become the slide's speaker notes;
+  footnotes are numbered in the text and gathered on a "Notes" slide at the end.
+
+The readers mark what a block was (`HBlockRole`): the Markdown reader and Pandoc's AST code lines, thematic breaks
+and notes; the HTML reader `<pre>` and `<hr>`. The other writers ignore it.
+
+**What a slide holds**, every paragraph's indent, bullet and size written out (a reader that doesn't follow the
+layouts, or a template applied later, still shows them): bullets "•" with their list level (28, 24, 20, 18 pt as
+PowerPoint's levels), numbered items with their number (`buAutoNum` with the item's own `startAt`, so a list that
+continues on the next slide counts on), block quotes indented at 20 pt, bold / italic / underline / strike /
+super- and subscript / colour / highlight, hyperlinks (web and mail addresses; bookmarks keep their text), inline
+code and code blocks in Courier New (code blocks at 18 pt in a light grey box), tables (column widths in the
+source's proportions across the content area, merged cells, the header row in PowerPoint's default table look,
+banded rows, a cell's own fill kept; 18 pt, smaller from five columns on, at least 10 pt; at most 75 columns,
+PowerPoint's limit), pictures (PNG, JPEG, GIF, BMP, EMF, WMF as they are, other formats as PNG) at their size and
+never enlarged, scaled down into the content area and centred when alone. A text box's paragraphs are text; tables
+in cells become a line per row.
+
+**Text that runs over** continues on a new slide with the same title, the way PowerPoint's "Continue on a new slide"
+autofit option splits it, rather than shrinking: a long document would otherwise turn into 8-point text, and
+PowerPoint applies a shrink only once it has laid the text out itself. The writer estimates heights without fonts
+(each character a share of the font size by its kind: narrow, wide, capitals, Hangul / CJK at a full em; lines wrap
+at spaces and between CJK characters; a line is 1.2 times the size) a little wider than Calibri, so slides keep
+some room. It splits between paragraphs, between the lines of a long paragraph (the rest continues the same item
+without a second bullet), between lines of code and between table rows (rows joined by a row span stay together,
+the header rows repeat unless they fill half a slide). A picture shrinks into the room left when that is at least
+a third of the content area, else moves on. Only a title of more than two lines is made smaller
+(`normAutofit fontScale`, as PowerPoint stores a shrunk text). A document may become as many slides as the layout
+engine makes pages (`DocumentLimits.MaxPages`, 20,000); more is refused with `error.document_too_complex`.
+
+**Routes.** The writer has two edges per source format: PPTX itself at cost 8 (as the DOCX and ODT writers), below
+Pandoc's slides (20) even with Pandoc first in the engine order, and `DirectOnly`, so no document → PDF takes the
+shortcut through slides and LibreOffice's PPTX → PDF (which costs 0 when LibreOffice is chosen for presentations);
+and PPTX as a step towards ODP, PPT and the other presentation formats at 25 (LibreOffice's fallback cost), taken
+only where nothing else reaches them (without Pandoc, Markdown → ODP). PDF keeps its picture slides, the PowerPoint
+variants the Office Open XML engine. `tests/Filee.Engines.Tests/PptxWriterTests.cs` checks the slide rules, the title
+slide, levels, tables, pictures, code, notes, continuation slides, the Open XML SDK validator, Filee's own PPTX
+reader reading every deck back, that every other route keeps its cost, and hostile documents.
+
+Not yet: two-column layouts (Pandoc's `::: columns`), "Picture with Caption" slides, incremental lists, a table of
+contents slide, slide numbers and footers, syntax highlighting of code, and a reference deck (template) to take the
+look from.
+
 ## PDF reader
 
 `Pdf/PdfDocumentReader*.cs` reads PDFs with PdfPig (Apache-2.0) into the document model, for PDF → DOCX, HWPX and
@@ -1368,7 +1435,7 @@ editable**: there are no text boxes to change, the PDF's layout is not rebuilt. 
 - **Speaker notes** hold the page's text, read like PDF → TXT (reading order, the invisible OCR layer of scans
   included), so it can still be searched and copied. Pages without text get no notes; when PdfPig cannot read a PDF
   that PDFium renders, the deck is written without notes.
-- The package (`Pdf/PictureDeckWriter.cs`) is written by hand: presentation, one slide master with a blank layout,
+- The package (`Pdf/PictureDeckWriter.cs`, on the package code it shares with the [PPTX writer](#pptx-writer)) is written by hand: presentation, one slide master with a blank layout,
   a theme, the slides with their pictures, a notes master and notes slides, and the document properties. The tests
   validate it with the Open XML SDK and read it back with Filee's own PPTX reader.
 - The edge is `DirectOnly`: the route planner uses it only for a PDF converted to PPTX. A Word document or an image is
@@ -2191,7 +2258,9 @@ DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`)
   (an e-mail's HTML → ? → RTF) stays on Markdown.
 - Markdown, reStructuredText, Org, AsciiDoc, Typst, MediaWiki, Textile and notebooks → **PPTX** with Pandoc's
   PowerPoint writer (a slide per heading). These edges cost 20: with LibreOffice's cheap PPTX → PDF, Markdown → PPTX
-  → PDF would otherwise beat Markdown → HWPX → PDF.
+  → PDF would otherwise beat Markdown → HWPX → PDF. The built-in [PPTX writer](#pptx-writer) costs less (8) and takes
+  Markdown always and the markup languages once Pandoc is installed (Pandoc's AST feeds it), so Pandoc's slides are
+  left for a planner that only assumes Pandoc (what a download would enable).
 - Extensions that mean other things are not claimed: man pages only as `.man` (`.1` … `.9` are also rotated logs,
   `app.log.1`), DocBook as `.dbk` / `.docbook`, never every `.xml`.
 - DocBook, man pages, OPML, Typst, HTML and LaTeX are written with `--standalone` (a root element, a `.TH` header,

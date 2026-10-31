@@ -193,6 +193,8 @@
   "engine.docx-writer.description": "用 PDF、OFD、HWP/HWPX、Markdown、HTML、表格、投影片和電子書產生 Word 文件（DOCX）。",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "用 Word 文件、PDF、OFD、HWP/HWPX、Markdown、HTML、表格、投影片和電子書產生 OpenDocument 文字文件（ODT）。",
+  "engine.pptx-writer.name": "PPTX 產生器（內建）",
+  "engine.pptx-writer.description": "用 Markdown 和標記語言檔案、Word 文件、ODT、HWP/HWPX、HTML、表格和電子書產生 PowerPoint 投影片（PPTX）：每個標題一張投影片，包含清單、表格、圖片和程式碼。",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "按閱讀順序擷取 PDF 中的文字，雙欄頁面也能正確排序（不對掃描檔做文字辨識）。",
   "engine.pdf-slides.name": "PDF slides (built-in)",
