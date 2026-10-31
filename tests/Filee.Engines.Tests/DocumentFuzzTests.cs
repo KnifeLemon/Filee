@@ -8,6 +8,7 @@ using System.Globalization;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Hwp.Hwpx.Markup;
 using static Filee.Engines.Tests.DocxBuilder;
 
 namespace Filee.Engines.Tests;
@@ -35,6 +36,19 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void HwpReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("hwp", "hwp", HwpSeeds(), (path, media) => HwpReader.ReadForLayout(path, media), (seed, random) => new HwpFuzzer(seed, random).Next);
+
+    [Fact]
+    public void NotebookReader_reads_or_refuses_every_mutated_notebook() =>
+        Fuzz("ipynb", "ipynb", [System.Text.Encoding.UTF8.GetBytes(NotebookTests.Analysis())], (path, media) => NotebookReader.Read(path, media),
+            JsonMutator(["{", "}", "[", "]", ",", ":", "\"cells\"", "\"source\"", "\"outputs\"", "\"cell_type\": \"code\"", "\"cell_type\": \"markdown\"",
+                  "\"output_type\": \"stream\"", "\"data\"", "\"image/png\"", "\"text/html\"", "\"attachments\"", "\"worksheets\"", "\\u001b[31m",
+                  "\\n", "# ", "**", "![x](attachment:chart.png)", "<table><tr><td>", "1e999"]));
+
+    /// <summary>The mutator of a text format, with the format's own tokens.</summary>
+    private static Func<byte[], Random, Func<byte[]>> TextMutator(string[] tokens) => (seed, random) => new TextFuzzer(seed, random, tokens).Next;
+
+    /// <summary>The mutator of a JSON format: mostly the tree, sometimes the text.</summary>
+    private static Func<byte[], Random, Func<byte[]>> JsonMutator(string[] tokens) => (seed, random) => new JsonFuzzer(seed, random, tokens).Next;
 
     // ───────────────────────── Seeds ─────────────────────────
 

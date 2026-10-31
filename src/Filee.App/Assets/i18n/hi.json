@@ -185,6 +185,8 @@
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडशीट, स्लाइड और ई-बुक से Word दस्तावेज़ (DOCX) लिखता है।",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Word दस्तावेज़, PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडशीट, स्लाइड और ई-बुक से OpenDocument टेक्स्ट (ODT) लिखता है।",
+  "engine.markup.name": "Markup languages (built-in)",
+  "engine.markup.description": "Pandoc के बिना Jupyter नोटबुक, OPML, Textile, MediaWiki, reStructuredText, Org और DocBook।\nदस्तावेज़ों से ये फ़ॉर्मैट, और इनसे Markdown, HTML, टेक्स्ट, DOCX, HWPX और PDF।",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "PDF का टेक्स्ट पढ़ने के क्रम में निकालता है, दो-कॉलम वाले पेजों से भी (स्कैन के लिए OCR नहीं)।",
   "engine.pdf-slides.name": "PDF slides (built-in)",

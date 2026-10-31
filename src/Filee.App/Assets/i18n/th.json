@@ -185,6 +185,8 @@
   "engine.docx-writer.description": "เขียนเอกสาร Word (DOCX) จาก PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "เขียนเอกสารข้อความ OpenDocument (ODT) จากเอกสาร Word, PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
+  "engine.markup.name": "Markup languages (built-in)",
+  "engine.markup.description": "Jupyter notebook, OPML, Textile, MediaWiki, reStructuredText, Org และ DocBook โดยไม่ต้องใช้ Pandoc\nแปลงเอกสารเป็นรูปแบบเหล่านี้ และแปลงรูปแบบเหล่านี้เป็น Markdown, HTML, ข้อความ, DOCX, HWPX และ PDF",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "แยกข้อความของ PDF ตามลำดับการอ่าน รวมถึงหน้าที่มีสองคอลัมน์ (ไม่มี OCR สำหรับเอกสารสแกน)",
   "engine.pdf-slides.name": "PDF slides (built-in)",

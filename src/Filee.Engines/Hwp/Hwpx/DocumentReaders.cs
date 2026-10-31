@@ -9,6 +9,7 @@ using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
@@ -67,6 +68,8 @@ internal static class DocumentReaders
         ["fb2"] = Fb2Reader.Read,
         ["htmlz"] = ZippedText.ReadHtmlz,
         ["txtz"] = ZippedText.ReadTxtz,
+        // Lightweight markup languages (Markup/), written by MarkupConverter.
+        ["ipynb"] = NotebookReader.Read,
     };
 
     /// <summary>

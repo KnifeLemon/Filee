@@ -13,6 +13,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| **Markup languages** | built in | **Jupyter notebooks (IPYNB) ↔ Markdown, HTML, TXT**; every document the built-in readers read → IPYNB; IPYNB → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -29,7 +30,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
+| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books, Jupyter notebooks (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
@@ -2134,9 +2135,53 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   ClarisWorks, MacWrite and Pocket Word are binary formats without sample files in the repository: only their
   filters (`ClarisWorks`, `MacWrite`, `PocketWord File`, all opening in Writer) were checked in the registry.
 
+## Lightweight markup languages
+
+The markup languages that are cheap to own are read and written in-process, without Pandoc. Each has a reader into
+the document model in `Hwp/Hwpx/Markup/`, registered in `DocumentReaders` (so the HWPX, DOCX and ODT writers and the
+Filee renderer take it: → HWPX, DOCX, ODT, PDF), and a writer from the model. `Text/MarkupConverter.cs` (engine
+`markup`) offers every built-in reader's format → each of these languages, and each of them → Markdown
+(`MarkdownWriter`, pictures in a `<name>_files` folder), HTML (one page, pictures embedded) and TXT. Its edges cost 8
+like the DOCX writer's, below Pandoc's (10 out of a markup language, 11 into one), so the built-in route wins
+wherever both exist. Pandoc keeps what only it does: LaTeX, Typst, AsciiDoc and man pages (macro and scripting
+languages), slides (PPTX), and RTF and EPUB written straight from a markup language.
+
+What the readers share (`MarkupBlocks`): code blocks are shaded paragraphs as the Markdown and HTML readers make them
+(a blank line inside one is an empty shaded run, so a block stays one block), quotes are indented 2000 HWPUNIT per
+level, and everything built counts against `DocumentLimits` through a `DocumentBudget` (paragraphs, objects,
+nesting), so a small file can't grow into millions of paragraphs.
+
+### Jupyter notebooks
+
+`NotebookReader` reads nbformat 4 (and the older 3, `worksheets`) with `System.Text.Json`, nested at most 64 levels:
+
+- markdown cells through `MarkdownReader` (Markdig), their attachments (`attachment:plot.png`) written to the job's
+  media folder and linked as pictures; code and raw cells as code blocks, one per cell; the notebook's
+  `metadata.title` is the title;
+- the outputs of a code cell follow it indented by `NotebookReader.OutputIndent` (800 HWPUNIT): streams, results and
+  errors as code (terminal colour codes removed from tracebacks), PNG, JPEG, GIF and SVG results as pictures (a result
+  with a picture is shown as the picture), Markdown results through `MarkdownReader` and HTML results (data frames)
+  through `HtmlReader`, else the plain text;
+- outputs are where notebooks get big: an output keeps its first 2,000 lines and 200,000 characters and says what was
+  left out, all text outputs together stop after 8,000,000 characters with one notice, a picture of more than 32 MB
+  or one whose header claims more pixels than `MaxPicturePixels` is left out, and a notebook over 256 MB is refused.
+  A cell of more lines than paragraphs are left is refused before it is parsed. JSON that is damaged, not UTF-8 or
+  not shaped like a notebook is `InvalidDataException`.
+
+`NotebookWriter` writes nbformat 4.5: code blocks become code cells, the blocks between them markdown cells
+(`MarkdownWriter`, a new cell at each heading) with their pictures attached as base64 PNG or JPEG, so the notebook is
+one file. What the reader took for a cell's outputs (indented code and pictures right after it) is written back as
+outputs (a stdout stream, display data), so notebook → model → notebook keeps cells and outputs; an HTML table result
+comes back as a Markdown table in a markdown cell, an error as a stream. The notebook names no kernel.
+
+`tests/Filee.Engines.Tests/NotebookTests.cs` builds the notebooks in code and checks the model, the round trip
+(written twice, the same file), the routes with Pandoc assumed installed, DOCX / HWPX / PDF / HTML / Markdown with
+Pandoc absent (PDF by the Filee renderer) and the hostile inputs; `DocumentFuzzTests` mutates a notebook's JSON tree
+and text (`JsonFuzzer`, `TextFuzzer`).
+
 ## Pandoc
 
-`Office/PandocConverter.cs` runs Pandoc for the markup languages Filee doesn't read itself: reStructuredText,
+`Office/PandocConverter.cs` runs Pandoc for the markup languages (those Filee reads itself, see [above](#lightweight-markup-languages), take the built-in route when both can): reStructuredText,
 LaTeX, Org (`.org`), AsciiDoc (`.adoc`, `.asciidoc`), Typst (`.typ`), MediaWiki (`.mediawiki`, `.wiki`),
 DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`), Textile (`.textile`), man pages
 (`.man`) and OPML (`.opml`). Pandoc 3.12 reads and writes all of them.

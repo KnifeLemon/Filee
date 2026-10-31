@@ -11,7 +11,8 @@
 //    directly.
 //  * ODT is read directly (Odt/OdtReader), keeping page layouts, headers/footers, styles, lists and tables.
 //  * HWP 5.0 needs no model: its records are written out as the HWPX package 한글 saves (Hwp/Binary/HwpToHwpx).
-//  * RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
+//  * Jupyter notebooks are read directly (Markup/NotebookReader).
+//  * reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Binary;

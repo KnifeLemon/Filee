@@ -150,7 +150,8 @@ public static class FormatRegistry
         new("mhtml", "MHTML", FormatCategory.Text, ["mhtml", "mht"], Writable: false),
         new("rst", "reStructuredText", FormatCategory.Text, ["rst"]),
         new("tex", "LaTeX", FormatCategory.Text, ["tex", "latex"]),
-        // Read and written by Pandoc. Man pages claim only ".man": the section numbers (.1 … .9) are also the
+        // Read and written by Pandoc; Jupyter notebooks are read and written by Filee itself (Engines/Text/MarkupConverter),
+        // Pandoc only for what Filee doesn't write (slides, LaTeX, ...). Man pages claim only ".man": the section numbers (.1 … .9) are also the
         // extensions of rotated logs ("app.log.1"). DocBook claims ".dbk", not every ".xml".
         new("org", "Org", FormatCategory.Text, ["org"]),
         new("adoc", "AsciiDoc", FormatCategory.Text, ["adoc", "asciidoc"]),

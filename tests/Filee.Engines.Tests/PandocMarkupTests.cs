@@ -75,7 +75,9 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.NotNull(FormatRegistry.FindById(markup));
             foreach (var other in new[] { "md", "html", "docx", "odt" })
             {
-                Assert.Equal("pandoc", Assert.Single(planner.Plan(other, markup)!.Steps).Converter.Id);
+                // The languages Filee writes itself take the built-in writer.
+                Assert.Equal(Filee.Engines.Text.MarkupConverter.Writers.ContainsKey(markup) ? "markup" : "pandoc",
+                    Assert.Single(planner.Plan(other, markup)!.Steps).Converter.Id);
                 Assert.NotNull(planner.Plan(markup, other));
             }
             Assert.NotNull(planner.Plan(markup, "epub"));
