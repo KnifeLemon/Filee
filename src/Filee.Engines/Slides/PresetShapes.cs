@@ -57,10 +57,12 @@ internal static class PresetShapes
             notation.Append($"  gd y{i} */ {ry} {N(Math.Sin(angle) * 100000)} 100000\n  gd py{i} +- svc y{i} 0\n");
             path.Append(i == 0 ? $"M px{i} py{i} " : $"L px{i} py{i} ");
         }
-        // The text sits in the square inscribed in the inner points' ellipse.
-        notation.Append("  gd tdx */ iwd2 70711 100000\n  gd tdy */ ihd2 70711 100000\n");
-        notation.Append("  gd tl +- hc 0 tdx\n  gd tr +- hc tdx 0\n  gd tt +- svc 0 tdy\n  gd tb +- svc tdy 0\n");
-        notation.Append($"  path: {path}Z\n  text tl tt tr tb\n");
+        // The text sits in the box of the inner points, as in the definitions (star5: sx1 sy1 sx4 sy3).
+        var inner = Enumerable.Range(0, points).Select(i => (start + (2 * i + 1) * 180.0 / points) * Math.PI / 180).ToList();
+        notation.Append($"  gd tl */ iwd2 {N(inner.Min(Math.Cos) * 100000)} 100000\n  gd tr */ iwd2 {N(inner.Max(Math.Cos) * 100000)} 100000\n");
+        notation.Append($"  gd tt */ ihd2 {N(inner.Min(Math.Sin) * 100000)} 100000\n  gd tb */ ihd2 {N(inner.Max(Math.Sin) * 100000)} 100000\n");
+        notation.Append("  gd il +- hc tl 0\n  gd ir +- hc tr 0\n  gd it +- svc tt 0\n  gd ib +- svc tb 0\n");
+        notation.Append($"  path: {path}Z\n  text il it ir ib\n");
         return notation.ToString();
     }
 

@@ -308,14 +308,17 @@ public sealed class RenderChecksTests : IDisposable
         string[] checks = [PdfChecks.Text, PdfChecks.Overlaps, PdfChecks.OutsidePage, PdfChecks.OutsideMargins, PdfChecks.Pages,
             PdfChecks.Baselines, PdfChecks.Fonts, RenderThresholds.Lines, RenderThresholds.Placed, RenderThresholds.MinSsim];
         var features = RenderFeatures.Full.SelectMany(f => new[] { f.Name, f.Name + ".hwp" }).ToHashSet();
+        // The slide renderer's features: one slide each of the slide deck, and the deck as a whole.
+        var slides = SlideFeatures.Names.Append("deck").ToHashSet();
 
         Assert.Contains("rhwp", thresholds.Thresholds.Keys);
         foreach (var (renderer, byFeature) in thresholds.Thresholds)
         {
             foreach (var (feature, values) in byFeature)
             {
-                Assert.Contains(feature, features);
-                Assert.All(values.Keys, check => Assert.Contains(check.Replace(RenderThresholds.Versus, "", StringComparison.Ordinal), checks));
+                Assert.Contains(feature, renderer == SlideQualityTests.Renderer ? slides : features);
+                Assert.All(values.Keys, check => Assert.Contains(check.Replace(RenderThresholds.Versus, "", StringComparison.Ordinal)
+                    .Replace(RenderThresholds.VersusLibreOffice, "", StringComparison.Ordinal), checks));
             }
         }
         Assert.All(thresholds.Allow, entry =>
