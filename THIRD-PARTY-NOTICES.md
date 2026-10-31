@@ -20,7 +20,6 @@ Each component remains under its own license.
 | Svg.Skia (incl. Svg, ShimSkiaSharp, ExCSS; text shaping in `Filee.Engines/Vector/OutlinedTextPlayback.cs` adapted from it) | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
 | SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
-| Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | ExcelDataReader | MIT | https://github.com/ExcelDataReader/ExcelDataReader |
@@ -61,10 +60,6 @@ commit `1a76570e833917d15817415a53c09ad61ab3203f`, `cargo build --release --lock
 runs on older Linux systems than rhwp's own Linux build. The Windows ARM64 build contains an rhwp built the same way
 on Windows ARM64 (with the C runtime linked statically), as rhwp has no ARM64 release. Both are under the same MIT
 license; its `LICENSE` is next to them (`engines/rhwp`). Windows x64 and macOS use rhwp's release builds.
-
-Unhwp's NuGet package has no native library for Linux ARM64 and Windows ARM64. Those builds contain one built by
-Filee's CI from the unmodified source the package was built from (commit `405b17e137b3ca06299dcbc8a156599ac7027e91`,
-`cargo build --release --locked -p unhwp --lib --features ffi`), under Unhwp's MIT license.
 
 7-Zip is Copyright (C) 1999-2026 Igor Pavlov; its `License.txt` is installed next to it (`engines/7zip`). The RAR
 decompression code in `7z.dll` is under the unRAR license restriction: it may be used to unpack RAR archives, but not

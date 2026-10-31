@@ -1,5 +1,6 @@
 // HDocument → Markdown (the dialect MarkdownReader reads back: GitHub tables, ~sub~, ^sup^, footnotes): headings,
-// emphasis, code, lists, block quotes, pipe tables, links, pictures and footnotes. Used for e-books → MD and TXTZ.
+// emphasis, code, lists, block quotes, pipe tables, links, pictures and footnotes. Used for e-books, PDF and HWP / HWPX
+// → MD, and TXTZ.
 
 using System.Text;
 
@@ -181,12 +182,28 @@ internal sealed class MarkdownWriter
                         break;
                     }
                 case HTextBox box:
-                    sb.AppendJoin(' ', box.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines)));
-                    break;
+                    {
+                        // A text box is text of its own: its lines are kept apart from the paragraph it is anchored in.
+                        var lines = box.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines)).Where(t => t.Trim().Length > 0).ToList();
+                        if (lines.Count == 0)
+                            break;
+                        if (sb.Length > 0 && !EndsWithBreak(sb))
+                            sb.Append(HardBreak);
+                        sb.AppendJoin(HardBreak, lines).Append(HardBreak);
+                        break;
+                    }
             }
         }
+        // A line break that ends the text breaks nothing.
+        while (EndsWithBreak(sb))
+            sb.Length -= HardBreak.Length;
         return sb.ToString();
     }
+
+    /// <summary>A Markdown hard line break, as <see cref="HLineBreak"/> is written.</summary>
+    private const string HardBreak = "\\\n";
+
+    private static bool EndsWithBreak(StringBuilder sb) => sb.Length >= 2 && sb[^1] == '\n' && sb[^2] == '\\';
 
     private static string Run(string text, HCharFormat format)
     {

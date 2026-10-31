@@ -62,6 +62,9 @@ $hwp = Convert-Smoke $hwpx 'hwp'
 $pdf = Convert-Smoke $hwp 'pdf'
 $header = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($pdf), 0, 5)
 if ($header -ne '%PDF-') { throw "rhwp's PDF does not start with %PDF- ($header)." }
+# HWP -> Markdown is built in (Filee's HWP reader), on every platform.
+$markdown = Convert-Smoke $hwp 'md'
+if (-not (Get-Content -LiteralPath $markdown -Raw).Contains('Filee')) { throw "The Markdown of $hwp lacks its text." }
 
 if ($IsLinux) {
     # The loader dlopens this back end in an X11 session; loading it here fails like the app would when a library
@@ -69,10 +72,6 @@ if ($IsLinux) {
     $backend = Join-Path $bin 'libuiohook-xrecord.so'
     Invoke-Checked 'Load libuiohook-xrecord.so' {
         python3 -c 'import ctypes, sys; ctypes.CDLL(sys.argv[1]); print("Loaded " + sys.argv[1])' $backend
-    }
-    # Unhwp: from its package on x64, Filee's own build on ARM64 (build/build-native.py, -UnhwpOverride).
-    Invoke-Checked 'Load libunhwp.so' {
-        python3 -c 'import ctypes, sys; f = ctypes.CDLL(sys.argv[1]).unhwp_version; f.restype = ctypes.c_char_p; print("Loaded " + sys.argv[1] + ", unhwp " + f().decode())' (Join-Path $bin 'libunhwp.so')
     }
 }
 
