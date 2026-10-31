@@ -150,6 +150,11 @@ internal sealed partial class PdfDocumentReader
         /// <summary>Indexes of the words a tab leads to (the start of each part after the first of a tabbed row).</summary>
         public List<int> Tabs { get; } = [];
 
+        private int? _leaderIndex;
+
+        /// <summary>Index of the word holding the dot leader of a table-of-contents entry ("Title.....12"), -1 for other lines.</summary>
+        public int LeaderIndex => _leaderIndex ??= FindLeader(Words);
+
         public double Left => Words[0].Left;
         public double Right => Words[^1].Right;
         public double Top => Words.Max(w => w.Top);
@@ -703,7 +708,8 @@ internal sealed partial class PdfDocumentReader
     }
 
     private static bool IsHeadingCandidate(Item item, double bodySize) =>
-        !item.IsPicture && item.Lines.Count <= 3 && item.Text.Length <= 200 && item.Size >= bodySize * 1.15 && item.Size >= bodySize + 1;
+        !item.IsPicture && item.Lines.Count <= 3 && item.Text.Length <= 200 && item.Size >= bodySize * 1.15 && item.Size >= bodySize + 1
+        && !item.Lines.Any(l => l.LeaderIndex >= 0); // a table-of-contents entry is no heading
 
     /// <summary>Margins shared by the text pages: the smallest distances from the paper edges to any text or picture.</summary>
     private static (double Left, double Right, double Top, double Bottom) Margins(List<PageContent> pages)
@@ -754,19 +760,24 @@ internal sealed partial class PdfDocumentReader
     {
         var size = item.Size;
         var paragraph = new HParagraph();
-        if (headingLevels.TryGetValue(Math.Round(size), out var level) && item.Lines.Count <= 3 && item.Text.Length <= 200)
+        var rightToLeft = item.RightToLeft;
+        // A table-of-contents entry: title, dot leader and page number on one line. It becomes a left-aligned paragraph
+        // (indented like the PDF's level) with a right tab with dot leader at the right edge of the text.
+        var entry = !rightToLeft && item.Lines.Count == 1 && item.Lines[0].LeaderIndex >= 0;
+        if (!entry && headingLevels.TryGetValue(Math.Round(size), out var level) && item.Lines.Count <= 3 && item.Text.Length <= 200)
             paragraph.HeadingLevel = level;
 
         // Alignment and indents relative to the column (or text area) the paragraph is in. A right-to-left paragraph
         // starts at the right: its alignment and indents are measured from that side (HParaFormat.RightToLeft).
-        var rightToLeft = item.RightToLeft;
         var containerWidth = Math.Max(1, item.ContainerRight - item.ContainerLeft);
         var lefts = item.Lines.Select(l => l.Left - item.ContainerLeft).ToList();
         var rights = item.Lines.Select(l => item.ContainerRight - l.Right).ToList();
         var (starts, ends) = rightToLeft ? (rights, lefts) : (lefts, rights);
         var tolerance = Math.Max(3, containerWidth * 0.03);
         HAlign align;
-        if (item.Lines.All(l => Math.Abs((l.Left - item.ContainerLeft) - (item.ContainerRight - l.Right)) < tolerance) && lefts.Min() > containerWidth * 0.04)
+        if (entry)
+            align = HAlign.Left;
+        else if (item.Lines.All(l => Math.Abs((l.Left - item.ContainerLeft) - (item.ContainerRight - l.Right)) < tolerance) && lefts.Min() > containerWidth * 0.04)
             align = HAlign.Center;
         else if (ends.All(r => r < 3) && starts.Min() > containerWidth * 0.15)
             align = HAlign.Right;
@@ -789,6 +800,11 @@ internal sealed partial class PdfDocumentReader
         // A tabbed row: a left tab stop where each part starts in the PDF.
         var tabs = rightToLeft ? [] : item.Lines.SelectMany(l => l.Tabs.Select(t => Hwp(l.Words[t].Left - item.ContainerLeft))).Distinct().Order()
             .Select(position => new HTabStop(position, HTabKind.Left, "NONE")).ToList();
+        if (entry)
+        {
+            tabs.Add(new HTabStop(Hwp(item.Right - item.ContainerLeft), HTabKind.Right, "DOT"));
+            tabs = [.. tabs.OrderBy(t => t.Position)];
+        }
 
         var pitch = item.Lines.Count >= 2 ? Pitch(item) : size * lineRatio;
         paragraph.Format = new HParaFormat(
@@ -835,10 +851,27 @@ internal sealed partial class PdfDocumentReader
             var line = item.Lines[l];
             // Words in reading order: a tabbed row keeps its parts where they are.
             var words = line.Tabs.Count > 0 ? line.Words : InReadingOrder(line.Words, rightToLeft);
+            // The dot leader of a table-of-contents entry becomes a tab (the paragraph has a right tab with dot leader).
+            var leaderIndex = !rightToLeft && ReferenceEquals(words, line.Words) ? line.LeaderIndex : -1;
             for (var w = 0; w < words.Count; w++)
             {
                 var word = words[w];
                 var text = word.Text;
+                string? leaderPage = null;
+                if (w == leaderIndex)
+                {
+                    var leader = LeaderWord.Match(text);
+                    text = leader.Groups["title"].Value.TrimEnd();
+                    leaderPage = leader.Groups["page"].Value;
+                }
+                if (text.Length == 0)
+                {
+                    // No title in this word: the tab, then the page number if it is in this word too.
+                    pieces.Add(("\t", word.Format, null));
+                    if (!string.IsNullOrEmpty(leaderPage))
+                        pieces.Add((leaderPage, word.Format, null));
+                    continue;
+                }
                 if (pieces.Count > 0)
                 {
                     var (previousText, previousFormat, previousLink) = pieces[^1];
@@ -850,7 +883,7 @@ internal sealed partial class PdfDocumentReader
                     {
                         // Not between two Chinese or Japanese words: an OCR layer (Tesseract's) puts a space after
                         // every word it found, also inside a sentence of Han characters (#691). Korean keeps them.
-                        if (!(IsCjk(previousText[^1]) && IsCjk(text[0])))
+                        if (previousText != "\t" && !(IsCjk(previousText[^1]) && IsCjk(text[0])))
                             pieces[^1] = (previousText + " ", previousFormat, previousLink);
                     }
                     else if (previousText.EndsWith('-') && previousText.Length > 1 && char.IsLetter(previousText[^2]) && text.Length > 0 && char.IsLower(text[0]))
@@ -867,6 +900,12 @@ internal sealed partial class PdfDocumentReader
                     }
                 }
                 pieces.Add((text, word.Format, word.Link));
+                if (leaderPage is not null)
+                {
+                    pieces.Add(("\t", word.Format, null));
+                    if (leaderPage.Length > 0)
+                        pieces.Add((leaderPage, word.Format, null));
+                }
             }
         }
 
