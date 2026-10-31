@@ -151,26 +151,4 @@ public class DocumentEngineTests(EngineFixture fx) : IClassFixture<EngineFixture
             Assert.True(PDFtoImage.Conversion.GetPageCount(await File.ReadAllBytesAsync(job.Outputs.Single(), TestContext.Current.CancellationToken)) >= 2);
     }
 
-    [Fact]
-    public async Task LibreOffice_with_H2Orestart_reads_hwpx()
-    {
-        SkipUnlessAvailable("libreoffice");
-        var libreOffice = Engine("libreoffice");
-        Assert.SkipUnless(libreOffice.Edges.Any(e => e.From == "hwpx"), "H2Orestart extension not installed");
-        var dir = fx.NewFolder();
-        var hwpx = await fx.MakeHwpxAsync(dir);
-        var output = Path.Combine(dir, "from-hwpx.docx");
-
-        // Call the engine directly: the planner may prefer another HWPX reader.
-        var written = await libreOffice.ConvertAsync(
-            new ConversionStep(hwpx, "hwpx", "docx", new Preset(), new SinglePath(output), dir), null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(output, written.Single());
-        Assert.True(new FileInfo(output).Length > 2000);
-    }
-
-    private sealed class SinglePath(string path) : IOutputAllocator
-    {
-        public string? Allocate(string extension, string? suffix = null) => path;
-    }
 }

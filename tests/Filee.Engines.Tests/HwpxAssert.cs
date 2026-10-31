@@ -127,30 +127,7 @@ internal static class HwpxAssert
         return PDFtoImage.Conversion.GetPageCount(bytes);
     }
 
-    /// <summary>
-    /// Opens the file with LibreOffice + H2Orestart, a third independent HWPX reader (Java), when installed.
-    /// It is strict where 한글 is strict too, e.g. about element prefixes and negative object offsets.
-    /// </summary>
-    public static async Task ReadableByH2OrestartAsync(EngineFixture fx, string hwpx)
-    {
-        var libreOffice = fx.Converters.Single(c => c.Id == "libreoffice");
-        if (!fx.Catalog.StatusOf(libreOffice).IsAvailable || !libreOffice.Edges.Any(e => e.From == "hwpx"))
-            return;
-        var odt = Path.ChangeExtension(hwpx, ".h2o.odt");
-        // Tests run in parallel; the job queue normally limits LibreOffice to its worker profiles.
-        await LibreOfficeGate.WaitAsync(TestContext.Current.CancellationToken);
-        try
-        {
-            var written = await libreOffice.ConvertAsync(new ConversionStep(hwpx, "hwpx", "odt", new Preset(), new FixedPath(odt), Path.GetDirectoryName(hwpx)!),
-                null, TestContext.Current.CancellationToken);
-            Assert.True(new FileInfo(written.Single()).Length > 1000);
-        }
-        finally
-        {
-            LibreOfficeGate.Release();
-        }
-    }
-
+    /// <summary>Tests run in parallel; the job queue normally limits LibreOffice to its worker profiles.</summary>
     internal static readonly SemaphoreSlim LibreOfficeGate = new(1, 1);
 
     internal sealed class FixedPath(string path) : IOutputAllocator

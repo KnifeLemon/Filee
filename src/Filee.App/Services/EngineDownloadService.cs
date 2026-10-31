@@ -204,6 +204,12 @@ public sealed class EngineDownloadService
     /// <summary>True while any package is downloading or waiting.</summary>
     public bool IsBusy => Packages.Any(p => p.IsBusy);
 
+    /// <summary>
+    /// Removes in the background what an earlier Filee downloaded and this one no longer uses: the Java runtime and the
+    /// H2Orestart extension that came with LibreOffice (see <see cref="EngineInstaller.RemoveRetired"/>).
+    /// </summary>
+    public Task RemoveRetiredAsync() => Task.Run(_installer.RemoveRetired);
+
     /// <summary>Re-reads what is installed (e.g. after the user deleted a folder).</summary>
     public void RefreshStatus()
     {

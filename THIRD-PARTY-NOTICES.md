@@ -72,8 +72,6 @@ Downloaded from their official release pages when the user chooses to install th
 | Component | License | Project |
 |---|---|---|
 | LibreOffice | MPL-2.0 | https://www.libreoffice.org |
-| H2Orestart (HWP/HWPX import for LibreOffice) | GPL-3.0 | https://github.com/ebandal/H2Orestart |
-| Eclipse Temurin JRE (for H2Orestart) | GPL-2.0 with Classpath Exception | https://adoptium.net |
 | Pandoc | GPL-2.0-or-later | https://github.com/jgm/pandoc |
 | Ghostscript (conda-forge build) | AGPL-3.0 | https://www.ghostscript.com, https://github.com/conda-forge/ghostscript-feedstock |
 | Microsoft Visual C++ Redistributable (for Ghostscript, conda-forge `vc14_runtime`) | Microsoft Visual C++ Redistributable license | https://github.com/conda-forge/vc-feedstock |

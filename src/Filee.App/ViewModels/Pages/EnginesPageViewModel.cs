@@ -64,7 +64,6 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
         _loc = loc;
         _downloads = downloads;
         _libreOfficeForSlides = store.Settings.LibreOfficeForSlides;
-        _libreOfficeForHwp = store.Settings.LibreOfficeForHwp;
         _libreOfficeForDocuments = store.Settings.LibreOfficeForDocuments;
         _libreOfficeForSheets = store.Settings.LibreOfficeForSheets;
         _useFileeRenderer = store.Settings.FileeRenderer;
@@ -74,9 +73,6 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
 
     /// <summary>Presentations → PDF through LibreOffice when it is installed (App.ApplySettings re-checks the engines).</summary>
     [ObservableProperty] private bool _libreOfficeForSlides;
-
-    /// <summary>HWP / HWPX → PDF through LibreOffice and H2Orestart instead of rhwp.</summary>
-    [ObservableProperty] private bool _libreOfficeForHwp;
 
     /// <summary>Word documents → PDF through LibreOffice instead of the built-in route.</summary>
     [ObservableProperty] private bool _libreOfficeForDocuments;
@@ -96,12 +92,6 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     partial void OnLibreOfficeForSlidesChanged(bool value)
     {
         _store.Settings.LibreOfficeForSlides = value;
-        _store.SaveSettings();
-    }
-
-    partial void OnLibreOfficeForHwpChanged(bool value)
-    {
-        _store.Settings.LibreOfficeForHwp = value;
         _store.SaveSettings();
     }
 
