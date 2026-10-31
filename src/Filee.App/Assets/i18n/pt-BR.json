@@ -28,6 +28,13 @@
 
   "home.title": "Início",
   "home.drop_title": "Solte os arquivos aqui",
+  "home.queue_title": "Arquivos para converter",
+  "home.queue_hint": "Arraste um cartão para mudar a ordem. Só entram arquivos do mesmo tipo do primeiro.",
+  "home.queue_convert": "Escolher ação",
+  "home.queue_clear": "Limpar lista",
+  "home.queue_remove": "Remover",
+  "home.queue_only_type": "Só é possível adicionar arquivos {0} nesta lista.",
+  "home.queue_unsupported": "Este tipo de arquivo não pode ser convertido.",
   "home.drop_select": "Clique duas vezes para selecionar arquivos",
   "home.drop_hint": "Ou segure {0} ao arrastar arquivos no Explorador. O menu circular abre no cursor.",
   "home.drop_hint_macos": "Ou segure {0} ao arrastar arquivos no Finder. O menu circular abre no cursor.",

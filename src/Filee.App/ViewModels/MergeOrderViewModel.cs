@@ -28,12 +28,15 @@ public sealed partial class MergeOrderViewModel : ObservableObject
     /// "Merge images" (#645): the layout the pictures are merged with last time, which the window also offers to change.
     /// Null for other merges.
     /// </param>
-    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null)
+    /// <param name="keepOrder">The files are already in the order to merge them in (the Home page's queue): not sorted by name.</param>
+    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null, bool keepOrder = false)
     {
-        Files = new(files
-            .OrderBy(file => System.IO.Path.GetFileName(file), NaturalComparer.Instance)
-            .ThenBy(file => file, NaturalComparer.Instance)
-            .Select(file => new MergeSource(file)));
+        IEnumerable<string> ordered = keepOrder
+            ? files
+            : files
+                .OrderBy(file => System.IO.Path.GetFileName(file), NaturalComparer.Instance)
+                .ThenBy(file => file, NaturalComparer.Instance);
+        Files = new(ordered.Select(file => new MergeSource(file)));
         SelectedFile = Files.FirstOrDefault();
         if (images is null)
             return;

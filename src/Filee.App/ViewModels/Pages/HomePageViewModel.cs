@@ -206,6 +206,10 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     private readonly Services.Triggers.TriggerService? _triggers;
     private readonly ConversionService? _conversions;
     private readonly ElevationService? _elevation;
+    private readonly FileQueue _queue = new();
+
+    /// <summary>The queued files sent to the donut, until their conversion is in the history (<see cref="FinishSentQueue"/>).</summary>
+    private List<string>? _sentToDonut;
 
     public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, Services.Triggers.TriggerService? triggers = null,
         ConversionService? conversions = null, ElevationService? elevation = null)
@@ -223,15 +227,22 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         var drag = store.Settings.Triggers.FirstOrDefault(t => t.Enabled && t.Kind == TriggerKind.Drag);
         DropHint = loc.Format(OperatingSystem.IsMacOS() ? "home.drop_hint_macos" : OperatingSystem.IsLinux() ? "home.drop_hint_linux" : "home.drop_hint", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
         store.HistoryChanged += OnHistoryChanged;
+        Queue.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueue));
         Reload();
     }
 
-    private void OnHistoryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(Reload);
+    private void OnHistoryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+    {
+        FinishSentQueue();
+        Reload();
+    });
 
     public void Dispose()
     {
         _thumbnails?.Cancel();
         _store.HistoryChanged -= OnHistoryChanged;
+        foreach (var card in Queue)
+            card.Dispose();
         if (_triggers is not null)
             _triggers.StatusChanged -= OnTriggerStatusChanged;
         if (_elevation is not null)
@@ -266,6 +277,135 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     }
 
     public string DropHint { get; }
+
+    /// <summary>
+    /// The files waiting to be converted together, in the order they are converted or merged in. Files are added by
+    /// drops and the file picker, one type at a time (<see cref="AddToQueue"/>).
+    /// </summary>
+    public ObservableCollection<StagedFileViewModel> Queue { get; } = [];
+
+    public bool HasQueue => Queue.Count > 0;
+
+    /// <summary>Why the last files didn't join the queue, or empty.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasQueueMessage))]
+    private string _queueMessage = "";
+
+    public bool HasQueueMessage => QueueMessage.Length > 0;
+
+    /// <summary>The queued files' paths in the order they are converted.</summary>
+    public IReadOnlyList<string> QueuedPaths => _queue.Paths.ToArray();
+
+    /// <summary>
+    /// Adds dropped or picked files to the queue. The first file's format decides which files may join: the others are
+    /// left out, and <see cref="QueueMessage"/> says why.
+    /// </summary>
+    public void AddToQueue(IEnumerable<string> paths)
+    {
+        var refused = _queue.Add(paths);
+        SyncQueue();
+        QueueMessage = refused.Count == 0 ? "" : refused[0].Reason switch
+        {
+            QueueRefusal.OtherFormat => _loc.Format("home.queue_only_type", FormatLabels.Name(_loc, _queue.Format!)),
+            _ => _loc["home.queue_unsupported"],
+        };
+    }
+
+    /// <summary>Moves a queued file, from the user dragging its card.</summary>
+    public void MoveQueued(int from, int to)
+    {
+        _queue.Move(from, to);
+        Queue.Move(from, to);
+        Renumber();
+    }
+
+    /// <summary>The card's X: takes its file out of the queue.</summary>
+    internal void RemoveFromQueue(StagedFileViewModel card)
+    {
+        _queue.Remove(card.Path);
+        SyncQueue();
+        QueueMessage = "";
+    }
+
+    /// <summary>
+    /// The queue's files went to the donut. The queue empties once Filee has converted them, not before: a cancelled
+    /// donut keeps the files.
+    /// </summary>
+    public void MarkSentToDonut() => _sentToDonut = [.. _queue.Paths];
+
+    /// <summary>
+    /// Empties the queue when a finished conversion (not a cancelled one) of exactly the files sent to the donut is in
+    /// the history. Such an entry lists all of them as its sources.
+    /// </summary>
+    private void FinishSentQueue()
+    {
+        if (_sentToDonut is not { Count: > 0 } sent)
+            return;
+        var finished = _store.History.Any(entry => entry.State != JobState.Cancelled
+                                                   && sent.All(path => entry.Sources.Contains(path, FileSystemPaths.Comparer)));
+        if (!finished)
+            return;
+        _sentToDonut = null;
+        ClearQueue();
+    }
+
+    /// <summary>Empties the queue: the "Clear list" button, and once its files were converted.</summary>
+    [RelayCommand]
+    public void ClearQueue()
+    {
+        _queue.Clear();
+        foreach (var card in Queue)
+            card.Dispose();
+        Queue.Clear();
+        QueueMessage = "";
+    }
+
+    /// <summary>The notice's X: closes it.</summary>
+    [RelayCommand]
+    private void DismissQueueMessage() => QueueMessage = "";
+
+    /// <summary>Brings the cards in line with the queue: cards of files that left it go, new files get a card at the end.</summary>
+    private void SyncQueue()
+    {
+        foreach (var card in Queue.Where(card => !_queue.Paths.Contains(card.Path, FileSystemPaths.Comparer)).ToList())
+        {
+            Queue.Remove(card);
+            card.Dispose();
+        }
+        var format = _queue.Format;
+        foreach (var path in _queue.Paths)
+        {
+            if (format is null || Queue.Any(card => FileSystemPaths.Comparer.Equals(card.Path, path)))
+                continue;
+            var card = new StagedFileViewModel(path, format, RemoveFromQueue);
+            Queue.Add(card);
+            _ = LoadThumbnailAsync(card, format);
+        }
+        Renumber();
+    }
+
+    private void Renumber()
+    {
+        for (var i = 0; i < Queue.Count; i++)
+            Queue[i].Position = i + 1;
+    }
+
+    /// <summary>The picture of a card, made off the UI thread; a card that left the queue meanwhile gets none.</summary>
+    private async Task LoadThumbnailAsync(StagedFileViewModel card, FileFormat format)
+    {
+        Bitmap? bitmap = null;
+        try
+        {
+            bitmap = await Task.Run(() => StagedFileViewModel.MakeThumbnail(card.Path, format));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // No picture: the card shows its extension instead.
+        }
+        if (Queue.Contains(card))
+            card.Thumbnail = bitmap;
+        else if (format.Category == FormatCategory.Pdf)
+            bitmap?.Dispose();
+    }
 
     /// <summary>How many conversions the page lists: the newest, or the newest that match the search.</summary>
     internal const int Shown = 40;

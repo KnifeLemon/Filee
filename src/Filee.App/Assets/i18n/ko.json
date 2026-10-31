@@ -28,6 +28,13 @@
 
   "home.title": "홈",
   "home.drop_title": "여기에 파일을 놓으세요",
+  "home.queue_title": "변환할 파일",
+  "home.queue_hint": "카드를 끌어서 순서를 바꿀 수 있습니다. 첫 번째 파일과 같은 종류의 파일만 추가할 수 있습니다.",
+  "home.queue_convert": "작업 선택",
+  "home.queue_clear": "목록 지우기",
+  "home.queue_remove": "제거",
+  "home.queue_only_type": "이 목록에는 {0} 파일만 추가할 수 있습니다.",
+  "home.queue_unsupported": "이 파일 형식은 변환할 수 없습니다.",
   "home.drop_select": "더블클릭하여 파일 선택",
   "home.drop_hint": "또는 탐색기에서 {0} 키를 누른 채 파일을 드래그하면 커서 위치에 원형 툴바가 열려요.",
   "home.drop_hint_macos": "또는 Finder에서 {0} 키를 누른 채 파일을 드래그하면 커서 위치에 원형 툴바가 열려요.",

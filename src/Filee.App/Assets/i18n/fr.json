@@ -28,6 +28,13 @@
 
   "home.title": "Accueil",
   "home.drop_title": "Déposez des fichiers ici",
+  "home.queue_title": "Fichiers à convertir",
+  "home.queue_hint": "Faites glisser une carte pour changer l'ordre. Seuls les fichiers du même type que le premier peuvent être ajoutés.",
+  "home.queue_convert": "Choisir une action",
+  "home.queue_clear": "Vider la liste",
+  "home.queue_remove": "Retirer",
+  "home.queue_only_type": "Seuls les fichiers {0} peuvent être ajoutés à cette liste.",
+  "home.queue_unsupported": "Ce type de fichier ne peut pas être converti.",
   "home.drop_select": "Double-cliquez pour sélectionner des fichiers",
   "home.drop_hint": "Ou maintenez {0} en glissant des fichiers dans l'Explorateur. Le menu circulaire s'ouvre sous le curseur.",
   "home.drop_hint_macos": "Ou maintenez {0} en glissant des fichiers dans le Finder. Le menu circulaire s'ouvre sous le curseur.",

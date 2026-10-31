@@ -104,5 +104,11 @@
     <ScrollViewer Grid.Column="1" x:Name="PageScroller" VerticalScrollBarVisibility="{Binding PageScroll}">
       <ContentControl Classes="page" Content="{Binding CurrentPage}" Margin="32,26,32,32" MaxWidth="980" HorizontalAlignment="Stretch" />
     </ScrollViewer>
+
+    <!-- A notice of the current page (the Home page's refusal of other formats): dims the whole window, and the card sits
+         where the page puts its slot. Shown and filled by the page (HomePage.ShowQueueNotice). -->
+    <Grid x:Name="NoticeHost" Grid.ColumnSpan="2" IsVisible="False" Background="#A6000000">
+      <Border x:Name="NoticeSlot" HorizontalAlignment="Left" VerticalAlignment="Top" />
+    </Grid>
   </Grid>
 </Window>

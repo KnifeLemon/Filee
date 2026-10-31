@@ -28,6 +28,13 @@
 
   "home.title": "首页",
   "home.drop_title": "将文件拖放到这里",
+  "home.queue_title": "待转换的文件",
+  "home.queue_hint": "拖动卡片可更改顺序。只能添加与第一个文件类型相同的文件。",
+  "home.queue_convert": "选择操作",
+  "home.queue_clear": "清空列表",
+  "home.queue_remove": "移除",
+  "home.queue_only_type": "此列表只能添加 {0} 文件。",
+  "home.queue_unsupported": "无法转换此文件类型。",
   "home.drop_select": "双击选择文件",
   "home.drop_hint": "或在资源管理器中按住 {0} 拖动文件，环形工具栏会在光标处打开。",
   "home.drop_hint_macos": "或在访达中按住 {0} 拖动文件，环形工具栏会在光标处打开。",

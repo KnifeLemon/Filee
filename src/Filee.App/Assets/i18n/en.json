@@ -28,6 +28,13 @@
 
   "home.title": "Home",
   "home.drop_title": "Drop files here",
+  "home.queue_title": "Files to convert",
+  "home.queue_hint": "Drag a card to change the order. Only files of the same type as the first one can be added.",
+  "home.queue_convert": "Choose action",
+  "home.queue_clear": "Clear list",
+  "home.queue_remove": "Remove",
+  "home.queue_only_type": "Only {0} files can be added to this list.",
+  "home.queue_unsupported": "This file type can't be converted.",
   "home.drop_select": "Double-click to select files",
   "home.drop_hint": "Or hold {0} while dragging files in Explorer. The donut toolbar opens at your cursor.",
   "home.drop_hint_macos": "Or hold {0} while dragging files in Finder. The donut toolbar opens at your cursor.",
