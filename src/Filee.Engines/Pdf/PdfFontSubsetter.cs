@@ -288,32 +288,32 @@ internal static class PdfFontSubsetter
             switch (program.Key)
             {
                 case "FontFile2":
-                {
-                    var font = SfntFont.Read(original);
-                    if (!FontSubsetter.CanSubset(font, out _) || font.HasCffOutlines)
-                        return false;
-                    var result = FontSubsetter.Subset(font, program.Glyphs.Where(g => g < font.GlyphCount), cancellationToken, keepGlyphCount: program.Simple);
-                    if (program.Simple)
                     {
-                        // Viewers find a simple font's glyphs through its own cmap and glyph names.
-                        foreach (var table in new[] { "cmap", "post" })
+                        var font = SfntFont.Read(original);
+                        if (!FontSubsetter.CanSubset(font, out _) || font.HasCffOutlines)
+                            return false;
+                        var result = FontSubsetter.Subset(font, program.Glyphs.Where(g => g < font.GlyphCount), cancellationToken, keepGlyphCount: program.Simple);
+                        if (program.Simple)
                         {
-                            if (font[table] is { } data)
-                                result.Tables[table] = data;
+                            // Viewers find a simple font's glyphs through its own cmap and glyph names.
+                            foreach (var table in new[] { "cmap", "post" })
+                            {
+                                if (font[table] is { } data)
+                                    result.Tables[table] = data;
+                            }
                         }
+                        subset = result.Write();
+                        break;
                     }
-                    subset = result.Write();
-                    break;
-                }
                 case "FontFile3/OpenType":
-                {
-                    var font = SfntFont.Read(original);
-                    if (font["CFF "] is not { } cff)
-                        return false;
-                    font.Tables["CFF "] = CffSubsetter.Subset(cff, program.Glyphs);
-                    subset = font.Write();
-                    break;
-                }
+                    {
+                        var font = SfntFont.Read(original);
+                        if (font["CFF "] is not { } cff)
+                            return false;
+                        font.Tables["CFF "] = CffSubsetter.Subset(cff, program.Glyphs);
+                        subset = font.Write();
+                        break;
+                    }
                 default:
                     subset = CffSubsetter.Subset(CffData(program, out _), program.Glyphs);
                     break;
