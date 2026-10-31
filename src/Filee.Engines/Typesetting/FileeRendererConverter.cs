@@ -1,0 +1,157 @@
+// Filee's own document renderer as an engine (id "layout", "Filee renderer"): HWPX and the documents Filee reads into
+// its document model (Word, text, Markdown, HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF in one
+// step, read, laid out and written in-process. A preview the user turns on in Settings → Engines; off, the engine is
+// unavailable and every route stays as it was. Spreadsheets, presentations, PDF and OFD keep their own routes, and HWP
+// keeps rhwp until Filee reads HWP itself.
+//
+// Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
+// doesn't draw yet (OLE objects and charts, vertical text, form controls, EMF / WMF pictures, SmartArt), and such a
+// file takes the route it would take without the engine (JobQueue). Pictures of the pages go on from the PDF through
+// PDFium, which applies the image options.
+
+using System.IO.Compression;
+using System.Text;
+using System.Text.RegularExpressions;
+using Filee.Core.Conversion;
+using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Infrastructure;
+using Filee.Engines.Office;
+
+namespace Filee.Engines.Typesetting;
+
+/// <summary>Lays documents out with Filee's layout engine and writes them as PDF.</summary>
+public sealed partial class FileeRendererConverter : IConverter, ICapabilityCheck
+{
+    /// <summary>
+    /// Below rhwp's HWPX → PDF (10) even with the most an engine left out of the priority list adds (9), so it wins
+    /// wherever it is on.
+    /// </summary>
+    private const int Cost = 1;
+
+    /// <summary>Package parts read for the check at most, against a file built to make the check slow.</summary>
+    private const long MaxScannedBytes = 64 * 1024 * 1024;
+
+    /// <summary>Built-in readers of documents (not of sheets, slides, PDF or OFD, which have routes of their own).</summary>
+    private static readonly string[] Documents =
+    [
+        "hwpx", "docx", "docm", "dotx", "dotm", "txt", "md", "html", "mhtml",
+        "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz",
+    ];
+
+    private static readonly HashSet<string> WordFormats = new(StringComparer.OrdinalIgnoreCase) { "docx", "docm", "dotx", "dotm" };
+
+    private bool? _pandoc;
+
+    public string Id => "layout";
+    public string DisplayName => "Filee renderer";
+    public int MaxParallelism => 0;
+
+    /// <summary>None while the preview is off, so no planner, however it was made, routes through it.</summary>
+    public IReadOnlyList<ConversionEdge> Edges => !EngineEnvironment.FileeRenderer ? [] :
+        Documents.Where(DocumentReaders.BuiltInFormats.Contains)
+            .Concat((_pandoc ??= PandocConverter.Locate() is not null) ? DocumentReaders.PandocFormats : [])
+            .Select(from => new ConversionEdge(from, "pdf", Cost, Checked: true))
+            .ToList();
+
+    public EngineStatus GetStatus()
+    {
+        _pandoc = PandocConverter.Locate() is not null;
+        return EngineEnvironment.FileeRenderer
+            ? EngineStatus.Available(version: "preview")
+            : EngineStatus.Unavailable("engine.reason.preview_off");
+    }
+
+    /// <summary>
+    /// The first thing in the file the layout engine doesn't draw yet, from the parts of an HWPX or a Word package;
+    /// other formats hold nothing it can't draw.
+    /// </summary>
+    public string? FirstUnsupported(string sourcePath, string sourceFormat)
+    {
+        var markers = sourceFormat == "hwpx" ? HwpxMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
+        if (markers is null)
+            return null;
+        using var zip = ZipFile.OpenRead(sourcePath);
+        long scanned = 0;
+        foreach (var entry in zip.Entries)
+        {
+            var name = entry.FullName;
+            if (name.EndsWith(".emf", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".wmf", StringComparison.OrdinalIgnoreCase))
+                return "EMF / WMF pictures";
+            if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) || (scanned += entry.Length) > MaxScannedBytes)
+                continue;
+            using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+            var xml = reader.ReadToEnd();
+            foreach (var (pattern, feature) in markers)
+            {
+                if (pattern.IsMatch(xml))
+                    return feature;
+            }
+        }
+        return null;
+    }
+
+    private static readonly (Regex Pattern, string Feature)[] HwpxMarkers =
+    [
+        (HwpxOle(), "OLE objects and charts"),
+        (HwpxVertical(), "vertical text"),
+        (HwpxFormControl(), "form controls"),
+        (HwpxVideo(), "videos"),
+    ];
+
+    private static readonly (Regex Pattern, string Feature)[] WordMarkers =
+    [
+        (WordOle(), "OLE objects and charts"),
+        (WordVertical(), "vertical text"),
+        (WordSmartArt(), "SmartArt"),
+    ];
+
+    public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        if (DocumentFonts.Missing(step.OriginalSourcePath ?? step.InputPath) is [_, ..] missing)
+            step.MissingFonts?.Invoke(missing);
+        HDocument document;
+        StyleResolver? styles = null;
+        if (step.From == "hwpx")
+        {
+            var media = Path.Combine(step.WorkDirectory, $"media-{Guid.NewGuid():N}");
+            document = await Task.Run(() => HwpxReader.ReadForLayout(step.InputPath, media), cancellationToken);
+        }
+        else
+        {
+            document = await DocumentReaders.ReadAsync(step.InputPath, step.From, step.WorkDirectory, cancellationToken);
+            styles = StyleResolver.FromTemplate();
+        }
+        progress?.Report(0.2);
+
+        // Reading takes the first fifth; pages written the rest.
+        var pages = progress is null ? null : new Progress<double>(p => progress.Report(0.2 + 0.8 * p));
+        var pdf = await Task.Run(() => FileeRenderer.ToPdf(document, cancellationToken, styles: styles, progress: pages), cancellationToken);
+        var target = step.Output.Allocate("pdf");
+        if (target is null)
+            return [];
+        await File.WriteAllBytesAsync(target, pdf, cancellationToken);
+        progress?.Report(1);
+        return [target];
+    }
+
+    [GeneratedRegex(@"<\w+:(?:ole|chart)\b")]
+    private static partial Regex HwpxOle();
+
+    [GeneratedRegex(@"textDirection=""VERT")]
+    private static partial Regex HwpxVertical();
+
+    [GeneratedRegex(@"<\w+:(?:btn|checkBtn|radioBtn|comboBox|listBox|edit|scrollBar)\b")]
+    private static partial Regex HwpxFormControl();
+
+    [GeneratedRegex(@"<\w+:video\b")]
+    private static partial Regex HwpxVideo();
+
+    [GeneratedRegex(@"<o:OLEObject\b|<c:chart\b")]
+    private static partial Regex WordOle();
+
+    [GeneratedRegex(@"<w:textDirection w:val=""(?:tbRl|btLr|tbRlV|tbLrV)""")]
+    private static partial Regex WordVertical();
+
+    [GeneratedRegex(@"<dgm:relIds\b")]
+    private static partial Regex WordSmartArt();
+}

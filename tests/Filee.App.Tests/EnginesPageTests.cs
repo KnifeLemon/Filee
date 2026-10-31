@@ -174,6 +174,27 @@ public class EnginesPageTests
     }
 
     [AvaloniaFact]
+    public void The_filee_renderer_switch_is_off_by_default_and_saves()
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        Assert.False(new Filee.Core.Settings.AppSettings().FileeRenderer);
+        var before = store.Settings.FileeRenderer;
+        var vm = new EnginesPageViewModel(store, AppHost.Get<Filee.Core.Conversion.ConverterCatalog>(), AppHost.Get<ILocalizer>(),
+            AppHost.Get<EngineDownloadService>());
+        try
+        {
+            vm.UseFileeRenderer = !before;
+            Assert.Equal(!before, store.Settings.FileeRenderer);
+        }
+        finally
+        {
+            vm.UseFileeRenderer = before;
+            vm.Dispose();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_second_engine_can_be_installed_while_one_downloads_and_waits_its_turn()
     {
         // #819: one install running must not turn off the Install button on the other cards.
