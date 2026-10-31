@@ -33,7 +33,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
-| LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
@@ -56,7 +56,8 @@ XLSX shared strings and sheets, HWPX sections, OFD pages and templates, EPUB cha
 RTF character references) for the Hebrew, Arabic, Syriac, Thaana, N'Ko, Indic, Sinhala, Thai, Lao, Tibetan, Myanmar,
 Khmer, Mongolian and other South / Southeast Asian blocks. For such a file `JobQueue` plans again without unshaped
 edges: DOCX, TXT, Markdown, HTML, XLSX, PPTX and HWPX → PDF (and → images through PDF) go through LibreOffice even
-when Settings → *Engines* doesn't choose it for documents. Without LibreOffice the file fails with "This script needs
+when Settings → *Engines* doesn't choose it for documents (HWPX as DOCX written by the DOCX writer: LibreOffice doesn't
+open HWP itself). Without LibreOffice the file fails with "This script needs
 LibreOffice to convert correctly" and the script's name instead of becoming a broken PDF. The same scan also finds
 text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general punctuation, math, the CJK forms
 and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish, Vietnamese, Greek, Cyrillic, ... — or a
@@ -125,7 +126,7 @@ the runtime next to every program that needs it and does not ship it (`Infrastru
 | `engines/rhwp/rhwp.exe` (bundled) | `vcruntime` component copied next to it by `fetch-engines.ps1` (#248) |
 | Ghostscript (download) | `vcruntime` component copied next to `gswin64c.exe` (`EngineInstaller`, `fetch-engines.ps1`) |
 | LibreOffice (download) | its own copy, which the administrative install leaves in `System64`, copied into `program/` (`EngineInstaller`, `fetch-engines.ps1`; `LibreOfficeConverter` also repairs a copy installed by an earlier Filee) |
-| calibre, Java (downloads) | ship their own next to their programs (`app/bin`, `bin`) |
+| calibre (download) | ships its own next to its programs (`app/bin`) |
 | 7-Zip, FFmpeg (GyanD), Tesseract (UB Mannheim, MinGW), Pandoc, PDFium, SkiaSharp / HarfBuzz, Magick.Native, the Explorer menu DLL, .NET | import neither (static runtime or MinGW / GHC builds) |
 
 Nothing loaded into `Filee.exe` or `filee-cli.exe` imports the runtime (Unhwp's `unhwp.dll` did, until the built-in
@@ -538,8 +539,8 @@ Element order and attribute values follow files saved by 한글 where the schema
 - object offsets are unsigned: objects reaching into the margin are anchored to the paper instead;
 - layout caches (table row heights, inline tab widths) are estimated, because simpler readers use them as-is.
 
-Every generated file is checked in the tests with independent readers: rhwp (renders it) and LibreOffice +
-H2Orestart (opens it), and its text is read back with Filee's HWPX reader, see `tests/Filee.Engines.Tests/DocxToHwpxTests.cs` and
+Every generated file is checked in the tests with rhwp, an independent reader (renders it), and its text is read back
+with Filee's HWPX reader, see `tests/Filee.Engines.Tests/DocxToHwpxTests.cs` and
 `OfficeTests.cs`.
 
 Not converted: Word charts, SmartArt, free-form shapes, tracked changes and comments.
@@ -2180,8 +2181,8 @@ HWPX writer) get room for their equations: rhwp puts a line's baseline at 85 % o
 equation's own baseline on it, so a fraction, matrix or sum hangs below the line; that overhang is added as space
 after the paragraph (#143).
 
-An HWPX with text that needs shaping (Arabic, Hindi, Thai, ...) goes to LibreOffice with H2Orestart instead, like the
-documents above; an HWP is not scanned and stays with rhwp.
+An HWPX with text that needs shaping (Arabic, Hindi, Thai, ...) goes through the DOCX writer to LibreOffice instead (or
+to the Filee renderer when it is on), like the documents above; an HWP is not scanned and stays with rhwp.
 
 rhwp renders text slowly: about 1 s per KB of section XML, some 4 s per page of a novel (rhwp 0.8.7 on an
 i7-1185G7, pictures cost little). So each rhwp run's time limit follows the document's text: 2 minutes + 30 minutes
@@ -2239,8 +2240,13 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently
   fails when two conversions share a profile).
-- HWP/HWPX import comes from the H2Orestart extension, which is written in Java; Filee points LibreOffice at the
-  downloaded JRE (`-env:UNO_JAVA_JFW_JREHOME`).
+- LibreOffice doesn't open HWP or HWPX: Filee reads them itself ([HWP reader](#hwp-reader), [HWPX
+  reader](#hwpx-reader)) and writes DOCX, ODT, HWPX, TXT, Markdown, HTML and EPUB with its own writers; PDF is rhwp's
+  or the Filee renderer's. Only HWP → RTF still takes an optional engine, as there is no built-in RTF writer: Filee
+  writes Markdown that Pandoc turns into RTF, or, without Pandoc, DOCX or ODT that LibreOffice does. Until settings
+  schema 59 LibreOffice opened HWP with the H2Orestart extension (GPL, Java) and a Java runtime downloaded with it
+  (about 50 MB, 130 MB on disk); Filee removes the copies an earlier version installed (`EngineInstaller.RemoveRetired`,
+  at start-up), and whoever had *Use LibreOffice for HWP·HWPX → PDF* on gets the Filee renderer instead.
 - When LibreOffice can't load an Office Open XML or OpenDocument file ("source file could not be loaded"), Filee
   converts once more from a copy in the job folder with the same parts in a plainly written ZIP (`PackageRepacker`):
   LibreOffice 26.2 refuses some valid containers, e.g. uncompressed entries with data descriptors (Tencent Docs, #141).

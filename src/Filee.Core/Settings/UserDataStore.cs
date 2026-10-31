@@ -450,6 +450,13 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 58)
             ReplaceEngine(settings.EnginePriority, "unhwp", "hwp-text");
 
+        // v59: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
+        //      around rhwp gets the other way around rhwp, Filee's renderer. (Schema 59 may be renumbered if another change
+        //      takes it first.)
+        if (settings.SchemaVersion < 59 && settings.LibreOfficeForHwp == true)
+            settings.FileeRenderer = true;
+        settings.LibreOfficeForHwp = null;
+
 
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();

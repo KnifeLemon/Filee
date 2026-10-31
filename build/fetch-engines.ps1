@@ -8,8 +8,6 @@
 
     engines/
       libreoffice/   LibreOffice (MPL-2.0), extracted from the official MSI via an administrative install
-                     + H2Orestart (GPL-3.0) unpacked into share/extensions for HWP/HWPX import
-      jre/           Eclipse Temurin JRE 21 (GPLv2 + Classpath Exception), used by H2Orestart
       rhwp/          rhwp command line (MIT), HWP/HWPX -> PDF, with the Microsoft C++ runtime DLLs next to rhwp.exe
       pandoc/        Pandoc (GPL-2.0-or-later, separate program), Markdown/HTML and MD/HTML/ODT/RTF -> HWPX
       7zip/          7-Zip console (7z.exe + 7z.dll, LGPL-2.1 + unRAR restriction, separate program), archives
@@ -54,7 +52,7 @@
 [CmdletBinding()]
 param(
     [string]$Destination = (Join-Path $PSScriptRoot '..\engines'),
-    # Accepts an array (-Only rhwp,jre from PowerShell) or one comma-separated string (pwsh -File ... -Only rhwp,jre).
+    # Accepts an array (-Only rhwp,pandoc from PowerShell) or one comma-separated string (pwsh -File ... -Only rhwp,pandoc).
     [string[]]$Only,
     [ValidateSet('win-x64', 'win-arm64')][string]$Runtime = 'win-x64',
     [switch]$MissingPins
@@ -278,11 +276,6 @@ if ('ffmpeg' -in $selected) {
     }
 }
 
-if ('jre' -in $selected) {
-    $zip = Get-Engine 'jre'
-    Expand-Flat $zip (Join-Path $Destination 'jre')
-}
-
 if ('libreoffice' -in $selected) {
     $msi = Get-Engine 'libreoffice'
     $tmp = Join-Path $cache 'lo-admin'
@@ -300,23 +293,6 @@ if ('libreoffice' -in $selected) {
     Remove-Item $tmp -Recurse -Force
 
     Optimize-LibreOffice $target
-}
-
-if ('h2orestart' -in $selected) {
-    $oxt = Get-Engine 'h2orestart'
-    $lo = Join-Path $Destination 'libreoffice'
-    if (-not (Test-Path (Join-Path $lo 'program\soffice.exe'))) {
-        Write-Warning 'H2Orestart skipped: LibreOffice is not in the destination folder.'
-    }
-    else {
-        # Bundled extensions are plain folders under share/extensions; LibreOffice registers them on start-up.
-        $target = Join-Path $lo 'share\extensions\H2Orestart'
-        Reset-Folder $target
-        $zipCopy = Join-Path $cache 'H2Orestart.zip'
-        Copy-Item $oxt $zipCopy -Force
-        Expand-Archive -Path $zipCopy -DestinationPath $target -Force
-        Remove-Item $zipCopy
-    }
 }
 
 if ('vcruntime' -in $selected -or 'ghostscript' -in $selected) {

@@ -8,8 +8,8 @@ Thanks for helping! Filee is built to be easy to extend: most contributions touc
 2. `pwsh build/fetch-fonts.ps1` (optional, for the Noto Sans UI fonts).
 3. `pwsh build/fetch-engines.ps1 -Only rhwp,pandoc` (optional: rhwp renders HWP/HWPX, and everything converted
    through HWPX — DOCX, XLSX, CSV, PPTX, Markdown — to PDF, and converts HWP ↔ HWPX; Pandoc adds HTML / Markdown ↔
-   DOCX. XLSX ↔ CSV and anything → HWPX work without either). Without `-Only` it also downloads LibreOffice with
-   H2Orestart and Java (~420 MB), which only older formats such as DOC, XLS and PPT need. Engines in the
+   DOCX. XLSX ↔ CSV and anything → HWPX work without either). Without `-Only` it also downloads LibreOffice
+   (~370 MB), which only older formats such as DOC, XLS and PPT need. Engines in the
    repository's `engines/` folder are picked up by debug builds; users download the large ones from the app.
    Filee can also discover supported engines on `PATH` and in their standard installation folders. Settings >
    Engines lets you choose a specific copy. Microsoft Office is not used.
@@ -61,8 +61,7 @@ machine that built it. Check a package with
   Action under Services; auto-start uses a per-user LaunchAgent.
 - **Engines:** packages are selected by OS and architecture. Linux LibreOffice/Ghostscript and macOS
   FFmpeg/Ghostscript currently use system or user-selected installations. HWP / HWPX → TXT, Markdown and HTML are
-  built in on every platform. The macOS LibreOffice package does not include H2Orestart; native rhwp provides the
-  supported HWP → PDF route.
+  built in on every platform, and LibreOffice never opens HWP; native rhwp provides the HWP → PDF route.
   Use Settings > Engines to inspect actual availability before comparing formats.
 
 The reusable `portable.yml` workflow builds and tests all four targets and starts the Linux packages on Ubuntu 22.04.

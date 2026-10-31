@@ -1408,6 +1408,25 @@ public class UserDataStoreTests
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(false, false, false)]
+    [InlineData(false, true, true)]
+    public void Version_58_settings_send_hwp_around_rhwp_through_the_filee_renderer_instead_of_libreoffice(bool libreOfficeForHwp, bool renderer, bool expected)
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"),
+            $$"""{ "schemaVersion": 58, "libreOfficeForHwp": {{(libreOfficeForHwp ? "true" : "false")}}, "fileeRenderer": {{(renderer ? "true" : "false")}} }""");
+
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        Assert.Equal(expected, store.Settings.FileeRenderer);
+        Assert.Null(store.Settings.LibreOfficeForHwp);
+        // The old switch is not written back.
+        Assert.DoesNotContain("libreOfficeForHwp", File.ReadAllText(Path.Combine(dir.Path, "settings.json")), StringComparison.OrdinalIgnoreCase);
+    }
+
     [Fact]
     public void Version_20_libraries_open_jpeg_xr_on_the_images_donut()
     {

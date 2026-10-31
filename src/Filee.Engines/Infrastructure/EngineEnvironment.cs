@@ -66,8 +66,6 @@ public sealed class EngineEnvironment(string dataDirectory)
     /// <summary>LibreOffice converts presentations to PDF (Settings → Engines). Re-check the engines after a change.</summary>
     public static bool LibreOfficeForSlides { get; set; } = true;
 
-    /// <summary>LibreOffice converts HWP / HWPX to PDF instead of rhwp (Settings → Engines). Re-check after a change.</summary>
-    public static bool LibreOfficeForHwp { get; set; }
 
     /// <summary>Filee's own renderer lays documents out to PDF (Settings → Engines, a preview). Re-check after a change.</summary>
     public static bool FileeRenderer { get; set; }

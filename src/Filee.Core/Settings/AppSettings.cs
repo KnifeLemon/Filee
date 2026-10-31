@@ -123,7 +123,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 58;
+    public const int CurrentSchemaVersion = 59;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -232,10 +232,12 @@ public sealed class AppSettings
     public bool LibreOfficeForSlides { get; set; } = true;
 
     /// <summary>
-    /// With LibreOffice and H2Orestart installed, HWP / HWPX → PDF go through it instead of rhwp: a way around a
-    /// document rhwp lays out wrong (each engine gets different documents right).
+    /// Settings before schema 59 only: HWP / HWPX → PDF through LibreOffice and H2Orestart instead of rhwp. LibreOffice
+    /// no longer opens HWP; the migration turns <see cref="FileeRenderer"/> on for whoever chose this (the other way
+    /// around rhwp) and clears it, so it is never written again.
     /// </summary>
-    public bool LibreOfficeForHwp { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public bool? LibreOfficeForHwp { get; set; }
 
     /// <summary>
     /// Filee's own renderer (a preview) lays HWPX and documents read into Filee's document model out to PDF, instead of

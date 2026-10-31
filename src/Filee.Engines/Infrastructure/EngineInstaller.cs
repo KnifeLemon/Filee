@@ -100,6 +100,34 @@ public sealed class EngineInstaller
             CopyRuntime(package);
     }
 
+    /// <summary>
+    /// Folders of components Filee no longer downloads, relative to the engines folder: the Java runtime and the
+    /// H2Orestart extension LibreOffice needed to open HWP / HWPX, which Filee reads itself now.
+    /// </summary>
+    internal static readonly string[] RetiredFolders = ["jre", Path.Combine("libreoffice", "share", "extensions", "H2Orestart")];
+
+    /// <summary>
+    /// Removes what an earlier Filee installed for <see cref="RetiredFolders"/> (only folders with its marker file).
+    /// A folder in use (LibreOffice running) stays until the next start.
+    /// </summary>
+    public void RemoveRetired()
+    {
+        foreach (var folder in RetiredFolders.Select(f => Path.Combine(_root, f)))
+        {
+            if (!File.Exists(Path.Combine(folder, MarkerName)))
+                continue;
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+                _logger.LogInformation("Removed {Folder}, which Filee no longer uses", folder);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _logger.LogInformation(ex, "Could not remove {Folder} yet", folder);
+            }
+        }
+    }
+
     /// <summary>Removes the package's folders. Fails if an engine is running (its files are locked).</summary>
     public void Uninstall(EnginePackage package)
     {
@@ -228,17 +256,6 @@ public sealed class EngineInstaller
                     await sevenZip.ExtractAsync(file, staging, [], _root, cancellationToken);
                     TrimTesseract(staging);
                     Replace(component.Id, staging);
-                    break;
-                case "oxt":
-                    // LibreOffice registers bundled extensions (plain folders under share/extensions) on start-up.
-                    var extensions = Path.Combine(FolderOf("libreoffice"), "share", "extensions");
-                    if (!Directory.Exists(extensions))
-                        throw new InvalidOperationException($"{component.Id} needs LibreOffice, which is not installed.");
-                    ZipFile.ExtractToDirectory(file, staging);
-                    var target = FolderOf(component.Id);
-                    if (Directory.Exists(target))
-                        Directory.Delete(target, recursive: true);
-                    Directory.Move(staging, target);
                     break;
                 default:
                     throw new NotSupportedException($"Unknown engine package kind '{component.Kind}'.");
@@ -504,16 +521,8 @@ public sealed class EngineInstaller
 
     // ───────────────────────── Layout ─────────────────────────
 
-    /// <summary>Folder of a component; the LibreOffice extension lives inside LibreOffice.</summary>
-    private string FolderOf(string id) => _components.TryGetValue(id, out var component) && component.Kind == "oxt"
-        ? Path.Combine(_root, "libreoffice", "share", "extensions", ExtensionFolder(id))
-        : Path.Combine(_root, id);
-
-    private static string ExtensionFolder(string id) => id switch
-    {
-        "h2orestart" => "H2Orestart",
-        _ => id,
-    };
+    /// <summary>Folder of a component.</summary>
+    private string FolderOf(string id) => Path.Combine(_root, id);
 
     /// <summary>Hash of the installed version, or null when not installed.</summary>
     private string? Marker(string id)
