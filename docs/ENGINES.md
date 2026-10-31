@@ -909,7 +909,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     font standing in for it still fits each stored line (within 8%: Hangul is as wide in nearly every font); otherwise
     it breaks the paragraph itself and says why (`ParagraphBox.StoredLinesIgnored`).
     Each line then takes its stored height and baseline, its place beside an object, and a stored line wider than the
-    line is now squeezed between its characters.
+    line is now squeezed between its characters. A place beside an object is measured against a whole line, which
+    한글 stores from the paragraph's left margin to the column less its right margin; a paragraph whose first line is
+    already beside an object (every line next to a chart, say) is measured against those margins.
   - On the HWPX files attached to Filee's issues, 768 of 769 stored paragraphs convert. The body text of the one
     single-column document breaks exactly where 한글's own PDF of it does; the rest of the pages differ where tables,
     columns and equations are, which later items lay out.
