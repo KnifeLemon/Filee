@@ -13,7 +13,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
-| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
+| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -2291,7 +2291,41 @@ tables are cut at `MaxTableColumns`.
   `[[relative links|text]]`, `[[File:…]]` pictures and `<ref>` notes with `<references />`. Characters the wiki would
   read as markup are entities. The wiki has no title.
 
-`OpmlTests`, `TextileTests` and `MediaWikiTests` build their pages in code and check the model, the round trip
+### reStructuredText and Org
+
+Both go through the same machinery as Textile and MediaWiki (`MarkupInlines`, `MarkupTextWriter`); their nesting is
+by indentation (reST) or by `#+BEGIN_` blocks and indentation (Org), and each nested quote, list or directive counts
+against the nesting depth.
+
+- `RstReader` reads what documents use, as docutils does: section titles by their adornment style (levels in the
+  order the styles first appear; a first title in a style of its own is the document's title), paragraphs, `::`
+  literal blocks, block quotes, bullet and enumerated lists (`1.`, `a)`, `(iv)`, `#.`), definition and field lists,
+  line blocks, doctest blocks, transitions, grid tables with column and row spans (a border under a cell that spans
+  rows may start with `|`), simple tables, the `list-table` and `csv-table` directives, `code-block` / `code`,
+  `image`, `figure`, the admonitions, `math`, `topic`, `sidebar`, `rubric`; directives that hold no text (`contents`,
+  `toctree`, `raw`, `include`, ...) and comments are left out, unknown ones keep their content. Footnotes (`[#]_`,
+  `[#label]_`, `[1]_`), hyperlink targets for `` `named`_ `` references and substitutions (`replace::`, `image::`)
+  are resolved. Inline: `**strong**`, `*emphasis*`, ``` ``literals`` ```, interpreted text (italic, as docutils
+  shows a title reference), the roles `:sub:` `:sup:` `:code:` `:literal:` `:emphasis:` `:strong:` `:math:` (others
+  keep their text), `` `links <url>`__ ``, standalone URLs and backslash escapes, with reST's rules for where inline
+  markup may start and end.
+- `RstWriter` writes the title over- and underlined with `=`, section titles underlined `= - ~ ^ " ' ` : .` by level
+  (as wide as the title, East Asian characters counting two columns), line blocks for paragraphs with line breaks,
+  indented quotes, lists with their nested lists indented under the item, `::` literal blocks, grid tables with their
+  spans, `[#]_` footnotes and pictures as `|imageN|` substitutions. reST has no underline or strike-through (that text
+  stays plain) and no nested inline markup (bold and italic at once is bold). Markup characters in text are escaped
+  with a backslash, and inline markup next to a letter is set off with `\ ` (an escaped space, which is nothing).
+- `OrgReader`: headlines (TODO keywords and priorities stay text, tags and planning lines go), paragraphs, lists by
+  indentation (check boxes as ☐ / ☑, `term :: description`), `#+BEGIN_SRC` / `EXAMPLE` / `QUOTE` / `VERSE` /
+  `CENTER`, `: ` fixed-width lines, tables (`|---+---|` under the header rows), `-----` rules, footnotes (`[fn:N]` and
+  inline `[fn::text]`), `#+TITLE`; drawers, comments and other keywords are left out. Inline: `*bold*`, `/italic/`,
+  `_underline_`, `+strike+`, `=verbatim=`, `~code~` with Org's rules for where emphasis may start and end,
+  `[[links][text]]`, `[[file:pictures]]`, bare URLs, `x^{sup}` / `x_{sub}`, `\\` line ends.
+- `OrgWriter` writes the same; a character that would read as markup where it stands gets a zero-width space next
+  to it, as Org's manual suggests (the reader takes them out again), and code lines starting with `*` or `#+` get
+  Org's `,`. Merged table cells keep their text in the first position.
+
+`OpmlTests`, `TextileTests`, `MediaWikiTests`, `RstTests` and `OrgTests` build their pages in code and check the model, the round trip
 (format → model → format → model gives the same `MarkupShape`, and text that looks like markup stays text), DOCX /
 HWPX / PDF / HTML / Markdown with Pandoc absent and the hostile inputs (DTDs and entity expansion, nesting, a
 million openers, wide and long tables); `DocumentFuzzTests` mutates each.
