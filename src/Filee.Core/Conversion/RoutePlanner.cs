@@ -14,8 +14,9 @@ namespace Filee.Core.Conversion;
 /// <param name="MotionPhoto">The hop takes the video of a Live / Motion Photo (<see cref="ConversionEdge.MotionPhoto"/>).</param>
 /// <param name="LivePhoto">The hop makes a Live / Motion Photo of a video (<see cref="ConversionEdge.LivePhoto"/>).</param>
 /// <param name="Caption">The hop transcribes speech to SRT subtitles using Whisper (<see cref="ConversionEdge.Caption"/>).</param>
+/// <param name="Checked">The hop's engine checks the file first (<see cref="ConversionEdge.Checked"/>).</param>
 public sealed record RouteStep(IConverter Converter, string From, string To, bool FrameSequence = false, bool Unshaped = false,
-    bool MotionPhoto = false, bool LivePhoto = false, bool Caption = false);
+    bool MotionPhoto = false, bool LivePhoto = false, bool Caption = false, bool Checked = false);
 
 /// <summary>A planned conversion from one format to another.</summary>
 public sealed record Route(IReadOnlyList<RouteStep> Steps, int Cost)
@@ -81,14 +82,18 @@ public sealed class RoutePlanner
     /// that PDF on. Without it those edges are never taken.
     /// </param>
     /// <param name="caption">Transcribe speech to SRT subtitles using Whisper (<see cref="Presets.Preset.CaptionsVideo"/>).</param>
+    /// <param name="withoutChecked">
+    /// The engine of a <see cref="ConversionEdge.Checked"/> edge named something in the file it can't draw: those
+    /// edges are left out.
+    /// </param>
     public Route? Plan(string from, string to, bool frames = false, bool shaping = false, bool motionPhoto = false, bool livePhoto = false,
-        bool ocr = false, bool caption = false)
+        bool ocr = false, bool caption = false, bool withoutChecked = false)
     {
         from = from.ToLowerInvariant();
         to = to.ToLowerInvariant();
 
         if (ocr)
-            return PlanWithOcr(from, to, shaping);
+            return PlanWithOcr(from, to, shaping, withoutChecked);
 
         if (frames || motionPhoto || livePhoto || caption)
         {
@@ -142,6 +147,7 @@ public sealed class RoutePlanner
                 if (edge.To == edge.From || edge.FrameSequence || edge.MotionPhoto || edge.LivePhoto || edge.Ocr || edge.Caption
                     || (edge.ImageSourcesOnly && !imageSource) || (edge.NotForImageSources && imageSource)
                     || (edge.Unshaped && shaping)
+                    || (edge.Checked && (withoutChecked || node != from))
                     || (edge.DirectOnly && (node != from || edge.To != to)))
                     continue;
                 var next = cost + edgeCost;
@@ -150,7 +156,7 @@ public sealed class RoutePlanner
 
                 dist[edge.To] = next;
                 hops[edge.To] = hops[node] + 1;
-                prev[edge.To] = (node, new RouteStep(converter, edge.From, edge.To, Unshaped: edge.Unshaped));
+                prev[edge.To] = (node, new RouteStep(converter, edge.From, edge.To, Unshaped: edge.Unshaped, Checked: edge.Checked));
                 queue.Enqueue(edge.To, next);
             }
         }
@@ -174,7 +180,7 @@ public sealed class RoutePlanner
     public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false) =>
         Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption) is not null;
 
-    private Route? PlanWithOcr(string from, string to, bool shaping)
+    private Route? PlanWithOcr(string from, string to, bool shaping, bool withoutChecked)
     {
         var steps = new List<RouteStep>();
         var cost = 0;
@@ -182,7 +188,7 @@ public sealed class RoutePlanner
         if (OcrEdge(from).Converter is null)
         {
             // A picture Tesseract can't open (HEIC, PSD, …) becomes a PNG first.
-            if (FormatRegistry.FindById(from)?.Category != FormatCategory.Image || Plan(from, "png", shaping: shaping) is not { } toPng)
+            if (FormatRegistry.FindById(from)?.Category != FormatCategory.Image || Plan(from, "png", shaping: shaping, withoutChecked: withoutChecked) is not { } toPng)
                 return null;
             steps.AddRange(toPng.Steps);
             cost += toPng.Cost;
@@ -195,7 +201,7 @@ public sealed class RoutePlanner
         cost += ocr.Cost;
         if (to != "pdf")
         {
-            if (Plan("pdf", to, shaping: shaping) is not { } rest)
+            if (Plan("pdf", to, shaping: shaping, withoutChecked: withoutChecked) is not { } rest)
                 return null;
             steps.AddRange(rest.Steps);
             cost += rest.Cost;

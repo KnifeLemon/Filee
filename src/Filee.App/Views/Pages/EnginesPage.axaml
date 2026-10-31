@@ -91,6 +91,14 @@
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
+        <!-- Filee's own document renderer, off until the user tries it -->
+        <Border Classes="card" Padding="16,12" Margin="0,8,0,0">
+          <StackPanel Spacing="2">
+            <ToggleSwitch IsChecked="{Binding UseFileeRenderer}" OnContent="{DynamicResource engines.filee_renderer}" OffContent="{DynamicResource engines.filee_renderer}"
+                          AutomationProperties.Name="{DynamicResource engines.filee_renderer}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource engines.filee_renderer_hint}" />
+          </StackPanel>
+        </Border>
         <StackPanel Spacing="2" Margin="0,8,0,0">
           <TextBlock Classes="h2" Text="{DynamicResource engines.all_title}" />
           <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource engines.all_description}" />
