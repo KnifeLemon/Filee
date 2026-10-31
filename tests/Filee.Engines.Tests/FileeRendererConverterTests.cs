@@ -13,7 +13,7 @@ namespace Filee.Engines.Tests;
 [Collection("EngineEnvironment")] // FileeRenderer is process-wide
 public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixture<EngineFixture>, IDisposable
 {
-    private static readonly string[] Documents = ["hwpx", "docx", "txt", "md", "html", "epub"];
+    private static readonly string[] Documents = ["hwpx", "hwp", "docx", "txt", "md", "html", "epub"];
 
     public void Dispose()
     {
@@ -48,7 +48,7 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
             Assert.Equal("layout", Assert.Single(planner.Plan(format, "pdf")!.Steps).Converter.Id);
         // Pictures of the pages come from its PDF through PDFium.
         Assert.Equal(["layout", "pdfium"], planner.Plan("docx", "png")!.Steps.Select(s => s.Converter.Id));
-        foreach (var format in new[] { "xlsx", "pptx", "hwp" })
+        foreach (var format in new[] { "xlsx", "pptx" })
             Assert.DoesNotContain(planner.Plan(format, "pdf")!.Steps, s => s.Converter.Id == "layout");
     }
 
@@ -90,6 +90,47 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
         }
 
         Assert.Equal(expected, new FileeRendererConverter().FirstUnsupported(path, Path.GetExtension(name)[1..]));
+    }
+
+    [Fact]
+    public async Task On_an_hwp_is_written_by_it_without_rhwp()
+    {
+        Use(true);
+        var source = Path.Combine(fx.NewFolder(), "note.hwp");
+        await File.WriteAllBytesAsync(source, new HwpBuilder { Flags = 1 }.PlainDocInfo().SectionStart().Paragraph("Filee lays out this HWP itself.").Build(),
+            TestContext.Current.CancellationToken);
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
+
+        Assert.Equal(JobState.Completed, job.State);
+        using var pdf = PigDocument.Open(job.Outputs.Single());
+        Assert.Contains("Filee", pdf.Information.Producer);
+        Assert.Contains("Filee lays out this HWP itself.", pdf.GetPage(1).Text);
+    }
+
+    [Fact]
+    public void An_hwp_is_checked_as_the_hwpx_package_it_becomes()
+    {
+        var dir = fx.NewFolder();
+        var plain = Path.Combine(dir, "plain.hwp");
+        File.WriteAllBytes(plain, new HwpBuilder().PlainDocInfo().SectionStart().Paragraph("본문").Build());
+        Assert.Null(new FileeRendererConverter().FirstUnsupported(plain, "hwp"));
+
+        // An OLE object (a chart, a spreadsheet) in a paragraph.
+        var builder = new HwpBuilder().PlainDocInfo().SectionStart();
+        builder.Section.Add(HwpBuilder.Record(66, 0, HwpBuilder.Bytes(9, 0, (ushort)0, (byte)0, (byte)0, (ushort)1, (ushort)0, (ushort)0, 0, (ushort)0)));
+        builder.Section.Add(HwpBuilder.Record(67, 1, HwpBuilder.Bytes(HwpBuilder.Control(11, "gso "), (ushort)13)));
+        builder.Section.Add(HwpBuilder.Record(71, 1, HwpBuilder.Bytes(HwpBuilder.Id("gso "), 1u, 0, 0, 7200, 7200, 0, (short)0, (short)0, (short)0, (short)0, 1, 0, "")));
+        builder.Section.Add(HwpBuilder.Record(76, 2, HwpBuilder.Bytes(HwpBuilder.Id("$ole"), HwpBuilder.Id("$ole"), 0, 0, (ushort)0, (ushort)1, 7200, 7200, 7200, 7200, 0, (short)0, 0, 0, (ushort)0, new byte[48])));
+        builder.Section.Add(HwpBuilder.Record(84, 3, HwpBuilder.Bytes(1, 7200, 7200, (ushort)1)));
+        var ole = Path.Combine(dir, "ole.hwp");
+        File.WriteAllBytes(ole, builder.Build());
+        Assert.Equal("OLE objects and charts", new FileeRendererConverter().FirstUnsupported(ole, "hwp"));
+
+        // A file the reader refuses passes the check: the conversion stops with the reader's message.
+        var locked = Path.Combine(dir, "locked.hwp");
+        File.WriteAllBytes(locked, new HwpBuilder { Flags = 2 }.PlainDocInfo().SectionStart().Build());
+        Assert.Null(new FileeRendererConverter().FirstUnsupported(locked, "hwp"));
     }
 
     [Fact]

@@ -1,10 +1,11 @@
-// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX): seeds are written in code,
-// DocumentFuzzer changes them, and every input must be read or refused with InvalidDataException /
+// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP): seeds are written in
+// code, DocumentFuzzer (packages) or HwpFuzzer (HWP records and compound files) changes them, and every input must be read or refused with InvalidDataException /
 // ConversionRefusedException, in time. In a normal test run each reader gets a short, fixed run (the same inputs every
 // time); the nightly fuzz workflow sets FILEE_FUZZ_SECONDS for a longer run with a new random seed, and
 // FILEE_FUZZ_OUT for a folder that keeps the inputs that failed. FILEE_FUZZ_SEED repeats a run.
 
 using System.Globalization;
+using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using static Filee.Engines.Tests.DocxBuilder;
@@ -31,7 +32,22 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void DocxReader_reads_or_refuses_every_mutated_package() =>
         Fuzz("docx", "docx", DocxSeeds(), (path, media) => DocxReader.Read(path, media));
 
+    [Fact]
+    public void HwpReader_reads_or_refuses_every_mutated_file() =>
+        Fuzz("hwp", "hwp", HwpSeeds(), (path, media) => HwpReader.ReadForLayout(path, media), (seed, random) => new HwpFuzzer(seed, random).Next);
+
     // ───────────────────────── Seeds ─────────────────────────
+
+    /// <summary>
+    /// HWP files built in code (an HWP seed is the builder, so the fuzzer changes records and rebuilds the compound
+    /// file): a plain document, one with a table, a note and a picture, and a compressed one.
+    /// </summary>
+    private static List<byte[]> HwpSeeds()
+    {
+        var plain = new HwpBuilder().PlainDocInfo().SectionStart().Paragraph("첫 문단").Paragraph("둘째 문단");
+        var compressed = new HwpBuilder { Flags = 1 }.PlainDocInfo().SectionStart().Paragraph("압축된 문단");
+        return [plain.Build(), HwpFuzzer.Rich().Build(), compressed.Build()];
+    }
 
     private List<byte[]> HwpxSeeds()
     {
@@ -169,7 +185,8 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     // ───────────────────────── Running ─────────────────────────
 
     /// <param name="name">Names the kept inputs.</param>
-    private void Fuzz(string name, string extension, List<byte[]> seeds, Action<string, string> read)
+    /// <param name="mutator">Makes the mutated inputs of one seed; ZIP packages (DocumentFuzzer) when null.</param>
+    private void Fuzz(string name, string extension, List<byte[]> seeds, Action<string, string> read, Func<byte[], Random, Func<byte[]>>? mutator = null)
     {
         var seconds = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SECONDS"), out var s) && s > 0 ? s : 0;
         var seed = int.TryParse(Environment.GetEnvironmentVariable("FILEE_FUZZ_SEED"), out var fixedSeed) ? fixedSeed
@@ -180,7 +197,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         output?.WriteLine($"Seed {seed}, {(seconds > 0 ? seconds + " s" : QuickIterations + " inputs per seed package")}");
 
         var random = new Random(seed);
-        var fuzzers = seeds.Select(bytes => new DocumentFuzzer(bytes, random)).ToList();
+        var fuzzers = seeds.Select(bytes => mutator?.Invoke(bytes, random) ?? new DocumentFuzzer(bytes, random).Next).ToList();
         var folder = fx.NewFolder();
         // With an output folder the input being read lives there: a crash that ends the process (a stack overflow)
         // leaves it behind for the report. A run that ends normally removes it.
@@ -200,7 +217,7 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
         while (seconds > 0 ? stopwatch.Elapsed < TimeSpan.FromSeconds(seconds) : inputs < QuickIterations * seeds.Count)
         {
             var fuzzer = fuzzers[inputs % fuzzers.Count];
-            var bytes = fuzzer.Next();
+            var bytes = fuzzer();
             inputs++;
             File.WriteAllBytes(input, bytes);
             if (Directory.Exists(media))

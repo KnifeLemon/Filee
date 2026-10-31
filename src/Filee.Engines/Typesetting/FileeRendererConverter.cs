@@ -1,18 +1,19 @@
-// Filee's own document renderer as an engine (id "layout", "Filee renderer"): HWPX and the documents Filee reads into
-// its document model (Word, ODT, RTF, text, Markdown, HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF
-// in one step, read, laid out and written in-process. A preview the user turns on in Settings → Engines; off, the
-// engine is unavailable and every route stays as it was. Spreadsheets, presentations, PDF and OFD keep their own
-// routes, and HWP keeps rhwp until Filee reads HWP itself.
+// Filee's own document renderer as an engine (id "layout", "Filee renderer"): HWPX, HWP (through the HWPX package its
+// records become, Hwp/Binary) and the documents Filee reads into its document model (Word, ODT, RTF, text, Markdown,
+// HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF in one step, read, laid out and written in-process.
+// A preview the user turns on in Settings → Engines; off, the engine is unavailable and every route stays as it was.
+// Spreadsheets, presentations, PDF and OFD keep their own routes.
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
-// doesn't draw yet (OLE objects and charts, vertical text, form controls, SmartArt), and such a
-// file takes the route it would take without the engine (JobQueue). Pictures of the pages go on from the PDF through
-// PDFium, which applies the image options.
+// doesn't draw yet (OLE objects and charts, vertical text, form controls, SmartArt), and such a file takes the route
+// it would take without the engine (JobQueue). An HWP is looked through as the HWPX package it becomes. Pictures of
+// the pages go on from the PDF through PDFium, which applies the image options.
 
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
+using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
@@ -34,7 +35,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>Built-in readers of documents (not of sheets, slides, PDF or OFD, which have routes of their own).</summary>
     private static readonly string[] Documents =
     [
-        "hwpx", "docx", "docm", "dotx", "dotm", "odt", "rtf", "txt", "md", "html", "mhtml",
+        "hwpx", "hwp", "docx", "docm", "dotx", "dotm", "odt", "rtf", "txt", "md", "html", "mhtml",
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz",
     ];
 
@@ -67,6 +68,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// </summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat)
     {
+        if (sourceFormat == "hwp")
+            return HwpUnsupported(sourcePath);
         var markers = sourceFormat == "hwpx" ? HwpxMarkers : sourceFormat == "odt" ? OdtMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
         if (markers is null)
             return null;
@@ -86,6 +89,28 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
             }
         }
         return null;
+    }
+
+    /// <summary>
+    /// An HWP looked through as the HWPX package its records become. A file the HWP reader refuses (password, damage)
+    /// passes: the conversion then stops with the reader's message.
+    /// </summary>
+    private string? HwpUnsupported(string sourcePath)
+    {
+        var hwpx = Path.Combine(Path.GetTempPath(), $"filee-check-{Guid.NewGuid():N}.hwpx");
+        try
+        {
+            HwpReader.ToHwpx(sourcePath, hwpx);
+            return FirstUnsupported(hwpx, "hwpx");
+        }
+        catch (Exception ex) when (ex is InvalidDataException or ConversionRefusedException)
+        {
+            return null;
+        }
+        finally
+        {
+            File.Delete(hwpx);
+        }
     }
 
     private static readonly (Regex Pattern, string Feature)[] HwpxMarkers =
@@ -120,6 +145,11 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         {
             var media = Path.Combine(step.WorkDirectory, $"media-{Guid.NewGuid():N}");
             document = await Task.Run(() => HwpxReader.ReadForLayout(step.InputPath, media), cancellationToken);
+        }
+        else if (step.From == "hwp")
+        {
+            var media = Path.Combine(step.WorkDirectory, $"media-{Guid.NewGuid():N}");
+            document = await Task.Run(() => HwpReader.ReadForLayout(step.InputPath, media), cancellationToken);
         }
         else
         {

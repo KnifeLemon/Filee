@@ -1,7 +1,7 @@
-// How much of an untrusted document Filee reads and lays out, shared by the document readers (HWPX, DOCX, OFD, and
-// the HWP 5.0 reader when it comes) and the layout engine, so a hostile file can't hang, exhaust the memory or crash
-// Filee. Every limit is far above what real documents need: a document that passes one is refused with
-// error.document_too_complex rather than read in part.
+// How much of an untrusted document Filee reads and lays out, shared by the document readers (HWPX, DOCX, OFD and
+// HWP 5.0) and the layout engine, so a hostile file can't hang, exhaust the memory or crash Filee. Every limit is far
+// above what real documents need: a document that passes one is refused with error.document_too_complex rather than
+// read in part.
 //
 // Where they apply:
 //  * DocumentPackage   ZIP packages: entries, bytes per part and in total (counted while unpacking, so a header that
@@ -9,8 +9,9 @@
 //  * DocumentBudget    readers: nesting of tables, text boxes, notes, groups and fields; paragraphs and objects.
 //  * PictureSize       pictures whose header claims more than MaxPicturePixels are left out.
 //  * LayoutGuard       the layout loop: pages, empty pages in a row, the time budget and cancellation.
-// A compound file (CFB) reader adds its stream sizes to MaxPartBytes / MaxPackageBytes and must check sector chains
-// for cycles itself.
+//  * CompoundFile      HWP 5.0's compound files: sector chains and the directory are walked once per sector or entry
+//                      (a loop is damage), streams count against MaxPartBytes / MaxPackageBytes and, deflated, the
+//                      inflate ratio; HWP records against MaxXmlElements.
 //
 // Embedded fonts are not read by any reader (DOCX odttf parts, HWPX and OFD font files keep only their names). A
 // reader that ever uses them must pass them through Filee's own SFNT parser (Fonts/SfntFont) before Skia or HarfBuzz.
