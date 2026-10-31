@@ -68,6 +68,24 @@ public class RoutePlannerTests
     }
 
     [Fact]
+    public void Checked_edges_start_a_route_and_are_left_out_when_the_engine_named_something()
+    {
+        // Filee's renderer checks the file it is given: only the source itself, never a file another step wrote.
+        var writer = new FakeConverter("hwpx-writer", new ConversionEdge("docx", "hwpx"), new ConversionEdge("xlsx", "docx"));
+        var rhwp = new FakeConverter("rhwp", new ConversionEdge("hwpx", "pdf"));
+        var layout = new FakeConverter("layout", new ConversionEdge("docx", "pdf", 1, Checked: true));
+        var pdfium = new FakeConverter("pdfium", new ConversionEdge("pdf", "png"));
+        var planner = new RoutePlanner([writer, rhwp, layout, pdfium]);
+
+        var usual = planner.Plan("docx", "pdf")!;
+        Assert.Equal(["layout"], usual.Steps.Select(s => s.Converter.Id));
+        Assert.True(usual.Steps[0].Checked);
+        Assert.Equal(["layout", "pdfium"], planner.Plan("docx", "png")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("docx", "pdf", withoutChecked: true)!.Steps.Select(s => s.Converter.Id));
+        Assert.DoesNotContain(planner.Plan("xlsx", "pdf")!.Steps, s => s.Converter.Id == "layout");
+    }
+
+    [Fact]
     public void Direct_only_edges_are_never_a_step_of_a_longer_route()
     {
         // PDF → PPTX puts pictures of the pages on slides: only for a PDF the user asked to turn into PPTX.

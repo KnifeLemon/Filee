@@ -238,6 +238,12 @@ public sealed class AppSettings
     public bool LibreOfficeForHwp { get; set; }
 
     /// <summary>
+    /// Filee's own renderer (a preview) lays HWPX and documents read into Filee's document model out to PDF, instead of
+    /// the HWPX writer and rhwp. Files with what it doesn't draw yet keep their usual route.
+    /// </summary>
+    public bool FileeRenderer { get; set; }
+
+    /// <summary>
     /// With LibreOffice installed, Word documents (DOCX, DOC, ODT, RTF) → PDF go through it instead of the built-in
     /// route: Chinese punctuation and line-start rules, fonts the built-in route lacks.
     /// </summary>

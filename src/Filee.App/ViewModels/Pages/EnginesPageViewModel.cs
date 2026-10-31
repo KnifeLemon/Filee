@@ -67,6 +67,7 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
         _libreOfficeForHwp = store.Settings.LibreOfficeForHwp;
         _libreOfficeForDocuments = store.Settings.LibreOfficeForDocuments;
         _libreOfficeForSheets = store.Settings.LibreOfficeForSheets;
+        _useFileeRenderer = store.Settings.FileeRenderer;
         _catalog.Changed += OnCatalogChanged;
         Reload();
     }
@@ -82,6 +83,15 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
 
     /// <summary>Spreadsheets → PDF through LibreOffice instead of the built-in route.</summary>
     [ObservableProperty] private bool _libreOfficeForSheets;
+
+    /// <summary>Filee's own renderer (a preview) lays documents out to PDF.</summary>
+    [ObservableProperty] private bool _useFileeRenderer;
+
+    partial void OnUseFileeRendererChanged(bool value)
+    {
+        _store.Settings.FileeRenderer = value;
+        _store.SaveSettings();
+    }
 
     partial void OnLibreOfficeForSlidesChanged(bool value)
     {

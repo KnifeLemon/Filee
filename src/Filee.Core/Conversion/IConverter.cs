@@ -58,10 +58,16 @@ namespace Filee.Core.Conversion;
 /// <param name="Caption">
 /// The edge transcribes speech to SRT subtitles using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
 /// </param>
+/// <param name="Checked">
+/// The engine draws only some of what a source can hold, and checks each file first (<see cref="ICapabilityCheck"/>):
+/// when it names something it can't draw, <see cref="JobQueue"/> plans again without the edge, so the file takes the
+/// route it would have taken without the engine. Only a route's first step, where the file is the one the engine
+/// looked at.
+/// </param>
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
     bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false,
-    bool Ocr = false, bool Caption = false);
+    bool Ocr = false, bool Caption = false, bool Checked = false);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's
@@ -216,6 +222,19 @@ public interface ITextShapingCheck
     /// </summary>
     /// <param name="sourceFormat">Format id of the file.</param>
     TextScripts ScanScripts(string sourcePath, string sourceFormat);
+}
+
+/// <summary>
+/// An engine with <see cref="ConversionEdge.Checked"/> edges: names the first thing in a source file it can't draw
+/// yet (vertical text, an OLE object, an EMF picture, ...), or null when it draws the whole file.
+/// </summary>
+public interface ICapabilityCheck
+{
+    /// <summary>
+    /// Looks through <paramref name="sourcePath"/> without converting it. Quick, asked again on every conversion.
+    /// </summary>
+    /// <param name="sourceFormat">Format id of the file.</param>
+    string? FirstUnsupported(string sourcePath, string sourceFormat);
 }
 
 /// <summary>Merges several PDF files into one. Implemented by the PDF engine.</summary>

@@ -20,6 +20,7 @@ using Filee.Engines.Office;
 using Filee.Engines.Pdf;
 using Filee.Engines.Subtitles;
 using Filee.Engines.Text;
+using Filee.Engines.Typesetting;
 using Filee.Engines.Vector;
 using Filee.Engines.Wic;
 using Microsoft.Extensions.Logging;
@@ -49,11 +50,13 @@ public static class EngineRegistry
         new SpreadsheetConverter(),
         new OoxmlConverter(),
         new HwpxConverter(),
+        new FileeRendererConverter(),
         new ArchiveConverter(),
         new VectorConverter(),
         new IcnsConverter(),
         new FontConverter(),
         new DocxWriterConverter(),
+        new OdtWriterConverter(),
         new PdfTextConverter(),
         new PdfSlidesConverter(),
         new PdfTablesConverter(),

@@ -9,8 +9,9 @@
 //    as images.
 //  * HTML (HtmlReader, AngleSharp), EPUB, MOBI / AZW3, FB2, HTMLZ and TXTZ (Ebooks) and HWPX (HwpxReader) are read
 //    directly.
+//  * ODT is read directly (Odt/OdtReader), keeping page layouts, headers/footers, styles, lists and tables.
 //  * HWP 5.0 needs no model: its records are written out as the HWPX package 한글 saves (Hwp/Binary/HwpToHwpx).
-//  * ODT, RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
+//  * RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Binary;

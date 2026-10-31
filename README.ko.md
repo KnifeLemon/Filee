@@ -156,7 +156,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **이미지**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR 등;<br>GIMP XCF, 카메라 RAW(CR2, CR3, NEF, ARW, DNG 등), DICOM, OpenEXR, HDR, FITS, JPEG XR(Windows), 아이폰 라이브 포토(LIVP)는 읽기 | 위 형식끼리(HEIC⁵), PDF, SVG(벡터화), 크기 조정, 흑백;<br>라이브/모션 포토(아이폰, 안드로이드) → 그 동영상(MP4, MOV⁵), 동영상 → 라이브 포토(아이폰)·모션 포토(안드로이드)⁵(실험 기능) |
 | **벡터**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF(벡터), PNG 등 이미지,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX(페이지마다 그림 한 장), SVG²;<br>합치기(순서를 먼저 고르기), 나누기, 페이지 범위, 압축 (더 작은 PDF) |
-| **문서**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>OFD(중국 전자세금계산서·공문서)는 읽기<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602 등² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
+| **문서**: DOCX, DOCM, DOTX, ODT, EML, Outlook MSG;<br>OFD(중국 전자세금계산서·공문서)는 읽기<br>DOC, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602 등² | PDF, DOCX, ODT, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>FODT, OTT² |
 | **스프레드시트**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
 | **프레젠테이션**: PPTX, PPTM, POTX, POTM, PPSX<br>PPT, ODP, OTP, FODP, Keynote² | PDF, PNG, JPG, DOCX, HWPX<br>OTP² |
 | **한글**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, 마크다운, HTML |
