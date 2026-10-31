@@ -986,7 +986,7 @@
   "engines.lo_hwp": "LibreOffice для HWP·HWPX → PDF",
   "engines.lo_hwp_hint": "По умолчанию выключено: rhwp обычно больше похож на 한글.\nВключите для сравнения, если rhwp ошибается в документе (текст наезжает, таблицы съезжают).",
   "engines.filee_renderer": "Использовать рендерер Filee (предварительная версия)",
-  "engines.filee_renderer_hint": "Собственный движок Filee вёрстает в PDF файлы HWPX, документы Word, текст, Markdown, HTML и электронные книги вместо модуля записи HWPX и rhwp.\nФайлы с тем, что он пока не рисует (диаграммы, вертикальный текст, рисунки EMF…), конвертируются прежним путём.",
+  "engines.filee_renderer_hint": "Собственный движок Filee вёрстает в PDF файлы HWPX, документы Word, текст, Markdown, HTML и электронные книги вместо модуля записи HWPX и rhwp.\nФайлы с тем, что он пока не рисует (диаграммы, вертикальный текст…), конвертируются прежним путём.",
   "engines.package.libreoffice.name": "LibreOffice (старые и редкие форматы)",
   "engines.package.libreoffice.description": "Нужен для старых и редких форматов: DOC·PPT, презентации OpenDocument, WordPerfect, ClarisWorks·MacWrite, Apple Pages·Numbers·Keynote, Publisher·Visio и другие.\nА ещё сохраняет в DOC·XLS·PPT·ODT·ODP·EMF и точнее делает PDF из презентаций.\nWord, Excel, PowerPoint, PDF и HWP конвертируются и без него.",
   "engines.package.pandoc.name": "Pandoc (Markdown, LaTeX, Org и другие)",

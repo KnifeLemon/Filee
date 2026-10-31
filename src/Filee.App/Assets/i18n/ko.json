@@ -986,7 +986,7 @@
   "engines.lo_hwp": "한글(HWP·HWPX) → PDF는 LibreOffice로 변환",
   "engines.lo_hwp_hint": "보통은 rhwp가 한글과 더 비슷하게 그려서 기본은 꺼져 있어요.\nrhwp 결과가 깨질 때(글자 겹침, 표 어긋남) 켜서 비교해 보세요.",
   "engines.filee_renderer": "Filee 렌더러 사용 (미리보기)",
-  "engines.filee_renderer_hint": "HWPX, 워드 문서, 텍스트, 마크다운, HTML, 전자책을 HWPX 변환과 rhwp 대신 Filee 자체 엔진으로 PDF에 배치해요.\n아직 그리지 못하는 요소(차트, 세로쓰기, EMF 그림 등)가 있는 파일은 원래 경로로 변환해요.",
+  "engines.filee_renderer_hint": "HWPX, 워드 문서, 텍스트, 마크다운, HTML, 전자책을 HWPX 변환과 rhwp 대신 Filee 자체 엔진으로 PDF에 배치해요.\n아직 그리지 못하는 요소(차트, 세로쓰기)가 있는 파일은 원래 경로로 변환해요.",
   "engines.package.libreoffice.name": "LibreOffice (오래되었거나 드문 형식)",
   "engines.package.libreoffice.description": "DOC·PPT, 오픈도큐먼트 프레젠테이션, 워드퍼펙트, ClarisWorks·MacWrite, Apple Pages·Numbers·Keynote, Publisher·Visio 같은 오래되었거나 드문 형식에 필요해요.\nDOC·XLS·PPT·ODT·ODP·EMF로 저장하고, 발표 자료 → PDF도 더 정확해져요.\n워드·엑셀·파워포인트·PDF·HWP는 없어도 변환돼요.",
   "engines.package.pandoc.name": "Pandoc (마크다운·LaTeX·Org 등)",

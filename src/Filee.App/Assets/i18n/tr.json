@@ -969,7 +969,7 @@
   "engines.lo_hwp": "HWP·HWPX → PDF için LibreOffice kullan",
   "engines.lo_hwp_hint": "Varsayılan olarak kapalı: rhwp genellikle 한글'e daha çok benzer.\nrhwp bir belgeyi hatalı işlerse (üst üste metin, yanlış tablo konumu) karşılaştırmak için açın.",
   "engines.filee_renderer": "Filee işleyicisini kullan (önizleme)",
-  "engines.filee_renderer_hint": "Filee'nin kendi motoru HWPX, Word belgeleri, metin, Markdown, HTML ve e-kitapları HWPX yazıcısı ve rhwp yerine PDF olarak dizer.\nHenüz çizemediği öğeler (grafikler, dikey metin, EMF resimleri…) içeren dosyalar her zamanki yoldan dönüştürülür.",
+  "engines.filee_renderer_hint": "Filee'nin kendi motoru HWPX, Word belgeleri, metin, Markdown, HTML ve e-kitapları HWPX yazıcısı ve rhwp yerine PDF olarak dizer.\nHenüz çizemediği öğeler (grafikler, dikey metin…) içeren dosyalar her zamanki yoldan dönüştürülür.",
   "engines.package.libreoffice.name": "LibreOffice (eski ve nadir biçimler)",
   "engines.package.libreoffice.description": "Eski veya nadir biçimler için gereklidir: DOC·PPT, OpenDocument sunumları, WordPerfect, ClarisWorks·MacWrite, Apple Pages·Numbers·Keynote, Publisher·Visio ve daha fazlası.\nDOC·XLS·PPT·ODT·ODP·EMF olarak da kaydeder; sunum → PDF sonucunu aslına daha sadık hâle getirir.\nWord, Excel, PowerPoint, PDF ve HWP bu motor olmadan dönüştürülür.",
   "engines.package.pandoc.name": "Pandoc (Markdown, LaTeX, Org ve daha fazlası)",

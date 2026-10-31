@@ -671,9 +671,9 @@ as it was.
 - **What keeps its route:** spreadsheets (the print route), presentations (slides), PDF and OFD, and HWP, which needs
   rhwp to become HWPX until Filee reads HWP itself.
 - **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list.
-- **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX or a
-  Word package for what it doesn't draw yet — OLE objects and charts, vertical text, form controls, videos, SmartArt,
-  EMF / WMF pictures — and `JobQueue` plans again without it, so such a file takes its usual route (logged). The
+- **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX,
+  Word or ODT package for what it doesn't draw yet — OLE objects and charts, vertical text, form controls, videos,
+  SmartArt — and `JobQueue` plans again without it, so such a file takes its usual route (logged). The
   choice is made once, before the conversion. A checked edge is only ever a route's first step, where the file is the
   one the engine looked at. Text formats hold nothing it can't draw.
 - Its edges aren't `Unshaped`: with it on, Arabic, Hebrew, Indic and Thai documents are shaped by it instead of

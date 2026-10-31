@@ -5,7 +5,7 @@
 // routes, and HWP keeps rhwp until Filee reads HWP itself.
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
-// doesn't draw yet (OLE objects and charts, vertical text, form controls, EMF / WMF pictures, SmartArt), and such a
+// doesn't draw yet (OLE objects and charts, vertical text, form controls, SmartArt), and such a
 // file takes the route it would take without the engine (JobQueue). Pictures of the pages go on from the PDF through
 // PDFium, which applies the image options.
 
@@ -75,8 +75,6 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         foreach (var entry in zip.Entries)
         {
             var name = entry.FullName;
-            if (name.EndsWith(".emf", StringComparison.OrdinalIgnoreCase) || name.EndsWith(".wmf", StringComparison.OrdinalIgnoreCase))
-                return "EMF / WMF pictures";
             if (!name.EndsWith(".xml", StringComparison.OrdinalIgnoreCase) || (scanned += entry.Length) > MaxScannedBytes)
                 continue;
             using var reader = new StreamReader(entry.Open(), Encoding.UTF8);

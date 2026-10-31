@@ -986,7 +986,7 @@
   "engines.lo_hwp": "Utilizar o LibreOffice para HWP·HWPX → PDF",
   "engines.lo_hwp_hint": "Desativado por predefinição: o rhwp costuma produzir um resultado mais próximo do 한글.\nAtiva para comparar quando o rhwp processar mal um documento (texto sobreposto, tabelas deslocadas).",
   "engines.filee_renderer": "Usar o renderizador do Filee (pré-visualização)",
-  "engines.filee_renderer_hint": "O motor próprio do Filee pagina em PDF ficheiros HWPX, documentos do Word, texto, Markdown, HTML e livros digitais, em vez do escritor HWPX e do rhwp.\nOs ficheiros com o que ainda não desenha (gráficos, texto vertical, imagens EMF…) seguem o percurso habitual.",
+  "engines.filee_renderer_hint": "O motor próprio do Filee pagina em PDF ficheiros HWPX, documentos do Word, texto, Markdown, HTML e livros digitais, em vez do escritor HWPX e do rhwp.\nOs ficheiros com o que ainda não desenha (gráficos, texto vertical…) seguem o percurso habitual.",
   "engines.package.libreoffice.name": "LibreOffice (formatos antigos e raros)",
   "engines.package.libreoffice.description": "Necessário para formatos antigos ou pouco comuns: DOC·PPT, apresentações OpenDocument, WordPerfect, ClarisWorks·MacWrite, Apple Pages·Numbers·Keynote, Publisher·Visio e outros.\nTambém guarda em DOC·XLS·PPT·ODT·ODP·EMF e melhora a fidelidade de apresentações → PDF.\nWord, Excel, PowerPoint, PDF e HWP são convertidos sem ele.",
   "engines.package.pandoc.name": "Pandoc (Markdown, LaTeX, Org e outros)",

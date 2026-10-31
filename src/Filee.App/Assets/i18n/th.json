@@ -969,7 +969,7 @@
   "engines.lo_hwp": "ใช้ LibreOffice สำหรับ HWP·HWPX → PDF",
   "engines.lo_hwp_hint": "ปิดไว้เป็นค่าเริ่มต้น: rhwp มักจะแสดงผลออกมาเหมือน 한글 (Hangul) มากกว่า\nเปิดใช้งานเพื่อเปรียบเทียบเมื่อ rhwp แสดงผลเอกสารผิดพลาด (ข้อความซ้อนทับ ตารางเลื่อน)",
   "engines.filee_renderer": "ใช้ตัวเรนเดอร์ของ Filee (ตัวอย่าง)",
-  "engines.filee_renderer_hint": "เอนจินของ Filee เองจัดหน้า HWPX เอกสาร Word ข้อความ Markdown HTML และอีบุ๊กเป็น PDF แทนตัวเขียน HWPX และ rhwp\nไฟล์ที่มีสิ่งที่ยังวาดไม่ได้ (แผนภูมิ ข้อความแนวตั้ง รูปภาพ EMF…) จะแปลงตามเส้นทางเดิม",
+  "engines.filee_renderer_hint": "เอนจินของ Filee เองจัดหน้า HWPX เอกสาร Word ข้อความ Markdown HTML และอีบุ๊กเป็น PDF แทนตัวเขียน HWPX และ rhwp\nไฟล์ที่มีสิ่งที่ยังวาดไม่ได้ (แผนภูมิ ข้อความแนวตั้ง…) จะแปลงตามเส้นทางเดิม",
   "engines.package.libreoffice.name": "LibreOffice (ฟอร์แมตรุ่นเก่าและฟอร์แมตหายาก)",
   "engines.package.libreoffice.description": "จำเป็นสำหรับฟอร์แมตเก่าหรือไม่ค่อยพบ: DOC·PPT, งานนำเสนอ OpenDocument, WordPerfect, ClarisWorks·MacWrite, Apple Pages·Numbers·Keynote, Publisher·Visio และอื่นๆ\nและบันทึกเป็น DOC·XLS·PPT·ODT·ODP·EMF ได้ รวมถึงทำให้งานนำเสนอ → PDF แม่นยำขึ้น\n(Word, Excel, PowerPoint, PDF และ HWP สามารถแปลงได้โดยไม่ต้องใช้)",
   "engines.package.pandoc.name": "Pandoc (Markdown, LaTeX, Org และอื่นๆ)",
