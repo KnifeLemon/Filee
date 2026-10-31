@@ -1,11 +1,14 @@
 // Reads source images with ImageMagick, handling the formats that need more than "open the file": camera RAW
-// (LibRaw settings), layered PSD/PSB/XCF (one flattened picture instead of one file per layer) and Windows
-// metafiles (rendered at the preset's DPI), APNG (Filee's own reader composes the frames) and uncompressed DICOM
+// (LibRaw settings), layered PSD/PSB/XCF (one flattened picture instead of one file per layer), EMF / WMF (Filee's
+// own metafile renderer at the preset's DPI, on every platform; GDI+ through ImageMagick only for EMF+ only files on
+// Windows), APNG (Filee's own reader composes the frames) and uncompressed DICOM
 // (Filee's own reader, as ImageMagick's Q8 build reads only 8-bit DICOM), FITS (Filee's own reader, stretched and
 // debayered as the preset says) and the photo of an iPhone LIVP. Used by every engine that takes a raster image as input.
 
 using System.Buffers.Binary;
 using Filee.Core.Presets;
+using Filee.Engines.Metafiles;
+using Filee.Engines.Vector;
 using ImageMagick;
 using ImageMagick.Formats;
 
@@ -31,6 +34,8 @@ internal static class ImageReader
             return ReadLivePhoto(path, preset);
         if (formatId == "fits")
             return [FitsRendering.ToMagick(Fits.Read(path), preset.Image.FitsDebayer)];
+        if (formatId is "emf" or "wmf" && ReadMetafile(path, preset) is { } metafile)
+            return metafile;
 
         var images = new MagickImageCollection();
         var settings = Settings(formatId, preset);
@@ -87,6 +92,26 @@ internal static class ImageReader
             return [flat];
         }
         return images;
+    }
+
+    /// <summary>
+    /// An EMF or WMF drawn by Filee's renderer at the preset's render DPI (at least <see cref="MinimumMetafileDpi"/>), on
+    /// a transparent background. Null for an EMF+ only file on Windows, which ImageMagick then reads through GDI+;
+    /// elsewhere such a file fails with the renderer's reason.
+    /// </summary>
+    private static MagickImageCollection? ReadMetafile(string path, Preset preset)
+    {
+        var dpi = Math.Max(MinimumMetafileDpi, Math.Clamp(preset.Pdf.RenderDpi, 36, 1200));
+        try
+        {
+            var (bitmap, used) = Metafile.Render(path, dpi);
+            using (bitmap)
+                return [SvgRenderer.ToMagick(bitmap, used)];
+        }
+        catch (NotSupportedException) when (OperatingSystem.IsWindows())
+        {
+            return null;
+        }
     }
 
     /// <summary>The photo (JPEG or HEIC) of a LIVP, read from the package without unpacking it.</summary>

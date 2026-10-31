@@ -29,7 +29,8 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
     [
-        .. ImageEncoder.Sources.Select(source => new ConversionEdge(source, "pdf")),
+        // EMF and WMF reach PDF as vector drawing (Vector/VectorConverter), not as a picture of them.
+        .. ImageEncoder.Sources.Except(ImageEncoder.Metafiles).Select(source => new ConversionEdge(source, "pdf")),
         new("pdf", "pdf"),
     ];
 

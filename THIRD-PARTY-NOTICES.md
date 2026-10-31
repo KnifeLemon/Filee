@@ -44,7 +44,7 @@ libuiohook (the native input hook inside SharpHook) is the fork https://github.c
 under the GNU LGPL-3.0 (`COPYING.LESSER.md` in its repository). Filee loads SharpHook's unmodified build of it
 dynamically; you may replace those libraries with your own build of libuiohook.
 
-Used by the tests only (not redistributed): DocumentFormat.OpenXml (Open XML SDK, MIT, https://github.com/dotnet/Open-XML-SDK) validates the DOCX files Filee writes.
+Used by the tests only (not redistributed): DocumentFormat.OpenXml (Open XML SDK, MIT, https://github.com/dotnet/Open-XML-SDK) validates the DOCX files Filee writes. System.Drawing.Common (MIT, https://github.com/dotnet/winforms) records EMF files with GDI+ on Windows and draws the reference pictures the metafile renderer is compared with.
 
 ## Engines
 

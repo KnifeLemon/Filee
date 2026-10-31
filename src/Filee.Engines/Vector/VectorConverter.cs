@@ -1,6 +1,7 @@
 // Built-in vector graphics: SVG/SVGZ → PDF (vector) and → raster images with Svg.Skia and SkiaSharp, SVG ↔ SVGZ,
-// SVG → DXF (ACadSharp), raster images → SVG (tracing) and Illustrator files → PDF. Other vector formats reach PNG,
-// JPG, … through PDF and PDFium.
+// SVG → DXF (ACadSharp), EMF / WMF → PDF (vector, Filee's metafile renderer; their images come from the image
+// engine), raster images → SVG (tracing) and Illustrator files → PDF. Other vector formats reach PNG, JPG, … through
+// PDF and PDFium.
 
 using System.IO.Compression;
 using System.Text;
@@ -8,11 +9,12 @@ using Filee.Core.Conversion;
 using Filee.Core.Formats;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Metafiles;
 using Filee.Engines.Vector.Tracing;
 
 namespace Filee.Engines.Vector;
 
-/// <summary>SVG, SVGZ and AI conversions and raster image tracing that need no external program.</summary>
+/// <summary>SVG, SVGZ, EMF, WMF and AI conversions and raster image tracing that need no external program.</summary>
 public sealed class VectorConverter : IConverter, IImageTransformer
 {
     /// <summary>
@@ -39,6 +41,9 @@ public sealed class VectorConverter : IConverter, IImageTransformer
         .. ImageEncoder.Writable.SelectMany(target => new[] { ImageEncoder.Edge("svg", target), ImageEncoder.Edge("svgz", target) }),
         new("svg", "dxf"),
         new("svgz", "dxf"),
+        // Windows metafiles, drawn by Filee's renderer on every platform.
+        new("emf", "pdf"),
+        new("wmf", "pdf"),
         // Illustrator files are PDF inside (or PostScript, see ConvertIllustratorAsync).
         new("ai", "pdf"),
         // Embroidery designs: their stitches as lines (DstEmbroidery), PNG / PDF / ... from there.
@@ -62,6 +67,7 @@ public sealed class VectorConverter : IConverter, IImageTransformer
             ("plt", "svg") => await Task.Run(() => Plot(step), cancellationToken),
             (_, "svg") => await Task.Run(() => RasterTracing.Run(step, progress, cancellationToken), cancellationToken),
             (_, "dxf") => await Task.Run(() => ToDxf(step, cancellationToken), cancellationToken),
+            ("emf" or "wmf", "pdf") => await Task.Run(() => MetafileToPdf(step, cancellationToken), cancellationToken),
             (_, "pdf") => await Task.Run(() => ToPdf(step, cancellationToken), cancellationToken),
             _ => await Task.Run(() => ToRaster(step, progress, cancellationToken), cancellationToken),
         };
@@ -97,6 +103,16 @@ public sealed class VectorConverter : IConverter, IImageTransformer
         if (output is null)
             return [];
         SvgRenderer.WritePdf(drawing, output, FormatRegistry.NameWithoutExtension(step.InputPath), step.Preset.Document.PdfA);
+        return [output];
+    }
+
+    private static IReadOnlyList<string> MetafileToPdf(ConversionStep step, CancellationToken ct)
+    {
+        using var drawing = Metafile.Load(step.InputPath, cancellationToken: ct);
+        var output = step.Output.Allocate("pdf");
+        if (output is null)
+            return [];
+        Metafile.WritePdf(drawing, output, FormatRegistry.NameWithoutExtension(step.InputPath), step.Preset.Document.PdfA);
         return [output];
     }
 

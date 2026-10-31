@@ -5,9 +5,9 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows) and the photo of an iPhone LIVP read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (drawn by Filee's [metafile renderer](#emf--wmf-renderer)) and the photo of an iPhone LIVP read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
-| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
+| Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, **EMF / WMF → PDF (vector)** ([metafile renderer](#emf--wmf-renderer)), SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF, merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
@@ -294,8 +294,8 @@ in it also builds the package (artifact `windows-arm64-package`).
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,
   sRGB output and AHD demosaicing, then turned upright from the EXIF orientation.
-- **EMF/WMF** are rendered through GDI+ (Windows only) at the preset's render DPI (at least 150), keeping their
-  physical size in PDF output.
+- **EMF/WMF** are drawn by Filee's own [metafile renderer](#emf--wmf-renderer) on every platform: images at the
+  preset's render DPI (at least 150), keeping their physical size, and PDF as vector drawing.
 - **SVG → PDF** replays the drawing into Skia's PDF backend: paths, gradients and clips stay vector. Text is written
   as glyph outlines (shaped with HarfBuzz), because SkiaSharp's PDF backend has no font subsetter and would embed
   every font whole (13 MB for one line of Korean). SVG → images is rendered at its final size: the preset's DPI, at
@@ -307,6 +307,99 @@ in it also builds the package (artifact `windows-arm64-package`).
   nothing extra; PostScript-based ones need Ghostscript.
 - EPS and PS → PNG go straight through Ghostscript's `pngalpha` device, so the background stays transparent;
   JPG, WebP, … and AI reach images through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
+
+## EMF / WMF renderer
+
+Built in (`Metafiles/`), the same on Windows, Linux and macOS: Filee's own interpreter of Windows metafiles, written
+from Microsoft's [MS-EMF], [MS-WMF] and [MS-EMFPLUS] specifications, drawing to an `SKCanvas` (no GDI+, LibreOffice or
+ImageMagick needed). `EmfPlayer` and `WmfPlayer` read the records, `GdiPlayer` keeps GDI's device context and draws,
+and the drawing is recorded into an `SKPicture` that is replayed for each output:
+
+- **EMF / WMF → PNG, JPG, …** (image engine, `Magick/ImageReader`): rendered at the preset's render DPI (at least 150),
+  on a transparent background, with the DPI recorded so the picture keeps its physical size. An EMF+ only file (see
+  below) is drawn by GDI+ through ImageMagick on Windows, as before; elsewhere it fails with that reason.
+- **EMF / WMF → PDF** (vector engine): a page the size of the picture frame with the drawing as vector graphics (paths,
+  text as glyph outlines, bitmaps as images). PDFsharp's picture-to-PDF route is no longer offered for metafiles.
+- **Pictures in documents** (layout engine, `Typesetting/FloatingObjects` and table cell fills): an EMF or WMF picture
+  (clip art and OLE previews in HWP, Word's EMF pictures) is replayed into the page, so the PDF keeps it as vector
+  drawing; its natural size is its frame (`Documents/PictureSize`). A picture that can't be drawn is left out, like a
+  picture of any format that can't be read.
+- Pandoc's Markdown / HTML results get PNGs of their EMF / WMF pictures on every platform.
+
+What is drawn:
+
+- **Coordinates**: all map modes, window / viewport origins and extents (scaled, offset), world transforms
+  (`SetWorldTransform`, `ModifyWorldTransform`), SaveDC / RestoreDC. An EMF's frame (0.01 mm) is the picture; a WMF's
+  placeable header box is, played as GDI+ plays it (MM_ANISOTROPIC with window and viewport on the box), and a WMF
+  without that header takes its box from its first window records.
+- **Lines and shapes**: lines, polylines, polygons and poly-polygons (alternate / winding), Bézier curves, PolyDraw,
+  rectangles, rounded rectangles, ellipses, arcs, chords, pies, ArcTo and AngleArc (arc direction followed), pixels.
+- **Pens**: cosmetic and geometric, solid, dash, dot, dash-dot, dash-dot-dot, alternate and user styles, end caps,
+  joins and the miter limit, PS_INSIDEFRAME, the background colour in the gaps of dashed pens (OPAQUE mode). A pen made
+  by CreatePen is one pixel wide only at width 0; its dash styles hold only while it is a pixel wide, as in GDI.
+- **Brushes**: solid, hatched (8 × 8 pixels, with the background colour in OPAQUE mode), DIB pattern and monochrome
+  pattern brushes (text and background colours), the brush origin.
+- **Paths**: BeginPath … EndPath with every drawing call above and text, CloseFigure, FillPath, StrokePath,
+  StrokeAndFillPath, WidenPath, SelectClipPath, AbortPath.
+- **Clipping**: IntersectClipRect, ExcludeClipRect, OffsetClipRgn, ExtSelectClipRgn (all region modes), clip paths,
+  the meta region; regions are filled, framed, painted and inverted.
+- **Text**: ExtTextOut (A and W), PolyTextOut, SmallTextOut, WMF TextOut / ExtTextOut. The LOGFONT's face name goes
+  through the layout engine's font resolver (other names, a font of the same script when it is missing, fallback per
+  character) and the text is shaped with HarfBuzz; where the record gives advances (the dx array, and ETO_PDY's
+  vertical ones) each character's cluster starts where they put it. Alignment (left / centre / right, top / baseline /
+  bottom, TA_UPDATECP), escapement, width (LOGFONT lfWidth), bold and italic (synthesized where the family lacks them),
+  underline, strike-out, ETO_OPAQUE / ETO_CLIPPED, opaque text cells, ANSI text in the font's code page (CP949, Shift
+  JIS, GBK, Big5, …), symbol fonts. Glyph-index text (ETO_GLYPH_INDEX) and symbol-font text are drawn only with the
+  named font itself (glyph numbers of another font would be the wrong signs). For pixels, upright text is hinted at
+  whole-pixel sizes and positions as GDI draws it; elsewhere text is drawn as outlines (in PDFs too, as SVG text is,
+  since SkiaSharp's PDF backend would embed fonts whole).
+- **Bitmaps**: BitBlt, StretchBlt, StretchDIBits, SetDIBitsToDevice (partial scan lines too), AlphaBlend (constant and
+  per-pixel alpha), TransparentBlt, MaskBlt, PlgBlt, WMF DIB and Bitmap16 blits, pattern blits (PatBlt and blits
+  without a source). DIBs of 1, 4, 8, 16, 24 and 32 bits per pixel, RLE4 / RLE8, bit fields, JPEG and PNG pixels;
+  palette-index colour tables. GradientFill rectangles and triangles (triangles as small flat pieces, which the PDF
+  backend keeps).
+- **Raster operations**: SetROP2 and the blits' ternary operations map to blend modes (AND → multiply, OR → screen,
+  XOR → difference, NOT → inverted), exact for black and white, which is what masks use; PSDPxax / DSPDxax use the
+  source as a mask for the brush.
+- **EMF+**: an "EMF+ dual" file (GDI+'s default) carries its drawing twice; the EMF records are drawn and the EMF+
+  records skipped. An "EMF+ only" file has no EMF drawing to fall back on: it is refused (NotSupportedException), and
+  on Windows the image engine hands it to GDI+.
+- Not drawn: flood fills (they need the pixels already drawn), OpenGL records, colour management, right-to-left layout
+  (EMR_SETLAYOUT), escapes.
+
+Where GDI's rasterization shows, a bitmap follows it: one-pixel lines are aliased and on GDI's pixels, fills are not
+smoothed, pen widths are whole pixels, a rectangle or ellipse leaves out its right and bottom pixel row. Bitmaps are
+smoothed when scaled, as GDI+ draws them. Vector output (PDF, the layout engine's pages) has none of this.
+
+Hostile files (`Metafiles/MetafileLimits.cs`): at most 512 MB per file, 5,000,000 records, 65,535 object table entries,
+1,024 saved device contexts, 4,000,000 path points, 100,000 rectangles per region, 8,192 × 8,192 pixels per bitmap and
+256 M pixels of bitmaps per file; past a limit the file is refused with `error.document_too_complex`. Damaged files (a
+record longer than the file or shorter than a record, a count its record can't hold, an object outside the table, a
+bitmap whose pixels are cut off) stop with an InvalidDataException naming the record, its type and where it starts.
+Every record moves on by at least 8 bytes (EMF) or 6 (WMF), so there are no loops; bitmap sizes are checked before
+anything is allocated.
+
+Tests: `MetafileTests` (every platform) writes EMF and WMF files record by record in code and checks the pixels, the
+PNG and vector PDF conversions, the layout engine's pages, EMF+ dual / only and the hostile cases (cut off, oversized
+and empty records, huge counts, wrong object numbers, the limits, random damage). `MetafileGdiTests` (Windows) records
+metafiles with GDI and GDI+, draws them with GDI+ and with Filee at 4 × the size, and compares 400 × 300 pictures of
+4 × 4 pixel blocks (GDI doesn't smooth edges and Filee does; the blocks measure where things are and what colour):
+
+| Recorded with | SSIM (4 × 4 blocks) | SSIM (drawn at 400 × 300) |
+|---|---|---|
+| GDI: shapes, pens, hatch and solid brushes | 0.990 | 0.903 |
+| GDI: bitmap, filled path, clip, world transform | 0.989 | 0.957 |
+| GDI → WMF (GetWinMetaFileBits): shapes and text | 0.987 | 0.936 |
+| GDI+, EMF only: shapes, hatch, gradient, dashed Bézier, rotation | 0.983 | 0.913 |
+| GDI+, EMF+ dual: the same | 0.972 | 0.882 |
+| GDI+, EMF only: bitmap, clip | 0.988 | 0.912 |
+| GDI+, EMF only: text (Arial, Malgun Gothic bold, Times New Roman italic) | 0.967 | 0.637 |
+| GDI: text (Arial, Times New Roman, Malgun Gothic, centred on a baseline) | 0.921 | 0.407 |
+
+Text is held to 0.9: GDI hints glyphs to the pixel grid and draws their stems darker and wider than the outlines.
+For EMF+ dual files GDI+ draws the EMF+ records, which lay text out with GDI+'s own grid-fitted advances and carry
+undithered bitmaps, while the EMF records Filee draws (and GDI+ draws for an EMF-only file) don't: GDI+'s own pictures
+of the two records agree at 0.59 for text and 0.90 for a bitmap, and Filee reaches 0.58 and 0.89 against the EMF+ one.
 
 ## Tracing (raster images → SVG)
 
@@ -624,7 +717,7 @@ its page had no rules or box. The prototype is not in the repository.
 - Everything else a page has, A gets from Skia: paths, strokes and dashes, gradients, clipping, transparency, pictures
   (JPEG passed through, others deflated with soft masks), links and destinations. B would need its own writer for each
   of them, and the PNG route would need a second renderer that has to look the same (the planned check is SSIM ≥ 0.99
-  between PNG and PDF). The EMF/WMF renderer item draws to `SKCanvas` and gets PDF for free with A.
+  between PNG and PDF). The [EMF/WMF renderer](#emf--wmf-renderer) draws to `SKCanvas` and gets PDF for free with A.
 - A's workarounds are small and contained in `PdfPageWriter`: exact page sizes and the outline through PDFsharp, a
   document-wide glyph collection before drawing (the page model is complete by then).
 
@@ -1909,8 +2002,8 @@ DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`)
   pictures* gets none: a Lua filter drops them).
 - Pictures are linked relative to the result (`<name>_files/media/…`; Pandoc runs in the result's folder, with
   `--resource-path` pointing at the source's for pictures the source links to), so both can be moved together.
-  EMF and WMF pictures, common in Word documents, become PNG (ImageMagick draws metafiles on Windows only; elsewhere
-  they stay).
+  EMF and WMF pictures, common in Word documents, become PNG (drawn by the [metafile renderer](#emf--wmf-renderer);
+  one that can't be drawn stays).
 - Markdown is GitHub-flavoured and kept free of HTML, which many Markdown editors show as code (#391). A Lua filter
   lays every table out as a pipe table: a merged cell keeps its text in its first position and leaves the cells it
   covered empty, the paragraphs and list items of a cell are joined with `<br>`, and a table without a header row

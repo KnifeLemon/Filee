@@ -12,7 +12,7 @@ internal static class ImageEncoder
     /// <summary>
     /// Image formats ImageMagick can read (see <see cref="ImageReader"/> for RAW, layered and metafile sources).
     /// Camera RAW is decoded by LibRaw; XCF, HEIC, DICOM, Photo CD, OpenEXR, Radiance HDR and FITS are read only. EMF/WMF
-    /// are Windows metafiles, which ImageMagick renders through GDI+ on Windows only (<see cref="Metafiles"/>). APNG is
+    /// are drawn by Filee's own metafile renderer on every platform (<see cref="Metafiles"/>). APNG is
     /// read and written by Filee's own <see cref="Apng"/> (its frames decoded and encoded by ImageMagick); FITS is read
     /// by Filee's own <see cref="Fits"/> and written to TIFF by <see cref="FitsRendering"/>.
     /// </summary>
@@ -24,7 +24,7 @@ internal static class ImageEncoder
         "dcm", "pcd", "exr", "hdr", "fits",
     ];
 
-    /// <summary>Vector metafiles ImageMagick rasterizes (Windows only: it uses GDI+).</summary>
+    /// <summary>Vector metafiles, rendered by Filee's own renderer (Metafiles/Metafile.cs) and encoded by ImageMagick.</summary>
     public static readonly string[] Metafiles = ["emf", "wmf"];
 
     /// <summary>
@@ -88,11 +88,10 @@ internal static class ImageEncoder
     public static readonly string[] Packages = ["livp"];
 
     /// <summary>
-    /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on
-    /// Windows, the metafiles.
+    /// Every format the image engine reads as input: the raster formats, the picture of <see cref="Packages"/> and the
+    /// metafiles.
     /// </summary>
-    public static IEnumerable<string> Sources =>
-        OperatingSystem.IsWindows() ? [.. Readable, .. Packages, .. Metafiles] : [.. Readable, .. Packages];
+    public static IEnumerable<string> Sources => [.. Readable, .. Packages, .. Metafiles];
 
     public static MagickFormat ToMagickFormat(string formatId) => formatId switch
     {

@@ -64,5 +64,7 @@
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" />
     <!-- Tests only: validates generated DOCX files against the Office Open XML schemas. -->
     <PackageVersion Include="DocumentFormat.OpenXml" Version="3.5.1" />
+    <!-- Tests only, on Windows: GDI+ records metafiles and draws the reference the metafile renderer is compared with. -->
+    <PackageVersion Include="System.Drawing.Common" Version="10.0.14" />
   </ItemGroup>
 </Project>
