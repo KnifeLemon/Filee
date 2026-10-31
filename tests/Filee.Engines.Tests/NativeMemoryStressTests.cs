@@ -1,4 +1,4 @@
-// Engine paths that hand memory to native code (PDFium, Skia, HarfBuzz, ImageMagick, WIC, unhwp) run on several
+// Engine paths that hand memory to native code (PDFium, Skia, HarfBuzz, ImageMagick, WIC) run on several
 // threads while another thread keeps compacting the managed heap and a third drops the engines' caches the way the
 // idle memory trim does. Native code that keeps a pointer into an unpinned managed buffer, a callback whose delegate
 // was collected, or a cache release that frees something still in use crashes the test host or corrupts the output.
@@ -38,8 +38,6 @@ public class NativeMemoryStressTests(EngineFixture fx) : IClassFixture<EngineFix
             JpegXrBuilder.WriteBgr(jxr, 96, 64, (x, y) => ((byte)x, (byte)y, 128)); // WIC CopyPixels into a pinned array
             routes.Add((jxr, "png"));
         }
-        if (fx.Catalog.StatusOf(fx.Converters.Single(c => c.Id == "unhwp")).IsAvailable)
-            routes.Add((await fx.MakeHwpxAsync(fx.NewFolder()), "md"));
 
         // Every worker goes through every route at least once, however slow the machine; then until the time is up.
         using var stop = new CancellationTokenSource(Duration);

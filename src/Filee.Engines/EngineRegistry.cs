@@ -45,7 +45,7 @@ public static class EngineRegistry
         new PdfSharpConverter(),
         new PdfiumConverter(),
         new RhwpConverter(),
-        new UnhwpConverter(),
+        new HwpTextConverter(),
         new MarkdownConverter(),
         new SpreadsheetConverter(),
         new OoxmlConverter(),

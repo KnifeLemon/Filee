@@ -1392,6 +1392,22 @@ public class UserDataStoreTests
         Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
     }
 
+    [Theory]
+    [InlineData("""["magick", "rhwp", "unhwp", "markdown", "hwpx-writer", "libreoffice"]""", new[] { "magick", "rhwp", "hwp-text", "markdown", "hwpx-writer", "libreoffice" })]
+    [InlineData("""["unhwp", "magick", "hwp-text", "libreoffice"]""", new[] { "magick", "hwp-text", "libreoffice" })]
+    [InlineData("""["magick", "libreoffice"]""", new[] { "magick", "libreoffice" })]
+    public void Version_57_settings_put_the_built_in_hwp_text_engine_where_unhwp_was(string order, string[] expected)
+    {
+        using var dir = new TempDir();
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), $$"""{ "schemaVersion": 57, "enginePriority": {{order}} }""");
+
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+
+        Assert.Equal(expected, store.Settings.EnginePriority);
+        Assert.Equal(AppSettings.CurrentSchemaVersion, store.Settings.SchemaVersion);
+    }
+
     [Fact]
     public void Version_20_libraries_open_jpeg_xr_on_the_images_donut()
     {
