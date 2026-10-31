@@ -297,6 +297,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             using var document = OpenForChanges(plain);
             PdfCompressor.Compress(document, level, preset.Image.KeepMetadata, ct);
             document.Save(builtIn);
+            PdfObjectStreams.Rewrite(builtIn);
             candidates.Add(builtIn);
         }
         catch (Exception ex) when (gs is not null && ex is not OperationCanceledException)

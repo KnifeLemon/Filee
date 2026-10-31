@@ -51,12 +51,41 @@ internal static class CmapTable
         return map;
     }
 
+    /// <summary>
+    /// Every subtable's map with its platform and encoding, as a PDF viewer picks one for a simple TrueType font
+    /// ((3,1), (3,0) or (1,0), whose byte-encoding format 0 is read too).
+    /// </summary>
+    public static List<(int Platform, int Encoding, Dictionary<int, int> Map)> ReadAll(byte[] cmap)
+    {
+        var result = new List<(int, int, Dictionary<int, int>)>();
+        var r = new BigEndianReader(cmap);
+        r.Skip(2); // version
+        int count = r.U16();
+        for (var i = 0; i < count; i++)
+        {
+            int platform = r.U16();
+            int encoding = r.U16();
+            var offset = r.U32();
+            if (offset > cmap.Length - 4)
+                continue;
+            var map = new Dictionary<int, int>();
+            ReadSubtable(cmap, (int)offset, map);
+            result.Add((platform, encoding, map));
+        }
+        return result;
+    }
+
     private static void ReadSubtable(byte[] cmap, int offset, Dictionary<int, int> map)
     {
         var r = new BigEndianReader(cmap, offset);
         int format = r.U16();
         switch (format)
         {
+            case 0:
+                r.Skip(4); // length, language
+                for (var code = 0; code < 256 && r.Remaining > 0; code++)
+                    Add(map, code, r.U8());
+                break;
             case 4:
                 ReadFormat4(cmap, offset, map);
                 break;

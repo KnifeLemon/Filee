@@ -61,8 +61,12 @@ internal static class FontSubsetter
     /// </param>
     /// <exception cref="NotSupportedException">The font is one <see cref="CanSubset"/> refuses.</exception>
     /// <exception cref="ArgumentOutOfRangeException">A glyph ID is outside the font.</exception>
+    /// <param name="keepGlyphCount">
+    /// Keeps the font's glyph count instead of cutting it after the highest used glyph, for a font whose own cmap or
+    /// glyph names stay (a simple TrueType font in a PDF), so none of their glyph IDs points past the end.
+    /// </param>
     public static SfntFont Subset(SfntFont font, IEnumerable<int> glyphs, CancellationToken cancellationToken = default,
-        IReadOnlySet<int>? codePoints = null)
+        IReadOnlySet<int>? codePoints = null, bool keepGlyphCount = false)
     {
         if (!CanSubset(font, out var reason))
             throw new NotSupportedException(reason);
@@ -83,7 +87,7 @@ internal static class FontSubsetter
         var longLoca = FontTables.IndexToLocFormat(head) != 0;
         var loca = GlyfTable.ReadLoca(source.Require("loca"), glyphCount, longLoca, glyf.Length);
         var used = Closure(glyf, loca, wanted);
-        var count = used.Max() + 1;
+        var count = keepGlyphCount ? glyphCount : used.Max() + 1;
 
         var outlines = new byte[count][];
         for (var gid = 0; gid < count; gid++)

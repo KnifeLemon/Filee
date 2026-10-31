@@ -43,6 +43,12 @@ internal sealed class Type2Interpreter(CffFont font)
     private double _y;
     private (double Adx, double Ady, int Base, int Accent)? _seac;
 
+    /// <summary>Called with the subroutine list (global or a font dictionary's local one) and index of each call.</summary>
+    public Action<byte[][], int>? SubroutineCalled { get; set; }
+
+    /// <summary>Called with the base and accent glyphs a seac accent draws.</summary>
+    public Action<int>? AccentGlyphUsed { get; set; }
+
     /// <summary>Runs a glyph's charstring and returns its contours (seac accents are drawn in place).</summary>
     public List<PathContour> Run(int glyph) => Run(glyph, allowSeac: true);
 
@@ -69,6 +75,8 @@ internal sealed class Type2Interpreter(CffFont font)
                 throw new InvalidDataException("A CFF accent is itself an accented glyph.");
             var baseGlyph = font.GlyphBySid(CffStandardData.StandardEncoding[seac.Base & 0xFF]);
             var accentGlyph = font.GlyphBySid(CffStandardData.StandardEncoding[seac.Accent & 0xFF]);
+            AccentGlyphUsed?.Invoke(baseGlyph);
+            AccentGlyphUsed?.Invoke(accentGlyph);
             contours.AddRange(Run(baseGlyph, allowSeac: false));
             foreach (var contour in Run(accentGlyph, allowSeac: false))
                 contours.Add(Translate(contour, new Vec2(seac.Adx, seac.Ady)));
@@ -377,6 +385,7 @@ internal sealed class Type2Interpreter(CffFont font)
         var index = (int)Pop() + bias;
         if (index < 0 || index >= subrs.Length)
             throw new InvalidDataException("A CFF charstring calls a missing subroutine.");
+        SubroutineCalled?.Invoke(subrs, index);
         return subrs[index];
     }
 
