@@ -164,6 +164,42 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Page_borders_and_backgrounds_go_under_the_page_by_side_and_hiding()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"));
+        foreach (var paragraph in section.Blocks.OfType<HParagraph>().Skip(1))
+            paragraph.PageBreakBefore = true;
+        ((HParagraph)section.Blocks[2]).PageHiding = new HPageHiding(false, false, Border: true);
+        var line = new HBorder(HBorderStyle.Solid, 1, "#000000");
+        // Both pages: a border 5 pt around the body; odd pages: a green paper and a border 5 pt in from the paper's edges.
+        section.PageBorders.Add(new HPageBorder(HPageType.Both, new HBorders(line, line, line, line), null, null, new HInsets(500, 500, 500, 500),
+            AroundBody: true, HeaderInside: false, FooterInside: false, HPageFillArea.Paper));
+        section.PageBorders.Add(new HPageBorder(HPageType.Odd, new HBorders(line, line, line, line), "#00FF00", null, new HInsets(500, 500, 500, 500),
+            AroundBody: false, HeaderInside: false, FooterInside: false, HPageFillArea.Paper));
+        section.PageFillShows = HFirstPageRule.HideFirst;
+
+        var pages = Compose(section).Pages;
+        SKColor Pixel(int page, int x, int y)
+        {
+            using var bitmap = pages[page].Render(72); // 1 pixel = 1 pt
+            return bitmap.GetPixel(x, y);
+        }
+
+        // Page 1: the odd pages' border 5 pt in from the paper, no background on the section's first page.
+        Assert.True(Pixel(0, 5, 100).Red < 80);
+        Assert.Equal(SKColors.White, Pixel(0, 2, 2));
+        Assert.Equal(SKColors.White, Pixel(0, 50, 15));
+        // Page 2: the border for both pages, around the body (10..90 × 20..180) grown by 5 pt; no background.
+        Assert.True(Pixel(1, 5, 100).Red < 80);
+        Assert.True(Pixel(1, 50, 15).Red < 80);
+        Assert.Equal(SKColors.White, Pixel(1, 2, 2));
+        // Page 3 hides its border but keeps the odd pages' background, drawn under the text.
+        Assert.Equal(new SKColor(0, 255, 0), Pixel(2, 2, 2));
+        Assert.Equal(new SKColor(0, 255, 0), Pixel(2, 5, 100));
+        Assert.Equal(["three"], Texts(pages[2]));
+    }
+
+    [Fact]
     public void Page_numbers_count_on_across_sections_unless_one_restarts_them()
     {
         var first = Section(Small, Paragraph("a"), Paragraph("b"));

@@ -13,6 +13,7 @@
 // - Headers and footers: the section's header and footer for both pages, odd or even pages (by page number), none on
 //   the section's first page where it hides them; laid out in the header and footer areas.
 // - Master pages (바탕쪽): drawn behind the page's body (or in front of it) from the top of the body; see MasterPages.
+// - Page borders and backgrounds (쪽 테두리/배경) under everything else; see PageBorder.
 // - Page numbers count on from section to section unless a section restarts them; a page number field shows the
 //   number of its page and a total pages field the count, which a first pass finds when the body shows it.
 // - Styles: models read from other formats leave formats to the 한글 style (null members); with a StyleResolver every
@@ -35,6 +36,7 @@
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Metafiles;
 using Filee.Engines.Rendering;
 using SkiaSharp;
 
@@ -76,7 +78,7 @@ internal sealed class PageComposer
     }
 
     /// <summary>The page geometry of a section, in points.</summary>
-    private sealed record Geometry(float Width, float Height, float Left, float TextWidth, float HeaderTop, float BodyTop, float BodyBottom, float FooterTop)
+    private sealed record Geometry(float Width, float Height, float Left, float TextWidth, float HeaderTop, float BodyTop, float BodyBottom, float FooterTop, float FooterBottom)
     {
         public static Geometry Of(HPage page) => new(
             page.Width / 100f,
@@ -86,7 +88,8 @@ internal sealed class PageComposer
             page.Top / 100f,
             (page.Top + page.Header) / 100f,
             (page.Height - page.Bottom - page.Footer) / 100f,
-            (page.Height - page.Bottom - page.Footer) / 100f);
+            (page.Height - page.Bottom - page.Footer) / 100f,
+            (page.Height - page.Bottom) / 100f);
     }
 
     /// <summary>A page and what its headers and footers need.</summary>
@@ -289,6 +292,7 @@ internal sealed class PageComposer
             for (var i = 0; i < _pages.Count; i++)
             {
                 var page = _pages[i];
+                PageBorder(page);
                 MasterPages(page, lastOfSection: i == _pages.Count - 1 || _pages[i + 1].Section != page.Section);
                 DrawObjects(page);
                 HeadersAndFooters(page);
@@ -916,6 +920,71 @@ internal sealed class PageComposer
                 _y = start + height + shape.Between / 100f;
             }
             _endnotes.Clear();
+        }
+
+        // ───────────────────────── Page borders ─────────────────────────
+
+        /// <summary>
+        /// Draws a page's border and background (쪽 테두리/배경) under everything else: the odd or even pages' one where it
+        /// draws something, else the one for both pages. 한글 places the border around the body grown by its offsets
+        /// (around the header and footer areas too when they are inside), or its offsets in from the paper's edges.
+        /// </summary>
+        private void PageBorder(Page page)
+        {
+            var section = page.Section;
+            static bool Shows(HFirstPageRule rule, bool first) => rule switch
+            {
+                HFirstPageRule.HideFirst => !first,
+                HFirstPageRule.OnlyFirst => first,
+                _ => true,
+            };
+            var side = page.Number % 2 == 0 ? HPageType.Even : HPageType.Odd;
+            if ((section.PageBorders.LastOrDefault(b => b.Pages == side) ?? section.PageBorders.LastOrDefault(b => b.Pages == HPageType.Both)) is not { } border)
+                return;
+            var showBorder = Shows(section.PageBorderShows, page.FirstOfSection) && page.Hiding?.Border != true;
+            var showFill = Shows(section.PageFillShows, page.FirstOfSection) && page.Hiding?.Fill != true;
+            if (!showBorder && !showFill)
+                return;
+
+            var g = page.Geometry;
+            var paper = new SKRect(0, 0, g.Width, g.Height);
+            var (left, right) = (g.Left, g.Left + g.TextWidth);
+            var o = border.Offsets;
+            var frame = border.AroundBody
+                ? new SKRect(left - o.Left / 100f, (border.HeaderInside ? g.HeaderTop : g.BodyTop) - o.Top / 100f,
+                    right + o.Right / 100f, (border.FooterInside ? g.FooterBottom : g.BodyBottom) + o.Bottom / 100f)
+                : new SKRect(o.Left / 100f, o.Top / 100f, g.Width - o.Right / 100f, g.Height - o.Bottom / 100f);
+            var area = border.FillArea switch
+            {
+                HPageFillArea.Border => frame,
+                HPageFillArea.Page => new SKRect(left, g.HeaderTop, right, g.FooterBottom),
+                _ => paper,
+            };
+            var layer = new PageContent(g.Width, g.Height);
+            layer.Draw(canvas =>
+            {
+                if (showFill && border.Fill is not null && ParagraphText.Color(border.Fill) is { } color)
+                {
+                    using var paint = new SKPaint { Style = SKPaintStyle.Fill, Color = color };
+                    canvas.DrawRect(area, paint);
+                }
+                if (showFill && border.Picture is { } path && File.Exists(path))
+                {
+                    if (Metafile.IsMetafile(path))
+                    {
+                        using var drawing = Metafile.TryLoad(path);
+                        drawing?.Draw(canvas, area);
+                    }
+                    else if (SKImage.FromEncodedData(path) is { } image)
+                    {
+                        using (image)
+                            canvas.DrawImage(image, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+                    }
+                }
+                if (showBorder)
+                    TableLayout.Borders(canvas, border.Borders, frame);
+            });
+            page.Content.Add(layer, under: true);
         }
 
         // ───────────────────────── Master pages ─────────────────────────
