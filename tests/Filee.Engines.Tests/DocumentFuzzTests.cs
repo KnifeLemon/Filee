@@ -80,6 +80,8 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             throw new InvalidDataException(ex.Message, ex);
         }
     };
+
+    [Fact]
     public void NotebookReader_reads_or_refuses_every_mutated_notebook() =>
         Fuzz("ipynb", "ipynb", [System.Text.Encoding.UTF8.GetBytes(NotebookTests.Analysis())], (path, media) => NotebookReader.Read(path, media),
             JsonMutator(["{", "}", "[", "]", ",", ":", "\"cells\"", "\"source\"", "\"outputs\"", "\"cell_type\": \"code\"", "\"cell_type\": \"markdown\"",
