@@ -560,6 +560,19 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void A_text_box_laid_out_like_a_character_shows_its_text_in_a_document_without_tables()
+    {
+        var box = new HTextBox { Width = 4000, Height = 2000, BaseLine = 85, Line = HBorder.None };
+        box.Blocks.Add(Paragraph("inside"));
+        var paragraph = Paragraph("before ");
+        paragraph.Inlines.Add(box);
+
+        var page = Assert.Single(Compose(Section(Small, paragraph)).Pages);
+
+        Assert.Contains(Runs(page), r => r.Text.Trim() == "inside");
+    }
+
+    [Fact]
     public void Objects_behind_the_text_are_drawn_before_it_and_the_others_after_it()
     {
         var paragraph = Paragraph("Text");

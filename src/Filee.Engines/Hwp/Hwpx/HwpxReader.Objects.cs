@@ -75,10 +75,66 @@ internal sealed partial class HwpxReader
                 if ((Attr(element, "mainText") ?? Child(element, "mainText")?.Value) is { Length: > 0 } main)
                     builder.AddText(main, format);
                 break;
+            case "btn" or "checkBtn" or "radioBtn" or "edit" or "comboBox" when _forLayout:
+                builder.Add(FormControl(element));
+                break;
             default:
                 Skip(element); // ole, chart, video, form controls, ...
                 break;
         }
+    }
+
+    /// <summary>
+    /// A form control (read for layout) as 한글 prints it: a box of the control's size and background with its text in
+    /// the control's character format and colour, a button's caption centred in a framed box, a check box's or radio
+    /// button's caption after a small square or circle, an edit box's text (masked by its password character) or a
+    /// combo box's text in a frame.
+    /// </summary>
+    private HTextBox FormControl(XElement control)
+    {
+        var name = control.Name.LocalName;
+        var size = Child(control, "sz");
+        var anchor = Anchor(control);
+        var format = CharFormat(Attr(Child(control, "formCharPr"), "charPrIDRef"));
+        if (Color(Attr(control, "foreColor")) is { } color)
+            format = format with { Color = color };
+        var framed = name is "btn" or "edit" or "comboBox" && Attr(control, "drawFrame") != "0";
+        var box = new HTextBox
+        {
+            Width = Int(size, "width"),
+            Height = Int(size, "height"),
+            Anchor = anchor,
+            BaseLine = anchor is null ? 85 : null,
+            Fill = name is "checkBtn" or "radioBtn" && Attr(control, "backStyle") == "TRANSPARENT" ? null : Color(Attr(control, "backColor")),
+            Line = framed ? new HBorder(HBorderStyle.Solid, 0.12, "#808080") : HBorder.None,
+            Padding = new HInsets(141, 141, 0, 0),
+            VerticalAlign = HVerticalAlign.Center,
+            OuterMargin = Child(control, "outMargin") is { } outMargin
+                ? new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"))
+                : default,
+        };
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: name == "btn" ? HAlign.Center : HAlign.Left, Left: 0, Right: 0, FirstLine: 0) };
+        if (name is "checkBtn" or "radioBtn")
+        {
+            // The mark is drawn, not written: a square or a circle as high as the text.
+            var mark = Math.Max(500, (format.Size ?? 1000) * 9 / 10);
+            paragraph.Inlines.Add(new HShape(name == "checkBtn" ? HShapeKind.Rectangle : HShapeKind.Ellipse)
+            {
+                Width = mark,
+                Height = mark,
+                Fill = "#FFFFFF",
+                Line = new HBorder(HBorderStyle.Solid, 0.12, "#808080"),
+                BaseLine = 85,
+            });
+            paragraph.Inlines.Add(new HText(" ", format));
+        }
+        var text = name is "edit" or "comboBox" ? Child(control, "text")?.Value ?? "" : Attr(control, "caption") ?? "";
+        if (name == "edit" && Attr(control, "passwordChar") is { Length: > 0 } password && text.Length > 0)
+            text = new string(password[0], text.Length);
+        if (text.Length > 0)
+            paragraph.Inlines.Add(new HText(text, format));
+        box.Blocks.Add(paragraph);
+        return box;
     }
 
     /// <summary>The model objects for one drawing object; groups give one object per member.</summary>
