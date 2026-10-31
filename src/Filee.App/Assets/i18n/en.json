@@ -190,6 +190,8 @@
   "engine.layout.description": "Filee's own layout engine: HWPX and documents → PDF, without other programs.\nA preview: turn it on in Settings → Engines.",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "Writes Word documents (DOCX) from PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheets, slides and e-books.",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "Writes OpenDocument text (ODT, LibreOffice Writer) from Word documents, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheets, slides and e-books.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Extracts the text of PDFs in reading order, also from two-column pages (no OCR for scans).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

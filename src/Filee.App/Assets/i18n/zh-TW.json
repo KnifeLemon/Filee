@@ -190,6 +190,8 @@
   "engine.layout.description": "Filee 自己的排版引擎：不需其他程式，就能把 HWPX 和文件轉成 PDF。\n這是預覽功能，請在「設定 → 轉換引擎」中開啟。",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "用 PDF、OFD、HWP/HWPX、Markdown、HTML、表格、投影片和電子書產生 Word 文件（DOCX）。",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "用 Word 文件、PDF、OFD、HWP/HWPX、Markdown、HTML、表格、投影片和電子書產生 OpenDocument 文字文件（ODT）。",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "按閱讀順序擷取 PDF 中的文字，雙欄頁面也能正確排序（不對掃描檔做文字辨識）。",
   "engine.pdf-slides.name": "PDF slides (built-in)",

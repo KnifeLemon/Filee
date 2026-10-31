@@ -76,6 +76,8 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     [InlineData("vertical.docx", "word/document.xml", "<w:sectPr><w:textDirection w:val=\"tbRl\"/></w:sectPr>", "vertical text")]
     [InlineData("chart.docx", "word/document.xml", "<w:drawing><c:chart r:id=\"rId5\"/></w:drawing>", "OLE objects and charts")]
     [InlineData("smartart.docx", "word/document.xml", "<w:drawing><dgm:relIds r:dm=\"rId1\"/></w:drawing>", "SmartArt")]
+    [InlineData("chart.odt", "content.xml", "<office:text><draw:frame><draw:object xlink:href=\"./Object 1\"/></draw:frame></office:text>", "OLE objects and charts")]
+    [InlineData("vertical.odt", "content.xml", "<style:paragraph-properties style:writing-mode=\"tb-rl\"/>", "vertical text")]
     [InlineData("plain.docx", "word/document.xml", "<w:body><w:p><w:r><w:t>text</w:t></w:r></w:p></w:body>", null)]
     public void The_check_names_what_it_cant_draw_yet(string name, string part, string content, string? expected)
     {

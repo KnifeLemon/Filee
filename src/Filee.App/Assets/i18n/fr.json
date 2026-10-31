@@ -190,6 +190,8 @@
   "engine.layout.description": "Le moteur de mise en page propre à Filee : HWPX et documents → PDF, sans autre programme.\nUn aperçu : à activer dans Paramètres → Moteurs.",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "Écrit des documents Word (DOCX) à partir de PDF, OFD, HWP/HWPX, Markdown, HTML, feuilles de calcul, diapositives et livres numériques.",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "Écrit des documents texte OpenDocument (ODT) à partir de documents Word, PDF, OFD, HWP/HWPX, Markdown, HTML, feuilles de calcul, diapositives et livres numériques.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Extrait le texte des PDF dans l'ordre de lecture, y compris sur deux colonnes (pas d'OCR pour les numérisations).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

@@ -183,6 +183,8 @@
   "engine.layout.description": "Mesin tata letak Filee sendiri: HWPX dan dokumen → PDF tanpa program lain.\nPratinjau: nyalakan di Pengaturan → Mesin.",
   "engine.docx-writer.name": "Penulis DOCX (bawaan)",
   "engine.docx-writer.description": "Menulis dokumen Word (DOCX) dari PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheet, slide, dan e-book.",
+  "engine.odt-writer.name": "Penulis ODT (bawaan)",
+  "engine.odt-writer.description": "Menulis dokumen teks OpenDocument (ODT) dari dokumen Word, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheet, slide, dan e-book.",
   "engine.pdf-text.name": "Teks PDF (bawaan)",
   "engine.pdf-text.description": "Mengekstrak teks PDF sesuai urutan baca, termasuk halaman dua kolom (tanpa OCR untuk dokumen pindai).",
   "engine.pdf-slides.name": "Slide PDF (bawaan)",

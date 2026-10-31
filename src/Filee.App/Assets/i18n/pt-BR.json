@@ -190,6 +190,8 @@
   "engine.layout.description": "O mecanismo de diagramação do próprio Filee: HWPX e documentos → PDF, sem outros programas.\nUma prévia: ative em Configurações → Mecanismos.",
   "engine.docx-writer.name": "Gerador DOCX (mecanismo integrado)",
   "engine.docx-writer.description": "Grava documentos do Word (DOCX) a partir de PDF, OFD, HWP/HWPX, Markdown, HTML, planilhas, slides e e-books.",
+  "engine.odt-writer.name": "Gerador ODT (mecanismo integrado)",
+  "engine.odt-writer.description": "Grava documentos de texto OpenDocument (ODT) a partir de documentos do Word, PDF, OFD, HWP/HWPX, Markdown, HTML, planilhas, slides e e-books.",
   "engine.pdf-text.name": "Texto de PDF (mecanismo integrado)",
   "engine.pdf-text.description": "Extrai o texto de PDFs na ordem de leitura, também de páginas em duas colunas (sem OCR para digitalizações).",
   "engine.pdf-slides.name": "Slides de PDF (mecanismo integrado)",

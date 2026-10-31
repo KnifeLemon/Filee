@@ -1,8 +1,8 @@
 // Filee's own document renderer as an engine (id "layout", "Filee renderer"): HWPX and the documents Filee reads into
-// its document model (Word, text, Markdown, HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF in one
-// step, read, laid out and written in-process. A preview the user turns on in Settings → Engines; off, the engine is
-// unavailable and every route stays as it was. Spreadsheets, presentations, PDF and OFD keep their own routes, and HWP
-// keeps rhwp until Filee reads HWP itself.
+// its document model (Word, ODT, RTF, text, Markdown, HTML, e-books, and Pandoc's formats when Pandoc is there) → PDF
+// in one step, read, laid out and written in-process. A preview the user turns on in Settings → Engines; off, the
+// engine is unavailable and every route stays as it was. Spreadsheets, presentations, PDF and OFD keep their own
+// routes, and HWP keeps rhwp until Filee reads HWP itself.
 //
 // Its edges are Checked: before a file is converted, FirstUnsupported looks through it for what the layout engine
 // doesn't draw yet (OLE objects and charts, vertical text, form controls, EMF / WMF pictures, SmartArt), and such a
@@ -34,7 +34,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>Built-in readers of documents (not of sheets, slides, PDF or OFD, which have routes of their own).</summary>
     private static readonly string[] Documents =
     [
-        "hwpx", "docx", "docm", "dotx", "dotm", "txt", "md", "html", "mhtml",
+        "hwpx", "docx", "docm", "dotx", "dotm", "odt", "rtf", "txt", "md", "html", "mhtml",
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz",
     ];
 
@@ -62,12 +62,12 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     }
 
     /// <summary>
-    /// The first thing in the file the layout engine doesn't draw yet, from the parts of an HWPX or a Word package;
+    /// The first thing in the file the layout engine doesn't draw yet, from the parts of an HWPX, Word or ODT package;
     /// other formats hold nothing it can't draw.
     /// </summary>
     public string? FirstUnsupported(string sourcePath, string sourceFormat)
     {
-        var markers = sourceFormat == "hwpx" ? HwpxMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
+        var markers = sourceFormat == "hwpx" ? HwpxMarkers : sourceFormat == "odt" ? OdtMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
         if (markers is null)
             return null;
         using var zip = ZipFile.OpenRead(sourcePath);
@@ -103,6 +103,13 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         (WordOle(), "OLE objects and charts"),
         (WordVertical(), "vertical text"),
         (WordSmartArt(), "SmartArt"),
+    ];
+
+    private static readonly (Regex Pattern, string Feature)[] OdtMarkers =
+    [
+        (OdtObject(), "OLE objects and charts"),
+        (OdtVertical(), "vertical text"),
+        (OdtFormControl(), "form controls"),
     ];
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -154,4 +161,13 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
 
     [GeneratedRegex(@"<dgm:relIds\b")]
     private static partial Regex WordSmartArt();
+
+    [GeneratedRegex(@"<draw:object(?:-ole)?\b")]
+    private static partial Regex OdtObject();
+
+    [GeneratedRegex(@"writing-mode=""tb-")]
+    private static partial Regex OdtVertical();
+
+    [GeneratedRegex(@"<form:\w")]
+    private static partial Regex OdtFormControl();
 }

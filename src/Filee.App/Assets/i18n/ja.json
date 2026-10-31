@@ -183,6 +183,8 @@
   "engine.layout.description": "Filee独自のレイアウトエンジンです。ほかのプログラムなしでHWPXと文書をPDFにします。\nプレビュー機能のため、「設定」→「変換エンジン」でオンにしてください。",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "PDF、OFD、HWP/HWPX、Markdown、HTML、表計算ファイル、スライド、電子書籍からWord文書（DOCX）を作成します。",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "Word文書、PDF、OFD、HWP/HWPX、Markdown、HTML、表計算ファイル、スライド、電子書籍からOpenDocumentテキスト（ODT）を作成します。",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "PDFのテキストを読み順に抽出します。2段組みのページにも対応します（スキャン画像のOCRには非対応）。",
   "engine.pdf-slides.name": "PDF slides (built-in)",

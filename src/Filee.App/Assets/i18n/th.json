@@ -183,6 +183,8 @@
   "engine.layout.description": "เอนจินจัดหน้าของ Filee เอง: HWPX และเอกสาร → PDF โดยไม่ต้องใช้โปรแกรมอื่น\nเป็นฟีเจอร์ตัวอย่าง เปิดได้ที่ การตั้งค่า → เอนจิน",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "เขียนเอกสาร Word (DOCX) จาก PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "เขียนเอกสารข้อความ OpenDocument (ODT) จากเอกสาร Word, PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "แยกข้อความของ PDF ตามลำดับการอ่าน รวมถึงหน้าที่มีสองคอลัมน์ (ไม่มี OCR สำหรับเอกสารสแกน)",
   "engine.pdf-slides.name": "PDF slides (built-in)",

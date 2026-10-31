@@ -190,6 +190,8 @@
   "engine.layout.description": "Собственный движок вёрстки Filee: HWPX и документы → PDF без других программ.\nПредварительная версия: включите в «Настройки → Движки».",
   "engine.docx-writer.name": "DOCX writer (built-in)",
   "engine.docx-writer.description": "Создаёт документы Word (DOCX) из PDF, OFD, HWP/HWPX, Markdown, HTML, таблиц, презентаций и электронных книг.",
+  "engine.odt-writer.name": "ODT writer (built-in)",
+  "engine.odt-writer.description": "Создаёт текстовые документы OpenDocument (ODT) из документов Word, PDF, OFD, HWP/HWPX, Markdown, HTML, таблиц, презентаций и электронных книг.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Достаёт текст из PDF в порядке чтения, в том числе со страниц в две колонки (сканы не распознаются).",
   "engine.pdf-slides.name": "PDF slides (built-in)",
