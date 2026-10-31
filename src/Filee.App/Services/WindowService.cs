@@ -56,12 +56,13 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// <summary>
     /// Reviews the order of a merge (<paramref name="preset"/>, when given, names the button). For "Merge images" the
     /// layout is chosen too and written into <paramref name="preset"/>. Closing or cancelling starts no conversion.
+    /// <paramref name="keepOrder"/>: the files start in the order given (see <see cref="MergeOrderViewModel"/>).
     /// </summary>
-    public async Task<IReadOnlyList<string>?> ChooseMergeOrderAsync(IReadOnlyList<string> files, Preset? preset = null)
+    public async Task<IReadOnlyList<string>?> ChooseMergeOrderAsync(IReadOnlyList<string> files, Preset? preset = null, bool keepOrder = false)
     {
         _mergeOrder?.Close();
         var images = preset is { JoinsImages: true };
-        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null);
+        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder);
         var dialog = new MergeOrderWindow { DataContext = vm };
         if (preset is not null)
             dialog.StartMerge.Content = loc.DisplayName(preset);
@@ -84,6 +85,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         await closed.Task;
         if (dialog.Result is not null && images)
             vm.ApplyTo(preset!.Image);
+        vm.Dispose();
         return dialog.Result;
     }
 
