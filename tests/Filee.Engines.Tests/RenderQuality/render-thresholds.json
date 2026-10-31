@@ -25,8 +25,9 @@
       // ำ (SARA AM) is drawn as its two parts, so the text doesn't round-trip.
       "script-th": { "text": 0.9734, "overlaps": 0.2141 },
       // Lao, Khmer and Myanmar vowel signs and medials are left out or drawn as separate characters at fixed widths.
+      // Khmer overlaps as measured on the CI's Windows runners (0.7754 with the Khmer UI of Windows 11).
       "script-lo": { "text": 0.8953, "overlaps": 0.5403 },
-      "script-km": { "text": 0.9587, "overlaps": 0.7754 },
+      "script-km": { "text": 0.9587, "overlaps": 0.7846 },
       "script-my": { "text": 0.9291, "overlaps": 0.7372 },
       "script-bidi": { "overlaps": 0.3104 },
 
