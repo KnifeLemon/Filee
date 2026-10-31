@@ -127,11 +127,8 @@ internal static class LineBreaker
     }
 
     /// <summary>The script of a unit whose character is an SA letter, or null.</summary>
-    private static UnicodeScript? SaScript(string text, Unit unit)
-    {
-        var codePoint = UnicodeData.CodePointAt(text, unit.Start);
-        return UnicodeData.GetLineBreak(codePoint) == LineBreakClass.SA ? UnicodeData.GetScript(codePoint) : null;
-    }
+    private static UnicodeScript? SaScript(string text, Unit unit) =>
+        unit.ComplexContext ? UnicodeData.GetScript(UnicodeData.CodePointAt(text, unit.Start)) : null;
 
     /// <summary>Whether the code point at <paramref name="index"/> (or the unit ending there) is in <paramref name="set"/>.</summary>
     private static bool Contains(string? set, string text, int index, int length = 0)
@@ -152,7 +149,7 @@ internal static class LineBreaker
     /// marks, so no break falls between them.
     /// </summary>
     private record struct Unit(int Start, int Length, LineBreakClass Class, bool EastAsian, bool InitialQuote, bool FinalQuote,
-        bool PictographicUnassigned, bool Dotted, bool Hyphen2010, bool EndsWithZwj);
+        bool PictographicUnassigned, bool Dotted, bool Hyphen2010, bool EndsWithZwj, bool ComplexContext);
 
     private static List<Unit> Units(string text, LineBreakRules rules)
     {
@@ -161,7 +158,8 @@ internal static class LineBreaker
         {
             var codePoint = UnicodeData.CodePointAt(text, i);
             var size = codePoint > 0xFFFF ? 2 : 1;
-            var cls = Resolve(codePoint, rules);
+            var original = UnicodeData.GetLineBreak(codePoint);
+            var cls = Resolve(codePoint, original, rules);
             // LB9: X (CM | ZWJ)* is X, for any X but BK, CR, LF, NL, SP and ZW. LB10: other marks are AL.
             if (cls is LineBreakClass.CM or LineBreakClass.ZWJ && units.Count > 0 &&
                 units[^1].Class is not (LineBreakClass.BK or LineBreakClass.CR or LineBreakClass.LF or LineBreakClass.NL or LineBreakClass.SP or LineBreakClass.ZW))
@@ -182,7 +180,8 @@ internal static class LineBreaker
                     category == UnicodeCategory.OtherNotAssigned && IsPictographicBlock(codePoint),
                     codePoint == DottedCircle,
                     codePoint == 0x2010,
-                    isZwj));
+                    isZwj,
+                    original == LineBreakClass.SA));
             }
             i += size;
         }
@@ -190,9 +189,8 @@ internal static class LineBreaker
     }
 
     /// <summary>LB1 and the tailorings: the class the rules work with.</summary>
-    private static LineBreakClass Resolve(int codePoint, LineBreakRules rules)
+    private static LineBreakClass Resolve(int codePoint, LineBreakClass cls, LineBreakRules rules)
     {
-        var cls = UnicodeData.GetLineBreak(codePoint);
         cls = cls switch
         {
             LineBreakClass.AI or LineBreakClass.SG or LineBreakClass.XX => LineBreakClass.AL,

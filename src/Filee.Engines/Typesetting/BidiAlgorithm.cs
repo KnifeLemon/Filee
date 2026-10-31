@@ -23,9 +23,29 @@ internal static class BidiAlgorithm
     /// </summary>
     public static bool IsRightToLeft(string text)
     {
-        var (codePoints, _) = Decode(text);
-        var types = codePoints.Select(UnicodeData.GetBidiClass).ToArray();
-        return FirstStrong(types, 0, types.Length) == BidiClass.R;
+        var depth = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var codePoint = UnicodeData.CodePointAt(text, i);
+            if (codePoint > 0xFFFF)
+                i++;
+            switch (UnicodeData.GetBidiClass(codePoint))
+            {
+                case BidiClass.L when depth == 0:
+                    return false;
+                case BidiClass.R or BidiClass.AL when depth == 0:
+                    return true;
+                case BidiClass.RLI or BidiClass.LRI or BidiClass.FSI:
+                    depth++;
+                    break;
+                case BidiClass.PDI when depth > 0:
+                    depth--;
+                    break;
+                case BidiClass.B:
+                    return false;
+            }
+        }
+        return false;
     }
 
     /// <summary>
@@ -34,12 +54,13 @@ internal static class BidiAlgorithm
     /// <param name="rightToLeft">The paragraph's direction; null takes it from the text (P2, P3).</param>
     public static int[] Levels(string text, bool? rightToLeft = null)
     {
+        // Text without anything right to left or explicit in it, in a left-to-right paragraph, is all at level 0 (most
+        // paragraphs).
+        if (rightToLeft != true && LeftToRightOnly(text))
+            return new int[text.Length];
         var (codePoints, starts) = Decode(text);
         var original = codePoints.Select(UnicodeData.GetBidiClass).ToArray();
         var paragraph = (rightToLeft ?? FirstStrong(original, 0, original.Length) == BidiClass.R) ? 1 : 0;
-        // Left-to-right text without anything right to left or explicit in it is all at level 0 (most paragraphs).
-        if (paragraph == 0 && !original.Any(t => t is BidiClass.R or BidiClass.AL or BidiClass.AN || Explicit(t)))
-            return new int[text.Length];
         var levels = Resolve(codePoints, original, paragraph);
 
         var result = new int[text.Length];
@@ -259,6 +280,22 @@ internal static class BidiAlgorithm
             }
         }
         return BidiClass.ON;
+    }
+
+    private static bool LeftToRightOnly(string text)
+    {
+        for (var i = 0; i < text.Length; i++)
+        {
+            // Below U+0590 only the explicit controls aren't left to right or neutral, and they are above it too.
+            if (text[i] < 0x0590)
+                continue;
+            var codePoint = UnicodeData.CodePointAt(text, i);
+            if (codePoint > 0xFFFF)
+                i++;
+            if (UnicodeData.GetBidiClass(codePoint) is BidiClass.R or BidiClass.AL or BidiClass.AN || Explicit(UnicodeData.GetBidiClass(codePoint)))
+                return false;
+        }
+        return true;
     }
 
     private static bool Explicit(BidiClass type) =>
