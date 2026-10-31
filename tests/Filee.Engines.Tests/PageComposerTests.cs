@@ -133,6 +133,73 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Master_pages_go_behind_the_body_by_side_last_page_and_hiding()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"), Paragraph("four"));
+        foreach (var paragraph in section.Blocks.OfType<HParagraph>().Skip(1))
+            paragraph.PageBreakBefore = true;
+        ((HParagraph)section.Blocks[2]).PageHiding = new HPageHiding(false, false, MasterPage: true);
+        HMasterPage Master(HMasterPageKind kind, string text, bool duplicate = false, bool front = false)
+        {
+            var master = new HMasterPage(kind) { Duplicate = duplicate, Front = front };
+            master.Blocks.Add(Paragraph(text));
+            return master;
+        }
+        section.MasterPages.Add(Master(HMasterPageKind.Both, "M"));
+        section.MasterPages.Add(Master(HMasterPageKind.Even, "E", front: true));
+        section.MasterPages.Add(Master(HMasterPageKind.LastPage, "L", duplicate: true));
+
+        var pages = Compose(section).Pages;
+
+        // Behind the body (drawn first), or in front of it; none on the page that hides it; the last page's overlaps.
+        Assert.Equal(["M", "one"], Drawn(pages[0]));
+        Assert.Equal(["two", "E"], Drawn(pages[1]));
+        Assert.Equal(["three"], Drawn(pages[2]));
+        Assert.Equal(["L", "four", "E"], Drawn(pages[3]));
+        // From the top of the body (20 pt): the same baseline as the body's first line.
+        Assert.Equal(28.5f, Runs(pages[0]).Single(r => r.Text == "M").Positions[0].Y, 0.01f);
+
+        section.HideFirstMasterPage = true;
+        Assert.Equal(["one"], Drawn(Compose(section).Pages[0]));
+    }
+
+    [Fact]
+    public void Page_borders_and_backgrounds_go_under_the_page_by_side_and_hiding()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"));
+        foreach (var paragraph in section.Blocks.OfType<HParagraph>().Skip(1))
+            paragraph.PageBreakBefore = true;
+        ((HParagraph)section.Blocks[2]).PageHiding = new HPageHiding(false, false, Border: true);
+        var line = new HBorder(HBorderStyle.Solid, 1, "#000000");
+        // Both pages: a border 5 pt around the body; odd pages: a green paper and a border 5 pt in from the paper's edges.
+        section.PageBorders.Add(new HPageBorder(HPageType.Both, new HBorders(line, line, line, line), null, null, new HInsets(500, 500, 500, 500),
+            AroundBody: true, HeaderInside: false, FooterInside: false, HPageFillArea.Paper));
+        section.PageBorders.Add(new HPageBorder(HPageType.Odd, new HBorders(line, line, line, line), "#00FF00", null, new HInsets(500, 500, 500, 500),
+            AroundBody: false, HeaderInside: false, FooterInside: false, HPageFillArea.Paper));
+        section.PageFillShows = HFirstPageRule.HideFirst;
+
+        var pages = Compose(section).Pages;
+        SKColor Pixel(int page, int x, int y)
+        {
+            using var bitmap = pages[page].Render(72); // 1 pixel = 1 pt
+            return bitmap.GetPixel(x, y);
+        }
+
+        // Page 1: the odd pages' border 5 pt in from the paper, no background on the section's first page.
+        Assert.True(Pixel(0, 5, 100).Red < 80);
+        Assert.Equal(SKColors.White, Pixel(0, 2, 2));
+        Assert.Equal(SKColors.White, Pixel(0, 50, 15));
+        // Page 2: the border for both pages, around the body (10..90 × 20..180) grown by 5 pt; no background.
+        Assert.True(Pixel(1, 5, 100).Red < 80);
+        Assert.True(Pixel(1, 50, 15).Red < 80);
+        Assert.Equal(SKColors.White, Pixel(1, 2, 2));
+        // Page 3 hides its border but keeps the odd pages' background, drawn under the text.
+        Assert.Equal(new SKColor(0, 255, 0), Pixel(2, 2, 2));
+        Assert.Equal(new SKColor(0, 255, 0), Pixel(2, 5, 100));
+        Assert.Equal(["three"], Texts(pages[2]));
+    }
+
+    [Fact]
     public void Page_numbers_count_on_across_sections_unless_one_restarts_them()
     {
         var first = Section(Small, Paragraph("a"), Paragraph("b"));
@@ -860,6 +927,10 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     private static IEnumerable<GlyphRun> Runs(PageContent page) => page.Items.OfType<GlyphItem>().Select(i => i.Run);
+
+    /// <summary>The text of each line of a page, top to bottom, without spaces.</summary>
+    /// <summary>The text of each glyph run of a page, in drawing order.</summary>
+    private static List<string> Drawn(PageContent page) => [.. Runs(page).Select(r => Normalise(r.Text))];
 
     /// <summary>The text of each line of a page, top to bottom, without spaces.</summary>
     private static List<string> Texts(PageContent page) =>

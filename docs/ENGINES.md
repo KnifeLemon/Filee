@@ -936,7 +936,16 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     above the baseline, as 한글's stored lines have them); links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
     with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
-  - Master pages are a later item.
+  - Master pages (바탕쪽): laid out from the top of the body, as wide as it, behind everything on the page (in front of
+    the text when the master page says so): the one for odd or even pages, else the one for both; the last-page and
+    chosen-page masters replace it on their page, or are drawn with it when they overlap (겹치기). None on a section's
+    first page where it hides them (hideFirstMasterPage), nor on a page that hides them (hp:pageHiding).
+  - Page borders and backgrounds (쪽 테두리/배경, hp:pageBorderFill) under everything else: the odd or even pages' one
+    where it draws something, else the one for both pages. As 한글 prints them, textBorder="PAPER" puts the border
+    around the body grown by its offsets (around the header and footer areas too when they are inside), "CONTENT" its
+    offsets in from the paper's edges; the background fills the paper, the page inside its margins or the border.
+    The section's visibility (border, fill: all pages, all but the first, only the first) and a page's hp:pageHiding
+    (hideBorder, hideFill) leave them out.
 - **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
   footnotes and endnotes*):
   - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;

@@ -472,7 +472,8 @@ internal sealed partial class HwpxReader
                 section.PageNumber = control;
                 break;
             case "pageHiding" when _forLayout:
-                builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"));
+                builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"), Flag(control, "hideMasterPage"),
+                    Flag(control, "hideBorder"), Flag(control, "hideFill"));
                 break;
             default:
                 Skip(control); // hidden comments, index marks, page hiding, page number control, ...
