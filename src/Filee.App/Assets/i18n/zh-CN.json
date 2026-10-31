@@ -194,6 +194,8 @@
   "engine.odt-writer.description": "用 Word 文档、PDF、OFD、HWP/HWPX、Markdown、HTML、表格、幻灯片和电子书生成 OpenDocument 文本（ODT）。",
   "engine.markup.name": "Markup languages (built-in)",
   "engine.markup.description": "无需 Pandoc 即可读写 Jupyter 笔记本、OPML、Textile、MediaWiki、reStructuredText、Org 和 DocBook。\n把文档转为这些格式，也把它们转为 Markdown、HTML、文本、DOCX、HWPX 和 PDF。",
+  "engine.pptx-writer.name": "PPTX 生成器（内置）",
+  "engine.pptx-writer.description": "用 Markdown 和标记语言文件、Word 文档、ODT、HWP/HWPX、HTML、表格和电子书生成 PowerPoint 幻灯片（PPTX）：每个标题一张幻灯片，包含列表、表格、图片和代码。",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "按阅读顺序提取 PDF 中的文字，双栏页面也能正确排序（不对扫描件做文字识别）。",
   "engine.pdf-slides.name": "PDF slides (built-in)",

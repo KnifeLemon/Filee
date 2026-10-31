@@ -4,7 +4,6 @@
 
 using Filee.Core.Formats;
 using Filee.Engines.Hwp.Hwpx;
-using Filee.Engines.Office;
 using Filee.Engines.Text;
 
 namespace Filee.Engines.Tests;
@@ -29,11 +28,10 @@ public class MarkupRouteTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 Assert.Equal(engine, Assert.Single(planner.Plan(from, to)!.Steps).Converter.Id);
         }
 
-        // What only Pandoc writes stays Pandoc's.
+        // Slides come from the PPTX writer, which takes every built-in reader; what only Pandoc writes stays Pandoc's.
         var withPandoc = fx.Catalog.CreatePlanner(["pandoc"]);
+        Assert.Equal("pptx-writer", Assert.Single(withPandoc.Plan(markup, "pptx")!.Steps).Converter.Id);
         Assert.Equal("pandoc", Assert.Single(withPandoc.Plan(markup, "tex")!.Steps).Converter.Id);
-        if (PandocConverter.Slides.Contains(markup))
-            Assert.Equal("pandoc", Assert.Single(withPandoc.Plan(markup, "pptx")!.Steps).Converter.Id);
     }
 
     [Fact]

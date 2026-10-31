@@ -42,14 +42,14 @@ internal static class MarkupBlocks
 
     /// <summary>
     /// Code lines as shaded paragraphs, one per line; a blank line gets an empty shaded run, so the writers keep the
-    /// block in one piece. Each line counts as a paragraph.
+    /// block in one piece. Each line counts as a paragraph and is marked as code for the PPTX writer.
     /// </summary>
     public static void CodeLines(IEnumerable<string> lines, List<HBlock> output, DocumentBudget budget, int indent = 0)
     {
         foreach (var line in lines)
         {
             budget.Paragraph();
-            var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default };
+            var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default, Role = HBlockRole.Code };
             paragraph.Inlines.Add(new HText(line.Replace("\t", "    ", StringComparison.Ordinal), Code));
             output.Add(paragraph);
         }
