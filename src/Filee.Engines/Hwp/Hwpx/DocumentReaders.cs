@@ -8,6 +8,7 @@ using System.Text.Json.Nodes;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Hwp.Binary;
+using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
@@ -34,6 +35,10 @@ internal static class DocumentReaders
         ["docm"] = DocxReader.Read,
         ["dotx"] = DocxReader.Read,
         ["dotm"] = DocxReader.Read,
+        // Word 97–2003 (and WPS Office's .wps, the same format): written out as the DOCX package DocxReader reads.
+        ["doc"] = DocReader.Read,
+        ["dot"] = DocReader.Read,
+        ["wps"] = DocReader.Read,
         ["odt"] = OdtReader.Read,
         ["txt"] = (path, _) => TextDocument(File.ReadAllBytes(path)),
         ["rtf"] = RtfReader.Read,
@@ -89,6 +94,16 @@ internal static class DocumentReaders
         ["man"] = "man",
         ["opml"] = "opml",
     };
+
+    /// <summary>
+    /// Formats whose built-in reader doesn't read every file of the format: their edges are checked
+    /// (<see cref="Filee.Core.Conversion.ConversionEdge.Checked"/>), so a Word 6.0 / 95 or Microsoft Works file takes
+    /// LibreOffice when it is installed.
+    /// </summary>
+    public static bool Checked(string format) => DocReader.Formats.Contains(format, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>What the built-in reader of <paramref name="format"/> doesn't read in the file, or null.</summary>
+    public static string? Unsupported(string path, string format) => Checked(format) ? DocReader.Unsupported(path) : null;
 
     /// <summary>Formats read without any optional engine.</summary>
     public static IEnumerable<string> BuiltInFormats => BuiltIn.Keys;

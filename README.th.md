@@ -155,7 +155,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **รูปภาพ**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>อ่าน GIMP XCF, RAW จากกล้อง (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), iPhone Live Photo (LIVP) | แปลงเป็นฟอร์แมตใดก็ได้ข้างต้น (HEIC⁵), PDF, SVG (แปลงลายเส้น), ปรับขนาด, เกรย์สเกล;<br>Live/Motion Photos (iPhone, Android) → วิดีโอ (MP4, MOV⁵), และวิดีโอ → Live Photo (iPhone) หรือ Motion Photo (Android)⁵ (ทดลอง) |
 | **เวกเตอร์**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (เวกเตอร์), PNG และภาพอื่นๆ,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (ภาพของแต่ละหน้า), SVG²;<br>รวมไฟล์ (เลือกลำดับได้), แยกหน้า, เลือกช่วงหน้า, บีบอัดลดขนาด |
-| **เอกสาร**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>อ่าน OFD (ใบกำกับภาษีอิเล็กทรอนิกส์)<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
+| **เอกสาร**: DOCX, DOCM, DOTX, DOC, DOT, EML, Outlook MSG;<br>อ่าน OFD (ใบกำกับภาษีอิเล็กทรอนิกส์)<br>ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
 | **สเปรดชีต**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
 | **งานนำเสนอ**: PPTX, PPTM, POTX, POTM, PPSX<br>PPT, ODP, OTP, FODP, Keynote² | PDF, PNG, JPG, DOCX, HWPX<br>OTP² |
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |

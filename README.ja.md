@@ -158,7 +158,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **画像**：JPG、PNG、WEBP、AVIF、TIFF、BMP、GIF、APNG、ICO、ICNS、JPEG XL、JPEG 2000、PSD/PSB、TGA、PPM、HEIC、QOI、DDS、PCX、MNG、CUR など。<br>GIMP XCF、カメラRAW（CR2、CR3、NEF、ARW、DNG など）、DICOM、OpenEXR、HDR、FITS、JPEG XR（Windows）、iPhoneのLive Photo（LIVP）は読み込みのみ | 上記の形式どうし（HEIC⁵）、PDF、SVG（トレース）、リサイズ、グレースケール。<br>Live Photo/モーションフォト（iPhone、Android）→ その動画（MP4、MOV⁵）、動画 → Live Photo（iPhone）またはモーションフォト（Android）⁵（試験的） |
 | **ベクター画像**：SVG、SVGZ、EMF、WMF、AI<br>EPS、PS¹<br>CDR、VSD、CGM、ODG、FODG² | PDF（ベクター）、PNGなどの画像、<br>SVG ↔ SVGZ、SVG → DXF/DWG、PDF → EPS/PS¹、SVG → EMF、WMF、ODG² |
 | **PDF** | DOCX、HWPX、TXT、PNG、JPG、TIFF、CBZ、PPTX（各ページを1枚の画像として）、SVG²。<br>結合（先に順番を選べます）、分割、ページ範囲、圧縮（PDFを軽量化） |
-| **文書**：DOCX、DOCM、DOTX、EML、Outlook MSG。<br>OFD（中国の電子インボイス、公文書）は読み込みのみ<br>DOC、ODT、FODT、OTT、RTF、WPS、WPD、Pages、ClarisWorks、MacWrite、T602 など² | PDF、DOCX、HWPX、EPUB、TXT、HTML。<br>MSG → EML<br>ODT、FODT、OTT² |
+| **文書**：DOCX、DOCM、DOTX、DOC、DOT、EML、Outlook MSG。<br>OFD（中国の電子インボイス、公文書）は読み込みのみ<br>ODT、FODT、OTT、RTF、WPS、WPD、Pages、ClarisWorks、MacWrite、T602 など² | PDF、DOCX、HWPX、EPUB、TXT、HTML。<br>MSG → EML<br>ODT、FODT、OTT² |
 | **表計算**：XLSX、XLSM、XLS、XLT、ODS、CSV、TSV<br>OTS、FODS、Numbers、ET² | PDF、XLSX、ODS、CSV、TSV、JSON、HWPX、HTML<br>XLT、OTS² |
 | **プレゼンテーション**：PPTX、PPTM、POTX、POTM、PPSX<br>PPT、ODP、OTP、FODP、Keynote² | PDF、PNG、JPG、DOCX、HWPX<br>OTP² |
 | **HWP**：HWP、HWPX | PDF、PNG、DOCX、HWPX ↔ HWP、TXT、Markdown、HTML |

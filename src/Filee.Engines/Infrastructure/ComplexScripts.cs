@@ -17,7 +17,10 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
+using Filee.Core.Conversion;
+using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Office.Sheets;
 
 namespace Filee.Engines.Infrastructure;
@@ -342,6 +345,14 @@ internal static partial class ComplexScripts
             if (format is "xls" or "xlt")
                 return XlsReader.Read(path).Sheets.SelectMany(sheet => sheet.Rows.Values).SelectMany(cells => cells.Values)
                     .Select(cell => Find(cell.Text, classifier, skipBelow)).FirstOrDefault(script => script is not null);
+            // Word 97–2003 is binary too: the text of all its stories (main text, notes, headers, text boxes).
+            if (format is "doc" or "dot" or "wps")
+            {
+                if (!CompoundFile.HasSignature(path))
+                    return FindInText(path, classifier, skipBelow); // RTF or a web page with a .doc name
+                using var doc = DocFile.Open(path, DocumentLimits.Default);
+                return Find(doc.Text(0, doc.CpEnd), classifier, skipBelow);
+            }
             // Web archives and mail are MIME: their HTML (or text) part is what reaches the PDF.
             if (format is "mhtml" or "eml")
             {
@@ -351,9 +362,9 @@ internal static partial class ComplexScripts
             return format is "txt" or "md" or "html" or "csv" or "tsv" or "fb2" or "rtf" or "rst" or "tex" or "org" or "adoc"
                 or "typ" or "mediawiki" or "dbk" or "textile" or "man" or "opml"
                 ? FindInText(path, classifier, skipBelow)
-                : null; // binary formats (HWP, DOC, MOBI, ...): left to the engines
+                : null; // other binary formats (HWP, MOBI, ...): left to the engines
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException or ConversionRefusedException)
         {
             return null;
         }
@@ -411,7 +422,7 @@ internal static partial class ComplexScripts
             && name.IndexOf('/', folder.Length) < 0;
         return format switch
         {
-            "docx" or "docm" or "dotx" or "dotm" => Xml("word/", "document") || Xml("word/", "header") || Xml("word/", "footer")
+            "docx" or "docm" or "dotx" or "dotm" or "doc" or "dot" or "wps" => Xml("word/", "document") || Xml("word/", "header") || Xml("word/", "footer")
                                                      || Xml("word/", "footnotes") || Xml("word/", "endnotes"),
             "pptx" or "pptm" or "potx" or "ppsx" => Xml("ppt/slides/", "slide"),
             "xlsx" or "xlsm" or "xltx" => Xml("xl/", "sharedStrings") || Xml("xl/worksheets/", "sheet"),

@@ -10,6 +10,8 @@
 //  * HTML (HtmlReader, AngleSharp), EPUB, MOBI / AZW3, FB2, HTMLZ and TXTZ (Ebooks) and HWPX (HwpxReader) are read
 //    directly.
 //  * ODT is read directly (Odt/OdtReader), keeping page layouts, headers/footers, styles, lists and tables.
+//  * DOC (Word 97–2003, and WPS Office's .wps) is written out as the DOCX package Word saves and read by DocxReader
+//    (Doc/DocToDocx).
 //  * HWP 5.0 needs no model: its records are written out as the HWPX package 한글 saves (Hwp/Binary/HwpToHwpx).
 //  * RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
 
@@ -21,7 +23,7 @@ using Filee.Engines.Office;
 namespace Filee.Engines.Hwp.Hwpx;
 
 /// <summary>Writes HWPX files with the built-in OWPML writer.</summary>
-public sealed class HwpxConverter : IConverter
+public sealed class HwpxConverter : IConverter, ICapabilityCheck
 {
     private bool? _pandoc;
 
@@ -38,7 +40,10 @@ public sealed class HwpxConverter : IConverter
                 // HWP's records written out as the package 한글 saves (Hwp/Binary), ranked above rhwp's export-hwpx.
                 "hwp" => HwpCost,
                 _ => 10,
-            })).ToList();
+            }, Checked: DocumentReaders.Checked(from))).ToList();
+
+    /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
+    public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);
 
     /// <summary>
     /// HWP → HWPX: Filee's own reader writes the package rather than rhwp. Routes add the engine's place in the default
