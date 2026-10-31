@@ -334,7 +334,8 @@ What is drawn:
 - **Coordinates**: all map modes, window / viewport origins and extents (scaled, offset), world transforms
   (`SetWorldTransform`, `ModifyWorldTransform`), SaveDC / RestoreDC. An EMF's frame (0.01 mm) is the picture; a WMF's
   placeable header box is, played as GDI+ plays it (MM_ANISOTROPIC with window and viewport on the box), and a WMF
-  without that header takes its box from its first window records.
+  without that header takes its box from its first window records, the viewport on the box the right way up (an OLE
+  picture's window runs up, SetWindowExt(cx, -cy), and GDI draws it upright into its rectangle).
 - **Lines and shapes**: lines, polylines, polygons and poly-polygons (alternate / winding), Bézier curves, PolyDraw,
   rectangles, rounded rectangles, ellipses, arcs, chords, pies, ArcTo and AngleArc (arc direction followed), pixels.
 - **Pens**: cosmetic and geometric, solid, dash, dot, dash-dot, dash-dot-dot, alternate and user styles, end caps,
@@ -471,7 +472,8 @@ The model also keeps what a renderer needs and the writers ignore (`Hwp/Hwpx/Hwp
 the source's meaning (Word's multiple and document grid, 한글's "between lines"), 한글's seven language slots and Word's
 four run fonts, paragraph borders and line breaking, stored line layouts, crops, rotation, z-order, master pages,
 polygons, curves and arcs (`HwpxReader.ReadForLayout` also keeps runs apart by that detail and reads master pages and
-those shapes, which `Read` leaves out as before). `StyleResolver` turns what a document leaves to the
+those shapes, which `Read` leaves out as before; it also takes an OLE object as the picture its program left in it,
+`Hwp/Binary/OlePreview.cs`: the WMF or DIB of its presentation stream, or a Paint object's BMP). `StyleResolver` turns what a document leaves to the
 한글 style into concrete values. What the readers take over:
 
 - **DOCX** is read directly (`Hwp/Hwpx/Docx/DocxReader*.cs`) so the layout survives:

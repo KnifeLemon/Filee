@@ -228,21 +228,22 @@ internal sealed class WmfBuilder(int width, int height, int unitsPerInch = 96, i
     public WmfBuilder Polygon(params (int X, int Y)[] points) =>
         Add(0x0324, [points.Length, .. points.SelectMany(p => new[] { p.X, p.Y })]);
 
-    public byte[] ToArray()
+    /// <param name="placeable">With the placeable (Aldus) header; without it the records' window gives the size.</param>
+    public byte[] ToArray(bool placeable = true)
     {
         var eof = new byte[6];
         BinaryPrimitives.WriteUInt32LittleEndian(eof, 3);
         var records = _records.SelectMany(r => r).Concat(eof).ToArray();
 
-        var placeable = new byte[22];
-        BinaryPrimitives.WriteUInt32LittleEndian(placeable, 0x9AC6CDD7);
-        BinaryPrimitives.WriteInt16LittleEndian(placeable.AsSpan(10), (short)width);
-        BinaryPrimitives.WriteInt16LittleEndian(placeable.AsSpan(12), (short)height);
-        BinaryPrimitives.WriteUInt16LittleEndian(placeable.AsSpan(14), (ushort)unitsPerInch);
+        var box = new byte[22];
+        BinaryPrimitives.WriteUInt32LittleEndian(box, 0x9AC6CDD7);
+        BinaryPrimitives.WriteInt16LittleEndian(box.AsSpan(10), (short)width);
+        BinaryPrimitives.WriteInt16LittleEndian(box.AsSpan(12), (short)height);
+        BinaryPrimitives.WriteUInt16LittleEndian(box.AsSpan(14), (ushort)unitsPerInch);
         ushort checksum = 0;
         for (var i = 0; i < 20; i += 2)
-            checksum ^= BinaryPrimitives.ReadUInt16LittleEndian(placeable.AsSpan(i));
-        BinaryPrimitives.WriteUInt16LittleEndian(placeable.AsSpan(20), checksum);
+            checksum ^= BinaryPrimitives.ReadUInt16LittleEndian(box.AsSpan(i));
+        BinaryPrimitives.WriteUInt16LittleEndian(box.AsSpan(20), checksum);
 
         var header = new byte[18];
         BinaryPrimitives.WriteUInt16LittleEndian(header, 1);
@@ -251,6 +252,6 @@ internal sealed class WmfBuilder(int width, int height, int unitsPerInch = 96, i
         BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(6), (uint)((header.Length + records.Length) / 2));
         BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(10), (ushort)objects);
         BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(12), (uint)(_records.Count == 0 ? 3 : _records.Max(r => r.Length) / 2));
-        return [.. placeable, .. header, .. records];
+        return placeable ? [.. box, .. header, .. records] : [.. header, .. records];
     }
 }
