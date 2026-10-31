@@ -7,6 +7,7 @@
 // the differential compare and the read-back checks pick it up without other changes.
 
 using Filee.Engines.Hwp;
+using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Typesetting;
@@ -26,10 +27,13 @@ internal sealed class RenderInput(string path, string workDirectory)
     /// <summary>A folder of this input's own for temporary files.</summary>
     public string WorkDirectory { get; } = workDirectory;
 
-    /// <summary>The document read for layout (HWPX only, until there is an HWP reader).</summary>
-    public HDocument Document => _document ??= Format == "hwpx"
-        ? HwpxReader.ReadForLayout(Path, System.IO.Path.Combine(WorkDirectory, "media"))
-        : throw new NotSupportedException("Only HWPX documents are read for layout.");
+    /// <summary>The document read for layout, from an HWPX or a binary HWP.</summary>
+    public HDocument Document => _document ??= Format switch
+    {
+        "hwpx" => HwpxReader.ReadForLayout(Path, System.IO.Path.Combine(WorkDirectory, "media")),
+        "hwp" => HwpReader.ReadForLayout(Path, System.IO.Path.Combine(WorkDirectory, "media")),
+        _ => throw new NotSupportedException($"{Format} documents aren't read for layout."),
+    };
 }
 
 /// <summary>Renders a document to PDF bytes.</summary>
@@ -45,13 +49,12 @@ internal static class DocumentRenderers
     /// (Typesetting/FileeRenderer.cs, PageComposer.cs). Null would skip the compare.
     /// </summary>
     public static DocumentRenderer? Candidate =>
-        new("filee", Hwpx, (input, ct) => Task.FromResult(FileeRenderer.ToPdf(input.Document, ct)));
+        new("filee", HwpxAndHwp, (input, ct) => Task.FromResult(FileeRenderer.ToPdf(input.Document, ct)));
 
     /// <summary>Why the differential compare doesn't run while <see cref="Candidate"/> is null.</summary>
     public const string NoCandidate =
         "Filee's layout engine has no renderer registered in DocumentRenderers.Candidate";
 
-    public static readonly IReadOnlySet<string> Hwpx = new HashSet<string>(["hwpx"]);
     public static readonly IReadOnlySet<string> HwpxAndHwp = new HashSet<string>(["hwpx", "hwp"]);
 
     /// <summary>rhwp as Filee runs it, or null when rhwp isn't there (fetch it with build/fetch-engines.ps1 -Only rhwp).</summary>
