@@ -195,8 +195,10 @@ internal sealed partial class PdfDocumentReader
                 var size = Math.Max(last.Size, line.Size);
                 // A fixed line spacing (23 pt for 12 pt text is 1.92 em) is no paragraph gap: the page's usual pitch stays inside.
                 var spaced = pagePitch > 0 && Math.Abs(distance - pagePitch) <= 0.08 * pagePitch;
-                // Sizes must match closely: a 14 pt heading under 12 pt text is a paragraph of its own.
-                if (distance <= 0 || (distance > 1.9 * size && !spaced) || Math.Abs(last.Size - line.Size) > Math.Max(1.0, 0.08 * size))
+                // Sizes must match closely: a 14 pt heading under 12 pt text is a paragraph of its own. The size of a line is
+                // the one most of its characters have, so a single larger word (12 pt in 10.5 pt text) does not split the paragraph.
+                var mainSize = Math.Max(last.MainSize, line.MainSize);
+                if (distance <= 0 || (distance > 1.9 * size && !spaced) || Math.Abs(last.MainSize - line.MainSize) > Math.Max(1.0, 0.08 * mainSize))
                     continue;
                 if (item.Lines.Count >= 2 && distance > 1.3 * Pitch(item))
                     continue; // more space than between the lines so far: a new paragraph
