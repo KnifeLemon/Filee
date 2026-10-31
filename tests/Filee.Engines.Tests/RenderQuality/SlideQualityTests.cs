@@ -84,7 +84,10 @@ public sealed class SlideQualityTests(EngineFixture fx) : IClassFixture<EngineFi
         }
         measurements.Add(new Measurement(Renderer, "deck", PdfChecks.PageCount(pdf, SlideFeatures.Names.Length)));
         measurements.Add(new Measurement(Renderer, "deck", PdfChecks.GlyphsOutsidePage(pdf)));
-        measurements.Add(new Measurement(Renderer, "deck", PdfChecks.OverlappingGlyphs(pdf)));
+        // Fonts kern pairs such as "Tr", "Fi" and "f." by more than the check's tolerance (by how much depends on the
+        // fonts installed): only overlaps deeper than the font's own kerning count.
+        using (var kerning = new FontKerning())
+            measurements.Add(new Measurement(Renderer, "deck", PdfChecks.OverlappingGlyphs(pdf, kerning: kerning.Of)));
         measurements.Add(new Measurement(Renderer, "deck", PdfChecks.FontsEmbeddedAndSubset(pdf)));
         return measurements;
     }

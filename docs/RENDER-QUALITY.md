@@ -136,7 +136,10 @@ styles, placeholders and a decorative bar, three layouts, and one slide per feat
 | `smartart-chart` | SmartArt through its stored drawing, a chart through its fallback picture |
 
 - **Read-back** (`Slide_features_read_back`, always): each slide's text on its page (`/ActualText` included), one page
-  per slide, no glyph outside a slide, overlapping glyphs, every font embedded and subset.
+  per slide, no glyph outside a slide, overlapping glyphs, every font embedded and subset. Overlaps leave out what the
+  font's own kerning asks for (`FontKerning`: the pair shaped again with HarfBuzz in the installed font the PDF's subset
+  came from): "Tr", "Fi" and "f." kern by 0.06 to 0.15 em depending on the fonts installed, which the plain 0.05 em
+  tolerance counted, so a threshold measured on one platform failed on another.
 - **Against LibreOffice** (`Slide_features_compared_with_libreoffice`): LibreOffice converts the same deck to PDF and
   each slide is compared (`vs-libreoffice-ssim`, PDFium at 100 dpi, as for documents). LibreOffice is looked for in
   `FILEE_LIBREOFFICE` (soffice itself), the repository's `engines/` folder (`pwsh build/fetch-engines.ps1 -Only
@@ -159,8 +162,8 @@ Measured with LibreOffice 26.2 on Windows 11 (Office fonts installed):
 | `fills` | 0.8571 | rectangle gradients (an ellipse in Filee), pattern cells |
 | `smartart-chart` | 0.9682 | |
 
-The deck read back: every slide's text found, nothing outside a slide, every font embedded and subset, overlaps 0.0063
-(Calibri's own kerning of "Tr", an italic "f." and Yu Gothic's "す。").
+The deck read back: every slide's text found, nothing outside a slide, every font embedded and subset, no glyphs
+overlapping beyond their font's kerning.
 
 ## rhwp today
 
