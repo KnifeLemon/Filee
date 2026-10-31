@@ -16,9 +16,9 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **DOCX (+ DOCM/DOTX/DOTM), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
-| **DOCX writer** | built in | **ODT, HWPX (and HWP through rhwp), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
-| **ODT writer** | built in | **DOCX (+ variants), HWPX (and HWP through rhwp), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → ODT** (OpenDocument text, LibreOffice Writer) |
+| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
+| **DOCX writer** | built in | **ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
+| **ODT writer** | built in | **DOCX (+ variants), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → ODT** (OpenDocument text, LibreOffice Writer) |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
@@ -29,8 +29,8 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
-| rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
+| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
+| rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
@@ -572,14 +572,14 @@ lays it out and writes the PDF in one step, in-process. Settings → Engines →
 it on (`AppSettings.FileeRenderer`, off by default); off, it has no edges and is shown as off, so every route stays
 as it was.
 
-- **What it takes:** HWPX (read with 한글's stored line layout), Word documents (DOCX, DOCM, DOTX, DOTM), ODT, RTF, text,
+- **What it takes:** HWPX and HWP (read with 한글's stored line layout; HWP through the [HWP reader](#hwp-reader)),
+  Word documents (DOCX, DOCM, DOTX, DOTM), ODT, RTF, text,
   Markdown, HTML and MHTML, EPUB, KEPUB, MOBI / AZW3 / AZW / PRC, FB2, HTMLZ, TXTZ, and Pandoc's formats when Pandoc
   is installed, to PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
-- **What keeps its route:** spreadsheets (the print route), presentations (slides), PDF and OFD, and HWP, which needs
-  rhwp to become HWPX until Filee reads HWP itself.
+- **What keeps its route:** spreadsheets (the print route), presentations (slides), PDF and OFD.
 - **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list.
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX or a
-  Word package for what it doesn't draw yet — OLE objects and charts, vertical text, form controls, videos, SmartArt,
+  Word package (an HWP as the HWPX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical text, form controls, videos, SmartArt,
   EMF / WMF pictures — and `JobQueue` plans again without it, so such a file takes its usual route (logged). The
   choice is made once, before the conversion. A checked edge is only ever a route's first step, where the file is the
   one the engine looked at. Text formats hold nothing it can't draw.
@@ -1766,8 +1766,8 @@ Not here yet: raster data (GeoTIFF, bands), GeoPackage, zipped Shapefiles as inp
 ## HWPX reader
 
 `Hwp/Hwpx/HwpxReader*.cs` is the inverse of the writer: it reads an HWPX package into the same document model, so
-HWPX (and HWP, which rhwp turns into HWPX first) can be written as DOCX, HTML or EPUB without Hancom Office or
-LibreOffice. It reads files saved by 한글, by rhwp's `export-hwpx` and by Filee itself:
+HWPX (and HWP, whose records the [HWP reader](#hwp-reader) writes out as HWPX first) can be written as DOCX, HTML or
+EPUB without Hancom Office or LibreOffice. It reads files saved by 한글, by rhwp's `export-hwpx` and by Filee itself:
 
 - elements are matched by local name (any prefix or namespace version); `hp:switch` takes the `hp:case` for
   HwpUnitChar / 2016 paragraphs, else `hp:default`, whose lengths 한글 doubles (as are margins and tab stops
@@ -1794,9 +1794,9 @@ OLE objects, charts, video, form controls, text art (its text is kept), arcs / p
 master pages, memos, character ratio, relative size and offset, paragraph borders, picture cropping and rotation.
 Password-protected (encrypted) HWPX and DRM-wrapped files stop with a clear error.
 
-**Limits.** Untrusted documents must not hang, exhaust the memory or crash Filee. The HWPX, DOCX, ODT and OFD readers (and
-the HWP 5.0 reader and the layout engine when they come) share `Documents/DocumentLimits.cs`; a document that passes
-one stops with `error.document_too_complex` and says which:
+**Limits.** Untrusted documents must not hang, exhaust the memory or crash Filee. The HWPX, DOCX, ODT, OFD and
+HWP 5.0 readers and the layout engine share `Documents/DocumentLimits.cs`; a document that passes one stops with
+`error.document_too_complex` and says which:
 
 - the package (`Documents/DocumentPackage.cs`): at most 100,000 parts; a part may unpack to 64 MB, all parts together
   to 1 GB, counted while they unpack (a ZIP header can understate a size), and a part over 4 MB to no more than 200
@@ -1818,6 +1818,65 @@ DTDs and huge pictures; `DocumentFuzzTests` changes packages written in code at 
 values, elements removed, repeated, renamed or nested, text and bytes damaged) and allows a reader only to read a
 file or refuse it with `InvalidDataException` / `ConversionRefusedException`. It runs briefly with every test run and
 for a few minutes per reader every night (`.github/workflows/fuzz.yml`); `FILEE_FUZZ_SEED` repeats a run.
+
+## HWP reader
+
+`Hwp/Binary` reads HWP 5.0 (binary 한글) documents without rhwp or Hancom Office, written from Hancom's published
+"한글 문서 파일 형식 5.0" document and checked against the HWPX 한글 itself saves for the same file. It does not map
+HWP onto the document model itself: the records are written out as the OWPML package 한글 saves (`HwpToHwpx`), and
+`HwpxReader` reads that, so both 한글 formats share every mapping, the stored line layout included. The same package
+is Filee's HWP → HWPX conversion: the HWPX writer's `hwp → hwpx` edge costs 4, so with the engines' places in the
+default order it wins over rhwp's `export-hwpx` (4 + 8 against 10 + 3). HWP → DOCX, HTML, EPUB and Markdown go
+through the document model like any other format; HWP → PDF takes the Filee renderer when it is on, rhwp otherwise.
+
+- `CompoundFile.cs`: a read-only compound file (CFB) reader of Filee's own. Every sector number is checked against
+  the file, every chain is walked at most once per sector and must be as long as its stream says, the directory tree is
+  walked with a stack and visits each entry once, and stream sizes count against the package limits (a stream up to
+  64 MB, all of them 1 GB).
+- `HwpFile.cs`: the FileHeader (signature, version, flags) and the streams, unpacked with raw deflate when the document
+  is compressed (counted while they inflate, with the ZIP packages' ratio limit), split into records (tag, level,
+  size; a record longer than its stream is damage). Password, DRM and certificate-encrypted documents, distribution
+  documents (배포용, text in `ViewText`) and HWP 3.x files (not compound files) stop with a message; nothing is ever
+  decrypted. An `.hwp` that is an HWPX package is read as HWPX. The title comes from `\005HwpSummaryInformation`.
+- `HwpToHwpx.Header.cs`: DocInfo → `header.xml`: fonts per language (FACE_NAME counted by ID_MAPPINGS), border
+  fills with their solid, gradient and picture fills, character shapes, tab definitions, numberings (7 levels, 10 in
+  5.1 files; older files get 한글's three empty extra levels), bullets, paragraph shapes and styles. Paragraph margins,
+  spacing and tab positions are stored doubled: `hp:case` gets the true value, `hp:default` the stored one, as 한글
+  writes them.
+- `HwpToHwpx.Body.cs`: paragraphs (text with its character, inline and extended controls, character shape runs,
+  highlighter ranges, line segments copied field by field), section definitions with page, note shapes, page borders
+  and master pages (separate parts like 한글's), columns, headers and footers, footnotes and endnotes, auto numbers,
+  new numbers, page hiding and page number position, bookmarks, index marks, hidden comments, fields (`%hlk` and the
+  others, with their command and name), 덧말 and 글자 겹침.
+- `HwpToHwpx.Objects.cs`: tables (cells with spans, sizes, margins and borders, captions), drawing objects (lines,
+  rectangles, ellipses, arcs, polygons, curves, text boxes, groups, 글맵시) with outline, fill and transformation
+  matrices, pictures from `BinData` (crop against their original size), equations (script, size, colour, baseline)
+  and OLE objects (kept in the package; the model leaves them out).
+
+Where 한글's files differ from Hancom's document, what 한글 writes wins: border, outline and tab leader line types
+count "none" first and dotted (2) before dashed (3); polygon, curve and rectangle points are interleaved (x, y)
+pairs; a list header holds a 4-byte paragraph count; the note separator's length takes 4 bytes; a picture's original
+size follows its effects; the newest paragraph shapes add the outline level (for ten levels) at the end. Files written
+by rhwp are read too: its note shape layout, line spacing kinds kept only in the older field, and pictures stored
+undeflated in a compressed file; its stored line layout is rhwp's estimate, so the package marks it estimated
+(`FileeLineSegments`) and the layout engine lays such paragraphs out itself.
+
+Measured against the HWPX 한글 saves for the same document (the document model of both, read for layout): the 41
+HWP files of the hwplib samples read the same apart from titles 한글 makes up for files without summary information
+(it takes the first text) and a summary field whose stored result 한글 drops; 45 of 46 HWP files 한글 saved from HWPX
+documents (the other is a distribution document, refused) and the 24 documents of the render feature matrix read the
+same. The stored line layout differs only where 한글's own files leave it out: HWP files saved before 한글 laid the
+document out (no PARA_LINE_SEG), and HWPX exports of files other programs edited, where 한글 drops what it considers
+stale. `HwpReaderTests` reads HWP files rhwp makes from HWPX written in code into the model of their source;
+`DocumentHostileInputTests` and `DocumentFuzzTests` hold the hostile compound files and records.
+
+Not read yet: charts, video and form objects (as in HWPX), memos, change tracking and the extended master pages
+(last page, any page) at a section's end. With the Filee renderer on, HWP → PDF takes it (`HwpReader.ReadForLayout`);
+otherwise rhwp stays the HWP → PDF engine. Video and form objects are not written into the package, so the renderer's
+check doesn't see them in an HWP.
+
+The format document asks that products made with it say so: "본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를
+참고하여 개발하였습니다." (already in `HwpxReader.Header.cs`).
 
 ## E-books
 
@@ -1883,8 +1942,9 @@ never switches engines by itself.
 
 ## HWP ↔ HWPX
 
-rhwp converts between the two 한글 formats without Hancom Office (`export-hwpx` and `convert`). Anything → HWP goes
-through the HWPX writer and then rhwp.
+HWP → HWPX is built in (the [HWP reader](#hwp-reader) writes the package from the records); rhwp's `export-hwpx`
+remains as a route ranked below it. HWPX → HWP is rhwp's `convert`: anything → HWP goes through the HWPX writer and
+then rhwp.
 
 For HWP / HWPX → PDF, rhwp renders a copy of the HWPX (an HWP is exported with `export-hwpx` first) when Filee has to
 change something for it (`Hwp/RhwpInput.cs`): fonts that are installed, the laid-out size of boxes sized relative to

@@ -7,6 +7,7 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
+using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
@@ -52,8 +53,9 @@ internal static class DocumentReaders
         ["ppsx"] = PptxReader.Read,
         ["pdf"] = PdfDocumentReader.Read,
         ["ofd"] = OfdReader.Read,
-        // HWP comes here as HWPX, converted by rhwp first (the route planner adds that step).
         ["hwpx"] = HwpxReader.Read,
+        // HWP 5.0: its records become the HWPX package 한글 saves, read by HwpxReader (no rhwp needed).
+        ["hwp"] = HwpReader.Read,
         ["html"] = HtmlReader.Read,
         ["mhtml"] = MhtmlArchive.ReadDocument, // the saved page with its pictures, sanitized like an e-mail
         ["epub"] = EpubReader.Read,
