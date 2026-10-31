@@ -24,9 +24,8 @@
 // now (a font a little wider than where the file was saved) is squeezed between its characters, as 한글 squeezes it.
 // Lines Filee estimated are never used; otherwise the paragraph is broken again and ParagraphBox says why.
 //
-// Bidirectional text gets a simplified UBA: strong characters and numbers set the levels, neutrals between two runs of
-// one direction take it and the paragraph's otherwise; parts are reordered by level (rule L2). The full algorithm
-// (explicit embeddings, isolates, brackets) is a later milestone, as is dictionary breaking for Thai and its kin.
+// Bidirectional text: the paragraph's levels come from the Unicode Bidirectional Algorithm (BidiAlgorithm), items
+// split where the level changes, and each line's parts are reordered by level (UAX #9 rule L2).
 // Tab positions are measured from the paragraph's left indent, as 한글 measures them; a hanging indent is a tab stop
 // on the first line (the text after a list number starts there).
 //
@@ -94,16 +93,17 @@ internal sealed class ParagraphLayouter
         var source = ParagraphText.From(paragraph, marker, fields, notes);
         var text = source.Text;
         var language = FontSubstitution.Language(text);
-        var rightToLeft = format.RightToLeft ?? FirstStrongIsRightToLeft(text);
-        var items = Itemize(source, language, Levels(text, rightToLeft));
+        var rightToLeft = format.RightToLeft ?? BidiAlgorithm.IsRightToLeft(text);
+        var items = Itemize(source, language, BidiAlgorithm.Levels(text, rightToLeft));
         var (advances, starts) = Measure(source, items);
 
         var breaking = format.Layout?.Breaking;
         var rules = new LineBreakRules(
             KeepNonLatinWords: breaking?.NonLatin == HNonLatinBreak.KeepWord,
             BreakLatinWords: breaking?.Latin == HLatinBreak.BreakWord,
-            _notAtLineStart,
-            _notAtLineEnd);
+            BreakNonLatinCharacters: breaking?.NonLatin == HNonLatinBreak.BreakWord,
+            NotAtLineStart: _notAtLineStart,
+            NotAtLineEnd: _notAtLineEnd);
         var breaks = LineBreaker.Breaks(text, rules);
         var paragraphLayout = new Settings(
             format.Align ?? HAlign.Left,
@@ -888,95 +888,6 @@ internal sealed class ParagraphLayouter
     }
 
     // ───────────────────────── Direction ─────────────────────────
-
-    /// <summary>True when the first strong character is right to left (UAX #9 rules P2, P3).</summary>
-    private static bool FirstStrongIsRightToLeft(string text)
-    {
-        for (var i = 0; i < text.Length; i++)
-        {
-            switch (UnicodeData.GetBidiClass(UnicodeData.CodePointAt(text, i)))
-            {
-                case BidiClass.L:
-                    return false;
-                case BidiClass.R or BidiClass.AL:
-                    return true;
-            }
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// The embedding level of each UTF-16 index, simplified: left-to-right letters 0 (2 in a right-to-left paragraph),
-    /// right-to-left letters 1, numbers 2 after right-to-left text (else as left-to-right letters), neutrals the level of
-    /// the strong text on both sides when it agrees, else the paragraph's.
-    /// </summary>
-    private static int[] Levels(string text, bool rightToLeft)
-    {
-        var paragraph = rightToLeft ? 1 : 0;
-        var left = rightToLeft ? 2 : 0;
-        // Per index: 'L', 'R', 'N' (number after right-to-left text), ' ' (neutral), '+' (same as the previous).
-        var kinds = new char[text.Length];
-        var lastStrong = rightToLeft ? 'R' : 'L';
-        for (var i = 0; i < text.Length; i++)
-        {
-            if (char.IsLowSurrogate(text[i]) && i > 0)
-            {
-                kinds[i] = '+';
-                continue;
-            }
-            var bidi = UnicodeData.GetBidiClass(UnicodeData.CodePointAt(text, i));
-            kinds[i] = bidi switch
-            {
-                BidiClass.L => 'L',
-                BidiClass.R or BidiClass.AL => 'R',
-                BidiClass.EN => lastStrong == 'R' ? 'N' : 'L',
-                BidiClass.AN => 'N',
-                BidiClass.NSM => '+',
-                _ => ' ',
-            };
-            if (bidi is BidiClass.L or BidiClass.R or BidiClass.AL)
-                lastStrong = kinds[i];
-        }
-
-        var levels = new int[text.Length];
-        for (var i = 0; i < text.Length; i++)
-        {
-            switch (kinds[i])
-            {
-                case 'L':
-                    levels[i] = left;
-                    break;
-                case 'R':
-                    levels[i] = 1;
-                    break;
-                case 'N':
-                    levels[i] = 2;
-                    break;
-                case '+':
-                    levels[i] = i > 0 ? levels[i - 1] : paragraph;
-                    break;
-                default:
-                    // Numbers count as right to left for the neutrals around them (UAX #9 N1).
-                    var before = Strong(kinds, i, -1, rightToLeft);
-                    var after = Strong(kinds, i, 1, rightToLeft);
-                    levels[i] = before == after ? before == 'L' ? left : 1 : paragraph;
-                    break;
-            }
-        }
-        return levels;
-    }
-
-    private static char Strong(char[] kinds, int index, int step, bool rightToLeft)
-    {
-        for (var i = index + step; i >= 0 && i < kinds.Length; i += step)
-        {
-            if (kinds[i] is 'L')
-                return 'L';
-            if (kinds[i] is 'R' or 'N')
-                return 'R';
-        }
-        return rightToLeft ? 'R' : 'L';
-    }
 
     /// <summary>The parts in visual order (UAX #9 rule L2).</summary>
     private static List<Part> Visual(List<Part> parts)

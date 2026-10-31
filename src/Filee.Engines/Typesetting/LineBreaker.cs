@@ -8,8 +8,10 @@
 // - Characters a document forbids at the start or end of a line (Word w:noLineBreaksBefore / After) on top of the
 //   East Asian rules UAX #14 already has (closing punctuation, small kana and iteration marks don't start a line).
 //
-// SA characters (Thai, Lao, Khmer, Myanmar) are resolved by LB1's default: marks join their base, letters are AL, so a
-// Thai phrase breaks only at its spaces until there is a dictionary.
+// SA characters (Thai, Lao, Khmer, Myanmar): LB1 makes their marks join the letter before them and the letters AL, and
+// the line may also break between the words WordDictionary finds in a run of them (these scripts don't put spaces
+// between words), as Word breaks them. 한글 has no dictionary: in its 어절 setting a run without spaces is one word, in
+// 글자 the line breaks between any two of its characters. A script without a dictionary breaks only at its spaces.
 
 using System.Globalization;
 
@@ -31,15 +33,20 @@ internal enum LineBreak : byte
 /// <summary>Tailorings of the line breaking rules.</summary>
 /// <param name="KeepNonLatinWords">
 /// Non-Latin text breaks only between words (한글 어절), not between characters (글자): Hangul, and as 한글 treats them
-/// in that setting Chinese and Japanese characters, East Asian punctuation and quotation marks, so a run without spaces is
-/// one word (broken between characters only when it is longer than a line).
+/// in that setting Chinese and Japanese characters, East Asian punctuation and quotation marks, and Thai, Lao, Khmer and
+/// Myanmar text, so a run without spaces is one word (broken between characters only when it is longer than a line).
 /// </param>
 /// <param name="BreakLatinWords">Latin, Greek and Cyrillic words may break between any two letters.</param>
+/// <param name="BreakNonLatinCharacters">
+/// 한글's 글자 setting, given by the document: Thai, Lao, Khmer and Myanmar text breaks between any two characters, as
+/// 한글 breaks it, not between dictionary words.
+/// </param>
 /// <param name="NotAtLineStart">Characters that may not start a line, besides UAX #14's.</param>
 /// <param name="NotAtLineEnd">Characters that may not end a line, besides UAX #14's.</param>
 internal sealed record LineBreakRules(
     bool KeepNonLatinWords = false,
     bool BreakLatinWords = false,
+    bool BreakNonLatinCharacters = false,
     string? NotAtLineStart = null,
     string? NotAtLineEnd = null)
 {
@@ -67,6 +74,7 @@ internal static class LineBreaker
         var units = Units(text, rules);
         for (var j = 1; j < units.Count; j++)
             result[units[j].Start] = Between(units, j);
+        Words(text, units, rules, result);
 
         if (rules.NotAtLineStart is { Length: > 0 } || rules.NotAtLineEnd is { Length: > 0 })
         {
@@ -83,6 +91,46 @@ internal static class LineBreaker
             }
         }
         return result;
+    }
+
+    /// <summary>Breaks between the dictionary's words in runs of SA letters of one script, or as 한글 breaks them.</summary>
+    private static void Words(string text, List<Unit> units, LineBreakRules rules, LineBreak[] result)
+    {
+        if (rules.KeepNonLatinWords)
+            return;
+        for (var j = 0; j < units.Count;)
+        {
+            var script = SaScript(text, units[j]);
+            var end = j + 1;
+            while (script is not null && end < units.Count && SaScript(text, units[end]) == script)
+                end++;
+            if (end - j > 1 && rules.BreakNonLatinCharacters)
+            {
+                for (var k = j + 1; k < end; k++)
+                {
+                    if (result[units[k].Start] == LineBreak.None)
+                        result[units[k].Start] = LineBreak.Allowed;
+                }
+            }
+            else if (end - j > 1 && WordDictionary.For(script!.Value) is { } dictionary)
+            {
+                var starts = new HashSet<int>(units.Skip(j).Take(end - j).Select(u => u.Start));
+                var last = units[end - 1];
+                foreach (var boundary in dictionary.Boundaries(text, units[j].Start, last.Start + last.Length, starts.Contains))
+                {
+                    if (result[boundary] == LineBreak.None)
+                        result[boundary] = LineBreak.Allowed;
+                }
+            }
+            j = end;
+        }
+    }
+
+    /// <summary>The script of a unit whose character is an SA letter, or null.</summary>
+    private static UnicodeScript? SaScript(string text, Unit unit)
+    {
+        var codePoint = UnicodeData.CodePointAt(text, unit.Start);
+        return UnicodeData.GetLineBreak(codePoint) == LineBreakClass.SA ? UnicodeData.GetScript(codePoint) : null;
     }
 
     /// <summary>Whether the code point at <paramref name="index"/> (or the unit ending there) is in <paramref name="set"/>.</summary>

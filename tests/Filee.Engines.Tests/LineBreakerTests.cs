@@ -25,9 +25,19 @@ public class LineBreakerTests
     [InlineData("e\u0301e\u0301 |x")] // LB9: combining marks stay with their base
     [InlineData("👨\u200D👩\u200D👧 |👍🏽|👍🏽")] // LB8a ZWJ ×, LB30b EB × EM
     [InlineData("🇰🇷|🇯🇵|🇺🇸")] // LB30a: regional indicators in pairs
-    [InlineData("ภาษาไทยไม่เว้นวรรค |ระหว่างคำ")] // SA without a dictionary: only at spaces
     [InlineData("क्षत्रिय |हिन्दी")] // Devanagari conjuncts: marks join their base
     public void Breaks_by_uax_14(string expected) => Assert.Equal(expected, Mark(Unmark(expected)));
+
+    [Theory]
+    // SA: between the dictionary's words (these scripts put no spaces between words), and at spaces.
+    [InlineData("ภาษา|ไทย|ไม่|เว้น|วรรค |ระหว่าง|คำ")]
+    [InlineData("ประเทศไทย|มี|ประชากร|ประมาณ|หก|สิบ|เก้า|ล้าน|คน")]
+    [InlineData("ສະບາຍດີ|ປະເທດ|ລາວ")] // Lao
+    [InlineData("ភាសាខ្មែរ|គឺជា|ភាសាផ្លូវការ|របស់|ប្រទេស|កម្ពុជា")] // Khmer
+    [InlineData("မြန်မာ|ဘာသာစကား|သည်")] // Myanmar: not "မြန်မာဘာသာ|စ|ကားသည်", as many words but one of a single letter
+    [InlineData("ใช้|ฆฌฎฐฬ|แปลง|ไฟล์")] // letters no word covers stay together
+    [InlineData("ที่|นี่ |2026ปี")] // marks stay with their letter; a number stays with the word after it (LB23)
+    public void Breaks_between_dictionary_words(string expected) => Assert.Equal(expected, Mark(Unmark(expected)));
 
     [Theory]
     [InlineData("한|글 |문|서|는 |줄|을 |나|눕|니|다.")] // UAX #14: between any two syllables (한글 글자)
@@ -68,8 +78,15 @@ public class LineBreakerTests
     [InlineData("한글漢字 |섞어 |쓰기")]
     [InlineData("文件转换工具，“引号”和‘单引号’。 |下一句")]
     [InlineData("「かぎ括弧」と『二重』。 |次の文")]
+    [InlineData("ภาษาไทยไม่เว้นวรรค |ระหว่างคำ")] // 한글 어절: no dictionary, a run of Thai is one word
     public void Keeps_non_latin_words_whole(string expected) =>
         Assert.Equal(expected, Mark(Unmark(expected), new LineBreakRules(KeepNonLatinWords: true)));
+
+    [Theory]
+    [InlineData("ภ|า|ษ|า|ไ|ท|ย|ไ|ม่|เ|ว้|น |ร|ะ|ห|ว่|า|ง|ค|ำ")] // marks stay with their letter
+    [InlineData("ສ|ະ|ບ|າ|ຍ|ດີ")]
+    public void Breaks_thai_between_characters_as_hangul_does(string expected) =>
+        Assert.Equal(expected, Mark(Unmark(expected), new LineBreakRules(BreakNonLatinCharacters: true)));
 
     [Theory]
     [InlineData("F|i|l|e|e |l|a|y|s |1|2|3 |п|р|и|в|е|т.")]
