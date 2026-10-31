@@ -11,6 +11,8 @@
 //    directly.
 //  * ODT is read directly (Odt/OdtReader), keeping page layouts, headers/footers, styles, lists and tables.
 //  * HWP 5.0 needs no model: its records are written out as the HWPX package 한글 saves (Hwp/Binary/HwpToHwpx).
+//  * HWPX → HWP 5.0 is the inverse: the package written out as the records 한글 saves (Hwp/Binary/HwpxToHwp), so
+//    anything → HWP is anything → HWPX → HWP.
 //  * RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
 
 using Filee.Core.Conversion;
@@ -38,11 +40,16 @@ public sealed class HwpxConverter : IConverter
                 // HWP's records written out as the package 한글 saves (Hwp/Binary), ranked above rhwp's export-hwpx.
                 "hwp" => HwpCost,
                 _ => 10,
-            })).ToList();
+            }))
+            // HWPX → HWP: the package written out as the records 한글 saves (Hwp/Binary/HwpxToHwp); anything → HWP
+            // goes through HWPX.
+            .Append(new ConversionEdge("hwpx", "hwp", HwpCost))
+            .ToList();
 
     /// <summary>
-    /// HWP → HWPX: Filee's own reader writes the package rather than rhwp. Routes add the engine's place in the default
-    /// order (rhwp 3, this writer 8), so the edge must cost less than rhwp's 10 by more than that: 4 + 8 against 10 + 3.
+    /// HWP ↔ HWPX: Filee's own HWP reader and writer rather than rhwp. Routes add the engine's place in the default order
+    /// (rhwp 3, this writer 8), so an edge must cost less than rhwp's 10 by more than that: 4 + 8 against 10 + 3. Anything
+    /// → HWP then costs 10 + 8 + 4 + 8 = 30 against rhwp's 10 + 8 + 10 + 3 = 31.
     /// </summary>
     internal const int HwpCost = 4;
 
@@ -53,13 +60,23 @@ public sealed class HwpxConverter : IConverter
         var builtIn = string.Join(", ", DocumentReaders.BuiltInFormats.Select(f => f.ToUpperInvariant()));
         var withPandoc = string.Join(", ", DocumentReaders.PandocFormats.Select(f => f.ToUpperInvariant()));
         return EngineStatus.Available(pandoc is null
-            ? $"{builtIn} → HWPX. {withPandoc} need Pandoc."
-            : $"{builtIn}; {withPandoc} with Pandoc ({pandoc})", EngineVersions.BuiltIn);
+            ? $"{builtIn} → HWPX; HWPX → HWP. {withPandoc} need Pandoc."
+            : $"{builtIn}; {withPandoc} with Pandoc ({pandoc}); HWPX → HWP", EngineVersions.BuiltIn);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         progress?.Report(0.1);
+        if (step.To == "hwp")
+        {
+            // The records straight from the package: HWPX → HWP keeps what the model can't hold, as HWP → HWPX does.
+            var hwp = step.Output.Allocate("hwp");
+            if (hwp is null)
+                return [];
+            await Task.Run(() => HwpxToHwp.Write(step.InputPath, hwp), cancellationToken);
+            progress?.Report(1);
+            return [hwp];
+        }
         if (step.From == "hwp")
         {
             // The package straight from the records, without the model in between (it keeps what the model can't hold).

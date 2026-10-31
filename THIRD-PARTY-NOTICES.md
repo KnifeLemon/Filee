@@ -110,9 +110,9 @@ app as its payload. Filee 1.x's installer was built with Inno Setup, which is no
 
 ## Hancom HWP document format
 
-Filee's own HWP and HWPX code (the HWP 5.0 reader and its HWP → HWPX conversion, the HWPX reader and writer, and the
-layout engine) was developed with reference to Hancom's published document on the HWP file format, 「한글 문서 파일
-형식 5.0」, which asks for this notice:
+Filee's own HWP and HWPX code (the HWP 5.0 reader and its HWP → HWPX conversion, the HWP 5.0 writer and its HWPX → HWP
+conversion, the HWPX reader and writer, and the layout engine) was developed with reference to Hancom's published
+document on the HWP file format, 「한글 문서 파일 형식 5.0」, which asks for this notice:
 
 본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를 참고하여 개발하였습니다.
 
