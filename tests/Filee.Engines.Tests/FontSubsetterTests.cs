@@ -144,15 +144,17 @@ public class FontSubsetterTests
         Assert.Equal(used.Max() + 1, subset.GlyphCount);
         using var a = new SKFont(original, 1000);
         using var b = new SKFont(typeface, 1000);
+        var loca = GlyfTable.ReadLoca(subset.Require("loca"), subset.GlyphCount,
+            FontTables.IndexToLocFormat(subset.Require("head")) != 0, subset.Require("glyf").Length);
         foreach (var gid in used.Where(g => g != 0))
         {
             using var expected = a.GetGlyphPath(gid);
             using var actual = b.GetGlyphPath(gid);
-            // CoreText gives no outline for the subset of a CID-keyed CFF font yet (open on the Project 4 board).
-            Assert.SkipWhen(actual is null && sample == CidKeyed && OperatingSystem.IsMacOS(),
-                "macOS: CoreText has no outline for the TrueType subset of a CID-keyed CFF font yet");
-            Assert.True(actual is not null, $"glyph {gid}: the subset has no outline for it");
             Assert.Equal(a.GetGlyphWidths([gid])[0], b.GetGlyphWidths([gid])[0]);
+            // A glyph without contours (the space): CoreText (macOS) gives no path for it, the others an empty one.
+            if (loca[gid].Length == 0)
+                continue;
+            Assert.True(actual is not null, $"glyph {gid}: the subset has no outline for it");
             // CoreText (macOS) may give no outline for a CID-keyed CFF font read from memory. Filee never draws with
             // that font (the subset is TrueType), so only the subset's outline is required there.
             if (expected is null)
