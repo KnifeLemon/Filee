@@ -153,3 +153,64 @@ internal sealed class JsonFuzzer(byte[] seed, Random random, IReadOnlyList<strin
                     yield return nested;
     }
 }
+
+/// <summary>
+/// A mutation fuzzer for XML formats that are one file (OPML, DocBook): most changes edit the tree, so the file stays
+/// well-formed and reaches the reader's logic (attributes set to tokens, elements removed, repeated, renamed or moved
+/// into one another); the rest go through <see cref="TextFuzzer"/>.
+/// </summary>
+internal sealed class XmlFuzzer(byte[] seed, Random random, IReadOnlyList<string> tokens)
+{
+    private readonly TextFuzzer _text = new(seed, random, tokens);
+    private readonly string _xml = Encoding.UTF8.GetString(seed);
+
+    public byte[] Next()
+    {
+        if (random.Next(10) < 3)
+            return _text.Next();
+        var document = System.Xml.Linq.XDocument.Parse(_xml, System.Xml.Linq.LoadOptions.PreserveWhitespace);
+        for (var rounds = 1 + random.Next(4); rounds > 0; rounds--)
+        {
+            var elements = document.Descendants().ToList();
+            var element = elements[random.Next(elements.Count)];
+            switch (random.Next(6))
+            {
+                case 0 when element.Attributes().Any():
+                    {
+                        var attributes = element.Attributes().ToList();
+                        attributes[random.Next(attributes.Count)].Value = tokens[random.Next(tokens.Count)];
+                        break;
+                    }
+                case 1 when element.Parent is not null:
+                    element.Remove();
+                    break;
+                case 2 when element.Parent is not null:
+                    for (var copies = random.Next(50); copies > 0; copies--)
+                        element.AddAfterSelf(new System.Xml.Linq.XElement(element));
+                    break;
+                case 3:
+                    {
+                        // Moved into another element, or into a copy of itself.
+                        var other = elements[random.Next(elements.Count)];
+                        if (other != element && !other.Ancestors().Contains(element) && element.Parent is not null)
+                        {
+                            element.Remove();
+                            other.Add(element);
+                        }
+                        else
+                        {
+                            element.Add(new System.Xml.Linq.XElement(element));
+                        }
+                        break;
+                    }
+                case 4:
+                    element.Name = elements[random.Next(elements.Count)].Name;
+                    break;
+                default:
+                    element.Add(new System.Xml.Linq.XText(tokens[random.Next(tokens.Count)]));
+                    break;
+            }
+        }
+        return Encoding.UTF8.GetBytes(document.ToString(System.Xml.Linq.SaveOptions.DisableFormatting));
+    }
+}

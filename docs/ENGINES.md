@@ -13,7 +13,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
-| **Markup languages** | built in | **Jupyter notebooks (IPYNB) ↔ Markdown, HTML, TXT**; every document the built-in readers read → IPYNB; IPYNB → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
+| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -2178,6 +2178,56 @@ comes back as a Markdown table in a markdown cell, an error as a stream. The not
 (written twice, the same file), the routes with Pandoc assumed installed, DOCX / HWPX / PDF / HTML / Markdown with
 Pandoc absent (PDF by the Filee renderer) and the hostile inputs; `DocumentFuzzTests` mutates a notebook's JSON tree
 and text (`JsonFuzzer`, `TextFuzzer`).
+
+### OPML
+
+`OpmlReader` reads OPML 1.0 and 2.0 as Pandoc does: each outline is a heading one level below its parent's (past 9
+the level stays 9), its `_note` Markdown under it (`MarkdownReader`). An outline of type `link` links its text to
+its `url`; a feed in a subscription list (`rss`) links its text to the site (`htmlUrl`) and gets a line with the
+feed's address. Text with tags or entities (OPML allows HTML there) is read by `HtmlReader`; `head/title` is the
+title. The XML goes through `SafeXml`: no DTD is read (a document with one is refused, so no entity expands and
+nothing outside the file is fetched), at most 512 levels and the element limit. `OpmlWriter` writes OPML 2.0 back:
+each heading an outline inside the one of the heading above it, the blocks between two headings its `_note` in
+Markdown (pictures linked into `<name>_files`), a heading that is one link an outline of type `link`, formatted
+heading text as HTML, text before the first heading an outline without text.
+
+### Textile and MediaWiki
+
+Both are read line by line into blocks and inline by inline into runs (`MarkupInlines`): a closing marker is looked
+up in a list of the places it can close, made once per paragraph, so a paragraph of a million openers costs
+n log n, and emphasis nested more than 8–12 levels is text. Lists nest at most 9 levels; tables, quotes and notes
+count against the nesting depth (32), so a page of tables in tables is refused rather than overflowing the stack;
+tables are cut at `MaxTableColumns`.
+
+- `TextileReader`: h1.–h6., p., bq., bc. / pre. (code), notextile., ###. (comments, left out), fnN. footnotes (only
+  `[N]` with a definition is a reference), the extended `..` forms, `*` / `#` lists (nested, mixed), definition lists,
+  tables (`|_.` header cells, `\N` / `/N` spans; the attributes in `()`, `{}`, `[]` are skipped). A line break inside
+  a paragraph is a line break, as Textile renders it. Inline: `*strong*`, `**bold**`, `_em_`, `__italic__`,
+  `-deleted-`, `+inserted+`, `^sup^`, `~sub~`, `@code@`, `%span%`, `??citation??`, `"links":url`, `["links":url]`,
+  `!pictures!` (local files), `==notextile==`, `[*intraword*]`, HTML entities and `<br>`; other tags are dropped.
+  Glyphs (smart quotes, dashes, `(c)`) are not replaced: the text stays as written.
+- `TextileWriter` writes the same dialect: a character that would open or close markup where it stands becomes an
+  HTML entity (`&#42;`), a paragraph that starts like a block signature, list or table gets its first character as
+  one, code with blank lines is `bc..` closed by an empty `###.` comment, links are `["text":url]`. Textile has no
+  title.
+- `MediaWikiReader`: `= headings =`, paragraphs (a single line break is a space), lists (`*`, `#`, mixed; `;` terms,
+  `:` indents and continuations), `----`, lines starting with a space and `<pre>` / `<syntaxhighlight>` / `<source>` as
+  code, `<blockquote>`, tables (`{|`, `|+` caption, `|-`, `!` / `!!` header cells, `|` / `||`, `colspan` /
+  `rowspan`, tables in cells), `''` / `'''` / `'''''` as the wiki toggles them, `[[internal links|text]]` with link
+  trails, `[external links text]`, bare URLs, `[[File:…]]` pictures (local files), `<ref>` footnotes (named ones
+  reused), `<nowiki>`, the formatting tags and entities. **Templates are not expanded**: `{{…}}` (and parser
+  functions) stay in the text as written, nested calls included. Comments, categories, magic words (`__TOC__`) and
+  `<references />` are left out.
+- `MediaWikiWriter` writes `= headings =`, `<blockquote>`, `*` / `#` lists (`*:` for an item's further paragraphs),
+  `<pre>` code, `{| class="wikitable"` tables (a cell with a table, list or code gets its blocks on the lines after
+  it), `'''bold'''`, `''italic''`, the `<s>` `<u>` `<sup>` `<sub>` `<code>` tags, `[external links]`,
+  `[[relative links|text]]`, `[[File:…]]` pictures and `<ref>` notes with `<references />`. Characters the wiki would
+  read as markup are entities. The wiki has no title.
+
+`OpmlTests`, `TextileTests` and `MediaWikiTests` build their pages in code and check the model, the round trip
+(format → model → format → model gives the same `MarkupShape`, and text that looks like markup stays text), DOCX /
+HWPX / PDF / HTML / Markdown with Pandoc absent and the hostile inputs (DTDs and entity expansion, nesting, a
+million openers, wide and long tables); `DocumentFuzzTests` mutates each.
 
 ## Pandoc
 

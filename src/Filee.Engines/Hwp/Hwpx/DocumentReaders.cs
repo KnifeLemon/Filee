@@ -70,6 +70,9 @@ internal static class DocumentReaders
         ["txtz"] = ZippedText.ReadTxtz,
         // Lightweight markup languages (Markup/), written by MarkupConverter.
         ["ipynb"] = NotebookReader.Read,
+        ["opml"] = OpmlReader.Read,
+        ["textile"] = TextileReader.Read,
+        ["mediawiki"] = MediaWikiReader.Read,
     };
 
     /// <summary>

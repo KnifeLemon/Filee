@@ -44,8 +44,32 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                   "\"output_type\": \"stream\"", "\"data\"", "\"image/png\"", "\"text/html\"", "\"attachments\"", "\"worksheets\"", "\\u001b[31m",
                   "\\n", "# ", "**", "![x](attachment:chart.png)", "<table><tr><td>", "1e999"]));
 
+    [Fact]
+    public void OpmlReader_reads_or_refuses_every_mutated_outline() =>
+        Fuzz("opml", "opml", [System.Text.Encoding.UTF8.GetBytes(OpmlTests.Plan)], (path, media) => OpmlReader.Read(path, media),
+            XmlMutator(["<outline text=\"x\">", "</outline>", "<outline/>", " type=\"link\" url=\"", " type=\"rss\" xmlUrl=\"", " _note=\"",
+                         "&#10;", "&lt;b&gt;", "&amp;", "<!DOCTYPE opml [<!ENTITY a \"aaaa\">]>", "&a;", "<![CDATA[", "]]>", "<head>", "<body>"]));
+
+    [Fact]
+    public void TextileReader_reads_or_refuses_every_mutated_page() =>
+        Fuzz("textile", "textile", [System.Text.Encoding.UTF8.GetBytes(TextileTests.Page)], (path, media) => TextileReader.Read(path, media),
+            TextMutator(["h1. ", "p. ", "bq. ", "bc. ", "bc.. ", "fn1. ", "###. ", "notextile. ", "* ", "** ", "# ", "|", "|_. ", "|\\2. ",
+                         "|/3. ", "table. ", "\"text\":http://x", "[\"t\":u]", "!img.png!", "[1]", "*", "_", "-", "+", "^", "~", "@", "%", "==",
+                         "??", "(class)", "{color:red}", "[en]", "&#42;", "<br>", "- term := def"]));
+
+    [Fact]
+    public void MediaWikiReader_reads_or_refuses_every_mutated_page() =>
+        Fuzz("mediawiki", "wiki", [System.Text.Encoding.UTF8.GetBytes(MediaWikiTests.Page)], (path, media) => MediaWikiReader.Read(path, media),
+            TextMutator(["{|", "|}", "|-", "|+", "!", "!!", "||", "| colspan=\"99999\" |", "rowspan=\"2147483647\"", "{{", "}}", "[[", "]]",
+                         "[[File:x.png|thumb]]", "[http://x y]", "''", "'''", "'''''", "== ", " ==", "* ", "# ", ": ", "; ", "----", "<ref>",
+                         "</ref>", "<ref name=\"a\" />", "<nowiki>", "</nowiki>", "<pre>", "</pre>", "<blockquote>", "</blockquote>",
+                         "<!--", "-->", "<b>", "</b>", "<sup>", "&lt;", "__TOC__", "[[Category:x]]"]));
+
     /// <summary>The mutator of a text format, with the format's own tokens.</summary>
     private static Func<byte[], Random, Func<byte[]>> TextMutator(string[] tokens) => (seed, random) => new TextFuzzer(seed, random, tokens).Next;
+
+    /// <summary>The mutator of an XML format in one file: mostly the tree, sometimes the text.</summary>
+    private static Func<byte[], Random, Func<byte[]>> XmlMutator(string[] tokens) => (seed, random) => new XmlFuzzer(seed, random, tokens).Next;
 
     /// <summary>The mutator of a JSON format: mostly the tree, sometimes the text.</summary>
     private static Func<byte[], Random, Func<byte[]>> JsonMutator(string[] tokens) => (seed, random) => new JsonFuzzer(seed, random, tokens).Next;
