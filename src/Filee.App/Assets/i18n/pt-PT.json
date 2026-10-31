@@ -28,6 +28,10 @@
 
   "home.title": "Página inicial",
   "home.drop_title": "Larga os ficheiros aqui",
+  "home.queue_title": "Ficheiros a converter",
+  "home.queue_convert": "Escolher ação",
+  "home.queue_clear": "Limpar lista",
+  "home.queue_remove": "Remover",
   "home.drop_select": "Faz duplo clique para selecionar ficheiros",
   "home.drop_hint": "Ou mantém {0} premido enquanto arrastas ficheiros no Explorador. A barra circular abre junto ao cursor.",
   "home.drop_hint_macos": "Ou mantém {0} premido enquanto arrastas ficheiros no Finder. A barra circular abre junto ao cursor.",

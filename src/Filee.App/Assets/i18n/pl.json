@@ -28,6 +28,10 @@
 
   "home.title": "Start",
   "home.drop_title": "Upuść pliki tutaj",
+  "home.queue_title": "Pliki do konwersji",
+  "home.queue_convert": "Wybierz działanie",
+  "home.queue_clear": "Wyczyść listę",
+  "home.queue_remove": "Usuń",
   "home.drop_select": "Kliknij dwukrotnie, aby wybrać pliki",
   "home.drop_hint": "Albo przytrzymaj {0}, przeciągając pliki w Eksploratorze. Pasek-pierścień otworzy się przy kursorze.",
   "home.drop_hint_macos": "Albo przytrzymaj {0}, przeciągając pliki w Finderze. Pasek-pierścień otworzy się przy kursorze.",

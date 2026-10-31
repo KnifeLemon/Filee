@@ -128,20 +128,74 @@
           </WrapPanel>
         </Grid>
       </Border>
+      <!-- The files as cards, in the order they merge: a picture of each (the first page of a PDF) and its name. -->
       <ListBox x:Name="FileOrder" ItemsSource="{Binding Files}" SelectedItem="{Binding SelectedFile}"
                ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+        <ListBox.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ListBox.ItemsPanel>
         <ListBox.Styles>
           <Style Selector="ListBoxItem">
-            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Margin" Value="0,0,12,12" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+          </Style>
+          <!-- The selection marks the picture, not the whole card: the name stays on the page's background. -->
+          <!-- The selection marks the picture only: no background behind the card, even when it is selected or hovered. -->
+          <Style Selector="ListBoxItem:selected">
+            <Setter Property="Background" Value="Transparent" />
+          </Style>
+          <Style Selector="ListBoxItem:selected:pointerover">
+            <Setter Property="Background" Value="Transparent" />
+          </Style>
+          <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+          </Style>
+          <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="Transparent" />
+          </Style>
+          <Style Selector="Border.merge-card">
+            <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+          </Style>
+          <Style Selector="ListBoxItem:selected Border.merge-card">
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+            <Setter Property="BorderThickness" Value="2" />
           </Style>
         </ListBox.Styles>
         <ListBox.ItemTemplate>
+          <!-- A card, as on the Home page's queue: the picture (or the extension, for a format without one), its place in
+               the merge top left, an X top right that takes the file out, and the name under the picture. The selection
+               outlines the whole card, as there. -->
           <DataTemplate x:DataType="vm:MergeSource">
-            <StackPanel Spacing="2" Margin="4,6" ToolTip.Tip="{Binding Path}">
-              <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
-              <TextBlock Classes="caption" Text="{Binding Folder}" TextTrimming="CharacterEllipsis"
-                         IsVisible="{Binding Folder, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
-            </StackPanel>
+            <Border Classes="merge-card" Width="128" Padding="6" CornerRadius="14" Background="{DynamicResource SurfaceBrush}"
+                    ToolTip.Tip="{Binding Path}">
+              <StackPanel Spacing="6">
+                <Panel Height="130">
+                  <Border CornerRadius="10" ClipToBounds="True" Background="{DynamicResource SurfaceAltBrush}">
+                    <Panel>
+                      <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" IsVisible="{Binding HasThumbnail}" />
+                      <TextBlock Text="{Binding FormatBadge}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasThumbnail}" />
+                    </Panel>
+                  </Border>
+                  <Border Width="26" Height="26" CornerRadius="999" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4"
+                          Background="{DynamicResource AccentBrush}">
+                    <TextBlock Text="{Binding Position}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <Button Width="26" Height="26" Padding="0" CornerRadius="999" Margin="4" HorizontalAlignment="Right" VerticalAlignment="Top"
+                          Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
+                          Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource home.queue_remove}"
+                          AutomationProperties.Name="{DynamicResource home.queue_remove}">
+                    <PathIcon Width="10" Height="10" Data="{StaticResource Icon.Close}" />
+                  </Button>
+                </Panel>
+                <TextBlock Classes="caption" Text="{Binding Name}" TextTrimming="CharacterEllipsis" TextAlignment="Center" />
+              </StackPanel>
+            </Border>
           </DataTemplate>
         </ListBox.ItemTemplate>
       </ListBox>

@@ -66,6 +66,7 @@ public sealed class RadialController(
     private readonly HashSet<string> _formatRequestsOffered = new(StringComparer.OrdinalIgnoreCase);
     private WebDrop? _web;      // the browser drop the click-mode donut's files stand for, until a conversion takes it
     private bool _toClipboard;  // the click-mode donut's files came from the clipboard: their results go back on it
+    private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -94,6 +95,7 @@ public sealed class RadialController(
         _dropped = false;
         _dragReachedDonut = false;
         _converted = false;
+        _keepOrder = false;
         viewModel.ResetForDrag();
         window.DonutControl.AllowContextEdit = false;
         PlaceAndShow(window, x, y, activate: false);
@@ -114,8 +116,11 @@ public sealed class RadialController(
     /// of this browser drop (the drop zone, a picture on the clipboard), which the donut now owns.
     /// <paramref name="toClipboard"/>: the files came from the clipboard, and their results go back on it.
     /// </summary>
+    /// <param name="keepOrder">
+    /// The files are merged in the order given (the Home page's queue, which the user sorted), not sorted by name first.
+    /// </param>
     public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
-        bool toClipboard = false)
+        bool toClipboard = false, bool keepOrder = false)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -127,6 +132,7 @@ public sealed class RadialController(
         ReleaseProgressToToast();
         ReplaceWeb(web);
         _toClipboard = toClipboard;
+        _keepOrder = keepOrder;
         if (forAnotherProcess && OperatingSystem.IsMacOS())
             _grace.Start();
         else
@@ -364,7 +370,7 @@ public sealed class RadialController(
         if ((preset.TargetFormat == "pdf" && preset.Pdf.MergeIntoSingle || preset.JoinsIntoOneMedia || preset.JoinsImages) && sources.Count > 1)
         {
             Close(animate: false);
-            _ = MergeInOrderAsync(sources, preset.Clone(), web, _toClipboard);
+            _ = MergeInOrderAsync(sources, preset.Clone(), web, _toClipboard, _keepOrder);
             return;
         }
 
@@ -389,11 +395,15 @@ public sealed class RadialController(
         ShowProgress(job);
     }
 
-    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard)
+    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard, bool keepOrder)
     {
         try
         {
-            var ordered = await windows.ChooseMergeOrderAsync(files, preset);
+            // The queue's order is the one the user already set on the Home page: the chooser only shows for a merge that
+            // has a layout to pick (merged pictures).
+            var ordered = keepOrder && !preset.JoinsImages
+                ? files
+                : await windows.ChooseMergeOrderAsync(files, preset, keepOrder);
             if (ordered is not null && preset.JoinsImages)
                 RememberMergeLayout(preset);
             if (ordered is not null && preset.Output.AskEveryTime && web is null)

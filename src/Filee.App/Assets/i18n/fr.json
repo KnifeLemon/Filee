@@ -28,6 +28,10 @@
 
   "home.title": "Accueil",
   "home.drop_title": "Déposez des fichiers ici",
+  "home.queue_title": "Fichiers à convertir",
+  "home.queue_convert": "Choisir une action",
+  "home.queue_clear": "Vider la liste",
+  "home.queue_remove": "Retirer",
   "home.drop_select": "Double-cliquez pour sélectionner des fichiers",
   "home.drop_hint": "Ou maintenez {0} en glissant des fichiers dans l'Explorateur. Le menu circulaire s'ouvre sous le curseur.",
   "home.drop_hint_macos": "Ou maintenez {0} en glissant des fichiers dans le Finder. Le menu circulaire s'ouvre sous le curseur.",
