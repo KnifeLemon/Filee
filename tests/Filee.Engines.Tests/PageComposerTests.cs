@@ -752,7 +752,8 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
 
         TestContext.Current.TestOutputHelper?.WriteLine($"{pages.Count} pages in {watch.Elapsed.TotalSeconds:0.0} s");
         Assert.InRange(pages.Count, 600, 900);
-        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(30), $"{pages.Count} pages took {watch.Elapsed.TotalSeconds:0.0} s");
+        // Some 6 s on a desktop PC; CI's Intel macOS runner takes 30–35 s. A layout that turned quadratic would take minutes.
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(60), $"{pages.Count} pages took {watch.Elapsed.TotalSeconds:0.0} s");
     }
 
     // ───────────────────────── Helpers ─────────────────────────

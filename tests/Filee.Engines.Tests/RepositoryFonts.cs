@@ -13,6 +13,8 @@ internal sealed class RepositoryFonts : IFontCollection
     public const string Latin = "Noto Sans";
     public const string Korean = "Noto Sans KR";
     public const string Arabic = "Noto Sans Arabic";
+    public const string Thai = "Noto Sans Thai";
+    public const string Devanagari = "Noto Sans Devanagari";
 
     private readonly Dictionary<string, List<FontFace>> _families = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, PageFont> _fonts = new(StringComparer.OrdinalIgnoreCase);
@@ -27,7 +29,8 @@ internal sealed class RepositoryFonts : IFontCollection
         [
             ("NotoSans-Regular.ttf", Latin, 400), ("NotoSans-Bold.ttf", Latin, 700),
             ("NotoSansKR-Regular.otf", Korean, 400), ("NotoSansKR-Bold.otf", Korean, 700),
-            ("NotoSansArabic-Regular.ttf", Arabic, 400),
+            ("NotoSansArabic-Regular.ttf", Arabic, 400), ("NotoSansThai-Regular.ttf", Thai, 400),
+            ("NotoSansDevanagari-Regular.ttf", Devanagari, 400),
         ];
         foreach (var (file, family, weight) in files)
         {

@@ -119,9 +119,14 @@ published document on the HWP file format, 「한글 문서 파일 형식 5.0」
 
 ## Unicode data
 
-`src/Filee.Engines/Typesetting/UnicodeData.Generated.cs` holds Line_Break, Bidi_Class, Script and East_Asian_Width
-tables that `build/generate-unicode-tables.ps1` generates from the Unicode Character Database 16.0.0 (Unicode License
-v3, Copyright © 1991-2024 Unicode, Inc., https://www.unicode.org/license.txt).
+`src/Filee.Engines/Typesetting/UnicodeData.Generated.cs` holds Line_Break, Bidi_Class, Bidi_Paired_Bracket, Script and
+East_Asian_Width tables that `build/generate-unicode-tables.ps1` generates from the Unicode Character Database 16.0.0
+(Unicode License v3, Copyright © 1991-2024 Unicode, Inc., https://www.unicode.org/license.txt).
+
+`src/Filee.Engines/Typesetting/Dictionaries/*.words.br` are the Thai, Lao, Khmer and Burmese word lists of ICU 77.1
+(`icu4c/source/data/brkitr/dictionaries`), re-encoded by `build/generate-word-dictionaries.ps1` (Unicode License v3,
+Copyright © 2016 and later Unicode, Inc. and others; Copyright © 2006-2015 International Business Machines Corporation,
+Apple Inc., and others, https://github.com/unicode-org/icu/blob/main/LICENSE).
 
 ## Fonts and icons
 

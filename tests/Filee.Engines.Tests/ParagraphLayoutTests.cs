@@ -405,6 +405,55 @@ public sealed class ParagraphLayoutTests : IDisposable
         Assert.Equal(text.Replace(" ", ""), string.Concat(box.Lines.SelectMany(l => l.Runs).Select(r => r.Text)).Replace(" ", ""));
     }
 
+    [Fact]
+    public void Latin_and_numbers_in_a_right_to_left_paragraph_keep_their_own_order()
+    {
+        Assert.SkipUnless(_fonts.Has(Arabic), "Noto Sans Arabic is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        // "Version 2.1 of Filee (beta)": read from the right, the Arabic words, then 2.1, then "Filee (beta)" left to right.
+        var line = Single(Paragraph("الإصدار 2.1 من Filee (beta)", format: Format(font: Arabic)));
+
+        var (version, number, of, filee, beta) = (Extent(line, "الإصدار"), Extent(line, "2.1"), Extent(line, "من"), Extent(line, "Filee"), Extent(line, "beta"));
+        Assert.True(version.Start > number.End && number.Start > of.End && of.Start > filee.End, $"{version} {number} {of} {filee}");
+        // The digits and the Latin words read left to right inside their runs.
+        Assert.True(filee.End < beta.Start);
+        Assert.True(Extent(line, "2").Start < Extent(line, "1").Start);
+        Assert.Equal(400, line.Left + line.Width, 0.05f);
+    }
+
+    [Fact]
+    public void Thai_lines_break_between_words()
+    {
+        Assert.SkipUnless(_fonts.Has(RepositoryFonts.Thai), "Noto Sans Thai is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+        const string thai = "โปรแกรมแปลงไฟล์ต้องรักษารูปแบบของย่อหน้าและตำแหน่งการตัดบรรทัดภาษาไทยไม่เว้นวรรคระหว่างคำจึงต้องตัดคำตามพจนานุกรม";
+
+        var (box, text) = Layout(Paragraph(thai, format: Format(font: RepositoryFonts.Thai)), 120);
+
+        Assert.True(box.Lines.Count > 3);
+        var breaks = LineBreaker.Breaks(text);
+        Assert.All(box.Lines.Skip(1), line => Assert.Equal(LineBreak.Allowed, breaks[line.Start]));
+        Assert.All(box.Lines, line => Assert.True(line.Width <= 120.01f, $"{line.Width} > 120"));
+    }
+
+    [Theory]
+    [InlineData(RepositoryFonts.Arabic, "يجب أن تتصل الحروف العربية: لا، لله، محمّد.")]
+    [InlineData(RepositoryFonts.Devanagari, "संयुक्ताक्षर जैसे क्ष, त्र, ज्ञ, श्र और कि, की, र्क सही दिखने चाहिए।")]
+    [InlineData(RepositoryFonts.Thai, "น้ำ ที่ กี่ ปั้น ฎุ ญู ฐู ค่ำ")]
+    public void Complex_scripts_are_shaped_without_dotted_circles_or_missing_glyphs(string font, string text)
+    {
+        Assert.SkipUnless(_fonts.Has(font), $"{font} is not in src/Filee.App/Assets/Fonts (build/fetch-fonts.ps1)");
+
+        var line = Single(Paragraph(text, format: Format(font: font)));
+
+        var dotted = _fonts.Font(font).Typeface.GetGlyph(0x25CC);
+        Assert.Contains(line.Runs, r => r.Font == _fonts.Font(font));
+        Assert.All(line.Runs.Where(r => r.Font == _fonts.Font(font)), run =>
+        {
+            Assert.DoesNotContain((ushort)0, run.Glyphs);
+            if (dotted != 0)
+                Assert.DoesNotContain(dotted, run.Glyphs);
+        });
+    }
+
     // ───────────────────────── 한글's stored lines ─────────────────────────
 
     [Fact]

@@ -58,5 +58,7 @@
     <EmbeddedResource Include="Infrastructure\engines.json" LogicalName="Filee.Engines.engines.json" />
     <!-- Pinned Tesseract language data, downloaded when an OCR preset needs it (Ocr/OcrLanguages.cs). -->
     <EmbeddedResource Include="Infrastructure\ocr-languages.json" LogicalName="Filee.Engines.ocr-languages.json" />
+    <!-- ICU's Thai, Lao, Khmer and Myanmar word lists (Unicode License v3), see build/generate-word-dictionaries.ps1. -->
+    <EmbeddedResource Include="Typesetting\Dictionaries\*.words.br" LogicalName="Filee.Engines.Dictionaries.%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

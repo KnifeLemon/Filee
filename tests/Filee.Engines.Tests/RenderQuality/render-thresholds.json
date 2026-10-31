@@ -24,6 +24,12 @@
       "script-gu": { "overlaps": 0.6404 },
       // ำ (SARA AM) is drawn as its two parts, so the text doesn't round-trip.
       "script-th": { "text": 0.9734, "overlaps": 0.2141 },
+      // Lao, Khmer and Myanmar vowel signs and medials are left out or drawn as separate characters at fixed widths.
+      // Khmer overlaps as measured on the CI's Windows runners (0.7754 with the Khmer UI of Windows 11).
+      "script-lo": { "text": 0.8953, "overlaps": 0.5403 },
+      "script-km": { "text": 0.9587, "overlaps": 0.7846 },
+      "script-my": { "text": 0.9291, "overlaps": 0.7372 },
+      "script-bidi": { "overlaps": 0.3104 },
 
       // Only in the full run (FILEE_RENDER_FULL=1), where every feature is also rendered from a binary HWP made by
       // rhwp convert. From the HWP, rhwp draws 。 and 、 half an em over the next character (so the lines break
@@ -70,6 +76,10 @@
     { "renderer": "filee", "feature": "script-hi", "check": "vs-rhwp-*", "reason": "rhwp draws Devanagari unshaped (#185)" },
     { "renderer": "filee", "feature": "script-gu", "check": "vs-rhwp-*", "reason": "rhwp draws Gujarati unshaped (#185)" },
     { "renderer": "filee", "feature": "script-th", "check": "vs-rhwp-*", "reason": "rhwp draws Thai marks at fixed widths and breaks lines without a dictionary" },
+    { "renderer": "filee", "feature": "script-lo", "check": "vs-rhwp-*", "reason": "rhwp draws Lao unshaped, at fixed widths, and breaks lines without a dictionary" },
+    { "renderer": "filee", "feature": "script-km", "check": "vs-rhwp-*", "reason": "rhwp draws Khmer unshaped (subscript consonants and vowel signs apart), and breaks lines without a dictionary" },
+    { "renderer": "filee", "feature": "script-my", "check": "vs-rhwp-*", "reason": "rhwp draws Myanmar unshaped (medials and vowel signs apart), and breaks lines without a dictionary" },
+    { "renderer": "filee", "feature": "script-bidi", "check": "vs-rhwp-*", "reason": "rhwp draws right-to-left text left to right, so the Latin, numbers and brackets in it are elsewhere" },
     { "renderer": "filee", "feature": "notes", "check": "vs-rhwp-*", "reason": "rhwp puts the endnotes under the text and numbers notes 1), 한글 starts them on a new page in the section's note format (1, i)" },
     { "renderer": "rhwp", "feature": "notes", "check": "pages", "reason": "rhwp puts the endnotes under the text, 한글 starts them on a new page" }
   ]

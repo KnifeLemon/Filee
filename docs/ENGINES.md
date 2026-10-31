@@ -702,7 +702,8 @@ font manager, HarfBuzzSharp and .NET.
   the page model's `GlyphRun` (`PdfPageWriterTests` now builds its page with it). `Shaper.Metrics` gives ascender,
   descender, line gap, Win metrics, x-height, cap height, underline, strikeout and super / subscript metrics.
 - **Unicode tables** (`UnicodeData.cs`, `UnicodeData.Generated.cs`): Line_Break, Bidi_Class, Script and
-  East_Asian_Width for every code point, as range tables searched by binary search; unassigned code points get the
+  East_Asian_Width for every code point, as range tables searched by binary search, and the paired brackets of the
+  bidirectional algorithm; unassigned code points get the
   UCD's defaults (`@missing` lines: ID for the CJK blocks, R and AL for the right-to-left blocks, ...).
   `build/generate-unicode-tables.ps1` downloads the pinned UCD files from unicode.org into `build/.cache` (SHA-256
   checked, not committed) and writes the C# file, which is committed (Unicode License v3, in THIRD-PARTY-NOTICES.md).
@@ -914,6 +915,31 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - Not yet: punctuation compression (Word's and 한글's 문장 부호 압축), Word's choice of the East Asian font for
     ambiguous characters by the run's language without a hint, and Word's document grid (lines on #280's grid follow
     the reader's estimate; without Word to check against it is left as it is).
+- **Bidirectional text and complex scripts** (GitHub Project 4 item *Layout engine: bidirectional text and
+  complex-script line breaking*):
+  - The Unicode Bidirectional Algorithm in full (`BidiAlgorithm.cs`, UAX #9 of Unicode 16): the paragraph's direction
+    from its first strong character outside isolates, explicit embeddings, overrides and isolates, isolating run
+    sequences, weak types (numbers with their separators and terminators, Arabic numbers after Arabic letters), paired
+    brackets (`BidiBrackets.txt`, generated with the other tables), neutrals and the reset of tabs and trailing spaces
+    to the paragraph's level. It passes every case of Unicode's `BidiTest.txt` (770,241) and `BidiCharacterTest.txt`
+    (91,707); the files aren't kept in the repository, `BidiAlgorithmTests` holds the common cases. Lines reorder their
+    parts by level; HarfBuzz mirrors brackets in right-to-left runs, and a right-to-left paragraph aligns and indents
+    from the right.
+  - Thai, Lao, Khmer and Myanmar put no spaces between words, so their lines break between dictionary words
+    (`WordDictionary.cs`): ICU's word lists (Unicode License v3), written by `build/generate-word-dictionaries.ps1`
+    as sorted, prefix-shared, Brotli-compressed lists (about 500 KB for the four) and loaded the first time a script
+    is broken. A run splits into words with as few characters outside a word as possible, then as few words, then as
+    few one-character words; characters no word covers stay together. This is how Word breaks them; 한글 has no
+    dictionary, and Filee breaks as 한글 does where the document says how (어절: a run without spaces is one word;
+    글자: between any two characters), matching 한글's lines for Thai in both.
+  - Shaping: Arabic joining, Indic conjuncts and reordered vowel signs, Thai, Lao, Khmer and Myanmar marks come from
+    HarfBuzz; the tests check that Arabic, Devanagari and Thai paragraphs are drawn without dotted circles or missing
+    glyphs. The render matrix has Lao, Khmer, Myanmar and a right-to-left paragraph with Latin, numbers and brackets:
+    text read back in order and no overlapping glyphs. 한글 itself lays such a Hebrew line out against UAX #9 (its words
+    come out in reverse order), so Filee follows the standard there.
+  - Not yet: the new engine has no converter routes (Project 4 item *converter integration*), so `ComplexScripts` and
+    the `Unshaped` edges still send such documents to LibreOffice; vertical text, and Word's and 한글's character
+    spacing for Arabic (kashida justification).
 
 The PDF writer's subsets now keep only the characters the text has in their cmap: CJK fonts map 文 and the Kangxi
 radical ⽂ to one glyph, and the PDF's ToUnicode took the lower code point, so Japanese and Chinese text copied out as

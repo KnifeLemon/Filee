@@ -1,5 +1,5 @@
 // Unicode character properties the layout engine needs and .NET doesn't expose: Line_Break for line breaking
-// (UAX #14), Bidi_Class for the bidirectional algorithm (UAX #9), Script for itemisation and shaping (UAX #24) and
+// (UAX #14), Bidi_Class and Bidi_Paired_Bracket for the bidirectional algorithm (UAX #9), Script for itemisation and shaping (UAX #24) and
 // East_Asian_Width for CJK widths (UAX #11). The tables are generated from the Unicode Character Database by
 // build/generate-unicode-tables.ps1 into UnicodeData.Generated.cs, at the Unicode version .NET uses, so these values
 // and .NET's own (categories, grapheme clusters) describe the same characters.
@@ -43,6 +43,17 @@ internal static partial class UnicodeData
 
     /// <summary>True for a strong right-to-left character (Bidi_Class R or AL).</summary>
     public static bool IsRightToLeft(int codePoint) => GetBidiClass(codePoint) is BidiClass.R or BidiClass.AL;
+
+    /// <summary>
+    /// The Bidi_Paired_Bracket of <paramref name="codePoint"/> and whether it opens; false for a code point that isn't a
+    /// paired bracket.
+    /// </summary>
+    public static bool PairedBracket(int codePoint, out int pair, out bool opens)
+    {
+        var index = BracketCodes.BinarySearch(codePoint);
+        (pair, opens) = index >= 0 ? (BracketPairs[index], BracketOpens[index]) : (0, false);
+        return index >= 0;
+    }
 
     /// <summary>
     /// The code point at <paramref name="index"/>: a surrogate pair as one, a lone surrogate as itself (it has its
