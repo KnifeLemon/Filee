@@ -1,9 +1,10 @@
-// Built-in e-book conversions, no external program: EPUB, MOBI / AZW / AZW3 / PRC, FB2, HTMLZ and TXTZ are read into
+// Built-in e-book conversions, no external program: EPUB, MOBI / AZW / AZW3 / PRC, FB2, HTMLZ and TXTZ, and the
+// older formats CHM, PDB (PalmDOC, zTXT), PML, TCR, RB, SNB and OEB (Ebooks/Legacy, Ebooks/Chm) are read into
 // the HWPX document model and written as EPUB, HWPX (→ PDF / images through rhwp and PDFium), TXT, HTML, Markdown,
-// FB2, HTMLZ, TXTZ, AZW3 (KF8) or MOBI (MOBI 6 + KF8); HTML, Markdown, TXT and DOCX become e-books too. Comics (CBZ / CBR / CB7 / CBT / CBC) become
-// PDF, fixed-layout EPUB or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives back its PDF. EPUB ↔ KEPUB (Kobo)
-// adds or removes Kobo's sentence markup and keeps the rest of the book as it is.
-// Formats only calibre reads or writes (LIT, LRF, PDB output, ...) are in CalibreConverter.
+// FB2, HTMLZ, TXTZ, AZW3 (KF8) or MOBI (MOBI 6 + KF8); HTML, Markdown, TXT and DOCX become e-books too. Comics
+// (CBZ / CBR / CB7 / CBT / CBC) become PDF, fixed-layout EPUB or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives
+// back its PDF. EPUB ↔ KEPUB (Kobo) adds or removes Kobo's sentence markup and keeps the rest of the book as it is.
+// Formats only calibre reads or writes (LIT, LRF, PDB / LIT / LRF output, ...) are in CalibreConverter.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -18,7 +19,7 @@ namespace Filee.Engines.Ebooks;
 public sealed class EbookConverter : IConverter
 {
     /// <summary>E-book formats read into the document model.</summary>
-    private static readonly string[] BookReaders = ["epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz"];
+    internal static readonly string[] BookReaders = ["epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "chm", "pdb", "pml", "tcr", "rb", "snb", "oeb"];
 
     /// <summary>Formats written from the document model.</summary>
     private static readonly string[] BookWriters = ["epub", "hwpx", "txt", "html", "md", "fb2", "htmlz", "txtz", "azw3", "mobi"];
@@ -59,7 +60,7 @@ public sealed class EbookConverter : IConverter
         new("azw4", "pdf"),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("EPUB, KEPUB, MOBI / AZW3, FB2, HTMLZ, TXTZ, CBZ / CBR / CB7 / CBT / CBC, AZW4",
+    public EngineStatus GetStatus() => EngineStatus.Available("EPUB, KEPUB, MOBI / AZW3, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB, CBZ / CBR / CB7 / CBT / CBC, AZW4",
         $"{EngineVersions.BuiltIn} · {EngineVersions.Library("AngleSharp", typeof(AngleSharp.BrowsingContext))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
@@ -117,6 +118,20 @@ public sealed class EbookConverter : IConverter
                 return MobiReader.ReadBook(input, work, cancellationToken);
             case "fb2":
                 return Fb2Reader.ReadBook(input, work);
+            case "chm":
+                return ChmReader.ReadBook(input, work, cancellationToken);
+            case "pdb":
+                return PdbReader.ReadBook(input, work, cancellationToken);
+            case "pml":
+                return PmlReader.ReadBook(input, work, cancellationToken);
+            case "tcr":
+                return TcrReader.ReadBook(input, work, cancellationToken);
+            case "rb":
+                return RocketBookReader.ReadBook(input, work, cancellationToken);
+            case "snb":
+                return SnbReader.ReadBook(input, work, cancellationToken);
+            case "oeb":
+                return OebReader.ReadBook(input, work, cancellationToken);
             case "htmlz":
                 return ZippedText.ReadHtmlzBook(input, work, cancellationToken);
             case "txtz":

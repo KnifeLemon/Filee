@@ -26,7 +26,7 @@ internal static partial class MobiReader
         var database = Open(path);
         var folder = EbookFiles.NewFolder(workFolder, "mobi");
         if (database.TypeCreator == "TEXtREAd")
-            return new Book(PlainText.ToDocument(DecodeText(PalmDocText(database))), new BookMetadata { Title = database.Name });
+            return PalmDocBook(database);
 
         var header = MobiHeader.Parse(database, 0);
         if (header.Encryption != 0)
@@ -112,6 +112,7 @@ internal static partial class MobiReader
             var record = database.Record(start + i);
             var size = record.Length - TrailingSize(record, header.ExtraFlags);
             text.Write(decompress(record[..Math.Max(0, size)]));
+            CheckTextSize(text.Length);
         }
         var bytes = text.ToArray();
         return header.TextLength > 0 && header.TextLength < bytes.Length ? bytes[..(int)header.TextLength] : bytes;
@@ -152,19 +153,35 @@ internal static partial class MobiReader
         return Math.Clamp(size, 0, record.Length);
     }
 
-    private static byte[] PalmDocText(PalmDatabase database)
+    /// <summary>The text of a PalmDOC (TEXtREAd) book: record 0 says how many text records follow and their compression.</summary>
+    internal static byte[] PalmDocText(PalmDatabase database)
     {
         var header = database.Record(0);
         var compression = PalmDatabase.U16(header, 0);
         var records = PalmDatabase.U16(header, 8);
         using var text = new MemoryStream();
         for (var i = 1; i <= records && i < database.Count; i++)
+        {
             text.Write(compression == 2 ? PalmDocCompression.Decompress(database.Record(i)) : database.Record(i));
+            CheckTextSize(text.Length);
+        }
         return text.ToArray();
     }
 
+    /// <summary>Refuses a book whose text grows past what any real book holds.</summary>
+    internal static void CheckTextSize(long length)
+    {
+        var limit = Documents.DocumentLimits.Default.MaxPartBytes;
+        if (length > limit)
+            throw Documents.DocumentLimits.Exceeded($"The book's text is larger than {Documents.DocumentLimits.Megabytes(limit)}.");
+    }
+
+    /// <summary>A PalmDOC (TEXtREAd) book as text; its title is the database name.</summary>
+    internal static Book PalmDocBook(PalmDatabase database) =>
+        new(PlainText.ToDocument(DecodeText(PalmDocText(database))), new BookMetadata { Title = database.Name });
+
     /// <summary>UTF-8 when valid, else Windows-1252 (the Mobipocket default).</summary>
-    private static string DecodeText(byte[] bytes)
+    internal static string DecodeText(byte[] bytes)
     {
         try
         {
