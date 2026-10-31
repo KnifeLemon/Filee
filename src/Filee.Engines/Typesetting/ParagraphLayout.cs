@@ -138,7 +138,7 @@ internal sealed class ParagraphLayouter
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
                 storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], segments[0])));
             }
-            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker };
+            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating };
         }
 
         var lines = new List<LineBox>();
@@ -163,7 +163,7 @@ internal sealed class ParagraphLayouter
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
             lines.Add(Place(source, items, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
-        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker };
+        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating };
     }
 
     /// <summary>
