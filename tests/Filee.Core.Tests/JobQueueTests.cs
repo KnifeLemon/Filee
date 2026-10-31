@@ -122,6 +122,63 @@ public class JobQueueTests
         }
     }
 
+    [Fact]
+    public async Task A_file_with_what_a_checked_engine_cant_draw_takes_the_route_without_it()
+    {
+        // Filee's renderer (a preview) draws most documents; one with a chart keeps the HWPX writer and rhwp.
+        using var dir = new TempDir();
+        var chart = dir.File("chart.docx");
+        var plain = dir.File("plain.docx");
+        var writer = new FakeConverter("hwpx-writer", new ConversionEdge("docx", "hwpx"));
+        var rhwp = new FakeConverter("rhwp", new ConversionEdge("hwpx", "pdf"));
+        var layout = new CapabilityCheck("layout", path => Path.GetFileName(path).StartsWith("chart", StringComparison.Ordinal) ? "charts" : null,
+            new ConversionEdge("docx", "pdf", 5, Checked: true));
+
+        await using var queue = new JobQueue(new ConverterCatalog([writer, rhwp, layout]));
+        var job = await Run(queue, [chart, plain], new Preset { TargetFormat = "pdf" });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal("plain.docx→pdf by layout", File.ReadAllText(Path.Combine(dir.Path, "plain.pdf")));
+        Assert.EndsWith("→pdf by rhwp", File.ReadAllText(Path.Combine(dir.Path, "chart.pdf")));
+        Assert.Equal(["chart.docx", "plain.docx"], layout.Checked.Order().Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task A_checked_engine_keeps_a_file_it_cant_fully_draw_when_there_is_no_other_route()
+    {
+        using var dir = new TempDir();
+        var layout = new CapabilityCheck("layout", _ => "charts", new ConversionEdge("docx", "pdf", 5, Checked: true));
+
+        await using var queue = new JobQueue(new ConverterCatalog([layout]));
+        var job = await Run(queue, [dir.File("chart.docx")], new Preset { TargetFormat = "pdf" });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal("chart.docx→pdf by layout", File.ReadAllText(Path.Combine(dir.Path, "chart.pdf")));
+    }
+
+    /// <summary>An engine with checked edges that can't draw the files <paramref name="unsupported"/> names something for.</summary>
+    private sealed class CapabilityCheck(string id, Func<string, string?> unsupported, params ConversionEdge[] edges) : IConverter, ICapabilityCheck
+    {
+        private readonly FakeConverter _inner = new(id, edges);
+        public string Id => id;
+        public string DisplayName => id;
+        public IReadOnlyList<ConversionEdge> Edges => edges;
+        public int MaxParallelism => 0;
+        /// <summary>Files <see cref="FirstUnsupported"/> was called for.</summary>
+        public List<string> Checked { get; } = [];
+        public EngineStatus GetStatus() => EngineStatus.Available();
+
+        public string? FirstUnsupported(string sourcePath, string sourceFormat)
+        {
+            lock (Checked)
+                Checked.Add(sourcePath);
+            return unsupported(sourcePath);
+        }
+
+        public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
+            _inner.ConvertAsync(step, progress, cancellationToken);
+    }
+
     /// <summary>An engine with unshaped edges that finds a script in the files <paramref name="script"/> names one for.</summary>
     private sealed class ShapingCheck(string id, Func<string, string?> script, params ConversionEdge[] edges) : IConverter, ITextShapingCheck
     {
