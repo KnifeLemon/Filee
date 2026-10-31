@@ -238,6 +238,63 @@ public class PdfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task One_larger_word_in_a_line_does_not_split_the_paragraph()
+    {
+        // 10.5 pt text (五号) with one 12 pt word (小四) on its second line: an emphasised word or a name, common in Chinese Word documents.
+        const double Body = 10.5, Large = 12, X = 54, Max = 495;
+        var pdf = new PdfBuilder().NewPage();
+        var regular = pdf.Font();
+        var text = $"{First} {Second}";
+
+        // Wrap by hand (PdfBuilder.Paragraph draws a whole paragraph in one size).
+        var lines = new List<string>();
+        var current = "";
+        foreach (var word in text.Split(' '))
+        {
+            var candidate = current.Length == 0 ? word : current + " " + word;
+            if (current.Length > 0 && pdf.Width(candidate, Body, regular) > Max)
+            {
+                lines.Add(current);
+                current = word;
+            }
+            else
+            {
+                current = candidate;
+            }
+        }
+        lines.Add(current);
+        Assert.True(lines.Count >= 3, "the paragraph needs at least three lines");
+
+        for (var i = 0; i < lines.Count; i++)
+        {
+            var y = 100 + i * 14.0;
+            if (i != 1)
+            {
+                pdf.Line(lines[i], Body, regular, X, y);
+                continue;
+            }
+            // The middle word of the second line is 12 pt; the rest of the line stays 10.5 pt.
+            var words = lines[i].Split(' ');
+            var at = words.Length / 2;
+            var before = string.Join(' ', words[..at]);
+            var large = " " + words[at];
+            var after = " " + string.Join(' ', words[(at + 1)..]);
+            var x = X;
+            pdf.Line(before, Body, regular, x, y);
+            x += pdf.Width(before, Body, regular);
+            pdf.Line(large, Large, regular, x, y);
+            x += pdf.Width(large, Large, regular);
+            pdf.Line(after, Body, regular, x, y);
+        }
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "larger-word.pdf"));
+
+        var docx = await ConvertAsync(path, "docx");
+
+        var paragraphs = Paragraphs(ReadBack(docx).Sections.SelectMany(s => s.Blocks)).Where(p => TextOf(p).Length > 0).ToList();
+        Assert.Equal([text], paragraphs.Select(p => TextOf(p).Trim()));
+    }
+
+    [Fact]
     public async Task Fixed_line_spacing_wider_than_1_9_em_stays_one_paragraph()
     {
         var pdf = new PdfBuilder().NewPage();
