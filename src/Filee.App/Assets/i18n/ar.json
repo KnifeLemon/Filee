@@ -969,7 +969,7 @@
   "engines.lo_hwp": "استخدام LibreOffice لتحويل HWP وHWPX إلى PDF",
   "engines.lo_hwp_hint": "معطّل افتراضيًا: عادةً ما يكون rhwp أقرب إلى مظهر 한글.\nفعّله للمقارنة عندما يعرض rhwp المستند بصورة غير صحيحة (نصوص متداخلة أو جداول في مواضع خاطئة).",
   "engines.filee_renderer": "استخدام مُصيِّر Filee (معاينة)",
-  "engines.filee_renderer_hint": "يُنسّق محرّك Filee الخاص ملفات HWPX ومستندات Word والنصوص وMarkdown وHTML والكتب الإلكترونية في PDF، بدلًا من كاتب HWPX وrhwp.\nالملفات التي تحوي ما لا يرسمه بعد (المخططات، النص العمودي، صور EMF…) تبقى على مسارها المعتاد.",
+  "engines.filee_renderer_hint": "يُنسّق محرّك Filee الخاص ملفات HWPX ومستندات Word والنصوص وMarkdown وHTML والكتب الإلكترونية في PDF، بدلًا من كاتب HWPX وrhwp.\nالملفات التي تحوي ما لا يرسمه بعد (المخططات، النص العمودي…) تبقى على مسارها المعتاد.",
   "engines.package.libreoffice.name": "LibreOffice (الصيغ القديمة والنادرة)",
   "engines.package.libreoffice.description": "مطلوب للصيغ القديمة أو غير الشائعة: DOC وPPT، وعروض OpenDocument، وWordPerfect، وClarisWorks وMacWrite، وApple Pages وNumbers وKeynote، وPublisher وVisio وغيرها.\nويحفظ بصيغ DOC وXLS وPPT وODT وODP وEMF، ويحسّن دقة تحويل العروض إلى PDF.\nتُحوَّل ملفات Word وExcel وPowerPoint وPDF وHWP بدونه.",
   "engines.package.pandoc.name": "Pandoc (Markdown وLaTeX وOrg وغيرها)",

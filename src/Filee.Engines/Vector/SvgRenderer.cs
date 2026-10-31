@@ -207,20 +207,26 @@ internal static class SvgRenderer
             canvas.Translate(-drawing.Bounds.Left, -drawing.Bounds.Top);
             canvas.DrawPicture(drawing.Picture);
         }
+        return ToMagick(bitmap, CssDpi * scale);
+    }
 
+    /// <summary>A bitmap Skia drew (premultiplied RGBA) as an ImageMagick image of <paramref name="dpi"/>.</summary>
+    public static MagickImage ToMagick(SKBitmap bitmap, float dpi)
+    {
+        var width = bitmap.Width;
+        var height = bitmap.Height;
         // Skia draws premultiplied; ImageMagick expects straight alpha.
         using var straight = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888, SKAlphaType.Unpremul));
         using (var source = bitmap.PeekPixels())
         using (var target = straight.PeekPixels())
         {
             if (!source.ReadPixels(target))
-                throw new InvalidOperationException("Could not read the rendered SVG.");
+                throw new InvalidOperationException("Could not read the rendered drawing.");
         }
         var pixels = straight.GetPixelSpan().ToArray();
 
         var image = new MagickImage();
         image.ReadPixels(pixels, new PixelReadSettings((uint)width, (uint)height, StorageType.Char, PixelMapping.RGBA));
-        var dpi = CssDpi * scale;
         image.Density = new Density(dpi, dpi, DensityUnit.PixelsPerInch);
         return image;
     }

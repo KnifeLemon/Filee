@@ -12,7 +12,7 @@
 //   the top, up from the bottom or from the centre; or against the paragraph (PARA): the offset down from the top of
 //   its first line, whatever the alignment, never above it.
 //
-// Drawing: pictures with their crop inside their inner margin, under their outline; rectangles (rounded by their corner ratio), ellipses, lines, polygons, curves and
+// Drawing: pictures with their crop inside their inner margin, under their outline (EMF / WMF as vector drawing); rectangles (rounded by their corner ratio), ellipses, lines, polygons, curves and
 // arcs with their fill (a colour or a linear gradient) and outline (solid, dashed, dotted, dash-dot or double, at its
 // width), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
 // their padding, at the top, middle or bottom. Curves go smoothly through their points; arcs run counterclockwise
@@ -23,6 +23,7 @@
 // Wrapping text that is laid out anew around objects is not done yet.
 
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Metafiles;
 using Filee.Engines.Rendering;
 using SkiaSharp;
 
@@ -230,10 +231,19 @@ internal static class FloatingObjects
 
     private static void Picture(SKCanvas canvas, HImage picture, SKRect area)
     {
-        using var image = File.Exists(picture.Path) ? SKImage.FromEncodedData(picture.Path) : null;
-        if (image is null)
+        if (!File.Exists(picture.Path))
             return;
         var crop = picture.Crop ?? default;
+        if (Metafile.IsMetafile(picture.Path))
+        {
+            // EMF / WMF (clip art, OLE previews): replayed as vector drawing, so a PDF keeps its lines and text sharp.
+            using var drawing = Metafile.TryLoad(picture.Path);
+            drawing?.Draw(canvas, area, (crop.Left, crop.Top, crop.Right, crop.Bottom));
+            return;
+        }
+        using var image = SKImage.FromEncodedData(picture.Path);
+        if (image is null)
+            return;
         var source = new SKRect(
             (float)(crop.Left * image.Width), (float)(crop.Top * image.Height),
             (float)((1 - crop.Right) * image.Width), (float)((1 - crop.Bottom) * image.Height));

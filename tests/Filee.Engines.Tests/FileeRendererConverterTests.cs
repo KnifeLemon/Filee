@@ -72,7 +72,7 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     [InlineData("chart.hwpx", "Contents/section0.xml", "<hs:sec><hp:p><hp:run><hp:chart id=\"1\"/></hp:run></hp:p></hs:sec>", "OLE objects and charts")]
     [InlineData("vertical.hwpx", "Contents/section0.xml", "<hs:sec><hp:secPr textDirection=\"VERTICAL\"/></hs:sec>", "vertical text")]
     [InlineData("form.hwpx", "Contents/section0.xml", "<hs:sec><hp:p><hp:run><hp:checkBtn/></hp:run></hp:p></hs:sec>", "form controls")]
-    [InlineData("picture.hwpx", "BinData/image1.emf", "EMF", "EMF / WMF pictures")]
+    [InlineData("picture.hwpx", "BinData/image1.emf", "EMF", null)] // drawn by the metafile renderer
     [InlineData("vertical.docx", "word/document.xml", "<w:sectPr><w:textDirection w:val=\"tbRl\"/></w:sectPr>", "vertical text")]
     [InlineData("chart.docx", "word/document.xml", "<w:drawing><c:chart r:id=\"rId5\"/></w:drawing>", "OLE objects and charts")]
     [InlineData("smartart.docx", "word/document.xml", "<w:drawing><dgm:relIds r:dm=\"rId1\"/></w:drawing>", "SmartArt")]

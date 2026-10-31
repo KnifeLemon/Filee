@@ -1,6 +1,7 @@
 // The pixel size a picture's header claims, read without decoding it, so a picture that would take gigabytes once
 // decoded (a few kilobytes of PNG can claim 100,000 × 100,000 pixels) is left out before anything decodes it. PNG,
-// JPEG, GIF, BMP and WebP; other formats (TIFF, EMF, WMF, SVG) give no size here and are checked where they are drawn.
+// JPEG, GIF, BMP and WebP, and EMF and WMF (their picture frame at 96 dpi); other formats (TIFF, SVG) give no size here
+// and are checked where they are drawn.
 
 using System.Buffers.Binary;
 
@@ -29,7 +30,7 @@ internal static class PictureSize
     /// <inheritdoc cref="Read(string)"/>
     public static (int Width, int Height)? Read(Stream stream)
     {
-        Span<byte> head = stackalloc byte[30];
+        Span<byte> head = stackalloc byte[44];
         var length = ReadUpTo(stream, head);
         head = head[..length];
         if (head is [0x89, (byte)'P', (byte)'N', (byte)'G', ..] && head.Length >= 24)
@@ -47,6 +48,28 @@ internal static class PictureSize
             return WebP(head);
         if (head is [0xFF, 0xD8, ..])
             return Jpeg(stream, head);
+        return Metafile(head);
+    }
+
+    /// <summary>
+    /// An EMF's frame (0.01 mm) or a placeable WMF's box (in its units per inch) as pixels at 96 dpi, the size the
+    /// metafile renderer draws it at by default.
+    /// </summary>
+    private static (int Width, int Height)? Metafile(ReadOnlySpan<byte> head)
+    {
+        if (head.Length >= 44 && BinaryPrimitives.ReadUInt32LittleEndian(head) == 1 && BinaryPrimitives.ReadUInt32LittleEndian(head[40..]) == 0x464D4520)
+        {
+            long width = (long)BinaryPrimitives.ReadInt32LittleEndian(head[32..]) - BinaryPrimitives.ReadInt32LittleEndian(head[24..]);
+            long height = (long)BinaryPrimitives.ReadInt32LittleEndian(head[36..]) - BinaryPrimitives.ReadInt32LittleEndian(head[28..]);
+            return width > 0 && height > 0 ? Size((uint)Math.Min(uint.MaxValue, Math.Ceiling(width * 96 / 2540.0)), (uint)Math.Min(uint.MaxValue, Math.Ceiling(height * 96 / 2540.0))) : null;
+        }
+        if (head.Length >= 16 && BinaryPrimitives.ReadUInt32LittleEndian(head) == 0x9AC6CDD7)
+        {
+            var width = Math.Abs(BinaryPrimitives.ReadInt16LittleEndian(head[10..]) - BinaryPrimitives.ReadInt16LittleEndian(head[6..]));
+            var height = Math.Abs(BinaryPrimitives.ReadInt16LittleEndian(head[12..]) - BinaryPrimitives.ReadInt16LittleEndian(head[8..]));
+            var inch = BinaryPrimitives.ReadUInt16LittleEndian(head[14..]);
+            return inch > 0 ? Size((uint)Math.Ceiling(width * 96.0 / inch), (uint)Math.Ceiling(height * 96.0 / inch)) : null;
+        }
         return null;
     }
 

@@ -969,7 +969,7 @@
   "engines.lo_hwp": "HWP·HWPX → PDF के लिए LibreOffice इस्तेमाल करें",
   "engines.lo_hwp_hint": "डिफ़ॉल्ट रूप से बंद: rhwp आम तौर पर 한글 जैसा दिखता है।\nजब rhwp किसी दस्तावेज़ को गलत बनाए (टेक्स्ट का ओवरलैप, गलत जगह पर टेबल), तब तुलना करने के लिए इसे चालू करें।",
   "engines.filee_renderer": "Filee रेंडरर इस्तेमाल करें (पूर्वावलोकन)",
-  "engines.filee_renderer_hint": "Filee का अपना इंजन HWPX, Word दस्तावेज़, टेक्स्ट, Markdown, HTML और ई-बुक को HWPX राइटर और rhwp की जगह PDF में सजाता है।\nजिन फ़ाइलों में ऐसा कुछ है जिसे यह अभी नहीं बना सकता (चार्ट, खड़ा टेक्स्ट, EMF चित्र…), वे अपने सामान्य रास्ते से बदलती हैं।",
+  "engines.filee_renderer_hint": "Filee का अपना इंजन HWPX, Word दस्तावेज़, टेक्स्ट, Markdown, HTML और ई-बुक को HWPX राइटर और rhwp की जगह PDF में सजाता है।\nजिन फ़ाइलों में ऐसा कुछ है जिसे यह अभी नहीं बना सकता (चार्ट, खड़ा टेक्स्ट…), वे अपने सामान्य रास्ते से बदलती हैं।",
   "engines.package.libreoffice.name": "LibreOffice (पुराने और दुर्लभ फ़ॉर्मैट)",
   "engines.package.libreoffice.description": "पुराने या कम प्रचलित फ़ॉर्मैट के लिए ज़रूरी: DOC·PPT, OpenDocument प्रेज़ेंटेशन, WordPerfect, ClarisWorks·MacWrite, Apple Pages·Numbers·Keynote, Publisher·Visio और अन्य।\nDOC·XLS·PPT·ODT·ODP·EMF के रूप में भी सहेजता है और प्रेज़ेंटेशन → PDF को ज़्यादा सटीक बनाता है।\nWord, Excel, PowerPoint, PDF और HWP इसके बिना भी कन्वर्ट होते हैं।",
   "engines.package.pandoc.name": "Pandoc (Markdown, LaTeX, Org और अन्य)",

@@ -9,7 +9,7 @@
 //   한글's default 1.8 mm by 0.5 mm), nested tables too; a row is as high as its tallest single-row cell or its own
 //   height, whichever is more, and a cell spanning rows makes its last row higher when the rows are short of it.
 //   Content sits at the top, middle or bottom of the cell.
-// - Drawing: each cell's fill, then its content, then its borders (the cell's, else the table's, else a thin grid);
+// - Drawing: each cell's fill (a colour, a picture; EMF / WMF as vector drawing), then its content, then its borders (the cell's, else the table's, else a thin grid);
 //   solid, dashed, dotted, dash-dot and double lines at their width.
 // - Pages: rows bound by a cell spanning them form a group that moves to a page together. A table that must not split
 //   (한글 나누지 않음) goes to the next page whole when it fits on one; others split between groups (한글 셀 단위로
@@ -17,6 +17,7 @@
 //   and sources that don't say, as Word allows) unless the row must not split. Header rows repeat on every page.
 
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Metafiles;
 using Filee.Engines.Rendering;
 using SkiaSharp;
 
@@ -440,7 +441,14 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
                         paint.Color = color;
                         canvas.DrawRect(area, paint);
                     }
-                    if (cell.FillPicture is { } path && File.Exists(path) && SKImage.FromEncodedData(path) is { } image)
+                    if (cell.FillPicture is not { } path || !File.Exists(path))
+                        continue;
+                    if (Metafile.IsMetafile(path))
+                    {
+                        using var drawing = Metafile.TryLoad(path);
+                        drawing?.Draw(canvas, area);
+                    }
+                    else if (SKImage.FromEncodedData(path) is { } image)
                     {
                         using (image)
                             canvas.DrawImage(image, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));

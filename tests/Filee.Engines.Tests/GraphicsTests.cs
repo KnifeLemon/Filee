@@ -205,7 +205,7 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Windows_metafiles_are_rendered_at_the_preset_dpi()
     {
-        Assert.SkipUnless(OperatingSystem.IsWindows(), "EMF/WMF are read through GDI+ on Windows only.");
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The metafiles are recorded with GDI (MetafileTests writes them by hand on every platform).");
         var dir = fx.NewFolder();
         var emf = Path.Combine(dir, "chart.emf");
         var wmf = Path.Combine(dir, "clip.wmf");

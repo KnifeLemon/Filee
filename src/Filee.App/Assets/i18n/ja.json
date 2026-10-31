@@ -969,7 +969,7 @@
   "engines.lo_hwp": "HWP・HWPXのPDF変換にLibreOfficeを使う",
   "engines.lo_hwp_hint": "既定ではオフです。通常はrhwpのほうが「한글」に近い表示になります。\nrhwpで文書が正しく表示されない場合（文字の重なり、表の位置ずれなど）にオンにして比較してください。",
   "engines.filee_renderer": "Fileeレンダラーを使う（プレビュー）",
-  "engines.filee_renderer_hint": "HWPX、Word文書、テキスト、Markdown、HTML、電子書籍を、HWPX変換とrhwpの代わりにFilee独自のエンジンでPDFにレイアウトします。\nまだ描画できない要素（グラフ、縦書き、EMF画像など）を含むファイルは従来の経路で変換します。",
+  "engines.filee_renderer_hint": "HWPX、Word文書、テキスト、Markdown、HTML、電子書籍を、HWPX変換とrhwpの代わりにFilee独自のエンジンでPDFにレイアウトします。\nまだ描画できない要素（グラフ、縦書き）を含むファイルは従来の経路で変換します。",
   "engines.package.libreoffice.name": "LibreOffice（古い形式・一般的でない形式）",
   "engines.package.libreoffice.description": "古い形式や一般的でない形式（DOC・PPT、OpenDocumentプレゼンテーション、WordPerfect、ClarisWorks・MacWrite、Apple Pages・Numbers・Keynote、Publisher・Visioなど）に必要です。\nDOC・XLS・PPT・ODT・ODP・EMFでの保存や、プレゼンテーション → PDFの精度向上にも使われます。\nWord、Excel、PowerPoint、PDF、HWPの変換には必要ありません。",
   "engines.package.pandoc.name": "Pandoc（Markdown、LaTeX、Orgなど）",

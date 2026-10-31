@@ -969,7 +969,7 @@
   "engines.lo_hwp": "Gunakan LibreOffice untuk HWP·HWPX → PDF",
   "engines.lo_hwp_hint": "Bawaan nonaktif: rhwp biasanya lebih menyerupai dokumen asli 한글.\nAktifkan untuk membandingkan bila rhwp menghasilkan tampilan yang keliru (teks bertumpuk, tabel bergeser).",
   "engines.filee_renderer": "Gunakan perender Filee (pratinjau)",
-  "engines.filee_renderer_hint": "Mesin Filee sendiri menata HWPX, dokumen Word, teks, Markdown, HTML, dan e-book menjadi PDF, menggantikan penulis HWPX dan rhwp.\nBerkas yang berisi hal yang belum bisa digambarnya (bagan, teks vertikal, gambar EMF…) tetap melalui rute biasanya.",
+  "engines.filee_renderer_hint": "Mesin Filee sendiri menata HWPX, dokumen Word, teks, Markdown, HTML, dan e-book menjadi PDF, menggantikan penulis HWPX dan rhwp.\nBerkas yang berisi hal yang belum bisa digambarnya (bagan, teks vertikal…) tetap melalui rute biasanya.",
   "engines.package.libreoffice.name": "LibreOffice (format lama dan langka)",
   "engines.package.libreoffice.description": "Dibutuhkan untuk format lama atau tidak umum: DOC·PPT, presentasi OpenDocument, WordPerfect, ClarisWorks·MacWrite, Apple Pages·Numbers·Keynote, Publisher·Visio, dan lainnya.\nJuga menyimpan sebagai DOC·XLS·PPT·ODT·ODP·EMF dan membuat presentasi → PDF lebih akurat.\nWord, Excel, PowerPoint, PDF, dan HWP dapat dikonversi tanpanya.",
   "engines.package.pandoc.name": "Pandoc (Markdown, LaTeX, Org, dan lainnya)",

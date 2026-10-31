@@ -157,7 +157,7 @@ public sealed class PandocConverter : IConverter
 
     /// <summary>
     /// Word documents often hold EMF/WMF pictures, which browsers and Markdown editors don't show: each extracted one
-    /// becomes a PNG and the result links to that. Where ImageMagick can't draw metafiles (outside Windows), they stay.
+    /// becomes a PNG and the result links to that. A metafile that can't be drawn (damaged, EMF+ only outside Windows) stays.
     /// </summary>
     private static void MetafilesToPng(string output, string mediaFolder, Preset preset)
     {
@@ -176,7 +176,8 @@ public sealed class PandocConverter : IConverter
                 using var images = ImageReader.Read(metafile, Path.GetExtension(metafile)[1..].ToLowerInvariant(), preset);
                 images[0].Write(png, MagickFormat.Png);
             }
-            catch (Exception ex) when (ex is MagickException or IOException)
+            catch (Exception ex) when (ex is MagickException or IOException or InvalidDataException or NotSupportedException
+                                           or ConversionRefusedException)
             {
                 continue;
             }

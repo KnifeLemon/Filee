@@ -9,7 +9,7 @@ namespace Filee.Engines.Magick;
 /// <summary>
 /// Converts between PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, APNG, MNG, QOI,
 /// DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster and MIFF, and reads HEIC, XCF, camera RAW, DICOM,
-/// Photo CD, OpenEXR, Radiance HDR, FITS and (on Windows) EMF/WMF.
+/// Photo CD, OpenEXR, Radiance HDR, FITS and EMF/WMF (drawn by Filee's metafile renderer).
 /// </summary>
 public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransformer, IImageJoiner
 {

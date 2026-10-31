@@ -986,7 +986,7 @@
   "engines.lo_hwp": "HWP·HWPX → PDF 使用 LibreOffice",
   "engines.lo_hwp_hint": "預設關閉，rhwp 的排版通常更接近韓文 Hangul。\n某個文件用 rhwp 轉換出錯（文字重疊、表格錯位）時再開啟對比。",
   "engines.filee_renderer": "使用 Filee 轉譯器（預覽）",
-  "engines.filee_renderer_hint": "用 Filee 自己的引擎把 HWPX、Word 文件、文字、Markdown、HTML 和電子書排版成 PDF，取代 HWPX 寫入器和 rhwp。\n含有它暫時還無法繪製的內容（圖表、直書文字、EMF 圖片等）的檔案仍走原本的路線。",
+  "engines.filee_renderer_hint": "用 Filee 自己的引擎把 HWPX、Word 文件、文字、Markdown、HTML 和電子書排版成 PDF，取代 HWPX 寫入器和 rhwp。\n含有它暫時還無法繪製的內容（圖表、直書文字）的檔案仍走原本的路線。",
   "engines.package.libreoffice.name": "LibreOffice（舊版和少見格式）",
   "engines.package.libreoffice.description": "舊的或少見的格式需要它，如 DOC·PPT、OpenDocument 簡報、WordPerfect、ClarisWorks·MacWrite、Apple Pages·Numbers·Keynote、Publisher·Visio。\n也能儲存為 DOC·XLS·PPT·ODT·ODP·EMF，並讓簡報 → PDF 更準確。\nWord、Excel、PowerPoint、PDF 和 HWP 不需要它也能轉換。",
   "engines.package.pandoc.name": "Pandoc（Markdown、LaTeX、Org 等）",
