@@ -108,6 +108,15 @@ public partial class LocalizationTests
 
     [Theory]
     [MemberData(nameof(Languages))]
+    public void Line_breaks_are_real_line_breaks(string code)
+    {
+        // "\\n" in the JSON is a backslash and an n on screen; English writes "\n".
+        foreach (var (key, value) in Load(code))
+            Assert.False(value.Contains("\\n"), $"{code}:{key} has a literal \\n");
+    }
+
+    [Theory]
+    [MemberData(nameof(Languages))]
     public void Format_placeholders_match_english(string code)
     {
         var english = Load("en");
