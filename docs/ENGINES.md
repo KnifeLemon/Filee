@@ -564,6 +564,10 @@ low-level objects (option B).**
   character (ligatures, Indic conjuncts and reordered vowel signs, Arabic contextual forms). Right-to-left runs are
   drawn in logical order (glyphs reversed, each at its own position), so text comes out the way it was written in
   readers that take it in content order.
+- **Pictures of the pages** (`FileeRenderer.ToImages`, PNG / JPEG / WebP at a given DPI) are drawn from the same page
+  record onto a Skia bitmap (`PageContent.Render`), with no PDF → PDFium step. They match PDFium's drawing of the PDF:
+  the same glyphs at the same places (SSIM ≥ 0.95 on the matrix's pages; PDFium draws horizontal stems a little darker).
+  `ToPdf` and `ToImages` report pages done and stop when cancelled between pages.
 - Afterwards PDFsharp adds what Skia can't: the outline (bookmarks, with `/XYZ` destinations) and exact page sizes.
   Skia rounds the media box to whole points (A4 becomes 595 × 842) and draws from its top edge; the media box is set
   to end at that edge (`[0 0.11 595.28 842]`), so nothing moves. Pages of whole-point sizes without an outline skip
