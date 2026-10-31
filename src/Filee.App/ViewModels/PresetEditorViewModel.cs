@@ -4,10 +4,12 @@
 // Works on a clone; Apply() copies the edits back into the original preset (Cancel = just drop the VM).
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Engines.Ocr;
+using Filee.Engines.Translation;
 
 namespace Filee.App.ViewModels;
 
@@ -284,6 +286,39 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<string> _targetLanguage;
 
     public bool ShowTranslate => _original.Id == "translate" || _edit.Translate.Enabled;
+
+    [ObservableProperty] private string _testTranslationResult = "";
+    [ObservableProperty] private bool _isTestingTranslation;
+    [ObservableProperty] private bool _testTranslationHasError;
+
+    [RelayCommand]
+    public async Task TestTranslationAsync()
+    {
+        if (IsTestingTranslation) return;
+        IsTestingTranslation = true;
+        TestTranslationHasError = false;
+        TestTranslationResult = "Connecting to Ollama...";
+
+        try
+        {
+            var targetLang = TargetLanguage?.Value ?? "es";
+            var service = new TranslationService(new TranslateOptions { TargetLanguage = targetLang });
+            var sample = "Hello, world!";
+            var translated = await service.TranslateTextAsync(sample, targetLang);
+            var model = await TranslationService.GetPreferredLocalOllamaModelAsync() ?? TranslationService.ActiveOllamaModel ?? "local model";
+            TestTranslationResult = $"\"{sample}\" → \"{translated}\"  ({model})";
+            TestTranslationHasError = false;
+        }
+        catch (Exception ex)
+        {
+            TestTranslationResult = $"Error: {ex.Message}";
+            TestTranslationHasError = true;
+        }
+        finally
+        {
+            IsTestingTranslation = false;
+        }
+    }
 
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
@@ -945,6 +980,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // black and white chosen for PDF and left behind by a DWG target.
         _original.Cad.Version = ShowCad ? CadVersion.Value : default;
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
+        _original.Translate.TargetLanguage = TargetLanguage.Value;
+        _original.Translate.Enabled = ShowTranslate;
 
         var output = _original.Output;
         // Asking keeps the location it had: a Filee that can't ask (or one from before it) saves there.

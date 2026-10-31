@@ -48,22 +48,37 @@ public sealed class TranslatorConverter : IConverter
             DocumentFormats.Select(to => new ConversionEdge(from, to, from == to ? 10 : 12, Translate: true)))
         .ToList();
 
+    private static readonly HttpClient SharedStatusClient = new() { Timeout = TimeSpan.FromMilliseconds(200) };
+    private static (DateTime CheckedAt, bool Available) _cachedOllama;
+
     public EngineStatus GetStatus()
     {
         if (_translationService is not null)
             return EngineStatus.Available("embedded", "Test Translator");
 
-        try
+        var now = DateTime.UtcNow;
+        bool isAvailable;
+        if (now - _cachedOllama.CheckedAt < TimeSpan.FromSeconds(3))
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(300) };
-            var res = client.GetAsync("http://127.0.0.1:11434/api/tags").GetAwaiter().GetResult();
-            if (res.IsSuccessStatusCode)
-                return EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)");
+            isAvailable = _cachedOllama.Available;
         }
-        catch
+        else
         {
-            // Local Ollama not running
+            try
+            {
+                using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+                using var res = SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token).GetAwaiter().GetResult();
+                isAvailable = res.IsSuccessStatusCode;
+            }
+            catch
+            {
+                isAvailable = false;
+            }
+            _cachedOllama = (now, isAvailable);
         }
+
+        if (isAvailable)
+            return EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)");
 
         if (TranslationService.LocateLocalEngine() is { } cli && File.Exists(cli))
             return EngineStatus.Available(cli, "Translator (Local)");

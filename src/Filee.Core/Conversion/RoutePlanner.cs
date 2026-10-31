@@ -98,7 +98,7 @@ public sealed class RoutePlanner
             caption &= !frames && !motionPhoto && !livePhoto;
             translate &= !frames && !motionPhoto && !livePhoto && !caption;
             var special = EdgesFrom(from)
-                .Where(e => e.Edge.To == to && (frames ? e.Edge.FrameSequence : motionPhoto ? e.Edge.MotionPhoto : livePhoto ? e.Edge.LivePhoto : caption ? e.Edge.Caption : e.Edge.Translate))
+                .Where(e => e.Edge.To == to && (frames ? e.Edge.FrameSequence : motionPhoto ? e.Edge.MotionPhoto : livePhoto ? e.Edge.LivePhoto : caption ? e.Edge.Caption : translate ? e.Edge.Translate : false))
                 .OrderBy(e => e.Cost)
                 .FirstOrDefault();
             return special.Converter is null
@@ -173,7 +173,7 @@ public sealed class RoutePlanner
     /// <param name="ocr">Recognize the text first (see <see cref="Plan"/>).</param>
     /// <param name="caption">Transcribe speech to SRT subtitles using Whisper (see <see cref="Plan"/>).</param>
     public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false) =>
-        Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption) is not null;
+        Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate) is not null;
 
     private Route? PlanWithOcr(string from, string to, bool shaping)
     {

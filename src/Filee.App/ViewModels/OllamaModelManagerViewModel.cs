@@ -81,6 +81,43 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
     [ObservableProperty]
     private string _activeModelName = "";
 
+    [ObservableProperty]
+    private string _testResultText = "";
+
+    [ObservableProperty]
+    private bool _isTesting;
+
+    [ObservableProperty]
+    private bool _testHasError;
+
+    [RelayCommand]
+    public async Task TestConnectionAsync()
+    {
+        if (IsTesting) return;
+        IsTesting = true;
+        TestHasError = false;
+        TestResultText = "Testing translation...";
+
+        try
+        {
+            var service = new TranslationService();
+            var targetLang = "es";
+            var result = await service.TranslateTextAsync("Hello, world!", targetLang);
+            var model = !string.IsNullOrWhiteSpace(ActiveModelName) ? ActiveModelName : await TranslationService.GetPreferredLocalOllamaModelAsync() ?? "local model";
+            TestResultText = $"\"Hello, world!\" → \"{result}\"  ({model})";
+            TestHasError = false;
+        }
+        catch (Exception ex)
+        {
+            TestResultText = $"Failed: {ex.Message}";
+            TestHasError = true;
+        }
+        finally
+        {
+            IsTesting = false;
+        }
+    }
+
     partial void OnNewModelNameChanged(string value)
     {
         var trimmed = value.Trim();

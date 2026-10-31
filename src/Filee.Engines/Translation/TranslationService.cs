@@ -94,11 +94,11 @@ public sealed class TranslationService : ITranslationService
                 if (names.Count == 0)
                     return null;
 
-                if (!string.IsNullOrWhiteSpace(ActiveOllamaModel) && names.Contains(ActiveOllamaModel, StringComparer.OrdinalIgnoreCase))
-                    return ActiveOllamaModel;
+                if (!string.IsNullOrWhiteSpace(ActiveOllamaModel) && names.Any(n => string.Equals(n, ActiveOllamaModel, StringComparison.OrdinalIgnoreCase) || n.StartsWith(ActiveOllamaModel + ":", StringComparison.OrdinalIgnoreCase)))
+                    return names.First(n => string.Equals(n, ActiveOllamaModel, StringComparison.OrdinalIgnoreCase) || n.StartsWith(ActiveOllamaModel + ":", StringComparison.OrdinalIgnoreCase));
 
                 // Prefer specialized or standard instruction models
-                string[] preferred = ["qwen2.5", "llama3.2", "llama3", "mistral", "gemma2", "phi3", "phi4"];
+                string[] preferred = ["translategemma", "qwen2.5", "llama3.2", "llama3", "mistral", "gemma2", "phi3", "phi4"];
                 foreach (var p in preferred)
                 {
                     var match = names.FirstOrDefault(n => n.StartsWith(p, StringComparison.OrdinalIgnoreCase));
