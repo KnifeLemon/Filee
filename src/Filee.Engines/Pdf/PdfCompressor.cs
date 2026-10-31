@@ -2,8 +2,9 @@
 // are scaled down to it, photos are saved as JPEG at the level's quality and pictures with few colours (charts,
 // screenshots, logos) losslessly; every other stream is deflated at the highest level; page thumbnails, other
 // applications' private data and, when the preset drops metadata, the XMP metadata of pages and pictures are left out
-// (PDFsharp writes the document's own XMP from its document information on every save). Text, fonts and vector
-// drawings stay as they are. A picture is changed only when the result is smaller.
+// (PDFsharp writes the document's own XMP from its document information on every save). Embedded fonts are subset
+// again to the glyphs the pages draw (PdfFontSubsetter); text and vector drawings stay as they are. A picture or font
+// is changed only when the result is smaller. The saved file is then packed into object streams (PdfObjectStreams).
 
 using System.IO.Compression;
 using Filee.Core.Presets;
@@ -59,6 +60,7 @@ internal static class PdfCompressor
         }
 
         MergeDuplicatePictures(document);
+        PdfFontSubsetter.Subset(document, cancellationToken);
 
         foreach (var page in document.Pages)
         {

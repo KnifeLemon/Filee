@@ -1217,7 +1217,21 @@ PDFsharp and Magick.NET; nothing has to be installed.
   applications' private data (`PieceInfo`, such as Illustrator's editing data) are removed, as are unused objects.
   When the preset doesn't keep metadata, the XMP metadata of pages and pictures goes too. The document's own XMP is
   written afresh from its document information by PDFsharp, as for every PDF it saves.
-- **Unchanged**: text, fonts, vector drawings, links, bookmarks and form fields. The whole file is compressed as it
+- **Fonts**: `Pdf/PdfFontSubsetter.cs` subsets embedded fonts again to the glyphs the pages draw, so a font embedded
+  whole, or the fonts of a page split off a long document, keep only what is left. Glyph IDs stay where they were
+  (TrueType through `Fonts/FontSubsetter.cs`, CFF through `Fonts/Cff/CffSubsetter.cs`, which empties unused glyphs and
+  subroutines and keeps CFF), so text, widths and copy-paste don't change. Handled: Type 0 fonts with an Identity
+  encoding (TrueType, CID-keyed or name-keyed CFF, OpenType) and simple TrueType fonts (their own cmap and glyph names
+  stay, and every glyph a code may reach through them is kept). `Pdf/PdfFontUses.cs` reads which codes each font draws
+  in the pages, forms, annotation appearances, patterns, soft masks and Type 3 glyphs, with a lexer of its own (PDFsharp's
+  turns hex strings that start with FE FF into text). A font stays whole when its use can't be followed everywhere: in
+  the interactive form's default resources (viewers type new values with them), set by a graphics state, listed in
+  resources Filee didn't read, or in a content stream that didn't parse. Simple Type 1 and CFF fonts, Type 3 fonts and
+  fonts with a CMap of their own stay as they are.
+- **Object streams**: `Pdf/PdfObjectStreams.cs` packs the saved file's objects that aren't streams (pages, fonts,
+  annotations, outlines) into deflated object streams with a cross-reference stream (PDF 1.5), which PDFsharp reads
+  but doesn't write. Encrypted files stay as they are.
+- **Unchanged**: text, vector drawings, links, bookmarks and form fields. The whole file is compressed as it
   is; a page range or single pages are first copied into new PDFs, as without compression (which leaves bookmarks and
   form fields behind), and so is a PDF locked only against changes.
 - **Never bigger**: when nothing gets smaller (a PDF of text only, one compressed before), the PDF is written as it was
@@ -1227,8 +1241,10 @@ PDFsharp and Magick.NET; nothing has to be installed.
   `pdfwrite` with `-dPDFSETTINGS=/screen`, `/ebook` or `/printer` (the same 72, 150 and 300 dpi) and
   `-dCompatibilityLevel=1.6`, and the smallest of the two results is kept; when Ghostscript fails, the built-in result
   stands. It is off by default: Ghostscript rewrites the whole file (fonts are subset again, structure and form fields
-  may change), so it is the user's choice. It also writes object streams, which PDFsharp can't, and its JPEGs are
-  somewhat smaller at the Balanced level.
+  may change), so it is the user's choice. Against Ghostscript's `/ebook` on PDFs generated in the tests, the built-in
+  result is far smaller where there is much to gain (a font embedded whole: 0.71 of Ghostscript's size; the photo report
+  of the tests: 0.02, where Ghostscript keeps its picture at 300 KB), and 2–12 % larger on PDFs that are already compact
+  (Filee's own renderings), where Ghostscript writes the content streams again more tightly. The option stays for those.
 - **Not done**: object streams (PDFsharp writes none), font subsetting or removal of unused glyphs, converting
   colour to gray, flattening transparency or form fields, recompressing JBIG2/CCITT scans.
 
