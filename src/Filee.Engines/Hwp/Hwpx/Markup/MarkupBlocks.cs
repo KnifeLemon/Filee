@@ -72,7 +72,7 @@ internal static class MarkupBlocks
     {
         budget.Paragraph();
         budget.Object();
-        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Center) };
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Center), Role = HBlockRole.Rule };
         paragraph.Inlines.Add(new HShape(HShapeKind.Line) { Width = 14000, Height = 0, Line = HBorder.Thin with { Color = "#808080" } });
         output.Add(paragraph);
     }

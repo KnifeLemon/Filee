@@ -142,11 +142,10 @@ internal sealed partial class MediaWikiReader
                 var start = i;
                 while (i < lines.Length && lines[i].Length > 0 && lines[i][0] == ' ')
                     i++;
-                var block = new List<HInline>();
                 foreach (var codeLine in lines[start..i])
                 {
                     _budget.Paragraph();
-                    var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default };
+                    var paragraph = new HParagraph { Format = indent > 0 ? new HParaFormat(Left: indent) : default, Role = HBlockRole.Code };
                     var sink = new InlineSink(paragraph.Inlines);
                     // Wiki markup still works inside (bold, links); the text is code.
                     Inlines(new Closers(codeLine[1..]), 0, codeLine.Length - 1, CodeFormat, sink, 0);
