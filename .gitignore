@@ -30,3 +30,4 @@ Thumbs.db
 # Fonts are downloaded by build/fetch-fonts.ps1
 src/Filee.App/Assets/Fonts/*.ttf
 src/Filee.App/Assets/Fonts/*.otf
+Ai.txt
