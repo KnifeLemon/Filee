@@ -49,6 +49,12 @@ public enum EngineCopyStatus
 /// <param name="Outdated">Filee's download is older than the version engines.json pins.</param>
 public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated);
 
+/// <summary>Another Filee (the app, the CLI or a second copy) is installing or removing the same package.</summary>
+public sealed class EngineBusyException(string packageId)
+    : IOException($"{packageId} is being installed by another Filee. Try again when it has finished.")
+{
+    public string PackageId { get; } = packageId;
+}
 
 /// <summary>Installs and removes <see cref="EnginePackage"/>s.</summary>
 public sealed class EngineInstaller
@@ -118,6 +124,7 @@ public sealed class EngineInstaller
         if (package.Components.Any(c => !_components.ContainsKey(c)))
             throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
                 ?? $"The {package.Id} package is unavailable on this platform.");
+        using var packageLock = LockPackage(package);
         var pending = package.Components
             .Where(c => !string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase))
             .Select(c => _components[c])
@@ -153,11 +160,32 @@ public sealed class EngineInstaller
     /// <summary>Removes the package's folders. Fails if an engine is running (its files are locked).</summary>
     public void Uninstall(EnginePackage package)
     {
+        using var packageLock = LockPackage(package);
         foreach (var id in package.Components)
         {
             var folder = FolderOf(id);
             if (Directory.Exists(folder))
                 Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Holds the package's lock file (.downloads/locks/&lt;id&gt;.lock) while it is installed or removed, so two Filee
+    /// processes never write the same download or replace the same folder at once. The file stays; the open handle
+    /// is the lock (deleting it on close would let a third process lock a new file while a second still holds the old).
+    /// </summary>
+    /// <exception cref="EngineBusyException">Another process holds the lock.</exception>
+    private FileStream LockPackage(EnginePackage package)
+    {
+        var locks = Path.Combine(_root, ".downloads", "locks");
+        Directory.CreateDirectory(locks);
+        try
+        {
+            return new FileStream(Path.Combine(locks, package.Id + ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException ex) when (ex is not (FileNotFoundException or DirectoryNotFoundException or PathTooLongException))
+        {
+            throw new EngineBusyException(package.Id);
         }
     }
 

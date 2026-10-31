@@ -134,6 +134,33 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_package_another_Filee_is_installing_is_neither_downloaded_nor_removed()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var server = new FakeServer(new() { [component.Url] = archive });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        var update = component with { Version = "2.0", Sha256 = new string('1', 64) };
+        var updating = Installer(server, update);
+
+        var locks = Path.Combine(_root, ".downloads", "locks");
+        using (new FileStream(Path.Combine(locks, "tool.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var busy = await Assert.ThrowsAsync<EngineBusyException>(() => updating.InstallAsync(package, null, TestContext.Current.CancellationToken));
+            Assert.Equal("tool", busy.PackageId);
+            Assert.Contains("another Filee", busy.Message);
+            Assert.Throws<EngineBusyException>(() => installer.Uninstall(package));
+        }
+
+        Assert.Single(server.Requests);
+        Assert.True(installer.IsUpToDate(package));
+        installer.Uninstall(package);
+        Assert.False(installer.IsInstalled(package));
+    }
+
+    [Fact]
     public async Task The_copy_in_use_is_Filees_download_until_it_is_removed()
     {
         var archive = Zip(("tool.exe", "binary"));
