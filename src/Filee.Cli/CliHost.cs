@@ -31,7 +31,6 @@ internal sealed class CliHost : IAsyncDisposable
         store.Load();
         EngineEnvironment.OwnCopies = new Dictionary<string, string>(store.Settings.EngineOwnCopies);
         EngineEnvironment.LibreOfficeForSlides = store.Settings.LibreOfficeForSlides;
-        EngineEnvironment.LibreOfficeForHwp = store.Settings.LibreOfficeForHwp;
         EngineEnvironment.LibreOfficeForDocuments = store.Settings.LibreOfficeForDocuments;
         EngineEnvironment.LibreOfficeForSheets = store.Settings.LibreOfficeForSheets;
         EngineEnvironment.FileeRenderer = store.Settings.FileeRenderer;

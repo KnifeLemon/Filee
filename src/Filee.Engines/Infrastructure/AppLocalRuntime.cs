@@ -2,8 +2,9 @@
 //
 // Windows has no copy of its own: a PC gets one from the Visual C++ Redistributable, which many programs install but a
 // fresh Windows lacks. Filee therefore puts the runtime next to the programs that need it (app-local deployment,
-// Windows looks in a program's folder first): the "vcruntime" download (conda-forge) next to rhwp.exe, Filee.exe
-// (for unhwp.dll) and gswin64c.exe, LibreOffice's own copy next to soffice.exe (see CopyLibreOfficeRuntime).
+// Windows looks in a program's folder first): the "vcruntime" download (conda-forge) next to rhwp.exe and
+// gswin64c.exe, LibreOffice's own copy next to soffice.exe (see CopyLibreOfficeRuntime). Nothing loaded into Filee.exe
+// needs it.
 // When a DLL is still missing, Windows does not start the program at all and reports STATUS_DLL_NOT_FOUND as its
 // exit code; ThrowIfMissing turns that into a message the user can act on.
 

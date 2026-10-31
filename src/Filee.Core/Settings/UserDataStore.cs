@@ -445,6 +445,18 @@ internal static class SettingsMigrations
         if (settings.SchemaVersion < 21)
             InsertBefore(settings.EnginePriority, "wic", settings.EnginePriority.Contains("ffmpeg") ? "ffmpeg" : "pandoc");
 
+        // v58: Unhwp is gone; the built-in "hwp-text" engine (HWP / HWPX → TXT, Markdown, HTML) takes its place in the
+        //      order, so every other engine keeps its rank. (Schema 58 may be renumbered if another change takes it first.)
+        if (settings.SchemaVersion < 58)
+            ReplaceEngine(settings.EnginePriority, "unhwp", "hwp-text");
+
+        // v59: LibreOffice no longer opens HWP / HWPX (no H2Orestart, no Java). Whoever sent HWP → PDF through it to get
+        //      around rhwp gets the other way around rhwp, Filee's renderer. (Schema 59 may be renumbered if another change
+        //      takes it first.)
+        if (settings.SchemaVersion < 59 && settings.LibreOfficeForHwp == true)
+            settings.FileeRenderer = true;
+        settings.LibreOfficeForHwp = null;
+
 
         if (settings.Triggers.Count == 0)
             settings.Triggers = TriggerGesture.Defaults();
@@ -1424,6 +1436,18 @@ internal static class SettingsMigrations
         var index = after is null ? -1 : profile.PresetIds.IndexOf(after);
         profile.PresetIds.Insert(index < 0 ? profile.PresetIds.Count : index + 1, presetId);
         return true;
+    }
+
+    /// <summary>Puts <paramref name="replacement"/> where <paramref name="id"/> was (or drops <paramref name="id"/> when the list has both).</summary>
+    private static void ReplaceEngine(List<string> list, string id, string replacement)
+    {
+        var index = list.FindIndex(e => string.Equals(e, id, StringComparison.OrdinalIgnoreCase));
+        if (index < 0)
+            return;
+        if (list.Contains(replacement, StringComparer.OrdinalIgnoreCase))
+            list.RemoveAt(index);
+        else
+            list[index] = replacement;
     }
 
     private static void InsertBefore(List<string> list, string id, string before)

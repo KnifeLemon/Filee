@@ -68,6 +68,13 @@ internal static class DocumentReaders
         ["fb2"] = Fb2Reader.Read,
         ["htmlz"] = ZippedText.ReadHtmlz,
         ["txtz"] = ZippedText.ReadTxtz,
+        ["chm"] = ChmReader.Read,
+        ["pdb"] = PdbReader.Read,
+        ["pml"] = PmlReader.Read,
+        ["tcr"] = TcrReader.Read,
+        ["rb"] = RocketBookReader.Read,
+        ["snb"] = SnbReader.Read,
+        ["oeb"] = OebReader.Read,
         // Lightweight markup languages (Markup/), written by MarkupConverter.
         ["ipynb"] = NotebookReader.Read,
     };
