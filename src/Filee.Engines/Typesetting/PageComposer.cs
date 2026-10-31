@@ -14,8 +14,9 @@
 //   the section's first page where it hides them; laid out in the header and footer areas.
 // - Master pages (바탕쪽): drawn behind the page's body (or in front of it) from the top of the body; see MasterPages.
 // - Page borders and backgrounds (쪽 테두리/배경) under everything else; see PageBorder.
-// - Page numbers count on from section to section unless a section restarts them; a page number field shows the
-//   number of its page and a total pages field the count, which a first pass finds when the body shows it.
+// - Page numbers count on from section to section unless a section restarts them (or a paragraph in it does, from its
+//   page on); a page number field shows the number of its page and a total pages field the count, which a first pass
+//   finds when the body shows it. 한글's automatic page number is drawn apart from the footer; see PageNumber.
 // - Styles: models read from other formats leave formats to the 한글 style (null members); with a StyleResolver every
 //   paragraph and run is resolved before layout, as the HWPX writer would write it.
 //
@@ -650,6 +651,12 @@ internal sealed class PageComposer
                 Anchor(paragraph, _y);
             if (first && paragraph.PageHiding is { } hiding)
                 Current.Hiding = hiding;
+            // A new page number in the middle of a section: this page has it, the next ones count on from it.
+            if (first && paragraph.NewPageNumber is { } number)
+            {
+                _number = number;
+                _pages[^1] = Current with { Number = number };
+            }
             Put(0, line.Height, line.Draw);
             _y += line.Height;
             foreach (var note in line.Notes)
@@ -1029,6 +1036,44 @@ internal sealed class PageComposer
                 Area(page, header.Blocks, page.Geometry.HeaderTop);
             if (!(page.FirstOfSection && section.HideFirstFooter) && page.Hiding?.Footer != true && Pick(section.Footers, page.Number) is { } footer)
                 Area(page, footer.Blocks, page.Geometry.FooterTop);
+            if (section.PageNumber is { } number && page.Hiding?.PageNumber != true)
+                PageNumber(page, number);
+        }
+
+        /// <summary>
+        /// Draws 한글's automatic page number apart from the header and footer: across the text width by its position
+        /// (inside and outside by the binding side), at the bottom of the footer area (its descent, about 0.3 of its
+        /// size, above the area's bottom, as 한글's PDFs have it) or at the top of the header area.
+        /// </summary>
+        private void PageNumber(Page page, HPageNumber number)
+        {
+            var position = number.Position;
+            var odd = page.Number % 2 == 1;
+            var align = position switch
+            {
+                _ when position.EndsWith("LEFT", StringComparison.Ordinal) => HAlign.Left,
+                _ when position.EndsWith("RIGHT", StringComparison.Ordinal) => HAlign.Right,
+                _ when position.StartsWith("INSIDE", StringComparison.Ordinal) => odd ? HAlign.Left : HAlign.Right,
+                _ when position.StartsWith("OUTSIDE", StringComparison.Ordinal) => odd ? HAlign.Right : HAlign.Left,
+                _ => HAlign.Center,
+            };
+            var paragraph = new HParagraph { Format = new HParaFormat(Align: align, Left: 0, Right: 0, FirstLine: 0) };
+            if (number.Side is { } side)
+                paragraph.Inlines.Add(new HText(side + " ", number.Format));
+            paragraph.Inlines.Add(new HField(HFieldKind.PageNumber, number.Format) { NumberFormat = number.NumberFormat });
+            if (number.Side is { } after)
+                paragraph.Inlines.Add(new HText(" " + after, number.Format));
+            var g = page.Geometry;
+            if (Layout(paragraph, g.TextWidth).Lines is not [var line, ..])
+                return;
+            var size = number.Format.Size is int hundredths and > 0 ? hundredths / 100f : 10f;
+            var top = position.Contains("TOP", StringComparison.Ordinal)
+                ? g.HeaderTop
+                : g.FooterBottom - 0.3f * size - line.Baseline;
+            // Under the page's text, as 한글 writes it before the body (a PDF's text then reads in 한글's order).
+            var layer = new PageContent(page.Content.Width, page.Content.Height);
+            line.Draw(layer, g.Left, top);
+            page.Content.Add(layer, under: true);
         }
 
         /// <summary>The header or footer for a page: the one for odd or even pages, else the one for both.</summary>
@@ -1050,9 +1095,21 @@ internal sealed class PageComposer
         private string FieldText(HField field) => field.Kind switch
         {
             HFieldKind.TotalPages => (total ?? _pages.Count).ToString(System.Globalization.CultureInfo.InvariantCulture),
-            _ => _number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            _ => PageNumberText(_number, field.NumberFormat),
         };
     }
+
+    /// <summary>
+    /// A page number in an OWPML number format. 한글 counts letters round (page 27 is A again, 33 is G), and 가나다 the
+    /// same way; the other formats are those of list numbers.
+    /// </summary>
+    internal static string PageNumberText(int number, string? format) => format switch
+    {
+        "LATIN_CAPITAL" or "LATIN_SMALL" when number >= 1 => ((char)((format == "LATIN_CAPITAL" ? 'A' : 'a') + (number - 1) % 26)).ToString(),
+        "HANGUL_SYLLABLE" when number >= 1 => "가나다라마바사아자차카타파하"[(number - 1) % 14].ToString(),
+        null or "DIGIT" => number.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        _ => ListNumbers.Format(number, format),
+    };
 
     /// <summary>The fields of a list of blocks, tables and links included.</summary>
     private static IEnumerable<HField> Fields(IEnumerable<HBlock> blocks)
