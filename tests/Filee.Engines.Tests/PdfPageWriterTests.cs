@@ -106,7 +106,7 @@ public sealed class PdfPageWriterTests : IDisposable
         // PDFium draws what Skia draws (rendered at 3× and averaged down, so rasterizer anti-aliasing differences fade).
         const int Dpi = 100;
         using var pdfium = Conversion.ToImage(pdf, 0, null, new RenderOptions(Dpi: 3 * Dpi, WithAnnotations: false, BackgroundColor: SKColors.White));
-        using var skia = Raster(page, 3 * Dpi);
+        using var skia = page.Render(3 * Dpi);
         var (ssim, off) = Ssim.Compare(GreyImage.From(pdfium, 3), GreyImage.From(skia, 3));
         Assert.True(ssim > 0.9 && off < 0.01, $"SSIM {ssim:F4}, {off:P2} of the pixels differ");
     }
@@ -309,16 +309,5 @@ public sealed class PdfPageWriterTests : IDisposable
             }
         }
         return null;
-    }
-
-    private static SKBitmap Raster(PageContent page, int dpi)
-    {
-        var scale = dpi / 72f;
-        var bitmap = new SKBitmap((int)Math.Round(page.Width * scale), (int)Math.Round(page.Height * scale));
-        using var canvas = new SKCanvas(bitmap);
-        canvas.Clear(SKColors.White);
-        canvas.Scale(scale);
-        page.Draw(canvas);
-        return bitmap;
     }
 }

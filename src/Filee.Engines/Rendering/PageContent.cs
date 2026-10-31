@@ -97,6 +97,19 @@ internal sealed class PageContent(float width, float height)
     /// <summary>Defines the named destination <paramref name="name"/> at <paramref name="point"/>.</summary>
     public void Destination(SKPoint point, string name) => _items.Add(new DestinationItem(point, name));
 
+    /// <summary>The page as a picture at <paramref name="dpi"/>, on white (unhinted text, as PDF viewers draw it).</summary>
+    public SKBitmap Render(float dpi)
+    {
+        var scale = dpi / 72f;
+        var bitmap = new SKBitmap(Math.Max(1, (int)Math.Round(Width * scale)), Math.Max(1, (int)Math.Round(Height * scale)),
+            SKColorType.Rgba8888, SKAlphaType.Opaque);
+        using var canvas = new SKCanvas(bitmap);
+        canvas.Clear(SKColors.White);
+        canvas.Scale(scale);
+        Draw(canvas);
+        return bitmap;
+    }
+
     /// <summary>
     /// Draws the page onto <paramref name="canvas"/>, glyph runs with the typeface <paramref name="typeface"/> gives for
     /// their font (PDF: the subset; pictures: the whole font).
