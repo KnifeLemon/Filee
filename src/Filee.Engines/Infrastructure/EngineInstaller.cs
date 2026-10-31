@@ -33,6 +33,23 @@ public enum EngineInstallStage
 /// <param name="BytesTotal">Download size of the components being installed.</param>
 public readonly record struct EngineInstallProgress(EngineInstallStage Stage, string ComponentId, double Fraction, long BytesDone = 0, long BytesTotal = 0);
 
+/// <summary>Which copy of a package the engines use, see <see cref="EngineInstaller.StatusOf"/>.</summary>
+public enum EngineCopyStatus
+{
+    NotInstalled,
+    /// <summary>Filee's download.</summary>
+    Installed,
+    /// <summary>The user's own copy (Settings → Engines) or one found on the PC; nothing of Filee's is used.</summary>
+    OwnCopy,
+}
+
+/// <summary>The copy of a package the engines use, as Settings → Engines and 'filee engines' show it.</summary>
+/// <param name="Folder">Folder of the copy in use while the status is <see cref="EngineCopyStatus.OwnCopy"/>.</param>
+/// <param name="FromSystem">That copy was found on the PC (PATH, Program Files), not chosen by the user.</param>
+/// <param name="Outdated">Filee's download is older than the version engines.json pins.</param>
+public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated);
+
+
 /// <summary>Installs and removes <see cref="EnginePackage"/>s.</summary>
 public sealed class EngineInstaller
 {
@@ -52,6 +69,39 @@ public sealed class EngineInstaller
         _root = root ?? EngineEnvironment.DownloadRoot;
         _components = components ?? EngineDownloads.Components;
         _logger = logger ?? NullLogger.Instance;
+    }
+
+    /// <summary>
+    /// The client to create an installer with: automatic redirects off, because the installer follows them itself
+    /// (mirrors may use plain HTTP; every file is checked against its SHA-256), and Filee's user agent.
+    /// </summary>
+    public static HttpClient CreateHttpClient(TimeSpan timeout)
+    {
+        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = timeout };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(EngineInstaller).Assembly.GetName().Version}");
+        return http;
+    }
+
+    /// <summary>Folder that receives one sub folder per engine.</summary>
+    public string Root => _root;
+
+    /// <summary>The downloads this installer knows: engines.json for this computer unless a test passed its own.</summary>
+    public IReadOnlyDictionary<string, EngineComponent> Components => _components;
+
+    /// <summary>
+    /// The copy the engines use, in the order they look: the user's own copy, Filee's download, a copy on the PC
+    /// (only looked for when neither of the others is there).
+    /// </summary>
+    public EngineCopy StatusOf(EnginePackage package)
+    {
+        var installed = IsInstalled(package);
+        var own = EngineEnvironment.OwnCopyFolder(package.Id);
+        var system = own is null && !installed ? EngineEnvironment.SystemCopyFolder(package.Id) : null;
+        var folder = own ?? system;
+        var status = folder is not null ? EngineCopyStatus.OwnCopy
+            : installed ? EngineCopyStatus.Installed
+            : EngineCopyStatus.NotInstalled;
+        return new EngineCopy(status, folder, system is not null, folder is null && installed && !IsUpToDate(package));
     }
 
     /// <summary>True when every component is installed (any version).</summary>

@@ -134,6 +134,25 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task The_copy_in_use_is_Filees_download_until_it_is_removed()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var installer = Installer(new FakeServer(new() { [component.Url] = archive }), component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        Assert.Equal(new EngineCopy(EngineCopyStatus.NotInstalled, null, false, false), installer.StatusOf(package));
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, false), installer.StatusOf(package));
+
+        var newer = Installer(new FakeServer(new()), component with { Version = "2.0", Sha256 = new string('1', 64) });
+        Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, true), newer.StatusOf(package));
+
+        installer.Uninstall(package);
+        Assert.Equal(EngineCopyStatus.NotInstalled, installer.StatusOf(package).Status);
+    }
+
+    [Fact]
     public void Transfer_rate_averages_over_the_last_seconds_and_estimates_the_time_left()
     {
         var rate = new TransferRate(TimeSpan.FromSeconds(5));
