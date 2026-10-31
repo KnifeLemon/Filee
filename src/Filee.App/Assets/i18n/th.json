@@ -186,6 +186,8 @@
   "engine.docx-writer.description": "เขียนเอกสาร Word (DOCX) จาก PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "เขียนเอกสารข้อความ OpenDocument (ODT) จากเอกสาร Word, PDF, OFD, HWP/HWPX, Markdown, HTML, สเปรดชีต, สไลด์ และอีบุ๊ก",
+  "engine.pptx-writer.name": "ตัวเขียน PPTX (ในตัว)",
+  "engine.pptx-writer.description": "สร้างสไลด์ PowerPoint (PPTX) จากไฟล์ Markdown และภาษามาร์กอัป เอกสาร Word, ODT, HWP/HWPX, HTML, สเปรดชีต และอีบุ๊ก: หนึ่งสไลด์ต่อหนึ่งหัวข้อ พร้อมรายการ ตาราง รูปภาพ และโค้ด",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "แยกข้อความของ PDF ตามลำดับการอ่าน รวมถึงหน้าที่มีสองคอลัมน์ (ไม่มี OCR สำหรับเอกสารสแกน)",
   "engine.pdf-slides.name": "PDF slides (built-in)",

@@ -193,6 +193,8 @@
   "engine.docx-writer.description": "Cria documentos Word (DOCX) a partir de PDF, OFD, HWP/HWPX, Markdown, HTML, folhas de cálculo, diapositivos e livros digitais.",
   "engine.odt-writer.name": "Gerador ODT (motor integrado)",
   "engine.odt-writer.description": "Cria documentos de texto OpenDocument (ODT) a partir de documentos Word, PDF, OFD, HWP/HWPX, Markdown, HTML, folhas de cálculo, diapositivos e livros digitais.",
+  "engine.pptx-writer.name": "Gerador PPTX (motor integrado)",
+  "engine.pptx-writer.description": "Cria diapositivos do PowerPoint (PPTX) a partir de ficheiros Markdown e de marcação, documentos Word, ODT, HWP/HWPX, HTML, folhas de cálculo e livros digitais: um diapositivo por título, com listas, tabelas, imagens e código.",
   "engine.pdf-text.name": "Texto de PDF (motor integrado)",
   "engine.pdf-text.description": "Extrai o texto de PDF pela ordem de leitura, incluindo páginas com duas colunas (sem OCR para digitalizações).",
   "engine.pdf-slides.name": "Diapositivos de PDF (motor integrado)",
