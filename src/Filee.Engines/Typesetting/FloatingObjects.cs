@@ -17,7 +17,8 @@
 // width), rotated and mirrored about their centre; text boxes as their shape with their paragraphs and tables inside
 // their padding, at the top, middle or bottom. Curves go smoothly through their points; arcs run counterclockwise
 // from their first axis point to the second. Text in a text box is not rotated, and pictures' effects (shadow, glow,
-// soft edge, reflection) are left out.
+// soft edge, reflection) are left out. A caption goes its gap below, above or beside the object (as wide as the
+// object, or its own width beside it).
 //
 // Text wrap: lines on 한글's stored layout already leave the room 한글 left for the objects beside or above them.
 // Wrapping text that is laid out anew around objects is not done yet.
@@ -209,6 +210,30 @@ internal static class FloatingObjects
                     piece.Draw(page, inner.Left, top + piece.Top);
                 break;
         }
+        if (item is HObject { Caption: { } caption })
+            Caption(page, caption, area, stack);
+    }
+
+    /// <summary>
+    /// Draws an object's caption its gap away from the object: below or above it as wide as it, or beside it at its
+    /// own width, level with the object's top.
+    /// </summary>
+    private static void Caption(PageContent page, HCaption caption, SKRect area, Func<IReadOnlyList<HBlock>, float, List<Piece>> stack)
+    {
+        var gap = caption.Gap / 100f;
+        var beside = caption.Side is HCaptionSide.Left or HCaptionSide.Right;
+        var width = beside ? Math.Max(1, caption.Width / 100f) : Math.Max(1, area.Width);
+        var pieces = stack(caption.Blocks, width);
+        var height = pieces.Count == 0 ? 0 : pieces.Max(p => p.Top + p.Height - p.Below);
+        var (x, y) = caption.Side switch
+        {
+            HCaptionSide.Top => (area.Left, area.Top - gap - height),
+            HCaptionSide.Left => (area.Left - gap - width, area.Top),
+            HCaptionSide.Right => (area.Right + gap, area.Top),
+            _ => (area.Left, area.Bottom + gap),
+        };
+        foreach (var piece in pieces)
+            piece.Draw(page, x, y + piece.Top);
     }
 
     /// <summary>Runs <paramref name="draw"/> rotated and mirrored about the centre of <paramref name="area"/>.</summary>
