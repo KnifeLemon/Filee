@@ -3,7 +3,9 @@
 // The mapping follows pypandoc-hwpx (MIT, https://github.com/msjang/pypandoc-hwpx), extended so nothing is dropped
 // silently: BlockQuote, Div, Figure, LineBlock, DefinitionList, HorizontalRule, Span, Quoted, Cite, Strikeout,
 // SmallCaps and Math are converted too, and list numbering honours the Pandoc list style (1. / A. / i) / (a) ...).
-// Pandoc's model has no page setup or direct formatting, so those come from the HWPX template.
+// Pandoc's model has no page setup or direct formatting, so those come from the HWPX template. The metadata's title,
+// subtitle, author and date are kept, and for the PPTX writer the blocks keep what they were (HBlockRole): code
+// lines, horizontal rules and the content of "notes" divs (speaker notes).
 
 using System.Text;
 using System.Text.Json.Nodes;
@@ -25,15 +27,21 @@ internal sealed class PandocAstReader
     public static HDocument Read(JsonNode ast, Func<string, string?> resolveImage)
     {
         var reader = new PandocAstReader(resolveImage);
-        var document = new HDocument { Title = Title(ast["meta"]) };
+        var meta = ast["meta"];
+        var document = new HDocument { Title = MetaText(meta?["title"]), Subtitle = MetaText(meta?["subtitle"]), Date = MetaText(meta?["date"]) };
+        var authors = meta?["author"];
+        if (Type(authors) == "MetaList")
+            document.Authors.AddRange((authors!["c"] as JsonArray ?? []).Select(MetaText).OfType<string>());
+        else if (MetaText(authors) is { } author)
+            document.Authors.Add(author);
         var section = new HSection();
         reader.Blocks(ast["blocks"] as JsonArray, section.Blocks, new Context());
         document.Sections.Add(section);
         return document;
     }
 
-    /// <summary>List nesting and quote indentation of the blocks being read.</summary>
-    private readonly record struct Context(int ListLevel = 0, int Indent = 0);
+    /// <summary>List nesting and quote indentation of the blocks being read, and their role (speaker notes).</summary>
+    private readonly record struct Context(int ListLevel = 0, int Indent = 0, HBlockRole Role = HBlockRole.Body);
 
     // ───────────────────────── Blocks ─────────────────────────
 
@@ -73,6 +81,8 @@ internal sealed class PandocAstReader
                 {
                     var paragraph = NewParagraph(context);
                     paragraph.Inlines.Add(new HText(line, Plain));
+                    if (context.Role == HBlockRole.Body)
+                        paragraph.Role = HBlockRole.Code;
                     output.Add(paragraph);
                 }
                 break;
@@ -84,8 +94,12 @@ internal sealed class PandocAstReader
                 Blocks(content as JsonArray, output, context with { Indent = context.Indent + QuoteIndent });
                 break;
             case "Div":
-                Blocks(content?[1] as JsonArray, output, context);
-                break;
+                {
+                    // [attr [id, classes, pairs], blocks]; a "notes" div holds speaker notes.
+                    var notes = (content?[0]?[1] as JsonArray ?? []).Any(c => string.Equals((string?)c, "notes", StringComparison.OrdinalIgnoreCase));
+                    Blocks(content?[1] as JsonArray, output, notes ? context with { Role = HBlockRole.Notes } : context);
+                    break;
+                }
             case "Figure":
                 // [attr, caption [short, blocks], blocks]
                 Blocks(content?[2] as JsonArray, output, context);
@@ -102,18 +116,27 @@ internal sealed class PandocAstReader
                 }
                 break;
             case "HorizontalRule":
-                output.Add(NewParagraph(context));
-                break;
+                {
+                    var rule = NewParagraph(context);
+                    if (context.Role == HBlockRole.Body)
+                        rule.Role = HBlockRole.Rule;
+                    output.Add(rule);
+                    break;
+                }
             case "Table":
-                output.Add(Table(content!, context));
-                break;
+                {
+                    var table = Table(content!, context);
+                    table.Role = context.Role;
+                    output.Add(table);
+                    break;
+                }
             default:
                 break; // RawBlock and unknown blocks carry no document text
         }
     }
 
     private static HParagraph NewParagraph(Context context) =>
-        new() { Format = context.Indent > 0 ? new HParaFormat(Left: context.Indent) : default };
+        new() { Format = context.Indent > 0 ? new HParaFormat(Left: context.Indent) : default, Role = context.Role };
 
     private HParagraph Paragraph(JsonArray? inlines, Context context)
     {
@@ -358,15 +381,17 @@ internal sealed class PandocAstReader
 
     // ───────────────────────── Helpers ─────────────────────────
 
-    private static string? Title(JsonNode? meta)
+    /// <summary>The text of a metadata value (inlines, a string, or a paragraph of them), or null.</summary>
+    private static string? MetaText(JsonNode? value)
     {
-        var title = meta?["title"];
-        return Type(title) switch
+        var text = Type(value) switch
         {
-            "MetaInlines" => PlainText(title!["c"] as JsonArray),
-            "MetaString" => (string?)title!["c"],
+            "MetaInlines" => PlainText(value!["c"] as JsonArray),
+            "MetaString" => (string?)value!["c"],
+            "MetaBlocks" => string.Join(" ", (value!["c"] as JsonArray ?? []).Where(b => Type(b) is "Para" or "Plain").Select(b => PlainText(b?["c"] as JsonArray))),
             _ => null,
         };
+        return string.IsNullOrWhiteSpace(text) ? null : text.Trim();
     }
 
     private static string PlainText(JsonArray? inlines)
