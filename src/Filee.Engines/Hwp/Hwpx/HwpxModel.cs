@@ -43,6 +43,9 @@ internal sealed class HSection
     /// <summary>Master pages (한글 바탕쪽) drawn behind the body of the section's pages.</summary>
     public List<HMasterPage> MasterPages { get; } = [];
 
+    /// <summary>No master page on the section's first page (한글 hideFirstMasterPage).</summary>
+    public bool HideFirstMasterPage { get; set; }
+
     /// <summary>How the section's footnotes and endnotes are numbered and set (한글 각주 모양, 미주 모양).</summary>
     public HNoteShape Footnotes { get; set; } = HNoteShape.Footnote;
     public HNoteShape Endnotes { get; set; } = HNoteShape.Endnote;
@@ -65,7 +68,7 @@ internal sealed record HPage(int Width, int Height, int Left, int Right, int Top
 
 /// <summary>Newspaper-style columns.</summary>
 /// <summary>What a page hides (한글 hp:pageHiding).</summary>
-internal sealed record HPageHiding(bool Header, bool Footer);
+internal sealed record HPageHiding(bool Header, bool Footer, bool MasterPage = false);
 
 internal sealed record HColumns(int Count, int Gap, bool Separator)
 {
