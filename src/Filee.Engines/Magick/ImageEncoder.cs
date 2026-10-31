@@ -290,7 +290,7 @@ internal static class ImageEncoder
     /// <summary>Applies resize / colour / metadata options to one frame.</summary>
     public static void ApplyOptions(IMagickImage<byte> image, ImageOptions options, string targetFormat)
     {
-        var turned = options.TurnsOrMirrors || image.Orientation is not (OrientationType.TopLeft or OrientationType.Undefined);
+        var turned = options.TurnsOrMirrors || image.Orientation is not (Orientation.TopLeft or Orientation.Undefined);
         image.AutoOrient();
 
         // "Pixelate / blur": the parts were drawn on the picture as it is seen, before it is turned or resized. It also
@@ -376,7 +376,7 @@ internal static class ImageEncoder
         if (NoAlpha.Contains(targetFormat) && image.HasAlpha)
         {
             image.BackgroundColor = ParseColor(options.Background);
-            image.Alpha(AlphaOption.Remove);
+            image.Alpha(AlphaAction.Remove);
         }
 
         var quality = (uint)Math.Clamp(options.Quality, 1, 100);

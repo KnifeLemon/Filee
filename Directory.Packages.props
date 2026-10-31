@@ -28,7 +28,7 @@
   </ItemGroup>
 
   <ItemGroup Label="Conversion engines">
-    <PackageVersion Include="Magick.NET-Q8-AnyCPU" Version="14.17.2" />
+    <PackageVersion Include="Magick.NET-Q8-AnyCPU" Version="15.0.0" />
     <!-- Stay on 6.2: 6.5 is AGPL-3.0-only (6.2 is MIT) and checks for a license at run time (PdfSharpLicenseException). -->
     <PackageVersion Include="PDFsharp" Version="6.2.4" />
     <!-- PDFsharp asks for 8.0.1, which has two denial-of-service advisories (GHSA-846f-f764-76mx,

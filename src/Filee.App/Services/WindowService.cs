@@ -273,8 +273,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             var info = ImageMagick.MagickImageInfo.ReadCollection(path).MaxBy(frame => (long)frame.Width * frame.Height);
             if (info is null)
                 return null;
-            return info.Orientation is ImageMagick.OrientationType.LeftTop or ImageMagick.OrientationType.RightTop
-                or ImageMagick.OrientationType.RightBottom or ImageMagick.OrientationType.LeftBottom
+            return info.Orientation is ImageMagick.Orientation.LeftTop or ImageMagick.Orientation.RightTop
+                or ImageMagick.Orientation.RightBottom or ImageMagick.Orientation.LeftBottom
                 ? ((int)info.Height, (int)info.Width)
                 : ((int)info.Width, (int)info.Height);
         }
