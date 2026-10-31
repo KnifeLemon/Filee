@@ -118,6 +118,12 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+
+
+    /// <summary>Options used for offline AI translation.</summary>
+
+    public TranslateOptions Translate { get; set; } = new();
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
@@ -157,6 +163,21 @@ public sealed class Preset
     /// (<see cref="MediaOptions.SaveEveryFrame"/>): the file is a video and the target one of
     /// <see cref="MediaOptions.FrameTargets"/>. Other files, and other targets, convert as usual.
     /// </summary>
+    public bool TranslatesDocument(string sourceFormat)
+    {
+        if (!Translate.Enabled)
+            return false;
+        var fmt = Formats.FormatRegistry.FindById(sourceFormat);
+        if (fmt is null)
+            return false;
+        return fmt.Category is Formats.FormatCategory.Document
+            or Formats.FormatCategory.Ebook
+            or Formats.FormatCategory.Text
+            or Formats.FormatCategory.Data
+            or Formats.FormatCategory.Subtitle
+            || sourceFormat == "pdf";
+    }
+
     public bool SavesFramesOf(string sourceFormat) =>
         Media.SaveEveryFrame
         && !MakesLivePhotoOf(sourceFormat)
@@ -306,6 +327,8 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+
+        Translate = Translate.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
         Tool = Tool,
@@ -1277,5 +1300,27 @@ public sealed class CadOptions
     public CadColors Colors { get; set; }
 
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
+}
+
+
+
+/// <summary>Options for offline AI document translation.</summary>
+
+public sealed class TranslateOptions
+
+{
+
+    public bool Enabled { get; set; } = false;
+
+    public string TargetLanguage { get; set; } = "en";
+
+    public string SourceLanguage { get; set; } = "auto";
+
+    public string? Model { get; set; }
+
+
+
+    public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+
 }
 

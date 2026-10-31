@@ -4,10 +4,12 @@
 // Works on a clone; Apply() copies the edits back into the original preset (Cancel = just drop the VM).
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Engines.Ocr;
+using Filee.Engines.Translation;
 
 namespace Filee.App.ViewModels;
 
@@ -172,6 +174,27 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _caption = _edit.Media.Caption;
         _spokenLanguage = SpokenLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Media.SpokenLanguage, StringComparison.OrdinalIgnoreCase))
             ?? SpokenLanguageChoices[0];
+        TranslationLanguageChoices =
+        [
+            new Choice<string>("en", "English"),
+            new Choice<string>("es", "Spanish (Español)"),
+            new Choice<string>("fr", "French (Français)"),
+            new Choice<string>("de", "German (Deutsch)"),
+            new Choice<string>("zh", "Chinese (中文)"),
+            new Choice<string>("hi", "Hindi (हिन्दी)"),
+            new Choice<string>("ja", "Japanese (日本語)"),
+            new Choice<string>("ko", "Korean (한국어)"),
+            new Choice<string>("ru", "Russian (Русский)"),
+            new Choice<string>("pt", "Portuguese (Português)"),
+            new Choice<string>("ar", "Arabic (العربية)"),
+            new Choice<string>("it", "Italian (Italiano)"),
+            new Choice<string>("nl", "Dutch (Nederlands)"),
+            new Choice<string>("pl", "Polish (Polski)"),
+            new Choice<string>("tr", "Turkish (Türkçe)"),
+            new Choice<string>("ne", "Nepali (नेपाली)")
+        ];
+        _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? TranslationLanguageChoices[0];
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -257,6 +280,45 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<string>> OcrLanguageChoices { get; }
     /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
     public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
+
+    public IReadOnlyList<Choice<string>> TranslationLanguageChoices { get; }
+
+    [ObservableProperty] private Choice<string> _targetLanguage;
+
+    public bool ShowTranslate => _original.Id == "translate" || _edit.Translate.Enabled;
+
+    [ObservableProperty] private string _testTranslationResult = "";
+    [ObservableProperty] private bool _isTestingTranslation;
+    [ObservableProperty] private bool _testTranslationHasError;
+
+    [RelayCommand]
+    public async Task TestTranslationAsync()
+    {
+        if (IsTestingTranslation) return;
+        IsTestingTranslation = true;
+        TestTranslationHasError = false;
+        TestTranslationResult = "Connecting to Ollama...";
+
+        try
+        {
+            var targetLang = TargetLanguage?.Value ?? "es";
+            var service = new TranslationService(new TranslateOptions { TargetLanguage = targetLang });
+            var sample = "Hello, world!";
+            var translated = await service.TranslateTextAsync(sample, targetLang);
+            var model = await TranslationService.GetPreferredLocalOllamaModelAsync() ?? TranslationService.ActiveOllamaModel ?? "local model";
+            TestTranslationResult = $"\"{sample}\" → \"{translated}\"  ({model})";
+            TestTranslationHasError = false;
+        }
+        catch (Exception ex)
+        {
+            TestTranslationResult = $"Error: {ex.Message}";
+            TestTranslationHasError = true;
+        }
+        finally
+        {
+            IsTestingTranslation = false;
+        }
+    }
 
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
@@ -918,6 +980,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // black and white chosen for PDF and left behind by a DWG target.
         _original.Cad.Version = ShowCad ? CadVersion.Value : default;
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
+        _original.Translate.TargetLanguage = TargetLanguage.Value;
+        _original.Translate.Enabled = ShowTranslate;
 
         var output = _original.Output;
         // Asking keeps the location it had: a Filee that can't ask (or one from before it) saves there.

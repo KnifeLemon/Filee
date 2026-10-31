@@ -55,6 +55,7 @@ public static class EngineDownloads
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
+        new("translator", ["translator"], 0, ["translator"]),
     ];
 
     /// <summary>Total download size of a package in bytes.</summary>
@@ -83,6 +84,10 @@ public static class EngineDownloads
                 "tesseract" => "Install Tesseract using your distribution's package manager (Ubuntu/Debian: sudo apt install tesseract-ocr), then check again.",
                 _ => $"No Filee download is available for {RuntimeIdentifier}. Install {package.Id} using your distribution's package manager and select its program folder.",
             };
+        if (package.Id == "translator")
+
+            return "Install local Ollama (https://ollama.com) with 'ollama run llama3.2' or place a local model in the engines folder. Everything runs 100% offline on your computer.";
+
         return $"No Filee download is available for {RuntimeIdentifier}. Select a compatible installed copy.";
     }
 

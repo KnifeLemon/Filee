@@ -40,12 +40,29 @@ public sealed partial class EnginePackageState : ObservableObject
     public string Name => _loc[$"engines.package.{Package.Id}.name"];
 
     /// <summary>Whether the package card has a Settings button (LibreOffice: which conversions to PDF it takes over).</summary>
-    public bool HasSettings => Package.Id == "libreoffice";
+    public bool HasSettings => Package.Id is "libreoffice" or "translator";
+
+    public string SettingsLabel => Package.Id == "translator"
+
+        ? (_loc["engines.ollama.manage"] != "engines.ollama.manage" ? _loc["engines.ollama.manage"] : "Manage Ollama")
+
+        : (_loc["engines.settings"] != "engines.settings" ? _loc["engines.settings"] : "Settings");
+
+    public string SettingsTooltip => Package.Id == "translator"
+
+        ? (_loc["engines.ollama.manage_hint"] != "engines.ollama.manage_hint" ? _loc["engines.ollama.manage_hint"] : "Manage local Ollama models, start/stop server, and install offline models")
+
+        : (_loc["engines.lo_title"] != "engines.lo_title" ? _loc["engines.lo_title"] : "LibreOffice options");
     public string Description => _loc[$"engines.package.{Package.Id}.description"];
 
-    public string Sizes => EngineDownloads.CanDownload(Package)
-        ? _loc.Format("engines.package.size", FormatBytes(EngineDownloads.DownloadSize(Package)), FormatBytes(Package.InstalledSize))
-        : _loc["engines.package.system_required"];
+    public bool IsTranslator => Package.Id == "translator";
+    public bool IsLibreOffice => Package.Id == "libreoffice";
+
+    public string Sizes => Package.Id == "translator"
+        ? _loc["engines.package.translator.sizes"]
+        : EngineDownloads.CanDownload(Package)
+            ? _loc.Format("engines.package.size", FormatBytes(EngineDownloads.DownloadSize(Package)), FormatBytes(Package.InstalledSize))
+            : _loc["engines.package.system_required"];
 
     /// <summary>
     /// How to get an engine Filee doesn't download on this system (FFmpeg and Ghostscript from Homebrew on macOS,
@@ -215,9 +232,13 @@ public sealed class EngineDownloadService
     /// In the order the engines look: the user's own copy, Filee's download, a copy on the PC. A copy Filee didn't
     /// download gets its version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
     /// </summary>
+    private static readonly HttpClient SharedOllamaClient = new() { Timeout = TimeSpan.FromMilliseconds(250) };
+
     private EnginePackageStatus StatusOf(EnginePackageState state)
     {
         var id = state.Package.Id;
+        if (id == "translator")
+            return StatusOfTranslator(state);
         var own = EngineEnvironment.OwnCopyFolder(id);
         var system = own is null && !_installer.IsInstalled(state.Package) ? EngineEnvironment.SystemCopyFolder(id) : null;
         state.OwnCopyFolder = own ?? system;
@@ -243,6 +264,183 @@ public sealed class EngineDownloadService
     }
 
     /// <summary>Filee's downloads that have a newer version now (only engines the user installed).</summary>
+
+
+    private EnginePackageStatus StatusOfTranslator(EnginePackageState state)
+
+    {
+
+        var id = state.Package.Id;
+
+        var own = EngineEnvironment.OwnCopyFolder(id);
+
+        var system = own is null && !_installer.IsInstalled(state.Package) ? EngineEnvironment.SystemCopyFolder(id) : null;
+
+        state.OwnCopyFolder = own ?? system;
+
+        state.FromSystem = system is not null;
+
+        state.UpdateNote = null;
+
+        state.IsOutdated = false;
+
+
+
+        _ = CheckOllamaAsync(state);
+
+
+
+        return state.OwnCopyFolder is not null ? EnginePackageStatus.OwnCopy
+
+            : _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed
+
+            : EnginePackageStatus.NotInstalled;
+
+    }
+
+
+
+    private async Task CheckOllamaAsync(EnginePackageState state)
+
+    {
+
+        try
+
+        {
+
+            using var response = await SharedOllamaClient.GetAsync("http://127.0.0.1:11434/api/tags");
+
+            if (response.IsSuccessStatusCode)
+
+            {
+
+                using var stream = await response.Content.ReadAsStreamAsync();
+
+                using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream);
+
+                int totalCount = 0;
+
+                int cloudCount = 0;
+
+                int localCount = 0;
+
+
+
+                if (doc.RootElement.TryGetProperty("models", out var models) && models.ValueKind == System.Text.Json.JsonValueKind.Array)
+
+                {
+
+                    foreach (var m in models.EnumerateArray())
+
+                    {
+
+                        var name = m.TryGetProperty("name", out var n) ? n.GetString() : null;
+
+                        if (string.IsNullOrWhiteSpace(name)) continue;
+
+                        totalCount++;
+
+                        if (Filee.Engines.Translation.TranslationService.IsCloudModel(name))
+
+                            cloudCount++;
+
+                        else
+
+                            localCount++;
+
+                    }
+
+                }
+
+
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+
+                {
+
+                    if (localCount > 0)
+
+                    {
+
+                        state.Status = EnginePackageStatus.OwnCopy;
+
+                        state.OwnCopyFolder ??= "http://127.0.0.1:11434 (Local Ollama)";
+
+                        state.UpdateNote = cloudCount > 0
+
+                            ? _loc.Format("engines.package.translator.cloud_skipped", cloudCount)
+
+                            : null;
+
+                    }
+
+                    else if (totalCount > 0 && cloudCount == totalCount)
+
+                    {
+
+                        state.Status = EnginePackageStatus.NotInstalled;
+
+                        state.UpdateNote = _loc["engines.package.translator.only_cloud_models"];
+
+                    }
+
+                    else
+
+                    {
+
+                        state.Status = EnginePackageStatus.NotInstalled;
+
+                        state.UpdateNote = _loc["engines.package.translator.no_model"];
+
+                    }
+
+                });
+
+                return;
+
+            }
+
+        }
+
+        catch
+
+        {
+
+            // Ollama not reachable
+
+        }
+
+
+
+        var ollamaExe = EngineEnvironment.SystemProgram("ollama", "ollama.exe");
+
+        if (ollamaExe is not null)
+
+        {
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+
+            {
+
+                if (state.Status != EnginePackageStatus.OwnCopy)
+
+                {
+
+                    state.Status = EnginePackageStatus.NotInstalled;
+
+                    state.UpdateNote = _loc["engines.package.translator.not_running"];
+
+                }
+
+            });
+
+        }
+
+    }
+
+
+
+
     public IReadOnlyList<EnginePackageState> Outdated => Packages.Where(p => p.CanUpdate).ToList();
 
     /// <summary>

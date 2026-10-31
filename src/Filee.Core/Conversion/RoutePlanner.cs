@@ -15,7 +15,7 @@ namespace Filee.Core.Conversion;
 /// <param name="LivePhoto">The hop makes a Live / Motion Photo of a video (<see cref="ConversionEdge.LivePhoto"/>).</param>
 /// <param name="Caption">The hop transcribes speech to SRT subtitles using Whisper (<see cref="ConversionEdge.Caption"/>).</param>
 public sealed record RouteStep(IConverter Converter, string From, string To, bool FrameSequence = false, bool Unshaped = false,
-    bool MotionPhoto = false, bool LivePhoto = false, bool Caption = false);
+    bool MotionPhoto = false, bool LivePhoto = false, bool Caption = false, bool Translate = false);
 
 /// <summary>A planned conversion from one format to another.</summary>
 public sealed record Route(IReadOnlyList<RouteStep> Steps, int Cost)
@@ -82,7 +82,7 @@ public sealed class RoutePlanner
     /// </param>
     /// <param name="caption">Transcribe speech to SRT subtitles using Whisper (<see cref="Presets.Preset.CaptionsVideo"/>).</param>
     public Route? Plan(string from, string to, bool frames = false, bool shaping = false, bool motionPhoto = false, bool livePhoto = false,
-        bool ocr = false, bool caption = false)
+        bool ocr = false, bool caption = false, bool translate = false)
     {
         from = from.ToLowerInvariant();
         to = to.ToLowerInvariant();
@@ -90,19 +90,20 @@ public sealed class RoutePlanner
         if (ocr)
             return PlanWithOcr(from, to, shaping);
 
-        if (frames || motionPhoto || livePhoto || caption)
+        if (frames || motionPhoto || livePhoto || caption || translate)
         {
-            // One of them: frames, then the video of a photo, then a photo of a video, then caption.
+            // One of them: frames, then the video of a photo, then a photo of a video, then caption, then translate.
             motionPhoto &= !frames;
             livePhoto &= !frames && !motionPhoto;
             caption &= !frames && !motionPhoto && !livePhoto;
+            translate &= !frames && !motionPhoto && !livePhoto && !caption;
             var special = EdgesFrom(from)
-                .Where(e => e.Edge.To == to && (frames ? e.Edge.FrameSequence : motionPhoto ? e.Edge.MotionPhoto : livePhoto ? e.Edge.LivePhoto : e.Edge.Caption))
+                .Where(e => e.Edge.To == to && (frames ? e.Edge.FrameSequence : motionPhoto ? e.Edge.MotionPhoto : livePhoto ? e.Edge.LivePhoto : caption ? e.Edge.Caption : translate ? e.Edge.Translate : false))
                 .OrderBy(e => e.Cost)
                 .FirstOrDefault();
             return special.Converter is null
                 ? null
-                : new Route([new RouteStep(special.Converter, from, to, FrameSequence: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Caption: caption)],
+                : new Route([new RouteStep(special.Converter, from, to, FrameSequence: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Caption: caption, Translate: translate)],
                     special.Cost);
         }
 
@@ -110,7 +111,7 @@ public sealed class RoutePlanner
         if (from == to)
         {
             var best = EdgesFrom(from)
-                .Where(e => e.Edge.To == to && !e.Edge.FrameSequence && !e.Edge.MotionPhoto && !e.Edge.LivePhoto && !e.Edge.Ocr && !e.Edge.Caption)
+                .Where(e => e.Edge.To == to && !e.Edge.FrameSequence && !e.Edge.MotionPhoto && !e.Edge.LivePhoto && !e.Edge.Ocr && !e.Edge.Caption && !e.Edge.Translate)
                 .OrderBy(e => e.Cost)
                 .FirstOrDefault();
             return best.Converter is null
@@ -139,7 +140,7 @@ public sealed class RoutePlanner
 
             foreach (var (converter, edge, edgeCost) in EdgesFrom(node))
             {
-                if (edge.To == edge.From || edge.FrameSequence || edge.MotionPhoto || edge.LivePhoto || edge.Ocr || edge.Caption
+                if (edge.To == edge.From || edge.FrameSequence || edge.MotionPhoto || edge.LivePhoto || edge.Ocr || edge.Translate || edge.Caption
                     || (edge.ImageSourcesOnly && !imageSource) || (edge.NotForImageSources && imageSource)
                     || (edge.Unshaped && shaping)
                     || (edge.DirectOnly && (node != from || edge.To != to)))
@@ -171,8 +172,8 @@ public sealed class RoutePlanner
     /// <param name="livePhoto">A Live / Motion Photo of a video (see <see cref="Plan"/>).</param>
     /// <param name="ocr">Recognize the text first (see <see cref="Plan"/>).</param>
     /// <param name="caption">Transcribe speech to SRT subtitles using Whisper (see <see cref="Plan"/>).</param>
-    public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false) =>
-        Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption) is not null;
+    public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false) =>
+        Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate) is not null;
 
     private Route? PlanWithOcr(string from, string to, bool shaping)
     {

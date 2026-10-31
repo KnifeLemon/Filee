@@ -73,6 +73,7 @@ public static class EngineRegistry
         new TesseractConverter(),
         new CalibreConverter(),
         new LibreOfficeConverter(env, loggers?.CreateLogger<LibreOfficeConverter>()),
+        new Translation.TranslatorConverter(loggers?.CreateLogger<Translation.TranslatorConverter>()),
     ];
 
     /// <summary>Finds the PDF merger among the converters.</summary>
