@@ -286,6 +286,8 @@
   "hide.pixelate_hint": "Couvrir de carrés de la couleur moyenne (P)",
   "hide.blur": "Flouter",
   "hide.blur_hint": "Couvrir d'un flou intense (B)",
+  "hide.box": "Bloc noir",
+  "hide.box_hint": "Couvrir d'un bloc noir opaque (X)",
   "hide.strength": "Intensité",
   "hide.strength_value": "Intensité {0} sur 10 (− / +)",
   "hide.remove": "Supprimer le cadre",

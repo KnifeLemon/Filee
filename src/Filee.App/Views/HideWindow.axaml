@@ -1,7 +1,7 @@
 <!-- "Pixelate / blur": the crop overlay's frameless soft-rounded stage, with the picture large on the dimmed theme
-     backdrop and frames over the parts to hide, already pixelated or blurred. Floating on it: the file chip (top left),
+     backdrop and frames over the parts to hide, already pixelated, blurred or blacked out. Floating on it: the file chip (top left),
      the strip of files (top, several files), size and close (top right), "Drag over what you want to hide" on a picture
-     without frames, and the toolbar pill at the bottom with Pixelate / Blur, the strength, undo, remove, clear, Skip and
+     without frames, and the toolbar pill at the bottom with Pixelate / Blur / Black box, the strength, undo, remove, clear, Skip and
      "Hide & save" / "Hide & next". After the last file with problems, the crop overlay's summary card. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
@@ -20,6 +20,7 @@
         CanResize="True">
 
   <Window.Resources>
+    <StreamGeometry x:Key="Hide.Box">M3,3H21V21H3V3Z</StreamGeometry>
     <StreamGeometry x:Key="Hide.Blur">M12,2.6C12.3,2.6 12.55,2.73 12.74,2.96C14.9,5.6 19,10.4 19,14.2A7,7 0 0,1 5,14.2C5,10.4 9.1,5.6 11.26,2.96A0.95,0.95 0 0,1 12,2.6Z</StreamGeometry>
     <StreamGeometry x:Key="Hide.Redo">M11.5,8C14.15,8 16.55,9 18.4,10.6L22,7V16H13L16.62,12.38C15.23,11.22 13.46,10.5 11.5,10.5C7.96,10.5 4.95,12.81 3.9,16L1.53,15.22C2.92,11.03 6.85,8 11.5,8Z</StreamGeometry>
     <StreamGeometry x:Key="Hide.Maximize">M4 7a3 3 0 0 1 3-3h10a3 3 0 0 1 3 3v10a3 3 0 0 1-3 3H7a3 3 0 0 1-3-3z M7 6.2a.8.8 0 0 0-.8.8v10c0 .44.36.8.8.8h10a.8.8 0 0 0 .8-.8V7a.8.8 0 0 0-.8-.8z</StreamGeometry>
@@ -164,7 +165,7 @@
     </Style>
 
     <!-- A narrow window (or long names, or wide fonts): the toolbar gives up names in two steps (HideWindow.FitToolbar),
-         first those of Clear all and Skip and the keycaps, then those of Pixelate and Blur; the tooltips keep them -->
+         first those of Clear all and Skip and the keycaps, then those of Pixelate, Blur and Black box; the tooltips keep them -->
     <Style Selector="Window.tight TextBlock.minor, Window.tight Border.minor, Window.compact TextBlock.major">
       <Setter Property="IsVisible" Value="False" />
     </Style>
@@ -193,6 +194,7 @@
       <c:HideCanvas x:Name="Canvas"
                     SourceImage="{Binding PreviewImage}"
                     CoverImage="{Binding CoverImage}"
+                    BlurCoverImage="{Binding BlurCoverImage}"
                     Areas="{Binding Areas}"
                     PixelSize="{Binding PixelSize}"
                     ImagePadding="36,70,36,118"
@@ -297,7 +299,7 @@
       <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7" IsVisible="{Binding IsEditing}">
         <Border x:Name="Toolbar" Classes="float" Padding="5">
           <StackPanel x:Name="ToolbarContent" Orientation="Horizontal" Spacing="3">
-            <!-- Pixelate or blur: the one in use tinted -->
+            <!-- Pixelate, blur or black box: the one shown (the selected frame's, else the next frame's) tinted -->
             <Button x:Name="PixelateButton" Classes="tool" Classes.open="{Binding IsPixelate}" Padding="10,8,12,8"
                     Command="{Binding SetStyleCommand}" CommandParameter="{x:Static p:HideStyle.Pixelate}"
                     ToolTip.Tip="{DynamicResource hide.pixelate_hint}" AutomationProperties.Name="{DynamicResource hide.pixelate}">
@@ -314,10 +316,18 @@
                 <TextBlock Classes="major" Text="{DynamicResource hide.blur}" FontSize="13" VerticalAlignment="Center" />
               </StackPanel>
             </Button>
+            <Button x:Name="BoxButton" Classes="tool" Classes.open="{Binding IsBox}" Padding="10,8,12,8"
+                    Command="{Binding SetStyleCommand}" CommandParameter="{x:Static p:HideStyle.Box}"
+                    ToolTip.Tip="{DynamicResource hide.box_hint}" AutomationProperties.Name="{DynamicResource hide.box}">
+              <StackPanel Orientation="Horizontal" Spacing="7">
+                <PathIcon Width="12" Height="12" Data="{StaticResource Hide.Box}" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Classes="major" Text="{DynamicResource hide.box}" FontSize="13" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
 
             <!-- How strongly: small squares to large, a light blur to a heavy one -->
             <StackPanel Orientation="Horizontal" Spacing="7" Margin="8,0,6,0" VerticalAlignment="Center"
-                        ToolTip.Tip="{Binding StrengthText}">
+                        ToolTip.Tip="{Binding StrengthText}" IsEnabled="{Binding CanChangeStrength}">
               <Ellipse Width="5" Height="5" Fill="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
               <Slider x:Name="StrengthSlider" Minimum="{Binding MinStrength}" Maximum="{Binding MaxStrength}"
                       TickFrequency="1" IsSnapToTickEnabled="True" SmallChange="1" LargeChange="2"

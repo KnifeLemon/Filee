@@ -286,6 +286,8 @@
   "hide.pixelate_hint": "用平均色方块遮盖 (P)",
   "hide.blur": "模糊",
   "hide.blur_hint": "用强模糊遮盖 (B)",
+  "hide.box": "黑框",
+  "hide.box_hint": "用纯黑方块完全遮住 (X)",
   "hide.strength": "强度",
   "hide.strength_value": "强度 {0} / 10（− / +）",
   "hide.remove": "删除选框",

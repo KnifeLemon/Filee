@@ -1,8 +1,10 @@
 // The parts of a picture the "Pixelate / blur" window hides, without a window: the frames (in parts of the picture),
-// the one selected, and undo / redo of adding, moving, sizing and removing them. The canvas draws and drags them, the
+// how each is covered (pixelate, blur or black box), the one selected, and undo / redo of adding, moving, sizing,
+// restyling and removing them. The canvas draws and drags them, the
 // keys move and remove them, the window's view model turns them into the conversion.
 
 using Avalonia;
+using Filee.Core.Presets;
 
 namespace Filee.App.Controls;
 
@@ -15,16 +17,23 @@ public sealed class HideAreaSet
     private const int MaxUndo = 100;
 
     private readonly List<Rect> _areas = [];
+    private readonly List<HideStyle> _styles = [];
     private readonly List<Snapshot> _undo = [];
     private readonly List<Snapshot> _redo = [];
 
     /// <summary>The state when a drag began (<see cref="Begin"/>): one undo step however far it went.</summary>
     private Snapshot? _gesture;
 
-    private readonly record struct Snapshot(Rect[] Areas, int Selected);
+    private readonly record struct Snapshot(Rect[] Areas, HideStyle[] Styles, int Selected);
 
     /// <summary>The frames, in parts of the picture (0 to 1), in the order they were drawn (the last on top).</summary>
     public IReadOnlyList<Rect> Areas => _areas;
+
+    /// <summary>How each frame is covered, in the order of <see cref="Areas"/>.</summary>
+    public IReadOnlyList<HideStyle> Styles => _styles;
+
+    /// <summary>How a frame drawn next is covered: the style picked last.</summary>
+    public HideStyle DefaultStyle { get; set; }
 
     /// <summary>The selected frame, -1 for none.</summary>
     public int Selected { get; private set; } = -1;
@@ -46,18 +55,22 @@ public sealed class HideAreaSet
         if (_gesture is not { } before)
             return;
         _gesture = null;
-        if (!before.Areas.SequenceEqual(_areas))
+        if (!before.Areas.SequenceEqual(_areas) || !before.Styles.SequenceEqual(_styles))
             Push(before);
         Changed?.Invoke();
     }
 
-    /// <summary>Adds a frame and selects it; false when there are <see cref="MaxAreas"/> already.</summary>
-    public bool Add(Rect area)
+    /// <summary>
+    /// Adds a frame, covered as <paramref name="style"/> (else <see cref="DefaultStyle"/>), and selects it; false when
+    /// there are <see cref="MaxAreas"/> already.
+    /// </summary>
+    public bool Add(Rect area, HideStyle? style = null)
     {
         if (_areas.Count >= MaxAreas)
             return false;
         Record();
         _areas.Add(Fit(area));
+        _styles.Add(style ?? DefaultStyle);
         Selected = _areas.Count - 1;
         Changed?.Invoke();
         return true;
@@ -73,6 +86,16 @@ public sealed class HideAreaSet
             return;
         Record();
         _areas[index] = fitted;
+        Changed?.Invoke();
+    }
+
+    /// <summary>Covers frame <paramref name="index"/> as <paramref name="style"/> (one undo step).</summary>
+    public void SetStyle(int index, HideStyle style)
+    {
+        if (index < 0 || index >= _styles.Count || _styles[index] == style)
+            return;
+        Record();
+        _styles[index] = style;
         Changed?.Invoke();
     }
 
@@ -104,6 +127,7 @@ public sealed class HideAreaSet
             return false;
         Record();
         _areas.RemoveAt(Selected);
+        _styles.RemoveAt(Selected);
         Selected = _areas.Count == 0 ? -1 : Math.Max(0, Selected - 1);
         Changed?.Invoke();
         return true;
@@ -116,6 +140,7 @@ public sealed class HideAreaSet
             return;
         Record();
         _areas.Clear();
+        _styles.Clear();
         Selected = -1;
         Changed?.Invoke();
     }
@@ -129,14 +154,19 @@ public sealed class HideAreaSet
     }
 
     /// <summary>
-    /// Starts over with <paramref name="areas"/> (a new picture: the last one's frames carry on), none selected and
-    /// nothing to undo.
+    /// Starts over with <paramref name="areas"/> (a new picture: the last one's frames carry on, with their styles), none
+    /// selected and nothing to undo.
     /// </summary>
-    public void Reset(IEnumerable<Rect> areas)
+    public void Reset(IEnumerable<(Rect Area, HideStyle Style)> areas)
     {
         _gesture = null;
         _areas.Clear();
-        _areas.AddRange(areas.Select(Fit).Take(MaxAreas));
+        _styles.Clear();
+        foreach (var (area, style) in areas.Take(MaxAreas))
+        {
+            _areas.Add(Fit(area));
+            _styles.Add(style);
+        }
         _undo.Clear();
         _redo.Clear();
         Selected = -1;
@@ -172,6 +202,8 @@ public sealed class HideAreaSet
         to.Add(Take());
         _areas.Clear();
         _areas.AddRange(snapshot.Areas);
+        _styles.Clear();
+        _styles.AddRange(snapshot.Styles);
         Selected = Math.Min(snapshot.Selected, _areas.Count - 1);
         Changed?.Invoke();
     }
@@ -191,7 +223,7 @@ public sealed class HideAreaSet
         _redo.Clear();
     }
 
-    private Snapshot Take() => new([.. _areas], Selected);
+    private Snapshot Take() => new([.. _areas], [.. _styles], Selected);
 
     /// <summary>The frame inside the picture.</summary>
     private static Rect Fit(Rect area)

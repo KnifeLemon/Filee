@@ -277,6 +277,8 @@
   "hide.pixelate_hint": "ปิดด้วยช่องสี่เหลี่ยมสีเฉลี่ย (P)",
   "hide.blur": "เบลอ",
   "hide.blur_hint": "ปิดด้วยการเบลออย่างแรง (B)",
+  "hide.box": "กล่องดำ",
+  "hide.box_hint": "ปิดด้วยกล่องสีดำทึบ (X)",
   "hide.strength": "ความแรง",
   "hide.strength_value": "ความแรง {0} / 10 (− / +)",
   "hide.remove": "ลบกรอบ",

@@ -277,6 +277,8 @@
   "hide.pixelate_hint": "Mit Quadraten in der Durchschnittsfarbe abdecken (P)",
   "hide.blur": "Weichzeichnen",
   "hide.blur_hint": "Mit starker Unschärfe abdecken (B)",
+  "hide.box": "Schwarzer Balken",
+  "hide.box_hint": "Mit einem schwarzen Balken abdecken (X)",
   "hide.strength": "Stärke",
   "hide.strength_value": "Stärke {0} von 10 (− / +)",
   "hide.remove": "Rahmen entfernen",

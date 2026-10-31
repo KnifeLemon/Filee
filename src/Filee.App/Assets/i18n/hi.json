@@ -277,6 +277,8 @@
   "hide.pixelate_hint": "औसत रंग के वर्गों से ढकें (P)",
   "hide.blur": "धुंधला",
   "hide.blur_hint": "गहरे धुंधलेपन से ढकें (B)",
+  "hide.box": "काला बॉक्स",
+  "hide.box_hint": "ठोस काले बॉक्स से ढकें (X)",
   "hide.strength": "तीव्रता",
   "hide.strength_value": "तीव्रता {0} / 10 (− / +)",
   "hide.remove": "फ़्रेम हटाएँ",
