@@ -267,20 +267,32 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
-    public async Task LibreOffice_extensions_go_into_the_installed_LibreOffice_and_need_it()
+    public void Java_and_h2orestart_from_an_earlier_filee_are_removed()
     {
-        var oxt = Zip(("description.xml", "<description/>"), ("H2Orestart.jar", "jar"));
-        var extension = Component("h2orestart", "oxt", oxt);
-        var server = new FakeServer(new() { [extension.Url] = oxt });
-        var installer = Installer(server, extension);
-        var package = new EnginePackage("filter", ["h2orestart"], 1, []);
+        var jre = Path.Combine(_root, "jre");
+        var h2o = Path.Combine(_root, "libreoffice", "share", "extensions", "H2Orestart");
+        var ownExtension = Path.Combine(_root, "libreoffice", "share", "extensions", "dict-ko");
+        foreach (var folder in new[] { jre, h2o, ownExtension })
+        {
+            Directory.CreateDirectory(Path.Combine(folder, "lib"));
+            File.WriteAllText(Path.Combine(folder, ".filee-component"), "hash");
+        }
+        // A Java the user put there without Filee's marker is not Filee's to remove.
+        var foreign = Path.Combine(_root, "other");
+        Directory.CreateDirectory(foreign);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+        Installer(new FakeServer(new())).RemoveRetired();
 
-        Directory.CreateDirectory(Path.Combine(_root, "libreoffice", "share", "extensions"));
-        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
-        Assert.True(File.Exists(Path.Combine(_root, "libreoffice", "share", "extensions", "H2Orestart", "H2Orestart.jar")));
-        Assert.True(installer.IsInstalled(package));
+        Assert.False(Directory.Exists(jre));
+        Assert.False(Directory.Exists(h2o));
+        Assert.True(Directory.Exists(ownExtension));
+        Assert.True(Directory.Exists(foreign));
+        Assert.Contains(Path.Combine("libreoffice", "share", "extensions", "H2Orestart"), EngineInstaller.RetiredFolders);
+
+        File.Delete(Path.Combine(ownExtension, ".filee-component"));
+        Directory.CreateDirectory(jre); // without the marker: left alone
+        Installer(new FakeServer(new())).RemoveRetired();
+        Assert.True(Directory.Exists(jre));
     }
 
     [Fact]

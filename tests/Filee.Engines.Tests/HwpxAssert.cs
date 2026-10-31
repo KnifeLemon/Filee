@@ -86,21 +86,11 @@ internal static class HwpxAssert
         return XDocument.Load(zip.GetEntry(entry)!.Open(), LoadOptions.PreserveWhitespace).Root!;
     }
 
-    /// <summary>
-    /// The text of an HWPX as an independent reader sees it: Unhwp where its native library exists, else (an ARM64 build without it)
-    /// the text of the section XML.
-    /// </summary>
+    /// <summary>The text of an HWPX as HWPX → TXT writes it (HwpxReader and PlainTextWriter).</summary>
     public static string ReadBackText(string hwpx)
     {
-        if (new Filee.Engines.Hwp.UnhwpConverter().GetStatus().IsAvailable)
-        {
-            using var document = Unhwp.UnhwpDocument.ParseFile(hwpx);
-            return document.ToText();
-        }
-        using var zip = ZipFile.OpenRead(hwpx);
-        return string.Join("\n", zip.Entries.Where(e => e.FullName.StartsWith("Contents/section", StringComparison.Ordinal))
-            .OrderBy(e => e.FullName, StringComparer.Ordinal)
-            .Select(e => XDocument.Load(e.Open()).Root!.Value));
+        var media = Path.Combine(Path.GetDirectoryName(hwpx)!, "read-back-" + Guid.NewGuid().ToString("N")[..8]);
+        return Filee.Engines.Hwp.Hwpx.PlainTextWriter.Write(Filee.Engines.Hwp.Hwpx.HwpxReader.Read(hwpx, media));
     }
 
     /// <summary>The header element with the given id.</summary>
@@ -137,30 +127,7 @@ internal static class HwpxAssert
         return PDFtoImage.Conversion.GetPageCount(bytes);
     }
 
-    /// <summary>
-    /// Opens the file with LibreOffice + H2Orestart, a third independent HWPX reader (Java), when installed.
-    /// It is strict where 한글 is strict too, e.g. about element prefixes and negative object offsets.
-    /// </summary>
-    public static async Task ReadableByH2OrestartAsync(EngineFixture fx, string hwpx)
-    {
-        var libreOffice = fx.Converters.Single(c => c.Id == "libreoffice");
-        if (!fx.Catalog.StatusOf(libreOffice).IsAvailable || !libreOffice.Edges.Any(e => e.From == "hwpx"))
-            return;
-        var odt = Path.ChangeExtension(hwpx, ".h2o.odt");
-        // Tests run in parallel; the job queue normally limits LibreOffice to its worker profiles.
-        await LibreOfficeGate.WaitAsync(TestContext.Current.CancellationToken);
-        try
-        {
-            var written = await libreOffice.ConvertAsync(new ConversionStep(hwpx, "hwpx", "odt", new Preset(), new FixedPath(odt), Path.GetDirectoryName(hwpx)!),
-                null, TestContext.Current.CancellationToken);
-            Assert.True(new FileInfo(written.Single()).Length > 1000);
-        }
-        finally
-        {
-            LibreOfficeGate.Release();
-        }
-    }
-
+    /// <summary>Tests run in parallel; the job queue normally limits LibreOffice to its worker profiles.</summary>
     internal static readonly SemaphoreSlim LibreOfficeGate = new(1, 1);
 
     internal sealed class FixedPath(string path) : IOutputAllocator

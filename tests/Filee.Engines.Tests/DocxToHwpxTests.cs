@@ -20,7 +20,6 @@ public class DocxToHwpxTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
         var hwpx = job.Outputs.Single();
         ValidPackage(hwpx, expectImages);
-        await ReadableByH2OrestartAsync(fx, hwpx);
         return hwpx;
     }
 
