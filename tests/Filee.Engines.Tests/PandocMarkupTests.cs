@@ -83,8 +83,11 @@ public class PandocMarkupTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.NotNull(planner.Plan(markup, "epub"));
         }
         Assert.Equal("pandoc", Assert.Single(planner.Plan("org", "adoc")!.Steps).Converter.Id);
-        Assert.Equal("pandoc", Assert.Single(planner.Plan("md", "pptx")!.Steps).Converter.Id);
-        Assert.Equal("pandoc", Assert.Single(planner.Plan("org", "pptx")!.Steps).Converter.Id);
+        // Markdown slides come from the built-in PPTX writer. The markup languages Filee reads only through Pandoc go
+        // through Pandoc's AST into the built-in writer when Pandoc is really there, else (only assumed) through
+        // Pandoc's own PowerPoint writer.
+        Assert.Equal("pptx-writer", Assert.Single(planner.Plan("md", "pptx")!.Steps).Converter.Id);
+        Assert.Equal(PandocConverter.Locate() is null ? "pandoc" : "pptx-writer", Assert.Single(planner.Plan("org", "pptx")!.Steps).Converter.Id);
         // Markdown keeps its built-in routes.
         Assert.Equal("markdown", Assert.Single(planner.Plan("md", "html")!.Steps).Converter.Id);
         Assert.Equal("docx-writer", Assert.Single(planner.Plan("md", "docx")!.Steps).Converter.Id);
