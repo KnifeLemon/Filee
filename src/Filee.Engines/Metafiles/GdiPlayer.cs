@@ -1280,14 +1280,15 @@ internal sealed class GdiPlayer : IDisposable
             paint.IsAntialias = false;
 
         float[]? dashes = null;
-        // CreatePen's dash styles hold only for pens a pixel wide or less: wider ones draw solid.
-        var lineStyle = !pen.Extended && width > 0 && pen.LineStyle is GdiPen.Dash or GdiPen.Dot or GdiPen.DashDot or GdiPen.DashDotDot
-            ? GdiPen.Solid
-            : pen.LineStyle;
-        if (width > 0 && lineStyle is GdiPen.Dash or GdiPen.Dot or GdiPen.DashDot or GdiPen.DashDotDot)
+        // GDI draws CreatePen's dash styles solid once the pen is wider than a pixel of the device it plays on, so the
+        // same file would turn solid at a higher resolution. GDI+ keeps them dashed at any width and size, measured
+        // from the pen's own width and with flat ends (CreatePen's round caps would close the gaps): so does Filee.
+        if (width > 0 && pen.LineStyle is GdiPen.Dash or GdiPen.Dot or GdiPen.DashDot or GdiPen.DashDotDot)
         {
-            var w = width;
-            dashes = lineStyle switch
+            var w = pen.Width;
+            if (!pen.Extended)
+                paint.StrokeCap = SKStrokeCap.Butt;
+            dashes = pen.LineStyle switch
             {
                 GdiPen.Dash => [3 * w, w],
                 GdiPen.Dot => [w, w],
@@ -1297,7 +1298,7 @@ internal sealed class GdiPlayer : IDisposable
         }
         else
         {
-            float[]? pixels = lineStyle switch
+            float[]? pixels = pen.LineStyle switch
             {
                 GdiPen.Dash => [18, 6],
                 GdiPen.Dot => [3, 3],
