@@ -407,6 +407,7 @@ internal sealed partial class HwpxReader
                 Gutter: Int(margin, "gutter")),
             HideFirstHeader = Flag(visibility, "hideFirstHeader"),
             HideFirstFooter = Flag(visibility, "hideFirstFooter"),
+            HideFirstMasterPage = Flag(visibility, "hideFirstMasterPage"),
             StartPageNumber = start > 0 ? start : null,
             Footnotes = NoteShape(Child(secPr, "footNotePr"), HNoteShape.Footnote),
             Endnotes = NoteShape(Child(secPr, "endNotePr"), HNoteShape.Endnote),

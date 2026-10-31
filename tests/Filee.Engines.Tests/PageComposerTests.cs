@@ -133,6 +133,37 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Master_pages_go_behind_the_body_by_side_last_page_and_hiding()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"), Paragraph("four"));
+        foreach (var paragraph in section.Blocks.OfType<HParagraph>().Skip(1))
+            paragraph.PageBreakBefore = true;
+        ((HParagraph)section.Blocks[2]).PageHiding = new HPageHiding(false, false, MasterPage: true);
+        HMasterPage Master(HMasterPageKind kind, string text, bool duplicate = false, bool front = false)
+        {
+            var master = new HMasterPage(kind) { Duplicate = duplicate, Front = front };
+            master.Blocks.Add(Paragraph(text));
+            return master;
+        }
+        section.MasterPages.Add(Master(HMasterPageKind.Both, "M"));
+        section.MasterPages.Add(Master(HMasterPageKind.Even, "E", front: true));
+        section.MasterPages.Add(Master(HMasterPageKind.LastPage, "L", duplicate: true));
+
+        var pages = Compose(section).Pages;
+
+        // Behind the body (drawn first), or in front of it; none on the page that hides it; the last page's overlaps.
+        Assert.Equal(["M", "one"], Drawn(pages[0]));
+        Assert.Equal(["two", "E"], Drawn(pages[1]));
+        Assert.Equal(["three"], Drawn(pages[2]));
+        Assert.Equal(["L", "four", "E"], Drawn(pages[3]));
+        // From the top of the body (20 pt): the same baseline as the body's first line.
+        Assert.Equal(28.5f, Runs(pages[0]).Single(r => r.Text == "M").Positions[0].Y, 0.01f);
+
+        section.HideFirstMasterPage = true;
+        Assert.Equal(["one"], Drawn(Compose(section).Pages[0]));
+    }
+
+    [Fact]
     public void Page_numbers_count_on_across_sections_unless_one_restarts_them()
     {
         var first = Section(Small, Paragraph("a"), Paragraph("b"));
@@ -860,6 +891,10 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     private static IEnumerable<GlyphRun> Runs(PageContent page) => page.Items.OfType<GlyphItem>().Select(i => i.Run);
+
+    /// <summary>The text of each line of a page, top to bottom, without spaces.</summary>
+    /// <summary>The text of each glyph run of a page, in drawing order.</summary>
+    private static List<string> Drawn(PageContent page) => [.. Runs(page).Select(r => Normalise(r.Text))];
 
     /// <summary>The text of each line of a page, top to bottom, without spaces.</summary>
     private static List<string> Texts(PageContent page) =>

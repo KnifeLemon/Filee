@@ -12,6 +12,7 @@
 //   again, a table) ends that until 한글 starts its next page.
 // - Headers and footers: the section's header and footer for both pages, odd or even pages (by page number), none on
 //   the section's first page where it hides them; laid out in the header and footer areas.
+// - Master pages (바탕쪽): drawn behind the page's body (or in front of it) from the top of the body; see MasterPages.
 // - Page numbers count on from section to section unless a section restarts them; a page number field shows the
 //   number of its page and a total pages field the count, which a first pass finds when the body shows it.
 // - Styles: models read from other formats leave formats to the 한글 style (null members); with a StyleResolver every
@@ -31,8 +32,6 @@
 //   document. 한글 sets each note as high as its text, without the spacing below its last line, the last ending at the
 //   body's bottom; that is measured against 한글's own PDFs. Footnotes go across the page's text width, also in
 //   columns (한글 puts them under each column).
-//
-// Floating objects and master pages are later milestones.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
@@ -287,8 +286,10 @@ internal sealed class PageComposer
             EndRegion(balance: false);
             FinishPage();
             _guard.PageFinished(_empty);
-            foreach (var page in _pages)
+            for (var i = 0; i < _pages.Count; i++)
             {
+                var page = _pages[i];
+                MasterPages(page, lastOfSection: i == _pages.Count - 1 || _pages[i + 1].Section != page.Section);
                 DrawObjects(page);
                 HeadersAndFooters(page);
             }
@@ -915,6 +916,36 @@ internal sealed class PageComposer
                 _y = start + height + shape.Between / 100f;
             }
             _endnotes.Clear();
+        }
+
+        // ───────────────────────── Master pages ─────────────────────────
+
+        /// <summary>
+        /// Draws a page's master pages (바탕쪽) behind everything else on it, or in front of the text where they say so:
+        /// the one for odd or even pages, else the one for both; on the section's last page its last-page master, on a
+        /// chosen page its optional master, each instead of the regular one unless it overlaps it (겹치기). Their text
+        /// is laid out from the top of the body, as wide as it.
+        /// </summary>
+        private void MasterPages(Page page, bool lastOfSection)
+        {
+            var section = page.Section;
+            if (section.MasterPages.Count == 0 || (page.FirstOfSection && section.HideFirstMasterPage) || page.Hiding?.MasterPage == true)
+                return;
+            _geometry = page.Geometry;
+            _number = page.Number;
+            HMasterPage? Last(HMasterPageKind kind, Func<HMasterPage, bool>? also = null) =>
+                section.MasterPages.LastOrDefault(m => m.Kind == kind && (also is null || also(m)));
+            var regular = Last(page.Number % 2 == 0 ? HMasterPageKind.Even : HMasterPageKind.Odd) ?? Last(HMasterPageKind.Both);
+            var special = (lastOfSection ? Last(HMasterPageKind.LastPage) : null)
+                          ?? Last(HMasterPageKind.OptionalPage, m => m.PageNumber == page.Number);
+            HMasterPage?[] drawn = special is null ? [regular] : special.Duplicate ? [regular, special] : [special];
+            foreach (var master in drawn.OfType<HMasterPage>())
+            {
+                var layer = new PageContent(page.Content.Width, page.Content.Height);
+                foreach (var piece in Tables.Stack(master.Blocks, page.Geometry.TextWidth))
+                    piece.Draw(layer, page.Geometry.Left, page.Geometry.BodyTop + piece.Top);
+                page.Content.Add(layer, under: !master.Front);
+            }
         }
 
         // ───────────────────────── Headers and footers ─────────────────────────
