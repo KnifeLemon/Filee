@@ -185,6 +185,8 @@
   "engine.docx-writer.description": "Menulis dokumen Word (DOCX) dari PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheet, slide, dan e-book.",
   "engine.odt-writer.name": "Penulis ODT (bawaan)",
   "engine.odt-writer.description": "Menulis dokumen teks OpenDocument (ODT) dari dokumen Word, PDF, OFD, HWP/HWPX, Markdown, HTML, spreadsheet, slide, dan e-book.",
+  "engine.pptx-writer.name": "Penulis PPTX (bawaan)",
+  "engine.pptx-writer.description": "Membuat slide PowerPoint (PPTX) dari file Markdown dan markup, dokumen Word, ODT, HWP/HWPX, HTML, spreadsheet, dan e-book: satu slide per judul, dengan daftar, tabel, gambar, dan kode.",
   "engine.pdf-text.name": "Teks PDF (bawaan)",
   "engine.pdf-text.description": "Mengekstrak teks PDF sesuai urutan baca, termasuk halaman dua kolom (tanpa OCR untuk dokumen pindai).",
   "engine.pdf-slides.name": "Slide PDF (bawaan)",

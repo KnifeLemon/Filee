@@ -40,7 +40,8 @@ public sealed partial class EngineItemViewModel(IConverter converter, EngineStat
     /// <summary>What the engine converts (engine.&lt;id&gt;.description), or null when there is no text for it.</summary>
     public string? Description { get; } = Describe(loc, converter.Id);
 
-    public string Conversions { get; } = loc.Format("engines.conversions", converter.Edges.Count);
+    /// <summary>Pairs of formats; an engine may offer one pair twice (a direct conversion and a step towards others).</summary>
+    public string Conversions { get; } = loc.Format("engines.conversions", converter.Edges.Select(e => (e.From, e.To)).Distinct().Count());
 
     private static string? Describe(ILocalizer loc, string id)
     {
