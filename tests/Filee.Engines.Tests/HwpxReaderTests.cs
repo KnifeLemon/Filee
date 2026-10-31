@@ -524,6 +524,34 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(new Dictionary<string, int> { ["ole"] = 1, ["pic"] = 1 }, skipped);
     }
 
+    [Fact]
+    public void Click_here_guides_are_not_laid_out_and_filled_in_fields_are()
+    {
+        var folder = fx.NewFolder();
+        var path = HangulStylePackage(folder);
+        static IList<HInline> Links(HDocument document) => ((HParagraph)document.Sections[0].Blocks[2]).Inlines;
+
+        // dirty="0": nobody filled the field in, so its text is the guide 한글 shows on screen and never prints.
+        var guide = Links(HwpxReader.ReadForLayout(path, Path.Combine(folder, "media-guide")));
+        Assert.DoesNotContain(guide, i => i is HText { Text: "누름틀" });
+        Assert.Equal("#처음", Assert.IsType<HLink>(guide[^1]).Target);
+
+        // Filled in (dirty="1"): the text is the content.
+        var filled = Path.Combine(folder, "filled.hwpx");
+        File.Copy(path, filled);
+        using (var zip = ZipFile.Open(filled, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml.Replace("type=\"CLICK_HERE\" name=\"이름\" editable=\"1\" dirty=\"0\"", "type=\"CLICK_HERE\" name=\"이름\" editable=\"1\" dirty=\"1\"", StringComparison.Ordinal));
+        }
+        Assert.Equal("누름틀", Assert.IsType<HText>(Links(HwpxReader.ReadForLayout(filled, Path.Combine(folder, "media-filled")))[^1]).Text);
+    }
+
     private static HParagraph ParagraphOf(IEnumerable<HInline> inlines)
     {
         var paragraph = new HParagraph();
