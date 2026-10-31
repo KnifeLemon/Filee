@@ -77,7 +77,7 @@ public sealed class OlePreviewTests(EngineFixture fx) : IClassFixture<EngineFixt
         var preview = OlePreview.Extract(ole, ole + "-preview");
 
         Assert.EndsWith(".wmf", preview);
-        using var drawing = Metafile.Load(preview!);
+        using var drawing = Metafile.Load(preview!, cancellationToken: TestContext.Current.CancellationToken);
         Assert.Equal((72f, 36f), (drawing.Width, drawing.Height)); // 96 × 48 screen pixels
     }
 
