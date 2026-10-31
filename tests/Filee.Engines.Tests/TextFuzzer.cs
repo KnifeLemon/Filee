@@ -175,9 +175,10 @@ internal sealed class XmlFuzzer(byte[] seed, Random random, IReadOnlyList<string
             var element = elements[random.Next(elements.Count)];
             switch (random.Next(6))
             {
-                case 0 when element.Attributes().Any():
+                case 0 when element.Attributes().Any(a => !a.IsNamespaceDeclaration):
                     {
-                        var attributes = element.Attributes().ToList();
+                        // Namespace declarations stay: a document that can't be written out is no input.
+                        var attributes = element.Attributes().Where(a => !a.IsNamespaceDeclaration).ToList();
                         attributes[random.Next(attributes.Count)].Value = tokens[random.Next(tokens.Count)];
                         break;
                     }
@@ -211,6 +212,13 @@ internal sealed class XmlFuzzer(byte[] seed, Random random, IReadOnlyList<string
                     break;
             }
         }
-        return Encoding.UTF8.GetBytes(document.ToString(System.Xml.Linq.SaveOptions.DisableFormatting));
+        try
+        {
+            return Encoding.UTF8.GetBytes(document.ToString(System.Xml.Linq.SaveOptions.DisableFormatting));
+        }
+        catch (System.Xml.XmlException)
+        {
+            return _text.Next(); // a rename that clashes with a prefix: no tree to write
+        }
     }
 }

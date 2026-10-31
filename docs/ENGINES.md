@@ -13,7 +13,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
-| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
+| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -35,7 +35,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
-| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
+| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
@@ -2325,17 +2325,44 @@ against the nesting depth.
   to it, as Org's manual suggests (the reader takes them out again), and code lines starting with `*` or `#+` get
   Org's `,`. Merged table cells keep their text in the first position.
 
-`OpmlTests`, `TextileTests`, `MediaWikiTests`, `RstTests` and `OrgTests` build their pages in code and check the model, the round trip
+### DocBook
+
+`DocBookReader` reads DocBook 5 and the element names of 4.x through `SafeXml` (depth and element limits; no DTD is
+ever processed). A DocBook 4 document's DOCTYPE that only names the OASIS DTD is left out before the XML is read; one
+with an internal subset (entity declarations, the billion-laughs and external-entity attacks) is refused, and so is
+any entity only the DTD would have defined (`&nbsp;`), with a message saying so.
+
+- Sections (book, article, chapter, appendix, preface, part, section, sect1–sect5, simplesect, refsect...) become
+  headings one level deeper each; the root's title is the document's; `bridgehead` is a heading of its own; ids
+  become bookmarks where a link points at them.
+- Blocks: para / simpara (split around the lists and tables DocBook lets stand in a para), formalpara, blockquote
+  with its attribution, programlisting / screen / synopsis (code), literallayout (lines; `monospaced` as code),
+  itemizedlist / orderedlist (numeration, startingnumber), variablelist, simplelist, procedure (steps as a numbered
+  list), the admonitions, example, figure, sidebar, epigraph, equation; unknown elements keep their text.
+- Tables in CALS form (tgroup, colspec, namest / nameend, colname, morerows, thead) and HTML form (tr, td, th,
+  colspan, rowspan); `cols` is cut at `MaxTableColumns`.
+- Inline: emphasis (roles bold, strong, underline, strikethrough), literal and the code-like elements (command,
+  filename, option, ...), superscript, subscript, quote, citetitle, firstterm, trademark, footnote, link
+  (`xlink:href`, `linkend`), ulink, xref, email, anchor and inlinemediaobject; indexterm and remark are left out.
+
+`DocBookWriter` writes an article in the DocBook 5 namespace (Pandoc's docbook5 writer's shape): headings as nested
+sections, para (literallayout for line breaks), blockquote, itemizedlist / orderedlist with numeration and nested
+lists inside the items, programlisting, CALS informaltable with colspecs, spans and a thead, mediaobject /
+inlinemediaobject pictures (linked into `<name>_files`), footnotes, links, anchors and emphasis roles.
+
+`OpmlTests`, `TextileTests`, `MediaWikiTests`, `RstTests`, `OrgTests` and `DocBookTests` build their pages in code and check the model, the round trip
 (format → model → format → model gives the same `MarkupShape`, and text that looks like markup stays text), DOCX /
 HWPX / PDF / HTML / Markdown with Pandoc absent and the hostile inputs (DTDs and entity expansion, nesting, a
 million openers, wide and long tables); `DocumentFuzzTests` mutates each.
 
 ## Pandoc
 
-`Office/PandocConverter.cs` runs Pandoc for the markup languages (those Filee reads itself, see [above](#lightweight-markup-languages), take the built-in route when both can): reStructuredText,
-LaTeX, Org (`.org`), AsciiDoc (`.adoc`, `.asciidoc`), Typst (`.typ`), MediaWiki (`.mediawiki`, `.wiki`),
-DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`), Textile (`.textile`), man pages
-(`.man`) and OPML (`.opml`). Pandoc 3.12 reads and writes all of them.
+`Office/PandocConverter.cs` runs Pandoc for the markup languages Filee doesn't read itself: LaTeX, AsciiDoc
+(`.adoc`, `.asciidoc`), Typst (`.typ`) and man pages (`.man`) — macro and scripting languages. Pandoc 3.12 also
+reads and writes reStructuredText, Org (`.org`), MediaWiki (`.mediawiki`, `.wiki`), DocBook (`.dbk`, `.docbook`;
+written as DocBook 5), Jupyter notebooks (`.ipynb`), Textile (`.textile`) and OPML (`.opml`), but Filee reads and
+writes those itself ([above](#lightweight-markup-languages)) and its routes win; Pandoc's stay for RTF and EPUB
+written straight from them, and as the only way between them and LaTeX, AsciiDoc, Typst or man.
 
 - Each converts to and from Markdown, HTML, DOCX and ODT and into each other, and to RTF, EPUB and TXT. Through
   Pandoc's JSON AST they are also read by the HWPX writer, so they reach HWPX, HWP and PDF (HWPX writer → rhwp).

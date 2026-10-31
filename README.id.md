@@ -152,7 +152,7 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 | **Spreadsheet**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
 | **Presentasi**: PPTX, PPTM, POTX, POTM, PPSX<br>PPT, ODP, OTP, FODP, Keynote² | PDF, PNG, JPG, DOCX, HWPX<br>OTP² |
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
-| **Teks**: TXT, LOG, kode skrip sumber (PY, PAC, BAT, COMMAND; hanya baca, tidak pernah dieksekusi), Markdown, HTML;<br>MHTML (halaman web tersimpan) baca<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>saling silang format, slide PPTX³ |
+| **Teks**: TXT, LOG, kode skrip sumber (PY, PAC, BAT, COMMAND; hanya baca, tidak pernah dieksekusi), Markdown, HTML;<br>MHTML (halaman web tersimpan) baca<br>Jupyter, reStructuredText, Org, MediaWiki, DocBook, Textile, OPML<br>LaTeX, AsciiDoc, Typst, man³ | UTF-8 TXT, PDF, DOCX, HWPX, EPUB<br>saling silang format, slide PPTX³ |
 | **E-book**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ<br>LIT, LRF, CHM, PDB, …⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
 | **Video**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>ekstraksi subtitle (SRT, ASS, WebVTT) |
 | **Audio**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |

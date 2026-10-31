@@ -81,6 +81,13 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                          "[[http://x][y]]", "[[file:x.png]]", "*", "/", "_", "+", "=", "~", "^{", "_{", "}", "\\\\", ":PROPERTIES:\n", ":END:\n",
                          "SCHEDULED: ", "\u200B"]));
 
+    [Fact]
+    public void DocBookReader_reads_or_refuses_every_mutated_article() =>
+        Fuzz("dbk", "dbk", [System.Text.Encoding.UTF8.GetBytes(DocBookTests.Article)], (path, media) => DocBookReader.Read(path, media),
+            XmlMutator(["c1", "c2", "c99", "-1", "2147483647", "1000000", "loweralpha", "upperroman", "bold", "strikethrough", "#use", "use",
+                        "https://example.invalid/", "x.png", "../../etc/passwd", "monospaced", "sect9", "<!DOCTYPE article [<!ENTITY a \"a\">]>",
+                        "&a;", "&nbsp;", "<section>", "</para>", "<![CDATA[x]]>"]));
+
     /// <summary>The mutator of a text format, with the format's own tokens.</summary>
     private static Func<byte[], Random, Func<byte[]>> TextMutator(string[] tokens) => (seed, random) => new TextFuzzer(seed, random, tokens).Next;
 
