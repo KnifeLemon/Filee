@@ -57,7 +57,7 @@ public class SetupWindowTests
 
     private static readonly EngineOffer[] Offers =
     [
-        new("libreoffice", ["libreoffice", "jre"], 520_000_000, 1_265_000_000, false),
+        new("libreoffice", ["libreoffice"], 373_000_000, 1_135_000_000, false),
         new("pandoc", ["pandoc"], 42_000_000, 236_000_000, true),
         new("ghostscript", ["ghostscript", "vcruntime"], 20_000_000, 31_000_000, false),
         new("ffmpeg", ["ffmpeg"], 99_000_000, 272_000_000, false),

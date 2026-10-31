@@ -22,26 +22,12 @@
       "size": 42983200,
       "kind": "zip"
     },
-    "jre": {
-      "version": "21.0.13",
-      "url": "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.13%2B9/OpenJDK21U-jre_x64_windows_hotspot_21.0.13_9.zip",
-      "sha256": "2332C0B4CFF6BED722DA3567C91D5E47568BCBA863FA4945D0A8D6FC76158628",
-      "size": 49106397,
-      "kind": "zip"
-    },
     "libreoffice": {
       "version": "26.2.6",
       "url": "https://download.documentfoundation.org/libreoffice/stable/26.2.6/win/x86_64/LibreOffice_26.2.6_Win_x86-64.msi",
       "sha256": "F9877032FD908BEB9C0DDF06DF4AF5C2E85F419C42E14876C4CCE5AAE5FB2660",
       "size": 373252096,
       "kind": "msi"
-    },
-    "h2orestart": {
-      "version": "0.8.0",
-      "url": "https://github.com/ebandal/H2Orestart/releases/download/v0.8.0/H2Orestart.oxt",
-      "sha256": "F36C19FA6B7DFF1CF34114D926BDC088E6BCFA7FDC93D67EAAFD3F572BE1D62C",
-      "size": 611297,
-      "kind": "oxt"
     },
     "ghostscript": {
       "version": "10.08.0",
