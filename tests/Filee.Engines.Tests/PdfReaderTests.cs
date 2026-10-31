@@ -192,6 +192,66 @@ public class PdfReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Table_of_contents_entries_are_paragraphs_with_a_right_tab_with_dot_leader()
+    {
+        var pdf = new PdfBuilder().NewPage();
+        var regular = pdf.Font();
+        var bold = pdf.Font(bold: true);
+        pdf.Line("Contents", 18, bold, 54, 80);
+        string[] titles = ["1.1 Purpose", "1.2 Scope", "2.1 Design"];
+        for (var i = 0; i < titles.Length; i++)
+            pdf.Line(titles[i] + new string('.', 40) + (i + 1), 12, regular, 54, 130 + i * 20);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "contents.pdf"));
+
+        var docx = await ConvertAsync(path, "docx");
+
+        ValidPackage(docx);
+        var paragraphs = Paragraphs(ReadBack(docx).Sections.SelectMany(s => s.Blocks)).Where(p => TextOf(p).Length > 0).ToList();
+        // One paragraph per entry: the dots are a tab leader, not text, and the entries are no headings.
+        var entries = paragraphs.Where(p => Shown(p).Contains('\t')).ToList();
+        Assert.Equal(["1.1 Purpose\t1", "1.2 Scope\t2", "2.1 Design\t3"], entries.Select(Shown));
+        Assert.All(entries, p =>
+        {
+            Assert.Equal(0, p.HeadingLevel);
+            var tab = Assert.Single(p.Format.Tabs!);
+            Assert.Equal(HTabKind.Right, tab.Kind);
+            Assert.Equal("DOT", tab.Leader);
+        });
+        Assert.Equal(1, paragraphs.Single(p => TextOf(p) == "Contents").HeadingLevel);
+    }
+
+    [Fact]
+    public async Task A_larger_line_under_a_paragraph_starts_its_own_paragraph()
+    {
+        var pdf = new PdfBuilder().NewPage();
+        var regular = pdf.Font();
+        var bold = pdf.Font(bold: true);
+        var y = pdf.Paragraph(First, 12, regular, 54, 100, 495, 14.4);
+        // 14 pt right below 12 pt text: close enough for a line of the paragraph, but a different size.
+        pdf.Line("2.1.3 Design", 14, bold, 54, y + 2);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "heading.pdf"));
+
+        var docx = await ConvertAsync(path, "docx");
+
+        var paragraphs = Paragraphs(ReadBack(docx).Sections.SelectMany(s => s.Blocks)).Where(p => TextOf(p).Length > 0).ToList();
+        Assert.Equal([First, "2.1.3 Design"], paragraphs.Select(p => TextOf(p).Trim()));
+    }
+
+    [Fact]
+    public async Task Fixed_line_spacing_wider_than_1_9_em_stays_one_paragraph()
+    {
+        var pdf = new PdfBuilder().NewPage();
+        var text = $"{First} {Second} {First}";
+        pdf.Paragraph(text, 12, pdf.Font(), 54, 100, 495, 23); // 23 pt for 12 pt text, as a fixed line spacing of 1.92 em
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "spaced.pdf"));
+
+        var docx = await ConvertAsync(path, "docx");
+
+        var paragraphs = Paragraphs(ReadBack(docx).Sections.SelectMany(s => s.Blocks)).Where(p => TextOf(p).Length > 0).ToList();
+        Assert.Equal([text], paragraphs.Select(p => TextOf(p).Trim()));
+    }
+
+    [Fact]
     public async Task Scanned_pages_become_page_pictures()
     {
         var dir = fx.NewFolder();
