@@ -192,6 +192,8 @@
   "engine.docx-writer.description": "Écrit des documents Word (DOCX) à partir de PDF, OFD, HWP/HWPX, Markdown, HTML, feuilles de calcul, diapositives et livres numériques.",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Écrit des documents texte OpenDocument (ODT) à partir de documents Word, PDF, OFD, HWP/HWPX, Markdown, HTML, feuilles de calcul, diapositives et livres numériques.",
+  "engine.pptx-writer.name": "Générateur PPTX (intégré)",
+  "engine.pptx-writer.description": "Crée des diapositives PowerPoint (PPTX) à partir de fichiers Markdown et de balisage, de documents Word, ODT, HWP/HWPX, HTML, de feuilles de calcul et de livres numériques : une diapositive par titre, avec listes, tableaux, images et code.",
   "engine.pdf-text.name": "PDF text (built-in)",
   "engine.pdf-text.description": "Extrait le texte des PDF dans l'ordre de lecture, y compris sur deux colonnes (pas d'OCR pour les numérisations).",
   "engine.pdf-slides.name": "PDF slides (built-in)",

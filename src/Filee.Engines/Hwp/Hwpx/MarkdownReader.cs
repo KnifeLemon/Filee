@@ -3,9 +3,12 @@
 // Mirrors PandocAstReader: headings (with their ids as bookmarks), paragraphs, bold / italic / strike / sub- and
 // superscript / inserted / marked text, code, lists (1. / a. / i. / A. / I. with the start number, nested levels),
 // task lists, block quotes, pipe and grid tables with spans, definition lists, links, images, footnotes and math.
-// The YAML front matter's "title" becomes the document title. Raw HTML is skipped, except <br>.
+// The YAML front matter's "title", "subtitle", "author" and "date" become the document's metadata. Raw HTML is
+// skipped, except <br>. For the PPTX writer, blocks keep what they were (HBlockRole): code lines, thematic breaks and
+// the content of Pandoc-style "::: notes" containers (speaker notes).
 
 using Markdig;
+using Markdig.Extensions.CustomContainers;
 using Markdig.Extensions.DefinitionLists;
 using Markdig.Extensions.Footnotes;
 using Markdig.Extensions.Mathematics;
@@ -15,6 +18,8 @@ using Markdig.Extensions.Yaml;
 using Markdig.Renderers.Html;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
+using YamlDotNet.Core;
+using YamlDotNet.Core.Events;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -50,13 +55,14 @@ internal sealed class MarkdownReader
         var reader = new MarkdownReader(baseFolder, resourceRoot);
         var section = new HSection();
         reader.Blocks(parsed, section.Blocks, new Context());
-        var document = new HDocument { Title = Title(parsed) };
+        var document = new HDocument();
+        Metadata(parsed, document);
         document.Sections.Add(section);
         return document;
     }
 
-    /// <summary>List nesting and quote indentation of the blocks being read.</summary>
-    private readonly record struct Context(int ListLevel = 0, int Indent = 0);
+    /// <summary>List nesting and quote indentation of the blocks being read, and their role (speaker notes).</summary>
+    private readonly record struct Context(int ListLevel = 0, int Indent = 0, HBlockRole Role = HBlockRole.Body);
 
     // ───────────────────────── Blocks ─────────────────────────
 
@@ -86,16 +92,28 @@ internal sealed class MarkdownReader
                 Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent });
                 break;
             case MathBlock math:
-                CodeLines(math, output, context, Plain with { Italic = true });
+                CodeLines(math, output, context, Plain with { Italic = true }, HBlockRole.Body);
                 break;
             case CodeBlock code:
-                CodeLines(code, output, context, CodeFormat);
+                CodeLines(code, output, context, CodeFormat, HBlockRole.Code);
                 break;
             case ThematicBreakBlock:
-                output.Add(NewParagraph(context));
-                break;
+                {
+                    var rule = NewParagraph(context);
+                    if (context.Role == HBlockRole.Body)
+                        rule.Role = HBlockRole.Rule;
+                    output.Add(rule);
+                    break;
+                }
             case Table table:
-                output.Add(TableBlock(table, context));
+                {
+                    var hTable = TableBlock(table, context);
+                    hTable.Role = context.Role;
+                    output.Add(hTable);
+                    break;
+                }
+            case CustomContainer container when IsNotes(container):
+                Blocks(container, output, context with { Role = HBlockRole.Notes });
                 break;
             case DefinitionList definitions:
                 DefinitionListBlock(definitions, output, context);
@@ -110,7 +128,13 @@ internal sealed class MarkdownReader
     }
 
     private static HParagraph NewParagraph(Context context) =>
-        new() { Format = context.Indent > 0 ? new HParaFormat(Left: context.Indent) : default };
+        new() { Format = context.Indent > 0 ? new HParaFormat(Left: context.Indent) : default, Role = context.Role };
+
+    /// <summary>Pandoc's speaker notes: <c>::: notes</c> or <c>::: {.notes}</c>.</summary>
+    private static bool IsNotes(CustomContainer container) =>
+        string.Equals(container.Info, "notes", StringComparison.OrdinalIgnoreCase)
+        || (container.Info ?? "").Trim('{', '}', ' ').Split(' ').Contains(".notes", StringComparer.OrdinalIgnoreCase)
+        || container.GetAttributes().Classes?.Contains("notes", StringComparer.OrdinalIgnoreCase) == true;
 
     private HParagraph Paragraph(ContainerInline? inlines, Context context)
     {
@@ -129,11 +153,13 @@ internal sealed class MarkdownReader
         return paragraph;
     }
 
-    private static void CodeLines(LeafBlock code, List<HBlock> output, Context context, HCharFormat format)
+    private static void CodeLines(LeafBlock code, List<HBlock> output, Context context, HCharFormat format, HBlockRole role)
     {
         foreach (var line in code.Lines.ToString().Replace("\r\n", "\n").Split('\n'))
         {
             var paragraph = NewParagraph(context);
+            if (context.Role == HBlockRole.Body)
+                paragraph.Role = role;
             if (line.Length > 0)
                 paragraph.Inlines.Add(new HText(line, format));
             output.Add(paragraph);
@@ -391,12 +417,95 @@ internal sealed class MarkdownReader
 
     // ───────────────────────── Helpers ─────────────────────────
 
-    /// <summary>"title:" from the YAML front matter, if any.</summary>
-    private static string? Title(MarkdownDocument document)
+    /// <summary>
+    /// "title", "subtitle", "author" (one, or a list) and "date" from the YAML front matter, if any. Read as parser
+    /// events, not as a tree, so nesting or aliases in a hostile file cost nothing: only top-level scalars and lists
+    /// of scalars count. YAML that doesn't parse still gives its "title:" line.
+    /// </summary>
+    private static void Metadata(MarkdownDocument document, HDocument output)
     {
         if (document.Descendants<YamlFrontMatterBlock>().FirstOrDefault() is not { } yaml)
-            return null;
-        foreach (var line in yaml.Lines.ToString().Split('\n'))
+            return;
+        var text = yaml.Lines.ToString();
+        try
+        {
+            var parser = new Parser(new StringReader(text));
+            var depth = 0;
+            string? key = null;
+            var values = new List<string>();
+            while (parser.MoveNext())
+            {
+                switch (parser.Current)
+                {
+                    case DocumentEnd:
+                        return; // the first document only
+                    case MappingStart or SequenceStart:
+                        depth++;
+                        if (depth == 2 && key is not null && parser.Current is SequenceStart)
+                            values.Clear();
+                        else if (depth == 2)
+                            key = null; // a nested mapping as a value: left out
+                        break;
+                    case MappingEnd or SequenceEnd:
+                        if (depth == 2 && key is not null)
+                        {
+                            Assign(output, key, values);
+                            key = null;
+                        }
+                        depth--;
+                        break;
+                    case Scalar scalar when depth == 1:
+                        if (key is null)
+                        {
+                            key = scalar.Value;
+                        }
+                        else
+                        {
+                            Assign(output, key, [scalar.Value]);
+                            key = null;
+                        }
+                        break;
+                    case Scalar scalar when depth == 2 && key is not null:
+                        values.Add(scalar.Value);
+                        break;
+                    case AnchorAlias when depth == 1:
+                        key = null; // an alias as a value: left out
+                        break;
+                }
+            }
+        }
+        catch (YamlException)
+        {
+            output.Title ??= Title(text);
+        }
+    }
+
+    private static void Assign(HDocument output, string key, List<string> values)
+    {
+        var clean = values.Select(v => v.Trim()).Where(v => v.Length > 0).ToList();
+        if (clean.Count == 0)
+            return;
+        switch (key.Trim().ToLowerInvariant())
+        {
+            case "title":
+                output.Title = string.Join(" ", clean);
+                break;
+            case "subtitle":
+                output.Subtitle = string.Join(" ", clean);
+                break;
+            case "author" or "authors":
+                output.Authors.AddRange(clean);
+                break;
+            case "date":
+                output.Date = string.Join(" ", clean);
+                break;
+        }
+    }
+
+    /// <summary>The "title:" line of front matter that isn't valid YAML.</summary>
+    private static string? Title(string yaml)
+    {
+        foreach (var line in yaml.Split('\n'))
         {
             var trimmed = line.Trim();
             if (trimmed.StartsWith("title:", StringComparison.OrdinalIgnoreCase))

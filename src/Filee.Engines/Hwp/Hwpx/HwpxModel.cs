@@ -14,6 +14,15 @@ namespace Filee.Engines.Hwp.Hwpx;
 internal sealed class HDocument
 {
     public string? Title { get; set; }
+
+    /// <summary>
+    /// Subtitle, authors and date from the source's metadata (a Markdown YAML block, Pandoc's meta), or null / empty.
+    /// Only the PPTX writer uses them, for its title slide.
+    /// </summary>
+    public string? Subtitle { get; set; }
+    public List<string> Authors { get; } = [];
+    public string? Date { get; set; }
+
     public List<HSection> Sections { get; } = [];
 
     /// <summary>Custom East Asian line breaking characters (Word settings), by language; empty = the usual rules.</summary>
@@ -128,6 +137,28 @@ internal abstract class HBlock
 {
     /// <summary>The page this block is on hides its header or footer (한글 쪽 감추기); null = none. Read for layout only.</summary>
     public HPageHiding? PageHiding { get; set; }
+
+    /// <summary>What the block was in a markup source (<see cref="HBlockRole"/>); only the PPTX writer uses it.</summary>
+    public HBlockRole Role { get; set; }
+}
+
+/// <summary>
+/// What a block was in a markup source (Markdown, HTML, Pandoc's AST), for a writer that lays such blocks out on their
+/// own: the PPTX writer puts code in a monospace box, starts a slide at a rule and moves notes into the speaker notes.
+/// The other writers write the blocks as they are.
+/// </summary>
+internal enum HBlockRole
+{
+    Body,
+
+    /// <summary>A line of a code block.</summary>
+    Code,
+
+    /// <summary>A horizontal rule (thematic break): the paragraph that stands for it.</summary>
+    Rule,
+
+    /// <summary>Speaker notes (Pandoc's <c>::: notes</c> div).</summary>
+    Notes,
 }
 
 internal sealed class HParagraph : HBlock
