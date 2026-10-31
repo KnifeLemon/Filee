@@ -114,7 +114,6 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var (bitmap, _) = Render(emf, 96);
         using (bitmap)
         {
-            File.WriteAllBytes(Path.Combine(Environment.GetEnvironmentVariable("FILEE_DEBUG_OUT") ?? Path.GetTempPath(), "clip.png"), bitmap.Encode(SKEncodedImageFormat.Png, 100).ToArray());
             Assert.Equal(SKColors.Red, Pixel(bitmap, 48, 24));
             Assert.Equal(0, Pixel(bitmap, 144, 24).Alpha);
             Assert.Equal(SKColors.Blue, Pixel(bitmap, 170, 85));
