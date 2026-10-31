@@ -9,7 +9,8 @@
 //    as images.
 //  * HTML (HtmlReader, AngleSharp), EPUB, MOBI / AZW3, FB2, HTMLZ and TXTZ (Ebooks) and HWPX (HwpxReader) are read
 //    directly.
-//  * ODT, RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
+//  * ODT is read directly (Odt/OdtReader), keeping page layouts, headers/footers, styles, lists and tables.
+//  * RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;

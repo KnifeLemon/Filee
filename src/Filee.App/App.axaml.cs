@@ -316,11 +316,13 @@ public partial class App : Application
         var routesChanged = EngineEnvironment.LibreOfficeForSlides != settings.LibreOfficeForSlides
                             || EngineEnvironment.LibreOfficeForHwp != settings.LibreOfficeForHwp
                             || EngineEnvironment.LibreOfficeForDocuments != settings.LibreOfficeForDocuments
-                            || EngineEnvironment.LibreOfficeForSheets != settings.LibreOfficeForSheets;
+                            || EngineEnvironment.LibreOfficeForSheets != settings.LibreOfficeForSheets
+                            || EngineEnvironment.FileeRenderer != settings.FileeRenderer;
         EngineEnvironment.LibreOfficeForSlides = settings.LibreOfficeForSlides;
         EngineEnvironment.LibreOfficeForHwp = settings.LibreOfficeForHwp;
         EngineEnvironment.LibreOfficeForDocuments = settings.LibreOfficeForDocuments;
         EngineEnvironment.LibreOfficeForSheets = settings.LibreOfficeForSheets;
+        EngineEnvironment.FileeRenderer = settings.FileeRenderer;
 
         var loc = AppHost.Get<LocalizationService>();
         if (loc.NeedsUpdate(settings.Language))

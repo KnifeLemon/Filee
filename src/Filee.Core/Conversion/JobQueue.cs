@@ -774,6 +774,21 @@ public sealed class JobQueue : IAsyncDisposable
             return Fail(file, "error.no_route", $"{source.Id} → {target}",
                 new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr));
 
+        // An engine that draws only part of what a file can hold (Filee's renderer while it grows) looks at the file
+        // first; when it names something it can't draw, the file takes the route it would take without the engine.
+        // Decided once, before converting: never switched in the middle of a conversion.
+        var withoutChecked = false;
+        if (route.Steps.FirstOrDefault(s => s.Checked) is { Converter: ICapabilityCheck capability } checkedStep
+            && checkedStep.From == source.Id
+            && FirstUnsupported(capability, file.SourcePath, source.Id) is { } feature
+            && planner.Plan(source.Id, target, frames, ocr: ocr, withoutChecked: true) is { } alternative)
+        {
+            _log.LogInformation("{File} has {Feature}, which {Engine} can't draw yet: planning a route without it",
+                file.SourcePath, feature, checkedStep.Converter.DisplayName);
+            route = alternative;
+            withoutChecked = true;
+        }
+
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
         // scan of the file's text answers this and the widths question below.
@@ -784,7 +799,7 @@ public sealed class JobQueue : IAsyncDisposable
         {
             _log.LogInformation("{File} has {Script} text, which {Engine} can't draw: planning a route without it",
                 file.SourcePath, script, route.Steps.First(s => s.Unshaped).Converter.DisplayName);
-            route = planner.Plan(source.Id, target, frames, shaping: true, ocr: ocr);
+            route = planner.Plan(source.Id, target, frames, shaping: true, ocr: ocr, withoutChecked: withoutChecked);
             if (route is null)
                 return Fail(file, "error.needs_shaping", script);
         }
@@ -796,7 +811,7 @@ public sealed class JobQueue : IAsyncDisposable
         {
             _log.LogInformation("{File} has {Script} text, which {Engine} can't measure: planning a route without it",
                 file.SourcePath, unmeasured, route.Steps.First(s => s.Unshaped).Converter.DisplayName);
-            route = planner.Plan(source.Id, target, frames, shaping: true) ?? route;
+            route = planner.Plan(source.Id, target, frames, shaping: true, withoutChecked: withoutChecked) ?? route;
         }
 
         // Rotate / flip: only an engine that turns images does it. Without one the file would come out unturned
@@ -1025,6 +1040,20 @@ public sealed class JobQueue : IAsyncDisposable
             return false;
         File.Copy(source, output, overwrite: true);
         return true;
+    }
+
+    /// <summary>The engine's look at the file; one that fails finds nothing, and the conversion reports the file.</summary>
+    private string? FirstUnsupported(ICapabilityCheck check, string path, string format)
+    {
+        try
+        {
+            return check.FirstUnsupported(path, format);
+        }
+        catch (Exception ex)
+        {
+            _log.LogWarning(ex, "Could not check what {File} holds", path);
+            return null;
+        }
     }
 
     /// <summary>The engine's scan; one that fails (an unreadable file) finds nothing, and the conversion reports the file.</summary>

@@ -635,7 +635,9 @@ public class DocumentModelTests(EngineFixture fx) : IClassFixture<EngineFixture>
         return zip.Entries.ToDictionary(e => e.FullName, e =>
         {
             using var reader = new StreamReader(e.Open());
-            return e.FullName.StartsWith("BinData/", StringComparison.Ordinal) || e.FullName.StartsWith("word/media/", StringComparison.Ordinal) ? "" : reader.ReadToEnd();
+            // Pictures as bytes aren't compared; core.xml holds the time of writing, which moves on between two writes.
+            return e.FullName.StartsWith("BinData/", StringComparison.Ordinal) || e.FullName.StartsWith("word/media/", StringComparison.Ordinal)
+                || e.FullName == "docProps/core.xml" ? "" : reader.ReadToEnd();
         });
     }
 
