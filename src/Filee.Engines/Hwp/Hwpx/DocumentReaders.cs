@@ -33,6 +33,7 @@ internal static class DocumentReaders
         ["dotx"] = DocxReader.Read,
         ["dotm"] = DocxReader.Read,
         ["txt"] = (path, _) => TextDocument(File.ReadAllBytes(path)),
+        ["rtf"] = RtfReader.Read,
         ["md"] = (path, _) => MarkdownReader.Read(DecodeText(File.ReadAllBytes(path)), Path.GetDirectoryName(Path.GetFullPath(path))!),
         ["xlsx"] = (path, _) => SheetDocument.Build(XlsxReader.Read(path)),
         ["xlsm"] = (path, _) => SheetDocument.Build(XlsxReader.Read(path)),
