@@ -1,11 +1,12 @@
 // Builds archive test inputs in code: folder trees with Korean names, ZIPs (System.IO.Compression), ALZ and EGG
 // files written per their format documentation (see AlzReader / EggReader), lzip files, and raw bzip2 / LZMA streams
-// taken from what the bundled 7-Zip writes.
+// written by SharpCompress's encoders (no 7-Zip needed).
 
 using System.IO.Compression;
 using System.Text;
 using Filee.Engines.Archives;
-using Filee.Engines.Infrastructure;
+using SharpCompress.Compressors.BZip2;
+using SharpCompress.Compressors.LZMA;
 
 namespace Filee.Engines.Tests;
 
@@ -68,45 +69,94 @@ internal static class ArchiveBuilders
     public static string? SevenZipExe => SevenZip.Locate()?.Executable;
 
     /// <summary>Runs 7-Zip with the given arguments and fails the test on an error.</summary>
-    public static async Task Run7zAsync(params string[] args)
+    public static Task Run7zAsync(params string[] args) => Run7zAsync(TimeSpan.FromMinutes(5), args);
+
+    /// <summary>
+    /// Runs 7-Zip with its input closed: with the test host's console as input it now and then stalled without using
+    /// any CPU until the timeout.
+    /// </summary>
+    public static async Task Run7zAsync(TimeSpan timeout, params string[] args)
     {
-        var result = await ProcessRunner.RunAsync(SevenZipExe!, args, TimeSpan.FromMinutes(2), CancellationToken.None);
-        Assert.True(result.ExitCode == 0, $"7z {string.Join(' ', args)}: {result.StandardOutput} {result.StandardError}");
+        var start = new System.Diagnostics.ProcessStartInfo(SevenZipExe!)
+        {
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in args)
+            start.ArgumentList.Add(arg);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        process.StandardInput.Close();
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(timeout);
+        }
+        catch (TimeoutException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw;
+        }
+        Assert.True(process.ExitCode == 0, $"7z {string.Join(' ', args)}: {await output} {await error}");
     }
 
-    /// <summary>Standard bzip2 stream of <paramref name="data"/> written by 7-Zip at level 9 ("BZh9", 900k blocks).</summary>
-    public static async Task<byte[]> Bzip2Async(byte[] data, string workDir)
+    /// <summary>Standard bzip2 stream of <paramref name="data"/> ("BZh9", 900k blocks), written by SharpCompress.</summary>
+    public static Task<byte[]> Bzip2Async(byte[] data, string workDir) => Task.FromResult(Bzip2(data));
+
+    public static byte[] Bzip2(byte[] data)
     {
-        var dir = Directory.CreateDirectory(Path.Combine(workDir, "bz-" + Guid.NewGuid().ToString("N")[..6])).FullName;
-        var input = Path.Combine(dir, "data.bin");
-        await File.WriteAllBytesAsync(input, data);
-        var output = Path.Combine(dir, "data.bz2");
-        await Run7zAsync("a", "-tbzip2", "-mx9", "-mmt=off", output, input);
-        return await File.ReadAllBytesAsync(output);
+        using var ms = new MemoryStream();
+        using (var bzip2 = new BZip2Stream(new NonClosing(ms), SharpCompress.Compressors.CompressionMode.Compress, false))
+            bzip2.Write(data);
+        return ms.ToArray();
     }
 
     /// <summary>
-    /// A raw LZMA stream (lc=3, lp=0, pb=2, 1 MiB dictionary) of <paramref name="data"/>: 7-Zip writes it into a .7z
-    /// without header compression, where the only packed stream starts at offset 32 and is as long as the "next
-    /// header offset" of the signature header says.
+    /// A raw LZMA stream (lc=3, lp=0, pb=2, 1 MiB dictionary) of <paramref name="data"/>, written by SharpCompress's
+    /// encoder, with or without the end marker.
     /// </summary>
-    public static async Task<byte[]> RawLzmaAsync(byte[] data, bool endMarker, string workDir)
+    public static Task<byte[]> RawLzmaAsync(byte[] data, bool endMarker, string workDir) => Task.FromResult(RawLzma(data, endMarker));
+
+    public static byte[] RawLzma(byte[] data, bool endMarker)
     {
-        var dir = Directory.CreateDirectory(Path.Combine(workDir, "lzma-" + Guid.NewGuid().ToString("N")[..6])).FullName;
-        var input = Path.Combine(dir, "data.bin");
-        await File.WriteAllBytesAsync(input, data);
-        var output = Path.Combine(dir, "data.7z");
-        await Run7zAsync("a", "-t7z", "-m0=LZMA:d=1m:lc=3:lp=0:pb=2" + (endMarker ? ":eos" : ""), "-mhc=off", "-mf=off",
-            "-ms=off", "-mmt=off", output, input);
-        var archive = await File.ReadAllBytesAsync(output);
-        var packedSize = (int)BitConverter.ToInt64(archive, 12);
-        return archive[32..(32 + packedSize)];
+        using var ms = new MemoryStream();
+        using (var lzma = new LzmaStream(new LzmaEncoderProperties(endMarker, 1 << 20), false, new NonClosing(ms)))
+        {
+            Assert.Equal(new byte[] { 0x5D, 0x00, 0x00, 0x10, 0x00 }, lzma.Properties);
+            lzma.Write(data, 0, data.Length);
+        }
+        return ms.ToArray();
+    }
+
+    /// <summary>Keeps the memory stream open when an encoder disposes what it writes to.</summary>
+    internal sealed class NonClosing(Stream inner) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => inner.Length;
+
+        public override long Position
+        {
+            get => inner.Position;
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush() => inner.Flush();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
     }
 
     /// <summary>An lzip member of <paramref name="data"/> (see LzipReader).</summary>
-    public static async Task<byte[]> LzipAsync(byte[] data, string workDir)
+    public static Task<byte[]> LzipAsync(byte[] data, string workDir) => Task.FromResult(Lzip(data));
+
+    public static byte[] Lzip(byte[] data)
     {
-        var lzma = await RawLzmaAsync(data, endMarker: true, workDir);
+        var lzma = RawLzma(data, endMarker: true);
         using var ms = new MemoryStream();
         ms.Write("LZIP"u8);
         ms.WriteByte(1);

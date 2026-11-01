@@ -36,9 +36,16 @@ internal sealed class SevenZip(string executable)
 
     public string Executable { get; } = executable;
 
+    /// <summary>
+    /// Set to 1, Filee behaves as if 7-Zip were missing: the archive tests run this way to show which formats need
+    /// it (see docs/ENGINES.md, Archives).
+    /// </summary>
+    public const string HideVariable = "FILEE_HIDE_7ZIP";
+
     /// <summary>Filee's own copy (engines/7zip), never one installed on the system.</summary>
     public static SevenZip? Locate() =>
-        EngineEnvironment.FindBundled("7zip") is { } folder
+        Environment.GetEnvironmentVariable(HideVariable) != "1"
+        && EngineEnvironment.FindBundled("7zip") is { } folder
         && EngineEnvironment.FirstExisting(Path.Combine(folder, OperatingSystem.IsWindows() ? "7z.exe" : "7zz")) is { } exe
             ? new SevenZip(exe)
             : null;
@@ -177,7 +184,7 @@ internal sealed class SevenZip(string executable)
         if (Has("Wrong password") || Has("encrypted archive"))
             return ArchiveSafety.Encrypted(name);
         if (Has("Cannot open the file as") || Has("Is not archive") || Has("Can not open the file as"))
-            return new InvalidDataException($"{name} is not a valid archive, or not the kind its extension says.");
+            return ArchiveSafety.NotAnArchive(name);
         if (Has("Unexpected end") || Has("Data Error") || Has("CRC Failed") || Has("Headers Error") || Has("Missing volume"))
             return ArchiveSafety.Damaged(name, ErrorText(result));
         return new InvalidOperationException($"7-Zip could not read {name} (exit {result.ExitCode}). {ErrorText(result)}".Trim());
