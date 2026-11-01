@@ -21,10 +21,18 @@ internal sealed class XlsBuilder
     public const int Percent = 4;   // 0.0% (custom format 165)
     public const int Time = 5;      // built-in 20 (h:mm)
     public const int RightTop = 6;  // right aligned at the top
+    public const int Boxed = 7;     // bold (font 5), solid yellow fill, thin borders all round, wrapped, rotated 90°
 
     /// <summary>(format id, horizontal alignment, vertical alignment) of each XF.</summary>
     private static readonly (int Format, int Horizontal, int Vertical)[] Xfs =
-        [(0, 0, 2), (0, 2, 2), (164, 0, 2), (14, 0, 2), (165, 0, 2), (20, 0, 2), (0, 3, 0)];
+        [(0, 0, 2), (0, 2, 2), (164, 0, 2), (14, 0, 2), (165, 0, 2), (20, 0, 2), (0, 3, 0), (0, 0, 2)];
+
+    /// <summary>Built-in names (Print_Area 0x06, Print_Titles 0x07) of a sheet (1-based) and their formula.</summary>
+    public List<(int Sheet, byte Kind, byte[] Formula)> Names { get; } = [];
+
+    /// <summary>A ptgArea3d formula for 0-based rows and columns (BIFF8: rows to 65535, columns to 255).</summary>
+    public static byte[] Area(int top, int left, int bottom, int right) =>
+        [0x3B, .. U16(0), .. U16(top), .. U16(bottom), .. U16(left | 0xC000), .. U16(right | 0xC000)];
 
     private static readonly (int Id, string Code)[] Formats = [(164, "#,##0\"원\""), (165, "0.0%")];
 
@@ -56,12 +64,25 @@ internal sealed class XlsBuilder
         if (encrypted)
             Record(stream, 0x002F, [0x00, 0x00, 0x34, 0x12, 0x01, 0x00]); // FILEPASS: XOR, key 0x1234, verifier 0x0001
         Record(stream, 0x0042, U16(1200)); // CODEPAGE: UTF-16
-        for (var i = 0; i < 5; i++)
-            Record(stream, 0x0031, Font(bold: i == 1));
+        for (var i = 0; i < 6; i++)
+            Record(stream, 0x0031, Font(bold: i is 1 or 4)); // the fifth record is font 5: BIFF has no font 4
         foreach (var (id, code) in Formats)
             Record(stream, 0x041E, [.. U16(id), .. UnicodeString(code, byteLength: false)]);
-        foreach (var (format, horizontal, vertical) in Xfs)
-            Record(stream, 0x00E0, Xf(format, horizontal, vertical));
+        for (var i = 0; i < Xfs.Length; i++)
+        {
+            var (format, horizontal, vertical) = Xfs[i];
+            var xf = Xf(format, horizontal, vertical);
+            if (i == Boxed)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(xf, 5);                          // font 5 (bold)
+                xf[6] |= 0x08;                                                            // wrapped
+                xf[7] = 90;                                                               // rotated 90°
+                BinaryPrimitives.WriteUInt32LittleEndian(xf.AsSpan(10), 0x1111 | 8u << 16 | 8u << 23); // thin, black
+                BinaryPrimitives.WriteUInt32LittleEndian(xf.AsSpan(14), 8 | 8 << 7 | 1u << 26);         // solid fill
+                BinaryPrimitives.WriteUInt16LittleEndian(xf.AsSpan(18), 13 | 64 << 7);    // yellow (palette 13)
+            }
+            Record(stream, 0x00E0, xf);
+        }
 
         var sheetOffsets = new List<long>();
         foreach (var sheet in _sheets)
@@ -75,6 +96,8 @@ internal sealed class XlsBuilder
         foreach (var text in _strings)
             sst.AddRange(UnicodeString(text, byteLength: false));
         Record(stream, 0x00FC, [.. sst]);
+        foreach (var (sheet, kind, formula) in Names)
+            Record(stream, 0x0018, [0x20, 0, 0, 1, .. U16(formula.Length), 0, 0, .. U16(sheet), 0, 0, 0, 0, 0, kind, .. formula]);
         Record(stream, 0x000A, []);
 
         for (var i = 0; i < _sheets.Count; i++)
@@ -129,6 +152,14 @@ internal sealed class XlsSheet(XlsBuilder book, string name, bool hidden)
     private readonly List<(int Top, int Left, int Bottom, int Right)> _merges = [];
     private readonly List<(int Column, double Width, bool Hidden)> _columns = [];
     private readonly SortedDictionary<int, (double Points, bool Hidden)> _rows = [];
+    private readonly List<(int Id, byte[] Data)> _records = [];
+
+    /// <summary>Page setup records (SETUP, margins, HEADER, page breaks, ...) written before the cells.</summary>
+    public XlsSheet Record(int id, byte[] data)
+    {
+        _records.Add((id, data));
+        return this;
+    }
 
     public string Name => name;
     public bool Hidden => hidden;
@@ -173,6 +204,8 @@ internal sealed class XlsSheet(XlsBuilder book, string name, bool hidden)
     {
         XlsBuilder.Record(stream, 0x0809, XlsBuilder.Bof(0x0010));
         XlsBuilder.Record(stream, 0x0225, [.. XlsBuilder.U16(0), .. XlsBuilder.U16(300)]); // DEFAULTROWHEIGHT: 15 pt
+        foreach (var (id, data) in _records)
+            XlsBuilder.Record(stream, id, data);
         foreach (var (column, width, hide) in _columns)
         {
             // COLINFO: width in 1/256 characters; fUserSet so readers take the width.
@@ -314,14 +347,18 @@ internal static class OdsBuilder
     /// <param name="styles">Children of office:styles in styles.xml.</param>
     /// <param name="settings">settings.xml content (without the declaration), or null.</param>
     /// <param name="encrypted">Declares content.xml as encrypted in the manifest, as password-protected files do.</param>
-    public static string Save(string path, string automaticStyles, string tables, string styles = "", string? settings = null, bool encrypted = false)
+    /// <param name="pageStyles">Children of office:automatic-styles in styles.xml (page layouts).</param>
+    /// <param name="masterStyles">Children of office:master-styles (master pages with headers and footers).</param>
+    public static string Save(string path, string automaticStyles, string tables, string styles = "", string? settings = null, bool encrypted = false,
+        string pageStyles = "", string masterStyles = "")
     {
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
         Add(zip, "mimetype", "application/vnd.oasis.opendocument.spreadsheet", CompressionLevel.NoCompression);
         Add(zip, "content.xml", OpcWriter.Declaration +
             $"<office:document-content {Namespaces} office:version=\"1.3\"><office:automatic-styles>{automaticStyles}</office:automatic-styles>" +
             $"<office:body><office:spreadsheet>{tables}</office:spreadsheet></office:body></office:document-content>");
-        Add(zip, "styles.xml", OpcWriter.Declaration + $"<office:document-styles {Namespaces} office:version=\"1.3\"><office:styles>{styles}</office:styles></office:document-styles>");
+        Add(zip, "styles.xml", OpcWriter.Declaration + $"<office:document-styles {Namespaces} office:version=\"1.3\"><office:styles>{styles}</office:styles>" +
+            $"<office:automatic-styles>{pageStyles}</office:automatic-styles><office:master-styles>{masterStyles}</office:master-styles></office:document-styles>");
         if (settings is not null)
             Add(zip, "settings.xml", OpcWriter.Declaration + settings);
         Add(zip, "META-INF/manifest.xml", OpcWriter.Declaration +

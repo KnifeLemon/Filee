@@ -36,6 +36,9 @@ internal sealed record GlyphRun(PageFont Font, float Size, ushort[] Glyphs, SKPo
     /// </summary>
     public SKMatrix? Transform { get; init; }
 
+    /// <summary>Only what lies inside this rectangle of the page (before <see cref="Transform"/>) is drawn; null = all.</summary>
+    public SKRect? Clip { get; init; }
+
     /// <summary>Throws when the arrays don't describe the same glyphs or a cluster points outside the text.</summary>
     public void Validate()
     {
@@ -211,13 +214,16 @@ internal sealed class PageContent(float width, float height)
         if (blob is null)
             return;
         using var paint = new SKPaint { Color = run.Color, IsAntialias = true };
-        if (run.Transform is not { } transform)
+        if (run.Transform is null && run.Clip is null)
         {
             canvas.DrawText(blob, 0, 0, paint);
             return;
         }
         canvas.Save();
-        canvas.Concat(in transform);
+        if (run.Clip is { } clip)
+            canvas.ClipRect(clip);
+        if (run.Transform is { } transform)
+            canvas.Concat(in transform);
         canvas.DrawText(blob, 0, 0, paint);
         canvas.Restore();
     }

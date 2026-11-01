@@ -48,6 +48,7 @@ public static class EngineRegistry
         new HwpTextConverter(),
         new MarkdownConverter(),
         new SpreadsheetConverter(),
+        new SheetPrintConverter(),
         new OoxmlConverter(),
         new HwpxConverter(),
         new FileeRendererConverter(),
