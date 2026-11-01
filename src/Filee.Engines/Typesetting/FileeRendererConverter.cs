@@ -17,6 +17,7 @@ using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Office;
@@ -40,7 +41,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     /// <summary>Built-in readers of documents (not of sheets, slides, PDF or OFD, which have routes of their own).</summary>
     private static readonly string[] Documents =
     [
-        "hwpx", "hwp", "docx", "docm", "dotx", "dotm", "odt", "rtf", "txt", "md", "html", "mhtml",
+        "hwpx", "hwp", "docx", "docm", "dotx", "dotm", "doc", "dot", "wps", "odt", "rtf", "txt", "md", "html", "mhtml",
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "chm", "pdb", "pml", "tcr", "rb", "snb", "oeb",
         "ipynb", "opml", "textile", "mediawiki", "rst", "org", "dbk",
     ];
@@ -95,6 +96,8 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
             return SlideCapabilities.FirstUnsupported(sourcePath);
         if (sourceFormat == "hwp")
             return HwpUnsupported(sourcePath);
+        if (DocumentReaders.Checked(sourceFormat))
+            return DocReader.Unsupported(sourcePath) ?? DocUnsupported(sourcePath);
         var markers = sourceFormat == "hwpx" ? HwpxMarkers : sourceFormat == "odt" ? OdtMarkers : WordFormats.Contains(sourceFormat) ? WordMarkers : null;
         if (markers is null)
             return null;
@@ -135,6 +138,25 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
         finally
         {
             File.Delete(hwpx);
+        }
+    }
+
+    /// <summary>A Word 97–2003 document looked through as the DOCX package it becomes (as an HWP is, above).</summary>
+    private string? DocUnsupported(string sourcePath)
+    {
+        var docx = Path.Combine(Path.GetTempPath(), $"filee-check-{Guid.NewGuid():N}.docx");
+        try
+        {
+            DocReader.ToDocx(sourcePath, docx);
+            return FirstUnsupported(docx, "docx");
+        }
+        catch (Exception ex) when (ex is InvalidDataException or ConversionRefusedException)
+        {
+            return null;
+        }
+        finally
+        {
+            File.Delete(docx);
         }
     }
 

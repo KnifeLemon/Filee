@@ -1,15 +1,16 @@
-// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP, and the older e-book
+// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP, DOC, and the older e-book
 // formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own): seeds are written in code, DocumentFuzzer
-// (packages), HwpFuzzer (HWP records and compound files) or BinaryFuzzer (binary containers) changes them, and every
-// input must be read or refused with InvalidDataException /
-// ConversionRefusedException, in time. In a normal test run each reader gets a short, fixed run (the same inputs every
-// time); the nightly fuzz workflow sets FILEE_FUZZ_SECONDS for a longer run with a new random seed, and
-// FILEE_FUZZ_OUT for a folder that keeps the inputs that failed. FILEE_FUZZ_SEED repeats a run.
+// (packages), HwpFuzzer (HWP records and compound files), DocFuzzer (DOC streams) or BinaryFuzzer (binary containers)
+// changes them, and every input must be read or refused with InvalidDataException / ConversionRefusedException, in
+// time. In a normal test run each reader gets a short, fixed run (the same inputs every time); the nightly fuzz workflow
+// sets FILEE_FUZZ_SECONDS for a longer run with a new random seed, and FILEE_FUZZ_OUT for a folder that keeps the inputs
+// that failed. FILEE_FUZZ_SEED repeats a run.
 
 using System.Globalization;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Office.Sheets;
@@ -82,6 +83,10 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void SheetPrinter_prints_or_refuses_every_mutated_ods() =>
         Fuzz("ods-print", "ods", [File.ReadAllBytes(SheetPrintTests.RichOds(fx.NewFolder()))],
             (path, _) => SheetPrinter.ToPdf(OdsReader.Read(path), SheetPrintSource.Of(path)));
+
+    [Fact]
+    public void DocReader_reads_or_refuses_every_mutated_file() =>
+        Fuzz("doc", "doc", DocSeeds(), (path, media) => DocReader.Read(path, media), (seed, random) => new DocFuzzer(seed, random).Next);
 
     [Fact]
     public void ChmReader_reads_or_refuses_every_mutated_file() =>
@@ -185,6 +190,42 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static Func<byte[], Random, Func<byte[]>> JsonMutator(string[] tokens) => (seed, random) => new JsonFuzzer(seed, random, tokens).Next;
 
     // ───────────────────────── Seeds ─────────────────────────
+
+    /// <summary>
+    /// DOC files built in code: plain text in 8-bit pieces, and one with what the reader turns into more than text:
+    /// styles, a list, a table with a nested table, a section with a header, notes, fields, a bookmark, an inline and a
+    /// floating picture and a text box.
+    /// </summary>
+    private static List<byte[]> DocSeeds()
+    {
+        var plain = new DocBuilder { Compressed = true };
+        plain.Paragraph(DocBuilder.R("Plain text, 8-bit")).Paragraph(DocBuilder.R("둘째 문단"));
+        return [plain.Build(), RichDoc().Build()];
+    }
+
+    internal static DocBuilder RichDoc()
+    {
+        var png = TinyPng(4, 3);
+        var builder = new DocBuilder { Title = "rich", FacingPages = true };
+        var list = builder.List(7, [new DocBuilder.Level(0, "\u0000.", 1, DocBuilder.Sprm(0x845E, (short)720)), new DocBuilder.Level(23, "\uF0B7", 1, null, DocBuilder.Sprm(0x4A4F, (ushort)1))]);
+        var single = DocBuilder.Brc80(4, 1);
+        var tap = (byte[])[.. DocBuilder.DefTable([-108, 2000, 4000], [1, 2]), .. DocBuilder.Sprm(0x9602, (short)108),
+            .. DocBuilder.Sprm(0xD605, single, single, single, single, single, single), .. DocBuilder.Sprm(0x3404, (byte)1)];
+        builder.Bookmark("top", 2)
+            .Paragraph(1, [], DocBuilder.R("제목"))
+            .Paragraph(0, [.. DocBuilder.Sprm(0x460B, (short)list)], DocBuilder.R("항목 "), DocBuilder.R("굵게", DocBuilder.Sprm(0x0835, (byte)1)))
+            .Row(tap, [DocBuilder.R("병합")], [])
+            .NestedRow(2, [.. DocBuilder.DefTable([0, 1000]), .. DocBuilder.Sprm(0x9602, (short)50)], [DocBuilder.R("안쪽")])
+            .Row([.. DocBuilder.DefTable([-108, 2000, 4000]), .. DocBuilder.Sprm(0x9602, (short)108)], [DocBuilder.R("칸")], [DocBuilder.R("칸")])
+            .Paragraph(DocBuilder.R("본문"), builder.Footnote("각주"), builder.Footnote("미주", endnote: true), builder.Picture(png, 720, 540),
+                builder.TextBox(2049, "글상자"), builder.FloatingPicture(2050, png, 0, 0, 720, 540),
+                DocBuilder.R("\u0013 HYPERLINK \\l \"top\" \u0014링크\u0015 \u0013 PAGE \u00141\u0015"))
+            .EndSection([.. DocBuilder.Sprm(0x500B, (ushort)1), .. DocBuilder.Sprm(0x300A, (byte)1)], DocBuilder.R("구역 끝"))
+            .Paragraph(DocBuilder.R("다음 구역"))
+            .Header(0, 1, DocBuilder.R("머리말 "), DocBuilder.R("\u0013 PAGE \u00141\u0015"))
+            .Header(0, 3, DocBuilder.R("꼬리말"));
+        return builder;
+    }
 
     /// <summary>
     /// HWP files built in code (an HWP seed is the builder, so the fuzzer changes records and rebuilds the compound

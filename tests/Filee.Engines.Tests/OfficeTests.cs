@@ -379,6 +379,12 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("odt", "pdf", "hwpx-writer,rhwp")]
     [InlineData("odt", "docx", "docx-writer")]
     [InlineData("docx", "odt", "odt-writer")]
+    [InlineData("doc", "pdf", "hwpx-writer,rhwp")]
+    [InlineData("doc", "docx", "docx-writer")]
+    [InlineData("doc", "odt", "odt-writer")]
+    [InlineData("doc", "hwpx", "hwpx-writer")]
+    [InlineData("dot", "docx", "docx-writer")]
+    [InlineData("wps", "pdf", "hwpx-writer,rhwp")]
     public void Office_files_convert_without_optional_engines(string from, string to, string engines)
     {
         Assert.Equal(engines.Split(','), BuiltInPlanner("rhwp").Plan(from, to)!.Steps.Select(s => s.Converter.Id));
@@ -392,7 +398,6 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
-    [InlineData("doc", "pdf")]
     [InlineData("ppt", "pdf")]
     public void Rare_formats_need_libreoffice(string from, string to)
     {

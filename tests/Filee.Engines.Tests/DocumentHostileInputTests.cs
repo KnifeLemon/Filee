@@ -1,8 +1,9 @@
-// Hostile HWPX and DOCX packages and HWP 5.0 compound files for the document readers and the limits they share
+// Hostile HWPX and DOCX packages and HWP 5.0 and DOC compound files for the document readers and the limits they share
 // (Documents/DocumentLimits): ZIP and deflate bombs, XML nested or repeated far beyond real documents, DTDs, tables,
 // groups, notes and fields nested without end, pictures that claim gigapixels, sector chains and directories that loop
-// or leave the file, records cut short, and the inputs the fuzzer (DocumentFuzzTests) found. Each must be refused or read
-// within the limits, quickly and on the smallest stack a conversion runs on. The layout loop guards are tested here too.
+// or leave the file, records cut short, DOC structures that point outside their streams, and the inputs the fuzzer
+// (DocumentFuzzTests) found. Each must be refused or read within the limits, quickly and on the smallest stack a
+// conversion runs on. The layout loop guards are tested here too.
 
 using System.IO.Compression;
 using System.Text;
@@ -10,6 +11,7 @@ using Filee.Core.Conversion;
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Infrastructure;
 using static Filee.Engines.Tests.DocxBuilder;
@@ -625,6 +627,100 @@ public class DocumentHostileInputTests(EngineFixture fx) : IClassFixture<EngineF
         }
         Nest(200, 0);
         Assert.Contains("nested more than", Refused(() => HwpReader.Read(Hwp(builder), Media())).Detail);
+    }
+
+    // ───────────────────────── Word 97–2003 ─────────────────────────
+
+    private string Doc(DocBuilder builder)
+    {
+        var path = Path.Combine(fx.NewFolder(), "hostile.doc");
+        File.WriteAllBytes(path, builder.Build());
+        return path;
+    }
+
+    private string DamagedDoc(DocBuilder builder) =>
+        Assert.IsType<InvalidDataException>(OnSmallStack(() => DocReader.Read(Doc(builder), Media()))).Message;
+
+    private static DocBuilder PlainDoc()
+    {
+        var builder = new DocBuilder();
+        builder.Paragraph(DocBuilder.R("첫 문단")).Paragraph(DocBuilder.R("둘째 문단"));
+        return builder;
+    }
+
+    /// <summary>A copy of <paramref name="bytes"/> with <paramref name="value"/> written at <paramref name="offset"/>.</summary>
+    private static byte[] Poke(byte[] bytes, int offset, uint value)
+    {
+        var copy = (byte[])bytes.Clone();
+        System.Buffers.Binary.BinaryPrimitives.WriteUInt32LittleEndian(copy.AsSpan(offset), value);
+        return copy;
+    }
+
+    [Fact]
+    public void Doc_structures_that_point_outside_their_streams_are_refused()
+    {
+        // The FIB's piece table entry points past the end of the table stream.
+        var clx = PlainDoc();
+        clx.EditStream = (name, bytes) => name == "WordDocument" ? Poke(bytes, 154 + 33 * 8, 0x7FFFFF00) : bytes;
+        Assert.Contains("outside its stream", DamagedDoc(clx));
+
+        // A piece whose text lies past the end of the WordDocument stream.
+        var piece = PlainDoc();
+        piece.EditStream = (name, bytes) => name == "1Table" ? Poke(bytes, piece.Locations[33].Fc + 5 + 8 + 2, 0x0FFFFFF0) : bytes;
+        Assert.Contains("outside the WordDocument stream", DamagedDoc(piece));
+
+        // A formatting page (FKP) number past the end of the stream.
+        var fkp = PlainDoc();
+        fkp.EditStream = (name, bytes) => name == "1Table" ? Poke(bytes, fkp.Locations[12].Fc + 8, 0x3FFFFF) : bytes;
+        Assert.Contains("outside the WordDocument stream", DamagedDoc(fkp));
+
+        // Text lengths in the FIB beyond what the stream can hold.
+        var lengths = PlainDoc();
+        lengths.EditStream = (name, bytes) => name == "WordDocument" ? Poke(bytes, 64 + 12, 0x7FFFFFFF) : bytes;
+        Assert.Contains("impossible text lengths", DamagedDoc(lengths));
+    }
+
+    [Fact]
+    public void Doc_streams_beyond_the_limits_are_refused()
+    {
+        var huge = PlainDoc();
+        huge.DeclaredSizes["WordDocument"] = 0xF0000000;
+        Refused(() => DocReader.Read(Doc(huge), Media()));
+
+        var limits = DocumentLimits.Default with { MaxParagraphs = 100 };
+        var paragraphs = new DocBuilder();
+        for (var i = 0; i < 120; i++)
+            paragraphs.Paragraph(DocBuilder.R("문단"));
+        Assert.Contains("more than 100 paragraphs", Refused(() => DocReader.Read(Doc(paragraphs), Media(), limits)).Detail);
+    }
+
+    [Fact]
+    public void Doc_tables_nested_past_the_limit_and_fields_without_end_are_refused()
+    {
+        var nested = new DocBuilder();
+        nested.Paragraph(0, [.. DocBuilder.Sprm(0x2416, (byte)1), .. DocBuilder.Sprm(0x6649, 1000)], DocBuilder.R("deep"));
+        Assert.Contains("nested more than", Refused(() => DocReader.Read(Doc(nested), Media())).Detail);
+
+        var fields = new DocBuilder();
+        fields.Paragraph(DocBuilder.R(new string('\u0013', 1000) + "x"));
+        Assert.Contains("nested more than", Refused(() => DocReader.Read(Doc(fields), Media())).Detail);
+    }
+
+    [Fact]
+    public void Doc_styles_based_on_themselves_and_pictures_that_lie_are_read()
+    {
+        var builder = new DocBuilder();
+        builder.Styles[2] = new DocBuilder.Style("Loop", 0xFFE, 1, 3, [], DocBuilder.Sprm(0x0835, (byte)0x81));
+        builder.Styles[3] = new DocBuilder.Style("Loop2", 0xFFE, 1, 2, [], DocBuilder.Sprm(0x0836, (byte)0x81));
+        var picture = builder.Picture(DocumentFuzzTests.TinyPng(2, 2), 1440, 1440);
+        builder.Paragraph(2, [], DocBuilder.R("고리"), picture, new DocBuilder.Run("\u0001", [.. DocBuilder.Sprm(0x0855, (byte)1), .. DocBuilder.Sprm(0x6A03, 0x7FFFFFF0)]));
+        // The picture's PICF claims more bytes than the Data stream has: it is left out.
+        builder.EditStream = (name, bytes) => name == "Data" ? Poke(bytes, 4, 0x7FFFFFFF) : bytes;
+        HDocument? read = null;
+        Reads(() => read = DocReader.Read(Doc(builder), Media()));
+        var paragraph = read!.Sections[0].Blocks.OfType<HParagraph>().First();
+        Assert.Equal("고리", string.Concat(paragraph.Inlines.OfType<HText>().Select(t => t.Text)));
+        Assert.Empty(paragraph.Inlines.OfType<HImage>());
     }
 
     // ───────────────────────── What the fuzzer found ─────────────────────────

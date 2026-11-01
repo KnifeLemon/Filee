@@ -18,10 +18,10 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
-| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
-| **DOCX writer** | built in | **ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
-| **ODT writer** | built in | **DOCX (+ variants), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → ODT** (OpenDocument text, LibreOffice Writer) |
-| **PPTX writer** | built in | **Markdown, DOCX (+ variants), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed) |
+| **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
+| **DOCX writer** | built in | **DOC (+ DOT, WPS Office WPS), ODT, HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → DOCX** |
+| **ODT writer** | built in | **DOCX (+ variants), DOC (+ DOT, WPS), HWPX, HWP, PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), Markdown, TXT, RTF, XLSX, XLS, ODS, CSV, PPTX (+ variants) → ODT** (OpenDocument text, LibreOffice Writer) |
+| **PPTX writer** | built in | **Markdown, DOCX (+ variants), DOC (+ DOT, WPS), ODT, HWPX, HWP, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2 (and the older e-books), TXT, RTF, XLSX, XLS, ODS, CSV → PPTX slides** (a slide per heading, Pandoc's rules; Pandoc's markup languages too when Pandoc is installed) |
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
@@ -32,10 +32,10 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, PPSX → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
+| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents (DOCX and DOC), TXT, Markdown, HTML, e-books, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, PPSX → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, .NET and Filee's own readers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG; **7-Zip**: CAB, DMG, IMG, LHA, ARJ, UDF discs **→ folder, ZIP, TAR, TAR.GZ** (in-process), **7Z, TAR.BZ2/XZ** (7-Zip); "Compress into one archive" for any files |
-| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
+| LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
@@ -44,7 +44,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer, see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 
-DOCX, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process.
+DOCX, DOC, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process.
 Documents and slides are written as HWPX and rendered by rhwp; spreadsheets are printed by Filee's own print engine
 (Excel's page logic, see [Spreadsheet printing](#spreadsheet-printing)). Anything the built-in readers understand
 (including PDF) is written as DOCX by the DOCX writer, as ODT by the ODT writer and as PPTX slides by the PPTX writer
@@ -764,7 +764,7 @@ it on (`AppSettings.FileeRenderer`, off by default); off, it has no edges and is
 as it was.
 
 - **What it takes:** HWPX and HWP (read with 한글's stored line layout; HWP through the [HWP reader](#hwp-reader)),
-  Word documents (DOCX, DOCM, DOTX, DOTM), ODT, RTF, text,
+  Word documents (DOCX, DOCM, DOTX, DOTM, and DOC, DOT, WPS through the [DOC reader](#doc-reader)), ODT, RTF, text,
   Markdown, HTML and MHTML, EPUB, KEPUB, MOBI / AZW3 / AZW / PRC, FB2, HTMLZ, TXTZ, and Pandoc's formats when Pandoc
   is installed, to PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
 - **Slide decks:** PPTX, PPTM, POTX and PPSX to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides):
@@ -772,7 +772,7 @@ as it was.
 - **What keeps its route:** spreadsheets ([Spreadsheet printing](#spreadsheet-printing)), other presentations (PPT, ODP), PDF and OFD.
 - **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list.
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
-  or ODT package (an HWP as the HWPX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical
+  or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical
   text, form controls, videos, SmartArt — and a deck for what the slide renderer doesn't draw (charts without a
   stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
   without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
@@ -1388,6 +1388,103 @@ of headings (`text:outline-style`), different first-page headers with content, g
 start colour), rotated or cropped pictures, charts and other OLE objects, drop caps, change tracking, fields other
 than page number / count (their text is kept), flat ODT (`.fodt`) and templates (`.ott`, still LibreOffice's).
 
+## DOC reader
+
+Word 97–2003 documents (`.doc`, templates `.dot`, and WPS Office's `.wps`, which WPS Writer saves in the same format)
+are read in-process, written from Microsoft's published [MS-DOC] and [MS-ODRAW] specifications, so DOC → DOCX / PDF /
+HWPX / ODT / PPTX / TXT / Markdown needs neither Word nor LibreOffice. Like the [HWP reader](#hwp-reader), it doesn't map the
+format onto the document model itself: `Hwp/Hwpx/Doc/DocToDocx*.cs` writes the binary document out as the DOCX package
+Word would save for it, and `DocxReader` reads that, so both Word formats share every mapping (styles and their
+inheritance, numbering, fields, notes, sections, tables, drawings). LibreOffice stays the fallback.
+
+- `Documents/CompoundFile.cs`: the compound file reader the HWP reader uses (moved there from `Hwp/Binary`, shared);
+  `Documents/PropertySet.cs` reads the title from the summary information of both.
+- `DocFile.cs`: the FIB (FibBase, FibRgLw97 with the lengths of the main text, notes, headers, comments, endnotes and
+  text boxes in the CP space, FibRgFcLcb97 with where each structure is), the table stream it names (`0Table` /
+  `1Table`), the Data stream, the piece table (CLX: Prc property lists and the PlcPcd; 8-bit pieces map 0x80–0x9F as
+  Windows-1252, as [MS-DOC] says, Prm1 property lists apply to their piece) and every CHPX and PAPX FKP. Every offset
+  and length is checked against its stream; damage is `InvalidDataException`.
+- `DocToDocx.cs`: the stories (main text, headers and footers, footnotes, endnotes, text boxes) as paragraphs, cut at
+  paragraph, cell and row marks and at section marks; runs split at CHPX and piece boundaries and bookmark starts;
+  characters: tabs, line, page and column breaks, field begin / separator / end (as `w:fldChar`, the instruction as
+  `w:instrText`, so HYPERLINK, PAGE, NUMPAGES and tables of contents work as in DOCX), non-breaking hyphens, symbols
+  (sprmCSymbol), note references (PlcffndRef / PlcfendRef, the note text from PlcffndTxt / PlcfendTxt), inline
+  pictures and floating objects. Deleted revisions are left out, hidden text is hidden. Sections (PlcfSed, SEPX): page
+  size and orientation, margins, header and footer distances, gutter, columns (with widths when not even, and the
+  separator), section start, different first page, page number restarts, document grid, vertical text. Headers and
+  footers (PlcfHdd, six stories per section; an empty story is the previous section's, as Word does it), different odd
+  and even pages from the DOP. Bookmarks (SttbfBkmk, PlcfBkf).
+- `DocToDocx.Properties.cs`: paragraph sprms (alignment, indents in twips and in characters, spacing with automatic
+  spacing, line rules, keep with next / together, page break before, widow control, tab stops added and cleared,
+  borders, shading, outline level, right-to-left, East Asian line breaking, the list) and character sprms (fonts for
+  the four scripts, size, bold, italic, underline kinds, strike, double strike, caps, small caps, hidden, colour as ico
+  or COLORREF, highlight, shading, letter spacing, scale, position, super/subscript, character style). Toggle
+  properties relative to the style (0x80, 0x81) are resolved against the paragraph and character styles.
+- `DocToDocx.Styles.cs`: fonts (SttbfFfn), the stylesheet (STSH: STSHI with the standard fonts; each STD's kind, base
+  style, name, or the built-in name for its sti, and its UPX property exceptions, a table style's TAPX too) and lists
+  (PlfLst: LSTF and their LVLs with number format, number text, start, alignment, follower, PAPX and CHPX; PlfLfo: the
+  list instances paragraphs name with sprmPIlfo, with their start overrides and formatted levels).
+- `DocToDocx.Tables.cs`: tables from the paragraphs inside them (sprmPFInTable, sprmPItap for nested tables, cell and
+  row ends with their TTP): the row's TAP from its row end (sprmTDefTable cell boundaries and TC80s with merges,
+  vertical alignment, text flow and borders; table borders, shading in Shd80 and Shd arrays, sprmTSetBrc,
+  sprmTVertMerge / TVertAlign, cell padding, row height, header rows, rows kept together, alignment, the table style);
+  the grid is every cell boundary of every row, as Word builds it.
+- `DocToDocx.Objects.cs`: inline pictures (character 1: the PICF in the Data stream with its goal size, scale and crop,
+  then the OfficeArt shape and the FBSE with the BLIP; older pictures hold a metafile there), an OLE object's picture
+  as `w:object` (so the Filee renderer's check sees the OLE object, as in DOCX), floating pictures, rectangles,
+  ellipses, lines and text boxes (character 8: the SPA in PlcSpaMom / PlcSpaHdr with the shape id, rectangle, what
+  the position is relative to and the wrapping; the shape in the OfficeArt drawing at fcDggInfo with its fill, line,
+  text insets and the BLIP it shows from the BStore; a text box's story from PlcftxbxTxt by the shape id). BLIPs:
+  JPEG, PNG and TIFF are copied, DIBs get a BMP file header, EMF and WMF are inflated and a WMF gets its placeable
+  header.
+- `DocReader.cs`: the entry; a `.doc` that is really RTF, a web page or a DOCX (Word saves such files with a `.doc`
+  name when asked to) is read by that format's reader.
+
+What Filee doesn't read is refused with a message saying what to do: password-protected documents (fEncrypted, RC4
+CryptoAPI or XOR obfuscation; nothing is decrypted), Word 6.0 / 95 files (a FIB older than Word 97's nFib) and older,
+and Microsoft Works documents with a `.wps` name. The DOC formats' edges of the HWPX, DOCX, ODT and PPTX writers and
+the Filee renderer are checked (`ConversionEdge.Checked`): `DocReader.Unsupported` names Word 6.0 / 95 and Works files,
+so with LibreOffice installed they take LibreOffice instead (Word 6.0 / 95 read as text was the other choice;
+LibreOffice reads them whole). Their text is scanned for scripts that need shaping like a DOCX's (`ComplexScripts`), so
+an Arabic DOC → PDF takes LibreOffice when rhwp would draw it.
+
+The edges are the DOCX ones: DOC → HWPX costs 10, → DOCX and ODT 8, so DOC → PDF goes through the HWPX writer and rhwp
+(or the Filee renderer when it is on) at 31 against LibreOffice's 34, and DOC → DOCX through the DOCX writer. Settings
+→ Engines → *Use LibreOffice for Word documents → PDF* sends DOC → PDF to LibreOffice as it does DOCX.
+
+Limits: the streams count against DocumentLimits like the HWP reader's (a stream up to 64 MB, all of them 1 GB);
+paragraphs, objects, nesting (tables, notes, text boxes, fields) and drawing records are counted while the package is
+written, and DocxReader reads the package within the same limits. `DocumentHostileInputTests` holds the hostile DOC
+files (structures pointing outside their streams, impossible text lengths, deep tables, fields without end, lying
+pictures), `DocumentFuzzTests` mutates two DOC seeds (`DocFuzzer`: the streams' bytes, most often the FIB and the
+table stream, packed into a new compound file).
+
+Tests: `DocReaderTests` builds DOC files in code (`DocBuilder`: FIB, Unicode and 8-bit pieces, FKPs, stylesheet,
+fonts, sections, headers, notes, lists, tables, bookmarks, pictures, text boxes) and checks each structure, the files
+refused and the routes. `DocFidelityTests` (when LibreOffice is installed) saves Filee's rich DOCX and the render
+features written as DOCX as DOC with LibreOffice and compares the model of each DOC with its DOCX twin and with
+LibreOffice's own DOCX of the DOC; FILEE_DOC_FIDELITY points it at files converted by hand on a machine where
+LibreOffice is too slow for its time limit.
+
+Measured with LibreOffice 26.2.6 (no Word on the test PC): the 22 render features written as DOCX and saved as DOC
+by LibreOffice (it doesn't save Filee's rich DOCX as DOC at all), 75 paragraphs. Against the DOCX each DOC came from,
+the DOC reads with the same text in 75 of 75 paragraphs, the same character formatting in 75, the same lists in 5 of 5
+items and the same table shape; the paragraph formatting matches in 25: every other difference is LibreOffice's DOC
+export (line spacing 332 twips saved as 334, 180 % read as 181 %; a tab stop added to list items; header distances
+not written), as LibreOffice's own DOCX of the same DOC shows: against that the DOC reads the same in 70 of 75
+paragraph formats (the 5 others are LibreOffice rounding the line spacing again when it writes DOCX), all character
+formats and lists, and 75 of its 76 paragraphs (it adds an empty paragraph to a header). The DOC files DocBuilder
+makes open in LibreOffice and read into the same model there as in Filee (paragraphs, runs, styles, lists, tables
+with shading and borders, sections, headers, footnotes, inline pictures), apart from the title, which LibreOffice
+doesn't take over.
+
+Not read yet: comments (annotations), change tracking (deleted text is left out, inserted text kept), form fields
+(their result text is kept), groups of shapes and shapes other than rectangles, ellipses, lines, pictures and text
+boxes, linked text boxes, frames (sprmPDxaAbs: framed paragraphs are read as ordinary ones), Prm0 single-sprm piece
+properties, fast-saved files whose PAPX FKPs don't cover their text, embedded fonts, and an OLE object without a
+picture in its field result (its ObjectPool storage is not read). Nested tables and horizontally merged cells (TC80
+fFirstMerged / fMerged) are checked against DocBuilder's files only: LibreOffice's DOC export of the render features
+has none, and LibreOffice doesn't show them in DocBuilder's files.
 ## PPTX writer
 
 `Hwp/Hwpx/Pptx/PptxWriter*.cs` writes PowerPoint slides from the document model, so Markdown and every reader in
@@ -2199,10 +2296,10 @@ is Filee's HWP → HWPX conversion: the HWPX writer's `hwp → hwpx` edge costs 
 default order it wins over rhwp's `export-hwpx` (4 + 8 against 10 + 3). HWP → DOCX, HTML, EPUB and Markdown go
 through the document model like any other format; HWP → PDF takes the Filee renderer when it is on, rhwp otherwise.
 
-- `CompoundFile.cs`: a read-only compound file (CFB) reader of Filee's own. Every sector number is checked against
-  the file, every chain is walked at most once per sector and must be as long as its stream says, the directory tree is
-  walked with a stack and visits each entry once, and stream sizes count against the package limits (a stream up to
-  64 MB, all of them 1 GB).
+- `Documents/CompoundFile.cs`: a read-only compound file (CFB) reader of Filee's own, shared with the
+  [DOC reader](#doc-reader). Every sector number is checked against the file, every chain is walked at most once per
+  sector and must be as long as its stream says, the directory tree is walked with a stack and visits each entry once,
+  and stream sizes count against the package limits (a stream up to 64 MB, all of them 1 GB).
 - `HwpFile.cs`: the FileHeader (signature, version, flags) and the streams, unpacked with raw deflate when the document
   is compressed (counted while they inflate, with the ZIP packages' ratio limit), split into records (tag, level,
   size; a record longer than its stream is damage). Password, DRM and certificate-encrypted documents, distribution
@@ -2582,10 +2679,10 @@ with the square of the file count; such archives go to 7-Zip whenever it is ther
 - When LibreOffice can't load an Office Open XML or OpenDocument file ("source file could not be loaded"), Filee
   converts once more from a copy in the job folder with the same parts in a plainly written ZIP (`PackageRepacker`):
   LibreOffice 26.2 refuses some valid containers, e.g. uncompressed entries with data descriptors (Tencent Docs, #141).
-- It is the only reader of rarer formats, converted to PDF and to the editable formats of their kind: DOT, Works /
-  WPS Writer, WordPerfect, Lotus Word Pro, AbiWord, Apple Pages, StarWriter, ClarisWorks / AppleWorks (`.cwk`),
-  MacWrite (`.mcw`), T602 (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS
-  Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); Apple
+- It is the only reader of rarer formats, converted to PDF and to the editable formats of their kind: Word 6.0 / 95
+  and Microsoft Works documents (a `.doc`, `.dot` or `.wps` the [DOC reader](#doc-reader) names as such), WordPerfect,
+  Lotus Word Pro, AbiWord, Apple Pages, StarWriter, ClarisWorks / AppleWorks (`.cwk`), MacWrite (`.mcw`), T602
+  (`.602`) and Pocket Word (`.psw`) (→ DOCX, ODT, FODT, OTT, DOC, RTF, TXT, HTML); WPS Spreadsheets (ET), Apple Numbers, StarCalc and flat ODS (`.fods`) (→ XLSX, ODS, OTS, XLS, XLT, CSV, HTML); Apple
   Keynote, WPS Presentation (DPS), StarImpress / StarDraw and flat ODP (`.fodp`) (→ PPTX, ODP, OTP, PPT);
   Publisher, CorelDRAW, Visio, CGM, ODG and flat ODG (`.fodg`) (→ ODG, SVG, PNG, EMF, WMF). The `--convert-to`
   filter follows the application that opens the file (checked against LibreOffice's filter registry): Publisher,

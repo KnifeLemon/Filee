@@ -17,7 +17,7 @@ using Filee.Engines.Infrastructure;
 namespace Filee.Engines.Office;
 
 /// <summary>Writes PPTX slides with the built-in PresentationML writer.</summary>
-public sealed class PptxWriterConverter : IConverter
+public sealed class PptxWriterConverter : IConverter, ICapabilityCheck
 {
     /// <summary>Below Pandoc's slides (20) even when Pandoc stands first in the engine order and this writer last (8 + 9).</summary>
     internal const int Cost = 8;
@@ -41,11 +41,14 @@ public sealed class PptxWriterConverter : IConverter
             var sources = Sources(_pandoc ??= PandocConverter.Locate() is not null).ToList();
             return
             [
-                .. sources.Select(from => new ConversionEdge(from, "pptx", Cost, DirectOnly: true)),
-                .. sources.Select(from => new ConversionEdge(from, "pptx", StepCost)),
+                .. sources.Select(from => new ConversionEdge(from, "pptx", Cost, DirectOnly: true, Checked: DocumentReaders.Checked(from))),
+                .. sources.Select(from => new ConversionEdge(from, "pptx", StepCost, Checked: DocumentReaders.Checked(from))),
             ];
         }
     }
+
+    /// <summary>A Word 6.0 / 95 or Works file with a .doc or .wps name, which the DOC reader doesn't read.</summary>
+    public string? FirstUnsupported(string sourcePath, string sourceFormat) => DocumentReaders.Unsupported(sourcePath, sourceFormat);
 
     private static IEnumerable<string> Sources(bool pandoc) => DocumentReaders.Formats(pandoc).Where(f => !NotSources.Contains(f));
 

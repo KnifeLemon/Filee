@@ -134,7 +134,7 @@ public class HwpWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var hwpx = Path.Combine(folder, "titled.hwpx");
         HwpxWriter.Write(document, hwpx);
         var hwp = Write(hwpx);
-        using var cfb = Filee.Engines.Hwp.Binary.CompoundFile.Open(hwp);
+        using var cfb = Filee.Engines.Documents.CompoundFile.Open(hwp);
         Assert.Equal(
             ["\u0005HwpSummaryInformation", "BinData/BIN0001.png", "BodyText/Section0", "BodyText/Section1", "DocInfo", "DocOptions/_LinkDoc", "FileHeader",
              "PrvImage", "PrvText", "Scripts/DefaultJScript", "Scripts/JScriptVersion"],
@@ -247,7 +247,7 @@ public class HwpWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(0, output.Length % CompoundFileWriter.SectorSize);
 
         output.Position = 0;
-        using var cfb = Filee.Engines.Hwp.Binary.CompoundFile.Open(output);
+        using var cfb = Filee.Engines.Documents.CompoundFile.Open(output);
         Assert.Equal(streams.Keys.Order(StringComparer.Ordinal), cfb.Streams.Order(StringComparer.Ordinal));
         foreach (var (path, bytes) in streams)
             Assert.Equal(bytes, cfb.Read(path));
@@ -274,7 +274,7 @@ public class HwpWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True((long)fatSectors * 128 >= output.Length / CompoundFileWriter.SectorSize - 1); // the FAT covers every sector
 
         output.Position = 0;
-        using var cfb = Filee.Engines.Hwp.Binary.CompoundFile.Open(output, new Documents.DocumentLimits { MaxPartBytes = 32 * 1024 * 1024 });
+        using var cfb = Filee.Engines.Documents.CompoundFile.Open(output, new Documents.DocumentLimits { MaxPartBytes = 32 * 1024 * 1024 });
         Assert.Equal(big, cfb.Read("Big"));
         Assert.Equal([42], cfb.Read("Small"));
 

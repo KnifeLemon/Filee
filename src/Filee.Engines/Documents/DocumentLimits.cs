@@ -9,9 +9,9 @@
 //  * DocumentBudget    readers: nesting of tables, text boxes, notes, groups and fields; paragraphs and objects.
 //  * PictureSize       pictures whose header claims more than MaxPicturePixels are left out.
 //  * LayoutGuard       the layout loop: pages, empty pages in a row, the time budget and cancellation.
-//  * CompoundFile      HWP 5.0's compound files: sector chains and the directory are walked once per sector or entry
-//                      (a loop is damage), streams count against MaxPartBytes / MaxPackageBytes and, deflated, the
-//                      inflate ratio; HWP records against MaxXmlElements.
+//  * CompoundFile      compound files (HWP 5.0, DOC): sector chains and the directory are walked once per sector or
+//                      entry (a loop is damage), streams count against MaxPartBytes / MaxPackageBytes and, deflated,
+//                      the inflate ratio; HWP records against MaxXmlElements.
 //
 // Embedded fonts are not read by any reader (DOCX odttf parts, HWPX and OFD font files keep only their names). A
 // reader that ever uses them must pass them through Filee's own SFNT parser (Fonts/SfntFont) before Skia or HarfBuzz.

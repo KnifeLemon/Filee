@@ -1,8 +1,9 @@
-// A read-only compound file (CFB, "structured storage") reader of Filee's own, for HWP 5.0 documents: a file of
-// fixed-size sectors whose allocation table (FAT) chains them into streams, with a directory of named storages and
-// streams. Streams below the mini stream cutoff live in 64-byte mini sectors inside the root entry's stream.
+// A read-only compound file (CFB, "structured storage") reader of Filee's own, for HWP 5.0 and Word 97–2003 (DOC)
+// documents: a file of fixed-size sectors whose allocation table (FAT) chains them into streams, with a directory of
+// named storages and streams. Streams below the mini stream cutoff live in 64-byte mini sectors inside the root
+// entry's stream.
 //
-// HWP files come from anywhere, so nothing in the file is trusted: every sector number is checked against the sectors
+// Documents come from anywhere, so nothing in the file is trusted: every sector number is checked against the sectors
 // the file has, every chain is walked at most once per sector (a cycle ends the read), a chain must be as long as its
 // stream says, the directory is walked without recursion and visits each entry once, and stream sizes stay within
 // DocumentLimits (MaxPartBytes per stream, MaxPackageBytes in all). A damaged file fails with InvalidDataException,
@@ -10,9 +11,8 @@
 
 using System.Buffers.Binary;
 using System.Text;
-using Filee.Engines.Documents;
 
-namespace Filee.Engines.Hwp.Binary;
+namespace Filee.Engines.Documents;
 
 /// <summary>A compound file opened for reading its streams.</summary>
 internal sealed class CompoundFile : IDisposable
