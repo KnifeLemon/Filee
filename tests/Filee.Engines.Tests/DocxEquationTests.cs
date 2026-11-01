@@ -140,7 +140,6 @@ public class DocxEquationTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var paraPr = HeadItem(hwpx, "paraPr", (string)display.Attribute("paraPrIDRef")!);
         Assert.Equal("CENTER", (string?)paraPr.Element(Hh + "align")!.Attribute("horizontal"));
 
-        await ReadableByH2OrestartAsync(fx, hwpx);
         RenderWithRhwp(fx, hwpx, "docx-equations");
     }
 

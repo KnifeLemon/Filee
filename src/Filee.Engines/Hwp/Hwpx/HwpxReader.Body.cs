@@ -26,7 +26,14 @@ internal sealed partial class HwpxReader
     /// <summary>Numbering of outline paragraphs (개요) in the current section (secPr outlineShapeIDRef).</summary>
     private string? _outlineNumberingId;
 
-    private sealed record OpenField(string? Id, string? Target);
+    /// <param name="Guide">
+    /// A click-here field (누름틀) nobody has filled in (dirty="0"): its text is the guide 한글 shows on screen in place
+    /// of the content, and doesn't print.
+    /// </param>
+    private sealed record OpenField(string? Id, string? Target, bool Guide);
+
+    /// <summary>Text that is in the file but not on the printed page: tracked deletions, and for layout click-here guides.</summary>
+    private bool Hidden => _deleted || _fields.Exists(f => f.Guide);
 
     /// <summary>Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption).</summary>
     private List<HBlock> ReadSubList(XElement? subList)
@@ -347,8 +354,8 @@ internal sealed partial class HwpxReader
                         continue;
                     value = value.Replace("\r", "", StringComparison.Ordinal).Replace("\n", "", StringComparison.Ordinal);
                 }
-                builder.Count(value.Length, text: !_deleted);
-                if (!_deleted)
+                builder.Count(value.Length, text: !Hidden);
+                if (!Hidden)
                     builder.AddText(value, Highlighted(format));
                 continue;
             }
@@ -358,27 +365,27 @@ internal sealed partial class HwpxReader
             {
                 case "tab":
                     builder.Count(8);
-                    if (!_deleted)
+                    if (!Hidden)
                         builder.Add(new HTab(Highlighted(format)));
                     break;
                 case "lineBreak" or "columnBreak":
                     builder.Count(1);
-                    if (!_deleted)
+                    if (!Hidden)
                         builder.Add(new HLineBreak(format));
                     break;
                 case "nbSpace":
-                    builder.Count(1, text: !_deleted);
-                    if (!_deleted)
+                    builder.Count(1, text: !Hidden);
+                    if (!Hidden)
                         builder.AddText(" ", Highlighted(format));
                     break;
                 case "fwSpace":
-                    builder.Count(1, text: !_deleted);
-                    if (!_deleted)
+                    builder.Count(1, text: !Hidden);
+                    if (!Hidden)
                         builder.AddText(" ", Highlighted(format)); // fixed-width space: as wide as a digit
                     break;
                 case "hyphen":
-                    builder.Count(1, text: !_deleted);
-                    if (!_deleted)
+                    builder.Count(1, text: !Hidden);
+                    if (!Hidden)
                         builder.AddText("­", Highlighted(format)); // soft hyphen, shown only at a line end
                     break;
                 case "markpenBegin":
@@ -472,7 +479,8 @@ internal sealed partial class HwpxReader
                 section.PageNumber = control;
                 break;
             case "pageHiding" when _forLayout:
-                builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"));
+                builder.Current.PageHiding = new HPageHiding(Flag(control, "hideHeader"), Flag(control, "hideFooter"), Flag(control, "hideMasterPage"),
+                    Flag(control, "hideBorder"), Flag(control, "hideFill"));
                 break;
             default:
                 Skip(control); // hidden comments, index marks, page hiding, page number control, ...
@@ -534,7 +542,8 @@ internal sealed partial class HwpxReader
         // Other fields (click-here, date, file name, ...) keep their result text, which follows until fieldEnd. Every
         // paragraph reopens the links of the open fields, so their number is limited.
         _budget.Fields(_fields.Count + 1);
-        _fields.Add(new OpenField(Attr(control, "id"), target));
+        var guide = _forLayout && Attr(control, "type") == "CLICK_HERE" && Attr(control, "dirty") is "0" or "false";
+        _fields.Add(new OpenField(Attr(control, "id"), target, guide));
         if (target is not null)
             builder.OpenLink(target);
     }

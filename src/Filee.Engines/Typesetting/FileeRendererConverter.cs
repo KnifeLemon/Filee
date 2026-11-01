@@ -42,6 +42,7 @@ public sealed partial class FileeRendererConverter : IConverter, ICapabilityChec
     [
         "hwpx", "hwp", "docx", "docm", "dotx", "dotm", "odt", "rtf", "txt", "md", "html", "mhtml",
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "chm", "pdb", "pml", "tcr", "rb", "snb", "oeb",
+        "ipynb", "opml", "textile", "mediawiki", "rst", "org", "dbk",
     ];
 
     /// <summary>

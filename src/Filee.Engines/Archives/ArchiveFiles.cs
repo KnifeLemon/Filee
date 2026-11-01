@@ -7,7 +7,9 @@ namespace Filee.Engines.Archives;
 internal static class ArchiveFiles
 {
     /// <summary>Copies a stream, failing when it holds more than <paramref name="maxBytes"/> (a lying or damaged header).</summary>
-    public static long CopyLimited(Stream from, Stream to, long maxBytes, CancellationToken cancellationToken, Action<long>? progress = null)
+    /// <param name="budget">Counts the bytes towards the extraction's bomb and free-space checks.</param>
+    public static long CopyLimited(Stream from, Stream to, long maxBytes, CancellationToken cancellationToken,
+        Action<long>? progress = null, UnpackBudget? budget = null)
     {
         var buffer = new byte[1 << 16];
         long total = 0;
@@ -18,6 +20,7 @@ internal static class ArchiveFiles
             total += read;
             if (total > maxBytes)
                 throw new InvalidDataException("the data unpacks to more than the archive declares");
+            budget?.Add(read);
             to.Write(buffer, 0, read);
             progress?.Invoke(read);
         }

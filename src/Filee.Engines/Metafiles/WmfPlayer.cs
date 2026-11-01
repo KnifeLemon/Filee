@@ -124,8 +124,12 @@ internal sealed class WmfPlayer
         var player = new WmfPlayer(gdi, header, limits);
         var dc = gdi.Dc;
         dc.MapMode = DcState.MapAnisotropic;
-        dc.WindowOrigin = dc.ViewportOrigin = new SKPoint(header.Box.Left, header.Box.Top);
-        dc.WindowExtent = dc.ViewportExtent = (header.Box.Width, header.Box.Height);
+        // The window as the file sets it, onto the picture as a program shows it: a window whose extent is negative
+        // (y up, as in OLE pictures: SetWindowExt(cx, -cy)) is drawn the other way up, as GDI draws it into a rectangle.
+        dc.WindowOrigin = new SKPoint(header.Box.Left, header.Box.Top);
+        dc.WindowExtent = (header.Box.Width, header.Box.Height);
+        dc.ViewportOrigin = new SKPoint(header.Picture.Left, header.Picture.Top);
+        dc.ViewportExtent = (header.Picture.Width, header.Picture.Height);
 
         var offset = header.RecordsStart;
         var index = 1;

@@ -19,8 +19,7 @@ Each component remains under its own license.
 | SkiaSharp | MIT | https://github.com/mono/SkiaSharp |
 | Svg.Skia (incl. Svg, ShimSkiaSharp, ExCSS; text shaping in `Filee.Engines/Vector/OutlinedTextPlayback.cs` adapted from it) | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
-| SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
-| Unhwp | MIT | https://github.com/iyulab/unhwp |
+| SharpCompress (in-process ZIP, 7z and RAR unpacking; bzip2, xz, LZMA and zstd decompression, also for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | ExcelDataReader | MIT | https://github.com/ExcelDataReader/ExcelDataReader |
@@ -62,14 +61,13 @@ runs on older Linux systems than rhwp's own Linux build. The Windows ARM64 build
 on Windows ARM64 (with the C runtime linked statically), as rhwp has no ARM64 release. Both are under the same MIT
 license; its `LICENSE` is next to them (`engines/rhwp`). Windows x64 and macOS use rhwp's release builds.
 
-Unhwp's NuGet package has no native library for Linux ARM64 and Windows ARM64. Those builds contain one built by
-Filee's CI from the unmodified source the package was built from (commit `405b17e137b3ca06299dcbc8a156599ac7027e91`,
-`cargo build --release --locked -p unhwp --lib --features ffi`), under Unhwp's MIT license.
-
 7-Zip is Copyright (C) 1999-2026 Igor Pavlov; its `License.txt` is installed next to it (`engines/7zip`). The RAR
 decompression code in `7z.dll` is under the unRAR license restriction: it may be used to unpack RAR archives, but not
 to develop a RAR (WinRAR) compatible archiver or to re-create the RAR compression algorithm. Filee only reads RAR
 files. Source code: https://github.com/ip7z/7zip.
+
+SharpCompress's RAR decoder is used under the same terms: Filee only unpacks RAR archives with it and does not create
+them.
 
 Downloaded from their official release pages when the user chooses to install them
 (pinned in `src/Filee.Engines/Infrastructure/engines.json`):
@@ -77,8 +75,6 @@ Downloaded from their official release pages when the user chooses to install th
 | Component | License | Project |
 |---|---|---|
 | LibreOffice | MPL-2.0 | https://www.libreoffice.org |
-| H2Orestart (HWP/HWPX import for LibreOffice) | GPL-3.0 | https://github.com/ebandal/H2Orestart |
-| Eclipse Temurin JRE (for H2Orestart) | GPL-2.0 with Classpath Exception | https://adoptium.net |
 | Pandoc | GPL-2.0-or-later | https://github.com/jgm/pandoc |
 | Ghostscript (conda-forge build) | AGPL-3.0 | https://www.ghostscript.com, https://github.com/conda-forge/ghostscript-feedstock |
 | Microsoft Visual C++ Redistributable (for Ghostscript, conda-forge `vc14_runtime`) | Microsoft Visual C++ Redistributable license | https://github.com/conda-forge/vc-feedstock |

@@ -18,12 +18,12 @@ internal sealed record DocumentRenderer(string Name, IReadOnlySet<string> Format
 ```
 
 `RenderInput` has the file (HWPX, or a binary HWP), a work folder, and the layout model (`HDocument`, read with
-`HwpxReader.ReadForLayout` when first asked for). `DocumentRenderers.Reference` is rhwp as Filee runs it
+`HwpxReader.ReadForLayout` or `HwpReader.ReadForLayout` when first asked for). `DocumentRenderers.Reference` is rhwp as Filee runs it
 (`RhwpInput`'s fixes, then `rhwp export-pdf` with Filee's fallback fonts). rhwp is only the yardstick here; nothing in
 the harness adds a conversion path through it.
 
-`DocumentRenderers.Candidate` is Filee's layout engine: paragraph layout on an interim page flow
-(`Typesetting/FileeRenderer.cs`) until the page composer replaces it. Its PDFs get the same read-back checks and are
+`DocumentRenderers.Candidate` is Filee's layout engine (`Typesetting/FileeRenderer.cs`), from an HWPX or a binary
+HWP. Its PDFs get the same read-back checks and are
 compared with rhwp's; set to null, the compare test is skipped.
 
 ## The feature matrix
@@ -96,7 +96,7 @@ not a count, so the longer documents of the full run compare with the same thres
 
 The `allow` list holds measurements that are reported but never fail, each with its reason. They are the compares of
 the layout engine with rhwp where rhwp is wrong: floating objects, equations, and the scripts it draws without
-shaping.
+shaping. A feature's entry also covers its rendering from the binary HWP.
 
 ## Running it
 
