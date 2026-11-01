@@ -345,7 +345,10 @@ internal sealed partial class HwpxReader
             var section = state.Begin(Section(secPr));
             _outlineNumberingId = Attr(secPr, "outlineShapeIDRef");
             if (_forLayout)
+            {
                 MasterPages(secPr, section);
+                PageBorders(secPr, section);
+            }
         }
         ReadParagraph(p, state.Current.Blocks, state);
     }
@@ -381,6 +384,46 @@ internal sealed partial class HwpxReader
         }
     }
 
+    /// <summary>Page borders and backgrounds (hp:pageBorderFill), and which pages show them (hp:visibility).</summary>
+    private void PageBorders(XElement secPr, HSection section)
+    {
+        foreach (var element in Children(secPr, "pageBorderFill"))
+        {
+            if (BorderFill(Attr(element, "borderFillIDRef")) is not var (borders, fill, picture))
+                continue;
+            var offset = Child(element, "offset");
+            var border = new HPageBorder(
+                Attr(element, "type") switch
+                {
+                    "EVEN" => HPageType.Even,
+                    "ODD" => HPageType.Odd,
+                    _ => HPageType.Both,
+                },
+                borders, fill, picture,
+                new HInsets(Int(offset, "left"), Int(offset, "right"), Int(offset, "top"), Int(offset, "bottom")),
+                AroundBody: Attr(element, "textBorder") != "CONTENT",
+                HeaderInside: Flag(element, "headerInside"),
+                FooterInside: Flag(element, "footerInside"),
+                Attr(element, "fillArea") switch
+                {
+                    "PAGE" => HPageFillArea.Page,
+                    "BORDER" => HPageFillArea.Border,
+                    _ => HPageFillArea.Paper,
+                });
+            if (!border.IsEmpty)
+                section.PageBorders.Add(border);
+        }
+        var visibility = Child(secPr, "visibility");
+        static HFirstPageRule Rule(string? value) => value switch
+        {
+            "HIDE_FIRST" => HFirstPageRule.HideFirst,
+            "SHOW_FIRST" => HFirstPageRule.OnlyFirst,
+            _ => HFirstPageRule.All,
+        };
+        section.PageBorderShows = Rule(Attr(visibility, "border"));
+        section.PageFillShows = Rule(Attr(visibility, "fill"));
+    }
+
     private static HSection Section(XElement secPr)
     {
         var pagePr = Child(secPr, "pagePr");
@@ -407,6 +450,7 @@ internal sealed partial class HwpxReader
                 Gutter: Int(margin, "gutter")),
             HideFirstHeader = Flag(visibility, "hideFirstHeader"),
             HideFirstFooter = Flag(visibility, "hideFirstFooter"),
+            HideFirstMasterPage = Flag(visibility, "hideFirstMasterPage"),
             StartPageNumber = start > 0 ? start : null,
             Footnotes = NoteShape(Child(secPr, "footNotePr"), HNoteShape.Footnote),
             Endnotes = NoteShape(Child(secPr, "endNotePr"), HNoteShape.Endnote),

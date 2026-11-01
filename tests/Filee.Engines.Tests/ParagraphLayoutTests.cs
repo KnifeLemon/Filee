@@ -508,6 +508,27 @@ public sealed class ParagraphLayoutTests : IDisposable
     }
 
     [Fact]
+    public void A_paragraph_beside_an_object_from_its_first_line_keeps_its_place()
+    {
+        // Every line of the paragraph starts 50 pt in (an object on the left), or ends 50 pt short (one on the right).
+        var left = Paragraph("Beside");
+        left.Lines = new HLineLayout([Segment(0, left: 5000, width: 15000)], false, [0]);
+        var right = Paragraph("Beside", new HParaFormat(Align: HAlign.Right));
+        right.Lines = new HLineLayout([Segment(0, width: 15000)], false, [0]);
+        // A paragraph indented by 30 pt: 한글 stores its lines from its margin, which is no object.
+        var indented = Paragraph("Indented", new HParaFormat(Left: 3000));
+        indented.Lines = new HLineLayout([Segment(0, left: 3000, width: 17000)], false, [0]);
+
+        var (beside, _) = Layout(left, 200);
+        var (ending, _) = Layout(right, 200);
+        var (margin, _) = Layout(indented, 200);
+
+        Assert.Equal(50, beside.Lines[0].Left, 0.01f);
+        Assert.True(ending.Lines[0].Left + ending.Lines[0].Width <= 150.05f, $"ends at {ending.Lines[0].Left + ending.Lines[0].Width}");
+        Assert.Equal(30, margin.Lines[0].Left, 0.01f);
+    }
+
+    [Fact]
     public void Stored_lines_are_not_used_when_filee_estimated_them_or_a_missing_fonts_stand_in_doesnt_fit_or_they_dont_map()
     {
         var estimated = Paragraph(English);
