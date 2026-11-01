@@ -8,9 +8,10 @@ using Filee.Core.Settings;
 
 namespace Filee.Core.Tests;
 
-public class BackFaceTests
+public partial class BackFaceTests
 {
     private static ToolbarProfile BuiltIn(string id) => BuiltInData.CreateProfiles().Single(p => p.Id == id);
+    private static ToolbarProfile Schema58(string id) => BuiltInData.ProfilesSchema58().Single(p => p.Id == id);
 
     private static UserDataStore NewStore(TempDir dir)
     {
@@ -92,16 +93,16 @@ public class BackFaceTests
     }
 
     [Fact]
-    public void The_fronts_stay_as_they_were_before_back_faces()
+    public void The_frozen_fronts_stay_as_they_were_before_the_slot_cleanup()
     {
         Assert.Equal(["to-png", "to-jpg", "to-webp", "to-pdf", "trace-svg", "trace-line-art", "to-tiff", "to-bmp", "to-ico", "half-size",
-            "tool-image-edit", "tool-hide"], BuiltIn("images").PresetIds);
-        Assert.Equal(BuiltInData.PdfDonut, BuiltIn("pdf").PresetIds);
+            "tool-image-edit", "tool-hide"], Schema58("images").PresetIds);
+        Assert.Equal(BuiltInData.PdfDonut, Schema58("pdf").PresetIds);
         Assert.Equal(["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-odt", "to-txt", "to-html", "to-epub", "to-png", "merge-pdf"],
-            BuiltIn("office").PresetIds);
-        Assert.Equal(["to-pdf", "merge-pdf", "zip-all", "to-png", "to-txt"], BuiltIn("mixed").PresetIds);
+            Schema58("office").PresetIds);
+        Assert.Equal(["to-pdf", "merge-pdf", "zip-all", "to-png", "to-txt"], Schema58("mixed").PresetIds);
         Assert.Equal(["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video", "to-mkv", "to-avi"],
-            BuiltIn("video").PresetIds);
+            Schema58("video").PresetIds);
     }
 
     [Fact]
@@ -125,7 +126,7 @@ public class BackFaceTests
     {
         // As written with schema 29: no back faces, the user's own front on the images donut and a donut of their own.
         var presets = BuiltInData.CreatePresets();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         foreach (var p in profiles)
             p.BackPresetIds = null;
         var images = profiles.Single(p => p.Id == "images");
@@ -140,7 +141,7 @@ public class BackFaceTests
 
         foreach (var profile in profiles.Where(p => p != mine))
         {
-            var expected = BuiltIn(profile.Id).BackPresetIds!.Where(id => id != "to-gif");
+            var expected = Schema58(profile.Id).BackPresetIds!.Where(id => id != "to-gif");
             Assert.Equal(expected, profile.BackPresetIds);
         }
         Assert.Null(mine.BackPresetIds); // the store gives it an empty one (below)
@@ -164,13 +165,13 @@ public class BackFaceTests
 
         Assert.Equal(AppSettings.CurrentSchemaVersion, upgraded.Settings.SchemaVersion);
         Assert.Equal(["to-webp", "to-png"], Profile(upgraded, "images").PresetIds);
-        Assert.Equal(BuiltIn("images").BackPresetIds, Profile(upgraded, "images").BackPresetIds);
-        Assert.Equal(BuiltIn("mixed").BackPresetIds, Profile(upgraded, "mixed").BackPresetIds);
+        Assert.Equal(Schema58("images").BackPresetIds, Profile(upgraded, "images").BackPresetIds);
+        Assert.Equal(Schema58("mixed").BackPresetIds, Profile(upgraded, "mixed").BackPresetIds);
         Assert.Equal([], Profile(upgraded, "mine").BackPresetIds);
         // Written at once, so it runs once.
         Assert.Contains("\"backPresetIds\"", File.ReadAllText(Path.Combine(dir.Path, "profiles.json")));
         var again = NewStore(dir);
-        Assert.Equal(BuiltIn("images").BackPresetIds, Profile(again, "images").BackPresetIds);
+        Assert.Equal(Schema58("images").BackPresetIds, Profile(again, "images").BackPresetIds);
         Assert.Equal([], Profile(again, "mine").BackPresetIds);
     }
 
@@ -195,8 +196,8 @@ public class BackFaceTests
         DropBackFaces(dir, schema);
         var back = NewStore(dir);
 
-        Assert.Equal(BuiltIn("images").BackPresetIds, Profile(back, "images").BackPresetIds);
-        Assert.Equal(BuiltIn("pdf").BackPresetIds, Profile(back, "pdf").BackPresetIds);
+        Assert.Equal(Schema58("images").BackPresetIds, Profile(back, "images").BackPresetIds);
+        Assert.Equal(Schema58("pdf").BackPresetIds, Profile(back, "pdf").BackPresetIds);
         Assert.Equal(BuiltIn("images").PresetIds, Profile(back, "images").PresetIds);
         Assert.Equal(AppSettings.CurrentSchemaVersion, back.Settings.SchemaVersion);
         Assert.False(File.Exists(Path.Combine(dir.Path, "profiles.json.broken")));
@@ -224,7 +225,7 @@ public class BackFaceTests
         var images = Profile(store, "images");
         images.BackPresetIds = ["to-pdf"];
         // A preset of the default back face and one the "Rotate" group fans out, both deleted.
-        store.Presets.RemoveAll(p => p.Id is "to-avif" or "rotate-180");
+        store.Presets.RemoveAll(p => p.Id is "compress-image" or "rotate-180");
         store.SaveLibrary();
         Assert.DoesNotContain("rotate-180", store.FindPreset("rotate")!.SubPresetIds);
 
@@ -232,7 +233,7 @@ public class BackFaceTests
 
         Assert.Equal(BuiltIn("images").BackPresetIds, images.BackPresetIds);
         Assert.Equal(BuiltIn("images").PresetIds, images.PresetIds);
-        Assert.NotNull(store.FindPreset("to-avif"));
+        Assert.NotNull(store.FindPreset("compress-image"));
         Assert.NotNull(store.FindPreset("rotate-180"));
         Assert.Equal(store.Presets.Count, store.Presets.Select(p => p.Id).Distinct().Count());
         Assert.Equal(BuiltIn("images").BackPresetIds, Profile(NewStore(dir), "images").BackPresetIds);
@@ -325,7 +326,7 @@ public class BackFaceTests
         Profile(target, "images").BackPresetIds = ["to-gif"];
         target.Import(bundle);
 
-        Assert.Equal(BuiltIn("images").BackPresetIds, Profile(target, "images").BackPresetIds);
+        Assert.Equal(Schema58("images").BackPresetIds, Profile(target, "images").BackPresetIds);
         Assert.Equal([], Profile(target, "theirs").BackPresetIds);
     }
 }

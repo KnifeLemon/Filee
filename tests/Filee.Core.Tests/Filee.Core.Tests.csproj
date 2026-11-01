@@ -17,5 +17,6 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <None Update="Fixtures\SlotTable\*.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

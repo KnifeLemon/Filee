@@ -8,6 +8,49 @@ namespace Filee.Core.Tests;
 
 public class ProfileResetTests
 {
+    [Fact]
+    public void ResetLibrary_GivesNewLayout()
+    {
+        using var dir = new TempDir();
+        var store = NewStore(dir);
+        AssertSlotLayout(store);
+        store.Profiles.Clear();
+        store.Profiles.AddRange(BuiltInData.ProfilesSchema58());
+        store.SaveLibrary();
+
+        store.ResetLibrary();
+
+        AssertSlotLayout(store);
+        AssertSlotLayout(NewStore(dir));
+    }
+
+    [Fact]
+    public void ResetProfile_GivesNewLayout()
+    {
+        using var dir = new TempDir();
+        var store = NewStore(dir);
+        store.Profiles.Clear();
+        store.Profiles.AddRange(BuiltInData.ProfilesSchema58());
+        store.SaveLibrary();
+
+        foreach (var profile in store.Profiles.ToList())
+            Assert.True(store.ResetProfile(profile), profile.Id);
+
+        AssertSlotLayout(store);
+        AssertSlotLayout(NewStore(dir));
+    }
+
+    private static void AssertSlotLayout(UserDataStore store)
+    {
+        Assert.Equal(BackFaceTests.ExpectedFaces.Keys, store.Profiles.Select(p => p.Id));
+        foreach (var profile in store.Profiles)
+        {
+            var expected = BackFaceTests.ExpectedFaces[profile.Id];
+            Assert.Equal(expected.Front, profile.PresetIds);
+            Assert.Equal(expected.Back, profile.BackPresetIds);
+        }
+    }
+
     private static ToolbarProfile BuiltIn(string id) => BuiltInData.CreateProfiles().Single(p => p.Id == id);
 
     private static UserDataStore NewStore(TempDir dir)
@@ -99,20 +142,20 @@ public class ProfileResetTests
         var images = Profile(store, "images");
         images.PresetIds = ["mine", "to-png"];
         // Deleted from the library, and so from every donut.
-        var tiff = store.Presets.FindIndex(p => p.Id == "to-tiff");
-        var after = store.Presets[tiff - 1].Id;
-        store.Presets.RemoveAt(tiff);
+        var gif = store.Presets.FindIndex(p => p.Id == "to-gif");
+        var after = store.Presets[gif - 1].Id;
+        store.Presets.RemoveAt(gif);
         store.SaveLibrary();
-        Assert.DoesNotContain("to-tiff", images.PresetIds);
+        Assert.DoesNotContain("to-gif", images.PresetIds);
 
         Assert.True(store.ResetProfile(images));
 
         Assert.Equal(BuiltIn("images").PresetIds, images.PresetIds);
         Assert.NotNull(store.FindPreset("mine")); // off this donut, still in the library
         Assert.Equal(42, store.FindPreset("to-png")!.Image.Quality); // an edited preset keeps its settings
-        Assert.Equal(store.Presets.FindIndex(p => p.Id == after) + 1, store.Presets.FindIndex(p => p.Id == "to-tiff"));
+        Assert.Equal(store.Presets.FindIndex(p => p.Id == after) + 1, store.Presets.FindIndex(p => p.Id == "to-gif"));
         Assert.Equal(store.Presets.Count, store.Presets.Select(p => p.Id).Distinct().Count());
-        Assert.Contains("to-tiff", NewStore(dir).Profiles.Single(p => p.Id == "images").PresetIds);
+        Assert.Contains("to-gif", NewStore(dir).Profiles.Single(p => p.Id == "images").PresetIds);
     }
 
     [Fact]
@@ -125,7 +168,7 @@ public class ProfileResetTests
         geo.PresetIds = ["to-kml"];
         geo.Extensions.Remove("kml");
         store.Profiles.Insert(0, new ToolbarProfile { Id = "earth", Name = "Earth", Extensions = ["kml"], PresetIds = ["to-geojson"] });
-        store.Presets.RemoveAll(p => p.Id == "to-kmz");
+        store.Presets.RemoveAll(p => p.Id == "to-gpx");
         store.SaveLibrary();
 
         Assert.True(store.CanResetProfile(geo));
@@ -137,7 +180,7 @@ public class ProfileResetTests
         Assert.Equal(builtIn.PresetIds, geo.PresetIds);
         Assert.Equal(builtIn.Extensions.Where(e => e != "kml"), geo.Extensions); // .kml stays on the user's donut
         Assert.Equal(["kml"], Profile(store, "earth").Extensions);
-        Assert.Equal("kmz", store.FindPreset("to-kmz")!.TargetFormat); // the deleted slice's preset is back
+        Assert.Equal("gpx", store.FindPreset("to-gpx")!.TargetFormat); // the deleted slice's preset is back
         Assert.All(geo.PresetIds, id => Assert.NotNull(store.FindPreset(id)));
     }
 

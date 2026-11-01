@@ -304,7 +304,7 @@ public sealed class UserDataStore
         // Several mixed profiles are fine (each limited to the extensions checked on it); none is not.
         if (!Profiles.Any(p => p.IsFallback))
         {
-            var mixed = BuiltInData.CreateProfiles().First(p => p.IsFallback);
+            var mixed = BuiltInData.ProfilesSchema58().First(p => p.IsFallback);
             mixed.PresetIds = mixed.PresetIds.Where(ids.Contains).ToList();
             mixed.BackPresetIds = (mixed.BackPresetIds ?? []).Where(ids.Contains).ToList();
             Profiles.Add(mixed);
@@ -461,7 +461,7 @@ internal static class SettingsMigrations
         //     the user already routes Markdown through a profile of their own.
         if (from < 4 && !profiles.Any(p => p.Id == "text" || (!p.IsFallback && p.Extensions.Contains("md", StringComparer.OrdinalIgnoreCase))))
         {
-            var text = BuiltInData.TextProfile();
+            var text = BuiltInData.ProfilesSchema58().Single(p => p.Id == "text");
             var ids = presets.Select(p => p.Id).ToHashSet();
             text.PresetIds = text.PresetIds.Where(ids.Contains).ToList();
             var fallback = profiles.FindIndex(p => p.IsFallback);
@@ -482,7 +482,7 @@ internal static class SettingsMigrations
             var office = profiles.FirstOrDefault(p => p.Id == "office");
             var insertAt = office is null ? profiles.FindIndex(p => p.IsFallback) : profiles.IndexOf(office) + 1;
             var ids = presets.Select(p => p.Id).ToHashSet();
-            foreach (var split in new[] { BuiltInData.SpreadsheetProfile(), BuiltInData.PresentationProfile() })
+            foreach (var split in BuiltInData.ProfilesSchema58().Where(p => p.Id is "spreadsheets" or "presentations"))
             {
                 if (profiles.Any(p => p.Id == split.Id))
                     continue;
@@ -1092,7 +1092,7 @@ internal static class SettingsMigrations
     /// </summary>
     internal static bool AddBackFaces(List<Preset> presets, IEnumerable<ToolbarProfile> profiles)
     {
-        var defaults = BuiltInData.CreateProfiles().ToDictionary(p => p.Id);
+        var defaults = BuiltInData.ProfilesSchema58().ToDictionary(p => p.Id);
         var ids = presets.Select(p => p.Id).ToHashSet();
         var changed = false;
         foreach (var profile in profiles.Where(p => p.BackPresetIds is null && defaults.ContainsKey(p.Id)))
@@ -1232,7 +1232,7 @@ internal static class SettingsMigrations
         if (profiles.Any(p => p.Id == "geo"))
             return changed;
 
-        var geo = BuiltInData.GeoProfile();
+        var geo = BuiltInData.ProfilesSchema58().Single(p => p.Id == "geo");
         // Only the extensions no donut of the user takes yet.
         geo.Extensions = geo.Extensions.Where(claimed.Add).ToList();
         if (geo.Extensions.Count == 0)
@@ -1278,7 +1278,7 @@ internal static class SettingsMigrations
 
         if (profiles.All(p => p.Id != "data"))
         {
-            var data = BuiltInData.DataProfile();
+            var data = BuiltInData.ProfilesSchema58().Single(p => p.Id == "data");
             // Only the extensions no donut of the user takes yet.
             data.Extensions = data.Extensions.Where(claimed.Add).ToList();
             if (data.Extensions.Count > 0)
@@ -1308,7 +1308,7 @@ internal static class SettingsMigrations
 
         if (profiles.All(p => p.Id != "subtitles"))
         {
-            var subtitles = BuiltInData.SubtitleProfile();
+            var subtitles = BuiltInData.ProfilesSchema58().Single(p => p.Id == "subtitles");
             subtitles.Extensions = subtitles.Extensions.Where(claimed.Add).ToList();
             if (subtitles.Extensions.Count > 0)
             {
@@ -1360,7 +1360,7 @@ internal static class SettingsMigrations
         if (profiles.Any(p => p.Id == "models"))
             return changed;
 
-        var models = BuiltInData.ModelProfile();
+        var models = BuiltInData.ProfilesSchema58().Single(p => p.Id == "models");
         // Only the extensions no donut of the user takes yet.
         models.Extensions = models.Extensions.Where(claimed.Add).ToList();
         if (models.Extensions.Count == 0)
@@ -1389,7 +1389,8 @@ internal static class SettingsMigrations
         var text = profiles.FindIndex(p => p.Id == "text");
         var insertAt = text >= 0 ? text + 1 : profiles.FindIndex(p => p.IsFallback);
         insertAt = insertAt < 0 ? profiles.Count : insertAt;
-        foreach (var profile in BuiltInData.CatalogProfiles().Where(p => profiles.All(existing => existing.Id != p.Id)))
+        foreach (var profile in BuiltInData.ProfilesSchema58().Where(p => p.Id is "ebooks" or "video" or "audio" or "vector" or "archives" or "cad" or "fonts")
+                     .Where(p => profiles.All(existing => existing.Id != p.Id)))
         {
             // Only the extensions no donut of the user takes yet.
             profile.Extensions = profile.Extensions.Where(claimed.Add).ToList();

@@ -114,7 +114,7 @@ public class DefaultOutputTests
         foreach (var preset in presets.Where(p => p.Output.Location == OutputLocation.Default))
             preset.Output.Location = OutputLocation.SameFolder;
         presets.Add(new Preset { Id = "mine", Output = { Location = OutputLocation.CustomFolder, CustomFolder = @"D:\out" } });
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
 
         Assert.True(SettingsMigrations.ApplyToLibrary(7, presets, profiles));
 
