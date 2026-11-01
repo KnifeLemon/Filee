@@ -697,6 +697,32 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void A_floating_objects_caption_goes_its_gap_away_on_its_side()
+    {
+        // Boxes of 40 × 10 and 20 × 10 pt against the paper at (30, 100) and (30, 130); captions 5 pt below the first (as
+        // wide as it) and 5 pt right of the second (30 pt wide), each a line of 10 pt text at 160 %, its baseline 8.5 pt
+        // below its top.
+        var paragraph = Paragraph(" ");
+        var below = Box(4000, 1000, new HAnchor("PAPER", "LEFT", 3000, "PAPER", "TOP", 10000, "IN_FRONT_OF_TEXT", true));
+        below.Caption = new HCaption(HCaptionSide.Bottom, 500, 0);
+        below.Caption.Blocks.Add(Paragraph("Below"));
+        var right = Box(2000, 1000, new HAnchor("PAPER", "LEFT", 3000, "PAPER", "TOP", 13000, "IN_FRONT_OF_TEXT", true));
+        right.Caption = new HCaption(HCaptionSide.Right, 500, 3000);
+        right.Caption.Blocks.Add(Paragraph("Right"));
+        paragraph.Inlines.Add(below);
+        paragraph.Inlines.Add(right);
+
+        var page = Assert.Single(Compose(Section(Small, paragraph)).Pages);
+
+        var first = Runs(page).Single(r => r.Text == "Below").Positions[0];
+        Assert.Equal(30f, first.X, 0.5f);
+        Assert.Equal(123.5f, first.Y, 0.01f);
+        var second = Runs(page).Single(r => r.Text == "Right").Positions[0];
+        Assert.Equal(55f, second.X, 0.5f);
+        Assert.Equal(138.5f, second.Y, 0.01f);
+    }
+
+    [Fact]
     public void Objects_behind_the_text_are_drawn_before_it_and_the_others_after_it()
     {
         var paragraph = Paragraph("Text");
