@@ -13,7 +13,7 @@ namespace Filee.Engines.Tests;
 [Collection("EngineEnvironment")] // FileeRenderer is process-wide
 public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixture<EngineFixture>, IDisposable
 {
-    private static readonly string[] Documents = ["hwpx", "hwp", "docx", "txt", "md", "html", "epub"];
+    private static readonly string[] Documents = ["hwpx", "hwp", "docx", "doc", "txt", "md", "html", "epub"];
 
     public void Dispose()
     {

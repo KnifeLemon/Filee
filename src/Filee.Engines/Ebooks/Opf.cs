@@ -52,16 +52,17 @@ internal sealed class OpfPackage
     private static void ReadMetadata(XElement metadata, OpfPackage package)
     {
         // EPUB 2 puts dc: elements in <dc-metadata>; search descendants.
-        string? First(string name) => metadata.Descendants().FirstOrDefault(e => e.Name.LocalName == name && e.Value.Trim().Length > 0)?.Value.Trim();
+        // OEB 1 packages write Dublin Core names capitalised (dc:Title).
+        string? First(string name) => metadata.Descendants().FirstOrDefault(e => e.Name.LocalName.Equals(name, StringComparison.OrdinalIgnoreCase) && e.Value.Trim().Length > 0)?.Value.Trim();
         var meta = package.Metadata;
         meta.Title = First("title");
         meta.Language = First("language");
         meta.Description = First("description");
         meta.Publisher = First("publisher");
-        foreach (var creator in metadata.Descendants().Where(e => e.Name.LocalName == "creator"))
+        foreach (var creator in metadata.Descendants().Where(e => e.Name.LocalName.Equals("creator", StringComparison.OrdinalIgnoreCase)))
         {
             var name = creator.Value.Trim();
-            var role = creator.Attributes().FirstOrDefault(a => a.Name.LocalName == "role")?.Value;
+            var role = creator.Attributes().FirstOrDefault(a => a.Name.LocalName.Equals("role", StringComparison.OrdinalIgnoreCase))?.Value;
             if (name.Length > 0 && (role is null or "aut") && !meta.Authors.Contains(name))
                 meta.Authors.Add(name);
         }
