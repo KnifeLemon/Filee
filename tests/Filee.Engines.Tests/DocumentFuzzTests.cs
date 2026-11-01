@@ -109,6 +109,22 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
                          "</ref>", "<ref name=\"a\" />", "<nowiki>", "</nowiki>", "<pre>", "</pre>", "<blockquote>", "</blockquote>",
                          "<!--", "-->", "<b>", "</b>", "<sup>", "&lt;", "__TOC__", "[[Category:x]]"]));
 
+    [Fact]
+    public void RstReader_reads_or_refuses_every_mutated_document() =>
+        Fuzz("rst", "rst", [System.Text.Encoding.UTF8.GetBytes(RstTests.Guide)], (path, media) => RstReader.Read(path, media),
+            TextMutator(["\n", "\n\n", "    ", "  ", "=====", "-----", "~~~~", "+---+---+", "+===+", "| a | b |", "===  ===", "- ", "* ", "#. ",
+                         "1. ", "(a) ", "i) ", ".. ", ".. code-block:: python\n\n   ", ".. image:: x.png", ".. note::\n\n   ", ".. [#] ",
+                         ".. _t: http://x", ".. |s| replace:: x", ".. list-table::\n   :header-rows: 1\n\n   * - a\n     - b", "::", "**", "*", "``", "`",
+                         "`x <http://y>`__", "name_", "[#]_", "[1]_", "|s|", ":sub:`x`", "\\", ">>> ", "| ", ":field: "]));
+
+    [Fact]
+    public void OrgReader_reads_or_refuses_every_mutated_file() =>
+        Fuzz("org", "org", [System.Text.Encoding.UTF8.GetBytes(OrgTests.Notes)], (path, media) => OrgReader.Read(path, media),
+            TextMutator(["\n", "\n\n", "* ", "** ", "*** ", "- ", "  - ", "1. ", "+ ", "[X] ", " :: ", "#+BEGIN_SRC\n", "#+END_SRC\n",
+                         "#+BEGIN_QUOTE\n", "#+END_QUOTE\n", "#+TITLE: ", ": ", "| a | b |\n", "|---+---|\n", "-----", "[fn:1]", "[fn::x]",
+                         "[[http://x][y]]", "[[file:x.png]]", "*", "/", "_", "+", "=", "~", "^{", "_{", "}", "\\\\", ":PROPERTIES:\n", ":END:\n",
+                         "SCHEDULED: ", "\u200B"]));
+
     /// <summary>The mutator of a text format, with the format's own tokens.</summary>
     private static Func<byte[], Random, Func<byte[]>> TextMutator(string[] tokens) => (seed, random) => new TextFuzzer(seed, random, tokens).Next;
 

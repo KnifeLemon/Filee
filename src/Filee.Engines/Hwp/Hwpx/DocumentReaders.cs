@@ -80,6 +80,8 @@ internal static class DocumentReaders
         ["opml"] = OpmlReader.Read,
         ["textile"] = TextileReader.Read,
         ["mediawiki"] = MediaWikiReader.Read,
+        ["rst"] = RstReader.Read,
+        ["org"] = OrgReader.Read,
     };
 
     /// <summary>

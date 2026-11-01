@@ -60,6 +60,7 @@ internal static class MarkupTestKit
             {
                 "docx" => string.Join("\n", Texts(DocxReader.Read(output, fx.NewFolder()))),
                 "hwpx" => string.Join("\n", Texts(HwpxReader.Read(output, fx.NewFolder()))),
+                "html" => System.Net.WebUtility.HtmlDecode(await File.ReadAllTextAsync(output)),
                 _ => await File.ReadAllTextAsync(output),
             };
             foreach (var part in expected)

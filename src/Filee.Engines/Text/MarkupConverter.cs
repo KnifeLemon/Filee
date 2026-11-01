@@ -35,6 +35,8 @@ public sealed class MarkupConverter : IConverter
             ["opml"] = (document, context) => OpmlWriter.Write(document, context.Pictures),
             ["textile"] = (document, context) => TextileWriter.Write(document, context.Pictures),
             ["mediawiki"] = (document, context) => MediaWikiWriter.Write(document, context.Pictures),
+            ["rst"] = (document, context) => RstWriter.Write(document, context.Pictures),
+            ["org"] = (document, context) => OrgWriter.Write(document, context.Pictures),
         };
 
     /// <summary>Formats each markup language is also written as (the readers' other outputs are the writers' edges).</summary>
