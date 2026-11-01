@@ -18,6 +18,15 @@
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
       <Setter Property="RenderTransform" Value="scale(1.015)" />
     </Style>
+    <!-- The card the user selected: its outline in the accent colour; the Delete key takes it out of the queue. -->
+    <Style Selector="Border.queue-card">
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.queue-card.selected">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="2" />
+    </Style>
     <Style Selector="PathIcon.chevron">
       <Setter Property="RenderTransform" Value="rotate(0deg)" />
     </Style>
@@ -68,6 +77,56 @@
                    Text="{Binding DropHint}" />
       </StackPanel>
     </Border>
+
+    <!-- The queue: files to convert together, in the order shown. Drag a card to change its place; the X takes it out. -->
+    <StackPanel x:Name="QueueArea" IsVisible="{Binding HasQueue}" Spacing="10" DragDrop.AllowDrop="True">
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+          <Button Classes="ghost" Content="{DynamicResource home.queue_clear}" Command="{Binding ClearQueueCommand}" />
+          <Button x:Name="ConvertQueueButton" Classes="accent" Content="{DynamicResource home.queue_convert}" Click="OnConvertQueue" />
+        </StackPanel>
+        <TextBlock Classes="h2" VerticalAlignment="Center" Text="{DynamicResource home.queue_title}" />
+      </DockPanel>
+      <ItemsControl x:Name="QueueList" ItemsSource="{Binding Queue}">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate>
+            <WrapPanel />
+          </ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:StagedFileViewModel">
+            <Border Classes="queue-card" Classes.selected="{Binding IsSelected}" Width="128" Margin="0,0,12,12" Padding="6"
+                    CornerRadius="{DynamicResource SoftRadius}" Background="{DynamicResource SurfaceBrush}"
+                    Cursor="SizeAll" ToolTip.Tip="{Binding Name}">
+              <StackPanel Spacing="6">
+                <Panel Height="130">
+                  <Border CornerRadius="{DynamicResource SoftRadiusSmall}" ClipToBounds="True" Background="{DynamicResource AccentFaintBrush}">
+                    <Panel>
+                      <Image Source="{Binding Thumbnail}" Stretch="Uniform" IsVisible="{Binding HasThumbnail}" />
+                      <TextBlock Text="{Binding FormatBadge}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasThumbnail}" />
+                    </Panel>
+                  </Border>
+                  <!-- The place in the queue: the theme's accent circle, the number in its contrast colour. -->
+                  <Border Width="26" Height="26" CornerRadius="999" Margin="4" Background="{DynamicResource AccentBrush}"
+                          HorizontalAlignment="Left" VerticalAlignment="Top">
+                    <TextBlock Text="{Binding Position}" FontSize="12" FontWeight="Bold" Foreground="{DynamicResource OnAccentBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                  </Border>
+                  <Button Width="26" Height="26" Padding="0" CornerRadius="999" Margin="4" Background="{DynamicResource SurfaceBrush}"
+                          BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top"
+                          Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource home.queue_remove}"
+                          AutomationProperties.Name="{DynamicResource home.queue_remove}">
+                    <PathIcon Width="10" Height="10" Data="{StaticResource Icon.Close}" />
+                  </Button>
+                </Panel>
+                <TextBlock Classes="caption" Text="{Binding Name}" TextTrimming="CharacterEllipsis" HorizontalAlignment="Center" />
+              </StackPanel>
+            </Border>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </StackPanel>
 
     <!-- Recent conversions -->
     <StackPanel Spacing="10">
