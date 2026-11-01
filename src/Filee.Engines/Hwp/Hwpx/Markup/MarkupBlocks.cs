@@ -67,6 +67,16 @@ internal static class MarkupBlocks
         }
     }
 
+    /// <summary>A horizontal rule: a short centred line, as HtmlReader reads &lt;hr&gt;.</summary>
+    public static void Rule(List<HBlock> output, DocumentBudget budget)
+    {
+        budget.Paragraph();
+        budget.Object();
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Center), Role = HBlockRole.Rule };
+        paragraph.Inlines.Add(new HShape(HShapeKind.Line) { Width = 14000, Height = 0, Line = HBorder.Thin with { Color = "#808080" } });
+        output.Add(paragraph);
+    }
+
     /// <summary>
     /// A list definition: bullets, or numbers in <paramref name="format"/> (DIGIT, LATIN_SMALL, ROMAN_CAPITAL, ...)
     /// starting at <paramref name="start"/> on <paramref name="level"/>; the other levels use the usual defaults.

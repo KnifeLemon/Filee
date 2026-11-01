@@ -32,6 +32,9 @@ public sealed class MarkupConverter : IConverter
         new Dictionary<string, Func<HDocument, MarkupWriteContext, string>>(StringComparer.OrdinalIgnoreCase)
         {
             ["ipynb"] = (document, context) => NotebookWriter.Write(document, context.WorkFolder, !context.LeaveOutPictures),
+            ["opml"] = (document, context) => OpmlWriter.Write(document, context.Pictures),
+            ["textile"] = (document, context) => TextileWriter.Write(document, context.Pictures),
+            ["mediawiki"] = (document, context) => MediaWikiWriter.Write(document, context.Pictures),
         };
 
     /// <summary>Formats each markup language is also written as (the readers' other outputs are the writers' edges).</summary>

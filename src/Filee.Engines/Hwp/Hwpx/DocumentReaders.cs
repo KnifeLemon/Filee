@@ -77,6 +77,9 @@ internal static class DocumentReaders
         ["oeb"] = OebReader.Read,
         // Lightweight markup languages (Markup/), written by MarkupConverter.
         ["ipynb"] = NotebookReader.Read,
+        ["opml"] = OpmlReader.Read,
+        ["textile"] = TextileReader.Read,
+        ["mediawiki"] = MediaWikiReader.Read,
     };
 
     /// <summary>
