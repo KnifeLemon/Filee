@@ -9,6 +9,7 @@ using Filee.Engines.Ebooks;
 using Filee.Engines.Email;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Hwp.Hwpx.Markup;
 using Filee.Engines.Hwp.Hwpx.Odt;
 using Filee.Engines.Hwp.Hwpx.Pptx;
 using Filee.Engines.Infrastructure;
@@ -74,6 +75,14 @@ internal static class DocumentReaders
         ["rb"] = RocketBookReader.Read,
         ["snb"] = SnbReader.Read,
         ["oeb"] = OebReader.Read,
+        // Lightweight markup languages (Markup/), written by MarkupConverter.
+        ["ipynb"] = NotebookReader.Read,
+        ["opml"] = OpmlReader.Read,
+        ["textile"] = TextileReader.Read,
+        ["mediawiki"] = MediaWikiReader.Read,
+        ["rst"] = RstReader.Read,
+        ["org"] = OrgReader.Read,
+        ["dbk"] = DocBookReader.Read,
     };
 
     /// <summary>

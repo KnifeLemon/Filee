@@ -13,6 +13,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | **HWP text** | built in | **HWP/HWPX → TXT, Markdown, HTML** with the [HWP](#hwp-reader) and [HWPX readers](#hwpx-reader) (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML; see [HWP text, Markdown and HTML](#hwp-text-markdown-and-html)) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -30,11 +31,11 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
+| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
-| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
+| Archives | built in (SharpCompress, .NET and Filee's own readers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG; **7-Zip**: CAB, DMG, IMG, LHA, ARJ, UDF discs **→ folder, ZIP, TAR, TAR.GZ** (in-process), **7Z, TAR.BZ2/XZ** (7-Zip); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
-| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
+| Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (LaTeX, AsciiDoc, Typst, man; and RTF / EPUB from the built-in ones) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
@@ -938,7 +939,10 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     and stand on the baseline, 한글's objects set like a character as high as they are with their outer margins (85%
     above the baseline, as 한글's stored lines have them); links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
-    with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
+    with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it. Their code
+    lines (a code block's paragraphs, or paragraphs all of whose text is shaded as code) take a monospaced font where
+    they name none and are set solid (130 %) without paragraph spacing, the style's space after coming back at the end
+    of the block. A missing monospaced font (Menlo, "... Mono", "... Code", GulimChe) is replaced by an installed one.
   - Master pages (바탕쪽): laid out from the top of the body, as wide as it, behind everything on the page (in front of
     the text when the master page says so): the one for odd or even pages, else the one for both; the last-page and
     chosen-page masters replace it on their page, or are drawn with it when they overlap (겹치기). None on a section's
@@ -2225,47 +2229,98 @@ minutes, Ghostscript 5, Pandoc 2 and calibre 10 (it made the 640-page novel's PD
 
 ## Archives
 
-The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) uses Filee's own copy of the 7-Zip console program
-(`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a` by `build/fetch-engines.ps1 -Only 7zip` and
-bundled with the installer), never a 7-Zip installed on the PC. It runs as a separate process (LGPL).
+The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) reads the common formats in-process and keeps
+Filee's own copy of the 7-Zip console program (`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a`
+by `build/fetch-engines.ps1 -Only 7zip` and bundled with the installer, never a 7-Zip installed on the PC; a separate
+process, LGPL) for the long tail. In-process comes first (`Archives/ArchiveExtractor.cs`); 7-Zip reads the formats
+nobody else does, and is asked again when an in-process reader meets something it lacks (an unknown 7z or RAR
+method, a GNU sparse file, an interleaved ISO file) or damage it can't get past. Two formats prefer 7-Zip when it is
+there: ISO images with a UDF file system, and solid 7z archives with several files (for speed). Deliberate refusals (password,
+paths leaving the folder, bombs, entry floods) are final and never retried. Without 7-Zip the engine stays available
+with the in-process edges only (Settings → *Engines* shows "built in" instead of "built in + 7-Zip …").
 
 | Format | Read | Write |
 |---|---|---|
-| ZIP, JAR, WBPZ | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
-| 7Z | 7-Zip | 7-Zip |
-| TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
-| TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
-| TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
-| TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
-| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, CRC and size checked | — |
-| GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
-| LZMA, Z | 7-Zip | — |
-| RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
-| Split archives (.001, .7z.001, .zip.001, .tar.001) | 7-Zip (combining .002, .003 … automatically) | — |
+| ZIP, JAR, WBPZ | .NET (System.IO.Compression) when every entry is stored or Deflate, else SharpCompress (MIT: Deflate64, BZip2, LZMA, PPMd and the old methods); names without the UTF-8 flag as UTF-8 when valid, else the system's OEM code page (CP949 on Korean Windows), as 7-Zip does | in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| 7Z | SharpCompress (LZMA, LZMA2, PPMd, BZip2, Deflate, the BCJ / BCJ2 filters); a solid 7z with several files goes to 7-Zip when it is there (SharpCompress 1.0 decodes the block again for every file, see the speed table) | 7-Zip |
+| RAR 4 / 5 | SharpCompress (only unpacks, under the unRAR terms, see THIRD-PARTY-NOTICES), with the other volumes (`.part2.rar`, `.r00`) | — |
+| TAR | .NET's System.Formats.Tar (ustar, PAX, GNU, V7): tells symbolic from hard links | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
+| TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.LZ, TAR.7Z | in two stages: the outer layer as below, then the TAR | TAR.GZ in-process; TAR.BZ2 / TAR.XZ: TAR in-process, compressed by 7-Zip |
+| GZ | .NET's gzip decoder (CRC-32 checked) | in-process (GZipStream); one file only |
+| BZ2, XZ | SharpCompress | 7-Zip; one file only |
+| LZMA (`.lzma`) | SharpCompress's LZMA decoder | — |
+| Z (Unix compress) | Filee (`UnixCompressStream`: LZW, 9–16-bit codes, block mode with table clears) | — |
+| LZ (lzip) | Filee: members found from the end, each LZMA stream decoded by SharpCompress, CRC-32 and sizes checked | — |
+| CPIO | Filee (`CpioReader`: newc, crc with its byte sum checked, odc, old binary in either byte order; newc hard link groups become copies) | — |
+| DEB (ar) | Filee (`ArReader`: GNU and BSD long names, symbol tables skipped): unpacks to `debian-binary`, `control.tar.*`, `data.tar.*` | — |
+| RPM | Filee (`RpmReader`): the payload (gzip, bzip2, xz, LZMA, zstd or plain) becomes `<name>.cpio`, unpacked in the next stage | — |
+| ISO | Filee (`IsoReader`: ISO 9660 with Rock Ridge names, else Joliet, else the plain names; multi-extent files); images with UDF (Windows install discs) go to 7-Zip when it is there | — |
+| Split archives (.001, .7z.001, .zip.001, .tar.001) | the volumes read as one stream (`SplitVolumes`): 7z, ZIP and RAR by SharpCompress, TAR by .NET | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
-| EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (decoded by 7-Zip); several blocks per file | — |
+| EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (SharpCompress's decoder); several blocks per file | — |
+| CAB, DMG, IMG, LHA / LZH, ARJ | 7-Zip only | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
   with `photos/…` gives `photos/…`, not `photos/photos/…`). Name conflicts follow the preset: `name (2)`, overwrite
-  (files are merged into the existing folder) or skip.
+  (files are merged into the existing folder) or skip. Inside one archive, names that clash on Windows ("A.txt" and
+  "a.txt") become `a_1.txt`, as 7-Zip names them.
 - **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
   maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
-  file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.
-- **Safety**: every archive is listed first. Encrypted entries or archives stop with "password-protected"; entries
-  (or hard links) with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is
-  written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
-  1,000,000 entries or more data than the drive has free are refused; Filee's own readers also stop when data unpacks
-  to more than the entry declares, and check CRCs.
+  file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR, TAR.GZ and GZ need no 7-Zip.
+- **Safety** (`Archives/ArchiveSafety.cs`, the same for every reader): every archive is listed first and checked
+  before anything is written. Encrypted entries or archives stop with "password-protected"; entries (or hard links)
+  with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is written);
+  symbolic links, devices and FIFOs are never unpacked, hard links inside the archive become copies, and any link
+  left afterwards is deleted; archives with more than 1,000,000 entries or more data than the drive has free are
+  refused. A **decompression bomb** — more than 1 GiB that is also more than 10,000 times the archive's size — is
+  refused from the listing (lying headers, ZIPs whose entries share one stream) or, for streams that declare no size
+  (.gz, .bz2, .xz, .Z), as soon as that much has come out (`UnpackBudget`, which also looks at the free space again
+  every 256 MB). Sizes are checked against what each entry declares, CRC-32s by Filee for ZIP, 7z, lzip, ALZ, EGG and
+  the cpio byte sum (gzip, xz and bzip2 by their decoders); LZMA dictionaries over 1 GiB are refused before the decoder allocates them. ISO
+  folders that point back at a folder already read (a loop), extents past the end of the image, trees deeper than 64
+  folders and folder listings over 16 MB are refused as damage.
+- **7-Zip hidden**: with the environment variable `FILEE_HIDE_7ZIP=1` Filee behaves as if `engines/7zip` were
+  missing. `FILEE_HIDE_7ZIP=1 dotnet test tests/Filee.Engines.Tests --filter FullyQualifiedName~Filee.Engines.Tests.Archive`
+  shows which archive tests still need it (they skip).
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
-  ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG.
+  ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
+  7-Zip also: CAB, DMG, IMG, LHA, ARJ, UDF-only discs, GNU sparse files in TARs, interleaved ISO files, the El Torito
+  boot image of an ISO (7-Zip shows it as `[BOOT]`; Filee's ISO reader leaves it out), and 7Z / BZ2 / XZ output.
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
   `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
-  instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`).
-- Tests (`ArchiveTests.cs`) build ALZ, EGG and lzip files in code (`ArchiveBuilders.cs`, with bzip2 and LZMA streams
-  written by 7-Zip) and skip the 7-Zip parts when `engines/7zip` is missing.
+  instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`). The .Z,
+  ar, cpio, RPM and ISO readers are written from the formats' own descriptions (compress(1), ar(5), cpio(5), rpm.org's
+  file format, ECMA-119, Joliet, IEEE P1281 / P1282).
+- Tests: `ArchiveTests.cs` (conversions, Extract, the ALZ / EGG / lzip readers; the parts that make their input
+  with 7-Zip or need a 7-Zip format skip without it), `ArchiveInProcessTests.cs` (every in-process format built in
+  code by `ArchiveFormatBuilders.cs` — 7z, xz, RAR 4 / 5 with stored entries, ISO, cpio, ar, RPM, .Z — and the hostile
+  inputs: traversal, links, passwords, bombs with lowered limits, entry floods, ISO loops, damaged data),
+  `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z, lzip, ALZ and EGG files must unpack or be
+  refused with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
+  `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
+
+### Speed next to 7-Zip
+
+`ArchiveSpeedTests` (100 MB in 100 files, two thirds text and one third noise, archives written by 7-Zip 26.02 at
+`-mx5`; best of two runs, unpacking with the engine's listing first and both TAR stages; Windows 11, 8 logical
+processors, the PC busy with other builds, so the numbers move by ±30 %):
+
+| Archive | Size | Filee in-process | 7-Zip | In-process / 7-Zip |
+|---|---:|---:|---:|---:|
+| ZIP (Deflate) | 41 MB | 3.51 s | 3.71 s | 0.95× |
+| 7z (LZMA2, solid) | 34 MB | 41.68 s | 1.49 s | 27.94× |
+| TAR | 100 MB | 0.82 s | 1.20 s | 0.68× |
+| TAR.GZ | 41 MB | 2.39 s | 2.40 s | 1.00× |
+| TAR.BZ2 | 39 MB | 40.89 s | 11.83 s | 3.46× |
+| TAR.XZ | 34 MB | 2.47 s | 1.72 s | 1.44× |
+
+ZIP, TAR and TAR.GZ are as fast as 7-Zip or faster (no process start, one pass less), XZ is close. SharpCompress's
+bzip2 decoder is single-threaded where 7-Zip decodes blocks in parallel (Filee's own `Bzip2Decoder` is slower still).
+A solid 7z is the outlier: SharpCompress 1.0 decodes the block from its start again for every file, so the time grows
+with the square of the file count; such archives go to 7-Zip whenever it is there.
 
 ## LibreOffice
 
@@ -2303,12 +2358,167 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   ClarisWorks, MacWrite and Pocket Word are binary formats without sample files in the repository: only their
   filters (`ClarisWorks`, `MacWrite`, `PocketWord File`, all opening in Writer) were checked in the registry.
 
+## Lightweight markup languages
+
+The markup languages that are cheap to own are read and written in-process, without Pandoc. Each has a reader into
+the document model in `Hwp/Hwpx/Markup/`, registered in `DocumentReaders` (so the HWPX, DOCX and ODT writers and the
+Filee renderer take it: → HWPX, DOCX, ODT, PDF), and a writer from the model. `Text/MarkupConverter.cs` (engine
+`markup`) offers every built-in reader's format → each of these languages, and each of them → Markdown
+(`MarkdownWriter`, pictures in a `<name>_files` folder), HTML (one page, pictures embedded) and TXT. Its edges cost 8
+like the DOCX writer's, below Pandoc's (10 out of a markup language, 11 into one), so the built-in route wins
+wherever both exist. Pandoc keeps what only it does: LaTeX, Typst, AsciiDoc and man pages (macro and scripting
+languages), slides (PPTX), and RTF and EPUB written straight from a markup language.
+
+What the readers share (`MarkupBlocks`): code blocks are shaded paragraphs as the Markdown and HTML readers make them
+(a blank line inside one is an empty shaded run, so a block stays one block), quotes are indented 2000 HWPUNIT per
+level, and everything built counts against `DocumentLimits` through a `DocumentBudget` (paragraphs, objects,
+nesting), so a small file can't grow into millions of paragraphs.
+
+### Jupyter notebooks
+
+`NotebookReader` reads nbformat 4 (and the older 3, `worksheets`) with `System.Text.Json`, nested at most 64 levels:
+
+- markdown cells through `MarkdownReader` (Markdig), their attachments (`attachment:plot.png`) written to the job's
+  media folder and linked as pictures; code and raw cells as code blocks, one per cell; the notebook's
+  `metadata.title` is the title;
+- the outputs of a code cell follow it indented by `NotebookReader.OutputIndent` (800 HWPUNIT): streams, results and
+  errors as code (terminal colour codes removed from tracebacks), PNG, JPEG, GIF and SVG results as pictures (a result
+  with a picture is shown as the picture), Markdown results through `MarkdownReader` and HTML results (data frames)
+  through `HtmlReader`, else the plain text;
+- outputs are where notebooks get big: an output keeps its first 2,000 lines and 200,000 characters and says what was
+  left out, all text outputs together stop after 8,000,000 characters with one notice, a picture of more than 32 MB
+  or one whose header claims more pixels than `MaxPicturePixels` is left out, and a notebook over 256 MB is refused.
+  A cell of more lines than paragraphs are left is refused before it is parsed. JSON that is damaged, not UTF-8 or
+  not shaped like a notebook is `InvalidDataException`.
+
+`NotebookWriter` writes nbformat 4.5: code blocks become code cells, the blocks between them markdown cells
+(`MarkdownWriter`, a new cell at each heading) with their pictures attached as base64 PNG or JPEG, so the notebook is
+one file. What the reader took for a cell's outputs (indented code and pictures right after it) is written back as
+outputs (a stdout stream, display data), so notebook → model → notebook keeps cells and outputs; an HTML table result
+comes back as a Markdown table in a markdown cell, an error as a stream. The notebook names no kernel.
+
+`tests/Filee.Engines.Tests/NotebookTests.cs` builds the notebooks in code and checks the model, the round trip
+(written twice, the same file), the routes with Pandoc assumed installed, DOCX / HWPX / PDF / HTML / Markdown with
+Pandoc absent (PDF by the Filee renderer) and the hostile inputs; `DocumentFuzzTests` mutates a notebook's JSON tree
+and text (`JsonFuzzer`, `TextFuzzer`).
+
+### OPML
+
+`OpmlReader` reads OPML 1.0 and 2.0 as Pandoc does: each outline is a heading one level below its parent's (past 9
+the level stays 9), its `_note` Markdown under it (`MarkdownReader`). An outline of type `link` links its text to
+its `url`; a feed in a subscription list (`rss`) links its text to the site (`htmlUrl`) and gets a line with the
+feed's address. Text with tags or entities (OPML allows HTML there) is read by `HtmlReader`; `head/title` is the
+title. The XML goes through `SafeXml`: no DTD is read (a document with one is refused, so no entity expands and
+nothing outside the file is fetched), at most 512 levels and the element limit. `OpmlWriter` writes OPML 2.0 back:
+each heading an outline inside the one of the heading above it, the blocks between two headings its `_note` in
+Markdown (pictures linked into `<name>_files`), a heading that is one link an outline of type `link`, formatted
+heading text as HTML, text before the first heading an outline without text.
+
+### Textile and MediaWiki
+
+Both are read line by line into blocks and inline by inline into runs (`MarkupInlines`): a closing marker is looked
+up in a list of the places it can close, made once per paragraph, so a paragraph of a million openers costs
+n log n, and emphasis nested more than 8–12 levels is text. Lists nest at most 9 levels; tables, quotes and notes
+count against the nesting depth (32), so a page of tables in tables is refused rather than overflowing the stack;
+tables are cut at `MaxTableColumns`.
+
+- `TextileReader`: h1.–h6., p., bq., bc. / pre. (code), notextile., ###. (comments, left out), fnN. footnotes (only
+  `[N]` with a definition is a reference), the extended `..` forms, `*` / `#` lists (nested, mixed), definition lists,
+  tables (`|_.` header cells, `\N` / `/N` spans; the attributes in `()`, `{}`, `[]` are skipped). A line break inside
+  a paragraph is a line break, as Textile renders it. Inline: `*strong*`, `**bold**`, `_em_`, `__italic__`,
+  `-deleted-`, `+inserted+`, `^sup^`, `~sub~`, `@code@`, `%span%`, `??citation??`, `"links":url`, `["links":url]`,
+  `!pictures!` (local files), `==notextile==`, `[*intraword*]`, HTML entities and `<br>`; other tags are dropped.
+  Glyphs (smart quotes, dashes, `(c)`) are not replaced: the text stays as written.
+- `TextileWriter` writes the same dialect: a character that would open or close markup where it stands becomes an
+  HTML entity (`&#42;`), a paragraph that starts like a block signature, list or table gets its first character as
+  one, code with blank lines is `bc..` closed by an empty `###.` comment, links are `["text":url]`. Textile has no
+  title.
+- `MediaWikiReader`: `= headings =`, paragraphs (a single line break is a space), lists (`*`, `#`, mixed; `;` terms,
+  `:` indents and continuations), `----`, lines starting with a space and `<pre>` / `<syntaxhighlight>` / `<source>` as
+  code, `<blockquote>`, tables (`{|`, `|+` caption, `|-`, `!` / `!!` header cells, `|` / `||`, `colspan` /
+  `rowspan`, tables in cells), `''` / `'''` / `'''''` as the wiki toggles them, `[[internal links|text]]` with link
+  trails, `[external links text]`, bare URLs, `[[File:…]]` pictures (local files), `<ref>` footnotes (named ones
+  reused), `<nowiki>`, the formatting tags and entities. **Templates are not expanded**: `{{…}}` (and parser
+  functions) stay in the text as written, nested calls included. Comments, categories, magic words (`__TOC__`) and
+  `<references />` are left out.
+- `MediaWikiWriter` writes `= headings =`, `<blockquote>`, `*` / `#` lists (`*:` for an item's further paragraphs),
+  `<pre>` code, `{| class="wikitable"` tables (a cell with a table, list or code gets its blocks on the lines after
+  it), `'''bold'''`, `''italic''`, the `<s>` `<u>` `<sup>` `<sub>` `<code>` tags, `[external links]`,
+  `[[relative links|text]]`, `[[File:…]]` pictures and `<ref>` notes with `<references />`. Characters the wiki would
+  read as markup are entities. The wiki has no title.
+
+### reStructuredText and Org
+
+Both go through the same machinery as Textile and MediaWiki (`MarkupInlines`, `MarkupTextWriter`); their nesting is
+by indentation (reST) or by `#+BEGIN_` blocks and indentation (Org), and each nested quote, list or directive counts
+against the nesting depth.
+
+- `RstReader` reads what documents use, as docutils does: section titles by their adornment style (levels in the
+  order the styles first appear; a first title in a style of its own is the document's title), paragraphs, `::`
+  literal blocks, block quotes, bullet and enumerated lists (`1.`, `a)`, `(iv)`, `#.`), definition and field lists,
+  line blocks, doctest blocks, transitions, grid tables with column and row spans (a border under a cell that spans
+  rows may start with `|`), simple tables, the `list-table` and `csv-table` directives, `code-block` / `code`,
+  `image`, `figure`, the admonitions, `math`, `topic`, `sidebar`, `rubric`; directives that hold no text (`contents`,
+  `toctree`, `raw`, `include`, ...) and comments are left out, unknown ones keep their content. Footnotes (`[#]_`,
+  `[#label]_`, `[1]_`), hyperlink targets for `` `named`_ `` references and substitutions (`replace::`, `image::`)
+  are resolved. Inline: `**strong**`, `*emphasis*`, ``` ``literals`` ```, interpreted text (italic, as docutils
+  shows a title reference), the roles `:sub:` `:sup:` `:code:` `:literal:` `:emphasis:` `:strong:` `:math:` (others
+  keep their text), `` `links <url>`__ ``, standalone URLs and backslash escapes, with reST's rules for where inline
+  markup may start and end.
+- `RstWriter` writes the title over- and underlined with `=`, section titles underlined `= - ~ ^ " ' ` : .` by level
+  (as wide as the title, East Asian characters counting two columns), line blocks for paragraphs with line breaks,
+  indented quotes, lists with their nested lists indented under the item, `::` literal blocks, grid tables with their
+  spans, `[#]_` footnotes and pictures as `|imageN|` substitutions. reST has no underline or strike-through (that text
+  stays plain) and no nested inline markup (bold and italic at once is bold). Markup characters in text are escaped
+  with a backslash, and inline markup next to a letter is set off with `\ ` (an escaped space, which is nothing).
+- `OrgReader`: headlines (TODO keywords and priorities stay text, tags and planning lines go), paragraphs, lists by
+  indentation (check boxes as ☐ / ☑, `term :: description`), `#+BEGIN_SRC` / `EXAMPLE` / `QUOTE` / `VERSE` /
+  `CENTER`, `: ` fixed-width lines, tables (`|---+---|` under the header rows), `-----` rules, footnotes (`[fn:N]` and
+  inline `[fn::text]`), `#+TITLE`; drawers, comments and other keywords are left out. Inline: `*bold*`, `/italic/`,
+  `_underline_`, `+strike+`, `=verbatim=`, `~code~` with Org's rules for where emphasis may start and end,
+  `[[links][text]]`, `[[file:pictures]]`, bare URLs, `x^{sup}` / `x_{sub}`, `\\` line ends.
+- `OrgWriter` writes the same; a character that would read as markup where it stands gets a zero-width space next
+  to it, as Org's manual suggests (the reader takes them out again), and code lines starting with `*` or `#+` get
+  Org's `,`. Merged table cells keep their text in the first position.
+
+### DocBook
+
+`DocBookReader` reads DocBook 5 and the element names of 4.x through `SafeXml` (depth and element limits; no DTD is
+ever processed). A DocBook 4 document's DOCTYPE that only names the OASIS DTD is left out before the XML is read; one
+with an internal subset (entity declarations, the billion-laughs and external-entity attacks) is refused, and so is
+any entity only the DTD would have defined (`&nbsp;`), with a message saying so.
+
+- Sections (book, article, chapter, appendix, preface, part, section, sect1–sect5, simplesect, refsect...) become
+  headings one level deeper each; the root's title is the document's; `bridgehead` is a heading of its own; ids
+  become bookmarks where a link points at them.
+- Blocks: para / simpara (split around the lists and tables DocBook lets stand in a para), formalpara, blockquote
+  with its attribution, programlisting / screen / synopsis (code), literallayout (lines; `monospaced` as code),
+  itemizedlist / orderedlist (numeration, startingnumber), variablelist, simplelist, procedure (steps as a numbered
+  list), the admonitions, example, figure, sidebar, epigraph, equation; unknown elements keep their text.
+- Tables in CALS form (tgroup, colspec, namest / nameend, colname, morerows, thead) and HTML form (tr, td, th,
+  colspan, rowspan); `cols` is cut at `MaxTableColumns`.
+- Inline: emphasis (roles bold, strong, underline, strikethrough), literal and the code-like elements (command,
+  filename, option, ...), superscript, subscript, quote, citetitle, firstterm, trademark, footnote, link
+  (`xlink:href`, `linkend`), ulink, xref, email, anchor and inlinemediaobject; indexterm and remark are left out.
+
+`DocBookWriter` writes an article in the DocBook 5 namespace (Pandoc's docbook5 writer's shape): headings as nested
+sections, para (literallayout for line breaks), blockquote, itemizedlist / orderedlist with numeration and nested
+lists inside the items, programlisting, CALS informaltable with colspecs, spans and a thead, mediaobject /
+inlinemediaobject pictures (linked into `<name>_files`), footnotes, links, anchors and emphasis roles.
+
+`OpmlTests`, `TextileTests`, `MediaWikiTests`, `RstTests`, `OrgTests` and `DocBookTests` build their pages in code and check the model, the round trip
+(format → model → format → model gives the same `MarkupShape`, and text that looks like markup stays text), DOCX /
+HWPX / PDF / HTML / Markdown with Pandoc absent and the hostile inputs (DTDs and entity expansion, nesting, a
+million openers, wide and long tables); `DocumentFuzzTests` mutates each.
+
 ## Pandoc
 
-`Office/PandocConverter.cs` runs Pandoc for the markup languages Filee doesn't read itself: reStructuredText,
-LaTeX, Org (`.org`), AsciiDoc (`.adoc`, `.asciidoc`), Typst (`.typ`), MediaWiki (`.mediawiki`, `.wiki`),
-DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`), Textile (`.textile`), man pages
-(`.man`) and OPML (`.opml`). Pandoc 3.12 reads and writes all of them.
+`Office/PandocConverter.cs` runs Pandoc for the markup languages Filee doesn't read itself: LaTeX, AsciiDoc
+(`.adoc`, `.asciidoc`), Typst (`.typ`) and man pages (`.man`) — macro and scripting languages. Pandoc 3.12 also
+reads and writes reStructuredText, Org (`.org`), MediaWiki (`.mediawiki`, `.wiki`), DocBook (`.dbk`, `.docbook`;
+written as DocBook 5), Jupyter notebooks (`.ipynb`), Textile (`.textile`) and OPML (`.opml`), but Filee reads and
+writes those itself ([above](#lightweight-markup-languages)) and its routes win; Pandoc's stay for RTF and EPUB
+written straight from them, and as the only way between them and LaTeX, AsciiDoc, Typst or man.
 
 - Each converts to and from Markdown, HTML, DOCX and ODT and into each other, and to RTF, EPUB and TXT. Through
   Pandoc's JSON AST they are also read by the HWPX writer, so they reach HWPX, HWP and PDF (HWPX writer → rhwp).

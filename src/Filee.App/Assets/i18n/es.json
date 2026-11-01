@@ -186,6 +186,8 @@
   "engine.docx-writer.description": "Escribe documentos de Word (DOCX) desde PDF, OFD, HWP/HWPX, Markdown, HTML, hojas de cálculo, diapositivas y libros electrónicos.",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Escribe documentos de texto OpenDocument (ODT) desde documentos de Word, PDF, OFD, HWP/HWPX, Markdown, HTML, hojas de cálculo, diapositivas y libros electrónicos.",
+  "engine.markup.name": "Markup languages (built-in)",
+  "engine.markup.description": "Cuadernos de Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org y DocBook sin Pandoc.\nDocumentos a estos formatos, y estos a Markdown, HTML, texto, DOCX, HWPX y PDF.",
   "engine.pptx-writer.name": "Generador PPTX (integrado)",
   "engine.pptx-writer.description": "Crea diapositivas de PowerPoint (PPTX) a partir de archivos Markdown y de marcado, documentos de Word, ODT, HWP/HWPX, HTML, hojas de cálculo y libros electrónicos: una diapositiva por encabezado, con listas, tablas, imágenes y código.",
   "engine.pdf-text.name": "PDF text (built-in)",

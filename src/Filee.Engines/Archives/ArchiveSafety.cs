@@ -1,5 +1,7 @@
 // Guards for unpacking archives from anywhere: entries that would land outside the target folder ("zip slip"),
-// symbolic links, encrypted content and archives that would not fit on the disk. Also the error messages for them.
+// symbolic links, encrypted content, archives that would not fit on the disk and decompression bombs. Every reader
+// (Filee's own, SharpCompress and the bundled 7-Zip) lists the archive first and goes through CheckListing; what is
+// written while unpacking is counted by UnpackBudget. Also the error messages for them.
 
 using System.Globalization;
 
@@ -13,6 +15,18 @@ internal static class ArchiveSafety
 
     /// <summary>Space that must stay free on the drive after unpacking.</summary>
     private const long Reserve = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// Archives that unpack to more than this and to more than <see cref="MaxRatio"/> times their own size are
+    /// refused as decompression bombs. Below it any ratio is fine (a gigabyte of zeros is no threat).
+    /// </summary>
+    public const long RatioFloor = 1L << 30;
+
+    /// <summary>
+    /// Deflate tops out near 1:1032 and LZMA / XZ of zeros near 1:7000; only overlapping-entry ZIP bombs and bzip2 of
+    /// long runs go beyond this.
+    /// </summary>
+    public const long MaxRatio = 10_000;
 
     private static readonly HashSet<char> InvalidNameChars =
         [.. Path.GetInvalidFileNameChars(), '<', '>', ':', '"', '/', '\\', '|', '?', '*'];
@@ -38,20 +52,50 @@ internal static class ArchiveSafety
 
     /// <summary>
     /// Refuses a 7-Zip listing with encrypted entries, entries or hard links pointing outside the target folder,
-    /// too many entries, or more data than the drive of <paramref name="targetDirectory"/> can hold.
+    /// too many entries, more data than the drive of <paramref name="targetDirectory"/> can hold, or a bomb.
     /// </summary>
-    public static void CheckListing(IReadOnlyList<SevenZipEntry> entries, string archiveName, string targetDirectory)
+    public static void CheckListing(IReadOnlyList<SevenZipEntry> entries, string archiveName, long archiveLength, string targetDirectory) =>
+        CheckListing([.. entries.Select(e => new ArchiveItem(e.Path, e.IsFolder, e.Size, e.IsEncrypted, e.IsSymbolicLink, e.HardLink))],
+            archiveName, archiveLength, targetDirectory);
+
+    /// <summary>
+    /// The same checks for a listing made in-process. Symbolic links pass: they are left out, never followed.
+    /// </summary>
+    public static void CheckListing(IReadOnlyList<ArchiveItem> items, string archiveName, long archiveLength, string targetDirectory)
     {
-        if (entries.Count > MaxEntries)
-            throw new InvalidDataException($"{archiveName} has more than {MaxEntries:N0} entries; Filee does not unpack it.");
-        foreach (var entry in entries)
+        if (items.Count > EntryLimit)
+            throw TooManyEntries(archiveName);
+        long total = 0;
+        foreach (var item in items)
         {
-            if (entry.IsEncrypted)
+            if (item.IsEncrypted)
                 throw Encrypted(archiveName);
-            if (IsUnsafePath(entry.Path) || entry.HardLink is { Length: > 0 } link && IsUnsafePath(link))
-                throw Unsafe(archiveName, entry.Path);
+            if (IsUnsafePath(item.Path) || item.HardLink is { Length: > 0 } link && IsUnsafePath(link))
+                throw Unsafe(archiveName, item.Path);
+            if (item.Size < 0)
+                throw Damaged(archiveName, "an entry has a negative size");
+            if (!item.IsFolder && !item.IsLink)
+                total = total > long.MaxValue - item.Size ? long.MaxValue : total + item.Size;
         }
-        EnsureRoom(entries.Where(e => !e.IsFolder).Sum(e => e.Size), targetDirectory, archiveName);
+        CheckRatio(total, archiveLength, archiveName);
+        EnsureRoom(total, targetDirectory, archiveName);
+    }
+
+    /// <summary>
+    /// Lower bomb limits for the code that runs from here on (this async flow only), so tests see them work without
+    /// writing gigabytes.
+    /// </summary>
+    internal static readonly AsyncLocal<(long Floor, long Ratio, int Entries)?> TestLimits = new();
+
+    /// <summary>The entry count beyond which archives are refused: <see cref="MaxEntries"/>, lower in tests.</summary>
+    public static int EntryLimit => TestLimits.Value?.Entries ?? MaxEntries;
+
+    /// <summary>Throws when <paramref name="unpacked"/> bytes out of <paramref name="packed"/> look like a bomb.</summary>
+    public static void CheckRatio(long unpacked, long packed, string archiveName)
+    {
+        var (floor, ratio, _) = TestLimits.Value ?? (RatioFloor, MaxRatio, MaxEntries);
+        if (unpacked > floor && unpacked / Math.Max(packed, 1) > ratio)
+            throw Bomb(archiveName, unpacked);
     }
 
     /// <summary>Throws when <paramref name="bytes"/> would not fit on the drive of <paramref name="directory"/>.</summary>
@@ -117,11 +161,37 @@ internal static class ArchiveSafety
         }
     }
 
+    /// <summary>
+    /// An archive Filee refuses on purpose (password, unsafe path, bomb, too many entries). Unlike damage or a
+    /// feature an in-process reader lacks, it is final: the bundled 7-Zip is not asked to try again.
+    /// </summary>
+    private static InvalidDataException Refusal(string message)
+    {
+        var exception = new InvalidDataException(message);
+        exception.Data[RefusalKey] = true;
+        return exception;
+    }
+
+    private const string RefusalKey = "Filee.ArchiveRefusal";
+
+    /// <summary>True for the exceptions of <see cref="Refusal"/>.</summary>
+    public static bool IsRefusal(Exception exception) => exception.Data.Contains(RefusalKey);
+
     public static Exception Encrypted(string archiveName) =>
-        new InvalidDataException($"{archiveName} is password-protected. Filee cannot unpack encrypted archives.");
+        Refusal($"{archiveName} is password-protected. Filee cannot unpack encrypted archives.");
 
     public static Exception Unsafe(string archiveName, string entry) =>
-        new InvalidDataException($"{archiveName} was not unpacked: the entry \"{entry}\" points outside the target folder.");
+        Refusal($"{archiveName} was not unpacked: the entry \"{entry}\" points outside the target folder.");
+
+    public static Exception TooManyEntries(string archiveName) =>
+        Refusal($"{archiveName} has more than {EntryLimit:N0} entries; Filee does not unpack it.");
+
+    public static Exception Bomb(string archiveName, long bytes) =>
+        Refusal($"{archiveName} was not unpacked: it grows to more than {FormatSize(bytes)}, over "
+                                    + $"{(TestLimits.Value?.Ratio ?? MaxRatio):N0} times its own size (a decompression bomb).");
+
+    public static Exception NotAnArchive(string archiveName) =>
+        new InvalidDataException($"{archiveName} is not a valid archive, or not the kind its extension says.");
 
     public static Exception Damaged(string archiveName, string detail) =>
         new InvalidDataException($"{archiveName} is damaged or incomplete ({detail}).");
@@ -151,5 +221,40 @@ internal static class ArchiveSafety
             return "_";
         var stem = name.Split('.')[0];
         return ReservedNames.Contains(stem) ? "_" + name : name;
+    }
+}
+
+/// <summary>One entry of an archive listing, whoever made it.</summary>
+/// <param name="Path">Path inside the archive.</param>
+/// <param name="IsLink">A symbolic link, device or other entry that is neither file nor folder: never unpacked.</param>
+/// <param name="HardLink">Target of a hard link entry, which becomes a copy of that earlier file.</param>
+internal sealed record ArchiveItem(string Path, bool IsFolder, long Size, bool IsEncrypted = false, bool IsLink = false, string? HardLink = null);
+
+/// <summary>
+/// Counts what one extraction writes: stops a decompression bomb whose sizes are not known up front (a .gz, .xz or
+/// .bz2 declares none it has to keep), and a drive that runs full meanwhile.
+/// </summary>
+internal sealed class UnpackBudget(string archiveName, long archiveLength, string targetDirectory)
+{
+    /// <summary>The free space is looked at again after every this many bytes.</summary>
+    private const long SpaceCheckInterval = 256L * 1024 * 1024;
+
+    private long _written;
+    private long _nextSpaceCheck = SpaceCheckInterval;
+
+    public string ArchiveName { get; } = archiveName;
+
+    /// <summary>Bytes written so far.</summary>
+    public long Written => _written;
+
+    public void Add(long bytes)
+    {
+        _written += bytes;
+        ArchiveSafety.CheckRatio(_written, archiveLength, ArchiveName);
+        if (_written >= _nextSpaceCheck)
+        {
+            _nextSpaceCheck = _written + SpaceCheckInterval;
+            ArchiveSafety.EnsureRoom(SpaceCheckInterval, targetDirectory, ArchiveName);
+        }
     }
 }
