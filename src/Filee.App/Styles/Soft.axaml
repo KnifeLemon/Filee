@@ -455,9 +455,11 @@
     <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
   </Style>
+  <!-- On + hover: the same accent as the Save button's hover (the accent, a little darker), not AccentStrong, which is
+       the dark navy / pale lavender "on container" colour of the palette. -->
   <Style Selector="Window.material-you ToggleSwitch:checked:pointerover /template/ Border#SwitchKnobBounds">
-    <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}" />
-    <Setter Property="BorderBrush" Value="{DynamicResource AccentStrongBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
   </Style>
   <Style Selector="Window.material-you ToggleSwitch:checked /template/ Ellipse#SwitchKnob">
     <Setter Property="Fill" Value="{DynamicResource OnAccentBrush}" />
