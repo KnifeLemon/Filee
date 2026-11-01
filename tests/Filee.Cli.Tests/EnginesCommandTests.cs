@@ -113,6 +113,17 @@ public sealed class EnginesCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task The_list_columns_fit_a_long_version()
+    {
+        _components["pandoc"] = _components["pandoc"] with { Version = "5.4.0.20240606" };
+        var lines = (await Run("engines")).Output.Split('\n');
+        var size = lines[0].IndexOf("SIZE", StringComparison.Ordinal);
+        var pandoc = lines.Single(l => l.StartsWith("pandoc ", StringComparison.Ordinal));
+        Assert.Contains("5.4.0.20240606 ", pandoc[..size]);
+        Assert.Matches(@"^\d+ MB download", pandoc[size..]);
+    }
+
+    [Fact]
     public async Task Install_downloads_once_reports_progress_and_skips_what_is_installed()
     {
         var (code, output, errors) = await Run("engines", "install", "pandoc", "--json");
@@ -271,7 +282,7 @@ public sealed class EnginesCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task Engines_go_to_the_apps_engines_folder_which_follows_FILEE_DATA_DIR()
+    public async Task Engines_go_to_the_apps_engines_folder()
     {
         await using var host = CliHost.Create(_settings);
         Assert.Equal(EngineEnvironment.DownloadRoot, host.Engines.Root);

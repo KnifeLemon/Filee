@@ -55,9 +55,7 @@ internal static class EnginesCommand
                 json.WriteEndObject();
             });
         }
-        if (options.Json)
-            return;
-        if (failed)
+        else if (failed)
             errors.WriteLine($"filee: {result.Message}");
         else if (!options.Quiet)
             output.WriteLine(result.Message);
@@ -83,7 +81,7 @@ internal static class EnginesCommand
             return Cli.Success;
         }
 
-        output.WriteLine($"{"ID",-12} {"STATUS",-16} {"VERSION",-8} SIZE");
+        var lines = new List<(string Id, string Status, string Version, string Size)> { ("ID", "STATUS", "VERSION", "SIZE") };
         foreach (var (package, copy) in rows)
         {
             var downloadable = CanDownload(engines, package);
@@ -102,14 +100,21 @@ internal static class EnginesCommand
             };
             // The version Filee downloads; next to a copy Filee didn't download it would read as that copy's version.
             var version = downloadable && copy.Status != EngineCopyStatus.OwnCopy ? Version(engines, package) : "";
-            output.WriteLine($"{package.Id,-12} {status,-16} {version,-8} {size}");
+            lines.Add((package.Id, status, version, size));
         }
+        // Columns as wide as their longest value: a version such as Tesseract's 5.4.0.20240606 on Windows fits.
+        var (idWidth, statusWidth, versionWidth) = (lines.Max(l => l.Id.Length), lines.Max(l => l.Status.Length), lines.Max(l => l.Version.Length));
+        foreach (var line in lines)
+            output.WriteLine($"{line.Id.PadRight(idWidth)}  {line.Status.PadRight(statusWidth)}  {line.Version.PadRight(versionWidth)}  {line.Size}");
         output.WriteLine();
         output.WriteLine("Install one with: filee engines install <id>");
         return Cli.Success;
     }
 
-    /// <summary>One package in the JSON of 'engines'; fields that don't apply are left out, as in 'convert --json'.</summary>
+    /// <summary>
+    /// One package in the JSON of 'engines'; fields that don't apply are left out, as in 'convert --json'. "version" is
+    /// the version Filee downloads, also next to "owncopy" (what 'install' would put in place of a copy on the PC).
+    /// </summary>
     private static void WriteEngine(Utf8JsonWriter json, EngineInstaller engines, EnginePackage package, EngineCopy copy)
     {
         var downloadable = CanDownload(engines, package);
