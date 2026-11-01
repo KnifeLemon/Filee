@@ -20,7 +20,8 @@ internal static partial class MobiReader
     /// <summary>Reads a Kindle book's content (for the reader registry of the HWPX writer).</summary>
     public static HDocument Read(string path, string workFolder) => ReadBook(path, workFolder).Document;
 
-    public static Book ReadBook(string path, string workFolder, CancellationToken cancellationToken = default)
+    /// <param name="kf8">Read the KF8 part of a joint MOBI 6 + KF8 file (false reads its MOBI 6 part).</param>
+    public static Book ReadBook(string path, string workFolder, CancellationToken cancellationToken = default, bool kf8 = true)
     {
         var database = Open(path);
         var folder = EbookFiles.NewFolder(workFolder, "mobi");
@@ -34,15 +35,15 @@ internal static partial class MobiReader
 
         HDocument document;
         Resources resources;
-        var kf8Start = header.Version >= 8 ? 0 : header.Kf8Boundary;
+        var kf8Start = header.Version >= 8 ? 0 : kf8 ? header.Kf8Boundary : null;
         if (kf8Start is { } start && start >= 0 && start < database.Count)
         {
-            var kf8 = start == 0 ? header : MobiHeader.Parse(database, start);
-            if (kf8.Encryption != 0)
+            var kf8Header = start == 0 ? header : MobiHeader.Parse(database, start);
+            if (kf8Header.Encryption != 0)
                 throw new InvalidOperationException(EbookFiles.DrmMessage);
             // Joint files keep the pictures once, before the KF8 half, numbered from the MOBI 6 header.
-            resources = new Resources(database, start == 0 ? kf8.FirstImage : header.FirstImage, folder);
-            document = Kf8(database, kf8, start, resources, folder, cancellationToken);
+            resources = new Resources(database, start == 0 ? kf8Header.FirstImage : header.FirstImage, folder);
+            document = Kf8(database, kf8Header, start, resources, folder, cancellationToken);
         }
         else
         {
