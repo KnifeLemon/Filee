@@ -1,10 +1,11 @@
 // Arabic in spreadsheets → PDF (issue #345). rhwp draws text one letter after the other, left to right, so a sheet
-// with Arabic must go to LibreOffice for PDF, or be refused with that reason when LibreOffice isn't installed, for
-// .xlsx and the older binary .xls alike.
+// with Arabic must never go through it. Spreadsheets are printed by Filee's own print engine, which shapes text with
+// HarfBuzz, so .xlsx and the older binary .xls convert without LibreOffice.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Tests.RenderQuality;
 
 namespace Filee.Engines.Tests;
 
@@ -41,22 +42,15 @@ public class ArabicSheetTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("xls")]
     public async Task An_arabic_sheet_is_never_drawn_unshaped(string format)
     {
-        var available = fx.Converters.Where(c => fx.Catalog.StatusOf(c).IsAvailable).Select(c => c.Id).ToHashSet();
-        Assert.SkipUnless(available.Contains("rhwp") || available.Contains("libreoffice"), "neither rhwp nor LibreOffice is available");
         var path = format == "xlsx" ? Xlsx("statement.xlsx", Statement) : Xls("statement.xls", Statement);
+        var planned = fx.Catalog.CreatePlanner(["rhwp"]).Plan(format, "pdf", shaping: true)!;
+        Assert.Equal("sheet-print", Assert.Single(planned.Steps).Converter.Id);
 
         var job = await fx.ConvertAsync([path], new Preset { TargetFormat = "pdf" });
 
         var file = Assert.Single(job.Files);
-        if (!available.Contains("libreoffice"))
-        {
-            Assert.Equal(FileState.Failed, file.State);
-            Assert.Equal("error.needs_shaping", file.ErrorKey);
-            Assert.Equal("Arabic", file.ErrorDetail);
-        }
-        else
-        {
-            Assert.Equal(FileState.Done, file.State); // through LibreOffice, which shapes it
-        }
+        Assert.Equal(FileState.Done, file.State);
+        // Shaped (joined letters carry their text as ActualText) and in logical order: it reads back as written.
+        Assert.Contains(Statement, PdfLines.Text(File.ReadAllBytes(job.Outputs.Single())));
     }
 }

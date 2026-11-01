@@ -223,6 +223,32 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Hangul_page_numbers_go_to_the_foot_of_the_footer_area_in_their_format()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"));
+        foreach (var paragraph in section.Blocks.OfType<HParagraph>().Skip(1))
+            paragraph.PageBreakBefore = true;
+        ((HParagraph)section.Blocks[0]).PageHiding = new HPageHiding(false, false, PageNumber: true);
+        ((HParagraph)section.Blocks[1]).NewPageNumber = 33;
+        section.Footers.Add(HeaderFooter(HPageType.Both, "foot"));
+        section.PageNumber = new HPageNumber("BOTTOM_RIGHT", "LATIN_CAPITAL", "-", Format());
+
+        var pages = Compose(section).Pages;
+
+        // None on the page that hides it; then 33 and 34 as letters counted round (G, H), under the text and apart from
+        // the footer, right-aligned at the text's right edge (90 pt), its baseline 3 pt (0.3 of 10 pt) above the
+        // footer area's bottom (190 pt).
+        Assert.Equal(["one", "foot"], Texts(pages[0]));
+        Assert.Equal(["-G-", "two", "foot"], Texts(pages[1]));
+        Assert.Equal(["-H-", "three", "foot"], Texts(pages[2]));
+        var number = Runs(pages[1]).Where(r => Math.Abs(r.Positions[0].Y - 187f) < 0.01f).ToList();
+        Assert.NotEmpty(number);
+        Assert.InRange(number.Max(r => r.Positions[^1].X), 80f, 90f);
+        Assert.Equal("가", PageComposer.PageNumberText(15, "HANGUL_SYLLABLE"));
+        Assert.Equal("iv", PageComposer.PageNumberText(4, "ROMAN_SMALL"));
+    }
+
+    [Fact]
     public void Page_numbers_count_on_across_sections_unless_one_restarts_them()
     {
         var first = Section(Small, Paragraph("a"), Paragraph("b"));
@@ -743,6 +769,19 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         var second = Runs(page).Single(r => r.Text == "Right").Positions[0];
         Assert.Equal(55f, second.X, 0.5f);
         Assert.Equal(138.5f, second.Y, 0.01f);
+    }
+
+    [Fact]
+    public void A_text_box_laid_out_like_a_character_shows_its_text_in_a_document_without_tables()
+    {
+        var box = new HTextBox { Width = 4000, Height = 2000, BaseLine = 85, Line = HBorder.None };
+        box.Blocks.Add(Paragraph("inside"));
+        var paragraph = Paragraph("before ");
+        paragraph.Inlines.Add(box);
+
+        var page = Assert.Single(Compose(Section(Small, paragraph)).Pages);
+
+        Assert.Contains(Runs(page), r => r.Text.Trim() == "inside");
     }
 
     [Fact]

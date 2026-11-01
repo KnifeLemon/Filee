@@ -6,7 +6,8 @@
 //
 // FindInFile scans a document's text cheaply, without reading it into the document model: the content parts of an
 // Office Open XML / OWPML / OpenDocument / EPUB package as they are (markup is ASCII, so any match is text), a text
-// file decoded like the plain text reader does (character references of HTML and RTF included).
+// file decoded like the plain text reader does (character references of HTML and RTF included), and a binary HWP
+// through the HWPX package its records make (HwpReader.ToHwpx, without reading the document model).
 //
 // The same scan also finds text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general
 // punctuation, math, the CJK forms and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish,
@@ -19,6 +20,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Core.Conversion;
 using Filee.Engines.Documents;
+using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Doc;
 using Filee.Engines.Office.Sheets;
@@ -340,7 +342,10 @@ internal static partial class ComplexScripts
         try
         {
             if (IsZip(path))
-                return FindInPackage(path, format, classifier, skipBelow);
+                return FindInPackage(path, format == "hwp" ? "hwpx" : format, classifier, skipBelow); // an .hwp that is HWPX
+            // HWP 5.0 is binary: its records written out as the HWPX package 한글 saves, whose sections are scanned.
+            if (format == "hwp")
+                return FindInHwp(path, classifier, skipBelow);
             // Excel 97–2003 is binary: its cells, as the built-in reader reads them (issue #345).
             if (format is "xls" or "xlt")
                 return XlsReader.Read(path).Sheets.SelectMany(sheet => sheet.Rows.Values).SelectMany(cells => cells.Values)
@@ -362,11 +367,34 @@ internal static partial class ComplexScripts
             return format is "txt" or "md" or "html" or "csv" or "tsv" or "fb2" or "rtf" or "rst" or "tex" or "org" or "adoc"
                 or "typ" or "mediawiki" or "dbk" or "textile" or "man" or "opml"
                 ? FindInText(path, classifier, skipBelow)
-                : null; // other binary formats (HWP, MOBI, ...): left to the engines
+                : null; // other binary formats (MOBI, ...): left to the engines
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException or ConversionRefusedException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException
+                                       or ConversionRefusedException)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// The sections of an HWP 5.0 file, through the package <see cref="HwpReader.ToHwpx"/> writes from its records (with
+    /// the reader's limits; a protected or damaged file is left to the conversion, which says what is wrong with it).
+    /// </summary>
+    private static string? FindInHwp(string path, Classifier classifier, int skipBelow)
+    {
+        var package = Path.Combine(Path.GetTempPath(), $"filee-scan-{Guid.NewGuid():N}.hwpx");
+        try
+        {
+            HwpReader.ToHwpx(path, package);
+            return FindInPackage(package, "hwpx", classifier, skipBelow);
+        }
+        finally
+        {
+            try
+            {
+                File.Delete(package);
+            }
+            catch (IOException) { }
         }
     }
 

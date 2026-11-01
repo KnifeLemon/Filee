@@ -68,13 +68,13 @@ public sealed class RhwpConverter : IConverter, ITextShapingCheck
     /// The scripts in the source's text that rhwp can't draw: one that needs shaping, and one it draws but has no
     /// widths for — letters outside ASCII and Latin-1 other than the full-width CJK it estimates at an em
     /// (rhwp#8143). Both answers come from one pass. Every format that reaches rhwp through the HWPX writer is
-    /// scanned (DOCX, TXT, Markdown, HTML, PPTX, XLSX, EPUB, HWPX, ...); a binary HWP is not.
+    /// scanned (DOCX, TXT, Markdown, HTML, PPTX, XLSX, EPUB, HWPX, ...), and HWP through the package its records make.
     /// </summary>
     public TextScripts ScanScripts(string sourcePath, string sourceFormat)
     {
         var (shaping, unmeasured) = ComplexScripts.FindBothInFile(sourcePath, sourceFormat);
-        // An HWPX stays with rhwp, the most faithful renderer for it; only shaping sends it elsewhere.
-        return new TextScripts(shaping, sourceFormat == "hwpx" ? null : unmeasured);
+        // HWP and HWPX stay with rhwp, the most faithful renderer for them; only shaping sends them elsewhere.
+        return new TextScripts(shaping, sourceFormat is "hwpx" or "hwp" ? null : unmeasured);
     }
 
     public EngineStatus GetStatus()

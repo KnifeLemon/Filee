@@ -55,6 +55,9 @@ internal sealed class HSection
     /// <summary>No master page on the section's first page (한글 hideFirstMasterPage).</summary>
     public bool HideFirstMasterPage { get; set; }
 
+    /// <summary>The section's automatic page number (read for layout); null for none.</summary>
+    public HPageNumber? PageNumber { get; set; }
+
     /// <summary>Page borders and backgrounds (한글 쪽 테두리/배경) for both, odd or even pages.</summary>
     public List<HPageBorder> PageBorders { get; } = [];
 
@@ -84,7 +87,7 @@ internal sealed record HPage(int Width, int Height, int Left, int Right, int Top
 
 /// <summary>Newspaper-style columns.</summary>
 /// <summary>What a page hides (한글 hp:pageHiding).</summary>
-internal sealed record HPageHiding(bool Header, bool Footer, bool MasterPage = false, bool Border = false, bool Fill = false);
+internal sealed record HPageHiding(bool Header, bool Footer, bool MasterPage = false, bool Border = false, bool Fill = false, bool PageNumber = false);
 
 /// <summary>Pages of a section something shows on: all, all but the first, or only the first.</summary>
 internal enum HFirstPageRule
@@ -191,6 +194,12 @@ internal abstract class HBlock
     /// for code.
     /// </summary>
     public HBlockRole Role { get; set; }
+
+    /// <summary>
+    /// The page this block is on is numbered so, and the pages after it on from there (한글 새 번호로 시작 in the middle
+    /// of a section); null = none. Read for layout only.
+    /// </summary>
+    public int? NewPageNumber { get; set; }
 }
 
 /// <summary>
@@ -496,7 +505,20 @@ internal sealed class HField(HFieldKind kind, HCharFormat format) : HInline
 {
     public HFieldKind Kind { get; } = kind;
     public HCharFormat Format { get; } = format;
+
+    /// <summary>The number's OWPML format (DIGIT, LATIN_CAPITAL, ROMAN_SMALL, ...); null for digits. Read for layout only.</summary>
+    public string? NumberFormat { get; init; }
 }
+
+/// <summary>
+/// 한글's automatic page number (쪽 번호 매기기, hp:pageNum), drawn on every page of its section apart from the
+/// header and footer; read for layout only (the converters get it as a header or footer paragraph).
+/// </summary>
+/// <param name="Position">BOTTOM_CENTER, TOP_LEFT, INSIDE_BOTTOM, ... (OWPML).</param>
+/// <param name="NumberFormat">OWPML number format.</param>
+/// <param name="Side">The character on either side of the number ("-" for "- 1 -"), or null.</param>
+/// <param name="Format">The character format of 한글's "쪽 번호" style.</param>
+internal sealed record HPageNumber(string Position, string? NumberFormat, string? Side, HCharFormat Format);
 
 /// <summary>Picture from a local file.</summary>
 internal sealed class HImage(string path) : HObject

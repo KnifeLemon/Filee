@@ -15,6 +15,41 @@ namespace Filee.Engines.Tests;
 
 public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
+    [Theory]
+    [InlineData("emf")]
+    [InlineData("wmf")]
+    public void Metafile_pictures_become_png_drawn_by_filee_at_their_own_size(string format)
+    {
+        // 192 × 96 px at 96 dpi: 2 × 1 inches, 14400 × 7200 HWPUNIT. A red square on the left half.
+        var dir = fx.NewFolder();
+        var picture = Path.Combine(dir, "chart." + format);
+        File.WriteAllBytes(picture, format == "emf"
+            ? new EmfBuilder(192, 96).Select(EmfBuilder.NullPen).Brush(1, 0x0000FF).Select(1).Rectangle(8, 8, 88, 88).ToArray()
+            : new WmfBuilder(192, 96).Brush(0x0000FF).Select(0).Rectangle(8, 8, 88, 88).ToArray());
+        var paragraph = new HParagraph();
+        paragraph.Inlines.Add(new HImage(picture));
+        var document = new HDocument();
+        document.Sections.Add(new HSection { Blocks = { paragraph } });
+        var hwpx = Path.Combine(dir, "doc.hwpx");
+
+        HwpxWriter.Write(document, hwpx);
+
+        ValidPackage(hwpx, expectImages: 1);
+        using var zip = ZipFile.OpenRead(hwpx);
+        var entry = Assert.Single(zip.Entries, e => e.FullName.StartsWith("BinData/", StringComparison.Ordinal));
+        Assert.EndsWith(".png", entry.FullName, StringComparison.Ordinal);
+        using var stream = new MemoryStream();
+        using (var source = entry.Open())
+            source.CopyTo(stream);
+        using var png = new MagickImage(stream.ToArray());
+        Assert.Equal(2.0, (double)png.Width / png.Height, 2);
+        var red = png.GetPixels().GetPixel((int)(png.Width * 0.25), (int)(png.Height * 0.5)).ToColor()!;
+        Assert.True(red.R > 200 && red.G < 60 && red.B < 60, $"expected red, got {red}");
+
+        var size = Xml(hwpx).Descendants(Hp + "pic").Single().Element(Hp + "sz")!;
+        Assert.Equal(("14400", "7200"), ((string)size.Attribute("width")!, (string)size.Attribute("height")!));
+    }
+
     private const string Markdown = """
         ---
         title: Filee 변환 테스트

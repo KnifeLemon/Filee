@@ -1,7 +1,7 @@
 // Spreadsheets between XLSX, XLS, ODS, CSV and TSV without Excel or LibreOffice (XLS / XLT and the XLSM / XLTX
 // variants are read, not written).
-// XLSX / XLS / ODS / CSV / TSV → PDF, HWPX and HTML go through the HWPX writer (sheets become 한글 tables), see
-// HwpxConverter and SheetDocument.
+// XLSX / XLS / ODS → PDF are printed by SheetPrintConverter; CSV / TSV → PDF and every sheet → HWPX and HTML go
+// through the HWPX writer (sheets become 한글 tables), see HwpxConverter and SheetDocument.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;

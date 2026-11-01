@@ -106,6 +106,18 @@ internal sealed class XlsxBuilder
     /// <summary>A <c>definedNames</c> element for the workbook (print titles, print areas), or empty.</summary>
     public string DefinedNames { get; set; } = "";
 
+    /// <summary>The children of styleSheet instead of the fixed style sheet, or null.</summary>
+    public string? Styles { get; set; }
+
+    /// <summary>More parts (drawings, VML), by zip path.</summary>
+    public Dictionary<string, string> Parts { get; } = [];
+
+    /// <summary>Binary parts (pictures), by zip path.</summary>
+    public Dictionary<string, byte[]> Media { get; } = [];
+
+    /// <summary>Relationships of a sheet's part (1-based sheet number → id, type, target relative to xl/worksheets).</summary>
+    public Dictionary<int, List<(string Id, string Type, string Target)>> SheetRelationships { get; } = [];
+
     public string Save(string path)
     {
         var parts = new Dictionary<string, string>
@@ -120,16 +132,21 @@ internal sealed class XlsxBuilder
                     .Append(("rIdT", "styles", "styles.xml"))),
             ["xl/sharedStrings.xml"] = $"<sst {Namespaces} count=\"{_strings.Count}\" uniqueCount=\"{_strings.Count}\">" +
                                        string.Concat(_strings.Select(s => $"<si><t xml:space=\"preserve\">{OpcWriter.Escape(s)}</t></si>")) + "</sst>",
-            ["xl/styles.xml"] = $"<styleSheet {Namespaces}>{StyleSheet}</styleSheet>",
+            ["xl/styles.xml"] = $"<styleSheet {Namespaces}>{Styles ?? StyleSheet}</styleSheet>",
         };
         for (var i = 0; i < _sheets.Count; i++)
             parts[$"xl/worksheets/sheet{i + 1}.xml"] = _sheets[i].Xml;
+        foreach (var (sheet, relationships) in SheetRelationships)
+            parts[$"xl/worksheets/_rels/sheet{sheet}.xml.rels"] = OpcWriter.Relationships(relationships);
+        foreach (var (name, xml) in Parts)
+            parts[name] = xml;
         parts["[Content_Types].xml"] = OpcWriter.ContentTypes(
             _sheets.Select((_, i) => ($"xl/worksheets/sheet{i + 1}.xml", "spreadsheetml.worksheet"))
                 .Append(("xl/workbook.xml", "spreadsheetml.sheet.main"))
                 .Append(("xl/sharedStrings.xml", "spreadsheetml.sharedStrings"))
-                .Append(("xl/styles.xml", "spreadsheetml.styles")));
-        OpcWriter.Save(path, parts, new Dictionary<string, byte[]>());
+                .Append(("xl/styles.xml", "spreadsheetml.styles"))
+                .Concat(Parts.Keys.Where(p => p.StartsWith("xl/drawings/drawing", StringComparison.Ordinal)).Select(p => (p, "drawing"))));
+        OpcWriter.Save(path, parts, Media);
         return path;
     }
 }

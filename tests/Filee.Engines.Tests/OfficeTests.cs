@@ -372,7 +372,7 @@ public class OfficeTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("xlsx", "hwpx", "hwpx-writer")]
     [InlineData("csv", "hwpx", "hwpx-writer")]
     [InlineData("pptx", "hwpx", "hwpx-writer")]
-    [InlineData("xlsx", "pdf", "hwpx-writer,rhwp")]
+    [InlineData("xlsx", "pdf", "sheet-print")]
     [InlineData("csv", "pdf", "hwpx-writer,rhwp")]
     [InlineData("pptx", "pdf", "hwpx-writer,rhwp")]
     [InlineData("docx", "pdf", "hwpx-writer,rhwp")]

@@ -7,6 +7,12 @@ namespace Filee.Engines.Office.Sheets;
 internal sealed class Workbook
 {
     public List<Worksheet> Sheets { get; } = [];
+
+    /// <summary>The font of the Normal style: Excel measures column widths in its digits.</summary>
+    public string DefaultFontName { get; set; } = "Calibri";
+
+    /// <summary>Size of the Normal style's font in points.</summary>
+    public double DefaultFontSize { get; set; } = 11;
 }
 
 internal sealed class Worksheet(string name)
@@ -42,6 +48,50 @@ internal sealed class Worksheet(string name)
 
     /// <summary>0-based rows that start a new printed page (page breaks set in Excel: Page Layout → Breaks).</summary>
     public SortedSet<int> RowBreaks { get; } = [];
+
+    // ───────────── Printing (SheetPrinter); the writers to other spreadsheet formats leave these out ─────────────
+
+    /// <summary>Paper, margins, scaling, print options, headers and footers (Page Layout → Page Setup).</summary>
+    public SheetPageSetup PageSetup { get; set; } = new();
+
+    /// <summary>The print area (Page Layout → Print Area), one or more ranges printed one after the other; empty = the used range.</summary>
+    public List<CellRange> PrintArea { get; } = [];
+
+    /// <summary>0-based columns to repeat at the left of every printed page (Print Titles), or null.</summary>
+    public (int First, int Last)? TitleColumns { get; set; }
+
+    /// <summary>0-based columns that start a new printed page.</summary>
+    public SortedSet<int> ColumnBreaks { get; } = [];
+
+    /// <summary>
+    /// Heights in points the file stores for rows sized to their content (Excel's and Calc's autofit), which
+    /// <see cref="RowHeights"/> leaves out; rows in neither are measured.
+    /// </summary>
+    public Dictionary<int, double> AutoRowHeights { get; } = [];
+
+    /// <summary>Height of rows the file says nothing about, in points; null = from the default font.</summary>
+    public double? DefaultRowHeight { get; set; }
+
+    /// <summary>True when <see cref="DefaultColumnWidth"/> came from the file (XLSX defaultColWidth, XLS STANDARDWIDTH).</summary>
+    public bool HasDefaultColumnWidth { get; set; }
+
+    /// <summary>Excel's base column width in digits (sheetFormatPr baseColWidth, XLS DEFCOLWIDTH); null = 8.</summary>
+    public int? BaseColumnWidth { get; set; }
+
+    /// <summary>
+    /// Column widths are points / <see cref="OdsReader.PointsPerCharacter"/> (OpenDocument) rather than Excel's
+    /// characters of the default font with padding.
+    /// </summary>
+    public bool WidthsInPoints { get; set; }
+
+    /// <summary>Columns run from right to left (Arabic and Hebrew sheets: Page Layout → Sheet Right-to-Left).</summary>
+    public bool RightToLeft { get; set; }
+
+    /// <summary>Conditional formats that change how cells look (fills, font colours, borders), in priority order.</summary>
+    public List<ConditionalFormat> ConditionalFormats { get; } = [];
+
+    /// <summary>Pictures placed on the sheet.</summary>
+    public List<SheetPicture> Pictures { get; } = [];
 
     public void Set(int row, int column, SheetCell cell)
     {
@@ -160,12 +210,89 @@ internal sealed record CellStyle
     public CellAlign Align { get; init; }
     public CellVerticalAlign VerticalAlign { get; init; }
     public bool Wrap { get; init; }
+
+    /// <summary>Font family; null = the workbook default.</summary>
+    public string? FontName { get; init; }
+
+    /// <summary>Superscript (1) or subscript (-1).</summary>
+    public int Script { get; init; }
+
+    /// <summary>Double underline (Excel's "double" and "doubleAccounting").</summary>
+    public bool DoubleUnderline { get; init; }
+
+    /// <summary>
+    /// Horizontal alignments beyond <see cref="Align"/> (which holds the nearest of left, centre and right, for the
+    /// writers): repeated, justified, distributed, centred across the empty cells to the right.
+    /// </summary>
+    public CellSpecialAlign SpecialAlign { get; init; }
+
+    /// <summary>Vertical justify / distributed (spread the lines over the cell); <see cref="VerticalAlign"/> is Top.</summary>
+    public bool VerticalJustify { get; init; }
+
+    /// <summary>Degrees counter-clockwise, -90 to 90; <see cref="Stacked"/> for letters one under another.</summary>
+    public int Rotation { get; init; }
+
+    /// <summary>Excel's textRotation 255: the letters stacked one under another.</summary>
+    public const int Stacked = 255;
+
+    /// <summary>Indent level (each about three spaces of the default font).</summary>
+    public int Indent { get; init; }
+
+    /// <summary>Shrink to fit: the font is made smaller until the text fits the cell's width.</summary>
+    public bool Shrink { get; init; }
+
+    /// <summary>Fill pattern other than solid ("darkGray", "lightHorizontal", ...), drawn over <see cref="PatternBackground"/>.</summary>
+    public string? FillPattern { get; init; }
+
+    /// <summary>The background colour of a pattern fill (the pattern itself is <see cref="Fill"/>).</summary>
+    public string? PatternBackground { get; init; }
+
+    /// <summary>A linear gradient fill (angle in degrees, colour stops from 0 to 1); <see cref="Fill"/> holds its first colour.</summary>
+    public CellGradient? Gradient { get; init; }
+
+    public CellBorder DiagonalUp { get; init; } = CellBorder.None;
+    public CellBorder DiagonalDown { get; init; } = CellBorder.None;
     public CellBorder Left { get; init; } = CellBorder.None;
     public CellBorder Right { get; init; } = CellBorder.None;
     public CellBorder Top { get; init; } = CellBorder.None;
     public CellBorder Bottom { get; init; } = CellBorder.None;
 
-    public bool HasBorders => Left.IsVisible || Right.IsVisible || Top.IsVisible || Bottom.IsVisible;
+    public bool HasBorders => Left.IsVisible || Right.IsVisible || Top.IsVisible || Bottom.IsVisible || DiagonalUp.IsVisible || DiagonalDown.IsVisible;
+}
+
+internal enum CellSpecialAlign
+{
+    None,
+    Fill,
+    Justify,
+    Distributed,
+    CenterAcross,
+}
+
+/// <summary>A linear gradient: the angle in degrees (0 = left to right) and colour stops by position from 0 to 1.</summary>
+internal sealed record CellGradient(double Degree, IReadOnlyList<(double Position, string Color)> Stops);
+
+/// <summary>A piece of a rich-text cell in its own font (null members: the cell's).</summary>
+internal sealed record CellRun(string Text)
+{
+    public bool? Bold { get; init; }
+    public bool? Italic { get; init; }
+    public bool? Underline { get; init; }
+    public bool? Strike { get; init; }
+    public double? FontSize { get; init; }
+    public string? Color { get; init; }
+    public string? FontName { get; init; }
+
+    /// <summary>Superscript (1), subscript (-1) or as the cell (null).</summary>
+    public int? Script { get; init; }
+}
+
+/// <summary>A picture on a sheet, from its anchor: top-left cell and offset in points, and its size in points.</summary>
+/// <param name="Data">The picture file (PNG, JPEG, GIF, BMP).</param>
+internal sealed record SheetPicture(byte[] Data, int Row, int Column, double OffsetX, double OffsetY, double Width, double Height)
+{
+    /// <summary>The bottom-right cell and offset of a picture that moves and sizes with its cells (instead of the size).</summary>
+    public (int Row, int Column, double OffsetX, double OffsetY)? To { get; init; }
 }
 
 /// <summary>A cell as displayed: formatted text plus style.</summary>
@@ -185,5 +312,14 @@ internal sealed record SheetCell(string Text, CellStyle Style, bool IsNumber = f
     /// <summary>A TRUE / FALSE cell (<see cref="Value"/> is 1 or 0).</summary>
     public bool IsBoolean { get; init; }
 
-    public bool HasContent => Text.Length > 0 || Style.Fill is not null || Style.HasBorders;
+    /// <summary>An error value (#N/A, #DIV/0!, ...).</summary>
+    public bool IsError { get; init; }
+
+    /// <summary>Rich text: the pieces of <see cref="Text"/> in their own fonts, or null.</summary>
+    public IReadOnlyList<CellRun>? Runs { get; init; }
+
+    /// <summary>
+    /// Text, a fill or borders; or an empty cell centred across with the cell before it (it belongs to that text).
+    /// </summary>
+    public bool HasContent => Text.Length > 0 || Style.Fill is not null || Style.HasBorders || Style.SpecialAlign == CellSpecialAlign.CenterAcross;
 }

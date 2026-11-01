@@ -30,6 +30,15 @@ internal sealed record GlyphRun(PageFont Font, float Size, ushort[] Glyphs, SKPo
     /// <summary>The skew of synthetic italic, as Skia and browsers slant (about 12°).</summary>
     public const float SyntheticSlant = -0.2f;
 
+    /// <summary>
+    /// Maps the run's positions onto the page (rotated or mirrored text: a slide's turned shape, vertical text); null =
+    /// the positions are page coordinates.
+    /// </summary>
+    public SKMatrix? Transform { get; init; }
+
+    /// <summary>Only what lies inside this rectangle of the page (before <see cref="Transform"/>) is drawn; null = all.</summary>
+    public SKRect? Clip { get; init; }
+
     /// <summary>Throws when the arrays don't describe the same glyphs or a cluster points outside the text.</summary>
     public void Validate()
     {
@@ -52,7 +61,7 @@ internal sealed class PageContent(float width, float height)
 {
     private readonly List<PageItem> _items = [];
 
-    /// <summary>How many items lie under everything else (<see cref="Add"/> with under).</summary>
+    /// <summary>How many items lie under everything else (<see cref="Add(PageContent, bool)"/> with under).</summary>
     private int _under;
 
     /// <summary>Page width in points.</summary>
@@ -86,6 +95,35 @@ internal sealed class PageContent(float width, float height)
         }
         _items.InsertRange(_under, layer._items);
         _under += layer._items.Count;
+    }
+
+    /// <summary>
+    /// Adds what <paramref name="layer"/> holds over everything so far, drawn through <paramref name="transform"/>
+    /// (a turned or mirrored shape and its text). Link areas take the bounds of their mapped rectangle.
+    /// </summary>
+    public void Add(PageContent layer, SKMatrix transform)
+    {
+        if (transform.IsIdentity)
+        {
+            _items.AddRange(layer._items);
+            return;
+        }
+        foreach (var item in layer._items)
+        {
+            _items.Add(item switch
+            {
+                GlyphItem glyphs => new GlyphItem(glyphs.Run with { Transform = glyphs.Run.Transform is { } inner ? transform.PreConcat(inner) : transform }),
+                DrawingItem drawing => new DrawingItem(canvas =>
+                {
+                    canvas.Concat(in transform);
+                    drawing.Drawing(canvas);
+                }),
+                UrlLinkItem link => new UrlLinkItem(transform.MapRect(link.Area), link.Url),
+                DestinationLinkItem link => new DestinationLinkItem(transform.MapRect(link.Area), link.Name),
+                DestinationItem destination => new DestinationItem(transform.MapPoint(destination.Point), destination.Name),
+                _ => item,
+            });
+        }
     }
 
     /// <summary>Makes <paramref name="area"/> a link to <paramref name="url"/>.</summary>
@@ -176,7 +214,18 @@ internal sealed class PageContent(float width, float height)
         if (blob is null)
             return;
         using var paint = new SKPaint { Color = run.Color, IsAntialias = true };
+        if (run.Transform is null && run.Clip is null)
+        {
+            canvas.DrawText(blob, 0, 0, paint);
+            return;
+        }
+        canvas.Save();
+        if (run.Clip is { } clip)
+            canvas.ClipRect(clip);
+        if (run.Transform is { } transform)
+            canvas.Concat(in transform);
         canvas.DrawText(blob, 0, 0, paint);
+        canvas.Restore();
     }
 
     /// <summary>

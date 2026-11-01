@@ -15,6 +15,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | **Markup languages** | built in | **Jupyter notebooks (IPYNB), OPML, Textile, MediaWiki, reStructuredText, Org, DocBook 5 → Markdown, HTML, TXT and each other**; every document the built-in readers read → each of them; each → DOCX, ODT, HWPX, PDF through the document writers (see [Lightweight markup languages](#lightweight-markup-languages)) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
+| **Spreadsheet printing** | built in | **XLSX (+ XLSM/XLTX), XLS (+ XLT), ODS → PDF** printed the way Excel prints them: page setup, print areas and titles, scaling and fit to pages, page breaks, headers and footers (see [Spreadsheet printing](#spreadsheet-printing)) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
 | **HWPX writer** | built in | **HWP, DOCX (+ DOCM/DOTX/DOTM), DOC (+ DOT, WPS Office WPS), ODT, XLSX (+ XLSM/XLTX), XLS, ODS, CSV, TSV, PPTX (+ PPTM/POTX/POTM/PPSX), PDF, OFD, HTML, MHTML, EPUB, MOBI/AZW3, FB2, CHM, PDB, PML, TCR, RB, SNB, OEB, HWPX, TXT, Markdown, RTF → HWPX** (and with rhwp → PDF and images); reStructuredText, LaTeX → HWPX with Pandoc |
@@ -31,7 +32,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
-| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents (DOCX and DOC), TXT, Markdown, HTML, e-books, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
+| **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents (DOCX and DOC), TXT, Markdown, HTML, e-books, the markup languages Filee reads itself (and Pandoc's formats) → PDF** with Filee's own layout engine; **PPTX, PPTM, POTX, PPSX → PDF, PNG, JPG** with its slide renderer; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output) and [slides](#filee-renderer-slides)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
 | Archives | built in (SharpCompress, .NET and Filee's own readers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG; **7-Zip**: CAB, DMG, IMG, LHA, ARJ, UDF discs **→ folder, ZIP, TAR, TAR.GZ** (in-process), **7Z, TAR.BZ2/XZ** (7-Zip); "Compress into one archive" for any files |
 | LibreOffice | **optional download** (~370 MB, 1.1 GB on disk) | older and rare formats only: Word 6.0 / 95 and Works documents, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
@@ -43,9 +44,11 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer, see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 
-DOCX, DOC, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written
-as HWPX and rendered by rhwp. Anything the built-in readers understand (including PDF) is written as DOCX by the DOCX
-writer, as ODT by the ODT writer and as PPTX slides by the PPTX writer (PDF keeps its picture slides).
+DOCX, DOC, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process.
+Documents and slides are written as HWPX and rendered by rhwp; spreadsheets are printed by Filee's own print engine
+(Excel's page logic, see [Spreadsheet printing](#spreadsheet-printing)). Anything the built-in readers understand
+(including PDF) is written as DOCX by the DOCX writer, as ODT by the ODT writer and as PPTX slides by the PPTX writer
+(PDF keeps its picture slides).
 LibreOffice's and Pandoc's costs are set so the built-in route always wins where one exists.
 
 Except for text that needs shaping. rhwp draws one glyph per character from left to right without OpenType shaping,
@@ -56,18 +59,21 @@ file without reading it into the document model (DOCX `word/document.xml`, heade
 XLSX shared strings and sheets, HWPX sections, OFD pages and templates, EPUB chapters, or a text file with its HTML /
 RTF character references) for the Hebrew, Arabic, Syriac, Thaana, N'Ko, Indic, Sinhala, Thai, Lao, Tibetan, Myanmar,
 Khmer, Mongolian and other South / Southeast Asian blocks. For such a file `JobQueue` plans again without unshaped
-edges: DOCX, TXT, Markdown, HTML, XLSX, PPTX and HWPX → PDF (and → images through PDF) go through LibreOffice even
+edges: DOCX, TXT, Markdown, HTML, PPTX and HWPX → PDF (and → images through PDF) go through LibreOffice even
 when Settings → *Engines* doesn't choose it for documents (HWPX as DOCX written by the DOCX writer: LibreOffice doesn't
-open HWP itself). Without LibreOffice the file fails with "This script needs
+open HWP itself; XLSX, XLS and ODS don't: the spreadsheet print engine shapes with HarfBuzz). Without LibreOffice the
+file fails with "This script needs
 LibreOffice to convert correctly" and the script's name instead of becoming a broken PDF. The same scan also finds
 text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general punctuation, math, the CJK forms
 and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish, Vietnamese, Greek, Cyrillic, ... — or a
 combining mark is drawn but laid out at a fixed half-em. Such a document takes a route without unshaped edges when
 one exists and is never refused when none does: the overlapping text stays readable. Only letters inside words
 count (an extended Latin letter next to any letter, a letter of another script next to one of its own script), so a
-symbol or unit on its own (α, Ω, μm in a Korean report) keeps rhwp, and an HWPX stays with rhwp for this (only text
-that needs shaping sends it elsewhere). Documents in French, German or Spanish (Latin-1 letters only), Chinese,
-Japanese and Korean keep the built-in route; a binary HWP is not scanned and stays with rhwp.
+symbol or unit on its own (α, Ω, μm in a Korean report) keeps rhwp, and HWP and HWPX stay with rhwp for this (only
+text that needs shaping sends them elsewhere). Documents in French, German or Spanish (Latin-1 letters only), Chinese,
+Japanese and Korean keep the built-in route. A binary HWP is scanned through the HWPX package its records make
+(`HwpReader.ToHwpx`, written to a temporary file and deleted; a protected or damaged file isn't scanned and is left to
+the conversion, which says what is wrong with it).
 
 All built-in document readers are registered in one place, `Hwp/Hwpx/DocumentReaders.cs` (format id → reader, and
 which formats need Pandoc). The HWPX, DOCX and ODT writers take their input formats from it: adding a reader there is
@@ -328,6 +334,9 @@ and the drawing is recorded into an `SKPicture` that is replayed for each output
   drawing; its natural size is its frame (`Documents/PictureSize`). A picture that can't be drawn is left out, like a
   picture of any format that can't be read.
 - Pandoc's Markdown / HTML results get PNGs of their EMF / WMF pictures on every platform.
+- **Pictures in HWPX written by the HWPX writer** (DOCX, ODT, PDF, … → HWPX): an EMF or WMF picture is stored as a PNG
+  rendered here (`ImageReader`, at least 150 dpi), on every platform, and sized from its header's frame when the
+  document gives no size.
 
 What is drawn:
 
@@ -578,8 +587,8 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
 
 | Format | Read | Written |
 |---|---|---|
-| XLSX | own reader: values, number formats, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print titles (rows) | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
-| XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges, horizontal / vertical alignment; widths, heights and hidden rows / columns from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
+| XLSX | own reader: values, number formats, rich text, fonts, fills, borders, alignment, merges, widths, heights, hidden rows / columns / sheets, frozen rows, print titles; for printing the page setup, print areas, page breaks, headers and footers, conditional formats and pictures | every sheet, numbers and dates as numbers with their formats, booleans, styles, merges, widths, heights, hidden rows / columns, frozen rows |
+| XLS (Excel 97–2003, also Excel 5/95) | ExcelDataReader (MIT): values, number formats, merges; fonts, fills, borders and alignment (BIFF8), widths, heights, hidden rows / columns and the page setup from the BIFF records (`XlsLayout.cs`) | no (LibreOffice) |
 | ODS | own reader (`content.xml`, `styles.xml`, `settings.xml`): repeated rows / columns (the empty repeats up to the end of the sheet are skipped), spans, every value type, the text Calc shows (`text:p`), data styles as Excel codes, cell styles, widths, heights, hidden rows / columns / sheets, frozen and header rows | every sheet, typed cells (float, percentage, currency, date, time, boolean) with data styles and the shown text, styles, merges, widths, heights, hidden rows / columns, frozen rows |
 | CSV / TSV | delimiter (CSV: comma, semicolon or tab; TSV: tab) and encoding (UTF-8 / UTF-16 with BOM, CP949 when it looks Korean or on Korean Windows, else the PC's code page) | UTF-8 with BOM, CRLF, one file per sheet |
 
@@ -589,17 +598,104 @@ the text the spreadsheet shows, the value behind it and its Excel number format.
   text between digits are written as plain numbers (General).
 - Column widths use Excel's unit (a digit of Calibri 11 = 7 px); in ODS a character is 5.25 pt. LibreOffice
   measures with its own fonts, so a width can differ by up to a fifth after LibreOffice opens the file.
-- XLS cells keep the default font, fill and borders (ExcelDataReader does not expose them); XLS output still
-  needs LibreOffice. Password-protected XLS and ODS files stop with a clear message.
-- Not converted: formulas (their cached results are kept), charts, pictures, comments, conditional formatting,
-  data validation, print areas and page breaks.
+- XLS fonts, fills and borders come from the FONT, XF and PALETTE records of BIFF8 files (Excel 97–2003); Excel 5/95
+  files keep the default look. XLS output still needs LibreOffice. Password-protected XLS and ODS files stop with a
+  clear message. XLSX and ODS packages are read within `DocumentLimits` (sizes, inflate ratio, XML depth and
+  elements); ODS repeats expand to at most 20,000,000 cells.
+- Not converted to other spreadsheets: formulas (their cached results are kept), charts, pictures, comments,
+  conditional formatting, data validation, print areas and page breaks (the print engine reads the page setup,
+  print areas, breaks, conditional formats and pictures for PDF).
 
 The XLSX donut also offers **PDF + Edit** (`tool-sheet-studio`). Unlike an ordinary routed XLSX → PDF conversion,
 this interactive tool always requires LibreOffice regardless of engine priority: it preserves the original workbook,
 makes one disposable copy per selected sheet region, applies that region's print settings, and asks LibreOffice to
 render it. PDFsharp combines the resulting PDFs. The live preview follows this exact studio export path and uses
-PDFium/PDFtoImage for lazy thumbnails and the selected large page; the ordinary donut's PDF can differ because its
-built-in XLSX route reads the workbook into Filee's document model.
+PDFium/PDFtoImage for lazy thumbnails and the selected large page; the ordinary donut's PDF can differ because it
+is printed by Filee's own print engine (below).
+
+## Spreadsheet printing
+
+`SheetPrintConverter` (engine id `sheet-print`) prints XLSX (and XLSM / XLTX), XLS (and XLT) and ODS to PDF the way
+Excel prints a whole workbook, without Excel or LibreOffice (GitHub Project 4, item *Spreadsheet print layout →
+PDF*). The readers above keep each sheet's page setup; `Office/Sheets/Print` lays the pages out with Excel's page logic
+and draws them with the Filee renderer's PDF writer (`Rendering/PdfPageWriter`, fonts subset by Filee) and its text
+services (FontResolver with font fallback, the HarfBuzz shaper, the UAX #14 line breaker).
+
+- **Route.** Cost 12; the engine is not in the default priority list, which adds 9: 21, below the HWPX writer and
+  rhwp (about 31) and LibreOffice's fallback (25 + 9), above LibreOffice when Settings → Engines → *Use LibreOffice
+  for spreadsheets → PDF* is on (10 + 9), so that choice still holds. CSV and TSV have no page setup and keep their
+  route through the HWPX writer (each sheet fitted to the page width). Its edges aren't `Unshaped`: Arabic, Hebrew,
+  Indic and Thai sheets are shaped. Pictures of the pages go on from its PDF through PDFium.
+- **Units** (`SheetPagination`, `SheetRowHeights`, `SheetText`). Excel measures at 96 dpi (0.75 pt a pixel) with
+  the Normal style's font at a whole pixel size. A column of width *w* (characters, as files store it) is
+  Truncate(((256 × *w* + Truncate(128 / mdw)) / 256) × mdw) pixels, mdw the font's widest digit (Calibri 11 → 15 px →
+  7 px). Columns without a width use the file's default width, else baseColWidth (8) digits + 5 px rounded up to a
+  multiple of 8 px: 64 px (48 pt) for Calibri 11, 72 px for 맑은 고딕 11. ODS widths are points. A row's height is the
+  file's (custom, or the autofit Excel and Calc store), else Excel's autofit: one line of a font is its rounded win
+  ascent + descent + 2 px (Calibri 11: 14 + 4 + 2 = 20 px = 15 pt; Arial 10: 17 px; 맑은 고딕 11: 22 px), wrapped
+  text a line per line in its column's width, rotated text its extent, at least the sheet's default height; merged
+  cells don't count. When the Normal font isn't installed, the metrics of Calibri, Arial and Times New Roman are
+  known, so the page breaks don't depend on the PC.
+- **What prints.** Every visible sheet with something on it (Excel's *Print Entire Workbook*), each with its own page
+  setup: its print area (several ranges each start on a new page; whole columns or rows are cut to the used range),
+  else its used range — the cells with text, a fill or borders, merged areas and pictures, from the first of them
+  (not from A1). Hidden rows and columns take no room. A workbook with nothing to print gives one empty page.
+- **Pages.** Scale: *Adjust to* (10–400 %), or *Fit to* N × M pages: the largest whole percent from 10 to 100 at
+  which the print area fits (0 = as many as needed); manual breaks don't count then, as in Excel. Each print area is
+  cut into columns and rows of pages: before a manual break, and before the column or row that no longer fits inside
+  the margins (one larger than a page gets a page of its own). Print titles (rows at the top, columns at the left)
+  repeat on the pages after them and take their room; printed headings take theirs. Pages go down, then over (or
+  over, then down), centred inside the margins when the sheet asks.
+- **Drawing** (`SheetPageRenderer`). Fills (solid; patterns as the mix of their colours; linear gradients), gridlines
+  and row / column headings when the sheet prints them, borders (shared with the neighbour, inside merged areas left
+  out, hair to thick, dots, dashes, double lines, diagonals), number formats as the readers show them with the colour
+  of their section ([Red], [Color10]), numbers too wide for their column as #### (General ones first with fewer
+  decimals or in E notation), alignment (General: text left, numbers right, booleans and errors centred; indent;
+  fill; justify; distributed; centre across selection; top, centre, bottom, vertical justify), wrap, shrink to fit,
+  rotation (−90° to 90°) and stacked text, text running over empty neighbours (to the next cell with text, a merged
+  area or the edge of the page; clipped text is left out of the PDF), rich text, right-to-left sheets, pictures
+  anchored to cells, and conditional formats that colour cells: comparisons with constants, text contains / begins /
+  ends, blanks, errors, top / bottom N or N %, above / below average, duplicate and unique values, two- and
+  three-colour scales, with their fills, font colours, bold, italic, underline, strikethrough and borders
+  (`ConditionalFormats.cs`).
+- **Headers and footers** (`HeaderFooterText`). Excel's codes: &L &C &R sections; &P (with +n / −n), &N (the pages of
+  the whole PDF), &D and &T (the PC's short date and time), &F, &Z, &A; &B &I &U &E &S &X &Y; &"font,style", &nn and
+  &K; &G pictures (XLSX legacyDrawingHF). Different first page and odd / even pages, scale with document, align
+  with margins. The header grows down from its margin, the footer up from its. Pages are numbered on across sheets
+  unless a sheet sets its first page number. ODS header and footer regions (with page number, page count, sheet
+  name, file name, date and time fields) become the same codes, and their height moves the top and bottom margins
+  as LibreOffice does when it saves XLSX.
+- **Readers.** XLSX: pageSetup (paper sizes by code and paperWidth / paperHeight, orientation, scale, fit, page
+  order, first page number), pageMargins, printOptions, headerFooter and its VML pictures, sheetPr fitToPage,
+  _xlnm.Print_Area and _xlnm.Print_Titles (rows and columns), manual rowBreaks / colBreaks, sheetFormatPr,
+  stored row heights, rightToLeft, font names, superscript / subscript, double underline, pattern and gradient
+  fills, diagonal borders, the whole alignment, rich text, dxf styles with conditionalFormatting, and pictures of
+  the sheet's drawing (one-cell, two-cell and absolute anchors). A pageSetup without paperSize means Letter (the
+  schema's default, as Excel reads it); a sheet without pageSetup gets the region's paper (A4, or Letter where the
+  region measures in inches). XLS (BIFF8): FONT, XF and PALETTE for every cell (blank cells with fills or borders
+  too), SETUP, the margin records, HCENTER / VCENTER, PRINTGRIDLINES / PRINTHEADERS, HEADER / FOOTER, page
+  breaks, WSBOOL fit to page, the Print_Area and Print_Titles names, DEFCOLWIDTH / STANDARDWIDTH / DEFAULTROWHEIGHT
+  and WINDOW2's right-to-left. ODS: the master page of each table's style and its page layout (paper, orientation,
+  margins, scale-to percent, pages and X × Y, printed grid and headers, page order, table centring, first page
+  number), header and footer regions, table:print-ranges, header rows and columns, page breaks before rows and
+  columns, rotation, stacked text, indent, shrink to fit and font names.
+- **Hostile input.** Packages are read within `DocumentLimits` (a malformed part is `InvalidDataException`, a bomb
+  `error.document_too_complex`); column ranges expand at most 4,000,000 times per workbook, merged areas fill at
+  most 10,000,000 index entries, pictures up to 64 MB and `MaxPicturePixels`, header codes up to 4,096 characters.
+  Each sheet's page count is checked against `MaxPages` before anything is drawn (a cell in A1 and one in
+  XFD1048576 would be about 35 million pages), and the layout runs under `LayoutGuard`. `DocumentFuzzTests` mutates
+  an XLSX and an ODS built in code and prints them.
+- **Not printed yet.** Charts, shapes, text boxes, comments, sparklines; data bars, icon sets and conditional formats
+  with formulas of their own; conditional formats of XLS and ODS files; rich text in XLS cells; text running past the
+  edge of a page onto the next one; black-and-white and draft printing; the margins a real printer can't print in
+  (a PDF has none). The studio (*PDF + Edit*) still renders through LibreOffice.
+
+`tests/Filee.Engines.Tests/SheetPrintTests.cs` builds workbooks in code and checks the page count and where each page
+starts against the numbers Excel's units give (10 default columns and 48 default rows on A4 with the Normal margins,
+scale, fit to pages, breaks, print areas and titles, hidden rows and columns, widths and heights, wrapped text,
+landscape Letter, XLS and ODS page setups), and the drawing (fills, patterns, gradients, conditional formats and
+pictures by their pixels; headers, footers, page numbers, centring, merged cells, overflow, ####, rotation, stacked
+and shrunk text, indents, right-to-left sheets by the PDF's text).
 
 ## Fonts
 
@@ -671,12 +767,15 @@ as it was.
   Word documents (DOCX, DOCM, DOTX, DOTM, and DOC, DOT, WPS through the [DOC reader](#doc-reader)), ODT, RTF, text,
   Markdown, HTML and MHTML, EPUB, KEPUB, MOBI / AZW3 / AZW / PRC, FB2, HTMLZ, TXTZ, and Pandoc's formats when Pandoc
   is installed, to PDF. Pictures of the pages go on from its PDF through PDFium, which applies the image options.
-- **What keeps its route:** spreadsheets (the print route), presentations (slides), PDF and OFD.
+- **Slide decks:** PPTX, PPTM, POTX and PPSX to PDF, PNG and JPG through the [slide renderer](#filee-renderer-slides):
+  a page or a picture per slide, the pictures drawn directly (no PDF → PDFium step) with the image options applied.
+- **What keeps its route:** spreadsheets ([Spreadsheet printing](#spreadsheet-printing)), other presentations (PPT, ODP), PDF and OFD.
 - **Cost 1:** it wins over rhwp and the HWPX writer whatever their place in the priority list.
 - **The check before converting** (`ConversionEdge.Checked`, `ICapabilityCheck`): the engine looks through an HWPX, Word
   or ODT package (an HWP as the HWPX package it becomes, a DOC as the DOCX package it becomes) for what it doesn't draw yet — OLE objects and charts, vertical
-  text, form controls, videos, SmartArt — and `JobQueue` plans again without it, so such a file takes its usual route
-  (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
+  text, form controls, videos, SmartArt — and a deck for what the slide renderer doesn't draw (charts without a
+  stored picture, shadows and other effects, 3D, WordArt warps, presets it lacks, ...) — and `JobQueue` plans again
+  without it, so such a file takes its usual route (logged). The choice is made once, before the conversion. A checked edge is only ever a route's first step, where the
   file is the one the engine looked at. Text formats hold nothing it can't draw.
 - Its edges aren't `Unshaped`: with it on, Arabic, Hebrew, Indic and Thai documents are shaped by it instead of
   going to LibreOffice.
@@ -935,6 +1034,11 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - Headers and footers: both, odd or even pages by page number, none on a section's first page where it hides them,
     laid out in the header and footer areas. Page numbers count on across sections unless one restarts them; page
     number fields show their page's number, total pages fields the count (a first pass finds it when the body has one).
+    A new number in the middle of a section (hp:newNum) numbers its own page and the pages after it.
+  - 한글's automatic page number (hp:pageNum, read for layout as `HSection.PageNumber`) is drawn apart from the footer,
+    in the character format of the "쪽 번호" style and its number format (letters and 가나다 counted round: page 33 is
+    G), across the text width by its position, its baseline 0.3 of its size above the footer area's bottom (measured
+    on 한글's PDFs), under the body as 한글 writes it; hp:pageHiding hidePageNum leaves it out.
   - Pictures laid out like characters (no anchor) take their size on the line (their own, else their pixels at 96 dpi)
     and stand on the baseline, 한글's objects set like a character as high as they are with their outer margins (85%
     above the baseline, as 한글's stored lines have them); links, bookmarks and headings (the PDF outline) as before.
@@ -1100,6 +1204,98 @@ its HWPX files (`hp:linesegarray`) with Filee's, for the plain-text paragraphs o
 (`FILEE_RENDER_CORPUS`): on the HWPX files attached to Filee's issues, 150 of 152 paragraphs break where 한글 broke
 them. Of the other two, one uses a font that isn't installed, and the other is a run of 75 hyphens wider than the
 line, which 한글 keeps on one line.
+
+## Filee renderer: slides
+
+Filee's own slide renderer (GitHub Project 4, item *Built-in slide renderer (PPTX → PDF / PNG)*), in
+`src/Filee.Engines/Slides`: a deck read into a slide model and drawn with the layout engine's text services onto the
+page record PDF and pictures are written from, without LibreOffice. It is part of the Filee renderer preview: with
+*Use the Filee renderer (preview)* on, PPTX, PPTM, POTX and PPSX → PDF, PNG and JPG take it (`FileeRendererConverter`,
+edges `Checked`); off, every route stays as it was. `PptxReader` (Hwp/Hwpx/Pptx) stays the reader the document writers
+use: it turns a deck into flowing pages of text boxes, which is right for DOCX or HWPX output but not for a picture of
+a slide.
+
+- **Cost 0:** with the priority list's penalty it ties LibreOffice's slides edge (0 when Settings → Engines sends
+  presentations to LibreOffice, the default) at the bottom of the list, and the planner keeps the edge it met first,
+  the Filee renderer's (registered before LibreOffice). A user who moves LibreOffice up the list keeps LibreOffice.
+- **Slide model** (`SlideModel.cs`): the deck's size and slides; each slide's background and elements in drawing order
+  (the master's and layout's own shapes first). Elements have a box in their parent's coordinates, a rotation and
+  mirroring: shapes (outlines with a fill, a line and a text frame; a picture is a shape filled with its picture),
+  groups (a child space mapped onto their box) and tables (columns, rows, cells with spans, fills, borders and text).
+  Fills are solid, gradient (linear, circle, rectangle), picture (crop, fill rectangle, tiles, recolouring) or
+  pattern; lines have width, dash, cap, join, compound lines and arrowheads; colours are final (alpha included).
+- **Other formats fill the same model.** Geometry is resolved to outlines in the element's own box, so each format
+  brings its own geometry language to the same place: DrawingML presets and custom geometry today
+  (`ShapeGeometry`), ODF's `draw:enhanced-geometry` (the same kind of guide formulas and path commands, translated
+  into a `GeometryDefinition`), Visio's Geometry sections (MoveTo / LineTo / ArcTo / NURBS rows in shape units), PPT's
+  escher shapes (preset numbers map to the same presets, their vertices to custom geometry). Text is the document
+  model's paragraphs (`HParagraph`), which the ODT and DOCX readers already make, with bullets and numbers resolved
+  into the text by the reader. Masters, layouts, themes and placeholders are inherited by the reader, so ODP master
+  pages and Visio masters resolve the same way before the renderer sees an element.
+- **PPTX reader** (`PptxSlideReader*.cs`): slides in order, hidden ones left out (as PowerPoint's PDF export); each
+  slide's layout, master and theme; backgrounds (slide → layout → master, `bgPr` fills and `bgRef` theme styles);
+  `showMasterSp`; placeholders inheriting position, geometry, fill, line, body properties and list styles from the
+  layout's and master's placeholders (by index, else by type); text properties along PowerPoint's chain (run →
+  paragraph → shape list style → layout placeholder → master placeholder → shape style font and colour → master
+  title / body / other style → presentation default); theme colours under the colour map and its overrides, with
+  every colour transform (`DrawingColors`: lumMod/lumOff, sat, hue, tint and shade in linear RGB, alpha, ...); theme
+  fonts (`+mj-lt`, `+mn-ea`, script fonts by the run's language); theme style references (`fillRef`, `lnRef`,
+  `fontRef`, `bgRef`); tables with `tableStyles.xml` styles (PowerPoint's default *Medium Style 2 – Accent 1* is built
+  in, as files often name it without writing it out); SmartArt through the drawing PowerPoint keeps with it (the data
+  part's `dsp:dataModelExt`); OLE objects and charts through their stored picture; `mc:AlternateContent` through its
+  fallback.
+- **Text frames:** insets, the geometry's text rectangle, anchoring (top, middle, bottom, centred across),
+  wrapping on or off, columns, vertical frames (`vert`, `vert270`), the body's own rotation; "shrink text on overflow"
+  with the font scale and line spacing reduction PowerPoint stored; line spacing as a multiple of the fonts' own line
+  height (taken above the text, as PowerPoint does: less than single lets a line reach into the one before) or exact;
+  space before (not before a frame's first paragraph) and after; bullets in their own font, colour and size followed
+  by a tab to the hanging indent, auto numbers per level; tab stops; right-to-left paragraphs; hyperlinks in the
+  theme's hyperlink colour; slide number fields; Latin, East Asian and complex-script fonts per character
+  (`HWordFonts`), symbol fonts as the Unicode characters they show. Text turns with its shape but isn't mirrored; a
+  vertically flipped shape turns it upside down, as PowerPoint does.
+- **Geometry** (`ShapeGeometry.cs`, `PresetShapes.cs`): the guide formula language and path commands of ECMA-376
+  (20.1.9), with arc angles turned into the ellipse's parameter. 107 presets are written from the standard's
+  definitions in Filee's own compact notation (rectangles and rounded / snipped variants, ellipses, polygons, stars of
+  4 to 32 points, arrows, callouts, brackets and braces, connectors, flowchart shapes, can, cube, bevel, frame, donut,
+  pie, chord, arc, heart, smiley, math signs, wave, ...). Damage stays contained: unknown names count as 0, a
+  division by zero gives 0, values are clamped, guides and path commands are limited per shape and per deck.
+- **Drawing** (`SlideRenderer.cs`, `SlidePaint.cs`): on `PageContent`, which now also draws glyph runs and layers
+  through a matrix (`GlyphRun.Transform`, `PageContent.Add(layer, matrix)`), so turned shapes and vertical frames keep
+  real text in the PDF. Paths filled (the lighter and darker parts of 3D-looking presets as a white or black veil),
+  then stroked; double lines as the stroke's outline less its middle third; dashes shortened for round and square
+  caps; arrowheads (triangle, stealth, diamond, oval, open arrow) at the first path's start and the last's end, a line
+  stopping short under a pointed head. Pictures are decoded once per deck and keep their encoded data (a JPEG goes
+  into the PDF as it is); EMF / WMF through the [metafile renderer](#emf--wmf-renderer). Text is laid out by
+  `ParagraphLayouter` (shaping, font fallback, bidi, line breaking, tabs, alignment). Tables: rows as high as their
+  text needs at least, fills, text, then borders.
+- **Pictures of slides:** the PDF options' page range and resolution (`RenderDpi`, lowered so one picture stays within
+  200 million pixels), then the image options (`ImageEncoder.ApplyOptions`), one file per slide (`_p2`, ...).
+- **The check** (`SlideCapabilities.cs`) looks at the shown slides and the layouts and masters they use, leaving out
+  what a fallback replaces, and names: charts without a stored picture, SmartArt without its drawing, OLE objects and
+  other embedded content without a picture, ink, shadows and other effects (on shapes, pictures and text, or through
+  the theme's effect styles), 3D, WordArt warps, outlined text, East Asian vertical text, presets not in
+  `PresetShapes`, and TIFF and JPEG XR pictures.
+- **Hostile input:** parts through `DocumentPackage` (part and package sizes, inflate ratio, XML depth and elements),
+  `DocumentBudget` for paragraphs, objects and group nesting, pictures whose header claims more than
+  `MaxPicturePixels` left out, slide sizes clamped to PowerPoint's range; a file that is no deck, or a damaged part, is
+  `InvalidDataException`. `DocumentFuzzTests` fuzzes the reader, the check and the renderer together.
+- **Font styles:** the slide work found that `FontStyle.Regular` (`new()` of a record struct with a defaulted
+  primary constructor) had weight 0, so a family name with a style word ("Calibri Light", Office's heading font) never
+  took its own weight. It is now 400.
+
+Measured on the slide feature deck of the [render quality harness](RENDER-QUALITY.md#slides) (10 slides written in
+code), against LibreOffice 26.2's PDF of the same deck on Windows 11: SSIM per slide at 100 dpi from 0.98 (shapes),
+0.97 (SmartArt and chart), 0.96 (turned and vertical text), 0.92 (tables), 0.88 (pictures, lines), 0.86 (fills) to
+0.62–0.63 for the text slides and 0.30 for the scripts slide, where text sits a point or two apart, LibreOffice
+recomputes "shrink text on overflow" instead of using the stored scale and picks other Korean and Japanese fonts.
+Every slide's text reads back, nothing is outside a slide, every font is embedded and subset; the deck takes about
+6 s (most of it loading fonts), LibreOffice about 60 s with a fresh profile.
+
+Not yet: shadows, glow, reflection, soft edges and 3D (named by the check); WordArt warps and text outlines; East Asian
+vertical text (upright characters); gradient-filled text (the first stop's colour); tiled pictures at their own
+resolution (taken as 96 dpi); a gradient that doesn't turn with its shape; "rect" path gradients (drawn as an ellipse
+through the corners); the remaining presets (block arcs, no-smoking signs, clouds, ribbons, scrolls, curved and
+circular arrows, action buttons, border callouts, gears, ...); charts drawn from their data; notes pages and handouts.
 
 ## DOCX writer
 
@@ -2149,6 +2345,54 @@ check doesn't see them in an HWP.
 The format document asks that products made with it say so: "본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를
 참고하여 개발하였습니다." (already in `HwpxReader.Header.cs`).
 
+
+## HWP writer
+
+`Hwp/Binary/HwpxToHwp*.cs` writes HWP 5.0 files without rhwp or Hancom Office. It is the inverse of the
+[HWP reader](#hwp-reader): the reader writes an HWP's records out as the HWPX package 한글 saves, the writer turns an
+HWPX package (written by the HWPX writer, or saved by 한글) back into those records, field by field. So HWPX → HWP keeps
+what the document model can't hold (stored line layouts, master pages, drawing objects the model leaves out), and
+anything → HWP is anything → HWPX writer → HWP writer. Writing from the package rather than from the document model was
+chosen because the package is the one form both 한글 formats share in Filee: every mapping already exists, in one
+direction, in `HwpToHwpx`, and an HWPX that 한글 saved goes to HWP without losing what the model drops.
+
+- `CompoundFileWriter.cs`: the compound file (CFB version 3, 512-byte sectors, as 한글 saves): streams under 4096
+  bytes in 64-byte mini sectors, larger ones in regular sectors, the FAT's sectors listed in the header (109) and in
+  DIFAT sectors beyond that, and each storage's members as a red-black tree in CFB's name order.
+- `HwpxToHwp.cs`: the streams 한글 writes: `FileHeader` (version 5.1.1.0, compressed), `DocInfo`, one
+  `BodyText/SectionN` per section part, `BinData` (pictures from the package, compressed), `\005HwpSummaryInformation`
+  (the title), `PrvText` and `PrvImage` (the package's preview), `DocOptions/_LinkDoc` and `Scripts`. Compressed
+  streams are raw deflate followed by the CRC-32 and length of what they hold, as in 한글's files.
+- `HwpxToHwp.Header.cs`: `header.xml` → DocInfo: fonts per language, border fills (solid, gradient and picture fills),
+  character shapes, tab definitions, numberings (ten levels), bullets, paragraph shapes, styles, memo shapes,
+  compatibility and change-tracking settings. Ids are mapped onto record numbers in id order, so a package with gaps
+  in its ids still refers to the right items.
+- `HwpxToHwp.Body.cs`: paragraphs (text with its character, inline and extended controls, character shape runs,
+  highlighter ranges, line segments), section definitions with page, note shapes, page borders and master pages,
+  columns, headers and footers, notes, numbers, page controls, bookmarks, index marks, hidden comments, fields, 덧말
+  and 글자 겹침.
+- `HwpxToHwp.Objects.cs`: tables, drawing objects (lines, rectangles, ellipses, arcs, polygons, curves, connectors,
+  text boxes, groups, 글맵시, OLE objects), pictures and equations.
+
+Values 한글 writes and the HWPX doesn't hold come from the HWP 한글 saves for the same HWPX: the last paragraph of a list
+is marked in its character count, a paragraph of nothing but its end has no text record, a tab control is filled with
+spaces, a field end keeps the field's id without its `%`, list headers hold a four-byte paragraph count, cells repeat
+their width after the border fill, the paragraph shape's second attribute word has bit 3 set, a border fill's
+diagonal counts line types without "none". Stored line layouts are copied, their text positions moved past what is
+left out (tracked deleted text, charts and other objects the writer doesn't write); a package that marks its lines as
+an estimate (`FileeLineSegments`) gets none, and 한글 lays such paragraphs out itself, as it does for the HWP files it
+saves without layout. The tab kind is stored as HWPX numbers it (1 = left), which also corrected the HWP reader.
+
+The writer's edge (`hwpx → hwp` in the HWPX writer engine) costs 4, like `hwp → hwpx`: with the engines' places in the
+default order it costs 4 + 8 against rhwp's `convert` 10 + 3, and anything → HWP costs 10 + 8 + 4 + 8 = 30 against
+31 through rhwp. rhwp stays as the fallback until it is removed.
+
+`HwpWriterTests` writes the rich DOCX, the 24 render feature documents and a hand-made 한글-style package (stored
+lines, a group, a caption, an OLE object, fields, notes, 덧말, 글자 겹침, tracked changes) as HWP and reads them
+back with the HWP reader into the model of their HWPX (read and read for layout); HWP → HWPX → HWP gives the records
+back; rhwp, while bundled, opens every file. The compound file writer is checked with streams on both sides of the
+mini stream cutoff, a directory of several sectors and a 20 MB stream that needs DIFAT sectors.
+
 ## HWP text, Markdown and HTML
 
 `Hwp/HwpTextConverter.cs` (engine id `hwp-text`) writes HWP and HWPX as plain text, Markdown or one HTML page with
@@ -2189,6 +2433,7 @@ document written as HWPX, and three HWP files built by `HwpBuilder`):
 
 Unhwp's Markdown had no lists (items became plain paragraphs, the second level a `#` heading) and made headings of
 endnotes; Filee's keeps the headings, lists, tables and pictures of the document.
+
 
 ## E-books
 
@@ -2300,9 +2545,9 @@ never switches engines by itself.
 
 ## HWP ↔ HWPX
 
-HWP → HWPX is built in (the [HWP reader](#hwp-reader) writes the package from the records); rhwp's `export-hwpx`
-remains as a route ranked below it. HWPX → HWP is rhwp's `convert`: anything → HWP goes through the HWPX writer and
-then rhwp.
+HWP ↔ HWPX is built in both ways: the [HWP reader](#hwp-reader) writes the package from the records and the
+[HWP writer](#hwp-writer) the records from the package; rhwp's `export-hwpx` and `convert` remain as routes ranked
+below them. Anything → HWP goes through the HWPX writer and then the HWP writer.
 
 For HWP / HWPX → PDF, rhwp renders a copy of the HWPX (an HWP is exported with `export-hwpx` first) when Filee has to
 change something for it (`Hwp/RhwpInput.cs`): fonts that are installed, the laid-out size of boxes sized relative to
@@ -2314,7 +2559,8 @@ equation's own baseline on it, so a fraction, matrix or sum hangs below the line
 after the paragraph (#143).
 
 An HWPX with text that needs shaping (Arabic, Hindi, Thai, ...) goes through the DOCX writer to LibreOffice instead (or
-to the Filee renderer when it is on), like the documents above; an HWP is not scanned and stays with rhwp.
+to the Filee renderer when it is on), like the documents above; so does an HWP, scanned through the package its
+records make.
 
 rhwp renders text slowly: about 1 s per KB of section XML, some 4 s per page of a novel (rhwp 0.8.7 on an
 i7-1185G7, pictures cost little). So each rhwp run's time limit follows the document's text: 2 minutes + 30 minutes
