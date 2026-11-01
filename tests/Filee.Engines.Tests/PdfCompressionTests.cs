@@ -360,7 +360,7 @@ public class PdfCompressionTests(EngineFixture fx) : IClassFixture<EngineFixture
         var planner = fx.Catalog.CreatePlanner(["ghostscript"]);
         Assert.Equal("pdfsharp", string.Join(',', planner.Plan("pdf", "pdf")!.Steps.Select(s => s.Converter.Id)));
         Assert.Equal("pdfium", string.Join(',', planner.Plan("pdf", "png")!.Steps.Select(s => s.Converter.Id)));
-        Assert.Equal("ghostscript", string.Join(',', planner.Plan("pdf", "eps")!.Steps.Select(s => s.Converter.Id)));
+        Assert.Equal("pdf-ps", string.Join(',', planner.Plan("pdf", "eps")!.Steps.Select(s => s.Converter.Id)));
         Assert.Equal("docx-writer", string.Join(',', planner.Plan("pdf", "docx")!.Steps.Select(s => s.Converter.Id)));
     }
 

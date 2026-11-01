@@ -291,17 +291,17 @@ internal static class PostScriptSamples
 
         var resources = b.Resources(("XObject", "Rgb", rgb), ("XObject", "Gray", gray), ("XObject", "Idx", indexed), ("XObject", "Jpg", jpeg),
             ("XObject", "Ring", stencil), ("XObject", "Key", keyed), ("XObject", "Soft", soft));
-        var inline = new StringBuilder("q 160 0 0 120 400 80 cm BI /W 4 /H 3 /CS /RGB /BPC 8 ID ");
+        var inline = new StringBuilder("q 160 0 0 120 400 40 cm BI /W 4 /H 3 /CS /RGB /BPC 8 ID ");
         var inlinePixels = Pixels(4, 3, 3);
         var content = new StringBuilder();
         content.Append("q 200 150 0 0 0 cm 0 0 0 0 0 0 cm Q\n"); // a degenerate matrix draws nothing
-        content.Append("q 200 150 0 0 40 600 cm /Rgb Do Q\n");
-        content.Append("q 150 150 0 0 300 600 cm /Gray Do Q\n");
-        content.Append("q 120 120 0 0 40 420 cm /Idx Do Q\n");
-        content.Append("q 200 150 0 0 200 400 cm /Jpg Do Q\n");
-        content.Append("q 0.8 0.1 0.1 rg 120 120 0 0 440 420 cm /Ring Do Q\n");
-        content.Append("0.9 0.9 0.2 rg 40 220 200 150 re f q 200 150 0 0 40 220 cm /Key Do Q\n");
-        content.Append("0.2 0.2 0.9 rg 300 220 200 150 re f q 200 150 0 0 300 220 cm /Soft Do Q\n");
+        content.Append("q 200 0 0 150 40 600 cm /Rgb Do Q\n");
+        content.Append("q 150 0 0 150 300 600 cm /Gray Do Q\n");
+        content.Append("q 120 0 0 120 40 440 cm /Idx Do Q\n");
+        content.Append("q 160 0 0 120 200 440 cm /Jpg Do Q\n");
+        content.Append("q 0.8 0.1 0.1 rg 120 0 0 120 400 440 cm /Ring Do Q\n");
+        content.Append("0.9 0.9 0.2 rg 40 220 200 150 re f q 200 0 0 150 40 220 cm /Key Do Q\n");
+        content.Append("0.2 0.2 0.9 rg 300 220 200 150 re f q 200 0 0 150 300 220 cm /Soft Do Q\n");
         var bytes = new List<byte>(Encoding.Latin1.GetBytes(content.ToString() + inline));
         bytes.AddRange(inlinePixels);
         bytes.AddRange(" EI Q\n"u8.ToArray());
