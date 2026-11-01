@@ -1,5 +1,6 @@
 // HDocument → plain text: paragraphs separated by an empty line, list markers and numbers written out, table rows
-// as tab-separated cells and footnotes collected at the end. Used for e-books → TXT.
+// as tab-separated cells, text boxes on lines of their own and footnotes collected at the end. Used for e-books and
+// HWP / HWPX → TXT.
 
 using System.Globalization;
 using System.Text;
@@ -50,11 +51,12 @@ internal static class PlainTextWriter
                         if (paragraph.List is { } list)
                         {
                             var marker = list.Numbered ? numbers.Next(list) + " " : "";
-                            sb.Append(new string(' ', list.Level * 4 + indent)).Append(marker).Append(text.Replace("\n", "\n" + new string(' ', list.Level * 4 + indent + marker.Length)));
+                            sb.Append(new string(' ', list.Level * 4 + indent)).Append(marker)
+                              .Append(text.Replace("\n", Environment.NewLine + new string(' ', list.Level * 4 + indent + marker.Length)));
                         }
                         else
                         {
-                            sb.Append(new string(' ', indent)).Append(indent > 0 ? text.Replace("\n", "\n" + new string(' ', indent)) : text);
+                            sb.Append(new string(' ', indent)).Append(text.Replace("\n", Environment.NewLine + new string(' ', indent)));
                         }
                         previous = paragraph;
                         break;
@@ -75,6 +77,7 @@ internal static class PlainTextWriter
     private static string Cell(HCell cell, List<string> notes) =>
         string.Join(" ", cell.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines, notes).Replace('\n', ' ').Replace('\t', ' ')).Where(t => t.Length > 0));
 
+    /// <summary>The text of inlines, lines separated by '\n' (the callers write the line ends).</summary>
     private static string Inlines(List<HInline> inlines, List<string> notes)
     {
         var sb = new StringBuilder();
@@ -103,11 +106,19 @@ internal static class PlainTextWriter
                         break;
                     }
                 case HTextBox box:
-                    sb.AppendJoin(' ', box.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines, notes)));
-                    break;
+                    {
+                        // A text box is text of its own: on its own lines, apart from the paragraph it is anchored in.
+                        var lines = box.Blocks.OfType<HParagraph>().Select(p => Inlines(p.Inlines, notes)).Where(t => t.Length > 0).ToList();
+                        if (lines.Count == 0)
+                            break;
+                        if (sb.Length > 0 && sb[^1] != '\n')
+                            sb.Append('\n');
+                        sb.AppendJoin('\n', lines).Append('\n');
+                        break;
+                    }
             }
         }
-        return sb.ToString().Replace("\n", Environment.NewLine).TrimEnd();
+        return sb.ToString().TrimEnd();
     }
 }
 

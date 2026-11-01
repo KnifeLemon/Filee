@@ -10,7 +10,7 @@
 //    conversions silently fail with exit code 1.
 //  * soffice writes <outdir>/<input name>.<ext>; we convert into a private folder and move the result.
 //  * Always use a timeout: a document with a modal dialog would otherwise hang forever.
-//  * HWP/HWPX import needs the H2Orestart extension (GPL-3.0), pre-installed into the bundled copy.
+//  * HWP / HWPX are not opened here: Filee reads them itself (no H2Orestart extension, no Java).
 //  * The first conversion with a new profile takes 2-3× longer (LibreOffice builds its caches), so WarmUpAsync
 //    converts a tiny file once per worker profile in the background. --terminate_after_init alone doesn't help.
 //  * soffice reports no progress: ProgressEstimate keeps the progress ring moving while it runs.
@@ -28,7 +28,7 @@ using PdfSharp.Pdf.IO;
 
 namespace Filee.Engines.Office;
 
-/// <summary>Word processor, spreadsheet, presentation and drawing conversions (and HWP / HWPX) through LibreOffice.</summary>
+/// <summary>Word processor, spreadsheet, presentation and drawing conversions through LibreOffice.</summary>
 public sealed class LibreOfficeConverter : IConverter
 {
     private const int Workers = 2;
@@ -75,7 +75,6 @@ public sealed class LibreOfficeConverter : IConverter
     private readonly SemaphoreSlim _capacity = new(Workers, Workers);
     private readonly Stack<int> _freeProfiles = new(Enumerable.Range(0, Workers).Reverse());
     private string? _soffice;
-    private bool _hasHwpFilter;
 
     /// <param name="logger">The app's log; notes when a file only loaded after its container was repacked.</param>
     public LibreOfficeConverter(EngineEnvironment env, ILogger? logger = null)
@@ -83,8 +82,7 @@ public sealed class LibreOfficeConverter : IConverter
         _env = env;
         _logger = logger ?? NullLogger.Instance;
         Locate();
-        Edges = BuildEdges(_hasHwpFilter, EngineEnvironment.LibreOfficeForSlides, EngineEnvironment.LibreOfficeForHwp,
-            EngineEnvironment.LibreOfficeForDocuments, EngineEnvironment.LibreOfficeForSheets);
+        Edges = BuildEdges(EngineEnvironment.LibreOfficeForSlides, EngineEnvironment.LibreOfficeForDocuments, EngineEnvironment.LibreOfficeForSheets);
     }
 
     public string Id => "libreoffice";
@@ -95,14 +93,12 @@ public sealed class LibreOfficeConverter : IConverter
     public EngineStatus GetStatus()
     {
         Locate();
-        Edges = BuildEdges(_hasHwpFilter, EngineEnvironment.LibreOfficeForSlides, EngineEnvironment.LibreOfficeForHwp,
-            EngineEnvironment.LibreOfficeForDocuments, EngineEnvironment.LibreOfficeForSheets);
+        Edges = BuildEdges(EngineEnvironment.LibreOfficeForSlides, EngineEnvironment.LibreOfficeForDocuments, EngineEnvironment.LibreOfficeForSheets);
         return _soffice is null
             ? EngineStatus.Unavailable("engine.reason.not_installed")
             : !EngineEnvironment.UsesFileesCopy("libreoffice")
-                ? EngineStatus.Available(_soffice, _hasHwpFilter ? "H2Orestart" : null)
-                : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice")
-                                                   + (_hasHwpFilter ? $" · H2Orestart {EngineVersions.Component("h2orestart")}" : ""));
+                ? EngineStatus.Available(_soffice)
+                : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice"));
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -299,13 +295,6 @@ public sealed class LibreOfficeConverter : IConverter
             "--headless", "--norestore", "--nologo", "--nodefault", "--nolockcheck", "--nofirststartwizard",
             "-env:UserInstallation=" + new Uri(profileDir).AbsoluteUri,
         };
-        // The HWP import filter (H2Orestart) is written in Java: point LibreOffice at the bundled JRE.
-        if (EngineEnvironment.FindBundled("jre") is { } jre)
-        {
-            if (Directory.Exists(Path.Combine(jre, "Contents", "Home")))
-                jre = Path.Combine(jre, "Contents", "Home");
-            args.Add("-env:UNO_JAVA_JFW_JREHOME=" + new Uri(jre + Path.DirectorySeparatorChar).AbsoluteUri);
-        }
         args.AddRange(["--convert-to", filter, "--outdir", outDir, input]);
         return await ProcessRunner.RunAsync(soffice, args, Timeout, cancellationToken);
     }
@@ -361,12 +350,10 @@ public sealed class LibreOfficeConverter : IConverter
         return Draw.Contains(from) || DrawOnlyFor.Contains(from) ? "draw" : "writer";
     }
 
-    /// <param name="hwp">H2Orestart is installed (HWP / HWPX import).</param>
     /// <param name="slides">Presentations → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForSlides"/>).</param>
-    /// <param name="hwpToPdf">HWP / HWPX → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForHwp"/>).</param>
     /// <param name="documents">Word documents → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForDocuments"/>).</param>
     /// <param name="sheets">Spreadsheets → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForSheets"/>).</param>
-    internal static List<ConversionEdge> BuildEdges(bool hwp, bool slides, bool hwpToPdf, bool documents = false, bool sheets = false)
+    internal static List<ConversionEdge> BuildEdges(bool slides, bool documents = false, bool sheets = false)
     {
         var edges = new List<ConversionEdge>();
         void Add(IEnumerable<string> sources, IEnumerable<string> targets, int cost)
@@ -384,7 +371,7 @@ public sealed class LibreOfficeConverter : IConverter
         // what nothing else reads or writes (DOC, XLS, PPT, OpenDocument, DOCX output, ...).
         const int Fallback = 25;
         // Chosen in Settings → Engines: cheap enough to beat the built-in route even at the bottom of the engine list
-        // (its priority adds at most 9; PPTX → HWPX → PDF costs about 32, rhwp's HWP → PDF about 13).
+        // (its priority adds at most 9; PPTX → HWPX → PDF costs about 32).
         const int Preferred = 0;
         // Word and spreadsheet sources the built-in route also reads: cheap enough to win for the file itself (10 + 9
         // against about 31 through the HWPX writer and rhwp), not as a hop for other formats, which the DOCX writer can
@@ -404,11 +391,7 @@ public sealed class LibreOfficeConverter : IConverter
         Add([.. ImpressGraphics, .. Draw], DrawTargets, Fallback);
         Add(["svg"], ["odg", "emf", "wmf"], Fallback);
         Add(["pdf"], ["svg", "odg"], Fallback);
-        if (hwp)
-        {
-            Add(["hwp", "hwpx"], ["docx", "odt", "rtf"], Fallback + 6);
-            Add(["hwp", "hwpx"], ["pdf"], hwpToPdf ? Preferred : Fallback + 6);
-        }
+        // No HWP / HWPX: the built-in readers take them to DOCX, ODT and PDF, and through DOCX on to the formats above.
         return edges;
     }
 
@@ -421,7 +404,6 @@ public sealed class LibreOfficeConverter : IConverter
         _soffice = EngineEnvironment.OwnProgram("libreoffice", "soffice.exe")
             ?? WithRuntime(EngineEnvironment.BundledProgram("libreoffice", "soffice.exe"))
             ?? EngineEnvironment.SystemProgram("libreoffice", "soffice.exe");
-        _hasHwpFilter = _soffice is not null && HasH2Orestart(_soffice);
     }
 
     /// <summary>
@@ -444,25 +426,5 @@ public sealed class LibreOfficeConverter : IConverter
             _logger.LogWarning(ex, "Could not copy the C++ runtime next to {Program}", soffice);
         }
         return soffice;
-    }
-
-    /// <summary>Detects the H2Orestart extension in the installation (shared) extension folders.</summary>
-    private static bool HasH2Orestart(string soffice)
-    {
-        try
-        {
-            soffice = File.ResolveLinkTarget(soffice, returnFinalTarget: true)?.FullName ?? soffice;
-            var root = Directory.GetParent(Path.GetDirectoryName(soffice)!)!.FullName;
-            foreach (var sub in new[] { "share/uno_packages", "share/extensions", "Resources/uno_packages", "Resources/extensions" })
-            {
-                var dir = Path.Combine(root, sub);
-                if (Directory.Exists(dir) &&
-                    Directory.EnumerateFileSystemEntries(dir, "*H2Orestart*", SearchOption.AllDirectories).Any())
-                    return true;
-            }
-        }
-        catch (IOException) { }
-        catch (UnauthorizedAccessException) { }
-        return false;
     }
 }

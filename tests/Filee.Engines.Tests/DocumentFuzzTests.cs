@@ -1,11 +1,14 @@
-// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP) and of the PostScript
-// writer's PDF translation: seeds are written in
-// code, DocumentFuzzer (packages) or HwpFuzzer (HWP records and compound files) changes them, and every input must be read or refused with InvalidDataException /
+// Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP, and the older e-book
+// formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own) and of the PostScript writer's PDF translation:
+// seeds are written in code, DocumentFuzzer (packages), HwpFuzzer (HWP records and compound files), BinaryFuzzer
+// (binary containers) or PdfStreamFuzzer (PDF streams) changes them, and every
+// input must be read or refused with InvalidDataException /
 // ConversionRefusedException, in time. In a normal test run each reader gets a short, fixed run (the same inputs every
 // time); the nightly fuzz workflow sets FILEE_FUZZ_SECONDS for a longer run with a new random seed, and
 // FILEE_FUZZ_OUT for a folder that keeps the inputs that failed. FILEE_FUZZ_SEED repeats a run.
 
 using System.Globalization;
+using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
@@ -49,6 +52,47 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
             var writer = new Filee.Engines.Pdf.PostScript.PdfToPostScript(path, 150, null, CancellationToken.None) { RasterFallback = false };
             writer.Write([.. Enumerable.Range(0, Math.Min(writer.PageCount, 4))], Path.Combine(media, "out.ps"), eps: false, media);
         }, (seed, random) => new PdfStreamFuzzer(seed, random).Next);
+
+    [Fact]
+    public void ChmReader_reads_or_refuses_every_mutated_file() =>
+        Fuzz("chm", "chm", [LegacyEbookBuilders.Chm(), LegacyEbookBuilders.Chm(new LegacyEbookBuilders.ChmOptions(ResetFrames: 0, WindowBits: 15))],
+            Book(ChmReader.Read), Bytes);
+
+    [Fact]
+    public void LzxDecoder_decodes_or_refuses_every_mutated_stream()
+    {
+        var data = LegacyEbookTests.LzxSample(70_000);
+        List<byte[]> seeds =
+        [
+            LzxEncoder.Compress(data, new LzxEncoder.Options(16, 2)).Data,
+            LzxEncoder.Compress(data, new LzxEncoder.Options(16, 2, BlockSize: 7_000, Kinds: [LzxEncoder.BlockKind.Aligned, LzxEncoder.BlockKind.Uncompressed], E8FileSize: 1_000_000)).Data,
+        ];
+        Fuzz("lzx", "lzx", seeds, (path, _) => LegacyEbookTests.Decode(File.ReadAllBytes(path), 16, 2, data.Length), Bytes);
+    }
+
+    [Fact]
+    public void Legacy_e_book_readers_read_or_refuse_every_mutated_file()
+    {
+        Fuzz("pdb", "pdb", [LegacyEbookBuilders.PalmDoc(LegacyEbookBuilders.StoryText), LegacyEbookBuilders.Ztxt(LegacyEbookBuilders.StoryText)], Book(PdbReader.Read), Bytes);
+        Fuzz("tcr", "tcr", [LegacyEbookBuilders.Tcr(LegacyEbookBuilders.StoryText)], Book(TcrReader.Read), Bytes);
+        Fuzz("rb", "rb", [LegacyEbookBuilders.RocketBook()], Book(RocketBookReader.Read), Bytes);
+        Fuzz("snb", "snb", [LegacyEbookBuilders.Snb()], Book(SnbReader.Read), Bytes);
+    }
+
+    private static Func<byte[]> Bytes(byte[] seed, Random random) => new BinaryFuzzer(seed, random).Next;
+
+    /// <summary>An e-book reader; a refusal for DRM (or an eReader book) counts as a refusal.</summary>
+    private static Action<string, string> Book(Func<string, string, HDocument> read) => (path, media) =>
+    {
+        try
+        {
+            read(path, media);
+        }
+        catch (InvalidOperationException ex) when (ex.Message is EbookFiles.DrmMessage or PdbReader.EreaderMessage)
+        {
+            throw new InvalidDataException(ex.Message, ex);
+        }
+    };
 
     // ───────────────────────── Seeds ─────────────────────────
 

@@ -47,7 +47,8 @@ public static class EngineDownloads
     /// </summary>
     public static IReadOnlyList<EnginePackage> Packages { get; } =
     [
-        new("libreoffice", OperatingSystem.IsWindows() ? ["libreoffice", "h2orestart", "jre"] : ["libreoffice"], 1_265_000_000, ["libreoffice"]),
+        // LibreOffice alone: HWP / HWPX are read by Filee itself, so no H2Orestart extension and no Java runtime.
+        new("libreoffice", ["libreoffice"], 1_135_000_000, ["libreoffice"]),
         new("pandoc", ["pandoc"], 236_000_000, ["pandoc"]),
         // Ghostscript from conda-forge plus the Microsoft C++ runtime it was built against (copied next to it).
         new("ghostscript", OperatingSystem.IsWindows() ? ["ghostscript", "vcruntime"] : ["ghostscript"], 31_000_000, ["ghostscript"]),
@@ -78,7 +79,7 @@ public static class EngineDownloads
         if (OperatingSystem.IsLinux())
             return package.Id switch
             {
-                "libreoffice" => "Install LibreOffice using your distribution's package manager (Ubuntu/Debian: sudo apt install libreoffice), then check again. HWP import through LibreOffice also needs Java and the H2Orestart extension.",
+                "libreoffice" => "Install LibreOffice using your distribution's package manager (Ubuntu/Debian: sudo apt install libreoffice), then check again.",
                 "ghostscript" => "Install Ghostscript using your distribution's package manager (Ubuntu/Debian: sudo apt install ghostscript), then check again.",
                 "tesseract" => "Install Tesseract using your distribution's package manager (Ubuntu/Debian: sudo apt install tesseract-ocr), then check again.",
                 _ => $"No Filee download is available for {RuntimeIdentifier}. Install {package.Id} using your distribution's package manager and select its program folder.",

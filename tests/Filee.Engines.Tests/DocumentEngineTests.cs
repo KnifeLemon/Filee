@@ -64,51 +64,6 @@ public class DocumentEngineTests(EngineFixture fx) : IClassFixture<EngineFixture
     }
 
     [Fact]
-    public async Task Hwpx_to_text()
-    {
-        SkipUnlessAvailable("unhwp");
-        var hwpx = await fx.MakeHwpxAsync(fx.NewFolder());
-
-        var job = await fx.ConvertAsync([hwpx], new Preset { TargetFormat = "txt" });
-
-        Assert.Equal(JobState.Completed, job.State);
-        Assert.Contains("두 번째 문단입니다", await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken));
-    }
-
-    [Fact]
-    public async Task Hwpx_to_markdown_and_html_keeps_the_pictures()
-    {
-        SkipUnlessAvailable("unhwp");
-        var dir = fx.NewFolder();
-        EngineFixture.MakeImage(dir, "chart.png", ImageMagick.MagickFormat.Png);
-        var source = Path.Combine(dir, "memo.md");
-        await File.WriteAllTextAsync(source, "# 회의 메모\n\n그림 앞 문단.\n\n![](chart.png)\n\n그림 뒤 문단.\n", TestContext.Current.CancellationToken);
-        var hwpx = (await fx.ConvertAsync([source], new Preset { TargetFormat = "hwpx" })).Outputs.Single();
-        Assert.Equal("unhwp", Assert.Single(fx.Catalog.CreatePlanner().Plan("hwpx", "md")!.Steps).Converter.Id);
-
-        // Unhwp links "assets/image1.png" without writing it: the picture goes into "memo_files" next to the result.
-        var md = (await fx.ConvertAsync([hwpx], new Preset { TargetFormat = "md" })).Outputs.Single();
-        var markdown = await File.ReadAllTextAsync(md, TestContext.Current.CancellationToken);
-        Assert.DoesNotContain("assets/", markdown);
-        var link = System.Text.RegularExpressions.Regex.Match(markdown, @"!\[[^\]]*\]\(<([^>]+)>\)").Groups[1].Value;
-        Assert.StartsWith("memo_files/", link, StringComparison.Ordinal);
-        Assert.True(File.Exists(Path.Combine(dir, Uri.UnescapeDataString(link))));
-        Assert.Contains("그림 뒤 문단", markdown);
-
-        // HTML is one page: the picture is embedded.
-        var html = await File.ReadAllTextAsync((await fx.ConvertAsync([hwpx], new Preset { TargetFormat = "html" })).Outputs.Single(), TestContext.Current.CancellationToken);
-        Assert.Contains("src=\"data:image/png;base64,", html);
-        Assert.DoesNotContain("assets/", html);
-
-        // Text only: no picture, no folder.
-        var folders = Directory.GetDirectories(dir).Length;
-        var textOnly = await File.ReadAllTextAsync((await fx.ConvertAsync([hwpx], new Preset { TargetFormat = "md", Document = { LeaveOutPictures = true } })).Outputs.Single(), TestContext.Current.CancellationToken);
-        Assert.DoesNotContain("![", textOnly);
-        Assert.Contains("그림 앞 문단.\n\n그림 뒤 문단", textOnly.ReplaceLineEndings("\n"));
-        Assert.Equal(folders, Directory.GetDirectories(dir).Length);
-    }
-
-    [Fact]
     public async Task Rhwp_converts_between_hwpx_and_hwp()
     {
         SkipUnlessAvailable("rhwp");
@@ -196,26 +151,4 @@ public class DocumentEngineTests(EngineFixture fx) : IClassFixture<EngineFixture
             Assert.True(PDFtoImage.Conversion.GetPageCount(await File.ReadAllBytesAsync(job.Outputs.Single(), TestContext.Current.CancellationToken)) >= 2);
     }
 
-    [Fact]
-    public async Task LibreOffice_with_H2Orestart_reads_hwpx()
-    {
-        SkipUnlessAvailable("libreoffice");
-        var libreOffice = Engine("libreoffice");
-        Assert.SkipUnless(libreOffice.Edges.Any(e => e.From == "hwpx"), "H2Orestart extension not installed");
-        var dir = fx.NewFolder();
-        var hwpx = await fx.MakeHwpxAsync(dir);
-        var output = Path.Combine(dir, "from-hwpx.docx");
-
-        // Call the engine directly: the planner may prefer another HWPX reader.
-        var written = await libreOffice.ConvertAsync(
-            new ConversionStep(hwpx, "hwpx", "docx", new Preset(), new SinglePath(output), dir), null, TestContext.Current.CancellationToken);
-
-        Assert.Equal(output, written.Single());
-        Assert.True(new FileInfo(output).Length > 2000);
-    }
-
-    private sealed class SinglePath(string path) : IOutputAllocator
-    {
-        public string? Allocate(string extension, string? suffix = null) => path;
-    }
 }
