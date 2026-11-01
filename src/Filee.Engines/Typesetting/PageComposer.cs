@@ -584,7 +584,9 @@ internal sealed class PageComposer
                 {
                     if (j > i && stored && (lines[j].StoredPageStart || lines[j].StoredColumnStart && _columns.Count > 1))
                         break;
-                    var top = stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : stored ? y : Clear(y, lines[j].Height);
+                    // 한글's line on both sides of an object is two stored lines at one place: the second goes beside the first.
+                    var top = box.StoredLines && j > i && SameRow(lines, j) ? y - lines[j - 1].Height
+                        : stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : stored ? y : Clear(y, lines[j].Height);
                     notes.AddRange(NewNotes(lines[j]));
                     if (top + lines[j].Height > _geometry.BodyBottom - FootnotesHeight(notes) + Epsilon)
                         break;
@@ -605,7 +607,11 @@ internal sealed class PageComposer
                     {
                         // Objects placed ahead with the paragraph go on with it.
                         if (i == 0 && _anchored.Remove(paragraph, out var ahead))
+                        {
                             Current.Objects.RemoveAll(ahead.Contains);
+                            foreach (var item in ahead)
+                                _floated.Remove(item.Object);
+                        }
                         NextColumn();
                         _inStep = false;
                         continue;
@@ -613,7 +619,11 @@ internal sealed class PageComposer
                     fit = 1; // a line higher than the column: placed anyway
                 }
                 for (var j = i; j < i + fit; j++)
-                    PlaceLine(paragraph, lines[j], j == 0, stored);
+                {
+                    if (box.StoredLines && j > i && SameRow(lines, j))
+                        _y -= lines[j - 1].Height;
+                    PlaceLine(paragraph, box, lines[j], j == 0, stored);
+                }
                 i += fit;
                 if (i < lines.Count)
                 {
@@ -630,13 +640,17 @@ internal sealed class PageComposer
             _y += box.SpaceAfter;
         }
 
+        /// <summary>A stored line at the same place as the one before it: the other side of an object 한글 put text on both sides of.</summary>
+        private static bool SameRow(IReadOnlyList<LineBox> lines, int j) =>
+            j > 0 && lines[j].StoredTop is { } top && lines[j - 1].StoredTop == top && !lines[j].StoredPageStart && !lines[j].StoredColumnStart;
+
         /// <summary>The stored top of the last line placed from 한글's stored lines.</summary>
         private float? _lastStored;
 
         /// <summary>The page and column where 한글's last column or page started.</summary>
         private (int Page, int Column) _hangulStart;
 
-        private void PlaceLine(HParagraph paragraph, LineBox line, bool first, bool stored)
+        private void PlaceLine(HParagraph paragraph, ParagraphBox box, LineBox line, bool first, bool stored)
         {
             if (line.StoredTop is { } storedTop)
                 _lastStored = storedTop;
@@ -646,8 +660,12 @@ internal sealed class PageComposer
                 _y = Clear(_y, line.Height);
             if (first && paragraph.HeadingLevel > 0)
                 _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, _y, paragraph.HeadingLevel - 1));
+            // An object placed against the paper or the page goes on the page of the line that holds it, as 한글 places
+            // it; the paragraph's first line places the others.
             if (first && !_anchored.Remove(paragraph))
-                Anchor(paragraph, _y);
+                Anchor(paragraph, _y, (item, anchor) => !OnPage(anchor) || !box.FloatingAt.TryGetValue(item, out var at) || at < line.End || box.Lines.Count == 1);
+            else if (!first)
+                Anchor(paragraph, _y, (item, anchor) => OnPage(anchor) && box.FloatingAt.TryGetValue(item, out var at) && at >= line.Start && (at < line.End || line == box.Lines[^1]));
             if (first && paragraph.PageHiding is { } hiding)
                 Current.Hiding = hiding;
             Put(0, line.Height, line.Draw);
@@ -737,15 +755,26 @@ internal sealed class PageComposer
                 _number % 2 == 1);
         }
 
-        /// <summary>Places the floating objects of a paragraph whose first line starts at <paramref name="top"/>.</summary>
-        private List<PlacedObject> Anchor(HParagraph paragraph, float top)
+        private static bool OnPage(HAnchor anchor) => anchor.VerticalRelativeTo is "PAPER" or "PAGE";
+
+        /// <summary>Floating objects placed so far (each goes on the page once).</summary>
+        private readonly HashSet<HInline> _floated = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// Places the floating objects of a paragraph whose first line starts at <paramref name="top"/> (those
+        /// <paramref name="include"/> takes, else all), each once.
+        /// </summary>
+        private List<PlacedObject> Anchor(HParagraph paragraph, float top, Func<HInline, HAnchor, bool>? include = null)
         {
             var frame = Frame(top, paragraph);
             var placed = new List<PlacedObject>();
             foreach (var (item, anchor) in FloatingObjects.Of(paragraph))
             {
+                if (_floated.Contains(item) || include?.Invoke(item, anchor) == false)
+                    continue;
                 if (FloatingObjects.Size(item) is not var (w, h))
                     continue;
+                _floated.Add(item);
                 placed.Add(new PlacedObject(item, FloatingObjects.Place(anchor, w, h, frame), anchor.Wrap, FloatingObjects.ZOrder(item), _objects++));
             }
             Current.Objects.AddRange(placed);
