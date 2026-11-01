@@ -495,6 +495,7 @@ internal sealed partial class HtmlReader
     {
         // A short centred line: a separator in documents and a scene break in books.
         var paragraph = NewParagraph(sink, context with { Align = HAlign.Center, Heading = 0, Item = null, FirstLine = null });
+        paragraph.Role = HBlockRole.Rule;
         paragraph.Inlines.Add(new HShape(HShapeKind.Line) { Width = 14000, Height = 0, Line = HBorder.Thin with { Color = "#808080" } });
         sink.LineStart = false;
         Flush(sink);
@@ -512,6 +513,7 @@ internal sealed partial class HtmlReader
                 FirstLine: context.FirstLine is { } first && first != 0 ? first : null),
             HeadingLevel = context.Heading,
             PageBreakBefore = sink.BreakPending,
+            Role = context.Pre && context.Heading == 0 ? HBlockRole.Code : HBlockRole.Body,
         };
         sink.BreakPending = false;
         if (context.Item is { } item)

@@ -231,7 +231,7 @@ public class OfdTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Assert.Equal(positions.Order(), positions);
         }
 
-        // TXT takes a route that depends on the platform's engines (through HWPX and Unhwp where it runs).
+        // TXT goes through another document format (HWPX and its text export).
         job = await fx.ConvertAsync([MakeInvoice(fx.NewFolder())], new Preset { TargetFormat = "txt" });
         Assert.Equal(JobState.Completed, job.State);
         var txt = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
