@@ -2152,6 +2152,54 @@ check doesn't see them in an HWP.
 The format document asks that products made with it say so: "본 제품은 한글과컴퓨터의 한/글 문서 파일(.hwp) 공개 문서를
 참고하여 개발하였습니다." (already in `HwpxReader.Header.cs`).
 
+
+## HWP writer
+
+`Hwp/Binary/HwpxToHwp*.cs` writes HWP 5.0 files without rhwp or Hancom Office. It is the inverse of the
+[HWP reader](#hwp-reader): the reader writes an HWP's records out as the HWPX package 한글 saves, the writer turns an
+HWPX package (written by the HWPX writer, or saved by 한글) back into those records, field by field. So HWPX → HWP keeps
+what the document model can't hold (stored line layouts, master pages, drawing objects the model leaves out), and
+anything → HWP is anything → HWPX writer → HWP writer. Writing from the package rather than from the document model was
+chosen because the package is the one form both 한글 formats share in Filee: every mapping already exists, in one
+direction, in `HwpToHwpx`, and an HWPX that 한글 saved goes to HWP without losing what the model drops.
+
+- `CompoundFileWriter.cs`: the compound file (CFB version 3, 512-byte sectors, as 한글 saves): streams under 4096
+  bytes in 64-byte mini sectors, larger ones in regular sectors, the FAT's sectors listed in the header (109) and in
+  DIFAT sectors beyond that, and each storage's members as a red-black tree in CFB's name order.
+- `HwpxToHwp.cs`: the streams 한글 writes: `FileHeader` (version 5.1.1.0, compressed), `DocInfo`, one
+  `BodyText/SectionN` per section part, `BinData` (pictures from the package, compressed), `\005HwpSummaryInformation`
+  (the title), `PrvText` and `PrvImage` (the package's preview), `DocOptions/_LinkDoc` and `Scripts`. Compressed
+  streams are raw deflate followed by the CRC-32 and length of what they hold, as in 한글's files.
+- `HwpxToHwp.Header.cs`: `header.xml` → DocInfo: fonts per language, border fills (solid, gradient and picture fills),
+  character shapes, tab definitions, numberings (ten levels), bullets, paragraph shapes, styles, memo shapes,
+  compatibility and change-tracking settings. Ids are mapped onto record numbers in id order, so a package with gaps
+  in its ids still refers to the right items.
+- `HwpxToHwp.Body.cs`: paragraphs (text with its character, inline and extended controls, character shape runs,
+  highlighter ranges, line segments), section definitions with page, note shapes, page borders and master pages,
+  columns, headers and footers, notes, numbers, page controls, bookmarks, index marks, hidden comments, fields, 덧말
+  and 글자 겹침.
+- `HwpxToHwp.Objects.cs`: tables, drawing objects (lines, rectangles, ellipses, arcs, polygons, curves, connectors,
+  text boxes, groups, 글맵시, OLE objects), pictures and equations.
+
+Values 한글 writes and the HWPX doesn't hold come from the HWP 한글 saves for the same HWPX: the last paragraph of a list
+is marked in its character count, a paragraph of nothing but its end has no text record, a tab control is filled with
+spaces, a field end keeps the field's id without its `%`, list headers hold a four-byte paragraph count, cells repeat
+their width after the border fill, the paragraph shape's second attribute word has bit 3 set, a border fill's
+diagonal counts line types without "none". Stored line layouts are copied, their text positions moved past what is
+left out (tracked deleted text, charts and other objects the writer doesn't write); a package that marks its lines as
+an estimate (`FileeLineSegments`) gets none, and 한글 lays such paragraphs out itself, as it does for the HWP files it
+saves without layout. The tab kind is stored as HWPX numbers it (1 = left), which also corrected the HWP reader.
+
+The writer's edge (`hwpx → hwp` in the HWPX writer engine) costs 4, like `hwp → hwpx`: with the engines' places in the
+default order it costs 4 + 8 against rhwp's `convert` 10 + 3, and anything → HWP costs 10 + 8 + 4 + 8 = 30 against
+31 through rhwp. rhwp stays as the fallback until it is removed.
+
+`HwpWriterTests` writes the rich DOCX, the 24 render feature documents and a hand-made 한글-style package (stored
+lines, a group, a caption, an OLE object, fields, notes, 덧말, 글자 겹침, tracked changes) as HWP and reads them
+back with the HWP reader into the model of their HWPX (read and read for layout); HWP → HWPX → HWP gives the records
+back; rhwp, while bundled, opens every file. The compound file writer is checked with streams on both sides of the
+mini stream cutoff, a directory of several sectors and a 20 MB stream that needs DIFAT sectors.
+
 ## HWP text, Markdown and HTML
 
 `Hwp/HwpTextConverter.cs` (engine id `hwp-text`) writes HWP and HWPX as plain text, Markdown or one HTML page with
@@ -2192,6 +2240,7 @@ document written as HWPX, and three HWP files built by `HwpBuilder`):
 
 Unhwp's Markdown had no lists (items became plain paragraphs, the second level a `#` heading) and made headings of
 endnotes; Filee's keeps the headings, lists, tables and pictures of the document.
+
 
 ## E-books
 
@@ -2303,9 +2352,9 @@ never switches engines by itself.
 
 ## HWP ↔ HWPX
 
-HWP → HWPX is built in (the [HWP reader](#hwp-reader) writes the package from the records); rhwp's `export-hwpx`
-remains as a route ranked below it. HWPX → HWP is rhwp's `convert`: anything → HWP goes through the HWPX writer and
-then rhwp.
+HWP ↔ HWPX is built in both ways: the [HWP reader](#hwp-reader) writes the package from the records and the
+[HWP writer](#hwp-writer) the records from the package; rhwp's `export-hwpx` and `convert` remain as routes ranked
+below them. Anything → HWP goes through the HWPX writer and then the HWP writer.
 
 For HWP / HWPX → PDF, rhwp renders a copy of the HWPX (an HWP is exported with `export-hwpx` first) when Filee has to
 change something for it (`Hwp/RhwpInput.cs`): fonts that are installed, the laid-out size of boxes sized relative to
