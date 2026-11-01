@@ -224,6 +224,7 @@
   "engine.vision.description": "使用 macOS 內建的文字辨識來辨識掃描檔和圖片中的文字（OCR）：可搜尋的 PDF、DOCX、TXT。不需要下載。",
   "engine.calibre.description": "少見的電子書格式（LIT、LRF、CHM、PDB、RB…）以及 Kindle 輸出（MOBI、AZW3）。\n排在 HWPX writer 之上時，也由它把電子書轉為 PDF（長書快得多）。",
   "engine.libreoffice.description": "讀取較舊或少見的格式，如 DOC、PPT、Pages、Keynote、Numbers、WordPerfect、ClarisWorks、Publisher、Visio。\n也能儲存為 DOC、XLS、PPT、ODT、ODP、OpenDocument 範本或 EMF。",
+  "engine.translator.description": "使用離線 Ollama 模型在本地翻譯文件和電子書。",
 
   "profile.images": "圖片",
   "profile.pdf": "PDF",

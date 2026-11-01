@@ -217,6 +217,7 @@
   "engine.vision.description": "Tarama ve görsellerdeki metni macOS'un kendi metin tanıma özelliğiyle tanır (OCR): aranabilir PDF, DOCX, TXT. İndirme gerekmez.",
   "engine.calibre.description": "Nadir e-kitap biçimleri (LIT, LRF, CHM, PDB, RB…) ve Kindle çıktısı (MOBI, AZW3).\nHWPX yazıcısının üstüne alındığında e-kitapları PDF'ye de dönüştürür (uzun kitaplarda çok daha hızlıdır).",
   "engine.libreoffice.description": "Eski ve az kullanılan biçimleri okur: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nDOC, XLS, PPT, ODT, ODP, OpenDocument şablonları ve EMF olarak da kaydeder.",
+  "engine.translator.description": "Çevrimdışı Ollama modellerini kullanarak belgeleri ve e-kitapları yerel olarak çevirir.",
   "profile.images": "Görseller",
   "profile.pdf": "PDF",
   "profile.office": "Belgeler",

@@ -224,6 +224,7 @@
   "engine.vision.description": "Распознаёт текст сканов и изображений встроенным в macOS распознаванием текста (OCR): PDF с поиском, DOCX, TXT. Ничего скачивать не нужно.",
   "engine.calibre.description": "Редкие форматы электронных книг (LIT, LRF, CHM, PDB, RB…) и вывод для Kindle (MOBI, AZW3).\nЕсли стоит выше HWPX writer, он же делает PDF из электронных книг (для длинных книг намного быстрее).",
   "engine.libreoffice.description": "Читает старые и редкие форматы: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nА ещё сохраняет в DOC, XLS, PPT, ODT, ODP, шаблоны OpenDocument и EMF.",
+  "engine.translator.description": "Переводит документы и электронные книги локально с помощью офлайн-моделей Ollama.",
 
   "profile.images": "Изображения",
   "profile.pdf": "PDF",

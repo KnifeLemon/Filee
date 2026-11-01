@@ -217,6 +217,7 @@
   "engine.vision.description": "Mengenali teks dari hasil pindai dan gambar dengan pengenal teks bawaan macOS (OCR): PDF yang dapat dicari, DOCX, TXT. Tanpa perlu mengunduh apa pun.",
   "engine.calibre.description": "Format e-book langka (LIT, LRF, CHM, PDB, RB…) dan output Kindle (MOBI, AZW3).\nBila diposisikan di atas pembuat HWPX, Calibre juga membuat PDF dari e-book (jauh lebih cepat untuk buku tebal).",
   "engine.libreoffice.description": "Membaca format lama dan jarang digunakan: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nJuga menyimpan sebagai DOC, XLS, PPT, ODT, ODP, templat OpenDocument, dan EMF.",
+  "engine.translator.description": "Menerjemahkan dokumen dan e-book secara lokal menggunakan model Ollama offline.",
   "profile.images": "Gambar",
   "profile.pdf": "PDF",
   "profile.office": "Dokumen",

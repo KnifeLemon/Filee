@@ -224,6 +224,7 @@
   "engine.vision.description": "Reconnaît le texte des numérisations et des images avec la reconnaissance de texte intégrée à macOS (OCR) : PDF consultable, DOCX, TXT. Rien à télécharger.",
   "engine.calibre.description": "Formats de livres numériques rares (LIT, LRF, CHM, PDB, RB…) et sortie Kindle (MOBI, AZW3).\nPlacé au-dessus du rédacteur HWPX, il produit aussi les PDF des livres numériques (bien plus vite pour les longs livres).",
   "engine.libreoffice.description": "Lit les formats anciens et moins courants : DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nEnregistre aussi en DOC, XLS, PPT, ODT, ODP, modèles OpenDocument et EMF.",
+  "engine.translator.description": "Traduit des documents et des livres électroniques localement à l'aide de modèles Ollama hors ligne.",
 
   "profile.images": "Images",
   "profile.pdf": "PDF",

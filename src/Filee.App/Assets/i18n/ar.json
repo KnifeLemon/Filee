@@ -217,6 +217,7 @@
   "engine.vision.description": "يتعرّف على نص الصور والمستندات الممسوحة بأداة التعرّف على النص المدمجة في macOS (OCR): PDF قابل للبحث وDOCX وTXT. لا حاجة إلى أي تنزيل.",
   "engine.calibre.description": "صيغ الكتب الإلكترونية النادرة (LIT وLRF وCHM وPDB وRB…) وإخراج Kindle ‏(MOBI وAZW3).\nعند وضعه فوق محرك كتابة HWPX، يُنشئ أيضًا PDF من الكتب الإلكترونية (بسرعة أكبر بكثير للكتب الطويلة).",
   "engine.libreoffice.description": "قراءة الصيغ القديمة والأقل شيوعًا: DOC وPPT وPages وKeynote وNumbers وWordPerfect وClarisWorks وPublisher وVisio…\nوالحفظ بصيغ DOC وXLS وPPT وODT وODP وقوالب OpenDocument وEMF.",
+  "engine.translator.description": "ترجمة المستندات والكتب الإلكترونية محلياً باستخدام نماذج Ollama دون اتصال بالإنترنت.",
   "profile.images": "الصور",
   "profile.pdf": "PDF",
   "profile.office": "المستندات",

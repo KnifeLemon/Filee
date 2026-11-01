@@ -217,6 +217,7 @@
   "engine.vision.description": "macOS 標準の文字認識で、スキャンや画像の文字を認識します（OCR）：検索可能な PDF、DOCX、TXT。ダウンロードは不要です。",
   "engine.calibre.description": "一般的でない電子書籍形式（LIT、LRF、CHM、PDB、RBなど）を変換し、Kindle用のMOBI、AZW3形式で保存できます。\n「HWPX writer」より上に置くと、電子書籍のPDF作成もCalibreが担当します（長い本では大幅に速くなります）。",
   "engine.libreoffice.description": "古い形式や一般的でない形式（DOC、PPT、Pages、Keynote、Numbers、WordPerfect、ClarisWorks、Publisher、Visioなど）を読み込みます。\nDOC、XLS、PPT、ODT、ODP、OpenDocumentテンプレート、EMF形式での保存にも対応します。",
+  "engine.translator.description": "オフラインのOllamaモデルを使用して、ドキュメントや電子書籍をローカルで翻訳します。",
   "profile.images": "画像",
   "profile.pdf": "PDF",
   "profile.office": "文書",

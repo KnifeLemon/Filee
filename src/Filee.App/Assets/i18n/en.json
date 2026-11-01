@@ -224,6 +224,7 @@
   "engine.vision.description": "Recognizes the text of scans and pictures with macOS's own text recognition (OCR): searchable PDF, DOCX, TXT. Nothing to download.",
   "engine.calibre.description": "Rare e-book formats (LIT, LRF, CHM, PDB, RB…) and Kindle output (MOBI, AZW3).\nAbove the HWPX writer, it also makes the PDFs of e-books (much faster for long books).",
   "engine.libreoffice.description": "Reads older and less common formats: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nAlso saves as DOC, XLS, PPT, ODT, ODP, OpenDocument templates and EMF.",
+  "engine.translator.description": "Translates documents and e-books locally using offline Ollama models.",
 
   "profile.images": "Images",
   "profile.pdf": "PDF",

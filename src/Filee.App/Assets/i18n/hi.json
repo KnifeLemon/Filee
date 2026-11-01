@@ -217,6 +217,7 @@
   "engine.vision.description": "macOS की अपनी टेक्स्ट पहचान से स्कैन और तस्वीरों का टेक्स्ट पहचानता है (OCR): खोजने योग्य PDF, DOCX, TXT। कुछ डाउनलोड नहीं करना पड़ता।",
   "engine.calibre.description": "दुर्लभ ई-बुक फ़ॉर्मैट (LIT, LRF, CHM, PDB, RB…) और Kindle आउटपुट (MOBI, AZW3)।\nHWPX writer के ऊपर होने पर यह ई-बुक के PDF भी बनाता है (लंबी किताबों के लिए बहुत तेज़)।",
   "engine.libreoffice.description": "पुराने और कम प्रचलित फ़ॉर्मैट पढ़ता है: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nDOC, XLS, PPT, ODT, ODP, OpenDocument टेम्पलेट और EMF के रूप में सहेजता भी है।",
+  "engine.translator.description": "ऑफ़लाइन Ollama मॉडल का उपयोग करके दस्तावेज़ों और ई-पुस्तकों का स्थानीय रूप से अनुवाद करता है।",
   "profile.images": "इमेज",
   "profile.pdf": "PDF",
   "profile.office": "दस्तावेज़",
