@@ -20,12 +20,13 @@ internal static partial class MobiReader
     /// <summary>Reads a Kindle book's content (for the reader registry of the HWPX writer).</summary>
     public static HDocument Read(string path, string workFolder) => ReadBook(path, workFolder).Document;
 
-    public static Book ReadBook(string path, string workFolder, CancellationToken cancellationToken = default)
+    /// <param name="kf8">Read the KF8 part of a joint MOBI 6 + KF8 file (false reads its MOBI 6 part).</param>
+    public static Book ReadBook(string path, string workFolder, CancellationToken cancellationToken = default, bool kf8 = true)
     {
         var database = Open(path);
         var folder = EbookFiles.NewFolder(workFolder, "mobi");
         if (database.TypeCreator == "TEXtREAd")
-            return new Book(PlainText.ToDocument(DecodeText(PalmDocText(database))), new BookMetadata { Title = database.Name });
+            return PalmDocBook(database);
 
         var header = MobiHeader.Parse(database, 0);
         if (header.Encryption != 0)
@@ -34,15 +35,15 @@ internal static partial class MobiReader
 
         HDocument document;
         Resources resources;
-        var kf8Start = header.Version >= 8 ? 0 : header.Kf8Boundary;
+        var kf8Start = header.Version >= 8 ? 0 : kf8 ? header.Kf8Boundary : null;
         if (kf8Start is { } start && start >= 0 && start < database.Count)
         {
-            var kf8 = start == 0 ? header : MobiHeader.Parse(database, start);
-            if (kf8.Encryption != 0)
+            var kf8Header = start == 0 ? header : MobiHeader.Parse(database, start);
+            if (kf8Header.Encryption != 0)
                 throw new InvalidOperationException(EbookFiles.DrmMessage);
             // Joint files keep the pictures once, before the KF8 half, numbered from the MOBI 6 header.
-            resources = new Resources(database, start == 0 ? kf8.FirstImage : header.FirstImage, folder);
-            document = Kf8(database, kf8, start, resources, folder, cancellationToken);
+            resources = new Resources(database, start == 0 ? kf8Header.FirstImage : header.FirstImage, folder);
+            document = Kf8(database, kf8Header, start, resources, folder, cancellationToken);
         }
         else
         {
@@ -111,6 +112,7 @@ internal static partial class MobiReader
             var record = database.Record(start + i);
             var size = record.Length - TrailingSize(record, header.ExtraFlags);
             text.Write(decompress(record[..Math.Max(0, size)]));
+            CheckTextSize(text.Length);
         }
         var bytes = text.ToArray();
         return header.TextLength > 0 && header.TextLength < bytes.Length ? bytes[..(int)header.TextLength] : bytes;
@@ -151,19 +153,35 @@ internal static partial class MobiReader
         return Math.Clamp(size, 0, record.Length);
     }
 
-    private static byte[] PalmDocText(PalmDatabase database)
+    /// <summary>The text of a PalmDOC (TEXtREAd) book: record 0 says how many text records follow and their compression.</summary>
+    internal static byte[] PalmDocText(PalmDatabase database)
     {
         var header = database.Record(0);
         var compression = PalmDatabase.U16(header, 0);
         var records = PalmDatabase.U16(header, 8);
         using var text = new MemoryStream();
         for (var i = 1; i <= records && i < database.Count; i++)
+        {
             text.Write(compression == 2 ? PalmDocCompression.Decompress(database.Record(i)) : database.Record(i));
+            CheckTextSize(text.Length);
+        }
         return text.ToArray();
     }
 
+    /// <summary>Refuses a book whose text grows past what any real book holds.</summary>
+    internal static void CheckTextSize(long length)
+    {
+        var limit = Documents.DocumentLimits.Default.MaxPartBytes;
+        if (length > limit)
+            throw Documents.DocumentLimits.Exceeded($"The book's text is larger than {Documents.DocumentLimits.Megabytes(limit)}.");
+    }
+
+    /// <summary>A PalmDOC (TEXtREAd) book as text; its title is the database name.</summary>
+    internal static Book PalmDocBook(PalmDatabase database) =>
+        new(PlainText.ToDocument(DecodeText(PalmDocText(database))), new BookMetadata { Title = database.Name });
+
     /// <summary>UTF-8 when valid, else Windows-1252 (the Mobipocket default).</summary>
-    private static string DecodeText(byte[] bytes)
+    internal static string DecodeText(byte[] bytes)
     {
         try
         {
