@@ -138,7 +138,10 @@ internal abstract class HBlock
     /// <summary>The page this block is on hides its header or footer (한글 쪽 감추기); null = none. Read for layout only.</summary>
     public HPageHiding? PageHiding { get; set; }
 
-    /// <summary>What the block was in a markup source (<see cref="HBlockRole"/>); only the PPTX writer uses it.</summary>
+    /// <summary>
+    /// What the block was in a markup source (<see cref="HBlockRole"/>): the PPTX writer uses it, and the layout engine
+    /// for code.
+    /// </summary>
     public HBlockRole Role { get; set; }
 }
 
