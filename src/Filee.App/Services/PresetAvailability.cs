@@ -227,7 +227,7 @@ public sealed class PresetAvailability
         if (preset.Translate.Enabled)
         {
             var docFiles = formats.Where(f => preset.TranslatesDocument(f.Id)).ToList();
-            if (docFiles.Count == 0 || docFiles.Count < formats.Count)
+            if (docFiles.Count == 0)
                 return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
             bool CanTranslate(RoutePlanner planner) => docFiles.Any(f =>
             {

@@ -181,14 +181,14 @@ public sealed class TranslationService : ITranslationService
             var body = new { model = modelName };
             using var res = await client.PostAsJsonAsync(new Uri(LocalOllamaBase, "/api/show"), body, cancellationToken);
             if (!res.IsSuccessStatusCode)
-                return false;
+                return true;
 
             using var doc = await JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
             return IsCloudModelElement(doc.RootElement);
         }
         catch
         {
-            return false;
+            return true;
         }
     }
 
@@ -225,17 +225,17 @@ public sealed class TranslationService : ITranslationService
     private async Task<string> TranslateWithLocalOllamaAsync(string text, string targetLang, string sourceLang, string model, CancellationToken cancellationToken)
     {
         var targetName = LanguageDisplayName(targetLang);
-        var prompt = $"You are a professional book and document translator. Translate the following text into {targetName}.\n" +
+        var system = $"You are a professional book and document translator. Translate the given text into {targetName}.\n" +
                      "Rules:\n" +
-                     "- Preserve all formatting tags (such as <b>, <i>, <a>, <s0>, <s1>, etc.) exactly.\n" +
+                     "- Preserve all formatting tags (such as <b>, <i>, <a>, <div>, etc.) and slot tags (<s0>, <s1>, etc.) exactly.\n" +
                      "- Maintain the exact same paragraph and line structure.\n" +
-                     "- Output ONLY the translated text without commentary, intro or explanation.\n\n" +
-                     $"{text}";
+                     "- Output ONLY the translated text without commentary, intro, rules, or explanation.";
 
         var requestBody = new
         {
             model,
-            prompt,
+            system,
+            prompt = text,
             stream = false,
             think = false,
             options = new { temperature = 0.1 }
@@ -251,7 +251,7 @@ public sealed class TranslationService : ITranslationService
             return StripThinkTags(result).Trim();
         }
 
-        throw new InvalidOperationException("Ollama returned an empty response.");
+        throw new ConversionRefusedException("error.translation_empty_response");
     }
 
     private static string StripThinkTags(string text) =>
@@ -259,6 +259,12 @@ public sealed class TranslationService : ITranslationService
 
     private static readonly Dictionary<string, string> LanguageMap = new(StringComparer.OrdinalIgnoreCase)
     {
+        ["th"] = "th",
+        ["thai"] = "th",
+        ["ไทย"] = "th",
+        ["id"] = "id",
+        ["indonesian"] = "id",
+        ["bahasa indonesia"] = "id",
         ["en"] = "en",
         ["english"] = "en",
         ["es"] = "es",
@@ -326,6 +332,8 @@ public sealed class TranslationService : ITranslationService
         ["it"] = "Italian",
         ["nl"] = "Dutch",
         ["pl"] = "Polish",
-        ["tr"] = "Turkish"
+        ["tr"] = "Turkish",
+        ["th"] = "Thai",
+        ["id"] = "Indonesian"
     };
 }

@@ -1,6 +1,7 @@
 {
   "app.name": "Filee",
   "app.tagline": "拖一拖，放一放，轉換完成。",
+
   "nav.home": "首頁",
   "nav.general": "一般",
   "nav.triggers": "觸發方式",
@@ -12,6 +13,7 @@
   "nav.about": "關於",
   "nav.collapse": "收合側邊欄",
   "nav.expand": "展開側邊欄",
+
   "tray.open": "開啟 Filee",
   "tray.pause": "暫停快捷操作",
   "tray.resume": "恢復快捷操作",
@@ -23,6 +25,7 @@
   "close.tray": "保留在系統匣",
   "close.quit": "結束",
   "close.dont_ask": "不再詢問",
+
   "home.title": "首頁",
   "home.drop_title": "將檔案拖放到這裡",
   "home.drop_select": "按兩下選取檔案",
@@ -51,6 +54,7 @@
   "home.undone": "已復原：結果已在資源回收筒/垃圾桶中",
   "home.undone_original": "已復原：結果已在資源回收筒/垃圾桶中，被取代的原始檔也在那裡",
   "home.undo_failed": "無法將 {0} 移到資源回收筒/垃圾桶：{1}",
+
   "donut.center_drag": "把檔案拖到這裡",
   "donut.files_same": "{0} 個 {1}",
   "donut.files_mixed": "{0} 個檔案",
@@ -66,6 +70,7 @@
   "donut.group_caption": "群組 · {0} 個項目",
   "donut.flip_to_back": "{0} 背面",
   "donut.flip_to_front": "{0} 正面",
+
   "toast.converting": "{0} → {1}",
   "toast.done": "完成",
   "toast.done_errors": "{1} 個中有 {0} 個失敗",
@@ -78,6 +83,7 @@
   "toast.get_fonts": "取得字型",
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · 第 {1}/{2} 個檔案",
+
   "error.unsupported_source": "不支援此檔案類型",
   "error.empty_file": "檔案是空的（0 位元組）。用右鍵選單「新增」建立的檔案，要在對應的應用程式中開啟並儲存後才有內容",
   "format_request.request": "請求支援此格式",
@@ -160,6 +166,7 @@
   "notice.geo_field_names": "Shapefile 欄位名最多 10 個字元，部分名稱已縮短",
   "notice.geo_shapefile_split": "Shapefile 只能儲存一種形狀，因此點、線、面被分別存成了多個檔案",
   "notice.geo_heights_dropped": "部分點沒有高度，而 Shapefile 無法只省略其中一個點的高度，因此已省略所有高度",
+
   "engine.reason.not_installed": "未安裝",
   "engine.reason.error": "檢查時出錯",
   "engine.reason.unsupported_platform": "此平台不可用",
@@ -218,6 +225,7 @@
   "engine.calibre.description": "少見的電子書格式（LIT、LRF、CHM、PDB、RB…）以及 Kindle 輸出（MOBI、AZW3）。\n排在 HWPX writer 之上時，也由它把電子書轉為 PDF（長書快得多）。",
   "engine.libreoffice.description": "讀取較舊或少見的格式，如 DOC、PPT、Pages、Keynote、Numbers、WordPerfect、ClarisWorks、Publisher、Visio。\n也能儲存為 DOC、XLS、PPT、ODT、ODP、OpenDocument 範本或 EMF。",
   "engine.translator.description": "使用離線 Ollama 模型在本地翻譯文件與電子書。",
+
   "profile.images": "圖片",
   "profile.pdf": "PDF",
   "profile.office": "文件",
@@ -237,6 +245,7 @@
   "profile.models": "3D 模型",
   "profile.geo": "地理資訊 (GIS)",
   "profile.mixed": "混合檔案",
+
   "preset.crop": "裁剪",
   "crop.save": "裁剪並儲存",
   "crop.reset": "重設",
@@ -348,6 +357,7 @@
   "clip.silence_removed": "已去除靜音：{0} 處",
   "clip.no_silence": "沒有找到靜音",
   "clip.cannot_play": "無法播放片段",
+
   "preset.half_size": "縮小 50%",
   "preset.half_size.donut": "縮小 50%",
   "preset.image_edit": "編輯圖片",
@@ -441,6 +451,7 @@
   "preset.merge_audio": "合併音訊",
   "preset.merge_images": "合併圖片",
   "preset.remove_metadata": "移除中繼資料",
+
   "format.folder": "資料夾",
   "format.category.Image": "圖片",
   "format.category.Pdf": "PDF",
@@ -460,6 +471,7 @@
   "format.category.Data": "資料",
   "format.category.Model3D": "3D 模型",
   "format.category.Geo": "地理資訊",
+
   "general.title": "一般",
   "general.language": "語言",
   "general.language_auto": "跟隨系統",
@@ -542,6 +554,7 @@
   "general.reset_library": "還原為初始設定",
   "general.reset_confirm": "要將所有預設和工具列設定檔還原為初始設定嗎？",
   "general.imported": "已匯入 {0} 項",
+
   "triggers.title": "觸發方式",
   "triggers.description": "選擇開啟環形工具列的方式。可以新增任意多個手勢。",
   "triggers.macos_permissions": "請在「系統設定 > 隱私權與安全性 > 輔助使用」中允許 Filee。\n如果 Filee 已開啟但手勢仍未啟動，請用 − 將其移除，再用 + 重新加入。\n首次使用「選取檔案」的快速鍵時，Finder 還會要求自動化權限。",
@@ -599,6 +612,7 @@
   "triggers.excluded_none_running": "沒有其他開啟視窗的應用程式。",
   "triggers.excluded_note": "指標位於這些應用程式上時，手勢和快速鍵不起作用。",
   "triggers.paused": "快捷操作已暫停",
+
   "toolbar.title": "環形工具列",
   "toolbar.step_profile": "1. 選擇設定檔",
   "toolbar.step_arrange": "2. 排列預設",
@@ -666,17 +680,18 @@
   "toolbar.mixed_covered": "排在前面的「{0}」允許此處勾選的所有副檔名，因此不會使用此設定檔。",
   "toolbar.mixed_others": "其他混合選取會開啟「{0}」。",
   "toolbar.mixed_others_self": "沒有未勾選任何項目的混合設定檔，因此其他混合選取也會使用此設定檔。",
-  "toolbar.chip_tip.makes": "→ {0} · {1}",
-  "toolbar.chip_tip.makes_same": "→ 相同格式",
-  "toolbar.chip_tip.makes_name": "→ {0}",
-  "toolbar.chip_tip.works_with": "支援的格式：{0}",
-  "toolbar.chip_tip.kind": "{0}（{1}）",
-  "toolbar.chip_tip.name_separator": "、",
-  "toolbar.chip_tip.names_more": "{0} +{1}",
-  "toolbar.chip_tip.more_shift": "+{0} 項 · 按 Shift 顯示全部",
-  "toolbar.chip_tip.shift_all": "按 Shift 顯示全部",
-  "toolbar.chip_tip.any_file": "任何檔案",
-  "tags.remove": "移除",
+   "toolbar.chip_tip.makes": "→ {0} · {1}",
+   "toolbar.chip_tip.makes_same": "→ 相同格式",
+   "toolbar.chip_tip.makes_name": "→ {0}",
+   "toolbar.chip_tip.works_with": "支援的格式：{0}",
+   "toolbar.chip_tip.kind": "{0}（{1}）",
+   "toolbar.chip_tip.name_separator": "、",
+   "toolbar.chip_tip.names_more": "{0} +{1}",
+   "toolbar.chip_tip.more_shift": "+{0} 項 · 按 Shift 顯示全部",
+   "toolbar.chip_tip.shift_all": "按 Shift 顯示全部",
+   "toolbar.chip_tip.any_file": "任何檔案",
+   "tags.remove": "移除",
+
   "presets.title": "預設",
   "presets.add": "新增",
   "presets.add_empty": "空白預設",
@@ -904,6 +919,7 @@
   "presets.delete_confirm": "刪除「{0}」？它也會從所有工具列和群組中移除。",
   "presets.name_required": "請輸入名稱",
   "presets.select": "選擇要編輯的預設",
+
   "theme.title": "主題",
   "theme.style": "主題樣式",
   "theme.style.Soft": "Filee Soft",
@@ -940,6 +956,7 @@
   "theme.preview": "預覽",
   "theme.preview_toggle": "範例開關（僅供預覽，不是設定）",
   "theme.preview_toggle_hint": "顯示此主題中開關的外觀，不會變更任何設定。",
+
   "engines.title": "轉換引擎",
   "engines.description": "Filee 會為每次轉換選擇最合適的可用引擎。\n多個引擎能完成同一轉換時，清單中排在前面的優先。",
   "engines.available": "可用",
@@ -1016,6 +1033,7 @@
   "engines.state.unpacking": "安裝中…",
   "engines.state.installed": "已安裝",
   "engines.state.failed": "失敗：{0}",
+
   "about.title": "關於",
   "about.updates": "更新",
   "common.search": "搜尋",
@@ -1040,6 +1058,7 @@
   "feedback.notice_text": "在 GitHub 上加個星號（⭐）能幫助更多人發現 Filee。\n也歡迎回報問題或提出想法。",
   "feedback.star": "在 GitHub 上加星號",
   "feedback.issue": "回報問題 · 提出建議",
+
   "common.ok": "確定",
   "common.cancel": "取消",
   "common.save": "儲存",
@@ -1049,6 +1068,7 @@
   "common.no": "否",
   "common.on": "開",
   "common.off": "關",
+
   "setup.title": "選擇轉換引擎",
   "setup.description": "圖片、PDF、Office 文件、HWP、電子書、壓縮檔、字型、CAD 和 3D 模型現在就能轉換。\n只有影片、音訊或少見格式才需要下載引擎。",
   "setup.note": "可隨時在「設定 → 轉換引擎」中安裝或刪除引擎。",
@@ -1211,6 +1231,7 @@
   "watch.status_starting": "正在啟動…",
   "watch.status_error": "無法監視此資料夾：{0}",
   "watch.cli_hint": "也可以在命令列中使用：filee watch <資料夾> --to <格式>",
+
   "preset.sheet_studio": "PDF + 編輯",
   "sheet_studio.title": "試算表列印工作室",
   "sheet_studio.sheets": "工作表與輸出順序",
@@ -1250,6 +1271,7 @@
   "sheet_studio.apply_fix": "套用建議版面配置",
   "sheet_studio.add_region": "+ 新增另一個範圍",
   "sheet_studio.region_name": "{0} · 範圍 {1}",
+
   "whats_new.title": "Filee {0} 新功能",
   "whats_new.previous": "上一頁",
   "whats_new.next": "下一頁",
@@ -1283,18 +1305,8 @@
   "presets.translate_hint": "在您的電腦上將文件或書籍翻譯成目標語言。",
   "presets.target_language": "目標語言",
   "presets.test_connection": "測試連線",
-  "engines.package.translator.name": "翻譯器 (離線 AI)",
-  "engines.package.translator.description": "在本地電腦上翻譯文件與圖書，無需上傳。使用本地 Ollama 完全離線運作。",
-  "engines.package.translator.sizes": "離線本地 AI · http://127.0.0.1:11434",
   "engines.package.translator.no_model": "Ollama 正在 http://127.0.0.1:11434 運作，但未找到模型。請下載如 llama3.2 般的離線模型。",
-  "engines.package.translator.not_running": "已安裝 Ollama 但未啟動。請至「管理模型」啟動 Ollama。",
-  "engines.package.translator.cloud_skipped": "已隱藏 {0} 個雲端模型，確保文件內容絕不外流。",
-  "engines.package.translator.only_cloud_models": "僅找到雲端模型。雲端模型 (-cloud) 會對外傳送文字，已遭禁用。請下載本地離線模型。",
-  "engines.guidance.windows.translator": "如何使用離線翻譯：\n1. 下載 Ollama: https://ollama.com/download\n2. 在終端機執行: ollama pull llama3.2 (或任何模型)\n3. Filee 透過 http://127.0.0.1:11434 離線通訊，絕無任何資料外流。",
-  "engines.guidance.macos.translator": "如何使用離線翻譯：\n1. 下載 Ollama: https://ollama.com/download (或 brew install ollama)\n2. 在終端機執行: ollama pull llama3.2 (或任何模型)\n3. Filee 透過 http://127.0.0.1:11434 離線通訊，絕無任何資料外流。",
-  "engines.guidance.linux.translator": "如何使用離線翻譯：\n1. 安裝 Ollama: curl -fsSL https://ollama.com/install.sh | sh\n2. 在終端機執行: ollama pull llama3.2 (或任何模型)\n3. Filee 透過 http://127.0.0.1:11434 離線通訊，絕無任何資料外流。",
   "engines.ollama.manage": "管理 Ollama",
-  "engines.ollama.manage_hint": "管理本地 Ollama 模型、啟閉伺服器並安裝離線模型",
   "engines.ollama.title": "Ollama 本地 AI 管理",
   "engines.ollama.description": "所有模型 100% 在本地離線執行。為保護文件隱私，雲端模型 (-cloud) 已遭禁用。",
   "engines.ollama.server_running": "伺服器運作中",
@@ -1315,6 +1327,7 @@
   "engine.reason.download_translator": "需要位於 http://127.0.0.1:11434 的本地 Ollama (請見 設定 → 引擎)",
   "error.translation_needs_engine": "離線翻譯需要本地 Ollama (http://127.0.0.1:11434)。請參閱 設定 → 引擎。",
   "error.translation_cloud_model_forbidden": "安全性攔截：雲端模型 (-cloud) 已遭禁用，以確保文件文字絕不離開您的電腦。",
+  "error.translation_empty_response": "Ollama 回傳了空白回應。",
   "engines.ollama.testing": "正在測試翻譯...",
   "engines.ollama.starting": "正在啟動...",
   "engines.ollama.connecting": "正在連線...",

@@ -87,7 +87,7 @@ public sealed class TranslatorConverter : IConverter
         return _cachedStatus;
     }
 
-    private static void PerformCheck()
+    public static void PerformCheck()
     {
         try
         {

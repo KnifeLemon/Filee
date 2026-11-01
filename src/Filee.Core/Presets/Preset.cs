@@ -319,7 +319,6 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
-
         Translate = Translate.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
@@ -1308,8 +1307,6 @@ public sealed class CadOptions
 
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
 }
-
-
 
 /// <summary>Options for offline AI document translation.</summary>
 public sealed class TranslateOptions

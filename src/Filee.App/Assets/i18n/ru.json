@@ -1,6 +1,7 @@
 {
   "app.name": "Filee",
   "app.tagline": "Перетащил — и готово.",
+
   "nav.home": "Главная",
   "nav.general": "Общие",
   "nav.triggers": "Горячие клавиши",
@@ -12,6 +13,7 @@
   "nav.about": "О программе",
   "nav.collapse": "Свернуть боковую панель",
   "nav.expand": "Развернуть боковую панель",
+
   "tray.open": "Открыть Filee",
   "tray.pause": "Приостановить горячие клавиши",
   "tray.resume": "Возобновить горячие клавиши",
@@ -23,6 +25,7 @@
   "close.tray": "Оставить в трее",
   "close.quit": "Выйти",
   "close.dont_ask": "Больше не спрашивать",
+
   "home.title": "Главная",
   "home.drop_title": "Перетащите файлы сюда",
   "home.drop_select": "Дважды щелкните, чтобы выбрать файлы",
@@ -51,6 +54,7 @@
   "home.undone": "Отменено: результаты в Корзине",
   "home.undone_original": "Отменено: результаты в Корзине, как и оригиналы, которые они заменили",
   "home.undo_failed": "Не удалось переместить {0} в Корзину: {1}",
+
   "donut.center_drag": "Перетащите сюда",
   "donut.files_same": "{0} × {1}",
   "donut.files_mixed": "Файлов: {0}",
@@ -66,6 +70,7 @@
   "donut.group_caption": "Группа: {0}",
   "donut.flip_to_back": "{0} оборот",
   "donut.flip_to_front": "{0} лицо",
+
   "toast.converting": "{0} → {1}",
   "toast.done": "Готово",
   "toast.done_errors": "Не удалось: {0} из {1}",
@@ -78,6 +83,7 @@
   "toast.get_fonts": "Получить шрифты",
   "download.badge": "{0}/с · {1}",
   "download.badge_files": "{0} · файл {1} из {2}",
+
   "error.unsupported_source": "Этот тип файлов не поддерживается",
   "error.empty_file": "Файл пустой (0 байт). Файл, созданный через «Создать» в контекстном меню, остаётся пустым, пока его не откроют в программе и не сохранят",
   "format_request.request": "Запросить этот формат",
@@ -160,6 +166,7 @@
   "notice.geo_field_names": "Имена полей Shapefile не длиннее 10 символов: некоторые сокращены",
   "notice.geo_shapefile_split": "Shapefile хранит фигуры только одного вида, поэтому точки, линии и полигоны сохранены в отдельные файлы",
   "notice.geo_heights_dropped": "У некоторых точек нет высоты, а Shapefile не может пропустить высоту только у одной точки, поэтому убраны все высоты",
+
   "engine.reason.not_installed": "Не установлен",
   "engine.reason.error": "Ошибка при проверке",
   "engine.reason.unsupported_platform": "Недоступен на этой платформе",
@@ -218,6 +225,7 @@
   "engine.calibre.description": "Редкие форматы электронных книг (LIT, LRF, CHM, PDB, RB…) и вывод для Kindle (MOBI, AZW3).\nЕсли стоит выше HWPX writer, он же делает PDF из электронных книг (для длинных книг намного быстрее).",
   "engine.libreoffice.description": "Читает старые и редкие форматы: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nА ещё сохраняет в DOC, XLS, PPT, ODT, ODP, шаблоны OpenDocument и EMF.",
   "engine.translator.description": "Переводит документы и электронные книги локально с помощью офлайн-моделей Ollama.",
+
   "profile.images": "Изображения",
   "profile.pdf": "PDF",
   "profile.office": "Документы",
@@ -237,6 +245,7 @@
   "profile.models": "3D-модели",
   "profile.geo": "Геоданные",
   "profile.mixed": "Разные файлы",
+
   "preset.crop": "Обрезать",
   "crop.save": "Обрезать и сохранить",
   "crop.reset": "Сбросить",
@@ -348,6 +357,7 @@
   "clip.silence_removed": "Убрано тихих мест: {0}",
   "clip.no_silence": "Тишины не найдено",
   "clip.cannot_play": "Клип не воспроизводится",
+
   "preset.half_size": "Вдвое меньше",
   "preset.half_size.donut": "Вдвое меньше",
   "preset.image_edit": "Изменить изображения",
@@ -441,6 +451,7 @@
   "preset.merge_audio": "Объединить аудио",
   "preset.merge_images": "Объединить изображения",
   "preset.remove_metadata": "Удалить метаданные",
+
   "format.folder": "Папка",
   "format.category.Image": "Изображение",
   "format.category.Pdf": "PDF",
@@ -460,6 +471,7 @@
   "format.category.Data": "Данные",
   "format.category.Model3D": "3D-модель",
   "format.category.Geo": "Геоданные",
+
   "general.title": "Общие",
   "general.language": "Язык",
   "general.language_auto": "Как в системе",
@@ -542,6 +554,7 @@
   "general.reset_library": "Вернуть по умолчанию",
   "general.reset_confirm": "Заменить все пресеты и профили кругового меню на стандартные?",
   "general.imported": "Импортировано: {0}",
+
   "triggers.title": "Горячие клавиши",
   "triggers.description": "Выберите, как открывается круговое меню. Жестов можно добавить сколько угодно.",
   "triggers.macos_permissions": "Разрешите Filee в разделе «Системные настройки > Конфиденциальность и безопасность > Универсальный доступ».\nЕсли Filee уже включён, но жесты не запускаются, удалите его кнопкой − и добавьте снова кнопкой +.\nFinder также спросит разрешение на автоматизацию, когда вы впервые воспользуетесь сочетанием для выделенных файлов.",
@@ -599,6 +612,7 @@
   "triggers.excluded_none_running": "Нет других программ с открытыми окнами.",
   "triggers.excluded_note": "Жесты и сочетания ничего не делают, пока указатель над этими программами.",
   "triggers.paused": "Горячие клавиши приостановлены",
+
   "toolbar.title": "Круговое меню",
   "toolbar.step_profile": "1. Выберите профиль",
   "toolbar.step_arrange": "2. Расставьте пресеты",
@@ -666,17 +680,18 @@
   "toolbar.mixed_covered": "«{0}» стоит выше и допускает все отмеченные здесь расширения, поэтому этот профиль никогда не используется.",
   "toolbar.mixed_others": "Остальные смеси файлов открывают «{0}».",
   "toolbar.mixed_others_self": "Не осталось смешанного профиля без отметок, поэтому этот используется и для всех остальных смесей.",
-  "toolbar.chip_tip.makes": "→ {0} · {1}",
-  "toolbar.chip_tip.makes_same": "→ Тот же формат",
-  "toolbar.chip_tip.makes_name": "→ {0}",
-  "toolbar.chip_tip.works_with": "Поддерживаемые форматы: {0}",
-  "toolbar.chip_tip.kind": "{0} ({1})",
-  "toolbar.chip_tip.name_separator": ", ",
-  "toolbar.chip_tip.names_more": "{0} +{1}",
-  "toolbar.chip_tip.more_shift": "+{0} дополнительно · Shift — показать все",
-  "toolbar.chip_tip.shift_all": "Shift — показать все",
-  "toolbar.chip_tip.any_file": "Любой файл",
-  "tags.remove": "Убрать",
+   "toolbar.chip_tip.makes": "→ {0} · {1}",
+   "toolbar.chip_tip.makes_same": "→ Тот же формат",
+   "toolbar.chip_tip.makes_name": "→ {0}",
+   "toolbar.chip_tip.works_with": "Поддерживаемые форматы: {0}",
+   "toolbar.chip_tip.kind": "{0} ({1})",
+   "toolbar.chip_tip.name_separator": ", ",
+   "toolbar.chip_tip.names_more": "{0} +{1}",
+   "toolbar.chip_tip.more_shift": "+{0} дополнительно · Shift — показать все",
+   "toolbar.chip_tip.shift_all": "Shift — показать все",
+   "toolbar.chip_tip.any_file": "Любой файл",
+   "tags.remove": "Убрать",
+
   "presets.title": "Пресеты",
   "presets.add": "Новый",
   "presets.add_empty": "Пустой пресет",
@@ -904,6 +919,7 @@
   "presets.delete_confirm": "Удалить «{0}»? Он также пропадёт из всех круговых меню и групп.",
   "presets.name_required": "Введите название",
   "presets.select": "Выберите пресет, чтобы изменить его",
+
   "theme.title": "Тема",
   "theme.style": "Стиль темы",
   "theme.style.Soft": "Filee Soft",
@@ -940,6 +956,7 @@
   "theme.preview": "Предпросмотр",
   "theme.preview_toggle": "Пример переключателя (только предпросмотр, не настройка)",
   "theme.preview_toggle_hint": "Показывает, как выглядят переключатели в этой теме. Не меняет никаких настроек.",
+
   "engines.title": "Движки конвертации",
   "engines.description": "Для каждой конвертации Filee выбирает лучший доступный движок.\nЕсли с задачей справляются несколько, выбирается тот, что выше.",
   "engines.available": "Готовы",
@@ -1016,6 +1033,7 @@
   "engines.state.unpacking": "Устанавливается…",
   "engines.state.installed": "Установлен",
   "engines.state.failed": "Ошибка: {0}",
+
   "about.title": "О программе",
   "about.updates": "Обновления",
   "common.search": "Поиск",
@@ -1040,6 +1058,7 @@
   "feedback.notice_text": "Звезда на GitHub помогает другим найти Filee.\nБудем рады и сообщениям о проблемах, и идеям.",
   "feedback.star": "Поставить звезду на GitHub",
   "feedback.issue": "Сообщить о проблеме или идее",
+
   "common.ok": "OK",
   "common.cancel": "Отмена",
   "common.save": "Сохранить",
@@ -1049,6 +1068,7 @@
   "common.no": "Нет",
   "common.on": "Вкл.",
   "common.off": "Выкл.",
+
   "setup.title": "Выберите движки конвертации",
   "setup.description": "Картинки, PDF, документы Office, HWP, электронные книги, архивы, шрифты, CAD и 3D-модели уже конвертируются.\nДвижки нужно скачивать только для видео, аудио и редких форматов.",
   "setup.note": "Движки можно установить или удалить в любой момент в разделе «Настройки → Движки».",
@@ -1211,6 +1231,7 @@
   "watch.status_starting": "Запуск…",
   "watch.status_error": "Не удаётся следить за этой папкой: {0}",
   "watch.cli_hint": "Также из командной строки: filee watch <папка> --to <формат>",
+
   "preset.sheet_studio": "PDF + Редактор",
   "sheet_studio.title": "Подготовка таблицы к PDF",
   "sheet_studio.sheets": "Листы и порядок страниц",
@@ -1250,6 +1271,7 @@
   "sheet_studio.apply_fix": "Применить рекомендуемую разметку",
   "sheet_studio.add_region": "+ Добавить ещё область",
   "sheet_studio.region_name": "{0} · область {1}",
+
   "whats_new.title": "Что нового в Filee {0}",
   "whats_new.previous": "Назад",
   "whats_new.next": "Далее",
@@ -1283,18 +1305,8 @@
   "presets.translate_hint": "Переводит документ или книгу на целевой язык прямо на вашем компьютере.",
   "presets.target_language": "Целевой язык",
   "presets.test_connection": "Проверить подключение",
-  "engines.package.translator.name": "Переводчик (офлайн-ИИ)",
-  "engines.package.translator.description": "Переводит документы и книги локально на вашем ПК без отправки в сеть. Работает офлайн через локальный Ollama.",
-  "engines.package.translator.sizes": "Офлайн локальный ИИ · http://127.0.0.1:11434",
   "engines.package.translator.no_model": "Ollama работает по адресу http://127.0.0.1:11434, но модели не найдены. Загрузите офлайн-модель, например llama3.2.",
-  "engines.package.translator.not_running": "Ollama установлен на этом компьютере, но не запущен. Запустите Ollama через «Управление моделями».",
-  "engines.package.translator.cloud_skipped": "{0} облачных моделей скрыто, чтобы текст документов никогда не покидал ваш ПК.",
-  "engines.package.translator.only_cloud_models": "Найдены только облачные модели. Облачные модели (-cloud) отправляют текст на ollama.com и заблокированы. Загрузите локальную модель.",
-  "engines.guidance.windows.translator": "Как использовать офлайн-перевод:\n1. Скачайте Ollama: https://ollama.com/download\n2. Выполните в терминале: ollama pull llama3.2 (или любую другую)\n3. Filee работает офлайн через http://127.0.0.1:11434 — текст никогда не покидает ваш ПК.",
-  "engines.guidance.macos.translator": "Как использовать офлайн-перевод:\n1. Скачайте Ollama: https://ollama.com/download (или brew install ollama)\n2. Выполните в терминале: ollama pull llama3.2 (или любую другую)\n3. Filee работает офлайн через http://127.0.0.1:11434 — текст никогда не покидает ваш Mac.",
-  "engines.guidance.linux.translator": "Как использовать офлайн-перевод:\n1. Установите Ollama: curl -fsSL https://ollama.com/install.sh | sh\n2. Выполните в терминале: ollama pull llama3.2 (или любую другую)\n3. Filee работает офлайн через http://127.0.0.1:11434 — текст никогда не покидает ваш компьютер.",
   "engines.ollama.manage": "Управление Ollama",
-  "engines.ollama.manage_hint": "Управление локальными моделями Ollama, запуск/остановка сервера и загрузка моделей",
   "engines.ollama.title": "Управление локальным ИИ Ollama",
   "engines.ollama.description": "Все модели работают на 100% офлайн на вашем компьютере. Облачные модели (-cloud) заблокированы для конфиденциальности.",
   "engines.ollama.server_running": "Сервер работает",
@@ -1315,6 +1327,7 @@
   "engine.reason.download_translator": "Требуется локальный Ollama на http://127.0.0.1:11434 (см. Настройки → Движки)",
   "error.translation_needs_engine": "Для офлайн-перевода требуется локальный Ollama (http://127.0.0.1:11434). См. Настройки → Движки.",
   "error.translation_cloud_model_forbidden": "Блокировка безопасности: облачные модели (-cloud) заблокированы для предотвращения отправки текста документов в сеть.",
+  "error.translation_empty_response": "Ollama вернул пустой ответ.",
   "engines.ollama.testing": "Тестирование перевода...",
   "engines.ollama.starting": "Запуск...",
   "engines.ollama.connecting": "Подключение...",

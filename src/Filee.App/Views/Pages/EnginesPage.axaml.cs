@@ -136,7 +136,10 @@ public partial class EnginesPage : UserControl
     {
         if (TopLevel.GetTopLevel(this) is not Window window)
             return;
-        await new OllamaModelManagerWindow().ShowDialog(window);
+        var dlg = new OllamaModelManagerWindow();
+        await dlg.ShowDialog(window);
+        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        AppHost.Get<Filee.Core.Conversion.ConverterCatalog>().Refresh();
     }
 
     /// <summary>Picks the program of a copy the user already has (ffmpeg.exe, ebook-convert.exe, …) and uses it.</summary>

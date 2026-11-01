@@ -247,7 +247,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
 
                         long size = m.TryGetProperty("size", out var s) && s.TryGetInt64(out var sz) ? sz : 0;
                         var sizeStr = size > 0 ? $"{size / 1_000_000_000.0:0.1} GB" : "";
-                        var isCloud = TranslationService.IsCloudModel(name);
+                        var isCloud = TranslationService.IsCloudModel(name) || TranslationService.IsCloudModelElement(m);
                         var isUsing = !isCloud && string.Equals(name, ActiveModelName, StringComparison.OrdinalIgnoreCase);
 
                         list.Add(new OllamaModelItem
@@ -355,6 +355,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         UpdateCanStopServer();
         await Task.Delay(300);
         await RefreshStatusAsync();
+        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
     }
 
     [RelayCommand]
@@ -393,6 +394,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         }
 
         await RefreshStatusAsync();
+        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
     }
 
     [RelayCommand]

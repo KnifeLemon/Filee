@@ -1,6 +1,7 @@
 {
   "app.name": "Filee",
   "app.tagline": "Arraste, solte, convertido.",
+
   "nav.home": "Início",
   "nav.general": "Geral",
   "nav.triggers": "Atalhos",
@@ -12,6 +13,7 @@
   "nav.about": "Sobre",
   "nav.collapse": "Recolher barra lateral",
   "nav.expand": "Expandir barra lateral",
+
   "tray.open": "Abrir o Filee",
   "tray.pause": "Pausar atalhos",
   "tray.resume": "Retomar atalhos",
@@ -23,6 +25,7 @@
   "close.tray": "Manter na bandeja",
   "close.quit": "Sair",
   "close.dont_ask": "Não perguntar de novo",
+
   "home.title": "Início",
   "home.drop_title": "Solte os arquivos aqui",
   "home.drop_select": "Clique duas vezes para selecionar arquivos",
@@ -51,6 +54,7 @@
   "home.undone": "Desfeito: os resultados estão na Lixeira",
   "home.undone_original": "Desfeito: os resultados estão na Lixeira, assim como os originais que eles substituíram",
   "home.undo_failed": "Não foi possível mover {0} para a Lixeira: {1}",
+
   "donut.center_drag": "Traga os arquivos para cá",
   "donut.files_same": "{0} × {1}",
   "donut.files_mixed": "{0} arquivos",
@@ -66,6 +70,7 @@
   "donut.group_caption": "Grupo de {0}",
   "donut.flip_to_back": "{0} verso",
   "donut.flip_to_front": "{0} frente",
+
   "toast.converting": "{0} → {1}",
   "toast.done": "Concluído",
   "toast.done_errors": "{0} de {1} falharam",
@@ -78,6 +83,7 @@
   "toast.get_fonts": "Obter fontes",
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · {1} de {2} arquivos",
+
   "error.unsupported_source": "Este tipo de arquivo não é compatível",
   "error.empty_file": "O arquivo está vazio (0 bytes). Um arquivo criado com “Novo” no menu de contexto continua vazio até você abri-lo no aplicativo e salvá-lo",
   "format_request.request": "Pedir este formato",
@@ -160,6 +166,7 @@
   "notice.geo_field_names": "Nomes de campo de Shapefile têm no máximo 10 caracteres: alguns foram encurtados",
   "notice.geo_shapefile_split": "Um Shapefile guarda um tipo de forma, então pontos, linhas e polígonos foram salvos em arquivos separados",
   "notice.geo_heights_dropped": "Alguns pontos não têm altura e o Shapefile não pode deixá-la de fora em apenas um, então todas as alturas foram omitidas",
+
   "engine.reason.not_installed": "Não instalado",
   "engine.reason.error": "Erro ao verificar",
   "engine.reason.unsupported_platform": "Indisponível nesta plataforma",
@@ -218,6 +225,7 @@
   "engine.calibre.description": "Formatos raros de e-book (LIT, LRF, CHM, PDB, RB…) e saída Kindle (MOBI, AZW3).\nAcima do gravador de HWPX, também gera os PDFs de e-books (bem mais rápido em livros longos).",
   "engine.libreoffice.description": "Lê formatos antigos e menos comuns: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nTambém salva como DOC, XLS, PPT, ODT, ODP, modelos OpenDocument e EMF.",
   "engine.translator.description": "Traduz documentos e e-books localmente usando modelos offline do Ollama.",
+
   "profile.images": "Imagens",
   "profile.pdf": "PDF",
   "profile.office": "Documentos",
@@ -237,6 +245,7 @@
   "profile.models": "Modelos 3D",
   "profile.geo": "Geoespacial",
   "profile.mixed": "Arquivos mistos",
+
   "preset.crop": "Recortar",
   "preset.clip": "Cortar um clipe",
   "crop.save": "Recortar e salvar",
@@ -348,6 +357,7 @@
   "clip.silence_removed": "Silêncio removido: {0}",
   "clip.no_silence": "Nenhum silêncio encontrado",
   "clip.cannot_play": "Não foi possível reproduzir o clipe",
+
   "preset.half_size": "Reduzir 50%",
   "preset.half_size.donut": "Tamanho 50%",
   "preset.image_edit": "Editar imagens",
@@ -441,6 +451,7 @@
   "preset.merge_audio": "Juntar áudio",
   "preset.merge_images": "Juntar imagens",
   "preset.remove_metadata": "Remover metadados",
+
   "format.folder": "Pasta",
   "format.category.Image": "Imagem",
   "format.category.Pdf": "PDF",
@@ -460,6 +471,7 @@
   "format.category.Data": "Dados",
   "format.category.Model3D": "Modelo 3D",
   "format.category.Geo": "Geoespacial",
+
   "general.title": "Geral",
   "general.language": "Idioma",
   "general.language_auto": "Padrão do sistema",
@@ -542,6 +554,7 @@
   "general.reset_library": "Restaurar padrões",
   "general.reset_confirm": "Substituir todas as predefinições e os perfis de menu pelos padrões?",
   "general.imported": "{0} itens importados",
+
   "triggers.title": "Atalhos",
   "triggers.description": "Escolha como o menu circular abre. Você pode adicionar quantos gestos quiser.",
   "triggers.macos_permissions": "Permita o Filee em Ajustes do Sistema > Privacidade e Segurança > Acessibilidade.\nSe o Filee já estiver ativado, mas os gestos não iniciarem, remova-o com − e adicione-o de novo com +.\nO Finder também pede permissão de Automação na primeira vez que você usa um atalho de seleção.",
@@ -599,6 +612,7 @@
   "triggers.excluded_none_running": "Nenhum outro app tem uma janela aberta.",
   "triggers.excluded_note": "Gestos e atalhos não fazem nada enquanto o ponteiro está sobre estes apps.",
   "triggers.paused": "Os atalhos estão pausados",
+
   "toolbar.title": "Menu circular",
   "toolbar.step_profile": "1. Escolha um perfil",
   "toolbar.step_arrange": "2. Organize as predefinições",
@@ -666,17 +680,18 @@
   "toolbar.mixed_covered": "“{0}” vem primeiro e permite toda extensão marcada aqui, então este perfil nunca é usado.",
   "toolbar.mixed_others": "Outras misturas de arquivos abrem “{0}”.",
   "toolbar.mixed_others_self": "Não restou perfil misto sem nada marcado, então este também é usado para toda outra mistura.",
-  "toolbar.chip_tip.makes": "→ {0} · {1}",
-  "toolbar.chip_tip.makes_same": "→ Mesmo formato",
-  "toolbar.chip_tip.makes_name": "→ {0}",
-  "toolbar.chip_tip.works_with": "Formatos aceitos: {0}",
-  "toolbar.chip_tip.kind": "{0} ({1})",
-  "toolbar.chip_tip.name_separator": ", ",
-  "toolbar.chip_tip.names_more": "{0} +{1}",
-  "toolbar.chip_tip.more_shift": "+{0} a mais · Shift para mostrar todos",
-  "toolbar.chip_tip.shift_all": "Shift para mostrar todos",
-  "toolbar.chip_tip.any_file": "Qualquer arquivo",
-  "tags.remove": "Remover",
+   "toolbar.chip_tip.makes": "→ {0} · {1}",
+   "toolbar.chip_tip.makes_same": "→ Mesmo formato",
+   "toolbar.chip_tip.makes_name": "→ {0}",
+   "toolbar.chip_tip.works_with": "Formatos aceitos: {0}",
+   "toolbar.chip_tip.kind": "{0} ({1})",
+   "toolbar.chip_tip.name_separator": ", ",
+   "toolbar.chip_tip.names_more": "{0} +{1}",
+   "toolbar.chip_tip.more_shift": "+{0} a mais · Shift para mostrar todos",
+   "toolbar.chip_tip.shift_all": "Shift para mostrar todos",
+   "toolbar.chip_tip.any_file": "Qualquer arquivo",
+   "tags.remove": "Remover",
+
   "presets.title": "Predefinições",
   "presets.add": "Nova",
   "presets.add_empty": "Predefinição vazia",
@@ -904,6 +919,7 @@
   "presets.delete_confirm": "Excluir “{0}”? Também será removida de todo menu e grupo.",
   "presets.name_required": "Digite um nome",
   "presets.select": "Selecione uma predefinição para editá-la",
+
   "theme.title": "Tema",
   "theme.style": "Estilo do tema",
   "theme.style.Soft": "Filee Soft",
@@ -940,6 +956,7 @@
   "theme.preview": "Prévia",
   "theme.preview_toggle": "Chave de exemplo (só pré-visualização, não é uma configuração)",
   "theme.preview_toggle_hint": "Mostra como as chaves ficam neste tema. Não altera nenhuma configuração.",
+
   "engines.title": "Motores de conversão",
   "engines.description": "O Filee escolhe o melhor motor disponível para cada conversão.\nQuando vários fazem o mesmo trabalho, o que está mais acima tem prioridade.",
   "engines.available": "Pronto",
@@ -1016,6 +1033,7 @@
   "engines.state.unpacking": "Instalando…",
   "engines.state.installed": "Instalado",
   "engines.state.failed": "Falhou: {0}",
+
   "about.title": "Sobre",
   "about.updates": "Atualizações",
   "common.search": "Pesquisar",
@@ -1040,6 +1058,7 @@
   "feedback.notice_text": "Uma estrela no GitHub ajuda outras pessoas a encontrar o Filee.\nProblemas e ideias também são bem-vindos.",
   "feedback.star": "Dar estrela no GitHub",
   "feedback.issue": "Relatar um problema ou uma ideia",
+
   "common.ok": "OK",
   "common.cancel": "Cancelar",
   "common.save": "Salvar",
@@ -1049,6 +1068,7 @@
   "common.no": "Não",
   "common.on": "Ligado",
   "common.off": "Desligado",
+
   "setup.title": "Escolha os motores de conversão",
   "setup.description": "Imagens, PDF, documentos do Office, HWP, e-books, arquivos compactados, fontes, CAD e modelos 3D já convertem.\nBaixe motores só para vídeo e áudio ou formatos raros.",
   "setup.note": "Você pode instalar ou remover motores a qualquer momento em Configurações → Motores.",
@@ -1211,6 +1231,7 @@
   "watch.status_starting": "Iniciando…",
   "watch.status_error": "Não é possível monitorar esta pasta: {0}",
   "watch.cli_hint": "Também na linha de comando: filee watch <pasta> --to <formato>",
+
   "preset.sheet_studio": "PDF + Editar",
   "sheet_studio.title": "Estúdio de impressão de planilhas",
   "sheet_studio.sheets": "Planilhas e ordem de saída",
@@ -1250,6 +1271,7 @@
   "sheet_studio.apply_fix": "Aplicar layout sugerido",
   "sheet_studio.add_region": "+ Adicionar outra área",
   "sheet_studio.region_name": "{0} · área {1}",
+
   "whats_new.title": "Novidades do Filee {0}",
   "whats_new.previous": "Anterior",
   "whats_new.next": "Próximo",
@@ -1283,18 +1305,8 @@
   "presets.translate_hint": "Traduz o documento ou livro para o idioma de destino no seu computador.",
   "presets.target_language": "Idioma de destino",
   "presets.test_connection": "Testar conexão",
-  "engines.package.translator.name": "Tradutor (IA offline)",
-  "engines.package.translator.description": "Traduz documentos e livros localmente no seu PC sem enviá-los para a nuvem. Funciona offline com Ollama local.",
-  "engines.package.translator.sizes": "IA local offline · http://127.0.0.1:11434",
   "engines.package.translator.no_model": "Ollama está em execução em http://127.0.0.1:11434 sem modelos encontrados. Baixe um modelo offline como llama3.2.",
-  "engines.package.translator.not_running": "Ollama está instalado neste computador, mas não está em execução. Inicie o Ollama em Gerenciar modelos.",
-  "engines.package.translator.cloud_skipped": "{0} modelo(s) em nuvem foram ocultados para garantir que o texto nunca saia do seu PC.",
-  "engines.package.translator.only_cloud_models": "Apenas modelos em nuvem foram encontrados. Modelos em nuvem (-cloud) enviam texto para ollama.com e estão bloqueados. Baixe um modelo local.",
-  "engines.guidance.windows.translator": "Para usar a tradução offline:\n1. Baixe o Ollama: https://ollama.com/download\n2. Execute no terminal: ollama pull llama3.2 (ou qualquer modelo)\n3. O Filee comunica-se offline em http://127.0.0.1:11434 — nenhum dado sai do seu PC.",
-  "engines.guidance.macos.translator": "Para usar a tradução offline:\n1. Baixe o Ollama: https://ollama.com/download (ou brew install ollama)\n2. Execute no terminal: ollama pull llama3.2 (ou qualquer modelo)\n3. O Filee comunica-se offline em http://127.0.0.1:11434 — nenhum dado sai do seu Mac.",
-  "engines.guidance.linux.translator": "Para usar a tradução offline:\n1. Instale o Ollama: curl -fsSL https://ollama.com/install.sh | sh\n2. Execute no terminal: ollama pull llama3.2 (ou qualquer modelo)\n3. O Filee comunica-se offline em http://127.0.0.1:11434 — nenhum dado sai do seu computador.",
   "engines.ollama.manage": "Gerenciar Ollama",
-  "engines.ollama.manage_hint": "Gerenciar modelos locais do Ollama, iniciar/parar servidor e instalar modelos offline",
   "engines.ollama.title": "Gerenciamento de IA Local Ollama",
   "engines.ollama.description": "Todos os modelos funcionam 100% offline no seu computador. Modelos em nuvem (-cloud) são bloqueados para privacidade dos documentos.",
   "engines.ollama.server_running": "Servidor em execução",
@@ -1315,6 +1327,7 @@
   "engine.reason.download_translator": "Requer Ollama local em http://127.0.0.1:11434 (consulte Configurações → Motores)",
   "error.translation_needs_engine": "A tradução offline requer o Ollama local (http://127.0.0.1:11434). Consulte Configurações → Motores.",
   "error.translation_cloud_model_forbidden": "Bloqueio de segurança: Modelos em nuvem (-cloud) estão bloqueados para garantir que o texto do documento nunca saia do seu computador.",
+  "error.translation_empty_response": "Ollama retornou uma resposta vazia.",
   "engines.ollama.testing": "Testando tradução...",
   "engines.ollama.starting": "Iniciando...",
   "engines.ollama.connecting": "Conectando...",

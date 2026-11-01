@@ -1,6 +1,7 @@
 {
   "app.name": "Filee",
   "app.tagline": "拖一拖，放一放，转换完成。",
+
   "nav.home": "首页",
   "nav.general": "常规",
   "nav.triggers": "快捷操作",
@@ -12,6 +13,7 @@
   "nav.about": "关于",
   "nav.collapse": "收起侧边栏",
   "nav.expand": "展开侧边栏",
+
   "tray.open": "打开 Filee",
   "tray.pause": "暂停快捷操作",
   "tray.resume": "恢复快捷操作",
@@ -23,6 +25,7 @@
   "close.tray": "保留在托盘",
   "close.quit": "退出",
   "close.dont_ask": "不再询问",
+
   "home.title": "首页",
   "home.drop_title": "将文件拖放到这里",
   "home.drop_select": "双击选择文件",
@@ -51,6 +54,7 @@
   "home.undone": "已撤销：结果已在回收站/废纸篓中",
   "home.undone_original": "已撤销：结果已在回收站/废纸篓中，被替换的原文件也在那里",
   "home.undo_failed": "无法将 {0} 移到回收站/废纸篓：{1}",
+
   "donut.center_drag": "把文件拖到这里",
   "donut.files_same": "{0} 个 {1}",
   "donut.files_mixed": "{0} 个文件",
@@ -66,6 +70,7 @@
   "donut.group_caption": "组 · {0} 项",
   "donut.flip_to_back": "{0} 背面",
   "donut.flip_to_front": "{0} 正面",
+
   "toast.converting": "{0} → {1}",
   "toast.done": "完成",
   "toast.done_errors": "{1} 个中有 {0} 个失败",
@@ -78,6 +83,7 @@
   "toast.get_fonts": "获取字体",
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · 第 {1}/{2} 个文件",
+
   "error.unsupported_source": "不支持此文件类型",
   "error.empty_file": "文件是空的（0 字节）。用右键菜单“新建”创建的文件，要在对应的应用中打开并保存后才有内容",
   "format_request.request": "请求支持此格式",
@@ -160,6 +166,7 @@
   "notice.geo_field_names": "Shapefile 字段名最多 10 个字符，部分名称已缩短",
   "notice.geo_shapefile_split": "Shapefile 只能保存一种形状，因此点、线、面被分别存成了多个文件",
   "notice.geo_heights_dropped": "部分点没有高度，而 Shapefile 无法只省略其中一个点的高度，因此已省略所有高度",
+
   "engine.reason.not_installed": "未安装",
   "engine.reason.error": "检查时出错",
   "engine.reason.unsupported_platform": "此平台不可用",
@@ -218,6 +225,7 @@
   "engine.calibre.description": "少见的电子书格式（LIT、LRF、CHM、PDB、RB…）以及 Kindle 输出（MOBI、AZW3）。\n排在 HWPX writer 之上时，也由它把电子书转为 PDF（长书快得多）。",
   "engine.libreoffice.description": "读取较旧或少见的格式，如 DOC、PPT、Pages、Keynote、Numbers、WordPerfect、ClarisWorks、Publisher、Visio。\n也能保存为 DOC、XLS、PPT、ODT、ODP、OpenDocument 模板或 EMF。",
   "engine.translator.description": "使用离线 Ollama 模型在本地翻译文档和电子书。",
+
   "profile.images": "图片",
   "profile.pdf": "PDF",
   "profile.office": "文档",
@@ -237,6 +245,7 @@
   "profile.models": "3D 模型",
   "profile.geo": "地理信息 (GIS)",
   "profile.mixed": "混合文件",
+
   "preset.crop": "裁剪",
   "crop.save": "裁剪并保存",
   "crop.reset": "重置",
@@ -348,6 +357,7 @@
   "clip.silence_removed": "已去除静音：{0} 处",
   "clip.no_silence": "没有找到静音",
   "clip.cannot_play": "无法播放片段",
+
   "preset.half_size": "缩小 50%",
   "preset.half_size.donut": "缩小 50%",
   "preset.image_edit": "编辑图片",
@@ -441,6 +451,7 @@
   "preset.merge_audio": "合并音频",
   "preset.merge_images": "合并图片",
   "preset.remove_metadata": "移除元数据",
+
   "format.folder": "文件夹",
   "format.category.Image": "图片",
   "format.category.Pdf": "PDF",
@@ -460,6 +471,7 @@
   "format.category.Data": "数据",
   "format.category.Model3D": "3D 模型",
   "format.category.Geo": "地理信息",
+
   "general.title": "常规",
   "general.language": "语言",
   "general.language_auto": "跟随系统",
@@ -542,6 +554,7 @@
   "general.reset_library": "恢复默认",
   "general.reset_confirm": "要将所有预设和工具栏配置恢复为默认吗？",
   "general.imported": "已导入 {0} 项",
+
   "triggers.title": "快捷操作",
   "triggers.description": "选择打开环形工具栏的方式。可以添加任意多个手势。",
   "triggers.macos_permissions": "请在系统设置 > 隐私与安全性 > 辅助功能中允许 Filee。\n如果 Filee 已打开但手势仍未启动，请用 − 将其移除，再用 + 重新添加。\n首次使用选择文件的快捷键时，Finder 还会请求自动化权限。",
@@ -599,6 +612,7 @@
   "triggers.excluded_none_running": "没有其他打开窗口的应用。",
   "triggers.excluded_note": "指针位于这些应用上时，手势和快捷键不起作用。",
   "triggers.paused": "快捷操作已暂停",
+
   "toolbar.title": "环形工具栏",
   "toolbar.step_profile": "1. 选择配置",
   "toolbar.step_arrange": "2. 排列预设",
@@ -666,17 +680,18 @@
   "toolbar.mixed_covered": "靠前的“{0}”允许此处勾选的所有扩展名，因此不会使用此配置。",
   "toolbar.mixed_others": "其他混合选择会打开“{0}”。",
   "toolbar.mixed_others_self": "没有未勾选任何项的混合配置，因此其他混合选择也会使用此配置。",
-  "toolbar.chip_tip.makes": "→ {0} · {1}",
-  "toolbar.chip_tip.makes_same": "→ 相同格式",
-  "toolbar.chip_tip.makes_name": "→ {0}",
-  "toolbar.chip_tip.works_with": "支持的格式：{0}",
-  "toolbar.chip_tip.kind": "{0}（{1}）",
-  "toolbar.chip_tip.name_separator": "、",
-  "toolbar.chip_tip.names_more": "{0} +{1}",
-  "toolbar.chip_tip.more_shift": "+{0} 项 · 按 Shift 显示全部",
-  "toolbar.chip_tip.shift_all": "按 Shift 显示全部",
-  "toolbar.chip_tip.any_file": "任意文件",
-  "tags.remove": "移除",
+   "toolbar.chip_tip.makes": "→ {0} · {1}",
+   "toolbar.chip_tip.makes_same": "→ 相同格式",
+   "toolbar.chip_tip.makes_name": "→ {0}",
+   "toolbar.chip_tip.works_with": "支持的格式：{0}",
+   "toolbar.chip_tip.kind": "{0}（{1}）",
+   "toolbar.chip_tip.name_separator": "、",
+   "toolbar.chip_tip.names_more": "{0} +{1}",
+   "toolbar.chip_tip.more_shift": "+{0} 项 · 按 Shift 显示全部",
+   "toolbar.chip_tip.shift_all": "按 Shift 显示全部",
+   "toolbar.chip_tip.any_file": "任意文件",
+   "tags.remove": "移除",
+
   "presets.title": "预设",
   "presets.add": "新建",
   "presets.add_empty": "空白预设",
@@ -904,6 +919,7 @@
   "presets.delete_confirm": "删除“{0}”？它也会从所有工具栏和组中移除。",
   "presets.name_required": "请输入名称",
   "presets.select": "选择要编辑的预设",
+
   "theme.title": "主题",
   "theme.style": "主题样式",
   "theme.style.Soft": "Filee Soft",
@@ -940,6 +956,7 @@
   "theme.preview": "预览",
   "theme.preview_toggle": "示例开关（仅供预览，不是设置）",
   "theme.preview_toggle_hint": "展示此主题中开关的外观，不会更改任何设置。",
+
   "engines.title": "转换引擎",
   "engines.description": "Filee 会为每次转换选择最合适的可用引擎。\n多个引擎能完成同一转换时，列表中靠前的优先。",
   "engines.available": "可用",
@@ -1016,6 +1033,7 @@
   "engines.state.unpacking": "安装中…",
   "engines.state.installed": "已安装",
   "engines.state.failed": "失败：{0}",
+
   "about.title": "关于",
   "about.updates": "更新",
   "common.search": "搜索",
@@ -1040,6 +1058,7 @@
   "feedback.notice_text": "在 GitHub 上点个星（⭐）能帮助更多人发现 Filee。\n也欢迎反馈问题或提出想法。",
   "feedback.star": "在 GitHub 上点星",
   "feedback.issue": "报告问题 · 提出建议",
+
   "common.ok": "确定",
   "common.cancel": "取消",
   "common.save": "保存",
@@ -1049,6 +1068,7 @@
   "common.no": "否",
   "common.on": "开",
   "common.off": "关",
+
   "setup.title": "选择转换引擎",
   "setup.description": "图片、PDF、Office 文档、HWP、电子书、压缩文件、字体、CAD 和 3D 模型现在就能转换。\n只有视频、音频或少见格式才需要下载引擎。",
   "setup.note": "可随时在“设置 → 转换引擎”中安装或删除引擎。",
@@ -1211,6 +1231,7 @@
   "watch.status_starting": "正在启动…",
   "watch.status_error": "无法监视此文件夹：{0}",
   "watch.cli_hint": "也可以在命令行中使用：filee watch <文件夹> --to <格式>",
+
   "preset.sheet_studio": "PDF + 编辑",
   "sheet_studio.title": "电子表格打印工作室",
   "sheet_studio.sheets": "工作表和输出顺序",
@@ -1250,6 +1271,7 @@
   "sheet_studio.apply_fix": "应用建议布局",
   "sheet_studio.add_region": "+ 添加另一个区域",
   "sheet_studio.region_name": "{0} · 区域 {1}",
+
   "whats_new.title": "Filee {0} 新功能",
   "whats_new.previous": "上一页",
   "whats_new.next": "下一页",
@@ -1283,18 +1305,8 @@
   "presets.translate_hint": "在您的电脑上将文档或书籍翻译成目标语言。",
   "presets.target_language": "目标语言",
   "presets.test_connection": "测试连接",
-  "engines.package.translator.name": "翻译器 (离线 AI)",
-  "engines.package.translator.description": "在本地 PC 上翻译文档和图书，无需上传。使用本地 Ollama 完全离线运行。",
-  "engines.package.translator.sizes": "离线本地 AI · http://127.0.0.1:11434",
   "engines.package.translator.no_model": "Ollama 正在 http://127.0.0.1:11434 运行，但未找到模型。请下载像 llama3.2 这样的离线模型。",
-  "engines.package.translator.not_running": "已安装 Ollama 但未启动。请在“管理模型”中启动 Ollama。",
-  "engines.package.translator.cloud_skipped": "已隐藏 {0} 个云端模型，以确保文档文本不会离开您的 PC。",
-  "engines.package.translator.only_cloud_models": "仅找到云端模型。云端模型 (-cloud) 会向外发送文本，已被禁用。请下载本地离线模型。",
-  "engines.guidance.windows.translator": "如何使用离线翻译：\n1. 下载 Ollama: https://ollama.com/download\n2. 在终端运行: ollama pull llama3.2 (或任何模型)\n3. Filee 通过 http://127.0.0.1:11434 离线通讯，绝无任何文档数据外泄。",
-  "engines.guidance.macos.translator": "如何使用离线翻译：\n1. 下载 Ollama: https://ollama.com/download (或 brew install ollama)\n2. 在终端运行: ollama pull llama3.2 (或任何模型)\n3. Filee 通过 http://127.0.0.1:11434 离线通讯，绝无任何文档数据外泄。",
-  "engines.guidance.linux.translator": "如何使用离线翻译：\n1. 安装 Ollama: curl -fsSL https://ollama.com/install.sh | sh\n2. 在终端运行: ollama pull llama3.2 (或任何模型)\n3. Filee 通过 http://127.0.0.1:11434 离线通讯，绝无任何文档数据外泄。",
   "engines.ollama.manage": "管理 Ollama",
-  "engines.ollama.manage_hint": "管理本地 Ollama 模型、启停服务并安装离线模型",
   "engines.ollama.title": "Ollama 本地 AI 管理",
   "engines.ollama.description": "所有模型 100% 在本地离线运行。为保护文档隐私，云端模型 (-cloud) 已被禁止。",
   "engines.ollama.server_running": "服务运行中",
@@ -1315,6 +1327,7 @@
   "engine.reason.download_translator": "需要运行在 http://127.0.0.1:11434 的本地 Ollama (见 设置 → 引擎)",
   "error.translation_needs_engine": "离线翻译需要本地 Ollama (http://127.0.0.1:11434)。请参阅 设置 → 引擎。",
   "error.translation_cloud_model_forbidden": "安全拦截：云端模型 (-cloud) 已被禁用，以确保文档文本绝不离开您的计算机。",
+  "error.translation_empty_response": "Ollama 返回了空响应。",
   "engines.ollama.testing": "正在测试翻译...",
   "engines.ollama.starting": "正在启动...",
   "engines.ollama.connecting": "正在连接...",

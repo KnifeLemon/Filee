@@ -72,8 +72,9 @@ internal static class DocumentTranslator
 
             if (slots.Count == 1)
             {
-                var translated = await service.TranslateTextAsync(slots[0].Text, toLang, fromLang, cancellationToken);
-                slots[0].SetText(StripTags(translated).Trim());
+                var origText = slots[0].Text;
+                var translated = await service.TranslateTextAsync(origText, toLang, fromLang, cancellationToken);
+                slots[0].SetText(PreserveWhitespace(origText, StripSlotMarkers(translated)));
             }
             else
             {
@@ -89,7 +90,9 @@ internal static class DocumentTranslator
                 {
                     if (int.TryParse(match.Groups[1].Value, out var slotIdx) && slotIdx >= 0 && slotIdx < slots.Count)
                     {
-                        slots[slotIdx].SetText(match.Groups[2].Value);
+                        var origText = slots[slotIdx].Text;
+                        var clean = StripSlotMarkers(match.Groups[2].Value);
+                        slots[slotIdx].SetText(PreserveWhitespace(origText, clean));
                         matchedIndices.Add(slotIdx);
                     }
                 }
@@ -100,8 +103,10 @@ internal static class DocumentTranslator
                 {
                     if (!matchedIndices.Contains(k))
                     {
-                        var slotTranslated = await service.TranslateTextAsync(slots[k].Text, toLang, fromLang, cancellationToken);
-                        slots[k].SetText(StripTags(slotTranslated).Trim());
+                        var origText = slots[k].Text;
+                        var slotTranslated = await service.TranslateTextAsync(origText.Trim(), toLang, fromLang, cancellationToken);
+                        var clean = StripSlotMarkers(slotTranslated);
+                        slots[k].SetText(PreserveWhitespace(origText, clean));
                     }
                 }
             }
@@ -145,8 +150,15 @@ internal static class DocumentTranslator
         return slots;
     }
 
-    private static string StripTags(string text) =>
-        Regex.Replace(text, @"<\/?[a-zA-Z0-9]+.*?>", "");
+    private static string StripSlotMarkers(string text) =>
+        Regex.Replace(text, @"<\/?s\d+>", "");
+
+    private static string PreserveWhitespace(string original, string translated)
+    {
+        var leading = new string(original.TakeWhile(char.IsWhiteSpace).ToArray());
+        var trailing = new string(original.Reverse().TakeWhile(char.IsWhiteSpace).Reverse().ToArray());
+        return leading + translated.Trim() + trailing;
+    }
 
     private static IEnumerable<HParagraph> CollectParagraphs(HDocument doc)
     {

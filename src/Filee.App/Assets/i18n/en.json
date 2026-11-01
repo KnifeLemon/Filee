@@ -1,6 +1,7 @@
 {
   "app.name": "Filee",
   "app.tagline": "Drag, drop, converted.",
+
   "nav.home": "Home",
   "nav.general": "General",
   "nav.triggers": "Shortcuts",
@@ -12,6 +13,7 @@
   "nav.about": "About",
   "nav.collapse": "Collapse sidebar",
   "nav.expand": "Expand sidebar",
+
   "tray.open": "Open Filee",
   "tray.pause": "Pause shortcuts",
   "tray.resume": "Resume shortcuts",
@@ -23,6 +25,7 @@
   "close.tray": "Keep in tray",
   "close.quit": "Quit",
   "close.dont_ask": "Don't ask again",
+
   "home.title": "Home",
   "home.drop_title": "Drop files here",
   "home.drop_select": "Double-click to select files",
@@ -51,6 +54,7 @@
   "home.undone": "Undone: the results are in the Recycle Bin / Trash",
   "home.undone_original": "Undone: the results are in the Recycle Bin / Trash, and so are the originals they replaced",
   "home.undo_failed": "{0} couldn't be moved to the Recycle Bin / Trash: {1}",
+
   "donut.center_drag": "Bring files here",
   "donut.files_same": "{0} × {1}",
   "donut.files_mixed": "{0} files",
@@ -66,6 +70,7 @@
   "donut.group_caption": "Group of {0}",
   "donut.flip_to_back": "{0} back",
   "donut.flip_to_front": "{0} front",
+
   "toast.converting": "{0} → {1}",
   "toast.done": "Done",
   "toast.done_errors": "{0} of {1} failed",
@@ -78,6 +83,7 @@
   "toast.get_fonts": "Get fonts",
   "download.badge": "{0}/s · {1}",
   "download.badge_files": "{0} · {1} of {2} files",
+
   "error.unsupported_source": "This file type isn't supported",
   "error.empty_file": "The file is empty (0 bytes). A file made with “New” in the right-click menu stays empty until you open it in its app and save it",
   "format_request.request": "Request this format",
@@ -160,6 +166,7 @@
   "notice.geo_field_names": "Shapefile field names are 10 characters at most: some were shortened",
   "notice.geo_shapefile_split": "A Shapefile holds one kind of shape, so points, lines and polygons were saved as separate files",
   "notice.geo_heights_dropped": "Some points have no height and a Shapefile can't leave one out, so all heights were left out",
+
   "engine.reason.not_installed": "Not installed",
   "engine.reason.error": "Error while checking",
   "engine.reason.unsupported_platform": "Not available on this platform",
@@ -218,6 +225,7 @@
   "engine.calibre.description": "Rare e-book formats (LIT, LRF, CHM, PDB, RB…) and Kindle output (MOBI, AZW3).\nAbove the HWPX writer, it also makes the PDFs of e-books (much faster for long books).",
   "engine.libreoffice.description": "Reads older and less common formats: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nAlso saves as DOC, XLS, PPT, ODT, ODP, OpenDocument templates and EMF.",
   "engine.translator.description": "Translates documents and e-books locally using offline Ollama models.",
+
   "profile.images": "Images",
   "profile.pdf": "PDF",
   "profile.office": "Documents",
@@ -237,6 +245,7 @@
   "profile.models": "3D models",
   "profile.geo": "Geospatial",
   "profile.mixed": "Mixed files",
+
   "preset.crop": "Crop",
   "crop.save": "Crop & Save",
   "crop.reset": "Reset",
@@ -348,6 +357,7 @@
   "clip.silence_removed": "Silence removed: {0}",
   "clip.no_silence": "No silence found",
   "clip.cannot_play": "The clip can't be played",
+
   "preset.half_size": "Half size",
   "preset.half_size.donut": "Half size",
   "preset.image_edit": "Edit pictures",
@@ -441,6 +451,7 @@
   "preset.merge_audio": "Merge audio",
   "preset.merge_images": "Merge images",
   "preset.remove_metadata": "Remove metadata",
+
   "format.folder": "Folder",
   "format.category.Image": "Image",
   "format.category.Pdf": "PDF",
@@ -460,6 +471,7 @@
   "format.category.Data": "Data",
   "format.category.Model3D": "3D model",
   "format.category.Geo": "Geospatial",
+
   "general.title": "General",
   "general.language": "Language",
   "general.language_auto": "System default",
@@ -542,6 +554,7 @@
   "general.reset_library": "Reset to defaults",
   "general.reset_confirm": "Replace all presets and toolbar profiles with the defaults?",
   "general.imported": "Imported {0} items",
+
   "triggers.title": "Shortcuts",
   "triggers.description": "Choose how the donut toolbar opens. You can add as many gestures as you like.",
   "triggers.macos_permissions": "Allow Filee in System Settings > Privacy & Security > Accessibility.\nIf Filee is already switched on but gestures don't start, remove it with − and add it again with +.\nFinder also asks for Automation permission the first time you use a selection shortcut.",
@@ -599,6 +612,7 @@
   "triggers.excluded_none_running": "No other app has a window open.",
   "triggers.excluded_note": "Gestures and shortcuts do nothing while the pointer is over these apps.",
   "triggers.paused": "Shortcuts are paused",
+
   "toolbar.title": "Donut toolbar",
   "toolbar.step_profile": "1. Choose a profile",
   "toolbar.step_arrange": "2. Arrange presets",
@@ -666,17 +680,18 @@
   "toolbar.mixed_covered": "“{0}” comes first and allows every extension checked here, so this profile is never used.",
   "toolbar.mixed_others": "Other mixes of files open “{0}”.",
   "toolbar.mixed_others_self": "No mixed profile is left with nothing checked, so this one is also used for every other mix.",
-  "toolbar.chip_tip.makes": "→ {0} · {1}",
-  "toolbar.chip_tip.makes_same": "→ Same format",
-  "toolbar.chip_tip.makes_name": "→ {0}",
-  "toolbar.chip_tip.works_with": "Accepted formats: {0}",
-  "toolbar.chip_tip.kind": "{0} ({1})",
-  "toolbar.chip_tip.name_separator": ", ",
-  "toolbar.chip_tip.names_more": "{0} +{1}",
-  "toolbar.chip_tip.more_shift": "+{0} more · Shift to show all",
-  "toolbar.chip_tip.shift_all": "Shift to show all",
-  "toolbar.chip_tip.any_file": "Any file",
-  "tags.remove": "Remove",
+   "toolbar.chip_tip.makes": "→ {0} · {1}",
+   "toolbar.chip_tip.makes_same": "→ Same format",
+   "toolbar.chip_tip.makes_name": "→ {0}",
+   "toolbar.chip_tip.works_with": "Accepted formats: {0}",
+   "toolbar.chip_tip.kind": "{0} ({1})",
+   "toolbar.chip_tip.name_separator": ", ",
+   "toolbar.chip_tip.names_more": "{0} +{1}",
+   "toolbar.chip_tip.more_shift": "+{0} more · Shift to show all",
+   "toolbar.chip_tip.shift_all": "Shift to show all",
+   "toolbar.chip_tip.any_file": "Any file",
+   "tags.remove": "Remove",
+
   "presets.title": "Presets",
   "presets.add": "New",
   "presets.add_empty": "Empty preset",
@@ -904,6 +919,7 @@
   "presets.delete_confirm": "Delete “{0}”? It will also be removed from every toolbar and group.",
   "presets.name_required": "Enter a name",
   "presets.select": "Select a preset to edit it",
+
   "theme.title": "Theme",
   "theme.style": "Theme style",
   "theme.style.Soft": "Filee Soft",
@@ -940,6 +956,7 @@
   "theme.preview": "Preview",
   "theme.preview_toggle": "Sample switch (preview only, not a setting)",
   "theme.preview_toggle_hint": "Shows how switches look in this theme. It doesn't change any setting.",
+
   "engines.title": "Conversion engines",
   "engines.description": "Filee picks the best available engine for each conversion.\nWhen several can do the same job, the higher one wins.",
   "engines.available": "Ready",
@@ -1016,6 +1033,7 @@
   "engines.state.unpacking": "Installing…",
   "engines.state.installed": "Installed",
   "engines.state.failed": "Failed: {0}",
+
   "about.title": "About",
   "about.updates": "Updates",
   "common.search": "Search",
@@ -1040,6 +1058,7 @@
   "feedback.notice_text": "A star on GitHub helps other people find Filee.\nProblems and ideas are welcome too.",
   "feedback.star": "Star on GitHub",
   "feedback.issue": "Report a problem or idea",
+
   "common.ok": "OK",
   "common.cancel": "Cancel",
   "common.save": "Save",
@@ -1049,6 +1068,7 @@
   "common.no": "No",
   "common.on": "On",
   "common.off": "Off",
+
   "setup.title": "Choose conversion engines",
   "setup.description": "Images, PDF, Office documents, HWP, e-books, archives, fonts, CAD and 3D models already convert.\nDownload engines only for video and audio or rare formats.",
   "setup.note": "You can install or remove engines at any time in Settings → Engines.",
@@ -1211,6 +1231,7 @@
   "watch.status_starting": "Starting…",
   "watch.status_error": "Can't watch this folder: {0}",
   "watch.cli_hint": "Also on the command line: filee watch <folder> --to <format>",
+
   "preset.sheet_studio": "PDF + Edit",
   "sheet_studio.title": "Spreadsheet Print Studio",
   "sheet_studio.sheets": "Sheets and output order",
@@ -1250,6 +1271,7 @@
   "sheet_studio.apply_fix": "Apply suggested layout",
   "sheet_studio.add_region": "+ Add another region",
   "sheet_studio.region_name": "{0} · region {1}",
+
   "whats_new.title": "What's new in Filee {0}",
   "whats_new.previous": "Previous",
   "whats_new.next": "Next",
@@ -1283,18 +1305,8 @@
   "presets.translate_hint": "Translates the document or book into the target language on your computer.",
   "presets.target_language": "Target language",
   "presets.test_connection": "Test Connection",
-  "engines.package.translator.name": "Translator (Offline AI)",
-  "engines.package.translator.description": "Translates documents and books locally on your PC without uploading them. Works offline using local Ollama.",
-  "engines.package.translator.sizes": "Offline Local AI · http://127.0.0.1:11434",
   "engines.package.translator.no_model": "Ollama is running at http://127.0.0.1:11434 with no models found. Pull an offline model like llama3.2.",
-  "engines.package.translator.not_running": "Ollama is installed on this computer, but not running. Start Ollama from Manage Models.",
-  "engines.package.translator.cloud_skipped": "{0} cloud model(s) were hidden to ensure document text never leaves your PC.",
-  "engines.package.translator.only_cloud_models": "Only cloud models were found. Cloud models (-cloud) send text to ollama.com and are blocked. Please pull a local offline model.",
-  "engines.guidance.windows.translator": "To use offline translation:\n1. Download Ollama: https://ollama.com/download\n2. Run in terminal: ollama pull llama3.2 (or any model: qwen2.5, mistral...)\n3. Filee listens offline at http://127.0.0.1:11434 — zero document text ever leaves your PC.",
-  "engines.guidance.macos.translator": "To use offline translation:\n1. Download Ollama: https://ollama.com/download (or brew install ollama)\n2. Run in terminal: ollama pull llama3.2 (or any model: qwen2.5, mistral...)\n3. Filee listens offline at http://127.0.0.1:11434 — zero document text ever leaves your Mac.",
-  "engines.guidance.linux.translator": "To use offline translation:\n1. Install Ollama: curl -fsSL https://ollama.com/install.sh | sh\n2. Run in terminal: ollama pull llama3.2 (or any model: qwen2.5, mistral...)\n3. Filee listens offline at http://127.0.0.1:11434 — zero document text ever leaves your computer.",
   "engines.ollama.manage": "Manage Ollama",
-  "engines.ollama.manage_hint": "Manage local Ollama models, start/stop server, and install offline models",
   "engines.ollama.title": "Ollama Local AI Management",
   "engines.ollama.description": "All models run 100% offline on your computer. Cloud-forwarded models (-cloud) are blocked for document privacy.",
   "engines.ollama.server_running": "Server Running",
@@ -1315,6 +1327,7 @@
   "engine.reason.download_translator": "Requires local Ollama at http://127.0.0.1:11434 (see Settings → Engines)",
   "error.translation_needs_engine": "Offline translation requires local Ollama (http://127.0.0.1:11434). Check Settings → Engines for setup instructions.",
   "error.translation_cloud_model_forbidden": "Security Block: Cloud-forwarded models (-cloud) are blocked to ensure document text never leaves your computer.",
+  "error.translation_empty_response": "Ollama returned an empty response.",
   "engines.ollama.testing": "Testing translation...",
   "engines.ollama.starting": "Starting...",
   "engines.ollama.connecting": "Connecting...",

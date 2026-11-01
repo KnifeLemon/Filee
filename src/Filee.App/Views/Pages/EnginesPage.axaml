@@ -52,7 +52,7 @@
               <Border Classes="card" Padding="16,12">
                 <DockPanel>
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <Button IsVisible="{Binding IsLibreOffice}" Click="OnPackageSettings" ToolTip.Tip="{DynamicResource engines.lo_title}">
+                    <Button IsVisible="{Binding HasSettings}" Click="OnPackageSettings" ToolTip.Tip="{DynamicResource engines.lo_title}">
                       <StackPanel Orientation="Horizontal" Spacing="6">
                         <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Settings}" />
                         <TextBlock Text="{DynamicResource engines.settings}" />

@@ -166,6 +166,7 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     {
         EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
+        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
         _catalog.Refresh();
     }
 

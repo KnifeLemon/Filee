@@ -83,7 +83,10 @@ public partial class App : Application
         });
         // Every engine's availability, checked once off the UI thread: the first donut or drop otherwise starts
         // every engine's check (FFmpeg -version, folder searches) on the UI thread and freezes it meanwhile.
-        _ = AppHost.Get<ConverterCatalog>().CheckInBackgroundAsync();
+        var catalog = AppHost.Get<ConverterCatalog>();
+        _ = catalog.CheckInBackgroundAsync();
+        Filee.Engines.Translation.TranslatorConverter.StatusChanged += () =>
+            Dispatcher.UIThread.Post(catalog.Refresh);
 
         // Global gestures → donut toolbar
         var triggers = AppHost.Get<TriggerService>();
