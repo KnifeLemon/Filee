@@ -337,7 +337,8 @@ What is drawn:
 - **Coordinates**: all map modes, window / viewport origins and extents (scaled, offset), world transforms
   (`SetWorldTransform`, `ModifyWorldTransform`), SaveDC / RestoreDC. An EMF's frame (0.01 mm) is the picture; a WMF's
   placeable header box is, played as GDI+ plays it (MM_ANISOTROPIC with window and viewport on the box), and a WMF
-  without that header takes its box from its first window records.
+  without that header takes its box from its first window records, the viewport on the box the right way up (an OLE
+  picture's window runs up, SetWindowExt(cx, -cy), and GDI draws it upright into its rectangle).
 - **Lines and shapes**: lines, polylines, polygons and poly-polygons (alternate / winding), Bézier curves, PolyDraw,
   rectangles, rounded rectangles, ellipses, arcs, chords, pies, ArcTo and AngleArc (arc direction followed), pixels.
 - **Pens**: cosmetic and geometric, solid, dash, dot, dash-dot, dash-dot-dot, alternate and user styles, end caps,
@@ -474,7 +475,8 @@ The model also keeps what a renderer needs and the writers ignore (`Hwp/Hwpx/Hwp
 the source's meaning (Word's multiple and document grid, 한글's "between lines"), 한글's seven language slots and Word's
 four run fonts, paragraph borders and line breaking, stored line layouts, crops, rotation, z-order, master pages,
 polygons, curves and arcs (`HwpxReader.ReadForLayout` also keeps runs apart by that detail and reads master pages and
-those shapes, which `Read` leaves out as before). `StyleResolver` turns what a document leaves to the
+those shapes, which `Read` leaves out as before; it also takes an OLE object as the picture its program left in it,
+`Hwp/Binary/OlePreview.cs`: the WMF or DIB of its presentation stream, or a Paint object's BMP). `StyleResolver` turns what a document leaves to the
 한글 style into concrete values. What the readers take over:
 
 - **DOCX** is read directly (`Hwp/Hwpx/Docx/DocxReader*.cs`) so the layout survives:
@@ -999,7 +1001,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     font standing in for it still fits each stored line (within 8%: Hangul is as wide in nearly every font); otherwise
     it breaks the paragraph itself and says why (`ParagraphBox.StoredLinesIgnored`).
     Each line then takes its stored height and baseline, its place beside an object, and a stored line wider than the
-    line is now squeezed between its characters.
+    line is now squeezed between its characters. A place beside an object is measured against a whole line, which
+    한글 stores from the paragraph's left margin to the column less its right margin; a paragraph whose first line is
+    already beside an object (every line next to a chart, say) is measured against those margins.
   - On the HWPX files attached to Filee's issues, 768 of 769 stored paragraphs convert. The body text of the one
     single-column document breaks exactly where 한글's own PDF of it does; the rest of the pages differ where tables,
     columns and equations are, which later items lay out.
@@ -1026,7 +1030,16 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     above the baseline, as 한글's stored lines have them); links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
     with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
-  - Master pages are a later item.
+  - Master pages (바탕쪽): laid out from the top of the body, as wide as it, behind everything on the page (in front of
+    the text when the master page says so): the one for odd or even pages, else the one for both; the last-page and
+    chosen-page masters replace it on their page, or are drawn with it when they overlap (겹치기). None on a section's
+    first page where it hides them (hideFirstMasterPage), nor on a page that hides them (hp:pageHiding).
+  - Page borders and backgrounds (쪽 테두리/배경, hp:pageBorderFill) under everything else: the odd or even pages' one
+    where it draws something, else the one for both pages. As 한글 prints them, textBorder="PAPER" puts the border
+    around the body grown by its offsets (around the header and footer areas too when they are inside), "CONTENT" its
+    offsets in from the paper's edges; the background fills the paper, the page inside its margins or the border.
+    The section's visibility (border, fill: all pages, all but the first, only the first) and a page's hp:pageHiding
+    (hideBorder, hideFill) leave them out.
 - **Columns, footnotes and endnotes** (`PageComposer.cs`, GitHub Project 4 item *Layout engine: multi-column layout,
   footnotes and endnotes*):
   - Columns: a section's newspaper columns at their gap, with a separator line between them when the section has one;

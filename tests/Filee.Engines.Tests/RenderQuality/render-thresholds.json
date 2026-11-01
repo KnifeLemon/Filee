@@ -62,7 +62,19 @@
       // draws the separator line elsewhere.
       "tables": { "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.9678 },
       "headers-footers": { "vs-rhwp-placed": 0.6666, "vs-rhwp-ssim": 0.8266 },
-      "columns": { "vs-rhwp-ssim": 0.3664 }
+      "columns": { "vs-rhwp-ssim": 0.3664 },
+
+      // From the binary HWP (Filee's HWP reader), compared with rhwp's rendering of the HWPX: the same as from the
+      // HWPX. line-spacing-percent, tables and script-ko are in every run, the others only in the full run.
+      "line-spacing-percent.hwp": { "vs-rhwp-lines": 0.875, "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.6268 },
+      "line-spacing-fixed.hwp": { "vs-rhwp-lines": 0.875, "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.6273 },
+      "line-spacing-at-least.hwp": { "vs-rhwp-lines": 0.875, "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.6259 },
+      "script-ko.hwp": { "vs-rhwp-ssim": 0.5456 },
+      "tabs.hwp": { "vs-rhwp-ssim": 0.3844 },
+      "lists.hwp": { "vs-rhwp-ssim": 0.2697 },
+      "tables.hwp": { "vs-rhwp-placed": 0.875, "vs-rhwp-ssim": 0.9678 },
+      "headers-footers.hwp": { "vs-rhwp-placed": 0.6666, "vs-rhwp-ssim": 0.8266 },
+      "columns.hwp": { "vs-rhwp-ssim": 0.3664 }
     }
   },
   "allow": [
