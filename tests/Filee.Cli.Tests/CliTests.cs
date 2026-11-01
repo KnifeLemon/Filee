@@ -911,7 +911,7 @@ public sealed class CliTests : IDisposable
     public async Task Engine_hints_exclude_unsupported_and_nonpackage_converters()
     {
         var source = Input("md");
-        foreach (var id in new[] { "archive", "rhwp", "wic", "vision", "7zip", "h2orestart", "jre", "vcruntime" })
+        foreach (var id in new[] { "archive", "rhwp", "wic", "vision", "7zip", "vcruntime" })
         {
             var catalog = new ConverterCatalog([new ControlledConverter(id, false, [new("md", "pptx")])]);
             var (_, formats, _) = await RunWith(catalog, "formats", "md", "--json");

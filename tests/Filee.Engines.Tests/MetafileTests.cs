@@ -114,7 +114,6 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var (bitmap, _) = Render(emf, 96);
         using (bitmap)
         {
-            File.WriteAllBytes(Path.Combine(Environment.GetEnvironmentVariable("FILEE_DEBUG_OUT") ?? Path.GetTempPath(), "clip.png"), bitmap.Encode(SKEncodedImageFormat.Png, 100).ToArray());
             Assert.Equal(SKColors.Red, Pixel(bitmap, 48, 24));
             Assert.Equal(0, Pixel(bitmap, 144, 24).Alpha);
             Assert.Equal(SKColors.Blue, Pixel(bitmap, 170, 85));
@@ -144,6 +143,41 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
             var columns = Enumerable.Range(0, 3).Select(i => Ink(bitmap, new SKRectI(10 + i * 40, 30, 10 + i * 40 + 30, 72))).ToArray();
             Assert.All(columns, ink => Assert.True(ink > 20, $"ink per column: {string.Join(", ", columns)}"));
             Assert.Equal(0, Ink(bitmap, new SKRectI(140, 0, 192, 96)));
+        }
+    }
+
+    [Fact]
+    public void A_dashed_pen_stays_dashed_when_the_picture_is_magnified()
+    {
+        // CreatePen(PS_DASH, 1): at 4 × it is 4 px wide, and GDI+ draws it with dashes of 3 and gaps of 1 pen width.
+        var emf = new EmfBuilder(192, 96)
+            .Add(18, 1) // SETBKMODE TRANSPARENT
+            .Pen(1, 1, 1, 0).Select(1)
+            .Add(27, 8, 48) // MOVETOEX
+            .Add(54, 184, 48) // LINETO
+            .ToArray();
+        var (bitmap, _) = Render(emf, 96 * 4);
+        using (bitmap)
+        {
+            // Along the line's middle: dashes of about 12 px and gaps of about 4.
+            var runs = new List<(bool Ink, int Length)>();
+            for (var x = 64; x < 704; x++)
+            {
+                var ink = Pixel(bitmap, x, 192).Alpha > 128;
+                if (runs.Count > 0 && runs[^1].Ink == ink)
+                    runs[^1] = (ink, runs[^1].Length + 1);
+                else
+                    runs.Add((ink, 1));
+            }
+            var whole = runs.Skip(1).SkipLast(1).ToArray(); // the window cuts the first and last run
+            var gaps = whole.Where(r => !r.Ink).Select(r => r.Length).ToArray();
+            var dashes = whole.Where(r => r.Ink).Select(r => r.Length).ToArray();
+            Assert.True(gaps.Length >= 30, $"{gaps.Length} gaps");
+            Assert.All(gaps, g => Assert.InRange(g, 2, 6));
+            Assert.All(dashes, d => Assert.InRange(d, 10, 14));
+            // Still a pen of 4 px, not a hairline.
+            var rows = Enumerable.Range(180, 26).Count(y => Enumerable.Range(64, 640).Any(x => Pixel(bitmap, x, y).Alpha > 128));
+            Assert.InRange(rows, 3, 5);
         }
     }
 

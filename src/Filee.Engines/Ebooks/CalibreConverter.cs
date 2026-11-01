@@ -1,7 +1,8 @@
 // E-book formats Filee does not read or write itself, with calibre's ebook-convert (GPL-3.0, a separate program the
-// user downloads in Settings → Engines): LIT, LRF, CHM, PDB, PML, RB, SNB, TCR and OEB → EPUB, and EPUB → MOBI,
-// AZW3, LIT, LRF, PDB, PML, RB, SNB and TCR. EPUB is the hub: the built-in engine handles every other step, and
-// calibre's edges cost more so built-in routes always win where they exist.
+// user downloads in Settings → Engines): LIT and LRF → EPUB, and EPUB → LIT, LRF, PDB, PML, RB, SNB and TCR. CHM,
+// PDB, PML, RB, SNB, TCR and OEB are read, and MOBI and AZW3 written (MobiWriter), by the built-in engine too;
+// calibre's edges for them stay as the fallback a user can rank first. EPUB is the hub: the built-in engine handles
+// every other step, and calibre's edges cost more so built-in routes always win where they exist.
 //
 // calibre also makes PDFs of e-books, much faster than the built-in route (HWPX writer → rhwp) for long books (#127).
 // That route stays the default; calibre's PDF edges win once the user ranks calibre above the HWPX writer.
@@ -26,10 +27,13 @@ public sealed partial class CalibreConverter : IConverter
     /// </summary>
     internal static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(10);
 
-    /// <summary>Formats only calibre reads.</summary>
+    /// <summary>Formats calibre reads that EPUB and the other common e-books are not (the built-in engine reads all but LIT and LRF).</summary>
     internal static readonly string[] Inputs = ["lit", "lrf", "chm", "pdb", "pml", "rb", "snb", "tcr", "oeb"];
 
-    /// <summary>Formats only calibre writes.</summary>
+    /// <summary>Formats only calibre reads.</summary>
+    internal static readonly string[] OnlyCalibreReads = ["lit", "lrf"];
+
+    /// <summary>Formats calibre writes (MOBI and AZW3 are written by the built-in engine too).</summary>
     internal static readonly string[] Outputs = ["mobi", "azw3", "lit", "lrf", "pdb", "pml", "rb", "snb", "tcr"];
 
     /// <summary>Books calibre makes PDFs of: the ones the built-in engines read too, and <see cref="Inputs"/>.</summary>
