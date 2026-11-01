@@ -429,4 +429,34 @@ public class SizeLimitTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("8 s in 0.05 MB", file.ErrorDetail);
         Assert.Empty(job.Outputs);
     }
+
+    [Fact]
+    public async Task A_video_over_percentage_limit_is_encoded_until_it_fits()
+    {
+        Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
+        var source = await MakeVideoAsync();
+        var sourceLength = new FileInfo(source).Length;
+        Assert.True(sourceLength > 3 * 1024 * 1024, $"the test video is only {sourceLength} bytes");
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "mp4", Media = { MaxSizePercent = 25 }, Output = { FileNamePattern = "{name}_pct_fit" } });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var outputLength = new FileInfo(Assert.Single(job.Outputs)).Length;
+        var limit = SizeLimit.Bytes(sourceLength, 25);
+        Assert.InRange(outputLength, 1, limit);
+    }
+
+    [Fact]
+    public async Task A_video_too_long_for_its_percentage_limit_is_refused()
+    {
+        Assert.SkipUnless(Tools is not null, "FFmpeg is not installed (pwsh build/fetch-engines.ps1 -Only ffmpeg)");
+        var source = await MakeVideoAsync();
+
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = "mp4", Media = { MaxSizePercent = 1 }, Output = { FileNamePattern = "{name}_pct_fit" } });
+
+        var file = Assert.Single(job.Files);
+        Assert.Equal("error.over_size_limit", file.ErrorKey);
+        Assert.Equal("8 s in 1%", file.ErrorDetail);
+        Assert.Empty(job.Outputs);
+    }
 }

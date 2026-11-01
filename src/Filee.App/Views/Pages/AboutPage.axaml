@@ -5,52 +5,80 @@
              xmlns:v="using:Filee.App.Views"
              x:Class="Filee.App.Views.Pages.AboutPage"
              x:DataType="vm:AboutPageViewModel">
+  <UserControl.Styles>
+    <!-- Wide: two equal columns with an 18 px gap (9 px either side of the middle). -->
+    <Style Selector="Grid#InfoUpdateGrid > Border.info-card">
+      <Setter Property="Grid.Column" Value="0" />
+      <Setter Property="Margin" Value="0,0,9,0" />
+    </Style>
+    <Style Selector="Grid#InfoUpdateGrid > Border.update-card">
+      <Setter Property="Grid.Column" Value="1" />
+      <Setter Property="Margin" Value="9,0,0,0" />
+    </Style>
+    <!-- Narrow: stacked as before. -->
+    <Style Selector="Grid#InfoUpdateGrid.stacked > Border.info-card">
+      <Setter Property="Grid.ColumnSpan" Value="2" />
+      <Setter Property="Margin" Value="0" />
+    </Style>
+    <Style Selector="Grid#InfoUpdateGrid.stacked > Border.update-card">
+      <Setter Property="Grid.Row" Value="1" />
+      <Setter Property="Grid.Column" Value="0" />
+      <Setter Property="Grid.ColumnSpan" Value="2" />
+      <Setter Property="Margin" Value="0,18,0,0" />
+    </Style>
+  </UserControl.Styles>
   <StackPanel Spacing="18">
     <TextBlock Classes="h1" Text="{DynamicResource about.title}" />
-    <Border Classes="card">
-      <StackPanel Orientation="Horizontal" Spacing="18">
-        <Image Source="avares://Filee/Assets/Icons/filee.png" Width="72" Height="72" />
-        <StackPanel VerticalAlignment="Center" Spacing="4">
-          <TextBlock Text="Filee" FontSize="24" FontWeight="Bold" />
-          <TextBlock Classes="muted" Text="{Binding Version}" />
-          <TextBlock Classes="muted" Text="{DynamicResource about.license}" />
-          <Button Classes="ghost" Padding="0" Click="OnOpenRepository" Margin="0,4,0,0">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Link}" Foreground="{DynamicResource AccentBrush}" />
-              <TextBlock Text="{Binding RepositoryUrl}" Foreground="{DynamicResource AccentBrush}" />
-            </StackPanel>
-          </Button>
-          <!-- This version's "What's new" slides again -->
-          <Button x:Name="WhatsNewLink" Classes="ghost" Padding="0" Command="{Binding ShowWhatsNewCommand}" IsVisible="{Binding HasWhatsNew}">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Info}" Foreground="{DynamicResource AccentBrush}" />
-              <TextBlock Text="{Binding WhatsNewText}" Foreground="{DynamicResource AccentBrush}" />
-            </StackPanel>
-          </Button>
+    <!-- Filee information and Updates sit side by side with equal widths. Below StackBelowWidth (see the code-behind)
+         the grid gets the "stacked" class and the cards go back to one above the other. -->
+    <Grid x:Name="InfoUpdateGrid" ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+      <Border Classes="card info-card">
+        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="18">
+          <!-- Centered next to the text. Side by side, this card is stretched to the height of the Updates card, so a
+               top-aligned logo would sit above the middle of the text. -->
+          <Image Source="avares://Filee/Assets/Icons/filee.png" Width="72" Height="72" VerticalAlignment="Center" />
+          <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+            <TextBlock Text="Filee" FontSize="24" FontWeight="Bold" />
+            <TextBlock Classes="muted" Text="{Binding Version}" />
+            <TextBlock Classes="muted" Text="{DynamicResource about.license}" TextWrapping="Wrap" />
+            <Button Classes="ghost" Padding="0" Click="OnOpenRepository" Margin="0,4,0,0">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Link}" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Text="{Binding RepositoryUrl}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Button>
+            <!-- This version's "What's new" slides again -->
+            <Button x:Name="WhatsNewLink" Classes="ghost" Padding="0" Command="{Binding ShowWhatsNewCommand}" IsVisible="{Binding HasWhatsNew}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Info}" Foreground="{DynamicResource AccentBrush}" />
+                <TextBlock Text="{Binding WhatsNewText}" Foreground="{DynamicResource AccentBrush}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+      </Border>
+      <Border Classes="card update-card">
+        <StackPanel Spacing="12">
+          <TextBlock Classes="h2" Text="{DynamicResource about.updates}" />
+          <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
+          <WrapPanel>
+            <Button Content="{DynamicResource general.check_now}" Command="{Binding CheckNowCommand}" Margin="0,0,10,0" />
+            <Button Classes="accent" Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding UpdateAvailable}" Margin="0,0,10,0">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
+                <TextBlock Text="{Binding UpdateButtonText}" />
+              </StackPanel>
+            </Button>
+            <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />
+          </WrapPanel>
         </StackPanel>
-      </StackPanel>
-    </Border>
-    <!-- The sponsors right below Filee itself, while there are any -->
+      </Border>
+    </Grid>
+    <!-- The sponsors right below Filee itself and the updates, while there are any -->
     <Border Classes="card" IsVisible="{Binding #Supporters.IsVisible}">
       <StackPanel Spacing="12">
         <TextBlock Classes="h2" Text="{DynamicResource sponsor.thanks}" />
         <v:SupportersView x:Name="Supporters" ShowTitle="False" LogoHeight="40" />
-      </StackPanel>
-    </Border>
-    <Border Classes="card">
-      <StackPanel Spacing="12">
-        <TextBlock Classes="h2" Text="{DynamicResource about.updates}" />
-        <ToggleSwitch Content="{DynamicResource general.check_updates}" IsChecked="{Binding CheckForUpdates}" />
-        <WrapPanel>
-          <Button Content="{DynamicResource general.check_now}" Command="{Binding CheckNowCommand}" Margin="0,0,10,0" />
-          <Button Classes="accent" Command="{Binding DownloadUpdateCommand}" IsVisible="{Binding UpdateAvailable}" Margin="0,0,10,0">
-            <StackPanel Orientation="Horizontal" Spacing="6">
-              <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Download}" />
-              <TextBlock Text="{Binding UpdateButtonText}" />
-            </StackPanel>
-          </Button>
-          <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding UpdateStatus}" />
-        </WrapPanel>
       </StackPanel>
     </Border>
     <Border Classes="card">

@@ -36,8 +36,10 @@
       <StackPanel Grid.Column="2">
         <TextBlock Classes="label" Text="{DynamicResource presets.target}" IsVisible="{Binding ShowConversionOutput}" />
         <TextBlock Classes="label" Text="{DynamicResource presets.copy_action}" IsVisible="{Binding IsCopyToFolder}" />
+        <ComboBox x:Name="CopyActionBox" ItemsSource="{Binding CopyActions}" SelectedItem="{Binding CopyAction}" IsVisible="{Binding IsCopyToFolder}"
+                  HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.copy_action}" />
         <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}"
-                  IsEnabled="{Binding CanChangeTarget}"
+                  IsEnabled="{Binding CanChangeTarget}" IsVisible="{Binding !IsCopyToFolder}"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.target}">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="vm:IChoice">
@@ -316,9 +318,13 @@
         <!-- Two per row, whichever apply to the target: hidden ones leave no gap. -->
         <UniformGrid Columns="2" ColumnSpacing="12" RowSpacing="10">
           <StackPanel IsVisible="{Binding ShowVideoMaxSize}">
-            <TextBlock Classes="label" Text="{DynamicResource presets.max_size}" />
-            <NumericUpDown Value="{Binding VideoMaxSizeMb}" Minimum="0" Maximum="4096" Increment="1" FormatString="0.#"
-                           ToolTip.Tip="{DynamicResource presets.max_size_hint_video}" AutomationProperties.Name="{DynamicResource presets.max_size}" />
+            <TextBlock Classes="label" Text="{DynamicResource presets.size_limit}" />
+            <Grid ColumnDefinitions="*,8,Auto">
+              <NumericUpDown Value="{Binding VideoMaxSize}" Minimum="0" Maximum="{Binding VideoSizeMaximum}" Increment="{Binding VideoSizeIncrement}" FormatString="{Binding VideoSizeFormat}"
+                             ToolTip.Tip="{DynamicResource presets.max_size_hint_video}" AutomationProperties.Name="{DynamicResource presets.size_limit}" />
+              <ComboBox Grid.Column="2" ItemsSource="{Binding VideoSizeUnits}" SelectedItem="{Binding VideoSizeUnitChoice}"
+                        AutomationProperties.Name="{DynamicResource presets.size_unit}" />
+            </Grid>
           </StackPanel>
           <StackPanel IsVisible="{Binding ShowVideoCodec}">
             <TextBlock Classes="label" Text="{DynamicResource presets.video_codec}" />
@@ -559,7 +565,7 @@
       </StackPanel>
     </Border>
 
-    <TextBlock Text="{DynamicResource presets.copy_hint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
+    <TextBlock Text="{Binding CopyHint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
 
     <!-- Output -->
     <Border Classes="card" Padding="14">

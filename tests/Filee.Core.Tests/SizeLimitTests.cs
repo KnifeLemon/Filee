@@ -248,4 +248,103 @@ public class SizeLimitTests
         // A new list each time: adding one never changes the next.
         Assert.NotSame(places[0], BuiltInData.PlacePresets()[0]);
     }
+
+    [Fact]
+    public void A_percentage_limit_computes_correct_bytes()
+    {
+        Assert.Equal(25_000_000, SizeLimit.Bytes(100_000_000L, 25));
+        Assert.Equal(5_000_000, SizeLimit.Bytes(10_000_000L, 50));
+        Assert.Equal(12_345_678, SizeLimit.Bytes(123_456_789L, 10));
+    }
+
+    [Fact]
+    public void ForVideo_calculates_limit_from_percent_or_megabytes()
+    {
+        var percentPreset = new MediaOptions { MaxSizePercent = 25 };
+        Assert.Equal(25_000_000, SizeLimit.ForVideo(percentPreset, 100_000_000L));
+
+        var mbPreset = new MediaOptions { MaxSizeMb = 10 };
+        Assert.Equal(10_000_000, SizeLimit.ForVideo(mbPreset, 100_000_000L));
+
+        var nonePreset = new MediaOptions();
+        Assert.Equal(0, SizeLimit.ForVideo(nonePreset, 100_000_000L));
+
+        using var dir = new TempDir();
+        var video = dir.File("source.mp4", new string('v', 10_000));
+        Assert.Equal(2_500, SizeLimit.ForVideo(percentPreset, video));
+    }
+
+    [Fact]
+    public void ForVideo_refuses_when_source_is_missing_or_cannot_be_measured()
+    {
+        var percentPreset = new MediaOptions { MaxSizePercent = 25 };
+        var exNull = Assert.Throws<ConversionRefusedException>(() => SizeLimit.ForVideo(percentPreset, (string?)null));
+        Assert.Equal("error.over_size_limit", exNull.ErrorKey);
+
+        var exMissing = Assert.Throws<ConversionRefusedException>(() => SizeLimit.ForVideo(percentPreset, "C:/does_not_exist.mp4"));
+        Assert.Equal("error.over_size_limit", exMissing.ErrorKey);
+
+        var exZero = Assert.Throws<ConversionRefusedException>(() => SizeLimit.ForVideo(percentPreset, 0L));
+        Assert.Equal("error.over_size_limit", exZero.ErrorKey);
+    }
+
+    [Fact]
+    public void ForVideo_calculates_combined_limit_for_joined_sources()
+    {
+        var percentPreset = new MediaOptions { MaxSizePercent = 50 };
+        using var dir = new TempDir();
+        var video1 = dir.File("video1.mp4", new string('a', 10_000));
+        var video2 = dir.File("video2.mp4", new string('b', 30_000));
+
+        // Total source size is 40,000 bytes. 50% = 20,000 bytes.
+        Assert.Equal(20_000, SizeLimit.ForVideo(percentPreset, [video1, video2]));
+
+        // Missing source among joined sources refuses
+        var ex = Assert.Throws<ConversionRefusedException>(() => SizeLimit.ForVideo(percentPreset, [video1, "C:/missing.mp4"]));
+        Assert.Equal("error.over_size_limit", ex.ErrorKey);
+
+        var exEmpty = Assert.Throws<ConversionRefusedException>(() => SizeLimit.ForVideo(percentPreset, (IEnumerable<string>?)null));
+        Assert.Equal("error.over_size_limit", exEmpty.ErrorKey);
+    }
+
+    [Fact]
+    public async Task Video_percentage_limit_clears_on_intermediate_steps()
+    {
+        using var dir = new TempDir();
+        var clip = dir.File("clip.avi");
+        var first = new FakeConverter("first", new ConversionEdge("avi", "mkv"));
+        var second = new FakeConverter("second", new ConversionEdge("mkv", "mp4"));
+        await using var queue = new JobQueue(new ConverterCatalog([first, second]));
+        var preset = new Preset { TargetFormat = "mp4", Media = { MaxSizePercent = 50 } };
+
+        await queue.RunAsync(new ConversionJob([clip], preset, "MP4"));
+
+        var middle = Assert.Single(first.Presets);
+        Assert.Equal(0, middle.Media.MaxSizePercent);
+        var last = Assert.Single(second.Presets);
+        Assert.Equal(50, last.Media.MaxSizePercent);
+        Assert.Equal(50, preset.Media.MaxSizePercent);
+    }
+
+    [Fact]
+    public async Task A_video_result_over_percentage_limit_is_refused()
+    {
+        using var dir = new TempDir();
+        // Source is 10,000 bytes. With 20% limit, max allowed is 2,000 bytes.
+        var source = dir.File("source.mp4", new string('a', 10_000));
+        // FakeConverter writes 3,000 bytes output, which exceeds 2,000 bytes.
+        var fake = new FakeConverter("ffmpeg", new ConversionEdge("mp4", "mp4"))
+        {
+            Content = _ => new string('x', 3_000),
+        };
+        await using var queue = new JobQueue(new ConverterCatalog([fake]));
+        var job = new ConversionJob([source], new Preset { TargetFormat = "mp4", Media = { MaxSizePercent = 20 } }, "MP4");
+
+        await queue.RunAsync(job);
+
+        var file = Assert.Single(job.Files);
+        Assert.Equal(FileState.Failed, file.State);
+        Assert.Equal("error.over_size_limit", file.ErrorKey);
+        Assert.Empty(job.Outputs);
+    }
 }

@@ -75,7 +75,7 @@ public sealed partial class PresetFormatTip(
         {
             Title = loc.DisplayName(preset);
             AnyFile = loc["toolbar.chip_tip.any_file"];
-            MakesBefore = loc["presets.copy_hint"];
+            MakesBefore = loc[preset.Output.MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
             return;
         }
 

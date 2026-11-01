@@ -33,6 +33,13 @@ public enum FileSizeUnit
     MB,
 }
 
+/// <summary>The unit of a video's size limit in the preset editor (#680); the preset itself keeps megabytes or a percentage.</summary>
+public enum VideoSizeUnit
+{
+    MB,
+    Percent,
+}
+
 /// <summary>A value with a localized label for combo boxes.</summary>
 public sealed record Choice<T>(T Value, string Label, string? Detail = null) : IChoice
 {
@@ -222,7 +229,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var perMegabyte = _imageSizeUnit.Value == FileSizeUnit.KB ? 1000m : 1m;
         _imageMaxSize = (decimal)_edit.Image.MaxSizeMb * perMegabyte;
         _imageMinSize = (decimal)_edit.Image.MinSizeMb * perMegabyte;
-        _videoMaxSizeMb = (decimal)_edit.Media.MaxSizeMb;
+        _videoSizeUnitChoice = _edit.Media.MaxSizePercent > 0 ? VideoSizeUnits[1] : VideoSizeUnits[0];
+        _videoMaxSizeMb = _edit.Media.MaxSizeMb > 0 ? (decimal)_edit.Media.MaxSizeMb : null;
+        _videoMaxSizePercent = _edit.Media.MaxSizePercent > 0 ? _edit.Media.MaxSizePercent : null;
         _resizePercent = _edit.Image.ResizePercent;
         _longEdge = _edit.Image.LongEdge;
         _width = _edit.Image.Width;
@@ -259,6 +268,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _keepDates = _edit.Output.KeepDates;
         _zipResult = _edit.Output.ZipResult;
         _replaceOriginal = _edit.Output.ReplaceOriginal;
+        _moveInsteadOfCopy = _edit.Output.MoveInsteadOfCopy;
     }
 
     public string PresetId => _original.Id;
@@ -530,8 +540,36 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>A minimum over the maximum, while the boxes are shown; a maximum of 0 is no maximum.</summary>
     public string? SizeRangeError => ShowImageSize && ImageMaxSize > 0 && ImageMinSize > ImageMaxSize ? _loc["presets.size_range_invalid"] : null;
 
-    /// <summary>"Size limit (MB)" for a video (0 = none, #553).</summary>
-    [ObservableProperty] private decimal? _videoMaxSizeMb;
+    /// <summary>The unit of the video size limit: MB or % of original (#680).</summary>
+    public IReadOnlyList<Choice<VideoSizeUnit>> VideoSizeUnits { get; } =
+        [new(VideoSizeUnit.MB, "MB"), new(VideoSizeUnit.Percent, "%")];
+
+    [ObservableProperty] private Choice<VideoSizeUnit> _videoSizeUnitChoice;
+
+    /// <summary>Video size limit in MB (0 or empty = none, #553).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(VideoMaxSize))] private decimal? _videoMaxSizeMb;
+
+    /// <summary>Video size limit as percentage of original (1–99, 0 or empty = none, #680).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(VideoMaxSize))] private decimal? _videoMaxSizePercent;
+
+    /// <summary>The value bound to the video size NumericUpDown.</summary>
+    public decimal? VideoMaxSize
+    {
+        get => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? VideoMaxSizePercent : VideoMaxSizeMb;
+        set
+        {
+            if (VideoSizeUnitChoice.Value == VideoSizeUnit.Percent)
+                VideoMaxSizePercent = value;
+            else
+                VideoMaxSizeMb = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Maximum value for the video size NumericUpDown: 99 for %, 4096 for MB.</summary>
+    public decimal VideoSizeMaximum => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? 99 : 4096;
+    public decimal VideoSizeIncrement => 1;
+    public string VideoSizeFormat => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? "0" : "0.#";
     [ObservableProperty] private int _resizePercent;
     [ObservableProperty] private int _longEdge;
     [ObservableProperty] private int _width;
@@ -633,6 +671,26 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _zipResult;
     /// <summary>The result takes the original's place, which goes to the Recycle Bin / Trash (OutputRule.ReplaceOriginal).</summary>
     [ObservableProperty] private bool _replaceOriginal;
+    /// <summary>Copy to folder: the files are moved instead of copied (OutputRule.MoveInsteadOfCopy, #856).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CopyHint), nameof(CopyAction))]
+    private bool _moveInsteadOfCopy;
+
+    /// <summary>Copy to folder's Action: copy (the default) or move.</summary>
+    public IReadOnlyList<Choice<bool>> CopyActions =>
+        [new(false, _loc["presets.copy_to_folder"]), new(true, _loc["presets.move_to_folder"])];
+
+    public Choice<bool> CopyAction
+    {
+        get => CopyActions[MoveInsteadOfCopy ? 1 : 0];
+        set
+        {
+            if (value is not null)
+                MoveInsteadOfCopy = value.Value;
+        }
+    }
+
+    /// <summary>What Copy to folder does with the originals, as the box below it is set.</summary>
+    public string CopyHint => _loc[MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
     [ObservableProperty] private Choice<int> _audioBitrate;
@@ -675,6 +733,20 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     // A combo box that loses its selection sets null: every choice keeps its value (see Choices.Restore).
     partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => Target = v);
+
+    partial void OnVideoSizeUnitChoiceChanged(Choice<VideoSizeUnit>? oldValue, Choice<VideoSizeUnit> newValue)
+    {
+        if (Choices.Restore(oldValue, newValue, v => VideoSizeUnitChoice = v) || oldValue is null || oldValue.Value == newValue.Value)
+            return;
+        var toPercent = newValue.Value == VideoSizeUnit.Percent;
+        if (!toPercent)
+            OnPropertyChanged(nameof(VideoSizeMaximum));
+        OnPropertyChanged(nameof(VideoSizeIncrement));
+        OnPropertyChanged(nameof(VideoSizeFormat));
+        OnPropertyChanged(nameof(VideoMaxSize));
+        if (toPercent)
+            OnPropertyChanged(nameof(VideoSizeMaximum));
+    }
 
     /// <summary>
     /// Both ends keep their size in the other unit: 500 KB becomes 0.5 MB. The boxes' maximum is raised before the
@@ -947,7 +1019,24 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var media = _original.Media;
         media.Quality = MediaQuality.Value;
         media.MaxHeight = MaxHeight.Value;
-        media.MaxSizeMb = ShowVideoMaxSize ? SizeLimit(VideoMaxSizeMb) : 0;
+        if (ShowVideoMaxSize)
+        {
+            if (VideoSizeUnitChoice.Value == VideoSizeUnit.Percent)
+            {
+                media.MaxSizeMb = 0;
+                media.MaxSizePercent = VideoMaxSizePercent is > 0 and < 100 ? (int)Math.Clamp(VideoMaxSizePercent.Value, 1, 99) : 0;
+            }
+            else
+            {
+                media.MaxSizePercent = 0;
+                media.MaxSizeMb = SizeLimit(VideoMaxSizeMb);
+            }
+        }
+        else
+        {
+            media.MaxSizeMb = 0;
+            media.MaxSizePercent = 0;
+        }
         media.AudioBitrateKbps = AudioBitrate.Value;
         media.RemoveAudio = RemoveAudio;
         media.AudioChannels = AudioChannels.Value;
@@ -1003,6 +1092,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Only for geospatial targets, where it is offered: a box ticked for Shapefile must not zip a later PNG.
         output.ZipResult = ShowZipResult && ZipResult;
         output.ReplaceOriginal = !IsCopyToFolder && ReplaceOriginal;
+        output.MoveInsteadOfCopy = IsCopyToFolder && MoveInsteadOfCopy;
         return true;
     }
 

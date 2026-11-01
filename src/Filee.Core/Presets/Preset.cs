@@ -932,6 +932,12 @@ public sealed class MediaOptions
     /// </summary>
     public double MaxSizeMb { get; set; }
 
+    /// <summary>
+    /// Keep each video under this percentage (1–99) of the original file's size (#680); 0 = off. One of
+    /// <see cref="MaxSizeMb"/> and this is in use at a time.
+    /// </summary>
+    public int MaxSizePercent { get; set; }
+
     /// <summary>Audio bitrate in kbit/s for lossy audio; 0 uses a good default for the format.</summary>
     public int AudioBitrateKbps { get; set; }
 

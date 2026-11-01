@@ -17,15 +17,21 @@ public sealed class PresetAvailability
     private readonly ConverterCatalog _catalog;
     private readonly ILocalizer _loc;
     private readonly IReadOnlyList<EnginePackageState> _packages;
+    private readonly Func<RoutePlanner> _installedPlanner;
 
     public PresetAvailability(ConverterCatalog catalog, ILocalizer loc, EngineDownloadService downloads)
         : this(catalog, loc, downloads.Packages) { }
 
     internal PresetAvailability(ConverterCatalog catalog, ILocalizer loc, IReadOnlyList<EnginePackageState> packages)
+        : this(catalog, loc, packages, catalog.CreatePlanner) { }
+
+    internal PresetAvailability(ConverterCatalog catalog, ILocalizer loc, IReadOnlyList<EnginePackageState> packages,
+        Func<RoutePlanner> installedPlanner)
     {
         _catalog = catalog;
         _loc = loc;
         _packages = packages;
+        _installedPlanner = installedPlanner;
     }
 
     private static readonly HashSet<string> WritableSingleFrameRasterFormats =
@@ -37,7 +43,7 @@ public sealed class PresetAvailability
     /// otherwise a localized reason — naming the optional engine to download when that would help.
     /// </summary>
     public string? Check(Preset preset, IReadOnlyList<FileFormat> formats) =>
-        Evaluate(preset, formats, _catalog.CreatePlanner,
+        Evaluate(preset, formats, _installedPlanner,
             possible => PackageEnabling(possible, p => _catalog.CreatePlanner(p.Package.ConverterIds))).Reason;
 
     /// <summary>Formats for which this preset is usable, in the input order.</summary>
@@ -45,7 +51,7 @@ public sealed class PresetAvailability
     {
         RoutePlanner? installed = null;
         var packagePlanners = new Dictionary<EnginePackageState, RoutePlanner>();
-        RoutePlanner Installed() => installed ??= _catalog.CreatePlanner();
+        RoutePlanner Installed() => installed ??= _installedPlanner();
         EnginePackageState? Enabling(Func<RoutePlanner, bool> possible) =>
             PackageEnabling(possible, p => packagePlanners.TryGetValue(p, out var planner)
                 ? planner : packagePlanners[p] = _catalog.CreatePlanner(p.Package.ConverterIds));
@@ -75,7 +81,7 @@ public sealed class PresetAvailability
             _formats = formats;
         }
 
-        private RoutePlanner Installed() => _installed ??= _owner._catalog.CreatePlanner();
+        private RoutePlanner Installed() => _installed ??= _owner._installedPlanner();
 
         private EnginePackageState? Enabling(Func<RoutePlanner, bool> possible) =>
             _owner.PackageEnabling(possible, p => _packagePlanners.TryGetValue(p, out var r)

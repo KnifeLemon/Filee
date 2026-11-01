@@ -12,7 +12,19 @@ public sealed partial class JobQueue
             Notify(job);
             try
             {
-                var result = await FolderCopy.CopyAsync(file.SourcePath, job.Preset.Output, job.CancellationToken);
+                string? result;
+                // A file from a browser has no original to remove: it is saved as a copying slice saves it.
+                if (job.Preset.Output.MoveInsteadOfCopy && !file.NeedsFetch)
+                {
+                    (result, var kept) = await FolderCopy.MoveAsync(file.SourcePath, job.Preset.Output, job.CancellationToken);
+                    if (kept is not null)
+                    {
+                        file.NoticeKey = "notice.move_original_kept";
+                        file.NoticeDetail = kept;
+                    }
+                }
+                else
+                    result = await FolderCopy.CopyAsync(file.SourcePath, job.Preset.Output, job.CancellationToken);
                 if (result is not null)
                     file.Outputs.Add(result);
                 file.Progress = 1;

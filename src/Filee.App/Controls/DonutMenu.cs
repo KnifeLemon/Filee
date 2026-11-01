@@ -1007,37 +1007,46 @@ public sealed partial class DonutMenu : Control
 
     // The hub hint's icons: the flip arrow, the mouse (wheel only) and the room between them and before the text. The
     // arrow's head reaches a little past its circle towards the mouse, so that gap is wider.
-    private const double FlipArrowSize = 9, MouseWidth = 7, IconGap = 4, MouseGap = 6;
+    private const double FlipArrowSize = 10, MouseWidth = 7, IconGap = 4, MouseGap = 6;
 
     /// <summary>
-    /// A small arrow turning clockwise round <paramref name="center"/>, the "flip" in the hub hint: most of a circle with
-    /// its head at the end.
+    /// A small arrow turning clockwise round <paramref name="center"/>, the "flip" in the hub hint: three quarters of a
+    /// circle with a solid head at its end.
     /// </summary>
     internal static void DrawFlipArrow(DrawingContext context, Point center, double radius, IBrush? brush)
     {
         var pen = new Pen(brush, 1.2, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
-        // Angles in radians from 3 o'clock, growing clockwise on screen (y points down). From 1 o'clock almost round to
-        // 11 o'clock, leaving a gap at the top where the head points into.
-        const double start = -Math.PI / 3, sweep = Math.PI * 5 / 3;
+        // Angles in radians from 3 o'clock, growing clockwise on screen (y points down). From half past one round to half
+        // past ten, leaving a quarter of the circle open at the top for the head to point into. A narrower gap let the
+        // head run into the start of the arc.
+        const double start = -Math.PI / 4, sweep = Math.PI * 3 / 2;
         Point At(double angle) => new(center.X + radius * Math.Cos(angle), center.Y + radius * Math.Sin(angle));
-        var end = start + sweep;
+        var endAngle = start + sweep;
         var arc = new StreamGeometry();
         using (var g = arc.Open())
         {
             g.BeginFigure(At(start), false);
-            g.ArcTo(At(end), new Size(radius, radius), 0, sweep > Math.PI, SweepDirection.Clockwise);
+            g.ArcTo(At(endAngle), new Size(radius, radius), 0, sweep > Math.PI, SweepDirection.Clockwise);
             g.EndFigure(false);
         }
         context.DrawGeometry(null, pen, arc);
 
-        // The head: two strokes back from the end, along the circle's tangent there and either side of it.
-        var tip = At(end);
-        var along = new Vector(-Math.Sin(end), Math.Cos(end)); // clockwise
-        var outward = new Vector(Math.Cos(end), Math.Sin(end));
-        var head = radius * 0.75;
-        var back = tip - along * head;
-        context.DrawLine(pen, back + outward * head * 0.6, tip);
-        context.DrawLine(pen, back - outward * head * 0.6, tip);
+        // The head: a small solid triangle. Its base crosses the end of the arc and its point goes on along the circle's
+        // tangent there, into the gap. Two thin strokes ran almost parallel to the ring at this size and blurred into it.
+        var end = At(endAngle);
+        var along = new Vector(-Math.Sin(endAngle), Math.Cos(endAngle)); // clockwise
+        var outward = new Vector(Math.Cos(endAngle), Math.Sin(endAngle));
+        var length = radius * 0.72;
+        var halfWidth = radius * 0.5;
+        var head = new StreamGeometry();
+        using (var g = head.Open())
+        {
+            g.BeginFigure(end + along * length, true);
+            g.LineTo(end + outward * halfWidth);
+            g.LineTo(end - outward * halfWidth);
+            g.EndFigure(true);
+        }
+        context.DrawGeometry(brush, new Pen(brush, 0.7, lineJoin: PenLineJoin.Round), head);
     }
 
     /// <summary>An outline of a mouse with its wheel, filling <paramref name="box"/>.</summary>

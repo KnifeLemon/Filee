@@ -115,6 +115,13 @@ public sealed class OutputRule
     /// </summary>
     public bool ReplaceOriginal { get; set; }
 
+    /// <summary>
+    /// Copy to folder only (#856): the files are moved into <see cref="CustomFolder"/> instead of copied, so they are
+    /// gone from where they were. Off by default. An original is removed only once its copy is complete; files from a
+    /// browser have no original and are saved as when copying. A Filee from before it ignores it and copies.
+    /// </summary>
+    public bool MoveInsteadOfCopy { get; set; }
+
     public OutputRule Clone()
     {
         var clone = (OutputRule)MemberwiseClone();

@@ -397,4 +397,44 @@ public class MediaToolTests
         Assert.All(job.Files, f => Assert.Equal("error.conversion_failed", f.ErrorKey));
         Assert.Empty(job.Outputs);
     }
+
+    [Fact]
+    public async Task Merge_videos_over_percentage_limit_is_refused()
+    {
+        using var dir = new TempDir();
+        var first = dir.File("a.mp4", new string('a', 10_000));
+        var second = dir.File("b.mp4", new string('b', 10_000));
+        // Total source size is 20,000 bytes. With 25% limit, max allowed is 5,000 bytes.
+        // Joiner writes 8,000 bytes, which exceeds 5,000 bytes.
+        var joiner = new FakeJoiner { OutputLength = 8_000 };
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+        var preset = BuiltIn("merge-videos").Clone();
+        preset.Media.MaxSizePercent = 25;
+
+        var job = await Run(queue, [first, second], preset);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.All(job.Files, f => Assert.Equal("error.over_size_limit", f.ErrorKey));
+        Assert.Empty(job.Outputs);
+    }
+
+    [Fact]
+    public async Task Merge_videos_within_percentage_limit_succeeds()
+    {
+        using var dir = new TempDir();
+        var first = dir.File("a.mp4", new string('a', 10_000));
+        var second = dir.File("b.mp4", new string('b', 10_000));
+        // Total source size is 20,000 bytes. With 50% limit, max allowed is 10,000 bytes.
+        // Joiner writes 8,000 bytes, which fits within 10,000 bytes.
+        var joiner = new FakeJoiner { OutputLength = 8_000 };
+        await using var queue = new JobQueue(new ConverterCatalog([]), mediaJoiner: joiner);
+        var preset = BuiltIn("merge-videos").Clone();
+        preset.Media.MaxSizePercent = 50;
+
+        var job = await Run(queue, [first, second], preset);
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.All(job.Files, f => Assert.Equal(FileState.Done, f.State));
+        Assert.Single(job.Outputs);
+    }
 }

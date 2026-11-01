@@ -8,7 +8,14 @@ namespace Filee.App.Views.Pages;
 
 public partial class AboutPage : UserControl
 {
-    public AboutPage() => InitializeComponent();
+    /// <summary>Below this width (DIPs) the information and update cards are stacked instead of side by side.</summary>
+    internal const double StackBelowWidth = 760;
+
+    public AboutPage()
+    {
+        InitializeComponent();
+        InfoUpdateGrid.SizeChanged += (_, e) => InfoUpdateGrid.Classes.Set("stacked", e.NewSize.Width < StackBelowWidth);
+    }
 
     private async void OnOpenRepository(object? sender, RoutedEventArgs e)
     {

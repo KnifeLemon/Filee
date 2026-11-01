@@ -292,6 +292,20 @@
   <Style Selector="ComboBox /template/ ScrollViewer">
     <Setter Property="AllowAutoHide" Value="False" />
   </Style>
+  <!-- The chevron points down while the list is closed and flips to point up while it is open (the ComboBox has the
+       :dropdownopen state exactly then). "none" -> rotate(180deg) is animated as a transform, so it turns smoothly. A plain
+       ease-out is used rather than SoftEase, whose overshoot would swing the chevron past 180 degrees and back. -->
+  <Style Selector="ComboBox /template/ PathIcon#DropDownGlyph">
+    <Setter Property="RenderTransform" Value="none" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.2" Easing="CubicEaseOut" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="ComboBox:dropdownopen /template/ PathIcon#DropDownGlyph">
+    <Setter Property="RenderTransform" Value="rotate(180deg)" />
+  </Style>
 
 
   <!-- ───────── Page content fade-in (keyframes can't animate RenderTransform, so Margin slides) ───────── -->
@@ -366,7 +380,7 @@
     <Setter Property="Width" Value="8" />
     <Setter Property="Height" Value="28" />
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
-    <Setter Property="Background" Value="{DynamicResource AccentBrush}" />
+    <Setter Property="Background" Value="{DynamicResource AccentThumbBrush}" />
     <Setter Property="BorderBrush" Value="{DynamicResource SurfaceBrush}" />
     <Setter Property="BorderThickness" Value="1.5" />
     <Setter Property="VerticalAlignment" Value="Center" />
@@ -381,6 +395,15 @@
   </Style>
   <Style Selector="Window.material-you Slider:horizontal /template/ Thumb#PART_Thumb:pressed">
     <Setter Property="RenderTransform" Value="scale(1.4, 1.15)" />
+  </Style>
+
+  <!-- Search box cross (TextBox.clearButton): turns the accent colour on hover and press, never a filled square, instead of
+       Fluent's default blue. Fluent's clear button is a plain Button (theme FluentTextBoxButton) whose only template part is a
+       ContentPresenter named PART_ContentPresenter; its :pointerover and :pressed styles paint that presenter. -->
+  <Style Selector="Window.material-you TextBox /template/ Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Window.material-you TextBox /template/ Button:pressed /template/ ContentPresenter#PART_ContentPresenter, Window.material-you TextBox Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Window.material-you TextBox Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Foreground" Value="{DynamicResource AccentBrush}" />
   </Style>
 
   <!-- ToggleButtons (Filter chips / Modifier keys) -->
@@ -589,7 +612,7 @@
   </Style>
 
   <!-- ───────── Reduced motion: remove every transition and animation above ───────── -->
-  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill, Window.reduced-motion Border.navpane, Window.reduced-motion ListBox.nav PathIcon.navicon">
+  <Style Selector="Window.reduced-motion :is(Button), Window.reduced-motion :is(ToggleButton), Window.reduced-motion Border.chip, Window.reduced-motion ListBoxItem, Window.reduced-motion Slider /template/ Thumb#PART_Thumb, Window.reduced-motion ToggleSwitch, Window.reduced-motion ToggleSwitch /template/ Border#SwitchKnobBounds, Window.reduced-motion ToggleSwitch /template/ Ellipse#SwitchKnob, Window.reduced-motion CheckBox /template/ Border#NormalRectangle, Window.reduced-motion CheckBox /template/ Path#CheckGlyph, Window.reduced-motion Button.choice-card, Window.reduced-motion Button.preset-pill, Window.reduced-motion Border.navpane, Window.reduced-motion ListBox.nav PathIcon.navicon, Window.reduced-motion ComboBox /template/ PathIcon#DropDownGlyph">
     <Setter Property="Transitions" Value="{x:Null}" />
   </Style>
   <Style Selector="Window.reduced-motion Button:pressed, Window.reduced-motion ToggleButton:pressed, Window.reduced-motion Border.chip:pointerover, Window.reduced-motion ListBox.nav ListBoxItem:pointerover PathIcon.navicon, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pointerover, Window.reduced-motion Slider /template/ Thumb#PART_Thumb:pressed, Window.reduced-motion ToggleSwitch:pointerover, Window.reduced-motion Button.choice-card:pointerover, Window.reduced-motion Button.preset-pill:pointerover, Window.reduced-motion Button.preset-pill:pressed">

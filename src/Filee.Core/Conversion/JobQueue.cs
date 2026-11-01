@@ -539,7 +539,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             await write(output, progress);
-            SizeLimit.Check(job.Preset, [output]); // joined media aren't fitted: one over the limit is refused (#553)
+            SizeLimit.Check(job.Preset, [output], joined.Select(f => f.SourcePath)); // joined media aren't fitted: one over the limit is refused (#553)
             if (SizeLimit.IsUnderMinimum(job.Preset, [output]))
                 first.UnderMinimumSize = true;
             first.Outputs.Add(output);
@@ -863,7 +863,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                         if (preset.Image.ChangesSpeed && !(isLast && finalOutput))
                             preset = AtOriginalSpeed(preset);
                         // Likewise the size limit: only the result has to fit, not a picture passed to the next engine.
-                        if ((preset.Image.MaxSizeMb > 0 || preset.Image.MinSizeMb > 0 || preset.Media.MaxSizeMb > 0) && !(isLast && finalOutput))
+                        if ((preset.Image.MaxSizeMb > 0 || preset.Image.MinSizeMb > 0 || preset.Media.MaxSizeMb > 0 || preset.Media.MaxSizePercent > 0) && !(isLast && finalOutput))
                             preset = WithoutSizeLimit(preset);
                         var stepInfo = new ConversionStep(input, step.From, step.To, preset, allocator, workDir, step.FrameSequence,
                             key => file.NoticeKey = key, step.MotionPhoto, step.LivePhoto, fonts =>
@@ -895,7 +895,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                 await FinishPdfsAsync(runWith, inputs, ct);
             // The size limit (#553): a result the engine couldn't fit (HEIC, a render, an animation) isn't handed over.
             if (finalOutput)
-                SizeLimit.Check(runWith, inputs);
+                SizeLimit.Check(runWith, inputs, file.SourcePath);
             // The minimum (#662), on the pictures themselves: after the source was copied over, before they go into a ZIP.
             if (finalOutput && SizeLimit.IsUnderMinimum(runWith, inputs))
                 file.UnderMinimumSize = true;
@@ -966,6 +966,7 @@ public sealed partial class JobQueue : IAsyncDisposable
             copy.Image.MaxSizeMb = 0;
             copy.Image.MinSizeMb = 0;
             copy.Media.MaxSizeMb = 0;
+            copy.Media.MaxSizePercent = 0;
             return copy;
         }
 
