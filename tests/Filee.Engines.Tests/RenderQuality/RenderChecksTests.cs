@@ -296,6 +296,8 @@ public sealed class RenderChecksTests : IDisposable
         Assert.Equal(Verdict.Improved, Judge("rhwp", "script-ar", "text", 0.95, false));
         Assert.Equal(Verdict.Allowed, Judge("filee", "script-ar", "vs-rhwp-ssim", 0.2, false));
         Assert.Equal(Verdict.Regression, Judge("filee", "script-ar", "overlaps", 0.1, false)); // only the compares are allowed
+        Assert.Equal(Verdict.Allowed, Judge("filee", "script-ar.hwp", "vs-rhwp-ssim", 0.2, false)); // and from the HWP
+        Assert.Equal(Verdict.Regression, Judge("filee", "script-he.hwp", "vs-rhwp-ssim", 0.2, false));
 
         Assert.Equal("0.9734", RenderThresholds.Suggest(new CheckResult("text", 0.97349, false, "")));
         Assert.Equal("0.5311", RenderThresholds.Suggest(new CheckResult("overlaps", 0.53101, false, "")));

@@ -58,9 +58,12 @@ internal sealed class RenderThresholds
             ? value
             : null;
 
-    /// <summary>The allow-list entry for a measurement; "*" stands for any feature, a trailing "*" for checks starting so.</summary>
+    /// <summary>
+    /// The allow-list entry for a measurement; "*" stands for any feature, a trailing "*" for checks starting so. A
+    /// feature's entry also covers its rendering from the binary HWP ("floating" covers "floating.hwp").
+    /// </summary>
     public AllowEntry? Allowed(string renderer, string feature, string check) =>
-        Allow.FirstOrDefault(a => a.Renderer == renderer && (a.Feature == feature || a.Feature == "*")
+        Allow.FirstOrDefault(a => a.Renderer == renderer && (a.Feature == feature || a.Feature + ".hwp" == feature || a.Feature == "*")
                                   && (a.Check == check || (a.Check.EndsWith('*') && check.StartsWith(a.Check[..^1], StringComparison.Ordinal))));
 
     public Verdict Judge(Measurement measurement)

@@ -124,6 +124,9 @@ internal sealed class FontResolver
         var found = Find(family, style);
         if (found is { Face.Cff2: false })
             return found;
+        // A missing monospaced font (code) keeps its columns with an installed one.
+        if (FontNames.IsMonospace(family) && First(FontNames.Monospace, style) is { } monospaced)
+            return monospaced;
         var script = FontSubstitution.Script(family) is { Length: > 0 } own ? own : language;
         return First(FontSubstitution.Preferred(script, FontSubstitution.IsSerif(family)), style)
             ?? found

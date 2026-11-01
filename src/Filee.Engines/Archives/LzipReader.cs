@@ -1,73 +1,65 @@
 // Reads lzip files (.lz, .tar.lz), which 7-Zip does not open. An lzip member is a 6-byte header ("LZIP", version 1,
 // coded dictionary size), a raw LZMA stream (lc=3, lp=0, pb=2, always ended by an end marker) and a 20-byte
-// trailer (CRC-32 u32, data size u64, member size u64). Each member is rewritten as a classic .lzma file, which the
-// bundled 7-Zip decodes; the result is checked against the trailer.
+// trailer (CRC-32 u32, data size u64, member size u64). Each member's LZMA data is decoded in-process with
+// SharpCompress's LZMA decoder (MIT) and checked against its trailer.
+
+using SharpCompress.Compressors.LZMA;
 
 namespace Filee.Engines.Archives;
 
-/// <summary>Decompresses lzip files with the help of 7-Zip's LZMA decoder.</summary>
+/// <summary>Decompresses lzip files.</summary>
 internal static class LzipReader
 {
     private const int HeaderSize = 6;
     private const int TrailerSize = 20;
 
     /// <summary>Decompresses <paramref name="lzipFile"/> into <paramref name="outputFile"/>.</summary>
-    public static async Task DecompressAsync(string lzipFile, string outputFile, SevenZip sevenZip, string workDirectory,
-        CancellationToken cancellationToken)
+    public static void Decompress(string lzipFile, string outputFile, CancellationToken cancellationToken)
     {
         var name = Path.GetFileName(lzipFile);
-        await using var input = new FileStream(lzipFile, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+        using var input = new FileStream(lzipFile, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
         var members = FindMembers(input, name);
-        ArchiveSafety.EnsureRoom(members.Sum(m => m.DataSize), Path.GetDirectoryName(Path.GetFullPath(outputFile))!, name);
+        var folder = Path.GetDirectoryName(Path.GetFullPath(outputFile))!;
+        var total = members.Sum(m => m.DataSize);
+        ArchiveSafety.CheckRatio(total, input.Length, name);
+        ArchiveSafety.EnsureRoom(total, folder, name);
+        var budget = new UnpackBudget(name, input.Length, folder);
 
-        var folder = Path.Combine(workDirectory, "lzip-" + Guid.NewGuid().ToString("N")[..8]);
-        Directory.CreateDirectory(folder);
         try
         {
-            await using var output = new FileStream(outputFile, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16);
-            foreach (var member in members)
+            using (var output = new FileStream(outputFile, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var lzma = Path.Combine(folder, "member.lzma");
-                await using (var file = new FileStream(lzma, FileMode.Create, FileAccess.Write))
+                foreach (var member in members)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     input.Position = member.Start + 5;
                     var dictionary = DictionarySize(input.ReadByte());
-                    // .lzma header: properties (lc=3, lp=0, pb=2), dictionary size, unknown size (-1: until the end marker).
-                    file.WriteByte(0x5D);
-                    file.Write(BitConverter.GetBytes(dictionary));
-                    file.Write(BitConverter.GetBytes(-1L));
-                    ArchiveFiles.CopyLimited(new BoundedStream(input, member.Size - HeaderSize - TrailerSize), file, long.MaxValue, cancellationToken);
+                    // LZMA properties: lc=3, lp=0, pb=2, then the dictionary size.
+                    byte[] properties = [0x5D, .. BitConverter.GetBytes(dictionary)];
+                    var packed = member.Size - HeaderSize - TrailerSize;
+                    var crc = new Crc32();
+                    using (var decoder = new LzmaStream(properties, new BoundedStream(input, packed), packed, member.DataSize))
+                    using (var checkedOutput = new CrcStream(new NonClosingStream(output), crc))
+                    {
+                        if (ArchiveFiles.CopyLimited(decoder, checkedOutput, member.DataSize, cancellationToken, budget: budget) != member.DataSize)
+                            throw ArchiveSafety.Damaged(name, "wrong data size");
+                    }
+                    if (crc.Value != member.Crc)
+                        throw ArchiveSafety.Damaged(name, "checksum error");
                 }
-
-                var unpacked = Path.Combine(folder, "out");
-                ArchiveFiles.TryDeleteFolder(unpacked);
-                await sevenZip.ExtractAsync(lzma, unpacked, [], folder, cancellationToken);
-                var result = Path.Combine(unpacked, "member");
-                if (!File.Exists(result))
-                    throw ArchiveSafety.Damaged(name, "LZMA data could not be decoded");
-
-                var crc = new Crc32();
-                await using (var decoded = File.OpenRead(result))
-                await using (var checkedOutput = new CrcStream(new NonClosingStream(output), crc))
-                {
-                    if (ArchiveFiles.CopyLimited(decoded, checkedOutput, member.DataSize, cancellationToken) != member.DataSize)
-                        throw ArchiveSafety.Damaged(name, "wrong data size");
-                }
-                if (crc.Value != member.Crc)
-                    throw ArchiveSafety.Damaged(name, "checksum error");
             }
+            File.SetLastWriteTimeUtc(outputFile, File.GetLastWriteTimeUtc(lzipFile));
+        }
+        catch (Exception ex) when (ex is IndexOutOfRangeException or ArgumentOutOfRangeException or OverflowException)
+        {
+            ArchiveFiles.TryDeleteFile(outputFile);
+            throw ArchiveSafety.Damaged(name, "LZMA data could not be decoded");
         }
         catch
         {
             ArchiveFiles.TryDeleteFile(outputFile);
             throw;
         }
-        finally
-        {
-            ArchiveFiles.TryDeleteFolder(folder);
-        }
-        File.SetLastWriteTimeUtc(outputFile, File.GetLastWriteTimeUtc(lzipFile));
     }
 
     /// <summary>One lzip member.</summary>
@@ -99,11 +91,18 @@ internal static class LzipReader
             input.ReadExactly(header);
             if (header[0] != 'L' || header[1] != 'Z' || header[2] != 'I' || header[3] != 'P' || header[4] != 1)
                 throw InvalidLzip(name);
-            members.Insert(0, new Member(start, size, crc, dataSize));
+            // lzip allows dictionaries of 4 KiB to 512 MiB; the decoder allocates the whole dictionary.
+            var coded = input.ReadByte();
+            if (coded < 0 || DictionarySize(coded) is < 1u << 12 or > 1u << 29)
+                throw InvalidLzip(name);
+            if (members.Count >= ArchiveSafety.EntryLimit)
+                throw ArchiveSafety.TooManyEntries(name);
+            members.Add(new Member(start, size, crc, dataSize));
             end = start;
         }
         if (members.Count == 0)
             throw InvalidLzip(name);
+        members.Reverse();
         return members;
     }
 

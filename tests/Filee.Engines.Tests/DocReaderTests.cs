@@ -252,24 +252,38 @@ public class DocReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     // ───────────────────────── Routes ─────────────────────────
 
+    /// <summary>
+    /// A planner over the engines on this machine without the optional downloads (CI has Pandoc, not LibreOffice), and
+    /// with <paramref name="assumeInstalled"/> taken as installed.
+    /// </summary>
+    private Core.Conversion.RoutePlanner Planner(params string[] assumeInstalled) =>
+        new Core.Conversion.ConverterCatalog(fx.Converters.Where(c => c.Id is not ("pandoc" or "libreoffice") || assumeInstalled.Contains(c.Id)))
+        { Priority = fx.Catalog.Priority }.CreatePlanner(assumeInstalled);
+
     [Theory]
     [InlineData("doc")]
     [InlineData("dot")]
     [InlineData("wps")]
-    public void Word_97_files_take_the_built_in_reader_even_with_libreoffice(string format)
+    public void Word_97_files_take_the_built_in_reader_with_and_without_libreoffice(string format)
     {
-        var planner = fx.Catalog.CreatePlanner(["libreoffice", "rhwp"]);
+        var builtIn = Planner("rhwp");
+        var withLibreOffice = Planner("rhwp", "libreoffice");
+        foreach (var target in new[] { "pdf", "docx", "odt", "hwpx", "txt", "md", "html" })
+        {
+            var route = builtIn.Plan(format, target);
+            Assert.NotNull(route);
+            // The first step checks the file: Word 6.0 / 95 and Works files take another route, and there is none here.
+            Assert.True(route.Steps[0].Checked, $"{format} → {target}");
+            Assert.Null(builtIn.Plan(format, target, withoutChecked: true));
+        }
         foreach (var target in new[] { "pdf", "docx", "odt", "hwpx", "txt", "md" })
         {
-            var route = planner.Plan(format, target);
+            var route = withLibreOffice.Plan(format, target);
             Assert.NotNull(route);
             Assert.DoesNotContain(route.Steps, s => s.Converter.Id == "libreoffice");
-            // The first step checks the file (Word 6.0 / 95 and Works files go to LibreOffice instead).
             Assert.True(route.Steps[0].Checked, $"{format} → {target}");
-            Assert.Contains(planner.Plan(format, target, withoutChecked: true)!.Steps, s => s.Converter.Id == "libreoffice");
+            Assert.Contains(withLibreOffice.Plan(format, target, withoutChecked: true)!.Steps, s => s.Converter.Id == "libreoffice");
         }
-        // HTML: as DOCX goes (LibreOffice's own export when it is installed).
-        Assert.Equal(planner.Plan("docx", "html")!.Steps.Select(s => s.Converter.Id), planner.Plan(format, "html")!.Steps.Select(s => s.Converter.Id));
     }
 
     [Fact]

@@ -150,8 +150,9 @@ public static class FormatRegistry
         new("mhtml", "MHTML", FormatCategory.Text, ["mhtml", "mht"], Writable: false),
         new("rst", "reStructuredText", FormatCategory.Text, ["rst"]),
         new("tex", "LaTeX", FormatCategory.Text, ["tex", "latex"]),
-        // Read and written by Pandoc. Man pages claim only ".man": the section numbers (.1 … .9) are also the
-        // extensions of rotated logs ("app.log.1"). DocBook claims ".dbk", not every ".xml".
+        // Read and written by Pandoc, and the lightweight ones by Filee itself too (Engines/Text/MarkupConverter), whose
+        // routes win. Man pages claim only ".man": the section numbers (.1 … .9) are also the extensions of rotated logs
+        // ("app.log.1"). DocBook claims ".dbk", not every ".xml".
         new("org", "Org", FormatCategory.Text, ["org"]),
         new("adoc", "AsciiDoc", FormatCategory.Text, ["adoc", "asciidoc"]),
         new("typ", "Typst", FormatCategory.Text, ["typ"]),

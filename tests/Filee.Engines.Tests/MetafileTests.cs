@@ -206,6 +206,30 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
+    public void Wmf_without_a_placeable_header_and_a_window_going_up_is_drawn_the_right_way_up()
+    {
+        // As OLE pictures are made: MM_ANISOTROPIC, SetWindowExt(96, -48), y running up from the top (0) to -48.
+        // A blue band at the top (y 0 to -12) and a red one at the bottom (y -36 to -48).
+        var wmf = new WmfBuilder(0, 0)
+            .Add(0x0103, 8) // SETMAPMODE MM_ANISOTROPIC
+            .Add(0x020C, -48, 96) // SETWINDOWEXT (y, x)
+            .Add(0x020B, 0, 0) // SETWINDOWORG
+            .Pen(5, 0, 0).Select(0) // PS_NULL
+            .Brush(Blue).Select(1)
+            .Rectangle(0, 0, 96, -12)
+            .Brush(Red).Select(2)
+            .Rectangle(0, -36, 96, -48)
+            .ToArray(placeable: false);
+        var (bitmap, _) = Render(wmf, 96);
+        using (bitmap)
+        {
+            Assert.Equal((96, 48), (bitmap.Width, bitmap.Height));
+            Assert.Equal(SKColors.Blue, Pixel(bitmap, 48, 4));
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 48, 44));
+        }
+    }
+
+    [Fact]
     public void Emf_plus_dual_draws_its_emf_records_and_emf_plus_only_is_refused()
     {
         var dual = new EmfBuilder(96, 96).EmfPlusHeader(dual: true).Select(EmfBuilder.NullPen).Brush(1, Red).Select(1).Rectangle(0, 0, 96, 96).ToArray();
