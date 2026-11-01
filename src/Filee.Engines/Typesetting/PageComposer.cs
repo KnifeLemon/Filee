@@ -12,6 +12,8 @@
 //   again, a table) ends that until 한글 starts its next page.
 // - Headers and footers: the section's header and footer for both pages, odd or even pages (by page number), none on
 //   the section's first page where it hides them; laid out in the header and footer areas.
+// - Master pages (바탕쪽): drawn behind the page's body (or in front of it) from the top of the body; see MasterPages.
+// - Page borders and backgrounds (쪽 테두리/배경) under everything else; see PageBorder.
 // - Page numbers count on from section to section unless a section restarts them; a page number field shows the
 //   number of its page and a total pages field the count, which a first pass finds when the body shows it.
 // - Styles: models read from other formats leave formats to the 한글 style (null members); with a StyleResolver every
@@ -31,11 +33,10 @@
 //   document. 한글 sets each note as high as its text, without the spacing below its last line, the last ending at the
 //   body's bottom; that is measured against 한글's own PDFs. Footnotes go across the page's text width, also in
 //   columns (한글 puts them under each column).
-//
-// Floating objects and master pages are later milestones.
 
 using Filee.Engines.Documents;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Metafiles;
 using Filee.Engines.Rendering;
 using SkiaSharp;
 
@@ -77,7 +78,7 @@ internal sealed class PageComposer
     }
 
     /// <summary>The page geometry of a section, in points.</summary>
-    private sealed record Geometry(float Width, float Height, float Left, float TextWidth, float HeaderTop, float BodyTop, float BodyBottom, float FooterTop)
+    private sealed record Geometry(float Width, float Height, float Left, float TextWidth, float HeaderTop, float BodyTop, float BodyBottom, float FooterTop, float FooterBottom)
     {
         public static Geometry Of(HPage page) => new(
             page.Width / 100f,
@@ -87,7 +88,8 @@ internal sealed class PageComposer
             page.Top / 100f,
             (page.Top + page.Header) / 100f,
             (page.Height - page.Bottom - page.Footer) / 100f,
-            (page.Height - page.Bottom - page.Footer) / 100f);
+            (page.Height - page.Bottom - page.Footer) / 100f,
+            (page.Height - page.Bottom) / 100f);
     }
 
     /// <summary>A page and what its headers and footers need.</summary>
@@ -290,8 +292,11 @@ internal sealed class PageComposer
             EndRegion(balance: false);
             FinishPage();
             _guard.PageFinished(_empty);
-            foreach (var page in _pages)
+            for (var i = 0; i < _pages.Count; i++)
             {
+                var page = _pages[i];
+                PageBorder(page);
+                MasterPages(page, lastOfSection: i == _pages.Count - 1 || _pages[i + 1].Section != page.Section);
                 DrawObjects(page);
                 HeadersAndFooters(page);
             }
@@ -453,7 +458,8 @@ internal sealed class PageComposer
                 // paragraph's text right under it, without the space before.
                 _skipSpaceBefore = true;
             }
-            var margin = table.OuterMargin ?? default;
+            // A table of another format has the outer margin the HWPX writer gives it: 5 mm below unless it is tight.
+            var margin = table.OuterMargin ?? (composer._styles is not null && !table.Tight ? new HInsets(0, 0, 0, 1417) : default);
             _y += (table.VerticalOffset + margin.Top) / 100f;
             // Filee's rows are not 한글's unless the table is as high as 한글's (its line for it, else its stored size);
             // else the stored places hold again on 한글's next page.
@@ -582,7 +588,9 @@ internal sealed class PageComposer
                 {
                     if (j > i && stored && (lines[j].StoredPageStart || lines[j].StoredColumnStart && _columns.Count > 1))
                         break;
-                    var top = stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : stored ? y : Clear(y, lines[j].Height);
+                    // 한글's line on both sides of an object is two stored lines at one place: the second goes beside the first.
+                    var top = box.StoredLines && j > i && SameRow(lines, j) ? y - lines[j - 1].Height
+                        : stored && lines[j].StoredTop is { } storedTop ? Math.Max(y, _regionTop + storedTop) : stored ? y : Clear(y, lines[j].Height);
                     notes.AddRange(NewNotes(lines[j]));
                     if (top + lines[j].Height > _geometry.BodyBottom - FootnotesHeight(notes) + Epsilon)
                         break;
@@ -603,7 +611,11 @@ internal sealed class PageComposer
                     {
                         // Objects placed ahead with the paragraph go on with it.
                         if (i == 0 && _anchored.Remove(paragraph, out var ahead))
+                        {
                             Current.Objects.RemoveAll(ahead.Contains);
+                            foreach (var item in ahead)
+                                _floated.Remove(item.Object);
+                        }
                         NextColumn();
                         _inStep = false;
                         continue;
@@ -611,7 +623,11 @@ internal sealed class PageComposer
                     fit = 1; // a line higher than the column: placed anyway
                 }
                 for (var j = i; j < i + fit; j++)
-                    PlaceLine(paragraph, lines[j], j == 0, stored);
+                {
+                    if (box.StoredLines && j > i && SameRow(lines, j))
+                        _y -= lines[j - 1].Height;
+                    PlaceLine(paragraph, box, lines[j], j == 0, stored);
+                }
                 i += fit;
                 if (i < lines.Count)
                 {
@@ -628,13 +644,17 @@ internal sealed class PageComposer
             _y += box.SpaceAfter;
         }
 
+        /// <summary>A stored line at the same place as the one before it: the other side of an object 한글 put text on both sides of.</summary>
+        private static bool SameRow(IReadOnlyList<LineBox> lines, int j) =>
+            j > 0 && lines[j].StoredTop is { } top && lines[j - 1].StoredTop == top && !lines[j].StoredPageStart && !lines[j].StoredColumnStart;
+
         /// <summary>The stored top of the last line placed from 한글's stored lines.</summary>
         private float? _lastStored;
 
         /// <summary>The page and column where 한글's last column or page started.</summary>
         private (int Page, int Column) _hangulStart;
 
-        private void PlaceLine(HParagraph paragraph, LineBox line, bool first, bool stored)
+        private void PlaceLine(HParagraph paragraph, ParagraphBox box, LineBox line, bool first, bool stored)
         {
             if (line.StoredTop is { } storedTop)
                 _lastStored = storedTop;
@@ -644,8 +664,12 @@ internal sealed class PageComposer
                 _y = Clear(_y, line.Height);
             if (first && paragraph.HeadingLevel > 0)
                 _outline.Add(new OutlineEntry(Title(paragraph), _pages.Count - 1, _y, paragraph.HeadingLevel - 1));
+            // An object placed against the paper or the page goes on the page of the line that holds it, as 한글 places
+            // it; the paragraph's first line places the others.
             if (first && !_anchored.Remove(paragraph))
-                Anchor(paragraph, _y);
+                Anchor(paragraph, _y, (item, anchor) => !OnPage(anchor) || !box.FloatingAt.TryGetValue(item, out var at) || at < line.End || box.Lines.Count == 1);
+            else if (!first)
+                Anchor(paragraph, _y, (item, anchor) => OnPage(anchor) && box.FloatingAt.TryGetValue(item, out var at) && at >= line.Start && (at < line.End || line == box.Lines[^1]));
             if (first && paragraph.PageHiding is { } hiding)
                 Current.Hiding = hiding;
             Put(0, line.Height, line.Draw);
@@ -735,15 +759,26 @@ internal sealed class PageComposer
                 _number % 2 == 1);
         }
 
-        /// <summary>Places the floating objects of a paragraph whose first line starts at <paramref name="top"/>.</summary>
-        private List<PlacedObject> Anchor(HParagraph paragraph, float top)
+        private static bool OnPage(HAnchor anchor) => anchor.VerticalRelativeTo is "PAPER" or "PAGE";
+
+        /// <summary>Floating objects placed so far (each goes on the page once).</summary>
+        private readonly HashSet<HInline> _floated = new(ReferenceEqualityComparer.Instance);
+
+        /// <summary>
+        /// Places the floating objects of a paragraph whose first line starts at <paramref name="top"/> (those
+        /// <paramref name="include"/> takes, else all), each once.
+        /// </summary>
+        private List<PlacedObject> Anchor(HParagraph paragraph, float top, Func<HInline, HAnchor, bool>? include = null)
         {
             var frame = Frame(top, paragraph);
             var placed = new List<PlacedObject>();
             foreach (var (item, anchor) in FloatingObjects.Of(paragraph))
             {
+                if (_floated.Contains(item) || include?.Invoke(item, anchor) == false)
+                    continue;
                 if (FloatingObjects.Size(item) is not var (w, h))
                     continue;
+                _floated.Add(item);
                 placed.Add(new PlacedObject(item, FloatingObjects.Place(anchor, w, h, frame), anchor.Wrap, FloatingObjects.ZOrder(item), _objects++));
             }
             Current.Objects.AddRange(placed);
@@ -918,6 +953,101 @@ internal sealed class PageComposer
                 _y = start + height + shape.Between / 100f;
             }
             _endnotes.Clear();
+        }
+
+        // ───────────────────────── Page borders ─────────────────────────
+
+        /// <summary>
+        /// Draws a page's border and background (쪽 테두리/배경) under everything else: the odd or even pages' one where it
+        /// draws something, else the one for both pages. 한글 places the border around the body grown by its offsets
+        /// (around the header and footer areas too when they are inside), or its offsets in from the paper's edges.
+        /// </summary>
+        private void PageBorder(Page page)
+        {
+            var section = page.Section;
+            static bool Shows(HFirstPageRule rule, bool first) => rule switch
+            {
+                HFirstPageRule.HideFirst => !first,
+                HFirstPageRule.OnlyFirst => first,
+                _ => true,
+            };
+            var side = page.Number % 2 == 0 ? HPageType.Even : HPageType.Odd;
+            if ((section.PageBorders.LastOrDefault(b => b.Pages == side) ?? section.PageBorders.LastOrDefault(b => b.Pages == HPageType.Both)) is not { } border)
+                return;
+            var showBorder = Shows(section.PageBorderShows, page.FirstOfSection) && page.Hiding?.Border != true;
+            var showFill = Shows(section.PageFillShows, page.FirstOfSection) && page.Hiding?.Fill != true;
+            if (!showBorder && !showFill)
+                return;
+
+            var g = page.Geometry;
+            var paper = new SKRect(0, 0, g.Width, g.Height);
+            var (left, right) = (g.Left, g.Left + g.TextWidth);
+            var o = border.Offsets;
+            var frame = border.AroundBody
+                ? new SKRect(left - o.Left / 100f, (border.HeaderInside ? g.HeaderTop : g.BodyTop) - o.Top / 100f,
+                    right + o.Right / 100f, (border.FooterInside ? g.FooterBottom : g.BodyBottom) + o.Bottom / 100f)
+                : new SKRect(o.Left / 100f, o.Top / 100f, g.Width - o.Right / 100f, g.Height - o.Bottom / 100f);
+            var area = border.FillArea switch
+            {
+                HPageFillArea.Border => frame,
+                HPageFillArea.Page => new SKRect(left, g.HeaderTop, right, g.FooterBottom),
+                _ => paper,
+            };
+            var layer = new PageContent(g.Width, g.Height);
+            layer.Draw(canvas =>
+            {
+                if (showFill && border.Fill is not null && ParagraphText.Color(border.Fill) is { } color)
+                {
+                    using var paint = new SKPaint { Style = SKPaintStyle.Fill, Color = color };
+                    canvas.DrawRect(area, paint);
+                }
+                if (showFill && border.Picture is { } path && File.Exists(path))
+                {
+                    if (Metafile.IsMetafile(path))
+                    {
+                        using var drawing = Metafile.TryLoad(path);
+                        drawing?.Draw(canvas, area);
+                    }
+                    else if (SKImage.FromEncodedData(path) is { } image)
+                    {
+                        using (image)
+                            canvas.DrawImage(image, area, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
+                    }
+                }
+                if (showBorder)
+                    TableLayout.Borders(canvas, border.Borders, frame);
+            });
+            page.Content.Add(layer, under: true);
+        }
+
+        // ───────────────────────── Master pages ─────────────────────────
+
+        /// <summary>
+        /// Draws a page's master pages (바탕쪽) behind everything else on it, or in front of the text where they say so:
+        /// the one for odd or even pages, else the one for both; on the section's last page its last-page master, on a
+        /// chosen page its optional master, each instead of the regular one unless it overlaps it (겹치기). Their text
+        /// is laid out from the top of the body, as wide as it.
+        /// </summary>
+        private void MasterPages(Page page, bool lastOfSection)
+        {
+            var section = page.Section;
+            if (section.MasterPages.Count == 0 || (page.FirstOfSection && section.HideFirstMasterPage) || page.Hiding?.MasterPage == true)
+                return;
+            _geometry = page.Geometry;
+            _number = page.Number;
+            HMasterPage? Last(HMasterPageKind kind, Func<HMasterPage, bool>? also = null) =>
+                section.MasterPages.LastOrDefault(m => m.Kind == kind && (also is null || also(m)));
+            var regular = Last(page.Number % 2 == 0 ? HMasterPageKind.Even : HMasterPageKind.Odd) ?? Last(HMasterPageKind.Both);
+            var special = (lastOfSection ? Last(HMasterPageKind.LastPage) : null)
+                          ?? Last(HMasterPageKind.OptionalPage, m => m.PageNumber == page.Number);
+            HMasterPage?[] drawn = special is null ? [regular] : special.Duplicate ? [regular, special] : [special];
+            foreach (var master in drawn.OfType<HMasterPage>())
+            {
+                var layer = new PageContent(page.Content.Width, page.Content.Height);
+                foreach (var piece in Tables.Stack(master.Blocks, page.Geometry.TextWidth))
+                    piece.Draw(layer, page.Geometry.Left, page.Geometry.BodyTop + piece.Top);
+                page.Content.Add(layer, under: !master.Front);
+            }
         }
 
         // ───────────────────────── Headers and footers ─────────────────────────

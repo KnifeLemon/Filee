@@ -72,9 +72,10 @@ internal sealed class ParagraphText
     public const float DefaultSize = 10;
 
     private ParagraphText(string text, List<TextSpan> spans, List<(int Position, string Name)> bookmarks, Dictionary<int, HInline> pictures,
-        Dictionary<int, HNote> notes, List<(int Position, int Length)> insertions)
+        Dictionary<int, HNote> notes, List<(int Position, int Length)> insertions, Dictionary<HInline, int> floating)
     {
         Text = text;
+        Floating = floating;
         Spans = spans;
         Bookmarks = bookmarks;
         Objects = pictures;
@@ -84,6 +85,9 @@ internal sealed class ParagraphText
 
     /// <summary>Pictures, shapes and text boxes laid out like characters, by the position of their U+FFFC.</summary>
     public IReadOnlyDictionary<int, HInline> Objects { get; }
+
+    /// <summary>Floating pictures, shapes and text boxes (with an anchor), by the text position where they are held.</summary>
+    public IReadOnlyDictionary<HInline, int> Floating { get; }
 
     /// <summary>Notes by the text position of their reference.</summary>
     public IReadOnlyDictionary<int, HNote> Notes { get; }
@@ -120,6 +124,7 @@ internal sealed class ParagraphText
         var pictures = new Dictionary<int, HInline>();
         var references = new Dictionary<int, HNote>();
         var insertions = new List<(int, int)>();
+        var floating = new Dictionary<HInline, int>(ReferenceEqualityComparer.Instance);
         var markerLength = 0;
         var inserted = 0;
 
@@ -167,6 +172,9 @@ internal sealed class ParagraphText
                         pictures[text.Length] = inline;
                         Add(ObjectReplacement.ToString(), paragraph.MarkFormat, link);
                         break;
+                    case HImage or HShape or HTextBox:
+                        floating[inline] = text.Length;
+                        break;
                     case HField field:
                         if (fields is not null)
                             Insert(fields(field), field.Format, link);
@@ -189,7 +197,7 @@ internal sealed class ParagraphText
             markerLength = text.Length;
         }
         Inlines(paragraph.Inlines, null);
-        return new ParagraphText(text.ToString(), spans, bookmarks, pictures, references, insertions);
+        return new ParagraphText(text.ToString(), spans, bookmarks, pictures, references, insertions, floating);
     }
 
     /// <summary>

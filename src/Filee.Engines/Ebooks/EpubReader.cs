@@ -30,17 +30,27 @@ internal static class EpubReader
             EbookFiles.Extract(zip, folder);
         }
 
-        var package = OpfPackage.Load(OpfPackage.RootFile(folder));
+        return ReadPackage(OpfPackage.RootFile(folder), folder, "EPUB", cancellationToken);
+    }
+
+    /// <summary>
+    /// Reads the book an OPF package describes (EPUB, and OEB books, whose chapters may be OEB 1 documents).
+    /// </summary>
+    /// <param name="folder">The unpacked book, where pictures embedded in chapters are written too.</param>
+    internal static Book ReadPackage(string opfPath, string folder, string format, CancellationToken cancellationToken)
+    {
+        var package = OpfPackage.Load(opfPath);
         var chapters = new List<string>();
         foreach (var item in package.Spine)
         {
-            if (item.MediaType is "application/xhtml+xml" or "text/html" or "application/xml" || item.MediaType.Length == 0 && item.Path.EndsWith("html", StringComparison.OrdinalIgnoreCase))
+            if (item.MediaType is "application/xhtml+xml" or "text/html" or "application/xml" or "text/x-oeb1-document"
+                || item.MediaType.Length == 0 && item.Path.EndsWith("html", StringComparison.OrdinalIgnoreCase))
                 chapters.Add(item.Path);
             else if (item.MediaType.StartsWith("image/", StringComparison.Ordinal))
                 chapters.Add(ImagePage(item.Path)); // a picture in the spine (comics, covers) is a page of its own
         }
         if (chapters.Count == 0)
-            throw new InvalidDataException("The EPUB has no readable chapters.");
+            throw new InvalidDataException($"The {format} has no readable chapters.");
 
         var document = ChapterReader.Read(chapters, Path.Combine(folder, "~media"), cancellationToken);
         document.Title = package.Metadata.Title ?? document.Title;

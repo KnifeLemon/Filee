@@ -478,8 +478,8 @@ internal sealed class TableLayout(Func<HParagraph, float, ParagraphBox> paragrap
         });
     }
 
-    /// <summary>Draws the four borders of a cell.</summary>
-    private static void Borders(SKCanvas canvas, HBorders borders, SKRect area)
+    /// <summary>Draws the four borders of a cell (or of a page).</summary>
+    internal static void Borders(SKCanvas canvas, HBorders borders, SKRect area)
     {
         Line(canvas, borders.Top, area.Left, area.Top, area.Right, area.Top);
         Line(canvas, borders.Bottom, area.Left, area.Bottom, area.Right, area.Bottom);

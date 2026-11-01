@@ -6,8 +6,8 @@
 .DESCRIPTION
   Without -PublishDir the app is published first (Release, self-contained, -p:FileeRelease=true) into
   publish/win-x64, together with the Windows 11 Explorer menu extension (build-explorer-menu.ps1), the bundled
-  small engines rhwp and 7-Zip and the Microsoft C++ runtime DLLs next to rhwp.exe and Filee.exe
-  (fetch-engines.ps1); the large engines are downloaded by the app (engines.json).
+  small engines rhwp and 7-Zip and the Microsoft C++ runtime DLLs next to rhwp.exe (fetch-engines.ps1); the large
+  engines are downloaded by the app (engines.json).
 
   Setup itself (src/Filee.Setup) is published as one self-contained, trimmed program (no .NET needed on the PC);
   build/tools/make-setup.cs appends the publish folder to it as an LZMA payload with a SHA-256 manifest, and the
@@ -16,9 +16,8 @@
 
 .PARAMETER Runtime
   win-x64 (default) or win-arm64. The ARM64 build (Filee-<version>-win-arm64-Setup.exe and -Portable.zip) has an ARM64
-  Setup, Explorer menu DLL, rhwp, 7-Zip and Unhwp library (fetch-engines.ps1 -Runtime win-arm64, which fails while
-  the ARM64 rhwp and Unhwp builds are not pinned yet). They link the C runtime statically: no Microsoft C++ runtime
-  DLLs are copied.
+  Setup, Explorer menu DLL, rhwp and 7-Zip (fetch-engines.ps1 -Runtime win-arm64, which fails while the ARM64 rhwp
+  build is not pinned yet). It links the C runtime statically: no Microsoft C++ runtime DLLs are copied.
 
 .PARAMETER CertificateThumbprint
   Signs the release (build/sign-windows.ps1): the programs in the publish folder that come unsigned, the Setup
@@ -79,22 +78,15 @@ if ($CheckOnly) {
 elseif (-not $PublishDir) {
     $PublishDir = Join-Path $root "publish\$Runtime"
     Remove-Item $PublishDir -Recurse -Force -ErrorAction SilentlyContinue
-    # Unhwp's package has no win-arm64 library: the pinned ARM64 build goes next to Filee.exe through the build.
-    $native = @()
-    if ($Runtime -eq 'win-arm64') {
-        $natives = Join-Path $cache 'win-arm64-native'
-        & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Runtime $Runtime -Only unhwp -Destination $natives
-        $native = @("-p:UnhwpNativeLibrary=$(Join-Path $natives 'unhwp\unhwp.dll')")
-    }
     Invoke-Checked 'dotnet publish' {
         dotnet publish (Join-Path $root 'src\Filee.App\Filee.App.csproj') -c Release -r $Runtime --self-contained `
-            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true @native -o $PublishDir
+            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true -o $PublishDir
     }
     # The command line, in the same folder so it shares the runtime and the engines (filee-cli.exe). Its name can't
     # be filee.exe next to Filee.exe, so the "filee" command is cli\filee.cmd, which Setup can put on PATH.
     Invoke-Checked 'dotnet publish (cli)' {
         dotnet publish (Join-Path $root 'src\Filee.Cli\Filee.Cli.csproj') -c Release -r $Runtime --self-contained `
-            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true @native -o $PublishDir
+            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true -o $PublishDir
     }
     # Native debug symbols from NuGet packages (libSkiaSharp.pdb, libHarfBuzzSharp.pdb: ~105 MB) are useless to users.
     # Filee.App's publish removes them, but publishing the command line into the same folder brings them back.
@@ -105,18 +97,16 @@ elseif (-not $PublishDir) {
     $architecture = $Runtime.Substring(4)
     & (Join-Path $PSScriptRoot 'build-explorer-menu.ps1') -Destination $PublishDir -Version $Version -Architecture $architecture
     # Only the small rhwp and 7-Zip are bundled; the app downloads the others when the user picks them. The Microsoft
-    # C++ runtime goes next to rhwp.exe and next to Filee.exe (unhwp.dll imports VCRUNTIME140.dll), so neither needs
-    # the Visual C++ Redistributable (#248). The ARM64 builds need none.
-    $runtimeTo = @{}
-    if ($Runtime -eq 'win-x64') { $runtimeTo = @{ RuntimeTo = $PublishDir } }
-    & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Runtime $Runtime -Only rhwp, 7zip -Destination (Join-Path $PublishDir 'engines') @runtimeTo
+    # C++ runtime goes next to rhwp.exe, so it doesn't need the Visual C++ Redistributable (#248). Nothing loaded into
+    # Filee.exe imports it. The ARM64 builds need none.
+    & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Runtime $Runtime -Only rhwp, 7zip -Destination (Join-Path $PublishDir 'engines')
 }
 $PublishDir = (Resolve-Path $PublishDir).Path
 if (-not (Test-Path (Join-Path $PublishDir 'Filee.exe'))) { throw "Filee.exe is missing in $PublishDir" }
 if (-not $CheckOnly) {
-    # Without them rhwp and unhwp fail on PCs without the Visual C++ Redistributable (#248). They go into the payload
-    # and the portable zip; Setup checks again after unpacking (RuntimeCheck) on the user's PC.
-    $required = if ($Runtime -eq 'win-x64') { 'vcruntime140.dll', 'engines\rhwp\msvcp140.dll', 'engines\rhwp\vcruntime140.dll' } else { @('unhwp.dll') }
+    # Without them rhwp fails on PCs without the Visual C++ Redistributable (#248). They go into the payload and the
+    # portable zip; Setup checks again after unpacking (RuntimeCheck) on the user's PC.
+    $required = if ($Runtime -eq 'win-x64') { 'engines\rhwp\msvcp140.dll', 'engines\rhwp\vcruntime140.dll' } else { @() }
     foreach ($dll in $required) {
         if (-not (Test-Path (Join-Path $PublishDir $dll))) { throw "$dll is missing in $PublishDir (see fetch-engines.ps1)" }
     }

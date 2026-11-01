@@ -22,6 +22,9 @@ internal sealed record ParagraphBox(float SpaceBefore, float SpaceAfter, IReadOn
     /// <summary>The list item's number or bullet the paragraph was laid out with, or null.</summary>
     public string? Marker { get; init; }
 
+    /// <summary>The paragraph's floating objects by the text position where they are held (see LineBox.Start).</summary>
+    public IReadOnlyDictionary<HInline, int> FloatingAt { get; init; } = new Dictionary<HInline, int>();
+
     /// <summary>The paragraph's whole height with its spacing.</summary>
     public float Height => SpaceBefore + Lines.Sum(l => l.Height) + SpaceAfter;
 }
