@@ -9,10 +9,12 @@
 // An extra field is magic u32, flags u8, size u16 (u32 when flags bit 0 is set) and data. The file name field
 // has a locale u16 before the name when flags & 0x08 (else the name is UTF-8) and a parent id u32 when flags & 0x10.
 // Methods: 0 store, 1 deflate, 2 bzip2, 3 AZO (ESTsoft's own, not supported), 4 LZMA (ZIP-style: 4-byte version
-// and size header, 5 property bytes, raw data; decoded by 7-Zip). Solid, split and encrypted archives are refused.
+// and size header, 5 property bytes, raw data; decoded by SharpCompress, MIT). Solid, split and encrypted archives are refused.
 
+using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
+using SharpCompress.Compressors.LZMA;
 
 namespace Filee.Engines.Archives;
 
@@ -44,14 +46,13 @@ internal static class EggReader
     }
 
     /// <summary>Unpacks every entry of <paramref name="archive"/> into <paramref name="targetDirectory"/>.</summary>
-    /// <param name="sevenZip">Decodes LZMA blocks; null when 7-Zip is missing (LZMA entries then fail).</param>
-    public static async Task ExtractAsync(string archive, string targetDirectory, SevenZip? sevenZip, string workDirectory,
-        CancellationToken cancellationToken)
+    public static void Extract(string archive, string targetDirectory, CancellationToken cancellationToken)
     {
         var archiveName = Path.GetFileName(archive);
-        await using var stream = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+        using var stream = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
         var entries = ReadEntries(stream, archiveName);
-        ArchiveSafety.EnsureRoom(entries.Where(e => !e.IsFolder).Sum(e => e.Size), targetDirectory, archiveName);
+        ArchiveSafety.CheckListing([.. entries.Select(e => new ArchiveItem(e.Name, e.IsFolder, e.IsFolder ? 0 : e.Size))],
+            archiveName, stream.Length, targetDirectory);
 
         var folders = new List<(string Path, DateTime? Modified)>();
         foreach (var entry in entries)
@@ -67,14 +68,14 @@ internal static class EggReader
 
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             path = ArchiveFiles.UniquePath(path);
-            await using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
+            using (var output = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
             {
                 foreach (var block in entry.Blocks)
                 {
                     var crc = new Crc32();
                     var start = output.Position;
-                    await using (var checkedOutput = new CrcStream(new NonClosingStream(output), crc))
-                        await DecodeBlockAsync(stream, block, checkedOutput, sevenZip, workDirectory, archiveName, cancellationToken);
+                    using (var checkedOutput = new CrcStream(new NonClosingStream(output), crc))
+                        DecodeBlock(stream, block, checkedOutput, archiveName, cancellationToken);
                     if (output.Position - start != block.Size || crc.Value != block.Crc)
                         throw ArchiveSafety.Damaged(archiveName, $"checksum error in {entry.Name}");
                 }
@@ -90,8 +91,7 @@ internal static class EggReader
                 Directory.SetLastWriteTimeUtc(path, time);
     }
 
-    private static async Task DecodeBlockAsync(FileStream stream, Block block, Stream output, SevenZip? sevenZip,
-        string workDirectory, string archiveName, CancellationToken cancellationToken)
+    private static void DecodeBlock(FileStream stream, Block block, Stream output, string archiveName, CancellationToken cancellationToken)
     {
         stream.Position = block.DataOffset;
         var packed = new BoundedStream(stream, block.PackedSize);
@@ -101,7 +101,7 @@ internal static class EggReader
                 ArchiveFiles.CopyLimited(packed, output, block.Size, cancellationToken);
                 break;
             case 1:
-                await using (var inflate = new DeflateStream(packed, CompressionMode.Decompress))
+                using (var inflate = new DeflateStream(packed, CompressionMode.Decompress))
                     ArchiveFiles.CopyLimited(inflate, output, block.Size, cancellationToken);
                 break;
             case 2:
@@ -110,7 +110,7 @@ internal static class EggReader
             case 3:
                 throw new NotSupportedException($"{archiveName} is compressed with ALZip's own AZO method, which Filee cannot unpack. Save it again in ALZip as ZIP or 7Z, or as EGG with another method.");
             case 4:
-                await DecodeLzmaAsync(packed, block, output, sevenZip, workDirectory, archiveName, cancellationToken);
+                DecodeLzma(packed, block, output, archiveName, cancellationToken);
                 break;
             default:
                 throw new InvalidDataException($"{archiveName} uses an unknown EGG compression method ({block.Method}).");
@@ -118,39 +118,23 @@ internal static class EggReader
     }
 
     /// <summary>
-    /// LZMA blocks carry ZIP's LZMA header (version u16, property size u16, 5 property bytes). Rewritten as a .lzma
-    /// file (properties, unpacked size u64, data) they can be decoded by 7-Zip.
+    /// LZMA blocks carry ZIP's LZMA header (version u16, property size u16, 5 property bytes) before the raw data.
     /// </summary>
-    private static async Task DecodeLzmaAsync(Stream packed, Block block, Stream output, SevenZip? sevenZip,
-        string workDirectory, string archiveName, CancellationToken cancellationToken)
+    private static void DecodeLzma(Stream packed, Block block, Stream output, string archiveName, CancellationToken cancellationToken)
     {
-        if (sevenZip is null)
-            throw new InvalidOperationException("7-Zip was not found; it is needed for LZMA data.");
         var header = new byte[9];
         packed.ReadExactly(header);
-        var folder = Path.Combine(workDirectory, "egg-" + Guid.NewGuid().ToString("N")[..8]);
-        Directory.CreateDirectory(folder);
+        if (BinaryPrimitives.ReadUInt16LittleEndian(header.AsSpan(2)) != 5 || header[4] >= 9 * 5 * 5
+            || BinaryPrimitives.ReadUInt32LittleEndian(header.AsSpan(5)) > CompressedFile.MaxLzmaDictionary)
+            throw ArchiveSafety.Damaged(archiveName, "invalid LZMA header");
         try
         {
-            var lzma = Path.Combine(folder, "block.lzma");
-            await using (var file = new FileStream(lzma, FileMode.CreateNew, FileAccess.Write))
-            {
-                file.Write(header, 4, 5);
-                file.Write(BitConverter.GetBytes(block.Size));
-                ArchiveFiles.CopyLimited(packed, file, block.PackedSize, cancellationToken);
-            }
-            var unpacked = Path.Combine(folder, "out");
-            await sevenZip.ExtractAsync(lzma, unpacked, [], folder, cancellationToken);
-            await using var result = File.OpenRead(Path.Combine(unpacked, "block"));
-            ArchiveFiles.CopyLimited(result, output, block.Size, cancellationToken);
+            using var decoder = new LzmaStream(header[4..], packed, block.PackedSize - header.Length, block.Size);
+            ArchiveFiles.CopyLimited(decoder, output, block.Size, cancellationToken);
         }
-        catch (FileNotFoundException)
+        catch (Exception ex) when (ex is IndexOutOfRangeException or ArgumentOutOfRangeException or OverflowException)
         {
             throw ArchiveSafety.Damaged(archiveName, "LZMA data could not be decoded");
-        }
-        finally
-        {
-            ArchiveFiles.TryDeleteFolder(folder);
         }
     }
 
@@ -174,8 +158,8 @@ internal static class EggReader
                 switch (magic)
                 {
                     case FileMagic:
-                        if (entries.Count >= ArchiveSafety.MaxEntries)
-                            throw new InvalidDataException($"{archiveName} has more than {ArchiveSafety.MaxEntries:N0} entries; Filee does not unpack it.");
+                        if (entries.Count >= ArchiveSafety.EntryLimit)
+                            throw ArchiveSafety.TooManyEntries(archiveName);
                         current = new Entry();
                         reader.ReadUInt32(); // file id
                         current.Size = reader.ReadInt64();
@@ -299,24 +283,26 @@ internal static class EggReader
         (flags & 0x01) != 0 ? reader.ReadUInt32() : reader.ReadUInt16();
 }
 
-/// <summary>Forwards writes to a stream without closing it when disposed.</summary>
+/// <summary>Passes reads and writes through to a stream it never closes (decoders and CRC streams close theirs).</summary>
 internal sealed class NonClosingStream(Stream inner) : Stream
 {
-    public override bool CanRead => false;
-    public override bool CanSeek => false;
-    public override bool CanWrite => true;
+    public override bool CanRead => inner.CanRead;
+    public override bool CanSeek => inner.CanSeek;
+    public override bool CanWrite => inner.CanWrite;
     public override long Length => inner.Length;
 
     public override long Position
     {
         get => inner.Position;
-        set => throw new NotSupportedException();
+        set => inner.Position = value;
     }
 
+    public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+    public override int Read(Span<byte> buffer) => inner.Read(buffer);
+    public override int ReadByte() => inner.ReadByte();
     public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
     public override void Write(ReadOnlySpan<byte> buffer) => inner.Write(buffer);
     public override void Flush() => inner.Flush();
-    public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
-    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
     public override void SetLength(long value) => throw new NotSupportedException();
 }

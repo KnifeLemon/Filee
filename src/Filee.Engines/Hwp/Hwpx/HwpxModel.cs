@@ -189,7 +189,10 @@ internal abstract class HBlock
     /// <summary>The page this block is on hides its header or footer (한글 쪽 감추기); null = none. Read for layout only.</summary>
     public HPageHiding? PageHiding { get; set; }
 
-    /// <summary>What the block was in a markup source (<see cref="HBlockRole"/>); only the PPTX writer uses it.</summary>
+    /// <summary>
+    /// What the block was in a markup source (<see cref="HBlockRole"/>): the PPTX writer uses it, and the layout engine
+    /// for code.
+    /// </summary>
     public HBlockRole Role { get; set; }
 
     /// <summary>
@@ -408,6 +411,28 @@ internal abstract class HObject : HInline
     /// Read for layout only.
     /// </summary>
     public int? BaseLine { get; set; }
+
+    /// <summary>The object's caption (한글 캡션); read for layout only.</summary>
+    public HCaption? Caption { get; set; }
+}
+
+/// <summary>Which side of its object a caption is on.</summary>
+internal enum HCaptionSide
+{
+    Bottom,
+    Top,
+    Left,
+    Right,
+}
+
+/// <summary>A caption of a picture, shape or text box: paragraphs <see cref="Gap"/> away from the object's side.</summary>
+/// <param name="Width">Width of a caption on the left or right (HWPUNIT); one above or below is as wide as the object.</param>
+internal sealed class HCaption(HCaptionSide side, int gap, int width)
+{
+    public HCaptionSide Side { get; } = side;
+    public int Gap { get; } = gap;
+    public int Width { get; } = width;
+    public List<HBlock> Blocks { get; } = [];
 }
 
 internal class HText(string text, HCharFormat format) : HInline

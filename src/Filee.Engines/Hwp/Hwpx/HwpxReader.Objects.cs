@@ -1,8 +1,8 @@
 // Objects inside runs: pictures (inline or floating), rectangles / ellipses / lines, text boxes (drawing objects with
 // hp:drawText), groups (hp:container), equations and other objects that only carry text. Objects the model cannot
 // hold (OLE, charts, video, form controls, free-form shapes without text) are skipped and counted. Read for layout,
-// polygons, curves and arcs become shapes with their outline. Every object keeps its rotation, mirroring and z-order,
-// pictures their crop.
+// polygons, curves and arcs become shapes with their outline, and pictures, shapes and text boxes keep their caption.
+// Every object keeps its rotation, mirroring and z-order, pictures their crop.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -26,6 +26,7 @@ internal sealed partial class HwpxReader
             var margin = Child(element, "outMargin") is { } outMargin
                 ? new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"))
                 : default;
+            var caption = _forLayout && name != "container" ? Caption(Child(element, "caption")) : null;
             foreach (var inline in Shapes(element, placement))
             {
                 // Laid out like a character, 한글 sets the object like a character as high as it is with its margins.
@@ -34,6 +35,7 @@ internal sealed partial class HwpxReader
                     item.OuterMargin = margin;
                     if (placement.Anchor is null)
                         item.BaseLine = 85;
+                    item.Caption = caption;
                 }
                 builder.Add(inline);
             }
@@ -82,6 +84,22 @@ internal sealed partial class HwpxReader
                 Skip(element); // ole, chart, video, form controls, ...
                 break;
         }
+    }
+
+    /// <summary>An object's caption (hp:caption): its side, its gap to the object, its width beside it and its paragraphs.</summary>
+    private HCaption? Caption(XElement? element)
+    {
+        if (element is null || Child(element, "subList") is not { } subList)
+            return null;
+        var caption = new HCaption(Attr(element, "side") switch
+        {
+            "TOP" => HCaptionSide.Top,
+            "LEFT" => HCaptionSide.Left,
+            "RIGHT" => HCaptionSide.Right,
+            _ => HCaptionSide.Bottom,
+        }, Math.Max(0, Int(element, "gap")), Math.Max(0, Int(element, "width")));
+        caption.Blocks.AddRange(ReadSubList(subList));
+        return caption.Blocks.Count > 0 ? caption : null;
     }
 
     /// <summary>

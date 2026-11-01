@@ -200,6 +200,29 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Code_lines_of_another_format_are_set_solid_with_the_space_after_their_block()
+    {
+        HParagraph Code(string text)
+        {
+            var line = new HParagraph { Role = HBlockRole.Code };
+            if (text.Length > 0)
+                line.Inlines.Add(new HText(text, new HCharFormat(Size: 1000, Shade: HtmlReader.CodeShade)));
+            return line;
+        }
+        var document = new HDocument();
+        document.Sections.Add(Section(Small with { Height = 40000 }, Paragraph("text"), Code("a = 1"), Code(""), Code("b = 2"), Paragraph("more")));
+
+        var page = new PageComposer(new FontResolver(_fonts), _shaper, styles: StyleResolver.FromTemplate())
+            .Compose(document, TestContext.Current.CancellationToken).Pages[0];
+
+        float Y(string text) => Runs(page).Single(r => r.Text.Trim() == text).Positions[0].Y;
+        // 130 % of 10 pt between code lines, the blank one included, and no paragraph spacing inside the block.
+        Assert.Equal(26f, Y("b = 2") - Y("a = 1"), 0.01f);
+        // After the block the paragraph style's space after (10 pt in Filee's template) comes back.
+        Assert.True(Y("more") - Y("b = 2") >= 13 + 10 - 0.01f, $"{Y("more") - Y("b = 2")}");
+    }
+
+    [Fact]
     public void Hangul_page_numbers_go_to_the_foot_of_the_footer_area_in_their_format()
     {
         var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"));
@@ -720,6 +743,32 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Equal([.. Enumerable.Repeat(false, pages.Count - 1), true], pages.Select(PaperBox));
         using var first = Pixels(pages[0]);
         Assert.True(Dark(first, 15, 22)); // the paragraph's own box, at its first line on the first page
+    }
+
+    [Fact]
+    public void A_floating_objects_caption_goes_its_gap_away_on_its_side()
+    {
+        // Boxes of 40 × 10 and 20 × 10 pt against the paper at (30, 100) and (30, 130); captions 5 pt below the first (as
+        // wide as it) and 5 pt right of the second (30 pt wide), each a line of 10 pt text at 160 %, its baseline 8.5 pt
+        // below its top.
+        var paragraph = Paragraph(" ");
+        var below = Box(4000, 1000, new HAnchor("PAPER", "LEFT", 3000, "PAPER", "TOP", 10000, "IN_FRONT_OF_TEXT", true));
+        below.Caption = new HCaption(HCaptionSide.Bottom, 500, 0);
+        below.Caption.Blocks.Add(Paragraph("Below"));
+        var right = Box(2000, 1000, new HAnchor("PAPER", "LEFT", 3000, "PAPER", "TOP", 13000, "IN_FRONT_OF_TEXT", true));
+        right.Caption = new HCaption(HCaptionSide.Right, 500, 3000);
+        right.Caption.Blocks.Add(Paragraph("Right"));
+        paragraph.Inlines.Add(below);
+        paragraph.Inlines.Add(right);
+
+        var page = Assert.Single(Compose(Section(Small, paragraph)).Pages);
+
+        var first = Runs(page).Single(r => r.Text == "Below").Positions[0];
+        Assert.Equal(30f, first.X, 0.5f);
+        Assert.Equal(123.5f, first.Y, 0.01f);
+        var second = Runs(page).Single(r => r.Text == "Right").Positions[0];
+        Assert.Equal(55f, second.X, 0.5f);
+        Assert.Equal(138.5f, second.Y, 0.01f);
     }
 
     [Fact]

@@ -1,6 +1,6 @@
-// Writes archives. ZIP, TAR and TAR.GZ are written in-process (System.IO.Compression / System.Formats.Tar), so file
-// names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag), PAX headers in TAR. 7Z, the
-// bzip2 / xz TAR variants and single-file GZ / BZ2 / XZ are written by the bundled 7-Zip.
+// Writes archives. ZIP, TAR, TAR.GZ and single-file GZ are written in-process (System.IO.Compression /
+// System.Formats.Tar), so file names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag),
+// PAX headers in TAR. 7Z, the bzip2 / xz TAR variants and single-file BZ2 / XZ are written by the bundled 7-Zip.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -17,7 +17,7 @@ internal sealed record PackItem(string SourcePath, string EntryName);
 internal sealed class ArchivePacker(SevenZip? sevenZip)
 {
     /// <summary>Formats written without 7-Zip.</summary>
-    public static readonly IReadOnlySet<string> BuiltInFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "zip", "tar", "tgz" };
+    public static readonly IReadOnlySet<string> BuiltInFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "zip", "tar", "tgz", "gz" };
 
     /// <summary>Formats that hold exactly one file, without name or folders.</summary>
     public static readonly IReadOnlySet<string> SingleFileFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gz", "bz2", "xz" };
@@ -69,6 +69,11 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
                     if (items.Count != 1 || !File.Exists(items[0].SourcePath))
                         throw new InvalidOperationException(
                             $"A .{format} file holds a single file. Choose TAR.{format.ToUpperInvariant()} to compress several files or folders.");
+                    if (format == "gz")
+                    {
+                        await Task.Run(() => WriteGzip(items[0].SourcePath, temp, level, progress, cancellationToken), cancellationToken);
+                        break;
+                    }
                     var type = format switch { "gz" => "gzip", "bz2" => "bzip2", _ => "xz" };
                     await RunSevenZipAsync(type, await NamedAsAsync(items, workDirectory, cancellationToken), temp, level, workDirectory, progress, 0, cancellationToken);
                     break;
@@ -176,6 +181,28 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
             ArchiveFiles.CopyLimited(source, target, long.MaxValue, cancellationToken, counter.Add);
         }
     }
+
+    /// <summary>One file as a .gz, its time kept on the archive.</summary>
+    private static void WriteGzip(string source, string path, ArchiveLevel level, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        using (var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 1 << 16))
+        using (var file = new FileStream(path, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1 << 16))
+        using (var gzip = new GZipStream(file, GzipLevel(level)))
+        {
+            var length = Math.Max(1, input.Length);
+            long done = 0;
+            ArchiveFiles.CopyLimited(input, gzip, long.MaxValue, cancellationToken, read => progress?.Report((done += read) / (double)length));
+        }
+        File.SetLastWriteTimeUtc(path, File.GetLastWriteTimeUtc(source));
+    }
+
+    private static CompressionLevel GzipLevel(ArchiveLevel level) => level switch
+    {
+        ArchiveLevel.Store => CompressionLevel.NoCompression,
+        ArchiveLevel.Fast => CompressionLevel.Fastest,
+        ArchiveLevel.Maximum => CompressionLevel.SmallestSize,
+        _ => CompressionLevel.Optimal,
+    };
 
     /// <summary>Writes a PAX TAR (UTF-8 names, times), gzip-compressed when <paramref name="gzipLevel"/> is set.</summary>
     private static void WriteTar(IReadOnlyList<PackItem> items, string path, ArchiveLevel? gzipLevel, IProgress<double>? progress, CancellationToken cancellationToken)

@@ -101,8 +101,8 @@ internal static class AlzReader
                 switch (reader.ReadUInt32())
                 {
                     case EntrySignature:
-                        if (entries.Count >= ArchiveSafety.MaxEntries)
-                            throw new InvalidDataException($"{archiveName} has more than {ArchiveSafety.MaxEntries:N0} entries; Filee does not unpack it.");
+                        if (entries.Count >= ArchiveSafety.EntryLimit)
+                            throw ArchiveSafety.TooManyEntries(archiveName);
                         entries.Add(ReadEntry(reader, archiveName));
                         break;
                     case DirectorySignature:

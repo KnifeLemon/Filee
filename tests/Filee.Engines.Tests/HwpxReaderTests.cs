@@ -553,6 +553,38 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_pictures_caption_is_read_for_layout()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "caption.hwpx");
+        File.Copy(HangulStylePackage(folder), path);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            // A caption right of the first picture, 3 mm away and 20 mm wide, where 한글 writes it (after hp:pos).
+            var at = xml.IndexOf("<hp:outMargin", xml.IndexOf("binaryItemIDRef=\"image1\"", StringComparison.Ordinal), StringComparison.Ordinal);
+            xml = xml.Insert(at, "<hp:caption side=\"RIGHT\" fullSz=\"0\" width=\"5669\" gap=\"850\" lastWidth=\"5000\"><hp:subList id=\"\" textDirection=\"HORIZONTAL\" " +
+                "lineWrap=\"BREAK\" vertAlign=\"TOP\"><hp:p id=\"0\" paraPrIDRef=\"0\" styleIDRef=\"0\" pageBreak=\"0\" columnBreak=\"0\" merged=\"0\">" +
+                "<hp:run charPrIDRef=\"0\"><hp:t>그림 설명</hp:t></hp:run></hp:p></hp:subList></hp:caption>");
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml);
+        }
+
+        var pictures = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media")).Sections[0].Blocks.OfType<HParagraph>()
+            .SelectMany(p => p.Inlines).OfType<HImage>().ToList();
+
+        var caption = pictures[0].Caption!;
+        Assert.Equal((HCaptionSide.Right, 850, 5669, "그림 설명"), (caption.Side, caption.Gap, caption.Width, Text(caption.Blocks)));
+        Assert.Null(pictures[1].Caption);
+        Assert.Null(HwpxReader.Read(path, Path.Combine(folder, "media-read")).Sections[0].Blocks.OfType<HParagraph>()
+            .SelectMany(p => p.Inlines).OfType<HImage>().First().Caption); // the converters' model doesn't keep it
+    }
+
+    [Fact]
     public void Read_for_layout_the_page_number_is_the_sections_own_and_not_a_footer_paragraph()
     {
         var folder = fx.NewFolder();

@@ -367,7 +367,7 @@ internal sealed class PageComposer
                     holder = composer.Resolve(source);
                     continue;
                 }
-                var paragraph = composer.Resolve(source);
+                var paragraph = composer.Resolve(source, i + 1 < blocks.Count ? blocks[i + 1] : null);
                 // Columns change here without a new page (Word's continuous section break): the columns so far are
                 // balanced and the new ones start under them.
                 if (paragraph.ColumnsChange is { } change)
@@ -396,7 +396,7 @@ internal sealed class PageComposer
                     switch (blocks[i + 1])
                     {
                         case HParagraph following:
-                            var nextBox = Layout(composer.Resolve(following), ColumnWidth);
+                            var nextBox = Layout(composer.Resolve(following, i + 2 < blocks.Count ? blocks[i + 2] : null), ColumnWidth);
                             next = nextBox;
                             start = nextBox.SpaceBefore + (nextBox.Lines.Count > 0 ? nextBox.Lines[0].Height : 0);
                             break;
@@ -1167,15 +1167,40 @@ internal sealed class PageComposer
 
     // ───────────────────────── Styles ─────────────────────────
 
-    /// <summary>The paragraph with every format member set (as it is when there is no resolver).</summary>
-    private HParagraph Resolve(HParagraph paragraph)
+    /// <summary>
+    /// A line of a code block in a document of another format (a Markdown or notebook code cell, an HTML pre): the
+    /// readers mark it as code, or shade all of its text as code.
+    /// </summary>
+    internal static bool IsCode(HBlock? block) =>
+        block is HParagraph paragraph && (paragraph.Role == HBlockRole.Code
+                                          || paragraph.Inlines.Count > 0 && paragraph.Inlines.All(i => i is HText { Format.Shade: HtmlReader.CodeShade }));
+
+    /// <summary>Line spacing of code lines: set solid, as editors and browsers show code.</summary>
+    private static readonly HLineSpacing CodeSpacing = new(HLineSpacingKind.Percent, 130);
+
+    /// <summary>
+    /// The paragraph with every format member set (as it is when there is no resolver). A code line of another format
+    /// gets a monospaced font where it names none, and solid lines without paragraph spacing, the space after the
+    /// paragraph style's only at the end of its block (before <paramref name="next"/>, which isn't code).
+    /// </summary>
+    private HParagraph Resolve(HParagraph paragraph, HBlock? next = null)
     {
         if (_styles is null)
             return paragraph;
+        var code = IsCode(paragraph);
+        var format = _styles.Paragraph(paragraph);
+        if (code)
+            format = format with
+            {
+                Before = 0,
+                After = IsCode(next) ? 0 : format.After,
+                LineSpacing = CodeSpacing,
+                Layout = (format.Layout ?? new HParaLayout()) with { LineHeight = HLineHeight.From(CodeSpacing) },
+            };
         var resolved = new HParagraph
         {
-            Format = _styles.Paragraph(paragraph),
-            MarkFormat = _styles.Mark(paragraph),
+            Format = format,
+            MarkFormat = _styles.Mark(paragraph) is var mark && code ? _styles.Character(paragraph.MarkFormat with { Font = paragraph.MarkFormat.Font ?? FontNames.MonospaceFamily }, paragraph) : mark,
             HeadingLevel = paragraph.HeadingLevel,
             List = paragraph.List,
             PageBreakBefore = paragraph.PageBreakBefore,
@@ -1184,13 +1209,14 @@ internal sealed class PageComposer
             PageHiding = paragraph.PageHiding,
             Lines = paragraph.Lines,
         };
-        resolved.Inlines.AddRange(Inlines(paragraph.Inlines, paragraph, link: false));
+        resolved.Inlines.AddRange(Inlines(paragraph.Inlines, paragraph, link: false, code));
         return resolved;
     }
 
-    private IEnumerable<HInline> Inlines(IEnumerable<HInline> inlines, HParagraph paragraph, bool link)
+    private IEnumerable<HInline> Inlines(IEnumerable<HInline> inlines, HParagraph paragraph, bool link, bool code = false)
     {
-        HCharFormat Format(HCharFormat format) => _styles!.Character(format, paragraph, HStyleContext.Body, link);
+        HCharFormat Format(HCharFormat format) => _styles!.Character(code && format.Font is null ? format with { Font = FontNames.MonospaceFamily } : format,
+            paragraph, HStyleContext.Body, link);
         foreach (var inline in inlines)
         {
             switch (inline)
@@ -1219,7 +1245,7 @@ internal sealed class PageComposer
                     break;
                 case HLink hyperlink:
                     var copy = new HLink(hyperlink.Target);
-                    copy.Content.AddRange(Inlines(hyperlink.Content, paragraph, link: true));
+                    copy.Content.AddRange(Inlines(hyperlink.Content, paragraph, link: true, code));
                     yield return copy;
                     break;
                 default:
