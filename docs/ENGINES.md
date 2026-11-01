@@ -943,6 +943,11 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
   - Headers and footers: both, odd or even pages by page number, none on a section's first page where it hides them,
     laid out in the header and footer areas. Page numbers count on across sections unless one restarts them; page
     number fields show their page's number, total pages fields the count (a first pass finds it when the body has one).
+    A new number in the middle of a section (hp:newNum) numbers its own page and the pages after it.
+  - 한글's automatic page number (hp:pageNum, read for layout as `HSection.PageNumber`) is drawn apart from the footer,
+    in the character format of the "쪽 번호" style and its number format (letters and 가나다 counted round: page 33 is
+    G), across the text width by its position, its baseline 0.3 of its size above the footer area's bottom (measured
+    on 한글's PDFs), under the body as 한글 writes it; hp:pageHiding hidePageNum leaves it out.
   - Pictures laid out like characters (no anchor) take their size on the line (their own, else their pixels at 96 dpi)
     and stand on the baseline, 한글's objects set like a character as high as they are with their outer margins (85%
     above the baseline, as 한글's stored lines have them); links, bookmarks and headings (the PDF outline) as before.
