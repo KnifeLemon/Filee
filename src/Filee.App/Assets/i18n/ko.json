@@ -193,6 +193,8 @@
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, 마크다운, HTML, 스프레드시트, 슬라이드, 전자책으로 워드 문서(DOCX)를 만들어요.",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "워드 문서, PDF, OFD, HWP/HWPX, 마크다운, HTML, 스프레드시트, 슬라이드, 전자책으로 오픈문서 텍스트(ODT, LibreOffice Writer)를 만들어요.",
+  "engine.markup.name": "Markup languages (built-in)",
+  "engine.markup.description": "Pandoc 없이 주피터 노트북, OPML, Textile, MediaWiki, reStructuredText, Org, DocBook을 읽고 써요.\n문서를 이 형식으로, 이 형식을 마크다운, HTML, 텍스트, DOCX, HWPX, PDF로 바꿔요.",
   "engine.pptx-writer.name": "PPTX 작성기 (내장)",
   "engine.pptx-writer.description": "마크다운과 마크업 파일, 워드 문서, ODT, HWP/HWPX, HTML, 스프레드시트, 전자책으로 파워포인트 슬라이드(PPTX)를 만들어요. 제목마다 슬라이드 한 장이고, 목록·표·그림·코드도 들어가요.",
   "engine.pdf-text.name": "PDF text (built-in)",
