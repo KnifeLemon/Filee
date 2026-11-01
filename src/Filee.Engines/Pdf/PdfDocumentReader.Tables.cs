@@ -7,7 +7,8 @@
 // page (lines, paragraphs, alignment within the cell), and cell borders, shading and row heights come from the PDF.
 //
 // Conservative on purpose: a grid needs 2 rows and 2 columns, merged cells must be rectangles, text must sit in the
-// cells (a rule through a word means a chart or a strike-through, not a table) and at least two cells hold text.
+// cells (a rule through a word means a chart or a strike-through, not a table; only a few words may run on past
+// their cell's right rule, as long spreadsheet text does) and at least two cells hold text.
 // Anything else stays text in reading order as before. Tables without rules (aligned by white space only) are not
 // detected; a table running over several pages becomes one table per page.
 
@@ -373,17 +374,27 @@ internal sealed partial class PdfDocumentReader
         if (cells.Count < 4 && (cells.Select(c => c.Row).Distinct().Count() < 2 || cells.Select(c => c.Column).Distinct().Count() < 2))
             return null;
 
-        // Words by their centre; a rule through the middle of a word means this is no table around text.
+        // Words by their centre; a rule through the middle of a word means this is no table around text. Except a word
+        // that runs on past its cell's right rule: a spreadsheet cuts long text off at the cell (the PDF only clips the
+        // rest) or lets it run into the empty cell next to it. A few of those stay in the cell they start in.
         var bounds = new PdfRectangle(xs[0], ys[^1], xs[^1], ys[0]);
+        bool Inside(double x, double y) => x > bounds.Left && x < bounds.Right && y > bounds.Bottom && y < bounds.Top;
+        var overflows = Math.Max(1, words.Count(w => Inside((w.Left + w.Right) / 2, (w.Top + w.Bottom) / 2)) / 20);
         foreach (var word in words)
         {
             var (x, y) = ((word.Left + word.Right) / 2, (word.Top + word.Bottom) / 2);
-            if (x <= bounds.Left || x >= bounds.Right || y <= bounds.Bottom || y >= bounds.Top)
+            if (!Inside(x, y))
                 continue;
             var band = (word.Top - word.Bottom) * 0.3;
-            if (vertical.Any(v => v.Position > word.Left + 1 && v.Position < word.Right - 1 && v.Start < y && v.End > y)
-                || horizontal.Any(h => h.Position > word.Bottom + band && h.Position < word.Top - band && h.Start < word.Right - 1 && h.End > word.Left + 1))
+            if (horizontal.Any(h => h.Position > word.Bottom + band && h.Position < word.Top - band && h.Start < word.Right - 1 && h.End > word.Left + 1))
                 return null;
+            var through = vertical.Where(v => v.Position > word.Left + 1 && v.Position < word.Right - 1 && v.Start < y && v.End > y).ToList();
+            if (through.Count > 0)
+            {
+                if (--overflows < 0)
+                    return null;
+                x = (word.Left + through.Min(v => v.Position)) / 2;
+            }
             var column = Math.Clamp(xs.FindLastIndex(e => e <= x), 0, columns - 1);
             var row = Math.Clamp(ys.FindLastIndex(e => e >= y), 0, rows - 1);
             cells[owner[row, column]].Words.Add(word);
