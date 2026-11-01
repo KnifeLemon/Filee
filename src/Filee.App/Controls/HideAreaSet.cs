@@ -1,7 +1,7 @@
 // The parts of a picture the "Pixelate / blur" window hides, without a window: the frames (in parts of the picture),
 // how each is covered (pixelate, blur or black box), the one selected, and undo / redo of adding, moving, sizing,
-// restyling and removing them. The canvas draws and drags them, the
-// keys move and remove them, the window's view model turns them into the conversion.
+// restyling and removing them. The canvas draws and drags them, the keys move and remove them, the window's view model
+// turns them into the conversion.
 
 using Avalonia;
 using Filee.Core.Presets;
@@ -154,8 +154,8 @@ public sealed class HideAreaSet
     }
 
     /// <summary>
-    /// Starts over with <paramref name="areas"/> (a new picture: the last one's frames carry on, with their styles), none
-    /// selected and nothing to undo.
+    /// Starts over with <paramref name="areas"/> (a new picture: the last one's frames carry on, with their styles),
+    /// none selected and nothing to undo.
     /// </summary>
     public void Reset(IEnumerable<(Rect Area, HideStyle Style)> areas)
     {
