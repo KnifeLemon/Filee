@@ -266,7 +266,8 @@ internal sealed partial class HwpxReader
     /// State of the section being read. A secPr starts a 한글 section (구역); its first colPr gives the columns and
     /// later ones change them mid-page. Header, footer and page number controls may sit in any body paragraph.
     /// </summary>
-    private sealed class SectionState(HDocument document)
+    /// <param name="layoutPageNumber">Read for layout: the page number control as the section's own page number.</param>
+    private sealed class SectionState(HDocument document, Func<XElement, HPageNumber?>? layoutPageNumber = null)
     {
         public HSection? Section;
         public bool ColumnsSet;
@@ -292,6 +293,11 @@ internal sealed partial class HwpxReader
             if (Section is null || PageNumber is not { } control)
                 return;
             PageNumber = null;
+            if (layoutPageNumber is not null)
+            {
+                Section.PageNumber = layoutPageNumber(control);
+                return;
+            }
             var position = Attr(control, "pos") ?? "BOTTOM_CENTER";
             if (position == "NONE")
                 return;
@@ -321,9 +327,24 @@ internal sealed partial class HwpxReader
         }
     }
 
+    /// <summary>
+    /// An automatic page number for the layout engine: its position, number format and side characters, in the
+    /// character format of 한글's "쪽 번호" (Page Number) style, the one 한글 draws it in.
+    /// </summary>
+    private HPageNumber? LayoutPageNumber(XElement control)
+    {
+        var position = Attr(control, "pos") ?? "BOTTOM_CENTER";
+        if (position == "NONE")
+            return null;
+        var style = _styles.Values.FirstOrDefault(s => Attr(s, "engName") == "Page Number" || Attr(s, "name") == "쪽 번호");
+        return new HPageNumber(position, Attr(control, "formatType"),
+            Attr(control, "sideChar") is { Length: > 0 } side && side != "\0" ? side : null,
+            CharFormat(Attr(style, "charPrIDRef")));
+    }
+
     private void ReadSection(XElement root, HDocument document)
     {
-        var state = new SectionState(document);
+        var state = new SectionState(document, _forLayout ? LayoutPageNumber : null);
         foreach (var element in Elements(root))
         {
             if (element.Name.LocalName == "p")
