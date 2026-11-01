@@ -19,7 +19,7 @@ Each component remains under its own license.
 | SkiaSharp | MIT | https://github.com/mono/SkiaSharp |
 | Svg.Skia (incl. Svg, ShimSkiaSharp, ExCSS; text shaping in `Filee.Engines/Vector/OutlinedTextPlayback.cs` adapted from it) | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
-| SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
+| SharpCompress (in-process ZIP, 7z and RAR unpacking; bzip2, xz, LZMA and zstd decompression, also for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | ExcelDataReader | MIT | https://github.com/ExcelDataReader/ExcelDataReader |
@@ -65,6 +65,9 @@ license; its `LICENSE` is next to them (`engines/rhwp`). Windows x64 and macOS u
 decompression code in `7z.dll` is under the unRAR license restriction: it may be used to unpack RAR archives, but not
 to develop a RAR (WinRAR) compatible archiver or to re-create the RAR compression algorithm. Filee only reads RAR
 files. Source code: https://github.com/ip7z/7zip.
+
+SharpCompress's RAR decoder is used under the same terms: Filee only unpacks RAR archives with it and does not create
+them.
 
 Downloaded from their official release pages when the user chooses to install them
 (pinned in `src/Filee.Engines/Infrastructure/engines.json`):

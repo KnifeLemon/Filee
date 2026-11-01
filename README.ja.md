@@ -162,8 +162,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **表計算**：XLSX、XLSM、XLS、XLT、ODS、CSV、TSV<br>OTS、FODS、Numbers、ET² | PDF、XLSX、ODS、CSV、TSV、JSON、HWPX、HTML<br>XLT、OTS² |
 | **プレゼンテーション**：PPTX、PPTM、POTX、POTM、PPSX<br>PPT、ODP、OTP、FODP、Keynote² | PDF、PNG、JPG、DOCX、HWPX<br>OTP² |
 | **HWP**：HWP、HWPX | PDF、PNG、DOCX、HWPX ↔ HWP、TXT、Markdown、HTML |
-| **テキスト**：TXT、LOG、スクリプトのソース（PY、PAC、BAT、COMMAND。実行はせず読み込むだけ）、Markdown、HTML。<br>MHTML（保存したウェブページ）は読み込みのみ<br>reStructuredText、LaTeX、Org、AsciiDoc、Typst、MediaWiki、DocBook、Jupyter、Textile、man、OPML³ | UTF-8のTXT、PDF、DOCX、HWPX、EPUB<br>相互変換、PPTXスライド³ |
-| **電子書籍**：EPUB、KEPUB、MOBI、AZW3、AZW、AZW4、FB2、CBZ、CBR、CB7、HTMLZ、TXTZ、CHM、PDB、PML、TCR、RB、SNB、OEB<br>LIT、LRF⁴ | PDF、EPUB、KEPUB（Kobo）、DOCX、TXT、HTML、HWPX<br>MOBI、AZW3⁴ |
+| **テキスト**：TXT、LOG、スクリプトのソース（PY、PAC、BAT、COMMAND。実行はせず読み込むだけ）、Markdown、HTML。<br>MHTML（保存したウェブページ）は読み込みのみ<br>Jupyter、reStructuredText、Org、MediaWiki、DocBook、Textile、OPML<br>LaTeX、AsciiDoc、Typst、man³ | UTF-8のTXT、PDF、DOCX、HWPX、EPUB<br>相互変換、PPTXスライド³ |
+| **電子書籍**：EPUB、KEPUB、MOBI、AZW3、AZW、AZW4、FB2、CBZ、CBR、CB7、HTMLZ、TXTZ、CHM、PDB、PML、TCR、RB、SNB、OEB<br>LIT、LRF⁴ | PDF、EPUB、KEPUB（Kobo）、DOCX、TXT、HTML、HWPX<br>MOBI、AZW3 |
 | **動画**⁵：MP4、MOV、MKV、WEBM、AVI、WMV、FLV、MPEG、ビデオCD（DAT）、TS、M2TS、3GP、OGV、VOB など | MP4（H.264、HEVC、AV1）、WEBM、MOV、MKV、AVI、GIF、APNG、MP3、M4A、720p、<br>字幕（SRT、ASS、WebVTT） |
 | **音声**⁵：MP3、M4A、AAC、WAV、FLAC、OGG、OPUS、WMA、AIFF、AMR、APE、WavPack、TTA、DSD（DSF、DFF）、DTS、AC3、E-AC3 など | MP3、M4A（AAC、ALAC）、WAV、FLAC、OGG、OPUS、AAC、WavPack、TTA、W64、AC3、E-AC3 |
 | **字幕**：SRT、ASS/SSA、WebVTT、SAMI（SMI）、LRC、TTML、MicroDVD、SCC | 相互変換、UTF-8で保存（CP949の韓国語ファイルも正しく読み込み） |

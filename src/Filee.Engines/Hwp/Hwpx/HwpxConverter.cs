@@ -13,7 +13,9 @@
 //  * HWP 5.0 needs no model: its records are written out as the HWPX package 한글 saves (Hwp/Binary/HwpToHwpx).
 //  * HWPX → HWP 5.0 is the inverse: the package written out as the records 한글 saves (Hwp/Binary/HwpxToHwp), so
 //    anything → HWP is anything → HWPX → HWP.
-//  * RTF, reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
+//  * The markup languages Filee owns (Markup/: Jupyter notebooks and the others MarkupConverter writes) are read
+//    directly.
+//  * reStructuredText and LaTeX are parsed by Pandoc (optional engine) into its JSON AST.
 
 using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Binary;

@@ -1,8 +1,8 @@
 // Objects inside runs: pictures (inline or floating), rectangles / ellipses / lines, text boxes (drawing objects with
 // hp:drawText), groups (hp:container), equations and other objects that only carry text. Objects the model cannot
 // hold (OLE, charts, video, form controls, free-form shapes without text) are skipped and counted. Read for layout,
-// polygons, curves and arcs become shapes with their outline. Every object keeps its rotation, mirroring and z-order,
-// pictures their crop.
+// polygons, curves and arcs become shapes with their outline, and pictures, shapes and text boxes keep their caption.
+// Every object keeps its rotation, mirroring and z-order, pictures their crop.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -26,6 +26,7 @@ internal sealed partial class HwpxReader
             var margin = Child(element, "outMargin") is { } outMargin
                 ? new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"))
                 : default;
+            var caption = _forLayout && name != "container" ? Caption(Child(element, "caption")) : null;
             foreach (var inline in Shapes(element, placement))
             {
                 // Laid out like a character, 한글 sets the object like a character as high as it is with its margins.
@@ -34,6 +35,7 @@ internal sealed partial class HwpxReader
                     item.OuterMargin = margin;
                     if (placement.Anchor is null)
                         item.BaseLine = 85;
+                    item.Caption = caption;
                 }
                 builder.Add(inline);
             }
@@ -75,10 +77,53 @@ internal sealed partial class HwpxReader
                 if ((Attr(element, "mainText") ?? Child(element, "mainText")?.Value) is { Length: > 0 } main)
                     builder.AddText(main, format);
                 break;
+            case "ole" when _forLayout && OlePicture(element) is { } picture:
+                builder.Add(picture);
+                break;
             default:
                 Skip(element); // ole, chart, video, form controls, ...
                 break;
         }
+    }
+
+    /// <summary>An object's caption (hp:caption): its side, its gap to the object, its width beside it and its paragraphs.</summary>
+    private HCaption? Caption(XElement? element)
+    {
+        if (element is null || Child(element, "subList") is not { } subList)
+            return null;
+        var caption = new HCaption(Attr(element, "side") switch
+        {
+            "TOP" => HCaptionSide.Top,
+            "LEFT" => HCaptionSide.Left,
+            "RIGHT" => HCaptionSide.Right,
+            _ => HCaptionSide.Bottom,
+        }, Math.Max(0, Int(element, "gap")), Math.Max(0, Int(element, "width")));
+        caption.Blocks.AddRange(ReadSubList(subList));
+        return caption.Blocks.Count > 0 ? caption : null;
+    }
+
+    /// <summary>
+    /// An OLE object (read for layout) as the picture its program left of it (Binary/OlePreview.cs), in the object's
+    /// place and size; null when it has none.
+    /// </summary>
+    private HImage? OlePicture(XElement ole)
+    {
+        if (ExtractBinary(Attr(ole, "binaryItemIDRef")) is not { } path || Binary.OlePreview.Extract(path, path + "-preview", Package.Limits) is not { } preview)
+            return null;
+        _budget.Object();
+        var placement = PlacementOf(ole);
+        return new HImage(preview)
+        {
+            Width = placement.Width > 0 ? placement.Width : null,
+            Height = placement.Height > 0 ? placement.Height : null,
+            Anchor = placement.Anchor,
+            Transform = Transform(ole),
+            ZOrder = ZOrder(ole),
+            OuterMargin = Child(ole, "outMargin") is { } outMargin
+                ? new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"))
+                : default,
+            BaseLine = placement.Anchor is null ? 85 : null,
+        };
     }
 
     /// <summary>The model objects for one drawing object; groups give one object per member.</summary>
@@ -303,15 +348,25 @@ internal sealed partial class HwpxReader
         _ => position,
     };
 
-    /// <summary>Size of a group member: its current size, else its original size scaled by its rendering matrix.</summary>
+    /// <summary>
+    /// Size of a group member: its current size, else its original size scaled by its rendering matrices. A member
+    /// has a scale matrix for every group level it is in (the group's, then its own: a picture resized inside its group
+    /// keeps the identity first and its own scale second), so the size takes all of them.
+    /// </summary>
     private static (int Width, int Height) MemberSize(XElement member)
     {
         var current = Child(member, "curSz");
         if (Int(current, "width") > 0 && Int(current, "height") > 0)
             return (Int(current, "width"), Int(current, "height"));
         var original = Child(member, "orgSz");
-        var scale = Child(Child(member, "renderingInfo"), "scaMatrix");
-        return ((int)Math.Round(Int(original, "width") * Double(scale, "e1", 1)), (int)Math.Round(Int(original, "height") * Double(scale, "e5", 1)));
+        var scales = Children(Child(member, "renderingInfo"), "scaMatrix").ToList();
+        double x = 1, y = 1;
+        foreach (var scale in scales)
+        {
+            x *= Double(scale, "e1", 1);
+            y *= Double(scale, "e5", 1);
+        }
+        return ((int)Math.Round(Int(original, "width") * x), (int)Math.Round(Int(original, "height") * y));
     }
 
     /// <summary>

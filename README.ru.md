@@ -159,8 +159,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **Таблицы**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
 | **Презентации**: PPTX, PPTM, POTX, POTM, PPSX<br>PPT, ODP, OTP, FODP, Keynote² | PDF, PNG, JPG, DOCX, HWPX<br>OTP² |
 | **HWP**: HWP, HWPX | PDF, PNG, DOCX, HWPX ↔ HWP, TXT, Markdown, HTML |
-| **Текст**: TXT, LOG, исходники скриптов (PY, PAC, BAT, COMMAND; только чтение, без запуска), Markdown, HTML;<br>MHTML (сохранённые веб-страницы) только чтение<br>reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML³ | TXT в UTF-8, PDF, DOCX, HWPX, EPUB<br>друг в друга, слайды PPTX³ |
-| **Электронные книги**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB<br>LIT, LRF⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3⁴ |
+| **Текст**: TXT, LOG, исходники скриптов (PY, PAC, BAT, COMMAND; только чтение, без запуска), Markdown, HTML;<br>MHTML (сохранённые веб-страницы) только чтение<br>Jupyter, reStructuredText, Org, MediaWiki, DocBook, Textile, OPML<br>LaTeX, AsciiDoc, Typst, man³ | TXT в UTF-8, PDF, DOCX, HWPX, EPUB<br>друг в друга, слайды PPTX³ |
+| **Электронные книги**: EPUB, KEPUB, MOBI, AZW3, AZW, AZW4, FB2, CBZ, CBR, CB7, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB<br>LIT, LRF⁴ | PDF, EPUB, KEPUB (Kobo), DOCX, TXT, HTML, HWPX<br>MOBI, AZW3 |
 | **Видео**⁵: MP4, MOV, MKV, WEBM, AVI, WMV, FLV, MPEG, Video CD (DAT), TS, M2TS, 3GP, OGV, VOB, … | MP4 (H.264, HEVC, AV1), WEBM, MOV, MKV, AVI, GIF, APNG, MP3, M4A, 720p,<br>субтитры (SRT, ASS, WebVTT) |
 | **Аудио**⁵: MP3, M4A, AAC, WAV, FLAC, OGG, OPUS, WMA, AIFF, AMR, APE, WavPack, TTA, DSD (DSF, DFF), DTS, AC3, E-AC3, … | MP3, M4A (AAC, ALAC), WAV, FLAC, OGG, OPUS, AAC, WavPack, TTA, W64, AC3, E-AC3 |
 | **Субтитры**: SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC | друг в друга, в UTF-8 (корейские файлы в CP949 читаются правильно) |

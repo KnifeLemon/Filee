@@ -524,6 +524,66 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(new Dictionary<string, int> { ["ole"] = 1, ["pic"] = 1 }, skipped);
     }
 
+    [Fact]
+    public void Click_here_guides_are_not_laid_out_and_filled_in_fields_are()
+    {
+        var folder = fx.NewFolder();
+        var path = HangulStylePackage(folder);
+        static IList<HInline> Links(HDocument document) => ((HParagraph)document.Sections[0].Blocks[2]).Inlines;
+
+        // dirty="0": nobody filled the field in, so its text is the guide 한글 shows on screen and never prints.
+        var guide = Links(HwpxReader.ReadForLayout(path, Path.Combine(folder, "media-guide")));
+        Assert.DoesNotContain(guide, i => i is HText { Text: "누름틀" });
+        Assert.Equal("#처음", Assert.IsType<HLink>(guide[^1]).Target);
+
+        // Filled in (dirty="1"): the text is the content.
+        var filled = Path.Combine(folder, "filled.hwpx");
+        File.Copy(path, filled);
+        using (var zip = ZipFile.Open(filled, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml.Replace("type=\"CLICK_HERE\" name=\"이름\" editable=\"1\" dirty=\"0\"", "type=\"CLICK_HERE\" name=\"이름\" editable=\"1\" dirty=\"1\"", StringComparison.Ordinal));
+        }
+        Assert.Equal("누름틀", Assert.IsType<HText>(Links(HwpxReader.ReadForLayout(filled, Path.Combine(folder, "media-filled")))[^1]).Text);
+    }
+
+    [Fact]
+    public void A_pictures_caption_is_read_for_layout()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "caption.hwpx");
+        File.Copy(HangulStylePackage(folder), path);
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            // A caption right of the first picture, 3 mm away and 20 mm wide, where 한글 writes it (after hp:pos).
+            var at = xml.IndexOf("<hp:outMargin", xml.IndexOf("binaryItemIDRef=\"image1\"", StringComparison.Ordinal), StringComparison.Ordinal);
+            xml = xml.Insert(at, "<hp:caption side=\"RIGHT\" fullSz=\"0\" width=\"5669\" gap=\"850\" lastWidth=\"5000\"><hp:subList id=\"\" textDirection=\"HORIZONTAL\" " +
+                "lineWrap=\"BREAK\" vertAlign=\"TOP\"><hp:p id=\"0\" paraPrIDRef=\"0\" styleIDRef=\"0\" pageBreak=\"0\" columnBreak=\"0\" merged=\"0\">" +
+                "<hp:run charPrIDRef=\"0\"><hp:t>그림 설명</hp:t></hp:run></hp:p></hp:subList></hp:caption>");
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml);
+        }
+
+        var pictures = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media")).Sections[0].Blocks.OfType<HParagraph>()
+            .SelectMany(p => p.Inlines).OfType<HImage>().ToList();
+
+        var caption = pictures[0].Caption!;
+        Assert.Equal((HCaptionSide.Right, 850, 5669, "그림 설명"), (caption.Side, caption.Gap, caption.Width, Text(caption.Blocks)));
+        Assert.Null(pictures[1].Caption);
+        Assert.Null(HwpxReader.Read(path, Path.Combine(folder, "media-read")).Sections[0].Blocks.OfType<HParagraph>()
+            .SelectMany(p => p.Inlines).OfType<HImage>().First().Caption); // the converters' model doesn't keep it
+    }
+
     private static HParagraph ParagraphOf(IEnumerable<HInline> inlines)
     {
         var paragraph = new HParagraph();
@@ -771,7 +831,10 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
             "<hp:offset x=\"0\" y=\"0\"/><hp:orgSz width=\"20000\" height=\"10000\"/><hp:curSz width=\"20000\" height=\"10000\"/><hp:flip horizontal=\"0\" vertical=\"0\"/>" +
             "<hp:rect id=\"42\" zOrder=\"0\" numberingType=\"NONE\" textWrap=\"SQUARE\" textFlow=\"BOTH_SIDES\" lock=\"0\" dropcapstyle=\"None\" href=\"\" groupLevel=\"1\" instid=\"43\" ratio=\"20\">" +
             "<hp:offset x=\"1000\" y=\"2000\"/><hp:orgSz width=\"8000\" height=\"4000\"/><hp:curSz width=\"0\" height=\"0\"/><hp:flip horizontal=\"0\" vertical=\"0\"/>" +
-            "<hp:renderingInfo><hc:transMatrix e1=\"1\" e2=\"0\" e3=\"1000\" e4=\"0\" e5=\"1\" e6=\"2000\"/><hc:scaMatrix e1=\"1.5\" e2=\"0\" e3=\"0\" e4=\"0\" e5=\"0.5\" e6=\"0\"/><hc:rotMatrix e1=\"1\" e2=\"0\" e3=\"0\" e4=\"0\" e5=\"1\" e6=\"0\"/></hp:renderingInfo>" +
+            // As 한글 writes a member resized inside its group: the group level's identity, then the member's own scale.
+            "<hp:renderingInfo><hc:transMatrix e1=\"1\" e2=\"0\" e3=\"1000\" e4=\"0\" e5=\"1\" e6=\"2000\"/>" +
+            "<hc:scaMatrix e1=\"1\" e2=\"0\" e3=\"0\" e4=\"0\" e5=\"1\" e6=\"0\"/><hc:rotMatrix e1=\"1\" e2=\"0\" e3=\"0\" e4=\"0\" e5=\"1\" e6=\"0\"/>" +
+            "<hc:scaMatrix e1=\"1.5\" e2=\"0\" e3=\"0\" e4=\"0\" e5=\"0.5\" e6=\"0\"/><hc:rotMatrix e1=\"1\" e2=\"0\" e3=\"0\" e4=\"0\" e5=\"1\" e6=\"0\"/></hp:renderingInfo>" +
             "<hp:lineShape color=\"#FF0000\" width=\"283\" style=\"DASH\" endCap=\"FLAT\" headStyle=\"NORMAL\" tailStyle=\"NORMAL\" headfill=\"1\" tailfill=\"1\" headSz=\"MEDIUM_MEDIUM\" tailSz=\"MEDIUM_MEDIUM\" outlineStyle=\"NORMAL\" alpha=\"0\"/>" +
             "<hc:fillBrush><hc:gradation type=\"LINEAR\" angle=\"90\" centerX=\"50\" centerY=\"50\" step=\"255\" colorNum=\"2\" stepCenter=\"50\" alpha=\"0\"><hc:color value=\"#FF0000\"/><hc:color value=\"#0000FF\"/></hc:gradation></hc:fillBrush>" +
             "<hp:shadow type=\"NONE\" color=\"#B2B2B2\" offsetX=\"0\" offsetY=\"0\" alpha=\"0\"/>" +
