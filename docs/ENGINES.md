@@ -938,7 +938,10 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     and stand on the baseline, 한글's objects set like a character as high as they are with their outer margins (85%
     above the baseline, as 한글's stored lines have them); links, bookmarks and headings (the PDF outline) as before.
   - Models read from other formats (TXT, Markdown, HTML, EPUB, FB2, MOBI, DOCX ...) leave formats to the 한글 style;
-    with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it.
+    with a `StyleResolver` every paragraph and run is resolved first, as the HWPX writer would write it. Their code
+    lines (a code block's paragraphs, or paragraphs all of whose text is shaded as code) take a monospaced font where
+    they name none and are set solid (130 %) without paragraph spacing, the style's space after coming back at the end
+    of the block. A missing monospaced font (Menlo, "... Mono", "... Code", GulimChe) is replaced by an installed one.
   - Master pages (바탕쪽): laid out from the top of the body, as wide as it, behind everything on the page (in front of
     the text when the master page says so): the one for odd or even pages, else the one for both; the last-page and
     chosen-page masters replace it on their page, or are drawn with it when they overlap (겹치기). None on a section's

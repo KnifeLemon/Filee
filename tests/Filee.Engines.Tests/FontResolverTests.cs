@@ -55,6 +55,18 @@ public class FontResolverTests
         Assert.Equal(family, Family(new FontResolver(Computer()).Find(name, FontStyle.Regular)));
     }
 
+    [Theory]
+    [InlineData("Menlo")]
+    [InlineData("Source Code Pro")]
+    [InlineData("JetBrains Mono")]
+    [InlineData("GulimChe")]
+    [InlineData("monospace")]
+    public void A_missing_monospaced_font_or_the_generic_family_takes_an_installed_monospaced_one(string name)
+    {
+        Assert.Equal("Consolas", Family(new FontResolver(Computer()).Resolve(name, FontStyle.Regular)));
+        Assert.NotEqual("Consolas", Family(new FontResolver(Computer()).Resolve("Not Installed", FontStyle.Regular)));
+    }
+
     [Fact]
     public void The_nearest_style_is_chosen_and_what_is_missing_is_synthesized()
     {
