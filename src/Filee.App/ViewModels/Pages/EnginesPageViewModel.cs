@@ -160,12 +160,18 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void MoveDown(EngineItemViewModel item) => Move(item, +1);
 
+    /// <summary>The check can be over in a blink; the arrow on "Check again" keeps turning for at least this long so it reads as checking.</summary>
+    private static readonly TimeSpan MinimumRecheckTime = TimeSpan.FromMilliseconds(900);
+
     [RelayCommand]
-    private void Recheck()
+    private async Task Recheck()
     {
+        // With "Reduce animations" on there is no arrow turning, so there is nothing to hold the result back for.
+        var minimumSpin = Task.Delay(Motion.Enabled ? MinimumRecheckTime : TimeSpan.Zero);
         EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
         _catalog.Refresh();
+        await minimumSpin;
     }
 
     private void Move(EngineItemViewModel item, int delta)
