@@ -1,7 +1,9 @@
 // Minimal reader for Office Open XML packages (.xlsx, .pptx): parts as XML, relationships resolved to zip paths.
 
 using System.IO.Compression;
+using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Documents;
 
 namespace Filee.Engines.Office.Ooxml;
 
@@ -13,11 +15,53 @@ internal sealed class OpcPackage : IDisposable
 {
     private static readonly XNamespace PackageRelationships = "http://schemas.openxmlformats.org/package/2006/relationships";
 
-    private readonly ZipArchive _zip;
+    private readonly ZipArchive? _zip;
+    private readonly DocumentPackage? _limited;
     private readonly Dictionary<string, XDocument?> _parts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, OpcRelationship>> _relationships = new(StringComparer.OrdinalIgnoreCase);
 
     public OpcPackage(string path) => _zip = ZipFile.OpenRead(path);
+
+    /// <summary>
+    /// A package read within <paramref name="limits"/> (part and package sizes, the inflate ratio, XML depth and
+    /// elements); a part that isn't well-formed XML is <see cref="InvalidDataException"/>.
+    /// </summary>
+    public OpcPackage(string path, DocumentLimits limits) =>
+        _limited = DocumentPackage.Open(path, limits, () => new InvalidDataException("The file is not an Office Open XML package (no ZIP). It may be damaged."));
+
+    private ZipArchiveEntry? Entry(string path) => _limited is not null ? _limited.GetEntry(path) : _zip!.GetEntry(path);
+
+    private XDocument Load(ZipArchiveEntry entry)
+    {
+        if (_limited is null)
+        {
+            using var stream = entry.Open();
+            return XDocument.Load(stream, LoadOptions.PreserveWhitespace);
+        }
+        try
+        {
+            return _limited.LoadXml(entry);
+        }
+        catch (XmlException ex)
+        {
+            throw new InvalidDataException($"The part {entry.FullName} is not well-formed XML ({ex.Message}).", ex);
+        }
+    }
+
+    /// <summary>The bytes of a binary part (a picture); null when it doesn't exist or holds more than <paramref name="max"/>.</summary>
+    public byte[]? Bytes(string partPath, long max)
+    {
+        if (Entry(partPath) is not { } entry)
+            return null;
+        if (_limited is not null)
+            return _limited.ReadBytes(entry, max);
+        if (entry.Length > max)
+            return null;
+        using var stream = entry.Open();
+        using var copy = new MemoryStream();
+        stream.CopyTo(copy);
+        return copy.Length > max ? null : copy.ToArray();
+    }
 
     /// <summary>The main part (target of the package's officeDocument relationship), e.g. xl/workbook.xml.</summary>
     public string? MainPartPath =>
@@ -29,11 +73,8 @@ internal sealed class OpcPackage : IDisposable
         if (_parts.TryGetValue(path, out var cached))
             return cached;
         XDocument? xml = null;
-        if (_zip.GetEntry(path) is { } entry)
-        {
-            using var stream = entry.Open();
-            xml = XDocument.Load(stream, LoadOptions.PreserveWhitespace);
-        }
+        if (Entry(path) is { } entry)
+            xml = Load(entry);
         _parts[path] = xml;
         return xml;
     }
@@ -46,10 +87,9 @@ internal sealed class OpcPackage : IDisposable
         var folder = Folder(partPath);
         var relsPath = partPath.Length == 0 ? "_rels/.rels" : $"{folder}/_rels/{partPath[(partPath.LastIndexOf('/') + 1)..]}.rels".TrimStart('/');
         var result = new Dictionary<string, OpcRelationship>();
-        if (_zip.GetEntry(relsPath) is { } entry)
+        if (Entry(relsPath) is { } entry)
         {
-            using var stream = entry.Open();
-            foreach (var rel in XDocument.Load(stream).Root?.Elements(PackageRelationships + "Relationship") ?? [])
+            foreach (var rel in Load(entry).Root?.Elements(PackageRelationships + "Relationship") ?? [])
             {
                 var target = (string?)rel.Attribute("Target") ?? "";
                 var external = (string?)rel.Attribute("TargetMode") == "External";
@@ -72,7 +112,7 @@ internal sealed class OpcPackage : IDisposable
     /// <summary>Copies a binary part (a picture) to <paramref name="folder"/>; returns the file path, or null.</summary>
     public string? Extract(string partPath, string folder)
     {
-        if (_zip.GetEntry(partPath) is not { } entry)
+        if (Entry(partPath) is not { } entry)
             return null;
         Directory.CreateDirectory(folder);
         var file = Path.Combine(folder, $"{Guid.NewGuid():N}{Path.GetExtension(partPath)}");
@@ -80,7 +120,11 @@ internal sealed class OpcPackage : IDisposable
         return file;
     }
 
-    public void Dispose() => _zip.Dispose();
+    public void Dispose()
+    {
+        _zip?.Dispose();
+        _limited?.Dispose();
+    }
 
     private static string Folder(string path) => path.Contains('/') ? path[..path.LastIndexOf('/')] : "";
 

@@ -8,6 +8,7 @@ using System.Globalization;
 using Filee.Engines.Hwp.Binary;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using Filee.Engines.Office.Sheets;
 using static Filee.Engines.Tests.DocxBuilder;
 
 namespace Filee.Engines.Tests;
@@ -35,6 +36,16 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void HwpReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("hwp", "hwp", HwpSeeds(), (path, media) => HwpReader.ReadForLayout(path, media), (seed, random) => new HwpFuzzer(seed, random).Next);
+
+    [Fact]
+    public void SheetPrinter_prints_or_refuses_every_mutated_xlsx() =>
+        Fuzz("xlsx-print", "xlsx", [File.ReadAllBytes(SheetPrintTests.RichXlsx(fx.NewFolder()))],
+            (path, _) => SheetPrinter.ToPdf(XlsxReader.Read(path), SheetPrintSource.Of(path)));
+
+    [Fact]
+    public void SheetPrinter_prints_or_refuses_every_mutated_ods() =>
+        Fuzz("ods-print", "ods", [File.ReadAllBytes(SheetPrintTests.RichOds(fx.NewFolder()))],
+            (path, _) => SheetPrinter.ToPdf(OdsReader.Read(path), SheetPrintSource.Of(path)));
 
     // ───────────────────────── Seeds ─────────────────────────
 

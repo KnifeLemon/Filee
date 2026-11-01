@@ -30,7 +30,7 @@
     <StackPanel Spacing="2">
       <ToggleSwitch IsChecked="{Binding LibreOfficeForSheets}" OnContent="{DynamicResource engines.lo_sheets}" OffContent="{DynamicResource engines.lo_sheets}"
                     AutomationProperties.Name="{DynamicResource engines.lo_sheets}" />
-      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource engines.lo_sheets_hint}" />
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource engines.lo_sheets_hint_print}" />
     </StackPanel>
     <StackPanel Spacing="2">
       <ToggleSwitch IsChecked="{Binding LibreOfficeForHwp}" OnContent="{DynamicResource engines.lo_hwp}" OffContent="{DynamicResource engines.lo_hwp}"

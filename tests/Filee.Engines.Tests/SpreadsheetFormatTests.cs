@@ -560,8 +560,8 @@ public class SpreadsheetFormatTests(EngineFixture fx) : IClassFixture<EngineFixt
     [InlineData("xls", "hwpx", "hwpx-writer")]
     [InlineData("ods", "hwpx", "hwpx-writer")]
     [InlineData("tsv", "hwpx", "hwpx-writer")]
-    [InlineData("xls", "pdf", "hwpx-writer,rhwp")]
-    [InlineData("ods", "pdf", "hwpx-writer,rhwp")]
+    [InlineData("xls", "pdf", "sheet-print")]
+    [InlineData("ods", "pdf", "sheet-print")]
     [InlineData("tsv", "pdf", "hwpx-writer,rhwp")]
     public void Spreadsheets_convert_without_libreoffice(string from, string to, string engines)
     {

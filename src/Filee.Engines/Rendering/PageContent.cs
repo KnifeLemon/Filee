@@ -30,6 +30,15 @@ internal sealed record GlyphRun(PageFont Font, float Size, ushort[] Glyphs, SKPo
     /// <summary>The skew of synthetic italic, as Skia and browsers slant (about 12°).</summary>
     public const float SyntheticSlant = -0.2f;
 
+    /// <summary>
+    /// Applied to the page's coordinates before the run is drawn (rotated text: the positions are in the rotated
+    /// frame); null = none.
+    /// </summary>
+    public SKMatrix? Transform { get; init; }
+
+    /// <summary>Only what lies inside this rectangle of the page (before <see cref="Transform"/>) is drawn; null = all.</summary>
+    public SKRect? Clip { get; init; }
+
     /// <summary>Throws when the arrays don't describe the same glyphs or a cluster points outside the text.</summary>
     public void Validate()
     {
@@ -176,6 +185,17 @@ internal sealed class PageContent(float width, float height)
         if (blob is null)
             return;
         using var paint = new SKPaint { Color = run.Color, IsAntialias = true };
+        if (run.Transform is not null || run.Clip is not null)
+        {
+            canvas.Save();
+            if (run.Clip is { } clip)
+                canvas.ClipRect(clip);
+            if (run.Transform is { } transform)
+                canvas.Concat(in transform);
+            canvas.DrawText(blob, 0, 0, paint);
+            canvas.Restore();
+            return;
+        }
         canvas.DrawText(blob, 0, 0, paint);
     }
 
