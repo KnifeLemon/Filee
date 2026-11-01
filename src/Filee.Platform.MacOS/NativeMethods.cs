@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Filee.Core.Settings;
 
 namespace Filee.Platform.MacOS;
 
@@ -21,6 +22,18 @@ internal static class NativeMethods
 
     private static nint CoreFoundationConstant(string name) =>
         Marshal.ReadIntPtr(NativeLibrary.GetExport(NativeLibrary.Load(CoreFoundation), name));
+
+    /// <summary>The modifier keys held now (kCGEventSourceStateCombinedSessionState: every keyboard, including posted keys).</summary>
+    internal static ModifierKeys CurrentModifiers()
+    {
+        var flags = CGEventSourceFlagsState(0);
+        var keys = ModifierKeys.None;
+        if ((flags & 0x20000) != 0) keys |= ModifierKeys.Shift;   // kCGEventFlagMaskShift
+        if ((flags & 0x40000) != 0) keys |= ModifierKeys.Ctrl;    // kCGEventFlagMaskControl
+        if ((flags & 0x80000) != 0) keys |= ModifierKeys.Alt;     // kCGEventFlagMaskAlternate (Option)
+        if ((flags & 0x100000) != 0) keys |= ModifierKeys.Meta;   // kCGEventFlagMaskCommand
+        return keys;
+    }
 
     /// <summary>Process names of the app windows on screen (layer 0), front to back.</summary>
     internal static IEnumerable<string> WindowOwnerNames()
@@ -111,6 +124,24 @@ internal static class NativeMethods
         var application = Send(workspace, sel_registerName("frontmostApplication"));
         var bundle = Send(application, sel_registerName("bundleIdentifier"));
         return Marshal.PtrToStringUTF8(Send(bundle, sel_registerName("UTF8String"))) == "com.apple.finder";
+    }
+
+    /// <summary>The process id of the app in front (NSWorkspace.frontmostApplication), 0 if none.</summary>
+    internal static int FrontmostProcessId()
+    {
+        using var pool = new AutoreleasePool();
+        var workspace = Send(objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
+        var application = Send(workspace, sel_registerName("frontmostApplication"));
+        return application == 0 ? 0 : (int)Send(application, sel_registerName("processIdentifier"));
+    }
+
+    /// <summary>Brings the app with process id <paramref name="pid"/> to the front, if it still runs.</summary>
+    internal static void ActivateProcess(int pid)
+    {
+        using var pool = new AutoreleasePool();
+        var application = Send(objc_getClass("NSRunningApplication"), sel_registerName("runningApplicationWithProcessIdentifier:"), pid);
+        if (application != 0)
+            SendBool(application, sel_registerName("activateWithOptions:"), 0);
     }
 
     internal static bool PrefersReducedMotion()
@@ -409,6 +440,9 @@ internal static class NativeMethods
 
     [DllImport(CoreGraphics)]
     private static extern nint CGWindowListCopyWindowInfo(uint option, uint relativeToWindow);
+
+    [DllImport(CoreGraphics)]
+    private static extern ulong CGEventSourceFlagsState(int stateId);
 
     [DllImport(CoreGraphics)]
     [return: MarshalAs(UnmanagedType.I1)]
