@@ -5,12 +5,12 @@
 
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Filee.App.Services;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
-using Filee.Engines.Ocr;
-using Filee.App.Services;
 using Filee.Core.Settings;
+using Filee.Engines.Ocr;
 using Filee.Engines.Translation;
 
 namespace Filee.App.ViewModels;

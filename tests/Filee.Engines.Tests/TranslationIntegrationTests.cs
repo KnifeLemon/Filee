@@ -53,7 +53,7 @@ public class TranslationIntegrationTests
         {
             var inputFile = Path.Combine(tempDir, "sample_zh.md");
             var inputContent = "# 桃园三结义\n\n东汉末年，天下大乱。\n\n- 刘备为兄\n- 关羽次之\n- 张飞为弟\n";
-            await File.WriteAllTextAsync(inputFile, inputContent);
+            await File.WriteAllTextAsync(inputFile, inputContent, TestContext.Current.CancellationToken);
 
             var preset = new Preset
             {
@@ -73,13 +73,13 @@ public class TranslationIntegrationTests
             );
 
             var converter = new TranslatorConverter(new MockTranslationService());
-            var outputs = await converter.ConvertAsync(step, null, default);
+            var outputs = await converter.ConvertAsync(step, null, TestContext.Current.CancellationToken);
 
             Assert.Single(outputs);
             var translatedPath = outputs[0];
             Assert.True(File.Exists(translatedPath));
 
-            var translatedContent = await File.ReadAllTextAsync(translatedPath);
+            var translatedContent = await File.ReadAllTextAsync(translatedPath, TestContext.Current.CancellationToken);
             Assert.NotEmpty(translatedContent);
 
             // Structure must have headings and list bullets
@@ -104,7 +104,7 @@ public class TranslationIntegrationTests
         {
             var inputFile = Path.Combine(tempDir, "sample_en.md");
             var inputContent = "# The Great Journey\n\nEvery journey begins with a single step.\n\n- First step\n- Second step\n";
-            await File.WriteAllTextAsync(inputFile, inputContent);
+            await File.WriteAllTextAsync(inputFile, inputContent, TestContext.Current.CancellationToken);
 
             var preset = new Preset
             {
@@ -124,13 +124,13 @@ public class TranslationIntegrationTests
             );
 
             var converter = new TranslatorConverter(new MockTranslationService());
-            var outputs = await converter.ConvertAsync(step, null, default);
+            var outputs = await converter.ConvertAsync(step, null, TestContext.Current.CancellationToken);
 
             Assert.Single(outputs);
             var translatedPath = outputs[0];
             Assert.True(File.Exists(translatedPath));
 
-            var translatedContent = await File.ReadAllTextAsync(translatedPath);
+            var translatedContent = await File.ReadAllTextAsync(translatedPath, TestContext.Current.CancellationToken);
             Assert.NotEmpty(translatedContent);
 
             // Structure check
@@ -155,7 +155,7 @@ public class TranslationIntegrationTests
         {
             var inputFile = Path.Combine(tempDir, "document.txt");
             var inputContent = "The Quick Brown Fox Jumps Over The Lazy Dog.\nThis is a sample document for translation into DOCX.\n";
-            await File.WriteAllTextAsync(inputFile, inputContent);
+            await File.WriteAllTextAsync(inputFile, inputContent, TestContext.Current.CancellationToken);
 
             var preset = new Preset
             {
@@ -175,7 +175,7 @@ public class TranslationIntegrationTests
             );
 
             var converter = new TranslatorConverter(new MockTranslationService());
-            var outputs = await converter.ConvertAsync(step, null, default);
+            var outputs = await converter.ConvertAsync(step, null, TestContext.Current.CancellationToken);
 
             Assert.Single(outputs);
             var docxPath = outputs[0];

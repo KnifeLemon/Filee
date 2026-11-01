@@ -59,7 +59,7 @@ public class TranslationTests
         sec.Blocks.Add(p);
 
         var service = new MockTranslationService();
-        await DocumentTranslator.TranslateDocumentAsync(doc, "hi", "en", service, null, default);
+        await DocumentTranslator.TranslateDocumentAsync(doc, "hi", "en", service, null, TestContext.Current.CancellationToken);
 
         Assert.Equal(2, p.Inlines.Count);
         Assert.True(p.Inlines[0] is HText t0 && !string.IsNullOrEmpty(t0.Text));
@@ -69,9 +69,9 @@ public class TranslationTests
     public async Task TranslationService_throws_when_no_local_engine_is_available()
     {
         var service = new TranslationService();
-        if (!await TranslationService.IsLocalOllamaAvailableAsync())
+        if (!await TranslationService.IsLocalOllamaAvailableAsync(TestContext.Current.CancellationToken))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.TranslateTextAsync("Hello", "es", "en"));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.TranslateTextAsync("Hello", "es", "en", cancellationToken: TestContext.Current.CancellationToken));
         }
     }
 }
