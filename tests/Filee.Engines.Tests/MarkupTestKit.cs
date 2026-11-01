@@ -77,9 +77,10 @@ internal static class MarkupTestKit
             // Letters and digits only: spaces and punctuation come out of a PDF's text differently with the fonts
             // each platform has.
             static string Letters(string s) => new([.. s.Where(char.IsLetterOrDigit)]);
-            var text = Letters(string.Join("\n", document.GetPages().Select(p => p.Text)));
+            var raw = string.Join("\n", document.GetPages().Select(p => p.Text));
+            var text = Letters(raw);
             foreach (var part in expected)
-                Assert.Contains(Letters(part), text, StringComparison.Ordinal);
+                Assert.True(text.Contains(Letters(part), StringComparison.Ordinal), $"PDF lacks \"{part}\": {raw}");
         }
         finally
         {
