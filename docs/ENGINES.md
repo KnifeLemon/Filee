@@ -333,7 +333,8 @@ What is drawn:
 - **Coordinates**: all map modes, window / viewport origins and extents (scaled, offset), world transforms
   (`SetWorldTransform`, `ModifyWorldTransform`), SaveDC / RestoreDC. An EMF's frame (0.01 mm) is the picture; a WMF's
   placeable header box is, played as GDI+ plays it (MM_ANISOTROPIC with window and viewport on the box), and a WMF
-  without that header takes its box from its first window records.
+  without that header takes its box from its first window records, the viewport on the box the right way up (an OLE
+  picture's window runs up, SetWindowExt(cx, -cy), and GDI draws it upright into its rectangle).
 - **Lines and shapes**: lines, polylines, polygons and poly-polygons (alternate / winding), Bézier curves, PolyDraw,
   rectangles, rounded rectangles, ellipses, arcs, chords, pies, ArcTo and AngleArc (arc direction followed), pixels.
 - **Pens**: cosmetic and geometric, solid, dash, dot, dash-dot, dash-dot-dot, alternate and user styles, end caps,
@@ -470,7 +471,8 @@ The model also keeps what a renderer needs and the writers ignore (`Hwp/Hwpx/Hwp
 the source's meaning (Word's multiple and document grid, 한글's "between lines"), 한글's seven language slots and Word's
 four run fonts, paragraph borders and line breaking, stored line layouts, crops, rotation, z-order, master pages,
 polygons, curves and arcs (`HwpxReader.ReadForLayout` also keeps runs apart by that detail and reads master pages and
-those shapes, which `Read` leaves out as before). `StyleResolver` turns what a document leaves to the
+those shapes, which `Read` leaves out as before; it also takes an OLE object as the picture its program left in it,
+`Hwp/Binary/OlePreview.cs`: the WMF or DIB of its presentation stream, or a Paint object's BMP). `StyleResolver` turns what a document leaves to the
 한글 style into concrete values. What the readers take over:
 
 - **DOCX** is read directly (`Hwp/Hwpx/Docx/DocxReader*.cs`) so the layout survives:
@@ -908,7 +910,9 @@ in `src/Filee.Engines/Typesetting`. No converter uses it yet; the render quality
     font standing in for it still fits each stored line (within 8%: Hangul is as wide in nearly every font); otherwise
     it breaks the paragraph itself and says why (`ParagraphBox.StoredLinesIgnored`).
     Each line then takes its stored height and baseline, its place beside an object, and a stored line wider than the
-    line is now squeezed between its characters.
+    line is now squeezed between its characters. A place beside an object is measured against a whole line, which
+    한글 stores from the paragraph's left margin to the column less its right margin; a paragraph whose first line is
+    already beside an object (every line next to a chart, say) is measured against those margins.
   - On the HWPX files attached to Filee's issues, 768 of 769 stored paragraphs convert. The body text of the one
     single-column document breaks exactly where 한글's own PDF of it does; the rest of the pages differ where tables,
     columns and equations are, which later items lay out.

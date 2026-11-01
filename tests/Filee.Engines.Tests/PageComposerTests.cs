@@ -285,6 +285,28 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void A_picture_line_takes_the_line_spacing_of_its_text_and_a_table_of_another_format_its_margin_below()
+    {
+        // 160 % of 10 pt text adds 6 pt to a line, also to one holding a 30 pt picture (36 pt high, not 48).
+        var picture = Paragraph("");
+        picture.Inlines.Add(new HImage("none.png") { Width = 4000, Height = 3000 });
+        var next = Paragraph("next");
+        var table = Table("cell");
+        var after = Paragraph("after");
+
+        var plain = Compose(Section(Small, picture, next)).Pages[0];
+        var document = new HDocument();
+        document.Sections.Add(Section(Small with { Height = 40000 }, table, after));
+        var styled = new PageComposer(new FontResolver(_fonts), _shaper, styles: StyleResolver.FromTemplate()).Compose(document, TestContext.Current.CancellationToken).Pages[0];
+
+        Assert.Equal(20 + 36 + 8.5f, Runs(plain).Single(r => r.Text == "next").Positions[0].Y, 0.01f);
+        // A table read from another format has the 5 mm below it the HWPX writer gives it, before the next paragraph.
+        var cell = Runs(styled).Single(r => r.Text == "cell").Positions[0].Y;
+        var below = Runs(styled).Single(r => r.Text == "after").Positions[0].Y;
+        Assert.True(below - cell > 14.17f + 10, $"{below - cell} pt from the cell's baseline to the next paragraph's");
+    }
+
+    [Fact]
     public void Hangul_stored_page_starts_and_places_are_followed()
     {
         // Three one-line paragraphs on their stored layout: the second 50 pt down, the third starting a page.
@@ -300,6 +322,31 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Equal(2, pages.Count);
         Assert.Equal(20 + 50 + 8.5f, Runs(pages[0]).Single(r => r.Text == "two").Positions[0].Y, 0.01f);
         Assert.Equal(["three"], Texts(pages[1]));
+    }
+
+    [Fact]
+    public void A_stored_line_on_both_sides_of_an_object_is_one_row()
+    {
+        // 한글 stores a line that goes on both sides of an object as two lines at one place: "left" (x 0..30 pt) and
+        // "right" (x 50..80 pt) at 0, then "below" 16 pt down.
+        var paragraph = Paragraph("left right below");
+        paragraph.Lines = new HLineLayout(
+        [
+            new HLineSegment(0, 0, 1000, 1000, 850, 600, 0, 3000, 0),
+            new HLineSegment(5, 0, 1000, 1000, 850, 600, 5000, 3000, 0),
+            new HLineSegment(11, 1600, 1000, 1000, 850, 600, 0, 8000, 0),
+        ], false, [0, 5, 11]);
+        // A table first: the page is no longer on 한글's stored places, the row stays one all the same.
+        var table = Table("cell");
+
+        var page = Assert.Single(Compose(Section(Small, table, paragraph)).Pages);
+
+        var left = Runs(page).Single(r => r.Text.Trim() == "left").Positions[0];
+        var right = Runs(page).Single(r => r.Text.Trim() == "right").Positions[0];
+        var below = Runs(page).Single(r => r.Text.Trim() == "below").Positions[0];
+        Assert.Equal(left.Y, right.Y, 0.01f);
+        Assert.Equal(60f, right.X, 0.5f); // 10 pt margin + 50 pt
+        Assert.Equal(left.Y + 16, below.Y, 0.01f);
     }
 
     // ───────────────────────── Tables ─────────────────────────
@@ -650,6 +697,29 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.True(Dark(pixels, 90, 5) && !Dark(pixels, 84, 5) && !Dark(pixels, 96, 5));
         Assert.True(Dark(pixels, 50, 177) && !Dark(pixels, 50, 173));
         Assert.True(Dark(pixels, 25, 55) && !Dark(pixels, 21, 55) && !Dark(pixels, 25, 52));
+    }
+
+    [Fact]
+    public void An_object_placed_against_the_paper_goes_on_the_page_of_the_line_that_holds_it()
+    {
+        // A paragraph over several pages holding, at its end, a box placed against the paper (x 85..95, y 3..8), and at
+        // its start one placed against the paragraph: 한글 puts the first where its line is.
+        var paragraph = Paragraph(string.Join(" ", Enumerable.Repeat(Sentence, 12)));
+        paragraph.Inlines.Insert(0, Box(1000, 500, new HAnchor("PARA", "LEFT", 0, "PARA", "TOP", 0, "IN_FRONT_OF_TEXT", true)));
+        paragraph.Inlines.Add(Box(1000, 500, new HAnchor("PAPER", "RIGHT", 500, "PAPER", "TOP", 300, "IN_FRONT_OF_TEXT", true)));
+        paragraph.Inlines.Add(new HText(" The end.", Format()));
+
+        var pages = Compose(Section(Small, paragraph)).Pages;
+
+        Assert.True(pages.Count > 1);
+        bool PaperBox(PageContent page)
+        {
+            using var pixels = Pixels(page);
+            return Dark(pixels, 90, 5);
+        }
+        Assert.Equal([.. Enumerable.Repeat(false, pages.Count - 1), true], pages.Select(PaperBox));
+        using var first = Pixels(pages[0]);
+        Assert.True(Dark(first, 15, 22)); // the paragraph's own box, at its first line on the first page
     }
 
     [Fact]
