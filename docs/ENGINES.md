@@ -23,6 +23,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
+| **PostScript writer** | built in | **PDF → PS (LanguageLevel 3), EPS** (one per page) without Ghostscript: vectors, text with its embedded fonts, pictures, shadings, patterns; pages with transparency as pictures (see [PDF → PostScript and EPS](#pdf--postscript-and-eps)) |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
@@ -35,7 +36,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PostScript-based AI → PDF (images through PDF and PDFium), EPS/PS → PNG; PDF → EPS/PS only when moved above the built-in PostScript writer; smaller PDFs when a preset asks for it |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, copies without metadata (see "Media tools") |
@@ -1446,6 +1447,87 @@ editable**: there are no text boxes to change, the PDF's layout is not rebuilt. 
   format (a test checks that every other pair of formats keeps its route).
 
 Password-protected PDFs fail with the same message as PDF → DOCX.
+
+## PDF → PostScript and EPS
+
+`Pdf/PostScript/` writes PostScript LanguageLevel 3 and EPS from a PDF without Ghostscript (engine `pdf-ps`,
+`Pdf/PdfPostScriptConverter.cs`). A PostScript file holds the preset's pages; an EPS holds one page, so a PDF gives one
+EPS per page (`_p{n}`, as PDF → PNG names them) whose `%%BoundingBox` is the page's crop box. PostScript, EPS and
+PostScript-based AI → PDF stay with Ghostscript: reading PostScript takes a PostScript interpreter.
+
+The PDF is read with PDFsharp, each content stream with `Pdf/PdfContentLexer.cs` (shared with the font subsetter), and
+translated operator by operator (`PsTranslator.cs`) into short procedures named like the PDF operators (`m`, `l`,
+`re`, `F`, `S`, `q`, `cm`, …, defined in `FileeDict`, `PsProlog.cs`). Only Filee's own procedures and operators are
+written; operands are numbers, strings and names Filee made, so nothing of a content stream or a font program reaches
+the PostScript as code. The files are Clean7Bit ASCII with DSC comments: `%%Page`, `%%PageBoundingBox`, each page in
+save / restore with its size set by `setpagedevice` (not in EPS), the crop box clipped and the page turned as /Rotate
+says (UserUnit scales it).
+
+- **Graphics state**: q / Q (unbalanced Q ignored as viewers do), cm, line width, caps, joins, miter limit, dashes,
+  flatness, the ExtGState entries that have a PostScript counterpart (also stroke adjustment and overprint). PDF keeps
+  a fill and a stroke colour, PostScript one: the translator remembers which colour the PostScript state holds
+  (restored with it by grestore) and sets the other before each painting operator. Paths, `W` / `W*` clipping after the
+  painting operator (a stroked clip path isn't cut by its own clip).
+- **Colour**: every colour becomes a device colour: gray, RGB and CMYK as they are, ICC-based spaces by their number of
+  components (no colour management, as viewers without it), CalGray / CalRGB as gray / RGB, Lab converted to sRGB,
+  Indexed looked up, Separation and DeviceN through their tint transforms (`PdfFunction.cs` evaluates sampled,
+  exponential, stitching and PostScript calculator functions; the colorant None paints nothing, All paints gray).
+- **Text**: every glyph is placed at its PDF position with `xshow` (character and word spacing, horizontal scaling,
+  rise, TJ adjustments and the text matrix computed by Filee), so the fonts only have to draw the right glyph: a
+  font of Filee's own whose code N draws glyph `/aN`. Embedded TrueType becomes a Type 42 font (subset to the drawn
+  glyphs with their IDs kept, `sfnts` split at tables and glyphs); embedded Type 1 and CFF (Type1C, CIDFontType0C,
+  OpenType) become Type 1 fonts of Filee's own built from the interpreted outlines (`Type1Font.cs`: subroutines, flex,
+  hint replacement and seac accents of Type 1 charstrings, `Fonts/Cff/Type2Interpreter.cs` for CFF), without hints;
+  the font program itself is never copied. Type 0 fonts (Identity-H or an embedded CMap) have their glyphs spread over
+  base fonts of 256 glyphs each (Type 42 fonts share one copy of the TrueType tables), so neither CIDFonts nor CMaps
+  are needed. Type 3 fonts become PostScript Type 3 fonts whose glyph procedures are the glyph streams translated like
+  page content (d0 → setcharwidth, d1 → setcachedevice, colours ignored after d1). Fonts that aren't embedded become
+  the closest standard font (Helvetica, Times, Courier with bold and italic, Symbol, ZapfDingbats), re-encoded with the
+  PDF's glyph names. Text rendering modes fill, stroke, fill and stroke and invisible are drawn; stroked glyphs are
+  stroked in user space.
+- **Pictures** (`PsImages.cs`): image XObjects and inline images. Flate, LZW, RunLength and the ASCII filters (with PNG
+  and TIFF predictors) are decoded by Filee with limits, the data padded or cut to the size the picture needs and
+  deflated again; JPEG and CCITT fax data go to PostScript as they are, with PostScript's own filters. Device and
+  Indexed spaces stay; a one-component Separation picture becomes an Indexed one with the converted tints; 16-bit
+  pictures become 8-bit. Stencil masks become `imagemask`, colour-key masks ImageType 4, explicit masks and soft masks
+  that are only opaque or transparent ImageType 3. The data a page reads follows its image as ASCII85 and is read
+  through a filter that is flushed to its end afterwards, so no picture data can ever be read as PostScript.
+- **Shadings and patterns** (`PsShadings.cs`): `sh` becomes `shfill`; function-based, axial, radial and mesh shadings
+  (mesh data up to 64 KB) keep their geometry; in a device space their functions stay (exponential and stitching ones
+  as they are, the others sampled, PostScript has no calculator functions), in any other space function and colour
+  conversion are sampled together. Tiling patterns (coloured and uncoloured) and shading patterns become `makepattern`
+  in the page's default space; pattern cells and Type 3 glyphs keep picture data in strings (up to 64 KB).
+- **Forms, annotations, layers**: form XObjects inline (Matrix, BBox clip, nested up to 24 deep), annotation appearance
+  streams of annotations that print (not hidden), placed on their rectangles (PDF 32000 12.5.5), optional content off
+  in the default configuration left out (marked content and XObjects with /OC, OCMDs with their visibility policy).
+
+**Pages PostScript can't hold** are drawn as pictures: PDFium renders the page (300 dpi, or the preset's render DPI when
+higher, at most 600 and 40 megapixels; Flate, or JPEG when that is less than half the size of a large page) and the
+file's result says so (`notice.ps_pages_as_pictures`; the app's log names the page and the reason). That is a page
+with transparency (constant alpha below 1, a soft mask in the graphics state, a blend mode other than Normal, a soft
+mask on a picture with partial transparency, a transparent annotation), text used as a clipping path (render modes 4–7),
+pictures PostScript can't decode (JBIG2, JPEG 2000, Lab and DeviceN pictures), fonts the writer can't place
+(vertical writing, predefined CMaps, CID fonts that aren't embedded), a damaged content stream, and a page past the
+limits below. A PDF PDFsharp can't open at all has every page drawn as a picture, when PDFium can draw it.
+
+**Limits** (hostile input): streams unpack to at most 64 MB (`DocumentLimits.MaxPartBytes`; a picture to the size
+it needs), pictures of at most `MaxPicturePixels`, 4,000,000 operators per page (forms counted every time they are
+drawn), forms, patterns and glyphs nested 24 deep, q nested 200 deep, arrays and dictionaries in content 32 deep,
+200,000 different glyphs per file, sample tables of 4 M samples, calculator functions of 20,000 operators and 100,000
+steps per evaluation, `DocumentLimits.MaxPages` pages. A limit makes the page a picture; a PDF neither PDFsharp nor
+PDFium reads fails.
+
+**Routes.** The edges cost 8, below Ghostscript's 10, so the writer wins with the default engine order (Ghostscript
+still does PDF → PS / EPS when it is moved above the writer); SVG, images and documents reach EPS through PDF as
+before. `tests/Filee.Engines.Tests/PdfPostScriptTests.cs` checks the routes (every route not ending in PS or EPS keeps
+its cost), the files (7-bit, DSC, short lines), EPS bounding boxes, the notice, hostile content, fonts and functions,
+and, where Ghostscript is installed, that Ghostscript renders Filee's PostScript like PDFium renders the PDF (pages
+built in code with paths, every kind of font, pictures, shadings, patterns, turned pages, annotations, layers,
+transparency; drawn at 300 dpi and compared at 100 dpi, SSIM ≥ 0.98, also against Ghostscript's own rendering of the PDF).
+
+Not yet: EPS bounding boxes tight around the drawing (eps2write's), an EPS preview (TIFF / WMF), transparency
+flattened as vectors rather than a picture of the page, vertical text, keeping fonts' hints and spot colours as
+separations.
 
 ## PDF compression
 

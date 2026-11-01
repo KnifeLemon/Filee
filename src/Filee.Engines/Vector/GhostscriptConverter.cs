@@ -3,6 +3,8 @@
 // transparent background (through PDF the page would be drawn on white paper). Everything else (EPS → JPG,
 // SVG → EPS, …) is planned through PDF or PNG by the route planner. "Compress PDF" may also run a PDF through pdfwrite
 // (PdfSharpConverter calls CompressPdfAsync; there is no PDF → PDF edge here, so routes don't change).
+// PDF → EPS/PS is the built-in PostScript writer's (Pdf/PdfPostScriptConverter, cheaper edges); Ghostscript's edges
+// stay for a user who moves it above the writer in the engine order.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;

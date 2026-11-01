@@ -153,7 +153,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | 來源格式 | 目標格式 |
 |---|---|
 | **圖片** JPG、PNG、WEBP、AVIF、TIFF、BMP、GIF、APNG、ICO、ICNS、JPEG XL、JPEG 2000、PSD/PSB、TGA、PPM、HEIC、QOI、DDS、PCX、MNG、CUR 等，<br>GIMP XCF、相機 RAW（CR2、CR3、NEF、ARW、DNG 等）、DICOM、OpenEXR、HDR、FITS、JPEG XR（Windows）、iPhone 原況照片（LIVP）僅讀取 | 上述格式互轉（HEIC⁵）、PDF、SVG（描摹）、縮放、灰階，<br>原況/動態相片（iPhone、Android）→ 其中的影片（MP4、MOV⁵），以及影片 → 原況照片（iPhone）或動態相片（Android）⁵（實驗功能） |
-| **向量圖** SVG、SVGZ、EMF、WMF、AI<br>EPS、PS¹<br>CDR、VSD、CGM、ODG、FODG² | PDF（向量）、PNG 等圖片、<br>SVG ↔ SVGZ、SVG → DXF/DWG、PDF → EPS/PS¹、SVG → EMF、WMF、ODG² |
+| **向量圖** SVG、SVGZ、EMF、WMF、AI<br>EPS、PS¹<br>CDR、VSD、CGM、ODG、FODG² | PDF（向量）、PNG 等圖片、<br>SVG ↔ SVGZ、SVG → DXF/DWG、PDF → EPS/PS、SVG → EMF、WMF、ODG² |
 | **PDF** | DOCX、HWPX、TXT、PNG、JPG、TIFF、CBZ、PPTX（每頁一張圖片）、SVG²，<br>合併（先選擇順序）、拆分、頁碼範圍、壓縮（更小的 PDF） |
 | **文件** DOCX、DOCM、DOTX、EML、Outlook MSG，<br>OFD（電子發票、公文）僅讀取<br>DOC、ODT、FODT、OTT、RTF、WPS、WPD、Pages、ClarisWorks、MacWrite、T602 等² | PDF、DOCX、HWPX、EPUB、TXT、HTML、<br>MSG → EML<br>ODT、FODT、OTT² |
 | **試算表** XLSX、XLSM、XLS、XLT、ODS、CSV、TSV<br>OTS、FODS、Numbers、ET² | PDF、XLSX、ODS、CSV、TSV、JSON、HWPX、HTML<br>XLT、OTS² |

@@ -153,7 +153,7 @@ Aby to cofnąć, usuń te wpisy w Zabezpieczenia Windows → Kontrola aplikacji 
 | Z | Do |
 |---|---|
 | **Obrazy**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>GIMP XCF, RAW z aparatów (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), Live Photo z iPhone'a (LIVP) tylko odczyt | dowolny z nich (HEIC⁵), PDF, SVG (wektoryzacja), zmiana rozmiaru, skala szarości;<br>Live/Motion Photo (iPhone, Android) → ich wideo (MP4, MOV⁵), a wideo → Live Photo (iPhone) lub Motion Photo (Android)⁵, eksperymentalnie |
-| **Grafika wektorowa**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (wektorowy), PNG i inne obrazy,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
+| **Grafika wektorowa**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (wektorowy), PNG i inne obrazy,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (każda strona jako obraz), SVG²;<br>łączenie (w kolejności, którą najpierw wybierzesz), dzielenie, zakresy stron, kompresja (mniejsze pliki PDF) |
 | **Dokumenty**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>OFD (chińskie e-faktury, dokumenty urzędowe) tylko odczyt<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
 | **Arkusze**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |
