@@ -12,6 +12,13 @@ internal static class DocumentTranslator
 {
     private static readonly Regex TagRegex = new(@"<s(\d+)>(.*?)<\/s\1>", RegexOptions.Singleline | RegexOptions.Compiled);
 
+    private sealed class TextSlot(Func<string> get, Action<string> set, HCharFormat format)
+    {
+        public string Text => get();
+        public void SetText(string value) => set(value);
+        public HCharFormat Format => format;
+    }
+
     internal static async Task TranslateBookAsync(Book book, string toLang, string fromLang, ITranslationService service, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         if (!string.IsNullOrWhiteSpace(book.Metadata.Title))
@@ -41,40 +48,13 @@ internal static class DocumentTranslator
             return;
         }
 
-        // Filter paragraphs that contain actual translatable text
-        var workItems = new List<(HParagraph Paragraph, string EncodedText, List<(int Index, HText TextInline)> Map)>();
+        // Collect all paragraphs with translatable text slots
+        var workItems = new List<(HParagraph Paragraph, List<TextSlot> Slots)>();
         foreach (var p in paragraphs)
         {
-            var textInlines = new List<(int Index, HText TextInline)>();
-            for (var i = 0; i < p.Inlines.Count; i++)
-            {
-                if (p.Inlines[i] is HText textNode && !string.IsNullOrWhiteSpace(textNode.Text))
-                {
-                    textInlines.Add((i, textNode));
-                }
-            }
-
-            if (textInlines.Count == 0)
-                continue;
-
-            if (textInlines.Count == 1)
-            {
-                // Single inline: no tags needed
-                workItems.Add((p, textInlines[0].TextInline.Text, textInlines));
-            }
-            else
-            {
-                // Multiple inlines: wrap with <s{i}> tags so formatting boundaries are maintained
-                var sb = new StringBuilder();
-                for (var i = 0; i < p.Inlines.Count; i++)
-                {
-                    if (p.Inlines[i] is HText textNode)
-                    {
-                        sb.Append($"<s{i}>{textNode.Text}</s{i}>");
-                    }
-                }
-                workItems.Add((p, sb.ToString(), textInlines));
-            }
+            var slots = CollectSlots(p);
+            if (slots.Count > 0)
+                workItems.Add((p, slots));
         }
 
         if (workItems.Count == 0)
@@ -83,67 +63,86 @@ internal static class DocumentTranslator
             return;
         }
 
-        // Translate in chunks of up to 25 paragraphs
-        const int chunkSize = 25;
+        // Translate one paragraph at a time sequentially to avoid queuing inside Ollama and timeout failures
         var total = workItems.Count;
-        var done = 0;
-
-        for (var i = 0; i < workItems.Count; i += chunkSize)
+        for (var i = 0; i < workItems.Count; i++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            var (_, slots) = workItems[i];
 
-            var chunk = workItems.Skip(i).Take(chunkSize).ToList();
-            var texts = chunk.Select(c => c.EncodedText).ToList();
-
-            var translatedBatch = await service.TranslateBatchAsync(texts, toLang, fromLang, cancellationToken);
-
-            for (var j = 0; j < chunk.Count; j++)
+            if (slots.Count == 1)
             {
-                var item = chunk[j];
-                var translated = translatedBatch[j];
+                var translated = await service.TranslateTextAsync(slots[0].Text, toLang, fromLang, cancellationToken);
+                slots[0].SetText(StripTags(translated).Trim());
+            }
+            else
+            {
+                var sb = new StringBuilder();
+                for (var k = 0; k < slots.Count; k++)
+                    sb.Append($"<s{k}>{slots[k].Text}</s{k}>");
 
-                if (item.Map.Count == 1)
-                {
-                    var (idx, node) = item.Map[0];
-                    item.Paragraph.Inlines[idx] = new HText(translated, node.Format);
-                }
-                else
-                {
-                    // Match back <s{i}> tags
-                    var matches = TagRegex.Matches(translated);
-                    var matchedIndices = new HashSet<int>();
+                var translated = await service.TranslateTextAsync(sb.ToString(), toLang, fromLang, cancellationToken);
+                var matches = TagRegex.Matches(translated);
+                var matchedIndices = new HashSet<int>();
 
-                    foreach (Match match in matches)
+                foreach (Match match in matches)
+                {
+                    if (int.TryParse(match.Groups[1].Value, out var slotIdx) && slotIdx >= 0 && slotIdx < slots.Count)
                     {
-                        if (int.TryParse(match.Groups[1].Value, out var inlineIdx)
-                            && inlineIdx >= 0 && inlineIdx < item.Paragraph.Inlines.Count
-                            && item.Paragraph.Inlines[inlineIdx] is HText originalNode)
-                        {
-                            item.Paragraph.Inlines[inlineIdx] = new HText(match.Groups[2].Value, originalNode.Format);
-                            matchedIndices.Add(inlineIdx);
-                        }
+                        slots[slotIdx].SetText(match.Groups[2].Value);
+                        matchedIndices.Add(slotIdx);
                     }
+                }
 
-                    // Fallback if tags were stripped or altered by the model
-                    if (matchedIndices.Count == 0 && item.Map.Count > 0)
+                // If any tags were dropped by the model, translate those missing runs directly
+                // so no text stays in the source language and no inline formatting is lost
+                for (var k = 0; k < slots.Count; k++)
+                {
+                    if (!matchedIndices.Contains(k))
                     {
-                        var (firstIdx, firstNode) = item.Map[0];
-                        // Put full text in first inline, empty subsequent inlines
-                        item.Paragraph.Inlines[firstIdx] = new HText(StripTags(translated), firstNode.Format);
-                        for (var k = 1; k < item.Map.Count; k++)
-                        {
-                            var (subIdx, subNode) = item.Map[k];
-                            item.Paragraph.Inlines[subIdx] = new HText("", subNode.Format);
-                        }
+                        var slotTranslated = await service.TranslateTextAsync(slots[k].Text, toLang, fromLang, cancellationToken);
+                        slots[k].SetText(StripTags(slotTranslated).Trim());
                     }
                 }
             }
 
-            done += chunk.Count;
-            progress?.Report((double)done / total);
+            progress?.Report((double)(i + 1) / total);
         }
 
         progress?.Report(1.0);
+    }
+
+    private static List<TextSlot> CollectSlots(HParagraph p)
+    {
+        var slots = new List<TextSlot>();
+        for (var i = 0; i < p.Inlines.Count; i++)
+        {
+            var inline = p.Inlines[i];
+            // Skip HEquation (inherits from HText) to avoid sending formula linear text and corrupting equations
+            if (inline is HText t and not HEquation)
+            {
+                if (!string.IsNullOrWhiteSpace(t.Text))
+                {
+                    var idx = i;
+                    var orig = t;
+                    slots.Add(new TextSlot(() => orig.Text, s => p.Inlines[idx] = new HText(s, orig.Format), orig.Format));
+                }
+            }
+            else if (inline is HLink link)
+            {
+                for (var j = 0; j < link.Content.Count; j++)
+                {
+                    var linkInline = link.Content[j];
+                    if (linkInline is HText lt and not HEquation && !string.IsNullOrWhiteSpace(lt.Text))
+                    {
+                        var linkIdx = j;
+                        var orig = lt;
+                        slots.Add(new TextSlot(() => orig.Text, s => link.Content[linkIdx] = new HText(s, orig.Format), orig.Format));
+                    }
+                }
+            }
+        }
+        return slots;
     }
 
     private static string StripTags(string text) =>
@@ -153,6 +152,16 @@ internal static class DocumentTranslator
     {
         foreach (var sec in doc.Sections)
         {
+            foreach (var header in sec.Headers)
+            {
+                foreach (var p in CollectBlockParagraphs(header.Blocks))
+                    yield return p;
+            }
+            foreach (var footer in sec.Footers)
+            {
+                foreach (var p in CollectBlockParagraphs(footer.Blocks))
+                    yield return p;
+            }
             foreach (var p in CollectBlockParagraphs(sec.Blocks))
                 yield return p;
         }
@@ -166,6 +175,19 @@ internal static class DocumentTranslator
             {
                 case HParagraph p:
                     yield return p;
+                    foreach (var inline in p.Inlines)
+                    {
+                        if (inline is HNote note)
+                        {
+                            foreach (var np in CollectBlockParagraphs(note.Blocks))
+                                yield return np;
+                        }
+                        else if (inline is HTextBox box)
+                        {
+                            foreach (var bp in CollectBlockParagraphs(box.Blocks))
+                                yield return bp;
+                        }
+                    }
                     break;
                 case HTable table:
                     foreach (var p in CollectBlockParagraphs(table.Caption))

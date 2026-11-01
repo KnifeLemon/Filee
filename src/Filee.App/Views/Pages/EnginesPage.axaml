@@ -52,12 +52,6 @@
               <Border Classes="card" Padding="16,12">
                 <DockPanel>
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,0,0">
-                    <Button Classes="accent" IsVisible="{Binding IsTranslator}" Click="OnPackageSettings" ToolTip.Tip="{Binding SettingsTooltip}">
-                      <StackPanel Orientation="Horizontal" Spacing="6">
-                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Settings}" />
-                        <TextBlock Text="{DynamicResource engines.ollama.manage}" />
-                      </StackPanel>
-                    </Button>
                     <Button IsVisible="{Binding IsLibreOffice}" Click="OnPackageSettings" ToolTip.Tip="{DynamicResource engines.lo_title}">
                       <StackPanel Orientation="Horizontal" Spacing="6">
                         <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Settings}" />
@@ -117,6 +111,12 @@
               <StackPanel Spacing="10">
                 <DockPanel>
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                    <Button Classes="accent" IsVisible="{Binding IsTranslator}" Click="OnManageOllama" Margin="0,0,6,0" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Settings}" />
+                        <TextBlock Text="{DynamicResource engines.ollama.manage}" />
+                      </StackPanel>
+                    </Button>
                     <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}" AutomationProperties.Name="{DynamicResource engines.move_up}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
                       <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />

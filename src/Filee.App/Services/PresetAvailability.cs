@@ -224,10 +224,10 @@ public sealed class PresetAvailability
         // "Merge videos" / "Merge audio" / "Video from images": FFmpeg joins the files, so a route into the target (or,
         // for pictures, into PNG and from PNG into a video) says whether it is installed.
         // "Translate": Ollama / Translator translates documents and e-books.
-        if (formats.Any(f => preset.TranslatesDocument(f.Id)))
+        if (preset.Translate.Enabled)
         {
             var docFiles = formats.Where(f => preset.TranslatesDocument(f.Id)).ToList();
-            if (docFiles.Count == 0)
+            if (docFiles.Count == 0 || docFiles.Count < formats.Count)
                 return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
             bool CanTranslate(RoutePlanner planner) => docFiles.Any(f =>
             {

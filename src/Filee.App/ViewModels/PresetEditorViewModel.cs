@@ -186,21 +186,23 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         TranslationLanguageChoices =
         [
             new Choice<string>("en", "English"),
-            new Choice<string>("es", "Spanish (Español)"),
-            new Choice<string>("fr", "French (Français)"),
-            new Choice<string>("de", "German (Deutsch)"),
-            new Choice<string>("zh", "Chinese (中文)"),
-            new Choice<string>("hi", "Hindi (हिन्दी)"),
-            new Choice<string>("ja", "Japanese (日本語)"),
-            new Choice<string>("ko", "Korean (한국어)"),
-            new Choice<string>("ru", "Russian (Русский)"),
-            new Choice<string>("pt", "Portuguese (Português)"),
-            new Choice<string>("ar", "Arabic (العربية)"),
-            new Choice<string>("it", "Italian (Italiano)"),
-            new Choice<string>("nl", "Dutch (Nederlands)"),
-            new Choice<string>("pl", "Polish (Polski)"),
-            new Choice<string>("tr", "Turkish (Türkçe)"),
-            new Choice<string>("ne", "Nepali (नेपाली)")
+            new Choice<string>("es", "Español"),
+            new Choice<string>("fr", "Français"),
+            new Choice<string>("de", "Deutsch"),
+            new Choice<string>("zh", "中文"),
+            new Choice<string>("hi", "हिन्दी"),
+            new Choice<string>("ja", "日本語"),
+            new Choice<string>("ko", "한국어"),
+            new Choice<string>("ru", "Русский"),
+            new Choice<string>("pt", "Português"),
+            new Choice<string>("ar", "العربية"),
+            new Choice<string>("it", "Italiano"),
+            new Choice<string>("nl", "Nederlands"),
+            new Choice<string>("pl", "Polski"),
+            new Choice<string>("tr", "Türkçe"),
+            new Choice<string>("ne", "नेपाली"),
+            new Choice<string>("th", "ไทย"),
+            new Choice<string>("id", "Bahasa Indonesia")
         ];
         _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
             ?? TranslationLanguageChoices[0];
@@ -309,7 +311,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         if (IsTestingTranslation) return;
         IsTestingTranslation = true;
         TestTranslationHasError = false;
-        TestTranslationResult = "Connecting to Ollama...";
+        TestTranslationResult = _loc["engines.ollama.connecting"];
 
         try
         {
@@ -326,7 +328,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            TestTranslationResult = $"Error: {ex.Message}";
+            TestTranslationResult = $"{_loc["engines.ollama.error"]} {ex.Message}";
             TestTranslationHasError = true;
         }
         finally

@@ -771,7 +771,9 @@ public sealed partial class JobQueue : IAsyncDisposable
         var motionPhoto = finalOutput && runWith.ExtractsMotionOf(source.Id);
         var livePhoto = finalOutput && runWith.MakesLivePhotoOf(source.Id);
         var caption = finalOutput && runWith.CaptionsVideo(source.Id);
-        var translate = finalOutput && runWith.TranslatesDocument(source.Id);
+        var translate = finalOutput && runWith.Translate.Enabled;
+        if (translate && !runWith.TranslatesDocument(source.Id))
+            return Fail(file, "error.no_route", $"{source.Id} → {target}", new RouteRequest(source.Id, target, Translate: true));
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(source.Id);

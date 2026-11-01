@@ -122,20 +122,21 @@ public partial class EnginesPage : UserControl
         Vm?.SavePriority();
     }
 
-    /// <summary>The LibreOffice switches or Ollama model manager, in their own window.</summary>
+    /// <summary>The LibreOffice switches, in their own window.</summary>
     private async void OnPackageSettings(object? sender, RoutedEventArgs e)
     {
         if (TopLevel.GetTopLevel(this) is not Window window)
             return;
 
-        if (sender is Button { DataContext: EnginePackageState { Package.Id: "translator" } })
-        {
-            await new OllamaModelManagerWindow().ShowDialog(window);
-            return;
-        }
-
         if (DataContext is EnginesPageViewModel vm)
             await new LibreOfficeOptionsWindow { DataContext = vm }.ShowDialog(window);
+    }
+
+    private async void OnManageOllama(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window window)
+            return;
+        await new OllamaModelManagerWindow().ShowDialog(window);
     }
 
     /// <summary>Picks the program of a copy the user already has (ffmpeg.exe, ebook-convert.exe, …) and uses it.</summary>

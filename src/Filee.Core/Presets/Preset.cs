@@ -118,10 +118,7 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
-
-
     /// <summary>Options used for offline AI translation.</summary>
-
     public TranslateOptions Translate { get; set; } = new();
 
     /// <summary>Where and how output files are written.</summary>
@@ -158,19 +155,21 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
 
-    /// <summary>True if converting a document or e-book using local AI translation.</summary>
-    public bool TranslatesDocument(string sourceFormat)
-    {
-        if (!Translate.Enabled)
-            return false;
-        var fmt = Formats.FormatRegistry.FindById(sourceFormat);
-        if (fmt is null)
-            return false;
-        return fmt.Category is Formats.FormatCategory.Document
-            or Formats.FormatCategory.Ebook
-            or Formats.FormatCategory.Text;
-    }
+    /// <summary>Formats the translator can directly read from.</summary>
+    public static readonly string[] TranslatorSourceFormats =
+    [
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html"
+    ];
 
+    /// <summary>True if converting a document or e-book using local AI translation.</summary>
+    public bool TranslatesDocument(string sourceFormat) =>
+        Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
+
+    /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file saves every frame as a picture
+    /// (<see cref="MediaOptions.SaveEveryFrame"/>): the file is a video and the target one of
+    /// <see cref="MediaOptions.FrameTargets"/>. Other files, and other targets, convert as usual.
+    /// </summary>
     public bool SavesFramesOf(string sourceFormat) =>
         Media.SaveEveryFrame
         && !MakesLivePhotoOf(sourceFormat)

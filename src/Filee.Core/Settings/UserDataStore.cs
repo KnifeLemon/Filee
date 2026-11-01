@@ -284,20 +284,6 @@ public sealed class UserDataStore
         var ids = Presets.Select(p => p.Id).ToHashSet();
         foreach (var profile in Profiles)
         {
-            if (profile.Id is "pdf" or "hwp" or "data")
-            {
-                profile.PresetIds.Remove("translate");
-                profile.BackPresetIds?.Remove("translate");
-            }
-            else if (profile.Id is "office" or "text" or "ebooks")
-            {
-                if (profile.PresetIds.Remove("translate"))
-                {
-                    profile.BackPresetIds ??= [];
-                    if (!profile.BackPresetIds.Contains("translate"))
-                        profile.BackPresetIds.Add("translate");
-                }
-            }
             profile.PresetIds = profile.PresetIds.Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
             // No back face known by now (a donut the user made, read from an older file): it has none.
             profile.BackPresetIds = (profile.BackPresetIds ?? []).Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();

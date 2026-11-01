@@ -1,3 +1,4 @@
+using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Translation;
 using Xunit;
@@ -71,7 +72,7 @@ public class TranslationTests
         var service = new TranslationService();
         if (!await TranslationService.IsLocalOllamaAvailableAsync(TestContext.Current.CancellationToken))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => service.TranslateTextAsync("Hello", "es", "en", cancellationToken: TestContext.Current.CancellationToken));
+            await Assert.ThrowsAsync<ConversionRefusedException>(() => service.TranslateTextAsync("Hello", "es", "en", cancellationToken: TestContext.Current.CancellationToken));
         }
     }
 }

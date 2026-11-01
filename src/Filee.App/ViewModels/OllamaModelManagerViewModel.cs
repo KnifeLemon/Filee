@@ -7,6 +7,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
 using Filee.Core.Localization;
+using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Translation;
@@ -23,7 +24,7 @@ public sealed partial class OllamaModelItem : ObservableObject
     private bool _isUsing;
 
     [ObservableProperty]
-    private string _actionText = "Use";
+    private string _actionText = "";
 
     [ObservableProperty]
     private bool _isActionEnabled = true;
@@ -48,6 +49,24 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         _activeModelName = store.Settings.PreferredOllamaModel ?? "";
         UpdateCanStopServer();
         _ = RefreshStatusAsync();
+    }
+
+    public static void StopFileeStartedServer()
+    {
+        if (_fileeStartedOllamaProcess is not null && !_fileeStartedOllamaProcess.HasExited)
+        {
+            try
+            {
+                _fileeStartedOllamaProcess.Kill(entireProcessTree: true);
+                _fileeStartedOllamaProcess.WaitForExit(1000);
+            }
+            catch { }
+            finally
+            {
+                _fileeStartedOllamaProcess.Dispose();
+                _fileeStartedOllamaProcess = null;
+            }
+        }
     }
 
     [ObservableProperty]
@@ -101,20 +120,22 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         if (IsTesting) return;
         IsTesting = true;
         TestHasError = false;
-        TestResultText = "Testing translation...";
+        TestResultText = _loc["engines.ollama.testing"];
 
         try
         {
-            var service = new TranslationService();
+            var model = !string.IsNullOrWhiteSpace(ActiveModelName)
+                ? ActiveModelName
+                : await TranslationService.GetPreferredLocalOllamaModelAsync();
+            var service = new TranslationService(new TranslateOptions { Model = model });
             var targetLang = "es";
             var result = await service.TranslateTextAsync("Hello, world!", targetLang);
-            var model = !string.IsNullOrWhiteSpace(ActiveModelName) ? ActiveModelName : await TranslationService.GetPreferredLocalOllamaModelAsync() ?? "local model";
-            TestResultText = $"\"Hello, world!\" → \"{result}\"  ({model})";
+            TestResultText = $"\"Hello, world!\" → \"{result}\"  ({model ?? "local model"})";
             TestHasError = false;
         }
         catch (Exception ex)
         {
-            TestResultText = $"Failed: {ex.Message}";
+            TestResultText = $"{_loc["engines.ollama.failed"]} {ex.Message}";
             TestHasError = true;
         }
         finally
@@ -150,19 +171,51 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         await CheckServerAndLoadModelsAsync();
     }
 
-    private static bool CheckIsOllamaInstalled()
+    private static string? FindOllamaExe()
     {
-        if (EngineEnvironment.SystemProgram("ollama", "ollama.exe") is not null)
-            return true;
-
         if (OperatingSystem.IsWindows())
         {
             var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            if (File.Exists(Path.Combine(localAppData, "Programs", "Ollama", "ollama.exe")))
-                return true;
+            var standardPath = Path.Combine(localAppData, "Programs", "Ollama", "ollama.exe");
+            if (File.Exists(standardPath))
+                return standardPath;
         }
-        return false;
+
+        var pathEnv = Environment.GetEnvironmentVariable("PATH") ?? "";
+        if (OperatingSystem.IsWindows())
+        {
+            pathEnv = string.Join(Path.PathSeparator,
+                pathEnv,
+                Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.User),
+                Environment.GetEnvironmentVariable("PATH", EnvironmentVariableTarget.Machine));
+        }
+
+        var exeName = OperatingSystem.IsWindows() ? "ollama.exe" : "ollama";
+        foreach (var dir in pathEnv.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            try
+            {
+                var candidate = Path.Combine(Environment.ExpandEnvironmentVariables(dir.Trim('"')), exeName);
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+            catch { }
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            foreach (var dir in new[] { "/usr/local/bin", "/opt/homebrew/bin", "/usr/bin", "/bin" })
+            {
+                var candidate = Path.Combine(dir, "ollama");
+                if (File.Exists(candidate))
+                    return candidate;
+            }
+        }
+
+        return null;
     }
+
+    private static bool CheckIsOllamaInstalled() => FindOllamaExe() is not null;
 
     private void UpdateCanStopServer()
     {
@@ -209,12 +262,23 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
                     }
                 }
 
-                if (string.IsNullOrWhiteSpace(ActiveModelName) && list.FirstOrDefault(m => !m.IsCloud) is { } firstLocal)
+                var preferred = !string.IsNullOrWhiteSpace(ActiveModelName)
+                    ? ActiveModelName
+                    : await TranslationService.GetPreferredLocalOllamaModelAsync();
+
+                if (!string.IsNullOrWhiteSpace(preferred) && list.FirstOrDefault(m => string.Equals(m.Name, preferred, StringComparison.OrdinalIgnoreCase)) is { } matched)
                 {
-                    firstLocal.IsUsing = true;
-                    firstLocal.ActionText = _loc["engines.ollama.using_model"];
-                    firstLocal.IsActionEnabled = false;
-                    ActiveModelName = firstLocal.Name;
+                    matched.IsUsing = true;
+                    matched.ActionText = _loc["engines.ollama.using_model"];
+                    matched.IsActionEnabled = false;
+                    ActiveModelName = matched.Name;
+                }
+                else if (list.FirstOrDefault(m => !m.IsCloud) is { } fallbackLocal)
+                {
+                    fallbackLocal.IsUsing = true;
+                    fallbackLocal.ActionText = _loc["engines.ollama.using_model"];
+                    fallbackLocal.IsActionEnabled = false;
+                    ActiveModelName = fallbackLocal.Name;
                 }
 
                 Models = new ObservableCollection<OllamaModelItem>(list);
@@ -237,7 +301,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         if (item.IsCloud || item.IsUsing)
             return;
 
-        item.ActionText = "Starting...";
+        item.ActionText = _loc["engines.ollama.starting"];
         item.IsActionEnabled = false;
 
         foreach (var m in Models)
@@ -296,14 +360,15 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
     [RelayCommand]
     public async Task StartServerAsync()
     {
+        var exe = FindOllamaExe();
+        if (exe is null)
+            return;
+
         try
         {
-            var exe = EngineEnvironment.SystemProgram("ollama", "ollama.exe")
-                ?? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Ollama", "ollama.exe");
-
             var psi = new ProcessStartInfo
             {
-                FileName = File.Exists(exe) ? exe : "ollama",
+                FileName = exe,
                 Arguments = "serve",
                 CreateNoWindow = true,
                 UseShellExecute = false
@@ -340,7 +405,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         IsPulling = true;
         CanPull = false;
         PullProgress = 0;
-        PullStatusText = "Connecting...";
+        PullStatusText = _loc["engines.ollama.connecting"];
 
         try
         {
@@ -382,7 +447,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
             }
 
             PullProgress = 100;
-            PullStatusText = "Complete!";
+            PullStatusText = _loc["engines.ollama.complete"];
             NewModelName = "";
             await Task.Delay(500);
             await CheckServerAndLoadModelsAsync();
@@ -394,7 +459,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            PullStatusText = $"Error: {ex.Message}";
+            PullStatusText = $"{_loc["engines.ollama.error"]} {ex.Message}";
         }
         finally
         {

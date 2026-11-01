@@ -243,38 +243,24 @@
     </Border>
 
     <!-- Translation options -->
-
     <Border x:Name="TranslateCard" Classes="card" IsVisible="{Binding ShowTranslate}" Padding="14">
-
       <StackPanel Spacing="10">
-
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.translate}" />
-
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.translate_hint}" />
-
         <Grid ColumnDefinitions="*,12,*">
-
           <StackPanel Grid.Column="0">
-
             <TextBlock Classes="label" Text="{DynamicResource presets.target_language}" />
-
             <ComboBox ItemsSource="{Binding TranslationLanguageChoices}" SelectedItem="{Binding TargetLanguage}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.target_language}" />
-
           </StackPanel>
-
           <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
-
             <Button Classes="secondary" Command="{Binding TestTranslationCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsTestingTranslation}">
               <StackPanel Orientation="Horizontal" Spacing="6">
                 <TextBlock Text="⚡" />
                 <TextBlock Text="{DynamicResource presets.test_connection}" />
               </StackPanel>
             </Button>
-
           </StackPanel>
-
         </Grid>
-
         <Border IsVisible="{Binding TestTranslationResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                 Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10,8">
           <StackPanel Orientation="Horizontal" Spacing="8">
@@ -283,12 +269,8 @@
             <TextBlock Text="{Binding TestTranslationResult}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" />
           </StackPanel>
         </Border>
-
       </StackPanel>
-
     </Border>
-
-
 
     <!-- Video & audio options -->
     <Border x:Name="MediaCard" Classes="card" IsVisible="{Binding ShowMedia}" Padding="14">

@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -15,10 +16,14 @@ namespace Filee.Engines.Translation;
 /// </summary>
 public sealed class TranslatorConverter : IConverter
 {
-    private static readonly string[] DocumentFormats =
+    private static readonly string[] WritableFormats =
     [
-        "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz",
-        "md", "txt", "html", "docx", "hwpx"
+        "docx", "hwpx", "epub", "kepub", "fb2", "htmlz", "txtz", "md", "txt", "html"
+    ];
+
+    private static readonly string[] KindleFormats =
+    [
+        "mobi", "azw3", "azw", "prc"
     ];
 
     private readonly ITranslationService? _translationService;
@@ -37,51 +42,129 @@ public sealed class TranslatorConverter : IConverter
 
     public string Id => "translator";
     public string DisplayName => "Translator";
-    public int MaxParallelism => 2;
+    public int MaxParallelism => 1;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        DocumentFormats.SelectMany(from =>
-            DocumentFormats.Select(to => new ConversionEdge(from, to, from == to ? 10 : 12, Translate: true)))
+        WritableFormats.SelectMany(from =>
+            WritableFormats.Select(to => new ConversionEdge(from, to, from == to ? 10 : 12, Translate: true)))
+        .Concat(KindleFormats.Select(from => new ConversionEdge(from, "epub", 12, Translate: true)))
         .ToList();
 
-    private static readonly HttpClient SharedStatusClient = new() { Timeout = TimeSpan.FromMilliseconds(200) };
-    private static volatile bool _lastKnownOllamaAvailable;
+    private static readonly HttpClient SharedStatusClient = new(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        AllowAutoRedirect = false,
+        ConnectTimeout = TimeSpan.FromMilliseconds(200)
+    })
+    {
+        Timeout = TimeSpan.FromMilliseconds(250)
+    };
+
+    private static volatile EngineStatus _cachedStatus = EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
+    private static int _checkInProgress;
     private static long _lastCheckedTicks;
-    private static readonly object _statusCheckLock = new();
+
+    public static event Action? StatusChanged;
 
     public EngineStatus GetStatus()
     {
         if (_translationService is not null)
             return EngineStatus.Available("embedded", "Test Translator");
 
-        var nowTicks = Environment.TickCount64;
-        var lastTicks = Interlocked.Read(ref _lastCheckedTicks);
-        if (nowTicks - lastTicks > 2500)
+        var last = Interlocked.Read(ref _lastCheckedTicks);
+        if (last == 0)
         {
-            lock (_statusCheckLock)
-            {
-                lastTicks = Interlocked.Read(ref _lastCheckedTicks);
-                if (nowTicks - lastTicks > 2500)
-                {
-                    try
-                    {
-                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
-                        using var res = SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token).GetAwaiter().GetResult();
-                        _lastKnownOllamaAvailable = res.IsSuccessStatusCode;
-                    }
-                    catch
-                    {
-                        _lastKnownOllamaAvailable = false;
-                    }
-                    Interlocked.Exchange(ref _lastCheckedTicks, nowTicks);
-                }
-            }
+            PerformCheck();
+            return _cachedStatus;
         }
 
-        if (_lastKnownOllamaAvailable)
-            return EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)");
+        var now = Environment.TickCount64;
+        if (now - last > 3000)
+        {
+            TriggerBackgroundCheck();
+        }
 
-        return EngineStatus.Unavailable("engine.reason.download_translator");
+        return _cachedStatus;
+    }
+
+    private static void PerformCheck()
+    {
+        try
+        {
+            Interlocked.Exchange(ref _lastCheckedTicks, Environment.TickCount64);
+            var isAvailable = CheckOllamaStatus();
+            var newStatus = isAvailable
+                ? EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)")
+                : EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
+
+            var oldStatus = _cachedStatus;
+            _cachedStatus = newStatus;
+            if (oldStatus.IsAvailable != newStatus.IsAvailable)
+                StatusChanged?.Invoke();
+        }
+        catch
+        {
+            _cachedStatus = EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
+        }
+    }
+
+    private static bool CheckOllamaStatus()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            using var res = SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token).GetAwaiter().GetResult();
+            return res.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static void TriggerBackgroundCheck()
+    {
+        if (Interlocked.CompareExchange(ref _checkInProgress, 1, 0) == 0)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    Interlocked.Exchange(ref _lastCheckedTicks, Environment.TickCount64);
+                    var isAvailable = await CheckOllamaStatusAsync();
+                    var newStatus = isAvailable
+                        ? EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)")
+                        : EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
+
+                    var oldStatus = _cachedStatus;
+                    _cachedStatus = newStatus;
+                    if (oldStatus.IsAvailable != newStatus.IsAvailable)
+                        StatusChanged?.Invoke();
+                }
+                catch
+                {
+                    _cachedStatus = EngineStatus.Unavailable("engine.reason.download_translator", detail: "http://127.0.0.1:11434");
+                }
+                finally
+                {
+                    Interlocked.Exchange(ref _checkInProgress, 0);
+                }
+            });
+        }
+    }
+
+    private static async Task<bool> CheckOllamaStatusAsync()
+    {
+        try
+        {
+            using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(250));
+            using var res = await SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token);
+            return res.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
@@ -114,7 +197,7 @@ public sealed class TranslatorConverter : IConverter
             await DocumentTranslator.TranslateDocumentAsync(doc, targetLang, sourceLang, service, transProgress, cancellationToken);
         }
 
-        // 3. Write out to requested target format
+        // 3. Write translated model to requested output format
         progress?.Report(0.92);
         var ext = FormatRegistry.FindById(step.To)?.PrimaryExtension ?? step.To;
         var output = step.Output.Allocate(ext);
@@ -164,6 +247,11 @@ public sealed class TranslatorConverter : IConverter
             case "docx":
                 {
                     var document = DocxReader.Read(input, media);
+                    return (new Book(document, new BookMetadata { Title = document.Title }), document);
+                }
+            case "hwpx":
+                {
+                    var document = HwpxReader.Read(input, media);
                     return (new Book(document, new BookMetadata { Title = document.Title }), document);
                 }
             default:

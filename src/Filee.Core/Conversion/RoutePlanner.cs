@@ -90,20 +90,22 @@ public sealed class RoutePlanner
         if (ocr)
             return PlanWithOcr(from, to, shaping);
 
-        if (frames || motionPhoto || livePhoto || caption || translate)
+        if (translate)
+            return PlanWithTranslate(from, to, shaping);
+
+        if (frames || motionPhoto || livePhoto || caption)
         {
-            // One of them: frames, then the video of a photo, then a photo of a video, then caption, then translate.
+            // One of them: frames, then the video of a photo, then a photo of a video, then caption.
             motionPhoto &= !frames;
             livePhoto &= !frames && !motionPhoto;
             caption &= !frames && !motionPhoto && !livePhoto;
-            translate &= !frames && !motionPhoto && !livePhoto && !caption;
             var special = EdgesFrom(from)
-                .Where(e => e.Edge.To == to && (frames ? e.Edge.FrameSequence : motionPhoto ? e.Edge.MotionPhoto : livePhoto ? e.Edge.LivePhoto : caption ? e.Edge.Caption : translate ? e.Edge.Translate : false))
+                .Where(e => e.Edge.To == to && (frames ? e.Edge.FrameSequence : motionPhoto ? e.Edge.MotionPhoto : livePhoto ? e.Edge.LivePhoto : caption ? e.Edge.Caption : false))
                 .OrderBy(e => e.Cost)
                 .FirstOrDefault();
             return special.Converter is null
                 ? null
-                : new Route([new RouteStep(special.Converter, from, to, FrameSequence: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Caption: caption, Translate: translate)],
+                : new Route([new RouteStep(special.Converter, from, to, FrameSequence: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Caption: caption)],
                     special.Cost);
         }
 
@@ -174,6 +176,50 @@ public sealed class RoutePlanner
     /// <param name="caption">Transcribe speech to SRT subtitles using Whisper (see <see cref="Plan"/>).</param>
     public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false) =>
         Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate) is not null;
+
+    private Route? PlanWithTranslate(string from, string to, bool shaping)
+    {
+        var direct = EdgesFrom(from)
+            .Where(e => e.Edge.To == to && e.Edge.Translate)
+            .OrderBy(e => e.Cost)
+            .FirstOrDefault();
+        if (direct.Converter is not null)
+            return new Route([new RouteStep(direct.Converter, from, to, Translate: true)], direct.Cost);
+
+        if (from is "azw3" or "mobi" or "azw" or "prc")
+        {
+            var toEpub = EdgesFrom(from)
+                .Where(e => e.Edge.To == "epub" && e.Edge.Translate)
+                .OrderBy(e => e.Cost)
+                .FirstOrDefault();
+            if (toEpub.Converter is null)
+                return null;
+
+            var translateStep = new RouteStep(toEpub.Converter, from, "epub", Translate: true);
+            if (to == "epub")
+                return new Route([translateStep], toEpub.Cost);
+
+            var rest = Plan("epub", to, shaping: shaping);
+            if (rest is null)
+                return null;
+
+            return new Route([translateStep, .. rest.Steps], toEpub.Cost + rest.Cost);
+        }
+
+        var selfTranslate = EdgesFrom(from)
+            .Where(e => e.Edge.To == from && e.Edge.Translate)
+            .OrderBy(e => e.Cost)
+            .FirstOrDefault();
+        if (selfTranslate.Converter is not null)
+        {
+            var translateStep = new RouteStep(selfTranslate.Converter, from, from, Translate: true);
+            var rest = Plan(from, to, shaping: shaping);
+            if (rest is not null)
+                return new Route([translateStep, .. rest.Steps], selfTranslate.Cost + rest.Cost);
+        }
+
+        return null;
+    }
 
     private Route? PlanWithOcr(string from, string to, bool shaping)
     {

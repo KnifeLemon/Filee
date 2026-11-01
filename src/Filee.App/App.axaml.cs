@@ -181,6 +181,7 @@ public partial class App : Application
             AppHost.Get<TriggerService>().Dispose();
             AppHost.Get<TrayService>().Dispose();
             AppHost.Get<WatchFolderService>().DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            Filee.App.ViewModels.OllamaModelManagerViewModel.StopFileeStartedServer();
         };
 
         // Before HandleCommandLine marks the first run complete: a fresh install gets no slides (an update by the

@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.RegularExpressions;
+using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Microsoft.Extensions.Logging;
@@ -15,8 +17,26 @@ public sealed class TranslationService : ITranslationService
 {
     private static readonly TimeSpan OllamaTimeout = TimeSpan.FromMinutes(2);
     private static readonly Uri LocalOllamaBase = new("http://127.0.0.1:11434");
-    private static readonly HttpClient SharedHttpClient = new() { Timeout = OllamaTimeout };
-    private static readonly HttpClient SharedPingClient = new() { Timeout = TimeSpan.FromMilliseconds(500) };
+
+    private static readonly HttpClient SharedHttpClient = new(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        AllowAutoRedirect = false,
+        ConnectTimeout = TimeSpan.FromSeconds(5)
+    })
+    {
+        Timeout = OllamaTimeout
+    };
+
+    private static readonly HttpClient SharedPingClient = new(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        AllowAutoRedirect = false,
+        ConnectTimeout = TimeSpan.FromMilliseconds(500)
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(2)
+    };
 
     private readonly TranslateOptions _options;
     private readonly ILogger? _logger;
@@ -60,6 +80,19 @@ public sealed class TranslationService : ITranslationService
             || name.IndexOf("cloud", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
+    public static bool IsCloudModelElement(JsonElement modelElement)
+    {
+        if (modelElement.TryGetProperty("name", out var n) && IsCloudModel(n.GetString()))
+            return true;
+        if (modelElement.TryGetProperty("remote_host", out var host) && !string.IsNullOrWhiteSpace(host.GetString()))
+            return true;
+        if (modelElement.TryGetProperty("remote_model", out var rModel) && !string.IsNullOrWhiteSpace(rModel.GetString()))
+            return true;
+        if (modelElement.TryGetProperty("details", out var details) && details.TryGetProperty("parent_model", out var parent) && IsCloudModel(parent.GetString()))
+            return true;
+        return false;
+    }
+
     public static async Task<bool> IsLocalOllamaAvailableAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -89,8 +122,9 @@ public sealed class TranslationService : ITranslationService
             if (doc.RootElement.TryGetProperty("models", out var models) && models.ValueKind == JsonValueKind.Array)
             {
                 var names = models.EnumerateArray()
+                    .Where(m => !IsCloudModelElement(m))
                     .Select(m => m.TryGetProperty("name", out var n) ? n.GetString() : null)
-                    .Where(n => !string.IsNullOrEmpty(n) && !IsCloudModel(n))
+                    .Where(n => !string.IsNullOrEmpty(n))
                     .Select(n => n!)
                     .ToList();
 
@@ -122,21 +156,40 @@ public sealed class TranslationService : ITranslationService
 
         if (!string.IsNullOrWhiteSpace(_options.Model))
         {
-            if (IsCloudModel(_options.Model))
-                throw new InvalidOperationException("Security Block: Cloud-forwarded models (-cloud) are blocked to ensure document text never leaves your computer.");
+            if (IsCloudModel(_options.Model) || await CheckModelRemoteCloudAsync(_options.Model, cancellationToken))
+                throw new ConversionRefusedException("error.translation_cloud_model_forbidden");
             _resolvedModel = _options.Model;
             return _resolvedModel;
         }
 
         var preferred = await GetPreferredLocalOllamaModelAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(preferred))
-            throw new InvalidOperationException("engines.package.translator.no_model");
+            throw new ConversionRefusedException("engines.package.translator.no_model");
 
-        if (IsCloudModel(preferred))
-            throw new InvalidOperationException("Security Block: Cloud-forwarded models (-cloud) are blocked to ensure document text never leaves your computer.");
+        if (IsCloudModel(preferred) || await CheckModelRemoteCloudAsync(preferred, cancellationToken))
+            throw new ConversionRefusedException("error.translation_cloud_model_forbidden");
 
         _resolvedModel = preferred;
         return _resolvedModel;
+    }
+
+    private async Task<bool> CheckModelRemoteCloudAsync(string modelName, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var client = _http ?? SharedHttpClient;
+            var body = new { model = modelName };
+            using var res = await client.PostAsJsonAsync(new Uri(LocalOllamaBase, "/api/show"), body, cancellationToken);
+            if (!res.IsSuccessStatusCode)
+                return false;
+
+            using var doc = await JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            return IsCloudModelElement(doc.RootElement);
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     public async Task<string> TranslateTextAsync(string text, string toLang, string fromLang = "auto", CancellationToken cancellationToken = default)
@@ -159,38 +212,13 @@ public sealed class TranslationService : ITranslationService
         if (texts.Count == 0)
             return [];
 
-        // Ensure model is resolved once before launching batch tasks
         await EnsureModelResolvedAsync(cancellationToken);
-
-        var results = new string[texts.Count];
-        var semaphore = new SemaphoreSlim(4, 4);
-        var tasks = new List<Task>();
-
-        for (var i = 0; i < texts.Count; i++)
+        var results = new List<string>(texts.Count);
+        foreach (var text in texts)
         {
-            var index = i;
-            var text = texts[index];
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                results[index] = text;
-                continue;
-            }
-
-            tasks.Add(Task.Run(async () =>
-            {
-                await semaphore.WaitAsync(cancellationToken);
-                try
-                {
-                    results[index] = await TranslateTextAsync(text, toLang, fromLang, cancellationToken);
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            }, cancellationToken));
+            cancellationToken.ThrowIfCancellationRequested();
+            results.Add(await TranslateTextAsync(text, toLang, fromLang, cancellationToken));
         }
-
-        await Task.WhenAll(tasks);
         return results;
     }
 
@@ -209,6 +237,7 @@ public sealed class TranslationService : ITranslationService
             model,
             prompt,
             stream = false,
+            think = false,
             options = new { temperature = 0.1 }
         };
 
@@ -217,11 +246,16 @@ public sealed class TranslationService : ITranslationService
         response.EnsureSuccessStatusCode();
 
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
-        if (json.RootElement.TryGetProperty("response", out var resp))
-            return resp.GetString()?.Trim() ?? text;
+        if (json.RootElement.TryGetProperty("response", out var resp) && resp.GetString() is { } result && !string.IsNullOrWhiteSpace(result))
+        {
+            return StripThinkTags(result).Trim();
+        }
 
-        return text;
+        throw new InvalidOperationException("Ollama returned an empty response.");
     }
+
+    private static string StripThinkTags(string text) =>
+        Regex.Replace(text, @"<think>.*?</think>", "", RegexOptions.Singleline).Trim();
 
     private static readonly Dictionary<string, string> LanguageMap = new(StringComparer.OrdinalIgnoreCase)
     {
