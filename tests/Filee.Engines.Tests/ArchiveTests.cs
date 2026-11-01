@@ -1,7 +1,8 @@
 // Archive engine: conversions between archive formats (names incl. Korean, folders, contents and times survive),
 // Extract to a folder, "Compress into one archive", Filee's own ALZ / EGG / lzip / bzip2 readers, and the safety
-// checks (zip slip, links, passwords). Tests that need the bundled 7-Zip skip when engines/7zip is missing
-// (pwsh build/fetch-engines.ps1 -Only 7zip).
+// checks (zip slip, links, passwords). Tests that need the bundled 7-Zip (to make their input, or for a format only
+// it reads or writes) skip when engines/7zip is missing (pwsh build/fetch-engines.ps1 -Only 7zip) or hidden with
+// FILEE_HIDE_7ZIP=1; everything else runs in-process. ArchiveInProcessTests covers the in-process readers.
 
 using System.Formats.Tar;
 using System.IO.Compression;
@@ -18,11 +19,9 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private void SkipWithout7Zip()
-    {
-        var engine = fx.Converters.Single(c => c.Id == "archive");
-        Assert.SkipUnless(fx.Catalog.StatusOf(engine).IsAvailable, "7-Zip not found (pwsh build/fetch-engines.ps1 -Only 7zip)");
-    }
+    /// <summary>For tests that make their input with 7-Zip, or convert to or from a format only 7-Zip handles.</summary>
+    private static void SkipWithout7Zip() =>
+        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found (pwsh build/fetch-engines.ps1 -Only 7zip) or hidden (FILEE_HIDE_7ZIP=1)");
 
     private async Task<ConversionJob> ConvertOkAsync(string source, Preset preset)
     {
@@ -59,8 +58,11 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("split")]
     public void Every_readable_archive_converts_in_one_step(string from)
     {
+        if (ArchiveExtractor.SevenZipFormats.Contains(from))
+            SkipWithout7Zip();
         var planner = fx.Catalog.CreatePlanner(["archive"]);
-        foreach (var to in new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz", FormatRegistry.Folder })
+        string[] targets = SevenZipExe is null ? ["zip", "tar", "tgz", FormatRegistry.Folder] : ["zip", "7z", "tar", "tgz", "tbz2", "txz", FormatRegistry.Folder];
+        foreach (var to in targets)
         {
             var route = planner.Plan(from, to);
             Assert.NotNull(route);
@@ -72,9 +74,13 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void Single_file_compressors_convert_among_each_other_but_archives_do_not_shrink_to_them()
     {
         var planner = fx.Catalog.CreatePlanner(["archive"]);
-        Assert.Single(planner.Plan("gz", "xz")!.Steps);
-        Assert.Single(planner.Plan("lzma", "bz2")!.Steps);
         Assert.Single(planner.Plan("lz", "gz")!.Steps);
+        Assert.Single(planner.Plan("xz", "gz")!.Steps);
+        if (SevenZipExe is not null)
+        {
+            Assert.Single(planner.Plan("gz", "xz")!.Steps);
+            Assert.Single(planner.Plan("lzma", "bz2")!.Steps);
+        }
         Assert.Null(planner.Plan("zip", "gz"));  // several files do not fit into one .gz
         Assert.Null(planner.Plan("zip", "rar")); // RAR cannot be written
         Assert.Null(planner.Plan("lzo", "zip")); // no LZO reader
@@ -156,7 +162,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Extract_does_not_nest_a_single_top_folder_and_renames_on_conflict()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var tree = MakeTree(dir, "photos");
         var expected = Snapshot(tree);
@@ -180,7 +185,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Extract_keeps_several_top_entries_in_a_folder_named_after_the_archive_and_unpacks_tar_gz_fully()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var tree = MakeTree(dir, "tree");
         var tgz = Path.Combine(dir, "backup.tar.gz");
@@ -216,7 +220,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Extract_with_overwrite_merges_into_the_existing_folder_and_skip_leaves_it_alone()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var tree = MakeTree(dir, "data");
         var zip = Path.Combine(dir, "data.zip");
@@ -243,7 +246,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Tar_symbolic_links_are_not_unpacked()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var tar = Path.Combine(dir, "links.tar");
         await using (var stream = File.Create(tar))
@@ -261,7 +263,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Zip_slip_entries_are_rejected()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var inner = Directory.CreateDirectory(Path.Combine(dir, "inner")).FullName;
         var zip = Path.Combine(inner, "evil.zip");
@@ -304,7 +305,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Damaged_and_fake_archives_fail_cleanly()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var fake = Path.Combine(dir, "fake.zip");
         await File.WriteAllTextAsync(fake, "this is not a zip", Ct);
@@ -405,7 +405,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Alz_with_stored_deflated_and_bzip2_entries_and_korean_names()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var big = Words(2_000_000); // three 900k bzip2 blocks
         var small = Encoding.UTF8.GetBytes("알집 테스트 ALZ");
@@ -449,7 +448,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Egg_with_store_deflate_bzip2_lzma_and_multi_block_entries()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var text = Words(30_000);
         var part1 = Words(5_000);
@@ -477,7 +475,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Solid_egg_archives_fail_with_a_clear_message()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var egg = Path.Combine(dir, "solid.egg");
         WriteEgg(egg, [new("a.txt", false, new EggBlock([1, 2, 3], 0))], solid: true);
@@ -491,7 +488,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Lzip_files_and_tar_lz_are_unpacked()
     {
-        SkipWithout7Zip();
         var dir = fx.NewFolder();
         var first = Words(40_000);
         var second = Noise(3_000, 9);
@@ -519,7 +515,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Bzip2_decoder_reads_standard_multi_block_streams()
     {
-        Assert.SkipUnless(SevenZipExe is not null, "7-Zip not found");
         var dir = fx.NewFolder();
         var data = Words(2_500_000);
         var bz2 = await Bzip2Async(data, dir);
@@ -631,7 +626,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task A_workbench_wbpz_archive_keeps_every_entry_when_converted_to_zip()
     {
-        SkipWithout7Zip();
         var input = Path.Combine(fx.NewFolder(), "project.wbpz");
         var expected = new Dictionary<string, byte[]>
         {
@@ -667,7 +661,6 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task A_wbpz_that_is_no_archive_fails()
     {
-        SkipWithout7Zip();
         var input = Path.Combine(fx.NewFolder(), "invalid.wbpz");
         await File.WriteAllTextAsync(input, "This is not an archive.", TestContext.Current.CancellationToken);
         var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "zip" });

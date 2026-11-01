@@ -12,7 +12,9 @@ using System.IO.Compression;
 using System.Security;
 using System.Text;
 using System.Xml.Linq;
+using Filee.Core.Presets;
 using Filee.Engines.Magick;
+using Filee.Engines.Metafiles;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx;
@@ -116,9 +118,16 @@ internal sealed partial class HwpxWriter
                     using var source = File.OpenRead(path);
                     source.CopyTo(target);
                 }
+                else if (Metafile.IsMetafile(path))
+                {
+                    // EMF / WMF → PNG with Filee's own metafile renderer, on every platform (ImageMagick reads them only
+                    // through GDI+ on Windows).
+                    using var frames = ImageReader.Read(path, Metafile.Detect(Head(path)) == MetafileFormat.Emf ? "emf" : "wmf", new Preset());
+                    frames[0].Write(target, MagickFormat.Png);
+                }
                 else
                 {
-                    // WEBP, TIFF, SVG, EMF, WMF ... → PNG, which 한글 always displays.
+                    // WEBP, TIFF, SVG ... → PNG, which 한글 always displays.
                     using var image = new MagickImage(path);
                     DdsChannelOrder.Correct(path, image);
                     image.Write(target, MagickFormat.Png);
@@ -126,6 +135,14 @@ internal sealed partial class HwpxWriter
             }
         }
         File.Move(temp, outputPath, overwrite: true);
+    }
+
+    /// <summary>The first bytes of a file, enough to tell EMF from WMF.</summary>
+    private static byte[] Head(string path)
+    {
+        var head = new byte[44];
+        using var stream = File.OpenRead(path);
+        return head[..stream.ReadAtLeast(head, head.Length, throwOnEndOfStream: false)];
     }
 
     /// <summary>Opening tag of a section part, declaring the same namespaces as header.xml (as 한글 does).</summary>

@@ -1,6 +1,10 @@
-// Unpacks every archive format Filee reads into a folder: the bundled 7-Zip for most of them, Filee's own readers for
-// ALZ, EGG and lzip. Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked stage by stage until the
-// files appear. Every stage is checked first (encryption, paths leaving the folder, disk space) and links are removed.
+// Unpacks every archive format Filee reads into a folder. In-process first: SharpCompress (ZIP, 7z, RAR), .NET's TAR
+// reader, gzip / bzip2 / xz / LZMA / zstd decoders, and Filee's own readers (ALZ, EGG, lzip, Unix compress, ar / DEB,
+// cpio, RPM, ISO 9660). The bundled 7-Zip reads what is left (CAB, DMG, IMG, LHA, ARJ, UDF discs; solid 7z with several
+// files too, which SharpCompress decodes far slower, see LibraryArchives.IsSolidSevenZip) and is asked again
+// when an in-process reader meets a feature it lacks or damage it can't read past; deliberate refusals (password,
+// paths leaving the folder, bombs) are final. Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked
+// stage by stage until the files appear. Every stage is listed and checked first, and links are removed.
 
 using Filee.Core.Formats;
 
@@ -9,18 +13,25 @@ namespace Filee.Engines.Archives;
 /// <summary>Unpacks archives into scratch folders.</summary>
 internal sealed class ArchiveExtractor(SevenZip? sevenZip)
 {
-    /// <summary>Formats read by 7-Zip.</summary>
-    public static readonly IReadOnlyList<string> SevenZipFormats =
+    /// <summary>Formats read in-process (the bundled 7-Zip only as a fallback).</summary>
+    public static readonly IReadOnlyList<string> BuiltInFormats =
     [
-        "zip", "jar", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z",
-        "cab", "cpio", "deb", "rpm", "dmg", "iso", "img", "lha", "arj", "split",
+        "zip", "jar", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "tlz", "gz", "bz2", "xz", "lzma", "z",
+        "lz", "cpio", "deb", "rpm", "iso", "alz", "egg", "split",
     ];
 
-    /// <summary>Formats read by Filee's own code (lzip still needs 7-Zip's LZMA decoder).</summary>
-    public static readonly IReadOnlyList<string> BuiltInFormats = ["alz", "egg", "lz", "tlz"];
+    /// <summary>Formats only the bundled 7-Zip reads.</summary>
+    public static readonly IReadOnlyList<string> SevenZipFormats = ["cab", "dmg", "img", "lha", "arj"];
 
-    /// <summary>Everything that can be unpacked.</summary>
-    public static IEnumerable<string> ReadableFormats => SevenZipFormats.Concat(BuiltInFormats);
+    /// <summary>Everything that can be unpacked when 7-Zip is there.</summary>
+    public static IEnumerable<string> ReadableFormats => BuiltInFormats.Concat(SevenZipFormats);
+
+    /// <summary>Formats 7-Zip can read too, so it may try again after an in-process reader gave up.</summary>
+    private static readonly HashSet<string> SevenZipAlsoReads =
+    [
+        "zip", "jar", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z", "cpio",
+        "deb", "rpm", "iso", "split",
+    ];
 
     /// <summary>A TAR inside a compressed stream (or a 7z): unpacking the outer layer yields one .tar file.</summary>
     private static readonly HashSet<string> TarWrapped = ["tgz", "tbz2", "txz", "tar7z", "tz", "tlz"];
@@ -60,28 +71,122 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip)
 
     private async Task ExtractOnceAsync(string archive, string format, string folder, string scratchRoot, CancellationToken cancellationToken)
     {
-        var name = Path.GetFileName(archive);
+        if (SevenZipFormats.Contains(format)
+            || sevenZip is not null && (format == "iso" && IsoReader.HasUdf(archive) || format == "7z" && LibraryArchives.IsSolidSevenZip(archive)))
+        {
+            await WithSevenZipAsync(archive, folder, scratchRoot, cancellationToken);
+            return;
+        }
+        try
+        {
+            await Task.Run(() => ExtractInProcess(archive, format, folder, cancellationToken), cancellationToken);
+        }
+        catch (Exception ex) when (MayRetry(ex) && SevenZipAlsoReads.Contains(format) && sevenZip is not null)
+        {
+            ArchiveFiles.TryDeleteFolder(folder);
+            Directory.CreateDirectory(folder);
+            await WithSevenZipAsync(archive, folder, scratchRoot, cancellationToken);
+        }
+        catch (Exception ex) when (MayRetry(ex))
+        {
+            throw Explain(ex, Path.GetFileName(archive), SevenZipAlsoReads.Contains(format));
+        }
+    }
+
+    /// <summary>Unpacks one layer with the in-process readers.</summary>
+    internal static void ExtractInProcess(string archive, string format, string folder, CancellationToken cancellationToken)
+    {
         switch (format)
         {
             case "alz":
-                await Task.Run(() => AlzReader.Extract(archive, folder, cancellationToken), cancellationToken);
+                AlzReader.Extract(archive, folder, cancellationToken);
                 break;
             case "egg":
-                await EggReader.ExtractAsync(archive, folder, sevenZip, scratchRoot, cancellationToken);
+                EggReader.Extract(archive, folder, cancellationToken);
                 break;
             case "lz":
             case "tlz":
-                var output = FormatRegistry.NameWithoutExtension(archive) + (format == "tlz" ? ".tar" : "");
-                await LzipReader.DecompressAsync(archive, Path.Combine(folder, output), Require(), scratchRoot, cancellationToken);
+                LzipReader.Decompress(archive, Path.Combine(folder, CompressedFile.OutputName(archive, tar: format == "tlz")), cancellationToken);
+                break;
+            case "tar":
+                TarArchiveReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "cpio":
+                CpioReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "deb":
+                ArReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "rpm":
+                RpmReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "iso":
+                IsoReader.Extract(archive, folder, cancellationToken);
+                break;
+            case "split":
+                ExtractSplit(archive, folder, cancellationToken);
+                break;
+            case "zip":
+            case "jar":
+            case "7z":
+            case "rar":
+            case "tar7z":
+                LibraryArchives.Extract(archive, folder, cancellationToken);
                 break;
             default:
-                var tool = Require();
-                var entries = await tool.ListAsync(archive, cancellationToken);
-                ArchiveSafety.CheckListing(entries, name, folder);
-                var links = entries.Where(e => e.IsSymbolicLink).Select(e => e.Path).ToList();
-                await tool.ExtractAsync(archive, folder, links, scratchRoot, cancellationToken);
+                if (!CompressedFile.Formats.Contains(format))
+                    throw new NotSupportedException($"Filee has no built-in reader for {format}.");
+                CompressedFile.Decompress(archive, format, Path.Combine(folder, CompressedFile.OutputName(archive, TarWrapped.Contains(format))), cancellationToken);
                 break;
         }
+    }
+
+    /// <summary>The volumes as one stream: a TAR goes to the TAR reader, 7z, ZIP and RAR to SharpCompress.</summary>
+    private static void ExtractSplit(string archive, string folder, CancellationToken cancellationToken)
+    {
+        var name = Path.GetFileName(archive);
+        using var volumes = SplitVolumes.Open(archive);
+        Span<byte> header = stackalloc byte[262];
+        var read = volumes.ReadAtLeast(header, header.Length, throwOnEndOfStream: false);
+        volumes.Position = 0;
+        if (read == header.Length && header[257..262].SequenceEqual("ustar"u8))
+            TarArchiveReader.Extract(volumes, name, folder, cancellationToken);
+        else
+            LibraryArchives.Extract(volumes, name, folder, cancellationToken);
+    }
+
+    private async Task WithSevenZipAsync(string archive, string folder, string scratchRoot, CancellationToken cancellationToken)
+    {
+        var tool = sevenZip ?? throw new InvalidDataException(
+            $"{Path.GetFileName(archive)} needs the bundled 7-Zip (engines/7zip), which was not found.");
+        var entries = await tool.ListAsync(archive, cancellationToken);
+        ArchiveSafety.CheckListing(entries, Path.GetFileName(archive), new FileInfo(archive).Length, folder);
+        var links = entries.Where(e => e.IsSymbolicLink).Select(e => e.Path).ToList();
+        await tool.ExtractAsync(archive, folder, links, scratchRoot, cancellationToken);
+    }
+
+    /// <summary>
+    /// True for failures 7-Zip may get past: damage, a method or feature the in-process reader lacks. Not for
+    /// refusals, cancellation or a full or unwritable disk.
+    /// </summary>
+    private static bool MayRetry(Exception ex) => !ArchiveSafety.IsRefusal(ex) && ex switch
+    {
+        OperationCanceledException or UnauthorizedAccessException or OutOfMemoryException => false,
+        EndOfStreamException => true,
+        IOException => false,
+        _ => true,
+    };
+
+    /// <summary>The message for an in-process failure when 7-Zip can't try: Filee's own, or a "damaged" one.</summary>
+    private static Exception Explain(Exception ex, string name, bool sevenZipWouldTry)
+    {
+        if (ex is InvalidDataException && ex.Message.Contains(name, StringComparison.Ordinal))
+            return ex;
+        if (ex is NotSupportedException)
+            return new InvalidDataException(sevenZipWouldTry
+                ? $"{name} uses something Filee's built-in reader does not unpack ({ex.Message.TrimEnd('.')}); the bundled 7-Zip may, but it was not found."
+                : $"{name} could not be unpacked: {ex.Message}", ex);
+        return ArchiveSafety.Damaged(name, ex.Message.TrimEnd('.'));
     }
 
     /// <summary>The single archive file a stage produced that must be unpacked as well, or null when done.</summary>
@@ -115,6 +220,4 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip)
         return stream.ReadAtLeast(header, header.Length, throwOnEndOfStream: false) == header.Length
                && header[257..262].SequenceEqual("ustar"u8);
     }
-
-    private SevenZip Require() => sevenZip ?? throw new InvalidOperationException("7-Zip was not found (engines/7zip).");
 }

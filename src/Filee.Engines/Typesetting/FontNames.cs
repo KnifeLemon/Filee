@@ -89,4 +89,20 @@ internal static class FontNames
     public static IReadOnlyList<string> Monospace { get; } =
         ["Consolas", "Cascadia Mono", "D2Coding", "Courier New", "Menlo", "SF Mono", "DejaVu Sans Mono", "Liberation Mono",
             "Noto Sans Mono", "GulimChe"];
+
+    /// <summary>The generic monospaced family, for code that names no font.</summary>
+    public const string MonospaceFamily = "monospace";
+
+    /// <summary>
+    /// A family that is monospaced by its name: one of <see cref="Monospace"/>, or a name saying so ("... Mono",
+    /// "... Code", Courier, the fixed-width "...Che" faces such as GulimChe). A missing one is replaced by an installed monospaced font.
+    /// </summary>
+    public static bool IsMonospace(string family)
+    {
+        var name = family.Trim();
+        return Monospace.Contains(name, StringComparer.OrdinalIgnoreCase)
+               || name.Contains("Mono", StringComparison.OrdinalIgnoreCase) || name.Contains("Code", StringComparison.OrdinalIgnoreCase)
+               || name.Contains("Courier", StringComparison.OrdinalIgnoreCase) || name.Contains("Consol", StringComparison.OrdinalIgnoreCase)
+               || name.EndsWith("Che", StringComparison.Ordinal);
+    }
 }

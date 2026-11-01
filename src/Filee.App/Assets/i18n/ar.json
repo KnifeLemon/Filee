@@ -187,6 +187,8 @@
   "engine.docx-writer.description": "إنشاء مستندات Word ‏(DOCX) من PDF وOFD وHWP/HWPX وMarkdown وHTML وجداول البيانات والعروض والكتب الإلكترونية.",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "إنشاء مستندات نصية OpenDocument ‏(ODT) من مستندات Word وPDF وOFD وHWP/HWPX وMarkdown وHTML وجداول البيانات والعروض والكتب الإلكترونية.",
+  "engine.markup.name": "Markup languages (built-in)",
+  "engine.markup.description": "دفاتر Jupyter وOPML وTextile وMediaWiki وreStructuredText وOrg وDocBook دون Pandoc.\nتحويل المستندات إلى هذه الصيغ، وتحويلها إلى Markdown وHTML ونص وDOCX وHWPX وPDF.",
   "engine.pptx-writer.name": "كاتب PPTX (مدمج)",
   "engine.pptx-writer.description": "ينشئ شرائح PowerPoint ‏(PPTX) من ملفات Markdown ولغات الترميز ومستندات Word وODT وHWP/HWPX وHTML وجداول البيانات والكتب الإلكترونية: شريحة لكل عنوان، مع القوائم والجداول والصور والتعليمات البرمجية.",
   "engine.pdf-text.name": "PDF text (built-in)",

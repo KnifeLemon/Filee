@@ -2,7 +2,8 @@
 // Adds Markdown ↔ DOCX / ODT / RTF, HTML ↔ DOCX / ODT, the markup languages (reStructuredText, LaTeX, Org, AsciiDoc,
 // Typst, MediaWiki, DocBook, Jupyter notebooks, Textile, man pages, OPML) ↔ Markdown / HTML / DOCX / ODT and each
 // other (and → RTF, EPUB, TXT), and Markdown and the lightweight markups → PPTX slides. Markdown → HTML / TXT / HWPX /
-// DOCX is built in (MarkdownConverter, the HWPX and DOCX writers). Pictures of a text result are extracted into a
+// DOCX is built in (MarkdownConverter, the HWPX and DOCX writers), and so are the markup languages Filee reads and
+// writes itself (MarkupConverter), whose cheaper edges win. Pictures of a text result are extracted into a
 // "<name>_files" folder next to it and linked relative to it (EMF/WMF become PNG); Markdown with "Leave out pictures"
 // gets none (a Lua filter drops them). Markdown stays free of HTML: tables come out as plain pipe tables (a Lua
 // filter splits merged cells) and pictures as ![](…).

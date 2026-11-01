@@ -187,6 +187,8 @@
   "engine.docx-writer.description": "PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडसिट, स्लाइड र इ-पुस्तकबाट Word कागजातहरू (DOCX) लेख्छ।",
   "engine.odt-writer.name": "ODT writer (built-in)",
   "engine.odt-writer.description": "Word कागजात, PDF, OFD, HWP/HWPX, Markdown, HTML, स्प्रेडसिट, स्लाइड र इ-पुस्तकबाट OpenDocument पाठ (ODT) लेख्छ।",
+  "engine.markup.name": "Markup languages (built-in)",
+  "engine.markup.description": "Pandoc बिना Jupyter नोटबुक, OPML, Textile, MediaWiki, reStructuredText, Org र DocBook पढ्छ र लेख्छ।\nकागजातलाई यी ढाँचामा, र यिनलाई Markdown, HTML, पाठ, DOCX, HWPX र PDF मा रूपान्तरण गर्दछ।",
   "engine.pptx-writer.name": "PPTX लेखक (भित्री)",
   "engine.pptx-writer.description": "Markdown र मार्कअप फाइल, Word कागजात, ODT, HWP/HWPX, HTML, स्प्रेडसिट र इ-पुस्तकबाट PowerPoint स्लाइड (PPTX) बनाउँछ: हरेक शीर्षकका लागि एउटा स्लाइड, सूची, तालिका, चित्र र कोडसहित।",
   "engine.pdf-text.name": "PDF text (built-in)",

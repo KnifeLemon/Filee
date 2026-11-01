@@ -194,6 +194,8 @@
   "engine.docx-writer.description": "Grava documentos do Word (DOCX) a partir de PDF, OFD, HWP/HWPX, Markdown, HTML, planilhas, slides e e-books.",
   "engine.odt-writer.name": "Gerador ODT (mecanismo integrado)",
   "engine.odt-writer.description": "Grava documentos de texto OpenDocument (ODT) a partir de documentos do Word, PDF, OFD, HWP/HWPX, Markdown, HTML, planilhas, slides e e-books.",
+  "engine.markup.name": "Linguagens de marcação (mecanismo integrado)",
+  "engine.markup.description": "Notebooks Jupyter, OPML, Textile, MediaWiki, reStructuredText, Org e DocBook sem Pandoc.\nDocumentos para esses formatos e eles para Markdown, HTML, texto, DOCX, HWPX e PDF.",
   "engine.pptx-writer.name": "Gerador PPTX (mecanismo integrado)",
   "engine.pptx-writer.description": "Cria slides do PowerPoint (PPTX) a partir de arquivos Markdown e de marcação, documentos do Word, ODT, HWP/HWPX, HTML, planilhas e e-books: um slide por título, com listas, tabelas, imagens e código.",
   "engine.pdf-text.name": "Texto de PDF (mecanismo integrado)",
