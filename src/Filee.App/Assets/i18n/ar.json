@@ -278,6 +278,8 @@
   "hide.pixelate_hint": "التغطية بمربعات بمتوسط الألوان (P)",
   "hide.blur": "تمويه",
   "hide.blur_hint": "التغطية بتمويه قوي (B)",
+  "hide.box": "مربع أسود",
+  "hide.box_hint": "تغطية بمربع أسود معتم (X)",
   "hide.strength": "الشدة",
   "hide.strength_value": "الشدة {0} من 10 (− / +)",
   "hide.remove": "إزالة الإطار",

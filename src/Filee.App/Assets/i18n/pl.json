@@ -287,6 +287,8 @@
   "hide.pixelate_hint": "Zakryj kwadratami w średnim kolorze (P)",
   "hide.blur": "Rozmycie",
   "hide.blur_hint": "Zakryj mocnym rozmyciem (B)",
+  "hide.box": "Czarny prostokąt",
+  "hide.box_hint": "Zakryj czarnym prostokątem (X)",
   "hide.strength": "Siła",
   "hide.strength_value": "Siła {0} z 10 (− / +)",
   "hide.remove": "Usuń ramkę",

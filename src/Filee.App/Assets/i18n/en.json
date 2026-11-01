@@ -287,6 +287,8 @@
   "hide.pixelate_hint": "Cover with squares of the average colour (P)",
   "hide.blur": "Blur",
   "hide.blur_hint": "Cover with a strong blur (B)",
+  "hide.box": "Black box",
+  "hide.box_hint": "Cover with a solid black box (X)",
   "hide.strength": "Strength",
   "hide.strength_value": "Strength {0} of 10 (− / +)",
   "hide.remove": "Remove frame",

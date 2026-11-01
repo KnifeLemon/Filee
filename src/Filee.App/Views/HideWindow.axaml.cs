@@ -225,6 +225,10 @@ public partial class HideWindow : Window
                 vm.SetStyle(HideStyle.Blur);
                 e.Handled = true;
                 break;
+            case Key.X when plain && editing:
+                vm.SetStyle(HideStyle.Box);
+                e.Handled = true;
+                break;
             case Key.OemPlus or Key.Add when (plain || e.KeyModifiers == KeyModifiers.Shift) && editing:
                 vm.StepStrength(1);
                 e.Handled = true;

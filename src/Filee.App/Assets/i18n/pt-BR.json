@@ -288,6 +288,8 @@
   "hide.pixelate_hint": "Cobrir com quadrados da cor média (P)",
   "hide.blur": "Desfocar",
   "hide.blur_hint": "Cobrir com um desfoque forte (B)",
+  "hide.box": "Tarja preta",
+  "hide.box_hint": "Cobrir com uma tarja preta opaca (X)",
   "hide.strength": "Intensidade",
   "hide.strength_value": "Intensidade {0} de 10 (− / +)",
   "hide.remove": "Remover moldura",

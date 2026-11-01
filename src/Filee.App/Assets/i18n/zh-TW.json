@@ -287,6 +287,8 @@
   "hide.pixelate_hint": "以平均色方塊遮蓋 (P)",
   "hide.blur": "模糊",
   "hide.blur_hint": "以強烈模糊遮蓋 (B)",
+  "hide.box": "黑框",
+  "hide.box_hint": "用純黑方塊完全遮住 (X)",
   "hide.strength": "強度",
   "hide.strength_value": "強度 {0} / 10（− / +）",
   "hide.remove": "刪除選框",

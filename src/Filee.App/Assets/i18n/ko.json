@@ -287,6 +287,8 @@
   "hide.pixelate_hint": "평균 색 네모로 가리기 (P)",
   "hide.blur": "흐림",
   "hide.blur_hint": "강하게 흐려서 가리기 (B)",
+  "hide.box": "검은 상자",
+  "hide.box_hint": "검은 상자로 완전히 가리기 (X)",
   "hide.strength": "세기",
   "hide.strength_value": "세기 {0} / 10 (− / +)",
   "hide.remove": "틀 지우기",

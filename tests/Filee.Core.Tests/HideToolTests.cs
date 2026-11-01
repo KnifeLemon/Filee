@@ -179,6 +179,26 @@ public class HideToolTests
     }
 
     [Fact]
+    public void Each_part_keeps_its_own_style_through_the_conversion_and_saving()
+    {
+        var tool = Tool();
+        HideTool.Remember(tool, HideStyle.Box, 5);
+        var boxed = Area(0.1, 0.2, 0.3, 0.4);
+        boxed.Style = HideStyle.Box;
+        var blurred = Area(0.5, 0.5, 0.6, 0.6); // runs off the picture: clamped, its style kept
+        blurred.Style = HideStyle.Blur;
+
+        var conversion = HideTool.ConversionOf(tool, "png", [boxed, blurred, Area(0, 0, 0.1, 0.1)]);
+        var json = JsonSerializer.Serialize(new List<Preset> { conversion }, FileeJsonContext.Default.ListPreset);
+        var read = JsonSerializer.Deserialize(json, FileeJsonContext.Default.ListPreset)!.Single();
+
+        Assert.Equal([HideStyle.Box, HideStyle.Blur, null], read.Image.HiddenAreas!.Select(a => a.Style));
+        Assert.Equal(0.5, read.Image.HiddenAreas![1].Width, 9);
+        Assert.Equal(HideStyle.Box, read.Image.HideStyle);
+        Assert.Contains("\"style\": \"Box\"", json);
+    }
+
+    [Fact]
     public void A_style_from_a_newer_Filee_reads_as_pixelate_instead_of_failing_the_whole_file()
     {
         var json = JsonSerializer.Serialize(new List<Preset> { Tool() }, FileeJsonContext.Default.ListPreset)

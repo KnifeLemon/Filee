@@ -278,6 +278,8 @@
 "hide.pixelate_hint": "Copri con quadratini del colore medio (P)",
 "hide.blur": "Sfoca",
 "hide.blur_hint": "Copri con una forte sfocatura (B)",
+"hide.box": "Riquadro nero",
+"hide.box_hint": "Copri con un riquadro nero pieno (X)",
 "hide.strength": "Intensità",
 "hide.strength_value": "Intensità {0} di 10 (− / +)",
 "hide.remove": "Rimuovi riquadro",

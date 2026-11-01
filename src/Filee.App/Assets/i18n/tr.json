@@ -278,6 +278,8 @@
   "hide.pixelate_hint": "Ortalama renkteki karelerle kapat (P)",
   "hide.blur": "Bulanıklaştır",
   "hide.blur_hint": "Güçlü bir bulanıklıkla kapat (B)",
+  "hide.box": "Siyah kutu",
+  "hide.box_hint": "Düz siyah bir kutuyla kapat (X)",
   "hide.strength": "Güç",
   "hide.strength_value": "Güç {0} / 10 (− / +)",
   "hide.remove": "Çerçeveyi sil",

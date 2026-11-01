@@ -287,6 +287,8 @@
   "hide.pixelate_hint": "Закрыть квадратами среднего цвета (P)",
   "hide.blur": "Размытие",
   "hide.blur_hint": "Закрыть сильным размытием (B)",
+  "hide.box": "Чёрный блок",
+  "hide.box_hint": "Закрыть сплошным чёрным блоком (X)",
   "hide.strength": "Сила",
   "hide.strength_value": "Сила {0} из 10 (− / +)",
   "hide.remove": "Удалить рамку",
