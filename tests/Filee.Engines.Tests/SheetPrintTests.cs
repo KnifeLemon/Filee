@@ -720,7 +720,6 @@ public sealed class SheetPrintTests(EngineFixture fx) : IClassFixture<EngineFixt
         // CSV has no page setup: it keeps the HWPX writer's fitted tables. Spreadsheet ↔ spreadsheet stays as it was.
         Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("csv", "pdf")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("tsv", "pdf")!.Steps.Select(s => s.Converter.Id));
-        Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("pptx", "pdf")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal("spreadsheet", Assert.Single(planner.Plan("xlsx", "ods")!.Steps).Converter.Id);
         Assert.Equal(["hwpx-writer"], planner.Plan("xlsx", "hwpx")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal(["hwpx-writer", "rhwp"], planner.Plan("docx", "pdf")!.Steps.Select(s => s.Converter.Id));

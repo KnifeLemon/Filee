@@ -41,6 +41,38 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     public void HwpReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("hwp", "hwp", HwpSeeds(), (path, media) => HwpReader.ReadForLayout(path, media), (seed, random) => new HwpFuzzer(seed, random).Next);
 
+    /// <summary>The slide reader, the slide capability check and the slide renderer on mutated decks.</summary>
+    [Fact]
+    public void Slide_reader_reads_or_refuses_every_mutated_deck() =>
+        Fuzz("pptx-slides", "pptx", SlideSeeds(), (path, _) =>
+        {
+            Slides.SlideCapabilities.FirstUnsupported(path);
+            var deck = Slides.PptxSlideReader.Read(path);
+            using var shaper = new Typesetting.Shaper();
+            using var renderer = new Slides.SlideRenderer(new Typesetting.FontResolver(), shaper);
+            foreach (var slide in deck.Slides)
+            {
+                using var bitmap = renderer.Render(deck, slide).Render(12);
+            }
+        });
+
+    /// <summary>A deck with placeholders, preset and custom shapes, a connector, a picture, a table and a group.</summary>
+    private List<byte[]> SlideSeeds()
+    {
+        var deck = new SlideDeckBuilder();
+        var picture = deck.Media(SlideDeckBuilder.TestPicture(16, 10));
+        deck.Slide(deck.Placeholder("ctrTitle", SlideDeckBuilder.Paragraph("제목")) + deck.Placeholder("subTitle", SlideDeckBuilder.Paragraph("Subtitle"), 1),
+                SlideDeckBuilder.Layout.Title)
+            .Slide(deck.Shape("wedgeRoundRectCallout", 10, 10, 200, 100, paragraphs: SlideDeckBuilder.Paragraph("Callout")) +
+                   deck.Connector("bentConnector3", 220, 10, 100, 80, "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"000000\"/></a:solidFill><a:tailEnd type=\"triangle\"/></a:ln>") +
+                   deck.Picture("rIdPic", 10, 200, 160, 100, "<a:srcRect l=\"10000\"/>") +
+                   deck.Table(300, 200, [80, 80], 30, [SlideDeckBuilder.Cell("A") + SlideDeckBuilder.Cell("B")]) +
+                   deck.Group(500, 10, 100, 100, 0.5, deck.Shape("star5", 0, 0, 200, 200, styled: true)), SlideDeckBuilder.Layout.Content,
+                pictures: new Dictionary<string, string> { ["rIdPic"] = picture });
+        var path = deck.Save(Path.Combine(fx.NewFolder(), "seed.pptx"));
+        return [File.ReadAllBytes(path)];
+    }
+
     [Fact]
     public void SheetPrinter_prints_or_refuses_every_mutated_xlsx() =>
         Fuzz("xlsx-print", "xlsx", [File.ReadAllBytes(SheetPrintTests.RichXlsx(fx.NewFolder()))],
