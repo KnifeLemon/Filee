@@ -14,6 +14,15 @@ namespace Filee.Engines.Hwp.Hwpx;
 internal sealed class HDocument
 {
     public string? Title { get; set; }
+
+    /// <summary>
+    /// Subtitle, authors and date from the source's metadata (a Markdown YAML block, Pandoc's meta), or null / empty.
+    /// Only the PPTX writer uses them, for its title slide.
+    /// </summary>
+    public string? Subtitle { get; set; }
+    public List<string> Authors { get; } = [];
+    public string? Date { get; set; }
+
     public List<HSection> Sections { get; } = [];
 
     /// <summary>Custom East Asian line breaking characters (Word settings), by language; empty = the usual rules.</summary>
@@ -43,6 +52,16 @@ internal sealed class HSection
     /// <summary>Master pages (한글 바탕쪽) drawn behind the body of the section's pages.</summary>
     public List<HMasterPage> MasterPages { get; } = [];
 
+    /// <summary>No master page on the section's first page (한글 hideFirstMasterPage).</summary>
+    public bool HideFirstMasterPage { get; set; }
+
+    /// <summary>Page borders and backgrounds (한글 쪽 테두리/배경) for both, odd or even pages.</summary>
+    public List<HPageBorder> PageBorders { get; } = [];
+
+    /// <summary>Which of the section's pages show their page border and their page background (hp:visibility).</summary>
+    public HFirstPageRule PageBorderShows { get; set; }
+    public HFirstPageRule PageFillShows { get; set; }
+
     /// <summary>How the section's footnotes and endnotes are numbered and set (한글 각주 모양, 미주 모양).</summary>
     public HNoteShape Footnotes { get; set; } = HNoteShape.Footnote;
     public HNoteShape Endnotes { get; set; } = HNoteShape.Endnote;
@@ -65,7 +84,45 @@ internal sealed record HPage(int Width, int Height, int Left, int Right, int Top
 
 /// <summary>Newspaper-style columns.</summary>
 /// <summary>What a page hides (한글 hp:pageHiding).</summary>
-internal sealed record HPageHiding(bool Header, bool Footer);
+internal sealed record HPageHiding(bool Header, bool Footer, bool MasterPage = false, bool Border = false, bool Fill = false);
+
+/// <summary>Pages of a section something shows on: all, all but the first, or only the first.</summary>
+internal enum HFirstPageRule
+{
+    All,
+    HideFirst,
+    OnlyFirst,
+}
+
+/// <summary>Where a page background is painted (한글 채울 영역).</summary>
+internal enum HPageFillArea
+{
+    /// <summary>The whole paper.</summary>
+    Paper,
+
+    /// <summary>The page inside its margins (header and footer areas included).</summary>
+    Page,
+
+    /// <summary>Inside the page border.</summary>
+    Border,
+}
+
+/// <summary>
+/// A page border and background (한글 hp:pageBorderFill). The border lies around the body, grown by
+/// <paramref name="Offsets"/> (and around the header and footer areas when they are inside), or
+/// <paramref name="Offsets"/> in from the paper's edges.
+/// </summary>
+/// <param name="AroundBody">
+/// The border is placed against the body (OWPML textBorder="PAPER", as 한글 prints it), else against the paper's
+/// edges ("CONTENT").
+/// </param>
+/// <param name="Picture">A picture filling the area (a file read for layout), drawn over <paramref name="Fill"/>.</param>
+internal sealed record HPageBorder(HPageType Pages, HBorders Borders, string? Fill, string? Picture, HInsets Offsets, bool AroundBody,
+    bool HeaderInside, bool FooterInside, HPageFillArea FillArea)
+{
+    /// <summary>Draws nothing.</summary>
+    public bool IsEmpty => Fill is null && Picture is null && Borders == HBorders.Empty;
+}
 
 internal sealed record HColumns(int Count, int Gap, bool Separator)
 {
@@ -128,6 +185,28 @@ internal abstract class HBlock
 {
     /// <summary>The page this block is on hides its header or footer (한글 쪽 감추기); null = none. Read for layout only.</summary>
     public HPageHiding? PageHiding { get; set; }
+
+    /// <summary>What the block was in a markup source (<see cref="HBlockRole"/>); only the PPTX writer uses it.</summary>
+    public HBlockRole Role { get; set; }
+}
+
+/// <summary>
+/// What a block was in a markup source (Markdown, HTML, Pandoc's AST), for a writer that lays such blocks out on their
+/// own: the PPTX writer puts code in a monospace box, starts a slide at a rule and moves notes into the speaker notes.
+/// The other writers write the blocks as they are.
+/// </summary>
+internal enum HBlockRole
+{
+    Body,
+
+    /// <summary>A line of a code block.</summary>
+    Code,
+
+    /// <summary>A horizontal rule (thematic break): the paragraph that stands for it.</summary>
+    Rule,
+
+    /// <summary>Speaker notes (Pandoc's <c>::: notes</c> div).</summary>
+    Notes,
 }
 
 internal sealed class HParagraph : HBlock

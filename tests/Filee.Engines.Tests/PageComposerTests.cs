@@ -133,6 +133,73 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Master_pages_go_behind_the_body_by_side_last_page_and_hiding()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"), Paragraph("four"));
+        foreach (var paragraph in section.Blocks.OfType<HParagraph>().Skip(1))
+            paragraph.PageBreakBefore = true;
+        ((HParagraph)section.Blocks[2]).PageHiding = new HPageHiding(false, false, MasterPage: true);
+        HMasterPage Master(HMasterPageKind kind, string text, bool duplicate = false, bool front = false)
+        {
+            var master = new HMasterPage(kind) { Duplicate = duplicate, Front = front };
+            master.Blocks.Add(Paragraph(text));
+            return master;
+        }
+        section.MasterPages.Add(Master(HMasterPageKind.Both, "M"));
+        section.MasterPages.Add(Master(HMasterPageKind.Even, "E", front: true));
+        section.MasterPages.Add(Master(HMasterPageKind.LastPage, "L", duplicate: true));
+
+        var pages = Compose(section).Pages;
+
+        // Behind the body (drawn first), or in front of it; none on the page that hides it; the last page's overlaps.
+        Assert.Equal(["M", "one"], Drawn(pages[0]));
+        Assert.Equal(["two", "E"], Drawn(pages[1]));
+        Assert.Equal(["three"], Drawn(pages[2]));
+        Assert.Equal(["L", "four", "E"], Drawn(pages[3]));
+        // From the top of the body (20 pt): the same baseline as the body's first line.
+        Assert.Equal(28.5f, Runs(pages[0]).Single(r => r.Text == "M").Positions[0].Y, 0.01f);
+
+        section.HideFirstMasterPage = true;
+        Assert.Equal(["one"], Drawn(Compose(section).Pages[0]));
+    }
+
+    [Fact]
+    public void Page_borders_and_backgrounds_go_under_the_page_by_side_and_hiding()
+    {
+        var section = Section(Small, Paragraph("one"), Paragraph("two"), Paragraph("three"));
+        foreach (var paragraph in section.Blocks.OfType<HParagraph>().Skip(1))
+            paragraph.PageBreakBefore = true;
+        ((HParagraph)section.Blocks[2]).PageHiding = new HPageHiding(false, false, Border: true);
+        var line = new HBorder(HBorderStyle.Solid, 1, "#000000");
+        // Both pages: a border 5 pt around the body; odd pages: a green paper and a border 5 pt in from the paper's edges.
+        section.PageBorders.Add(new HPageBorder(HPageType.Both, new HBorders(line, line, line, line), null, null, new HInsets(500, 500, 500, 500),
+            AroundBody: true, HeaderInside: false, FooterInside: false, HPageFillArea.Paper));
+        section.PageBorders.Add(new HPageBorder(HPageType.Odd, new HBorders(line, line, line, line), "#00FF00", null, new HInsets(500, 500, 500, 500),
+            AroundBody: false, HeaderInside: false, FooterInside: false, HPageFillArea.Paper));
+        section.PageFillShows = HFirstPageRule.HideFirst;
+
+        var pages = Compose(section).Pages;
+        SKColor Pixel(int page, int x, int y)
+        {
+            using var bitmap = pages[page].Render(72); // 1 pixel = 1 pt
+            return bitmap.GetPixel(x, y);
+        }
+
+        // Page 1: the odd pages' border 5 pt in from the paper, no background on the section's first page.
+        Assert.True(Pixel(0, 5, 100).Red < 80);
+        Assert.Equal(SKColors.White, Pixel(0, 2, 2));
+        Assert.Equal(SKColors.White, Pixel(0, 50, 15));
+        // Page 2: the border for both pages, around the body (10..90 × 20..180) grown by 5 pt; no background.
+        Assert.True(Pixel(1, 5, 100).Red < 80);
+        Assert.True(Pixel(1, 50, 15).Red < 80);
+        Assert.Equal(SKColors.White, Pixel(1, 2, 2));
+        // Page 3 hides its border but keeps the odd pages' background, drawn under the text.
+        Assert.Equal(new SKColor(0, 255, 0), Pixel(2, 2, 2));
+        Assert.Equal(new SKColor(0, 255, 0), Pixel(2, 5, 100));
+        Assert.Equal(["three"], Texts(pages[2]));
+    }
+
+    [Fact]
     public void Page_numbers_count_on_across_sections_unless_one_restarts_them()
     {
         var first = Section(Small, Paragraph("a"), Paragraph("b"));
@@ -192,6 +259,28 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void A_picture_line_takes_the_line_spacing_of_its_text_and_a_table_of_another_format_its_margin_below()
+    {
+        // 160 % of 10 pt text adds 6 pt to a line, also to one holding a 30 pt picture (36 pt high, not 48).
+        var picture = Paragraph("");
+        picture.Inlines.Add(new HImage("none.png") { Width = 4000, Height = 3000 });
+        var next = Paragraph("next");
+        var table = Table("cell");
+        var after = Paragraph("after");
+
+        var plain = Compose(Section(Small, picture, next)).Pages[0];
+        var document = new HDocument();
+        document.Sections.Add(Section(Small with { Height = 40000 }, table, after));
+        var styled = new PageComposer(new FontResolver(_fonts), _shaper, styles: StyleResolver.FromTemplate()).Compose(document, TestContext.Current.CancellationToken).Pages[0];
+
+        Assert.Equal(20 + 36 + 8.5f, Runs(plain).Single(r => r.Text == "next").Positions[0].Y, 0.01f);
+        // A table read from another format has the 5 mm below it the HWPX writer gives it, before the next paragraph.
+        var cell = Runs(styled).Single(r => r.Text == "cell").Positions[0].Y;
+        var below = Runs(styled).Single(r => r.Text == "after").Positions[0].Y;
+        Assert.True(below - cell > 14.17f + 10, $"{below - cell} pt from the cell's baseline to the next paragraph's");
+    }
+
+    [Fact]
     public void Hangul_stored_page_starts_and_places_are_followed()
     {
         // Three one-line paragraphs on their stored layout: the second 50 pt down, the third starting a page.
@@ -207,6 +296,31 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
         Assert.Equal(2, pages.Count);
         Assert.Equal(20 + 50 + 8.5f, Runs(pages[0]).Single(r => r.Text == "two").Positions[0].Y, 0.01f);
         Assert.Equal(["three"], Texts(pages[1]));
+    }
+
+    [Fact]
+    public void A_stored_line_on_both_sides_of_an_object_is_one_row()
+    {
+        // 한글 stores a line that goes on both sides of an object as two lines at one place: "left" (x 0..30 pt) and
+        // "right" (x 50..80 pt) at 0, then "below" 16 pt down.
+        var paragraph = Paragraph("left right below");
+        paragraph.Lines = new HLineLayout(
+        [
+            new HLineSegment(0, 0, 1000, 1000, 850, 600, 0, 3000, 0),
+            new HLineSegment(5, 0, 1000, 1000, 850, 600, 5000, 3000, 0),
+            new HLineSegment(11, 1600, 1000, 1000, 850, 600, 0, 8000, 0),
+        ], false, [0, 5, 11]);
+        // A table first: the page is no longer on 한글's stored places, the row stays one all the same.
+        var table = Table("cell");
+
+        var page = Assert.Single(Compose(Section(Small, table, paragraph)).Pages);
+
+        var left = Runs(page).Single(r => r.Text.Trim() == "left").Positions[0];
+        var right = Runs(page).Single(r => r.Text.Trim() == "right").Positions[0];
+        var below = Runs(page).Single(r => r.Text.Trim() == "below").Positions[0];
+        Assert.Equal(left.Y, right.Y, 0.01f);
+        Assert.Equal(60f, right.X, 0.5f); // 10 pt margin + 50 pt
+        Assert.Equal(left.Y + 16, below.Y, 0.01f);
     }
 
     // ───────────────────────── Tables ─────────────────────────
@@ -560,6 +674,29 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void An_object_placed_against_the_paper_goes_on_the_page_of_the_line_that_holds_it()
+    {
+        // A paragraph over several pages holding, at its end, a box placed against the paper (x 85..95, y 3..8), and at
+        // its start one placed against the paragraph: 한글 puts the first where its line is.
+        var paragraph = Paragraph(string.Join(" ", Enumerable.Repeat(Sentence, 12)));
+        paragraph.Inlines.Insert(0, Box(1000, 500, new HAnchor("PARA", "LEFT", 0, "PARA", "TOP", 0, "IN_FRONT_OF_TEXT", true)));
+        paragraph.Inlines.Add(Box(1000, 500, new HAnchor("PAPER", "RIGHT", 500, "PAPER", "TOP", 300, "IN_FRONT_OF_TEXT", true)));
+        paragraph.Inlines.Add(new HText(" The end.", Format()));
+
+        var pages = Compose(Section(Small, paragraph)).Pages;
+
+        Assert.True(pages.Count > 1);
+        bool PaperBox(PageContent page)
+        {
+            using var pixels = Pixels(page);
+            return Dark(pixels, 90, 5);
+        }
+        Assert.Equal([.. Enumerable.Repeat(false, pages.Count - 1), true], pages.Select(PaperBox));
+        using var first = Pixels(pages[0]);
+        Assert.True(Dark(first, 15, 22)); // the paragraph's own box, at its first line on the first page
+    }
+
+    [Fact]
     public void A_floating_objects_caption_goes_its_gap_away_on_its_side()
     {
         // Boxes of 40 × 10 and 20 × 10 pt against the paper at (30, 100) and (30, 130); captions 5 pt below the first (as
@@ -886,6 +1023,10 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     private static IEnumerable<GlyphRun> Runs(PageContent page) => page.Items.OfType<GlyphItem>().Select(i => i.Run);
+
+    /// <summary>The text of each line of a page, top to bottom, without spaces.</summary>
+    /// <summary>The text of each glyph run of a page, in drawing order.</summary>
+    private static List<string> Drawn(PageContent page) => [.. Runs(page).Select(r => Normalise(r.Text))];
 
     /// <summary>The text of each line of a page, top to bottom, without spaces.</summary>
     private static List<string> Texts(PageContent page) =>

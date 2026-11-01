@@ -1,9 +1,10 @@
-// Built-in e-book conversions, no external program: EPUB, MOBI / AZW / AZW3 / PRC, FB2, HTMLZ and TXTZ are read into
+// Built-in e-book conversions, no external program: EPUB, MOBI / AZW / AZW3 / PRC, FB2, HTMLZ and TXTZ, and the
+// older formats CHM, PDB (PalmDOC, zTXT), PML, TCR, RB, SNB and OEB (Ebooks/Legacy, Ebooks/Chm) are read into
 // the HWPX document model and written as EPUB, HWPX (→ PDF / images through rhwp and PDFium), TXT, HTML, Markdown,
-// FB2, HTMLZ or TXTZ; HTML, Markdown, TXT and DOCX become e-books too. Comics (CBZ / CBR / CB7 / CBT / CBC) become
-// PDF, fixed-layout EPUB or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives back its PDF. EPUB ↔ KEPUB (Kobo)
-// adds or removes Kobo's sentence markup and keeps the rest of the book as it is.
-// Formats only calibre reads or writes (LIT, LRF, PDB, MOBI / AZW3 output, ...) are in CalibreConverter.
+// FB2, HTMLZ, TXTZ, AZW3 (KF8) or MOBI (MOBI 6 + KF8); HTML, Markdown, TXT and DOCX become e-books too. Comics
+// (CBZ / CBR / CB7 / CBT / CBC) become PDF, fixed-layout EPUB or CBZ, PDF becomes CBZ, and AZW4 (Print Replica) gives
+// back its PDF. EPUB ↔ KEPUB (Kobo) adds or removes Kobo's sentence markup and keeps the rest of the book as it is.
+// Formats only calibre reads or writes (LIT, LRF, PDB / LIT / LRF output, ...) are in CalibreConverter.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -18,15 +19,21 @@ namespace Filee.Engines.Ebooks;
 public sealed class EbookConverter : IConverter
 {
     /// <summary>E-book formats read into the document model.</summary>
-    private static readonly string[] BookReaders = ["epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz"];
+    internal static readonly string[] BookReaders = ["epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "chm", "pdb", "pml", "tcr", "rb", "snb", "oeb"];
 
     /// <summary>Formats written from the document model.</summary>
-    private static readonly string[] BookWriters = ["epub", "hwpx", "txt", "html", "md", "fb2", "htmlz", "txtz"];
+    private static readonly string[] BookWriters = ["epub", "hwpx", "txt", "html", "md", "fb2", "htmlz", "txtz", "azw3", "mobi"];
+
+    /// <summary>
+    /// Cost of → AZW3 / MOBI. In the default engine order it costs 19 + 9 against calibre's EPUB → AZW3 / MOBI at
+    /// 20 + 9, so the built-in writer wins; a user who ranks calibre first (20 + 0) gets calibre's books instead.
+    /// </summary>
+    internal const int KindleCost = 19;
 
     /// <summary>Documents that become e-books (their other conversions belong to the document engines).</summary>
     private static readonly string[] DocumentReaders = ["html", "md", "txt", "docx"];
 
-    private static readonly string[] EbookWriters = ["epub", "fb2", "htmlz", "txtz"];
+    private static readonly string[] EbookWriters = ["epub", "fb2", "htmlz", "txtz", "azw3", "mobi"];
 
     private static readonly string[] Comics = ["cbz", "cbr", "cb7", "cbt", "cbc"];
 
@@ -38,11 +45,11 @@ public sealed class EbookConverter : IConverter
     [
         // KEPUB → EPUB is below: the book is copied without Kobo's markup instead of being written anew.
         .. BookReaders.SelectMany(from => BookWriters.Where(to => to != from && !(from == "kepub" && to == "epub"))
-            .Select(to => new ConversionEdge(from, to, to == "md" ? 12 : 10))),
+            .Select(to => new ConversionEdge(from, to, to == "md" ? 12 : to is "azw3" or "mobi" ? KindleCost : 10))),
         // Every other format reaches KEPUB through EPUB.
         new("epub", "kepub"),
         new("kepub", "epub"),
-        .. DocumentReaders.SelectMany(from => EbookWriters.Select(to => new ConversionEdge(from, to))),
+        .. DocumentReaders.SelectMany(from => EbookWriters.Select(to => new ConversionEdge(from, to, to is "azw3" or "mobi" ? KindleCost : 10))),
         // HTML → TXT has no other built-in route; HTML → Markdown is a fallback for when Pandoc is not installed.
         new("html", "txt"),
         new("html", "md", 14),
@@ -53,7 +60,7 @@ public sealed class EbookConverter : IConverter
         new("azw4", "pdf"),
     ];
 
-    public EngineStatus GetStatus() => EngineStatus.Available("EPUB, KEPUB, MOBI / AZW3, FB2, HTMLZ, TXTZ, CBZ / CBR / CB7 / CBT / CBC, AZW4",
+    public EngineStatus GetStatus() => EngineStatus.Available("EPUB, KEPUB, MOBI / AZW3, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB, CBZ / CBR / CB7 / CBT / CBC, AZW4",
         $"{EngineVersions.BuiltIn} · {EngineVersions.Library("AngleSharp", typeof(AngleSharp.BrowsingContext))}");
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
@@ -111,6 +118,20 @@ public sealed class EbookConverter : IConverter
                 return MobiReader.ReadBook(input, work, cancellationToken);
             case "fb2":
                 return Fb2Reader.ReadBook(input, work);
+            case "chm":
+                return ChmReader.ReadBook(input, work, cancellationToken);
+            case "pdb":
+                return PdbReader.ReadBook(input, work, cancellationToken);
+            case "pml":
+                return PmlReader.ReadBook(input, work, cancellationToken);
+            case "tcr":
+                return TcrReader.ReadBook(input, work, cancellationToken);
+            case "rb":
+                return RocketBookReader.ReadBook(input, work, cancellationToken);
+            case "snb":
+                return SnbReader.ReadBook(input, work, cancellationToken);
+            case "oeb":
+                return OebReader.ReadBook(input, work, cancellationToken);
             case "htmlz":
                 return ZippedText.ReadHtmlzBook(input, work, cancellationToken);
             case "txtz":
@@ -173,6 +194,12 @@ public sealed class EbookConverter : IConverter
                 break;
             case "txtz":
                 ZippedText.WriteTxtz(book, output, step.InputPath, work);
+                break;
+            case "azw3":
+                MobiWriter.Write(book, output, step.InputPath, work, mobi6: false);
+                break;
+            case "mobi":
+                MobiWriter.Write(book, output, step.InputPath, work, mobi6: true);
                 break;
             default:
                 throw new NotSupportedException($"{step.From} → {step.To}");

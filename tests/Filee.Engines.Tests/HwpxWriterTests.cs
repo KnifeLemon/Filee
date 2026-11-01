@@ -1,5 +1,5 @@
 // HWPX from Markdown (Markdig), HTML (AngleSharp) and plain text, all built in, plus the writer's small helpers.
-// Output is checked structurally, read back with Unhwp and rendered with rhwp. DOCX has its own tests
+// Output is checked structurally, read back with Filee's HWPX reader and rendered with rhwp. DOCX has its own tests
 // (DocxToHwpxTests) because it is read without Pandoc.
 
 using System.IO.Compression;
@@ -9,7 +9,6 @@ using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Hwp.Hwpx;
 using ImageMagick;
-using Unhwp;
 using static Filee.Engines.Tests.HwpxAssert;
 
 namespace Filee.Engines.Tests;
@@ -97,7 +96,7 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         foreach (var expected in new[] { "첫 번째 제목", "굵게", "취소선", "인용문도 사라지면 안 됩니다", "셋째부터 시작", "중첩 글머리", "표 셀", "42", "코드 블록" })
             Assert.Contains(expected, text);
 
-        // Unhwp's plain text skips footnotes, so check the footnote in the section XML.
+        // The footnote is in the section XML.
         var footnote = Xml(hwpx).Descendants(Hp + "footNote").Single();
         Assert.Contains("각주 내용입니다", footnote.Value);
         RenderWithRhwp(fx, hwpx, "hwpx-from-markdown");

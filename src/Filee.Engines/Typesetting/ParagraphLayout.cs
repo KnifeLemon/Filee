@@ -131,14 +131,15 @@ internal sealed class ParagraphLayouter
         if (stored is not null)
         {
             var segments = paragraph.Lines!.Segments;
+            var whole = WholeLine(segments[0], format, width);
             var storedLines = new List<LineBox>();
             for (var i = 0; i < stored.Count; i++)
             {
                 var end = i + 1 < stored.Count ? stored[i + 1] : text.Length;
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
-                storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], segments[0])));
+                storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], whole)));
             }
-            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker };
+            return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker, FloatingAt = source.Floating };
         }
 
         var lines = new List<LineBox>();
@@ -163,7 +164,7 @@ internal sealed class ParagraphLayouter
         if (text.Length > 0 && text[^1] == ParagraphText.LineSeparator)
             lines.Add(Place(source, items, text.Length, text.Length, true, false, width, paragraphLayout, mark));
 
-        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker };
+        return new ParagraphBox(before, after, lines) { StoredLinesIgnored = ignored, Marker = marker, FloatingAt = source.Floating };
     }
 
     /// <summary>
@@ -207,6 +208,26 @@ internal sealed class ParagraphLayouter
             }
         }
         return (starts, null);
+    }
+
+    /// <summary>A whole line's room in the column beside an object's (HWPUNIT), off by more than this a line goes around one.</summary>
+    private const int BesideObject = 500;
+
+    /// <summary>
+    /// The stored line a line without objects beside it would have, to measure the paragraph's lines against: its first
+    /// line, unless that one already goes around an object. 한글 stores a whole line from the paragraph's left margin
+    /// (never left of the column; a hanging indent's first line starts there too) to the column's width less the right
+    /// margin, so a first line that starts right of that or ends short of it is beside an object, and the whole line is
+    /// made from the margins.
+    /// </summary>
+    private static HLineSegment WholeLine(HLineSegment first, HParaFormat format, float width)
+    {
+        var left = Math.Max(0, (format.Left ?? 0) + Math.Min(0, format.FirstLine ?? 0));
+        var right = (int)Math.Round(width * 100) - Math.Max(0, format.Right ?? 0);
+        if (right - left < 2 * BesideObject || (first.HorizontalPosition <= left + BesideObject
+                                                && first.HorizontalPosition + first.HorizontalSize >= right - BesideObject))
+            return first;
+        return first with { HorizontalPosition = left, HorizontalSize = right - left };
     }
 
     /// <summary>The paragraph settings the line steps share (lengths in points).</summary>
@@ -567,7 +588,7 @@ internal sealed class ParagraphLayouter
         public (float Width, float Height, float Depth) Size { get; set; }
     }
 
-    /// <param name="stored">The stored line this line follows, with the paragraph's first one, or null.</param>
+    /// <param name="stored">The stored line this line follows, with the paragraph's whole line (WholeLine), or null.</param>
     private LineBox Place(ParagraphText source, List<Item> items, int start, int end, bool forced, bool firstLine, float width, Settings settings,
         TextStyle mark, (HLineSegment Line, HLineSegment First)? stored = null)
     {
@@ -577,7 +598,7 @@ internal sealed class ParagraphLayouter
             contentEnd--;
         var indent = firstLine ? settings.FirstLine : 0;
         var available = width - settings.Left - settings.Right - indent;
-        // A stored line that starts or ends off the paragraph's first one goes around an object.
+        // A stored line that starts or ends off the paragraph's whole line goes around an object.
         var shiftLeft = 0f;
         if (stored is var (line, first))
         {
@@ -836,16 +857,16 @@ internal sealed class ParagraphLayouter
     {
         var rule = settings.LineHeight;
         var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple;
-        float ascent = 0, descent = 0;
-        var any = false;
+        float objectAscent = 0, objectDescent = 0, textAscent = 0, textDescent = 0;
+        bool anyText = false, anyObject = false;
         foreach (var part in parts)
         {
             if (part.Item.Kind == ItemKind.Object)
             {
                 // A picture stands on the baseline; an equation reaches below it.
-                ascent = Math.Max(ascent, part.Size.Height);
-                descent = Math.Max(descent, part.Size.Depth);
-                any = true;
+                objectAscent = Math.Max(objectAscent, part.Size.Height);
+                objectDescent = Math.Max(objectDescent, part.Size.Depth);
+                anyObject = true;
                 continue;
             }
             if (part.Item.Kind != ItemKind.Text)
@@ -853,20 +874,23 @@ internal sealed class ParagraphLayouter
             // 한글's line height follows the font size alone; raised or lowered text takes room only with font metrics.
             var (a, d) = Extent(part.Item.Style, part.Item.Font, fromFont);
             var rise = fromFont ? part.Item.Style.Rise : 0;
-            ascent = Math.Max(ascent, a + rise);
-            descent = Math.Max(descent, d - rise);
-            any = true;
+            textAscent = Math.Max(textAscent, a + rise);
+            textDescent = Math.Max(textDescent, d - rise);
+            anyText = true;
         }
-        if (!any)
-        {
-            var font = Font(mark.Family, mark.Style, mark.Language);
-            (ascent, descent) = Extent(mark, font, fromFont);
-        }
+        // The text's size; a line without text has the paragraph mark's, which a line of objects only adds no height of.
+        var (fontAscent, fontDescent) = anyText ? (textAscent, textDescent) : Extent(mark, Font(mark.Family, mark.Style, mark.Language), fromFont);
+        if (!anyText && !anyObject)
+            (textAscent, textDescent) = (fontAscent, fontDescent);
+        var ascent = Math.Max(objectAscent, textAscent);
+        var descent = Math.Max(objectDescent, textDescent);
         var textHeight = ascent + descent;
         var value = rule.Value / 100f;
         var height = rule.Rule switch
         {
-            HLineHeightRule.Percent => textHeight * rule.Value / 100f,
+            // 한글's percentage adds its share of the text's size, not of an object's height: a line holding a 60 pt
+            // picture at 160 % with 10 pt text is 66 pt high, as 한글 stores such lines.
+            HLineHeightRule.Percent => textHeight + (fontAscent + fontDescent) * (rule.Value - 100) / 100f,
             HLineHeightRule.Multiple => textHeight * rule.Value / 240f,
             HLineHeightRule.Exact => value,
             HLineHeightRule.AtLeast => Math.Max(value, textHeight),

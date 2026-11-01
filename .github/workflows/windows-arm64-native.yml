@@ -1,14 +1,13 @@
 name: Windows ARM64 native
 
-# rhwp has no Windows ARM64 release and Unhwp's NuGet package no win-arm64 library (#236). This builds both on a
-# Windows ARM64 runner from their pinned sources (build/build-native.py: the commit of rhwp's release tag, the commit
-# Unhwp's nuspec names) with the C runtime linked statically, so they need no Visual C++ Redistributable, and uploads
-# them with their SHA-256.
+# rhwp has no Windows ARM64 release (#236). This builds it on a Windows ARM64 runner from its pinned source
+# (build/build-native.py: the commit of rhwp's release tag) with the C runtime linked statically, so it needs no Visual
+# C++ Redistributable, and uploads it with its SHA-256.
 #
-# Run it once per rhwp or Unhwp version (Actions > Windows ARM64 native > Run workflow; a pull request that changes the
-# build runs it too). Then host the two files of the artifact at the URLs in build/fetch-engines.ps1 ($arm64Pins) and
-# fill in their sha256 from SHA256SUMS.txt: build/build-installer.ps1 -Runtime win-arm64 and CI's win-arm64 job use
-# them from then on.
+# Run it once per rhwp version (Actions > Windows ARM64 native > Run workflow; a pull request that changes the build
+# runs it too). Then host the file of the artifact at the URL in build/fetch-engines.ps1 ($arm64Pins) and fill in its
+# sha256 from SHA256SUMS.txt: build/build-installer.ps1 -Runtime win-arm64 and CI's win-arm64 job use it from then
+# on.
 
 on:
   workflow_dispatch:
@@ -22,7 +21,7 @@ permissions:
 
 jobs:
   build:
-    name: rhwp and Unhwp (win-arm64)
+    name: rhwp (win-arm64)
     runs-on: windows-11-arm
     timeout-minutes: 90
     defaults:
@@ -33,7 +32,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # An ARM64 Python, so build-native.py can load the ARM64 unhwp.dll to check it.
+      # An ARM64 Python for build-native.py.
       - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
@@ -55,22 +54,14 @@ jobs:
       - name: Build rhwp
         run: python build/build-native.py rhwp --output "$env:RUNNER_TEMP/native/rhwp" --work "$env:RUNNER_TEMP/work"
 
-      - name: Build Unhwp
-        run: python build/build-native.py unhwp --output "$env:RUNNER_TEMP/native/unhwp" --work "$env:RUNNER_TEMP/work"
-
-      # The file names build/fetch-engines.ps1 pins: rhwp in the layout of its release archives, Unhwp's library as is.
+      # The file name build/fetch-engines.ps1 pins: rhwp in the layout of its release archives.
       - name: Package
         run: |
           $version = { param($name) (Select-String -Path build/build-native.py -Pattern "^$name = `"(.+)`"").Matches[0].Groups[1].Value }
           $out = New-Item -ItemType Directory -Force (Join-Path $env:RUNNER_TEMP 'out')
           $rhwp = Join-Path $out "rhwp-v$(& $version RHWP_VERSION)-windows-aarch64.zip"
-          $unhwp = Join-Path $out "unhwp-$(& $version UNHWP_VERSION)-win-arm64.dll"
           Compress-Archive -Path "$env:RUNNER_TEMP/native/rhwp/*" -DestinationPath $rhwp
-          Copy-Item "$env:RUNNER_TEMP/native/unhwp/unhwp.dll" $unhwp
-          # Unhwp's license and the source note go next to the file for whoever hosts it.
-          Copy-Item "$env:RUNNER_TEMP/native/unhwp/LICENSE" (Join-Path $out 'unhwp-LICENSE.txt')
-          Copy-Item "$env:RUNNER_TEMP/native/unhwp/SOURCE.txt" (Join-Path $out 'unhwp-SOURCE.txt')
-          foreach ($file in $rhwp, $unhwp) {
+          foreach ($file in @($rhwp)) {
             $name = Split-Path $file -Leaf
             if (-not (Select-String -Path build/fetch-engines.ps1 -SimpleMatch -Pattern "/$name'")) {
               Write-Host "::error::build/fetch-engines.ps1 doesn't pin ${name}: update the url in `$arm64Pins."

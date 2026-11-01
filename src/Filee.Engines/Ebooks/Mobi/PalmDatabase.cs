@@ -76,6 +76,89 @@ internal sealed class PalmDatabase
 /// <summary>PalmDOC compression (a simple LZ77 variant used by MOBI and PalmDOC text records).</summary>
 internal static class PalmDocCompression
 {
+    /// <summary>
+    /// Compresses one text record (at most 4,096 bytes): back-references of 3 to 10 bytes up to 2,047 bytes back
+    /// (found through a hash of the next three bytes), a space and an ASCII letter as one byte, literal bytes, and runs
+    /// of up to eight bytes that need escaping (1 to 8, 0x80 and above).
+    /// </summary>
+    public static byte[] Compress(ReadOnlySpan<byte> input)
+    {
+        var output = new List<byte>(input.Length);
+        var heads = new int[4096];
+        Array.Fill(heads, -1);
+        var previous = new int[input.Length];
+        int Hash(ReadOnlySpan<byte> data, int at) => ((data[at] << 7) ^ (data[at + 1] << 3) ^ data[at + 2]) & 4095;
+        void Insert(ReadOnlySpan<byte> data, int at)
+        {
+            if (at + 3 > data.Length)
+                return;
+            var hash = Hash(data, at);
+            previous[at] = heads[hash];
+            heads[hash] = at;
+        }
+
+        for (var i = 0; i < input.Length;)
+        {
+            var (bestLength, bestDistance) = (0, 0);
+            if (i + 3 <= input.Length)
+            {
+                var candidate = heads[Hash(input, i)];
+                for (var steps = 0; candidate >= 0 && i - candidate <= 2047 && steps < 64; steps++)
+                {
+                    var length = 0;
+                    while (length < 10 && i + length < input.Length && input[candidate + length] == input[i + length])
+                        length++;
+                    if (length > bestLength)
+                    {
+                        (bestLength, bestDistance) = (length, i - candidate);
+                        if (length == 10)
+                            break;
+                    }
+                    candidate = previous[candidate];
+                }
+            }
+            if (bestLength >= 3)
+            {
+                var pair = 0x8000 | (bestDistance << 3) | (bestLength - 3);
+                output.Add((byte)(pair >> 8));
+                output.Add((byte)pair);
+                for (var k = 0; k < bestLength; k++)
+                    Insert(input, i + k);
+                i += bestLength;
+                continue;
+            }
+            var c = input[i];
+            if (c == ' ' && i + 1 < input.Length && input[i + 1] is >= 0x40 and <= 0x7F)
+            {
+                output.Add((byte)(input[i + 1] ^ 0x80));
+                Insert(input, i);
+                Insert(input, i + 1);
+                i += 2;
+            }
+            else if (c is 0 or (>= 0x09 and <= 0x7F))
+            {
+                output.Add(c);
+                Insert(input, i);
+                i++;
+            }
+            else
+            {
+                var start = output.Count;
+                output.Add(0);
+                var count = 0;
+                while (i < input.Length && count < 8 && input[i] is (>= 1 and <= 8) or >= 0x80)
+                {
+                    output.Add(input[i]);
+                    Insert(input, i);
+                    i++;
+                    count++;
+                }
+                output[start] = (byte)count;
+            }
+        }
+        return [.. output];
+    }
+
     /// <summary>Decompresses one text record.</summary>
     public static byte[] Decompress(ReadOnlySpan<byte> input)
     {

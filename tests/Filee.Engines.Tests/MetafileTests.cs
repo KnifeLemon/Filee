@@ -114,7 +114,6 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var (bitmap, _) = Render(emf, 96);
         using (bitmap)
         {
-            File.WriteAllBytes(Path.Combine(Environment.GetEnvironmentVariable("FILEE_DEBUG_OUT") ?? Path.GetTempPath(), "clip.png"), bitmap.Encode(SKEncodedImageFormat.Png, 100).ToArray());
             Assert.Equal(SKColors.Red, Pixel(bitmap, 48, 24));
             Assert.Equal(0, Pixel(bitmap, 144, 24).Alpha);
             Assert.Equal(SKColors.Blue, Pixel(bitmap, 170, 85));
@@ -148,6 +147,41 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
+    public void A_dashed_pen_stays_dashed_when_the_picture_is_magnified()
+    {
+        // CreatePen(PS_DASH, 1): at 4 × it is 4 px wide, and GDI+ draws it with dashes of 3 and gaps of 1 pen width.
+        var emf = new EmfBuilder(192, 96)
+            .Add(18, 1) // SETBKMODE TRANSPARENT
+            .Pen(1, 1, 1, 0).Select(1)
+            .Add(27, 8, 48) // MOVETOEX
+            .Add(54, 184, 48) // LINETO
+            .ToArray();
+        var (bitmap, _) = Render(emf, 96 * 4);
+        using (bitmap)
+        {
+            // Along the line's middle: dashes of about 12 px and gaps of about 4.
+            var runs = new List<(bool Ink, int Length)>();
+            for (var x = 64; x < 704; x++)
+            {
+                var ink = Pixel(bitmap, x, 192).Alpha > 128;
+                if (runs.Count > 0 && runs[^1].Ink == ink)
+                    runs[^1] = (ink, runs[^1].Length + 1);
+                else
+                    runs.Add((ink, 1));
+            }
+            var whole = runs.Skip(1).SkipLast(1).ToArray(); // the window cuts the first and last run
+            var gaps = whole.Where(r => !r.Ink).Select(r => r.Length).ToArray();
+            var dashes = whole.Where(r => r.Ink).Select(r => r.Length).ToArray();
+            Assert.True(gaps.Length >= 30, $"{gaps.Length} gaps");
+            Assert.All(gaps, g => Assert.InRange(g, 2, 6));
+            Assert.All(dashes, d => Assert.InRange(d, 10, 14));
+            // Still a pen of 4 px, not a hairline.
+            var rows = Enumerable.Range(180, 26).Count(y => Enumerable.Range(64, 640).Any(x => Pixel(bitmap, x, y).Alpha > 128));
+            Assert.InRange(rows, 3, 5);
+        }
+    }
+
+    [Fact]
     public void Wmf_with_a_placeable_header_maps_its_window_onto_the_box()
     {
         // 1 × 0.5 inch at 1440 units per inch; the records draw in a window of 100 × 50 units.
@@ -168,6 +202,30 @@ public sealed class MetafileTests(EngineFixture fx) : IClassFixture<EngineFixtur
             Assert.Equal(SKColors.Blue, Pixel(bitmap, 24, 24));
             Assert.Equal(SKColors.Red, Pixel(bitmap, 84, 12));
             Assert.Equal(0, Pixel(bitmap, 64, 36).Alpha);
+        }
+    }
+
+    [Fact]
+    public void Wmf_without_a_placeable_header_and_a_window_going_up_is_drawn_the_right_way_up()
+    {
+        // As OLE pictures are made: MM_ANISOTROPIC, SetWindowExt(96, -48), y running up from the top (0) to -48.
+        // A blue band at the top (y 0 to -12) and a red one at the bottom (y -36 to -48).
+        var wmf = new WmfBuilder(0, 0)
+            .Add(0x0103, 8) // SETMAPMODE MM_ANISOTROPIC
+            .Add(0x020C, -48, 96) // SETWINDOWEXT (y, x)
+            .Add(0x020B, 0, 0) // SETWINDOWORG
+            .Pen(5, 0, 0).Select(0) // PS_NULL
+            .Brush(Blue).Select(1)
+            .Rectangle(0, 0, 96, -12)
+            .Brush(Red).Select(2)
+            .Rectangle(0, -36, 96, -48)
+            .ToArray(placeable: false);
+        var (bitmap, _) = Render(wmf, 96);
+        using (bitmap)
+        {
+            Assert.Equal((96, 48), (bitmap.Width, bitmap.Height));
+            Assert.Equal(SKColors.Blue, Pixel(bitmap, 48, 4));
+            Assert.Equal(SKColors.Red, Pixel(bitmap, 48, 44));
         }
     }
 
