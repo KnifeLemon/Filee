@@ -69,21 +69,20 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
         table.AppendLine();
         table.AppendLine("| Archive | Size | Filee in-process | 7-Zip | In-process / 7-Zip |");
         table.AppendLine("|---|---:|---:|---:|---:|");
-        var sevenZip = SevenZip.Locate()!;
         foreach (var (label, path, format) in archives)
         {
             var inProcess = await TimeAsync(dir, scratch => new ArchiveExtractor(null).ExtractAsync(path, format, scratch, CancellationToken.None));
             var external = await TimeAsync(dir, async scratch =>
             {
-                // As the engine used 7-Zip: list, unpack, and a second stage for the TAR inside.
+                // As the engine runs 7-Zip: list, unpack, and the same again for the TAR inside.
                 var x0 = Path.Combine(scratch, "x0");
-                await sevenZip.ListAsync(path, CancellationToken.None);
-                await sevenZip.ExtractAsync(path, x0, [], scratch, CancellationToken.None);
+                await SevenZipAsync("l", "-slt", "-sccUTF-8", "-bsp0", "-pfilee-no-password", "--", path);
+                await SevenZipAsync("x", "-y", "-aou", "-sccUTF-8", "-scsUTF-8", "-bsp0", "-bb0", "-pfilee-no-password", "-o" + x0, "--", path);
                 var inner = Directory.GetFiles(x0);
                 if (format != "tar" && inner.Length == 1 && inner[0].EndsWith(".tar", StringComparison.OrdinalIgnoreCase))
                 {
-                    await sevenZip.ListAsync(inner[0], CancellationToken.None);
-                    await sevenZip.ExtractAsync(inner[0], Path.Combine(scratch, "x1"), [], scratch, CancellationToken.None);
+                    await SevenZipAsync("l", "-slt", "-sccUTF-8", "-bsp0", "-pfilee-no-password", "--", inner[0]);
+                    await SevenZipAsync("x", "-y", "-aou", "-sccUTF-8", "-scsUTF-8", "-bsp0", "-bb0", "-pfilee-no-password", "-o" + Path.Combine(scratch, "x1"), "--", inner[0]);
                 }
                 return x0;
             });
@@ -97,22 +96,10 @@ public class ArchiveSpeedTests(EngineFixture fx) : IClassFixture<EngineFixture>
             await File.WriteAllTextAsync(outFile, table.ToString(), TestContext.Current.CancellationToken);
     }
 
-    /// <summary>
-    /// Runs 7-Zip to make an input: single-threaded and with its input closed (a test host's console made it stall
-    /// now and then), with more time than <see cref="Run7zAsync"/> allows.
-    /// </summary>
-    private static async Task PackAsync(params string[] args)
-    {
-        var start = new ProcessStartInfo(SevenZipExe!) { RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        foreach (var arg in args.Take(1).Append("-mmt=off").Append("-y").Concat(args.Skip(1)))
-            start.ArgumentList.Add(arg);
-        using var process = Process.Start(start)!;
-        process.StandardInput.Close();
-        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        await process.WaitForExitAsync(TestContext.Current.CancellationToken).WaitAsync(TimeSpan.FromMinutes(30), TestContext.Current.CancellationToken);
-        Assert.True(process.ExitCode == 0, $"7z {string.Join(' ', args)}: {await output} {await error}");
-    }
+    private static Task SevenZipAsync(params string[] args) => Run7zAsync(TimeSpan.FromMinutes(30), args);
+
+    /// <summary>Makes an input with 7-Zip, single-threaded (its multi-threaded LZMA2 stalled under the test host).</summary>
+    private static Task PackAsync(params string[] args) => SevenZipAsync([args[0], "-mmt=off", "-y", .. args[1..]]);
 
     /// <summary>The best of two runs (after the archive was read once, so the file cache is warm for both).</summary>
     private static async Task<TimeSpan> TimeAsync(string dir, Func<string, Task<string>> run)

@@ -5,7 +5,6 @@
 using System.IO.Compression;
 using System.Text;
 using Filee.Engines.Archives;
-using Filee.Engines.Infrastructure;
 using SharpCompress.Compressors.BZip2;
 using SharpCompress.Compressors.LZMA;
 
@@ -70,10 +69,37 @@ internal static class ArchiveBuilders
     public static string? SevenZipExe => SevenZip.Locate()?.Executable;
 
     /// <summary>Runs 7-Zip with the given arguments and fails the test on an error.</summary>
-    public static async Task Run7zAsync(params string[] args)
+    public static Task Run7zAsync(params string[] args) => Run7zAsync(TimeSpan.FromMinutes(5), args);
+
+    /// <summary>
+    /// Runs 7-Zip with its input closed: with the test host's console as input it now and then stalled without using
+    /// any CPU until the timeout.
+    /// </summary>
+    public static async Task Run7zAsync(TimeSpan timeout, params string[] args)
     {
-        var result = await ProcessRunner.RunAsync(SevenZipExe!, args, TimeSpan.FromMinutes(2), CancellationToken.None);
-        Assert.True(result.ExitCode == 0, $"7z {string.Join(' ', args)}: {result.StandardOutput} {result.StandardError}");
+        var start = new System.Diagnostics.ProcessStartInfo(SevenZipExe!)
+        {
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+        };
+        foreach (var arg in args)
+            start.ArgumentList.Add(arg);
+        using var process = System.Diagnostics.Process.Start(start)!;
+        process.StandardInput.Close();
+        var output = process.StandardOutput.ReadToEndAsync();
+        var error = process.StandardError.ReadToEndAsync();
+        try
+        {
+            await process.WaitForExitAsync().WaitAsync(timeout);
+        }
+        catch (TimeoutException)
+        {
+            process.Kill(entireProcessTree: true);
+            throw;
+        }
+        Assert.True(process.ExitCode == 0, $"7z {string.Join(' ', args)}: {await output} {await error}");
     }
 
     /// <summary>Standard bzip2 stream of <paramref name="data"/> ("BZh9", 900k blocks), written by SharpCompress.</summary>

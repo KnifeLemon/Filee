@@ -32,7 +32,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | **Filee renderer** (preview) | built in, off until Settings → Engines → *Use the Filee renderer (preview)* | **HWPX, HWP, Word documents, TXT, Markdown, HTML, e-books (and Pandoc's formats) → PDF** with Filee's own layout engine; files with what it doesn't draw yet keep their usual route (see [Filee renderer: PDF output](#filee-renderer-pdf-output)) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWPX → HWP** (HWP → HWPX too, ranked below the built-in HWP reader) |
-| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
+| Archives | built in (SharpCompress, .NET and Filee's own readers) + 7-Zip bundled with the installer (`engines/7zip`, ~2.5 MB) | **in-process**: ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), GZ, BZ2, XZ, LZMA, Z, lzip, CPIO, DEB, RPM, ISO, split (.001), ALZ, EGG; **7-Zip**: CAB, DMG, IMG, LHA, ARJ, UDF discs **→ folder, ZIP, TAR, TAR.GZ** (in-process), **7Z, TAR.BZ2/XZ** (7-Zip); "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT); their AST feeds the built-in PPTX writer (Pandoc's own slides only where Filee assumes a Pandoc that isn't installed) |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
@@ -2128,47 +2128,98 @@ minutes, Ghostscript 5, Pandoc 2 and calibre 10 (it made the 640-page novel's PD
 
 ## Archives
 
-The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) uses Filee's own copy of the 7-Zip console program
-(`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a` by `build/fetch-engines.ps1 -Only 7zip` and
-bundled with the installer), never a 7-Zip installed on the PC. It runs as a separate process (LGPL).
+The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) reads the common formats in-process and keeps
+Filee's own copy of the 7-Zip console program (`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a`
+by `build/fetch-engines.ps1 -Only 7zip` and bundled with the installer, never a 7-Zip installed on the PC; a separate
+process, LGPL) for the long tail. In-process comes first (`Archives/ArchiveExtractor.cs`); 7-Zip reads the formats
+nobody else does, and is asked again when an in-process reader meets something it lacks (an unknown 7z or RAR
+method, a GNU sparse file, an interleaved ISO file) or damage it can't get past. Two formats prefer 7-Zip when it is
+there: ISO images with a UDF file system, and solid 7z archives with several files (for speed). Deliberate refusals (password,
+paths leaving the folder, bombs, entry floods) are final and never retried. Without 7-Zip the engine stays available
+with the in-process edges only (Settings → *Engines* shows "built in" instead of "built in + 7-Zip …").
 
 | Format | Read | Write |
 |---|---|---|
-| ZIP, JAR, WBPZ | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
-| 7Z | 7-Zip | 7-Zip |
-| TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
-| TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
-| TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
-| TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
-| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, CRC and size checked | — |
-| GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
-| LZMA, Z | 7-Zip | — |
-| RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
-| Split archives (.001, .7z.001, .zip.001, .tar.001) | 7-Zip (combining .002, .003 … automatically) | — |
+| ZIP, JAR, WBPZ | .NET (System.IO.Compression) when every entry is stored or Deflate, else SharpCompress (MIT: Deflate64, BZip2, LZMA, PPMd and the old methods); names without the UTF-8 flag as UTF-8 when valid, else the system's OEM code page (CP949 on Korean Windows), as 7-Zip does | in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| 7Z | SharpCompress (LZMA, LZMA2, PPMd, BZip2, Deflate, the BCJ / BCJ2 filters); a solid 7z with several files goes to 7-Zip when it is there (SharpCompress 1.0 decodes the block again for every file, see the speed table) | 7-Zip |
+| RAR 4 / 5 | SharpCompress (only unpacks, under the unRAR terms, see THIRD-PARTY-NOTICES), with the other volumes (`.part2.rar`, `.r00`) | — |
+| TAR | .NET's System.Formats.Tar (ustar, PAX, GNU, V7): tells symbolic from hard links | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
+| TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z, TAR.LZ, TAR.7Z | in two stages: the outer layer as below, then the TAR | TAR.GZ in-process; TAR.BZ2 / TAR.XZ: TAR in-process, compressed by 7-Zip |
+| GZ | .NET's gzip decoder (CRC-32 checked) | in-process (GZipStream); one file only |
+| BZ2, XZ | SharpCompress | 7-Zip; one file only |
+| LZMA (`.lzma`) | SharpCompress's LZMA decoder | — |
+| Z (Unix compress) | Filee (`UnixCompressStream`: LZW, 9–16-bit codes, block mode with table clears) | — |
+| LZ (lzip) | Filee: members found from the end, each LZMA stream decoded by SharpCompress, CRC-32 and sizes checked | — |
+| CPIO | Filee (`CpioReader`: newc, crc with its byte sum checked, odc, old binary in either byte order; newc hard link groups become copies) | — |
+| DEB (ar) | Filee (`ArReader`: GNU and BSD long names, symbol tables skipped): unpacks to `debian-binary`, `control.tar.*`, `data.tar.*` | — |
+| RPM | Filee (`RpmReader`): the payload (gzip, bzip2, xz, LZMA, zstd or plain) becomes `<name>.cpio`, unpacked in the next stage | — |
+| ISO | Filee (`IsoReader`: ISO 9660 with Rock Ridge names, else Joliet, else the plain names; multi-extent files); images with UDF (Windows install discs) go to 7-Zip when it is there | — |
+| Split archives (.001, .7z.001, .zip.001, .tar.001) | the volumes read as one stream (`SplitVolumes`): 7z, ZIP and RAR by SharpCompress, TAR by .NET | — |
 | ALZ (ALZip) | Filee: store, deflate and ALZip's bzip2 variant | — |
-| EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (decoded by 7-Zip); several blocks per file | — |
+| EGG (ALZip) | Filee: store, deflate, bzip2, LZMA (SharpCompress's decoder); several blocks per file | — |
+| CAB, DMG, IMG, LHA / LZH, ARJ | 7-Zip only | — |
 
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
   with `photos/…` gives `photos/…`, not `photos/photos/…`). Name conflicts follow the preset: `name (2)`, overwrite
-  (files are merged into the existing folder) or skip.
+  (files are merged into the existing folder) or skip. Inside one archive, names that clash on Windows ("A.txt" and
+  "a.txt") become `a_1.txt`, as 7-Zip names them.
 - **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
   maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
-  file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.
-- **Safety**: every archive is listed first. Encrypted entries or archives stop with "password-protected"; entries
-  (or hard links) with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is
-  written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
-  1,000,000 entries or more data than the drive has free are refused; Filee's own readers also stop when data unpacks
-  to more than the entry declares, and check CRCs.
+  file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR, TAR.GZ and GZ need no 7-Zip.
+- **Safety** (`Archives/ArchiveSafety.cs`, the same for every reader): every archive is listed first and checked
+  before anything is written. Encrypted entries or archives stop with "password-protected"; entries (or hard links)
+  with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is written);
+  symbolic links, devices and FIFOs are never unpacked, hard links inside the archive become copies, and any link
+  left afterwards is deleted; archives with more than 1,000,000 entries or more data than the drive has free are
+  refused. A **decompression bomb** — more than 1 GiB that is also more than 10,000 times the archive's size — is
+  refused from the listing (lying headers, ZIPs whose entries share one stream) or, for streams that declare no size
+  (.gz, .bz2, .xz, .Z), as soon as that much has come out (`UnpackBudget`, which also looks at the free space again
+  every 256 MB). Sizes are checked against what each entry declares, CRC-32s by Filee for ZIP, 7z, lzip, ALZ, EGG and
+  the cpio byte sum (gzip, xz and bzip2 by their decoders); LZMA dictionaries over 1 GiB are refused before the decoder allocates them. ISO
+  folders that point back at a folder already read (a loop), extents past the end of the image, trees deeper than 64
+  folders and folder listings over 16 MB are refused as damage.
+- **7-Zip hidden**: with the environment variable `FILEE_HIDE_7ZIP=1` Filee behaves as if `engines/7zip` were
+  missing. `FILEE_HIDE_7ZIP=1 dotnet test tests/Filee.Engines.Tests --filter FullyQualifiedName~Filee.Engines.Tests.Archive`
+  shows which archive tests still need it (they skip).
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
-  ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG.
+  ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG. Without
+  7-Zip also: CAB, DMG, IMG, LHA, ARJ, UDF-only discs, GNU sparse files in TARs, interleaved ISO files, the El Torito
+  boot image of an ISO (7-Zip shows it as `[BOOT]`; Filee's ISO reader leaves it out), and 7Z / BZ2 / XZ output.
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
   `unalz` Rust crate, EggDotNet and unegg (MIT). ALZip's bzip2 has no `BZh` header, starts every block with `DLZ\x01`
-  instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`).
-- Tests (`ArchiveTests.cs`) build ALZ, EGG and lzip files in code (`ArchiveBuilders.cs`, with bzip2 and LZMA streams
-  written by 7-Zip) and skip the 7-Zip parts when `engines/7zip` is missing.
+  instead of the block magic, CRC and randomised bit, and ends with `DLZ\x02` (`Archives/Bzip2Decoder.cs`). The .Z,
+  ar, cpio, RPM and ISO readers are written from the formats' own descriptions (compress(1), ar(5), cpio(5), rpm.org's
+  file format, ECMA-119, Joliet, IEEE P1281 / P1282).
+- Tests: `ArchiveTests.cs` (conversions, Extract, the ALZ / EGG / lzip readers; the parts that make their input
+  with 7-Zip or need a 7-Zip format skip without it), `ArchiveInProcessTests.cs` (every in-process format built in
+  code by `ArchiveFormatBuilders.cs` — 7z, xz, RAR 4 / 5 with stored entries, ISO, cpio, ar, RPM, .Z — and the hostile
+  inputs: traversal, links, passwords, bombs with lowered limits, entry floods, ISO loops, damaged data),
+  `ArchiveFuzzTests.cs` (`Category=Fuzz`: mutated ar, cpio, RPM, ISO, .Z, lzip, ALZ and EGG files must unpack or be
+  refused with `InvalidDataException`) and `ArchiveSpeedTests.cs` (`Category=Benchmark`, only with
+  `FILEE_ARCHIVE_BENCHMARK=1`: the in-process readers next to 7-Zip).
+
+### Speed next to 7-Zip
+
+`ArchiveSpeedTests` (100 MB in 100 files, two thirds text and one third noise, archives written by 7-Zip 26.02 at
+`-mx5`; best of two runs, unpacking with the engine's listing first and both TAR stages; Windows 11, 8 logical
+processors, the PC busy with other builds, so the numbers move by ±30 %):
+
+| Archive | Size | Filee in-process | 7-Zip | In-process / 7-Zip |
+|---|---:|---:|---:|---:|
+| ZIP (Deflate) | 41 MB | 3.51 s | 3.71 s | 0.95× |
+| 7z (LZMA2, solid) | 34 MB | 41.68 s | 1.49 s | 27.94× |
+| TAR | 100 MB | 0.82 s | 1.20 s | 0.68× |
+| TAR.GZ | 41 MB | 2.39 s | 2.40 s | 1.00× |
+| TAR.BZ2 | 39 MB | 40.89 s | 11.83 s | 3.46× |
+| TAR.XZ | 34 MB | 2.47 s | 1.72 s | 1.44× |
+
+ZIP, TAR and TAR.GZ are as fast as 7-Zip or faster (no process start, one pass less), XZ is close. SharpCompress's
+bzip2 decoder is single-threaded where 7-Zip decodes blocks in parallel (Filee's own `Bzip2Decoder` is slower still).
+A solid 7z is the outlier: SharpCompress 1.0 decodes the block from its start again for every file, so the time grows
+with the square of the file count; such archives go to 7-Zip whenever it is there.
 
 ## LibreOffice
 

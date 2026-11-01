@@ -1,7 +1,7 @@
 // Unpacks ZIP (and JAR, WBPZ …), 7z and RAR 4 / 5 in-process with SharpCompress (MIT; its RAR decoder only unpacks,
-// under the same unRAR terms as 7-Zip's). The archive is listed first and checked by ArchiveSafety; encrypted
-// archives and entries are refused, links are left out, sizes and (for ZIP and 7z) CRC-32s are checked as each file
-// is written. Solid archives and 7z are read front to back so no block is decompressed twice.
+// under the same unRAR terms as 7-Zip's); ZIPs with only stored and Deflate entries go to .NET's faster reader
+// (ZipReader). The archive is listed first and checked by ArchiveSafety; encrypted archives and entries are refused,
+// links are left out, sizes and (for ZIP and 7z) CRC-32s are checked as each file is written.
 
 using System.Globalization;
 using System.Text;
@@ -22,9 +22,16 @@ internal static class LibraryArchives
         var name = Path.GetFileName(archive);
         var parts = Volumes(archive);
         var length = parts.Sum(p => p.Length);
+        var type = TypeOf(archive);
+        if (type == ArchiveType.Zip && parts.Count == 1)
+        {
+            using var file = new FileStream(archive, FileMode.Open, FileAccess.Read, FileShare.Read, 1 << 16);
+            if (ZipReader.TryExtract(file, name, folder, cancellationToken))
+                return;
+        }
         using var opened = Open(name, () => parts.Count > 1
-            ? ArchiveFactory.Open(parts, Options(TypeOf(archive)))
-            : ArchiveFactory.Open(archive, Options(TypeOf(archive))));
+            ? ArchiveFactory.Open(parts, Options(type))
+            : ArchiveFactory.Open(archive, Options(type)));
         Extract(opened, name, length, folder, cancellationToken);
     }
 
@@ -37,6 +44,9 @@ internal static class LibraryArchives
         stream.Position = 0;
         if (!isArchive)
             throw ArchiveSafety.NotAnArchive(name);
+        if (type == ArchiveType.Zip && ZipReader.TryExtract(stream, name, folder, cancellationToken))
+            return;
+        stream.Position = 0;
         var options = Options(type);
         options.LeaveStreamOpen = true;
         using var opened = Open(name, () => ArchiveFactory.Open(stream, options));
@@ -86,6 +96,25 @@ internal static class LibraryArchives
             }
         }
         writer.Finish();
+    }
+
+    /// <summary>
+    /// True for a 7z with several files in one solid block. SharpCompress 1.0 decodes such a block from its start
+    /// again for every file (the time grows with the square of the file count), so the bundled 7-Zip unpacks these
+    /// when it is there.
+    /// </summary>
+    public static bool IsSolidSevenZip(string archive)
+    {
+        try
+        {
+            using var opened = SevenZipArchive.Open(archive, null);
+            return opened.IsSolid && opened.Entries.Count(e => !e.IsDirectory && e.Size > 0) > 1;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or InvalidFormatException or ArchiveException
+                                       or ArgumentException or CryptographicException or IOException or NotSupportedException)
+        {
+            return false; // the in-process reader gives the right message
+        }
     }
 
     /// <summary>

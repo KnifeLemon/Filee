@@ -1,6 +1,7 @@
 // Unpacks every archive format Filee reads into a folder. In-process first: SharpCompress (ZIP, 7z, RAR), .NET's TAR
 // reader, gzip / bzip2 / xz / LZMA / zstd decoders, and Filee's own readers (ALZ, EGG, lzip, Unix compress, ar / DEB,
-// cpio, RPM, ISO 9660). The bundled 7-Zip reads what is left (CAB, DMG, IMG, LHA, ARJ, UDF discs) and is asked again
+// cpio, RPM, ISO 9660). The bundled 7-Zip reads what is left (CAB, DMG, IMG, LHA, ARJ, UDF discs; solid 7z with several
+// files too, which SharpCompress decodes far slower, see LibraryArchives.IsSolidSevenZip) and is asked again
 // when an in-process reader meets a feature it lacks or damage it can't read past; deliberate refusals (password,
 // paths leaving the folder, bombs) are final. Compressed TARs (.tar.gz, .tar.lz …) and RPM payloads are unpacked
 // stage by stage until the files appear. Every stage is listed and checked first, and links are removed.
@@ -70,7 +71,8 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip)
 
     private async Task ExtractOnceAsync(string archive, string format, string folder, string scratchRoot, CancellationToken cancellationToken)
     {
-        if (SevenZipFormats.Contains(format) || format == "iso" && sevenZip is not null && IsoReader.HasUdf(archive))
+        if (SevenZipFormats.Contains(format)
+            || sevenZip is not null && (format == "iso" && IsoReader.HasUdf(archive) || format == "7z" && LibraryArchives.IsSolidSevenZip(archive)))
         {
             await WithSevenZipAsync(archive, folder, scratchRoot, cancellationToken);
             return;
