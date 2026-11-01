@@ -73,9 +73,12 @@ internal static class MarkupTestKit
             catalog.Refresh();
             var pdf = await ConvertAsync(catalog, source, "pdf");
             using var document = PigDocument.Open(pdf);
-            var text = string.Join("\n", document.GetPages().Select(p => p.Text));
+            // Letters and digits only: spaces and punctuation come out of a PDF's text differently with the fonts
+            // each platform has.
+            static string Letters(string s) => new([.. s.Where(char.IsLetterOrDigit)]);
+            var text = Letters(string.Join("\n", document.GetPages().Select(p => p.Text)));
             foreach (var part in expected)
-                Assert.Contains(part.Replace(" ", "", StringComparison.Ordinal), text.Replace(" ", "", StringComparison.Ordinal), StringComparison.Ordinal);
+                Assert.Contains(Letters(part), text, StringComparison.Ordinal);
         }
         finally
         {
