@@ -188,6 +188,8 @@
   "engine.docx-writer.description": "Erstellt Word-Dokumente (DOCX) aus PDF, OFD, HWP/HWPX, Markdown, HTML, Tabellen, Folien und E-Books.",
   "engine.odt-writer.name": "ODT-Writer (integriert)",
   "engine.odt-writer.description": "Erstellt OpenDocument-Textdokumente (ODT) aus Word-Dokumenten, PDF, OFD, HWP/HWPX, Markdown, HTML, Tabellen, Folien und E-Books.",
+  "engine.markup.name": "Auszeichnungssprachen (integriert)",
+  "engine.markup.description": "Jupyter-Notebooks, OPML, Textile, MediaWiki, reStructuredText, Org und DocBook ohne Pandoc.\nDokumente in diese Formate und diese in Markdown, HTML, Text, DOCX, HWPX und PDF.",
   "engine.pptx-writer.name": "PPTX-Writer (integriert)",
   "engine.pptx-writer.description": "Erstellt PowerPoint-Folien (PPTX) aus Markdown- und Markup-Dateien, Word-Dokumenten, ODT, HWP/HWPX, HTML, Tabellen und E-Books: eine Folie pro Überschrift, mit Listen, Tabellen, Bildern und Code.",
   "engine.pdf-text.name": "PDF-Text (integriert)",
