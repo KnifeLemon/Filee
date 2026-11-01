@@ -1,7 +1,7 @@
 // "Pixelate / blur" runs as an ordinary conversion once its window has the parts of a picture to hide: the tool preset
 // becomes a conversion into the picture's own format with those parts (ImageOptions.HiddenAreas), so the job queue, the
-// toast, cancelling and the output rules work as for any other file. How they are covered (pixelate or blur, and how
-// strongly) is kept in the tool, so the window opens with the last choice. The arithmetic shared by the window's
+// toast, cancelling and the output rules work as for any other file. Each part is pixelated, blurred or blacked out
+// (HiddenArea.Style); the last style picked and how strongly are kept in the tool, so the window opens with them. The arithmetic shared by the window's
 // preview and the image engine is here too: where a part lies in pixels, how large the squares or the blur are, and
 // which square a pixel falls in.
 
@@ -93,7 +93,9 @@ public static class HideTool
         var right = Math.Clamp(Math.Max(area.X, area.X + area.Width), 0, 1);
         var top = Math.Clamp(Math.Min(area.Y, area.Y + area.Height), 0, 1);
         var bottom = Math.Clamp(Math.Max(area.Y, area.Y + area.Height), 0, 1);
-        return right > left && bottom > top ? new HiddenArea { X = left, Y = top, Width = right - left, Height = bottom - top } : null;
+        return right > left && bottom > top
+            ? new HiddenArea { X = left, Y = top, Width = right - left, Height = bottom - top, Style = area.Style }
+            : null;
     }
 
     /// <summary>

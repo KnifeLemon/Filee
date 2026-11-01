@@ -277,6 +277,8 @@
   "hide.pixelate_hint": "Tutupi dengan kotak-kotak warna rata-rata (P)",
   "hide.blur": "Buramkan",
   "hide.blur_hint": "Tutupi dengan keburaman kuat (B)",
+  "hide.box": "Kotak hitam",
+  "hide.box_hint": "Tutupi dengan kotak hitam pekat (X)",
   "hide.strength": "Kekuatan",
   "hide.strength_value": "Kekuatan {0} dari 10 (− / +)",
   "hide.remove": "Hapus bingkai",

@@ -277,6 +277,8 @@
   "hide.pixelate_hint": "平均色のブロックで隠す (P)",
   "hide.blur": "ぼかし",
   "hide.blur_hint": "強いぼかしで隠す (B)",
+  "hide.box": "黒塗り",
+  "hide.box_hint": "黒い四角で完全に隠す (X)",
   "hide.strength": "強さ",
   "hide.strength_value": "強さ {0} / 10（− / +）",
   "hide.remove": "枠を削除",

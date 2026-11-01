@@ -14,6 +14,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Styling;
+using Filee.Core.Presets;
 using static Filee.App.Controls.CropCanvas;
 
 namespace Filee.App.Controls;
@@ -23,9 +24,13 @@ public sealed class HideCanvas : Control
     public static readonly StyledProperty<Bitmap?> SourceImageProperty =
         AvaloniaProperty.Register<HideCanvas, Bitmap?>(nameof(SourceImage));
 
-    /// <summary>The whole preview pixelated or blurred as chosen: what the frames show.</summary>
+    /// <summary>The whole preview pixelated: what a pixelate frame shows.</summary>
     public static readonly StyledProperty<Bitmap?> CoverImageProperty =
         AvaloniaProperty.Register<HideCanvas, Bitmap?>(nameof(CoverImage));
+
+    /// <summary>The whole preview blurred: what a blur frame shows.</summary>
+    public static readonly StyledProperty<Bitmap?> BlurCoverImageProperty =
+        AvaloniaProperty.Register<HideCanvas, Bitmap?>(nameof(BlurCoverImage));
 
     public static readonly StyledProperty<HideAreaSet?> AreasProperty =
         AvaloniaProperty.Register<HideCanvas, HideAreaSet?>(nameof(Areas));
@@ -56,6 +61,7 @@ public sealed class HideCanvas : Control
 
     public Bitmap? SourceImage { get => GetValue(SourceImageProperty); set => SetValue(SourceImageProperty, value); }
     public Bitmap? CoverImage { get => GetValue(CoverImageProperty); set => SetValue(CoverImageProperty, value); }
+    public Bitmap? BlurCoverImage { get => GetValue(BlurCoverImageProperty); set => SetValue(BlurCoverImageProperty, value); }
     public HideAreaSet? Areas { get => GetValue(AreasProperty); set => SetValue(AreasProperty, value); }
     public Thickness ImagePadding { get => GetValue(ImagePaddingProperty); set => SetValue(ImagePaddingProperty, value); }
     public PixelSize PixelSize { get => GetValue(PixelSizeProperty); set => SetValue(PixelSizeProperty, value); }
@@ -121,7 +127,7 @@ public sealed class HideCanvas : Control
 
     static HideCanvas()
     {
-        AffectsRender<HideCanvas>(SourceImageProperty, CoverImageProperty, ImagePaddingProperty, AccentBrushProperty,
+        AffectsRender<HideCanvas>(SourceImageProperty, CoverImageProperty, BlurCoverImageProperty, ImagePaddingProperty, AccentBrushProperty,
             StageBrushProperty, ChipBackgroundProperty, ChipForegroundProperty, PixelSizeProperty);
         FocusableProperty.OverrideDefaultValue<HideCanvas>(false);
     }
@@ -256,17 +262,26 @@ public sealed class HideCanvas : Control
         if (Areas is not { } areas)
             return;
 
-        // Inside every frame the covered picture: crisp squares for pixelate (the copy has them at the preview's size).
-        var cover = CoverImage ?? _soft;
+        // Inside every frame the covered picture as its style says: crisp squares for pixelate (the copy has them at the
+        // preview's size), the blurred copy for blur, solid black for a box.
         for (var i = 0; i < areas.Count; i++)
         {
             var frame = ToScreen(areas.Areas[i], picture);
-            if (cover is null || frame.Width <= 0 || frame.Height <= 0)
+            if (frame.Width <= 0 || frame.Height <= 0)
+                continue;
+            var style = areas.Styles[i];
+            if (style == HideStyle.Box)
+            {
+                context.DrawRectangle(Brushes.Black, null, frame);
+                continue;
+            }
+            var made = style == HideStyle.Blur ? BlurCoverImage : CoverImage;
+            if ((made ?? _soft) is not { } cover)
                 continue;
             using (context.PushClip(frame))
             using (context.PushRenderOptions(new RenderOptions
             {
-                BitmapInterpolationMode = CoverImage is null ? BitmapInterpolationMode.HighQuality : BitmapInterpolationMode.MediumQuality,
+                BitmapInterpolationMode = made is null ? BitmapInterpolationMode.HighQuality : BitmapInterpolationMode.MediumQuality,
             }))
                 context.DrawImage(cover, new Rect(cover.Size), picture);
         }
