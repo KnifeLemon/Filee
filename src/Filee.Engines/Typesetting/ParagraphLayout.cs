@@ -131,12 +131,13 @@ internal sealed class ParagraphLayouter
         if (stored is not null)
         {
             var segments = paragraph.Lines!.Segments;
+            var whole = WholeLine(segments[0], format, width);
             var storedLines = new List<LineBox>();
             for (var i = 0; i < stored.Count; i++)
             {
                 var end = i + 1 < stored.Count ? stored[i + 1] : text.Length;
                 var forced = end == text.Length || text[end - 1] == ParagraphText.LineSeparator;
-                storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], segments[0])));
+                storedLines.Add(Place(source, items, stored[i], end, forced, i == 0, width, paragraphLayout, mark, (segments[i], whole)));
             }
             return new ParagraphBox(before, after, storedLines) { StoredLines = true, Marker = marker };
         }
@@ -207,6 +208,26 @@ internal sealed class ParagraphLayouter
             }
         }
         return (starts, null);
+    }
+
+    /// <summary>A whole line's room in the column beside an object's (HWPUNIT), off by more than this a line goes around one.</summary>
+    private const int BesideObject = 500;
+
+    /// <summary>
+    /// The stored line a line without objects beside it would have, to measure the paragraph's lines against: its first
+    /// line, unless that one already goes around an object. 한글 stores a whole line from the paragraph's left margin
+    /// (never left of the column; a hanging indent's first line starts there too) to the column's width less the right
+    /// margin, so a first line that starts right of that or ends short of it is beside an object, and the whole line is
+    /// made from the margins.
+    /// </summary>
+    private static HLineSegment WholeLine(HLineSegment first, HParaFormat format, float width)
+    {
+        var left = Math.Max(0, (format.Left ?? 0) + Math.Min(0, format.FirstLine ?? 0));
+        var right = (int)Math.Round(width * 100) - Math.Max(0, format.Right ?? 0);
+        if (right - left < 2 * BesideObject || (first.HorizontalPosition <= left + BesideObject
+                                                && first.HorizontalPosition + first.HorizontalSize >= right - BesideObject))
+            return first;
+        return first with { HorizontalPosition = left, HorizontalSize = right - left };
     }
 
     /// <summary>The paragraph settings the line steps share (lengths in points).</summary>
@@ -567,7 +588,7 @@ internal sealed class ParagraphLayouter
         public (float Width, float Height, float Depth) Size { get; set; }
     }
 
-    /// <param name="stored">The stored line this line follows, with the paragraph's first one, or null.</param>
+    /// <param name="stored">The stored line this line follows, with the paragraph's whole line (WholeLine), or null.</param>
     private LineBox Place(ParagraphText source, List<Item> items, int start, int end, bool forced, bool firstLine, float width, Settings settings,
         TextStyle mark, (HLineSegment Line, HLineSegment First)? stored = null)
     {
@@ -577,7 +598,7 @@ internal sealed class ParagraphLayouter
             contentEnd--;
         var indent = firstLine ? settings.FirstLine : 0;
         var available = width - settings.Left - settings.Right - indent;
-        // A stored line that starts or ends off the paragraph's first one goes around an object.
+        // A stored line that starts or ends off the paragraph's whole line goes around an object.
         var shiftLeft = 0f;
         if (stored is var (line, first))
         {
