@@ -291,7 +291,7 @@ public class HideAreasTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var path = Path.Combine(folder, "phone.png");
         using (var stored = Noise(300, 200))
         {
-            stored.Orientation = OrientationType.RightTop;
+            stored.Orientation = Orientation.RightTop;
             stored.Write(path, MagickFormat.Png);
         }
         using var upright = new MagickImage(path);

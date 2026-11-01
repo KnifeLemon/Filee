@@ -134,7 +134,7 @@ public class BackgroundRemovalTests(EngineFixture fx) : IClassFixture<EngineFixt
         // turned the stroke into half-transparent black.
         using var image = new MagickImage(MagickColors.White, 160, 100);
         new Drawables().StrokeColor(new MagickColor("#555555")).StrokeWidth(6).Line(15, 70, 140, 70).Draw(image);
-        image.Alpha(AlphaOption.Set);
+        image.Alpha(AlphaAction.Set);
         using (var pixels = image.GetPixels())
             for (var y = 0; y < 30; y++)
                 for (var x = 110; x < 160; x++)
@@ -376,7 +376,7 @@ public class BackgroundRemovalTests(EngineFixture fx) : IClassFixture<EngineFixt
                 .Rectangle(40, 30, 160, 110)
                 .StrokeColor(MagickColors.Transparent).FillColor(MagickColors.Black).Rectangle(50, 50, 150, 90)
                 .Draw(image);
-            image.Alpha(AlphaOption.Set);
+            image.Alpha(AlphaAction.Set);
             using (var pixels = image.GetPixels())
                 for (var y = 0; y < 20; y++)
                     for (var x = 170; x < 200; x++)

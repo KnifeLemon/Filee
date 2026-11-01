@@ -139,7 +139,7 @@ public sealed class VisionConverter : IConverter
         {
             using var info = new MagickImage();
             info.Ping(path);
-            if (info.Orientation is OrientationType.Undefined or OrientationType.TopLeft)
+            if (info.Orientation is Orientation.Undefined or Orientation.TopLeft)
             {
                 yield return new Picture(path, info.Width, info.Height, Dpi(info));
                 yield break;
