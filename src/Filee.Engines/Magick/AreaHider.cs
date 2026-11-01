@@ -1,6 +1,6 @@
 // "Pixelate / blur": covers parts of a picture (ImageOptions.HiddenAreas) so what was there can't be read back, each
-// pixelated, blurred or blacked out as its style says. Each part is changed on its own; the rest of the picture keeps its pixels. Also used on the window's preview, so what the
-// user sees while drawing the parts is what the file gets.
+// pixelated, blurred or blacked out as its style says. Each part is changed on its own; the rest of the picture keeps
+// its pixels. Also used on the window's preview, so what the user sees while drawing the parts is what the file gets.
 
 using Filee.Core.Presets;
 using ImageMagick;
@@ -138,8 +138,8 @@ public static class AreaHider
     }
 
     /// <summary>
-    /// <paramref name="bounds"/> filled with opaque black: every pixel of the part is replaced, transparency included, so
-    /// nothing of it is left to recover.
+    /// <paramref name="bounds"/> filled with opaque black: every pixel of the part is replaced, transparency included,
+    /// so nothing of it is left to recover.
     /// </summary>
     public static void Box(IMagickImage<byte> image, (int X, int Y, int Width, int Height) bounds)
     {
@@ -147,6 +147,9 @@ public static class AreaHider
         if (w <= 0 || h <= 0)
             return;
         using var black = new MagickImage(MagickColors.Black, (uint)w, (uint)h);
+        // Black in the picture's own colours: copied in channel by channel, an sRGB black is C, M, Y and K all 0 in
+        // a CMYK picture, which is white paper.
+        black.ColorSpace = image.ColorSpace;
         if (image.HasAlpha)
             black.Alpha(AlphaOption.Opaque);
         image.Composite(black, x, y, CompositeOperator.Copy);

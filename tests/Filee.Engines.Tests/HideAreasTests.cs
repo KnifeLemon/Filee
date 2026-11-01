@@ -1,6 +1,7 @@
-// "Pixelate / blur" through the real image engine: the parts become squares of their average colour, a blur that
-// leaves none of their detail or opaque black boxes, each part as its own style says, the rest of the picture keeps every pixel, the parts land on the picture as it is seen
-// (EXIF orientation), the format stays, and the previews a file carries of the uncovered picture go.
+// "Pixelate / blur" through the real image engine: the parts become squares of their average colour, a blur that leaves
+// none of their detail or opaque black boxes, each part as its own style says, the rest of the picture keeps every
+// pixel, the parts land on the picture as it is seen (EXIF orientation), the format stays, and the previews a file
+// carries of the uncovered picture go.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -110,11 +111,53 @@ public class HideAreasTests(EngineFixture fx) : IClassFixture<EngineFixture>
         for (var y = 20; y < 120; y++)
             for (var x = 40; x < 160; x++)
                 Assert.Equal((0, 0, 0, 255), (b[Index(x, y)], b[Index(x, y) + 1], b[Index(x, y) + 2], b[Index(x, y) + 3]));
-        // Just outside the box, as it was; the other part pixelated (two neighbours in one square alike, unlike before).
+        // Just outside the box, as it was; the other part pixelated (two neighbours in one square alike, unlike
+        // before).
         Assert.Equal(a[Index(39, 50)], b[Index(39, 50)]);
         Assert.Equal(a[Index(160, 50)], b[Index(160, 50)]);
         Assert.Equal(b[Index(250, 50)], b[Index(251, 50)]);
         Assert.NotEqual((0, 0, 0), (b[Index(250, 50)], b[Index(250, 50) + 1], b[Index(250, 50) + 2]));
+    }
+
+    [Theory]
+    [InlineData("tif")]
+    [InlineData("jpg")]
+    public async Task A_black_box_on_a_cmyk_picture_is_full_black_ink_and_its_text_is_gone(string extension)
+    {
+        // Text in black ink only (K), as print files have it. A box made in sRGB and copied in channel by channel came
+        // out with C, M, Y and K all 0: white paper.
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "print." + extension);
+        using (var source = new MagickImage(MagickColors.White, 300, 100))
+        {
+            for (var row = 30; row <= 70; row += 20)
+            {
+                using var line = new MagickImage(MagickColors.Black, 180, 5);
+                source.Composite(line, 60, row, CompositeOperator.Copy);
+            }
+            source.ColorSpace = ColorSpace.CMYK;
+            source.Quality = 95;
+            source.Write(path);
+        }
+        var box = Area(0.1, 0.1, 0.8, 0.8);                                    // 30, 10, 240 × 80
+        box.Style = HideStyle.Box;
+
+        var output = await RunAsync(path, Hide(HideStyle.Pixelate, 5, box));
+
+        using var after = new MagickImage(output);
+        Assert.Equal(ColorSpace.CMYK, after.ColorSpace);
+        using var pixels = after.GetPixels();
+        // Inside, away from the box's edge (JPEG blends 8 px blocks across it): no C, M or Y and all K, on the lines of
+        // text and between them. The TIFF is exact.
+        var tolerance = extension == "jpg" ? 12 : 0;
+        foreach (var (x, y) in new[] { (150, 32), (150, 42), (150, 52), (100, 72), (60, 20) })
+        {
+            var value = pixels.GetValue(x, y)!;
+            Assert.True(value[0] <= tolerance && value[1] <= tolerance && value[2] <= tolerance && value[3] >= 255 - tolerance,
+                $"({x}, {y}): {string.Join(",", value)}");
+        }
+        // Outside the box, still white paper.
+        Assert.True(pixels.GetValue(10, 50)![3] <= tolerance);
     }
 
     [Fact]
