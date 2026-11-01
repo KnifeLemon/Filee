@@ -82,6 +82,7 @@ internal static class DocumentReaders
         ["mediawiki"] = MediaWikiReader.Read,
         ["rst"] = RstReader.Read,
         ["org"] = OrgReader.Read,
+        ["dbk"] = DocBookReader.Read,
     };
 
     /// <summary>
