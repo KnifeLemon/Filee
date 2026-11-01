@@ -165,6 +165,8 @@ public partial class App : Application
         // Leftover update workspaces from cancelled or failed in-app updates (Linux only).
         if (OperatingSystem.IsLinux())
             _ = Task.Run(() => UpdateService.DeleteStaleWorkspaces());
+        // Java and H2Orestart from an earlier LibreOffice download are unused now (HWP is read by Filee itself).
+        _ = AppHost.Get<EngineDownloadService>().RemoveRetiredAsync();
         // Once LibreOffice is installed: prepare its profiles while the user isn't converting yet.
         AppHost.Get<EngineDownloadService>().WarmUpInBackground(TimeSpan.FromSeconds(10));
 
@@ -314,12 +316,10 @@ public partial class App : Application
         if (ownCopiesChanged)
             EngineEnvironment.OwnCopies = new Dictionary<string, string>(settings.EngineOwnCopies);
         var routesChanged = EngineEnvironment.LibreOfficeForSlides != settings.LibreOfficeForSlides
-                            || EngineEnvironment.LibreOfficeForHwp != settings.LibreOfficeForHwp
                             || EngineEnvironment.LibreOfficeForDocuments != settings.LibreOfficeForDocuments
                             || EngineEnvironment.LibreOfficeForSheets != settings.LibreOfficeForSheets
                             || EngineEnvironment.FileeRenderer != settings.FileeRenderer;
         EngineEnvironment.LibreOfficeForSlides = settings.LibreOfficeForSlides;
-        EngineEnvironment.LibreOfficeForHwp = settings.LibreOfficeForHwp;
         EngineEnvironment.LibreOfficeForDocuments = settings.LibreOfficeForDocuments;
         EngineEnvironment.LibreOfficeForSheets = settings.LibreOfficeForSheets;
         EngineEnvironment.FileeRenderer = settings.FileeRenderer;

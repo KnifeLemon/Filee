@@ -27,7 +27,7 @@ public sealed class PdfTextConverter : IConverter
     public IReadOnlyList<ConversionEdge> Edges { get; } =
     [
         new("pdf", "txt"),
-        // Read once, written once: cheaper than through DOCX and Pandoc or HWPX and Unhwp. Direct only, so no other
+        // Read once, written once: cheaper than through DOCX and Pandoc or HWPX and HWP text. Direct only, so no other
         // route (PDF → HTML, EPUB, ...) starts going through a Markdown file and its picture folder.
         new("pdf", "md", 10 + DocumentReaders.PdfPenalty, DirectOnly: true),
     ];

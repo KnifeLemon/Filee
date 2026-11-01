@@ -110,6 +110,25 @@ internal static class EbookFiles
         }
     }
 
+    /// <summary>
+    /// Writes a file unpacked from a book at a path made by <see cref="SafePath"/>; false when the name can't be a file
+    /// here (a folder of that name exists, characters Windows doesn't allow), so the book reads without it.
+    /// </summary>
+    public static bool TryWrite(string target, ReadOnlySpan<byte> bytes)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            using var file = File.Create(target);
+            file.Write(bytes);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>A fresh folder inside the job's work directory.</summary>
     public static string NewFolder(string workDirectory, string prefix)
     {
