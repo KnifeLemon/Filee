@@ -26,7 +26,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
-| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
+| **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ, CHM, PDB, PML, TCR, RB, SNB, OEB → EPUB, AZW3, MOBI, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/AZW3/MOBI/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
@@ -40,7 +40,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, copies without metadata (see "Media tools") |
-| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
+| Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF → EPUB (CHM, PDB, PML, RB, SNB, TCR, OEB too, below the built-in readers); EPUB → LIT, LRF, PDB, PML, RB, SNB, TCR (MOBI, AZW3 too, below the built-in writer); e-books → PDF (ranked above the HWPX writer, see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
 
 DOCX, ODT, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written
@@ -2093,6 +2093,21 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
   records, MOBI header and EXTH metadata, PalmDOC (LZ77) and HUFF/CDIC compression, MOBI 6 `filepos` links and
   `recindex` pictures, KF8 text rebuilt from the skeleton and fragment indexes with `kindle:pos` / `kindle:embed` /
   `kindle:flow` references resolved, and plain PalmDOC (TEXtREAd) books. **AZW4** (Print Replica) gives back its PDF.
+- **AZW3 and MOBI output** (`Ebooks/Mobi/MobiWriter.cs`, `MobiIndexWriter.cs`, from the same format description):
+  the chapters are the XHTML the EPUB writer makes. **AZW3** is KF8: each chapter is a skeleton (the page without the
+  inside of `<body aid="0">`) and fragments of about 8 KB cut between top-level elements, listed in the SKEL and FRAG
+  indexes; links become `kindle:pos:fid:…:off:…`, pictures `kindle:embed:…` (JPEG, PNG; others converted), the style
+  sheet is flow 1 in the FDST record; the NCX index holds the two highest heading levels, nested; EXTH has title,
+  authors, publisher, description, language, cover and a 330-pixel thumbnail, document type EBOK. **MOBI** is the
+  same KF8 part behind a MOBI 6 part for Kindles and apps from before 2011 (one HTML document with
+  `<mbp:pagebreak/>`, `filepos=` links, `recindex` pictures, a contents page the guide points at), joined by a
+  BOUNDARY record and EXTH 121, the way KindleGen made .mobi files; the pictures are stored once, before the
+  boundary. Text records are 4,096 bytes, PalmDOC-compressed, with the multibyte overlap entry. Books written by Filee
+  read back with `MobiReader` into the same document model as the EPUB written from the same book (both parts of a
+  MOBI are checked). They are not checked against Kindle Previewer in the tests; a book from each should be opened
+  there before a release. No RESC or DATP record is written. The edges cost 19 (`EbookConverter.KindleCost`): in the
+  default engine order the built-in writer wins over calibre's EPUB → AZW3 / MOBI (19 + 9 against 20 + 9); ranked
+  first, calibre writes them instead.
 - **FB2**: nested sections become headings, poems / epigraphs / citations / tables are kept, note links become
   footnotes, pictures come from the base64 binaries; the XML declaration's encoding (often windows-1251) is used.
   FB2 output nests sections by heading level.
@@ -2143,10 +2158,13 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
 ## Calibre
 
 calibre's `ebook-convert` (GPL-3.0) is an optional download for the formats Filee does not read or write itself:
-LIT and LRF → EPUB, and EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB and TCR. CHM, PDB, PML, RB, SNB, TCR and OEB
-are read by the built-in engine (see [E-books](#e-books)); calibre keeps its edges for them, below the built-in ones.
-EPUB is the hub, so for example FB2 → AZW3 is FB2 → EPUB (built in) → AZW3 (calibre). Its edges cost 20, so
-built-in routes always win where they exist.
+LIT and LRF → EPUB, and EPUB → LIT, LRF, PDB, PML, RB, SNB and TCR. CHM, PDB, PML, RB, SNB, TCR and OEB are read,
+and MOBI and AZW3 written, by the built-in engine (see [E-books](#e-books)); calibre keeps its edges for them, below
+the built-in ones. EPUB is the hub, so for example FB2 → LIT is FB2 → EPUB (built in) → LIT (calibre). Its edges
+cost 20, so built-in routes always win where they exist.
+
+calibre's other outputs (LIT, LRF, PDB, PML, RB, SNB, TCR) are kept: they cost nothing while calibre isn't installed,
+and nothing built in writes them.
 
 calibre also makes PDFs of EPUB, MOBI, AZW3, AZW, PRC, FB2, HTMLZ, TXTZ and the formats only it reads (one
 `ebook-convert` run: A4 with `--paper-size a4`, page numbers with `--pdf-page-numbers`, calibre's margins and font

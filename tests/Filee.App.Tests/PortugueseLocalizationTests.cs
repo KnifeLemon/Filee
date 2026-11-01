@@ -101,8 +101,8 @@ public class PortugueseLocalizationTests
     [InlineData("presets.save_every_frame", "Guardar todos os fotogramas de um vídeo", "Salvar cada quadro de um vídeo")]
     [InlineData("watch.status_watching", "A monitorizar", "Monitorando")]
     [InlineData("engines.package.calibre.description",
-        "Guarda em MOBI e AZW3 para Kindle e converte formatos raros de livros digitais (LIT, LRF, PDB, CHM…).\nEPUB, MOBI, AZW3, FB2 e banda desenhada são lidos sem ele.",
-        "Salva MOBI e AZW3 para Kindle e converte formatos raros de e-book (LIT, LRF, PDB, CHM…).\nEPUB, MOBI, AZW3, FB2 e quadrinhos são lidos sem ele.")]
+        "Converte formatos raros de livros digitais (LIT, LRF…) e guarda em formatos antigos (LIT, PDB, RB…).\nEPUB, MOBI, AZW3, FB2 e banda desenhada são lidos, e livros para Kindle são guardados, sem ele.",
+        "Converte formatos raros de e-book (LIT, LRF…) e salva em formatos antigos (LIT, PDB, RB…).\nEPUB, MOBI, AZW3, FB2 e quadrinhos são lidos, e livros para Kindle são salvos, sem ele.")]
     public void Editorial_glossary_keeps_variant_specific_terms_separate(string key, string european, string brazilian)
     {
         TestServices.EnsureInitialized("en");
