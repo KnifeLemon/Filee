@@ -58,6 +58,9 @@ internal static class Help
         one with the same download and checks as the app. 'remove' only removes what Filee downloaded; your own copy
         and one found on this computer are left alone.
 
+        In the JSON of the list, "version" is the version Filee downloads, also for an engine whose status is
+        "owncopy" (your own copy or one found on this computer).
+
         Options:
               --json             Print the result as JSON; progress goes to stderr, one JSON object per line
               --quiet            Print nothing but errors

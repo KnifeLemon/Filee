@@ -1,6 +1,6 @@
 // The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
-// --json, one JSON document for other programs. Exit codes: 0 everything converted, 1 some files failed,
-// 2 wrong arguments or a missing input, 3 nothing to convert.
+// --json, one JSON document for other programs. Exit codes: 0 nothing failed (skipped files included), 1 some
+// failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
 
 using System.Text.Json;
 using Filee.Core.Conversion;
