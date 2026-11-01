@@ -53,7 +53,7 @@ public class ComplexScriptTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("Hebrew", ComplexScripts.FindInFile(Text("hebrew.html", "<p>&#x5E9;&#x5DC;&#x5D5;&#x5DD;</p>"), "html"));
         Assert.Equal("Thai", ComplexScripts.FindInFile(Text("thai.rtf", @"{\rtf1 \u3585?\u3634?}"), "rtf"));
         Assert.Null(ComplexScripts.FindInFile(Text("plain.md", "# Title\n\nC:\\users\\me and &#169; 2026"), "md"));
-        Assert.Null(ComplexScripts.FindInFile(Text("binary.hwp", "ignored"), "hwp"));
+        Assert.Null(ComplexScripts.FindInFile(Text("binary.hwp", "ignored"), "hwp")); // not an HWP: left to the conversion
 
         // Web archives: the HTML part, quoted-printable here, as Chrome saves it.
         const string Mhtml = "MIME-Version: 1.0\r\nContent-Type: multipart/related; boundary=\"b\"\r\n\r\n--b\r\n" +
@@ -135,6 +135,38 @@ public class ComplexScriptTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Null(ComplexScripts.FindUnmeasuredInFile(Text("symbols.md", "각도 α = 30°, 저항 10 Ω, 두께 5 μm"), "md"));
         Assert.Equal("Greek", ComplexScripts.FindUnmeasuredInFile(Text("word.md", "결과: Αναφορά"), "md"));
         Assert.Equal("Cyrillic", ComplexScripts.FindUnmeasuredInFile(Text("short.md", "Да"), "md"));
+    }
+
+    [Fact]
+    public void A_binary_hwp_is_scanned_through_its_records()
+    {
+        string Hwp(string name, params string[] paragraphs)
+        {
+            var builder = new HwpBuilder { Flags = 1 }.PlainDocInfo().SectionStart();
+            foreach (var paragraph in paragraphs)
+                builder.Paragraph(paragraph);
+            var path = Path.Combine(fx.NewFolder(), name);
+            File.WriteAllBytes(path, builder.Build());
+            return path;
+        }
+
+        Assert.Equal("Arabic", ComplexScripts.FindInFile(Hwp("arabic.hwp", "보고서", "التقرير السنوي"), "hwp"));
+        Assert.Equal("Gujarati", ComplexScripts.FindInFile(Hwp("gujarati.hwp", "સૌરાષ્ટ્ર ઘરખેડ"), "hwp"));
+        Assert.Null(ComplexScripts.FindInFile(Hwp("korean.hwp", "한글 문서", "English, 中文"), "hwp"));
+
+        // Like an HWPX, an HWP stays with rhwp for letters it can only not measure; shaping still sends it elsewhere.
+        var cyrillic = Hwp("russian.hwp", "보고서 Отчёт");
+        Assert.Equal("Cyrillic", ComplexScripts.FindUnmeasuredInFile(cyrillic, "hwp"));
+        Assert.Null(new RhwpConverter().ScanScripts(cyrillic, "hwp").WithoutWidths);
+        Assert.Equal("Arabic", new RhwpConverter().ScanScripts(Hwp("arabic-2.hwp", "مرحبا"), "hwp").NeedsShaping);
+
+        // Protected or damaged files are left to the conversion, which says what is wrong.
+        var locked = Path.Combine(fx.NewFolder(), "locked.hwp");
+        File.WriteAllBytes(locked, new HwpBuilder { Flags = 0x2 }.PlainDocInfo().SectionStart().Paragraph("مرحبا").Build());
+        Assert.Null(ComplexScripts.FindInFile(locked, "hwp"));
+        var cut = Hwp("cut.hwp", "مرحبا");
+        File.WriteAllBytes(cut, File.ReadAllBytes(cut)[..700]);
+        Assert.Null(ComplexScripts.FindInFile(cut, "hwp"));
     }
 
     [Fact]

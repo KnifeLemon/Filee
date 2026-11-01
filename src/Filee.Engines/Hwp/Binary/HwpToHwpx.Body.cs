@@ -342,7 +342,8 @@ internal sealed partial class HwpToHwpx
             var width = position + 2 < text.Length ? text[position + 1] | (text[position + 2] << 16) : 0;
             var leader = position + 3 < text.Length ? text[position + 3] & 0xFF : 0;
             var type = position + 3 < text.Length ? text[position + 3] >> 8 : 0;
-            writer.Empty(Hp, "tab", ("width", width), ("leader", leader), ("type", type + 1));
+            // The kind is stored as HWPX numbers it (1 = left), as in the HWPX 한글 saves for the same file.
+            writer.Empty(Hp, "tab", ("width", width), ("leader", leader), ("type", type));
         }
 
         private void FieldEnd(int position)

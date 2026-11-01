@@ -585,6 +585,22 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Read_for_layout_the_page_number_is_the_sections_own_and_not_a_footer_paragraph()
+    {
+        var folder = fx.NewFolder();
+        var path = HangulStylePackage(folder);
+
+        var layout = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media-layout"));
+        var read = HwpxReader.Read(path, Path.Combine(folder, "media"));
+
+        var number = layout.Sections[0].PageNumber!;
+        Assert.Equal(("BOTTOM_CENTER", "DIGIT", "-"), (number.Position, number.NumberFormat, number.Side));
+        Assert.DoesNotContain(layout.Sections[0].Footers.SelectMany(f => f.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines), i => i is HField);
+        Assert.Contains(read.Sections[0].Footers.SelectMany(f => f.Blocks).OfType<HParagraph>().SelectMany(p => p.Inlines), i => i is HField);
+        Assert.Equal(3, layout.Sections[1].StartPageNumber); // a new number in the section's first paragraph starts it
+    }
+
+    [Fact]
     public void Form_controls_are_laid_out_as_boxes_with_their_text()
     {
         var folder = fx.NewFolder();

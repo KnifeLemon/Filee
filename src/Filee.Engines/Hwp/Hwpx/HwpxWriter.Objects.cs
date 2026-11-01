@@ -2,6 +2,7 @@
 // Child order follows files saved by 한글: object-specific children first, then sz / pos / outMargin.
 
 using System.Text;
+using Filee.Engines.Metafiles;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx;
@@ -20,12 +21,31 @@ internal sealed partial class HwpxWriter
 
     // ───────────────────────── Pictures ─────────────────────────
 
+    /// <summary>The size in points of an EMF / WMF picture, or null for other pictures and damaged headers.</summary>
+    private static (float Width, float Height)? MetafileSize(string path)
+    {
+        // A WMF without a placeable header finds its size in its records: read whole, up to a size worth reading.
+        if (!Metafile.IsMetafile(path) || new FileInfo(path).Length > 16 * 1024 * 1024)
+            return null;
+        return Metafile.Size(File.ReadAllBytes(path));
+    }
+
     private string? Picture(HImage image)
     {
         if (!File.Exists(image.Path))
             return null; // missing image: skip rather than produce a broken reference
 
         var (width, height) = (image.Width, image.Height);
+        if ((width is null || height is null) && MetafileSize(image.Path) is var (ptW, ptH) && ptW > 0 && ptH > 0)
+        {
+            // EMF / WMF: the size their header gives, in points (ImageMagick knows it only through GDI+ on Windows).
+            if (width is null && height is null)
+                (width, height) = ((int)(ptW * 100), (int)(ptH * 100));
+            else if (width is not null)
+                height = (int)(width.Value * ptH / ptW);
+            else
+                width = (int)(height!.Value * ptW / ptH);
+        }
         if (width is null || height is null)
         {
             try

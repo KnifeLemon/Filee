@@ -26,7 +26,8 @@ internal interface IFontCollection
 /// <summary>A requested style: weight 100–900 (400 regular, 700 bold) and italic.</summary>
 internal readonly record struct FontStyle(int Weight = 400, bool Italic = false)
 {
-    public static readonly FontStyle Regular = new();
+    /// <summary>400, upright. (A bare <c>new()</c> of this struct is all zeros: the defaults apply only to <c>new(...)</c> with arguments.)</summary>
+    public static readonly FontStyle Regular = new(400);
 
     public bool Bold => Weight >= 600;
 

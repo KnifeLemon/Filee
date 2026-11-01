@@ -39,7 +39,7 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
     }
 
     [Fact]
-    public void On_documents_go_to_pdf_through_it_and_sheets_slides_and_pdf_keep_their_routes()
+    public void On_documents_go_to_pdf_through_it_and_sheets_and_pdf_keep_their_routes()
     {
         Use(true);
         var planner = fx.Catalog.CreatePlanner();
@@ -48,8 +48,83 @@ public sealed class FileeRendererConverterTests(EngineFixture fx) : IClassFixtur
             Assert.Equal("layout", Assert.Single(planner.Plan(format, "pdf")!.Steps).Converter.Id);
         // Pictures of the pages come from its PDF through PDFium.
         Assert.Equal(["layout", "pdfium"], planner.Plan("docx", "png")!.Steps.Select(s => s.Converter.Id));
-        foreach (var format in new[] { "xlsx", "pptx" })
-            Assert.DoesNotContain(planner.Plan(format, "pdf")!.Steps, s => s.Converter.Id == "layout");
+        Assert.DoesNotContain(planner.Plan("xlsx", "pdf")!.Steps, s => s.Converter.Id == "layout");
+    }
+
+    [Fact]
+    public void On_slide_decks_go_to_pdf_and_pictures_through_it_even_with_libreoffice()
+    {
+        Use(true);
+        // LibreOffice installed and chosen for presentations (the default): the slide renderer still wins.
+        var planner = fx.Catalog.CreatePlanner(["libreoffice"]);
+        foreach (var format in new[] { "pptx", "pptm", "potx", "ppsx" })
+        {
+            foreach (var target in new[] { "pdf", "png", "jpg" })
+            {
+                var step = Assert.Single(planner.Plan(format, target)!.Steps);
+                Assert.Equal("layout", step.Converter.Id);
+                Assert.True(step.Checked);
+            }
+        }
+        // Without it (a deck with a chart), LibreOffice takes the deck as before.
+        Assert.Equal("libreoffice", planner.Plan("pptx", "pdf", withoutChecked: true)!.Steps[0].Converter.Id);
+
+        Use(false);
+        Assert.DoesNotContain(fx.Catalog.CreatePlanner(["libreoffice"]).Plan("pptx", "pdf")!.Steps, s => s.Converter.Id == "layout");
+    }
+
+    [Fact]
+    public async Task On_a_deck_is_drawn_by_it_as_a_pdf_and_a_picture_per_slide()
+    {
+        Use(true);
+        var dir = fx.NewFolder();
+        var deck = new SlideDeckBuilder();
+        deck.Slide(deck.Placeholder("ctrTitle", SlideDeckBuilder.Paragraph("Filee draws this deck")), SlideDeckBuilder.Layout.Title)
+            .Slide(deck.Shape("star5", 100, 100, 200, 200, paragraphs: SlideDeckBuilder.Paragraph("Second")));
+        var source = deck.Save(Path.Combine(dir, "deck.pptx"));
+
+        var pdfJob = await fx.ConvertAsync([source], new Preset { TargetFormat = "pdf" });
+        Assert.Equal(JobState.Completed, pdfJob.State);
+        using (var pdf = PigDocument.Open(pdfJob.Outputs.Single()))
+        {
+            Assert.Equal(2, pdf.NumberOfPages);
+            Assert.Equal(960, pdf.GetPage(1).Width, 1);
+            Assert.Contains("Filee draws this deck", pdf.GetPage(1).Text);
+        }
+
+        var pngJob = await fx.ConvertAsync([source], new Preset { TargetFormat = "png" });
+        Assert.Equal(JobState.Completed, pngJob.State);
+        Assert.Equal(2, pngJob.Outputs.Count());
+        using var bitmap = SkiaSharp.SKBitmap.Decode(pngJob.Outputs.First());
+        Assert.True(bitmap.Width > bitmap.Height);
+    }
+
+    [Theory]
+    [InlineData("<p:graphicFrame><p:xfrm/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" r:id=\"rId9\"/></a:graphicData></a:graphic></p:graphicFrame>", "charts")]
+    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"cloud\"/></p:spPr></p:sp>", "the preset shape cloud")]
+    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"rect\"/><a:effectLst><a:outerShdw blurRad=\"40000\"/></a:effectLst></p:spPr></p:sp>", "shadows and effects")]
+    [InlineData("<p:sp><p:spPr/><p:style><a:effectRef idx=\"3\"/></p:style></p:sp>", "shadows and effects")]
+    [InlineData("<p:sp><p:spPr/><p:txBody><a:bodyPr vert=\"eaVert\"/></p:txBody></p:sp>", "vertical East Asian text")]
+    [InlineData("<p:sp><p:spPr/><p:txBody><a:bodyPr><a:prstTxWarp prst=\"textArchUp\"/></a:bodyPr></p:txBody></p:sp>", "WordArt text warp")]
+    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"rect\"/><a:sp3d extrusionH=\"76200\"/></p:spPr></p:sp>", "3D effects")]
+    [InlineData("<p:sp><p:spPr><a:prstGeom prst=\"star5\"/></p:spPr><p:style><a:effectRef idx=\"2\"/></p:style></p:sp>", null)]
+    public void The_check_names_what_the_slide_renderer_cant_draw_yet(string shape, string? expected)
+    {
+        var deck = new SlideDeckBuilder();
+        deck.Slide(shape);
+        var path = deck.Save(Path.Combine(fx.NewFolder(), "deck.pptx"));
+        Assert.Equal(expected, new FileeRendererConverter().FirstUnsupported(path, "pptx"));
+    }
+
+    [Fact]
+    public void The_slide_check_leaves_out_hidden_slides_and_what_a_fallback_replaces()
+    {
+        var deck = new SlideDeckBuilder();
+        deck.Slide("<p:sp><p:spPr><a:prstGeom prst=\"cloud\"/></p:spPr></p:sp>", hidden: true);
+        deck.Slide("<mc:AlternateContent><mc:Choice Requires=\"p14\"><p:sp><p:spPr><a:prstGeom prst=\"cloud\"/></p:spPr></p:sp></mc:Choice>" +
+                   "<mc:Fallback><p:sp><p:spPr><a:prstGeom prst=\"rect\"/></p:spPr></p:sp></mc:Fallback></mc:AlternateContent>");
+        var path = deck.Save(Path.Combine(fx.NewFolder(), "deck.pptx"));
+        Assert.Null(new FileeRendererConverter().FirstUnsupported(path, "pptx"));
     }
 
     [Fact]
