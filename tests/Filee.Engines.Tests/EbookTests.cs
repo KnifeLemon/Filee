@@ -62,7 +62,8 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(["hwpx-writer", "rhwp", "pdfium"], planner.Plan("mobi", "png")!.Steps.Select(s => s.Converter.Id));
         foreach (var (from, to) in new[] { ("mobi", "epub"), ("azw3", "epub"), ("fb2", "epub"), ("epub", "fb2"), ("md", "epub"), ("docx", "epub"), ("epub", "txt"), ("cbr", "pdf"), ("pdf", "cbz"), ("azw4", "pdf"), ("htmlz", "txtz") })
             Assert.Equal("ebook", Assert.Single(planner.Plan(from, to)!.Steps).Converter.Id);
-        Assert.Null(planner.Plan("epub", "mobi")); // needs calibre
+        Assert.Equal("ebook", Assert.Single(planner.Plan("epub", "mobi")!.Steps).Converter.Id); // MobiWriter, no calibre
+        Assert.Null(planner.Plan("epub", "lit")); // needs calibre
     }
 
     [Fact]
@@ -70,8 +71,9 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
     {
         var planner = fx.Catalog.CreatePlanner(["calibre"]);
 
-        Assert.Equal("calibre", Assert.Single(planner.Plan("epub", "azw3")!.Steps).Converter.Id);
-        Assert.Equal(["ebook", "calibre"], planner.Plan("fb2", "mobi")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal("calibre", Assert.Single(planner.Plan("epub", "lit")!.Steps).Converter.Id);
+        Assert.Equal(["ebook", "calibre"], planner.Plan("fb2", "lit")!.Steps.Select(s => s.Converter.Id));
+        Assert.Equal("ebook", Assert.Single(planner.Plan("epub", "azw3")!.Steps).Converter.Id); // the built-in Kindle writer
         Assert.Equal(["calibre", "ebook"], planner.Plan("lit", "txt")!.Steps.Select(s => s.Converter.Id));
         Assert.Equal("ebook", Assert.Single(planner.Plan("mobi", "epub")!.Steps).Converter.Id);
         Assert.Equal("ebook", Assert.Single(planner.Plan("epub", "fb2")!.Steps).Converter.Id);
@@ -537,9 +539,14 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.SkipUnless(HasCalibre, "calibre not found (pwsh build/fetch-engines.ps1 -Only calibre)");
         var epub = EbookBuilders.Epub(fx.NewFolder());
 
+        // calibre ranked first writes Kindle books instead of the built-in writer.
+        await using var queue = new JobQueue(new ConverterCatalog(fx.Converters) { Priority = CalibreAt(0) });
         foreach (var format in new[] { "azw3", "mobi" })
         {
-            var kindle = await ConvertAsync(epub, format);
+            var job = new ConversionJob([epub], new Preset { TargetFormat = format }, format);
+            await queue.RunAsync(job);
+            Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+            var kindle = job.Outputs.Single();
             Assert.True(new FileInfo(kindle).Length > 1000);
 
             // AZW3 is KF8 (skeleton / fragment indexes), MOBI is MOBI 6 (+ KF8 in calibre's joint files).
