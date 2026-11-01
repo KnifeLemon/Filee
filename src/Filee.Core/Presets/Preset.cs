@@ -402,6 +402,11 @@ public enum HideStyle
     Pixelate,
     /// <summary>A strong blur.</summary>
     Blur,
+    /// <summary>
+    /// Solid, opaque black: nothing of what was there is left. A Filee from before it reads it as
+    /// <see cref="Pixelate"/>.
+    /// </summary>
+    Box,
 }
 
 /// <summary>
@@ -414,6 +419,10 @@ public sealed class HiddenArea
     public double Y { get; set; }
     public double Width { get; set; }
     public double Height { get; set; }
+
+    /// <summary>How this part is covered; null for the preset's <see cref="ImageOptions.HideStyle"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
+    public HideStyle? Style { get; set; }
 
     public HiddenArea Clone() => (HiddenArea)MemberwiseClone();
 }
@@ -616,8 +625,8 @@ public sealed class ImageOptions
     public List<int> IcoSizes { get; set; } = [256, 128, 64, 48, 32, 16];
 
     /// <summary>
-    /// "Pixelate / blur": how <see cref="HiddenAreas"/> are covered. Kept in the tool, so its window opens with the last
-    /// one. A field of its own (not a value added to another option), read leniently: an older Filee skips it.
+    /// "Pixelate / blur": how <see cref="HiddenAreas"/> without a <see cref="HiddenArea.Style"/> of their own are covered.
+    /// Kept in the tool as the last style picked, so its window opens with it. A field of its own (not a value added to another option), read leniently: an older Filee skips it.
     /// </summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
     public HideStyle HideStyle { get; set; }

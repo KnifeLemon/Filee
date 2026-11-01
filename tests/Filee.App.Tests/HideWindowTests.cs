@@ -61,12 +61,30 @@ public class HideWindowTests
             Assert.True(vm.CanSave);
             Save(window, $"hide-pixelate-{suffix}.png");
 
-            vm.SetStyle(HideStyle.Blur);
+            // Each frame has its own style: every one blurred here.
+            for (var i = 0; i < Frames.Length; i++)
+            {
+                vm.Areas.Select(i);
+                vm.SetStyle(HideStyle.Blur);
+            }
             vm.Strength = 7;
             vm.Areas.Select(2);
             WaitForCover(vm);
             Settle(window);
             Save(window, $"hide-blur-{suffix}.png");
+
+            // The phone number blacked out, the name and the face pixelated.
+            vm.Areas.Select(0);
+            vm.SetStyle(HideStyle.Pixelate);
+            vm.Areas.Select(2);
+            vm.SetStyle(HideStyle.Pixelate);
+            vm.Areas.Select(1);
+            vm.SetStyle(HideStyle.Box);
+            vm.Strength = 5;
+            WaitForCover(vm);
+            Settle(window);
+            Assert.False(vm.CanChangeStrength);
+            Save(window, $"hide-box-{suffix}.png");
         });
     }
 
@@ -261,6 +279,53 @@ public class HideWindowTests
             Assert.Equal(2, conversion.Image.HiddenAreas!.Count);
             Assert.Equal(402 / 1600.0, conversion.Image.HiddenAreas[0].X, 6);
         });
+    }
+
+    [AvaloniaFact]
+    public void Each_frame_keeps_its_own_style_undoably_and_the_conversion_gets_them()
+    {
+        WithWindow("en", "light", ["chat.png", "chat.png"], (window, vm, _, exported) =>
+        {
+            vm.Areas.Add(Frames[0]);
+            vm.Areas.Add(Frames[1]);
+            // Frame 1 selected: X blacks out only it; the slider is greyed while a box is shown.
+            Press(window, Key.X);
+            Assert.Equal([HideStyle.Pixelate, HideStyle.Box], vm.Areas.Styles);
+            Assert.True(vm.IsBox);
+            Assert.False(vm.CanChangeStrength);
+
+            // Selecting the other frame shows its style; a frame drawn next gets the style picked last.
+            vm.Areas.Select(0);
+            Assert.True(vm.IsPixelate);
+            Assert.True(vm.CanChangeStrength);
+            vm.Areas.Select(-1);
+            Assert.True(vm.IsBox);
+            vm.Areas.Add(Frames[2]);
+            Assert.Equal(HideStyle.Box, vm.Areas.Styles[2]);
+
+            // A style change is one undo step.
+            vm.Areas.Select(2);
+            vm.SetStyle(HideStyle.Blur);
+            Assert.Equal(HideStyle.Blur, vm.Areas.Styles[2]);
+            vm.Undo();
+            Assert.Equal(HideStyle.Box, vm.Areas.Styles[2]);
+            vm.Redo();
+            WaitForCover(vm);
+            Assert.NotNull(vm.CoverImage);
+            Assert.NotNull(vm.BlurCoverImage);
+
+            vm.SaveCommand.Execute(null);
+            WaitFor(() => exported.Count == 1 && !vm.IsBusy);
+            var areas = exported[0].Conversion.Image.HiddenAreas!;
+            Assert.Equal([HideStyle.Pixelate, HideStyle.Box, HideStyle.Blur], areas.Select(a => a.Style));
+            // The next picture of the batch starts with the same frames and styles.
+            Assert.Equal([HideStyle.Pixelate, HideStyle.Box, HideStyle.Blur], vm.Areas.Styles);
+            // The style picked last is the one remembered.
+            Assert.Equal(HideStyle.Blur, AppHost.Get<UserDataStore>().FindPreset("tool-hide")!.Image.HideStyle);
+        });
+        var store = AppHost.Get<UserDataStore>();
+        HideTool.Remember(store.FindPreset("tool-hide")!, HideStyle.Pixelate, HideTool.DefaultStrength);
+        store.SaveLibrary();
     }
 
     [AvaloniaFact]
