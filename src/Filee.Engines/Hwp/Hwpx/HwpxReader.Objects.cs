@@ -75,10 +75,37 @@ internal sealed partial class HwpxReader
                 if ((Attr(element, "mainText") ?? Child(element, "mainText")?.Value) is { Length: > 0 } main)
                     builder.AddText(main, format);
                 break;
+            case "ole" when _forLayout && OlePicture(element) is { } picture:
+                builder.Add(picture);
+                break;
             default:
                 Skip(element); // ole, chart, video, form controls, ...
                 break;
         }
+    }
+
+    /// <summary>
+    /// An OLE object (read for layout) as the picture its program left of it (Binary/OlePreview.cs), in the object's
+    /// place and size; null when it has none.
+    /// </summary>
+    private HImage? OlePicture(XElement ole)
+    {
+        if (ExtractBinary(Attr(ole, "binaryItemIDRef")) is not { } path || Binary.OlePreview.Extract(path, path + "-preview", Package.Limits) is not { } preview)
+            return null;
+        _budget.Object();
+        var placement = PlacementOf(ole);
+        return new HImage(preview)
+        {
+            Width = placement.Width > 0 ? placement.Width : null,
+            Height = placement.Height > 0 ? placement.Height : null,
+            Anchor = placement.Anchor,
+            Transform = Transform(ole),
+            ZOrder = ZOrder(ole),
+            OuterMargin = Child(ole, "outMargin") is { } outMargin
+                ? new HInsets(Int(outMargin, "left"), Int(outMargin, "right"), Int(outMargin, "top"), Int(outMargin, "bottom"))
+                : default,
+            BaseLine = placement.Anchor is null ? 85 : null,
+        };
     }
 
     /// <summary>The model objects for one drawing object; groups give one object per member.</summary>
