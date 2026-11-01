@@ -65,9 +65,11 @@ and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish, Vie
 combining mark is drawn but laid out at a fixed half-em. Such a document takes a route without unshaped edges when
 one exists and is never refused when none does: the overlapping text stays readable. Only letters inside words
 count (an extended Latin letter next to any letter, a letter of another script next to one of its own script), so a
-symbol or unit on its own (α, Ω, μm in a Korean report) keeps rhwp, and an HWPX stays with rhwp for this (only text
-that needs shaping sends it elsewhere). Documents in French, German or Spanish (Latin-1 letters only), Chinese,
-Japanese and Korean keep the built-in route; a binary HWP is not scanned and stays with rhwp.
+symbol or unit on its own (α, Ω, μm in a Korean report) keeps rhwp, and HWP and HWPX stay with rhwp for this (only
+text that needs shaping sends them elsewhere). Documents in French, German or Spanish (Latin-1 letters only), Chinese,
+Japanese and Korean keep the built-in route. A binary HWP is scanned through the HWPX package its records make
+(`HwpReader.ToHwpx`, written to a temporary file and deleted; a protected or damaged file isn't scanned and is left to
+the conversion, which says what is wrong with it).
 
 All built-in document readers are registered in one place, `Hwp/Hwpx/DocumentReaders.cs` (format id → reader, and
 which formats need Pandoc). The HWPX, DOCX and ODT writers take their input formats from it: adding a reader there is
@@ -328,6 +330,9 @@ and the drawing is recorded into an `SKPicture` that is replayed for each output
   drawing; its natural size is its frame (`Documents/PictureSize`). A picture that can't be drawn is left out, like a
   picture of any format that can't be read.
 - Pandoc's Markdown / HTML results get PNGs of their EMF / WMF pictures on every platform.
+- **Pictures in HWPX written by the HWPX writer** (DOCX, ODT, PDF, … → HWPX): an EMF or WMF picture is stored as a PNG
+  rendered here (`ImageReader`, at least 150 dpi), on every platform, and sized from its header's frame when the
+  document gives no size.
 
 What is drawn:
 
@@ -2217,7 +2222,8 @@ equation's own baseline on it, so a fraction, matrix or sum hangs below the line
 after the paragraph (#143).
 
 An HWPX with text that needs shaping (Arabic, Hindi, Thai, ...) goes through the DOCX writer to LibreOffice instead (or
-to the Filee renderer when it is on), like the documents above; an HWP is not scanned and stays with rhwp.
+to the Filee renderer when it is on), like the documents above; so does an HWP, scanned through the package its
+records make.
 
 rhwp renders text slowly: about 1 s per KB of section XML, some 4 s per page of a novel (rhwp 0.8.7 on an
 i7-1185G7, pictures cost little). So each rhwp run's time limit follows the document's text: 2 minutes + 30 minutes
