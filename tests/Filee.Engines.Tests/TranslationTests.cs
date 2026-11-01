@@ -69,7 +69,7 @@ public class TranslationTests
     public async Task TranslationService_throws_when_no_local_engine_is_available()
     {
         var service = new TranslationService();
-        if (!await TranslationService.IsLocalOllamaAvailableAsync() && TranslationService.LocateLocalEngine() is null)
+        if (!await TranslationService.IsLocalOllamaAvailableAsync())
         {
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.TranslateTextAsync("Hello", "es", "en"));
         }

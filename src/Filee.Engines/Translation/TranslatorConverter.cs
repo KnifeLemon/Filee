@@ -6,11 +6,7 @@ using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
 using Filee.Engines.Infrastructure;
-using Filee.Engines.Pdf;
 using Microsoft.Extensions.Logging;
-using PdfSharp;
-using PdfSharp.Drawing;
-using PdfSharp.Pdf;
 
 namespace Filee.Engines.Translation;
 
@@ -22,7 +18,7 @@ public sealed class TranslatorConverter : IConverter
     private static readonly string[] DocumentFormats =
     [
         "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz",
-        "md", "txt", "html", "docx", "pdf", "hwpx", "json", "yaml", "toml", "xml", "srt", "vtt", "csv"
+        "md", "txt", "html", "docx", "hwpx"
     ];
 
     private readonly ITranslationService? _translationService;
@@ -49,47 +45,49 @@ public sealed class TranslatorConverter : IConverter
         .ToList();
 
     private static readonly HttpClient SharedStatusClient = new() { Timeout = TimeSpan.FromMilliseconds(200) };
-    private static (DateTime CheckedAt, bool Available) _cachedOllama;
+    private static volatile bool _lastKnownOllamaAvailable;
+    private static long _lastCheckedTicks;
+    private static readonly object _statusCheckLock = new();
 
     public EngineStatus GetStatus()
     {
         if (_translationService is not null)
             return EngineStatus.Available("embedded", "Test Translator");
 
-        var now = DateTime.UtcNow;
-        bool isAvailable;
-        if (now - _cachedOllama.CheckedAt < TimeSpan.FromSeconds(3))
+        var nowTicks = Environment.TickCount64;
+        var lastTicks = Interlocked.Read(ref _lastCheckedTicks);
+        if (nowTicks - lastTicks > 2500)
         {
-            isAvailable = _cachedOllama.Available;
-        }
-        else
-        {
-            try
+            lock (_statusCheckLock)
             {
-                using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
-                using var res = SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token).GetAwaiter().GetResult();
-                isAvailable = res.IsSuccessStatusCode;
+                lastTicks = Interlocked.Read(ref _lastCheckedTicks);
+                if (nowTicks - lastTicks > 2500)
+                {
+                    try
+                    {
+                        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(150));
+                        using var res = SharedStatusClient.GetAsync("http://127.0.0.1:11434/api/tags", cts.Token).GetAwaiter().GetResult();
+                        _lastKnownOllamaAvailable = res.IsSuccessStatusCode;
+                    }
+                    catch
+                    {
+                        _lastKnownOllamaAvailable = false;
+                    }
+                    Interlocked.Exchange(ref _lastCheckedTicks, nowTicks);
+                }
             }
-            catch
-            {
-                isAvailable = false;
-            }
-            _cachedOllama = (now, isAvailable);
         }
 
-        if (isAvailable)
+        if (_lastKnownOllamaAvailable)
             return EngineStatus.Available("http://127.0.0.1:11434", "Ollama (Local Offline)");
-
-        if (TranslationService.LocateLocalEngine() is { } cli && File.Exists(cli))
-            return EngineStatus.Available(cli, "Translator (Local)");
 
         return EngineStatus.Unavailable("engine.reason.download_translator");
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var status = GetStatus();
-        if (!status.IsAvailable && _translationService is null)
+        var isAvailable = _translationService is not null || await TranslationService.IsLocalOllamaAvailableAsync(cancellationToken);
+        if (!isAvailable)
             throw new ConversionRefusedException("error.translation_needs_engine");
 
         progress?.Report(0.05);
@@ -157,7 +155,7 @@ public sealed class TranslatorConverter : IConverter
                     var document = MarkdownReader.Read(text, Path.GetDirectoryName(Path.GetFullPath(input))!);
                     return (new Book(document, new BookMetadata { Title = document.Title }), document);
                 }
-            case "txt" or "json" or "yaml" or "toml" or "xml" or "srt" or "vtt" or "csv":
+            case "txt":
                 {
                     var text = HwpxConverter.DecodeText(File.ReadAllBytes(input));
                     var document = PlainText.ToDocument(text);
@@ -166,11 +164,6 @@ public sealed class TranslatorConverter : IConverter
             case "docx":
                 {
                     var document = DocxReader.Read(input, media);
-                    return (new Book(document, new BookMetadata { Title = document.Title }), document);
-                }
-            case "pdf":
-                {
-                    var document = PdfDocumentReader.Read(input, media);
                     return (new Book(document, new BookMetadata { Title = document.Title }), document);
                 }
             default:
@@ -201,7 +194,7 @@ public sealed class TranslatorConverter : IConverter
             case "docx":
                 DocxWriter.Write(document, output);
                 break;
-            case "txt" or "json" or "yaml" or "toml" or "xml" or "srt" or "vtt" or "csv":
+            case "txt":
                 File.WriteAllText(output, PlainTextWriter.Write(document), new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
                 break;
             case "html":
@@ -223,111 +216,9 @@ public sealed class TranslatorConverter : IConverter
             case "txtz":
                 ZippedText.WriteTxtz(b, output, step.InputPath, work);
                 break;
-            case "pdf":
-                WritePdf(document, output, work, cancellationToken);
-                break;
             default:
                 throw new NotSupportedException($"Writing to format {step.To} is not supported.");
         }
-    }
-
-    private static void WritePdf(HDocument document, string output, string work, CancellationToken cancellationToken)
-    {
-        // 1. Try bundled rhwp (Filee's primary engine for HWPX -> PDF)
-        var rhwp = EngineEnvironment.FindBundled("rhwp") is { } bundled
-            ? EngineEnvironment.FirstExisting(Path.Combine(bundled, OperatingSystem.IsWindows() ? "rhwp.exe" : "rhwp"))
-            : null;
-
-        if (rhwp is not null && File.Exists(rhwp))
-        {
-            try
-            {
-                var tempHwpx = Path.Combine(work, $"doc-{Guid.NewGuid():N}.hwpx");
-                HwpxWriter.Write(document, tempHwpx);
-                var tempPdf = Path.Combine(work, $"rhwp-{Guid.NewGuid():N}.pdf");
-                var result = ProcessRunner.RunAsync(rhwp, ["export-pdf", tempHwpx, "-o", tempPdf, .. RhwpInput.PdfOptions()], TimeSpan.FromMinutes(3), cancellationToken).GetAwaiter().GetResult();
-                if (result.ExitCode == 0 && File.Exists(tempPdf) && new FileInfo(tempPdf).Length > 0)
-                {
-                    File.Move(tempPdf, output, overwrite: true);
-                    return;
-                }
-            }
-            catch
-            {
-                // Fall back
-            }
-        }
-
-        // 2. Try LibreOffice if available
-        var lo = EngineEnvironment.FindBundled("libreoffice") is { } loBundled
-            ? EngineEnvironment.FirstExisting(Path.Combine(loBundled, OperatingSystem.IsWindows() ? "program/soffice.exe" : "program/soffice"))
-            : null;
-        lo ??= EngineEnvironment.FirstExisting(OperatingSystem.IsWindows() ? @"C:\Program Files\LibreOffice\program\soffice.exe" : "/usr/bin/soffice");
-
-        if (lo is not null && File.Exists(lo))
-        {
-            try
-            {
-                var tempDocx = Path.Combine(work, $"doc-{Guid.NewGuid():N}.docx");
-                DocxWriter.Write(document, tempDocx);
-                var loOutDir = Path.Combine(work, $"lo-{Guid.NewGuid():N}");
-                Directory.CreateDirectory(loOutDir);
-                var result = ProcessRunner.RunAsync(lo, ["--headless", "--convert-to", "pdf", "--outdir", loOutDir, tempDocx], TimeSpan.FromMinutes(3), cancellationToken).GetAwaiter().GetResult();
-                var produced = Directory.GetFiles(loOutDir, "*.pdf").FirstOrDefault();
-                if (produced is not null && File.Exists(produced) && new FileInfo(produced).Length > 0)
-                {
-                    File.Move(produced, output, overwrite: true);
-                    return;
-                }
-            }
-            catch
-            {
-                // Fall back
-            }
-        }
-
-        // 3. Fallback using SkiaSharp to ensure a valid PDF is always produced
-        WritePdfFallback(document, output);
-    }
-
-    private static void WritePdfFallback(HDocument document, string output)
-    {
-        using var stream = File.Create(output);
-        using var doc = SkiaSharp.SKDocument.CreatePdf(stream);
-        var margin = 40f;
-        var pageWidth = 595f;
-        var pageHeight = 842f;
-
-        using var font = new SkiaSharp.SKFont(SkiaSharp.SKTypeface.Default, 11);
-        using var paint = new SkiaSharp.SKPaint { Color = SkiaSharp.SKColors.Black, IsAntialias = true };
-
-        var text = PlainTextWriter.Write(document);
-        var lines = text.Split(["\r\n", "\r", "\n"], StringSplitOptions.None);
-
-        var y = margin;
-        var canvas = doc.BeginPage(pageWidth, pageHeight);
-
-        foreach (var line in lines)
-        {
-            if (y > pageHeight - margin)
-            {
-                doc.EndPage();
-                canvas = doc.BeginPage(pageWidth, pageHeight);
-                y = margin;
-            }
-
-            if (string.IsNullOrWhiteSpace(line))
-            {
-                y += 14f;
-                continue;
-            }
-
-            canvas.DrawText(line, margin, y, SkiaSharp.SKTextAlign.Left, font, paint);
-            y += 14f;
-        }
-
-        doc.EndPage();
-        doc.Close();
     }
 
     private static string? DataUri(string path, string convertFolder) =>

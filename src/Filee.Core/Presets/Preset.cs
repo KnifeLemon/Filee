@@ -158,11 +158,7 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
 
-    /// <summary>
-    /// True if converting a <paramref name="sourceFormat"/> file saves every frame as a picture
-    /// (<see cref="MediaOptions.SaveEveryFrame"/>): the file is a video and the target one of
-    /// <see cref="MediaOptions.FrameTargets"/>. Other files, and other targets, convert as usual.
-    /// </summary>
+    /// <summary>True if converting a document or e-book using local AI translation.</summary>
     public bool TranslatesDocument(string sourceFormat)
     {
         if (!Translate.Enabled)
@@ -172,10 +168,7 @@ public sealed class Preset
             return false;
         return fmt.Category is Formats.FormatCategory.Document
             or Formats.FormatCategory.Ebook
-            or Formats.FormatCategory.Text
-            or Formats.FormatCategory.Data
-            or Formats.FormatCategory.Subtitle
-            || sourceFormat == "pdf";
+            or Formats.FormatCategory.Text;
     }
 
     public bool SavesFramesOf(string sourceFormat) =>
@@ -1305,22 +1298,12 @@ public sealed class CadOptions
 
 
 /// <summary>Options for offline AI document translation.</summary>
-
 public sealed class TranslateOptions
-
 {
-
-    public bool Enabled { get; set; } = false;
-
+    public bool Enabled { get; set; }
     public string TargetLanguage { get; set; } = "en";
-
     public string SourceLanguage { get; set; } = "auto";
-
     public string? Model { get; set; }
 
-
-
     public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
-
 }
-

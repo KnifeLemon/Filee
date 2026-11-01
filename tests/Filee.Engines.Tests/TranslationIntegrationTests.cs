@@ -1,7 +1,6 @@
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Translation;
-using PdfSharp.Pdf.IO;
 using Xunit;
 
 namespace Filee.Engines.Tests;
@@ -148,27 +147,27 @@ public class TranslationIntegrationTests
     }
 
     [Fact]
-    public async Task Translates_document_to_pdf_producing_valid_openable_pdf()
+    public async Task Translates_document_to_docx_producing_valid_output()
     {
-        var tempDir = Path.Combine(Path.GetTempPath(), "filee-trans-pdf-" + Guid.NewGuid().ToString("N"));
+        var tempDir = Path.Combine(Path.GetTempPath(), "filee-trans-docx-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempDir);
         try
         {
             var inputFile = Path.Combine(tempDir, "document.txt");
-            var inputContent = "The Quick Brown Fox Jumps Over The Lazy Dog.\nThis is a sample document for translation into PDF.\n";
+            var inputContent = "The Quick Brown Fox Jumps Over The Lazy Dog.\nThis is a sample document for translation into DOCX.\n";
             await File.WriteAllTextAsync(inputFile, inputContent);
 
             var preset = new Preset
             {
                 Id = "translate",
-                TargetFormat = "pdf",
+                TargetFormat = "docx",
                 Translate = { Enabled = true, TargetLanguage = "es", SourceLanguage = "en" }
             };
 
             var step = new ConversionStep(
                 inputFile,
                 "txt",
-                "pdf",
+                "docx",
                 preset,
                 new TestOutputAllocator(tempDir),
                 tempDir,
@@ -179,16 +178,9 @@ public class TranslationIntegrationTests
             var outputs = await converter.ConvertAsync(step, null, default);
 
             Assert.Single(outputs);
-            var pdfPath = outputs[0];
-            Assert.True(File.Exists(pdfPath));
-            Assert.True(new FileInfo(pdfPath).Length > 0);
-
-            // Verify that the PDF is genuine, uncorrupted, and can be opened by PDF readers
-            var header = File.ReadAllBytes(pdfPath).Take(5).ToArray();
-            Assert.Equal("%PDF-", System.Text.Encoding.ASCII.GetString(header));
-
-            using var pdfDoc = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
-            Assert.True(pdfDoc.PageCount > 0);
+            var docxPath = outputs[0];
+            Assert.True(File.Exists(docxPath));
+            Assert.True(new FileInfo(docxPath).Length > 0);
         }
         finally
         {

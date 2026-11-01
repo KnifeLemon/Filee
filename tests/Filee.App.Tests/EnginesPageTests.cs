@@ -156,7 +156,7 @@ public class EnginesPageTests
             AppHost.Get<EngineDownloadService>());
         try
         {
-            Assert.Equal(["libreoffice"], vm.Packages.Where(p => p.HasSettings).Select(p => p.Package.Id));
+            Assert.Equal(["libreoffice", "translator"], vm.Packages.Where(p => p.HasSettings).Select(p => p.Package.Id));
 
             var options = new LibreOfficeOptionsWindow { DataContext = vm };
             options.Show();

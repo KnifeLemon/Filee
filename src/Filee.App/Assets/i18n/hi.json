@@ -1281,6 +1281,7 @@
   "presets.translate_content": "Translate document",
   "presets.translate_hint": "Translates the document or book into the target language on your computer.",
   "presets.target_language": "Target language",
+  "presets.test_connection": "कनेक्शन जांचें",
   "engines.package.translator.name": "Translator (Offline AI)",
   "engines.package.translator.description": "Translates documents and books locally on your PC without uploading them. Works offline using local Ollama or bundled models.",
   "engines.package.translator.sizes": "Offline Local AI · http://127.0.0.1:11434",

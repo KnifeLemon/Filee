@@ -32,6 +32,7 @@ public sealed partial class OllamaModelItem : ObservableObject
 public sealed partial class OllamaModelManagerViewModel : ObservableObject
 {
     private static readonly Uri OllamaBase = new("http://127.0.0.1:11434");
+    private static Process? _fileeStartedOllamaProcess;
     private readonly ILocalizer _loc;
     private readonly UserDataStore _store;
 
@@ -44,9 +45,13 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
     {
         _loc = loc;
         _store = store;
-        _activeModelName = store.Settings.PreferredOllamaModel ?? TranslationService.ActiveOllamaModel ?? "";
+        _activeModelName = store.Settings.PreferredOllamaModel ?? "";
+        UpdateCanStopServer();
         _ = RefreshStatusAsync();
     }
+
+    [ObservableProperty]
+    private bool _canStopServer;
 
     [ObservableProperty]
     private bool _isOllamaInstalled;
@@ -159,8 +164,14 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         return false;
     }
 
+    private void UpdateCanStopServer()
+    {
+        CanStopServer = _fileeStartedOllamaProcess is { HasExited: false };
+    }
+
     private async Task CheckServerAndLoadModelsAsync()
     {
+        UpdateCanStopServer();
         try
         {
             using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
@@ -204,7 +215,6 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
                     firstLocal.ActionText = _loc["engines.ollama.using_model"];
                     firstLocal.IsActionEnabled = false;
                     ActiveModelName = firstLocal.Name;
-                    TranslationService.ActiveOllamaModel = firstLocal.Name;
                 }
 
                 Models = new ObservableCollection<OllamaModelItem>(list);
@@ -253,7 +263,6 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         }
 
         ActiveModelName = item.Name;
-        TranslationService.ActiveOllamaModel = item.Name;
         _store.Settings.PreferredOllamaModel = item.Name;
         _store.SaveSettings();
 
@@ -265,37 +274,21 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
     [RelayCommand]
     public async Task StopServerAsync()
     {
-        try
+        if (_fileeStartedOllamaProcess is not null && !_fileeStartedOllamaProcess.HasExited)
         {
-            if (OperatingSystem.IsWindows())
+            try
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "powershell",
-                    Arguments = "-NoProfile -Command \"Get-Process *ollama* -ErrorAction SilentlyContinue | Stop-Process -Force\"",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                };
-                using var p = Process.Start(psi);
-                if (p is not null)
-                    await p.WaitForExitAsync();
+                _fileeStartedOllamaProcess.Kill(entireProcessTree: true);
+                await _fileeStartedOllamaProcess.WaitForExitAsync();
             }
-            else
+            catch { }
+            finally
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "pkill",
-                    Arguments = "-f ollama",
-                    CreateNoWindow = true,
-                    UseShellExecute = false
-                };
-                using var p = Process.Start(psi);
-                if (p is not null)
-                    await p.WaitForExitAsync();
+                _fileeStartedOllamaProcess.Dispose();
+                _fileeStartedOllamaProcess = null;
             }
         }
-        catch { }
-
+        UpdateCanStopServer();
         await Task.Delay(300);
         await RefreshStatusAsync();
     }
@@ -315,7 +308,8 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
                 CreateNoWindow = true,
                 UseShellExecute = false
             };
-            Process.Start(psi);
+            _fileeStartedOllamaProcess = Process.Start(psi);
+            UpdateCanStopServer();
         }
         catch { }
 

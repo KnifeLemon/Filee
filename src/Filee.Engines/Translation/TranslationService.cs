@@ -8,17 +8,20 @@ using Microsoft.Extensions.Logging;
 namespace Filee.Engines.Translation;
 
 /// <summary>
-/// Offline document and text translation service powered by local AI (Ollama or local offline models).
+/// Offline document and text translation service powered by local AI (Ollama).
 /// Strictly runs on the user's computer: no text is ever uploaded or sent to third-party web services.
 /// </summary>
 public sealed class TranslationService : ITranslationService
 {
     private static readonly TimeSpan OllamaTimeout = TimeSpan.FromMinutes(2);
     private static readonly Uri LocalOllamaBase = new("http://127.0.0.1:11434");
+    private static readonly HttpClient SharedHttpClient = new() { Timeout = OllamaTimeout };
+    private static readonly HttpClient SharedPingClient = new() { Timeout = TimeSpan.FromMilliseconds(500) };
 
     private readonly TranslateOptions _options;
     private readonly ILogger? _logger;
     private readonly HttpClient? _http;
+    private string? _resolvedModel;
 
     public TranslationService(TranslateOptions? options = null, HttpClient? httpClient = null, ILogger? logger = null)
     {
@@ -41,8 +44,6 @@ public sealed class TranslationService : ITranslationService
         return CodeToNameMap.TryGetValue(norm, out var name) ? name : code;
     }
 
-    public static string? ActiveOllamaModel { get; set; }
-
     /// <summary>
     /// Checks whether an Ollama model forwards prompts to the cloud (e.g. models ending in '-cloud' or containing 'cloud').
     /// Cloud models are strictly prohibited to ensure document text never leaves the computer.
@@ -63,8 +64,9 @@ public sealed class TranslationService : ITranslationService
     {
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(500) };
-            using var res = await client.GetAsync(new Uri(LocalOllamaBase, "/api/tags"), cancellationToken);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromMilliseconds(500));
+            using var res = await SharedPingClient.GetAsync(new Uri(LocalOllamaBase, "/api/tags"), cts.Token);
             return res.IsSuccessStatusCode;
         }
         catch
@@ -77,12 +79,13 @@ public sealed class TranslationService : ITranslationService
     {
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(1) };
-            using var res = await client.GetAsync(new Uri(LocalOllamaBase, "/api/tags"), cancellationToken);
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            cts.CancelAfter(TimeSpan.FromSeconds(2));
+            using var res = await SharedPingClient.GetAsync(new Uri(LocalOllamaBase, "/api/tags"), cts.Token);
             if (!res.IsSuccessStatusCode)
                 return null;
 
-            using var doc = await JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
+            using var doc = await JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(cts.Token), cancellationToken: cts.Token);
             if (doc.RootElement.TryGetProperty("models", out var models) && models.ValueKind == JsonValueKind.Array)
             {
                 var names = models.EnumerateArray()
@@ -93,9 +96,6 @@ public sealed class TranslationService : ITranslationService
 
                 if (names.Count == 0)
                     return null;
-
-                if (!string.IsNullOrWhiteSpace(ActiveOllamaModel) && names.Any(n => string.Equals(n, ActiveOllamaModel, StringComparison.OrdinalIgnoreCase) || n.StartsWith(ActiveOllamaModel + ":", StringComparison.OrdinalIgnoreCase)))
-                    return names.First(n => string.Equals(n, ActiveOllamaModel, StringComparison.OrdinalIgnoreCase) || n.StartsWith(ActiveOllamaModel + ":", StringComparison.OrdinalIgnoreCase));
 
                 // Prefer specialized or standard instruction models
                 string[] preferred = ["translategemma", "qwen2.5", "llama3.2", "llama3", "mistral", "gemma2", "phi3", "phi4"];
@@ -115,6 +115,30 @@ public sealed class TranslationService : ITranslationService
         return null;
     }
 
+    private async Task<string> EnsureModelResolvedAsync(CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(_resolvedModel))
+            return _resolvedModel;
+
+        if (!string.IsNullOrWhiteSpace(_options.Model))
+        {
+            if (IsCloudModel(_options.Model))
+                throw new InvalidOperationException("Security Block: Cloud-forwarded models (-cloud) are blocked to ensure document text never leaves your computer.");
+            _resolvedModel = _options.Model;
+            return _resolvedModel;
+        }
+
+        var preferred = await GetPreferredLocalOllamaModelAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(preferred))
+            throw new InvalidOperationException("engines.package.translator.no_model");
+
+        if (IsCloudModel(preferred))
+            throw new InvalidOperationException("Security Block: Cloud-forwarded models (-cloud) are blocked to ensure document text never leaves your computer.");
+
+        _resolvedModel = preferred;
+        return _resolvedModel;
+    }
+
     public async Task<string> TranslateTextAsync(string text, string toLang, string fromLang = "auto", CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -126,33 +150,17 @@ public sealed class TranslationService : ITranslationService
         if (string.Equals(sourceLang, targetLang, StringComparison.OrdinalIgnoreCase))
             return text;
 
-        if (!string.IsNullOrWhiteSpace(_options.Model) && IsCloudModel(_options.Model))
-            throw new InvalidOperationException("Security Block: Cloud-forwarded models (-cloud) are blocked to ensure document text never leaves your computer.");
-
-        // 1. Try local Ollama (100% offline on http://127.0.0.1:11434)
-        if (await IsLocalOllamaAvailableAsync(cancellationToken))
-        {
-            var model = (!string.IsNullOrWhiteSpace(_options.Model) ? _options.Model : await GetPreferredLocalOllamaModelAsync(cancellationToken)) ?? "llama3.2";
-            if (IsCloudModel(model))
-                throw new InvalidOperationException("Security Block: Cloud-forwarded models (-cloud) are blocked to ensure document text never leaves your computer.");
-            return await TranslateWithLocalOllamaAsync(text, targetLang, sourceLang, model, cancellationToken);
-        }
-
-        // 2. Try local CLI engine if installed in Filee's engines folder
-        if (LocateLocalEngine() is { } cli && File.Exists(cli))
-        {
-            return await TranslateWithLocalCliAsync(cli, text, targetLang, sourceLang, cancellationToken);
-        }
-
-        throw new InvalidOperationException(
-            "Local offline translation requires Ollama running on your computer (http://localhost:11434) or the Translator engine in Settings → Engines. " +
-            "Filee converts files on your own computer and never uploads them.");
+        var model = await EnsureModelResolvedAsync(cancellationToken);
+        return await TranslateWithLocalOllamaAsync(text, targetLang, sourceLang, model, cancellationToken);
     }
 
     public async Task<IReadOnlyList<string>> TranslateBatchAsync(IReadOnlyList<string> texts, string toLang, string fromLang = "auto", CancellationToken cancellationToken = default)
     {
         if (texts.Count == 0)
             return [];
+
+        // Ensure model is resolved once before launching batch tasks
+        await EnsureModelResolvedAsync(cancellationToken);
 
         var results = new string[texts.Count];
         var semaphore = new SemaphoreSlim(4, 4);
@@ -204,7 +212,7 @@ public sealed class TranslationService : ITranslationService
             options = new { temperature = 0.1 }
         };
 
-        using var client = _http ?? new HttpClient { Timeout = OllamaTimeout };
+        var client = _http ?? SharedHttpClient;
         using var response = await client.PostAsJsonAsync(new Uri(LocalOllamaBase, "/api/generate"), requestBody, cancellationToken);
         response.EnsureSuccessStatusCode();
 
@@ -213,39 +221,6 @@ public sealed class TranslationService : ITranslationService
             return resp.GetString()?.Trim() ?? text;
 
         return text;
-    }
-
-    private static async Task<string> TranslateWithLocalCliAsync(string cliPath, string text, string targetLang, string sourceLang, CancellationToken cancellationToken)
-    {
-        var targetName = LanguageDisplayName(targetLang);
-        var prompt = $"Translate into {targetName}:\n{text}";
-
-        var psi = new ProcessStartInfo
-        {
-            FileName = cliPath,
-            Arguments = $"-p \"{prompt.Replace("\"", "\\\"")}\" --temp 0.1",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
-
-        using var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to launch local translator process.");
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(TimeSpan.FromMinutes(2));
-
-        var output = await process.StandardOutput.ReadToEndAsync(cts.Token);
-        await process.WaitForExitAsync(cts.Token);
-
-        return !string.IsNullOrWhiteSpace(output) ? output.Trim() : text;
-    }
-
-    internal static string? LocateLocalEngine()
-    {
-        return EngineEnvironment.OwnProgram("translator", "translator.exe")
-               ?? EngineEnvironment.BundledProgram("translator", "translator.exe")
-               ?? EngineEnvironment.SystemProgram("translator", "translator.exe")
-               ?? EngineEnvironment.SystemProgram("ollama", "ollama.exe");
     }
 
     private static readonly Dictionary<string, string> LanguageMap = new(StringComparer.OrdinalIgnoreCase)

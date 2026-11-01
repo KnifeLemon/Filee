@@ -21,8 +21,6 @@ public class TranslateRouteTests
             new("md", "md", Cost: 10, Translate: true),
             new("txt", "txt", Cost: 10, Translate: true),
             new("docx", "docx", Cost: 10, Translate: true),
-            new("pdf", "pdf", Cost: 10, Translate: true),
-            new("json", "json", Cost: 10, Translate: true),
             new("epub", "docx", Cost: 12, Translate: true),
         ];
 
@@ -40,6 +38,7 @@ public class TranslateRouteTests
         Assert.True(preset.Translate.Enabled);
         Assert.Equal(BuiltInData.SameAsSource, preset.TargetFormat);
         Assert.Equal("en", preset.Translate.TargetLanguage);
+        Assert.Equal("{name}_translated", preset.Output.FileNamePattern);
     }
 
     [Theory]
@@ -47,10 +46,10 @@ public class TranslateRouteTests
     [InlineData("md", true)]
     [InlineData("txt", true)]
     [InlineData("docx", true)]
-    [InlineData("pdf", true)]
-    [InlineData("json", true)]
-    [InlineData("yaml", true)]
-    [InlineData("srt", true)]
+    [InlineData("pdf", false)]
+    [InlineData("json", false)]
+    [InlineData("yaml", false)]
+    [InlineData("srt", false)]
     [InlineData("png", false)]
     [InlineData("mp4", false)]
     [InlineData("zip", false)]
@@ -88,5 +87,7 @@ public class TranslateRouteTests
         Assert.Contains("translate", profiles.First(p => p.Id == "ebooks").BackPresetIds!);
         Assert.Contains("translate", profiles.First(p => p.Id == "text").BackPresetIds!);
         Assert.Contains("translate", profiles.First(p => p.Id == "office").BackPresetIds!);
+        Assert.DoesNotContain("translate", profiles.First(p => p.Id == "pdf").BackPresetIds!);
+        Assert.DoesNotContain("translate", profiles.First(p => p.Id == "hwp").BackPresetIds!);
     }
 }

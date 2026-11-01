@@ -9,6 +9,8 @@ using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Engines.Ocr;
+using Filee.App.Services;
+using Filee.Core.Settings;
 using Filee.Engines.Translation;
 
 namespace Filee.App.ViewModels;
@@ -302,11 +304,14 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         try
         {
             var targetLang = TargetLanguage?.Value ?? "es";
-            var service = new TranslationService(new TranslateOptions { TargetLanguage = targetLang });
+            var preferred = AppHost.Get<UserDataStore>()?.Settings.PreferredOllamaModel;
+            var model = !string.IsNullOrWhiteSpace(_edit.Translate.Model) ? _edit.Translate.Model
+                : !string.IsNullOrWhiteSpace(preferred) ? preferred
+                : await TranslationService.GetPreferredLocalOllamaModelAsync();
+            var service = new TranslationService(new TranslateOptions { TargetLanguage = targetLang, Model = model });
             var sample = "Hello, world!";
             var translated = await service.TranslateTextAsync(sample, targetLang);
-            var model = await TranslationService.GetPreferredLocalOllamaModelAsync() ?? TranslationService.ActiveOllamaModel ?? "local model";
-            TestTranslationResult = $"\"{sample}\" → \"{translated}\"  ({model})";
+            TestTranslationResult = $"\"{sample}\" → \"{translated}\"  ({model ?? "local model"})";
             TestTranslationHasError = false;
         }
         catch (Exception ex)

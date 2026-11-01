@@ -46,19 +46,12 @@ public static class BuiltInData
         .. TrimPresets(),
 
         new()
-
         {
-
             Id = "translate",
-
             NameKey = "preset.translate",
-
             TargetFormat = SameAsSource,
-
             Translate = new TranslateOptions { Enabled = true, TargetLanguage = "en" },
-
-            Output = { FileNamePattern = "{name}_{lang}" },
-
+            Output = { FileNamePattern = "{name}_translated" },
         },
         new()
         {
@@ -604,7 +597,7 @@ public static class BuiltInData
             Id = "pdf", NameKey = "profile.pdf",
             Extensions = ["pdf"],
             PresetIds = [.. PdfDonut],
-            BackPresetIds = ["pdf-edit", "compress-pdf", "to-webp", "to-tiff", "to-html", "to-odt", "to-rtf", "to-azw3", "to-cbz", "translate", "remove-metadata", "zip-all"],
+            BackPresetIds = ["pdf-edit", "compress-pdf", "to-webp", "to-tiff", "to-html", "to-odt", "to-rtf", "to-azw3", "to-cbz", "remove-metadata", "zip-all"],
         },
         new()
         {
@@ -620,7 +613,7 @@ public static class BuiltInData
             Id = "hwp", NameKey = "profile.hwp",
             Extensions = ["hwp", "hwpx"],
             PresetIds = ["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-jpg", "to-txt", "to-md", "to-epub", "merge-pdf"],
-            BackPresetIds = ["translate", "to-html", "to-odt", "to-rtf", "pdf-long-image", "to-azw3", "zip-all"],
+            BackPresetIds = ["to-html", "to-odt", "to-rtf", "pdf-long-image", "to-azw3", "zip-all"],
         },
         TextProfile(),
         .. WithSubtitleProfile(CatalogProfiles()),

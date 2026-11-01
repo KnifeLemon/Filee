@@ -43,16 +43,12 @@ public sealed partial class EnginePackageState : ObservableObject
     public bool HasSettings => Package.Id is "libreoffice" or "translator";
 
     public string SettingsLabel => Package.Id == "translator"
-
-        ? (_loc["engines.ollama.manage"] != "engines.ollama.manage" ? _loc["engines.ollama.manage"] : "Manage Ollama")
-
-        : (_loc["engines.settings"] != "engines.settings" ? _loc["engines.settings"] : "Settings");
+        ? _loc["engines.ollama.manage"]
+        : _loc["engines.settings"];
 
     public string SettingsTooltip => Package.Id == "translator"
-
-        ? (_loc["engines.ollama.manage_hint"] != "engines.ollama.manage_hint" ? _loc["engines.ollama.manage_hint"] : "Manage local Ollama models, start/stop server, and install offline models")
-
-        : (_loc["engines.lo_title"] != "engines.lo_title" ? _loc["engines.lo_title"] : "LibreOffice options");
+        ? _loc["engines.ollama.manage_hint"]
+        : _loc["engines.lo_title"];
     public string Description => _loc[$"engines.package.{Package.Id}.description"];
 
     public bool IsTranslator => Package.Id == "translator";
@@ -267,175 +263,91 @@ public sealed class EngineDownloadService
 
 
     private EnginePackageStatus StatusOfTranslator(EnginePackageState state)
-
     {
-
         var id = state.Package.Id;
-
         var own = EngineEnvironment.OwnCopyFolder(id);
-
         var system = own is null && !_installer.IsInstalled(state.Package) ? EngineEnvironment.SystemCopyFolder(id) : null;
-
         state.OwnCopyFolder = own ?? system;
-
         state.FromSystem = system is not null;
-
         state.UpdateNote = null;
-
         state.IsOutdated = false;
-
-
 
         _ = CheckOllamaAsync(state);
 
-
-
         return state.OwnCopyFolder is not null ? EnginePackageStatus.OwnCopy
-
             : _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed
-
             : EnginePackageStatus.NotInstalled;
-
     }
 
-
-
     private async Task CheckOllamaAsync(EnginePackageState state)
-
     {
-
         try
-
         {
-
             using var response = await SharedOllamaClient.GetAsync("http://127.0.0.1:11434/api/tags");
-
             if (response.IsSuccessStatusCode)
-
             {
-
                 using var stream = await response.Content.ReadAsStreamAsync();
-
                 using var doc = await System.Text.Json.JsonDocument.ParseAsync(stream);
-
                 int totalCount = 0;
-
                 int cloudCount = 0;
-
                 int localCount = 0;
 
-
-
                 if (doc.RootElement.TryGetProperty("models", out var models) && models.ValueKind == System.Text.Json.JsonValueKind.Array)
-
                 {
-
                     foreach (var m in models.EnumerateArray())
-
                     {
-
                         var name = m.TryGetProperty("name", out var n) ? n.GetString() : null;
-
                         if (string.IsNullOrWhiteSpace(name)) continue;
-
                         totalCount++;
-
                         if (Filee.Engines.Translation.TranslationService.IsCloudModel(name))
-
                             cloudCount++;
-
                         else
-
                             localCount++;
-
                     }
-
                 }
-
-
 
                 await Dispatcher.UIThread.InvokeAsync(() =>
-
                 {
-
                     if (localCount > 0)
-
                     {
-
                         state.Status = EnginePackageStatus.OwnCopy;
-
                         state.OwnCopyFolder ??= "http://127.0.0.1:11434 (Local Ollama)";
-
                         state.UpdateNote = cloudCount > 0
-
                             ? _loc.Format("engines.package.translator.cloud_skipped", cloudCount)
-
                             : null;
-
                     }
-
                     else if (totalCount > 0 && cloudCount == totalCount)
-
                     {
-
                         state.Status = EnginePackageStatus.NotInstalled;
-
                         state.UpdateNote = _loc["engines.package.translator.only_cloud_models"];
-
                     }
-
                     else
-
                     {
-
                         state.Status = EnginePackageStatus.NotInstalled;
-
                         state.UpdateNote = _loc["engines.package.translator.no_model"];
-
                     }
-
+                    _catalog.Refresh();
                 });
-
                 return;
-
             }
-
         }
-
         catch
-
         {
-
             // Ollama not reachable
-
         }
-
-
 
         var ollamaExe = EngineEnvironment.SystemProgram("ollama", "ollama.exe");
-
         if (ollamaExe is not null)
-
         {
-
             await Dispatcher.UIThread.InvokeAsync(() =>
-
             {
-
                 if (state.Status != EnginePackageStatus.OwnCopy)
-
                 {
-
                     state.Status = EnginePackageStatus.NotInstalled;
-
                     state.UpdateNote = _loc["engines.package.translator.not_running"];
-
                 }
-
             });
-
         }
-
     }
 
 
