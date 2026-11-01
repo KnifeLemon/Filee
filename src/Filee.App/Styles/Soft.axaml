@@ -427,16 +427,13 @@
     <Setter Property="Foreground" Value="{DynamicResource AccentStrongBrush}" />
   </Style>
 
-  <!-- ToggleSwitch: M3 track, knob and hover color -->
+  <!-- ToggleSwitch: M3 track, knob and hover color. No hover scale on the control itself: its label is part of it, so the text would grow with the switch. -->
   <Style Selector="Window.material-you ToggleSwitch">
     <Setter Property="Transitions">
       <Transitions>
         <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.18" Easing="{StaticResource SoftEase}" />
       </Transitions>
     </Setter>
-  </Style>
-  <Style Selector="Window.material-you ToggleSwitch:pointerover">
-    <Setter Property="RenderTransform" Value="scale(1.02)" />
   </Style>
   <Style Selector="Window.material-you ToggleSwitch /template/ Border#SwitchKnobBounds">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
