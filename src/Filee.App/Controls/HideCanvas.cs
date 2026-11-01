@@ -262,8 +262,8 @@ public sealed class HideCanvas : Control
         if (Areas is not { } areas)
             return;
 
-        // Inside every frame the covered picture as its style says: crisp squares for pixelate (the copy has them at the
-        // preview's size), the blurred copy for blur, solid black for a box.
+        // Inside every frame the covered picture as its style says: crisp squares for pixelate (the copy has them at
+        // the preview's size), the blurred copy for blur, solid black for a box.
         for (var i = 0; i < areas.Count; i++)
         {
             var frame = ToScreen(areas.Areas[i], picture);

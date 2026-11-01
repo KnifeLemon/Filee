@@ -1,7 +1,8 @@
-// State of the "Pixelate / blur" window: one picture at a time, as in the crop overlay, with frames drawn over the parts
-// to hide, each showing them already pixelated, blurred or blacked out (each frame its own style); the last style picked
-// and how strongly (kept in the tool for the next time); and the conversion that writes the picture with those parts covered, which runs in the toast like
-// any other. The frames carry on to the next picture of a batch (screenshots of one app put names in the same place).
+// State of the "Pixelate / blur" window: one picture at a time, as in the crop overlay, with frames drawn over the
+// parts to hide, each showing them already pixelated, blurred or blacked out (each frame its own style); the last style
+// picked and how strongly (kept in the tool for the next time); and the conversion that writes the picture with those
+// parts covered, which runs in the toast like any other. The frames carry on to the next picture of a batch
+// (screenshots of one app put names in the same place).
 
 using System.Collections.ObjectModel;
 using System.IO;
@@ -37,7 +38,9 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
     /// <summary>The frames of the last picture saved, with their styles, for the next one.</summary>
     private List<(Rect, HideStyle)> _carried = [];
 
-    /// <summary>The styles the covers were last asked for, so a frame moved or added in one of them asks for nothing.</summary>
+    /// <summary>
+    /// The styles the covers were last asked for, so a frame moved or added in one of them asks for nothing.
+    /// </summary>
     private string _coverStyles = "";
 
     [ObservableProperty] private int _currentIndex;
@@ -222,7 +225,9 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
         RefreshCoverIfStylesChanged();
     }
 
-    /// <summary>The styles that need a cover: those of the frames and the one shown (a frame is drawn in it next).</summary>
+    /// <summary>
+    /// The styles that need a cover: those of the frames and the one shown (a frame is drawn in it next).
+    /// </summary>
     private List<HideStyle> CoverStyles() =>
         [.. Areas.Styles.Append(Style).Where(s => s != HideStyle.Box).Distinct().Order()];
 
@@ -292,9 +297,9 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Covers the preview again for each style in use (pixelate, blur; a black box needs none), off the window's thread:
-    /// the frames show the picture as it is until then (softly blurred). Only the newest result is kept, so dragging the
-    /// strength never queues up work.
+    /// Covers the preview again for each style in use (pixelate, blur; a black box needs none), off the window's
+    /// thread: the frames show the picture as it is until then (softly blurred). Only the newest result is kept, so
+    /// dragging the strength never queues up work.
     /// </summary>
     private void RefreshCover()
     {
@@ -469,7 +474,9 @@ public sealed partial class HideWindowViewModel : ObservableObject, IDisposable
 
     // ───────────────────────── Files, messages and the end ─────────────────────────
 
-    /// <summary>Keeps the style picked last and the strength in the tool, as saved and as given to this window.</summary>
+    /// <summary>
+    /// Keeps the style picked last and the strength in the tool, as saved and as given to this window.
+    /// </summary>
     private void Remember()
     {
         var style = Areas.DefaultStyle;

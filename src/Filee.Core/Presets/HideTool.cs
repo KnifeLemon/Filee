@@ -1,9 +1,9 @@
 // "Pixelate / blur" runs as an ordinary conversion once its window has the parts of a picture to hide: the tool preset
 // becomes a conversion into the picture's own format with those parts (ImageOptions.HiddenAreas), so the job queue, the
 // toast, cancelling and the output rules work as for any other file. Each part is pixelated, blurred or blacked out
-// (HiddenArea.Style); the last style picked and how strongly are kept in the tool, so the window opens with them. The arithmetic shared by the window's
-// preview and the image engine is here too: where a part lies in pixels, how large the squares or the blur are, and
-// which square a pixel falls in.
+// (HiddenArea.Style); the last style picked and how strongly are kept in the tool, so the window opens with them. The
+// arithmetic shared by the window's preview and the image engine is here too: where a part lies in pixels, how large
+// the squares or the blur are, and which square a pixel falls in.
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;

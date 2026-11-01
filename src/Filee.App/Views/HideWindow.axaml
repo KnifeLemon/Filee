@@ -1,8 +1,9 @@
 <!-- "Pixelate / blur": the crop overlay's frameless soft-rounded stage, with the picture large on the dimmed theme
-     backdrop and frames over the parts to hide, already pixelated, blurred or blacked out. Floating on it: the file chip (top left),
-     the strip of files (top, several files), size and close (top right), "Drag over what you want to hide" on a picture
-     without frames, and the toolbar pill at the bottom with Pixelate / Blur / Black box, the strength, undo, remove, clear, Skip and
-     "Hide & save" / "Hide & next". After the last file with problems, the crop overlay's summary card. -->
+     backdrop and frames over the parts to hide, already pixelated, blurred or blacked out. Floating on it: the file
+     chip (top left), the strip of files (top, several files), size and close (top right), "Drag over what you want to
+     hide" on a picture without frames, and the toolbar pill at the bottom with Pixelate / Blur / Black box, the
+     strength, undo, remove, clear, Skip and "Hide & save" / "Hide & next". After the last file with problems, the crop
+     overlay's summary card. -->
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Filee.App.ViewModels"
@@ -164,8 +165,9 @@
       <Setter Property="Opacity" Value="1" />
     </Style>
 
-    <!-- A narrow window (or long names, or wide fonts): the toolbar gives up names in two steps (HideWindow.FitToolbar),
-         first those of Clear all and Skip and the keycaps, then those of Pixelate, Blur and Black box; the tooltips keep them -->
+    <!-- A narrow window (or long names, or wide fonts): the toolbar gives up names in two steps
+         (HideWindow.FitToolbar), first those of Clear all and Skip and the keycaps, then those of Pixelate, Blur and
+         Black box; the tooltips keep them -->
     <Style Selector="Window.tight TextBlock.minor, Window.tight Border.minor, Window.compact TextBlock.major">
       <Setter Property="IsVisible" Value="False" />
     </Style>
