@@ -1,11 +1,19 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels.Pages"
+             xmlns:vmw="using:Filee.App.ViewModels"
              xmlns:c="using:Filee.App.Controls"
              xmlns:settings="using:Filee.Core.Settings"
              x:Class="Filee.App.Views.Pages.ThemePage"
              x:DataType="vm:ThemePageViewModel">
   <UserControl.Styles>
+    <!-- Pastel presets: 2 columns, 3 with the navigation collapsed (see the grid below). -->
+    <Style Selector="UniformGrid.presets">
+      <Setter Property="Columns" Value="2" />
+    </Style>
+    <Style Selector="UniformGrid.presets.wide">
+      <Setter Property="Columns" Value="3" />
+    </Style>
     <Style Selector="Button.choice-card">
       <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
       <Setter Property="Padding" Value="14,10" />
@@ -205,7 +213,10 @@
             <ItemsControl ItemsSource="{Binding PastelPresets}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
-                  <UniformGrid Columns="2" />
+                  <!-- Two columns; three while the navigation is collapsed to icons (the page is wider then). The
+                       "wide" class follows the main window's collapsed state, and the styles above set the columns. -->
+                  <UniformGrid Classes="presets"
+                               Classes.wide="{Binding $parent[Window].((vmw:MainWindowViewModel)DataContext).IsNavCollapsed}" />
                 </ItemsPanelTemplate>
               </ItemsControl.ItemsPanel>
               <ItemsControl.ItemTemplate>
