@@ -4,11 +4,12 @@
 // without an error: a font Filee can't follow (in the default resources of interactive forms, set through a graphics
 // state, or in a stream that didn't parse) keeps all its glyphs.
 //
-// The content is read by a small lexer of its own rather than PDFsharp's ContentReader, which turns hex strings that
-// start with FE FF into UTF-16 text and so loses the codes of a two-byte font.
+// The content is read by PdfContentLexer rather than PDFsharp's ContentReader, which turns hex strings that start
+// with FE FF into UTF-16 text and so loses the codes of a two-byte font.
 
-using System.Text;
 using PdfSharp.Pdf;
+using Name = Filee.Engines.Pdf.PdfContentLexer.Name;
+using Operator = Filee.Engines.Pdf.PdfContentLexer.Operator;
 
 namespace Filee.Engines.Pdf;
 
@@ -141,7 +142,7 @@ internal sealed class PdfFontUses
             }
         }
 
-        var lexer = new Lexer(content);
+        var lexer = new PdfContentLexer(content);
         var operands = new List<object?>();
         var saved = new Stack<PdfDictionary?>();
         PdfDictionary? font = null;
@@ -285,214 +286,4 @@ internal sealed class PdfFontUses
         PdfCompressor.Resolve(resources.Elements[key]) is PdfDictionary group
             ? group.Elements.Values.Select(PdfCompressor.Resolve).OfType<PdfDictionary>()
             : [];
-
-    private sealed record Name(string Value);
-
-    private sealed record Operator(string Name);
-
-    /// <summary>
-    /// Content stream tokens: numbers (as double), names, strings (as their bytes), arrays (as lists), dictionaries
-    /// (skipped, as null) and operators. Damaged syntax throws <see cref="InvalidDataException"/>.
-    /// </summary>
-    private sealed class Lexer(byte[] data)
-    {
-        private int _at;
-
-        public object? Next()
-        {
-            while (true)
-            {
-                SkipSpace();
-                if (_at >= data.Length)
-                    return null;
-                var token = Token();
-                if (token is not ArrayEnd and not DictEnd)
-                    return token;
-            }
-        }
-
-        private sealed record ArrayEnd;
-
-        private sealed record DictEnd;
-
-        private object? Token()
-        {
-            SkipSpace();
-            if (_at >= data.Length)
-                throw new InvalidDataException("The content stream ends inside an object.");
-            var c = data[_at];
-            switch (c)
-            {
-                case (byte)'(':
-                    return Literal();
-                case (byte)'<' when _at + 1 < data.Length && data[_at + 1] == '<':
-                    _at += 2;
-                    while (Token() is not DictEnd)
-                    {
-                    }
-                    return null;
-                case (byte)'<':
-                    return Hex();
-                case (byte)'>' when _at + 1 < data.Length && data[_at + 1] == '>':
-                    _at += 2;
-                    return new DictEnd();
-                case (byte)'[':
-                    _at++;
-                    var list = new List<object?>();
-                    while (Token() is var item and not ArrayEnd)
-                        list.Add(item);
-                    return list;
-                case (byte)']':
-                    _at++;
-                    return new ArrayEnd();
-                case (byte)'/':
-                    _at++;
-                    return new Name(Regular());
-                case (byte)'{' or (byte)'}' or (byte)'>' or (byte)')':
-                    _at++;
-                    return new Operator(((char)c).ToString());
-            }
-            var word = Regular();
-            if (word.Length == 0)
-                throw new InvalidDataException("The content stream has a stray character.");
-            return word[0] is >= '0' and <= '9' or '+' or '-' or '.' ? double.TryParse(word, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0 : new Operator(word);
-        }
-
-        private string Regular()
-        {
-            var text = new StringBuilder();
-            while (_at < data.Length && !IsSpace(data[_at]) && !IsDelimiter(data[_at]))
-            {
-                if (data[_at] == '#' && _at + 2 < data.Length && Uri.IsHexDigit((char)data[_at + 1]) && Uri.IsHexDigit((char)data[_at + 2]))
-                {
-                    text.Append((char)Convert.ToByte(Encoding.ASCII.GetString(data, _at + 1, 2), 16));
-                    _at += 3;
-                    continue;
-                }
-                text.Append((char)data[_at++]);
-            }
-            return text.ToString();
-        }
-
-        private byte[] Literal()
-        {
-            _at++; // (
-            var bytes = new List<byte>();
-            var depth = 1;
-            while (_at < data.Length)
-            {
-                var c = data[_at++];
-                if (c == '\\' && _at < data.Length)
-                {
-                    var e = data[_at++];
-                    switch (e)
-                    {
-                        case (byte)'n': bytes.Add(10); break;
-                        case (byte)'r': bytes.Add(13); break;
-                        case (byte)'t': bytes.Add(9); break;
-                        case (byte)'b': bytes.Add(8); break;
-                        case (byte)'f': bytes.Add(12); break;
-                        case 13:
-                            if (_at < data.Length && data[_at] == 10)
-                                _at++;
-                            break;
-                        case 10:
-                            break;
-                        case >= (byte)'0' and <= (byte)'7':
-                            var value = e - '0';
-                            for (var i = 0; i < 2 && _at < data.Length && data[_at] is >= (byte)'0' and <= (byte)'7'; i++)
-                                value = value * 8 + (data[_at++] - '0');
-                            bytes.Add((byte)value);
-                            break;
-                        default:
-                            bytes.Add(e);
-                            break;
-                    }
-                    continue;
-                }
-                if (c == '(')
-                    depth++;
-                else if (c == ')' && --depth == 0)
-                    return [.. bytes];
-                bytes.Add(c);
-            }
-            throw new InvalidDataException("A string in the content stream isn't closed.");
-        }
-
-        private byte[] Hex()
-        {
-            _at++; // <
-            var bytes = new List<byte>();
-            var high = -1;
-            while (_at < data.Length && data[_at] != '>')
-            {
-                var c = (char)data[_at++];
-                if (IsSpace((byte)c))
-                    continue;
-                if (!Uri.IsHexDigit(c))
-                    throw new InvalidDataException("A hex string in the content stream has a stray character.");
-                var digit = Convert.ToInt32(c.ToString(), 16);
-                if (high < 0)
-                {
-                    high = digit;
-                }
-                else
-                {
-                    bytes.Add((byte)(high << 4 | digit));
-                    high = -1;
-                }
-            }
-            if (_at >= data.Length)
-                throw new InvalidDataException("A hex string in the content stream isn't closed.");
-            _at++; // >
-            if (high >= 0)
-                bytes.Add((byte)(high << 4));
-            return [.. bytes];
-        }
-
-        /// <summary>Skips an inline image's parameters, "ID", its data and "EI".</summary>
-        public void SkipInlineImage()
-        {
-            while (Next() is var token && token is not Operator { Name: "ID" })
-            {
-                if (token is null)
-                    throw new InvalidDataException("An inline image has no data.");
-            }
-            _at++; // the single white-space character after ID
-            // The data ends at "EI" between white space (or the end): the usual way readers find it.
-            for (var i = _at; i + 1 < data.Length; i++)
-            {
-                if (data[i] == 'E' && data[i + 1] == 'I' && IsSpace(data[i - 1]) && (i + 2 == data.Length || IsSpace(data[i + 2])))
-                {
-                    _at = i + 2;
-                    return;
-                }
-            }
-            throw new InvalidDataException("An inline image has no end.");
-        }
-
-        private void SkipSpace()
-        {
-            while (_at < data.Length)
-            {
-                if (data[_at] == '%')
-                {
-                    while (_at < data.Length && data[_at] is not 10 and not 13)
-                        _at++;
-                }
-                else if (IsSpace(data[_at]))
-                {
-                    _at++;
-                }
-                else
-                {
-                    return;
-                }
-            }
-        }
-
-        private static bool IsSpace(byte c) => c is 0 or 9 or 10 or 12 or 13 or 32;
-
-        private static bool IsDelimiter(byte c) => c is (byte)'(' or (byte)')' or (byte)'<' or (byte)'>' or (byte)'[' or (byte)']' or (byte)'{' or (byte)'}' or (byte)'/' or (byte)'%';
-    }
 }

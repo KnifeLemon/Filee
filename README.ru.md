@@ -153,7 +153,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | Из | В |
 |---|---|
 | **Изображения**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>GIMP XCF, RAW с камер (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), Live Photo iPhone (LIVP) только чтение | любой из них (HEIC⁵), PDF, SVG (трассировка), изменение размера, оттенки серого;<br>Live/Motion Photo (iPhone, Android) → их видео (MP4, MOV⁵), а видео → Live Photo (iPhone) или Motion Photo (Android)⁵, экспериментально |
-| **Векторная графика**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (векторный), PNG и другие изображения,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
+| **Векторная графика**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (векторный), PNG и другие изображения,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (каждая страница картинкой), SVG²;<br>объединение (в выбранном заранее порядке), разделение, диапазоны страниц, сжатие (PDF меньше по размеру) |
 | **Документы**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>OFD (китайские электронные счета, официальные документы) только чтение<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
 | **Таблицы**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |

@@ -159,7 +159,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | من | إلى |
 |---|---|
 | **الصور**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR وغيرها؛<br>وللقراءة: GIMP XCF، وصور RAW من الكاميرات (CR2, CR3, NEF, ARW, DNG وغيرها)، وDICOM وOpenEXR وHDR وFITS (صور فلكية)، وJPEG XR (على Windows)، وLive Photo من iPhone (LIVP) | أيٌّ منها (HEIC⁵)، PDF، SVG (بالتتبّع)، تغيير الحجم، تدرّج رمادي؛<br>صور Live/Motion Photo (iPhone وAndroid) إلى الفيديو الذي تحمله (MP4, MOV⁵)، ومن فيديو إلى Live Photo (iPhone) أو Motion Photo (Android)⁵، ميزة تجريبية |
-| **الرسومات المتجهية**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (متجهي)، PNG وصور أخرى،<br>SVG ↔ SVGZ، SVG → DXF/DWG، PDF → EPS/PS¹، SVG → EMF, WMF, ODG² |
+| **الرسومات المتجهية**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (متجهي)، PNG وصور أخرى،<br>SVG ↔ SVGZ، SVG → DXF/DWG، PDF → EPS/PS، SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ، PPTX (صورة لكل صفحة)، SVG²؛<br>الدمج (بترتيب تختاره أولًا)، التقسيم، نطاقات الصفحات، الضغط (ملفات PDF أصغر) |
 | **المستندات**: DOCX, DOCM, DOTX, EML, Outlook MSG؛<br>وOFD للقراءة (الفواتير الإلكترونية والمستندات الرسمية الصينية)<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602 وغيرها² | PDF, DOCX, HWPX, EPUB, TXT, HTML؛<br>MSG → EML<br>ODT, FODT, OTT² |
 | **جداول البيانات**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |

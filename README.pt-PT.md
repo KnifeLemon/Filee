@@ -153,7 +153,7 @@ Para reverter a alteração, remove as entradas em Segurança do Windows → Con
 | De | Para |
 |---|---|
 | **Imagens**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>leitura de GIMP XCF, RAW de câmaras (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows) e Live Photo do iPhone (LIVP) | qualquer um destes formatos (HEIC⁵), PDF, SVG (vetorizado), redimensionamento, escala de cinzentos;<br>Live/Motion Photos (iPhone, Android) → respetivo vídeo (MP4, MOV⁵), e vídeo → Live Photo (iPhone) ou Motion Photo (Android)⁵, experimental |
-| **Vetores**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (vetorial), PNG e outras imagens,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
+| **Vetores**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (vetorial), PNG e outras imagens,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (uma imagem de cada página), SVG²;<br>juntar (pela ordem que escolheres), dividir, selecionar intervalos de páginas, comprimir (PDF mais pequenos) |
 | **Documentos**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>leitura de OFD (faturas eletrónicas e documentos oficiais chineses)<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
 | **Folhas de cálculo**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |

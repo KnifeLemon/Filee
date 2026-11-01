@@ -62,6 +62,7 @@ public static class EngineRegistry
         new PdfTextConverter(),
         new PdfSlidesConverter(),
         new PdfTablesConverter(),
+        new PdfPostScriptConverter(loggers?.CreateLogger<PdfPostScriptConverter>()),
         new EmlConverter(),
         new DataConverter(),
         new SubtitleConverter(),

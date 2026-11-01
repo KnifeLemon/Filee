@@ -681,7 +681,6 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Pdf_converts_to_eps_per_page_and_to_postscript()
     {
-        Assert.SkipUnless(GhostscriptInstalled, "Ghostscript is not installed (pwsh build/fetch-engines.ps1 -Only ghostscript).");
         var dir = fx.NewFolder();
         var pdf = (await fx.ConvertAsync([EngineFixture.MakeMultiPageTiff(dir, 3)], new Preset { TargetFormat = "pdf" })).Outputs.Single();
 
@@ -700,7 +699,6 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Svg_converts_to_eps_through_pdf()
     {
-        Assert.SkipUnless(GhostscriptInstalled, "Ghostscript is not installed (pwsh build/fetch-engines.ps1 -Only ghostscript).");
         var dir = fx.NewFolder();
         var svg = Write(dir, "logo.svg", GraphicsBuilders.Svg);
 
@@ -709,7 +707,7 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         AssertDone(job);
         var eps = File.ReadAllText(job.Outputs.Single());
         Assert.StartsWith("%!PS-Adobe-3.0 EPSF-3.0", eps);
-        // eps2write crops to the drawn content, which lies inside the 300 × 150 pt page.
+        // The bounding box lies within the 300 × 150 pt page (the built-in writer uses the page, eps2write the drawing).
         var box = System.Text.RegularExpressions.Regex.Match(eps, @"%%BoundingBox: (\d+) (\d+) (\d+) (\d+)");
         Assert.True(box.Success, "no bounding box");
         var (left, bottom, right, top) = (int.Parse(box.Groups[1].Value), int.Parse(box.Groups[2].Value), int.Parse(box.Groups[3].Value), int.Parse(box.Groups[4].Value));
@@ -726,7 +724,7 @@ public class GraphicsTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("svg", "pdf", "vector")]
     [InlineData("ai", "png", "vector,pdfium")]
     [InlineData("eps", "png", "ghostscript")] // straight to PNG: keeps transparency (#39)
-    [InlineData("svg", "eps", "vector,ghostscript")]
+    [InlineData("svg", "eps", "vector,pdf-ps")]
     [InlineData("raw", "jpg", "magick")]
     [InlineData("xcf", "psd", "magick")]
     [InlineData("png", "icns", "icns")]

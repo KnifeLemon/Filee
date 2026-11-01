@@ -146,7 +146,7 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 | Dari | Ke |
 |---|---|
 | **Gambar**: JPG, PNG, WEBP, AVIF, TIFF, BMP, GIF, APNG, ICO, ICNS, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, HEIC, QOI, DDS, PCX, MNG, CUR, …;<br>GIMP XCF, Kamera RAW (CR2, CR3, NEF, ARW, DNG, …), DICOM, OpenEXR, HDR, FITS, JPEG XR (Windows), iPhone Live Photo (LIVP) baca | Semua format ini (HEIC⁵), PDF, SVG (vektorisasi/traced), resize ukuran, grayscale;<br>Live/Motion Photos (iPhone, Android) → video aslinya (MP4, MOV⁵), dan video → Live Photo (iPhone) atau Motion Photo (Android)⁵ *(eksperimental)* |
-| **Vektor**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (vektor), PNG dan format gambar lain,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS¹, SVG → EMF, WMF, ODG² |
+| **Vektor**: SVG, SVGZ, EMF, WMF, AI<br>EPS, PS¹<br>CDR, VSD, CGM, ODG, FODG² | PDF (vektor), PNG dan format gambar lain,<br>SVG ↔ SVGZ, SVG → DXF/DWG, PDF → EPS/PS, SVG → EMF, WMF, ODG² |
 | **PDF** | DOCX, HWPX, TXT, PNG, JPG, TIFF, CBZ, PPTX (gambar per halaman), SVG²;<br>Penggabungan/merge (sesuai urutan pilihan), pemisahan/split, rentang halaman, kompresi (ukuran PDF lebih kecil) |
 | **Dokumen**: DOCX, DOCM, DOTX, EML, Outlook MSG;<br>OFD (faktur elektronik Tiongkok, dokumen resmi) baca<br>DOC, ODT, FODT, OTT, RTF, WPS, WPD, Pages, ClarisWorks, MacWrite, T602, …² | PDF, DOCX, HWPX, EPUB, TXT, HTML;<br>MSG → EML<br>ODT, FODT, OTT² |
 | **Spreadsheet**: XLSX, XLSM, XLS, XLT, ODS, CSV, TSV<br>OTS, FODS, Numbers, ET² | PDF, XLSX, ODS, CSV, TSV, JSON, HWPX, HTML<br>XLT, OTS² |

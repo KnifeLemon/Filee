@@ -1,6 +1,7 @@
 // Mutation fuzzing of the document readers (HWPX for conversion and for layout, DOCX, HWP, and the older e-book
-// formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own): seeds are written in code, DocumentFuzzer
-// (packages), HwpFuzzer (HWP records and compound files) or BinaryFuzzer (binary containers) changes them, and every
+// formats CHM, PDB, TCR, RB, SNB with the LZX decoder on its own) and of the PostScript writer's PDF translation:
+// seeds are written in code, DocumentFuzzer (packages), HwpFuzzer (HWP records and compound files), BinaryFuzzer
+// (binary containers) or PdfStreamFuzzer (PDF streams) changes them, and every
 // input must be read or refused with InvalidDataException /
 // ConversionRefusedException, in time. In a normal test run each reader gets a short, fixed run (the same inputs every
 // time); the nightly fuzz workflow sets FILEE_FUZZ_SECONDS for a longer run with a new random seed, and
@@ -39,6 +40,19 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void HwpReader_reads_or_refuses_every_mutated_file() =>
         Fuzz("hwp", "hwp", HwpSeeds(), (path, media) => HwpReader.ReadForLayout(path, media), (seed, random) => new HwpFuzzer(seed, random).Next);
+
+    /// <summary>
+    /// The PostScript writer (PDF → PS): PDFs built in code whose streams PdfStreamFuzzer changes; a page it can't
+    /// translate is left empty here (in use it becomes a picture), so only the translation is fuzzed.
+    /// </summary>
+    [Fact]
+    public void PostScriptWriter_translates_or_refuses_every_mutated_pdf() =>
+        Fuzz("pdf-ps", "pdf", PostScriptSeeds(), (path, media) =>
+        {
+            Directory.CreateDirectory(media);
+            var writer = new Filee.Engines.Pdf.PostScript.PdfToPostScript(path, 150, null, CancellationToken.None) { RasterFallback = false };
+            writer.Write([.. Enumerable.Range(0, Math.Min(writer.PageCount, 4))], Path.Combine(media, "out.ps"), eps: false, media);
+        }, (seed, random) => new PdfStreamFuzzer(seed, random).Next);
 
     [Fact]
     public void ChmReader_reads_or_refuses_every_mutated_file() =>
@@ -142,6 +156,14 @@ public class DocumentFuzzTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static Func<byte[], Random, Func<byte[]>> JsonMutator(string[] tokens) => (seed, random) => new JsonFuzzer(seed, random, tokens).Next;
 
     // ───────────────────────── Seeds ─────────────────────────
+
+    /// <summary>The PostScript writer's samples with fonts of every kind, pictures, shadings and patterns.</summary>
+    private List<byte[]> PostScriptSeeds()
+    {
+        var folder = fx.NewFolder();
+        return [.. ((string[])["text-truetype", "text-type1", "text-cff", "text-type3", "images", "shadings", "patterns"])
+            .Select(name => File.ReadAllBytes(PostScriptSamples.Make(name, folder)))];
+    }
 
     /// <summary>
     /// HWP files built in code (an HWP seed is the builder, so the fuzzer changes records and rebuilds the compound
