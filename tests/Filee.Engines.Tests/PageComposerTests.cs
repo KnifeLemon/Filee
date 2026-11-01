@@ -259,6 +259,28 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void A_picture_line_takes_the_line_spacing_of_its_text_and_a_table_of_another_format_its_margin_below()
+    {
+        // 160 % of 10 pt text adds 6 pt to a line, also to one holding a 30 pt picture (36 pt high, not 48).
+        var picture = Paragraph("");
+        picture.Inlines.Add(new HImage("none.png") { Width = 4000, Height = 3000 });
+        var next = Paragraph("next");
+        var table = Table("cell");
+        var after = Paragraph("after");
+
+        var plain = Compose(Section(Small, picture, next)).Pages[0];
+        var document = new HDocument();
+        document.Sections.Add(Section(Small with { Height = 40000 }, table, after));
+        var styled = new PageComposer(new FontResolver(_fonts), _shaper, styles: StyleResolver.FromTemplate()).Compose(document, TestContext.Current.CancellationToken).Pages[0];
+
+        Assert.Equal(20 + 36 + 8.5f, Runs(plain).Single(r => r.Text == "next").Positions[0].Y, 0.01f);
+        // A table read from another format has the 5 mm below it the HWPX writer gives it, before the next paragraph.
+        var cell = Runs(styled).Single(r => r.Text == "cell").Positions[0].Y;
+        var below = Runs(styled).Single(r => r.Text == "after").Positions[0].Y;
+        Assert.True(below - cell > 14.17f + 10, $"{below - cell} pt from the cell's baseline to the next paragraph's");
+    }
+
+    [Fact]
     public void Hangul_stored_page_starts_and_places_are_followed()
     {
         // Three one-line paragraphs on their stored layout: the second 50 pt down, the third starting a page.

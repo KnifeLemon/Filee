@@ -857,16 +857,16 @@ internal sealed class ParagraphLayouter
     {
         var rule = settings.LineHeight;
         var fromFont = settings.FontLineHeight || rule.Rule == HLineHeightRule.Multiple;
-        float ascent = 0, descent = 0;
-        var any = false;
+        float objectAscent = 0, objectDescent = 0, textAscent = 0, textDescent = 0;
+        bool anyText = false, anyObject = false;
         foreach (var part in parts)
         {
             if (part.Item.Kind == ItemKind.Object)
             {
                 // A picture stands on the baseline; an equation reaches below it.
-                ascent = Math.Max(ascent, part.Size.Height);
-                descent = Math.Max(descent, part.Size.Depth);
-                any = true;
+                objectAscent = Math.Max(objectAscent, part.Size.Height);
+                objectDescent = Math.Max(objectDescent, part.Size.Depth);
+                anyObject = true;
                 continue;
             }
             if (part.Item.Kind != ItemKind.Text)
@@ -874,20 +874,23 @@ internal sealed class ParagraphLayouter
             // 한글's line height follows the font size alone; raised or lowered text takes room only with font metrics.
             var (a, d) = Extent(part.Item.Style, part.Item.Font, fromFont);
             var rise = fromFont ? part.Item.Style.Rise : 0;
-            ascent = Math.Max(ascent, a + rise);
-            descent = Math.Max(descent, d - rise);
-            any = true;
+            textAscent = Math.Max(textAscent, a + rise);
+            textDescent = Math.Max(textDescent, d - rise);
+            anyText = true;
         }
-        if (!any)
-        {
-            var font = Font(mark.Family, mark.Style, mark.Language);
-            (ascent, descent) = Extent(mark, font, fromFont);
-        }
+        // The text's size; a line without text has the paragraph mark's, which a line of objects only adds no height of.
+        var (fontAscent, fontDescent) = anyText ? (textAscent, textDescent) : Extent(mark, Font(mark.Family, mark.Style, mark.Language), fromFont);
+        if (!anyText && !anyObject)
+            (textAscent, textDescent) = (fontAscent, fontDescent);
+        var ascent = Math.Max(objectAscent, textAscent);
+        var descent = Math.Max(objectDescent, textDescent);
         var textHeight = ascent + descent;
         var value = rule.Value / 100f;
         var height = rule.Rule switch
         {
-            HLineHeightRule.Percent => textHeight * rule.Value / 100f,
+            // 한글's percentage adds its share of the text's size, not of an object's height: a line holding a 60 pt
+            // picture at 160 % with 10 pt text is 66 pt high, as 한글 stores such lines.
+            HLineHeightRule.Percent => textHeight + (fontAscent + fontDescent) * (rule.Value - 100) / 100f,
             HLineHeightRule.Multiple => textHeight * rule.Value / 240f,
             HLineHeightRule.Exact => value,
             HLineHeightRule.AtLeast => Math.Max(value, textHeight),
