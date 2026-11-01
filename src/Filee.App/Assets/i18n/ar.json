@@ -970,7 +970,6 @@
   "engines.lo_documents": "استخدام LibreOffice لتحويل مستندات Word إلى PDF",
   "engines.lo_documents_hint": "يحافظ على تخطيط Word، بما في ذلك قواعد الترقيم الصينية واليابانية.\nعند التعطيل: يُستخدم المسار المدمج.",
   "engines.lo_sheets": "استخدام LibreOffice لتحويل جداول البيانات إلى PDF",
-  "engines.lo_sheets_hint": "تُطبع كما في Excel، مع منطقة الطباعة وإعداد الصفحة وفواصل الصفحات.\nعند التعطيل: يلائم المسار المدمج كل ورقة لعرض الصفحة (مع الاحتفاظ بفواصل الصفحات).",
   "engines.lo_sheets_hint_print": "يطبعها LibreOffice Calc بخطوطه الخاصة.\nعند التعطيل: يطبعها Filee بنفسه كما في Excel، مع منطقة الطباعة وإعداد الصفحة وفواصل الصفحات.",
   "engines.filee_renderer": "استخدام مُصيِّر Filee (معاينة)",
   "engines.filee_renderer_hint": "يُنسّق محرّك Filee الخاص ملفات HWPX ومستندات Word والنصوص وMarkdown وHTML والكتب الإلكترونية في PDF، بدلًا من كاتب HWPX وrhwp.\nالملفات التي تحوي ما لا يرسمه بعد (المخططات، النص العمودي…) تبقى على مسارها المعتاد.",

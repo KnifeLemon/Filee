@@ -987,7 +987,6 @@
   "engines.lo_documents": "Używaj LibreOffice dla dokumentów Word → PDF",
   "engines.lo_documents_hint": "Układ jak w Wordzie, łącznie z zasadami interpunkcji chińskiej i japońskiej.\nWyłączone: wbudowana ścieżka.",
   "engines.lo_sheets": "Używaj LibreOffice dla arkuszy → PDF",
-  "engines.lo_sheets_hint": "Drukowane jak w Excelu, z obszarem wydruku, ustawieniami strony i podziałami stron.\nWyłączone: wbudowana ścieżka dopasowuje każdy arkusz do szerokości strony (podziały stron zachowane).",
   "engines.lo_sheets_hint_print": "Drukuje LibreOffice Calc własnymi czcionkami.\nWyłączone: Filee drukuje je sam jak Excel, z obszarem wydruku, ustawieniami strony i podziałami stron.",
   "engines.filee_renderer": "Używaj renderera Filee (wersja zapoznawcza)",
   "engines.filee_renderer_hint": "Własny silnik Filee składa do PDF pliki HWPX, dokumenty Word, tekst, Markdown, HTML i e-booki zamiast zapisu HWPX i rhwp.\nPliki z tym, czego jeszcze nie rysuje (wykresy, tekst pionowy…), idą zwykłą drogą.",

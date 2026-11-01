@@ -970,7 +970,6 @@
   "engines.lo_documents": "Word belgesi → PDF için LibreOffice kullan",
   "engines.lo_documents_hint": "Çince ve Japonca noktalama kuralları dahil Word'deki gibi düzenlenir.\nKapalı: yerleşik yöntem kullanılır.",
   "engines.lo_sheets": "Elektronik tablo → PDF için LibreOffice kullan",
-  "engines.lo_sheets_hint": "Yazdırma alanı, sayfa düzeni ve sayfa sonlarıyla Excel'deki gibi yazdırılır.\nKapalı: yerleşik yöntem her çalışma sayfasını sayfa genişliğine sığdırır (sayfa sonları korunur).",
   "engines.lo_sheets_hint_print": "LibreOffice Calc kendi yazı tipleriyle yazdırır.\nKapalı: Filee, yazdırma alanı, sayfa düzeni ve sayfa sonlarıyla Excel gibi kendisi yazdırır.",
   "engines.filee_renderer": "Filee işleyicisini kullan (önizleme)",
   "engines.filee_renderer_hint": "Filee'nin kendi motoru HWPX, Word belgeleri, metin, Markdown, HTML ve e-kitapları HWPX yazıcısı ve rhwp yerine PDF olarak dizer.\nHenüz çizemediği öğeler (grafikler, dikey metin…) içeren dosyalar her zamanki yoldan dönüştürülür.",

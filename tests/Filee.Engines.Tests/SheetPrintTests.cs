@@ -628,12 +628,12 @@ public sealed class SheetPrintTests(EngineFixture fx) : IClassFixture<EngineFixt
         Assert.Equal("&L&A&RPage &P / &N", workbook.Sheets[0].PageSetup.HeaderFooter.OddHeader);
         var pages = Print(workbook, "plan.ods");
 
-        // Calc's header (0.5 in + 0.1 in) moves Excel's top margin to 1.6 in: 654.7 pt holds 43 rows of 15 pt (the
-        // rows have no height of their own and the file no default font: Calibri 11); the header row repeats on
-        // page 2, which holds rows 44–70.
+        // Calc's header (0.5 in, its 0.1 in spacing included) moves Excel's top margin to 1.5 in: 661.9 pt holds 44
+        // rows of 15 pt (the rows have no height of their own and the file no default font: Calibri 11); the header
+        // row repeats on page 2, which holds rows 45–70.
         Assert.Equal(2, pages.Count);
-        Assert.Contains("43-3", pages[0]);
-        Assert.DoesNotContain("44-1", pages[0]);
+        Assert.Contains("44-3", pages[0]);
+        Assert.DoesNotContain("45-1", pages[0]);
         Assert.StartsWith("Plan Page 1 / 2", pages[0]);
         Assert.StartsWith("Plan Page 2 / 2 1-1 1-2 1-3", pages[1]);
     }

@@ -987,7 +987,6 @@
   "engines.lo_documents": "Utilizar o LibreOffice para documentos Word → PDF",
   "engines.lo_documents_hint": "Disposição como no Word, incluindo as regras de pontuação chinesas e japonesas.\nDesativado: é utilizado o método de conversão integrado.",
   "engines.lo_sheets": "Utilizar o LibreOffice para folhas de cálculo → PDF",
-  "engines.lo_sheets_hint": "Impressão como no Excel, com área de impressão, configuração de página e quebras de página.\nDesativado: o método de conversão integrado ajusta cada folha à largura da página (mantém as quebras).",
   "engines.lo_sheets_hint_print": "Impressão pelo LibreOffice Calc com os seus tipos de letra.\nDesativado: o Filee imprime como o Excel, com área de impressão, configuração de página e quebras de página.",
   "engines.filee_renderer": "Usar o renderizador do Filee (pré-visualização)",
   "engines.filee_renderer_hint": "O motor próprio do Filee pagina em PDF ficheiros HWPX, documentos do Word, texto, Markdown, HTML e livros digitais, em vez do escritor HWPX e do rhwp.\nOs ficheiros com o que ainda não desenha (gráficos, texto vertical…) seguem o percurso habitual.",

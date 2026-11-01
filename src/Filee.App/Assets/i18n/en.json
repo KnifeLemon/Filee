@@ -987,7 +987,6 @@
   "engines.lo_documents": "Use LibreOffice for Word documents → PDF",
   "engines.lo_documents_hint": "Laid out as in Word, including Chinese and Japanese punctuation rules.\nOff: the built-in route.",
   "engines.lo_sheets": "Use LibreOffice for spreadsheets → PDF",
-  "engines.lo_sheets_hint": "Printed like Excel, with the print area, page setup and page breaks.\nOff: the built-in route fits each sheet to the page width (page breaks kept).",
   "engines.lo_sheets_hint_print": "Printed by LibreOffice Calc with its own fonts.\nOff: Filee prints them itself like Excel, with the print area, page setup and page breaks.",
   "engines.filee_renderer": "Use the Filee renderer (preview)",
   "engines.filee_renderer_hint": "Filee's own engine lays HWPX, Word documents, text, Markdown, HTML and e-books out to PDF, instead of the HWPX writer and rhwp.\nFiles with what it doesn't draw yet (charts, vertical text…) keep their usual route.",

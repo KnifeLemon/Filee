@@ -970,7 +970,6 @@
   "engines.lo_documents": "LibreOffice für Word-Dokumente → PDF verwenden",
   "engines.lo_documents_hint": "Layout wie in Word, einschließlich chinesischer und japanischer Satzzeichenregeln.\nAus: integrierte Konvertierung.",
   "engines.lo_sheets": "LibreOffice für Tabellen → PDF verwenden",
-  "engines.lo_sheets_hint": "Druck wie in Excel, mit Druckbereich, Seiteneinrichtung und Seitenumbrüchen.\nAus: integrierte Konvertierung passt jedes Blatt an die Seitenbreite an (Seitenumbrüche bleiben erhalten).",
   "engines.lo_sheets_hint_print": "Druck durch LibreOffice Calc mit dessen eigenen Schriften.\nAus: Filee druckt sie selbst wie Excel, mit Druckbereich, Seiteneinrichtung und Seitenumbrüchen.",
   "engines.filee_renderer": "Filee-Renderer verwenden (Vorschau)",
   "engines.filee_renderer_hint": "Filees eigene Engine setzt HWPX, Word-Dokumente, Text, Markdown, HTML und E-Books als PDF, statt des HWPX-Writers und rhwp.\nDateien mit Inhalten, die sie noch nicht zeichnet (Diagramme, vertikaler Text…), nehmen weiter den gewohnten Weg.",

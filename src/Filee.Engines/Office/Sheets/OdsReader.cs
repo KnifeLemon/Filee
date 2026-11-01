@@ -183,8 +183,9 @@ internal sealed class OdsReader
 
     /// <summary>
     /// A master page's page layout as Excel's page setup. Calc's top and bottom margins end where the header and
-    /// footer start; Excel's go to the cells, with the header margin between: the header's height and spacing are
-    /// added to them, as LibreOffice does when it saves XLSX.
+    /// footer start; Excel's go to the cells, with the header margin between: the header's height (fo:min-height,
+    /// which holds its spacing to the cells) is added to them, as LibreOffice does when it saves XLSX. An XLSX with
+    /// a 1 in top margin and a 0.5 in header margin comes back from Calc as 1.27 cm + a 1.27 cm header.
     /// </summary>
     private SheetPageSetup PageSetup(string masterName)
     {
@@ -241,12 +242,12 @@ internal sealed class OdsReader
         var footerStyle = layout.Element(Style + "footer-style")?.Element(Style + "header-footer-properties");
         if (header is not null)
         {
-            var extent = Math.Max(Length(headerStyle, "min-height", 0), 0) + Length(headerStyle, "margin-bottom", 0);
+            var extent = Math.Max(Length(headerStyle, "min-height", 0), Length(headerStyle, "margin-bottom", 0));
             setup = setup with { HeaderMargin = setup.TopMargin, TopMargin = setup.TopMargin + extent };
         }
         if (footer is not null)
         {
-            var extent = Math.Max(Length(footerStyle, "min-height", 0), 0) + Length(footerStyle, "margin-top", 0);
+            var extent = Math.Max(Length(footerStyle, "min-height", 0), Length(footerStyle, "margin-top", 0));
             setup = setup with { FooterMargin = setup.BottomMargin, BottomMargin = setup.BottomMargin + extent };
         }
         var evenHeader = Region(master.Element(Style + "header-left"));

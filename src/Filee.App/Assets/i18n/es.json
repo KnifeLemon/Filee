@@ -970,7 +970,6 @@
   "engines.lo_documents": "Usar LibreOffice para documentos de Word → PDF",
   "engines.lo_documents_hint": "Se maquetan como en Word, incluidas las reglas de puntuación china y japonesa.\nDesactivado: la ruta integrada.",
   "engines.lo_sheets": "Usar LibreOffice para hojas de cálculo → PDF",
-  "engines.lo_sheets_hint": "Se imprimen como en Excel, con el área de impresión, la configuración de página y los saltos de página.\nDesactivado: la ruta integrada ajusta cada hoja al ancho de la página (los saltos de página se conservan).",
   "engines.lo_sheets_hint_print": "Los imprime LibreOffice Calc con sus propias fuentes.\nDesactivado: Filee los imprime como Excel, con el área de impresión, la configuración de página y los saltos de página.",
   "engines.filee_renderer": "Usar el renderizador de Filee (vista previa)",
   "engines.filee_renderer_hint": "El motor propio de Filee maqueta en PDF archivos HWPX, documentos de Word, texto, Markdown, HTML y libros electrónicos, en lugar del escritor HWPX y rhwp.\nLos archivos con lo que aún no dibuja (gráficos, texto vertical…) siguen su ruta habitual.",

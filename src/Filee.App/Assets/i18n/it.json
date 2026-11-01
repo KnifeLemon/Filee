@@ -970,7 +970,6 @@
 "engines.lo_documents": "Usa LibreOffice per documenti Word → PDF",
 "engines.lo_documents_hint": "Impaginati come in Word, comprese le regole di punteggiatura cinese e giapponese.\\nDisattivato: il percorso integrato.",
 "engines.lo_sheets": "Usa LibreOffice per fogli di calcolo → PDF",
-"engines.lo_sheets_hint": "Stampati come in Excel, con area di stampa, impostazione della pagina e interruzioni di pagina.\\nDisattivato: il percorso integrato adatta ogni foglio alla larghezza della pagina (interruzioni di pagina mantenute).",
 "engines.lo_sheets_hint_print": "Stampati da LibreOffice Calc con i suoi caratteri.\nDisattivato: Filee li stampa come Excel, con area di stampa, impostazione della pagina e interruzioni di pagina.",
   "engines.filee_renderer": "Usa il renderer di Filee (anteprima)",
   "engines.filee_renderer_hint": "Il motore di Filee impagina in PDF file HWPX, documenti Word, testo, Markdown, HTML ed ebook, al posto dello scrittore HWPX e di rhwp.\nI file con ciò che non disegna ancora (grafici, testo verticale…) seguono il percorso abituale.",

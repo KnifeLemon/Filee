@@ -987,7 +987,6 @@
   "engines.lo_documents": "Word 문서 → PDF는 LibreOffice로 변환",
   "engines.lo_documents_hint": "Word와 같은 배치로 변환하고, 중국어·일본어 문장부호 규칙도 지켜요.\n끄면 내장 방식으로 변환해요.",
   "engines.lo_sheets": "엑셀 → PDF는 LibreOffice로 변환",
-  "engines.lo_sheets_hint": "엑셀처럼 인쇄 영역, 페이지 설정, 페이지 나누기대로 인쇄해요.\n끄면 내장 방식으로 시트를 페이지 너비에 맞춰요(페이지 나누기는 지켜요).",
   "engines.lo_sheets_hint_print": "LibreOffice Calc가 자체 글꼴로 인쇄해요.\n끄면 Filee가 엑셀처럼 인쇄 영역, 페이지 설정, 페이지 나누기대로 직접 인쇄해요.",
   "engines.filee_renderer": "Filee 렌더러 사용 (미리보기)",
   "engines.filee_renderer_hint": "HWPX, 워드 문서, 텍스트, 마크다운, HTML, 전자책을 HWPX 변환과 rhwp 대신 Filee 자체 엔진으로 PDF에 배치해요.\n아직 그리지 못하는 요소(차트, 세로쓰기)가 있는 파일은 원래 경로로 변환해요.",
