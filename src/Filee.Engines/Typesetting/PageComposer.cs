@@ -267,6 +267,9 @@ internal sealed class PageComposer
 
         public ComposedDocument Compose()
         {
+            // Text boxes laid out like characters stack their content through the table layout: set it up before the
+            // first one, also in a document without tables.
+            _ = Tables;
             for (var s = 0; s < document.Sections.Count; s++)
             {
                 var section = document.Sections[s];

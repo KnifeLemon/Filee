@@ -600,6 +600,48 @@ public class HwpxReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(3, layout.Sections[1].StartPageNumber); // a new number in the section's first paragraph starts it
     }
 
+    [Fact]
+    public void Form_controls_are_laid_out_as_boxes_with_their_text()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "controls.hwpx");
+        File.Copy(HangulStylePackage(folder), path);
+        static string Control(string name, string attributes, string inner = "") =>
+            $"<hp:{name} {attributes} name=\"C\" foreColor=\"#0000FF\" backColor=\"#F0F0F0\" groupName=\"\" tabStop=\"1\" editable=\"1\" tabOrder=\"1\" enabled=\"1\" " +
+            "borderTypeIDRef=\"0\" drawFrame=\"1\" printable=\"1\" command=\"\"><hp:formCharPr charPrIDRef=\"0\" followContext=\"0\" autoSz=\"0\" wordWrap=\"0\"/>" + inner +
+            "<hp:sz width=\"7087\" widthRelTo=\"ABSOLUTE\" height=\"1984\" heightRelTo=\"ABSOLUTE\" protect=\"0\"/>" +
+            "<hp:pos treatAsChar=\"1\" affectLSpacing=\"0\" flowWithText=\"1\" allowOverlap=\"1\" holdAnchorAndSO=\"0\" vertRelTo=\"PARA\" horzRelTo=\"COLUMN\" vertAlign=\"TOP\" horzAlign=\"LEFT\" vertOffset=\"0\" horzOffset=\"0\"/>" +
+            $"<hp:outMargin left=\"0\" right=\"0\" top=\"0\" bottom=\"0\"/></hp:{name}>";
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Update))
+        {
+            var entry = zip.GetEntry("Contents/section0.xml")!;
+            string xml;
+            using (var reader = new StreamReader(entry.Open()))
+                xml = reader.ReadToEnd();
+            entry.Delete();
+            // After the "줄 간격" paragraph's text: a button, a check box and an edit box with a password character.
+            xml = xml.Replace("<hp:t>줄 간격</hp:t>", "<hp:t>줄 간격</hp:t>" +
+                Control("btn", "caption=\"확인\" value=\"UNCHECKED\"") +
+                Control("checkBtn", "caption=\"동의\" value=\"UNCHECKED\" backStyle=\"TRANSPARENT\"") +
+                Control("edit", "multiLine=\"0\" passwordChar=\"X\" maxLength=\"10\"", "<hp:text>1234</hp:text>"), StringComparison.Ordinal);
+            using var writer = new StreamWriter(zip.CreateEntry("Contents/section0.xml").Open(), new UTF8Encoding(false));
+            writer.Write(xml);
+        }
+
+        var boxes = HwpxReader.ReadForLayout(path, Path.Combine(folder, "media")).Sections[0].Blocks.OfType<HParagraph>()
+            .SelectMany(p => p.Inlines).OfType<HTextBox>().Where(b => b.Width == 7087).ToList(); // the package's own text box is in a group
+
+        Assert.Equal(3, boxes.Count);
+        Assert.All(boxes, b => Assert.Equal((7087, 1984, (HAnchor?)null, 85), (b.Width, b.Height, b.Anchor, b.BaseLine)));
+        var button = Assert.IsType<HParagraph>(Assert.Single(boxes[0].Blocks));
+        Assert.Equal((HAlign.Center, "확인", "#0000FF", "#F0F0F0"), (button.Format.Align, Text(boxes[0].Blocks), ((HText)button.Inlines[0]).Format.Color, boxes[0].Fill));
+        Assert.NotEqual(HBorderStyle.None, boxes[0].Line.Style);
+        var check = Assert.IsType<HParagraph>(Assert.Single(boxes[1].Blocks));
+        Assert.Equal(HShapeKind.Rectangle, Assert.IsType<HShape>(check.Inlines[0]).Kind); // the square is drawn, not text
+        Assert.Equal((" 동의", (string?)null, HBorderStyle.None), (Text(boxes[1].Blocks), boxes[1].Fill, boxes[1].Line.Style));
+        Assert.Equal("XXXX", Text(boxes[2].Blocks));
+    }
+
     private static HParagraph ParagraphOf(IEnumerable<HInline> inlines)
     {
         var paragraph = new HParagraph();
