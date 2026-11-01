@@ -1807,3 +1807,17 @@ Transcription runs entirely locally and offline on your computer; no audio or da
   formats requires FFmpeg. FFmpeg must be installed (via Settings → *Engines*, bundled, or found on `PATH`).
 - **Languages**: Whisper supports auto-detection (`auto`) as well as specific language codes (`-l <code>`, e.g. `hi` for
   Hindi, `en` for English, `es` for Spanish, `fr` for French, `ja` for Japanese, `zh` for Chinese).
+
+## Document & Book Translator (Offline AI)
+
+Filee translates documents, books, and text files locally using a local Ollama instance over loopback (`http://127.0.0.1:11434`). Translation runs entirely on the user's computer: no text or document data is ever uploaded or sent to third-party web services.
+
+- **Offline privacy**: Adheres strictly to Filee's offline promise: "Filee converts files on your own computer and never uploads them." Translation exclusively uses local Ollama over loopback (`127.0.0.1:11434`). Cloud-forwarded models (`*-cloud` or models reporting remote endpoints) are refused with a security block to ensure privacy. No external web services or network calls outside loopback are ever made.
+- **Where it lives**:
+  - Available as the **Translate** preset in Settings → *Presets*, where the target language (e.g. English, Spanish, Hindi, French, German, Chinese, Japanese, etc.) is configured as the single source of truth.
+  - Sits cleanly on the back face (`BackPresetIds`) of document and text profiles for fresh installs, keeping front faces clean and untouched (#806 compliance).
+  - Manageable from the Engines page via **Manage Ollama**, providing status, local model selection, pulling offline models, and starting/stopping the local Ollama server.
+- **Supported formats and layout preservation**:
+  - **Documents & E-books**: DOCX, HWPX, EPUB, KEPUB, FB2, HTMLZ, TXTZ, MD, TXT, and HTML are translated in place, preserving document structure, headings, bold/italic runs, tables, lists, images, and notes.
+  - **Kindle e-books**: MOBI, AZW, AZW3, and PRC formats are translated via EPUB, and can then be routed to any supported target format.
+  - **PDF target**: When a document is translated with PDF as the target format, the route planner translates the document model first and then routes the translated document through Filee's standard document-to-PDF export pipeline.

@@ -84,6 +84,11 @@ public sealed class ConversionService
         }
         // A preset on "Default" saves where Settings > General says (read now, so a changed default applies at once).
         preset = _store.Settings.WithDefaultOutput(preset);
+        if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model) && !string.IsNullOrWhiteSpace(_store.Settings.PreferredOllamaModel))
+        {
+            preset = preset.Clone();
+            preset.Translate.Model = _store.Settings.PreferredOllamaModel;
+        }
         WebDropFetcher? fetcher = null;
         if (web is not null)
         {

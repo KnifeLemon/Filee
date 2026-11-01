@@ -280,6 +280,8 @@ internal static class Cli
             preset = found.Clone();
         }
         preset = host.Store.Settings.WithDefaultOutput(preset);
+        if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model))
+            preset.Translate.Model = host.Store.Settings.PreferredOllamaModel;
         if (options.Quality is { } quality)
             preset.Image.Quality = quality;
         if (options.Conflict is { } conflict)

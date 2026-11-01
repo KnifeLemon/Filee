@@ -118,6 +118,9 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used for offline AI translation.</summary>
+    public TranslateOptions Translate { get; set; } = new();
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
@@ -151,6 +154,16 @@ public sealed class Preset
         Archive.CombineIntoOne
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
+
+    /// <summary>Formats the translator can directly read from.</summary>
+    public static readonly string[] TranslatorSourceFormats =
+    [
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html"
+    ];
+
+    /// <summary>True if converting a document or e-book using local AI translation.</summary>
+    public bool TranslatesDocument(string sourceFormat) =>
+        Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file saves every frame as a picture
@@ -306,6 +319,7 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Translate = Translate.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
         Tool = Tool,
@@ -1294,3 +1308,13 @@ public sealed class CadOptions
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
 }
 
+/// <summary>Options for offline AI document translation.</summary>
+public sealed class TranslateOptions
+{
+    public bool Enabled { get; set; }
+    public string TargetLanguage { get; set; } = "en";
+    public string SourceLanguage { get; set; } = "auto";
+    public string? Model { get; set; }
+
+    public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+}

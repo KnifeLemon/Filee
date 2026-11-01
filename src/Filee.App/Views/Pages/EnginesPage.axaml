@@ -111,6 +111,12 @@
               <StackPanel Spacing="10">
                 <DockPanel>
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                    <Button Classes="accent" IsVisible="{Binding IsTranslator}" Click="OnManageOllama" Margin="0,0,6,0" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Settings}" />
+                        <TextBlock Text="{DynamicResource engines.ollama.manage}" />
+                      </StackPanel>
+                    </Button>
                     <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}" AutomationProperties.Name="{DynamicResource engines.move_up}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
                       <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />

@@ -1,0 +1,177 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.OllamaModelManagerWindow"
+        x:DataType="vm:OllamaModelManagerViewModel"
+        Title="{DynamicResource engines.ollama.title}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="640"
+        Height="620"
+        MinWidth="540"
+        MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        ShowInTaskbar="False">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="22">
+    <!-- Header -->
+    <StackPanel Grid.Row="0" Spacing="10" Margin="0,0,0,14">
+      <StackPanel Spacing="4">
+        <TextBlock Classes="h2" Text="{DynamicResource engines.ollama.title}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource engines.ollama.description}" />
+      </StackPanel>
+
+      <!-- Server Status & Actions -->
+      <Border Classes="card" Padding="14,10">
+        <DockPanel LastChildFill="True">
+          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+            <Button Content="{DynamicResource presets.test_connection}" IsVisible="{Binding IsServerRunning}"
+                    Command="{Binding TestConnectionCommand}" IsEnabled="{Binding !IsTesting}" />
+            <Button Content="{DynamicResource engines.ollama.stop_server}" IsVisible="{Binding CanStopServer}"
+                    Command="{Binding StopServerCommand}" />
+            <Button Classes="accent" Content="{DynamicResource engines.ollama.start_server}" IsVisible="{Binding !IsServerRunning}"
+                    Command="{Binding StartServerCommand}" />
+            <Button Content="{DynamicResource engines.ollama.refresh}" Command="{Binding RefreshStatusCommand}" />
+          </StackPanel>
+          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+            <Ellipse Width="10" Height="10"
+                     Fill="{Binding IsServerRunning, Converter={x:Static ObjectConverters.IsNull}}"
+                     Classes.running="{Binding IsServerRunning}" Classes.stopped="{Binding !IsServerRunning}">
+              <Ellipse.Styles>
+                <Style Selector="Ellipse.running">
+                  <Setter Property="Fill" Value="#22C55E" />
+                </Style>
+                <Style Selector="Ellipse.stopped">
+                  <Setter Property="Fill" Value="#EF4444" />
+                </Style>
+              </Ellipse.Styles>
+            </Ellipse>
+            <TextBlock FontWeight="SemiBold" Text="{Binding ServerStatusText}" VerticalAlignment="Center" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Test Translation Result -->
+      <Border IsVisible="{Binding TestResultText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+              Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10,8">
+        <StackPanel Orientation="Horizontal" Spacing="8">
+          <TextBlock Text="✓" Foreground="#10b981" FontWeight="Bold" IsVisible="{Binding !TestHasError}" />
+          <TextBlock Text="⚠" Foreground="#f59e0b" FontWeight="Bold" IsVisible="{Binding TestHasError}" />
+          <TextBlock Text="{Binding TestResultText}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" />
+        </StackPanel>
+      </Border>
+    </StackPanel>
+
+    <!-- Main Content -->
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+      <StackPanel Spacing="14">
+        <!-- Pull / Install Model Section -->
+        <Border Classes="card" Padding="14">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="h3" Text="{DynamicResource engines.ollama.pull_title}" />
+            <Grid ColumnDefinitions="*,10,Auto">
+              <TextBox Grid.Column="0" Text="{Binding NewModelName}"
+                       PlaceholderText="{DynamicResource engines.ollama.pull_placeholder}"
+                       IsEnabled="{Binding !IsPulling}" />
+              <Button Grid.Column="2" Classes="accent" Content="{DynamicResource engines.ollama.pull_button}"
+                      Command="{Binding PullModelCommand}"
+                      IsEnabled="{Binding CanPull}" />
+            </Grid>
+
+            <!-- Warning for Cloud Models -->
+            <Border Background="#33F97316" BorderBrush="#F97316" BorderThickness="1" CornerRadius="4" Padding="10,6"
+                    IsVisible="{Binding IsCloudWarningVisible}">
+              <TextBlock Foreground="#EA580C" TextWrapping="Wrap"
+                         Text="{DynamicResource engines.ollama.cloud_warning}" />
+            </Border>
+
+            <!-- Download Progress -->
+            <StackPanel Spacing="4" IsVisible="{Binding IsPulling}">
+              <ProgressBar Maximum="100" Value="{Binding PullProgress}" />
+              <TextBlock Classes="caption" Text="{Binding PullStatusText}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+
+        <!-- Installed Models Section -->
+        <Border Classes="card" Padding="14">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="h3" Text="{DynamicResource engines.ollama.installed_models}" />
+
+            <!-- Empty Notice -->
+            <TextBlock Classes="caption" Text="{DynamicResource engines.ollama.no_models}"
+                       IsVisible="{Binding !Models.Count}" />
+
+            <ItemsControl ItemsSource="{Binding Models}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="8" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:OllamaModelItem">
+                  <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,10">
+                    <DockPanel LastChildFill="True">
+                      <!-- Right Action Button -->
+                      <Button DockPanel.Dock="Right" Content="{Binding ActionText}"
+                              IsEnabled="{Binding IsActionEnabled}"
+                              Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).UseModelCommand}"
+                              CommandParameter="{Binding}"
+                              Classes.using="{Binding IsUsing}"
+                              MinWidth="120" HorizontalContentAlignment="Center">
+                        <Button.Styles>
+                          <Style Selector="Button.using">
+                            <Setter Property="Foreground" Value="#16A34A" />
+                            <Setter Property="FontWeight" Value="SemiBold" />
+                          </Style>
+                        </Button.Styles>
+                      </Button>
+
+                      <!-- Left Details -->
+                      <StackPanel Spacing="4" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                          <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                          <!-- Badge -->
+                          <Border CornerRadius="4" Padding="6,2"
+                                  Background="{Binding IsCloud, Converter={x:Static ObjectConverters.IsNull}}"
+                                  Classes.cloud="{Binding IsCloud}" Classes.offline="{Binding !IsCloud}">
+                            <Border.Styles>
+                              <Style Selector="Border.cloud">
+                                <Setter Property="Background" Value="#33EA580C" />
+                              </Style>
+                              <Style Selector="Border.offline">
+                                <Setter Property="Background" Value="#2216A34A" />
+                              </Style>
+                            </Border.Styles>
+                            <TextBlock Classes="caption"
+                                       Foreground="{Binding IsCloud, Converter={x:Static ObjectConverters.IsNull}}"
+                                       Classes.cloudText="{Binding IsCloud}" Classes.offlineText="{Binding !IsCloud}">
+                              <TextBlock.Styles>
+                                <Style Selector="TextBlock.cloudText">
+                                  <Setter Property="Foreground" Value="#EA580C" />
+                                  <Setter Property="Text" Value="{DynamicResource engines.ollama.cloud_blocked}" />
+                                </Style>
+                                <Style Selector="TextBlock.offlineText">
+                                  <Setter Property="Foreground" Value="#16A34A" />
+                                  <Setter Property="Text" Value="{DynamicResource engines.ollama.offline_badge}" />
+                                </Style>
+                              </TextBlock.Styles>
+                            </TextBlock>
+                          </Border>
+                        </StackPanel>
+                        <TextBlock Classes="caption" Text="{Binding SizeFormatted}" IsVisible="{Binding SizeFormatted, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                      </StackPanel>
+                    </DockPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Footer -->
+    <Button Grid.Row="2" Classes="accent" HorizontalAlignment="Right" Margin="0,14,0,0" MinWidth="88"
+            HorizontalContentAlignment="Center" Content="{DynamicResource common.close}"
+            Click="OnClose" IsDefault="True" IsCancel="True" />
+  </Grid>
+</Window>

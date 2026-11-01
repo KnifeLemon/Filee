@@ -83,7 +83,10 @@ public partial class App : Application
         });
         // Every engine's availability, checked once off the UI thread: the first donut or drop otherwise starts
         // every engine's check (FFmpeg -version, folder searches) on the UI thread and freezes it meanwhile.
-        _ = AppHost.Get<ConverterCatalog>().CheckInBackgroundAsync();
+        var catalog = AppHost.Get<ConverterCatalog>();
+        _ = catalog.CheckInBackgroundAsync();
+        Filee.Engines.Translation.TranslatorConverter.StatusChanged += () =>
+            Dispatcher.UIThread.Post(catalog.Refresh);
 
         // Global gestures → donut toolbar
         var triggers = AppHost.Get<TriggerService>();
@@ -181,6 +184,7 @@ public partial class App : Application
             AppHost.Get<TriggerService>().Dispose();
             AppHost.Get<TrayService>().Dispose();
             AppHost.Get<WatchFolderService>().DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            Filee.App.ViewModels.OllamaModelManagerViewModel.StopFileeStartedServer();
         };
 
         // Before HandleCommandLine marks the first run complete: a fresh install gets no slides (an update by the

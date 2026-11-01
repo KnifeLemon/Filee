@@ -46,6 +46,14 @@ public static class BuiltInData
         .. TrimPresets(),
         new()
         {
+            Id = "translate",
+            NameKey = "preset.translate",
+            TargetFormat = SameAsSource,
+            Translate = new TranslateOptions { Enabled = true, TargetLanguage = "en" },
+            Output = { FileNamePattern = "{name}_translated" },
+        },
+        new()
+        {
             Id = "tool-crop", NameKey = "preset.crop", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Output = { FileNamePattern = "{name}_cropped" },
         },
@@ -595,7 +603,7 @@ public static class BuiltInData
             Id = "office", NameKey = "profile.office",
             Extensions = ExtensionsOf(FormatCategory.Document),
             PresetIds = ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-odt", "to-txt", "to-html", "to-epub", "to-png", "merge-pdf"],
-            BackPresetIds = ["to-md", "to-rtf", "to-jpg", "pdf-long-image", "to-azw3", "to-kepub", "zip-all"],
+            BackPresetIds = ["translate", "to-md", "to-rtf", "to-jpg", "pdf-long-image", "to-azw3", "to-kepub", "zip-all"],
         },
         SpreadsheetProfile(),
         PresentationProfile(),
@@ -657,7 +665,7 @@ public static class BuiltInData
         NameKey = "profile.text",
         Extensions = ExtensionsOf(FormatCategory.Text),
         PresetIds = ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt", "to-epub"],
-        BackPresetIds = ["to-md", "to-odt", "to-rtf", "to-kepub", "merge-pdf", "zip-all"],
+        BackPresetIds = ["translate", "to-md", "to-odt", "to-rtf", "to-kepub", "merge-pdf", "zip-all"],
     };
 
     /// <summary>Donuts of the categories added in settings schema 6, in the order they follow "text".</summary>
@@ -668,7 +676,7 @@ public static class BuiltInData
             Id = "ebooks", NameKey = "profile.ebooks",
             Extensions = ExtensionsOf(FormatCategory.Ebook),
             PresetIds = ["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-mobi", "to-kepub", "to-hwpx", "to-hwp", "to-html"],
-            BackPresetIds = ["to-fb2", "to-md", "to-rtf", "to-odt", "merge-pdf", "zip-all"],
+            BackPresetIds = ["translate", "to-fb2", "to-md", "to-rtf", "to-odt", "merge-pdf", "zip-all"],
         },
         new()
         {

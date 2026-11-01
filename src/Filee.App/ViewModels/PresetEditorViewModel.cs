@@ -4,10 +4,14 @@
 // Works on a clone; Apply() copies the edits back into the original preset (Cancel = just drop the VM).
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Filee.App.Services;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 using Filee.Engines.Ocr;
+using Filee.Engines.Translation;
 
 namespace Filee.App.ViewModels;
 
@@ -179,6 +183,29 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _caption = _edit.Media.Caption;
         _spokenLanguage = SpokenLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Media.SpokenLanguage, StringComparison.OrdinalIgnoreCase))
             ?? SpokenLanguageChoices[0];
+        TranslationLanguageChoices =
+        [
+            new Choice<string>("en", "English"),
+            new Choice<string>("es", "Español"),
+            new Choice<string>("fr", "Français"),
+            new Choice<string>("de", "Deutsch"),
+            new Choice<string>("zh", "中文"),
+            new Choice<string>("hi", "हिन्दी"),
+            new Choice<string>("ja", "日本語"),
+            new Choice<string>("ko", "한국어"),
+            new Choice<string>("ru", "Русский"),
+            new Choice<string>("pt", "Português"),
+            new Choice<string>("ar", "العربية"),
+            new Choice<string>("it", "Italiano"),
+            new Choice<string>("nl", "Nederlands"),
+            new Choice<string>("pl", "Polski"),
+            new Choice<string>("tr", "Türkçe"),
+            new Choice<string>("ne", "नेपाली"),
+            new Choice<string>("th", "ไทย"),
+            new Choice<string>("id", "Bahasa Indonesia")
+        ];
+        _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? TranslationLanguageChoices[0];
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -267,6 +294,48 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<string>> OcrLanguageChoices { get; }
     /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
     public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
+
+    public IReadOnlyList<Choice<string>> TranslationLanguageChoices { get; }
+
+    [ObservableProperty] private Choice<string> _targetLanguage;
+
+    public bool ShowTranslate => _original.Id == "translate" || _edit.Translate.Enabled;
+
+    [ObservableProperty] private string _testTranslationResult = "";
+    [ObservableProperty] private bool _isTestingTranslation;
+    [ObservableProperty] private bool _testTranslationHasError;
+
+    [RelayCommand]
+    public async Task TestTranslationAsync()
+    {
+        if (IsTestingTranslation) return;
+        IsTestingTranslation = true;
+        TestTranslationHasError = false;
+        TestTranslationResult = _loc["engines.ollama.connecting"];
+
+        try
+        {
+            var targetLang = TargetLanguage?.Value ?? "es";
+            var preferred = AppHost.Get<UserDataStore>()?.Settings.PreferredOllamaModel;
+            var model = !string.IsNullOrWhiteSpace(_edit.Translate.Model) ? _edit.Translate.Model
+                : !string.IsNullOrWhiteSpace(preferred) ? preferred
+                : await TranslationService.GetPreferredLocalOllamaModelAsync();
+            var service = new TranslationService(new TranslateOptions { TargetLanguage = targetLang, Model = model });
+            var sample = "Hello, world!";
+            var translated = await service.TranslateTextAsync(sample, targetLang);
+            TestTranslationResult = $"\"{sample}\" → \"{translated}\"  ({model ?? "local model"})";
+            TestTranslationHasError = false;
+        }
+        catch (Exception ex)
+        {
+            TestTranslationResult = $"{_loc["engines.ollama.error"]} {ex.Message}";
+            TestTranslationHasError = true;
+        }
+        finally
+        {
+            IsTestingTranslation = false;
+        }
+    }
 
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
@@ -1007,6 +1076,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // black and white chosen for PDF and left behind by a DWG target.
         _original.Cad.Version = ShowCad ? CadVersion.Value : default;
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
+        _original.Translate.TargetLanguage = TargetLanguage.Value;
+        _original.Translate.Enabled = ShowTranslate;
 
         var output = _original.Output;
         // Asking keeps the location it had: a Filee that can't ask (or one from before it) saves there.
