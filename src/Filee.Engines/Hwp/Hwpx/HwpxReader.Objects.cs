@@ -303,15 +303,25 @@ internal sealed partial class HwpxReader
         _ => position,
     };
 
-    /// <summary>Size of a group member: its current size, else its original size scaled by its rendering matrix.</summary>
+    /// <summary>
+    /// Size of a group member: its current size, else its original size scaled by its rendering matrices. A member
+    /// has a scale matrix for every group level it is in (the group's, then its own: a picture resized inside its group
+    /// keeps the identity first and its own scale second), so the size takes all of them.
+    /// </summary>
     private static (int Width, int Height) MemberSize(XElement member)
     {
         var current = Child(member, "curSz");
         if (Int(current, "width") > 0 && Int(current, "height") > 0)
             return (Int(current, "width"), Int(current, "height"));
         var original = Child(member, "orgSz");
-        var scale = Child(Child(member, "renderingInfo"), "scaMatrix");
-        return ((int)Math.Round(Int(original, "width") * Double(scale, "e1", 1)), (int)Math.Round(Int(original, "height") * Double(scale, "e5", 1)));
+        var scales = Children(Child(member, "renderingInfo"), "scaMatrix").ToList();
+        double x = 1, y = 1;
+        foreach (var scale in scales)
+        {
+            x *= Double(scale, "e1", 1);
+            y *= Double(scale, "e5", 1);
+        }
+        return ((int)Math.Round(Int(original, "width") * x), (int)Math.Round(Int(original, "height") * y));
     }
 
     /// <summary>
