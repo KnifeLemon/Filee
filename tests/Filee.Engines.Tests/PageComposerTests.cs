@@ -133,6 +133,29 @@ public sealed class PageComposerTests(EngineFixture fx) : IClassFixture<EngineFi
     }
 
     [Fact]
+    public void Code_lines_of_another_format_are_set_solid_with_the_space_after_their_block()
+    {
+        HParagraph Code(string text)
+        {
+            var line = new HParagraph { Role = HBlockRole.Code };
+            if (text.Length > 0)
+                line.Inlines.Add(new HText(text, new HCharFormat(Size: 1000, Shade: HtmlReader.CodeShade)));
+            return line;
+        }
+        var document = new HDocument();
+        document.Sections.Add(Section(Small with { Height = 40000 }, Paragraph("text"), Code("a = 1"), Code(""), Code("b = 2"), Paragraph("more")));
+
+        var page = new PageComposer(new FontResolver(_fonts), _shaper, styles: StyleResolver.FromTemplate())
+            .Compose(document, TestContext.Current.CancellationToken).Pages[0];
+
+        float Y(string text) => Runs(page).Single(r => r.Text.Trim() == text).Positions[0].Y;
+        // 130 % of 10 pt between code lines, the blank one included, and no paragraph spacing inside the block.
+        Assert.Equal(26f, Y("b = 2") - Y("a = 1"), 0.01f);
+        // After the block the paragraph style's space after (10 pt in Filee's template) comes back.
+        Assert.True(Y("more") - Y("b = 2") >= 13 + 10 - 0.01f, $"{Y("more") - Y("b = 2")}");
+    }
+
+    [Fact]
     public void Page_numbers_count_on_across_sections_unless_one_restarts_them()
     {
         var first = Section(Small, Paragraph("a"), Paragraph("b"));
