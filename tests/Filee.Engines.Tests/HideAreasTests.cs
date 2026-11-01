@@ -160,6 +160,45 @@ public class HideAreasTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(pixels.GetValue(10, 50)![3] <= tolerance);
     }
 
+    [Theory]
+    [InlineData(HideStyle.Box)]
+    [InlineData(HideStyle.Pixelate)]
+    public async Task Extra_channels_of_a_tiff_keep_nothing_of_the_part(HideStyle style)
+    {
+        // A TIFF with two extra samples beside RGBA (read as meta channels), each its own noise. Pixelate and Box write
+        // colours and alpha only: without clearing them, the part stayed in those channels pixel for pixel.
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "layers.tif");
+        using (var channels = new MagickImageCollection())
+        {
+            for (var seed = 1; seed <= 6; seed++)
+            {
+                var channel = Noise(300, 200, seed);
+                channel.ColorType = ColorType.Grayscale;
+                channels.Add(channel);
+            }
+            using var combined = channels.Combine(ColorSpace.sRGB);
+            combined.Write(path, MagickFormat.Tiff);
+        }
+        var area = Area(0.1, 0.1, 0.5, 0.5);                                   // 30, 20, 150 × 100
+
+        var output = await RunAsync(path, Hide(style, 5, area));
+
+        using var before = new MagickImage(path);
+        using var after = new MagickImage(output);
+        Assert.Equal([PixelChannel.Meta0, PixelChannel.Meta1], after.Channels.Where(c => c >= PixelChannel.Meta0));
+        using var a = before.GetPixels();
+        using var b = after.GetPixels();
+        int[] extra = [4, 5];
+        for (var y = 20; y < 120; y++)
+            for (var x = 30; x < 180; x++)
+                foreach (var c in extra)
+                    Assert.Equal(0, b.GetValue(x, y)![c]);
+        // Outside the part, every channel as it was.
+        foreach (var (x, y) in new[] { (29, 50), (180, 50), (100, 19), (100, 120), (250, 150) })
+            Assert.Equal(a.GetValue(x, y), b.GetValue(x, y));
+    }
+
     [Fact]
     public async Task Blur_leaves_none_of_the_parts_detail_and_keeps_everything_else()
     {

@@ -135,6 +135,7 @@ public static class AreaHider
         using var squares = new MagickImage();
         squares.ReadPixels(data, new PixelReadSettings((uint)regionWidth, (uint)regionHeight, StorageType.Char, mapping));
         image.Composite(squares, left, top, CompositeOperator.Copy);
+        ClearExtraChannels(image, bounds);
     }
 
     /// <summary>
@@ -153,6 +154,26 @@ public static class AreaHider
         if (image.HasAlpha)
             black.Alpha(AlphaOption.Opaque);
         image.Composite(black, x, y, CompositeOperator.Copy);
+        ClearExtraChannels(image, bounds);
+    }
+
+    /// <summary>
+    /// The channels a picture can carry beside its colours and alpha (a TIFF's extra samples, read as meta channels)
+    /// set to 0 inside <paramref name="bounds"/>. Pixelate and Box write colours and alpha only, and what was under a
+    /// part must not stay behind in them. Blur works on a copy of the picture, so it covers them with the rest.
+    /// </summary>
+    private static void ClearExtraChannels(IMagickImage<byte> image, (int X, int Y, int Width, int Height) bounds)
+    {
+        var extra = image.Channels.Where(channel => channel >= PixelChannel.Meta0).ToList();
+        if (extra.Count == 0)
+            return;
+        var (x, y, w, h) = bounds;
+        // A copy of the part keeps every channel, so copying it back covers the extra ones too.
+        using var part = image.CloneArea(new MagickGeometry(x, y, (uint)w, (uint)h));
+        part.ResetPage();
+        foreach (var channel in extra)
+            part.Evaluate(Enum.Parse<Channels>(channel.ToString()), EvaluateOperator.Set, 0);
+        image.Composite(part, x, y, CompositeOperator.Copy);
     }
 
     /// <summary>
