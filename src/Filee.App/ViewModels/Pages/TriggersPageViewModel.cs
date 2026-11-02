@@ -81,6 +81,9 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     [ObservableProperty] private Choice<TriggerScope> _scope = null!;
     [ObservableProperty] private bool _clipboard;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(KeyText))] private bool _isRecording;
+    [ObservableProperty] private string? _conflict;
+
+    internal void SetConflict(string? message) => Conflict = message;
 
     public bool UsesMouse => Kind.Value != TriggerKind.KeyChord;
     public bool UsesKey => Kind.Value == TriggerKind.KeyChord;
@@ -260,6 +263,7 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
             triggers.StatusChanged += OnTriggerStatusChanged;
         foreach (var gesture in store.Settings.Triggers)
             Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save, platform?.SupportsClipboard == true));
+        RefreshConflicts();
         ExcludedApps = new ExcludedAppsViewModel(store.Settings.ExcludedProcesses, platform, Save);
         Flip = new FlipOptionsViewModel(store, loc, Save);
         _middleClickEnabled = store.Settings.Donut.MiddleClickEnabled;
@@ -365,5 +369,27 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
         Save();
     }
 
-    private void Save() => _store.SaveSettings();
+    private void Save()
+    {
+        RefreshConflicts();
+        _store.SaveSettings();
+    }
+
+    /// <summary>Warn when enabled gestures share a trigger in overlapping scopes.</summary>
+    private void RefreshConflicts()
+    {
+        foreach (var item in Gestures)
+        {
+            var duplicate = Gestures.Any(other => !ReferenceEquals(item, other)
+                && item.Enabled && other.Enabled
+                && item.Gesture.Kind == other.Gesture.Kind
+                && item.Gesture.Button == other.Gesture.Button
+                && item.Gesture.Modifiers == other.Gesture.Modifiers
+                && (item.Gesture.Kind != TriggerKind.KeyChord
+                    || string.Equals(item.Gesture.Key, other.Gesture.Key, StringComparison.OrdinalIgnoreCase))
+                && (item.Gesture.Scope == TriggerScope.Anywhere || other.Gesture.Scope == TriggerScope.Anywhere
+                    || item.Gesture.Scope == other.Gesture.Scope));
+            item.SetConflict(duplicate ? _loc["triggers.conflict"] : null);
+        }
+    }
 }
