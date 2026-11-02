@@ -329,8 +329,8 @@ public class ToolbarPageTests
 
             Assert.Equal("", vm.PaletteSearch);
             Assert.Equal(PaletteTab.Image, vm.SelectedTab!.Id);
-            // After "Edit" of the PDF donut, the one built-in group not on the images donut.
-            Assert.Equal(["pdf-edit", "test-new-group"], vm.VisiblePalette.Take(2).Select(c => c.PresetId));
+            // Both unplaced built-in groups stay available ahead of the new one.
+            Assert.Equal(["pdf-edit", "flip", "test-new-group"], vm.VisiblePalette.Take(3).Select(c => c.PresetId));
             // Up with the groups at the top, above every conversion: not below ~80 presets.
             var chips = vm.VisiblePalette.Select(c => store.FindPreset(c.PresetId)!).ToList();
             var at = chips.FindIndex(p => p.Id == "test-new-group");

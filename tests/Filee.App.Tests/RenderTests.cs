@@ -875,7 +875,7 @@ public class RenderTests
             var vm = AppHost.Get<RadialViewModel>();
             vm.Load([@"C:\gis\roads.shp", @"C:\gis\parcels.shp"], clickMode: true);
             vm.FitToThisDonut();
-            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx", "to-kmz"], vm.Presets.Select(p => p.Id));
+            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], vm.Presets.Select(p => p.Id));
             Assert.All(vm.Items, item => Assert.True(item.IsEnabled));
             var window = new RadialWindow { DataContext = vm };
             window.Show();
@@ -922,7 +922,7 @@ public class RenderTests
         window.DonutControl.SetExternalHighlight(1);
         Pump();
 
-        Assert.Equal(12, vm.Items.Count); // with "Trace to SVG", "Line art to SVG", "Edit pictures" and "Pixelate / blur"
+        Assert.Equal(6, vm.Items.Count); // conversions only; GIF follows WEBP
         Assert.Equal(title, vm.CenterTitle);
         Save(window, $"donut-images-{language}.png");
         window.Close();
@@ -2352,7 +2352,7 @@ public class RenderTests
         Assert.Equal("Subtitle", vm.Target.Detail);
     }
 
-    /// <summary>The geospatial donut in the toolbar editor: GeoJSON, Shapefile, KML, CSV, GPX and KMZ for geo files.</summary>
+    /// <summary>The geospatial donut in the toolbar editor: GeoJSON, Shapefile, KML, CSV and GPX for geo files.</summary>
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("ko")]
@@ -2362,7 +2362,7 @@ public class RenderTests
         {
             vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "geo");
             Pump();
-            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx", "to-kmz"], vm.SelectedProfile.Profile.PresetIds);
+            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], vm.SelectedProfile.Profile.PresetIds);
             Assert.Contains("shp", vm.ExtensionTags!.Tags.Select(t => t.Text.TrimStart('.')));
             Save(window, $"toolbar-geospatial-{language}.png");
         });

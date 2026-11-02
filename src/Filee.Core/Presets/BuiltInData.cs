@@ -574,11 +574,61 @@ public static class BuiltInData
     ];
 
     /// <summary>
-    /// Creates the default toolbar profiles. Each has a back face (Tab or the mouse wheel flips the open donut to it, settings schema 30)
-    /// with presets for its files that aren't on its front: less common formats and tools (rotate, merge, compress
-    /// into one ZIP, ...). The fronts are as they were before back faces.
+    /// Creates the defaults for new libraries and explicit resets: conversions on the front, tools first on the
+    /// back, then less common conversions when there is room. Each face holds at most eight slices. Every donut of
+    /// <see cref="ProfilesSchema58"/> needs its layout here; a donut added later is added in this method, not to
+    /// <see cref="ProfilesSchema58"/>.
     /// </summary>
-    public static List<ToolbarProfile> CreateProfiles() =>
+    public static List<ToolbarProfile> CreateProfiles()
+    {
+        var profiles = ProfilesSchema58();
+        foreach (var profile in profiles)
+        {
+            (List<string> Front, List<string> Back) layout = profile.Id switch
+            {
+                "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"],
+                    ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
+                "pdf" => (["to-png", "to-jpg", "to-docx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"],
+                    ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
+                "office" => (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"],
+                    ["translate", "to-md", "pdf-long-image", "zip-all"]),
+                "spreadsheets" => (["to-pdf", "to-xlsx", "to-csv", "to-hwpx", "to-hwp", "merge-pdf"],
+                    ["tool-sheet-studio", "to-docx", "to-vcf", "to-ics", "zip-all"]),
+                "presentations" => (["to-pdf", "to-png", "to-jpg", "to-pptx", "to-hwpx", "to-hwp", "merge-pdf"],
+                    ["to-odp", "pdf-long-image", "to-docx", "zip-all"]),
+                "hwp" => (["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-txt", "merge-pdf"],
+                    ["to-html", "to-odt", "pdf-long-image", "zip-all"]),
+                "text" => (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt"],
+                    ["translate", "to-md", "to-odt", "merge-pdf", "zip-all"]),
+                "ebooks" => (["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-kepub"], ["translate", "to-md", "zip-all"]),
+                // Every frame as pictures stays behind a flip: a missed front slice must not create thousands of files.
+                "video" => (["to-mp4", "mp4-720", "to-mov", "to-gif", "to-mp3", "caption-video"],
+                    ["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio", "zip-all"]),
+                "audio" => (["to-mp3", "mp3-128", "to-m4a", "to-wav", "caption-video"],
+                    ["compress-audio", "merge-audio", "remove-metadata", "to-alac", "zip-all"]),
+                "subtitles" => (["to-srt", "to-vtt"], ["zip-all"]),
+                "vector" => (["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp"], ["to-tiff", "to-ico", "to-icns", "to-dxf", "zip-all"]),
+                "archives" => (["extract", "zip-all", "to-zip", "to-7z"], []),
+                "cad" => (["to-pdf", "to-png", "to-svg", "to-dxf", "to-dwg"], ["to-jpg", "merge-pdf", "zip-all"]),
+                "fonts" => (["to-woff2", "to-woff", "to-ttf", "to-otf"], ["zip-all"]),
+                "data" => (["to-json", "to-yaml", "to-xml", "to-csv", "to-xlsx"], ["to-ods", "to-html", "to-md", "zip-all"]),
+                "models" => (["to-glb", "to-stl", "to-obj", "to-3mf", "to-png"], ["zip-all"]),
+                "geo" => (["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], ["zip-all"]),
+                "mixed" => (["to-pdf", "merge-pdf", "zip-all", "to-png", "to-txt"], ["to-jpg", "to-docx"]),
+                _ => throw new InvalidOperationException(
+                    $"The donut \"{profile.Id}\" of ProfilesSchema58() has no new-install layout here. " +
+                    "A donut added later goes into CreateProfiles(), not into ProfilesSchema58()."),
+            };
+            (profile.PresetIds, profile.BackPresetIds) = layout;
+        }
+        return profiles;
+    }
+
+    /// <summary>
+    /// The schema 58 layout before the default-slot cleanup. Migrations and old bundles keep these faces, including
+    /// the individual profile factories below; changing new-install defaults must not change an existing library.
+    /// </summary>
+    public static List<ToolbarProfile> ProfilesSchema58() =>
     [
         new()
         {
