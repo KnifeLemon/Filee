@@ -142,7 +142,7 @@ public sealed class GestureDetector
         var threshold = gesture.DragThreshold > 0 ? gesture.DragThreshold : SystemDragThreshold;
         var dx = (long)x - armed.X;
         var dy = (long)y - armed.Y;
-        return dx * dx + dy * dy > (long)threshold * threshold;
+        return (double)dx * dx + (double)dy * dy > (double)threshold * threshold;
     }
 
     /// <summary>
