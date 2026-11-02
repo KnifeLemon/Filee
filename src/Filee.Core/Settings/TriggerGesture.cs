@@ -66,6 +66,9 @@ public sealed class TriggerGesture
     /// </summary>
     public string? Key { get; set; }
 
+    /// <summary>Optional toolbar profile for selection gestures; null keeps automatic format detection.</summary>
+    public string? ProfileId { get; set; }
+
     /// <summary>Distance in physical screen pixels the mouse must travel before a drag counts. 0 = system default.</summary>
     public int DragThreshold { get; set; }
 
