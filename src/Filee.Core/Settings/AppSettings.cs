@@ -277,6 +277,17 @@ public sealed class AppSettings
     public WindowBounds? MainWindow { get; set; }
 
     /// <summary>
+    /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to
+    /// them is left out of the donut and the preset lists. An empty list and a missing value both mean every field is on, so
+    /// settings from before it read as every field on and need no schema step. A new install gets its defaults from
+    /// <see cref="UserDataStore.Load"/>.
+    /// </summary>
+    public List<string> TurnedOffFields { get; set; } = [];
+
+    /// <summary><see cref="TurnedOffFields"/> as a set that ignores case, for <see cref="Formats.FormatFields.IsShown"/>.</summary>
+    public IReadOnlySet<string> TurnedOffFieldSet() => TurnedOffFields.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
     /// <see cref="DefaultOutput"/> when the preset's location is <see cref="OutputLocation.Default"/>, and keeps the
     /// original dates when <see cref="KeepFileDates"/> is on and is saved as a ZIP when <see cref="ZipGeoResults"/> is on and the

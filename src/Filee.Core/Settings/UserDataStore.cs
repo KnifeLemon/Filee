@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using Filee.Core.Formats;
 using Filee.Core.History;
 using Filee.Core.Presets;
 using Filee.Core.Profiles;
@@ -70,7 +71,13 @@ public sealed class UserDataStore
     public void Load()
     {
         System.IO.Directory.CreateDirectory(Directory);
+        // A new install is told by the file missing, not by Read returning null: a settings file that can't be read is an
+        // existing user's, who keeps every field on. Only a new install gets the fields that are off by default.
+        var fresh = !File.Exists(SettingsPath);
         Settings = Read(SettingsPath, FileeJsonContext.Default.AppSettings) ?? new AppSettings();
+        Settings.TurnedOffFields ??= [];
+        if (fresh)
+            Settings.TurnedOffFields = FormatFields.All.Where(f => f.CanTurnOff && !f.OnByDefault).Select(f => f.Id).ToList();
         Presets = Read(PresetsPath, FileeJsonContext.Default.ListPreset) ?? BuiltInData.CreatePresets();
         Profiles = Read(ProfilesPath, FileeJsonContext.Default.ListToolbarProfile) ?? BuiltInData.CreateProfiles();
         History = Read(HistoryPath, FileeJsonContext.Default.ListHistoryEntry) ?? [];

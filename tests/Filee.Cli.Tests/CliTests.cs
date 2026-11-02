@@ -112,6 +112,22 @@ public sealed class CliTests : IDisposable
     public void Sort_is_refused_by_watch_rather_than_ignored() =>
         Assert.Contains("--sort", CliOptions.Parse(["watch", "inbox", "--to", "pdf", "--sort", "name"]).Error);
 
+    [Fact]
+    public async Task Converts_to_a_format_of_a_turned_off_field()
+    {
+        File.WriteAllText(Path.Combine(_settings, "settings.json"), """{"schemaVersion":58,"turnedOffFields":["video-pro"]}""");
+        var srt = Path.Combine(_folder, "a.srt");
+        File.WriteAllText(srt, "1\n00:00:01,000 --> 00:00:02,000\nHello\n");
+        var (code, output, errors) = await Run("convert", srt, "--to", "ass");
+        Assert.True(code == Cli.Success, output + errors);
+        var result = Path.Combine(_folder, "a.ass");
+        Assert.True(File.Exists(result));
+        Assert.True(new FileInfo(result).Length > 0);
+        (code, output, errors) = await Run("formats", "srt");
+        Assert.True(code == Cli.Success, errors);
+        Assert.Contains("ass", output);
+    }
+
     private static readonly ushort[] FitCrcTable =
         [0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, 0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400];
 
