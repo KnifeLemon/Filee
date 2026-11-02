@@ -191,6 +191,6 @@ public partial class EnginesPage : UserControl
         if (!await AppHost.Get<WindowService>().ConfirmAsync(window, loc.Format("engines.remove_confirm", package.Name), destructive: true))
             return;
         if (!vm.Remove(package))
-            await AppHost.Get<WindowService>().MessageAsync(window, loc["engines.remove_failed"]);
+            await AppHost.Get<WindowService>().MessageAsync(window, package.Error ?? loc["engines.remove_failed"]);
     }
 }
