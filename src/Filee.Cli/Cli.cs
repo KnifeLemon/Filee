@@ -70,8 +70,10 @@ internal static class Cli
             errors.WriteLine("filee: no files to convert.");
             return NothingToDo;
         }
+        // Without it files stay as given, and a folder or wildcard as the file system lists it.
+        IReadOnlyList<string> ordered = options.Sort is { } sort ? FileSorter.Sort(files, FileStamp.Read, sort) : files;
 
-        var job = await RunJobAsync(files, preset, host, options.Json || options.Quiet ? null : output, cancellationToken);
+        var job = await RunJobAsync(ordered, preset, host, options.Json || options.Quiet ? null : output, cancellationToken);
         var done = job.Files.Count(f => f.State == FileState.Done);
         var failed = job.Files.Count(f => f.State is FileState.Failed or FileState.Cancelled);
         if (options.Json)

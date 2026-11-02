@@ -77,6 +77,8 @@ internal static class Help
           -p, --preset <preset>  A preset from the app, by id or name (see 'filee presets')
           -o, --output <folder>  Save there instead of next to the sources
           -r, --recursive        Include sub folders
+              --sort <order>     The order files merge in: name, name-desc, modified, modified-desc, created or
+                                 created-desc (default: as given; a folder or wildcard as the file system lists it)
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
               --overwrite        Replace existing output files (default: add a number)
               --skip             Leave existing output files alone

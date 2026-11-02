@@ -41,6 +41,54 @@ public sealed class CliTests : IDisposable
         return (code, output.ToString(), errors.ToString());
     }
 
+    /// <summary>A one-page PDF whose page width tells it apart in a merge, with the date modified it is given.</summary>
+    private string SizedPdf(string name, int width, DateTime modified)
+    {
+        var path = Path.Combine(_folder, name);
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            var page = document.AddPage();
+            page.Width = PdfSharp.Drawing.XUnit.FromPoint(width);
+            page.Height = PdfSharp.Drawing.XUnit.FromPoint(500);
+            document.Save(path);
+        }
+        File.SetLastWriteTimeUtc(path, modified);
+        return path;
+    }
+
+    [Theory]
+    [InlineData("name", new[] { 200d, 300d, 400d })]
+    [InlineData("name-desc", new[] { 400d, 300d, 200d })]
+    [InlineData("modified", new[] { 300d, 200d, 400d })]
+    [InlineData("MODIFIED-DESC", new[] { 400d, 200d, 300d })]
+    public async Task Sort_sets_the_order_files_merge_in(string sort, double[] pageWidths)
+    {
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        SizedPdf("page 2.pdf", 200, day.AddHours(2));
+        SizedPdf("page 10.pdf", 300, day.AddHours(1));
+        SizedPdf("page 30.pdf", 400, day.AddHours(3));
+        var output = Directory.CreateDirectory(Path.Combine(_folder, "out")).FullName;
+
+        var (code, _, errors) = await Run("convert", _folder, "--preset", "merge-pdf", "--sort", sort, "-o", output);
+
+        Assert.True(code == 0, errors);
+        using var merged = PdfSharp.Pdf.IO.PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        Assert.Equal(pageWidths, merged.Pages.Cast<PdfSharp.Pdf.PdfPage>().Select(p => p.Width.Point));
+    }
+
+    [Theory]
+    [InlineData("--sort", "size", "--sort must be")]
+    [InlineData("--sort", null, "--sort needs a value")]
+    public void Sort_refuses_an_order_it_does_not_know(string option, string? value, string error)
+    {
+        string[] args = value is null ? ["convert", "a.pdf", "--to", "pdf", option] : ["convert", "a.pdf", "--to", "pdf", option, value];
+        Assert.StartsWith(error, CliOptions.Parse(args).Error);
+    }
+
+    [Fact]
+    public void Sort_is_refused_by_watch_rather_than_ignored() =>
+        Assert.Contains("--sort", CliOptions.Parse(["watch", "inbox", "--to", "pdf", "--sort", "name"]).Error);
+
     private static readonly ushort[] FitCrcTable =
         [0x0000, 0xCC01, 0xD801, 0x1400, 0xF001, 0x3C00, 0x2800, 0xE401, 0xA001, 0x6C00, 0x7800, 0xB401, 0x5000, 0x9C01, 0x8801, 0x4400];
 

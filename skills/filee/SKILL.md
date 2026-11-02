@@ -42,7 +42,7 @@ filee convert <files or folders...> --to <format> -o <folder> --json
 
 Why `-o`: results land in one folder you chose instead of wherever the app's output settings put them (usually next to the originals), so you can find them.
 
-Other useful flags: `--preset <preset>` instead of `--to` (see `filee presets --json`), `-r` for sub folders, `--skip` to leave existing outputs alone, `--overwrite` to replace them. By default Filee adds a number rather than overwriting.
+Other useful flags: `--preset <preset>` instead of `--to` (see `filee presets --json`), `-r` for sub folders, `--sort <name|name-desc|modified|modified-desc|created|created-desc>` for the order files merge in, `--skip` to leave existing outputs alone, `--overwrite` to replace them. By default Filee adds a number rather than overwriting.
 
 ## 4. Read the result
 
