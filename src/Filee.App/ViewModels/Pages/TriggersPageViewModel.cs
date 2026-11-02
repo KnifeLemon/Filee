@@ -399,7 +399,10 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
                     || string.Equals(item.Gesture.Key, other.Gesture.Key, StringComparison.OrdinalIgnoreCase))
                 && (item.Gesture.Scope == TriggerScope.Anywhere || other.Gesture.Scope == TriggerScope.Anywhere
                     || item.Gesture.Scope == other.Gesture.Scope));
-            item.SetConflict(duplicate ? _loc["triggers.conflict"] : null);
+            var collidesWithBuiltInMiddleClick = _store.Settings.Donut.MiddleClickEnabled && item.Enabled
+                && item.Gesture.Kind is TriggerKind.Drag or TriggerKind.Hold
+                && item.Gesture.Button == TriggerMouseButton.Middle && item.Gesture.Modifiers == ModifierKeys.None;
+            item.SetConflict(duplicate || collidesWithBuiltInMiddleClick ? _loc["triggers.conflict"] : null);
         }
     }
 }
