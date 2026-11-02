@@ -114,7 +114,7 @@
                   <TextBlock DockPanel.Dock="Right" Text="{Binding ThresholdText}" FontWeight="SemiBold" />
                   <TextBlock Classes="label" Text="{DynamicResource triggers.threshold}" />
                 </DockPanel>
-                <Slider Minimum="0" Maximum="80" Value="{Binding DragThreshold}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
+                <Slider Minimum="0" Maximum="1000" Value="{Binding DragThreshold}" TickFrequency="50" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
               </StackPanel>
               <StackPanel IsVisible="{Binding UsesHold}">
                 <DockPanel>
