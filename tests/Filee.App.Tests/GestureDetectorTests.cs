@@ -120,6 +120,66 @@ public class GestureDetectorTests
     }
 
     [Fact]
+    public void Built_in_middle_click_opens_selection_only_when_enabled_and_in_scope()
+    {
+        var detector = Create();
+        var opened = 0;
+        detector.MiddleClickTriggered += (_, _) => opened++;
+        detector.ScopeFilter = (g, _, _) => g.Kind == TriggerKind.MiddleClick;
+
+        detector.MouseDown(TriggerMouseButton.Middle, 10, 20, ModifierKeys.None);
+        Assert.Equal(1, opened);
+
+        detector.MiddleClickEnabled = false;
+        detector.MouseDown(TriggerMouseButton.Middle, 10, 20, ModifierKeys.None);
+        Assert.Equal(1, opened);
+
+        detector.MiddleClickEnabled = true;
+        detector.ScopeFilter = (_, _, _) => false;
+        detector.MouseDown(TriggerMouseButton.Middle, 10, 20, ModifierKeys.None);
+        Assert.Equal(1, opened);
+
+        detector.Paused = true;
+        detector.ScopeFilter = (_, _, _) => true;
+        detector.MouseDown(TriggerMouseButton.Middle, 10, 20, ModifierKeys.None);
+        Assert.Equal(1, opened);
+    }
+
+    [Fact]
+    public void Repeated_key_down_events_fire_a_shortcut_only_once_until_key_up()
+    {
+        var detector = Create(new TriggerGesture { Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl, Key = "K" });
+        var fired = 0;
+        detector.KeyChordTriggered += (_, _, _) => fired++;
+
+        detector.KeyDown("K", ModifierKeys.Ctrl);
+        detector.KeyDown("K", ModifierKeys.Ctrl); // OS key repeat
+        Assert.Equal(1, fired);
+
+        detector.KeyUp("K");
+        detector.KeyDown("K", ModifierKeys.Ctrl);
+        Assert.Equal(2, fired);
+    }
+
+    [Fact]
+    public void Drag_threshold_uses_radial_distance_for_diagonal_movement()
+    {
+        var detector = Create(new TriggerGesture
+        {
+            Kind = TriggerKind.Drag,
+            Modifiers = ModifierKeys.Ctrl,
+            Button = TriggerMouseButton.Left,
+            DragThreshold = 4,
+        });
+        var started = 0;
+        detector.DragStarted += (_, _, _) => started++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.Ctrl);
+        detector.MouseMove(3, 3, ModifierKeys.Ctrl);
+        Assert.Equal(1, started);
+    }
+
+    [Fact]
     public void Hold_fires_when_timer_elapses_without_movement()
     {
         var detector = Create(new TriggerGesture { Kind = TriggerKind.Hold, Modifiers = ModifierKeys.Alt, Button = TriggerMouseButton.Middle });
