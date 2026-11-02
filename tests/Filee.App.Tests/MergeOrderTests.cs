@@ -469,6 +469,13 @@ public class MergeOrderTests
             RenderTests.Pump();
             Assert.Same(vm.Files[3], vm.SelectedFile);
             Assert.Same(list.ContainerFromIndex(3), focused());
+
+            // Delete takes the selected card out; the card that takes its place is selected and keeps the focus.
+            window.KeyPress(Key.Delete, RawInputModifiers.None, PhysicalKey.Delete, null);
+            RenderTests.Pump();
+            Assert.Equal(5, vm.Files.Count);
+            Assert.Same(vm.Files[3], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(3), focused());
         }
         finally
         {

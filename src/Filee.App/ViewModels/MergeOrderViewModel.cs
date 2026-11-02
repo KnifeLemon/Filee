@@ -277,9 +277,12 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
         var index = Files.IndexOf(file);
         if (index < 0)
             return;
+        var wasSelected = ReferenceEquals(SelectedFile, file);
         Files.RemoveAt(index);
         file.Dispose();
-        if (ReferenceEquals(SelectedFile, file))
+        // The list box clears its selection while the row goes, which reaches SelectedFile as null: the neighbour is
+        // chosen after the removal, from whether the removed card was the selected one.
+        if (wasSelected)
             SelectedFile = Files.Count == 0 ? null : Files[Math.Min(index, Files.Count - 1)];
         Renumber();
         MoveUpCommand.NotifyCanExecuteChanged();
