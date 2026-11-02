@@ -1,12 +1,11 @@
-
 // Runs command line engines (LibreOffice, rhwp, ...) with a timeout, cancellation and captured output. Engines that
 // report their progress while they work (calibre) can be stopped when they go silent instead (see StallWatch).
 
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using Microsoft.Win32.SafeHandles;
 using Filee.Core.Conversion;
+using Microsoft.Win32.SafeHandles;
 
 namespace Filee.Engines.Infrastructure;
 
