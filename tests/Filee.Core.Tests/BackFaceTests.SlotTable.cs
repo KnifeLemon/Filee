@@ -7,17 +7,17 @@ namespace Filee.Core.Tests;
 
 public partial class BackFaceTests
 {
-    // Approved slot table (#806). This is a new-install/reset contract, not migration input.
+    // Slot table of #806, with Translate from #836 first on the document, text and e-book backs. This is a new-install/reset contract, not migration input.
     internal static readonly Dictionary<string, (string[] Front, string[] Back)> ExpectedFaces = new()
     {
         ["images"] = (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"], ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
         ["pdf"] = (["to-png", "to-jpg", "to-docx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"], ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
-        ["office"] = (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"], ["to-md", "pdf-long-image", "zip-all"]),
+        ["office"] = (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"], ["translate", "to-md", "pdf-long-image", "zip-all"]),
         ["spreadsheets"] = (["to-pdf", "to-xlsx", "to-csv", "to-hwpx", "to-hwp", "merge-pdf"], ["tool-sheet-studio", "to-docx", "to-vcf", "to-ics", "zip-all"]),
         ["presentations"] = (["to-pdf", "to-png", "to-jpg", "to-pptx", "to-hwpx", "to-hwp", "merge-pdf"], ["to-odp", "pdf-long-image", "to-docx", "zip-all"]),
         ["hwp"] = (["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-txt", "merge-pdf"], ["to-html", "to-odt", "pdf-long-image", "zip-all"]),
-        ["text"] = (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt"], ["to-md", "to-odt", "merge-pdf", "zip-all"]),
-        ["ebooks"] = (["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-kepub"], ["to-md", "zip-all"]),
+        ["text"] = (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt"], ["translate", "to-md", "to-odt", "merge-pdf", "zip-all"]),
+        ["ebooks"] = (["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-kepub"], ["translate", "to-md", "zip-all"]),
         ["video"] = (["to-mp4", "mp4-720", "to-mov", "to-gif", "to-mp3", "caption-video"], ["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio", "zip-all"]),
         ["audio"] = (["to-mp3", "mp3-128", "to-m4a", "to-wav", "caption-video"], ["compress-audio", "merge-audio", "remove-metadata", "to-alac", "zip-all"]),
         ["subtitles"] = (["to-srt", "to-vtt"], ["zip-all"]),
@@ -31,7 +31,7 @@ public partial class BackFaceTests
         ["mixed"] = (["to-pdf", "merge-pdf", "zip-all", "to-png", "to-txt"], ["to-jpg", "to-docx"]),
     };
 
-    // Work semantics from the approved table, not target extensions: merges and the sheet studio depend on input.
+    // Work semantics from the slot table above, not target extensions: merges and the sheet studio depend on input.
     private static readonly Dictionary<(string Donut, string Preset), char> Classification = ExpectedFaces
         .SelectMany(p => p.Value.Front.Concat(p.Value.Back).Select(id => (p.Key, Id: id)))
         .ToDictionary(p => (p.Key, p.Id), p => p.Id switch
@@ -39,7 +39,7 @@ public partial class BackFaceTests
             "zip-all" => 'B',
             "tool-crop" or "rotate" or "remove-background" or "merge-images" or "compress-image" or "half-size"
                 or "tool-image-edit" or "pdf-edit" or "pdf-split" or "compress-pdf" or "remove-metadata"
-                or "tool-clip" or "compress-video" or "merge-videos" or "compress-audio" or "merge-audio" => 'E',
+                or "tool-clip" or "compress-video" or "merge-videos" or "compress-audio" or "merge-audio" or "translate" => 'E',
             "merge-pdf" when p.Key == "pdf" => 'E',
             _ => 'V',
         });
@@ -85,7 +85,7 @@ public partial class BackFaceTests
                     Assert.False(bundleSeen, $"{profile.Id}/back: {id} follows zip-all");
                     if (work == 'E')
                     {
-                        Assert.Contains(profile.Id, new[] { "images", "pdf", "video", "audio" });
+                        Assert.Contains(profile.Id, new[] { "images", "pdf", "office", "text", "ebooks", "video", "audio" });
                         Assert.False(conversionSeen, $"{profile.Id}/back: edit {id} follows a conversion");
                     }
                     conversionSeen |= work == 'V';
