@@ -575,14 +575,16 @@ public static class BuiltInData
 
     /// <summary>
     /// Creates the defaults for new libraries and explicit resets: conversions on the front, tools first on the
-    /// back, then less common conversions when there is room. Each face holds at most eight slices.
+    /// back, then less common conversions when there is room. Each face holds at most eight slices. Every donut of
+    /// <see cref="ProfilesSchema58"/> needs its layout here; a donut added later is added in this method, not to
+    /// <see cref="ProfilesSchema58"/>.
     /// </summary>
     public static List<ToolbarProfile> CreateProfiles()
     {
         var profiles = ProfilesSchema58();
         foreach (var profile in profiles)
         {
-            (profile.PresetIds, profile.BackPresetIds) = profile.Id switch
+            (List<string> Front, List<string> Back) layout = profile.Id switch
             {
                 "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"],
                     ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
@@ -613,8 +615,11 @@ public static class BuiltInData
                 "models" => (["to-glb", "to-stl", "to-obj", "to-3mf", "to-png"], ["zip-all"]),
                 "geo" => (["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], ["zip-all"]),
                 "mixed" => (["to-pdf", "merge-pdf", "zip-all", "to-png", "to-txt"], ["to-jpg", "to-docx"]),
-                _ => (profile.PresetIds, profile.BackPresetIds),
+                _ => throw new InvalidOperationException(
+                    $"The donut \"{profile.Id}\" of ProfilesSchema58() has no new-install layout here. " +
+                    "A donut added later goes into CreateProfiles(), not into ProfilesSchema58()."),
             };
+            (profile.PresetIds, profile.BackPresetIds) = layout;
         }
         return profiles;
     }

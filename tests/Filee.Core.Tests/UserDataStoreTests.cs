@@ -1638,7 +1638,12 @@ public partial class UserDataStoreTests
 
         reloaded.Profiles.RemoveAll(p => p.IsFallback);
         reloaded.SaveLibrary();
-        Assert.Equal("mixed", Assert.Single(reloaded.Profiles, p => p.IsFallback).Id);
+        var added = Assert.Single(reloaded.Profiles, p => p.IsFallback);
+        Assert.Equal("mixed", added.Id);
+        // The new layout, as Reset donut gives it; the fronts are the same in both layouts, the back faces are not.
+        var mixed = BuiltInData.CreateProfiles().Single(p => p.IsFallback);
+        Assert.Equal(mixed.PresetIds, added.PresetIds);
+        Assert.Equal(mixed.BackPresetIds, added.BackPresetIds);
     }
 
     [Fact]

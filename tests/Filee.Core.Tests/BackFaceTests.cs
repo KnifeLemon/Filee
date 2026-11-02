@@ -196,11 +196,92 @@ public partial class BackFaceTests
         DropBackFaces(dir, schema);
         var back = NewStore(dir);
 
-        Assert.Equal(Schema58("images").BackPresetIds, Profile(back, "images").BackPresetIds);
-        Assert.Equal(Schema58("pdf").BackPresetIds, Profile(back, "pdf").BackPresetIds);
-        Assert.Equal(BuiltIn("images").PresetIds, Profile(back, "images").PresetIds);
+        // A new library: its fronts are still the new ones, so its new back faces return (the PDF back keeps split and
+        // merge, the images back half size and the image editor). Presentations, CAD and mixed have the same front in
+        // both layouts and text the front of a Filee 1.0.1 library after schema 7: these four get the schema 58 ones.
+        string[] schema58Backs = ["presentations", "cad", "mixed", "text"];
+        Assert.Equal(BuiltInData.CreateProfiles().Select(p => p.Id), back.Profiles.Select(p => p.Id));
+        foreach (var expected in BuiltInData.CreateProfiles())
+        {
+            var profile = Profile(back, expected.Id);
+            Assert.Equal(expected.PresetIds, profile.PresetIds);
+            var backFace = schema58Backs.Contains(expected.Id) ? Schema58(expected.Id).BackPresetIds! : expected.BackPresetIds!;
+            // Saved with schema 29, v31, v33 and v37 run again and add their slots to the images and video backs.
+            if (schema == 29 && expected.Id == "images")
+                backFace = ["tool-crop", "rotate", "remove-background", "trim-transparent", "merge-images", "compress-image", "half-size",
+                    "tool-image-edit", "remove-metadata", "zip-all"];
+            if (schema == 29 && expected.Id == "video")
+                backFace = ["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio",
+                    "live-photo-iphone", "motion-photo-android", "zip-all"];
+            Assert.Equal(backFace, profile.BackPresetIds);
+        }
         Assert.Equal(AppSettings.CurrentSchemaVersion, back.Settings.SchemaVersion);
         Assert.False(File.Exists(Path.Combine(dir.Path, "profiles.json.broken")));
+    }
+
+    [Theory]
+    [InlineData(4)]  // Filee 1.0.1
+    [InlineData(6)]  // Filee 1.1.0
+    public void Back_from_Filee_1_0_1_or_1_1_0_a_new_library_gets_its_new_back_faces_and_the_old_steps_on_top(int schema)
+    {
+        using var dir = new TempDir();
+        var store = NewStore(dir);
+        store.SaveLibrary();
+        store.SaveSettings();
+        DropBackFaces(dir, schema);
+
+        var back = NewStore(dir);
+
+        // The fronts as read are the new ones, so the new back faces; the migrations before 30 then add front slots, and
+        // v31, v33 and v37 back slots, as for any library of that schema.
+        Assert.Equal(schema == 4
+            ? ["to-png", "to-jpg", "pdf-long-image", "to-docx", "pdf-slides", "to-hwp", "to-md", "to-epub"]
+            : ["to-png", "to-jpg", "pdf-long-image", "to-docx", "pdf-slides", "to-txt", "to-md", "to-epub", "to-hwpx", "to-hwp"],
+            Profile(back, "pdf").PresetIds);
+        Assert.Equal(["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"],
+            Profile(back, "pdf").BackPresetIds);
+        Assert.Equal(["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg", "trace-line-art"], Profile(back, "images").PresetIds);
+        Assert.Equal(["tool-crop", "rotate", "remove-background", "trim-transparent", "merge-images", "compress-image", "half-size",
+            "tool-image-edit", "remove-metadata", "zip-all"], Profile(back, "images").BackPresetIds);
+        Assert.Equal(["to-mp4", "mp4-720", "mp4-hevc", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video"],
+            Profile(back, "video").PresetIds);
+        Assert.Equal(["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio",
+            "live-photo-iphone", "motion-photo-android", "zip-all"], Profile(back, "video").BackPresetIds);
+        Assert.Equal(["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-jpg", "to-txt", "merge-pdf", "to-epub"], Profile(back, "hwp").PresetIds);
+        Assert.Equal(["to-html", "to-odt", "pdf-long-image", "zip-all"], Profile(back, "hwp").BackPresetIds);
+    }
+
+    [Theory]
+    [InlineData(4)]   // opened straight from Filee 1.0.1: the front as that Filee wrote it
+    [InlineData(29)]  // opened with a Filee from 7 to 29 first: schema 7 put HWP after HWPX, the new text front exactly
+    public void A_text_donut_from_Filee_1_0_1_keeps_the_schema_58_back_face(int from)
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.ProfilesSchema58();
+        foreach (var p in profiles)
+            p.BackPresetIds = null;
+        var text = profiles.Single(p => p.Id == "text");
+        text.PresetIds = from == 4
+            ? ["to-pdf", "to-hwpx", "to-docx", "to-html", "to-txt"]
+            : ["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt"];
+
+        SettingsMigrations.ApplyToLibrary(from, presets, profiles);
+
+        Assert.Equal(Schema58("text").BackPresetIds, text.BackPresetIds);
+    }
+
+    [Fact]
+    public void A_new_front_in_another_order_gets_the_schema_58_back_face()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        var images = profiles.Single(p => p.Id == "images");
+        images.PresetIds.Reverse();
+        images.BackPresetIds = null;
+
+        SettingsMigrations.ApplyToLibrary(AppSettings.CurrentSchemaVersion, presets, profiles);
+
+        Assert.Equal(Schema58("images").BackPresetIds, images.BackPresetIds);
     }
 
     [Fact]
@@ -326,7 +407,9 @@ public partial class BackFaceTests
         Profile(target, "images").BackPresetIds = ["to-gif"];
         target.Import(bundle);
 
-        Assert.Equal(Schema58("images").BackPresetIds, Profile(target, "images").BackPresetIds);
+        // Import runs no migration: the exported fronts are the new ones, so the new back faces.
+        Assert.Equal(BuiltIn("images").BackPresetIds, Profile(target, "images").BackPresetIds);
+        Assert.Equal(BuiltIn("pdf").BackPresetIds, Profile(target, "pdf").BackPresetIds);
         Assert.Equal([], Profile(target, "theirs").BackPresetIds);
     }
 }

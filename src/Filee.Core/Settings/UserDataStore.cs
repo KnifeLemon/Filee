@@ -304,7 +304,7 @@ public sealed class UserDataStore
         // Several mixed profiles are fine (each limited to the extensions checked on it); none is not.
         if (!Profiles.Any(p => p.IsFallback))
         {
-            var mixed = BuiltInData.ProfilesSchema58().First(p => p.IsFallback);
+            var mixed = BuiltInData.CreateProfiles().First(p => p.IsFallback);
             mixed.PresetIds = mixed.PresetIds.Where(ids.Contains).ToList();
             mixed.BackPresetIds = (mixed.BackPresetIds ?? []).Where(ids.Contains).ToList();
             Profiles.Add(mixed);
@@ -457,6 +457,10 @@ internal static class SettingsMigrations
     public static bool ApplyToLibrary(int from, List<Preset> presets, List<ToolbarProfile> profiles)
     {
         var changed = false;
+        // The fronts as read, before the steps below add slots to them: AddBackFaces compares these with the new defaults.
+        var storedFronts = new Dictionary<string, List<string>>();
+        foreach (var profile in profiles)
+            storedFronts.TryAdd(profile.Id, [.. profile.PresetIds]);
         // v4: Markdown / TXT / HTML files get their own donut instead of the "mixed files" fallback. Skipped when
         //     the user already routes Markdown through a profile of their own.
         if (from < 4 && !profiles.Any(p => p.Id == "text" || (!p.IsFallback && p.Extensions.Contains("md", StringComparer.OrdinalIgnoreCase))))
@@ -752,12 +756,14 @@ internal static class SettingsMigrations
             changed |= LearnExtensions(profiles, out _, ["livp"]);
         }
         // v30: every donut gets a back face, which Tab (or the mouse wheel) flips the open donut to. A built-in donut
-        //      gets its default one (with the presets the library still has), a donut the user made none; no front
-        //      changes. Also at a later schema when a donut has no back face at all, not even an empty one: a Filee
-        //      before 30 saved the library since and dropped what it didn't know, so the built-in back faces come
-        //      back. One the user emptied is saved empty and stays so.
+        //      whose front as read is still exactly the new default front gets the new default back face (except
+        //      presentations, CAD, mixed and text, see AddBackFaces), any other built-in donut the schema 58 one (both
+        //      with the presets the library still has), a donut the user made none; no front changes. Also at a later
+        //      schema when a donut has no back face at all, not even an empty one: a Filee before 30 saved the library
+        //      since and dropped what it didn't know, so the built-in back faces come back. One the user emptied is
+        //      saved empty and stays so.
         if (from < 30 || profiles.Any(p => p.BackPresetIds is null))
-            changed |= AddBackFaces(presets, profiles);
+            changed |= AddBackFaces(presets, profiles, storedFronts);
         // v31: "Live Photo (iPhone)" and "Motion Photo (Android)" (a clip of a video as a moving photo), after "Extract
         //      Live Photo video" as in a new library, and on the back of the video donut after "Extract frames" when it
         //      has room and the user hasn't put them elsewhere on it. Present already but saved since by a Filee before
@@ -1086,18 +1092,31 @@ internal static class SettingsMigrations
     }
 
     /// <summary>
-    /// Gives each built-in donut without a back face (<see cref="ToolbarProfile.BackPresetIds"/> null) its default one,
-    /// with only the presets in <paramref name="presets"/>. Donuts the user made are left for
-    /// <see cref="UserDataStore"/> to give an empty one. Returns true when one was added.
+    /// Gives each built-in donut without a back face (<see cref="ToolbarProfile.BackPresetIds"/> null) one, with only the
+    /// presets in <paramref name="presets"/>: the new default back face when its front is exactly the new default front
+    /// (same ids, same order) and no existing library can have that front by default, the schema 58 one otherwise. The
+    /// front is the one in <paramref name="storedFronts"/> (as read, before migrations added slots), else the current
+    /// one. Donuts the user made are left for <see cref="UserDataStore"/> to give an empty one. Returns true when one
+    /// was added.
     /// </summary>
-    internal static bool AddBackFaces(List<Preset> presets, IEnumerable<ToolbarProfile> profiles)
+    internal static bool AddBackFaces(List<Preset> presets, IEnumerable<ToolbarProfile> profiles,
+        IReadOnlyDictionary<string, List<string>>? storedFronts = null)
     {
-        var defaults = BuiltInData.ProfilesSchema58().ToDictionary(p => p.Id);
+        var frozen = BuiltInData.ProfilesSchema58().ToDictionary(p => p.Id);
+        var current = BuiltInData.CreateProfiles().ToDictionary(p => p.Id);
         var ids = presets.Select(p => p.Id).ToHashSet();
         var changed = false;
-        foreach (var profile in profiles.Where(p => p.BackPresetIds is null && defaults.ContainsKey(p.Id)))
+        foreach (var profile in profiles.Where(p => p.BackPresetIds is null && frozen.ContainsKey(p.Id)))
         {
-            profile.BackPresetIds = (defaults[profile.Id].BackPresetIds ?? []).Where(ids.Contains).ToList();
+            var front = storedFronts?.GetValueOrDefault(profile.Id) ?? profile.PresetIds;
+            var fresh = current[profile.Id];
+            // Presentations, CAD and mixed have the same front in both layouts, so the front can't tell a new library
+            // from an existing one. Text: the Filee 1.0.1 front plus HWP from schema 7 is exactly the new text front.
+            // Their schema 58 back faces hold every slot of the new ones.
+            var isNew = front.SequenceEqual(fresh.PresetIds)
+                        && !fresh.PresetIds.SequenceEqual(frozen[profile.Id].PresetIds)
+                        && profile.Id != "text";
+            profile.BackPresetIds = ((isNew ? fresh : frozen[profile.Id]).BackPresetIds ?? []).Where(ids.Contains).ToList();
             changed = true;
         }
         return changed;
