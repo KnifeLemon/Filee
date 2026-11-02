@@ -29,7 +29,6 @@
   "home.title": "首頁",
   "home.drop_title": "將檔案拖放到這裡",
   "home.queue_error": "無法轉換 {0}。清單會保留這些檔案。",
-  "home.queue_too_large": "檔案過大，無法預覽（{0} MB）",
   "home.queue_selected": "已選取",
   "home.queue_remove_file": "移除 {0}",
   "home.queue_title": "待轉換的檔案",

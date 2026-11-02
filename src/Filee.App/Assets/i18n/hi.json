@@ -26,7 +26,6 @@
   "home.title": "होम",
   "home.drop_title": "फ़ाइलें यहाँ छोड़ें",
   "home.queue_error": "{0} को बदला नहीं जा सका। सूची में फ़ाइलें रहेंगी।",
-  "home.queue_too_large": "पूर्वावलोकन के लिए बहुत बड़ा ({0} MB)",
   "home.queue_selected": "चुना गया",
   "home.queue_remove_file": "{0} हटाएं",
   "home.queue_title": "रूपांतरित करने वाली फ़ाइलें",

@@ -26,7 +26,6 @@
   "home.title": "Beranda",
   "home.drop_title": "Lepaskan file di sini",
   "home.queue_error": "Tidak bisa mengonversi {0}. Daftar tetap menyimpan file.",
-  "home.queue_too_large": "Terlalu besar untuk pratinjau ({0} MB)",
   "home.queue_selected": "dipilih",
   "home.queue_remove_file": "Hapus {0}",
   "home.queue_title": "File untuk dikonversi",

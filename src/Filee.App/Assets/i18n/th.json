@@ -26,7 +26,6 @@
   "home.title": "หน้าแรก",
   "home.drop_title": "วางไฟล์ที่นี่",
   "home.queue_error": "แปลง {0} ไม่สำเร็จ รายการยังเก็บไฟล์ไว้",
-  "home.queue_too_large": "ใหญ่เกินไปสำหรับตัวอย่าง ({0} MB)",
   "home.queue_selected": "เลือกอยู่",
   "home.queue_remove_file": "นำ {0} ออก",
   "home.queue_title": "ไฟล์ที่จะแปลง",

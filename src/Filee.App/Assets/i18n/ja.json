@@ -26,7 +26,6 @@
   "home.title": "ホーム",
   "home.drop_title": "ここにファイルをドロップ",
   "home.queue_error": "{0} を変換できませんでした。リストのファイルは残ります。",
-  "home.queue_too_large": "プレビューには大きすぎます（{0} MB）",
   "home.queue_selected": "選択中",
   "home.queue_remove_file": "{0} を削除",
   "home.queue_title": "変換するファイル",

@@ -29,7 +29,6 @@
   "home.title": "Start",
   "home.drop_title": "Upuść pliki tutaj",
   "home.queue_error": "Nie udało się przekonwertować: {0}. Lista zachowuje pliki.",
-  "home.queue_too_large": "Za duży do podglądu ({0} MB)",
   "home.queue_selected": "zaznaczony",
   "home.queue_remove_file": "Usuń {0}",
   "home.queue_title": "Pliki do konwersji",

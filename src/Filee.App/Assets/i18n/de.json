@@ -26,7 +26,6 @@
   "home.title": "Start",
   "home.drop_title": "Dateien hier ablegen",
   "home.queue_error": "{0} konnte nicht konvertiert werden. Die Liste behält die Dateien.",
-  "home.queue_too_large": "Zu groß für eine Vorschau ({0} MB)",
   "home.queue_selected": "ausgewählt",
   "home.queue_remove_file": "{0} entfernen",
   "home.queue_title": "Zu konvertierende Dateien",

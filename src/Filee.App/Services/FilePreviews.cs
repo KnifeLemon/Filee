@@ -13,7 +13,7 @@ internal static class FilePreviews
     private const int PdfSize = 260;
 
     /// <summary>The largest PDF whose first page is drawn: a bigger one is read whole, which costs too much memory.</summary>
-    public const long MaxPdfBytes = 50L * 1024 * 1024;
+    public const long MaxPdfBytes = 75L * 1024 * 1024;
 
     /// <summary>The longest one picture may take: a file that stalls does not hold up the others.</summary>
     private static readonly TimeSpan RenderLimit = TimeSpan.FromSeconds(20);

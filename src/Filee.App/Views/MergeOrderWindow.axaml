@@ -176,9 +176,6 @@
                       <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" IsVisible="{Binding HasThumbnail}" />
                       <TextBlock Text="{Binding FormatBadge}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
                                  HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasThumbnail}" />
-                  <TextBlock Text="{Binding OversizedText}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="8"
-                             Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center"
-                             VerticalAlignment="Center" IsVisible="{Binding Oversized}" />
                     </Panel>
                   </Border>
                   <Border Width="26" Height="26" CornerRadius="999" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4"

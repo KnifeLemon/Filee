@@ -29,7 +29,6 @@
   "home.title": "Главная",
   "home.drop_title": "Перетащите файлы сюда",
   "home.queue_error": "Не удалось конвертировать: {0}. Список сохраняет файлы.",
-  "home.queue_too_large": "Слишком большой для предпросмотра ({0} МБ)",
   "home.queue_selected": "выбрано",
   "home.queue_remove_file": "Удалить {0}",
   "home.queue_title": "Файлы для конвертации",

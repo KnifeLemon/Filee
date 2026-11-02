@@ -26,7 +26,6 @@
   "home.title": "الرئيسية",
   "home.drop_title": "أفلت الملفات هنا",
   "home.queue_error": "تعذر تحويل {0}. تحتفظ القائمة بالملفات.",
-  "home.queue_too_large": "كبير جدًا للمعاينة ({0} ميغابايت)",
   "home.queue_selected": "محدد",
   "home.queue_remove_file": "إزالة {0}",
   "home.queue_title": "الملفات المراد تحويلها",

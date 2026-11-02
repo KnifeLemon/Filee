@@ -29,7 +29,6 @@
   "home.title": "홈",
   "home.drop_title": "여기에 파일을 놓으세요",
   "home.queue_error": "{0}을(를) 변환하지 못했습니다. 목록은 파일을 유지합니다.",
-  "home.queue_too_large": "미리 보기에는 너무 큽니다({0} MB)",
   "home.queue_selected": "선택됨",
   "home.queue_remove_file": "{0} 제거",
   "home.queue_title": "변환할 파일",

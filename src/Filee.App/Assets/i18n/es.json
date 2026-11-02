@@ -26,7 +26,6 @@
   "home.title": "Inicio",
   "home.drop_title": "Suelta archivos aquí",
   "home.queue_error": "No se pudo convertir {0}. La lista conserva los archivos.",
-  "home.queue_too_large": "Demasiado grande para la vista previa ({0} MB)",
   "home.queue_selected": "seleccionado",
   "home.queue_remove_file": "Quitar {0}",
   "home.queue_title": "Archivos para convertir",

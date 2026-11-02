@@ -26,8 +26,6 @@ public sealed partial class StagedFileViewModel : ObservableObject, IDisposable
         _remove = remove;
         _loc = loc;
         Oversized = FilePreviews.IsTooLarge(path, format);
-        if (Oversized)
-            OversizedText = _loc.Format("home.queue_too_large", Math.Round(new FileInfo(path).Length / 1048576.0));
     }
 
     /// <summary>The card the user selected: the Delete key takes it out of the list.</summary>
@@ -56,8 +54,6 @@ public sealed partial class StagedFileViewModel : ObservableObject, IDisposable
     /// <summary>A PDF too large for its picture: the card says so where the picture goes.</summary>
     public bool Oversized { get; }
 
-    /// <summary>"Too large for a preview (60 MB)", when <see cref="Oversized"/>.</summary>
-    public string OversizedText { get; } = "";
 
     /// <summary>Stops the picture still being drawn when the card goes.</summary>
     public CancellationTokenSource Cancellation { get; } = new();

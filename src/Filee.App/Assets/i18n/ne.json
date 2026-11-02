@@ -26,7 +26,6 @@
   "home.title": "गृहपृष्ठ",
   "home.drop_title": "फाइलहरू यहाँ छाड्नुहोस्",
   "home.queue_error": "{0} रूपान्तरण गर्न सकिएन। सूचीमा फाइलहरू रहन्छन्।",
-  "home.queue_too_large": "पूर्वावलोकनका लागि धेरै ठूलो ({0} MB)",
   "home.queue_selected": "चयन गरिएको",
   "home.queue_remove_file": "{0} हटाउनुहोस्",
   "home.queue_title": "रूपान्तरण गर्नु पर्ने फाइलहरू",

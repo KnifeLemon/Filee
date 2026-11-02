@@ -29,7 +29,6 @@
   "home.title": "Home",
   "home.drop_title": "Drop files here",
   "home.queue_error": "Could not convert {0}. The list keeps its files.",
-  "home.queue_too_large": "Too large for a preview ({0} MB)",
   "home.queue_selected": "selected",
   "home.queue_remove_file": "Remove {0}",
   "home.queue_title": "Files to convert",

@@ -29,7 +29,6 @@
   "home.title": "首页",
   "home.drop_title": "将文件拖放到这里",
   "home.queue_error": "无法转换 {0}。列表保留这些文件。",
-  "home.queue_too_large": "文件过大，无法预览（{0} MB）",
   "home.queue_selected": "已选中",
   "home.queue_remove_file": "移除 {0}",
   "home.queue_title": "待转换的文件",

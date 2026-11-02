@@ -38,11 +38,6 @@ public sealed partial class MergeSource(string path, Action<MergeSource> remove,
     /// <summary>A PDF too large for its picture: the card says so where the picture goes.</summary>
     public bool Oversized => _oversized;
 
-    /// <summary>"Too large for a preview (60 MB)", when <see cref="Oversized"/>.</summary>
-    public string OversizedText => _oversized && loc is not null
-        ? loc.Format("home.queue_too_large", Math.Round(new FileInfo(Path).Length / 1048576.0))
-        : "";
-
     /// <summary>Stops the picture still being drawn when the file leaves the merge.</summary>
     public CancellationTokenSource Cancellation { get; } = new();
 

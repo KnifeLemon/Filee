@@ -110,10 +110,6 @@
                       <Image Source="{Binding Thumbnail}" Stretch="Uniform" IsVisible="{Binding HasThumbnail}" />
                       <TextBlock Text="{Binding FormatBadge}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
                                  HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasThumbnail}" />
-                      <!-- A PDF too large to draw its first page: the card says why, where the picture goes. -->
-                      <TextBlock Text="{Binding OversizedText}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="8"
-                                 Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center"
-                                 VerticalAlignment="Center" IsVisible="{Binding Oversized}" />
                     </Panel>
                   </Border>
                   <!-- The place in the queue: the theme's accent circle, the number in its contrast colour. -->

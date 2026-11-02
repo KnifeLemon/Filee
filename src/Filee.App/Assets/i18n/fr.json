@@ -29,7 +29,6 @@
   "home.title": "Accueil",
   "home.drop_title": "Déposez des fichiers ici",
   "home.queue_error": "Impossible de convertir {0}. La liste conserve les fichiers.",
-  "home.queue_too_large": "Trop volumineux pour un aperçu ({0} Mo)",
   "home.queue_selected": "sélectionné",
   "home.queue_remove_file": "Retirer {0}",
   "home.queue_title": "Fichiers à convertir",
