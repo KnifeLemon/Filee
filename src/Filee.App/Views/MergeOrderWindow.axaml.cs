@@ -7,6 +7,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Filee.App.Services;
 using Filee.App.ViewModels;
@@ -30,7 +31,12 @@ public partial class MergeOrderWindow : Window
         Motion.Track(this);
         UiZoom.Track(this);
         // The list has the keys from the start: the arrows move the selection without a click first.
-        Opened += (_, _) => FileOrder.Focus();
+        Opened += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            // After the window is active: activating it would otherwise take the focus back.
+            Activate();
+            FileOrder.Focus();
+        }, DispatcherPriority.Background);
         // Handled too: the list selects a card on press, and the drag still has to start.
         FileOrder.AddHandler(PointerPressedEvent, OnCardPressed, RoutingStrategies.Bubble, handledEventsToo: true);
         FileOrder.AddHandler(PointerMovedEvent, OnCardMoved, RoutingStrategies.Bubble, handledEventsToo: true);
