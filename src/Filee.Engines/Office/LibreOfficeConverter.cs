@@ -177,7 +177,37 @@ public sealed class LibreOfficeConverter : IConverter
         ProcessResult result;
         using (ProgressEstimate.Start(progress, TypicalDuration))
             result = await RunAsync(soffice, slot, filter, outDir, input, cancellationToken);
-        return (Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0), result);
+        return (ProducedIn(outDir), result);
+    }
+
+    /// <summary>The first non-empty file LibreOffice wrote into <paramref name="outDir"/>, or null.</summary>
+    private static string? ProducedIn(string outDir) =>
+        Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0);
+
+    /// <summary>
+    /// A probe for <see cref="ProcessRunner"/>: true when the output file exists, has not changed size since the last
+    /// call and (for a PDF) ends with its %%EOF marker, i.e. LibreOffice is finished writing it.
+    /// </summary>
+    private static Func<bool> OutputComplete(string outDir)
+    {
+        long last = -1;
+        return () =>
+        {
+            if (!Directory.Exists(outDir) || ProducedIn(outDir) is not { } file)
+                return false;
+            var length = new FileInfo(file).Length;
+            var steady = length == last;
+            last = length;
+            if (!steady)
+                return false;
+            if (!file.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                return true;
+            using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            var tail = new byte[(int)Math.Min(length, 1024)];
+            stream.Seek(-tail.Length, SeekOrigin.End);
+            stream.ReadExactly(tail);
+            return System.Text.Encoding.ASCII.GetString(tail).Contains("%%EOF", StringComparison.Ordinal);
+        };
     }
 
     /// <summary>
@@ -254,7 +284,7 @@ public sealed class LibreOfficeConverter : IConverter
                     Directory.CreateDirectory(folder);
                     var input = Path.Combine(folder, "warmup.txt");
                     await File.WriteAllTextAsync(input, "Filee", cancellationToken);
-                    await RunAsync(soffice, slot, FilterFor("txt", "pdf", pdfA: false), folder, input, cancellationToken);
+                    await RunAsync(soffice, slot, FilterFor("txt", "pdf", pdfA: false), folder, input, cancellationToken, probe: false);
                     prepared++;
                 }
                 finally
@@ -290,7 +320,8 @@ public sealed class LibreOfficeConverter : IConverter
         _capacity.Release();
     }
 
-    private async Task<ProcessResult> RunAsync(string soffice, int slot, string filter, string outDir, string input, CancellationToken cancellationToken)
+    private async Task<ProcessResult> RunAsync(string soffice, int slot, string filter, string outDir, string input, CancellationToken cancellationToken,
+        bool probe = true)
     {
         var profileDir = ProfileDirectory(slot);
         Directory.CreateDirectory(profileDir);
@@ -307,7 +338,10 @@ public sealed class LibreOfficeConverter : IConverter
             args.Add("-env:UNO_JAVA_JFW_JREHOME=" + new Uri(jre + Path.DirectorySeparatorChar).AbsoluteUri);
         }
         args.AddRange(["--convert-to", filter, "--outdir", outDir, input]);
-        return await ProcessRunner.RunAsync(soffice, args, Timeout, cancellationToken);
+        // The probe ends a run whose soffice.bin keeps our pipes open after the document was converted (the warm-up
+        // converts nothing we need, so it runs without one).
+        return await ProcessRunner.RunAsync(soffice, args, Timeout, cancellationToken,
+            outputReady: probe ? OutputComplete(outDir) : null);
     }
 
     /// <summary>Maps a target format to a LibreOffice <c>--convert-to</c> filter specification.</summary>
