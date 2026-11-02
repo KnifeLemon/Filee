@@ -112,7 +112,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     {
         base.OnPropertyChanged(e);
         if (_loading || e.PropertyName is nameof(IsRecording) or nameof(KeyText) or nameof(ThresholdText) or nameof(Summary)
-            or nameof(UsesMouse) or nameof(UsesKey) or nameof(UsesThreshold) or nameof(UsesHold) or nameof(UsesClipboard) or nameof(Conflict))
+            or nameof(UsesMouse) or nameof(UsesKey) or nameof(UsesThreshold) or nameof(UsesHold) or nameof(UsesClipboard) or nameof(UsesProfile) or nameof(Conflict))
             return;
 
         _gesture.Enabled = Enabled;
