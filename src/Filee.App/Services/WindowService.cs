@@ -37,10 +37,12 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private CropOverlayWindow? _cropOverlay;
     private ClipWindow? _clipWindow;
     private HideWindow? _hideWindow;
+    private AnnotateWindow? _annotateWindow;
     private ImageEditWindow? _imageEdit;
 
     internal ClipWindow? ClipWindow => _clipWindow;
     internal HideWindow? HideWindow => _hideWindow;
+    internal AnnotateWindow? AnnotateWindow => _annotateWindow;
     internal ImageEditWindow? ImageEdit => _imageEdit;
     private readonly HashSet<SpreadsheetPrintStudioWindow> _spreadsheetStudios = [];
 
@@ -152,6 +154,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             ShowClipWindow(files, preset, near);
         else if (preset.IsHideTool)
             ShowHideWindow(files, preset, near);
+        else if (preset.IsAnnotateTool)
+            ShowAnnotateWindow(files, preset);
         else if (preset.IsImageEditTool)
             ShowImageEditWindow(files, preset);
         // Before the crop: the print studio and the PDF page tools have no Tool of their own, which reads as a crop
@@ -258,6 +262,34 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             trimmer.Request();
         };
         _hideWindow = win;
+        win.Show();
+        win.Activate();
+    }
+
+    /// <summary>
+    /// Opens the "Annotate" window on the pictures among the files. Each picture is written by an ordinary conversion,
+    /// shown in the toast.
+    /// </summary>
+    public void ShowAnnotateWindow(IReadOnlyList<string> files, Preset preset)
+    {
+        var pictures = files.Where(f => FormatRegistry.Detect(f) is { } format && HideService.CanOpen(format.Id)).ToList();
+        if (pictures.Count == 0)
+            return;
+        _annotateWindow?.Close();
+        var conversions = services.GetRequiredService<ConversionService>();
+        var planner = services.GetRequiredService<ConverterCatalog>().CreatePlanner();
+        var vm = new AnnotateViewModel(pictures, preset, loc, services.GetRequiredService<UserDataStore>(),
+            path => AnnotateTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? "", planner),
+            (path, conversion) => conversions.Start([path], conversion), services.GetService<ILogger<AnnotateViewModel>>());
+        var win = new AnnotateWindow { DataContext = vm };
+        PrepareWindow(win);
+        win.Closed += (_, _) =>
+        {
+            if (_annotateWindow == win)
+                _annotateWindow = null;
+            trimmer.Request();
+        };
+        _annotateWindow = win;
         win.Show();
         win.Activate();
     }

@@ -1,0 +1,202 @@
+<!-- "Annotate": the picture large on the theme's backdrop with its marks, drawn as the file will get them; the file
+     chip and close on top; the bar at the bottom: tools, colours, widths, undo / redo / delete, Save & next; the keys
+     under it. Text is typed in the box that appears over the picture where it goes. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        xmlns:c="using:Filee.App.Controls"
+        xmlns:p="using:Filee.Core.Presets"
+        x:Class="Filee.App.Views.AnnotateWindow"
+        x:DataType="vm:AnnotateViewModel"
+        Title="{DynamicResource preset.annotate}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="1040" Height="720" MinWidth="720" MinHeight="480">
+  <Window.Resources>
+    <StreamGeometry x:Key="Ann.Select">M10.07,14.27C10.57,14.03 11.16,14.25 11.4,14.75L13.7,19.74L15.5,18.89L13.19,13.91C12.95,13.41 13.17,12.81 13.67,12.58L13.95,12.5L16.25,12.05L8,5.12V15.9L9.82,14.43L10.07,14.27M13.64,21.97C13.14,22.21 12.54,22 12.31,21.5L10.13,16.76L7.62,18.78C7.45,18.92 7.24,19 7,19A1,1 0 0,1 6,18V3A1,1 0 0,1 7,2C7.24,2 7.47,2.09 7.64,2.23L7.65,2.22L19.14,11.86C19.57,12.22 19.62,12.85 19.27,13.27C19.12,13.45 18.91,13.57 18.7,13.61L15.54,14.23L17.74,18.96C18,19.46 17.76,20.05 17.26,20.28L13.64,21.97Z</StreamGeometry>
+    <StreamGeometry x:Key="Ann.Pen">M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.12,5.12L18.87,8.87M3,17.25V21H6.75L17.81,9.93L14.06,6.18L3,17.25Z</StreamGeometry>
+    <StreamGeometry x:Key="Ann.Arrow">M5,17.59L15.59,7H9V5H19V15H17V8.41L6.41,19L5,17.59Z</StreamGeometry>
+    <StreamGeometry x:Key="Ann.Box">M4,6V18H20V6H4M18,16H6V8H18V16Z</StreamGeometry>
+    <StreamGeometry x:Key="Ann.Highlight">M18.5,1.15C17.97,1.15 17.46,1.34 17.07,1.73L11.26,7.55L16.91,13.2L22.73,7.39C23.5,6.61 23.5,5.35 22.73,4.56L19.89,1.73C19.5,1.34 19,1.15 18.5,1.15M10.3,8.5L4.34,14.46C3.56,15.24 3.56,16.5 4.36,17.31C3.14,18.54 1.9,19.77 0.67,21H6.33L7.19,20.14C7.97,20.9 9.22,20.89 10,20.12L15.95,14.16</StreamGeometry>
+    <StreamGeometry x:Key="Ann.Text">M18.5,4L19.66,8.35L18.7,8.61C18.25,7.74 17.79,6.87 17.26,6.43C16.73,6 16.11,6 15.5,6H13V16.5C13,17 13,17.5 13.33,17.75C13.67,18 14.33,18 15,18V19H9V18C9.67,18 10.33,18 10.67,17.75C11,17.5 11,17 11,16.5V6H8.5C7.89,6 7.27,6 6.74,6.43C6.21,6.87 5.75,7.74 5.3,8.61L4.34,8.35L5.5,4H18.5Z</StreamGeometry>
+    <StreamGeometry x:Key="Ann.Number">M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M10,7V9H12V17H14V7H10Z</StreamGeometry>
+    <StreamGeometry x:Key="Ann.Redo">M11.5,8C14.15,8 16.55,9 18.4,10.6L22,7V16H13L16.62,12.38C15.23,11.22 13.46,10.5 11.5,10.5C7.96,10.5 4.95,12.81 3.9,16L1.53,15.22C2.92,11.03 6.85,8 11.5,8Z</StreamGeometry>
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="Border.float">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
+    </Style>
+    <Style Selector="Button.tool">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="9" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+    </Style>
+    <Style Selector="Button.tool.open /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+    </Style>
+    <Style Selector="Button.tool:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Button.swatch">
+      <Setter Property="Width" Value="22" />
+      <Setter Property="Height" Value="22" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="2,0" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="#22000000" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button.swatch.on">
+      <Setter Property="BorderThickness" Value="2.5" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <!-- The box text is typed in has no box of its own, the tag behind it is the box: Fluent's TextBox paints its
+         border element white when hovered or focused, which hid white text. -->
+    <Style Selector="TextBox.tag">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="MinWidth" Value="0" />
+      <Setter Property="MinHeight" Value="0" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="TextBox.tag /template/ Border#PART_BorderElement, TextBox.tag:pointerover /template/ Border#PART_BorderElement, TextBox.tag:focus /template/ Border#PART_BorderElement">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Border.divider">
+      <Setter Property="Width" Value="1" />
+      <Setter Property="Background" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="Margin" Value="6,6" />
+    </Style>
+  </Window.Styles>
+
+  <Panel Background="{DynamicResource PageBrush}">
+    <c:AnnotationCanvas x:Name="Canvas"
+                        SourceImage="{Binding PreviewImage}"
+                        Marks="{Binding Marks}"
+                        Tool="{Binding Mode}"
+                        MarkColor="{Binding Color}"
+                        MarkWidth="{Binding Width}"
+                        ImagePadding="36,70,36,118"
+                        AccentBrush="{DynamicResource AccentBrush}" />
+
+    <!-- Typing a text: the tag itself over the picture where it goes, in its colour and size (TextTag gets them when
+         typing starts), the text and caret in its ink; Enter or a click elsewhere keeps it, Esc drops it. -->
+    <Canvas x:Name="Overlay" IsHitTestVisible="True" Background="{x:Null}">
+      <Border x:Name="TextTag" IsVisible="{Binding #TextEditor.IsVisible}">
+        <TextBox x:Name="TextEditor" Classes="tag" IsVisible="False" AcceptsReturn="False"
+                 AutomationProperties.Name="{DynamicResource annotate.text}" />
+      </Border>
+    </Canvas>
+
+    <!-- Top: the file and close -->
+    <Border Classes="float" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Padding="14,6">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="{Binding CurrentFileName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="999" Padding="8,2" IsVisible="{Binding HasMultipleFiles}">
+          <TextBlock Classes="caption" Text="{Binding CounterText}" />
+        </Border>
+      </StackPanel>
+    </Border>
+    <Button Classes="tool" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16" Padding="10" Command="{Binding CloseCommand}"
+            ToolTip.Tip="{DynamicResource common.close}" AutomationProperties.Name="{DynamicResource common.close}">
+      <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
+    </Button>
+
+    <!-- Bottom: the bar and the keys -->
+    <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7">
+      <TextBlock Classes="caption danger" Text="{Binding StatusNotice}" HorizontalAlignment="Center"
+                 IsVisible="{Binding StatusNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+      <Border Classes="float" Padding="5">
+        <StackPanel Orientation="Horizontal" Spacing="2">
+          <Button x:Name="SelectTool" Classes="tool round" Classes.open="{Binding IsSelect}" Command="{Binding SetModeCommand}"
+                  CommandParameter="{x:Static c:AnnotateMode.Select}" ToolTip.Tip="{DynamicResource annotate.select_hint}"
+                  AutomationProperties.Name="{DynamicResource annotate.select}">
+            <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Select}" />
+          </Button>
+          <Button x:Name="PenTool" Classes="tool round" Classes.open="{Binding IsPen}" Command="{Binding SetModeCommand}"
+                  CommandParameter="{x:Static c:AnnotateMode.Pen}" ToolTip.Tip="{DynamicResource annotate.pen_hint}"
+                  AutomationProperties.Name="{DynamicResource annotate.pen}">
+            <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Pen}" />
+          </Button>
+          <Button x:Name="ArrowTool" Classes="tool round" Classes.open="{Binding IsArrow}" Command="{Binding SetModeCommand}"
+                  CommandParameter="{x:Static c:AnnotateMode.Arrow}" ToolTip.Tip="{DynamicResource annotate.arrow_hint}"
+                  AutomationProperties.Name="{DynamicResource annotate.arrow}">
+            <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Arrow}" />
+          </Button>
+          <Button x:Name="BoxTool" Classes="tool round" Classes.open="{Binding IsBox}" Command="{Binding SetModeCommand}"
+                  CommandParameter="{x:Static c:AnnotateMode.Box}" ToolTip.Tip="{DynamicResource annotate.box_hint}"
+                  AutomationProperties.Name="{DynamicResource annotate.box}">
+            <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Box}" />
+          </Button>
+          <Button x:Name="HighlightTool" Classes="tool round" Classes.open="{Binding IsHighlight}" Command="{Binding SetModeCommand}"
+                  CommandParameter="{x:Static c:AnnotateMode.Highlight}" ToolTip.Tip="{DynamicResource annotate.highlight_hint}"
+                  AutomationProperties.Name="{DynamicResource annotate.highlight}">
+            <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Highlight}" />
+          </Button>
+          <Button x:Name="TextTool" Classes="tool round" Classes.open="{Binding IsText}" Command="{Binding SetModeCommand}"
+                  CommandParameter="{x:Static c:AnnotateMode.Text}" ToolTip.Tip="{DynamicResource annotate.text_hint}"
+                  AutomationProperties.Name="{DynamicResource annotate.text}">
+            <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Text}" />
+          </Button>
+          <Button x:Name="NumberTool" Classes="tool round" Classes.open="{Binding IsNumber}" Command="{Binding SetModeCommand}"
+                  CommandParameter="{x:Static c:AnnotateMode.Number}" ToolTip.Tip="{DynamicResource annotate.number_hint}"
+                  AutomationProperties.Name="{DynamicResource annotate.number}">
+            <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Number}" />
+          </Button>
+          <Border Classes="divider" />
+          <ItemsControl ItemsSource="{Binding Swatches}" VerticalAlignment="Center">
+            <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:AnnotateSwatch">
+                <Button Classes="swatch" Classes.on="{Binding IsSelected}" Background="{Binding Brush}" Command="{Binding ChooseCommand}"
+                        AutomationProperties.Name="{Binding Color}" />
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+          <Border Classes="divider" />
+          <Button Classes="tool round" Classes.open="{Binding IsThin}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Thin}"
+                  ToolTip.Tip="{DynamicResource annotate.thin}" AutomationProperties.Name="{DynamicResource annotate.thin}">
+            <Ellipse Width="4" Height="4" Fill="{DynamicResource TextPrimaryBrush}" Margin="4" />
+          </Button>
+          <Button Classes="tool round" Classes.open="{Binding IsMedium}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Medium}"
+                  ToolTip.Tip="{DynamicResource annotate.medium}" AutomationProperties.Name="{DynamicResource annotate.medium}">
+            <Ellipse Width="7" Height="7" Fill="{DynamicResource TextPrimaryBrush}" Margin="2.5" />
+          </Button>
+          <Button Classes="tool round" Classes.open="{Binding IsThick}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Thick}"
+                  ToolTip.Tip="{DynamicResource annotate.thick}" AutomationProperties.Name="{DynamicResource annotate.thick}">
+            <Ellipse Width="11" Height="11" Fill="{DynamicResource TextPrimaryBrush}" Margin="0.5" />
+          </Button>
+          <Border Classes="divider" />
+          <Button Classes="tool round" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
+                  ToolTip.Tip="{DynamicResource annotate.undo}" AutomationProperties.Name="{DynamicResource annotate.undo}">
+            <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Undo}" Foreground="{DynamicResource TextSecondaryBrush}" />
+          </Button>
+          <Button Classes="tool round" Command="{Binding RedoCommand}" IsEnabled="{Binding CanRedo}"
+                  ToolTip.Tip="{DynamicResource annotate.redo}" AutomationProperties.Name="{DynamicResource annotate.redo}">
+            <PathIcon Width="14" Height="14" Data="{StaticResource Ann.Redo}" Foreground="{DynamicResource TextSecondaryBrush}" />
+          </Button>
+          <Button Classes="tool round" Command="{Binding RemoveSelectedCommand}" IsEnabled="{Binding HasSelection}"
+                  ToolTip.Tip="{DynamicResource annotate.remove}" AutomationProperties.Name="{DynamicResource annotate.remove}">
+            <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Delete}" Foreground="{DynamicResource TextSecondaryBrush}" />
+          </Button>
+          <Button Content="{DynamicResource crop.skip}" Command="{Binding SkipCommand}" IsVisible="{Binding HasMultipleFiles}"
+                  Margin="8,0,0,0" CornerRadius="999" Padding="14,8" />
+          <Button x:Name="SaveButton" Classes="accent" Content="{Binding SaveText}" Command="{Binding SaveCommand}"
+                  Margin="6,0,0,0" CornerRadius="999" Padding="16,8" />
+        </StackPanel>
+      </Border>
+      <TextBlock Classes="caption" HorizontalAlignment="Center" Text="{DynamicResource annotate.keys}" />
+    </StackPanel>
+  </Panel>
+</Window>

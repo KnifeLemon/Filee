@@ -259,6 +259,12 @@ public sealed class Preset
     public const string HideTool = "hide";
 
     /// <summary>
+    /// <see cref="Tool"/> of "Annotate" (settings schema 59): pen, arrows, boxes, highlights, text and numbers drawn on
+    /// a picture (<see cref="ImageOptions.Annotations"/>).
+    /// </summary>
+    public const string AnnotateTool = "annotate";
+
+    /// <summary>
     /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there were
     /// other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/> or <see cref="HideTool"/>. A tool this version
     /// doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
@@ -280,6 +286,10 @@ public sealed class Preset
     /// <summary>True for "Pixelate / blur".</summary>
     [JsonIgnore]
     public bool IsHideTool => IsTool && Tool == HideTool;
+
+    /// <summary>True for "Annotate".</summary>
+    [JsonIgnore]
+    public bool IsAnnotateTool => IsTool && Tool == AnnotateTool;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
@@ -440,6 +450,74 @@ public sealed class HiddenArea
     public HiddenArea Clone() => (HiddenArea)MemberwiseClone();
 }
 
+/// <summary>What an "Annotate" mark is (<see cref="Annotation.Kind"/>).</summary>
+public enum AnnotationKind
+{
+    /// <summary>A freehand line through <see cref="Annotation.Points"/>.</summary>
+    Pen,
+    /// <summary>An arrow from its first point (the tail) to its second (the tip).</summary>
+    Arrow,
+    /// <summary>A frame from one corner to the other.</summary>
+    Box,
+    /// <summary>A see-through marker from one corner to the other.</summary>
+    Highlight,
+    /// <summary><see cref="Annotation.Text"/> on a tag in the colour, at its point.</summary>
+    Text,
+    /// <summary><see cref="Annotation.Number"/> in a circle in the colour, at its point.</summary>
+    Number,
+}
+
+/// <summary>How thick a mark is drawn: lines, text and numbers alike.</summary>
+public enum AnnotationWidth
+{
+    Thin,
+    Medium,
+    Thick,
+}
+
+/// <summary>A point on the picture as it is seen, in parts of it: 0 to 1 from its left and top edges.</summary>
+public sealed class AnnotationPoint
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+
+    public AnnotationPoint Clone() => (AnnotationPoint)MemberwiseClone();
+}
+
+/// <summary>
+/// A mark "Annotate" draws on a picture. Its points are parts of the picture, and its sizes parts of the picture's
+/// shorter side, so a mark looks the same at any size.
+/// </summary>
+public sealed class Annotation
+{
+    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationKind>))]
+    public AnnotationKind Kind { get; set; }
+
+    /// <summary>"#RRGGBB".</summary>
+    public string Color { get; set; } = "#E5484D";
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationWidth>))]
+    public AnnotationWidth Width { get; set; } = AnnotationWidth.Medium;
+
+    /// <summary>
+    /// The pen's line; the two corners of a box or highlight; an arrow's tail and tip; a text's or number's place.
+    /// </summary>
+    public List<AnnotationPoint> Points { get; set; } = [];
+
+    /// <summary>What a <see cref="AnnotationKind.Text"/> says.</summary>
+    public string? Text { get; set; }
+
+    /// <summary>The number a <see cref="AnnotationKind.Number"/> shows.</summary>
+    public int Number { get; set; }
+
+    public Annotation Clone()
+    {
+        var copy = (Annotation)MemberwiseClone();
+        copy.Points = [.. Points.Select(p => p.Clone())];
+        return copy;
+    }
+}
+
 /// <summary>Raster image encoding options.</summary>
 public sealed class ImageOptions
 {
@@ -484,7 +562,21 @@ public sealed class ImageOptions
     /// engine applies image options (<see cref="Conversion.IImageTransformer"/>); a file is never passed on as it is.
     /// </summary>
     [JsonIgnore]
-    public bool ReworksPixels => TurnsOrMirrors || HidesAreas;
+    public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations;
+
+    /// <summary>"Annotate": the marks drawn on the picture as it is seen; null for every other preset.</summary>
+    public List<Annotation>? Annotations { get; set; }
+
+    /// <summary>The picture gets marks drawn on it (<see cref="Annotations"/>).</summary>
+    [JsonIgnore]
+    public bool HasAnnotations => Annotations is { Count: > 0 };
+
+    /// <summary>"Annotate": the colour picked last, "#RRGGBB", kept in the tool for the next time.</summary>
+    public string? AnnotationColor { get; set; }
+
+    /// <summary>"Annotate": the width picked last, kept in the tool for the next time.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationWidth>))]
+    public AnnotationWidth AnnotationWidth { get; set; } = AnnotationWidth.Medium;
 
     /// <summary>Whether the preset edits picture content, size, or playback speed.</summary>
     [JsonIgnore]
@@ -687,6 +779,7 @@ public sealed class ImageOptions
         var copy = (ImageOptions)MemberwiseClone();
         copy.IcoSizes = [.. IcoSizes];
         copy.HiddenAreas = HiddenAreas?.Select(area => area.Clone()).ToList();
+        copy.Annotations = Annotations?.Select(mark => mark.Clone()).ToList();
         copy.CustomSize = CustomSize is { } size
             ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, Unit = size.Unit, Dpi = size.Dpi }
             : null;

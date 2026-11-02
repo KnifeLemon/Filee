@@ -961,6 +961,12 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 58)
             changed |= LearnExtensions(profiles, out _, ["c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs"]);
+        // v59: the "Annotate" tool, in the palette only.
+        if (from < 59 && presets.All(p => p.Id != BuiltInData.AnnotateId))
+        {
+            presets.AddRange(BuiltInData.AnnotatePresets());
+            changed = true;
+        }
         return changed;
     }
 

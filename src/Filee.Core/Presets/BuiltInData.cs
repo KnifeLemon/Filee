@@ -59,6 +59,7 @@ public static class BuiltInData
         },
         .. ImageEditPresets(),
         .. HidePresets(),
+        .. AnnotatePresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -227,6 +228,22 @@ public static class BuiltInData
         {
             Id = "tool-hide", NameKey = "preset.hide", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Tool = Preset.HideTool, Output = { FileNamePattern = "{name}_hidden" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Annotate" tool (settings schema 59): in the palette, on no donut.</summary>
+    public const string AnnotateId = "tool-annotate";
+
+    /// <summary>
+    /// "Annotate" (settings schema 59): pen, arrows, boxes, highlights, text and numbers drawn on pictures, saved as
+    /// "{name} Annotated". In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> AnnotatePresets() =>
+    [
+        new()
+        {
+            Id = AnnotateId, NameKey = "preset.annotate", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.AnnotateTool, Output = { FileNamePattern = "{name} Annotated" },
         },
     ];
 

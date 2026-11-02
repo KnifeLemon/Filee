@@ -952,6 +952,7 @@ public sealed partial class JobQueue : IAsyncDisposable
             copy.Image.Rotation = ImageRotation.None;
             copy.Image.Flip = ImageFlip.None;
             copy.Image.HiddenAreas = null;
+            copy.Image.Annotations = null;
             return copy;
         }
 
