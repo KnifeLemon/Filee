@@ -74,58 +74,99 @@ public sealed class LibreOfficeConverter : IConverter
     // profile number from _freeProfiles (guarded by itself) after _capacity lets them in.
     private readonly SemaphoreSlim _capacity = new(Workers, Workers);
     private readonly Stack<int> _freeProfiles = new(Enumerable.Range(0, Workers).Reverse());
-    private readonly bool[] _prepared = new bool[Workers];
-
     private string? _soffice;
     private bool _hasHwpFilter;
 
+    /// <param name="logger">The app's log; notes when a file only loaded after its container was repacked.</param>
     public LibreOfficeConverter(EngineEnvironment env, ILogger? logger = null)
     {
         _env = env;
         _logger = logger ?? NullLogger.Instance;
         Locate();
+        Edges = BuildEdges(_hasHwpFilter, EngineEnvironment.LibreOfficeForSlides, EngineEnvironment.LibreOfficeForHwp,
+            EngineEnvironment.LibreOfficeForDocuments, EngineEnvironment.LibreOfficeForSheets);
     }
 
     public string Id => "libreoffice";
     public string DisplayName => "LibreOffice";
+    public int MaxParallelism => Workers;
+    public IReadOnlyList<ConversionEdge> Edges { get; private set; }
 
-    public EngineStatus Status()
+    public EngineStatus GetStatus()
     {
+        Locate();
+        Edges = BuildEdges(_hasHwpFilter, EngineEnvironment.LibreOfficeForSlides, EngineEnvironment.LibreOfficeForHwp,
+            EngineEnvironment.LibreOfficeForDocuments, EngineEnvironment.LibreOfficeForSheets);
         return _soffice is null
             ? EngineStatus.Unavailable("engine.reason.not_installed")
-            : _hasHwpFilter
+            : !EngineEnvironment.UsesFileesCopy("libreoffice")
                 ? EngineStatus.Available(_soffice, _hasHwpFilter ? "H2Orestart" : null)
                 : EngineStatus.Available(_soffice, EngineVersions.Component("libreoffice")
-                    is { } v ? v : null);
+                                                   + (_hasHwpFilter ? $" · H2Orestart {EngineVersions.Component("h2orestart")}" : ""));
     }
 
-    public async Task ConvertAsync(ConversionStep step, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var soffice = _soffice ?? throw new InvalidOperationException("LibreOffice was not found.");
-        var input = step.InputPath;
-        var filter = FilterFor(step.From, step.To, step.PdfA, Path.GetExtension(input).TrimStart('.'));
+        if (RenderedTargets.Contains(step.To) && DocumentFonts.Missing(step.OriginalSourcePath ?? step.InputPath) is [_, ..] missing)
+            step.MissingFonts?.Invoke(missing);
         var slot = await TakeProfileAsync(cancellationToken);
         try
         {
+            progress?.Report(0.1);
+            var input = step.From == "pdf" && step.To == "svg" ? FirstPage(step) : step.InputPath;
+            var filter = FilterFor(step.From, step.To, step.Preset.Document.PdfA, FormatRegistry.ExtensionOf(step.InputPath));
             var (produced, result) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, input, progress, cancellationToken);
-            if (produced is null && result.ExitCode != 0 && IsOfficeOpenXmlOrOpenDocument(input))
+            if (produced is null && Repack(step.InputPath, step.WorkDirectory) is { } repacked)
             {
-                var repacked = await RepackAsync(input, step.WorkDirectory, cancellationToken);
+                _logger.LogInformation("{File}: LibreOffice could not load it, trying again with the ZIP container repacked", step.InputPath);
                 (produced, _) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, repacked, progress, cancellationToken);
+                _logger.LogInformation("{File}: the repacked copy {Result}", step.InputPath, produced is null ? "failed too" : "converted");
             }
+            // The first attempt's error, which is about the user's own file.
             if (produced is null)
-                throw new ConversionException(
+                throw new InvalidOperationException(
                     $"LibreOffice produced no output (exit {result.ExitCode}). {result.StandardError.Trim()}");
+
             // Calc sometimes turns stale Excel print tiles into completely empty PDF pages anywhere in the output.
-            if (step.To == "pdf" && FamilyOf(step.From) == "calc")
-                PdfBlankPages.Remove(produced);
-            File.Move(produced, step.OutputPath, overwrite: true);
+            // Only remove pages with no painting operation at all; pages containing text, borders, charts, pictures
+            // or annotations stay. PDF/A is never rewritten: doing so would invalidate LibreOffice's XMP metadata.
+            try
+            {
+                var removed = RemoveEmptySpreadsheetPages(step, produced);
+                if (removed > 0)
+                {
+                    _logger.LogInformation("{File}: removed {Count} empty spreadsheet PDF pages", step.InputPath, removed);
+                    step.Notice?.Invoke("notice.empty_spreadsheet_pages_removed");
+                }
+            }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                // Post-processing is an improvement, not a reason to discard LibreOffice's otherwise valid PDF.
+                _logger.LogInformation("{File}: could not check empty spreadsheet PDF pages: {Message}", step.InputPath, e.Message);
+            }
+
+            var target = step.Output.Allocate(step.To);
+            if (target is null)
+                return [];
+            File.Move(produced, target, overwrite: true);
+            progress?.Report(1);
+            return [target];
         }
         finally
         {
             ReturnProfile(slot);
         }
     }
+
+    /// <summary>
+    /// Removes empty Calc PDF pages when that post-processing is safe. PDF/A stays byte-for-byte as LibreOffice wrote
+    /// it because PDFsharp changes the Info dictionary without updating the archival XMP metadata.
+    /// </summary>
+    internal static int RemoveEmptySpreadsheetPages(ConversionStep step, string path) =>
+        step.To == "pdf" && !step.Preset.Document.PdfA
+        && FamilyOf(step.From, FormatRegistry.ExtensionOf(step.InputPath)) == "calc"
+            ? PdfBlankPages.Remove(path) : 0;
 
     /// <summary>Runs LibreOffice into a fresh folder; returns the file it wrote (null if none) and how it ended.</summary>
     private async Task<(string? Produced, ProcessResult Result)> ConvertOnceAsync(string soffice, int slot, string filter, string workDirectory,
@@ -136,12 +177,8 @@ public sealed class LibreOfficeConverter : IConverter
         ProcessResult result;
         using (ProgressEstimate.Start(progress, TypicalDuration))
             result = await RunAsync(soffice, slot, filter, outDir, input, cancellationToken);
-        return (ProducedIn(outDir), result);
+        return (Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0), result);
     }
-
-    /// <summary>The first non-empty file LibreOffice wrote into <paramref name="outDir"/>, or null.</summary>
-    private static string? ProducedIn(string outDir) =>
-        Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0);
 
     /// <summary>
     /// A probe for <see cref="ProcessRunner"/>: true when the PDF output file exists,
@@ -153,10 +190,11 @@ public sealed class LibreOfficeConverter : IConverter
         long last = -1;
         return () =>
         {
-            if (!Directory.Exists(outDir) || ProducedIn(outDir) is not { } file)
+            if (!Directory.Exists(outDir))
                 return false;
 
-            if (!file.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            var file = Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0);
+            if (file is null || !file.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                 return false;
 
             var length = new FileInfo(file).Length;
@@ -176,24 +214,74 @@ public sealed class LibreOfficeConverter : IConverter
     }
 
     /// <summary>
-    /// Prepares each worker profile once so the first real conversion is not 2–3× slower. Runs in the background;
-    /// failures are ignored (the conversion will still work, just slower the first time).
+    /// A copy of an Office Open XML or OpenDocument file with its ZIP container rewritten by <see cref="PackageRepacker"/>,
+    /// under the same file name (LibreOffice also goes by the name). Null for other files and unreadable containers.
     /// </summary>
-    public async Task WarmUpAsync(CancellationToken cancellationToken = default)
+    private string? Repack(string input, string workDirectory)
     {
-        if (_soffice is not { } soffice || Enumerable.Range(0, Workers).All(IsPrepared))
-            return;
-        var prepared = 0;
-        for (var i = 0; i < Workers; i++)
+        if (!PackageRepacker.IsPackage(input))
+            return null;
+        try
         {
-            if (IsPrepared(i))
-                continue;
-            var slot = await TakeProfileAsync(cancellationToken);
-            try
+            var folder = Path.Combine(workDirectory, "lo-repack-" + Guid.NewGuid().ToString("N")[..8]);
+            Directory.CreateDirectory(folder);
+            var copy = Path.Combine(folder, Path.GetFileName(input));
+            PackageRepacker.Repack(input, copy);
+            return copy;
+        }
+        catch (Exception e) when (e is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            _logger.LogInformation("{File}: could not repack the ZIP container: {Message}", input, e.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The first page of the preset's page range as a PDF of its own: Draw's SVG export writes every page of a PDF on
+    /// top of each other, so it gets one page (like the other drawings, whose SVG holds the first page).
+    /// </summary>
+    private static string FirstPage(ConversionStep step)
+    {
+        using var source = PdfReader.Open(step.InputPath, PdfDocumentOpenMode.Import);
+        var pages = PageRange.Parse(step.Preset.Pdf.PageRange, source.PageCount);
+        if (pages.Count == 0)
+            throw new InvalidOperationException("The PDF has no pages in the selected range.");
+        using var single = new PdfDocument();
+        single.AddPage(source.Pages[pages[0]]);
+        var folder = Path.Combine(step.WorkDirectory, "lo-page-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, FormatRegistry.NameWithoutExtension(step.InputPath) + ".pdf");
+        single.Save(path);
+        return path;
+    }
+
+    /// <summary>
+    /// Prepares the worker profiles that were never used, by converting a tiny file with each of them, so the user's
+    /// first conversion doesn't pay for LibreOffice's first start. Quick no-op when LibreOffice is missing or the
+    /// profiles are ready. A conversion that starts meanwhile gets the other profile or waits for this one.
+    /// </summary>
+    /// <returns>Number of profiles prepared.</returns>
+    public async Task<int> WarmUpAsync(CancellationToken cancellationToken = default)
+    {
+        Locate();
+        if (_soffice is not { } soffice || Enumerable.Range(0, Workers).All(IsPrepared))
+            return 0;
+
+        var prepared = 0;
+        int? held = null;
+        try
+        {
+            for (var i = 0; i < Workers; i++)
             {
+                // Taken while the previous one is still held, so every round gets a different profile.
+                var slot = await TakeProfileAsync(cancellationToken);
+                if (held is { } previous)
+                    ReturnProfile(previous);
+                held = slot;
                 if (IsPrepared(slot))
                     continue;
-                var folder = Path.Combine(Path.GetTempPath(), "filee-lo-warmup-" + Guid.NewGuid().ToString("N")[..8]);
+
+                var folder = Path.Combine(Path.GetTempPath(), "filee-warmup-" + Guid.NewGuid().ToString("N")[..8]);
                 try
                 {
                     Directory.CreateDirectory(folder);
@@ -204,21 +292,22 @@ public sealed class LibreOfficeConverter : IConverter
                 }
                 finally
                 {
-                    try { Directory.Delete(folder, true); } catch { }
+                    try { Directory.Delete(folder, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
                 }
-                MarkPrepared(slot);
-            }
-            finally
-            {
-                ReturnProfile(slot);
             }
         }
-        if (prepared > 0)
-            _logger.LogInformation("Warmed up {Count} LibreOffice profile(s)", prepared);
+        finally
+        {
+            if (held is { } last)
+                ReturnProfile(last);
+        }
+        return prepared;
     }
 
-    private bool IsPrepared(int slot) => _prepared[slot];
-    private void MarkPrepared(int slot) => _prepared[slot] = true;
+    private string ProfileDirectory(int slot) => Path.Combine(_env.DataDirectory, "libreoffice-profiles", $"worker-{slot}");
+
+    /// <summary>LibreOffice has started with this profile before (it creates the "user" folder).</summary>
+    private bool IsPrepared(int slot) => Directory.Exists(Path.Combine(ProfileDirectory(slot), "user"));
 
     private async Task<int> TakeProfileAsync(CancellationToken cancellationToken)
     {
@@ -275,65 +364,98 @@ public sealed class LibreOfficeConverter : IConverter
             "pdf" => $"pdf:{family}_pdf_Export",
             "docx" => "docx:MS Word 2007 XML",
             "doc" => "doc:MS Word 97",
-            "odt" => "odt:writer8",
-            "rtf" => "rtf:Rich Text Format",
+            "odt" => "odt",
             "fodt" => "fodt:OpenDocument Text Flat XML",
             "ott" => "ott:writer8_template",
+            "rtf" => "rtf:Rich Text Format",
+            "txt" => "txt:Text (encoded):UTF8",
+            "html" when family == "calc" => "html:HTML (StarCalc)",
+            "html" => "html:HTML (StarWriter)",
             "xlsx" => "xlsx:Calc MS Excel 2007 XML",
             "xls" => "xls:MS Excel 97",
-            "ods" => "ods:calc8",
-            "csv" => "csv:Text - txt - csv (StarCalc)",
             "xlt" => "xlt:MS Excel 97 Vorlage/Template",
+            "ods" => "ods",
             "ots" => "ots:calc8_template",
+            "csv" => "csv:Text - txt - csv (StarCalc):44,34,76",
             "pptx" => "pptx:Impress MS PowerPoint 2007 XML",
             "ppt" => "ppt:MS PowerPoint 97",
-            "odp" => "odp:impress8",
+            "odp" => "odp",
             "otp" => "otp:impress8_template",
+            "odg" when family == "impress" => "odg:impress8_draw",
             "odg" => "odg:draw8",
-            "svg" => "svg:draw_svg_Export",
-            "png" => "png:draw_png_Export",
-            "emf" => "emf:draw_emf_Export",
-            "wmf" => "wmf:draw_wmf_Export",
-            _ => throw new ArgumentException($"LibreOffice cannot write {to}.")
+            "svg" => $"svg:{family}_svg_Export",
+            "png" => $"png:{family}_png_Export",
+            "emf" => $"emf:{family}_emf_Export",
+            "wmf" => $"wmf:{family}_wmf_Export",
+            _ => to,
         };
     }
 
-    private static string FamilyOf(string from, string? extension = null)
+    /// <summary>The LibreOffice application that opens a format: writer, calc, impress or draw.</summary>
+    private static string FamilyOf(string from, string? extension)
     {
-        if (Writer.Contains(from) || WriterImport.Contains(from) || from is "txt" or "html" or "htm")
-            return "writer";
+        if (from == "sda")
+            return string.Equals(extension, "sda", StringComparison.OrdinalIgnoreCase) ? "draw" : "impress";
         if (Calc.Contains(from) || CalcImport.Contains(from))
             return "calc";
         if (Impress.Contains(from) || ImpressImport.Contains(from) || ImpressGraphics.Contains(from))
             return "impress";
-        if (Draw.Contains(from) || DrawOnlyFor.Contains(from))
-            return "draw";
-        // HWP / HWPX
-        if (from is "hwp" or "hwpx")
-            return "writer";
-        return "writer";
+        return Draw.Contains(from) || DrawOnlyFor.Contains(from) ? "draw" : "writer";
     }
 
-    private static bool IsOfficeOpenXmlOrOpenDocument(string path)
+    /// <param name="hwp">H2Orestart is installed (HWP / HWPX import).</param>
+    /// <param name="slides">Presentations → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForSlides"/>).</param>
+    /// <param name="hwpToPdf">HWP / HWPX → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForHwp"/>).</param>
+    /// <param name="documents">Word documents → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForDocuments"/>).</param>
+    /// <param name="sheets">Spreadsheets → PDF should go through LibreOffice (<see cref="EngineEnvironment.LibreOfficeForSheets"/>).</param>
+    internal static List<ConversionEdge> BuildEdges(bool hwp, bool slides, bool hwpToPdf, bool documents = false, bool sheets = false)
     {
-        var ext = Path.GetExtension(path).TrimStart('.').ToLowerInvariant();
-        return ext is "docx" or "xlsx" or "pptx" or "odt" or "ods" or "odp" or "odg";
-    }
+        var edges = new List<ConversionEdge>();
+        void Add(IEnumerable<string> sources, IEnumerable<string> targets, int cost)
+        {
+            foreach (var s in sources)
+                foreach (var t in targets)
+                    if (s != t)
+                        // An image that reached a drawing or a PDF would come back as a picture inside the SVG:
+                        // images are traced instead.
+                        edges.Add(new ConversionEdge(s, t, cost, NotForImageSources: t == "svg"));
+        }
 
-    private static async Task<string> RepackAsync(string input, string workDirectory, CancellationToken cancellationToken)
-    {
-        var repacked = Path.Combine(workDirectory, "repacked-" + Path.GetFileName(input));
-        await using (var src = File.OpenRead(input))
-        await using (var dst = File.Create(repacked))
-            await src.CopyToAsync(dst, cancellationToken);
-        return repacked;
+        // LibreOffice is the fallback: its costs make the built-in engines win wherever they can do the job
+        // (DOCX / XLSX / PPTX / TXT → PDF through the HWPX writer and rhwp, XLSX ↔ CSV, ...), so it is only used for
+        // what nothing else reads or writes (DOC, XLS, PPT, OpenDocument, DOCX output, ...).
+        const int Fallback = 25;
+        // Chosen in Settings → Engines: cheap enough to beat the built-in route even at the bottom of the engine list
+        // (its priority adds at most 9; PPTX → HWPX → PDF costs about 32, rhwp's HWP → PDF about 13).
+        const int Preferred = 0;
+        // Word and spreadsheet sources the built-in route also reads: cheap enough to win for the file itself (10 + 9
+        // against about 31 through the HWPX writer and rhwp), not as a hop for other formats, which the DOCX writer can
+        // turn into DOCX (Excel → DOCX → LibreOffice would cost 17 + 19).
+        const int Chosen = 10;
+        Add(Writer, [.. Writer, "txt", "html"], Fallback);
+        Add(Writer, ["pdf"], documents ? Chosen : Fallback);
+        Add(Calc, [.. Calc, "html"], Fallback);
+        Add(Calc, ["pdf"], sheets ? Chosen : Fallback);
+        Add(Impress, Impress, Fallback);
+        Add(Impress, ["pdf"], slides ? Preferred : Fallback);
+        Add(["txt", "html"], ["docx", "odt", "pdf"], Fallback + 3);
+        // Formats only LibreOffice reads, to PDF and the editable formats of their kind.
+        Add(WriterImport, [.. Writer, "pdf", "txt", "html"], Fallback);
+        Add(CalcImport, [.. Calc, "pdf", "html"], Fallback);
+        Add(ImpressImport, [.. Impress, "pdf"], Fallback);
+        Add([.. ImpressGraphics, .. Draw], DrawTargets, Fallback);
+        Add(["svg"], ["odg", "emf", "wmf"], Fallback);
+        Add(["pdf"], ["svg", "odg"], Fallback);
+        if (hwp)
+        {
+            Add(["hwp", "hwpx"], ["docx", "odt", "rtf"], Fallback + 6);
+            Add(["hwp", "hwpx"], ["pdf"], hwpToPdf ? Preferred : Fallback + 6);
+        }
+        return edges;
     }
-
-    private string ProfileDirectory(int slot) =>
-        Path.Combine(_env.DataDirectory, "libreoffice-profiles", "worker-" + slot);
 
     /// <summary>
-    /// Locates soffice: the one chosen in Settings → Engines, else Filee's copy (engines/libreoffice),
+    /// The user's own LibreOffice when they chose one in Settings → Engines, else Filee's copy (engines/libreoffice),
     /// else a LibreOffice installed on the PC. Each conversion uses its own profile, so an open LibreOffice is untouched.
     /// </summary>
     private void Locate()
