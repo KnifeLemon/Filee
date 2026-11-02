@@ -15,6 +15,9 @@ internal static class FilePreviews
     /// <summary>The largest PDF whose first page is drawn: a bigger one is read whole, which costs too much memory.</summary>
     public const long MaxPdfBytes = 50L * 1024 * 1024;
 
+    /// <summary>The longest one picture may take: a file that stalls does not hold up the others.</summary>
+    private static readonly TimeSpan RenderLimit = TimeSpan.FromSeconds(20);
+
     /// <summary>One picture at a time: the pictures of a long list are drawn in turn, not all at once.</summary>
     private static readonly SemaphoreSlim Gate = new(1, 1);
 
@@ -41,14 +44,24 @@ internal static class FilePreviews
     {
         if (format is null || IsTooLarge(path, format))
             return null;
-        await Gate.WaitAsync(cancel);
+        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
+        limit.CancelAfter(RenderLimit);
         try
         {
-            return await Task.Run(() => Make(path, format), cancel);
+            await Gate.WaitAsync(limit.Token);
+            try
+            {
+                return await Task.Run(() => Make(path, format), limit.Token);
+            }
+            finally
+            {
+                Gate.Release();
+            }
         }
-        finally
+        catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
         {
-            Gate.Release();
+            // Too slow: this file gets no picture, and the files after it are not kept waiting.
+            return null;
         }
     }
 

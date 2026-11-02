@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
+using Microsoft.Extensions.Logging;
 
 namespace Filee.App.ViewModels.Pages;
 
@@ -90,7 +91,8 @@ public sealed partial class StagedFileViewModel : ObservableObject, IDisposable
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            // No picture: the card shows its extension instead.
+            // No picture: the card shows its extension instead. The log says why, for a file that should have one.
+            AppHost.Get<ILogger<StagedFileViewModel>>().LogWarning(ex, "No picture for {File}", Path);
         }
     }
 
