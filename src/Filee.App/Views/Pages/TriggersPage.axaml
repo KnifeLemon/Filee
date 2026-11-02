@@ -112,6 +112,12 @@
                 </StackPanel>
               </Grid>
 
+              <StackPanel IsVisible="{Binding UsesProfile}">
+                <TextBlock Classes="label" Text="{DynamicResource triggers.profile}" />
+                <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                          HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.profile}" />
+              </StackPanel>
+
               <!-- Clipboard shortcut: converts the files or the picture on the clipboard and puts the results back -->
               <DockPanel IsVisible="{Binding UsesClipboard}">
                 <ToggleSwitch DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0" Margin="12,0,0,0"
