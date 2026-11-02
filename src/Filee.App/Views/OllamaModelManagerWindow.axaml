@@ -25,8 +25,9 @@
           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
             <Button Content="{DynamicResource presets.test_connection}" IsVisible="{Binding IsServerRunning}"
                     Command="{Binding TestConnectionCommand}" IsEnabled="{Binding !IsTesting}" />
-            <Button Content="{DynamicResource engines.ollama.stop_server}" IsVisible="{Binding CanStopServer}"
-                    Command="{Binding StopServerCommand}" />
+            <Button Content="{DynamicResource engines.ollama.stop_server}" IsVisible="{Binding IsServerRunning}"
+                    Command="{Binding StopServerCommand}"
+                    Foreground="#EF4444" BorderBrush="#EF4444" />
             <Button Classes="accent" Content="{DynamicResource engines.ollama.start_server}" IsVisible="{Binding !IsServerRunning}"
                     Command="{Binding StartServerCommand}" />
             <Button Content="{DynamicResource engines.ollama.refresh}" Command="{Binding RefreshStatusCommand}" />
@@ -100,6 +101,13 @@
             <TextBlock Classes="caption" Text="{DynamicResource engines.ollama.no_models}"
                        IsVisible="{Binding !Models.Count}" />
 
+            <!-- Notice when no model is active -->
+            <Border Background="#223B82F6" BorderBrush="#3B82F6" BorderThickness="1" CornerRadius="4" Padding="10,6"
+                    IsVisible="{Binding HasNoActiveModel}">
+              <TextBlock Foreground="#2563EB" TextWrapping="Wrap"
+                         Text="{DynamicResource engines.ollama.select_model_hint}" />
+            </Border>
+
             <ItemsControl ItemsSource="{Binding Models}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -110,20 +118,27 @@
                 <DataTemplate x:DataType="vm:OllamaModelItem">
                   <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,10">
                     <DockPanel LastChildFill="True">
-                      <!-- Right Action Button -->
-                      <Button DockPanel.Dock="Right" Content="{Binding ActionText}"
-                              IsEnabled="{Binding IsActionEnabled}"
-                              Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).UseModelCommand}"
-                              CommandParameter="{Binding}"
-                              Classes.using="{Binding IsUsing}"
-                              MinWidth="120" HorizontalContentAlignment="Center">
-                        <Button.Styles>
-                          <Style Selector="Button.using">
-                            <Setter Property="Foreground" Value="#16A34A" />
-                            <Setter Property="FontWeight" Value="SemiBold" />
-                          </Style>
-                        </Button.Styles>
-                      </Button>
+                      <!-- Right Action Buttons -->
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                        <Button Content="{Binding ActionText}"
+                                IsEnabled="{Binding IsActionEnabled}"
+                                Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).UseModelCommand}"
+                                CommandParameter="{Binding}"
+                                Classes.using="{Binding IsUsing}"
+                                MinWidth="120" HorizontalContentAlignment="Center">
+                          <Button.Styles>
+                            <Style Selector="Button.using">
+                              <Setter Property="Foreground" Value="#16A34A" />
+                              <Setter Property="FontWeight" Value="SemiBold" />
+                            </Style>
+                          </Button.Styles>
+                        </Button>
+                        <Button Content="🗑" ToolTip.Tip="{DynamicResource common.delete}"
+                                Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).DeleteModelCommand}"
+                                CommandParameter="{Binding}"
+                                IsEnabled="{Binding !IsDeleting}"
+                                Foreground="#EF4444" BorderBrush="#EF4444" Padding="8,6" />
+                      </StackPanel>
 
                       <!-- Left Details -->
                       <StackPanel Spacing="4" VerticalAlignment="Center">

@@ -28,6 +28,9 @@ public sealed partial class OllamaModelItem : ObservableObject
 
     [ObservableProperty]
     private bool _isActionEnabled = true;
+
+    [ObservableProperty]
+    private bool _isDeleting;
 }
 
 public sealed partial class OllamaModelManagerViewModel : ObservableObject
@@ -219,8 +222,10 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
 
     private void UpdateCanStopServer()
     {
-        CanStopServer = _fileeStartedOllamaProcess is { HasExited: false };
+        CanStopServer = IsServerRunning;
     }
+
+    public bool HasNoActiveModel => IsServerRunning && Models.Count > 0 && string.IsNullOrWhiteSpace(ActiveModelName);
 
     private async Task CheckServerAndLoadModelsAsync()
     {
@@ -264,7 +269,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
 
                 var preferred = !string.IsNullOrWhiteSpace(ActiveModelName)
                     ? ActiveModelName
-                    : await TranslationService.GetPreferredLocalOllamaModelAsync();
+                    : _store.Settings.PreferredOllamaModel;
 
                 if (!string.IsNullOrWhiteSpace(preferred) && list.FirstOrDefault(m => string.Equals(m.Name, preferred, StringComparison.OrdinalIgnoreCase)) is { } matched)
                 {
@@ -273,15 +278,15 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
                     matched.IsActionEnabled = false;
                     ActiveModelName = matched.Name;
                 }
-                else if (list.FirstOrDefault(m => !m.IsCloud) is { } fallbackLocal)
+                else
                 {
-                    fallbackLocal.IsUsing = true;
-                    fallbackLocal.ActionText = _loc["engines.ollama.using_model"];
-                    fallbackLocal.IsActionEnabled = false;
-                    ActiveModelName = fallbackLocal.Name;
+                    ActiveModelName = "";
+                    _store.Settings.PreferredOllamaModel = null;
+                    _store.SaveSettings();
                 }
 
                 Models = new ObservableCollection<OllamaModelItem>(list);
+                OnPropertyChanged(nameof(HasNoActiveModel));
                 return;
             }
         }
@@ -333,6 +338,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         item.IsUsing = true;
         item.ActionText = _loc["engines.ollama.using_model"];
         item.IsActionEnabled = false;
+        OnPropertyChanged(nameof(HasNoActiveModel));
     }
 
     [RelayCommand]
@@ -352,10 +358,65 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
                 _fileeStartedOllamaProcess = null;
             }
         }
+        else
+        {
+            try
+            {
+                foreach (var p in Process.GetProcessesByName("ollama"))
+                {
+                    try
+                    {
+                        p.Kill(entireProcessTree: true);
+                        await p.WaitForExitAsync();
+                    }
+                    catch { }
+                    finally
+                    {
+                        p.Dispose();
+                    }
+                }
+            }
+            catch { }
+        }
         UpdateCanStopServer();
         await Task.Delay(300);
         await RefreshStatusAsync();
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        await Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
+    }
+
+    [RelayCommand]
+    public async Task DeleteModelAsync(OllamaModelItem item)
+    {
+        if (item.IsDeleting)
+            return;
+
+        item.IsDeleting = true;
+        try
+        {
+            using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
+            var body = new { model = item.Name };
+            var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(OllamaBase, "/api/delete"))
+            {
+                Content = JsonContent.Create(body)
+            };
+            var response = await client.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                Models.Remove(item);
+                if (string.Equals(ActiveModelName, item.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    ActiveModelName = "";
+                    _store.Settings.PreferredOllamaModel = null;
+                    _store.SaveSettings();
+                }
+                OnPropertyChanged(nameof(HasNoActiveModel));
+            }
+        }
+        catch { }
+        finally
+        {
+            item.IsDeleting = false;
+        }
     }
 
     [RelayCommand]
@@ -394,7 +455,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         }
 
         await RefreshStatusAsync();
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        await Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
     }
 
     [RelayCommand]

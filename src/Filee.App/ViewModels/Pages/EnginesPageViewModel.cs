@@ -166,8 +166,9 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     {
         EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
         _catalog.Refresh();
+        _ = _catalog.CheckInBackgroundAsync();
     }
 
     private void Move(EngineItemViewModel item, int delta)

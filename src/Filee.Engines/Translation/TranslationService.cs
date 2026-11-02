@@ -180,11 +180,18 @@ public sealed class TranslationService : ITranslationService
             var client = _http ?? SharedHttpClient;
             var body = new { model = modelName };
             using var res = await client.PostAsJsonAsync(new Uri(LocalOllamaBase, "/api/show"), body, cancellationToken);
+            if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
+                throw new ConversionRefusedException("error.translation_model_not_found");
+
             if (!res.IsSuccessStatusCode)
                 return true;
 
             using var doc = await JsonDocument.ParseAsync(await res.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
             return IsCloudModelElement(doc.RootElement);
+        }
+        catch (ConversionRefusedException)
+        {
+            throw;
         }
         catch
         {
