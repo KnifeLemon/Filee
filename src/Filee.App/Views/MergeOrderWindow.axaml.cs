@@ -112,7 +112,7 @@ public partial class MergeOrderWindow : Window
     /// </summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is not MergeOrderViewModel vm || !IsWithin(e.Source, FileOrder))
+        if (DataContext is not MergeOrderViewModel vm || !IsListKey(e.Source))
             return;
         if (e.Key is Key.Up or Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
             (e.Key == Key.Up ? vm.MoveUpCommand : vm.MoveDownCommand).Execute(null);
@@ -125,6 +125,14 @@ public partial class MergeOrderWindow : Window
         FocusSelected(vm);
         e.Handled = true;
     }
+
+    /// <summary>
+    /// Whether the keys go to the list: when the list has the focus, or a button of the bottom bar does (the focus can
+    /// reach them from the list). The radio buttons and the colour picker keep their own arrows.
+    /// </summary>
+    private bool IsListKey(object? source) =>
+        IsWithin(source, FileOrder) || ReferenceEquals(source, MoveUp) || ReferenceEquals(source, MoveDown)
+        || ReferenceEquals(source, CancelMerge) || ReferenceEquals(source, StartMerge);
 
     /// <summary>Gives the list the focus back on the selected card, so the keys keep working after a move or a removal.</summary>
     private void FocusSelected(MergeOrderViewModel vm)
