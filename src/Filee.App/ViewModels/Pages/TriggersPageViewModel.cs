@@ -284,6 +284,7 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
     public ObservableCollection<TriggerGestureViewModel> Gestures { get; } = [];
 
     public bool IsMacOS => _platform is MacOSPlatformServices;
+    public bool CanMiddleClick => _platform?.SupportsSelectionShortcut == true;
     public bool CanRetryHook => _triggers is not null && (_platform?.SupportsGlobalPointerGestures == true || IsMacOS);
     public string? IntegrationError => _accessibilityError ?? _integration?.Error;
     public string? PlatformNotice => _platform switch
