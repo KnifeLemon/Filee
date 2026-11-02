@@ -9,6 +9,7 @@ using Filee.App.Services;
 using Filee.App.Services.Triggers;
 using Filee.Core.Localization;
 using Filee.Core.Platform;
+using Filee.Core.Profiles;
 using Filee.Core.Settings;
 using Filee.Platform.Linux;
 using Filee.Platform.MacOS;
@@ -23,7 +24,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     private bool _loading = true;
 
     /// <param name="clipboardAvailable">The platform can read the clipboard (<see cref="IPlatformServices.SupportsClipboard"/>).</param>
-    public TriggerGestureViewModel(TriggerGesture gesture, ILocalizer loc, Action save, bool clipboardAvailable = false)
+    public TriggerGestureViewModel(TriggerGesture gesture, ILocalizer loc, Action save, bool clipboardAvailable = false, IReadOnlyList<ToolbarProfile>? profiles = null)
     {
         _gesture = gesture;
         _save = save;
@@ -36,6 +37,8 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         Scopes = Enum.GetValues<TriggerScope>()
             .Select(s => new Choice<TriggerScope>(s, loc[s == TriggerScope.FileManager ? $"triggers.scope.{s}{platform}" : $"triggers.scope.{s}"]))
             .ToList();
+        Profiles = new[] { new Choice<string?>(null, loc["triggers.profile_auto"]) }
+            .Concat((profiles ?? []).Select(p => new Choice<string?>(p.Id, loc.DisplayName(p)))).ToList();
         RecordLabel = loc["triggers.record"];
         RecordingLabel = loc["triggers.recording"];
         SystemLabel = loc["triggers.threshold_system"];
@@ -52,6 +55,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         HoldMilliseconds = gesture.HoldMilliseconds;
         Scope = Scopes.First(s => s.Value == gesture.Scope);
         Clipboard = gesture.Clipboard;
+        SelectedProfile = Profiles.FirstOrDefault(p => p.Value == gesture.ProfileId) ?? Profiles[0];
         _loading = false;
     }
 
@@ -59,6 +63,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     public IReadOnlyList<Choice<TriggerKind>> Kinds { get; }
     public IReadOnlyList<Choice<TriggerMouseButton>> Buttons { get; }
     public IReadOnlyList<Choice<TriggerScope>> Scopes { get; }
+    public IReadOnlyList<Choice<string?>> Profiles { get; }
     public string RecordLabel { get; }
     public string RecordingLabel { get; }
     public string SystemLabel { get; }
@@ -67,7 +72,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
 
     [ObservableProperty] private bool _enabled;
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard), nameof(UsesProfile))]
     private Choice<TriggerKind> _kind = null!;
 
     [ObservableProperty] private bool _ctrl;
@@ -79,6 +84,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ThresholdText))] private int _dragThreshold;
     [ObservableProperty] private int _holdMilliseconds;
     [ObservableProperty] private Choice<TriggerScope> _scope = null!;
+    [ObservableProperty] private Choice<string?> _selectedProfile = null!;
     [ObservableProperty] private bool _clipboard;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(KeyText))] private bool _isRecording;
     [ObservableProperty] private string? _conflict;
@@ -91,6 +97,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     public bool UsesHold => Kind.Value == TriggerKind.Hold;
     /// <summary>A keyboard shortcut where the clipboard can be read: it may convert what is on the clipboard.</summary>
     public bool UsesClipboard => UsesKey && ClipboardAvailable;
+    public bool UsesProfile => Kind.Value != TriggerKind.Drag;
     public string KeyText => IsRecording ? RecordingLabel : string.IsNullOrEmpty(Key) ? "—" : Key;
     public string ThresholdText => DragThreshold == 0 ? SystemLabel : $"{DragThreshold}px";
     public string Summary => GestureText.Describe(_gesture);
@@ -99,6 +106,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     partial void OnKindChanged(Choice<TriggerKind>? oldValue, Choice<TriggerKind> newValue) => Choices.Restore(oldValue, newValue, v => Kind = v);
     partial void OnButtonChanged(Choice<TriggerMouseButton>? oldValue, Choice<TriggerMouseButton> newValue) => Choices.Restore(oldValue, newValue, v => Button = v);
     partial void OnScopeChanged(Choice<TriggerScope>? oldValue, Choice<TriggerScope> newValue) => Choices.Restore(oldValue, newValue, v => Scope = v);
+    partial void OnSelectedProfileChanged(Choice<string?>? oldValue, Choice<string?> newValue) => Choices.Restore(oldValue, newValue, v => SelectedProfile = v);
 
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -117,6 +125,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         _gesture.HoldMilliseconds = Math.Clamp(HoldMilliseconds, 150, 3000);
         _gesture.Scope = Scope.Value;
         _gesture.Clipboard = Clipboard;
+        _gesture.ProfileId = SelectedProfile.Value;
         OnPropertyChanged(nameof(Summary));
         _save();
     }
@@ -262,7 +271,7 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
         if (triggers is not null)
             triggers.StatusChanged += OnTriggerStatusChanged;
         foreach (var gesture in store.Settings.Triggers)
-            Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save, platform?.SupportsClipboard == true));
+            Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save, platform?.SupportsClipboard == true, store.Profiles));
         RefreshConflicts();
         ExcludedApps = new ExcludedAppsViewModel(store.Settings.ExcludedProcesses, platform, Save);
         Flip = new FlipOptionsViewModel(store, loc, Save);
@@ -358,7 +367,7 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
     {
         var gesture = new TriggerGesture { Modifiers = ModifierKeys.Alt, Button = TriggerMouseButton.Left };
         _store.Settings.Triggers.Add(gesture);
-        Gestures.Add(new TriggerGestureViewModel(gesture, _loc, Save, _platform?.SupportsClipboard == true));
+        Gestures.Add(new TriggerGestureViewModel(gesture, _loc, Save, _platform?.SupportsClipboard == true, _store.Profiles));
         Save();
     }
 
