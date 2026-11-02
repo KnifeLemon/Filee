@@ -575,7 +575,7 @@
   "triggers.profile_auto": "Automatic (based on file formats)",
   "triggers.middle_click_note": "Built-in shortcut. Select one or more files in your file manager, then press the mouse wheel button. Turn it off here to restore the normal middle-click behavior.",
   "triggers.add": "Add gesture",
-  "triggers.conflict": "This shortcut duplicates another enabled gesture in an overlapping scope.",
+  "triggers.conflict": "This shortcut conflicts with another enabled gesture or the built-in middle-click shortcut.",
   "triggers.remove": "Remove",
   "triggers.enabled": "On",
   "triggers.kind": "Gesture",
