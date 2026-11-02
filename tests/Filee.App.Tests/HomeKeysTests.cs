@@ -81,10 +81,20 @@ public class HomeKeysTests
             Pump();
             Assert.Equal(0, Selected());
 
+            // Delete takes the selected card out, and the card that takes its place is selected.
+            model.SelectQueued(1);
+            queue.Focus();
+            Pump();
+            window.KeyPress(Key.Delete, RawInputModifiers.None, PhysicalKey.Delete, null);
+            Pump();
+            Assert.Equal(5, model.Queue.Count);
+            Assert.Equal(1, Selected());
+
             // Alt+Down moves the selected card from anywhere on the page.
             window.KeyPress(Key.Down, RawInputModifiers.Alt, PhysicalKey.ArrowDown, null);
             Pump();
-            Assert.Equal(paths[1], model.QueuedPaths[0]);
+            // After the Delete the selected card is card 3 (index 1); Alt+Down moves it below card 4.
+            Assert.Equal(paths[2], model.QueuedPaths[2]);
         }
         finally
         {

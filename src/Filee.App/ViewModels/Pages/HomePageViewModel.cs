@@ -347,8 +347,13 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     /// <summary>The Delete key: takes the selected file out of the list, if one is selected.</summary>
     public void RemoveSelectedQueued()
     {
-        if (Queue.FirstOrDefault(card => card.IsSelected) is { } selected)
-            RemoveFromQueue(selected);
+        var index = Queue.ToList().FindIndex(card => card.IsSelected);
+        if (index < 0)
+            return;
+        RemoveFromQueue(Queue[index]);
+        // The card that takes its place is selected, as in the merge window (the last one when it was the last).
+        if (Queue.Count > 0)
+            SelectQueued(Math.Min(index, Queue.Count - 1));
     }
 
     /// <summary>
