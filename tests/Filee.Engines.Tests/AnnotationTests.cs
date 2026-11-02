@@ -89,9 +89,11 @@ public class AnnotationTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(tag.Width > latin.Width * 1.8, $"{tag.Width} px against {latin.Width} px for Save alone");
         var row = Enumerable.Range((int)tag.Left, (int)tag.Width).Select(x => At(image, x, (int)tag.MidY)).ToList();
         Assert.Contains(row, p => p.R > 240 && p.G > 200);
-        // A yellow number has dark ink.
+        // A yellow number has dark ink, looked for across the whole circle: a font's thin strokes can miss any one row.
         var circle = AnnotationPainter.CircleOf(number, 800, 400);
-        Assert.Contains(Enumerable.Range((int)circle.Left, (int)circle.Width).Select(x => At(image, x, (int)circle.MidY)), p => p.R < 80);
+        var inside = Enumerable.Range((int)circle.Top, (int)circle.Height)
+            .SelectMany(y => Enumerable.Range((int)circle.Left, (int)circle.Width).Select(x => At(image, x, y)));
+        Assert.Contains(inside, p => p.R < 80);
 
         // On a dark picture its white ring shows: the brightest pixel across the circle's edge is near white.
         using var dark = new MagickImage(new MagickColor("#101010"), 800, 400);

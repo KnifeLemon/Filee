@@ -2,6 +2,7 @@
 // Annotator draws the file with it, so what one sees is what one gets. Points are parts of the picture; every size is a
 // part of the picture's shorter side, so marks look the same on a small preview and the full-size file.
 
+using System.Collections.Concurrent;
 using Filee.Core.Presets;
 using SkiaSharp;
 
@@ -187,11 +188,34 @@ public static class AnnotationPainter
                        ?? SKTypeface.Default;
         var missing = text.EnumerateRunes().FirstOrDefault(r => !char.IsWhiteSpace((char)Math.Min(r.Value, char.MaxValue))
                                                                 && typeface.GetGlyph(r.Value) == 0);
-        if (missing.Value != 0 && SKFontManager.Default.MatchCharacter(null, SKFontStyleWeight.Bold, SKFontStyleWidth.Normal,
-                SKFontStyleSlant.Upright, null, missing.Value) is { } fallback)
+        if (missing.Value != 0 && FallbackFor(missing.Value) is { } fallback)
             typeface = fallback;
         return new SKFont(typeface, size) { Edging = SKFontEdging.Antialias, Subpixel = true };
     }
+
+    private static readonly ConcurrentDictionary<int, SKTypeface?> Fallbacks = new();
+
+    /// <summary>
+    /// A bold font for a letter the system's own lacks, or null when no installed font has it. Skia's Linux build here
+    /// finds fonts by family name but never by letter (MatchCharacter returns null even with a Korean font installed),
+    /// so the installed families are looked through for one that has it, sans-serif ones first.
+    /// </summary>
+    private static SKTypeface? FallbackFor(int codePoint) => Fallbacks.GetOrAdd(codePoint, static letter =>
+    {
+        var fonts = SKFontManager.Default;
+        if (fonts.MatchCharacter(null, SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright, null, letter)
+            is { } matched)
+            return matched;
+        foreach (var family in fonts.FontFamilies.OrderBy(f => f.Contains("Serif", StringComparison.OrdinalIgnoreCase)
+                                                               || f.Contains("Mono", StringComparison.OrdinalIgnoreCase)))
+        {
+            var face = fonts.MatchFamily(family, SKFontStyle.Bold);
+            if (face?.ContainsGlyph(letter) == true)
+                return face;
+            face?.Dispose();
+        }
+        return null;
+    });
 
     /// <summary>White on a dark colour, near-black on a light one (yellow), so text and numbers read.</summary>
     internal static SKColor InkOn(SKColor color) =>
