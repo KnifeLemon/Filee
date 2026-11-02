@@ -51,8 +51,10 @@ internal static class DocumentFonts
             if (!PackageExtensions.Contains(Path.GetExtension(path)))
                 return [];
             var referenced = Referenced(path);
-            return referenced.Where(face => !installed(face)
-                    && (!MetricAliases.TryGetValue(face, out var aliases) || !aliases.Any(installed)))
+            var alternateNames = AlternateNames(path);
+            return referenced.Where(face => !IsInstalled(face, installed)
+                    && (!alternateNames.TryGetValue(face, out var alternates)
+                        || !alternates.Any(name => IsInstalled(name, installed))))
                 .Order(StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
@@ -67,6 +69,49 @@ internal static class DocumentFonts
         // The user may have installed a font since an earlier conversion in this Filee session.
         RhwpFonts.Forget(face);
         return RhwpFonts.Find(face) is { Usable: true };
+    }
+
+    private static bool IsInstalled(string face, Func<string, bool> installed) =>
+        installed(face) || MetricAliases.TryGetValue(face, out var aliases) && aliases.Any(installed);
+
+    private static IReadOnlyDictionary<string, IReadOnlyList<string>> AlternateNames(string path)
+    {
+        using var zip = ZipFile.OpenRead(path);
+        var entry = zip.GetEntry("word/fontTable.xml");
+        if (entry is null || entry.Length > MaxPartBytes)
+            return new Dictionary<string, IReadOnlyList<string>>(StringComparer.OrdinalIgnoreCase);
+
+        using var stream = entry.Open();
+        using var reader = XmlReader.Create(stream, SafeXml());
+        var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        string? face = null;
+        var fontDepth = -1;
+        while (reader.Read())
+        {
+            if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "font")
+            {
+                face = reader.IsEmptyElement ? null : Attribute(reader, "name");
+                fontDepth = reader.IsEmptyElement ? -1 : reader.Depth;
+            }
+            else if (reader.NodeType == XmlNodeType.Element && reader.LocalName == "altName"
+                     && fontDepth >= 0 && reader.Depth == fontDepth + 1 && face is not null)
+            {
+                var alternate = Attribute(reader, "val")?.Trim();
+                if (!string.IsNullOrWhiteSpace(alternate))
+                {
+                    if (!result.TryGetValue(face, out var names))
+                        result[face] = names = [];
+                    names.Add(alternate);
+                }
+            }
+            else if (reader.NodeType == XmlNodeType.EndElement && reader.LocalName == "font" && reader.Depth == fontDepth)
+            {
+                face = null;
+                fontDepth = -1;
+            }
+        }
+        return result.ToDictionary(pair => pair.Key, pair => (IReadOnlyList<string>)pair.Value,
+            StringComparer.OrdinalIgnoreCase);
     }
 
     internal static IReadOnlyList<string> Referenced(string path)
