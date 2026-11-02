@@ -81,6 +81,28 @@ public class ApngTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Animated_gif_and_webp_become_animated_jxl()
+    {
+        var dir = fx.NewFolder();
+        var gifPath = MakeAnimatedGif(dir);
+        var webpPath = Path.Combine(dir, "anim.webp");
+        using (var gifFrames = new MagickImageCollection(gifPath))
+            gifFrames.Write(webpPath, MagickFormat.WebP);
+
+        foreach (var input in new[] { gifPath, webpPath })
+        {
+            var job = await fx.ConvertAsync([input], new Preset { TargetFormat = "jxl" });
+
+            AssertDone(job);
+            using var jxl = new MagickImageCollection(job.Outputs.Single());
+            Assert.Equal(3, jxl.Count);
+            Assert.True(Pixel(jxl[0], 32, 24).R > 200, "first frame is red");
+            Assert.True(Pixel(jxl[1], 32, 24).G > 200, "second frame is green");
+            Assert.True(Pixel(jxl[2], 32, 24).B > 200, "third frame is blue");
+        }
+    }
+
+    [Fact]
     public async Task An_animated_png_saved_as_png_stays_animated()
     {
         var dir = fx.NewFolder();

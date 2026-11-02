@@ -45,7 +45,7 @@ internal static class ImageEncoder
     /// Formats whose frames are an animation. Between these, all frames are kept with their timing (an animated GIF
     /// becomes an animated WebP and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng"];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl"];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
