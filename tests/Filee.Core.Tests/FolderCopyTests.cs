@@ -140,4 +140,189 @@ public class FolderCopyTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => FolderCopy.CopyAsync(source.File("a.txt"), Copy(target.Path).Output, cancel.Token));
         Assert.Empty(Directory.GetFileSystemEntries(target.Path));
     }
+
+    private static Preset Move(string folder)
+    {
+        var preset = Copy(folder);
+        preset.Output.MoveInsteadOfCopy = true;
+        return preset;
+    }
+
+    /// <summary>Runs <paramref name="body"/> as if every destination were on another volume than its source.</summary>
+    private static async Task AcrossVolumes(Func<Task> body)
+    {
+        var sameVolume = FolderCopy.SameVolume;
+        FolderCopy.SameVolume = (_, _) => false;
+        try { await body(); }
+        finally { FolderCopy.SameVolume = sameVolume; }
+    }
+
+    [Fact]
+    public void Move_is_off_by_default_and_survives_a_clone()
+    {
+        Assert.False(Copy("x").Output.MoveInsteadOfCopy);
+        Assert.True(Move("x").Clone().Output.MoveInsteadOfCopy);
+    }
+
+    [Fact]
+    public async Task Move_on_the_same_volume_renames_the_file_with_its_bytes_and_date()
+    {
+        using var source = new TempDir(); using var target = new TempDir();
+        var file = source.File("report.xyz");
+        var bytes = Enumerable.Range(0, 1000).Select(i => (byte)i).ToArray();
+        File.WriteAllBytes(file, bytes);
+        var stamp = new DateTime(2024, 5, 1, 12, 0, 0, DateTimeKind.Utc);
+        File.SetLastWriteTimeUtc(file, stamp);
+        var job = await Run([file], Move(target.Path));
+        Assert.Equal(JobState.Completed, job.State);
+        var moved = Assert.Single(job.Outputs);
+        Assert.Equal(Path.Combine(target.Path, "report.xyz"), moved);
+        Assert.Equal(bytes, File.ReadAllBytes(moved));
+        Assert.Equal(stamp, File.GetLastWriteTimeUtc(moved));
+        Assert.False(File.Exists(file));
+        Assert.Null(job.Files.Single().NoticeKey);
+    }
+
+    [Fact]
+    public async Task Move_across_volumes_copies_checks_then_deletes_files_and_folders() => await AcrossVolumes(async () =>
+    {
+        using var source = new TempDir(); using var target = new TempDir();
+        var folder = Path.Combine(source.Path, "icons.v1");
+        Directory.CreateDirectory(Path.Combine(folder, "empty"));
+        File.WriteAllText(Path.Combine(folder, "a.svg"), "svg bytes");
+        var file = source.File("photo.xyz", "photo bytes");
+        var job = await Run([folder, file], Move(target.Path));
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal("svg bytes", File.ReadAllText(Path.Combine(target.Path, "icons.v1", "a.svg")));
+        Assert.True(Directory.Exists(Path.Combine(target.Path, "icons.v1", "empty")));
+        Assert.Equal("photo bytes", File.ReadAllText(Path.Combine(target.Path, "photo.xyz")));
+        Assert.False(Directory.Exists(folder)); Assert.False(File.Exists(file));
+        // Nothing unpublished is left behind.
+        Assert.DoesNotContain(Directory.GetFileSystemEntries(target.Path), FolderCopy.IsWorkPath);
+    });
+
+    [Fact]
+    public async Task Move_of_a_folder_on_the_same_volume_is_a_rename()
+    {
+        using var source = new TempDir(); using var target = new TempDir();
+        var folder = Path.Combine(source.Path, "project");
+        Directory.CreateDirectory(Path.Combine(folder, "sub"));
+        File.WriteAllText(Path.Combine(folder, "sub", "a.txt"), "a");
+        var job = await Run([folder], Move(target.Path));
+        Assert.Equal(Path.Combine(target.Path, "project"), Assert.Single(job.Outputs));
+        Assert.Equal("a", File.ReadAllText(Path.Combine(target.Path, "project", "sub", "a.txt")));
+        Assert.False(Directory.Exists(folder));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Move_clash_is_numbered_and_never_overwrites(bool sameVolume)
+    {
+        async Task Body()
+        {
+            using var source = new TempDir(); using var target = new TempDir();
+            var file = source.File("a.txt", "new");
+            var existing = target.File("a.txt", "keep");
+            var preset = Move(target.Path);
+            preset.Output.Conflict = ConflictPolicy.Overwrite;
+            var job = await Run([file], preset);
+            Assert.Equal(Path.Combine(target.Path, "a (2).txt"), Assert.Single(job.Outputs));
+            Assert.Equal("keep", File.ReadAllText(existing));
+            Assert.Equal("new", File.ReadAllText(job.Outputs.Single()));
+            Assert.False(File.Exists(file));
+        }
+        if (sameVolume) await Body(); else await AcrossVolumes(Body);
+    }
+
+    [Fact]
+    public async Task Move_into_the_files_own_folder_does_nothing()
+    {
+        using var source = new TempDir(); var file = source.File("a.txt");
+        var job = await Run([file], Move(source.Path));
+        Assert.Equal(FileState.Skipped, Assert.Single(job.Files).State);
+        Assert.Equal([file], Directory.GetFiles(source.Path));
+    }
+
+    [Fact]
+    public async Task Failed_moves_leave_the_original_where_it_was()
+    {
+        using var source = new TempDir();
+        var file = source.File("a.txt", "keep");
+        var missing = Path.Combine(source.Path, "unplugged", "target");
+        var job = await Run([file], Move(missing));
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Contains("destination folder", Assert.Single(job.Files).ErrorDetail);
+        Assert.False(Directory.Exists(Path.GetDirectoryName(missing)));
+        Assert.Equal("keep", File.ReadAllText(file));
+
+        var child = Path.Combine(source.Path, "child"); Directory.CreateDirectory(child);
+        var into = await Run([source.Path], Move(child));
+        Assert.Contains("itself", Assert.Single(into.Files).ErrorDetail);
+        Assert.Equal("keep", File.ReadAllText(file));
+        Assert.Empty(Directory.GetFileSystemEntries(child));
+    }
+
+    [Fact]
+    public async Task Cancelled_move_across_volumes_keeps_the_original_and_leaves_no_partial_output() => await AcrossVolumes(async () =>
+    {
+        using var source = new TempDir(); using var target = new TempDir();
+        var file = source.File("a.txt", "keep");
+        using var cancel = new CancellationTokenSource(); cancel.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => FolderCopy.MoveAsync(file, Move(target.Path).Output, cancel.Token));
+        Assert.Equal("keep", File.ReadAllText(file));
+        Assert.Empty(Directory.GetFileSystemEntries(target.Path));
+    });
+
+    [Fact]
+    public async Task Original_that_cannot_be_deleted_keeps_the_complete_copy_with_a_notice() => await AcrossVolumes(async () =>
+    {
+        using var source = new TempDir(); using var target = new TempDir();
+        var folder = Path.Combine(source.Path, "locked"); Directory.CreateDirectory(folder);
+        var file = Path.Combine(folder, "a.txt"); File.WriteAllText(file, "bytes");
+        // A file that can't be deleted: read-only on Windows, in a folder without write permission elsewhere.
+        if (OperatingSystem.IsWindows()) File.SetAttributes(file, FileAttributes.ReadOnly);
+        else File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        try
+        {
+            var job = await Run([file], Move(target.Path));
+            var result = Assert.Single(job.Files);
+            Assert.Equal(FileState.Done, result.State);
+            Assert.Equal("notice.move_original_kept", result.NoticeKey);
+            Assert.False(string.IsNullOrWhiteSpace(result.NoticeDetail));
+            Assert.Equal("bytes", File.ReadAllText(Assert.Single(job.Outputs)));
+            Assert.Equal("bytes", File.ReadAllText(file));
+        }
+        finally
+        {
+            if (OperatingSystem.IsWindows()) File.SetAttributes(file, FileAttributes.Normal);
+            else File.SetUnixFileMode(folder, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+    });
+
+    [Fact]
+    public async Task Browser_download_on_a_moving_slice_is_saved_as_a_copy_would_be()
+    {
+        using var target = new TempDir(); using var work = new TempDir();
+        byte[] bytes = [137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3, 4];
+        using var downloader = new WebDownloader(new Response(bytes));
+        using var drop = new WebDrop([WebDropItem.FromAddress("picture.png", new Uri("https://example.test/picture.png"))], work.Path);
+        var fetcher = drop.CreateFetcher(new WebDropOptions(target.Path, true), downloader);
+        var job = await Run(drop.Placeholders, Move(target.Path), fetcher);
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(bytes, File.ReadAllBytes(Assert.Single(job.Outputs)));
+        Assert.False(Directory.Exists(drop.WorkFolder));
+        Assert.Single(Directory.GetFiles(target.Path));
+    }
+
+    [Fact]
+    public async Task Ask_every_time_moves_the_file_under_the_chosen_name()
+    {
+        using var source = new TempDir(); using var target = new TempDir();
+        var file = source.File("a.txt", "bytes");
+        var preset = AskedLocation.ForFile(Move(target.Path), Path.Combine(target.Path, "renamed.txt"));
+        var job = await Run([file], preset);
+        Assert.Equal(Path.Combine(target.Path, "renamed.txt"), Assert.Single(job.Outputs));
+        Assert.False(File.Exists(file));
+    }
 }

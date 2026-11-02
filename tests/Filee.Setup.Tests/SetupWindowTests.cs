@@ -39,6 +39,7 @@ public class SetupWindowTests
         public bool? DeletedSettings { get; private set; }
         public InstallResult Result { get; set; } = new(new LaunchRequest(@"C:\Program Files\Filee\Filee.exe", "--background"), []);
         public TaskCompletionSource? Hold { get; set; }
+        public int DeletedAtRestart { get; set; }
 
         public InstallResult Install(InstallChoices choices, IProgress<SetupProgress> progress)
         {
@@ -48,10 +49,10 @@ public class SetupWindowTests
             return Result;
         }
 
-        public Exception? Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
+        public UninstallResult Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
         {
             DeletedSettings = deleteSettings;
-            return null;
+            return new UninstallResult(DeletedAtRestart: DeletedAtRestart);
         }
     }
 
@@ -211,6 +212,20 @@ public class SetupWindowTests
             Check(window, $"uninstall-2-done-{language}.png");
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public async Task Uninstall_says_files_in_use_go_at_the_next_restart()
+    {
+        // Issue #519: files still in use are deleted at the next restart, and the message said nothing about them.
+        var (model, texts, runner) = Model("en", uninstall: true);
+        runner.DeletedAtRestart = 2;
+        await model.UninstallAsync();
+        Assert.Contains(texts["installer.uninstall.restart"], model.UninstalledText);
+
+        var (plain, _, _) = Model("en", uninstall: true);
+        await plain.UninstallAsync();
+        Assert.DoesNotContain(texts["installer.uninstall.restart"], plain.UninstalledText);
     }
 
     [AvaloniaFact]

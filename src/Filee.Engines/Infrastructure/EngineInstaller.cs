@@ -33,6 +33,29 @@ public enum EngineInstallStage
 /// <param name="BytesTotal">Download size of the components being installed.</param>
 public readonly record struct EngineInstallProgress(EngineInstallStage Stage, string ComponentId, double Fraction, long BytesDone = 0, long BytesTotal = 0);
 
+/// <summary>Which copy of a package the engines use, see <see cref="EngineInstaller.StatusOf"/>.</summary>
+public enum EngineCopyStatus
+{
+    NotInstalled,
+    /// <summary>Filee's download.</summary>
+    Installed,
+    /// <summary>The user's own copy (Settings → Engines) or one found on the PC; nothing of Filee's is used.</summary>
+    OwnCopy,
+}
+
+/// <summary>The copy of a package the engines use, as Settings → Engines and 'filee engines' show it.</summary>
+/// <param name="Folder">Folder of the copy in use while the status is <see cref="EngineCopyStatus.OwnCopy"/>.</param>
+/// <param name="FromSystem">That copy was found on the PC (PATH, Program Files), not chosen by the user.</param>
+/// <param name="Outdated">Filee's download is older than the version engines.json pins.</param>
+public sealed record EngineCopy(EngineCopyStatus Status, string? Folder, bool FromSystem, bool Outdated);
+
+/// <summary>Another Filee (the app, the CLI or a second copy) is installing or removing the same package.</summary>
+public sealed class EngineBusyException(string packageId)
+    : IOException($"{packageId} is being installed by another Filee. Try again when it has finished.")
+{
+    public string PackageId { get; } = packageId;
+}
+
 /// <summary>Installs and removes <see cref="EnginePackage"/>s.</summary>
 public sealed class EngineInstaller
 {
@@ -54,6 +77,39 @@ public sealed class EngineInstaller
         _logger = logger ?? NullLogger.Instance;
     }
 
+    /// <summary>
+    /// The client to create an installer with: automatic redirects off, because the installer follows them itself
+    /// (mirrors may use plain HTTP; every file is checked against its SHA-256), and Filee's user agent.
+    /// </summary>
+    public static HttpClient CreateHttpClient(TimeSpan timeout)
+    {
+        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = timeout };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(EngineInstaller).Assembly.GetName().Version}");
+        return http;
+    }
+
+    /// <summary>Folder that receives one sub folder per engine.</summary>
+    public string Root => _root;
+
+    /// <summary>The downloads this installer knows: engines.json for this computer unless a test passed its own.</summary>
+    public IReadOnlyDictionary<string, EngineComponent> Components => _components;
+
+    /// <summary>
+    /// The copy the engines use, in the order they look: the user's own copy, Filee's download, a copy on the PC
+    /// (only looked for when neither of the others is there).
+    /// </summary>
+    public EngineCopy StatusOf(EnginePackage package)
+    {
+        var installed = IsInstalled(package);
+        var own = EngineEnvironment.OwnCopyFolder(package.Id);
+        var system = own is null && !installed ? EngineEnvironment.SystemCopyFolder(package.Id) : null;
+        var folder = own ?? system;
+        var status = folder is not null ? EngineCopyStatus.OwnCopy
+            : installed ? EngineCopyStatus.Installed
+            : EngineCopyStatus.NotInstalled;
+        return new EngineCopy(status, folder, system is not null, folder is null && installed && !IsUpToDate(package));
+    }
+
     /// <summary>True when every component is installed (any version).</summary>
     public bool IsInstalled(EnginePackage package) => package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
 
@@ -68,6 +124,7 @@ public sealed class EngineInstaller
         if (package.Components.Any(c => !_components.ContainsKey(c)))
             throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
                 ?? $"The {package.Id} package is unavailable on this platform.");
+        using var packageLock = LockPackage(package);
         var pending = package.Components
             .Where(c => !string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase))
             .Select(c => _components[c])
@@ -103,11 +160,32 @@ public sealed class EngineInstaller
     /// <summary>Removes the package's folders. Fails if an engine is running (its files are locked).</summary>
     public void Uninstall(EnginePackage package)
     {
+        using var packageLock = LockPackage(package);
         foreach (var id in package.Components)
         {
             var folder = FolderOf(id);
             if (Directory.Exists(folder))
                 Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>
+    /// Holds the package's lock file (.downloads/locks/&lt;id&gt;.lock) while it is installed or removed, so two Filee
+    /// processes never write the same download or replace the same folder at once. The file stays; the open handle
+    /// is the lock (deleting it on close would let a third process lock a new file while a second still holds the old).
+    /// </summary>
+    /// <exception cref="EngineBusyException">Another process holds the lock.</exception>
+    private FileStream LockPackage(EnginePackage package)
+    {
+        var locks = Path.Combine(_root, ".downloads", "locks");
+        Directory.CreateDirectory(locks);
+        try
+        {
+            return new FileStream(Path.Combine(locks, package.Id + ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        }
+        catch (IOException ex) when (ex is not (FileNotFoundException or DirectoryNotFoundException or PathTooLongException))
+        {
+            throw new EngineBusyException(package.Id);
         }
     }
 

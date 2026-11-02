@@ -80,13 +80,7 @@ public static class OcrLanguages
 
     private static readonly SemaphoreSlim OneAtATime = new(1, 1);
 
-    /// <summary>Redirects are followed by the installer, which checks every file against its SHA-256.</summary>
-    private static readonly Lazy<HttpClient> Http = new(() =>
-    {
-        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromMinutes(10) };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(OcrLanguages).Assembly.GetName().Version}");
-        return http;
-    });
+    private static readonly Lazy<HttpClient> Http = new(() => EngineInstaller.CreateHttpClient(TimeSpan.FromMinutes(10)));
 
     private static EnginePackage PackageOf(string code) => new("ocr-" + code, [code], Components[code].Size, ["tesseract"]);
 

@@ -45,7 +45,7 @@ public static class FormatFields
         new("game", true, false),
         new("design", true, false),
         new("science", true, false),
-        // On for now as suggested in #844 (off would hide TAR, GZ, YAML, ... in new installs); the maintainer decides.
+        // On: off would hide TAR, GZ, YAML, ... in new installs (decided in #846's review, docs/FORMAT-RULES.md).
         new("developer", true, true),
         new("writing", true, false),
         new("video-pro", true, false),

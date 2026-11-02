@@ -164,6 +164,44 @@ public class PdfTableTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Long_text_running_past_its_cell_stays_in_that_cell()
+    {
+        // A spreadsheet's measurement sheet (#138): one label is longer than its column, so its last word runs on past
+        // the cell's right rule, where the spreadsheet cut it off (the PDF only clips it).
+        var dir = fx.NewFolder();
+        var pdf = new PdfBuilder().NewPage();
+        double[] xs = [50, 200, 260, 400];
+        double[] ys = [100, 120, 140, 160, 180];
+        foreach (var y in ys)
+            pdf.Rule(xs[0], y, xs[^1], y);
+        foreach (var x in xs)
+            pdf.Rule(x, ys[0], x, ys[^1]);
+        string[][] cells =
+        [
+            ["Point of measurement", "Tol.", "M"],
+            ["Shoulder seam forward", "1/8", "1/2"],
+            ["Front neck drop at the collar notch", "1/8", "3 1/2"],
+            ["Collar point", "1/8", "3.5"],
+        ];
+        for (var r = 0; r < 4; r++)
+        {
+            for (var c = 0; c < 3; c++)
+                Cell(pdf, cells[r][c], c == 1 ? xs[c] + 16 : xs[c], ys[r], bold: r == 0); // tolerances sit mid-column
+        }
+        var label = pdf.Width(cells[2][0], 10, pdf.Font());
+        Assert.InRange(xs[0] + 4 + label, xs[1] + 2, xs[1] + 16); // its last word straddles the rule, short of the next text
+        var docx = await ConvertAsync(pdf.Save(Path.Combine(dir, "overflow.pdf")), "docx");
+
+        ValidPackage(docx);
+        var table = Assert.Single(ReadBack(docx).Sections.SelectMany(s => s.Blocks).OfType<HTable>());
+        var texts = Texts(table);
+        Assert.Equal(4, texts.Length);
+        Assert.Equal("Front neck drop at the collar notch", texts[2][0]);
+        Assert.Equal(["1/8", "3 1/2"], texts[2][1..]);
+        Assert.Equal(cells[3], texts[3]);
+    }
+
+    [Fact]
     public async Task Boxes_underlines_and_empty_grids_stay_text()
     {
         var dir = fx.NewFolder();

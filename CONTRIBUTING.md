@@ -78,6 +78,8 @@ keep macOS marked as a preview until it is notarized.
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
 
 - **New file format or engine** → `src/Filee.Engines`, see [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md).
+  Which formats and tools are shown by default, and which new output formats come in, is in
+  [docs/FORMAT-RULES.md](docs/FORMAT-RULES.md).
 - **New language** → `src/Filee.App/Assets/i18n`, see [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md).
 - **UI** → `src/Filee.App/Views` (XAML) + `ViewModels` (CommunityToolkit.Mvvm).
 - **Domain rules** (routes, output names, settings) → `src/Filee.Core` — no UI or OS code here.

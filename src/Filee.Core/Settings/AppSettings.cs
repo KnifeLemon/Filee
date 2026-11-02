@@ -123,7 +123,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 57;
+    public const int CurrentSchemaVersion = 58;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -230,6 +230,9 @@ public sealed class AppSettings
     /// (HWPX writer and rhwp): slide backgrounds and shape positions come out as in PowerPoint.
     /// </summary>
     public bool LibreOfficeForSlides { get; set; } = true;
+
+    /// <summary>Active local model for offline translation (e.g. "llama3.2", "qwen2.5").</summary>
+    public string? PreferredOllamaModel { get; set; }
 
     /// <summary>
     /// With LibreOffice and H2Orestart installed, HWP / HWPX → PDF go through it instead of rhwp: a way around a

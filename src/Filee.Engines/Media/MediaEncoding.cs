@@ -383,7 +383,7 @@ internal static partial class MediaEncoding
     internal static bool CanCopyVideo(string target, VideoStreamInfo video, MediaOptions options)
     {
         // A size limit encodes the video, so its bitrate can be capped (ForSizeLimit).
-        if (options.Quality == MediaQuality.Small || options.MaxSizeMb > 0 || options.MaxHeight > 0 && video.DisplayHeight > Math.Max(16, options.MaxHeight)
+        if (options.Quality == MediaQuality.Small || options.MaxSizeMb > 0 || options.MaxSizePercent > 0 || options.MaxHeight > 0 && video.DisplayHeight > Math.Max(16, options.MaxHeight)
             || video.Codec is not { } codec || !Remuxable.TryGetValue(target, out var codecs))
             return false;
         var takes = MediaCodecs.Effective(target, options.VideoCodec) switch

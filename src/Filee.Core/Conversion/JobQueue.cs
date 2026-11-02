@@ -539,7 +539,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             await write(output, progress);
-            SizeLimit.Check(job.Preset, [output]); // joined media aren't fitted: one over the limit is refused (#553)
+            SizeLimit.Check(job.Preset, [output], joined.Select(f => f.SourcePath)); // joined media aren't fitted: one over the limit is refused (#553)
             if (SizeLimit.IsUnderMinimum(job.Preset, [output]))
                 first.UnderMinimumSize = true;
             first.Outputs.Add(output);
@@ -771,13 +771,16 @@ public sealed partial class JobQueue : IAsyncDisposable
         var motionPhoto = finalOutput && runWith.ExtractsMotionOf(source.Id);
         var livePhoto = finalOutput && runWith.MakesLivePhotoOf(source.Id);
         var caption = finalOutput && runWith.CaptionsVideo(source.Id);
+        var translate = finalOutput && runWith.Translate.Enabled;
+        if (translate && !runWith.TranslatesDocument(source.Id))
+            return Fail(file, "error.no_route", $"{source.Id} → {target}", new RouteRequest(source.Id, target, Translate: true));
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(source.Id);
-        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption);
+        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate);
         if (route is null)
             return Fail(file, "error.no_route", $"{source.Id} → {target}",
-                new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr));
+                new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
@@ -862,7 +865,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                         if (preset.Image.ChangesSpeed && !(isLast && finalOutput))
                             preset = AtOriginalSpeed(preset);
                         // Likewise the size limit: only the result has to fit, not a picture passed to the next engine.
-                        if ((preset.Image.MaxSizeMb > 0 || preset.Image.MinSizeMb > 0 || preset.Media.MaxSizeMb > 0) && !(isLast && finalOutput))
+                        if ((preset.Image.MaxSizeMb > 0 || preset.Image.MinSizeMb > 0 || preset.Media.MaxSizeMb > 0 || preset.Media.MaxSizePercent > 0) && !(isLast && finalOutput))
                             preset = WithoutSizeLimit(preset);
                         var stepInfo = new ConversionStep(input, step.From, step.To, preset, allocator, workDir, step.FrameSequence,
                             key => file.NoticeKey = key, step.MotionPhoto, step.LivePhoto, fonts =>
@@ -872,7 +875,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                                 file.MissingFonts = file.MissingFonts.Concat(fonts)
                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                                 Notify(job);
-                            }, file.SourcePath, Caption: step.Caption);
+                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate);
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally
@@ -894,7 +897,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                 await FinishPdfsAsync(runWith, inputs, ct);
             // The size limit (#553): a result the engine couldn't fit (HEIC, a render, an animation) isn't handed over.
             if (finalOutput)
-                SizeLimit.Check(runWith, inputs);
+                SizeLimit.Check(runWith, inputs, file.SourcePath);
             // The minimum (#662), on the pictures themselves: after the source was copied over, before they go into a ZIP.
             if (finalOutput && SizeLimit.IsUnderMinimum(runWith, inputs))
                 file.UnderMinimumSize = true;
@@ -965,6 +968,7 @@ public sealed partial class JobQueue : IAsyncDisposable
             copy.Image.MaxSizeMb = 0;
             copy.Image.MinSizeMb = 0;
             copy.Media.MaxSizeMb = 0;
+            copy.Media.MaxSizePercent = 0;
             return copy;
         }
 
