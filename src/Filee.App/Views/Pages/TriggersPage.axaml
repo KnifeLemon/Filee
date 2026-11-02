@@ -32,7 +32,7 @@
     </StackPanel>
 
     <!-- Built-in shortcut: fixed in the list; users can switch it off but cannot remove it. -->
-    <Border Classes="card">
+    <Border Classes="card" IsVisible="{Binding CanMiddleClick}">
       <DockPanel>
         <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding MiddleClickEnabled}" OnContent="" OffContent=""
                       AutomationProperties.Name="{DynamicResource triggers.middle_click}" />
