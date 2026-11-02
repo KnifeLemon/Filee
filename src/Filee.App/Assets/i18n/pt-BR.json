@@ -392,7 +392,7 @@
   "preset.flip_vertical.short": "Vertical",
   "preset.merge_pdf": "Mesclar PDF",
   "merge.order_title": "Escolha a ordem da mesclagem",
-  "merge.order_hint": "Arraste um cartão, ou selecione-o e use Alt+↑ / Alt+↓, para mudar a ordem. Os arquivos são mesclados de cima para baixo. Delete remove o arquivo selecionado.",
+  "merge.order_hint": "Use as setas para navegar. Para mover a ordem, clique e arraste ou use Alt + ↑ / Alt + ↓. Os arquivos são mesclados de cima para baixo. Delete remove o arquivo selecionado.",
   "merge.images_hint": "Selecione uma imagem e mova para cima ou para baixo. A primeira fica no topo, ou à esquerda lado a lado. (Alt+↑ / Alt+↓)",
   "merge.vertical": "De cima para baixo",
   "merge.horizontal": "Lado a lado",

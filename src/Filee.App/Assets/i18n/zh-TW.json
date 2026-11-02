@@ -392,7 +392,7 @@
   "preset.flip_vertical.short": "垂直",
   "preset.merge_pdf": "合併 PDF",
   "merge.order_title": "選擇合併順序",
-  "merge.order_hint": "拖曳卡片，或選取後按 Alt+↑ / Alt+↓，即可變更順序。檔案由上到下合併。按 Delete 移除所選檔案。",
+  "merge.order_hint": "使用方向鍵在卡片之間移動。要變更順序，請拖曳卡片或按 Alt + ↑ / Alt + ↓。檔案由上到下合併。按 Delete 移除所選檔案。",
   "merge.images_hint": "選擇圖片並上下移動。第一張放在最上面（左右排列時放在最左邊）。（Alt+↑ / Alt+↓）",
   "merge.vertical": "上下排列",
   "merge.horizontal": "左右排列",

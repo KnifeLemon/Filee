@@ -382,7 +382,7 @@
   "preset.flip_vertical.short": "Dikey",
   "preset.merge_pdf": "PDF birleştir",
   "merge.order_title": "Birleştirme sırasını seçin",
-  "merge.order_hint": "Sırayı değiştirmek için bir kartı sürükleyin ya da seçip Alt+↑ / Alt+↓ kullanın. Dosyalar yukarıdan aşağıya birleştirilir. Delete seçili dosyayı kaldırır.",
+  "merge.order_hint": "Kartlar arasında gezinmek için ok tuşlarını kullanın. Sırayı değiştirmek için bir kartı sürükleyin veya Alt + ↑ / Alt + ↓ kullanın. Dosyalar yukarıdan aşağıya birleştirilir. Delete seçili dosyayı kaldırır.",
   "merge.images_hint": "Bir görsel seçip yukarı veya aşağı taşıyın. İlk görsel en üste, yan yana dizilince en sola gelir. (Alt+↑ / Alt+↓)",
   "merge.vertical": "Alt alta",
   "merge.horizontal": "Yan yana",

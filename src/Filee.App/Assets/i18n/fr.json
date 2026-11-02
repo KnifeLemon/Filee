@@ -392,7 +392,7 @@
   "preset.flip_vertical.short": "Vertical",
   "preset.merge_pdf": "Fusionner les PDF",
   "merge.order_title": "Choisir l'ordre de fusion",
-  "merge.order_hint": "Faites glisser une carte, ou sélectionnez-la et utilisez Alt+↑ / Alt+↓, pour changer l'ordre. Les fichiers sont fusionnés de haut en bas. Suppr retire le fichier sélectionné.",
+  "merge.order_hint": "Utilisez les flèches pour naviguer. Pour changer l'ordre, faites glisser ou utilisez Alt + ↑ / Alt + ↓. Les fichiers sont fusionnés de haut en bas. Suppr retire le fichier sélectionné.",
   "merge.images_hint": "Sélectionnez une image et déplacez-la vers le haut ou le bas. La première va en haut, ou à gauche côte à côte. (Alt+↑ / Alt+↓)",
   "merge.vertical": "De haut en bas",
   "merge.horizontal": "Côte à côte",

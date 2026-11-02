@@ -392,7 +392,7 @@
   "preset.flip_vertical.short": "Vertical",
   "preset.merge_pdf": "Juntar PDF",
   "merge.order_title": "Escolher a ordem dos ficheiros",
-  "merge.order_hint": "Arraste um cartão, ou selecione-o e use Alt+↑ / Alt+↓, para mudar a ordem. Os ficheiros são unidos de cima para baixo. Delete remove o ficheiro selecionado.",
+  "merge.order_hint": "Use as setas para navegar. Para mudar a ordem, clique e arraste ou use Alt + ↑ / Alt + ↓. Os ficheiros são unidos de cima para baixo. Delete remove o ficheiro selecionado.",
   "merge.images_hint": "Seleciona uma imagem e move-a para cima ou para baixo. A primeira fica no topo ou, lado a lado, à esquerda. (Alt+↑ / Alt+↓)",
   "merge.vertical": "De cima para baixo",
   "merge.horizontal": "Lado a lado",

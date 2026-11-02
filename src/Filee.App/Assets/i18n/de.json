@@ -382,7 +382,7 @@
   "preset.flip_vertical.short": "Vertikal",
   "preset.merge_pdf": "PDF zusammenführen",
   "merge.order_title": "Reihenfolge festlegen",
-  "merge.order_hint": "Ziehe eine Karte oder wähle sie aus und nutze Alt+↑ / Alt+↓, um die Reihenfolge zu ändern. Dateien werden von oben nach unten zusammengeführt. Entf entfernt die ausgewählte Datei.",
+  "merge.order_hint": "Mit den Pfeiltasten navigieren. Zum Ändern der Reihenfolge ziehen oder Alt + ↑ / Alt + ↓ verwenden. Dateien werden von oben nach unten zusammengeführt. Entf entfernt die ausgewählte Datei.",
   "merge.images_hint": "Wähle ein Bild und verschiebe es nach oben oder unten. Das erste kommt nach oben, nebeneinander nach links. (Alt+↑ / Alt+↓)",
   "merge.vertical": "Untereinander",
   "merge.horizontal": "Nebeneinander",

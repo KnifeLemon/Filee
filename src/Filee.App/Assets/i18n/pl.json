@@ -392,7 +392,7 @@
   "preset.flip_vertical.short": "Pionowo",
   "preset.merge_pdf": "Połącz PDF",
   "merge.order_title": "Wybierz kolejność scalania",
-  "merge.order_hint": "Przeciągnij kartę lub zaznacz ją i użyj Alt+↑ / Alt+↓, aby zmienić kolejność. Pliki są łączone od góry do dołu. Delete usuwa zaznaczony plik.",
+  "merge.order_hint": "Strzałkami przechodź między kartami. Aby zmienić kolejność, przeciągnij kartę lub użyj Alt + ↑ / Alt + ↓. Pliki są łączone od góry do dołu. Delete usuwa zaznaczony plik.",
   "merge.images_hint": "Wybierz obraz i przesuń go w górę lub w dół. Pierwszy trafia na górę, a przy układzie obok siebie na lewo. (Alt+↑ / Alt+↓)",
   "merge.vertical": "Jeden pod drugim",
   "merge.horizontal": "Obok siebie",

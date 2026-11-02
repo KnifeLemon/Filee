@@ -382,7 +382,7 @@
   "preset.flip_vertical.short": "Vertikal",
   "preset.merge_pdf": "Gabungkan PDF",
   "merge.order_title": "Pilih urutan penggabungan",
-  "merge.order_hint": "Seret kartu, atau pilih lalu gunakan Alt+↑ / Alt+↓, untuk mengubah urutan. File digabung dari atas ke bawah. Delete menghapus file yang dipilih.",
+  "merge.order_hint": "Gunakan panah untuk berpindah. Untuk mengubah urutan, seret kartu atau gunakan Alt + ↑ / Alt + ↓. File digabung dari atas ke bawah. Delete menghapus file yang dipilih.",
   "merge.images_hint": "Pilih gambar lalu pindahkan ke atas atau ke bawah. Gambar pertama berada di atas, atau di sebelah kiri bila berdampingan. (Alt+↑ / Alt+↓)",
   "merge.vertical": "Atas ke bawah (vertikal)",
   "merge.horizontal": "Berdampingan (horizontal)",

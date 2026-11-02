@@ -29,6 +29,8 @@ public partial class MergeOrderWindow : Window
         InitializeComponent();
         Motion.Track(this);
         UiZoom.Track(this);
+        // The list has the keys from the start: the arrows move the selection without a click first.
+        Opened += (_, _) => FileOrder.Focus();
         // Handled too: the list selects a card on press, and the drag still has to start.
         FileOrder.AddHandler(PointerPressedEvent, OnCardPressed, RoutingStrategies.Bubble, handledEventsToo: true);
         FileOrder.AddHandler(PointerMovedEvent, OnCardMoved, RoutingStrategies.Bubble, handledEventsToo: true);

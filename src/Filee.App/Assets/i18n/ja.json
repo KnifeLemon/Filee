@@ -382,7 +382,7 @@
   "preset.flip_vertical.short": "垂直",
   "preset.merge_pdf": "結合",
   "merge.order_title": "結合順序を選択",
-  "merge.order_hint": "カードをドラッグするか、選択して Alt+↑ / Alt+↓ で順番を変えます。ファイルは上から下へ結合されます。Delete で選択中のファイルを削除します。",
+  "merge.order_hint": "矢印キーでカード間を移動します。順番を変えるには、カードをドラッグするか Alt + ↑ / Alt + ↓ を押します。ファイルは上から下へ結合されます。Delete で選択中のファイルを削除します。",
   "merge.images_hint": "画像を選択して上下に移動します。最初の画像が一番上（横に並べるときは一番左）になります。（Alt+↑ / Alt+↓）",
   "merge.vertical": "縦に並べる",
   "merge.horizontal": "横に並べる",

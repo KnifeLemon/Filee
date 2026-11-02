@@ -382,7 +382,7 @@
   "preset.flip_vertical.short": "Vertical",
   "preset.merge_pdf": "Combinar PDF",
   "merge.order_title": "Elegir el orden de combinación",
-  "merge.order_hint": "Arrastra una tarjeta, o selecciónala y usa Alt+↑ / Alt+↓, para cambiar el orden. Los archivos se combinan de arriba abajo. Supr quita el archivo seleccionado.",
+  "merge.order_hint": "Usa las flechas para navegar. Para cambiar el orden, arrastra o usa Alt + ↑ / Alt + ↓. Los archivos se combinan de arriba abajo. Supr quita el archivo seleccionado.",
   "merge.images_hint": "Selecciona una imagen y muévela arriba o abajo. La primera va arriba, o a la izquierda si van lado a lado. (Alt+↑ / Alt+↓)",
   "merge.vertical": "De arriba abajo",
   "merge.horizontal": "Lado a lado",

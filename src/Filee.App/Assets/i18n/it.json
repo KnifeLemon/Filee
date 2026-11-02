@@ -382,7 +382,7 @@
 "preset.flip_vertical.short": "Verticale",
 "preset.merge_pdf": "Unisci PDF",
 "merge.order_title": "Scegli l'ordine di unione",
-"merge.order_hint": "Trascina una scheda, oppure selezionala e usa Alt+↑ / Alt+↓, per cambiare l'ordine. I file vengono uniti dall'alto in basso. Canc rimuove il file selezionato.",
+"merge.order_hint": "Usa le frecce per navigare. Per cambiare l'ordine, trascina oppure usa Alt + ↑ / Alt + ↓. I file vengono uniti dall'alto in basso. Canc rimuove il file selezionato.",
 "merge.images_hint": "Seleziona un'immagine e spostala su o giù. La prima va in alto, o a sinistra nella disposizione affiancata. (Alt+↑ / Alt+↓)",
 "merge.vertical": "Dall'alto verso il basso",
 "merge.horizontal": "Affiancate",
