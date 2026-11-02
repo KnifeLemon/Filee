@@ -20,6 +20,38 @@ namespace Filee.App.Tests;
 public sealed class ShortcutRecorderTests
 {
     [AvaloniaFact]
+    public void Duplicate_shortcuts_are_warned_and_disabled_duplicates_clear_the_warning()
+    {
+        TestServices.EnsureInitialized();
+        var store = AppHost.Get<UserDataStore>();
+        var before = store.Settings.Triggers.Select(t => t.Clone()).ToList();
+        try
+        {
+            store.Settings.Triggers.Clear();
+            store.Settings.Triggers.Add(new TriggerGesture
+            {
+                Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl, Key = "K", Scope = TriggerScope.FileManager
+            });
+            store.Settings.Triggers.Add(new TriggerGesture
+            {
+                Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl, Key = "k", Scope = TriggerScope.Anywhere
+            });
+
+            var vm = new TriggersPageViewModel(store, AppHost.Get<ILocalizer>());
+            Assert.All(vm.Gestures, item => Assert.False(string.IsNullOrEmpty(item.Conflict)));
+
+            vm.Gestures[1].Enabled = false;
+            Assert.Null(vm.Gestures[0].Conflict);
+        }
+        finally
+        {
+            store.Settings.Triggers.Clear();
+            store.Settings.Triggers.AddRange(before);
+            store.SaveSettings();
+        }
+    }
+
+    [AvaloniaFact]
     public void Ctrl_Alt_Space_is_recorded_on_the_button()
     {
         TestServices.EnsureInitialized();
