@@ -4,6 +4,15 @@
              xmlns:app="using:Filee.App.ViewModels"
              x:Class="Filee.App.Views.Pages.HomePage"
              x:DataType="vm:HomePageViewModel">
+  <!-- The keys of the list, from anywhere on the page: the arrows select, Alt+Up / Alt+Down move the selected card, Delete
+       takes it out. A text box keeps its own arrows, since it handles them first. -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveSelectedUpCommand}" />
+    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveSelectedDownCommand}" />
+    <KeyBinding Gesture="Left" Command="{Binding SelectLeftCommand}" />
+    <KeyBinding Gesture="Right" Command="{Binding SelectRightCommand}" />
+    <KeyBinding Gesture="Delete" Command="{Binding DeleteSelectedCommand}" />
+  </UserControl.KeyBindings>
   <UserControl.Styles>
     <Style Selector="Border#DropZone">
       <Setter Property="Transitions">

@@ -10,6 +10,15 @@
         Icon="avares://Filee/Assets/Icons/filee.ico"
         Width="560" Height="480" MinWidth="440" MinHeight="320"
         WindowStartupLocation="CenterScreen">
+  <!-- The keys of the list, from anywhere in the window: the arrows select, Alt+Up / Alt+Down reorder, Delete removes. A text
+       box or a radio button keeps its own arrows, since it handles them first. -->
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveUpCommand}" />
+    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveDownCommand}" />
+    <KeyBinding Gesture="Left" Command="{Binding SelectLeftCommand}" />
+    <KeyBinding Gesture="Right" Command="{Binding SelectRightCommand}" />
+    <KeyBinding Gesture="Delete" Command="{Binding DeleteSelectedCommand}" />
+  </Window.KeyBindings>
   <Window.Styles>
     <!-- One under another / side by side: two segments in a pill, the chosen one filled with the accent (as the
          toolbar editor's Front / Back switch). -->

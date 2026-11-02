@@ -60,8 +60,6 @@ public partial class HomePage : UserControl
         QueueList.PointerReleased += OnQueueReleased;
         QueueList.Focusable = true;
         QueueList.FlowDirection = IsRightToLeft ? Avalonia.Media.FlowDirection.RightToLeft : Avalonia.Media.FlowDirection.LeftToRight;
-        // Tunnelled: the arrows and Delete reach the page before the list's own keys.
-        AddHandler(KeyDownEvent, OnPageKeyDown, RoutingStrategies.Tunnel);
     }
 
     private HomePageViewModel? ViewModel => DataContext as HomePageViewModel;
@@ -188,31 +186,7 @@ public partial class HomePage : UserControl
             ViewModel?.MoveQueued(press.Index, target);
     }
 
-    /// <summary>
-    /// The keys of the list, while the list itself has the focus: the arrows move the selection between the cards (mirrored
-    /// in a right-to-left language), Alt+Up / Alt+Down move the selected card, and Delete takes it out of the list.
-    /// </summary>
-    private void OnPageKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (!IsWithin(e.Source, QueueList))
-            return;
-        if (e.Key is Key.Up or Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
-            ViewModel?.MoveSelectedQueued(e.Key == Key.Down ? 1 : -1);
-        else if (e.Key is Key.Left or Key.Right)
-            ViewModel?.SelectNeighbour(e.Key == Key.Right ^ IsRightToLeft ? 1 : -1);
-        else if (e.Key == Key.Delete)
-            ViewModel?.RemoveSelectedQueued();
-        else
-            return;
-        QueueList.Focus();
-        e.Handled = true;
-    }
-
-    /// <summary>Whether the language is written right to left: the cards are laid out, and read, from the right.</summary>
     internal static bool IsRightToLeft => CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
-
-    private static bool IsWithin(object? source, Visual container) =>
-        source is Visual visual && (ReferenceEquals(visual, container) || visual.GetVisualAncestors().Contains(container));
 
     private static bool IsTextEntry(object? source) =>
         source is TextBox or NumericUpDown or ColorPicker

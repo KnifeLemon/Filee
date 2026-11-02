@@ -4,6 +4,7 @@
 // side, the same width or their own sizes, the gap and the background.
 
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -251,7 +252,19 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
         SelectedFile = Files[Math.Clamp(index < 0 ? 0 : index + delta, 0, Files.Count - 1)];
     }
 
+    /// <summary>The left arrow: the card on its left (on the right, in a right-to-left language).</summary>
+    [RelayCommand]
+    private void SelectLeft() => SelectNeighbour(CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? 1 : -1);
+
+    /// <summary>The right arrow: the card on its right (on the left, in a right-to-left language).</summary>
+    [RelayCommand]
+    private void SelectRight() => SelectNeighbour(CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? -1 : 1);
+
     /// <summary>The Delete key: the selected file leaves the merge.</summary>
+    [RelayCommand]
+    private void DeleteSelected() => RemoveSelected();
+
+    /// <summary>The Delete command's work: the selected file leaves the merge.</summary>
     internal void RemoveSelected()
     {
         if (SelectedFile is { } selected)

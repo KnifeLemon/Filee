@@ -41,8 +41,6 @@ public partial class MergeOrderWindow : Window
         FileOrder.AddHandler(PointerPressedEvent, OnCardPressed, RoutingStrategies.Bubble, handledEventsToo: true);
         FileOrder.AddHandler(PointerMovedEvent, OnCardMoved, RoutingStrategies.Bubble, handledEventsToo: true);
         FileOrder.AddHandler(PointerReleasedEvent, OnCardReleased, RoutingStrategies.Bubble, handledEventsToo: true);
-        // Tunnelled: the arrows reach the window before the list's own keys, and keep working after Alt+Up / Alt+Down.
-        AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
         FileOrder.FlowDirection = IsRightToLeft ? Avalonia.Media.FlowDirection.RightToLeft : Avalonia.Media.FlowDirection.LeftToRight;
     }
 
@@ -106,50 +104,8 @@ public partial class MergeOrderWindow : Window
             vm.MoveFile(press.Index, IndexNearest(at));
     }
 
-    /// <summary>
-    /// The keys of the list, while the list itself has the focus: the arrows move the selection between the cards (mirrored
-    /// in a right-to-left language), Alt+Up / Alt+Down move the selected file, and Delete takes it out of the merge.
-    /// </summary>
-    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (DataContext is not MergeOrderViewModel vm)
-            return;
-        // Alt+Up / Alt+Down reorder anywhere in the window; the plain arrows only where they mean selection.
-        var reorder = e.Key is Key.Up or Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Alt);
-        if (!reorder && !IsListKey(e.Source))
-            return;
-        if (reorder)
-            (e.Key == Key.Up ? vm.MoveUpCommand : vm.MoveDownCommand).Execute(null);
-        else if (e.Key is Key.Left or Key.Right)
-            vm.SelectNeighbour(e.Key == Key.Right ^ IsRightToLeft ? 1 : -1);
-        else if (e.Key == Key.Delete)
-            vm.RemoveSelected();
-        else
-            return;
-        FocusSelected(vm);
-        e.Handled = true;
-    }
-
-    /// <summary>
-    /// Whether the keys go to the list: when the list has the focus, or a button of the bottom bar does (the focus can
-    /// reach them from the list). The radio buttons and the colour picker keep their own arrows.
-    /// </summary>
-    private bool IsListKey(object? source) =>
-        IsWithin(source, FileOrder) || ReferenceEquals(source, MoveUp) || ReferenceEquals(source, MoveDown)
-        || ReferenceEquals(source, CancelMerge) || ReferenceEquals(source, StartMerge);
-
-    /// <summary>Gives the list the focus back on the selected card, so the keys keep working after a move or a removal.</summary>
-    private void FocusSelected(MergeOrderViewModel vm)
-    {
-        if (vm.SelectedFile is { } selected)
-            FileOrder.ContainerFromIndex(vm.Files.IndexOf(selected))?.Focus();
-    }
-
     /// <summary>Whether the language is written right to left: the cards are laid out, and read, from the right.</summary>
     private static bool IsRightToLeft => CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
-
-    private static bool IsWithin(object? source, Visual container) =>
-        source is Visual visual && (ReferenceEquals(visual, container) || visual.GetVisualAncestors().Contains(container));
 
     private static bool IsInButton(object? source) =>
         source is Visual visual && (visual is Button || visual.GetVisualAncestors().Any(ancestor => ancestor is Button));

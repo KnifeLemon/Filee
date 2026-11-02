@@ -1,6 +1,7 @@
 // Home: drop zone (handled in the view) and recent conversions.
 
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -312,6 +313,24 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         for (var i = 0; i < Queue.Count; i++)
             Queue[i].IsSelected = i == index;
     }
+
+    /// <summary>The left arrow: the card on its left (on the right, in a right-to-left language).</summary>
+    [RelayCommand]
+    private void SelectLeft() => SelectNeighbour(CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? 1 : -1);
+
+    /// <summary>The right arrow: the card on its right (on the left, in a right-to-left language).</summary>
+    [RelayCommand]
+    private void SelectRight() => SelectNeighbour(CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? -1 : 1);
+
+    [RelayCommand]
+    private void MoveSelectedUp() => MoveSelectedQueued(-1);
+
+    [RelayCommand]
+    private void MoveSelectedDown() => MoveSelectedQueued(1);
+
+    /// <summary>The Delete key: takes the selected file out of the list.</summary>
+    [RelayCommand]
+    private void DeleteSelected() => RemoveSelectedQueued();
 
     /// <summary>The left and right arrows: the selection moves to the neighbouring card.</summary>
     public void SelectNeighbour(int delta)
