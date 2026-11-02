@@ -83,11 +83,14 @@ public sealed class GestureDetector
             // next decides between them.
             var drag = FirstInScope(TriggerKind.Drag, button, modifiers, x, y);
             holdGesture = FirstInScope(TriggerKind.Hold, button, modifiers, x, y);
-            if (drag is null && holdGesture is null)
+            if (drag is null && holdGesture is null && !middleClick)
                 return;
 
-            token = Environment.TickCount64 ^ (x * 7919L) ^ y;
-            _armed = new Armed(drag, holdGesture, x, y, token);
+            if (drag is not null || holdGesture is not null)
+            {
+                token = Environment.TickCount64 ^ (x * 7919L) ^ y;
+                _armed = new Armed(drag, holdGesture, x, y, token);
+            }
         }
 
         if (middleClick)
