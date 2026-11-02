@@ -414,4 +414,66 @@ public class MergeOrderTests
         Assert.False(vm.MoveUpCommand.CanExecute(null));
         Assert.True(vm.MoveDownCommand.CanExecute(null));
     }
+
+    [AvaloniaFact]
+    public void Arrows_move_the_selection_and_the_focus_stays_on_the_card()
+    {
+        TestServices.EnsureInitialized();
+        var folder = Directory.CreateTempSubdirectory("filee-merge-keys-").FullName;
+        var inputs = new List<string>();
+        for (var i = 1; i <= 6; i++)
+        {
+            var path = Path.Combine(folder, $"page {i}.pdf");
+            using var document = new PdfDocument();
+            document.AddPage();
+            document.Save(path);
+            inputs.Add(path);
+        }
+        var vm = new MergeOrderViewModel(inputs, keepOrder: true);
+        var window = new MergeOrderWindow { DataContext = vm };
+        try
+        {
+            window.Show();
+            RenderTests.Pump();
+            Dispatcher.UIThread.RunJobs();
+            RenderTests.Pump();
+            var list = window.FindControl<ListBox>("FileOrder")!;
+            var focused = () => window.FocusManager!.GetFocusedElement();
+
+            Assert.Same(list.ContainerFromIndex(0), focused());
+            window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[1], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(1), focused());
+
+            // Down moves by a row: as many cards as sit on the first card's line.
+            var first = list.ContainerFromIndex(0)!.TranslatePoint(new Point(), list)!.Value.Y;
+            var columns = Enumerable.Range(0, inputs.Count)
+                .Count(i => Math.Abs(list.ContainerFromIndex(i)!.TranslatePoint(new Point(), list)!.Value.Y - first) < 1);
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[1 + columns], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(1 + columns), focused());
+
+            window.KeyPress(Key.Up, RawInputModifiers.None, PhysicalKey.ArrowUp, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[1], vm.SelectedFile);
+
+            window.KeyPress(Key.Down, RawInputModifiers.Alt, PhysicalKey.ArrowDown, null);
+            RenderTests.Pump();
+            Assert.Equal([inputs[0], inputs[2], inputs[1], inputs[3], inputs[4], inputs[5]], vm.OrderedFiles);
+            Assert.Same(vm.Files[2], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(2), focused());
+
+            window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[3], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(3), focused());
+        }
+        finally
+        {
+            window.Close();
+            vm.Dispose();
+        }
+    }
 }

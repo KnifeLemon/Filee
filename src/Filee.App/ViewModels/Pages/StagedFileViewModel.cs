@@ -46,6 +46,10 @@ public sealed partial class StagedFileViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private int _position;
 
+    /// <summary>How many cards the list has: a screen reader says the card's place out of them.</summary>
+    [ObservableProperty]
+    private int _setSize;
+
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasThumbnail))]
     private Bitmap? _thumbnail;
 

@@ -4,15 +4,6 @@
              xmlns:app="using:Filee.App.ViewModels"
              x:Class="Filee.App.Views.Pages.HomePage"
              x:DataType="vm:HomePageViewModel">
-  <!-- The keys of the list, from anywhere on the page: the arrows select, Alt+Up / Alt+Down move the selected card, Delete
-       takes it out. A text box keeps its own arrows, since it handles them first. -->
-  <UserControl.KeyBindings>
-    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveSelectedUpCommand}" />
-    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveSelectedDownCommand}" />
-    <KeyBinding Gesture="Left" Command="{Binding SelectLeftCommand}" />
-    <KeyBinding Gesture="Right" Command="{Binding SelectRightCommand}" />
-    <KeyBinding Gesture="Delete" Command="{Binding DeleteSelectedCommand}" />
-  </UserControl.KeyBindings>
   <UserControl.Styles>
     <Style Selector="Border#DropZone">
       <Setter Property="Transitions">
@@ -96,6 +87,8 @@
         </StackPanel>
         <TextBlock Classes="h2" VerticalAlignment="Center" Text="{DynamicResource home.queue_title}" />
       </DockPanel>
+      <!-- The same hint as the merge window's: the keys of the cards, and how the files merge. -->
+      <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource merge.order_hint}" IsVisible="{Binding HasQueue}" />
       <!-- Why the last conversion of the list failed: the list keeps its files, and the notice names the ones that failed. -->
       <DockPanel IsVisible="{Binding HasQueueError}">
         <Button DockPanel.Dock="Right" Classes="ghost" Content="{DynamicResource common.close}" Command="{Binding DismissQueueErrorCommand}" />
@@ -111,7 +104,8 @@
           <DataTemplate x:DataType="vm:StagedFileViewModel">
             <Border Classes="queue-card" Classes.selected="{Binding IsSelected}" Width="128" Margin="0,0,12,12" Padding="6"
                     CornerRadius="{DynamicResource SoftRadius}" Background="{DynamicResource SurfaceBrush}"
-                    Cursor="SizeAll" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding AccessibleName}">
+                    Cursor="SizeAll" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding AccessibleName}"
+                    AutomationProperties.PositionInSet="{Binding Position}" AutomationProperties.SizeOfSet="{Binding SetSize}">
               <StackPanel Spacing="6">
                 <Panel Height="130">
                   <Border CornerRadius="{DynamicResource SoftRadiusSmall}" ClipToBounds="True" Background="{DynamicResource AccentFaintBrush}">

@@ -60,6 +60,8 @@ public partial class HomePage : UserControl
         QueueList.PointerReleased += OnQueueReleased;
         QueueList.Focusable = true;
         QueueList.FlowDirection = IsRightToLeft ? Avalonia.Media.FlowDirection.RightToLeft : Avalonia.Media.FlowDirection.LeftToRight;
+        // Tunnelled: the arrows and Delete reach the page before the list's own navigation, which moves the focus.
+        AddHandler(KeyDownEvent, OnPageKeyDown, RoutingStrategies.Tunnel);
     }
 
     private HomePageViewModel? ViewModel => DataContext as HomePageViewModel;
@@ -184,6 +186,61 @@ public partial class HomePage : UserControl
         var target = IndexNearest(at);
         if (target != press.Index)
             ViewModel?.MoveQueued(press.Index, target);
+    }
+
+    /// <summary>
+    /// The keys of the queue. Alt+Up / Alt+Down move the selected card from anywhere on the page. The arrows and Delete act
+    /// only while the queue itself has the focus, so they never move the selection while a button has it. A text box keeps
+    /// its own keys.
+    /// </summary>
+    private void OnPageKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (ViewModel is not { } vm || IsTextEntry(e.Source))
+            return;
+        var alt = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+        var inQueue = IsWithin(e.Source, QueueList);
+        if (alt && e.Key is Key.Up or Key.Down)
+            vm.MoveSelectedQueued(e.Key == Key.Down ? 1 : -1);
+        else if (!inQueue || e.KeyModifiers != KeyModifiers.None)
+            return;
+        else
+            switch (e.Key)
+            {
+                case Key.Left:
+                    vm.SelectLeftCommand.Execute(null);
+                    break;
+                case Key.Right:
+                    vm.SelectRightCommand.Execute(null);
+                    break;
+                case Key.Up:
+                    vm.SelectNeighbour(-ColumnCount());
+                    break;
+                case Key.Down:
+                    vm.SelectNeighbour(ColumnCount());
+                    break;
+                case Key.Delete:
+                    vm.DeleteSelectedCommand.Execute(null);
+                    break;
+                default:
+                    return;
+            }
+        e.Handled = true;
+        if (!alt)
+            QueueList.Focus();
+    }
+
+    private static bool IsWithin(object? source, Visual container) =>
+        source is Visual visual && (ReferenceEquals(visual, container) || visual.GetVisualAncestors().Contains(container));
+
+    /// <summary>How many cards are in a row: the cards from the first one that sit on its line.</summary>
+    private int ColumnCount()
+    {
+        if (CardBounds(0) is not { } first)
+            return 1;
+        var columns = 0;
+        for (var i = 0; i < QueueCount() && CardBounds(i) is { } bounds && Math.Abs(bounds.Top - first.Top) < 1; i++)
+            columns++;
+        return Math.Max(1, columns);
     }
 
     internal static bool IsRightToLeft => CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;

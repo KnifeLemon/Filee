@@ -322,12 +322,6 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SelectRight() => SelectNeighbour(CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? -1 : 1);
 
-    [RelayCommand]
-    private void MoveSelectedUp() => MoveSelectedQueued(-1);
-
-    [RelayCommand]
-    private void MoveSelectedDown() => MoveSelectedQueued(1);
-
     /// <summary>The Delete key: takes the selected file out of the list.</summary>
     [RelayCommand]
     private void DeleteSelected() => RemoveSelectedQueued();

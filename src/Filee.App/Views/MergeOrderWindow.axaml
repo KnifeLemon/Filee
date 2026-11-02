@@ -10,13 +10,8 @@
         Icon="avares://Filee/Assets/Icons/filee.ico"
         Width="560" Height="480" MinWidth="440" MinHeight="320"
         WindowStartupLocation="CenterScreen">
-  <!-- The arrows select inside the list itself (no focus jumps to the buttons); Alt+Up / Alt+Down reorder and Delete removes,
+  <!-- The keys of the list are handled in the code-behind: the arrows and Delete while the list has the focus, Alt+Up / Alt+Down
        from anywhere in the window. -->
-  <Window.KeyBindings>
-    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveUpCommand}" />
-    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveDownCommand}" />
-    <KeyBinding Gesture="Delete" Command="{Binding DeleteSelectedCommand}" />
-  </Window.KeyBindings>
   <Window.Styles>
     <!-- One under another / side by side: two segments in a pill, the chosen one filled with the accent (as the
          toolbar editor's Front / Back switch). -->

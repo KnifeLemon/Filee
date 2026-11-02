@@ -93,7 +93,10 @@ public sealed partial class StagedFiles : ObservableObject, IDisposable
     private void Renumber()
     {
         for (var i = 0; i < Cards.Count; i++)
+        {
             Cards[i].Position = i + 1;
+            Cards[i].SetSize = Cards.Count;
+        }
     }
 
     /// <summary>Brings the cards in line with the list: cards of files that left it go, new files get a card at the end.</summary>
