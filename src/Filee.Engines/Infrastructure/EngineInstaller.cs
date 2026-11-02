@@ -157,16 +157,45 @@ public sealed class EngineInstaller
             CopyRuntime(package);
     }
 
-    /// <summary>Removes the package's folders. Fails if an engine is running (its files are locked).</summary>
+    /// <summary>Removes the package's folders without leaving a partially deleted installation.</summary>
     public void Uninstall(EnginePackage package)
     {
         using var packageLock = LockPackage(package);
-        foreach (var id in package.Components)
+        var staged = new List<(string Original, string Staging)>();
+        try
         {
-            var folder = FolderOf(id);
-            if (Directory.Exists(folder))
-                Directory.Delete(folder, recursive: true);
+            // Rename every component before deleting any of them. On Windows this fails cleanly when a running
+            // engine has an executable open, leaving its marker and complete folder at the original path.
+            foreach (var id in package.Components)
+            {
+                var folder = FolderOf(id);
+                if (!Directory.Exists(folder))
+                    continue;
+                var staging = Path.Combine(Path.GetDirectoryName(folder)!, "~" + Path.GetFileName(folder) + "-" + Guid.NewGuid().ToString("N")[..8]);
+                Directory.Move(folder, staging);
+                staged.Add((folder, staging));
+            }
         }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Restore any folders already moved so a failed removal remains a valid installed package.
+            foreach (var (original, staging) in staged.AsEnumerable().Reverse())
+            {
+                try
+                {
+                    if (Directory.Exists(staging) && !Directory.Exists(original))
+                        Directory.Move(staging, original);
+                }
+                catch (Exception rollback) when (rollback is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogError(rollback, "Could not restore engine folder {Folder} after uninstall failed", original);
+                }
+            }
+            throw;
+        }
+
+        foreach (var (_, staging) in staged)
+            Directory.Delete(staging, recursive: true);
     }
 
     /// <summary>
@@ -198,38 +227,43 @@ public sealed class EngineInstaller
         var file = Path.Combine(downloads, $"{component.Id}-{component.Version}{Path.GetExtension(new Uri(component.Url).AbsolutePath)}");
         var partial = file + ".part";
 
-        using var response = await GetFollowingRedirectsAsync(new Uri(component.Url), cancellationToken);
-        response.EnsureSuccessStatusCode();
-        using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
-        await using (var target = File.Create(partial))
+        try
         {
-            var buffer = new byte[1 << 16];
-            long received = 0;
-            var lastReport = Stopwatch.StartNew();
-            int read;
-            while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
+            using var response = await GetFollowingRedirectsAsync(new Uri(component.Url), cancellationToken);
+            response.EnsureSuccessStatusCode();
+            using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
+            await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
+            await using (var target = File.Create(partial))
             {
-                await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
-                hash.AppendData(buffer, 0, read);
-                received += read;
-                if (lastReport.ElapsedMilliseconds > 150)
+                var buffer = new byte[1 << 16];
+                long received = 0;
+                var lastReport = Stopwatch.StartNew();
+                int read;
+                while ((read = await source.ReadAsync(buffer, cancellationToken)) > 0)
                 {
-                    reportBytes(received);
-                    lastReport.Restart();
+                    await target.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
+                    hash.AppendData(buffer, 0, read);
+                    received += read;
+                    if (lastReport.ElapsedMilliseconds > 150)
+                    {
+                        reportBytes(received);
+                        lastReport.Restart();
+                    }
                 }
+                reportBytes(received);
             }
-            reportBytes(received);
-        }
 
-        var actual = Convert.ToHexString(hash.GetHashAndReset());
-        if (!string.Equals(actual, component.Sha256, StringComparison.OrdinalIgnoreCase))
-        {
-            TryDelete(partial);
-            throw new InvalidDataException($"{component.Id}: checksum mismatch (expected {component.Sha256}, got {actual}). The download was discarded.");
+            var actual = Convert.ToHexString(hash.GetHashAndReset());
+            if (!string.Equals(actual, component.Sha256, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException($"{component.Id}: checksum mismatch (expected {component.Sha256}, got {actual}). The download was discarded.");
+            File.Move(partial, file, overwrite: true);
+            return file;
         }
-        File.Move(partial, file, overwrite: true);
-        return file;
+        finally
+        {
+            // Covers cancellation, HTTP failures, stream errors and checksum mismatches alike.
+            TryDelete(partial);
+        }
     }
 
     /// <summary>
