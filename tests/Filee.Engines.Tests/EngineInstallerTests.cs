@@ -201,6 +201,49 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_failed_download_removes_an_existing_partial_file()
+    {
+        var component = Component("tool", "zip", []);
+        var installer = Installer(new FakeServer(new()), component);
+        var package = new EnginePackage("tool", ["tool"], 1, ["tool"]);
+        var downloads = Path.Combine(_root, ".downloads");
+        Directory.CreateDirectory(downloads);
+        var partial = Path.Combine(downloads, "tool-1.0.zip.part");
+        await File.WriteAllTextAsync(partial, "stale partial");
+
+        await Assert.ThrowsAsync<HttpRequestException>(() =>
+            installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.False(File.Exists(partial));
+    }
+
+    [Fact]
+    public void A_failed_uninstall_restores_components_already_staged_when_an_executable_is_locked()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var first = Component("first", "zip", []);
+        var second = Component("second", "zip", []);
+        var installer = Installer(new FakeServer(new()), first, second);
+        var package = new EnginePackage("tools", ["first", "second"], 1, []);
+        foreach (var id in package.Components)
+        {
+            var folder = Path.Combine(_root, id);
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, ".filee-component"), "installed");
+            File.WriteAllText(Path.Combine(folder, id + ".exe"), "binary");
+        }
+
+        using (new FileStream(Path.Combine(_root, "second", "second.exe"), FileMode.Open, FileAccess.Read, FileShare.Read))
+        {
+            Assert.ThrowsAny<IOException>(() => installer.Uninstall(package));
+            Assert.True(File.Exists(Path.Combine(_root, "first", ".filee-component")));
+            Assert.True(File.Exists(Path.Combine(_root, "second", ".filee-component")));
+        }
+    }
+
+    [Fact]
     public async Task A_download_with_the_wrong_checksum_is_rejected_and_nothing_is_installed()
     {
         var archive = Zip(("tool.exe", "binary"));
