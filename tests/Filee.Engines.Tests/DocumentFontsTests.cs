@@ -41,6 +41,22 @@ public class DocumentFontsTests
     }
 
     [Fact]
+    public void Uses_font_table_alternate_name_when_checking_installed_fonts()
+    {
+        var path = Package(new Dictionary<string, string>
+        {
+            ["word/document.xml"] = "<root><rFonts cs=\"Arial (CS G\u00f6vde)\"/></root>",
+            ["word/fontTable.xml"] = "<root><font name=\"Arial (CS G\u00f6vde)\"><altName val=\"Arial\"/></font></root>",
+        });
+        try
+        {
+            Assert.Empty(DocumentFonts.Missing(path, face => face == "Arial"));
+            Assert.Equal(["Arial (CS G\u00f6vde)"], DocumentFonts.Missing(path, _ => false));
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
     public void A_non_package_never_prevents_conversion()
     {
         var path = Path.GetTempFileName();
