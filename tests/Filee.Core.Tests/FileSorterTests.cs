@@ -30,6 +30,24 @@ public class FileSorterTests
     }
 
     [Fact]
+    public void Folders_stay_together_in_explorer_order_when_asked()
+    {
+        string subA = Path.Combine("sub2", "a.pdf"), subB = Path.Combine("sub1", "b.pdf"), sub10 = Path.Combine("sub10", "a.pdf");
+        string deep = Path.Combine("sub1", "deep", "z.pdf"), page2 = Path.Combine("sub1", "page 2.pdf"), page10 = Path.Combine("sub1", "page 10.pdf");
+        FileStamp[] files = [new("c.pdf", Early), new(subA, Early), new(subB, Early), new(sub10, Early), new(deep, Early), new(page10, Early), new(page2, Early)];
+        string[] inFolders = [deep, subB, page2, page10, subA, sub10, "c.pdf"];
+        string[] Sort(FileSortOrder order, bool together) =>
+            FileSorter.Sort(files, file => file, order, together).Select(file => file.FilePath).ToArray();
+
+        Assert.Equal(inFolders, Sort(FileSortOrder.NameAscending, true));
+        Assert.Equal(inFolders.Reverse(), Sort(FileSortOrder.NameDescending, true));
+        Assert.Equal(inFolders, Sort(FileSortOrder.ModifiedAscending, true)); // equal dates fall back on the same order
+
+        // The merge window's default: by file name, whichever folder it is in.
+        Assert.Equal([subA, sub10, subB, "c.pdf", page2, page10, deep], Sort(FileSortOrder.NameAscending, false));
+    }
+
+    [Fact]
     public void Each_date_sorts_on_its_own_down_to_the_time_of_day()
     {
         // The two dates disagree on purpose: a copied file is often "created" after it was last modified.
@@ -62,8 +80,8 @@ public class FileSorterTests
         {
             var path = Path.Combine(folder, "real.pdf");
             File.WriteAllBytes(path, [1]);
+            File.SetCreationTimeUtc(path, Early); // first: on Linux this sets the date modified instead
             File.SetLastWriteTimeUtc(path, Later);
-            File.SetCreationTimeUtc(path, Early);
 
             var stamp = FileStamp.Read(path);
             Assert.Equal(Later, stamp.Modified);

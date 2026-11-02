@@ -45,6 +45,7 @@ public sealed class CliTests : IDisposable
     private string SizedPdf(string name, int width, DateTime modified)
     {
         var path = Path.Combine(_folder, name);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         using (var document = new PdfSharp.Pdf.PdfDocument())
         {
             var page = document.AddPage();
@@ -70,6 +71,28 @@ public sealed class CliTests : IDisposable
         var output = Directory.CreateDirectory(Path.Combine(_folder, "out")).FullName;
 
         var (code, _, errors) = await Run("convert", _folder, "--preset", "merge-pdf", "--sort", sort, "-o", output);
+
+        Assert.True(code == 0, errors);
+        using var merged = PdfSharp.Pdf.IO.PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        Assert.Equal(pageWidths, merged.Pages.Cast<PdfSharp.Pdf.PdfPage>().Select(p => p.Width.Point));
+    }
+
+    [Theory]
+    [InlineData("name", new[] { 200d, 300d, 400d, 500d, 600d, 700d })]
+    [InlineData("name-desc", new[] { 700d, 600d, 500d, 400d, 300d, 200d })]
+    public async Task Sort_by_name_keeps_each_folders_files_together_when_recursive(string sort, double[] pageWidths)
+    {
+        // By file name alone these interleave: sub2\a, sub1\b, c, ...
+        var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+        SizedPdf(Path.Combine("sub1", "deep", "z.pdf"), 200, day);
+        SizedPdf(Path.Combine("sub1", "b.pdf"), 300, day);
+        SizedPdf(Path.Combine("sub1", "page 10.pdf"), 400, day);
+        SizedPdf(Path.Combine("sub2", "a.pdf"), 500, day);
+        SizedPdf(Path.Combine("sub10", "a.pdf"), 600, day);
+        SizedPdf("c.pdf", 700, day);
+        var output = Directory.CreateDirectory(Path.Combine(_settings, "out")).FullName;
+
+        var (code, _, errors) = await Run("convert", _folder, "-r", "--preset", "merge-pdf", "--sort", sort, "-o", output);
 
         Assert.True(code == 0, errors);
         using var merged = PdfSharp.Pdf.IO.PdfReader.Open(Assert.Single(Directory.GetFiles(output, "*.pdf")), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);

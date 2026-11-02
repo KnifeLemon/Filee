@@ -71,7 +71,9 @@ internal static class Cli
             return NothingToDo;
         }
         // Without it files stay as given, and a folder or wildcard as the file system lists it.
-        IReadOnlyList<string> ordered = options.Sort is { } sort ? FileSorter.Sort(files, FileStamp.Read, sort) : files;
+        IReadOnlyList<string> ordered = options.Sort is { } sort
+            ? FileSorter.Sort(files.Select(FileStamp.Read).ToList(), file => file, sort, foldersTogether: true).Select(file => file.FilePath).ToList()
+            : files;
 
         var job = await RunJobAsync(ordered, preset, host, options.Json || options.Quiet ? null : output, cancellationToken);
         var done = job.Files.Count(f => f.State == FileState.Done);

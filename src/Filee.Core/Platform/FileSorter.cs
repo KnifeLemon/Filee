@@ -39,28 +39,56 @@ public static class FileSorter
     /// Sorts <paramref name="items"/>. Names sort the way people count ("page 2" before "page 10", see
     /// <see cref="NaturalComparer"/>), with the full path deciding between equal names. Files with equal dates sort by
     /// name, and files without a date come last in both directions: they have no place on the timeline.
+    /// With <paramref name="foldersTogether"/> the name is the whole path, in Explorer's order: each folder's files stay
+    /// together, sub folders before files. For files from one folder tree, that is the order of their relative paths.
     /// </summary>
-    public static IReadOnlyList<T> Sort<T>(IEnumerable<T> items, Func<T, FileStamp> stamp, FileSortOrder order)
+    public static IReadOnlyList<T> Sort<T>(IEnumerable<T> items, Func<T, FileStamp> stamp, FileSortOrder order, bool foldersTogether = false)
     {
-        string Name(T item) => Path.GetFileName(stamp(item).FilePath);
         string Full(T item) => stamp(item).FilePath;
+        string Name(T item) => foldersTogether ? Full(item) : Path.GetFileName(Full(item));
+        IComparer<string> byName = foldersTogether ? FolderOrderComparer.Instance : NaturalComparer.Instance;
 
         IOrderedEnumerable<T> ByDate(Func<T, DateTime?> date, bool newestFirst)
         {
             var known = items.OrderBy(item => date(item) is null);
             var dated = newestFirst ? known.ThenByDescending(date) : known.ThenBy(date);
-            return dated.ThenBy(Name, NaturalComparer.Instance).ThenBy(Full, NaturalComparer.Instance);
+            return dated.ThenBy(Name, byName).ThenBy(Full, NaturalComparer.Instance);
         }
 
         var sorted = order switch
         {
-            FileSortOrder.NameDescending => items.OrderByDescending(Name, NaturalComparer.Instance).ThenByDescending(Full, NaturalComparer.Instance),
+            FileSortOrder.NameDescending => items.OrderByDescending(Name, byName).ThenByDescending(Full, NaturalComparer.Instance),
             FileSortOrder.ModifiedAscending => ByDate(item => stamp(item).Modified, newestFirst: false),
             FileSortOrder.ModifiedDescending => ByDate(item => stamp(item).Modified, newestFirst: true),
             FileSortOrder.CreatedAscending => ByDate(item => stamp(item).Created, newestFirst: false),
             FileSortOrder.CreatedDescending => ByDate(item => stamp(item).Created, newestFirst: true),
-            _ => items.OrderBy(Name, NaturalComparer.Instance).ThenBy(Full, NaturalComparer.Instance),
+            _ => items.OrderBy(Name, byName).ThenBy(Full, NaturalComparer.Instance),
         };
         return sorted.ToArray();
+    }
+
+    /// <summary>Compares paths one folder level at a time, naturally, with a sub folder before a file at the same level.</summary>
+    private sealed class FolderOrderComparer : IComparer<string>
+    {
+        public static readonly FolderOrderComparer Instance = new();
+        private static readonly char[] Separators = [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar];
+
+        public int Compare(string? x, string? y)
+        {
+            if (x is null || y is null)
+                return string.CompareOrdinal(x, y);
+            var a = x.Split(Separators);
+            var b = y.Split(Separators);
+            for (var level = 0; level < Math.Min(a.Length, b.Length); level++)
+            {
+                bool aIsFolder = level < a.Length - 1, bIsFolder = level < b.Length - 1;
+                if (aIsFolder != bIsFolder)
+                    return aIsFolder ? -1 : 1;
+                var byName = NaturalComparer.Instance.Compare(a[level], b[level]);
+                if (byName != 0)
+                    return byName;
+            }
+            return a.Length.CompareTo(b.Length);
+        }
     }
 }

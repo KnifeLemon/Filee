@@ -78,7 +78,9 @@ internal static class Help
           -o, --output <folder>  Save there instead of next to the sources
           -r, --recursive        Include sub folders
               --sort <order>     The order files merge in: name, name-desc, modified, modified-desc, created or
-                                 created-desc (default: as given; a folder or wildcard as the file system lists it)
+                                 created-desc (default: as given; a folder or wildcard as the file system lists it).
+                                 By name, each folder's files stay together, sub folders first. Where a file has
+                                 no creation date (some Linux file systems), created uses its change or modified date
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
               --overwrite        Replace existing output files (default: add a number)
               --skip             Leave existing output files alone
