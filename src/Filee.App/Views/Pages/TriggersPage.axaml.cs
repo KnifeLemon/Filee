@@ -29,6 +29,22 @@ public partial class TriggersPage : UserControl
     private void OnRecorderKeyDown(object? sender, KeyEventArgs e)
     {
         var recorder = (e.Source as Visual)?.FindAncestorOfType<ToggleButton>(includeSelf: true);
+        if (recorder is { Classes: var classes, DataContext: TriggerGestureViewModel { IsRecording: true } gestureVm }
+            && classes.Contains("recorder") && e.Key == Key.Escape)
+        {
+            gestureVm.IsRecording = false;
+            e.Handled = true;
+            return;
+        }
+        if (recorder is { Classes: var clearClasses, DataContext: TriggerGestureViewModel { IsRecording: true } clearVm }
+            && clearClasses.Contains("recorder") && e.Key == Key.Back)
+        {
+            clearVm.ClearKeyCommand.Execute(null);
+            clearVm.IsRecording = false;
+            e.Handled = true;
+            return;
+        }
+
         var recorded = recorder switch
         {
             { DataContext: TriggerGestureViewModel { IsRecording: true } vm } when recorder.Classes.Contains("recorder") =>
