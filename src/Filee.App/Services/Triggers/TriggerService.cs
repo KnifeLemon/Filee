@@ -152,7 +152,7 @@ public sealed class TriggerService : IDisposable
         _detector.Paused = settings.Paused;
         _flipKey = settings.Donut.EffectiveFlipKey(settings.Triggers);
         _flipWheel = settings.Donut.FlipWithWheel;
-        _detector.MiddleClickEnabled = settings.Donut.MiddleClickEnabled;
+        _detector.MiddleClickEnabled = settings.Donut.MiddleClickEnabled && _platform.SupportsSelectionShortcut;
         _excluded = new HashSet<string>(settings.ExcludedProcesses.Select(p => p.Trim().Replace(".exe", "", StringComparison.OrdinalIgnoreCase)),
             StringComparer.OrdinalIgnoreCase);
     }
