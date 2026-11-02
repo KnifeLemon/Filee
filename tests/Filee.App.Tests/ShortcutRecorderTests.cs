@@ -62,6 +62,7 @@ public sealed class ShortcutRecorderTests
         {
             store.Settings.Triggers.Clear();
             store.Settings.Triggers.Add(new TriggerGesture { Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl, Key = "K" });
+            store.Settings.Donut.MiddleClickEnabled = true;
             var vm = new TriggersPageViewModel(store, AppHost.Get<ILocalizer>());
             Assert.True(vm.MiddleClickEnabled);
 
