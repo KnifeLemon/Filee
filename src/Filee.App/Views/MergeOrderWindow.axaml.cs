@@ -112,9 +112,13 @@ public partial class MergeOrderWindow : Window
     /// </summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is not MergeOrderViewModel vm || !IsListKey(e.Source))
+        if (DataContext is not MergeOrderViewModel vm)
             return;
-        if (e.Key is Key.Up or Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+        // Alt+Up / Alt+Down reorder anywhere in the window; the plain arrows only where they mean selection.
+        var reorder = e.Key is Key.Up or Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Alt);
+        if (!reorder && !IsListKey(e.Source))
+            return;
+        if (reorder)
             (e.Key == Key.Up ? vm.MoveUpCommand : vm.MoveDownCommand).Execute(null);
         else if (e.Key is Key.Left or Key.Right)
             vm.SelectNeighbour(e.Key == Key.Right ^ IsRightToLeft ? 1 : -1);

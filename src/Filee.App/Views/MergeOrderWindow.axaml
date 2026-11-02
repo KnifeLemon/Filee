@@ -62,11 +62,11 @@
             Background="{DynamicResource SurfaceBrush}">
       <DockPanel>
         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6">
-          <Button x:Name="MoveUp" Classes="icon" Command="{Binding MoveUpCommand}"
+          <Button x:Name="MoveUp" Classes="icon" Focusable="False" Command="{Binding MoveUpCommand}"
                   ToolTip.Tip="{DynamicResource group.move_up}" AutomationProperties.Name="{DynamicResource group.move_up}">
             <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
           </Button>
-          <Button x:Name="MoveDown" Classes="icon" Command="{Binding MoveDownCommand}"
+          <Button x:Name="MoveDown" Classes="icon" Focusable="False" Command="{Binding MoveDownCommand}"
                   ToolTip.Tip="{DynamicResource group.move_down}" AutomationProperties.Name="{DynamicResource group.move_down}">
             <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
           </Button>

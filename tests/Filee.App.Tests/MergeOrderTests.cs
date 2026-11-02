@@ -79,8 +79,7 @@ public class MergeOrderTests
             Assert.False(dialog.FindControl<Button>("MoveUp")!.IsEffectivelyEnabled);
             Click(dialog, "MoveDown"); // 300, 200, 400
             Assert.Equal([inputs[1], inputs[0], inputs[2]], vm.OrderedFiles);
-            // Headless tests can't give the list the focus, so the key's command runs here; the key itself is checked by hand.
-            vm.MoveDownCommand.Execute(null); // 300, 400, 200
+            dialog.KeyPress(Key.Down, RawInputModifiers.Alt, PhysicalKey.ArrowDown, null); // 300, 400, 200
             RenderTests.Pump();
             Assert.Equal([inputs[1], inputs[2], inputs[0]], vm.OrderedFiles);
             Assert.False(dialog.FindControl<Button>("MoveDown")!.IsEffectivelyEnabled);
