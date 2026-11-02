@@ -31,6 +31,18 @@
       </WrapPanel>
     </StackPanel>
 
+    <!-- Built-in shortcut: fixed in the list; users can switch it off but cannot remove it. -->
+    <Border Classes="card">
+      <DockPanel>
+        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding MiddleClickEnabled}" OnContent="" OffContent=""
+                      AutomationProperties.Name="{DynamicResource triggers.middle_click}" />
+        <StackPanel Spacing="3">
+          <TextBlock Classes="label" Text="{DynamicResource triggers.middle_click}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource triggers.middle_click_note}" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
     <ItemsControl ItemsSource="{Binding Gestures}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
