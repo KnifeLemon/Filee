@@ -5,8 +5,8 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
-using Filee.Core.Conversion;
 using Microsoft.Win32.SafeHandles;
+using Filee.Core.Conversion;
 
 namespace Filee.Engines.Infrastructure;
 
@@ -32,12 +32,10 @@ public static class ProcessRunner
     /// <param name="onOutput">Called with every line of standard output and error as it arrives (e.g. to parse progress).</param>
     /// <param name="outputReady">
     /// Polled while the program runs; once it has returned true on several polls in a row the program is killed and
-    /// treated as finished (exit code 0). On Windows, a Job Object is used to terminate child processes too.
-    /// This is useful for LibreOffice: soffice.exe can exit while soffice.bin still holds the redirected pipes open.
+    /// treated as finished (exit code 0). On Windows, a Job Object also terminates child processes.
     /// </param>
     /// <param name="stallTimeout">
-    /// When set, the program is also killed once it has written nothing (no line on either stream) for this long: for
-    /// engines that keep reporting progress, so a long run that does goes on and a hung one stops early.
+    /// When set, the program is also killed once it has written nothing (no line on either stream) for this long.
     /// </param>
     public static async Task<ProcessResult> RunAsync(
         string executable,
@@ -54,8 +52,8 @@ public static class ProcessRunner
         {
             UseShellExecute = false,
             CreateNoWindow = true,
-            // Closed right after the start: a program that asks a question (7-Zip's password prompt) reads end of
-            // input instead of waiting on the console or pipe Filee itself was started with.
+            // Closed right after the start: a program that asks a question reads end of input
+            // instead of waiting on the console or pipe Filee itself was started with.
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -68,8 +66,10 @@ public static class ProcessRunner
             psi.ArgumentList.Add(arg);
 
         if (environment is not null)
+        {
             foreach (var (key, value) in environment)
                 psi.Environment[key] = value;
+        }
 
         using var process = new Process { StartInfo = psi };
         using var job = outputReady is not null && OperatingSystem.IsWindows()
@@ -105,8 +105,8 @@ public static class ProcessRunner
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");
 
-        // Assign immediately after starting, so the Job Object tracks the process and its later children.
-        // If assignment is unavailable (for example, due to job restrictions), retain the normal tree-kill fallback.
+        // Assign immediately after starting, so the Job Object tracks the process and its children.
+        // If assignment is unavailable, retain the normal process-tree kill fallback.
         if (job is not null && !job.TryAssign(process))
             job.Dispose();
 
@@ -160,13 +160,16 @@ public static class ProcessRunner
 
         if (finishedEarly)
         {
-            // The Job Object terminates remaining assigned children when its handle is closed.
             // Do not wait for redirected streams: a child may have inherited their handles.
             process.WaitForExit(3000);
 
             lock (stdout)
-            lock (stderr)
-                return new ProcessResult(0, stdout.ToString(), stderr.ToString());
+            {
+                lock (stderr)
+                {
+                    return new ProcessResult(0, stdout.ToString(), stderr.ToString());
+                }
+            }
         }
 
         // Make sure the async output readers have drained.
@@ -261,7 +264,7 @@ public static class ProcessRunner
     private sealed class ProcessJob : IDisposable
     {
         private const uint JobObjectLimitKillOnJobClose = 0x2000;
-        private const int JobObjectExtendedLimitInformation = 9;
+        private const int JobObjectExtendedLimitInformationClass = 9;
 
         private readonly SafeJobHandle _handle;
 
@@ -289,10 +292,10 @@ public static class ProcessRunner
             };
 
             if (!SetInformationJobObject(
-                    handle,
-                    JobObjectExtendedLimitInformation,
-                    ref info,
-                    (uint)Marshal.SizeOf<JobObjectExtendedLimitInformation>()))
+                handle,
+                JobObjectExtendedLimitInformationClass,
+                ref info,
+                (uint)Marshal.SizeOf<JobObjectExtendedLimitInformation>()))
             {
                 handle.Dispose();
                 return null;
