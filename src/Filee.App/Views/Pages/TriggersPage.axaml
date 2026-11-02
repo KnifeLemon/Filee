@@ -65,6 +65,8 @@
                 <Border Classes="badge ok" VerticalAlignment="Center" HorizontalAlignment="Left">
                   <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" />
                 </Border>
+                <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" Text="{Binding Conflict}"
+                           IsVisible="{Binding Conflict, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </DockPanel>
 
               <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto">
