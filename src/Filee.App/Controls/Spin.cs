@@ -25,6 +25,9 @@ public static class Spin
     private sealed class State
     {
         public DispatcherTimer? Timer;
+
+        /// <summary>The detach handler is added once per icon, not on every start.</summary>
+        public bool Hooked;
     }
 
     private static readonly ConditionalWeakTable<Control, State> States = new();
@@ -48,6 +51,14 @@ public static class Spin
         if (state.Timer is not null)
             return;
 
+        // Leaving the page stops the turning. Subscribed once: Stop is safe to call again, but handlers added on
+        // every click would pile up for as long as the icon lives.
+        if (!state.Hooked)
+        {
+            control.DetachedFromVisualTree += (_, _) => Stop(control);
+            state.Hooked = true;
+        }
+
         var clock = Stopwatch.StartNew();
         var timer = new DispatcherTimer(DispatcherPriority.Render) { Interval = TimeSpan.FromMilliseconds(16) };
         timer.Tick += (_, _) =>
@@ -56,7 +67,6 @@ public static class Spin
             control.RenderTransform = new RotateTransform(angle); // the origin is the middle of the icon
         };
         state.Timer = timer;
-        control.DetachedFromVisualTree += (_, _) => Stop(control);
         timer.Start();
     }
 
