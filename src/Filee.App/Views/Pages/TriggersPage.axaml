@@ -31,6 +31,18 @@
       </WrapPanel>
     </StackPanel>
 
+    <!-- Built-in shortcut: fixed in the list; users can switch it off but cannot remove it. -->
+    <Border Classes="card" IsVisible="{Binding CanMiddleClick}">
+      <DockPanel>
+        <ToggleSwitch DockPanel.Dock="Right" IsChecked="{Binding MiddleClickEnabled}" OnContent="" OffContent=""
+                      AutomationProperties.Name="{DynamicResource triggers.middle_click}" />
+        <StackPanel Spacing="3">
+          <TextBlock Classes="label" Text="{DynamicResource triggers.middle_click}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource triggers.middle_click_note}" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
     <ItemsControl ItemsSource="{Binding Gestures}">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
@@ -53,6 +65,8 @@
                 <Border Classes="badge ok" VerticalAlignment="Center" HorizontalAlignment="Left">
                   <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" Foreground="{DynamicResource AccentStrongBrush}" />
                 </Border>
+                <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" Text="{Binding Conflict}"
+                           IsVisible="{Binding Conflict, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </DockPanel>
 
               <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto">
@@ -98,6 +112,12 @@
                 </StackPanel>
               </Grid>
 
+              <StackPanel IsVisible="{Binding UsesProfile}">
+                <TextBlock Classes="label" Text="{DynamicResource triggers.profile}" />
+                <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                          HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.profile}" />
+              </StackPanel>
+
               <!-- Clipboard shortcut: converts the files or the picture on the clipboard and puts the results back -->
               <DockPanel IsVisible="{Binding UsesClipboard}">
                 <ToggleSwitch DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0" Margin="12,0,0,0"
@@ -114,7 +134,9 @@
                   <TextBlock DockPanel.Dock="Right" Text="{Binding ThresholdText}" FontWeight="SemiBold" />
                   <TextBlock Classes="label" Text="{DynamicResource triggers.threshold}" />
                 </DockPanel>
-                <Slider Minimum="0" Maximum="80" Value="{Binding DragThreshold}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
+                <Slider Minimum="0" Maximum="1000" Value="{Binding DragThreshold}" TickFrequency="50" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
+                <NumericUpDown Value="{Binding DragThreshold}" Minimum="0" Maximum="1000" Increment="1" FormatString="0"
+                               HorizontalAlignment="Left" Width="100" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
               </StackPanel>
               <StackPanel IsVisible="{Binding UsesHold}">
                 <DockPanel>

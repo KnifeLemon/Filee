@@ -84,6 +84,9 @@ public sealed class DonutSettings
     /// <summary>A turn of the mouse wheel flips the open donut to its other face.</summary>
     public bool FlipWithWheel { get; set; } = true;
 
+    /// <summary>Always-present built-in middle-button shortcut for the current file-manager selection.</summary>
+    public bool MiddleClickEnabled { get; set; } = true;
+
     /// <summary>
     /// Keys that never flip the donut: Esc closes it, Enter and Space convert or open a group, the arrows move between
     /// slices and Backspace folds a group's ring.

@@ -115,7 +115,7 @@ public sealed class RadialController(
     /// <paramref name="toClipboard"/>: the files came from the clipboard, and their results go back on it.
     /// </summary>
     public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
-        bool toClipboard = false)
+        bool toClipboard = false, string? profileId = null)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -134,7 +134,7 @@ public sealed class RadialController(
         var window = EnsureWindow();
         _dropped = false;
         _converted = false;
-        viewModel.Load(files, clickMode: true);
+        viewModel.Load(files, clickMode: true, profileId: profileId);
         viewModel.FitToThisDonut();
         window.DonutControl.AllowContextEdit = true;
         // Set the initial pose before showing the reused window, avoiding a fully-open flash.

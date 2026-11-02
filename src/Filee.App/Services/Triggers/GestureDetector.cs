@@ -21,6 +21,10 @@ public sealed class GestureDetector
     private bool _dragActive;
     private bool _lateRejected; // no late-modifier drag for this press: its scope failed, or a hold already fired
     private int _lastX, _lastY;
+    private readonly HashSet<string> _pressedKeys = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Whether the built-in middle-button selection shortcut is active.</summary>
+    public bool MiddleClickEnabled { get; set; } = true;
 
     /// <summary>A press that may still become a drag, a hold, or both until one of them happens.</summary>
     private sealed record Armed(TriggerGesture? Drag, TriggerGesture? Hold, int X, int Y, long Token);
@@ -41,6 +45,7 @@ public sealed class GestureDetector
     public event Action<int, int>? DragEnded;
     public event Action<TriggerGesture, int, int>? HoldTriggered;
     public event Action<TriggerGesture, int, int>? KeyChordTriggered;
+    public event Action<int, int>? MiddleClickTriggered;
 
     /// <summary>Raised when a hold gesture is armed; the owner must call <see cref="HoldElapsed"/> after the delay.</summary>
     public event Action<long, int>? HoldTimerRequested;
@@ -58,6 +63,7 @@ public sealed class GestureDetector
     {
         TriggerGesture? holdGesture = null;
         long token = 0;
+        var middleClick = false;
         lock (_lock)
         {
             _lastX = x;
@@ -67,17 +73,28 @@ public sealed class GestureDetector
             if (Paused)
                 return;
 
+            if (MiddleClickEnabled && button == TriggerMouseButton.Middle && modifiers == ModifierKeys.None)
+            {
+                var builtIn = new TriggerGesture { Kind = TriggerKind.MiddleClick, Button = TriggerMouseButton.Middle, Scope = TriggerScope.FileManager };
+                middleClick = ScopeFilter(builtIn, x, y);
+            }
+
             // A drag and a hold may share the button and modifiers (#450): both are armed, and what the pointer does
             // next decides between them.
-            var drag = FirstInScope(TriggerKind.Drag, button, modifiers, x, y);
-            holdGesture = FirstInScope(TriggerKind.Hold, button, modifiers, x, y);
-            if (drag is null && holdGesture is null)
+            var drag = middleClick ? null : FirstInScope(TriggerKind.Drag, button, modifiers, x, y);
+            holdGesture = middleClick ? null : FirstInScope(TriggerKind.Hold, button, modifiers, x, y);
+            if (drag is null && holdGesture is null && !middleClick)
                 return;
 
-            token = Environment.TickCount64 ^ (x * 7919L) ^ y;
-            _armed = new Armed(drag, holdGesture, x, y, token);
+            if (drag is not null || holdGesture is not null)
+            {
+                token = Environment.TickCount64 ^ (x * 7919L) ^ y;
+                _armed = new Armed(drag, holdGesture, x, y, token);
+            }
         }
 
+        if (middleClick)
+            MiddleClickTriggered?.Invoke(x, y);
         if (holdGesture is not null)
             HoldTimerRequested?.Invoke(token, holdGesture.HoldMilliseconds);
     }
@@ -123,7 +140,9 @@ public sealed class GestureDetector
     private bool Moved(TriggerGesture gesture, Armed armed, int x, int y)
     {
         var threshold = gesture.DragThreshold > 0 ? gesture.DragThreshold : SystemDragThreshold;
-        return Math.Abs(x - armed.X) > threshold || Math.Abs(y - armed.Y) > threshold;
+        var dx = (long)x - armed.X;
+        var dy = (long)y - armed.Y;
+        return (double)dx * dx + (double)dy * dy > (double)threshold * threshold;
     }
 
     /// <summary>
@@ -187,7 +206,7 @@ public sealed class GestureDetector
         int x, y;
         lock (_lock)
         {
-            if (Paused)
+            if (!_pressedKeys.Add(key) || Paused)
                 return;
             (x, y) = (_lastX, _lastY);
             // Two shortcuts on one key (one per scope, say): the first whose scope fits fires.
@@ -199,5 +218,12 @@ public sealed class GestureDetector
         }
         if (fire is not null)
             KeyChordTriggered?.Invoke(fire, x, y);
+    }
+
+    /// <summary>Tracks release so operating-system key-repeat events cannot retrigger a shortcut.</summary>
+    public void KeyUp(string key)
+    {
+        lock (_lock)
+            _pressedKeys.Remove(key);
     }
 }

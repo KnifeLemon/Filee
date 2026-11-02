@@ -143,7 +143,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// Fills the donut for the given files, on its front face, or on the back when <paramref name="backFace"/> and the
     /// back has a slice for them (the same files again after a preset was edited).
     /// </summary>
-    public void Load(IReadOnlyList<string> files, bool clickMode, bool backFace = false)
+    public void Load(IReadOnlyList<string> files, bool clickMode, bool backFace = false, string? profileId = null)
     {
         IsClickMode = clickMode;
         Files = files;
@@ -154,7 +154,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         // A Shapefile selected with its .dbf, .shx, ... picks the donut of the .shp, not the one for unknown files, and
         // counts as one file.
         var counted = CompanionFiles.WithoutCompanions(files);
-        var profile = ProfileSelector.Select(store.Profiles, counted);
+        var profile = profileId is null ? ProfileSelector.Select(store.Profiles, counted)
+            : store.Profiles.FirstOrDefault(p => p.Id == profileId) ?? ProfileSelector.Select(store.Profiles, counted);
         var formats = ProfileSelector.DetectFormats(counted);
         // Both faces follow the same rule: a slice that can't convert these files is greyed out and says why.
         _front = BuildFace(profile?.PresetIds ?? [], formats);

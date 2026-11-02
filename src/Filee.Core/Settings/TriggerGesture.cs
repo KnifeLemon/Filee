@@ -35,6 +35,8 @@ public enum TriggerKind
     Hold,
     /// <summary>Press the modifiers + <see cref="TriggerGesture.Key"/> (no mouse). Uses the file manager selection.</summary>
     KeyChord,
+    /// <summary>Built-in middle-button click that opens the donut for the file manager selection.</summary>
+    MiddleClick,
 }
 
 /// <summary>Where the gesture is active.</summary>
@@ -64,7 +66,10 @@ public sealed class TriggerGesture
     /// </summary>
     public string? Key { get; set; }
 
-    /// <summary>Distance in logical pixels the mouse must travel before a drag counts. 0 = system default.</summary>
+    /// <summary>Optional toolbar profile for selection gestures; null keeps automatic format detection.</summary>
+    public string? ProfileId { get; set; }
+
+    /// <summary>Distance in physical screen pixels the mouse must travel before a drag counts. 0 = system default.</summary>
     public int DragThreshold { get; set; }
 
     /// <summary>Press duration for <see cref="TriggerKind.Hold"/>.</summary>

@@ -9,6 +9,7 @@ using Filee.App.Services;
 using Filee.App.Services.Triggers;
 using Filee.Core.Localization;
 using Filee.Core.Platform;
+using Filee.Core.Profiles;
 using Filee.Core.Settings;
 using Filee.Platform.Linux;
 using Filee.Platform.MacOS;
@@ -23,12 +24,12 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     private bool _loading = true;
 
     /// <param name="clipboardAvailable">The platform can read the clipboard (<see cref="IPlatformServices.SupportsClipboard"/>).</param>
-    public TriggerGestureViewModel(TriggerGesture gesture, ILocalizer loc, Action save, bool clipboardAvailable = false)
+    public TriggerGestureViewModel(TriggerGesture gesture, ILocalizer loc, Action save, bool clipboardAvailable = false, IReadOnlyList<ToolbarProfile>? profiles = null)
     {
         _gesture = gesture;
         _save = save;
         ClipboardAvailable = clipboardAvailable;
-        Kinds = Enum.GetValues<TriggerKind>().Select(k => new Choice<TriggerKind>(k, loc[$"triggers.kind.{k}"])).ToList();
+        Kinds = Enum.GetValues<TriggerKind>().Where(k => k != TriggerKind.MiddleClick).Select(k => new Choice<TriggerKind>(k, loc[$"triggers.kind.{k}"])).ToList();
         Buttons = Enum.GetValues<TriggerMouseButton>().Where(b => b != TriggerMouseButton.None)
             .Select(b => new Choice<TriggerMouseButton>(b, loc[$"triggers.button.{b}"])).ToList();
         // The file manager has its own name on each system: Explorer, Finder, the Linux desktop's file manager.
@@ -36,6 +37,8 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         Scopes = Enum.GetValues<TriggerScope>()
             .Select(s => new Choice<TriggerScope>(s, loc[s == TriggerScope.FileManager ? $"triggers.scope.{s}{platform}" : $"triggers.scope.{s}"]))
             .ToList();
+        Profiles = new[] { new Choice<string?>(null, loc["triggers.profile_auto"]) }
+            .Concat((profiles ?? []).Select(p => new Choice<string?>(p.Id, loc.DisplayName(p)))).ToList();
         RecordLabel = loc["triggers.record"];
         RecordingLabel = loc["triggers.recording"];
         SystemLabel = loc["triggers.threshold_system"];
@@ -52,6 +55,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         HoldMilliseconds = gesture.HoldMilliseconds;
         Scope = Scopes.First(s => s.Value == gesture.Scope);
         Clipboard = gesture.Clipboard;
+        SelectedProfile = Profiles.FirstOrDefault(p => p.Value == gesture.ProfileId) ?? Profiles[0];
         _loading = false;
     }
 
@@ -59,6 +63,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     public IReadOnlyList<Choice<TriggerKind>> Kinds { get; }
     public IReadOnlyList<Choice<TriggerMouseButton>> Buttons { get; }
     public IReadOnlyList<Choice<TriggerScope>> Scopes { get; }
+    public IReadOnlyList<Choice<string?>> Profiles { get; }
     public string RecordLabel { get; }
     public string RecordingLabel { get; }
     public string SystemLabel { get; }
@@ -67,7 +72,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
 
     [ObservableProperty] private bool _enabled;
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard), nameof(UsesProfile))]
     private Choice<TriggerKind> _kind = null!;
 
     [ObservableProperty] private bool _ctrl;
@@ -79,8 +84,12 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ThresholdText))] private int _dragThreshold;
     [ObservableProperty] private int _holdMilliseconds;
     [ObservableProperty] private Choice<TriggerScope> _scope = null!;
+    [ObservableProperty] private Choice<string?> _selectedProfile = null!;
     [ObservableProperty] private bool _clipboard;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(KeyText))] private bool _isRecording;
+    [ObservableProperty] private string? _conflict;
+
+    internal void SetConflict(string? message) => Conflict = message;
 
     public bool UsesMouse => Kind.Value != TriggerKind.KeyChord;
     public bool UsesKey => Kind.Value == TriggerKind.KeyChord;
@@ -88,6 +97,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     public bool UsesHold => Kind.Value == TriggerKind.Hold;
     /// <summary>A keyboard shortcut where the clipboard can be read: it may convert what is on the clipboard.</summary>
     public bool UsesClipboard => UsesKey && ClipboardAvailable;
+    public bool UsesProfile => Kind.Value != TriggerKind.Drag;
     public string KeyText => IsRecording ? RecordingLabel : string.IsNullOrEmpty(Key) ? "—" : Key;
     public string ThresholdText => DragThreshold == 0 ? SystemLabel : $"{DragThreshold}px";
     public string Summary => GestureText.Describe(_gesture);
@@ -96,12 +106,13 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     partial void OnKindChanged(Choice<TriggerKind>? oldValue, Choice<TriggerKind> newValue) => Choices.Restore(oldValue, newValue, v => Kind = v);
     partial void OnButtonChanged(Choice<TriggerMouseButton>? oldValue, Choice<TriggerMouseButton> newValue) => Choices.Restore(oldValue, newValue, v => Button = v);
     partial void OnScopeChanged(Choice<TriggerScope>? oldValue, Choice<TriggerScope> newValue) => Choices.Restore(oldValue, newValue, v => Scope = v);
+    partial void OnSelectedProfileChanged(Choice<string?>? oldValue, Choice<string?> newValue) => Choices.Restore(oldValue, newValue, v => SelectedProfile = v);
 
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
         base.OnPropertyChanged(e);
         if (_loading || e.PropertyName is nameof(IsRecording) or nameof(KeyText) or nameof(ThresholdText) or nameof(Summary)
-            or nameof(UsesMouse) or nameof(UsesKey) or nameof(UsesThreshold) or nameof(UsesHold) or nameof(UsesClipboard))
+            or nameof(UsesMouse) or nameof(UsesKey) or nameof(UsesThreshold) or nameof(UsesHold) or nameof(UsesClipboard) or nameof(UsesProfile) or nameof(Conflict))
             return;
 
         _gesture.Enabled = Enabled;
@@ -110,10 +121,11 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
                              (Shift ? ModifierKeys.Shift : 0) | (Meta ? ModifierKeys.Meta : 0);
         _gesture.Button = Kind.Value == TriggerKind.KeyChord ? TriggerMouseButton.None : Button.Value;
         _gesture.Key = Key;
-        _gesture.DragThreshold = Math.Clamp(DragThreshold, 0, 200);
+        _gesture.DragThreshold = Math.Clamp(DragThreshold, 0, 1000);
         _gesture.HoldMilliseconds = Math.Clamp(HoldMilliseconds, 150, 3000);
         _gesture.Scope = Scope.Value;
         _gesture.Clipboard = Clipboard;
+        _gesture.ProfileId = SelectedProfile.Value;
         OnPropertyChanged(nameof(Summary));
         _save();
     }
@@ -259,17 +271,29 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
         if (triggers is not null)
             triggers.StatusChanged += OnTriggerStatusChanged;
         foreach (var gesture in store.Settings.Triggers)
-            Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save, platform?.SupportsClipboard == true));
+            Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save, platform?.SupportsClipboard == true, store.Profiles));
+        RefreshConflicts();
         ExcludedApps = new ExcludedAppsViewModel(store.Settings.ExcludedProcesses, platform, Save);
         Flip = new FlipOptionsViewModel(store, loc, Save);
+        _middleClickEnabled = store.Settings.Donut.MiddleClickEnabled;
     }
 
     /// <summary>The key and the wheel that flip the open donut.</summary>
     public FlipOptionsViewModel Flip { get; }
 
+    /// <summary>The built-in middle-button shortcut is fixed in the list and can only be switched on or off.</summary>
+    [ObservableProperty] private bool _middleClickEnabled;
+
+    partial void OnMiddleClickEnabledChanged(bool value)
+    {
+        _store.Settings.Donut.MiddleClickEnabled = value;
+        Save();
+    }
+
     public ObservableCollection<TriggerGestureViewModel> Gestures { get; } = [];
 
     public bool IsMacOS => _platform is MacOSPlatformServices;
+    public bool CanMiddleClick => _platform?.SupportsSelectionShortcut == true;
     public bool CanRetryHook => _triggers is not null && (_platform?.SupportsGlobalPointerGestures == true || IsMacOS);
     public string? IntegrationError => _accessibilityError ?? _integration?.Error;
     public string? PlatformNotice => _platform switch
@@ -343,7 +367,7 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
     {
         var gesture = new TriggerGesture { Modifiers = ModifierKeys.Alt, Button = TriggerMouseButton.Left };
         _store.Settings.Triggers.Add(gesture);
-        Gestures.Add(new TriggerGestureViewModel(gesture, _loc, Save, _platform?.SupportsClipboard == true));
+        Gestures.Add(new TriggerGestureViewModel(gesture, _loc, Save, _platform?.SupportsClipboard == true, _store.Profiles));
         Save();
     }
 
@@ -355,5 +379,30 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
         Save();
     }
 
-    private void Save() => _store.SaveSettings();
+    private void Save()
+    {
+        RefreshConflicts();
+        _store.SaveSettings();
+    }
+
+    /// <summary>Warn when enabled gestures share a trigger in overlapping scopes.</summary>
+    private void RefreshConflicts()
+    {
+        foreach (var item in Gestures)
+        {
+            var duplicate = Gestures.Any(other => !ReferenceEquals(item, other)
+                && item.Enabled && other.Enabled
+                && item.Gesture.Kind == other.Gesture.Kind
+                && item.Gesture.Button == other.Gesture.Button
+                && item.Gesture.Modifiers == other.Gesture.Modifiers
+                && (item.Gesture.Kind != TriggerKind.KeyChord
+                    || string.Equals(item.Gesture.Key, other.Gesture.Key, StringComparison.OrdinalIgnoreCase))
+                && (item.Gesture.Scope == TriggerScope.Anywhere || other.Gesture.Scope == TriggerScope.Anywhere
+                    || item.Gesture.Scope == other.Gesture.Scope));
+            var collidesWithBuiltInMiddleClick = _store.Settings.Donut.MiddleClickEnabled && item.Enabled
+                && item.Gesture.Kind is TriggerKind.Drag or TriggerKind.Hold
+                && item.Gesture.Button == TriggerMouseButton.Middle && item.Gesture.Modifiers == ModifierKeys.None;
+            item.SetConflict(duplicate || collidesWithBuiltInMiddleClick ? _loc["triggers.conflict"] : null);
+        }
+    }
 }
