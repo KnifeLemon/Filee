@@ -1,3 +1,4 @@
+
 // Office documents via LibreOffice in headless mode (MPL-2.0): the optional fallback for formats the built-in engines
 // don't handle (DOC, XLS, PPT, OpenDocument, ...) and the only reader of rarer ones: Works / WPS, WordPerfect, Lotus
 // Word Pro, AbiWord, Apple Pages / Numbers / Keynote, StarOffice, WPS Office, ClarisWorks / AppleWorks, MacWrite, T602,
@@ -185,8 +186,9 @@ public sealed class LibreOfficeConverter : IConverter
         Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0);
 
     /// <summary>
-    /// A probe for <see cref="ProcessRunner"/>: true when the output file exists, has not changed size since the last
-    /// call and (for a PDF) ends with its %%EOF marker, i.e. LibreOffice is finished writing it.
+    /// A probe for <see cref="ProcessRunner"/>: true when the PDF output file exists,
+    /// has not changed size since the last call and ends with its %%EOF marker.
+    /// Non-PDF formats are deliberately not probed: a stable file size alone does not prove completion.
     /// </summary>
     private static Func<bool> OutputComplete(string outDir)
     {
@@ -195,17 +197,22 @@ public sealed class LibreOfficeConverter : IConverter
         {
             if (!Directory.Exists(outDir) || ProducedIn(outDir) is not { } file)
                 return false;
+
+            if (!file.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                return false;
+
             var length = new FileInfo(file).Length;
             var steady = length == last;
             last = length;
-            if (!steady)
+
+            if (!steady || length == 0)
                 return false;
-            if (!file.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
-                return true;
+
             using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             var tail = new byte[(int)Math.Min(length, 1024)];
             stream.Seek(-tail.Length, SeekOrigin.End);
             stream.ReadExactly(tail);
+
             return System.Text.Encoding.ASCII.GetString(tail).Contains("%%EOF", StringComparison.Ordinal);
         };
     }
@@ -338,10 +345,15 @@ public sealed class LibreOfficeConverter : IConverter
             args.Add("-env:UNO_JAVA_JFW_JREHOME=" + new Uri(jre + Path.DirectorySeparatorChar).AbsoluteUri);
         }
         args.AddRange(["--convert-to", filter, "--outdir", outDir, input]);
+
+        // Only PDF has a completion marker we can verify here. Other formats may pause while being written,
+        // so a stable file size is not sufficient evidence that the conversion has finished.
+        var isPdf = filter.StartsWith("pdf:", StringComparison.OrdinalIgnoreCase);
+
         // The probe ends a run whose soffice.bin keeps our pipes open after the document was converted (the warm-up
         // converts nothing we need, so it runs without one).
         return await ProcessRunner.RunAsync(soffice, args, Timeout, cancellationToken,
-            outputReady: probe ? OutputComplete(outDir) : null);
+            outputReady: probe && isPdf ? OutputComplete(outDir) : null);
     }
 
     /// <summary>Maps a target format to a LibreOffice <c>--convert-to</c> filter specification.</summary>
