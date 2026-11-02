@@ -35,6 +35,8 @@ public enum TriggerKind
     Hold,
     /// <summary>Press the modifiers + <see cref="TriggerGesture.Key"/> (no mouse). Uses the file manager selection.</summary>
     KeyChord,
+    /// <summary>Built-in middle-button click that opens the donut for the file manager selection.</summary>
+    MiddleClick,
 }
 
 /// <summary>Where the gesture is active.</summary>
