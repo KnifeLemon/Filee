@@ -9,7 +9,7 @@ namespace Filee.Core.Tests;
 public class ProfileResetTests
 {
     [Fact]
-    public void ResetLibrary_GivesNewLayout()
+    public void Resetting_the_library_gives_the_new_layout()
     {
         using var dir = new TempDir();
         var store = NewStore(dir);
@@ -25,7 +25,7 @@ public class ProfileResetTests
     }
 
     [Fact]
-    public void ResetProfile_GivesNewLayout()
+    public void Resetting_each_donut_gives_the_new_layout()
     {
         using var dir = new TempDir();
         var store = NewStore(dir);

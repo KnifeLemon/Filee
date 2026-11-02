@@ -8,57 +8,54 @@ namespace Filee.Core.Tests;
 public partial class UserDataStoreTests
 {
     [Fact]
-    public void Load_Schema58Defaults_SameAsBaseline() => CompareSlotBaseline("Defaults", import: false);
+    public void A_library_with_the_schema_58_defaults_loads_unchanged() => AssertKeptAsBefore("Defaults", import: false);
 
     [Fact]
-    public void Import_Schema58Defaults_SameAsBaseline() => CompareSlotBaseline("Defaults", import: true);
+    public void A_bundle_with_the_schema_58_defaults_imports_unchanged() => AssertKeptAsBefore("Defaults", import: true);
 
     [Fact]
-    public void Load_EditedLayout_SameAsBaseline() => CompareSlotBaseline("Edited", import: false);
+    public void A_library_the_user_edited_loads_unchanged() => AssertKeptAsBefore("Edited", import: false);
 
     [Fact]
-    public void Import_EditedLayout_SameAsBaseline() => CompareSlotBaseline("Edited", import: true);
+    public void A_bundle_the_user_edited_imports_unchanged() => AssertKeptAsBefore("Edited", import: true);
 
     [Fact]
-    public void Load_PdfFrontBefore18_SameAsBaseline() => CompareSlotBaseline("PdfBefore18", import: false);
+    public void Version_17_libraries_with_the_old_fronts_get_the_schema_58_defaults() => AssertKeptAsBefore("PdfBefore18", import: false);
 
     [Fact]
-    public void Import_BundleWithOldPdfFront_SameAsBaseline() => CompareSlotBaseline("PdfBefore18", import: true);
+    public void A_bundle_with_the_pdf_front_before_18_keeps_it_and_gets_the_schema_58_back_faces() => AssertKeptAsBefore("PdfBefore18", import: true);
 
     [Fact]
-    public void Load_DefaultProfileWithoutBack_SameAsBaseline() => CompareSlotBaseline("DefaultWithoutBack", import: false);
+    public void A_schema_58_donut_without_a_back_face_gets_its_schema_58_one_on_loading() => AssertKeptAsBefore("DefaultWithoutBack", import: false);
 
     [Fact]
-    public void Import_DefaultProfileWithoutBack_SameAsBaseline() => CompareSlotBaseline("DefaultWithoutBack", import: true);
+    public void A_schema_58_donut_without_a_back_face_gets_its_schema_58_one_on_import() => AssertKeptAsBefore("DefaultWithoutBack", import: true);
 
     [Fact]
-    public void Load_UserProfileWithoutBack_SameAsBaseline() => CompareSlotBaseline("UserWithoutBack", import: false);
+    public void A_donut_of_the_user_without_a_back_face_gets_an_empty_one_on_loading() => AssertKeptAsBefore("UserWithoutBack", import: false);
 
     [Fact]
-    public void Import_UserProfileWithoutBack_SameAsBaseline() => CompareSlotBaseline("UserWithoutBack", import: true);
+    public void A_donut_of_the_user_without_a_back_face_gets_an_empty_one_on_import() => AssertKeptAsBefore("UserWithoutBack", import: true);
 
     [Fact]
-    public void Load_Schema29_SameAsBaseline() => CompareSlotBaseline("Schema29", import: false);
+    public void Version_29_libraries_with_the_schema_58_fronts_get_the_schema_58_back_faces() => AssertKeptAsBefore("Schema29", import: false);
 
-    private static string SlotFixtures => Path.Combine(AppContext.BaseDirectory, "Fixtures", "SlotTable");
-
-    // Captured by executing Load and Import on 51a6ba27, before changing the defaults.
-    // Identical outputs share a file; preset values share presets.json with captured order and edited-PNG overrides.
-    private static void CompareSlotBaseline(string scenario, bool import)
+    // The expected library is built from ProfilesSchema58() and CreatePresets() plus the change of the case, never by
+    // Load, Import or the migrations.
+    private static void AssertKeptAsBefore(string scenario, bool import)
     {
         using var dir = new TempDir();
-        var input = SlotInput(SlotFixtures, scenario);
+        var input = Schema58LibraryFor(scenario);
         var store = new UserDataStore(dir.Path);
         if (import)
         {
             store.Load();
-            // The receiving library is part of the comparison input, not a new installation's changing defaults.
+            // The receiving library is part of the input, not a new installation's changing defaults.
+            var library = Schema58Library();
             store.Profiles.Clear();
-            store.Profiles.AddRange(JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(SlotFixtures, "profiles.json")),
-                FileeJsonContext.Default.ListToolbarProfile)!);
+            store.Profiles.AddRange(library.Profiles);
             store.Presets.Clear();
-            store.Presets.AddRange(JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(SlotFixtures, "presets.json")),
-                FileeJsonContext.Default.ListPreset)!);
+            store.Presets.AddRange(library.Presets);
             var bundlePath = Path.Combine(dir.Path, "bundle.json");
             File.WriteAllText(bundlePath, JsonSerializer.Serialize(input, FileeJsonContext.Default.PresetBundle));
             store.Import(bundlePath);
@@ -66,41 +63,33 @@ public partial class UserDataStoreTests
         else
         {
             File.WriteAllText(Path.Combine(dir.Path, "settings.json"), JsonSerializer.Serialize(
-                new AppSettings { SchemaVersion = scenario == "PdfBefore18" ? 17 : scenario == "Schema29" ? 29 : 58 },
+                new AppSettings { SchemaVersion = scenario switch { "PdfBefore18" => 17, "Schema29" => 29, _ => 58 } },
                 FileeJsonContext.Default.AppSettings));
             File.WriteAllText(Path.Combine(dir.Path, "profiles.json"), JsonSerializer.Serialize(input.Profiles, FileeJsonContext.Default.ListToolbarProfile));
             File.WriteAllText(Path.Combine(dir.Path, "presets.json"), JsonSerializer.Serialize(input.Presets, FileeJsonContext.Default.ListPreset));
             store.Load();
         }
-        var profilesFile = scenario switch
+        var expected = scenario switch
         {
-            "Edited" => "Load-Edited-profiles.json",
-            "UserWithoutBack" => "Load-UserWithoutBack-profiles.json",
-            "PdfBefore18" when import => "Import-PdfBefore18-profiles.json",
-            _ => "profiles.json",
+            "PdfBefore18" when import => PdfBefore18Imported(),
+            "PdfBefore18" => PdfBefore18Loaded(),
+            "Edited" => Schema58LibraryFor("Edited"),
+            "UserWithoutBack" => UserWithoutBackKept(),
+            _ => Schema58Library(),
         };
-        var expectedProfiles = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(SlotFixtures, profilesFile)), FileeJsonContext.Default.ListToolbarProfile)!;
-        Assert.Equal(JsonSerializer.Serialize(expectedProfiles, FileeJsonContext.Default.ListToolbarProfile),
+        Assert.Equal(JsonSerializer.Serialize(expected.Profiles, FileeJsonContext.Default.ListToolbarProfile),
             JsonSerializer.Serialize(store.Profiles, FileeJsonContext.Default.ListToolbarProfile));
-        var expectedPresets = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(SlotFixtures, "presets.json")), FileeJsonContext.Default.ListPreset)!;
-        if (scenario == "Edited")
-            expectedPresets[0] = JsonSerializer.Deserialize("[" + File.ReadAllText(Path.Combine(SlotFixtures, "edited-png.json")) + "]",
-                FileeJsonContext.Default.ListPreset)!.Single();
-        if (scenario == "PdfBefore18")
-        {
-            var ids = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(SlotFixtures,
-                $"{(import ? "Import" : "Load")}-PdfBefore18-preset-ids.json")), FileeJsonContext.Default.ListString)!;
-            var byId = expectedPresets.ToDictionary(p => p.Id);
-            expectedPresets = ids.Select(id => byId[id]).ToList();
-        }
-        Assert.Equal(JsonSerializer.Serialize(expectedPresets, FileeJsonContext.Default.ListPreset),
+        Assert.Equal(JsonSerializer.Serialize(expected.Presets, FileeJsonContext.Default.ListPreset),
             JsonSerializer.Serialize(store.Presets, FileeJsonContext.Default.ListPreset));
     }
 
-    private static PresetBundle SlotInput(string root, string scenario)
+    private static PresetBundle Schema58Library() =>
+        new() { Profiles = BuiltInData.ProfilesSchema58(), Presets = BuiltInData.CreatePresets() };
+
+    private static PresetBundle Schema58LibraryFor(string scenario)
     {
-        var profiles = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(root, "profiles.json")), FileeJsonContext.Default.ListToolbarProfile)!;
-        var presets = JsonSerializer.Deserialize(File.ReadAllText(Path.Combine(root, "presets.json")), FileeJsonContext.Default.ListPreset)!;
+        var library = Schema58Library();
+        var (profiles, presets) = (library.Profiles, library.Presets);
         if (scenario == "Edited")
         {
             var images = profiles.Single(p => p.Id == "images");
@@ -136,6 +125,39 @@ public partial class UserDataStoreTests
         if (scenario == "Schema29")
             foreach (var profile in profiles)
                 profile.BackPresetIds = null;
-        return new PresetBundle { Profiles = profiles, Presets = presets };
+        return library;
+    }
+
+    // Schema 18 swaps the untouched PDF front for PdfDonut and puts "PPTX (slides)" right after "Split pages"; the GIS
+    // migration adds the map donut back, and the back faces are the schema 58 ones.
+    private static PresetBundle PdfBefore18Loaded()
+    {
+        var library = Schema58Library();
+        var slides = library.Presets.Single(p => p.Id == "pdf-slides");
+        library.Presets.Remove(slides);
+        library.Presets.Insert(library.Presets.FindIndex(p => p.Id == "pdf-split") + 1, slides);
+        return library;
+    }
+
+    // Import runs no migration: the bundle keeps its PDF front and gets the schema 58 back faces. The donut and preset
+    // of the receiving library that the bundle lacks come first.
+    private static PresetBundle PdfBefore18Imported()
+    {
+        var library = Schema58Library();
+        var backs = library.Profiles.ToDictionary(p => p.Id, p => p.BackPresetIds);
+        var bundle = Schema58LibraryFor("PdfBefore18").Profiles;
+        foreach (var profile in bundle)
+            profile.BackPresetIds = backs[profile.Id];
+        var slides = library.Presets.Single(p => p.Id == "pdf-slides");
+        library.Presets.Remove(slides);
+        library.Presets.Insert(0, slides);
+        return new PresetBundle { Profiles = [library.Profiles.Single(p => p.Id == "geo"), .. bundle], Presets = library.Presets };
+    }
+
+    private static PresetBundle UserWithoutBackKept()
+    {
+        var library = Schema58LibraryFor("UserWithoutBack");
+        library.Profiles.Single(p => p.Id == "mine").BackPresetIds = [];
+        return library;
     }
 }
