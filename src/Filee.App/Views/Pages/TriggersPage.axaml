@@ -135,6 +135,8 @@
                   <TextBlock Classes="label" Text="{DynamicResource triggers.threshold}" />
                 </DockPanel>
                 <Slider Minimum="0" Maximum="1000" Value="{Binding DragThreshold}" TickFrequency="50" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
+                <NumericUpDown Value="{Binding DragThreshold}" Minimum="0" Maximum="1000" Increment="1" FormatString="0"
+                               HorizontalAlignment="Left" Width="100" AutomationProperties.Name="{DynamicResource triggers.threshold}" />
               </StackPanel>
               <StackPanel IsVisible="{Binding UsesHold}">
                 <DockPanel>
