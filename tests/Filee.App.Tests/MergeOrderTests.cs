@@ -149,8 +149,8 @@ public class MergeOrderTests
                     page.Height = PdfSharp.Drawing.XUnit.FromPoint(500);
                     document.Save(path);
                 }
+                File.SetCreationTimeUtc(path, day.AddHours(createdHours)); // first: on Linux this sets the date modified instead
                 File.SetLastWriteTimeUtc(path, day.AddHours(modifiedHours));
-                File.SetCreationTimeUtc(path, day.AddHours(createdHours));
                 return path;
             }
             var a = Pdf("page 2.pdf", 200, modifiedHours: 2, createdHours: 1);
@@ -184,12 +184,15 @@ public class MergeOrderTests
             Choose(Filee.Core.Platform.FileSortOrder.ModifiedAscending);
             Assert.Equal([b, a, c], vm.OrderedFiles);
             Assert.Equal(day.AddHours(1).ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture), vm.Files[0].Time);
-            Choose(Filee.Core.Platform.FileSortOrder.CreatedAscending);
-            Assert.Equal([a, c, b], vm.OrderedFiles);
-            // Sorted by date created, the rows show that date, not the one modified.
-            Assert.Equal(day.AddHours(1).ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture), vm.Files[0].Time);
-            Choose(Filee.Core.Platform.FileSortOrder.CreatedDescending);
-            Assert.Equal([b, c, a], vm.OrderedFiles);
+            if (OperatingSystem.IsWindows()) // Linux can't set a file's creation time
+            {
+                Choose(Filee.Core.Platform.FileSortOrder.CreatedAscending);
+                Assert.Equal([a, c, b], vm.OrderedFiles);
+                // Sorted by date created, the rows show that date, not the one modified.
+                Assert.Equal(day.AddHours(1).ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture), vm.Files[0].Time);
+                Choose(Filee.Core.Platform.FileSortOrder.CreatedDescending);
+                Assert.Equal([b, c, a], vm.OrderedFiles);
+            }
 
             // A move keeps the order it made and the list says it's custom; the selection and the arrows follow the row.
             Choose(Filee.Core.Platform.FileSortOrder.ModifiedDescending);
@@ -446,7 +449,7 @@ public class MergeOrderTests
             @"C:\Users\me\Pictures\Passport front.jpg",
             @"C:\Users\me\Pictures\Passport back.jpg",
             @"C:\Users\me\Downloads\Driving licence, both sides, scanned at 600 dpi.png"], preset.Image);
-        var window = new MergeOrderWindow { DataContext = vm, Width = 440, Height = 540 };
+        var window = new MergeOrderWindow { DataContext = vm, Width = 440, Height = 590 };
         window.StartMerge.Content = AppHost.Get<ILocalizer>().DisplayName(preset);
         try
         {
