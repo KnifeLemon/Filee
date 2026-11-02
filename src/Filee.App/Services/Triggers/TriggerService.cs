@@ -63,6 +63,8 @@ public sealed class TriggerService : IDisposable
         _detector.DragEnded += (x, y) => Post(() => DragEnded?.Invoke(this, new GestureEventArgs(null, x, y)));
         _detector.HoldTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
         _detector.KeyChordTriggered += (g, x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(g, x, y)));
+        _detector.MiddleClickTriggered += (x, y) => Post(() => SelectionGesture?.Invoke(this, new GestureEventArgs(
+            new TriggerGesture { Kind = TriggerKind.MiddleClick, Button = TriggerMouseButton.Middle, Scope = TriggerScope.FileManager }, x, y)));
         _detector.HoldTimerRequested += (token, ms) =>
             _ = Task.Delay(ms).ContinueWith(_ => _detector.HoldElapsed(token), TaskScheduler.Default);
     }
@@ -150,6 +152,7 @@ public sealed class TriggerService : IDisposable
         _detector.Paused = settings.Paused;
         _flipKey = settings.Donut.EffectiveFlipKey(settings.Triggers);
         _flipWheel = settings.Donut.FlipWithWheel;
+        _detector.MiddleClickEnabled = settings.Donut.MiddleClickEnabled;
         _excluded = new HashSet<string>(settings.ExcludedProcesses.Select(p => p.Trim().Replace(".exe", "", StringComparison.OrdinalIgnoreCase)),
             StringComparer.OrdinalIgnoreCase);
     }
@@ -223,7 +226,11 @@ public sealed class TriggerService : IDisposable
                 OnKey(e.Data.KeyCode, down: true);
                 _detector.KeyDown(KeyName(e.Data.KeyCode), Map(e.RawEvent.Mask));
             };
-            _hook.KeyReleased += (_, e) => OnKey(e.Data.KeyCode, down: false);
+            _hook.KeyReleased += (_, e) =>
+            {
+                OnKey(e.Data.KeyCode, down: false);
+                _detector.KeyUp(KeyName(e.Data.KeyCode));
+            };
             _hook.MouseWheel += (_, e) => OnWheel(e.Data);
             // Own the actual Run thread. SharpHook's RunAsync task completes BEFORE its finally
             // clears the native callback, so awaiting that task alone is not a safe restart barrier.
