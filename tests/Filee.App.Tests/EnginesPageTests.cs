@@ -48,6 +48,7 @@ public class EnginesPageTests
             Assert.NotEqual("error.msi_link", loc["error.msi_link"]);
             Assert.EndsWith(@"(msiexec 1620, log: C:\Temp\filee-msiexec.log)", text);
             Assert.Equal(loc["error.msi_busy"], EngineDownloadService.ErrorText(loc, Filee.Engines.Infrastructure.EngineInstaller.MsiFailure("calibre", 1618, "log")));
+            Assert.Equal(loc["error.engine_busy"], EngineDownloadService.ErrorText(loc, new EngineBusyException("libreoffice")));
         }
         finally
         {
