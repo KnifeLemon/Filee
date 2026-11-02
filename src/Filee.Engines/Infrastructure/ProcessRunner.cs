@@ -27,6 +27,12 @@ public static class ProcessRunner
     /// <exception cref="TimeoutException">The program did not exit within <paramref name="timeout"/>; it was killed.</exception>
     /// <param name="timeout">The longest the program may run; <see cref="Timeout.InfiniteTimeSpan"/> for no limit.</param>
     /// <param name="onOutput">Called with every line of standard output and error as it arrives (e.g. to parse progress).</param>
+    /// <param name="outputReady">
+    /// Polled while the program runs; once it has returned true on several polls in a row the program is killed and
+    /// treated as finished (exit code 0). For engines that write their result and then fail to exit: LibreOffice's
+    /// soffice.exe starts soffice.bin, which inherits our redirected pipes, so waiting for the end of the streams
+    /// can hang until the timeout although the output file has long been written.
+    /// </param>
     /// <param name="stallTimeout">
     /// When set, the program is also killed once it has written nothing (no line on either stream) for this long: for
     /// engines that keep reporting progress, so a long run that does goes on and a hung one stops early.
@@ -39,12 +45,16 @@ public static class ProcessRunner
         string? workingDirectory = null,
         IDictionary<string, string>? environment = null,
         Action<string>? onOutput = null,
-        TimeSpan? stallTimeout = null)
+        TimeSpan? stallTimeout = null,
+        Func<bool>? outputReady = null)
     {
         var psi = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            // Closed right after the start: a program that asks a question (7-Zip's password prompt) reads end of
+            // input instead of waiting on the console or pipe Filee itself was started with.
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -67,15 +77,28 @@ public static class ProcessRunner
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");
         Lower(process);
+        process.StandardInput.Close();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
+        var finishedEarly = false;
         try
         {
             var exited = process.WaitForExitAsync(timeoutCts.Token);
-            if (watch is null)
+            if (watch is null && outputReady is not null)
+            {
+                var ready = WatchOutputAsync(outputReady, timeoutCts.Token);
+                if (await Task.WhenAny(exited, ready) == ready && await ready)
+                {
+                    TryKill(process);
+                    finishedEarly = true;
+                }
+                else
+                    await exited;
+            }
+            else if (watch is null)
                 await exited;
             else if (!await watch.WaitAsync(exited, timeoutCts.Token))
             {
@@ -90,10 +113,43 @@ public static class ProcessRunner
             throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
         }
 
+        if (finishedEarly)
+        {
+            // A stray child may still hold the pipes, so don't wait for their end.
+            process.WaitForExit(3000);
+            lock (stdout) lock (stderr)
+                return new ProcessResult(0, stdout.ToString(), stderr.ToString());
+        }
+
         // Make sure the async output readers have drained.
         process.WaitForExit();
         AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
         return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+    }
+
+    /// <summary>
+    /// True once <paramref name="ready"/> has held on 4 polls in a row (2 s); false when cancelled first.
+    /// </summary>
+    private static async Task<bool> WatchOutputAsync(Func<bool> ready, CancellationToken cancellationToken)
+    {
+        var streak = 0;
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(500, cancellationToken);
+                bool ok;
+                try { ok = ready(); }
+                catch (Exception e) when (e is IOException or UnauthorizedAccessException) { ok = false; }
+                streak = ok ? streak + 1 : 0;
+                if (streak >= 4)
+                    return true;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
     }
 
     /// <summary>"10 min", or "30 s" below a minute.</summary>
