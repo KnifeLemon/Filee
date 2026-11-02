@@ -19,7 +19,7 @@ public class MergeImagesTests
             "compress-image", "remove-metadata", "zip-all"];
 
     [Fact]
-    public void A_new_library_merges_pictures_in_their_first_format_next_to_merge_pdf()
+    public void A_new_library_merges_pictures_in_their_first_format_before_compression()
     {
         var merge = BuiltIn("merge-images");
         Assert.Equal("preset.merge_images", merge.NameKey);
@@ -31,9 +31,9 @@ public class MergeImagesTests
             (merge.Image.JoinDirection, merge.Image.JoinFit, merge.Image.JoinGap, merge.Image.JoinBackground));
 
         var back = BuiltInData.CreateProfiles().Single(p => p.Id == "images").BackPresetIds!;
-        Assert.Equal(ToolbarProfile.MaxSlices, back.Count);
-        Assert.Equal(["to-avif", "merge-images", "merge-pdf"], back[6..9]);
-        // GIF gave its slot: still a preset of the library, and on the video donut's front.
+        Assert.Equal(8, back.Count);
+        Assert.Equal(["remove-background", "merge-images", "compress-image"], back[2..5]);
+        // GIF is a front-face conversion; merging stays among the back-face edits.
         Assert.DoesNotContain("to-gif", back);
         Assert.Single(BuiltInData.CreatePresets(), p => p.Id == "to-gif");
         Assert.Equal(["merge-images"], BuiltInData.CreatePresets().Where(p => p.JoinsImages).Select(p => p.Id));
@@ -70,13 +70,13 @@ public class MergeImagesTests
     public void Schema_53_puts_merge_images_in_place_of_gif_on_a_full_images_back_face()
     {
         var presets = BuiltInData.CreatePresets().Where(p => p.Id != "merge-images").ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var images = profiles.Single(p => p.Id == "images");
         images.BackPresetIds = [.. BackBefore53];
 
         Assert.True(SettingsMigrations.ApplyToLibrary(50, presets, profiles));
 
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "images").BackPresetIds, images.BackPresetIds);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "images").BackPresetIds, images.BackPresetIds);
         // In the library after the media tools, as in a new one.
         Assert.Equal(presets.FindIndex(p => p.Id == "remove-metadata") + 1, presets.FindIndex(p => p.Id == "merge-images"));
         Assert.Single(presets, p => p.Id == "to-gif");
@@ -87,7 +87,7 @@ public class MergeImagesTests
     public void Schema_53_takes_a_free_slot_before_merge_pdf_and_leaves_gif()
     {
         var presets = BuiltInData.CreatePresets().Where(p => p.Id != "merge-images").ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var images = profiles.Single(p => p.Id == "images");
         images.BackPresetIds = ["tool-crop", "to-gif", "merge-pdf", "zip-all"];
 
@@ -100,7 +100,7 @@ public class MergeImagesTests
     public void Schema_53_leaves_a_donut_where_the_user_put_merge_images_or_has_no_gif_to_give()
     {
         var presets = BuiltInData.CreatePresets();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var images = profiles.Single(p => p.Id == "images");
         images.PresetIds = ["merge-images", "to-png"];
         images.BackPresetIds = [.. BackBefore53];
@@ -123,7 +123,7 @@ public class MergeImagesTests
         var stripped = presets.Single(p => p.Id == "merge-images");
         stripped.Image.JoinIntoOne = false;
         stripped.Name = "Stack my scans";
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
 
         Assert.True(SettingsMigrations.ApplyToLibrary(50, presets, profiles));
 

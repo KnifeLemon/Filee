@@ -118,6 +118,9 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used for offline AI translation.</summary>
+    public TranslateOptions Translate { get; set; } = new();
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
@@ -151,6 +154,16 @@ public sealed class Preset
         Archive.CombineIntoOne
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
+
+    /// <summary>Formats the translator can directly read from.</summary>
+    public static readonly string[] TranslatorSourceFormats =
+    [
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html"
+    ];
+
+    /// <summary>True if converting a document or e-book using local AI translation.</summary>
+    public bool TranslatesDocument(string sourceFormat) =>
+        Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file saves every frame as a picture
@@ -306,6 +319,7 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Translate = Translate.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
         Tool = Tool,
@@ -402,6 +416,10 @@ public enum HideStyle
     Pixelate,
     /// <summary>A strong blur.</summary>
     Blur,
+    /// <summary>
+    /// Solid, opaque black: nothing of what was there is left. An older Filee reads it as <see cref="Pixelate"/>.
+    /// </summary>
+    Box,
 }
 
 /// <summary>
@@ -414,6 +432,10 @@ public sealed class HiddenArea
     public double Y { get; set; }
     public double Width { get; set; }
     public double Height { get; set; }
+
+    /// <summary>How this part is covered; null for the preset's <see cref="ImageOptions.HideStyle"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
+    public HideStyle? Style { get; set; }
 
     public HiddenArea Clone() => (HiddenArea)MemberwiseClone();
 }
@@ -616,8 +638,9 @@ public sealed class ImageOptions
     public List<int> IcoSizes { get; set; } = [256, 128, 64, 48, 32, 16];
 
     /// <summary>
-    /// "Pixelate / blur": how <see cref="HiddenAreas"/> are covered. Kept in the tool, so its window opens with the last
-    /// one. A field of its own (not a value added to another option), read leniently: an older Filee skips it.
+    /// "Pixelate / blur": how <see cref="HiddenAreas"/> without a <see cref="HiddenArea.Style"/> of their own are
+    /// covered. Kept in the tool as the last style picked, so its window opens with it. A field of its own (not a value
+    /// added to another option), read leniently: an older Filee skips it.
     /// </summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
     public HideStyle HideStyle { get; set; }
@@ -915,6 +938,12 @@ public sealed class MediaOptions
     /// bitrate is capped at what its length allows, and it is encoded once more if it still misses (#553).
     /// </summary>
     public double MaxSizeMb { get; set; }
+
+    /// <summary>
+    /// Keep each video under this percentage (1–99) of the original file's size (#680); 0 = off. One of
+    /// <see cref="MaxSizeMb"/> and this is in use at a time.
+    /// </summary>
+    public int MaxSizePercent { get; set; }
 
     /// <summary>Audio bitrate in kbit/s for lossy audio; 0 uses a good default for the format.</summary>
     public int AudioBitrateKbps { get; set; }
@@ -1279,3 +1308,13 @@ public sealed class CadOptions
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
 }
 
+/// <summary>Options for offline AI document translation.</summary>
+public sealed class TranslateOptions
+{
+    public bool Enabled { get; set; }
+    public string TargetLanguage { get; set; } = "en";
+    public string SourceLanguage { get; set; } = "auto";
+    public string? Model { get; set; }
+
+    public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+}

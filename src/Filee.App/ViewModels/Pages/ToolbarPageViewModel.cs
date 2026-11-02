@@ -900,6 +900,6 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
 
     private string? Caption(Preset p) =>
         p.IsGroup ? _loc.Format("donut.group_caption", p.SubPresetIds.Count)
-        : p.IsCopyToFolder ? _loc["presets.copy_to_folder"]
+        : p.IsCopyToFolder ? _loc[p.Output.MoveInsteadOfCopy ? "presets.move_to_folder" : "presets.copy_to_folder"]
         : p.TargetFormat == BuiltInData.SameAsSource ? _loc["donut.same_format"] : FormatLabels.NameOf(_loc, p.TargetFormat);
 }

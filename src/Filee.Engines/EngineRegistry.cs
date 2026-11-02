@@ -49,6 +49,7 @@ public static class EngineRegistry
         new SpreadsheetConverter(),
         new OoxmlConverter(),
         new HwpxConverter(),
+        new Translation.TranslatorConverter(loggers?.CreateLogger<Translation.TranslatorConverter>()),
         new ArchiveConverter(),
         new VectorConverter(),
         new IcnsConverter(),

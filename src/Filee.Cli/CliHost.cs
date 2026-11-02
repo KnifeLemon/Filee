@@ -12,11 +12,15 @@ namespace Filee.Cli;
 
 internal sealed class CliHost : IAsyncDisposable
 {
-    internal CliHost(UserDataStore store, ConverterCatalog catalog, JobQueue queue)
+    private EngineInstaller? _engines;
+
+    /// <param name="engines">Installer of the optional engines; the app's (per-user engines folder) when null.</param>
+    internal CliHost(UserDataStore store, ConverterCatalog catalog, JobQueue queue, EngineInstaller? engines = null)
     {
         Store = store;
         Catalog = catalog;
         Queue = queue;
+        _engines = engines;
     }
 
     public UserDataStore Store { get; }
@@ -24,8 +28,15 @@ internal sealed class CliHost : IAsyncDisposable
     public JobQueue Queue { get; }
     public ILocalizer Texts { get; } = new EnglishTexts();
 
+    /// <summary>
+    /// The installer Settings → Engines uses, on EngineEnvironment.DownloadRoot (the engines folder in FILEE_DATA_DIR
+    /// when that is set). Created when 'filee engines' first needs it.
+    /// </summary>
+    public EngineInstaller Engines => _engines ??= new EngineInstaller(EngineInstaller.CreateHttpClient(Timeout.InfiniteTimeSpan));
+
     /// <param name="dataDirectory">Settings folder; the app's (%APPDATA%\Filee) when null.</param>
-    public static CliHost Create(string? dataDirectory = null)
+    /// <param name="engines">Installer of the optional engines (tests pass one with their own folder and downloads).</param>
+    public static CliHost Create(string? dataDirectory = null, EngineInstaller? engines = null)
     {
         var store = new UserDataStore(dataDirectory ?? UserDataStore.DefaultDirectory);
         store.Load();
@@ -39,7 +50,7 @@ internal sealed class CliHost : IAsyncDisposable
         var queue = new JobQueue(catalog, EngineRegistry.FindPdfMerger(converters), combiner: EngineRegistry.FindFileCombiner(converters),
             tiffMerger: EngineRegistry.FindTiffMerger(converters), mediaJoiner: EngineRegistry.FindMediaJoiner(converters),
             moveToTrash: Trash());
-        return new CliHost(store, catalog, queue);
+        return new CliHost(store, catalog, queue, engines);
     }
 
     /// <summary>The system's Recycle Bin / Trash for "Replace the original", as in the app; none elsewhere.</summary>

@@ -134,6 +134,52 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_package_another_Filee_is_installing_is_neither_downloaded_nor_removed()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var server = new FakeServer(new() { [component.Url] = archive });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        var update = component with { Version = "2.0", Sha256 = new string('1', 64) };
+        var updating = Installer(server, update);
+
+        var locks = Path.Combine(_root, ".downloads", "locks");
+        using (new FileStream(Path.Combine(locks, "tool.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var busy = await Assert.ThrowsAsync<EngineBusyException>(() => updating.InstallAsync(package, null, TestContext.Current.CancellationToken));
+            Assert.Equal("tool", busy.PackageId);
+            Assert.Contains("another Filee", busy.Message);
+            Assert.Throws<EngineBusyException>(() => installer.Uninstall(package));
+        }
+
+        Assert.Single(server.Requests);
+        Assert.True(installer.IsUpToDate(package));
+        installer.Uninstall(package);
+        Assert.False(installer.IsInstalled(package));
+    }
+
+    [Fact]
+    public async Task The_copy_in_use_is_Filees_download_until_it_is_removed()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var installer = Installer(new FakeServer(new() { [component.Url] = archive }), component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        Assert.Equal(new EngineCopy(EngineCopyStatus.NotInstalled, null, false, false), installer.StatusOf(package));
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, false), installer.StatusOf(package));
+
+        var newer = Installer(new FakeServer(new()), component with { Version = "2.0", Sha256 = new string('1', 64) });
+        Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, true), newer.StatusOf(package));
+
+        installer.Uninstall(package);
+        Assert.Equal(EngineCopyStatus.NotInstalled, installer.StatusOf(package).Status);
+    }
+
+    [Fact]
     public void Transfer_rate_averages_over_the_last_seconds_and_estimates_the_time_left()
     {
         var rate = new TransferRate(TimeSpan.FromSeconds(5));

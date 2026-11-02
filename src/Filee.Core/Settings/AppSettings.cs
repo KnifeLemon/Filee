@@ -231,6 +231,9 @@ public sealed class AppSettings
     /// </summary>
     public bool LibreOfficeForSlides { get; set; } = true;
 
+    /// <summary>Active local model for offline translation (e.g. "llama3.2", "qwen2.5").</summary>
+    public string? PreferredOllamaModel { get; set; }
+
     /// <summary>
     /// With LibreOffice and H2Orestart installed, HWP / HWPX → PDF go through it instead of rhwp: a way around a
     /// document rhwp lays out wrong (each engine gets different documents right).
