@@ -68,7 +68,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         if (images)
         {
             // Room for the layout below the list.
-            dialog.Height = 640;
+            dialog.Height = 690;
             dialog.MinHeight = 540;
         }
         PrepareWindow(dialog);
