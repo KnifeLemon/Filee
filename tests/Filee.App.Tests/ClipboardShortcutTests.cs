@@ -68,6 +68,7 @@ public class ClipboardShortcutTests
 
         detector.KeyDown("V", ModifierKeys.Ctrl);
         Assert.Null(fired);
+        detector.KeyUp("V");
         detector.KeyDown("V", ModifierKeys.Ctrl | ModifierKeys.Alt);
 
         Assert.NotNull(fired);

@@ -30,11 +30,17 @@ public sealed class ShortcutRecorderTests
             store.Settings.Triggers.Clear();
             store.Settings.Triggers.Add(new TriggerGesture
             {
-                Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl, Key = "K", Scope = TriggerScope.FileManager
+                Kind = TriggerKind.KeyChord,
+                Modifiers = ModifierKeys.Ctrl,
+                Key = "K",
+                Scope = TriggerScope.FileManager
             });
             store.Settings.Triggers.Add(new TriggerGesture
             {
-                Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl, Key = "k", Scope = TriggerScope.Anywhere
+                Kind = TriggerKind.KeyChord,
+                Modifiers = ModifierKeys.Ctrl,
+                Key = "k",
+                Scope = TriggerScope.Anywhere
             });
 
             var vm = new TriggersPageViewModel(store, AppHost.Get<ILocalizer>());
