@@ -77,7 +77,7 @@ public class MediaToolTests
     public void Version_36_libraries_get_the_tools_and_back_faces_with_room_offer_them()
     {
         var presets = BuiltInData.CreatePresets().Where(p => !ToolIds.Contains(p.Id)).ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         foreach (var profile in profiles)
             profile.BackPresetIds!.RemoveAll(ToolIds.Contains);
         // The video donut's back face of schema 36, with the plain M4A slice.
@@ -96,22 +96,23 @@ public class MediaToolTests
         Assert.Equal(["to-alac", "compress-audio", "merge-audio", "remove-metadata", "zip-all"], audio);
         // "Extract audio" takes the M4A slice's place; the new library's back face is what an upgraded one gets.
         var video = profiles.Single(p => p.Id == "video").BackPresetIds!;
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "video").BackPresetIds, video);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "video").BackPresetIds, video);
         Assert.Equal(full, pdf.BackPresetIds);
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "images").BackPresetIds,
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "images").BackPresetIds,
             profiles.Single(p => p.Id == "images").BackPresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(36, presets, profiles)); // once only
         Assert.False(SettingsMigrations.ApplyToLibrary(AppSettings.CurrentSchemaVersion, presets, profiles));
     }
 
     [Fact]
-    public void A_new_library_images_back_face_is_full_without_the_live_photo_video()
+    public void A_new_library_images_back_face_has_eight_tools_without_the_live_photo_video()
     {
         var presets = BuiltInData.CreatePresets();
         var images = BuiltInData.CreateProfiles().Single(p => p.Id == "images").BackPresetIds!;
-        Assert.Equal(ToolbarProfile.MaxSlices, images.Count);
+        Assert.Equal(8, images.Count);
         Assert.Contains("compress-image", images);
-        Assert.Contains("remove-metadata", images);
+        Assert.DoesNotContain("remove-metadata", images);
+        Assert.Single(presets, p => p.Id == "remove-metadata");
         Assert.DoesNotContain("extract-motion", images);
         Assert.Single(presets, p => p.Id == "extract-motion"); // still in the library
     }
@@ -120,7 +121,7 @@ public class MediaToolTests
     public void A_schema_36_images_back_face_takes_what_fits_and_never_more_than_the_donut_holds()
     {
         var presets = BuiltInData.CreatePresets().Where(p => !ToolIds.Contains(p.Id)).ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         // The images back face as schema 36 wrote it: eleven slices, "Extract Live Photo video" among them.
         var images = profiles.Single(p => p.Id == "images");
         images.BackPresetIds = ["tool-crop", "rotate", "flip", "remove-background", "trim-transparent", "grayscale", "extract-motion",
@@ -139,7 +140,7 @@ public class MediaToolTests
     public void Extract_audio_comes_onto_a_video_back_face_without_the_m4a_slice_when_there_is_room()
     {
         var presets = BuiltInData.CreatePresets().Where(p => !ToolIds.Contains(p.Id)).ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var video = profiles.Single(p => p.Id == "video");
         video.BackPresetIds = ["mp4-av1", "to-wav", "zip-all"];
 
