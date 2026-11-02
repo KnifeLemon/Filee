@@ -185,10 +185,15 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             }
         }
 
+        // "Crop video" (#830): the box inside the black bars is found before anything is encoded.
+        var crop = !still && VideoCrop.Crops(media.CropFrame) && MediaEncoding.VideoTargets.ContainsKey(step.To) && info.Video is { } shown
+            ? await CropFilterAsync(ffmpeg, input, media.CropFrame, shown, info.Duration, cancellationToken)
+            : null;
+
         var encoders = still ? null : await EncodersOfAsync(ffmpeg);
         // Hardware encoding (preset option): the first GPU encoder that passes its test encode, if any.
         HardwareEncoder? hardware = null;
-        if (!still && MediaEncoding.HardwareCodec(step.To, media, info) is { } codec)
+        if (!still && MediaEncoding.HardwareCodec(step.To, media, info, encode: crop is not null) is { } codec)
         {
             var tenBit = HardwareVideo.TenBit(codec, info.Video!);
             hardware = SelectHardware is { } select
@@ -200,7 +205,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         var speed = step.To is "gif" or "apng" ? step.Preset.Image.PlaybackSpeed : 1;
         IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder) => still
             ? MediaEncoding.PlanStill(input, output, step.To, media, info)
-            : MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, cover, encoders, encoder, speed);
+            : MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, cover, encoders, encoder, speed, crop: crop);
         // Throws for a missing stream before anything is written (an existing file of that name stays untouched).
         var passes = kbps > 0 ? MediaEncoding.WithMaxRate(Plan(hardware), kbps) : Plan(hardware);
         // FFmpeg reports the position in the output, which a speed change makes longer or shorter.
@@ -212,7 +217,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             await RunWithFallbackAsync(passes, hardware, Plan,
                 planned => RunPassesAsync(ffmpeg, planned, output, duration, encoding, cancellationToken), output, _logger, cancellationToken);
             if (limit > 0)
-                await FitAgainAsync(ffmpeg, step, input, output, media, info, encoders, cover, limit, kbps, progress, cancellationToken);
+                await FitAgainAsync(ffmpeg, step, input, output, media, info, encoders, cover, crop, limit, kbps, progress, cancellationToken);
         }
         catch
         {
@@ -231,7 +236,7 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     /// when that still doesn't fit (or the length is unknown), rather than hand over a file too large.
     /// </summary>
     private static async Task FitAgainAsync(string ffmpeg, ConversionStep step, string input, string output, MediaOptions fitting,
-        MediaInfo info, IReadOnlySet<string>? encoders, CoverExtras? cover, long limit, int kbps, IProgress<double>? progress,
+        MediaInfo info, IReadOnlySet<string>? encoders, CoverExtras? cover, string? crop, long limit, int kbps, IProgress<double>? progress,
         CancellationToken cancellationToken)
     {
         var size = new FileInfo(output).Length;
@@ -239,12 +244,34 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         {
             kbps = (int)(kbps * (double)limit / size * 0.95);
             var again = progress is null ? null : new Progress<double>(p => progress.Report(0.9 + p * 0.1));
-            var passes = MediaEncoding.AtBitrate(MediaEncoding.Plan(input, output, step.To, fitting, info, step.WorkDirectory, cover, encoders, null, 1), kbps);
+            var passes = MediaEncoding.AtBitrate(MediaEncoding.Plan(input, output, step.To, fitting, info, step.WorkDirectory, cover, encoders, null, 1, crop: crop), kbps);
             await RunPassesAsync(ffmpeg, passes, output, info.Duration, again, cancellationToken);
             size = new FileInfo(output).Length;
         }
         if (size > limit)
             throw new ConversionRefusedException("error.over_size_limit", SizeLimit.Describe(size, limit));
+    }
+
+    /// <summary>
+    /// The filters that crop the frame for "Crop video": to the ratio, or (<see cref="VideoCrop.Auto"/>) to the most
+    /// common box cropdetect finds over a few stretches of the video. Refuses when it finds no black bars, rather than
+    /// encode the video again as it was.
+    /// </summary>
+    private static async Task<string> CropFilterAsync(string ffmpeg, string input, string frame, VideoStreamInfo video, TimeSpan? duration,
+        CancellationToken cancellationToken)
+    {
+        if (frame != VideoCrop.Auto)
+            return MediaEncoding.CropFilter(video, frame, null);
+        var lines = new List<string>();
+        foreach (var (at, seconds) in MediaEncoding.CropDetectStretches(duration?.TotalSeconds))
+        {
+            var result = await FfmpegRunner.RunAsync(ffmpeg, MediaEncoding.CropDetect(input, at, seconds, video), null, cancellationToken);
+            if (result.ExitCode == 0)
+                lines.AddRange(result.StandardError.Split('\n'));
+        }
+        if (MediaEncoding.MostCommonCrop(lines) is not { } box || MediaEncoding.IsWholeFrame(box, video))
+            throw new ConversionRefusedException("error.no_black_bars");
+        return MediaEncoding.CropFilter(video, frame, box);
     }
 
     /// <remarks>

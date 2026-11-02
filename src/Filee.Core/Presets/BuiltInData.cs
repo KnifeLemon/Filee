@@ -124,6 +124,7 @@ public static class BuiltInData
         .. MotionPhotoPresets(),
         .. LivePhotoPresets(),
         .. ClipPresets(),
+        .. CropVideoPresets(),
         .. MediaToolPresets(),
         .. MergeImagesPresets(),
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
@@ -203,6 +204,35 @@ public static class BuiltInData
             Kind = PresetKind.Tool, Tool = Preset.ClipTool, Output = { FileNamePattern = "{name}_clip" },
         },
     ];
+
+    /// <summary>
+    /// "Crop video" (#830, added to the library in settings schema 59): a group of the frame cut to the picture inside
+    /// its black bars or to a ratio, centred. The video is encoded again in its own format, the sound copied. On the
+    /// back of the video donut after "Cut a clip" for new installs (in place of WAV, which stays in the library).
+    /// </summary>
+    public static List<Preset> CropVideoPresets() =>
+    [
+        CropVideo("crop-video-auto", "preset.crop_video_auto", VideoCrop.Auto),
+        CropVideo("crop-video-16-9", "preset.crop_video_16_9", "16:9"),
+        CropVideo("crop-video-9-16", "preset.crop_video_9_16", "9:16"),
+        CropVideo("crop-video-4-3", "preset.crop_video_4_3", "4:3"),
+        CropVideo("crop-video-1-1", "preset.crop_video_1_1", "1:1"),
+        CropVideo("crop-video-21-9", "preset.crop_video_21_9", "21:9"),
+        new()
+        {
+            Id = "crop-video", NameKey = "preset.group_crop_video", TargetFormat = Preset.GroupTarget, Kind = PresetKind.Group,
+            SubPresetIds = ["crop-video-auto", "crop-video-16-9", "crop-video-9-16", "crop-video-4-3", "crop-video-1-1", "crop-video-21-9"],
+        },
+    ];
+
+    private static Preset CropVideo(string id, string nameKey, string frame) => new()
+    {
+        Id = id,
+        NameKey = nameKey,
+        TargetFormat = SameAsSource,
+        Media = { CropFrame = frame },
+        Output = { FileNamePattern = "{name}_cropped" },
+    };
 
     /// <summary>
     /// "Edit pictures" (#584, added in settings schema 51): size, format, turn and colour chosen in a window each time, on
@@ -685,9 +715,9 @@ public static class BuiltInData
             PresetIds = ["to-mp4", "mp4-720", "mp4-hevc", "to-webm", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video", "to-mkv", "to-avi"],
             // Every frame as pictures is on no front (a long video gives thousands of files): behind a flip, a drop that
             // misses its slice doesn't start it. Live / Motion Photos of a clip are there too, and "Cut a clip" first
-            // (in place of FLAC, which stays in the library).
-            BackPresetIds = ["tool-clip", "mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "live-photo-iphone", "motion-photo-android",
-                "extract-audio", "to-wav", "compress-video", "merge-videos", "zip-all"],
+            // (in place of FLAC, which stays in the library), then "Crop video" (in place of WAV, likewise).
+            BackPresetIds = ["tool-clip", "crop-video", "mp4-av1", "to-webp", "extract-frames-png", "extract-frames-jpg", "live-photo-iphone",
+                "motion-photo-android", "extract-audio", "compress-video", "merge-videos", "zip-all"],
         },
         new()
         {

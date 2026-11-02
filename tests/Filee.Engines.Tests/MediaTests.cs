@@ -604,6 +604,71 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static string After(IReadOnlyList<string> args, string option) => args[args.ToList().IndexOf(option) + 1];
 
     [Fact]
+    public void Crop_video_encodes_the_frame_cut_first_and_copies_the_sound()
+    {
+        // #830: a ratio as large as fits, centred, before the scale filter; the video can't be copied then.
+        var crop = MediaEncoding.CropFilter(Hd, "1:1", null);
+        Assert.Equal("crop=w='trunc(min(iw,ih*1/1)/2)*2':h='trunc(min(ih,iw*1/1)/2)*2',", crop);
+        var info = new MediaInfo(TimeSpan.FromSeconds(10), Hd with { Codec = "h264", PixelFormat = "yuv420p" }, new AudioStreamInfo(2, 48000, "aac"), null);
+        var copied = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work").Single().Arguments;
+        Assert.Equal("copy", After(copied, "-c:v"));
+        var cropped = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work", crop: crop).Single().Arguments;
+        Assert.Equal("libx264", After(cropped, "-c:v"));
+        Assert.StartsWith(crop + "scale=", After(cropped, "-vf"));
+        Assert.Equal("copy", After(cropped, "-c:a"));
+
+        // A box found by cropdetect; anamorphic pixels are made square first, as cropdetect saw them.
+        Assert.Equal("crop=1920:800:0:140,", MediaEncoding.CropFilter(Hd, VideoCrop.Auto, new CropBox(1920, 800, 0, 140)));
+        var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
+        Assert.StartsWith(MediaEncoding.SquarePixels(dv) + "crop=", MediaEncoding.CropFilter(dv, "4:3", null));
+        Assert.Throws<ArgumentException>(() => MediaEncoding.CropFilter(Hd, "wide", null));
+    }
+
+    [Fact]
+    public void Cropdetect_takes_the_most_common_box_rounded_to_even_sizes()
+    {
+        string Line(string crop) => $"[Parsed_cropdetect_1 @ 0000] x1:0 x2:1919 y1:140 y2:939 w:1920 h:800 x:0 y:140 pts:1 t:0.04 limit:0.09 crop={crop}";
+        string[] lines =
+        [
+            "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'in.mp4':",
+            Line("1920:800:0:140"), Line("1920:800:0:140"),
+            // A dark scene: a smaller box, less often.
+            Line("1280:540:320:270"),
+            // A black frame: no size.
+            Line("-1904:-1072:1912:1080"),
+            Line("1921:801:1:141"), Line("1920:800:0:140"),
+        ];
+        Assert.Equal(new CropBox(1920, 800, 0, 140), MediaEncoding.MostCommonCrop(lines));
+        Assert.Null(MediaEncoding.MostCommonCrop(["no crop here", Line("-16:-16:8:8")]));
+        // Equally common: the latest.
+        Assert.Equal(new CropBox(640, 480, 0, 0), MediaEncoding.MostCommonCrop([Line("320:240:0:0"), Line("640:480:0:0")]));
+    }
+
+    [Fact]
+    public void Cropdetect_reads_a_few_stretches_of_a_long_video_and_the_start_of_a_short_one()
+    {
+        Assert.Equal([(6.0, 1.0), (18.0, 1.0), (30.0, 1.0), (42.0, 1.0), (54.0, 1.0)], MediaEncoding.CropDetectStretches(60).ToList());
+        Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(4).ToList());
+        Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(null).ToList());
+        var args = MediaEncoding.CropDetect("in.mp4", 6, 1, Hd);
+        Assert.Equal(("info", "6.000", "1.000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
+        Assert.Contains("cropdetect=", After(args, "-vf"));
+    }
+
+    [Fact]
+    public void A_box_as_large_as_the_picture_is_no_black_bars()
+    {
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1920, 1080, 0, 0), Hd));
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1918, 1080, 0, 0), Hd));
+        Assert.False(MediaEncoding.IsWholeFrame(new CropBox(1920, 800, 0, 140), Hd));
+        // A portrait phone video: upright, the width and height change places.
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1080, 1920, 0, 0), Hd with { Rotation = 90 }));
+        Assert.False(MediaEncoding.IsWholeFrame(new CropBox(1080, 1920, 0, 0), Hd));
+        // Anamorphic DV: 720 × 480 shown 4:3, as 640 × 480 with square pixels.
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(640, 480, 0, 0), new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97)));
+    }
+
+    [Fact]
     public void Audio_targets_map_the_track_the_probe_chose()
     {
         var info = new MediaInfo(TimeSpan.FromSeconds(1), null, new AudioStreamInfo(1, 44100, "aac", 1), null);
@@ -963,6 +1028,59 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     // ───────────────────────── Real conversions ─────────────────────────
+
+    /// <summary>A 2-second video of one colour with a tone, <paramref name="pad"/> (a pad filter) adding black bars.</summary>
+    private static async Task<string> MakeBarsAsync(string folder, string name, string size, string? pad)
+    {
+        var path = Path.Combine(folder, name);
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", $"color=c=0x3366cc:size={size}:rate=25:duration=2" + (pad is null ? "" : "," + pad),
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path]);
+        return path;
+    }
+
+    private async Task<ConversionJob> CropAsync(string input, string frame) =>
+        await fx.ConvertAsync([input], new Preset { TargetFormat = BuiltInData.SameAsSource, Media = { CropFrame = frame } });
+
+    [Fact]
+    public async Task Crop_video_auto_removes_the_black_bars_and_keeps_the_sound()
+    {
+        SkipUnlessInstalled();
+        // #830: a 4:3 picture letterboxed into a 3:4 frame.
+        var video = await MakeBarsAsync(fx.NewFolder(), "boxed.mp4", "240x180", "pad=240:320:0:70:black");
+        var job = await CropAsync(video, VideoCrop.Auto);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal(".mp4", Path.GetExtension(output));
+        var probed = await ProbeAsync(output);
+        Assert.Equal((240, 180), (probed.Video!.Width, probed.Video.Height));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Fact]
+    public async Task Crop_video_to_a_ratio_keeps_the_middle_as_large_as_fits()
+    {
+        SkipUnlessInstalled();
+        var video = await MakeBarsAsync(fx.NewFolder(), "wide.mp4", "320x240", null);
+        var square = await ProbeAsync(Assert.Single((await CropAsync(video, "1:1")).Outputs));
+        Assert.Equal((240, 240), (square.Video!.Width, square.Video.Height));
+        var portrait = await ProbeAsync(Assert.Single((await CropAsync(video, "9:16")).Outputs));
+        Assert.Equal((134, 240), (portrait.Video!.Width, portrait.Video.Height));
+    }
+
+    [Fact]
+    public async Task Crop_video_auto_refuses_a_video_without_black_bars()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var video = await MakeBarsAsync(folder, "plain.mp4", "320x240", null);
+        var job = await CropAsync(video, VideoCrop.Auto);
+        var file = Assert.Single(job.Files);
+        Assert.Equal((FileState.Failed, "error.no_black_bars"), (file.State, file.ErrorKey));
+        Assert.Equal(["plain.mp4"], Directory.GetFiles(folder).Select(Path.GetFileName));
+    }
 
     /// <summary>Writes a test clip with FFmpeg: moving test pattern (+ a 440 Hz tone unless <paramref name="audio"/> is false).</summary>
     private static async Task<string> MakeClipAsync(string folder, string name, double seconds = 2, string size = "320x240", int fps = 25,

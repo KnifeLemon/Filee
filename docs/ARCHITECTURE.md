@@ -209,6 +209,18 @@ job. The window only chooses the clip; writing it is an ordinary conversion.
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
   size and codec.
 
+## Crop video
+
+"Crop video" (`crop-video`, after Cut a clip on the back of the video donut, #830) is a group of ordinary
+conversions, not a window: each preset keeps the video's own format and sets `MediaOptions.CropFrame` to
+`auto` or a `width:height` ratio (`Core/Presets/VideoCrop`).
+
+- A ratio crops the largest centred box FFmpeg's `crop` filter can make of the upright picture with square pixels.
+- Auto runs `cropdetect` over a second at five points of the video (the first five seconds of a short one) and takes
+  the most common box (`MediaEncoding.MostCommonCrop`, unit tested without FFmpeg); no black bars refuses the file
+  (`error.no_black_bars`) instead of encoding it again as it was.
+- The crop goes before the scale filter, so the video is always encoded; the sound is copied where the container takes it.
+
 ## Spreadsheet print studio
 
 The `tool-sheet-studio` tool opens an independent `Views/SpreadsheetPrintStudioWindow` for each dropped XLSX workbook
