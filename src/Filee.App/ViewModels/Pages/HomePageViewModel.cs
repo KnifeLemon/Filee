@@ -206,17 +206,16 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     private readonly Services.Triggers.TriggerService? _triggers;
     private readonly ConversionService? _conversions;
     private readonly ElevationService? _elevation;
-    private readonly FileQueue _queue = new();
+    private readonly StagedFiles _staged;
 
-    /// <summary>The queued files sent to the donut, until their conversion is in the history (<see cref="FinishSentQueue"/>).</summary>
-    private List<string>? _sentToDonut;
-
-    public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, Services.Triggers.TriggerService? triggers = null,
+    public HomePageViewModel(UserDataStore store, ILocalizer loc, IPlatformServices platform, StagedFiles staged,
+        Services.Triggers.TriggerService? triggers = null,
         ConversionService? conversions = null, ElevationService? elevation = null)
     {
         _store = store;
         _loc = loc;
         _platform = platform;
+        _staged = staged;
         _triggers = triggers;
         _conversions = conversions;
         _elevation = elevation;
@@ -228,12 +227,18 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         DropHint = loc.Format(OperatingSystem.IsMacOS() ? "home.drop_hint_macos" : OperatingSystem.IsLinux() ? "home.drop_hint_linux" : "home.drop_hint", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
         store.HistoryChanged += OnHistoryChanged;
         Queue.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueue));
+        _staged.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName != nameof(StagedFiles.Error))
+                return;
+            OnPropertyChanged(nameof(QueueError));
+            OnPropertyChanged(nameof(HasQueueError));
+        };
         Reload();
     }
 
     private void OnHistoryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
     {
-        FinishSentQueue();
         Reload();
     });
 
@@ -241,8 +246,6 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     {
         _thumbnails?.Cancel();
         _store.HistoryChanged -= OnHistoryChanged;
-        foreach (var card in Queue)
-            card.Dispose();
         if (_triggers is not null)
             _triggers.StatusChanged -= OnTriggerStatusChanged;
         if (_elevation is not null)
@@ -279,52 +282,35 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     public string DropHint { get; }
 
     /// <summary>
-    /// The files waiting to be converted together, in the order they are converted or merged in. Files are added by
-    /// drops and the file picker (<see cref="AddToQueue"/>).
+    /// The files waiting to be converted together, in the order they are converted or merged in. The list is kept by
+    /// <see cref="StagedFiles"/> for the whole session, so it survives a change of page or language.
     /// </summary>
-    public ObservableCollection<StagedFileViewModel> Queue { get; } = [];
+    public ObservableCollection<StagedFileViewModel> Queue => _staged.Cards;
 
     public bool HasQueue => Queue.Count > 0;
 
-    /// <summary>The queued files' paths in the order they are converted.</summary>
-    public IReadOnlyList<string> QueuedPaths => _queue.Paths.ToArray();
+    /// <summary>Why the last conversion of the list failed, naming its files; empty otherwise.</summary>
+    public string QueueError => _staged.Error;
 
-    /// <summary>Adds dropped or picked files to the end of the queue.</summary>
-    public void AddToQueue(IEnumerable<string> paths)
-    {
-        _queue.Add(paths);
-        SyncQueue();
-    }
+    public bool HasQueueError => QueueError.Length > 0;
+
+    /// <summary>The queued files' paths in the order they are converted.</summary>
+    public IReadOnlyList<string> QueuedPaths => _staged.Paths;
+
+    /// <summary>Adds dropped or picked files to the end of the list.</summary>
+    public void AddToQueue(IEnumerable<string> paths) => _staged.Add(paths);
 
     /// <summary>Moves a queued file, from the user dragging its card.</summary>
-    public void MoveQueued(int from, int to)
-    {
-        _queue.Move(from, to);
-        Queue.Move(from, to);
-        Renumber();
-    }
+    public void MoveQueued(int from, int to) => _staged.Move(from, to);
 
-    /// <summary>The card's X, or the Delete key: takes its file out of the queue.</summary>
-    internal void RemoveFromQueue(StagedFileViewModel card)
-    {
-        _queue.Remove(card.Path);
-        SyncQueue();
-    }
+    /// <summary>The card's X: takes its file out of the list.</summary>
+    internal void RemoveFromQueue(StagedFileViewModel card) => _staged.Remove(card);
 
-    /// <summary>A click on a card selects it (only that one); the Delete key takes the selected file out of the queue.</summary>
+    /// <summary>A click on a card selects it (only that one); the Delete key takes the selected file out of the list.</summary>
     public void SelectQueued(int index)
     {
         for (var i = 0; i < Queue.Count; i++)
             Queue[i].IsSelected = i == index;
-    }
-
-    /// <summary>Alt+Up / Alt+Down: the selected card moves one place earlier or later, and stays selected.</summary>
-    public void MoveSelectedQueued(int delta)
-    {
-        var index = Queue.ToList().FindIndex(card => card.IsSelected);
-        if (index < 0 || index + delta < 0 || index + delta >= Queue.Count)
-            return;
-        MoveQueued(index, index + delta);
     }
 
     /// <summary>The left and right arrows: the selection moves to the neighbouring card.</summary>
@@ -336,7 +322,16 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         SelectQueued(Math.Clamp(index < 0 ? 0 : index + delta, 0, Queue.Count - 1));
     }
 
-    /// <summary>The Delete key: takes the selected file out of the queue, if one is selected.</summary>
+    /// <summary>Alt+Up / Alt+Down: the selected card moves one place earlier or later, and stays selected.</summary>
+    public void MoveSelectedQueued(int delta)
+    {
+        var index = Queue.ToList().FindIndex(card => card.IsSelected);
+        if (index < 0 || index + delta < 0 || index + delta >= Queue.Count)
+            return;
+        MoveQueued(index, index + delta);
+    }
+
+    /// <summary>The Delete key: takes the selected file out of the list, if one is selected.</summary>
     public void RemoveSelectedQueued()
     {
         if (Queue.FirstOrDefault(card => card.IsSelected) is { } selected)
@@ -344,80 +339,21 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// The queue's files went to the donut. The queue empties once Filee has converted them, not before: a cancelled
-    /// donut keeps the files.
+    /// The list was sent to the donut: its files leave the list when the conversion the donut starts completes. A
+    /// cancelled donut keeps them; a failed conversion keeps them and names the files that failed.
     /// </summary>
-    public void MarkSentToDonut() => _sentToDonut = [.. _queue.Paths];
+    public void MarkSentToDonut() => _staged.MarkSent([.. Queue]);
 
-    /// <summary>
-    /// Empties the queue when a finished conversion (not a cancelled one) of exactly the files sent to the donut is in
-    /// the history. Such an entry lists all of them as its sources.
-    /// </summary>
-    private void FinishSentQueue()
-    {
-        if (_sentToDonut is not { Count: > 0 } sent)
-            return;
-        var finished = _store.History.Any(entry => entry.State != JobState.Cancelled
-                                                   && sent.All(path => entry.Sources.Contains(path, FileSystemPaths.Comparer)));
-        if (!finished)
-            return;
-        _sentToDonut = null;
-        ClearQueue();
-    }
+    /// <summary>The donut started a conversion: it is the one whose outcome empties the list.</summary>
+    internal void ConversionStarted(ConversionJob job) => _staged.ConversionStarted(job);
 
-    /// <summary>Empties the queue: the "Clear list" button, and once its files were converted.</summary>
+    /// <summary>Empties the list: the "Clear list" button.</summary>
     [RelayCommand]
-    public void ClearQueue()
-    {
-        _queue.Clear();
-        foreach (var card in Queue)
-            card.Dispose();
-        Queue.Clear();
-    }
+    public void ClearQueue() => _staged.Clear();
 
-    /// <summary>Brings the cards in line with the queue: cards of files that left it go, new files get a card at the end.</summary>
-    private void SyncQueue()
-    {
-        foreach (var card in Queue.Where(card => !_queue.Paths.Contains(card.Path, FileSystemPaths.Comparer)).ToList())
-        {
-            Queue.Remove(card);
-            card.Dispose();
-        }
-        foreach (var path in _queue.Paths)
-        {
-            if (Queue.Any(card => FileSystemPaths.Comparer.Equals(card.Path, path)))
-                continue;
-            var format = FormatRegistry.Detect(path);
-            var card = new StagedFileViewModel(path, format, RemoveFromQueue);
-            Queue.Add(card);
-            _ = LoadThumbnailAsync(card, format);
-        }
-        Renumber();
-    }
-
-    private void Renumber()
-    {
-        for (var i = 0; i < Queue.Count; i++)
-            Queue[i].Position = i + 1;
-    }
-
-    /// <summary>The picture of a card, made off the UI thread; a card that left the queue meanwhile gets none.</summary>
-    private async Task LoadThumbnailAsync(StagedFileViewModel card, FileFormat? format)
-    {
-        Bitmap? bitmap = null;
-        try
-        {
-            bitmap = await Task.Run(() => StagedFileViewModel.MakeThumbnail(card.Path, format));
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            // No picture: the card shows its extension instead.
-        }
-        if (Queue.Contains(card))
-            card.Thumbnail = bitmap;
-        else if (format?.Category == FormatCategory.Pdf)
-            bitmap?.Dispose();
-    }
+    /// <summary>The error notice's X: closes it.</summary>
+    [RelayCommand]
+    private void DismissQueueError() => _staged.Error = "";
 
     /// <summary>How many conversions the page lists: the newest, or the newest that match the search.</summary>
     internal const int Shown = 40;

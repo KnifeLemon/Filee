@@ -8,8 +8,9 @@ using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Filee.App.ViewModels.Pages;
+using Filee.App.Services;
 using Filee.Core.Formats;
+using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Web;
@@ -18,10 +19,12 @@ namespace Filee.App.ViewModels;
 
 /// <summary>
 /// One file of the merge: its name, the folder it is in (none for a file from a browser, not saved yet), and its picture
-/// (the first page of a PDF, or the picture itself), loaded in the background so the window opens at once.
+/// (the first page of a PDF, or the picture itself), drawn in turn with the others so the window opens at once.
 /// </summary>
-public sealed partial class MergeSource(string path, Action<MergeSource> remove) : ObservableObject, IDisposable
+public sealed partial class MergeSource(string path, Action<MergeSource> remove, ILocalizer? loc = null) : ObservableObject, IDisposable
 {
+    private readonly bool _oversized = FilePreviews.IsTooLarge(path, FormatRegistry.Detect(path));
+
     public string Path { get; } = path;
     public string Name => System.IO.Path.GetFileName(Path);
     public string Folder => WebDrop.IsPlaceholder(Path) ? "" : System.IO.Path.GetDirectoryName(Path) ?? "";
@@ -32,27 +35,74 @@ public sealed partial class MergeSource(string path, Action<MergeSource> remove)
     /// <summary>The extension ("PDF", "PNG"), shown when the file has no picture.</summary>
     public string FormatBadge => Format is null ? "" : Format.PrimaryExtension.TrimStart('.').ToUpperInvariant();
 
+    /// <summary>A PDF too large for its picture: the card says so where the picture goes.</summary>
+    public bool Oversized => _oversized;
+
+    /// <summary>"Too large for a preview (60 MB)", when <see cref="Oversized"/>.</summary>
+    public string OversizedText => _oversized && loc is not null
+        ? loc.Format("home.queue_too_large", Math.Round(new FileInfo(Path).Length / 1048576.0))
+        : "";
+
+    /// <summary>Stops the picture still being drawn when the file leaves the merge.</summary>
+    public CancellationTokenSource Cancellation { get; } = new();
+
     /// <summary>The place in the merge, from 1: the order the files merge in.</summary>
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
     private int _position;
+
+    /// <summary>The card the user selected (the list's selection), for the screen reader.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
+    private bool _isSelected;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(HasThumbnail))]
     private Bitmap? _thumbnail;
 
     public bool HasThumbnail => Thumbnail is not null;
 
+    /// <summary>What a screen reader says for the card: its place, its name, and whether it is selected.</summary>
+    public string AccessibleName =>
+        $"{Position}. {Name}" + (IsSelected ? ", " + (loc?["home.queue_selected"] ?? "selected") : "");
+
+    /// <summary>What the card's X says for a screen reader: which file it takes out.</summary>
+    public string RemoveName => loc is null ? $"Remove {Name}" : loc.Format("home.queue_remove_file", Name);
+
     /// <summary>The card's X: takes the file out of the merge.</summary>
     [RelayCommand]
     private void Remove() => remove(this);
 
-    /// <summary>The window closed: a picture that is still being made is dropped when it arrives.</summary>
-    public bool IsDisposed { get; private set; }
+    /// <summary>Draws the picture, in turn with the others; a file that leaves the merge meanwhile gets none.</summary>
+    public async Task LoadPreviewAsync()
+    {
+        if (Oversized)
+            return;
+        try
+        {
+            var bitmap = await FilePreviews.RenderAsync(Path, Format, Cancellation.Token);
+            if (Cancellation.IsCancellationRequested)
+            {
+                if (FilePreviews.Owns(Format))
+                    bitmap?.Dispose();
+                return;
+            }
+            Thumbnail = bitmap;
+        }
+        catch (OperationCanceledException)
+        {
+            // The file left the merge: nothing to show.
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // No picture: the file shows its extension instead.
+        }
+    }
 
-    /// <summary>Disposes the picture of a PDF (pictures of images are cached and shared, so they stay).</summary>
+    /// <summary>Cancels a picture still being drawn and disposes the one drawn (a PDF's; images are cached and shared).</summary>
     public void Dispose()
     {
-        IsDisposed = true;
-        if (Format?.Category == FormatCategory.Pdf)
+        Cancellation.Cancel();
+        if (FilePreviews.Owns(Format))
             Thumbnail?.Dispose();
         Thumbnail = null;
     }
@@ -66,17 +116,18 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
     /// Null for other merges.
     /// </param>
     /// <param name="keepOrder">The files are already in the order to merge them in (the Home page's queue): not sorted by name.</param>
-    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null, bool keepOrder = false)
+    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null, bool keepOrder = false, ILocalizer? loc = null)
     {
         IEnumerable<string> ordered = keepOrder
             ? files
             : files
                 .OrderBy(file => System.IO.Path.GetFileName(file), NaturalComparer.Instance)
                 .ThenBy(file => file, NaturalComparer.Instance);
-        Files = new(ordered.Select(file => new MergeSource(file, RemoveFile)));
+        Files = new(ordered.Select(file => new MergeSource(file, RemoveFile, loc)));
+        Files.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanMerge));
         Renumber();
         foreach (var source in Files)
-            _ = LoadThumbnailAsync(source);
+            _ = source.LoadPreviewAsync();
         SelectedFile = Files.FirstOrDefault();
         if (images is null)
             return;
@@ -90,6 +141,15 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
     }
 
     public ObservableCollection<MergeSource> Files { get; }
+
+    /// <summary>Merge needs at least two files: the button is off below that.</summary>
+    public bool CanMerge => Files.Count >= 2;
+
+    partial void OnSelectedFileChanged(MergeSource? value)
+    {
+        foreach (var file in Files)
+            file.IsSelected = ReferenceEquals(file, value);
+    }
 
     /// <summary>The files are pictures that become one image: the window shows the layout too.</summary>
     public bool MergesImages { get; }
@@ -167,29 +227,6 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
 
     [RelayCommand(CanExecute = nameof(CanMoveDown))]
     private void MoveDown() => Move(1);
-
-    /// <summary>The picture of a file, made off the UI thread; a file without one shows its extension.</summary>
-    private static async Task LoadThumbnailAsync(MergeSource source)
-    {
-        if (source.Format is not { } format)
-            return;
-        Bitmap? bitmap = null;
-        try
-        {
-            bitmap = await Task.Run(() => StagedFileViewModel.MakeThumbnail(source.Path, format));
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            // No picture: the file shows its extension instead.
-        }
-        if (source.IsDisposed)
-        {
-            if (format.Category == FormatCategory.Pdf)
-                bitmap?.Dispose();
-            return;
-        }
-        source.Thumbnail = bitmap;
-    }
 
     /// <summary>The window closed: the pictures are released.</summary>
     public void Dispose()

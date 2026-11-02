@@ -87,7 +87,12 @@
         </StackPanel>
         <TextBlock Classes="h2" VerticalAlignment="Center" Text="{DynamicResource home.queue_title}" />
       </DockPanel>
-      <ItemsControl x:Name="QueueList" ItemsSource="{Binding Queue}">
+      <!-- Why the last conversion of the list failed: the list keeps its files, and the notice names the ones that failed. -->
+      <DockPanel IsVisible="{Binding HasQueueError}">
+        <Button DockPanel.Dock="Right" Classes="ghost" Content="{DynamicResource common.close}" Command="{Binding DismissQueueErrorCommand}" />
+        <TextBlock Classes="caption danger" TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding QueueError}" />
+      </DockPanel>
+      <ItemsControl x:Name="QueueList" ItemsSource="{Binding Queue}" AutomationProperties.Name="{DynamicResource home.queue_title}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
             <WrapPanel />
@@ -97,7 +102,7 @@
           <DataTemplate x:DataType="vm:StagedFileViewModel">
             <Border Classes="queue-card" Classes.selected="{Binding IsSelected}" Width="128" Margin="0,0,12,12" Padding="6"
                     CornerRadius="{DynamicResource SoftRadius}" Background="{DynamicResource SurfaceBrush}"
-                    Cursor="SizeAll" ToolTip.Tip="{Binding Name}">
+                    Cursor="SizeAll" ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding AccessibleName}">
               <StackPanel Spacing="6">
                 <Panel Height="130">
                   <Border CornerRadius="{DynamicResource SoftRadiusSmall}" ClipToBounds="True" Background="{DynamicResource AccentFaintBrush}">
@@ -105,6 +110,10 @@
                       <Image Source="{Binding Thumbnail}" Stretch="Uniform" IsVisible="{Binding HasThumbnail}" />
                       <TextBlock Text="{Binding FormatBadge}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
                                  HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasThumbnail}" />
+                      <!-- A PDF too large to draw its first page: the card says why, where the picture goes. -->
+                      <TextBlock Text="{Binding OversizedText}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="8"
+                                 Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center"
+                                 VerticalAlignment="Center" IsVisible="{Binding Oversized}" />
                     </Panel>
                   </Border>
                   <!-- The place in the queue: the theme's accent circle, the number in its contrast colour. -->
@@ -116,7 +125,7 @@
                   <Button Width="26" Height="26" Padding="0" CornerRadius="999" Margin="4" Background="{DynamicResource SurfaceBrush}"
                           BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1" HorizontalAlignment="Right" VerticalAlignment="Top"
                           Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource home.queue_remove}"
-                          AutomationProperties.Name="{DynamicResource home.queue_remove}">
+                          AutomationProperties.Name="{Binding RemoveName}">
                     <PathIcon Width="10" Height="10" Data="{StaticResource Icon.Close}" />
                   </Button>
                 </Panel>

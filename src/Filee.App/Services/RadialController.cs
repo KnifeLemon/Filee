@@ -67,6 +67,7 @@ public sealed class RadialController(
     private WebDrop? _web;      // the browser drop the click-mode donut's files stand for, until a conversion takes it
     private bool _toClipboard;  // the click-mode donut's files came from the clipboard: their results go back on it
     private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
+    private Action<ConversionJob>? _onJob;  // told the conversion the donut starts (the Home page's list follows it)
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -96,6 +97,7 @@ public sealed class RadialController(
         _dragReachedDonut = false;
         _converted = false;
         _keepOrder = false;
+        _onJob = null;
         viewModel.ResetForDrag();
         window.DonutControl.AllowContextEdit = false;
         PlaceAndShow(window, x, y, activate: false);
@@ -120,7 +122,7 @@ public sealed class RadialController(
     /// The files are merged in the order given (the Home page's queue, which the user sorted), not sorted by name first.
     /// </param>
     public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
-        bool toClipboard = false, bool keepOrder = false)
+        bool toClipboard = false, bool keepOrder = false, Action<ConversionJob>? onJob = null)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -133,6 +135,7 @@ public sealed class RadialController(
         ReplaceWeb(web);
         _toClipboard = toClipboard;
         _keepOrder = keepOrder;
+        _onJob = onJob;
         if (forAnotherProcess && OperatingSystem.IsMacOS())
             _grace.Start();
         else
@@ -391,6 +394,7 @@ public sealed class RadialController(
             Close();
             return;
         }
+        _onJob?.Invoke(job.Job);
         _converted = true;
         ShowProgress(job);
     }
@@ -410,7 +414,9 @@ public sealed class RadialController(
                 await AskThenConvertAsync(ordered, preset, toClipboard);
             else if (ordered is not null)
             {
-                conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
+                var job = conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
+                if (job is not null)
+                    _onJob?.Invoke(job.Job);
                 web = null; // the conversion owns the browser drop now
             }
         }

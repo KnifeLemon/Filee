@@ -10,10 +10,6 @@
         Icon="avares://Filee/Assets/Icons/filee.ico"
         Width="560" Height="480" MinWidth="440" MinHeight="320"
         WindowStartupLocation="CenterScreen">
-  <Window.KeyBindings>
-    <KeyBinding Gesture="Alt+Up" Command="{Binding MoveUpCommand}" />
-    <KeyBinding Gesture="Alt+Down" Command="{Binding MoveDownCommand}" />
-  </Window.KeyBindings>
   <Window.Styles>
     <!-- One under another / side by side: two segments in a pill, the chosen one filled with the accent (as the
          toolbar editor's Front / Back switch). -->
@@ -77,7 +73,8 @@
         </StackPanel>
         <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
           <Button x:Name="CancelMerge" Content="{DynamicResource common.cancel}" Click="OnCancel" IsCancel="True" />
-          <Button x:Name="StartMerge" Classes="accent" Content="{DynamicResource preset.merge_pdf}" Click="OnMerge" IsDefault="True" />
+          <Button x:Name="StartMerge" Classes="accent" Content="{DynamicResource preset.merge_pdf}" Click="OnMerge" IsDefault="True"
+                  IsEnabled="{Binding CanMerge}" />
         </StackPanel>
       </DockPanel>
     </Border>
@@ -171,7 +168,7 @@
                outlines the whole card, as there. -->
           <DataTemplate x:DataType="vm:MergeSource">
             <Border Classes="merge-card" Width="128" Padding="6" CornerRadius="14" Background="{DynamicResource SurfaceBrush}"
-                    ToolTip.Tip="{Binding Path}">
+                    ToolTip.Tip="{Binding Path}" AutomationProperties.Name="{Binding AccessibleName}">
               <StackPanel Spacing="6">
                 <Panel Height="130">
                   <Border CornerRadius="10" ClipToBounds="True" Background="{DynamicResource SurfaceAltBrush}">
@@ -179,6 +176,9 @@
                       <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" IsVisible="{Binding HasThumbnail}" />
                       <TextBlock Text="{Binding FormatBadge}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextPrimaryBrush}"
                                  HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="{Binding !HasThumbnail}" />
+                  <TextBlock Text="{Binding OversizedText}" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" Margin="8"
+                             Foreground="{DynamicResource TextSecondaryBrush}" HorizontalAlignment="Center"
+                             VerticalAlignment="Center" IsVisible="{Binding Oversized}" />
                     </Panel>
                   </Border>
                   <Border Width="26" Height="26" CornerRadius="999" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="4"
@@ -189,7 +189,7 @@
                   <Button Width="26" Height="26" Padding="0" CornerRadius="999" Margin="4" HorizontalAlignment="Right" VerticalAlignment="Top"
                           Background="{DynamicResource SurfaceBrush}" BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
                           Command="{Binding RemoveCommand}" ToolTip.Tip="{DynamicResource home.queue_remove}"
-                          AutomationProperties.Name="{DynamicResource home.queue_remove}">
+                          AutomationProperties.Name="{Binding RemoveName}">
                     <PathIcon Width="10" Height="10" Data="{StaticResource Icon.Close}" />
                   </Button>
                 </Panel>

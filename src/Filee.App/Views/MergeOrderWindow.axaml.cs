@@ -1,6 +1,7 @@
 // The order of a merge: the cards can be dragged to another place with the mouse, and the Delete key takes the selected
 // file out of the merge. The chosen order is the one the files merge in.
 
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -34,6 +35,7 @@ public partial class MergeOrderWindow : Window
         FileOrder.AddHandler(PointerReleasedEvent, OnCardReleased, RoutingStrategies.Bubble, handledEventsToo: true);
         // Tunnelled: the arrows reach the window before the list's own keys, and keep working after Alt+Up / Alt+Down.
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+        FileOrder.FlowDirection = IsRightToLeft ? Avalonia.Media.FlowDirection.RightToLeft : Avalonia.Media.FlowDirection.LeftToRight;
     }
 
     public IReadOnlyList<string>? Result { get; private set; }
@@ -97,30 +99,37 @@ public partial class MergeOrderWindow : Window
     }
 
     /// <summary>
-    /// The left and right arrows move the selection between the cards; the Delete key takes the selected file out of the
-    /// merge, while the list has the focus. Text boxes keep their keys.
+    /// The keys of the list, while the list itself has the focus: the arrows move the selection between the cards (mirrored
+    /// in a right-to-left language), Alt+Up / Alt+Down move the selected file, and Delete takes it out of the merge.
     /// </summary>
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
-        if (DataContext is not MergeOrderViewModel vm || IsTextEntry(e.Source))
+        if (DataContext is not MergeOrderViewModel vm || !IsWithin(e.Source, FileOrder))
             return;
-        if (e.Key is Key.Left or Key.Right)
-        {
-            vm.SelectNeighbour(e.Key == Key.Right ? 1 : -1);
-            if (vm.SelectedFile is { } selected)
-                FileOrder.ContainerFromIndex(vm.Files.IndexOf(selected))?.Focus();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Delete && e.Source is Visual source && (ReferenceEquals(source, FileOrder) || source.GetVisualAncestors().Contains(FileOrder)))
-        {
+        if (e.Key is Key.Up or Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+            (e.Key == Key.Up ? vm.MoveUpCommand : vm.MoveDownCommand).Execute(null);
+        else if (e.Key is Key.Left or Key.Right)
+            vm.SelectNeighbour(e.Key == Key.Right ^ IsRightToLeft ? 1 : -1);
+        else if (e.Key == Key.Delete)
             vm.RemoveSelected();
-            e.Handled = true;
-        }
+        else
+            return;
+        FocusSelected(vm);
+        e.Handled = true;
     }
 
-    private static bool IsTextEntry(object? source) =>
-        source is TextBox or NumericUpDown or ColorPicker
-        || source is Visual visual && visual.GetVisualAncestors().Any(ancestor => ancestor is TextBox or NumericUpDown or ColorPicker);
+    /// <summary>Gives the list the focus back on the selected card, so the keys keep working after a move or a removal.</summary>
+    private void FocusSelected(MergeOrderViewModel vm)
+    {
+        if (vm.SelectedFile is { } selected)
+            FileOrder.ContainerFromIndex(vm.Files.IndexOf(selected))?.Focus();
+    }
+
+    /// <summary>Whether the language is written right to left: the cards are laid out, and read, from the right.</summary>
+    private static bool IsRightToLeft => CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
+
+    private static bool IsWithin(object? source, Visual container) =>
+        source is Visual visual && (ReferenceEquals(visual, container) || visual.GetVisualAncestors().Contains(container));
 
     private static bool IsInButton(object? source) =>
         source is Visual visual && (visual is Button || visual.GetVisualAncestors().Any(ancestor => ancestor is Button));

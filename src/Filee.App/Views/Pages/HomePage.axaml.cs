@@ -4,6 +4,7 @@
 // place in the queue changes the order the files are converted or merged in. A click selects a card, and the Delete key
 // takes the selected file out of the queue.
 
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -13,6 +14,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.VisualTree;
 using Filee.App.Services;
 using Filee.App.ViewModels.Pages;
+using Filee.Core.Settings;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App.Views.Pages;
@@ -57,6 +59,7 @@ public partial class HomePage : UserControl
         QueueList.PointerMoved += OnQueueMoved;
         QueueList.PointerReleased += OnQueueReleased;
         QueueList.Focusable = true;
+        QueueList.FlowDirection = IsRightToLeft ? Avalonia.Media.FlowDirection.RightToLeft : Avalonia.Media.FlowDirection.LeftToRight;
         // Tunnelled: the arrows and Delete reach the page before the list's own keys.
         AddHandler(KeyDownEvent, OnPageKeyDown, RoutingStrategies.Tunnel);
     }
@@ -83,7 +86,7 @@ public partial class HomePage : UserControl
         if (paths.Count == 0)
             return;
 
-        ViewModel?.AddToQueue(paths);
+        TakeFiles(paths, DropZone.TranslatePoint(new Point(DropZone.Bounds.Width / 2, DropZone.Bounds.Height / 2), this) ?? new Point());
     }
 
     private void OnDrop(object? sender, DragEventArgs e)
@@ -99,11 +102,26 @@ public partial class HomePage : UserControl
         e.DragEffects = DragDropEffects.Copy;
         if (dragged.Web is null)
         {
-            ViewModel?.AddToQueue(dragged.Files);
+            TakeFiles(dragged.Files, e.GetPosition(this));
             return;
         }
         var screenPoint = this.PointToScreen(e.GetPosition(this));
         AppHost.Get<RadialController>().ShowForFiles(screenPoint.X, screenPoint.Y, dragged.Files, web: dragged.Web);
+    }
+
+    /// <summary>
+    /// Files dropped or picked: they join the list when the setting asks for it; otherwise the donut opens for them at the
+    /// point, as before the list existed. Browser drops keep the donut.
+    /// </summary>
+    private void TakeFiles(IReadOnlyList<string> paths, Point at)
+    {
+        if (AppHost.Get<UserDataStore>().Settings.CollectDroppedFiles)
+        {
+            ViewModel?.AddToQueue(paths);
+            return;
+        }
+        var screenPoint = this.PointToScreen(at);
+        AppHost.Get<RadialController>().ShowForFiles(screenPoint.X, screenPoint.Y, paths);
     }
 
     /// <summary>The queue's button: the donut opens at the button for the queued files, in the order they are in.</summary>
@@ -112,8 +130,8 @@ public partial class HomePage : UserControl
         if (ViewModel is not { Queue.Count: > 0 } vm)
             return;
         var screenPoint = ConvertQueueButton.PointToScreen(new Point(ConvertQueueButton.Bounds.Width / 2, ConvertQueueButton.Bounds.Height / 2));
-        AppHost.Get<RadialController>().ShowForFiles(screenPoint.X, screenPoint.Y, vm.QueuedPaths, keepOrder: true);
-        // The queue empties once Filee has converted these files (HomePageViewModel.FinishSentQueue).
+        AppHost.Get<RadialController>().ShowForFiles(screenPoint.X, screenPoint.Y, vm.QueuedPaths, keepOrder: true, onJob: vm.ConversionStarted);
+        // The cards leave the list when that conversion completes (StagedFiles).
         vm.MarkSentToDonut();
     }
 
@@ -171,31 +189,30 @@ public partial class HomePage : UserControl
     }
 
     /// <summary>
-    /// The arrows move the selection between the cards (Alt+Up / Alt+Down moves the selected one); the Delete key takes the selected card out of the
-    /// queue, while the queue has the focus. Text boxes keep their keys.
+    /// The keys of the list, while the list itself has the focus: the arrows move the selection between the cards (mirrored
+    /// in a right-to-left language), Alt+Up / Alt+Down move the selected card, and Delete takes it out of the list.
     /// </summary>
     private void OnPageKeyDown(object? sender, KeyEventArgs e)
     {
-        if (IsTextEntry(e.Source))
+        if (!IsWithin(e.Source, QueueList))
             return;
         if (e.Key is Key.Up or Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Alt))
-        {
             ViewModel?.MoveSelectedQueued(e.Key == Key.Down ? 1 : -1);
-            QueueList.Focus();
-            e.Handled = true;
-        }
         else if (e.Key is Key.Left or Key.Right)
-        {
-            ViewModel?.SelectNeighbour(e.Key == Key.Right ? 1 : -1);
-            QueueList.Focus();
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Delete && ReferenceEquals(e.Source, QueueList))
-        {
+            ViewModel?.SelectNeighbour(e.Key == Key.Right ^ IsRightToLeft ? 1 : -1);
+        else if (e.Key == Key.Delete)
             ViewModel?.RemoveSelectedQueued();
-            e.Handled = true;
-        }
+        else
+            return;
+        QueueList.Focus();
+        e.Handled = true;
     }
+
+    /// <summary>Whether the language is written right to left: the cards are laid out, and read, from the right.</summary>
+    internal static bool IsRightToLeft => CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft;
+
+    private static bool IsWithin(object? source, Visual container) =>
+        source is Visual visual && (ReferenceEquals(visual, container) || visual.GetVisualAncestors().Contains(container));
 
     private static bool IsTextEntry(object? source) =>
         source is TextBox or NumericUpDown or ColorPicker

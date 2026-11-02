@@ -62,7 +62,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     {
         _mergeOrder?.Close();
         var images = preset is { JoinsImages: true };
-        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder);
+        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc);
         var dialog = new MergeOrderWindow { DataContext = vm };
         if (preset is not null)
             dialog.StartMerge.Content = loc.DisplayName(preset);
