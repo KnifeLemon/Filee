@@ -64,7 +64,7 @@ public sealed class TriggerGesture
     /// </summary>
     public string? Key { get; set; }
 
-    /// <summary>Distance in logical pixels the mouse must travel before a drag counts. 0 = system default.</summary>
+    /// <summary>Distance in physical screen pixels the mouse must travel before a drag counts. 0 = system default.</summary>
     public int DragThreshold { get; set; }
 
     /// <summary>Press duration for <see cref="TriggerKind.Hold"/>.</summary>
