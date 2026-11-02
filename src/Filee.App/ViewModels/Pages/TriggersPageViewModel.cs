@@ -110,7 +110,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
                              (Shift ? ModifierKeys.Shift : 0) | (Meta ? ModifierKeys.Meta : 0);
         _gesture.Button = Kind.Value == TriggerKind.KeyChord ? TriggerMouseButton.None : Button.Value;
         _gesture.Key = Key;
-        _gesture.DragThreshold = Math.Clamp(DragThreshold, 0, 200);
+        _gesture.DragThreshold = Math.Clamp(DragThreshold, 0, 1000);
         _gesture.HoldMilliseconds = Math.Clamp(HoldMilliseconds, 150, 3000);
         _gesture.Scope = Scope.Value;
         _gesture.Clipboard = Clipboard;
