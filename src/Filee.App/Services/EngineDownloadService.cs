@@ -310,7 +310,8 @@ public sealed class EngineDownloadService
 
     /// <summary>The reason on the Engines card: an installer's error.* reason in the user's language (#527).</summary>
     internal static string ErrorText(ILocalizer loc, Exception ex) =>
-        ex is HttpRequestException ? ex.Message
+        ex.GetBaseException() is EngineBusyException ? loc["error.engine_busy"]
+        : ex is HttpRequestException ? ex.Message
         : ex.GetBaseException() is ConversionRefusedException refused ? FailureText.Reason(loc, refused.ErrorKey, refused.Detail)
         : ex.GetBaseException().Message;
 
@@ -353,6 +354,7 @@ public sealed class EngineDownloadService
     {
         if (state.IsBusy)
             return false;
+        state.Error = null;
         try
         {
             _installer.Uninstall(state.Package);
@@ -360,9 +362,17 @@ public sealed class EngineDownloadService
             _catalog.Refresh();
             return true;
         }
+        catch (EngineBusyException ex)
+        {
+            _logger.LogWarning(ex, "Another Filee process is using engine package {Package}", state.Package.Id);
+            state.Error = ErrorText(_loc, ex);
+            RefreshStatus();
+            return false;
+        }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(ex, "Removing engine package {Package} failed", state.Package.Id);
+            state.Error = _loc["engines.remove_failed"];
             RefreshStatus();
             return false;
         }
