@@ -79,7 +79,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private readonly Preset _edit;
     private readonly ILocalizer _loc;
 
-    public PresetEditorViewModel(Preset preset, ILocalizer loc)
+    public PresetEditorViewModel(Preset preset, ILocalizer loc, IReadOnlySet<string>? turnedOff = null)
     {
         _original = preset;
         _edit = preset.Clone();
@@ -91,7 +91,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         [
             new Choice<string>(BuiltInData.SameAsSource, loc["presets.same_as_source"]),
             .. FormatRegistry.Known
-                .Where(f => f.Writable)
+                .Where(f => f.Writable && (turnedOff is null || FormatFields.IsShown(f.Id, turnedOff)))
                 .Select(f => new Choice<string>(
                     f.Id,
                     f.Id == FormatRegistry.Folder ? loc["presets.target_folder"] : f.DisplayName,
@@ -151,7 +151,15 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         ];
 
         _name = string.IsNullOrWhiteSpace(_edit.Name) ? loc.DisplayName(_edit) : _edit.Name;
-        _target = Targets.FirstOrDefault(t => t.Value == _edit.TargetFormat) ?? Targets[1];
+        if (FormatRegistry.FindById(_edit.TargetFormat) is { Writable: true } hidden
+            && turnedOff is not null && !FormatFields.IsShown(hidden.Id, turnedOff))
+        {
+            _target = new Choice<string>(hidden.Id, hidden.DisplayName, FormatLabels.Category(loc, hidden.Category));
+            _hiddenTarget = hidden.DisplayName;
+            _hiddenTargetNote = loc.Format("presets.target_hidden", hidden.DisplayName);
+        }
+        else
+            _target = Targets.FirstOrDefault(t => t.Value == _edit.TargetFormat) ?? Targets[1];
         _resize = ResizeModes.First(r => r.Value == (_edit.Image.CustomSize is not null ? ResizeMode.Custom
             : _edit.Image.ClampedMinShortEdge is not null ? ResizeMode.MinShortEdge
             : _edit.Image.Resize));
@@ -382,6 +390,29 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
         nameof(ShowImageSize), nameof(SizeRangeError), nameof(IsValid))]
     private Choice<string> _target;
+
+    // A target whose fields are all turned off isn't added to Targets (the list follows the switches), but it stays the
+    // target: the box shows its name as a placeholder with a note, and Apply saves it unless another one is picked.
+    [ObservableProperty] private string? _hiddenTarget;
+    [ObservableProperty] private string? _hiddenTargetNote;
+
+    /// <summary>The target box has no selection while the current target is hidden by its field switch.</summary>
+    public Choice<string>? TargetSelection
+    {
+        get => HiddenTarget is null ? Target : null;
+        set
+        {
+            if (value is null)
+            {
+                if (HiddenTarget is null)
+                    OnPropertyChanged(nameof(TargetSelection));
+                return;
+            }
+            HiddenTarget = null;
+            HiddenTargetNote = null;
+            Target = value;
+        }
+    }
 
     private LivePhotoKind _livePhotoValue;
 
@@ -734,7 +765,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<double> _animationSpeed;
 
     // A combo box that loses its selection sets null: every choice keeps its value (see Choices.Restore).
-    partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => Target = v);
+    partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue)
+    {
+        Choices.Restore(oldValue, newValue, v => Target = v);
+        OnPropertyChanged(nameof(TargetSelection));
+    }
 
     partial void OnVideoSizeUnitChoiceChanged(Choice<VideoSizeUnit>? oldValue, Choice<VideoSizeUnit> newValue)
     {

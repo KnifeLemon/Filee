@@ -73,6 +73,7 @@ public sealed partial class MainWindowViewModel : ObservableObject, IDisposable
             new("triggers", "nav.triggers", "Icon.Keyboard", typeof(TriggersPageViewModel)),
             new("toolbar", "nav.toolbar", "Icon.Donut", typeof(ToolbarPageViewModel)),
             new("presets", "nav.presets", "Icon.Tune", typeof(PresetsPageViewModel)),
+            new("fields", "nav.fields", "Icon.Shapes", typeof(FieldsPageViewModel)),
             new("watch", "nav.watch", "Icon.Folder", typeof(WatchFoldersPageViewModel)),
             new("theme", "nav.theme", "Icon.Palette", typeof(ThemePageViewModel)),
             new("engines", "nav.engines", "Icon.Engine", typeof(EnginesPageViewModel)),

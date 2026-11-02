@@ -653,7 +653,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             return await EditGroupAsync(preset, owner);
         var dialog = new PresetEditorWindow
         {
-            DataContext = new PresetEditorViewModel(preset, loc),
+            DataContext = new PresetEditorViewModel(preset, loc, services.GetRequiredService<UserDataStore>().Settings.TurnedOffFieldSet()),
             Topmost = owner?.Topmost ?? false,
         };
         PrepareWindow(dialog);

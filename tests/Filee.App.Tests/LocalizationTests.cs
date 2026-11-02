@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Filee.App.Services;
+using Filee.Core.Formats;
 
 namespace Filee.App.Tests;
 
@@ -113,6 +114,30 @@ public partial class LocalizationTests
         // "\\n" in the JSON is a backslash and an n on screen; English writes "\n".
         foreach (var (key, value) in Load(code))
             Assert.False(value.Contains("\\n"), $"{code}:{key} has a literal \\n");
+    }
+
+    [Fact]
+    public void Field_switch_texts_exist_in_every_language()
+    {
+        string[] required =
+        [
+            "nav.fields",
+            "fields.title",
+            "fields.description",
+            "fields.formats",
+            "fields.always_shown",
+            "presets.target_hidden",
+            .. FormatFields.All.Where(f => f.CanTurnOff).Select(f => $"fields.name.{f.Id}")
+        ];
+        foreach (var language in LocalizationService.Languages)
+        {
+            var translations = Load(language.Code);
+            foreach (var key in required)
+            {
+                Assert.True(translations.TryGetValue(key, out var value), $"{language.Code}:{key} is missing");
+                Assert.False(string.IsNullOrWhiteSpace(value), $"{language.Code}:{key} is empty");
+            }
+        }
     }
 
     [Theory]
