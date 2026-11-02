@@ -28,7 +28,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         _gesture = gesture;
         _save = save;
         ClipboardAvailable = clipboardAvailable;
-        Kinds = Enum.GetValues<TriggerKind>().Select(k => new Choice<TriggerKind>(k, loc[$"triggers.kind.{k}"])).ToList();
+        Kinds = Enum.GetValues<TriggerKind>().Where(k => k != TriggerKind.MiddleClick).Select(k => new Choice<TriggerKind>(k, loc[$"triggers.kind.{k}"])).ToList();
         Buttons = Enum.GetValues<TriggerMouseButton>().Where(b => b != TriggerMouseButton.None)
             .Select(b => new Choice<TriggerMouseButton>(b, loc[$"triggers.button.{b}"])).ToList();
         // The file manager has its own name on each system: Explorer, Finder, the Linux desktop's file manager.
@@ -262,10 +262,20 @@ public sealed partial class TriggersPageViewModel : ObservableObject, IDisposabl
             Gestures.Add(new TriggerGestureViewModel(gesture, loc, Save, platform?.SupportsClipboard == true));
         ExcludedApps = new ExcludedAppsViewModel(store.Settings.ExcludedProcesses, platform, Save);
         Flip = new FlipOptionsViewModel(store, loc, Save);
+        _middleClickEnabled = store.Settings.Donut.MiddleClickEnabled;
     }
 
     /// <summary>The key and the wheel that flip the open donut.</summary>
     public FlipOptionsViewModel Flip { get; }
+
+    /// <summary>The built-in middle-button shortcut is fixed in the list and can only be switched on or off.</summary>
+    [ObservableProperty] private bool _middleClickEnabled;
+
+    partial void OnMiddleClickEnabledChanged(bool value)
+    {
+        _store.Settings.Donut.MiddleClickEnabled = value;
+        Save();
+    }
 
     public ObservableCollection<TriggerGestureViewModel> Gestures { get; } = [];
 
