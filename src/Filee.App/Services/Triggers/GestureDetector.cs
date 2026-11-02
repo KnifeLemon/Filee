@@ -81,8 +81,8 @@ public sealed class GestureDetector
 
             // A drag and a hold may share the button and modifiers (#450): both are armed, and what the pointer does
             // next decides between them.
-            var drag = FirstInScope(TriggerKind.Drag, button, modifiers, x, y);
-            holdGesture = FirstInScope(TriggerKind.Hold, button, modifiers, x, y);
+            var drag = middleClick ? null : FirstInScope(TriggerKind.Drag, button, modifiers, x, y);
+            holdGesture = middleClick ? null : FirstInScope(TriggerKind.Hold, button, modifiers, x, y);
             if (drag is null && holdGesture is null && !middleClick)
                 return;
 
