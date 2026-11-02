@@ -163,6 +163,42 @@ public class ClipboardShortcutTests
         }
     }
 
+    [Fact]
+    public void Drag_distance_setting_accepts_values_up_to_1000_and_clamps_above_it()
+    {
+        var gesture = new TriggerGesture { Kind = TriggerKind.Drag };
+        var vm = new TriggerGestureViewModel(gesture, new KeyLocalizer(), () => { });
+
+        vm.DragThreshold = 1000;
+        Assert.Equal(1000, gesture.DragThreshold);
+        vm.DragThreshold = 1200;
+        Assert.Equal(1000, gesture.DragThreshold);
+        vm.DragThreshold = -1;
+        Assert.Equal(0, gesture.DragThreshold);
+    }
+
+    [Fact]
+    public void Drag_detector_honors_a_1000_pixel_threshold()
+    {
+        var gesture = new TriggerGesture
+        {
+            Kind = TriggerKind.Drag,
+            Modifiers = ModifierKeys.Ctrl,
+            Button = TriggerMouseButton.Left,
+            DragThreshold = 1000,
+        };
+        var detector = new GestureDetector();
+        detector.Configure([gesture]);
+        var started = 0;
+        detector.DragStarted += (_, _, _) => started++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.Ctrl);
+        detector.MouseMove(1000, 0, ModifierKeys.Ctrl);
+        Assert.Equal(0, started);
+        detector.MouseMove(1001, 0, ModifierKeys.Ctrl);
+        Assert.Equal(1, started);
+    }
+
     private sealed class CapturingLogger : ILogger<ConversionService>
     {
         public List<string> Messages { get; } = [];
