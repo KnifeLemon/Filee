@@ -29,7 +29,7 @@ public partial class UserDataStoreTests
     }
 
     [Fact]
-    public void Schema_58_settings_start_with_every_field_on_and_keep_the_library()
+    public void Settings_without_turned_off_fields_start_with_every_field_on_and_keep_the_library()
     {
         using var dir = new TempDir();
         var store = new UserDataStore(dir.Path);
@@ -40,7 +40,7 @@ public partial class UserDataStoreTests
         store.SaveLibrary();
         Assert.Equal(slots, store.Profiles.Single(p => p.Id == "images").PresetIds);
         Assert.Equal(slots, StoredImageSlots(dir.Path));
-        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), """{"schemaVersion":58,"language":"ko"}""");
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), $$"""{"schemaVersion":{{AppSettings.CurrentSchemaVersion}},"language":"ko"}""");
         var paths = new[] { "settings.json", "presets.json", "profiles.json" }.Select(f => Path.Combine(dir.Path, f)).ToArray();
         var before = paths.Select(File.ReadAllBytes).ToArray();
         var again = new UserDataStore(dir.Path);

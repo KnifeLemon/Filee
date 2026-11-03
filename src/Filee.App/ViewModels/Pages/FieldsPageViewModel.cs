@@ -12,9 +12,12 @@ public sealed class FieldsPageViewModel : ObservableObject
     {
         Fields = FormatFields.All.Where(f => f.CanTurnOff)
             .Select(f => new FieldSwitchViewModel(f, store, loc)).ToList();
-        // The fields that can't be turned off are the categories, so their names are the category names.
+        // The fields that can't be turned off are the categories, so their names are the category names; any other
+        // field uses its own name.
         AlwaysShown = loc.Format("fields.always_shown", string.Join(", ", FormatFields.All.Where(f => !f.CanTurnOff)
-            .Select(f => loc[$"format.category.{Enum.Parse<FormatCategory>(f.Id, true)}"])));
+            .Select(f => Enum.TryParse<FormatCategory>(f.Id, true, out var category)
+                ? loc[$"format.category.{category}"]
+                : loc[$"fields.name.{f.Id}"])));
     }
 
     public IReadOnlyList<FieldSwitchViewModel> Fields { get; }
