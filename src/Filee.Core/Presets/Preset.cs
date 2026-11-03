@@ -587,7 +587,14 @@ public sealed class ImageOptions
     public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations;
 
     /// <summary>"Annotate": the marks drawn on the picture as it is seen; null for every other preset.</summary>
-    public List<Annotation>? Annotations { get; set; }
+    public List<Annotation>? Annotations
+    {
+        get => _annotations;
+        // Read leniently: an empty place in the list (a preset edited by hand) is no mark.
+        set => _annotations = value?.Where(mark => mark is not null).ToList();
+    }
+
+    private List<Annotation>? _annotations;
 
     /// <summary>The picture gets marks drawn on it (<see cref="Annotations"/>).</summary>
     [JsonIgnore]

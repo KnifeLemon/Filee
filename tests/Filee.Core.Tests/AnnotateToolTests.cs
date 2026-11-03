@@ -77,5 +77,8 @@ public class AnnotateToolTests
         var read2 = System.Text.Json.JsonSerializer.Deserialize(noPoints, FileeJsonContext.Default.ListPreset)!.Single().Image.Annotations!;
         Assert.All(read2, m => Assert.Empty(m.Points));
         Assert.DoesNotContain(read2, AnnotateTool.IsDrawable);
+        // An empty place in the list of marks is no mark, not a failure later when they are drawn.
+        var withNull = json.Replace("\"annotations\": [", "\"annotations\": [ null,", StringComparison.Ordinal);
+        Assert.Equal(3, System.Text.Json.JsonSerializer.Deserialize(withNull, FileeJsonContext.Default.ListPreset)!.Single().Image.Annotations!.Count);
     }
 }

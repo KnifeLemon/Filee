@@ -63,7 +63,8 @@ public sealed class AnnotateWindowTests : IDisposable
 
     private static void Wait(Func<bool> done)
     {
-        for (var i = 0; i < 400 && !done(); i++)
+        // Up to about 5 s, as the Pixelate / blur and Crop tests allow: a slow runner can take longer than 2.
+        for (var i = 0; i < 1000 && !done(); i++)
         {
             Dispatcher.UIThread.RunJobs();
             Thread.Sleep(5);
@@ -201,6 +202,27 @@ public sealed class AnnotateWindowTests : IDisposable
             Assert.Equal(2, vm.Marks.Count);
             Key(window, Avalonia.Input.Key.Z, RawInputModifiers.Control);
             Assert.Equal(3, vm.Marks.Count);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_arrows_leave_the_picked_mark_alone_while_a_button_in_the_bar_has_the_focus()
+    {
+        var (window, vm, _) = Open();
+        try
+        {
+            vm.Mode = AnnotateMode.Box;
+            Drag(window, (0.2, 0.2), (0.4, 0.4));
+            Key(window, Avalonia.Input.Key.Tab);                     // picks the box
+            var at = vm.Marks.Marks[0].Points[0].X;
+            var undo = window.GetVisualDescendants().OfType<Button>().Single(b => b.Command == vm.UndoCommand);
+            undo.Focus(NavigationMethod.Tab);
+            Key(window, Avalonia.Input.Key.Right);
+            Assert.Equal(at, vm.Marks.Marks[0].Points[0].X);
         }
         finally
         {
@@ -657,6 +679,7 @@ public sealed class AnnotateWindowTests : IDisposable
         "ا 5%", "ا +5", "ا #5", "a ا-5 b", "ا 1.5.", "ا 5 6", "ا: 10:30", "abc ١٢٣ ٤٥٦", "١٢٣ ٤٥٦", "مرحبا ABC 123 def",
         "שלום 1-2", "abc (שלום) def", "مرحبا (1)", "مرحبا!", "Hi مرحبا!", "abc ا 5", "x = ا 3", "2 ا", "$5 مقابل €4",
         "מחיר (USD) 5", "ש [a] (b) ג", "abc\u200F 12", "ب٬a", "ש١٬", "١٬٢٠٠ ريال", "(a [ب) c]",
+        "\u0600١٢ abc", "abc \u0601١", "שלום １２，３４５", "ש １：３０", "ب ５％", "ب ＋５", "ש 1﹐2",
     };
 
     [AvaloniaFact]
@@ -667,7 +690,8 @@ public sealed class AnnotateWindowTests : IDisposable
         // around some of it, each against Avalonia's layout.
         TestServices.EnsureInitialized("en");
         string[] pieces = ["a", "Q", "ש", "ب", "ا", "1", "9", "١", "٢", "+", "-", "%", "$", "#", ",", ".", ":", "/", " ", "!",
-            "(", ")", "[", "]", "\u0301", "\u064E", "\u200E", "\u200F", "\u061C", "٬", "€", "\u00A0"];
+            "(", ")", "[", "]", "\u0301", "\u064E", "\u200E", "\u200F", "\u061C", "٬", "€", "\u00A0", "\u0600", "，", "：", "％",
+            "＋", "１"];
         var random = new Random(1024);
         var mismatches = new List<string>();
         for (var n = 0; n < 400; n++)

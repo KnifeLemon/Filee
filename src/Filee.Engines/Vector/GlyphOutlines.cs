@@ -21,6 +21,8 @@ internal sealed class GlyphOutlines : IDisposable
     private const int HarfBuzzScale = 512;
 
     private readonly Dictionary<string, Font?> _shapers = new(StringComparer.Ordinal);
+    // Entries go with their typeface: the table holds typefaces weakly, and a HarfBuzz font frees its native font when
+    // it is collected (NativeObject's finalizer), so typefaces left behind by a language change aren't kept.
     private readonly System.Runtime.CompilerServices.ConditionalWeakTable<SKTypeface, Shaper>? _byTypeface;
 
     private sealed record Shaper(Font? Font);

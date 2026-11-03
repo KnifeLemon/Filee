@@ -413,17 +413,21 @@ internal static class LabelText
                 return Kind.AL;
         }
         var category = Rune.GetUnicodeCategory(rune);
-        if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format)
-            return Kind.NSM;
+        // Before the marks: the Arabic number signs (U+0600 to U+0605) are format characters, but Arabic numbers.
         if (c is >= 0x0660 and <= 0x0669 or 0x066B or 0x066C or >= 0x0600 and <= 0x0605)
             return Kind.AN;
+        if (category is UnicodeCategory.NonSpacingMark or UnicodeCategory.EnclosingMark or UnicodeCategory.Format)
+            return Kind.NSM;
         if (category == UnicodeCategory.DecimalDigitNumber)
             return Kind.EN;
-        if (c is '+' or '-' or 0x2212)
+        // Signs, terminators and separators, with their small and full-width forms.
+        if (c is '+' or '-' or 0x2212 or 0xFB29 or 0xFE62 or 0xFE63 or 0xFF0B or 0xFF0D)
             return Kind.ES;
-        if (c is '#' or '$' or '%' or 0x00B0 or 0x066A or 0x2030 or 0x2031 || category == UnicodeCategory.CurrencySymbol)
+        if (c is '#' or '$' or '%' or 0x00B0 or 0x066A or 0x2030 or 0x2031 or >= 0x2032 and <= 0x2034 or 0xFE5F or 0xFE69 or 0xFE6A
+                or 0xFF03 or 0xFF04 or 0xFF05 || category == UnicodeCategory.CurrencySymbol)
             return Kind.ET;
-        if (c is ',' or '.' or ':' or '/' or 0x00A0 or 0x060C or 0x202F)
+        if (c is ',' or '.' or ':' or '/' or 0x00A0 or 0x060C or 0x202F or 0xFE50 or 0xFE52 or 0xFE55 or 0xFF0C or 0xFF0E or 0xFF0F
+                or 0xFF1A)
             return Kind.CS;
         if (Rune.IsLetter(rune) || category == UnicodeCategory.SpacingCombiningMark)
         {

@@ -239,7 +239,8 @@ public partial class AnnotateWindow : Window
                 vm.Marks.SelectNext(back ? -1 : 1);
                 e.Handled = true;
                 break;
-            case Key.Left or Key.Right or Key.Up or Key.Down when vm.HasSelection && shiftOnly && !vm.IsBusy:
+            // Not while a control in the bar has the keyboard's focus: the arrows are about it there.
+            case Key.Left or Key.Right or Key.Up or Key.Down when vm.HasSelection && shiftOnly && !vm.IsBusy && !InBar:
                 var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10 : 1;
                 vm.Marks.Nudge(e.Key switch { Key.Left => -step, Key.Right => step, _ => 0 },
                     e.Key switch { Key.Up => -step, Key.Down => step, _ => 0 }, vm.PictureSize.Width, vm.PictureSize.Height);
