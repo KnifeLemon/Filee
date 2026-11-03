@@ -224,7 +224,7 @@
   "engine.vision.description": "Reconhece o texto de digitalizações e imagens com o reconhecimento de texto do macOS (OCR): PDF pesquisável, DOCX e TXT. Não é necessário descarregar nada.",
   "engine.calibre.description": "Formatos raros de livros digitais (LIT, LRF, CHM, PDB, RB…) e saída para Kindle (MOBI, AZW3).\nAcima do gerador HWPX, também cria PDF de livros digitais (muito mais depressa para livros longos).",
   "engine.libreoffice.description": "Lê formatos antigos e menos comuns: DOC, PPT, Pages, Keynote, Numbers, WordPerfect, ClarisWorks, Publisher, Visio…\nTambém guarda em DOC, XLS, PPT, ODT, ODP, modelos OpenDocument e EMF.",
-  "engine.translator.description": "Traduz documentos e e-books localmente através de modelos offline do Ollama.",
+  "engine.translator.description": "Traduz documentos e e-books localmente através de modelos offline do Ollama.\nTambém traduz legendas SRT e WebVTT: apenas o texto de cada legenda é enviado ao modelo; os números e os tempos das legendas mantêm-se.",
 
   "profile.images": "Imagens",
   "profile.pdf": "PDF",
