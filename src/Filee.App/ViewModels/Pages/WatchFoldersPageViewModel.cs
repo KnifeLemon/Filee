@@ -29,7 +29,8 @@ public sealed partial class WatchFoldersPageViewModel : ObservableObject, IDispo
         _service = service;
         _loc = loc;
         _conversions = conversions;
-        Presets = store.Presets.Where(p => !p.IsGroup && !p.IsTool).Select(p => new Choice<string>(p.Id, loc.DisplayName(p), FormatLabels.NameOf(loc, p.TargetFormat))).ToList();
+        // Groups, tools and "Run a program" don't convert on a schedule: they live on the donut only (v1 boundary).
+        Presets = store.Presets.Where(p => !p.IsGroup && !p.IsTool && !p.IsRunProgram).Select(p => new Choice<string>(p.Id, loc.DisplayName(p), FormatLabels.NameOf(loc, p.TargetFormat))).ToList();
         OriginalsChoices =
         [
             new Choice<AfterConversion>(AfterConversion.Keep, loc["watch.originals_keep"]),

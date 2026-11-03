@@ -18,6 +18,7 @@ public sealed partial class JobQueue : IAsyncDisposable
     private readonly IFileCombiner? _combiner;
     private readonly ITiffMerger? _tiffMerger;
     private readonly IMediaJoiner? _mediaJoiner;
+    private readonly IProgramRunner? _programRunner;
     private readonly ILogger _log;
     private readonly Channel<ConversionJob> _channel = Channel.CreateUnbounded<ConversionJob>();
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _engineGates = new();
@@ -43,7 +44,8 @@ public sealed partial class JobQueue : IAsyncDisposable
     /// why not. Without it originals are always kept.
     /// </param>
     public JobQueue(ConverterCatalog catalog, IPdfMerger? pdfMerger = null, ILogger<JobQueue>? log = null, IFileCombiner? combiner = null,
-        ITiffMerger? tiffMerger = null, IMediaJoiner? mediaJoiner = null, Func<string, Platform.TrashRefusal?>? moveToTrash = null)
+        ITiffMerger? tiffMerger = null, IMediaJoiner? mediaJoiner = null, Func<string, Platform.TrashRefusal?>? moveToTrash = null,
+        IProgramRunner? programRunner = null)
     {
         _moveToTrash = moveToTrash;
         _catalog = catalog;
@@ -51,6 +53,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         _combiner = combiner;
         _tiffMerger = tiffMerger;
         _mediaJoiner = mediaJoiner;
+        _programRunner = programRunner;
         _log = log ?? (ILogger)NullLogger.Instance;
         _worker = Task.Run(WorkLoopAsync);
     }
@@ -103,6 +106,8 @@ public sealed partial class JobQueue : IAsyncDisposable
 
             if (job.Preset.IsCopyToFolder)
                 await RunCopiesAsync(job);
+            else if (job.Preset.IsRunProgram)
+                await RunProgramAsync(job);
             else
             {
                 var planner = _catalog.CreatePlanner();

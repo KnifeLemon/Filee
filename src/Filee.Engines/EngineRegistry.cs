@@ -92,4 +92,7 @@ public static class EngineRegistry
     /// <summary>The engine that joins videos, audio files and pictures into one (FFmpeg).</summary>
     public static IMediaJoiner? FindMediaJoiner(IEnumerable<IConverter> converters) =>
         converters.OfType<IMediaJoiner>().FirstOrDefault();
+
+    /// <summary>Runs the user's own program for a "Run a program" preset (#966). Not a converter: nothing to route.</summary>
+    public static IProgramRunner CreateProgramRunner() => new ProgramRunner();
 }

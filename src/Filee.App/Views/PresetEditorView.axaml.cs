@@ -18,4 +18,15 @@ public partial class PresetEditorView : UserControl
         if (path is not null)
             vm.CustomFolder = path;
     }
+
+    /// <summary>"Run a program": picks the program to start.</summary>
+    private async void OnBrowseProgram(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is not PresetEditorViewModel vm || TopLevel.GetTopLevel(this) is not { } top)
+            return;
+        var files = await top.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions { AllowMultiple = false });
+        var path = files.FirstOrDefault()?.TryGetLocalPath();
+        if (path is not null)
+            vm.ProgramExecutable = path;
+    }
 }

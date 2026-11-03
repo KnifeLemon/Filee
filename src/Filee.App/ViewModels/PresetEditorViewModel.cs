@@ -297,6 +297,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _zipResult = _edit.Output.ZipResult;
         _replaceOriginal = _edit.Output.ReplaceOriginal;
         _moveInsteadOfCopy = _edit.Output.MoveInsteadOfCopy;
+        // "Run a program" (issue #966): read for every kind (the fields are empty for the others).
+        _programExecutable = _edit.Program.Executable;
+        _programArguments = _edit.Program.Arguments;
+        _programAllFiles = _edit.Program.AllFiles;
+        _programTimeout = _edit.Program.TimeoutSeconds;
+        _programOutputExt = _edit.TargetFormat;
     }
 
     public string PresetId => _original.Id;
@@ -748,6 +754,55 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>What Copy to folder does with the originals, as the box below it is set.</summary>
     public string CopyHint => _loc[MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
+
+    // ───────── "Run a program" (issue #966) ─────────
+
+    public bool IsRunProgram => _original.IsRunProgram;
+    /// <summary>The program card, instead of the conversion options: nothing else applies.</summary>
+    public bool ShowProgram => IsRunProgram;
+    /// <summary>The target box is a format picker, which a "Run a program" preset replaces with an extension field.</summary>
+    public bool ShowTarget => !IsCopyToFolder && !IsRunProgram;
+
+    /// <summary>The program to start, as an absolute path.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProgramCommandPreview))]
+    private string _programExecutable = "";
+
+    /// <summary>The command line with the placeholders (<see cref="ProgramTool"/>), as the user typed it.</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProgramCommandPreview))]
+    private string _programArguments = "";
+
+    /// <summary>Run once with all dropped files (<c>{inputs}</c>) instead of once per file (<c>{input}</c>).</summary>
+    [ObservableProperty] private bool _programAllFiles;
+
+    /// <summary>How long the program may run, in seconds; 0 = the default of ten minutes.</summary>
+    [ObservableProperty] private int _programTimeout;
+
+    /// <summary>The extension the file handed over as <c>{output}</c> gets; empty keeps the source's.</summary>
+    [ObservableProperty] private string _programOutputExt = "";
+
+    /// <summary>The command the preset will run, placeholders left visible for the always-on preview.</summary>
+    public string ProgramCommandPreview
+    {
+        get
+        {
+            var executable = ProgramExecutable.Trim();
+            if (executable.Length == 0)
+                return "";
+            return (executable.Contains(' ') ? $"\"{executable}\"" : executable)
+                + (ProgramArguments.Trim().Length == 0 ? "" : " " + ProgramArguments.Trim());
+        }
+    }
+
+    /// <summary><see cref="ProgramOutputExt"/> as it is saved: a plain extension without dot, or "same as source" when empty.</summary>
+    private string OutputExtension
+    {
+        get
+        {
+            var ext = ProgramOutputExt.Trim().TrimStart('.').ToLowerInvariant();
+            return ext.Length == 0 ? BuiltInData.SameAsSource : ext;
+        }
+    }
+
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
     [ObservableProperty] private Choice<string> _cropFrame;
@@ -1006,7 +1061,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         if (_original.NameKey is null || Name.Trim() != _loc.DisplayName(_original))
             _original.Name = Name.Trim();
 
-        _original.TargetFormat = TargetId;
+        // "Run a program" keeps an extension (the one {output} gets) instead of a format id.
+        _original.TargetFormat = IsRunProgram ? OutputExtension : TargetId;
         var image = _original.Image;
         image.Quality = Math.Clamp(Quality, 1, 100);
         // Only where the field is shown, as with SaveEveryFrame below: a limit left behind by a JPG target fits nothing.
@@ -1170,6 +1226,16 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
         _original.Translate.TargetLanguage = TargetLanguage.Value;
         _original.Translate.Enabled = ShowTranslate;
+
+        // "Run a program" (issue #966): the program, its command line and how long it may take.
+        if (IsRunProgram)
+        {
+            var program = _original.Program;
+            program.Executable = ProgramExecutable.Trim();
+            program.Arguments = ProgramArguments;
+            program.AllFiles = ProgramAllFiles;
+            program.TimeoutSeconds = Math.Clamp(ProgramTimeout, 0, 86_400);
+        }
 
         var output = _original.Output;
         // Asking keeps the location it had: a Filee that can't ask (or one from before it) saves there.

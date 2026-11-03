@@ -58,7 +58,8 @@ public static class AppHost
             EngineRegistry.FindFileCombiner(sp.GetRequiredService<IReadOnlyList<IConverter>>()),
             EngineRegistry.FindTiffMerger(sp.GetRequiredService<IReadOnlyList<IConverter>>()),
             EngineRegistry.FindMediaJoiner(sp.GetRequiredService<IReadOnlyList<IConverter>>()),
-            sp.GetRequiredService<IPlatformServices>().MoveToTrash));
+            sp.GetRequiredService<IPlatformServices>().MoveToTrash,
+            EngineRegistry.CreateProgramRunner()));
 
         // Files dragged from a browser with only an address are downloaded without the browser's cookies.
         services.AddSingleton(_ => new WebDownloader(userAgent: $"Filee/{typeof(AppHost).Assembly.GetName().Version?.ToString(3)}"));

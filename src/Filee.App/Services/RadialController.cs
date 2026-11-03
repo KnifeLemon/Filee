@@ -390,6 +390,16 @@ public sealed class RadialController(
             return;
         }
 
+        // "Run a program" not confirmed on this computer (imported, or its command edited since): the full command is
+        // shown once for approval before anything runs (ConversionService refuses unconfirmed presets as a backstop).
+        if (preset.IsRunProgram && !conversions.ProgramConfirmed(preset))
+        {
+            KeepKeyboard(); // for the confirmation dialog
+            Close(animate: false);
+            _ = ConfirmProgramThenStartAsync(sources, preset, web, _toClipboard);
+            return;
+        }
+
         log.LogInformation("Converting {Count} file(s) with preset {Preset}{Web}{Clipboard}", sources.Count, preset.Id,
             web is null ? "" : " (from a browser)", _toClipboard ? " (from the clipboard)" : "");
         var job = conversions.Start(sources, preset, showInToast: false, web, _toClipboard);
@@ -401,6 +411,32 @@ public sealed class RadialController(
         _converted = true;
         ShowProgress(job);
         ReturnKeyboard(); // the ring shows the conversion; nothing here needs the keyboard any more
+    }
+
+    /// <summary>
+    /// The "Run a program" confirmation dialog: approve once and the conversion starts (into the toast; the donut has
+    /// closed for the dialog), cancel and nothing runs.
+    /// </summary>
+    private async Task ConfirmProgramThenStartAsync(IReadOnlyList<string> sources, Preset preset, WebDrop? web, bool toClipboard)
+    {
+        try
+        {
+            var owner = _window is { IsVisible: true } donut ? donut : null;
+            var approved = await windows.ConfirmProgramAsync(owner, conversions.ProgramConfirmText(preset, sources));
+            if (!approved)
+                return;
+            conversions.ConfirmProgram(preset);
+            conversions.Start(sources, preset, web: web, toClipboard: toClipboard);
+            web = null; // the conversion owns the browser drop now
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not confirm running {Preset}", preset.Id);
+        }
+        finally
+        {
+            web?.Dispose();
+        }
     }
 
     private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard)
@@ -478,10 +514,13 @@ public sealed class RadialController(
 
     /// <summary>
     /// What <paramref name="preset"/> converts of <paramref name="files"/>: folders only go into "Compress into one
-    /// archive"; any other preset converts the files beside them (issue #186).
+    /// archive" and "Run a program" (the program gets the folder's path); any other preset converts the files beside
+    /// them (issue #186).
     /// </summary>
     internal static IReadOnlyList<string> SourcesFor(Preset preset, IReadOnlyList<string> files) =>
-        preset.PacksIntoOneArchive || preset.IsCopyToFolder ? files : [.. files.Where(path => !Directory.Exists(path))];
+        preset.PacksIntoOneArchive || preset.IsCopyToFolder || preset.IsRunProgram
+            ? files
+            : [.. files.Where(path => !Directory.Exists(path))];
 
     // ───────── Progress ring ─────────
 

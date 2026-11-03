@@ -178,6 +178,14 @@ public sealed class AppSettings
     /// <summary>Engine package id → the new version the engine update notice was shown for (once per version).</summary>
     public Dictionary<string, string> NotifiedEngineVersions { get; set; } = [];
 
+    /// <summary>
+    /// "Run a program" presets confirmed on this computer: preset id → the hash of the program and command line they
+    /// were confirmed with (<see cref="Presets.ProgramTool.CommandHash"/>). A preset that arrived by import (or whose
+    /// command was edited since) runs only once its full command has been shown and approved again. A missing value
+    /// (settings from before it) reads as nothing confirmed, so it needs no schema step.
+    /// </summary>
+    public Dictionary<string, string> ConfirmedPrograms { get; set; } = [];
+
     /// <summary>Temporarily disable all trigger gestures (tray "Pause").</summary>
     public bool Paused { get; set; }
 

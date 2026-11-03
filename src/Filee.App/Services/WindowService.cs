@@ -734,6 +734,14 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     public Task<bool> ConfirmAsync(Window owner, string message, bool destructive = false) =>
         ShowMessageAsync(owner, message, destructive, withCancel: true);
 
+    /// <summary>
+    /// The "Run a program" confirmation: shows the full command a preset will run and asks once (its own title and
+    /// buttons, not the generic ones). True when the user approves.
+    /// </summary>
+    public Task<bool> ConfirmProgramAsync(Window? owner, string message) =>
+        ShowMessageAsync(owner, message, destructive: false, withCancel: true,
+            title: loc["confirm.program_title"], ok: loc["confirm.program_ok"], cancel: loc["confirm.program_cancel"]);
+
     /// <summary>A message with only an OK button. Without a visible owner it shows on its own, centred on the screen.</summary>
     public Task MessageAsync(Window? owner, string message) => ShowMessageAsync(owner, message, destructive: false, withCancel: false);
 
@@ -760,11 +768,12 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         services.GetRequiredService<UpdateService>().OpenDownloadPage();
     }
 
-    private async Task<bool> ShowMessageAsync(Window? owner, string message, bool destructive, bool withCancel)
+    private async Task<bool> ShowMessageAsync(Window? owner, string message, bool destructive, bool withCancel,
+        string? title = null, string? ok = null, string? cancel = null)
     {
         var dialog = new Window
         {
-            Title = loc["app.name"],
+            Title = title ?? loc["app.name"],
             Width = 400,
             SizeToContent = SizeToContent.Height,
             CanResize = false,
@@ -773,9 +782,9 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         };
         PrepareWindow(dialog);
         Motion.Track(dialog);
-        var yes = new Button { Content = destructive ? loc["common.delete"] : loc["common.ok"], IsDefault = true };
+        var yes = new Button { Content = ok ?? (destructive ? loc["common.delete"] : loc["common.ok"]), IsDefault = true };
         yes.Classes.Add("accent");
-        var no = new Button { Content = loc["common.cancel"], IsCancel = true };
+        var no = new Button { Content = cancel ?? loc["common.cancel"], IsCancel = true };
         var answer = false;
         yes.Click += (_, _) => { answer = true; dialog.Close(true); };
         no.Click += (_, _) => dialog.Close(false);

@@ -49,7 +49,7 @@ internal sealed class CliHost : IAsyncDisposable
         var catalog = new ConverterCatalog(converters) { Priority = store.Settings.EnginePriority };
         var queue = new JobQueue(catalog, EngineRegistry.FindPdfMerger(converters), combiner: EngineRegistry.FindFileCombiner(converters),
             tiffMerger: EngineRegistry.FindTiffMerger(converters), mediaJoiner: EngineRegistry.FindMediaJoiner(converters),
-            moveToTrash: Trash());
+            moveToTrash: Trash(), programRunner: EngineRegistry.CreateProgramRunner());
         return new CliHost(store, catalog, queue, engines);
     }
 
