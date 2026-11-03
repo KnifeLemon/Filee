@@ -9,7 +9,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
-| PDFsharp | built in (library) | images → PDF, merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
+| PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
@@ -292,6 +292,11 @@ in it also builds the package (artifact `windows-arm64-package`).
 - **LIVP** (an iPhone Live Photo as iCloud downloads it: a ZIP of the photo, HEIC or JPEG, and its MOV) is read as its
   photo, taken out of the package in memory (`LivePhotoSource.ReadStill`, at most 64 MB); its video is FFmpeg's (see
   Live / Motion Photos there).
+- **CMYK pictures → PDF** (#1027, #1055): print work keeps its colours. PDFsharp's image import takes grey and RGB
+  only, so `Pdf/CmykPictures.cs` writes the image itself: CMYK, with the picture's own ICC profile as an ICCBased
+  colour space (else DeviceCMYK); a JPEG source as JPEG data (ImageMagick writes CMYK JPEGs inverted with Adobe's
+  APP14 marker, undone with a Decode array), others as their samples compressed losslessly; transparency as a soft
+  mask. Grey and RGB pictures go in through PDFsharp as before.
 - **KRA** (Krita's own file, a ZIP of the layers) is read as the merged picture Krita stores at its top for other
   programs (`mergedimage.png`, `Krita.ReadMerged`, at most 256 MB, in memory), so it looks as it does in Krita. A file
   without one gives a clear error.
