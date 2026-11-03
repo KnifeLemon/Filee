@@ -45,7 +45,7 @@ public class OcrLanguageListTests
 }
 
 /// <summary>
-/// Tesseract 4.0 reads pdf.ttf from the tessdata folder of the job, so it is copied there from the system (no Tesseract
+/// Tesseract 4.x reads pdf.ttf from the tessdata folder of the job, so it is copied there from the system (no Tesseract
 /// needed). The folders and the prefix are passed in: TESSDATA_PREFIX of the process is not touched.
 /// </summary>
 public class OcrPdfFontTests(EngineFixture fx) : IClassFixture<EngineFixture>

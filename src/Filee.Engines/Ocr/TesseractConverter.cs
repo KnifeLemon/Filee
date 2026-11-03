@@ -119,10 +119,10 @@ public sealed class TesseractConverter : IConverter
     }
 
     /// <summary>
-    /// Tesseract 4.0.x does not embed the invisible-text font of its PDF output: it reads <c>pdf.ttf</c> from the
-    /// tessdata folder it is given (<c>tessdata//pdf.ttf</c>), and fails with "Can not open file" when only the language
-    /// data is there. Newer versions embed it, so a missing font anywhere is not an error: the file is copied from the
-    /// system's Tesseract when it can be found.
+    /// Tesseract 4.x (4.0.0 to 4.1.3; Ubuntu 20.04 and 22.04 ship 4.1.1) has no built-in copy of the invisible-text font
+    /// of its PDF output: it reads <c>pdf.ttf</c> from the tessdata folder it is given (<c>tessdata//pdf.ttf</c>), and
+    /// fails with "Can not open file" when only the language data is there. 5.0 and later fall back to a copy built in,
+    /// so a missing font anywhere is not an error: the file is copied from the system's Tesseract when it can be found.
     /// </summary>
     /// <param name="tessdata">The job's tessdata folder, which exists already.</param>
     /// <param name="folders">Where to look for the font, in order (<see cref="PdfFontFolders"/>).</param>
@@ -137,7 +137,7 @@ public sealed class TesseractConverter : IConverter
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Recognition goes on: Tesseract 4.1 and later do not need the font, and 4.0 reports it when it does.
+            // Recognition goes on: Tesseract 5.0 and later do not need the font, and 4.x reports it when it does.
         }
     }
 
