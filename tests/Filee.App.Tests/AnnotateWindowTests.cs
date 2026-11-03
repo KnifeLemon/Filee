@@ -829,7 +829,7 @@ public sealed class AnnotateWindowTests : IDisposable
         image.Crop(new MagickGeometry((int)Math.Round(area.X * scale), (int)Math.Round(area.Y * scale),
             (uint)Math.Round(area.Width * scale), (uint)Math.Round(area.Height * scale)));
         image.ResetPage();
-        image.Alpha(AlphaOption.Remove);
+        image.Alpha(AlphaAction.Remove);
         return image;
     }
 
@@ -1053,7 +1053,7 @@ public sealed class AnnotateWindowTests : IDisposable
             drawn.Crop(new MagickGeometry((int)Math.Round(topLeft.X * scale), (int)Math.Round(topLeft.Y * scale),
                 (uint)Math.Round(picture.Width * scale), (uint)Math.Round(picture.Height * scale)));
             drawn.ResetPage();
-            drawn.Alpha(AlphaOption.Remove);
+            drawn.Alpha(AlphaAction.Remove);
 
             // The file: the same marks drawn by the engine. Both at the smaller size: the sharper one brought down, not
             // the other blown up (a 300 px file shown three times larger would blur).
