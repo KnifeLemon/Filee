@@ -981,6 +981,10 @@ internal static class SettingsMigrations
             presets.InsertRange(hide < 0 ? presets.Count : hide + 1, BuiltInData.AnnotatePresets());
             changed = true;
         }
+        // v61: Dart and HiveQL sources (#980, #997) learn the text donut, Krita files (#903) the images donut; custom
+        //      claims stay put.
+        if (from < 61)
+            changed |= LearnExtensions(profiles, out _, ["dart", "hql", "kra"]);
         return changed;
     }
 
