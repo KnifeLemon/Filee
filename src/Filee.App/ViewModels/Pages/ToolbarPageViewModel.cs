@@ -594,6 +594,29 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         Commit();
     }
 
+    /// <summary>
+    /// A new "Run a program" preset (issue #966): the editor asks for the program, its command line and the extension
+    /// of the file it hands over as <c>{output}</c>.
+    /// </summary>
+    [RelayCommand]
+    private async Task NewRunProgram()
+    {
+        var preset = new Preset
+        {
+            Name = _loc["preset.run_program"],
+            Kind = PresetKind.RunProgram,
+            TargetFormat = "txt",
+        };
+        if (!await _windows.EditPresetAsync(preset, _windows.Main))
+            return;
+        _store.Presets.Add(preset);
+        if (Slices is { Count: < ToolbarProfile.MaxSlices } slices)
+            slices.Add(preset.Id);
+        else
+            _newPresetToSelect = preset.Id;
+        Commit();
+    }
+
     [RelayCommand]
     private void AddProfile()
     {

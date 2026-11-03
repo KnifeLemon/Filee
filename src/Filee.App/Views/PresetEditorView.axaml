@@ -34,13 +34,13 @@
         <TextBlock Classes="caption danger" Text="{Binding NameError}" IsVisible="{Binding NameError, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
       <StackPanel Grid.Column="2">
-        <TextBlock Classes="label" Text="{DynamicResource presets.target}" IsVisible="{Binding ShowConversionOutput}" />
+        <TextBlock Classes="label" Text="{DynamicResource presets.target}" IsVisible="{Binding ShowTarget}" />
         <TextBlock Classes="label" Text="{DynamicResource presets.copy_action}" IsVisible="{Binding IsCopyToFolder}" />
         <ComboBox x:Name="CopyActionBox" ItemsSource="{Binding CopyActions}" SelectedItem="{Binding CopyAction}" IsVisible="{Binding IsCopyToFolder}"
                   HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.copy_action}" />
         <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding TargetSelection}"
                   PlaceholderText="{Binding HiddenTarget}"
-                  IsEnabled="{Binding CanChangeTarget}" IsVisible="{Binding !IsCopyToFolder}"
+                  IsEnabled="{Binding CanChangeTarget}" IsVisible="{Binding ShowTarget}"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.target}">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="vm:IChoice">
@@ -54,6 +54,52 @@
         <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
+
+    <!-- "Run a program" (issue #966): the program, its command line and the file handed over as {output}.
+         Shown instead of the conversion option cards below, whose choices mean nothing here. -->
+    <Border x:Name="ProgramCard" Classes="card" IsVisible="{Binding ShowProgram}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource preset.run_program}" />
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource presets.program_path}" />
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Margin="8,0,0,0" Content="{DynamicResource presets.browse}" Click="OnBrowseProgram" />
+            <TextBox Text="{Binding ProgramExecutable}" AutomationProperties.Name="{DynamicResource presets.program_path}" />
+          </DockPanel>
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.program_path_hint}" Margin="2,4,0,0" />
+        </StackPanel>
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource presets.program_args}" />
+          <TextBox Text="{Binding ProgramArguments}" TextWrapping="Wrap" AcceptsReturn="False"
+                   AutomationProperties.Name="{DynamicResource presets.program_args}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.program_args_hint}" Margin="2,4,0,0" />
+        </StackPanel>
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.program_output_ext}" />
+            <TextBox Text="{Binding ProgramOutputExt}" PlaceholderText="txt" AutomationProperties.Name="{DynamicResource presets.program_output_ext}" />
+          </StackPanel>
+          <StackPanel Grid.Column="2">
+            <TextBlock Classes="label" Text="{DynamicResource presets.program_timeout}" />
+            <NumericUpDown Value="{Binding ProgramTimeout}" Minimum="0" Maximum="86400" Increment="10" FormatString="0"
+                           AutomationProperties.Name="{DynamicResource presets.program_timeout}" />
+          </StackPanel>
+        </Grid>
+        <StackPanel Spacing="2">
+          <CheckBox Content="{DynamicResource presets.program_all_files}" IsChecked="{Binding ProgramAllFiles}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0"
+                     Text="{DynamicResource presets.program_per_file}" IsVisible="{Binding !ProgramAllFiles}" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding ProgramCommandPreview, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.program_command}" />
+          <TextBox Text="{Binding ProgramCommandPreview}" IsReadOnly="True" TextWrapping="Wrap" MinHeight="48"
+                   AutomationProperties.Name="{DynamicResource presets.program_command}" />
+        </StackPanel>
+      </StackPanel>
+    </Border>
+
+    <!-- The conversion options: every card below means nothing while a program is run instead. -->
+    <StackPanel IsVisible="{Binding !IsRunProgram}">
 
     <!-- Live / Motion Photo of a video (JPG, HEIC): the kind on a row of its own, so its names are never cut off -->
     <Border x:Name="LivePhotoCard" Classes="card" IsVisible="{Binding ShowLivePhotoChoice}" Padding="14">
@@ -586,6 +632,7 @@
         <TextBlock Classes="caption" Text="{DynamicResource presets.cad_colors_hint}" TextWrapping="Wrap" />
       </StackPanel>
     </Border>
+    </StackPanel>
 
     <TextBlock Text="{Binding CopyHint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
 

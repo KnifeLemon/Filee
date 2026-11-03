@@ -307,3 +307,20 @@ public interface IFileCombiner
     Task CombineAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Preset preset,
         string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken);
 }
+
+/// <summary>
+/// Runs the user's own program for a "Run a program" preset (<see cref="Presets.PresetKind.RunProgram"/>).
+/// Implemented over <c>ProcessRunner</c> in the engines project: no shell, one entry per argument, the whole
+/// process tree killed on timeout or cancellation.
+/// </summary>
+public interface IProgramRunner
+{
+    /// <summary>Starts the program, waits for it and returns its exit code and standard error.</summary>
+    /// <exception cref="TimeoutException">The program did not finish within <paramref name="timeout"/>.</exception>
+    /// <exception cref="OperationCanceledException">The job was cancelled.</exception>
+    Task<ProgramRunResult> RunAsync(string executable, IReadOnlyList<string> arguments, TimeSpan timeout,
+        CancellationToken cancellationToken);
+}
+
+/// <summary>What a "Run a program" invocation came back with.</summary>
+public readonly record struct ProgramRunResult(int ExitCode, string StandardError);

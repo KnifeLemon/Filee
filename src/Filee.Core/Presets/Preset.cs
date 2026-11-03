@@ -25,6 +25,13 @@ public enum PresetKind
 
     /// <summary>Copies files and folders byte for byte to a chosen destination.</summary>
     CopyToFolder,
+
+    /// <summary>
+    /// Runs the user's own program on the dropped files ("Run a program", the preset of issue #966). The job queue
+    /// runs it: timeout, cancelling and the usual output rules apply. A kind an older Filee reads as a group, so it
+    /// greys out instead of running anything.
+    /// </summary>
+    RunProgram,
 }
 
 /// <summary>
@@ -128,6 +135,9 @@ public sealed class Preset
 
     /// <summary>Options used for offline AI translation.</summary>
     public TranslateOptions Translate { get; set; } = new();
+
+    /// <summary>Options used when the user's own program is run (<see cref="PresetKind.RunProgram"/>).</summary>
+    public ProgramOptions Program { get; set; } = new();
 
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
@@ -247,6 +257,10 @@ public sealed class Preset
     [JsonIgnore]
     public bool IsCopyToFolder => Kind == PresetKind.CopyToFolder;
 
+    /// <summary>True for a <see cref="PresetKind.RunProgram"/> preset ("Run a program").</summary>
+    [JsonIgnore]
+    public bool IsRunProgram => Kind == PresetKind.RunProgram;
+
     public const string CopyTarget = "copy-to-folder";
 
     /// <summary><see cref="Tool"/> of the interactive crop (also a tool saved without one, from before clips).</summary>
@@ -343,6 +357,7 @@ public sealed class Preset
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
         Translate = Translate.Clone(),
+        Program = Program.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
         Tool = Tool,
@@ -1507,4 +1522,29 @@ public sealed class TranslateOptions
     public string? Model { get; set; }
 
     public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+}
+
+/// <summary>
+/// Options of a <see cref="PresetKind.RunProgram"/> preset: the user's own program, how it is called, and how long it
+/// may take. Nothing ships with such a preset and none is downloaded; one only exists once the user made it.
+/// </summary>
+public sealed class ProgramOptions
+{
+    /// <summary>Absolute path of the program to start, picked with a file dialog.</summary>
+    public string Executable { get; set; } = "";
+
+    /// <summary>
+    /// The command line, with <see cref="ProgramTool"/> placeholders (<c>{input}</c>, <c>{inputs}</c>, <c>{name}</c>,
+    /// <c>{ext}</c>, <c>{dir}</c>, <c>{output}</c>, <c>{outputDir}</c>) expanded into single arguments, except
+    /// <c>{inputs}</c>, which becomes one argument per path. Never a shell.
+    /// </summary>
+    public string Arguments { get; set; } = "";
+
+    /// <summary>Run once with all dropped files (<c>{inputs}</c>) instead of once per file (<c>{input}</c>).</summary>
+    public bool AllFiles { get; set; }
+
+    /// <summary>How long the program may run before it is killed; 0 for the default of ten minutes.</summary>
+    public int TimeoutSeconds { get; set; }
+
+    public ProgramOptions Clone() => (ProgramOptions)MemberwiseClone();
 }

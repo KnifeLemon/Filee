@@ -82,6 +82,14 @@ public sealed class ConversionService
             web?.Dispose();
             return null;
         }
+        // A "Run a program" preset that arrived by import (or whose command changed since) never runs until its full
+        // command was shown and approved on this computer (the donut asks; anything else that reaches here fails shut).
+        if (preset.IsRunProgram && !ProgramConfirmed(preset))
+        {
+            _log?.LogInformation("Run a program preset {Preset} is not confirmed on this computer; it does not run", preset.Id);
+            web?.Dispose();
+            return null;
+        }
         // A preset on "Default" saves where Settings > General says (read now, so a changed default applies at once).
         preset = _store.Settings.WithDefaultOutput(preset);
         if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model) && !string.IsNullOrWhiteSpace(_store.Settings.PreferredOllamaModel))
@@ -206,6 +214,36 @@ public sealed class ConversionService
 
     /// <summary>True when a source file (or folder) is still where it was.</summary>
     public static bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
+
+    // ───────── "Run a program" (issue #966) ─────────
+
+    /// <summary>The command a "Run a program" preset runs for <paramref name="files"/>, with the placeholders expanded
+    /// (no output yet, so <c>{output}</c> shows empty): what the confirmation dialog and the editor preview display.</summary>
+    public static string ProgramCommand(Preset preset, IReadOnlyList<string> files)
+    {
+        var executable = preset.Program.Executable.Trim();
+        var parts = new[] { executable.Contains(' ') ? $"\"{executable}\"" : executable }
+            .Concat(ProgramTool.BuildArguments(preset.Program.Arguments, files, null)
+                .Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+        return string.Join(" ", parts);
+    }
+
+    /// <summary>The confirmation dialog's text: what will run, for the files being dropped.</summary>
+    public string ProgramConfirmText(Preset preset, IReadOnlyList<string> files) =>
+        _loc.Format("confirm.program_text", ProgramCommand(preset, files));
+
+    /// <summary>True when this preset's exact program and command line were approved on this computer.</summary>
+    public bool ProgramConfirmed(Preset preset) =>
+        _store.Settings.ConfirmedPrograms.TryGetValue(preset.Id, out var hash)
+        && hash == ProgramTool.CommandHash(preset.Program.Executable, preset.Program.Arguments);
+
+    /// <summary>Records that the user approved this preset's current command (after the confirmation dialog).</summary>
+    public void ConfirmProgram(Preset preset)
+    {
+        _store.Settings.ConfirmedPrograms[preset.Id] =
+            ProgramTool.CommandHash(preset.Program.Executable, preset.Program.Arguments);
+        _store.SaveSettings();
+    }
 
     private void RetryFailed(JobViewModel vm)
     {

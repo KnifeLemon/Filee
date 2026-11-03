@@ -114,6 +114,10 @@ public sealed class PresetAvailability
         if (preset.IsCopyToFolder)
             return new(PresetUse.Usable, null);
 
+        // "Run a program" takes any file (even of an unknown type) and folders: the program decides what it can read.
+        if (preset.IsRunProgram)
+            return new(PresetUse.Usable, null);
+
         if (preset.IsClipTool)
         {
             // Any video among the files: the others are left out when the clip window opens.

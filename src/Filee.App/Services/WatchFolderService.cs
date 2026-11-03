@@ -81,6 +81,13 @@ public sealed class WatchFolderService(UserDataStore store, ConversionService co
             log.LogWarning("Watch folder {Folder}: preset {Preset} no longer exists", rule.Folder, rule.PresetId);
             return null;
         }
+        // Watch folders never run a "Run a program" preset (v1 boundary): they only offer conversions, and a preset
+        // swapped for one by an import is refused here rather than started without anyone watching.
+        if (preset.IsRunProgram)
+        {
+            log.LogWarning("Watch folder {Folder}: preset {Preset} runs a program, which watch folders do not run", rule.Folder, rule.PresetId);
+            return null;
+        }
         return await conversions.RunAsync(files, rule.Apply(preset), rule.Id);
     }
 
