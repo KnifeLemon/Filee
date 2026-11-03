@@ -44,6 +44,78 @@ public class OcrLanguageListTests
     }
 }
 
+/// <summary>
+/// Tesseract 4.0 reads pdf.ttf from the tessdata folder of the job, so it is copied there from the system (no Tesseract
+/// needed). The folders and the prefix are passed in: TESSDATA_PREFIX of the process is not touched.
+/// </summary>
+public class OcrPdfFontTests(EngineFixture fx) : IClassFixture<EngineFixture>
+{
+    private string FolderWith(string? font)
+    {
+        var folder = fx.NewFolder();
+        if (font is not null)
+            File.WriteAllText(Path.Combine(folder, "pdf.ttf"), font);
+        return folder;
+    }
+
+    [Fact]
+    public void The_font_is_found_in_the_second_folder_and_the_first_one_wins_when_both_have_it()
+    {
+        var empty = FolderWith(null);
+        var second = FolderWith("second");
+        var third = FolderWith("third");
+
+        Assert.Equal(Path.Combine(second, "pdf.ttf"), TesseractConverter.FindPdfFont([empty, second, third]));
+        Assert.Equal(Path.Combine(third, "pdf.ttf"), TesseractConverter.FindPdfFont([third, second]));
+        Assert.Equal(Path.Combine(second, "pdf.ttf"), TesseractConverter.FindPdfFont([Path.Combine(empty, "missing"), "", second]));
+    }
+
+    [Fact]
+    public void No_font_is_no_error_and_nothing_is_copied()
+    {
+        var folders = new[] { FolderWith(null), Path.Combine(fx.NewFolder(), "missing") };
+        var tessdata = fx.NewFolder();
+
+        Assert.Null(TesseractConverter.FindPdfFont(folders));
+        Assert.Null(TesseractConverter.FindPdfFont([]));
+        TesseractConverter.CopyPdfFont(tessdata, folders);
+
+        Assert.Empty(Directory.GetFileSystemEntries(tessdata));
+    }
+
+    [Fact]
+    public void A_found_font_is_copied_into_the_job_tessdata()
+    {
+        var tessdata = fx.NewFolder();
+        File.WriteAllText(Path.Combine(tessdata, "pdf.ttf"), "old");
+
+        TesseractConverter.CopyPdfFont(tessdata, [FolderWith(null), FolderWith("system font")]);
+
+        Assert.Equal("system font", File.ReadAllText(Path.Combine(tessdata, "pdf.ttf")));
+    }
+
+    [Fact]
+    public void The_prefix_comes_first_then_the_executable_then_the_system_folders_each_once()
+    {
+        var root = Path.Combine(Path.GetTempPath(), "filee-font-" + Guid.NewGuid().ToString("N")[..6]);
+        var prefix = Path.Combine(root, "prefix");
+        var executable = Path.Combine(root, "bin", "tesseract");
+        var debian = Path.GetFullPath("/usr/share/tesseract-ocr/4.00/tessdata");
+
+        var folders = TesseractConverter.PdfFontFolders(executable, prefix).ToList();
+
+        Assert.Equal([prefix, Path.Combine(prefix, "tessdata"), Path.Combine(root, "bin")], folders.Take(3));
+        var system = folders.IndexOf(debian);
+        Assert.True(system > folders.IndexOf(Path.Combine(root, "bin")), "the system folders come after the executable's");
+        Assert.Equal(folders.Count, folders.Distinct(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal).Count());
+
+        // The prefix is optional, and a prefix that is also the executable's folder is listed once.
+        Assert.Equal(Path.Combine(root, "bin"), TesseractConverter.PdfFontFolders(executable, null).First());
+        Assert.Equal(Path.Combine(root, "bin"), TesseractConverter.PdfFontFolders(executable, "").First());
+        Assert.Equal(1, TesseractConverter.PdfFontFolders(executable, Path.Combine(root, "bin")).Count(f => f == Path.Combine(root, "bin")));
+    }
+}
+
 /// <summary>Which pages count as having text, so OCR leaves them alone (no Tesseract needed).</summary>
 public class OcrPagesWithTextTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
