@@ -56,7 +56,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
                 {
                     var page = frame.Clone();
                     page.BackgroundColor = new MagickColor(string.IsNullOrWhiteSpace(options.Background) ? "#FFFFFF" : options.Background);
-                    page.Alpha(AlphaOption.Remove);
+                    page.Alpha(AlphaAction.Remove);
                     page.Depth = 8;
                     page.Settings.Compression = compression;
                     page.SetAttribute("tiff:subfiletype", "2");

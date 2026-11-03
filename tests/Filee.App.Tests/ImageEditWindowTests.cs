@@ -325,7 +325,7 @@ public class ImageEditWindowTests
                 var exif = new ExifProfile();
                 exif.SetValue(ExifTag.Orientation, (ushort)6); // "turn right to view"
                 image.SetProfile(exif);
-                image.Orientation = OrientationType.RightTop;
+                image.Orientation = Orientation.RightTop;
                 image.Write(photo, MagickFormat.Jpg);
             }
             Assert.Equal((300, 400), WindowService.PictureSize(photo));

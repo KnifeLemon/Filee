@@ -152,7 +152,7 @@ public static class AreaHider
         // a CMYK picture, which is white paper.
         black.ColorSpace = image.ColorSpace;
         if (image.HasAlpha)
-            black.Alpha(AlphaOption.Opaque);
+            black.Alpha(AlphaAction.Opaque);
         image.Composite(black, x, y, CompositeOperator.Copy);
         ClearExtraChannels(image, bounds);
     }
