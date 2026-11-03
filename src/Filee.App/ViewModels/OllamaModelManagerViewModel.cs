@@ -2,10 +2,14 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
+using Filee.App.Views;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -28,14 +32,30 @@ public sealed partial class OllamaModelItem : ObservableObject
 
     [ObservableProperty]
     private bool _isActionEnabled = true;
+
+    [ObservableProperty]
+    private bool _isDeleting;
+
+    public string DeleteAutomationName => $"Delete {Name}";
 }
 
 public sealed partial class OllamaModelManagerViewModel : ObservableObject
 {
     private static readonly Uri OllamaBase = new("http://127.0.0.1:11434");
+    private static readonly HttpClient SharedHttpClient = new(new SocketsHttpHandler
+    {
+        UseProxy = false,
+        AllowAutoRedirect = false,
+        ConnectTimeout = TimeSpan.FromSeconds(5)
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(30)
+    };
     private static Process? _fileeStartedOllamaProcess;
     private readonly ILocalizer _loc;
     private readonly UserDataStore _store;
+
+    public Window? OwnerWindow { get; set; }
 
     public OllamaModelManagerViewModel()
         : this(AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>())
@@ -355,7 +375,56 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         UpdateCanStopServer();
         await Task.Delay(300);
         await RefreshStatusAsync();
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        await Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
+    }
+
+    [RelayCommand]
+    public async Task DeleteModelAsync(OllamaModelItem item)
+    {
+        if (item.IsDeleting)
+            return;
+
+        var window = OwnerWindow ?? (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Windows.FirstOrDefault(w => w is OllamaModelManagerWindow);
+        if (window is null)
+            return;
+
+        var message = _loc.Format("engines.ollama.delete_confirm", item.Name);
+        if (!await AppHost.Get<WindowService>().ConfirmAsync(window, message, destructive: true))
+            return;
+
+        item.IsDeleting = true;
+        try
+        {
+            var body = new { model = item.Name };
+            using var request = new HttpRequestMessage(HttpMethod.Delete, new Uri(OllamaBase, "/api/delete"))
+            {
+                Content = JsonContent.Create(body)
+            };
+            using var response = await SharedHttpClient.SendAsync(request);
+            if (response.IsSuccessStatusCode)
+            {
+                Models.Remove(item);
+                if (string.Equals(ActiveModelName, item.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    ActiveModelName = "";
+                    _store.Settings.PreferredOllamaModel = null;
+                    _store.SaveSettings();
+                }
+                await CheckServerAndLoadModelsAsync();
+            }
+            else
+            {
+                await AppHost.Get<WindowService>().MessageAsync(window, _loc.Format("engines.ollama.delete_failed", item.Name));
+            }
+        }
+        catch
+        {
+            await AppHost.Get<WindowService>().MessageAsync(window, _loc.Format("engines.ollama.delete_failed", item.Name));
+        }
+        finally
+        {
+            item.IsDeleting = false;
+        }
     }
 
     [RelayCommand]
@@ -394,7 +463,7 @@ public sealed partial class OllamaModelManagerViewModel : ObservableObject
         }
 
         await RefreshStatusAsync();
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        await Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
     }
 
     [RelayCommand]

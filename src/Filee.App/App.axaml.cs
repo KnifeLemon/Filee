@@ -86,7 +86,11 @@ public partial class App : Application
         var catalog = AppHost.Get<ConverterCatalog>();
         _ = catalog.CheckInBackgroundAsync();
         Filee.Engines.Translation.TranslatorConverter.StatusChanged += () =>
-            Dispatcher.UIThread.Post(catalog.Refresh);
+            Dispatcher.UIThread.Post(() =>
+            {
+                catalog.Refresh();
+                _ = catalog.CheckInBackgroundAsync();
+            });
 
         // Global gestures → donut toolbar
         var triggers = AppHost.Get<TriggerService>();

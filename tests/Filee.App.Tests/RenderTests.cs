@@ -1,6 +1,7 @@
 // Renders real windows headlessly (Skia) to catch XAML / binding errors and to produce screenshots
 // in bin/.../screenshots for visual review.
 
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -1608,6 +1609,7 @@ public class RenderTests
     public void Preset_editor_saves_every_frame_only_for_png_and_jpg()
     {
         TestServices.EnsureInitialized("en");
+        using var culture = new CultureScope("en-US"); // "100,000": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
 
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "jpg" };
@@ -1635,6 +1637,7 @@ public class RenderTests
     public void Preset_editor_shows_playback_speed_only_for_targets_that_keep_animations()
     {
         TestServices.EnsureInitialized("ko");
+        using var culture = new CultureScope("ko-KR"); // "0.25×": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "gif", Name = "Slow GIF" };
         var vm = new PresetEditorViewModel(preset, loc);
@@ -2786,6 +2789,16 @@ public class RenderTests
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         }
+    }
+
+    /// <summary>The regional format until disposed: numbers in labels follow it, not the UI language.</summary>
+    private sealed class CultureScope : IDisposable
+    {
+        private readonly CultureInfo _before = CultureInfo.CurrentCulture;
+
+        public CultureScope(string name) => CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(name);
+
+        public void Dispose() => CultureInfo.CurrentCulture = _before;
     }
 
     internal static void Save(TopLevel window, string name)
