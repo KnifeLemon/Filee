@@ -221,6 +221,12 @@ public static class AnnotationPainter
     /// </summary>
     public static void UseFonts(Func<IEnumerable<SKTypeface>> fonts) => LabelText.UseFonts(fonts);
 
+    /// <summary>
+    /// How a font is found for a letter the first font lacks, and whether it is made bold: as the text box labels are
+    /// typed in does it.
+    /// </summary>
+    public static void UseFallback(Func<int, (SKTypeface Face, bool MadeBold)?> fallback) => LabelText.UseFallback(fallback);
+
     /// <summary>Reads the fonts labels will need ahead (off the UI thread), so the first label doesn't wait.</summary>
     public static void WarmFonts() => LabelText.Warm();
 

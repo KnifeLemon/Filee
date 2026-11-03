@@ -673,6 +673,30 @@ public sealed class AnnotateWindowTests : IDisposable
         }
     }
 
+    [AvaloniaTheory]
+    [InlineData("👍")]
+    [InlineData("★")]
+    [InlineData("⌘")]
+    [InlineData("ᚠᚢ")]
+    [InlineData("𝄞")]
+    public void A_letter_no_font_of_the_chain_has_is_drawn_in_the_face_the_text_box_picks(string text)
+    {
+        // On Windows 11 25H2 the label drew 👍 in the colour Segoe UI Emoji, the box in the plain Segoe UI Symbol: the
+        // system was asked without the UI's language. Both now ask Avalonia's font manager the same way.
+        var (window, _, _) = Open();
+        try
+        {
+            window.Editor.FontWeight = Avalonia.Media.FontWeight.Bold;
+            var box = BoxRuns(window.Editor, text).Select(r => r.Font.Split(' ')[..^2]).Select(n => string.Join(' ', n)).Distinct().ToList();
+            var label = Filee.Engines.Annotations.LabelText.Runs(text).Select(r => r.Face.FamilyName).Distinct().ToList();
+            Assert.Equal(box, label);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     public static TheoryData<string> MixedTexts => new()
     {
         "Save مرحبا بالعالم", "مرحبا Filee", "المجموع 1,200 ريال", "Total: 1,200 ريال (approx.)", "خصم 50%", "السعر -5",

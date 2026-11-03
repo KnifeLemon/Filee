@@ -18,6 +18,10 @@ internal static class LabelText
     private static readonly GlyphOutlines Shaper = new(perTypeface: true);
     private static readonly Lock ShaperLock = new();
     private static volatile Lazy<SKTypeface[]> _chain = new([]);
+    private static volatile Func<int, (SKTypeface Face, bool MadeBold)?>? _fallback;
+
+    /// <summary>Faces the app's fallback found, and whether the text box makes each bold.</summary>
+    private static readonly ConcurrentDictionary<SKTypeface, bool> FoundFaces = new(ReferenceEqualityComparer.Instance);
 
     /// <summary>
     /// The fonts labels are drawn in, in order: the UI's font chain in bold, as the text box they are typed in uses it,
@@ -36,6 +40,20 @@ internal static class LabelText
             return [];
         }
     });
+
+    /// <summary>
+    /// How a font is found for a letter the first font lacks, and whether it is made bold: as the text box does it (the
+    /// app asks Avalonia's font manager over the whole chain, as its text layout asks it), so the two pick the same
+    /// face. Walking the chain in order picked Noto Sans KR for "★" where the box has Noto Sans JP, and on Windows 11
+    /// 25H2 the system, asked without the UI's language, gave the colour Segoe UI Emoji for "👍" where the box has the
+    /// plain Segoe UI Symbol. Without it (the command line), the chain is walked and the system asked.
+    /// </summary>
+    public static void UseFallback(Func<int, (SKTypeface Face, bool MadeBold)?> fallback)
+    {
+        _fallback = fallback;
+        Fallbacks.Clear();
+        FoundFaces.Clear();
+    }
 
     /// <summary>
     /// Reads the fonts labels will need, so the first label drawn doesn't wait for them (several MB of CJK fonts, and
@@ -63,6 +81,8 @@ internal static class LabelText
     /// </summary>
     internal static bool MadeBold(SKTypeface face)
     {
+        if (FoundFaces.TryGetValue(face, out var madeBold))
+            return madeBold;
         if (face.IsBold)
             return false;
         var chain = Fonts;
@@ -447,10 +467,18 @@ internal static class LabelText
         or UnicodeCategory.Format or UnicodeCategory.ModifierSymbol;
 
     /// <summary>
-    /// The first font of the chain that has the letter, else the one before it, else one the system finds.
+    /// With the app's fallback, as Avalonia's text layout picks it: the first font if it has the letter, else the font
+    /// before it if that has it, else the one the fallback finds. Without: the first font of the chain that has the
+    /// letter, else the one before it, else one the system finds.
     /// </summary>
     private static SKTypeface FaceFor(int letter, SKTypeface? before)
     {
+        if (_fallback is not null)
+        {
+            if (Primary.ContainsGlyph(letter))
+                return Primary;
+            return before?.ContainsGlyph(letter) == true ? before : FallbackFor(letter) ?? Primary;
+        }
         var chain = Fonts;
         foreach (var face in chain.Length > 0 ? chain : [SystemPrimary.Value])
         {
@@ -490,9 +518,18 @@ internal static class LabelText
     /// installed families are looked through for one that has it, sans-serif ones first.
     /// </summary>
     private static SKTypeface? FallbackFor(int codePoint) => Fallbacks.GetOrAdd(codePoint, static letter =>
+        _fallback is { } app ? Found(app(letter)) :
         SKFontManager.Default.MatchCharacter(null, SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright, null, letter)
         // On Windows and macOS the system has looked through every font already.
         ?? (OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? null : Installed.Value.FirstOrDefault(face => face.ContainsGlyph(letter))));
+
+    private static SKTypeface? Found((SKTypeface Face, bool MadeBold)? found)
+    {
+        if (found is not var (face, madeBold))
+            return null;
+        FoundFaces[face] = madeBold;
+        return face;
+    }
 
     /// <summary>
     /// The installed families' bold faces, sans-serif first: opened once, not for every letter looked for (with many

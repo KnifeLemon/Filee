@@ -2,6 +2,7 @@
 // bold, as the box a label is typed in shows it, so the label drawn is the label typed. The embedded Noto fonts are
 // read the first time a label is drawn, their bold faces only.
 
+using Avalonia.Media;
 using Avalonia.Platform;
 using Filee.Engines.Annotations;
 using SkiaSharp;
@@ -26,6 +27,32 @@ internal static class AnnotationFonts
             return;
         _language = language;
         AnnotationPainter.UseFonts(() => Chain(language));
+        var family = SoftPalette.FontFamilyFor(language);
+        AnnotationPainter.UseFallback(codePoint => FallbackFor(codePoint, family));
+    }
+
+    /// <summary>
+    /// The face the text box draws a letter in that its first font lacks, and whether it makes it bold: Avalonia's font
+    /// manager asked as its text layout asks it (the whole chain, bold, the UI's language), then that face, an embedded
+    /// one or the system's, by its name.
+    /// </summary>
+    private static (SKTypeface Face, bool MadeBold)? FallbackFor(int codePoint, FontFamily family)
+    {
+        try
+        {
+            if (!FontManager.Current.TryMatchCharacter(codePoint, FontStyle.Normal, FontWeight.Bold, FontStretch.Normal, family, null, out var typeface)
+                || !FontManager.Current.TryGetGlyphTypeface(typeface, out var glyphs))
+                return null;
+            var weight = (int)glyphs.Weight;
+            var face = Embedded.Value.Where(f => f.FamilyName == glyphs.FamilyName).OrderBy(f => Math.Abs(f.FontWeight - weight)).FirstOrDefault()
+                       ?? SKFontManager.Default.MatchFamily(glyphs.FamilyName, new SKFontStyle((SKFontStyleWeight)weight,
+                           (SKFontStyleWidth)(int)glyphs.Stretch, glyphs.Style == FontStyle.Normal ? SKFontStyleSlant.Upright : SKFontStyleSlant.Italic));
+            return face is null ? null : (face, glyphs.FontSimulations.HasFlag(FontSimulations.Bold));
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return null;
+        }
     }
 
     private static List<SKTypeface> Chain(string language)
