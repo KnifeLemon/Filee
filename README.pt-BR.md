@@ -134,7 +134,7 @@ Para desfazer, remova essas entradas em Segurança do Windows → Controle de ap
 - **Pastas monitoradas** convertem cada arquivo que chega nelas.
 - **Conversões recentes** no Início, cada uma com uma miniatura: abra o resultado, ou abra com outro aplicativo.
 - **Outras entradas**: o menu do botão direito, um atalho de teclado, a área de soltar e o [comando `filee`](#linha-de-comando).
-- Temas claro e escuro, com sua cor de destaque e a opacidade do menu circular, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano e Bahasa Indonesia.
+- Temas claro e escuro, com sua cor de destaque e a opacidade do menu circular, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia e Tiếng Việt.
 
 ## Capturas de tela
 

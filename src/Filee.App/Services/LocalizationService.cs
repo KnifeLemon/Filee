@@ -116,6 +116,9 @@ public sealed class LocalizationService : ILocalizer
         // "id" and "id-ID", but not Idoma "idu" or other codes starting with "id".
         if (ui.Equals("id", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("id-", StringComparison.OrdinalIgnoreCase))
             return "id";
+        // "vi" and "vi-VN", but not Vinza "vin" or other codes starting with "vi".
+        if (ui.Equals("vi", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("vi-", StringComparison.OrdinalIgnoreCase))
+            return "vi";
         if (AppLanguages.PortugueseVariant(ui) is { } portuguese)
             return portuguese;
         if (ui.Equals("tr", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("tr-", StringComparison.OrdinalIgnoreCase))

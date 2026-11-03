@@ -134,7 +134,7 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 - **İzlenen klasörler**: İçine bırakılan her dosyayı otomatik olarak dönüştürür.
 - **Ana sayfada son dönüştürmeler**, her biri küçük resim önizlemesiyle: sonucu açın veya başka bir uygulamayla başlatın.
 - **Diğer erişim yolları**: Sağ tık menüsü, klavye kısayolu, bırakma alanı ve [`filee` komutu](#komut-satırı).
-- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano ve Bahasa Indonesia dillerinde.
+- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia ve Tiếng Việt dillerinde.
 
 ## Ekran Görüntüleri
 

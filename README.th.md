@@ -134,7 +134,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **ประวัติการแปลงล่าสุด**: แสดงในหน้าแรกพร้อมรูปตัวอย่าง เปิดดูผลลัพธ์หรือเปิดด้วยแอปอื่นได้ทันที
 - **ช่องทางอื่นในการแปลง**: เมนูคลิกขวา, ปุ่มลัดแป้นพิมพ์, พื้นที่วางไฟล์ในหน้าแรก และคำสั่ง [`filee`](#การใช้งานผ่านบรรทัดคำสั่ง-command-line)
 - รองรับธีมสว่างและมืด ปรับสีเน้น (accent colour) และความโปร่งใสของโดนัทได้ตามใจ
-  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano และ Bahasa Indonesia
+  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia และ Tiếng Việt
 
 ## ภาพหน้าจอ
 
