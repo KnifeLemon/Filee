@@ -91,6 +91,40 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal([20u, 30u, 40u], again.Select(f => f.AnimationDelay));
     }
 
+    [Theory]
+    [InlineData("gif")]
+    [InlineData("webp")]
+    public async Task An_animation_becomes_an_animated_jxl_and_back(string from)
+    {
+        // #988: animated GIF and WebP → JPEG XL kept only the first frame.
+        var dir = fx.NewFolder();
+        var source = MakeAnimatedGif(dir);
+        if (from == "webp")
+        {
+            var webp = await fx.ConvertAsync([source], new Preset { TargetFormat = "webp" });
+            AssertDone(webp);
+            source = webp.Outputs.Single();
+        }
+
+        var toJxl = await fx.ConvertAsync([source], new Preset { TargetFormat = "jxl" });
+
+        AssertDone(toJxl);
+        var jxl = toJxl.Outputs.Single();
+        using (var frames = new MagickImageCollection(jxl))
+        {
+            Assert.Equal(3, frames.Count);
+            Assert.Equal([20u, 30u, 40u], frames.Select(f => f.AnimationDelay));
+            Assert.True(frames[2].GetPixels().GetPixel(32, 24).ToColor()!.B > 200, "third frame should be blue");
+        }
+
+        var back = await fx.ConvertAsync([jxl], new Preset { TargetFormat = "gif", Output = { FileNamePattern = "{name}_back" } });
+
+        AssertDone(back);
+        using var again = new MagickImageCollection(back.Outputs.Single());
+        Assert.Equal(3, again.Count);
+        Assert.Equal([20u, 30u, 40u], again.Select(f => f.AnimationDelay));
+    }
+
     [Fact]
     public async Task Animated_gif_to_a_still_format_takes_the_first_frame()
     {
