@@ -456,6 +456,14 @@ public sealed class EngineInstaller
         }
         if (process.ExitCode != 0)
             throw MsiFailure(id, process.ExitCode, log);
+        // The verbose log is only worth keeping when unpacking failed (the error names it); else it would stay in %TEMP%.
+        try
+        {
+            File.Delete(log);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>What the Engines card shows: the reasons a user can act on in their language (error.* keys).</summary>
