@@ -207,6 +207,19 @@ public static class BuiltInData
     ];
 
     /// <summary>
+    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62): in the palette
+    /// only, after "TAR", in the Games field (off in a new install).
+    /// </summary>
+    public static List<Preset> GamePackPresets() =>
+    [
+        new() { Id = "to-mcpack", Name = "MCPACK", TargetFormat = "mcpack" },
+        new() { Id = "to-mcaddon", Name = "MCADDON", TargetFormat = "mcaddon" },
+        new() { Id = "to-mcworld", Name = "MCWORLD", TargetFormat = "mcworld" },
+        new() { Id = "to-mctemplate", Name = "MCTEMPLATE", TargetFormat = "mctemplate" },
+        new() { Id = "to-mrpack", Name = "MRPACK", TargetFormat = "mrpack" },
+    ];
+
+    /// <summary>
     /// "Crop video" (#830, added to the library in settings schema 59): a group of the frame cut to the picture inside
     /// its black bars or to a ratio, centred. On the back of the video donut after "Cut a clip" for new installs (in
     /// place of "Extract audio", which stays in the library; MP3 on the front takes the sound out too).
@@ -545,6 +558,7 @@ public static class BuiltInData
         new() { Id = "to-7z", Name = "7Z", TargetFormat = "7z" },
         new() { Id = "to-tgz", Name = "TAR.GZ", TargetFormat = "tgz" },
         new() { Id = "to-tar", Name = "TAR", TargetFormat = "tar" },
+        .. GamePackPresets(),
         new() { Id = "extract", NameKey = "preset.extract", TargetFormat = FormatRegistry.Folder },
         new()
         {

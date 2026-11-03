@@ -30,7 +30,8 @@ public class FormatFieldsTests
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
         "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
         "hdr", "htmlz", "icns", "ipynb", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
-        "lzma", "m4s", "man", "mcw", "mediawiki", "miff", "mng", "mobi", "mod", "mp2", "mpc", "mxf", "obj", "oeb",
+        "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mediawiki", "miff", "mng", "mobi",
+        "mod", "mp2", "mpc", "mrpack", "mxf", "obj", "oeb",
         "org", "otf", "pam", "pcd", "pcx", "pdb", "pfm", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
         "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
@@ -44,7 +45,7 @@ public class FormatFieldsTests
         { "model3d", ["fbx", "glb", "gltf", "ply"] },
         { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "shp"] },
         { "font", ["otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "usm"] },
+        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "usm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits"] },
         { "developer", [
@@ -71,7 +72,7 @@ public class FormatFieldsTests
         { "model3d", ["3mf", "fbx", "glb", "gltf", "obj", "ply", "stl"] },
         { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "tga", "usm"] },
+        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
@@ -144,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 94,
-                [FormatGrade.Specialist] = 108,
+                [FormatGrade.Specialist] = 113,
                 [FormatGrade.Legacy] = 50,
             },
             counts);

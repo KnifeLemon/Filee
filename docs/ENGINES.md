@@ -30,7 +30,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
-| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
+| Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
 | Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
@@ -1373,6 +1373,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | Format | Read | Write |
 |---|---|---|
 | ZIP, JAR, WBPZ | 7-Zip | ZIP in-process (System.IO.Compression): UTF-8 names with the language-encoding flag, times, empty folders |
+| Minecraft MCPACK, MCADDON, MCWORLD, MCTEMPLATE; Modrinth MRPACK | 7-Zip (they are ZIPs) | ZIP in-process, with the marker file at the top (see below) |
 | 7Z | 7-Zip | 7-Zip |
 | TAR | 7-Zip | in-process (System.Formats.Tar, PAX: UTF-8 names, times) |
 | TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
@@ -1392,6 +1393,11 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   (files are merged into the existing folder) or skip.
 - **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
   maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
+- **Game packs** (#824, #898, the Games field): Minecraft and Modrinth read a marker file at the top of the ZIP
+  (`manifest.json` in a pack, `level.dat` in a world or template, `modrinth.index.json` in a modpack). A pack made from
+  an archive or a folder whose only top folder holds the marker gets that folder's content, not the folder
+  (`GamePacks.Root`); an add-on (MCADDON, several packs side by side) is packed as it is. The presets (MCPACK …
+  MRPACK) are in the palette only.
 - **Compress into one archive** (`Archive.CombineIntoOne`, the "One ZIP" preset): `JobQueue` hands all dropped files,
   of any type and unconverted, to `IFileCombiner` (implemented by this engine). The archive is named after the first
   file with the output pattern; files with the same name become `name (2).ext`. ZIP, TAR and TAR.GZ need no 7-Zip.

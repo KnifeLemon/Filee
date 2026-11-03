@@ -985,6 +985,31 @@ internal static class SettingsMigrations
         //      claims stay put.
         if (from < 61)
             changed |= LearnExtensions(profiles, out _, ["dart", "hql", "kra"]);
+        // v62: Minecraft packs and Modrinth modpacks (#824, #898): their presets join the library after "TAR" (no donut gets
+        //      a slot, #806), and the archives donut learns their extensions; custom claims stay put.
+        if (from < 62)
+        {
+            changed |= AddGamePacks(presets);
+            changed |= LearnExtensions(profiles, out _, ["mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"]);
+        }
+        return changed;
+    }
+
+    private static bool AddGamePacks(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "to-tar");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.GamePackPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
         return changed;
     }
 

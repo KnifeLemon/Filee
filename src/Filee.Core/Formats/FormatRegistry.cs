@@ -296,6 +296,14 @@ public static class FormatRegistry
         new("lzma", "LZMA", FormatCategory.Archive, ["lzma"], Writable: false),
         new("z", "Z", FormatCategory.Archive, ["z"], Writable: false),
         new("jar", "JAR", FormatCategory.Archive, ["jar"], Writable: false),
+        // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
+        // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
+        // the top.
+        new("mcpack", "Minecraft pack", FormatCategory.Archive, ["mcpack"]),
+        new("mcaddon", "Minecraft add-on", FormatCategory.Archive, ["mcaddon"]),
+        new("mcworld", "Minecraft world", FormatCategory.Archive, ["mcworld"]),
+        new("mctemplate", "Minecraft world template", FormatCategory.Archive, ["mctemplate"]),
+        new("mrpack", "Modrinth modpack", FormatCategory.Archive, ["mrpack"]),
         new("cab", "CAB", FormatCategory.Archive, ["cab"], Writable: false),
         new("cpio", "CPIO", FormatCategory.Archive, ["cpio"], Writable: false),
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),
