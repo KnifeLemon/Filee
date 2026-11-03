@@ -134,7 +134,7 @@ Per annullare, rimuovi le voci in Sicurezza di Windows → Controllo app e brows
 - **Le cartelle monitorate** convertono ogni file che vi arriva.
 - **Conversioni recenti** nella Home, ognuna con anteprima: apri il risultato, oppure aprilo con un'altra app.
 - **Altri modi per avviarla**: il menu contestuale, una scorciatoia da tastiera, la zona di rilascio e il [comando `filee`](#riga-di-comando).
-- Temi chiaro e scuro con colore d'accento e opacità della donut personalizzabili, in inglese, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da destra a sinistra), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano e Bahasa Indonesia.
+- Temi chiaro e scuro con colore d'accento e opacità della donut personalizzabili, in inglese, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da destra a sinistra), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia e Tiếng Việt.
 
 ## Screenshot
 

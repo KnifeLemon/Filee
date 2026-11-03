@@ -134,7 +134,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **वॉच फ़ोल्डर** में आने वाली हर फ़ाइल अपने-आप कन्वर्ट हो जाती है।
 - **हाल के कन्वर्ज़न** होम पर, हर एक के थंबनेल के साथ: नतीजे को "फ़ाइल खोलें" से खोलें, या "इसके साथ खोलें" से किसी दूसरे ऐप में।
 - **दूसरे तरीके**: राइट-क्लिक मेनू, कीबोर्ड शॉर्टकट, ड्रॉप ज़ोन और [`filee` कमांड](#कमांड-लाइन)।
-- लाइट और डार्क थीम, अपने एक्सेंट रंग और डोनट की अपारदर्शिता के साथ, English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (दाएँ से बाएँ), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano और Bahasa Indonesia में।
+- लाइट और डार्क थीम, अपने एक्सेंट रंग और डोनट की अपारदर्शिता के साथ, English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (दाएँ से बाएँ), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia और Tiếng Việt में।
 
 ## स्क्रीनशॉट
 

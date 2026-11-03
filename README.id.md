@@ -127,7 +127,7 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 - **Watch Folders**: Pantau folder tertentu untuk mengonversi setiap file yang baru masuk secara otomatis.
 - **Riwayat Konversi Terkini** di halaman Utama, lengkap dengan *thumbnail*: buka file langsung atau jalankan dengan aplikasi lain.
 - **Berbagai Cara Akses**: Menu klik kanan, pintasan keyboard, area *drop zone*, dan [baris perintah `filee`](#baris-perintah-cli).
-- **Tema Terang & Gelap** dengan warna aksen kustom serta pengaturan transparansi menu donut, tersedia dalam bahasa English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (RTL), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, dan Bahasa Indonesia.
+- **Tema Terang & Gelap** dengan warna aksen kustom serta pengaturan transparansi menu donut, tersedia dalam bahasa English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (RTL), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, dan Tiếng Việt.
 
 ## Tangkapan Layar
 

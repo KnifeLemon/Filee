@@ -14,6 +14,87 @@ change, a language may repeat; a language without lines shows the English ones):
 - `recommended`: bug fixes. The card shows once per version.
 - `optional`: new features only. No card, the sidebar button only.
 
+## 2.3.0
+
+<!-- update
+level: recommended
+ko: 주석 달기: 사진에 화살표, 상자, 강조, 글자, 번호를 넣어요
+ko: 동영상 자르기: 검은 여백을 없애거나 원하는 비율로 잘라요
+ko: 모아찍기: PDF 2·4·6·8·9쪽을 한 장에 모아요
+ko: 설정 → 분야: 쓰지 않는 분야(CAD, 3D, 글꼴 등)의 형식을 목록과 원형 툴바에서 숨겨요
+ko: 문서·전자책·자막(SRT, WebVTT)을 내 PC의 AI로 번역하고, 동영상·음성에서 자막(SRT)을 만들어요
+ko: 인쇄용 CMYK 파일: PSD·TIFF·JPG → PDF, AI·PDF → JPG·TIFF가 CMYK 그대로 나와요
+ko: 폴더로 복사·이동, 이미지·동영상 크기 제한, 원근 보정 자르기, 합치기 전에 순서 정렬, 접히는 사이드바
+ko: 새 형식: Krita, 마인크래프트 팩, Modrinth 모드팩, Dart·HiveQL, 음성 메모(.qta), Bink, 사진 → 3D 부조, 이탈리아어·인도네시아어·베트남어
+ko: Ubuntu 22.04에서 OCR → PDF가 실패하던 문제, DOCX → PDF가 멈추던 문제, 움직이는 GIF → JXL이 한 장만 나오던 문제 등을 고쳤어요
+en: Annotate: arrows, boxes, highlights, text and numbers on a picture
+en: Crop video: remove black bars, or crop to a ratio
+en: Pages per sheet: 2, 4, 6, 8 or 9 PDF pages on each sheet
+en: Settings → Fields: hide the formats of fields you don't work in (CAD, 3D, fonts …)
+en: Translate documents, e-books and SRT / WebVTT subtitles with a local AI, and make captions (SRT) from video and audio
+en: CMYK print files stay CMYK: PSD, TIFF, JPG → PDF, and AI, PDF → JPG, TIFF
+en: Copy or move to a folder, size limits for pictures and videos, perspective crop, sort files before merging, a collapsible sidebar
+en: New formats: Krita, Minecraft packs, Modrinth modpacks, Dart and HiveQL, Voice Memos (.qta), Bink, pictures → 3D relief; Italian, Indonesian and Vietnamese
+en: Fixed OCR to PDF on Ubuntu 22.04, DOCX → PDF hanging, animated GIF → JPEG XL keeping one frame, and more
+zh: 标注：在图片上添加箭头、方框、高亮、文字和编号
+zh: 视频裁剪：去掉黑边，或按比例裁剪
+zh: 多页合一：每张纸放 2、4、6、8 或 9 页 PDF
+zh: 设置 → 领域：隐藏你不用的领域（CAD、3D、字体等）的格式
+zh: 用本机 AI 翻译文档、电子书和 SRT / WebVTT 字幕，并从视频和音频生成字幕（SRT）
+zh: 印刷用 CMYK 文件保持 CMYK：PSD、TIFF、JPG → PDF，以及 AI、PDF → JPG、TIFF
+zh: 复制或移动到文件夹、图片和视频大小限制、透视校正裁剪、合并前排序、可折叠侧边栏
+zh: 新格式：Krita、Minecraft 资源包、Modrinth 整合包、Dart 和 HiveQL、语音备忘录（.qta）、Bink、图片 → 3D 浮雕；新增意大利语、印度尼西亚语和越南语
+zh: 修复了 Ubuntu 22.04 上 OCR → PDF 失败、DOCX → PDF 卡住、动图 GIF → JPEG XL 只剩一帧等问题
+-->
+
+### New tools
+
+- **Annotate** (pictures, palette): arrows, boxes, highlights, freehand lines, text and numbered markers, drawn as you see them, in the picture's own colours (also CMYK and greyscale), with right-to-left and complex scripts shaped properly.
+- **Crop video** (video back face): remove black bars found automatically, or crop to 16:9, 9:16, 4:3, 1:1 or 21:9. HDR and 10-bit sources stay HDR and 10-bit.
+- **Pages per sheet** (PDF, palette): 2, 4, 6, 8 or 9 pages on each sheet, on A4, Letter, A3 or the first page's size, with margins, gaps, order and thin borders. Pages stay vector, so text stays text.
+- **Copy to folder / Move to folder** (back faces): send files to a folder you choose, as they are.
+- **Pixelate / blur**: a Black box style for each area.
+- **Pictures → 3D relief**: GLB, glTF, STL, OBJ, 3MF and PLY for printing or viewing.
+
+### Translation and captions (local AI)
+
+- Translate **documents, e-books and SRT / WebVTT subtitles** into 12 languages with a local model (Ollama). Nothing leaves the PC; timings of subtitles stay as they are.
+- Runs a model drops are asked for again, in order, and a model can be deleted from the model window.
+- **Captions**: SRT subtitles from a video or a recording, with Whisper.
+
+### Print work: CMYK
+
+- CMYK pictures (PSD, TIFF, JPG) → PDF stay **CMYK**, with their ICC profile. A CMYK JPEG → PDF no longer fails.
+- CMYK **Illustrator and PDF** files → JPG or TIFF keep their CMYK ink values, through Ghostscript (Settings → Engines). Without it the result is RGB and says why.
+
+### Settings
+
+- **Settings → Fields**: turn off fields you don't work in (CAD, 3D models, maps, fonts, games, design, science, video and audio production, old formats). Their formats leave the donut and the lists; a file you drop still offers its own field's formats. A new install starts with only Developer on.
+- Size limits: pictures as a range in KB or MB, videos in MB or as a percentage.
+- Edit pictures: width × height in px, cm, mm or inches. Crop: a perspective mode that straightens a tilted picture.
+- Merge: sort files by name or date first. The sidebar collapses to icons.
+- Delete and remove buttons turn red on hover.
+
+### Formats
+
+- New: Krita (.kra), Minecraft packs, add-ons, worlds and templates, Modrinth modpacks (.mrpack, in the Games field), Dart and HiveQL as text, C / C++ / C# source, Apple Voice Memos (.qta), Bink video (.bik), FreeMASTER oscilloscope text → CSV, standalone SVG text dropped from a browser.
+- Animated GIF, WebP, APNG and MNG → JPEG XL stay animated.
+- Languages: Italian, Indonesian and Vietnamese (by @dinhkarate).
+
+### Command line
+
+- `filee engines` lists, installs and removes the optional engines; `formats` and `presets` take `--json`.
+
+### Fixes
+
+- OCR to PDF failed with the Tesseract that Ubuntu 20.04 / 22.04 install (4.x).
+- DOCX → PDF could wait until its time limit when LibreOffice didn't exit.
+- Removing an engine in use no longer leaves it half deleted; interrupted downloads leave no partial files.
+- PDF → Word keeps ruled tables whose text runs past a cell, table-of-contents leaders and line spacing.
+- macOS: the donut opens and flips while another app holds Secure Input; the donut window class is restored.
+- Windows on ARM: `FILEE_RENDERING=gpu`, `vulkan` or `wgl` to try the GPU on Snapdragon PCs.
+- The installer shows the new rounded logo, and its "What's new" pictures as still images.
+
 ## 2.2.0
 
 <!-- update
