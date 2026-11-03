@@ -164,6 +164,8 @@
   "notice.under_min_size": "Zapisano, ale plik jest mniejszy niż minimalny rozmiar",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Pominięto obiekty, których wybrana wersja AutoCAD nie ma (multiodnośniki, siatki…)",
+  "notice.cmyk_needs_ghostscript": "Ten plik jest w CMYK, ale zapisano go w RGB: zainstaluj Ghostscript w Ustawienia → Silniki, aby zachować CMYK",
+  "notice.cmyk_render_failed": "Ten plik jest w CMYK, ale Ghostscript nie mógł go narysować, więc zapisano go w RGB",
   "notice.original_kept": "Oryginał został zachowany, wynik zapisano jako kopię",
   "notice.original_in_trash": "Oryginał jest w Koszu, wynik zachował własną nazwę",
   "notice.original_unchanged": "Nie udało się go zmniejszyć, więc oryginał pozostał bez zmian",

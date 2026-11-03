@@ -28,6 +28,9 @@ public sealed class PdfiumConverter : IConverter, IImageTransformer
     /// </summary>
     private static readonly HashSet<string> CmykTargets = ["jpg", "tiff"];
 
+    /// <summary>Where Ghostscript is, or null; a test sets it to see a PC without it.</summary>
+    internal static Func<string?> FindGhostscript { get; set; } = GhostscriptConverter.Locate;
+
     /// <summary>A tall image beyond this many pixels is scaled down (a 300-page PDF at 300 dpi would need gigabytes).</summary>
     internal const long MaxStackedPixels = 200_000_000;
 
@@ -53,23 +56,32 @@ public sealed class PdfiumConverter : IConverter, IImageTransformer
             var pages = PageRange.Parse(step.Preset.Pdf.PageRange, pageCount);
             var dpi = Math.Clamp(step.Preset.Pdf.RenderDpi, 36, 1200);
 
-            if (CmykTargets.Contains(step.To) && !step.Preset.Image.Grayscale && GhostscriptConverter.Locate() is { } gs
+            if (CmykTargets.Contains(step.To) && !step.Preset.Image.Grayscale
                 && PdfCmykContent.Inspect(step.InputPath, pages) is { UsesCmyk: true } cmyk)
             {
-                IReadOnlyList<string> files = [];
-                try
+                // A print file that comes out in RGB says so, with the reason: print work shouldn't change colour unseen.
+                if (FindGhostscript() is not { } gs)
                 {
-                    files = await GhostscriptConverter.RenderCmykAsync(gs, step.InputPath, pages.Count < pageCount ? pages : null, dpi,
-                        cmyk.OutputProfile, step.WorkDirectory, cancellationToken, progress is null ? null : new SubProgress(progress, 0, 0.6));
+                    step.Notice?.Invoke("notice.cmyk_needs_ghostscript");
                 }
-                catch (InvalidOperationException)
+                else
                 {
-                    // Ghostscript fails on some files PDFium renders: those come out in RGB, as before.
-                }
-                if (files.Count == pages.Count)
-                {
-                    var frames = files.Select(file => ReadCmyk(file, dpi, cmyk.OutputProfile));
-                    return Encode(step, pages, dpi, frames, progress is null ? null : new SubProgress(progress, 0.6, 0.4), cancellationToken);
+                    IReadOnlyList<string> files = [];
+                    try
+                    {
+                        files = await GhostscriptConverter.RenderCmykAsync(gs, step.InputPath, pages.Count < pageCount ? pages : null, dpi,
+                            cmyk.OutputProfile, step.WorkDirectory, cancellationToken, progress is null ? null : new SubProgress(progress, 0, 0.6));
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // Ghostscript fails on some files PDFium renders: those come out in RGB, as before.
+                    }
+                    if (files.Count == pages.Count)
+                    {
+                        var frames = files.Select(file => ReadCmyk(file, dpi, cmyk.OutputProfile));
+                        return Encode(step, pages, dpi, frames, progress is null ? null : new SubProgress(progress, 0.6, 0.4), cancellationToken);
+                    }
+                    step.Notice?.Invoke("notice.cmyk_render_failed");
                 }
             }
 

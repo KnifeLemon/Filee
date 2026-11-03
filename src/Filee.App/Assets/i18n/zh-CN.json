@@ -164,6 +164,8 @@
   "notice.under_min_size": "已保存，但小于最小文件大小",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "已省略所选 AutoCAD 版本没有的对象（多重引线、网格……）",
+  "notice.cmyk_needs_ghostscript": "这是 CMYK 文件，但保存成了 RGB：要保留 CMYK，请在 设置 → 转换引擎 中安装 Ghostscript",
+  "notice.cmyk_render_failed": "这是 CMYK 文件，但 Ghostscript 无法绘制，所以保存成了 RGB",
   "notice.original_kept": "已保留原文件，结果另存为副本",
   "notice.original_in_trash": "原文件已在回收站/废纸篓中，结果保留了自己的名称",
   "notice.original_unchanged": "无法变小，因此保留原文件不变",

@@ -320,7 +320,9 @@ in it also builds the package (artifact `windows-arm64-package`).
   with a CMYK profile (PDF/X), Ghostscript renders into that profile and the picture carries it; otherwise the picture
   is untagged CMYK, which keeps the numbers and leaves the profile to the print shop (Ghostscript's own default
   profile is removed). RGB documents, a grayscale preset, other targets (PNG, WebP, …), a PDF PdfPig can't read and
-  PCs without Ghostscript keep PDFium's RGB rendering.
+  PCs without Ghostscript keep PDFium's RGB rendering. When a CMYK file comes out in RGB only because Ghostscript is
+  missing or failed on it, the result says so (`notice.cmyk_needs_ghostscript`, `notice.cmyk_render_failed`): print
+  work shouldn't change colour unseen.
 - EPS and PS → PNG go straight through Ghostscript's `pngalpha` device, so the background stays transparent;
   JPG, WebP, … and AI reach images through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
 

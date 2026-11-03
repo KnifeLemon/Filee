@@ -12,7 +12,7 @@ using PdfSharp.Pdf;
 
 namespace Filee.Engines.Tests;
 
-public class CmykPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
+public class CmykRenderTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     private static bool GhostscriptInstalled => GhostscriptConverter.Locate() is not null;
 
@@ -110,6 +110,7 @@ public class CmykPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         AssertCmykPage(image);
         // No output intent: untagged, not Ghostscript's own default profile.
         Assert.Null(image.GetColorProfile());
+        Assert.Null(job.Files.Single().NoticeKey);
     }
 
     [Fact]
@@ -216,6 +217,29 @@ public class CmykPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var image = new MagickImage(job.Outputs.Single());
         Assert.Equal(ColorSpace.sRGB, image.ColorSpace);
         Assert.Equal((200u, 100u), (image.Width, image.Height));
+    }
+
+    [Fact]
+    public async Task Without_ghostscript_a_cmyk_pdf_becomes_an_rgb_jpg_and_says_why()
+    {
+        // A print file that changes colour says so (#1027), rather than handing over RGB unseen.
+        var dir = fx.NewFolder();
+        var pdf = MakePdf(dir, "print.pdf");
+        var find = PdfiumConverter.FindGhostscript;
+        PdfiumConverter.FindGhostscript = () => null;
+        try
+        {
+            var job = await fx.ConvertAsync([pdf], new Preset { TargetFormat = "jpg", Pdf = { RenderDpi = 72 } });
+
+            AssertDone(job);
+            using var image = new MagickImage(job.Outputs.Single());
+            Assert.Equal(ColorSpace.sRGB, image.ColorSpace);
+            Assert.Equal("notice.cmyk_needs_ghostscript", job.Files.Single().NoticeKey);
+        }
+        finally
+        {
+            PdfiumConverter.FindGhostscript = find;
+        }
     }
 
     [Fact]

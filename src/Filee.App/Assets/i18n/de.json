@@ -158,6 +158,8 @@
   "notice.under_min_size": "Gespeichert, aber kleiner als die Mindestdateigröße",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objekte, die die gewählte AutoCAD-Version nicht unterstützt (Multiführungslinien, Netze …), wurden weggelassen",
+  "notice.cmyk_needs_ghostscript": "Diese Datei ist CMYK, wurde aber als RGB gespeichert: Installiere Ghostscript unter Einstellungen → Module, um CMYK zu behalten",
+  "notice.cmyk_render_failed": "Diese Datei ist CMYK, aber Ghostscript konnte sie nicht zeichnen, daher wurde sie als RGB gespeichert",
   "notice.original_kept": "Das Original wurde beibehalten und das Ergebnis als Kopie gespeichert",
   "notice.original_in_trash": "Das Original liegt im Papierkorb. Das Ergebnis hat seinen eigenen Namen behalten",
   "notice.original_unchanged": "Die Datei ließ sich nicht verkleinern. Das Original blieb unverändert",

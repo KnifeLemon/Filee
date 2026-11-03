@@ -158,6 +158,8 @@
   "notice.under_min_size": "تم الحفظ، لكنه أصغر من الحد الأدنى لحجم الملف",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "حُذفت كائنات لا يدعمها إصدار AutoCAD المختار (أسهم توضيحية متعددة، شبكات …)",
+  "notice.cmyk_needs_ghostscript": "هذا الملف بنظام CMYK لكنه حُفظ بنظام RGB: ثبّت Ghostscript من الإعدادات ← المحركات للإبقاء على CMYK",
+  "notice.cmyk_render_failed": "هذا الملف بنظام CMYK، لكن Ghostscript لم يتمكن من رسمه، لذلك حُفظ بنظام RGB",
   "notice.original_kept": "تم الاحتفاظ بالأصل وحُفظت النتيجة كنسخة",
   "notice.original_in_trash": "الأصل في سلة المحذوفات، واحتفظت النتيجة باسمها",
   "notice.original_unchanged": "تعذّر تصغيره، لذا تُرك الأصل كما هو",
