@@ -213,7 +213,7 @@ public class ClipToolTests
     {
         var presets = BuiltInData.CreatePresets();
         presets.RemoveAll(p => p.Id == "tool-clip");
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var video = profiles.Single(p => p.Id == "video");
         // The back face of 44: FLAC after WAV, no clip tool.
         video.BackPresetIds!.Remove("tool-clip");
@@ -223,12 +223,12 @@ public class ClipToolTests
 
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id));
         Assert.True(presets.Single(p => p.Id == "tool-clip").IsClipTool);
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "video").BackPresetIds, video.BackPresetIds);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "video").BackPresetIds, video.BackPresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(44, presets, profiles)); // once only
 
         // A full back face makes room by giving up FLAC; one the user filled up without FLAC, or with the tool on the
         // front, stays as it is.
-        var withFlac = BuiltInData.CreateProfiles();
+        var withFlac = BuiltInData.ProfilesSchema58();
         var withFlacBack = withFlac.Single(p => p.Id == "video").BackPresetIds!;
         withFlacBack.Remove("tool-clip");
         withFlacBack.Add("to-flac");
@@ -239,7 +239,7 @@ public class ClipToolTests
         Assert.DoesNotContain("to-flac", withFlacBack);
         Assert.Equal(ToolbarProfile.MaxSlices, withFlacBack.Count);
 
-        var full = BuiltInData.CreateProfiles();
+        var full = BuiltInData.ProfilesSchema58();
         var fullBack = full.Single(p => p.Id == "video").BackPresetIds!;
         fullBack.Remove("tool-clip");
         while (fullBack.Count < ToolbarProfile.MaxSlices)
@@ -248,7 +248,7 @@ public class ClipToolTests
         SettingsMigrations.ApplyToLibrary(44, BuiltInData.CreatePresets(), full);
         Assert.Equal(before, fullBack);
 
-        var front = BuiltInData.CreateProfiles();
+        var front = BuiltInData.ProfilesSchema58();
         var frontVideo = front.Single(p => p.Id == "video");
         frontVideo.BackPresetIds!.Remove("tool-clip");
         frontVideo.PresetIds[^1] = "tool-clip";
@@ -267,7 +267,7 @@ public class ClipToolTests
         clip.Output.FileNamePattern = "{name}_best";
         Assert.True(clip.IsCropTool);
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.ProfilesSchema58()));
 
         Assert.True(clip.IsClipTool);
         Assert.Equal(("Highlights", "{name}_best"), (clip.Name, clip.Output.FileNamePattern));
@@ -276,7 +276,7 @@ public class ClipToolTests
         // A Filee before 26 read it as a group.
         clip.Kind = PresetKind.Group;
         clip.TargetFormat = Preset.GroupTarget;
-        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(44, presets, BuiltInData.ProfilesSchema58()));
         Assert.True(clip.IsClipTool);
         Assert.Equal(BuiltInData.SameAsSource, clip.TargetFormat);
     }

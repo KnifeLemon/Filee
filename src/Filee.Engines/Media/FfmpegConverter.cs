@@ -191,6 +191,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             : null;
 
         var encoders = still ? null : await EncodersOfAsync(ffmpeg);
+        if (crop is not null)
+            media = MediaEncoding.CropOptions(step.To, media, info.Video!, encoders);
         // Hardware encoding (preset option): the first GPU encoder that passes its test encode, if any.
         HardwareEncoder? hardware = null;
         if (!still && MediaEncoding.HardwareCodec(step.To, media, info, encode: crop is not null) is { } codec)
@@ -253,25 +255,41 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     }
 
     /// <summary>
-    /// The filters that crop the frame for "Crop video": to the ratio, or (<see cref="VideoCrop.Auto"/>) to the most
-    /// common box cropdetect finds over a few stretches of the video. Refuses when it finds no black bars, rather than
-    /// encode the video again as it was.
+    /// The filters that crop the frame for "Crop video": to the ratio, or (<see cref="VideoCrop.Auto"/>) to the largest
+    /// box cropdetect ends a few stretches of the video with. Refuses when that is the whole frame, rather than encode
+    /// the video again as it was.
     /// </summary>
+    /// <exception cref="InvalidOperationException">cropdetect failed, or wrote nothing, on every stretch.</exception>
     private static async Task<string> CropFilterAsync(string ffmpeg, string input, string frame, VideoStreamInfo video, TimeSpan? duration,
         CancellationToken cancellationToken)
     {
-        if (frame != VideoCrop.Auto)
-            return MediaEncoding.CropFilter(video, frame, null);
-        var lines = new List<string>();
+        if (VideoCrop.TryParseRatio(frame, out var width, out var height))
+        {
+            var ratio = MediaEncoding.RatioBox(video, width, height);
+            return MediaEncoding.IsWholeFrame(ratio, video)
+                ? throw new ConversionRefusedException("error.crop_same_frame", frame)
+                : MediaEncoding.CropFilter(video, ratio);
+        }
+        var boxes = new List<CropBox?>();
+        var detected = false;
+        var failure = "";
         foreach (var (at, seconds) in MediaEncoding.CropDetectStretches(duration?.TotalSeconds))
         {
             var result = await FfmpegRunner.RunAsync(ffmpeg, MediaEncoding.CropDetect(input, at, seconds, video), null, cancellationToken);
-            if (result.ExitCode == 0)
-                lines.AddRange(result.StandardError.Split('\n'));
+            var lines = result.StandardError.Split('\n');
+            if (result.ExitCode != 0 || !MediaEncoding.HasCropLine(lines))
+            {
+                failure = result.StandardError.Trim();
+                continue;
+            }
+            detected = true;
+            boxes.Add(MediaEncoding.FinalCrop(lines));
         }
-        if (MediaEncoding.MostCommonCrop(lines) is not { } box || MediaEncoding.IsWholeFrame(box, video))
+        if (!detected)
+            throw new InvalidOperationException($"FFmpeg could not look for black bars: {failure}");
+        if (MediaEncoding.LargestCrop(boxes) is not { } box || MediaEncoding.IsWholeFrame(box, video) || MediaEncoding.IsTooSmall(box, video))
             throw new ConversionRefusedException("error.no_black_bars");
-        return MediaEncoding.CropFilter(video, frame, box);
+        return MediaEncoding.CropFilter(video, box);
     }
 
     /// <remarks>

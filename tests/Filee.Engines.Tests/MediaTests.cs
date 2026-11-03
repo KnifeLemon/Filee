@@ -606,9 +606,9 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void Crop_video_encodes_the_frame_cut_first_and_copies_the_sound()
     {
-        // #830: a ratio as large as fits, centred, before the scale filter; the video can't be copied then.
-        var crop = MediaEncoding.CropFilter(Hd, "1:1", null);
-        Assert.Equal("crop=w='trunc(min(iw,ih*1/1)/2)*2':h='trunc(min(ih,iw*1/1)/2)*2',", crop);
+        // #830: the box before the scale filter; the video can't be copied then.
+        var crop = MediaEncoding.CropFilter(Hd, new CropBox(1920, 800, 0, 140));
+        Assert.Equal("crop=1920:800:0:140,", crop);
         var info = new MediaInfo(TimeSpan.FromSeconds(10), Hd with { Codec = "h264", PixelFormat = "yuv420p" }, new AudioStreamInfo(2, 48000, "aac"), null);
         var copied = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work").Single().Arguments;
         Assert.Equal("copy", After(copied, "-c:v"));
@@ -616,32 +616,75 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("libx264", After(cropped, "-c:v"));
         Assert.StartsWith(crop + "scale=", After(cropped, "-vf"));
         Assert.Equal("copy", After(cropped, "-c:a"));
+        Assert.DoesNotContain("0:s?", cropped);
 
-        // A box found by cropdetect; anamorphic pixels are made square first, as cropdetect saw them.
-        Assert.Equal("crop=1920:800:0:140,", MediaEncoding.CropFilter(Hd, VideoCrop.Auto, new CropBox(1920, 800, 0, 140)));
+        // An MKV keeps its subtitles and fonts.
+        var mkv = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), info, "work", crop: crop).Single().Arguments;
+        Assert.Contains("0:s?", mkv);
+        Assert.Contains("0:t?", mkv);
+        Assert.Equal(("copy", "copy"), (After(mkv, "-c:s"), After(mkv, "-c:t")));
+
+        // Anamorphic pixels are made square first, as cropdetect saw them.
         var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
-        Assert.StartsWith(MediaEncoding.SquarePixels(dv) + "crop=", MediaEncoding.CropFilter(dv, "4:3", null));
-        Assert.Throws<ArgumentException>(() => MediaEncoding.CropFilter(Hd, "wide", null));
+        Assert.StartsWith(MediaEncoding.SquarePixels(dv) + "crop=", MediaEncoding.CropFilter(dv, new CropBox(640, 360, 0, 60)));
     }
 
     [Fact]
-    public void Cropdetect_takes_the_most_common_box_rounded_to_even_sizes()
+    public void A_ratio_is_the_largest_centred_box_that_fits()
+    {
+        Assert.Equal(new CropBox(1080, 1080, 420, 0), MediaEncoding.RatioBox(Hd, 1, 1));
+        Assert.Equal(new CropBox(606, 1080, 656, 0), MediaEncoding.RatioBox(Hd, 9, 16));
+        Assert.Equal(new CropBox(1920, 822, 0, 128), MediaEncoding.RatioBox(Hd, 21, 9));
+        // Already 16:9: nothing to crop.
+        Assert.True(MediaEncoding.IsWholeFrame(MediaEncoding.RatioBox(Hd, 16, 9), Hd));
+        // Upright and with square pixels: a portrait phone video, an anamorphic DV one (shown 640 × 480).
+        Assert.Equal(new CropBox(1080, 1080, 0, 420), MediaEncoding.RatioBox(Hd with { Rotation = 90 }, 1, 1));
+        var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
+        Assert.True(MediaEncoding.IsWholeFrame(MediaEncoding.RatioBox(dv, 4, 3), dv));
+    }
+
+    [Fact]
+    public void Cropdetect_ends_each_stretch_with_its_largest_box_and_the_largest_stretch_wins()
     {
         string Line(string crop) => $"[Parsed_cropdetect_1 @ 0000] x1:0 x2:1919 y1:140 y2:939 w:1920 h:800 x:0 y:140 pts:1 t:0.04 limit:0.09 crop={crop}";
         string[] lines =
         [
             "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'in.mp4':",
-            Line("1920:800:0:140"), Line("1920:800:0:140"),
-            // A dark scene: a smaller box, less often.
-            Line("1280:540:320:270"),
+            Line("1280:540:320:270"), Line("1921:801:1:141"),
             // A black frame: no size.
             Line("-1904:-1072:1912:1080"),
-            Line("1921:801:1:141"), Line("1920:800:0:140"),
+            "[out#0/null @ 0000] video:1kB audio:0kB",
         ];
-        Assert.Equal(new CropBox(1920, 800, 0, 140), MediaEncoding.MostCommonCrop(lines));
-        Assert.Null(MediaEncoding.MostCommonCrop(["no crop here", Line("-16:-16:8:8")]));
-        // Equally common: the latest.
-        Assert.Equal(new CropBox(640, 480, 0, 0), MediaEncoding.MostCommonCrop([Line("320:240:0:0"), Line("640:480:0:0")]));
+        Assert.Equal(new CropBox(1920, 800, 0, 140), MediaEncoding.FinalCrop(lines));
+        Assert.Null(MediaEncoding.FinalCrop(["no crop here", Line("-16:-16:8:8")]));
+        Assert.True(MediaEncoding.HasCropLine(["no crop here", Line("-16:-16:8:8")]));
+        Assert.False(MediaEncoding.HasCropLine(["no crop here"]));
+
+        // A dark stretch finds a smaller box: the largest one is the picture.
+        Assert.Equal(new CropBox(1920, 800, 0, 140),
+            MediaEncoding.LargestCrop([new CropBox(1280, 540, 320, 270), null, new CropBox(1920, 800, 0, 140), new CropBox(1600, 700, 160, 190)]));
+        Assert.Null(MediaEncoding.LargestCrop([null, null]));
+        // A video dark all through: a box too small to be the picture.
+        Assert.True(MediaEncoding.IsTooSmall(new CropBox(400, 800, 760, 140), Hd));
+        Assert.False(MediaEncoding.IsTooSmall(new CropBox(1440, 800, 240, 140), Hd));
+    }
+
+    [Fact]
+    public void A_crop_keeps_an_hevc_or_av1_source_in_its_codec_where_it_can()
+    {
+        var hevc = Hd with { Codec = "hevc" };
+        HashSet<string> all = ["libx264", "libx265", "libsvtav1"];
+        Assert.Equal(VideoCodec.Hevc, MediaEncoding.CropOptions("mp4", new MediaOptions(), hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Av1, MediaEncoding.CropOptions("mkv", new MediaOptions(), Hd with { Codec = "av1" }, all).VideoCodec);
+        // WebM holds no HEVC; an FFmpeg without x265; a codec the preset chose; an H.264 source.
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("webm", new MediaOptions(), hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("mp4", new MediaOptions(), hevc, new HashSet<string> { "libx264" }).VideoCodec);
+        Assert.Equal(VideoCodec.Av1, MediaEncoding.CropOptions("mp4", new MediaOptions { VideoCodec = VideoCodec.Av1 }, hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("mp4", new MediaOptions(), Hd with { Codec = "h264" }, all).VideoCodec);
+        // The preset itself is left as it is.
+        var options = new MediaOptions();
+        MediaEncoding.CropOptions("mp4", options, hevc, all);
+        Assert.Equal(VideoCodec.Default, options.VideoCodec);
     }
 
     [Fact]
@@ -652,7 +695,8 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(null).ToList());
         var args = MediaEncoding.CropDetect("in.mp4", 6, 1, Hd);
         Assert.Equal(("info", "6.000", "1.000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
-        Assert.Contains("cropdetect=", After(args, "-vf"));
+        // A part of the range, not 24 of 255: the same black at 10 bits (#830 review).
+        Assert.Contains("cropdetect=limit=0.094:", After(args, "-vf"));
     }
 
     [Fact]
@@ -1030,13 +1074,14 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     // ───────────────────────── Real conversions ─────────────────────────
 
     /// <summary>A 2-second video of one colour with a tone, <paramref name="pad"/> (a pad filter) adding black bars.</summary>
-    private static async Task<string> MakeBarsAsync(string folder, string name, string size, string? pad)
+    private static async Task<string> MakeBarsAsync(string folder, string name, string size, string? pad,
+        string encoder = "libx264", string pixelFormat = "yuv420p")
     {
         var path = Path.Combine(folder, name);
         await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
-            "-f", "lavfi", "-i", $"color=c=0x3366cc:size={size}:rate=25:duration=2" + (pad is null ? "" : "," + pad),
+            "-f", "lavfi", "-i", $"color=c=0x3366cc:size={size}:rate=25:duration=2" + (pad is null ? "" : "," + pad) + $",format={pixelFormat}",
             "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2",
-            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", path]);
+            "-c:v", encoder, "-pix_fmt", pixelFormat, "-c:a", "aac", "-shortest", path]);
         return path;
     }
 
@@ -1068,6 +1113,23 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal((240, 240), (square.Video!.Width, square.Video.Height));
         var portrait = await ProbeAsync(Assert.Single((await CropAsync(video, "9:16")).Outputs));
         Assert.Equal((134, 240), (portrait.Video!.Width, portrait.Video.Height));
+
+        // Already 4:3: refused, rather than encoded again as it was.
+        var same = Assert.Single((await CropAsync(video, "4:3")).Files);
+        Assert.Equal((FileState.Failed, "error.crop_same_frame"), (same.State, same.ErrorKey));
+    }
+
+    [Fact]
+    public async Task Crop_video_auto_finds_the_bars_of_a_10_bit_hevc_video_and_keeps_its_codec()
+    {
+        SkipUnlessInstalled();
+        // #830 review: cropdetect's limit at 10 bits, and the crop stays HEVC with its 10 bits.
+        var video = await MakeBarsAsync(fx.NewFolder(), "deep.mkv", "240x180", "pad=240:320:0:70:black", "libx265", "yuv420p10le");
+        var job = await CropAsync(video, VideoCrop.Auto);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var probed = await ProbeAsync(Assert.Single(job.Outputs));
+        Assert.Equal((240, 180), (probed.Video!.Width, probed.Video.Height));
+        Assert.Equal(("hevc", "yuv420p10le"), (probed.Video.Codec, probed.Video.PixelFormat));
     }
 
     [Fact]
@@ -1123,7 +1185,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         public Track? Audio => Streams.FirstOrDefault(s => s.Type == "audio");
     }
 
-    private sealed record Track(string Type, string Codec, int Width, int Height, int Channels, int SampleRate, long BitRate, bool Cover, int Frames);
+    private sealed record Track(string Type, string Codec, int Width, int Height, int Channels, int SampleRate, long BitRate, bool Cover, int Frames, string PixelFormat = "");
 
     private static async Task<Probed> ProbeAsync(string path)
     {
@@ -1138,7 +1200,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             S(s, "codec_type"), S(s, "codec_name"), (int)N(s, "width"), (int)N(s, "height"), (int)N(s, "channels"),
             (int)N(s, "sample_rate"), N(s, "bit_rate"),
             s.TryGetProperty("disposition", out var d) && d.TryGetProperty("attached_pic", out var a) && a.GetInt32() == 1,
-            (int)N(s, "nb_read_frames"))).ToList();
+            (int)N(s, "nb_read_frames"), S(s, "pix_fmt"))).ToList();
         var duration = double.TryParse(S(json.RootElement.GetProperty("format"), "duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out var d2) ? d2 : 0;
         return new Probed(duration, streams);
     }

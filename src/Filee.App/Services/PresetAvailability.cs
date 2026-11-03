@@ -266,7 +266,8 @@ public sealed class PresetAvailability
 
         var merge = preset.Pdf.MergeIntoSingle && preset.TargetFormat == "pdf";
         var turns = preset.Image.TurnsOrMirrors;
-        string TargetFor(FileFormat f) => preset.TargetFormat == BuiltInData.SameAsSource ? f.Id : preset.TargetFormat;
+        string TargetFor(FileFormat f) => preset.TargetFormat != BuiltInData.SameAsSource ? preset.TargetFormat
+            : preset.CropsVideo ? VideoCrop.TargetFor(f.Id) : f.Id;
         var copiesUnturned = false;
         bool Possible(RoutePlanner planner) => formats.Any(f =>
         {

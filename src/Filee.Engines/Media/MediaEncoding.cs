@@ -152,7 +152,7 @@ internal static partial class MediaEncoding
     /// </param>
     /// <param name="crop">
     /// A video target: the filters that crop the frame first ("Crop video", <see cref="CropFilter"/>); the video is
-    /// always encoded then.
+    /// always encoded then, and an MKV keeps its subtitles and attachments.
     /// </param>
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
@@ -253,6 +253,10 @@ internal static partial class MediaEncoding
         List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
+        // A crop to MKV keeps the subtitles and attachments (fonts) as they are; MP4 and MOV can't hold most of them.
+        var extras = crop is not null && target == "mkv";
+        if (extras)
+            args.AddRange(["-map", "0:s?", "-map", "0:t?"]);
 
         if (clip is null && crop is null && !info.RawStream && CanCopyVideo(target, video, options))
         {
@@ -286,6 +290,8 @@ internal static partial class MediaEncoding
                 : AudioCodecArguments(target, spec.AudioCodec, options, tracks[i], inVideo: true);
             args.AddRange(tracks.Count == 1 ? trackArgs : ForAudioTrack(trackArgs, i));
         }
+        if (extras)
+            args.AddRange(["-c:s", "copy", "-c:t", "copy"]);
 
         args.AddRange(MetadataArguments());
         args.AddRange(ContainerArguments(target));

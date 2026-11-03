@@ -41,7 +41,10 @@ public static class AskedLocation
     public static string Extension(Preset preset, string source) =>
         preset.IsCopyToFolder ? Path.GetExtension(source).TrimStart('.')
         : preset.Output.ZipResult ? "zip"
-        : preset.TargetFormat == BuiltInData.SameAsSource ? FormatRegistry.ExtensionOf(source)
+        : preset.TargetFormat == BuiltInData.SameAsSource
+            ? preset.CropsVideo && FormatRegistry.Detect(source) is { } format && VideoCrop.TargetFor(format.Id) != format.Id
+                ? FormatRegistry.Get(VideoCrop.TargetFor(format.Id)).PrimaryExtension
+                : FormatRegistry.ExtensionOf(source)
         : FormatRegistry.FindById(preset.TargetFormat)?.Extensions.FirstOrDefault() ?? "";
 
     /// <summary>

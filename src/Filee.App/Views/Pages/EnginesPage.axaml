@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels.Pages"
              xmlns:svc="using:Filee.App.Services"
+             xmlns:c="using:Filee.App.Controls"
              x:Class="Filee.App.Views.Pages.EnginesPage"
              x:DataType="vm:EnginesPageViewModel">
   <UserControl.Styles>
@@ -25,7 +26,9 @@
       <DockPanel>
         <Button DockPanel.Dock="Right" Command="{Binding RecheckCommand}">
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Refresh}" />
+            <!-- Turns while the recheck runs (Spin.IsActive follows RecheckCommand.IsRunning; the code is in Controls/Spin.cs). -->
+            <PathIcon c:Spin.IsActive="{Binding RecheckCommand.IsRunning}"
+                      Width="13" Height="13" Data="{StaticResource Icon.Refresh}" />
             <TextBlock Text="{DynamicResource engines.recheck}" />
           </StackPanel>
         </Button>

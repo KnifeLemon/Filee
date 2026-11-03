@@ -212,14 +212,19 @@ job. The window only chooses the clip; writing it is an ordinary conversion.
 ## Crop video
 
 "Crop video" (`crop-video`, after Cut a clip on the back of the video donut, #830) is a group of ordinary
-conversions, not a window: each preset keeps the video's own format and sets `MediaOptions.CropFrame` to
-`auto` or a `width:height` ratio (`Core/Presets/VideoCrop`).
+conversions, not a window: each preset keeps the video's own format (MP4 for VOB and DV, whose fixed frame sizes would
+stretch the crop back: `VideoCrop.TargetFor`) and sets `MediaOptions.CropFrame` to `auto` or a `width:height` ratio
+(`Core/Presets/VideoCrop`).
 
-- A ratio crops the largest centred box FFmpeg's `crop` filter can make of the upright picture with square pixels.
-- Auto runs `cropdetect` over a second at five points of the video (the first five seconds of a short one) and takes
-  the most common box (`MediaEncoding.MostCommonCrop`, unit tested without FFmpeg); no black bars refuses the file
-  (`error.no_black_bars`) instead of encoding it again as it was.
-- The crop goes before the scale filter, so the video is always encoded; the sound is copied where the container takes it.
+- A ratio crops the largest centred box of the upright picture with square pixels (`MediaEncoding.RatioBox`); a video
+  already that shape is refused (`error.crop_same_frame`).
+- Auto runs `cropdetect` (limit as a part of the range, so 10-bit and HDR read alike) over a second at five points of
+  the video (the first five seconds of a short one), takes each stretch's final box and the largest of those
+  (`MediaEncoding.FinalCrop`, `LargestCrop`); no black bars, or a box under a quarter of the picture, refuses the file
+  (`error.no_black_bars`), and cropdetect failing everywhere is an error with FFmpeg's message.
+- The crop goes before the scale filter, so the video is always encoded: an HEVC or AV1 source stays in its codec where
+  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and an
+  MKV keeps its subtitles and attachments.
 
 ## Spreadsheet print studio
 

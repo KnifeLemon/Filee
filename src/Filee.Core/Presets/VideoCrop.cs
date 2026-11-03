@@ -25,6 +25,12 @@ public static class VideoCrop
             && width is >= 1 and <= 100 && height is >= 1 and <= 100;
     }
 
+    /// <summary>
+    /// The format a crop of <paramref name="source"/> (a format id) is saved in for "same as source": MP4 for VOB and DV,
+    /// whose fixed frame sizes would stretch the cropped picture back to the whole frame.
+    /// </summary>
+    public static string TargetFor(string source) => source is "vob" or "dv" ? "mp4" : source;
+
     /// <summary>True when <paramref name="frame"/> crops anything: <see cref="Auto"/> or a ratio.</summary>
     public static bool Crops(string? frame) => frame == Auto || TryParseRatio(frame, out _, out _);
 }

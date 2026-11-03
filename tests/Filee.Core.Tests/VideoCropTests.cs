@@ -2,7 +2,6 @@
 // (settings schema 59: the library only, no slot).
 
 using Filee.Core.Presets;
-using Filee.Core.Profiles;
 using Filee.Core.Settings;
 
 namespace Filee.Core.Tests;
@@ -38,6 +37,19 @@ public class VideoCropTests
     }
 
     [Fact]
+    public void A_crop_of_a_vob_or_dv_video_is_saved_as_mp4()
+    {
+        // Their fixed frame sizes would stretch the crop back to the whole frame.
+        Assert.Equal(["mp4", "mp4", "mkv", "mp4"], new[] { "vob", "dv", "mkv", "mp4" }.Select(VideoCrop.TargetFor));
+        var crop = BuiltInData.CreatePresets().Single(p => p.Id == "crop-video-auto");
+        Assert.Equal("mp4", AskedLocation.Extension(crop, @"C:\v\movie.vob"));
+        Assert.Equal("mp4", AskedLocation.Extension(crop, @"C:\v\tape.dif"));
+        Assert.Equal("mkv", AskedLocation.Extension(crop, @"C:\v\movie.mkv"));
+        // Other tools keep the source's own format.
+        Assert.Equal("vob", AskedLocation.Extension(BuiltInData.CreatePresets().Single(p => p.Id == "tool-clip"), @"C:\v\movie.vob"));
+    }
+
+    [Fact]
     public void A_new_library_has_the_group_after_cut_a_clip_on_the_video_back_face()
     {
         var presets = BuiltInData.CreatePresets();
@@ -56,11 +68,11 @@ public class VideoCropTests
         Assert.Equal("21:9", presets.Single(p => p.Id == "crop-video-21-9").Media.CropFrame);
 
         var back = BuiltInData.CreateProfiles().Single(p => p.Id == "video").BackPresetIds!;
-        Assert.Equal(ToolbarProfile.MaxSlices, back.Count);
+        Assert.Equal(8, back.Count);
         Assert.Equal(["tool-clip", "crop-video"], back[..2]);
-        // WAV gave its slot: still in the library.
-        Assert.DoesNotContain("to-wav", back);
-        Assert.Single(presets, p => p.Id == "to-wav");
+        // "Extract audio" gave its slot: still in the library.
+        Assert.DoesNotContain("extract-audio", back);
+        Assert.Single(presets, p => p.Id == "extract-audio");
     }
 
     [Fact]

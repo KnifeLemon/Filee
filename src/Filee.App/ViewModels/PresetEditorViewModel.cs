@@ -128,7 +128,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         FitsTiffModes = Enum.GetValues<FitsTiffMode>().Select(v => new Choice<FitsTiffMode>(v, loc[$"presets.fits_tiff.{v}"])).ToList();
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
         MaxHeights = Steps(MaxHeightSteps, _edit.Media.MaxHeight, h => h == 0 ? loc["presets.max_height.original"] : $"{h}p");
-        CropFrames = [new(VideoCrop.Auto, loc["presets.crop_frame.auto"]), .. VideoCrop.Ratios.Select(r => new Choice<string>(r, r))];
+        // A ratio set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
+        CropFrames = [new(VideoCrop.Auto, loc["presets.crop_frame.auto"]),
+            .. VideoCrop.Ratios.Append(_edit.Media.CropFrame).Where(r => VideoCrop.TryParseRatio(r, out _, out _)).Distinct()
+                .Select(r => new Choice<string>(r, r))];
         AudioBitrates = Steps(BitrateSteps, _edit.Media.AudioBitrateKbps, k => k == 0 ? loc["presets.audio_bitrate.auto"] : $"{k} kbps");
         AudioChannelChoices = new[] { 0, 1, 2 }.Select(c => new Choice<int>(c, loc[$"presets.audio_channels.{c}"])).ToList();
         SampleRates = Steps(SampleRateSteps, _edit.Media.AudioSampleRate,
