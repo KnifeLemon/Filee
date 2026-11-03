@@ -398,7 +398,7 @@
   "merge.sort_created_asc": "建立日期 (最舊優先)",
   "merge.sort_created_desc": "建立日期 (最新優先)",
   "merge.sort_custom": "自訂順序",
-  "merge.images_hint": "選擇圖片並上下移動。第一張放在最上面（左右排列時放在最左邊）。（Alt+↑ / Alt+↓）",
+  "merge.images_hint": "用方向鍵在圖片之間移動。要調整順序，可拖曳圖片或按 Alt + ↑ / Alt + ↓。第一張放在最上面（左右排列時放在最左邊）。Delete 刪除所選圖片。",
   "merge.vertical": "上下排列",
   "merge.horizontal": "左右排列",
   "merge.same_width": "統一寬度",

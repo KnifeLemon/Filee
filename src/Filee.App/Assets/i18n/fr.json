@@ -398,7 +398,7 @@
   "merge.sort_created_asc": "Date de création (anciens d'abord)",
   "merge.sort_created_desc": "Date de création (récents d'abord)",
   "merge.sort_custom": "Ordre personnalisé",
-  "merge.images_hint": "Sélectionnez une image et déplacez-la vers le haut ou le bas. La première va en haut, ou à gauche côte à côte. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Utilisez les flèches pour passer d'une image à l'autre. Pour changer l'ordre, faites glisser une image ou appuyez sur Alt + ↑ / Alt + ↓. La première va en haut, ou à gauche côte à côte. Suppr retire l'image sélectionnée.",
   "merge.vertical": "De haut en bas",
   "merge.horizontal": "Côte à côte",
   "merge.same_width": "Même largeur",

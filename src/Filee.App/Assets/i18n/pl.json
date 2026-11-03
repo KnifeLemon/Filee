@@ -398,7 +398,7 @@
   "merge.sort_created_asc": "Data utworzenia (najpierw najstarsze)",
   "merge.sort_created_desc": "Data utworzenia (najpierw najnowsze)",
   "merge.sort_custom": "Własna kolejność",
-  "merge.images_hint": "Wybierz obraz i przesuń go w górę lub w dół. Pierwszy trafia na górę, a przy układzie obok siebie na lewo. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Strzałkami przechodź między obrazami. Aby zmienić kolejność, przeciągnij obraz lub naciśnij Alt + ↑ / Alt + ↓. Pierwszy trafia na górę, a przy układzie obok siebie na lewo. Delete usuwa zaznaczony obraz.",
   "merge.vertical": "Jeden pod drugim",
   "merge.horizontal": "Obok siebie",
   "merge.same_width": "Ta sama szerokość",

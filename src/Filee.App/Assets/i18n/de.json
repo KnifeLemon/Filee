@@ -388,7 +388,7 @@
   "merge.sort_created_asc": "Erstelldatum (älteste zuerst)",
   "merge.sort_created_desc": "Erstelldatum (neueste zuerst)",
   "merge.sort_custom": "Eigene Reihenfolge",
-  "merge.images_hint": "Wähle ein Bild und verschiebe es nach oben oder unten. Das erste kommt nach oben, nebeneinander nach links. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Mit den Pfeiltasten wählst du ein Bild aus. Zum Ändern der Reihenfolge ziehst du ein Bild oder drückst Alt + ↑ / Alt + ↓. Das erste kommt nach oben, nebeneinander nach links. Entf entfernt das ausgewählte Bild.",
   "merge.vertical": "Untereinander",
   "merge.horizontal": "Nebeneinander",
   "merge.same_width": "Gleiche Breite",

@@ -398,7 +398,7 @@
   "merge.sort_created_asc": "만든 날짜 (오래된 순)",
   "merge.sort_created_desc": "만든 날짜 (최신 순)",
   "merge.sort_custom": "사용자 지정 순서",
-  "merge.images_hint": "사진을 골라 위아래로 옮기세요. 첫 번째 사진이 맨 위에, 나란히 붙일 때는 맨 왼쪽에 와요. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "화살표로 사진 사이를 이동하세요. 순서를 바꾸려면 사진을 끌거나 Alt + ↑ / Alt + ↓ 를 누르세요. 첫 번째 사진이 맨 위에, 나란히 붙일 때는 맨 왼쪽에 와요. Delete 는 선택한 사진을 지워요.",
   "merge.vertical": "위아래로",
   "merge.horizontal": "나란히",
   "merge.same_width": "너비 맞추기",

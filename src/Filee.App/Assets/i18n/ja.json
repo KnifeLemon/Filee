@@ -388,7 +388,7 @@
   "merge.sort_created_asc": "作成日時 (古い順)",
   "merge.sort_created_desc": "作成日時 (新しい順)",
   "merge.sort_custom": "カスタム順",
-  "merge.images_hint": "画像を選択して上下に移動します。最初の画像が一番上（横に並べるときは一番左）になります。（Alt+↑ / Alt+↓）",
+  "merge.images_hint": "矢印キーで画像を移動できます。順番を変えるには画像をドラッグするか、Alt + ↑ / Alt + ↓ を押します。最初の画像が一番上（横に並べるときは一番左）になります。Delete で選択中の画像を削除します。",
   "merge.vertical": "縦に並べる",
   "merge.horizontal": "横に並べる",
   "merge.same_width": "幅をそろえる",

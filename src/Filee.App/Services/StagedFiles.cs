@@ -19,11 +19,11 @@ public sealed partial class StagedFiles : ObservableObject, IDisposable
     private readonly JobQueue _jobs;
     private readonly ILocalizer _loc;
 
-    /// <summary>The cards sent to the donut, until the conversion they started is over.</summary>
+    /// <summary>The cards sent to the donut, until the conversion the donut starts takes them.</summary>
     private List<StagedFileViewModel> _sent = [];
 
-    /// <summary>The conversion started from the donut for <see cref="_sent"/>, once it has started.</summary>
-    private string? _sentJobId;
+    /// <summary>The cards of each conversion started from the donut, by job: each leaves the list only with its own job.</summary>
+    private readonly Dictionary<string, List<StagedFileViewModel>> _startedJobs = [];
 
     public StagedFiles(JobQueue jobs, ILocalizer loc)
     {
@@ -78,15 +78,19 @@ public sealed partial class StagedFiles : ObservableObject, IDisposable
     public void MarkSent(IReadOnlyList<StagedFileViewModel> cards)
     {
         _sent = cards.ToList();
-        _sentJobId = null;
         Error = "";
     }
 
-    /// <summary>A conversion started from the donut; when it is the one for the cards sent, its outcome is followed.</summary>
+    /// <summary>
+    /// A conversion started from the donut takes the cards sent to it. Cards sent while another conversion runs wait in the
+    /// list for their own conversion; the running one still clears only its own cards.
+    /// </summary>
     public void ConversionStarted(ConversionJob job)
     {
-        if (_sent.Count > 0 && _sentJobId is null)
-            _sentJobId = job.Id;
+        if (_sent.Count == 0)
+            return;
+        _startedJobs[job.Id] = _sent;
+        _sent = [];
     }
 
     /// <summary>The place of each card follows the list.</summary>
@@ -106,6 +110,8 @@ public sealed partial class StagedFiles : ObservableObject, IDisposable
         {
             Cards.Remove(card);
             _sent.Remove(card);
+            foreach (var started in _startedJobs.Values)
+                started.Remove(card);
             card.Dispose();
         }
         foreach (var path in _queue.Paths)
@@ -123,11 +129,8 @@ public sealed partial class StagedFiles : ObservableObject, IDisposable
 
     private void Finished(ConversionJob job)
     {
-        if (job.Id != _sentJobId)
+        if (!_startedJobs.Remove(job.Id, out var sent))
             return;
-        var sent = _sent;
-        _sent = [];
-        _sentJobId = null;
         if (job.State == JobState.Cancelled)
             return;
         if (job.State == JobState.Completed)

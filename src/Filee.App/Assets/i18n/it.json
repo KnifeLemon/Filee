@@ -388,7 +388,7 @@
 "merge.sort_created_asc": "Data di creazione (prima i vecchi)",
 "merge.sort_created_desc": "Data di creazione (prima i recenti)",
 "merge.sort_custom": "Ordine personalizzato",
-"merge.images_hint": "Seleziona un'immagine e spostala su o giù. La prima va in alto, o a sinistra nella disposizione affiancata. (Alt+↑ / Alt+↓)",
+"merge.images_hint": "Usa le frecce per spostarti tra le immagini. Per cambiare l'ordine, trascina un'immagine o premi Alt + ↑ / Alt + ↓. La prima va in alto, o a sinistra affiancata. Canc rimuove l'immagine selezionata.",
 "merge.vertical": "Dall'alto verso il basso",
 "merge.horizontal": "Affiancate",
 "merge.same_width": "Stessa larghezza",
