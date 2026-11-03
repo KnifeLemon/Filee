@@ -5,14 +5,14 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows) and the photo of an iPhone LIVP read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP and the merged picture of a Krita KRA read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF, merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -291,6 +291,9 @@ in it also builds the package (artifact `windows-arm64-package`).
 - **LIVP** (an iPhone Live Photo as iCloud downloads it: a ZIP of the photo, HEIC or JPEG, and its MOV) is read as its
   photo, taken out of the package in memory (`LivePhotoSource.ReadStill`, at most 64 MB); its video is FFmpeg's (see
   Live / Motion Photos there).
+- **KRA** (Krita's own file, a ZIP of the layers) is read as the merged picture Krita stores at its top for other
+  programs (`mergedimage.png`, `Krita.ReadMerged`, at most 256 MB, in memory), so it looks as it does in Krita. A file
+  without one gives a clear error.
 - **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,

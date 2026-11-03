@@ -2,7 +2,8 @@
 // (LibRaw settings), layered PSD/PSB/XCF (one flattened picture instead of one file per layer) and Windows
 // metafiles (rendered at the preset's DPI), APNG (Filee's own reader composes the frames) and uncompressed DICOM
 // (Filee's own reader, as ImageMagick's Q8 build reads only 8-bit DICOM), FITS (Filee's own reader, stretched and
-// debayered as the preset says) and the photo of an iPhone LIVP. Used by every engine that takes a raster image as input.
+// debayered as the preset says), the photo of an iPhone LIVP and the merged picture of a Krita KRA. Used by every engine
+// that takes a raster image as input.
 
 using System.Buffers.Binary;
 using Filee.Core.Presets;
@@ -29,6 +30,8 @@ internal static class ImageReader
             return scan;
         if (formatId == "livp")
             return ReadLivePhoto(path, preset);
+        if (formatId == "kra")
+            return ReadPackaged(Krita.ReadMerged(path), "png", preset);
         if (formatId == "fits")
             return [FitsRendering.ToMagick(Fits.Read(path), preset.Image.FitsDebayer)];
 
@@ -93,6 +96,12 @@ internal static class ImageReader
     private static MagickImageCollection ReadLivePhoto(string path, Preset preset)
     {
         var (data, format) = Media.LivePhotoSource.ReadStill(path);
+        return ReadPackaged(data, format, preset);
+    }
+
+    /// <summary>A picture taken out of a package in memory, in <paramref name="format"/>.</summary>
+    private static MagickImageCollection ReadPackaged(byte[] data, string format, Preset preset)
+    {
         var settings = Settings(format, preset);
         settings.Format = ImageEncoder.ToMagickFormat(format);
         var images = new MagickImageCollection();

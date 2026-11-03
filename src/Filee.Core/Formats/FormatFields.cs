@@ -75,7 +75,7 @@ public static class FormatFields
         (FormatGrade.Specialist,
         [
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
-            "exr", "hdr", "fits", "xcf", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg", "fodt",
+            "exr", "hdr", "fits", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg", "fodt",
             "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
             "jsonl", "yaml", "toml", "har", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
@@ -96,7 +96,7 @@ public static class FormatFields
     private static readonly Dictionary<string, FormatField[]> Overlaps = BuildOverlaps(
     [
         // Layout, print, photo post-production, signs and embroidery.
-        (["psd", "psb", "exr", "hdr", "xcf", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
+        (["psd", "psb", "exr", "hdr", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
         // Game textures and cutscenes.
         (["dds", "usm", "bik"], ["game"]),
         // Medical imaging and astronomy.
