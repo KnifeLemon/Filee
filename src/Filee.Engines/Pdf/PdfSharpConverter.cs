@@ -383,6 +383,8 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// </summary>
     private static MemoryStream EncodeForPdf(IMagickImage<byte> frame, string sourceFormat, ImageOptions options)
     {
+        // PDFsharp takes grey and RGB pictures: a CMYK one (print work) goes in as RGB (#1055).
+        PdfPictures.ToRgb(frame);
         var stream = new MemoryStream();
         if (sourceFormat == "jpg" && !frame.HasAlpha)
         {
