@@ -73,7 +73,7 @@
                                 Command="{Binding $parent[ItemsControl].((vm:GroupEditorViewModel)DataContext).MoveDownCommand}" CommandParameter="{Binding}">
                           <PathIcon Width="12" Height="12" Data="{StaticResource Icon.ArrowDown}" />
                         </Button>
-                        <Button Classes="icon" ToolTip.Tip="{DynamicResource group.remove}" AutomationProperties.Name="{DynamicResource group.remove}"
+                        <Button Classes="icon danger" ToolTip.Tip="{DynamicResource group.remove}" AutomationProperties.Name="{DynamicResource group.remove}"
                                 Command="{Binding $parent[ItemsControl].((vm:GroupEditorViewModel)DataContext).RemoveCommand}" CommandParameter="{Binding}">
                           <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
                         </Button>

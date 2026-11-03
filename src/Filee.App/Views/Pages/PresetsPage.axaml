@@ -31,7 +31,7 @@
                   ToolTip.Tip="{DynamicResource presets.duplicate}" AutomationProperties.Name="{DynamicResource presets.duplicate}">
             <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Copy}" />
           </Button>
-          <Button x:Name="DeletePresetButton" Command="{Binding DeleteCommand}" Margin="0,0,6,6"
+          <Button x:Name="DeletePresetButton" Classes="danger" Command="{Binding DeleteCommand}" Margin="0,0,6,6"
                   ToolTip.Tip="{DynamicResource presets.delete}" AutomationProperties.Name="{DynamicResource presets.delete}">
             <PathIcon Width="14" Height="14" Data="{StaticResource Icon.Delete}" />
           </Button>

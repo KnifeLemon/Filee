@@ -19,6 +19,7 @@
           <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1F1E1D" />
           <SolidColorBrush x:Key="TextSecondaryBrush" Color="#6B6A66" />
           <SolidColorBrush x:Key="DangerBrush" Color="#C73A39" />
+          <SolidColorBrush x:Key="DangerFaintBrush" Color="#1AC73A39" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#0F7A5A" />
           <SolidColorBrush x:Key="WarningBrush" Color="#9A5B0C" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #12000000, 0 6 18 0 #0D000000</BoxShadows>
@@ -45,6 +46,7 @@
           <SolidColorBrush x:Key="TextPrimaryBrush" Color="#F1EFE8" />
           <SolidColorBrush x:Key="TextSecondaryBrush" Color="#AEACA4" />
           <SolidColorBrush x:Key="DangerBrush" Color="#F09595" />
+          <SolidColorBrush x:Key="DangerFaintBrush" Color="#26F09595" />
           <SolidColorBrush x:Key="SuccessBrush" Color="#5DCAA5" />
           <SolidColorBrush x:Key="WarningBrush" Color="#EF9F27" />
           <BoxShadows x:Key="CardShadow">0 1 3 0 #40000000, 0 8 24 0 #33000000</BoxShadows>
@@ -190,6 +192,13 @@
     <Setter Property="Padding" Value="8" />
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <!-- Delete / remove buttons (a cross or a bin): a faint red background and a red icon on hover and press, instead of
+       the grey every other button gets. Add Classes="danger" next to the button's own classes. -->
+  <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{DynamicResource DangerFaintBrush}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource DangerBrush}" />
+    <Setter Property="Foreground" Value="{DynamicResource DangerBrush}" />
   </Style>
 
   <Style Selector="ProgressBar.soft">
