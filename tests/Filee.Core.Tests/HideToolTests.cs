@@ -296,12 +296,12 @@ public class HideToolTests
     // ───────────────────────── Settings schema 52 ─────────────────────────
 
     [Fact]
-    public void A_new_library_has_the_tool_after_edit_pictures_in_the_library_and_on_the_images_donut()
+    public void A_new_library_keeps_hide_in_the_library_for_the_toolbar_palette()
     {
         var presets = BuiltInData.CreatePresets();
         Assert.Equal("tool-image-edit", presets[presets.FindIndex(p => p.Id == "tool-hide") - 1].Id);
         var images = BuiltInData.CreateProfiles().Single(p => p.Id == "images");
-        Assert.Equal(["half-size", "tool-image-edit", "tool-hide"], images.PresetIds.Skip(images.PresetIds.IndexOf("half-size")));
+        Assert.DoesNotContain("tool-hide", images.PresetIds);
         Assert.DoesNotContain("tool-hide", images.BackPresetIds!);
         Assert.InRange(images.PresetIds.Count, 1, ToolbarProfile.MaxSlices);
     }
@@ -310,7 +310,7 @@ public class HideToolTests
     {
         var presets = BuiltInData.CreatePresets();
         presets.RemoveAll(p => p.Id == "tool-hide");
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var images = profiles.Single(p => p.Id == "images");
         images.PresetIds.Remove("tool-hide");
         return (presets, profiles, images);
@@ -325,7 +325,7 @@ public class HideToolTests
 
         Assert.Equal(BuiltInData.CreatePresets().Select(p => p.Id), presets.Select(p => p.Id));
         Assert.True(presets.Single(p => p.Id == "tool-hide").IsHideTool);
-        Assert.Equal(BuiltInData.CreateProfiles().Single(p => p.Id == "images").PresetIds, images.PresetIds);
+        Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "images").PresetIds, images.PresetIds);
         Assert.False(SettingsMigrations.ApplyToLibrary(52, presets, profiles)); // once only
     }
 
@@ -389,7 +389,7 @@ public class HideToolTests
         hide.Output.FileNamePattern = "{name}_safe";
         Assert.True(hide.IsCropTool);
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.ProfilesSchema58()));
 
         Assert.True(hide.IsHideTool);
         Assert.Equal(("Redact", "{name}_safe"), (hide.Name, hide.Output.FileNamePattern));
@@ -398,7 +398,7 @@ public class HideToolTests
         // One that read it as a group.
         hide.Kind = PresetKind.Group;
         hide.TargetFormat = Preset.GroupTarget;
-        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.CreateProfiles()));
+        Assert.True(SettingsMigrations.ApplyToLibrary(51, presets, BuiltInData.ProfilesSchema58()));
         Assert.True(hide.IsHideTool);
         Assert.Equal(BuiltInData.SameAsSource, hide.TargetFormat);
     }

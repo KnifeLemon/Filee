@@ -31,7 +31,7 @@ public class FonFormatTests
         Assert.Equal("fonts", fonts?.Id);
         Assert.Contains("fon", fonts!.Extensions);
         var targets = fonts.PresetIds.Select(id => BuiltInData.CreatePresets().Single(p => p.Id == id).TargetFormat).Order();
-        Assert.Equal(["eot", "otf", "ttf", "woff", "woff2"], targets);
+        Assert.Equal(["otf", "ttf", "woff", "woff2"], targets);
         Assert.All(targets, t => Assert.True(FormatRegistry.Known.Single(f => f.Id == t).Writable));
     }
 
