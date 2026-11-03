@@ -200,6 +200,44 @@ public class PdfSheetsTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    [Theory]
+    [InlineData(90)]
+    [InlineData(180)]
+    [InlineData(270)]
+    public async Task A_page_turned_by_rotate_lands_whole_in_its_cell(int rotate)
+    {
+        // A portrait page with a letter in each corner, turned by /Rotate only, as a viewer turns it.
+        var folder = fx.NewFolder();
+        var pdf = new PdfBuilder();
+        var font = pdf.Font();
+        pdf.NewPage(400, 600);
+        foreach (var (letter, x, y) in new[] { ("A", 20.0, 40.0), ("B", 365.0, 40.0), ("C", 20.0, 580.0), ("D", 365.0, 580.0) })
+            pdf.Line(letter, 20, font, x, y);
+        var source = pdf.Save(Path.Combine(folder, "corners.pdf"));
+        PdfBuilder.Turn(source, rotate, drawTurned: false);
+
+        var output = await SheetsAsync(source, new PdfOptions { PagesPerSheet = 4, SheetOrientation = PdfSheetOrientation.Portrait });
+        using var sheet = PigDocument.Open(output);
+        var page = sheet.GetPage(1);
+        var cell = PdfSheets.Cells(new XSize(595.28, 841.89), new PdfOptions(), 4)[0];
+        var corners = new[] { "A", "B", "C", "D" }.Select(l => Letter(page, l)).ToList();
+        // Every corner inside the cell: the page is not shifted or cut off.
+        Assert.All(corners, at =>
+        {
+            Assert.InRange(at.X, cell.Left, cell.Right);
+            Assert.InRange(at.Y, cell.Top, cell.Bottom);
+        });
+        // And the corners span the page as large as the cell allows (portrait in a portrait cell, turned or not).
+        var scale = Math.Min(cell.Width / 400, cell.Height / 600);
+        Assert.True(corners.Max(c => c.X) - corners.Min(c => c.X) > 300 * scale, "too narrow");
+        Assert.True(corners.Max(c => c.Y) - corners.Min(c => c.Y) > 480 * scale, "too short");
+        if (rotate == 90)
+        {
+            // Shown landscape, turned back a quarter into the portrait cell: upright again, A at the top left.
+            Assert.True(corners[0].X < corners[1].X - 100 && corners[0].Y < corners[2].Y - 100);
+        }
+    }
+
     [Fact]
     public async Task The_page_range_and_borders_apply()
     {

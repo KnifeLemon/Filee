@@ -147,7 +147,10 @@ internal static class PdfSheets
         var shown = new XRect(-visible.Width * scale / 2, -visible.Height * scale / 2, visible.Width * scale, visible.Height * scale);
         var clip = gfx.Save();
         gfx.IntersectClip(shown);
-        gfx.DrawImage(form, shown.X - visible.X * scale, shown.Y - visible.Y * scale, page.Width * scale, page.Height * scale);
+        // XPdfForm turns the page by its /Rotate (a /Matrix) but keeps the box of the unturned page, and the turned
+        // content sits at that box's bottom: draw it at the unturned size, moved so the turned page lands on top.
+        var (width, height) = (form.PointWidth * scale, form.PointHeight * scale);
+        gfx.DrawImage(form, shown.X - visible.X * scale, shown.Y - visible.Y * scale + page.Height * scale - height, width, height);
         gfx.Restore(clip);
         if (border)
             gfx.DrawRectangle(new XPen(XColors.Gray, 0.5), shown);

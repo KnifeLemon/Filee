@@ -862,8 +862,9 @@ in the preset library only). Video and audio need FFmpeg.
 - The sheet: A4, Letter, A3 or the size of the first page; portrait, landscape or (auto) whichever fits the first page
   larger. The long side of the sheet takes more pages (4-up 2 × 2, 6-up 2 × 3, 8-up 2 × 4, 9-up 3 × 3).
 - Options: order (across then down, or down then across), margin and gap in mm (cut down when too large for the
-  sheet), a thin grey border around each page. The page range applies. Links, bookmarks and form fields of the
-  source don't carry over.
+  sheet), a thin grey border around each page. The page range applies.
+- Only the page content comes along (as in any N-up): the values of filled form fields, link and comment
+  annotations and bookmarks of the source are not on the sheets.
 
 ## PDF watermark, page numbers and password
 
