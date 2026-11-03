@@ -424,6 +424,55 @@ public class BrowserDropTests
         }
     }
 
+    [AvaloniaFact]
+    public void A_picture_dropped_on_the_drop_zone_joins_the_queue_when_the_setting_asks_for_it()
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var collect = store.Settings.CollectDroppedFiles;
+        store.Settings.CollectDroppedFiles = true;
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>(), store);
+        vm.Navigate("home");
+        var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+        window.Show();
+        Pump();
+        var radial = AppHost.Get<RadialController>();
+        try
+        {
+            var page = window.GetVisualDescendants().OfType<HomePage>().Single();
+            var zone = page.FindControl<Border>("DropZone")!;
+            var file = VirtualFile.Create("cat.png", Png);
+            using var data = ChromePicture(file);
+            // The donut's files as they were: a donut an earlier test left behind must not count as this drop's.
+            var donutFiles = AppHost.Get<RadialViewModel>().Files.ToList();
+
+            zone.RaiseEvent(new DragEventArgs(DragDrop.DropEvent, data, zone, new Point(20, 20), KeyModifiers.None));
+            var model = Assert.IsType<Filee.App.ViewModels.Pages.HomePageViewModel>(vm.CurrentPage);
+            // The file is saved first, on a background thread; the queue takes it once it is on disk.
+            for (var i = 0; i < 500 && model.Queue.Count == 0; i++)
+            {
+                Pump();
+                Thread.Sleep(10);
+            }
+
+            var queued = Assert.Single(model.QueuedPaths);
+            Assert.Equal("cat.png", Path.GetFileName(queued));
+            Assert.True(File.Exists(queued));
+            Assert.StartsWith(WebDrop.DefaultWorkRoot, queued);
+            // The donut was not offered the file.
+            Assert.Equal(donutFiles, AppHost.Get<RadialViewModel>().Files);
+            Assert.True(file.Disposed);
+        }
+        finally
+        {
+            radial.Close(animate: false);
+            window.Close();
+            // The queue is shared by the whole app: the test's file must not stay in it for the next test.
+            AppHost.Get<StagedFiles>().Clear();
+            store.Settings.CollectDroppedFiles = collect;
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("ko")]

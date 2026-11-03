@@ -168,14 +168,16 @@ public sealed class ConversionService
 
     /// <summary>
     /// Saves a browser drop's files for a tool (the crop overlay), which needs them on disk before anything else
-    /// happens: always into the download folder, as the tool shows and keeps working on the original. Files that can't
-    /// be saved are left out (<paramref name="failed"/> hears why). The drop is done afterwards.
+    /// happens: into the download folder by default, as the tool shows and keeps working on the original; <paramref
+    /// name="folder"/> saves them elsewhere (the Home queue's temporary folder). Files that can't be saved are left out
+    /// (<paramref name="failed"/> hears why). The drop is done afterwards.
     /// </summary>
-    public async Task<IReadOnlyList<string>> SaveBrowserFilesAsync(WebDrop web, Action<string, Exception> failed)
+    public async Task<IReadOnlyList<string>> SaveBrowserFilesAsync(WebDrop web, Action<string, Exception> failed, string? folder = null)
     {
         try
         {
-            var fetcher = web.CreateFetcher(BrowserDropOptions() with { SaveOnlyConverted = false }, _downloader);
+            var options = BrowserDropOptions() with { SaveOnlyConverted = false };
+            var fetcher = web.CreateFetcher(folder is null ? options : options with { Folder = folder }, _downloader);
             var saved = new List<string>();
             foreach (var placeholder in web.Placeholders)
             {
