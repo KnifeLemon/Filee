@@ -21,14 +21,13 @@ public sealed class DonutLogo : Control
     private const double ViewBox = 512;
     private static readonly TimeSpan Duration = TimeSpan.FromMilliseconds(1400);
 
-    // filee.svg: the gradients (light and dark purple, green, the file), top left to bottom right except the file.
-    private static readonly IBrush Light = Gradient("#A39CF4", "#6C63D8", diagonal: true);
-    private static readonly IBrush Dark = Gradient("#8179E6", "#4F46B5", diagonal: true);
-    private static readonly IBrush Green = Gradient("#3FD6A0", "#13875F", diagonal: true);
-    private static readonly IBrush Document = Gradient("#4B41AA", "#2D2675", diagonal: false);
+    // filee.svg: the gradient colours (light and dark purple, green), from the top left to the bottom right of each shape.
+    private static readonly (string From, string To) Light = ("#A39CF4", "#6C63D8");
+    private static readonly (string From, string To) Dark = ("#8179E6", "#4F46B5");
+    private static readonly (string From, string To) Green = ("#3FD6A0", "#13875F");
 
-    // The slices (path, gradient, offset of the "pulled out" slice). Each is also stroked 24 wide with round joins in
-    // the same gradient, which is what rounds its corners (the paths are 12 smaller all round to make up for it).
+    // The slices (path, gradient colours, offset of the "pulled out" slice). Each is also stroked 24 wide with round
+    // joins in the same gradient, which is what rounds its corners (the paths are 12 smaller all round to make up for it).
     private static readonly Slice[] Slices =
     [
         new("M169.99 71.02 A204 204 0 0 1 342.01 71.02 L297.71 147.76 A116 116 0 0 0 214.29 147.76 Z", Light, default),
@@ -40,9 +39,12 @@ public sealed class DonutLogo : Control
     ];
 
     // The file in the middle: the body and its folded corner (both with rounded corners) and three lines of "text".
+    // The body's gradient runs from its top to its bottom, over the body's own bounds like the slices' gradients.
+    // (Declared in this order: the brush needs the body's bounds, and the pens need the brushes.)
     private static readonly Geometry FileBody = Geometry.Parse("M227 217 H262 L285 240 V295 H227 Z");
     private static readonly Geometry FileCorner = Geometry.Parse("M262 217 V240 H285 Z");
     private static readonly IBrush CornerBrush = Brush("#C9C4F7");
+    private static readonly IBrush Document = Gradient(("#4B41AA", "#2D2675"), FileBody.Bounds, diagonal: false);
     private static readonly IPen FileBodyPen = RoundPen(Document, 10);
     private static readonly IPen FileCornerPen = RoundPen(CornerBrush, 4);
     private static readonly (Rect Bounds, IBrush Fill)[] FileLines =
@@ -90,15 +92,20 @@ public sealed class DonutLogo : Control
 
     private static IPen RoundPen(IBrush brush, double width) => new Pen(brush, width, lineJoin: PenLineJoin.Round);
 
-    /// <summary>A two-colour gradient across the shape: top left to bottom right, or top to bottom.</summary>
-    private static IBrush Gradient(string from, string to, bool diagonal) => new LinearGradientBrush
+    /// <summary>
+    /// A two-colour gradient across <paramref name="box"/>, the bounds of the shape's path: top left to bottom right, or
+    /// top to bottom. The coordinates are absolute, so the same brush fills the shape and strokes its outline in the
+    /// same place, like the SVG's objectBoundingBox gradient. Relative ones would be spread over the bounds of whatever
+    /// is painted, which for the 24 px stroke are wider than the fill's, and the edge between them would show.
+    /// </summary>
+    private static IBrush Gradient((string From, string To) colours, Rect box, bool diagonal) => new LinearGradientBrush
     {
-        StartPoint = new RelativePoint(0, 0, RelativeUnit.Relative),
-        EndPoint = diagonal ? new RelativePoint(1, 1, RelativeUnit.Relative) : new RelativePoint(0, 1, RelativeUnit.Relative),
+        StartPoint = new RelativePoint(box.TopLeft, RelativeUnit.Absolute),
+        EndPoint = new RelativePoint(diagonal ? box.BottomRight : box.BottomLeft, RelativeUnit.Absolute),
         GradientStops =
         {
-            new GradientStop(Color.Parse(from), 0),
-            new GradientStop(Color.Parse(to), 1),
+            new GradientStop(Color.Parse(colours.From), 0),
+            new GradientStop(Color.Parse(colours.To), 1),
         },
     };
 
@@ -166,11 +173,21 @@ public sealed class DonutLogo : Control
     }
 
     /// <summary>One slice of the ring: its shape, gradient, rounded outline and where it sits (the green one is pulled out).</summary>
-    private sealed class Slice(string path, IBrush fill, Vector offset)
+    private sealed class Slice
     {
-        public Geometry Path { get; } = Geometry.Parse(path);
-        public IBrush Fill { get; } = fill;
-        public IPen Outline { get; } = RoundPen(fill, 24);
-        public Vector Offset { get; } = offset;
+        public Slice(string path, (string From, string To) colours, Vector offset)
+        {
+            Path = Geometry.Parse(path);
+            // One brush for the fill and the outline, over the path's own bounds (the path is in the slice's own
+            // coordinates, so the brush moves, turns and grows with the slice).
+            Fill = Gradient(colours, Path.Bounds, diagonal: true);
+            Outline = RoundPen(Fill, 24);
+            Offset = offset;
+        }
+
+        public Geometry Path { get; }
+        public IBrush Fill { get; }
+        public IPen Outline { get; }
+        public Vector Offset { get; }
     }
 }
