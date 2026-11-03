@@ -10,7 +10,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
-| PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
+| PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
@@ -33,7 +33,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, copies without metadata (see "Media tools") |
@@ -315,6 +315,19 @@ in it also builds the package (artifact `windows-arm64-package`).
   square; reading takes the largest image (PNG, JPEG 2000 or the old RLE + mask entries).
 - **Illustrator** files saved with "Create PDF compatible file" (the default since Illustrator 9) are PDFs and need
   nothing extra; PostScript-based ones need Ghostscript.
+- **CMYK pages** (#1027). PDFium renders RGB only, so a print file (a CMYK PDF, or an Illustrator file through its
+  PDF) → JPG or TIFF is rendered by Ghostscript instead when it is installed: `tiff32nc` (8-bit CMYK) at the preset's
+  render DPI, cut to the crop box, anti-aliased, then written like PDFium's pages (quality, resize, `_p{n}` names,
+  multi-page TIFF, long images, size limits). `Pdf/PdfCmykContent.cs` decides per document with PdfPig, from the
+  first 20 selected pages: DeviceCMYK colours (`k` / `K`, also inside forms), four-channel ICC colour spaces,
+  Separation / DeviceN (spot colours), CMYK pictures and gradients. DeviceCMYK values come out as the document gives
+  them (Ghostscript's default CMYK profile is both their source and the output). When the PDF has an output intent
+  with a CMYK profile (PDF/X), Ghostscript renders into that profile and the picture carries it; otherwise the picture
+  is untagged CMYK, which keeps the numbers and leaves the profile to the print shop (Ghostscript's own default
+  profile is removed). RGB documents, a grayscale preset, other targets (PNG, WebP, …), a PDF PdfPig can't read and
+  PCs without Ghostscript keep PDFium's RGB rendering. When a CMYK file comes out in RGB only because Ghostscript is
+  missing or failed on it, the result says so (`notice.cmyk_needs_ghostscript`, `notice.cmyk_render_failed`): print
+  work shouldn't change colour unseen.
 - EPS and PS → PNG go straight through Ghostscript's `pngalpha` device, so the background stays transparent;
   JPG, WebP, … and AI reach images through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
 

@@ -158,6 +158,8 @@
   "notice.under_min_size": "Kaydedildi, ancak en küçük dosya boyutundan küçük",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Seçilen AutoCAD sürümünün desteklemediği nesneler (çoklu kılavuzlar, ağlar…) çıkarıldı",
+  "notice.cmyk_needs_ghostscript": "Bu dosya CMYK ama RGB olarak kaydedildi: CMYK'yı korumak için Ayarlar → Dönüştürme motorları'ndan Ghostscript'i yükleyin",
+  "notice.cmyk_render_failed": "Bu dosya CMYK ama Ghostscript onu çizemedi, bu yüzden RGB olarak kaydedildi",
   "notice.original_kept": "Özgün dosya korundu, sonuç kopya olarak kaydedildi",
   "notice.original_in_trash": "Özgün dosya Geri Dönüşüm Kutusu'nda / Çöp Sepeti'nde; sonuç kendi adını korudu",
   "notice.original_unchanged": "Küçültülemediği için özgün dosya olduğu gibi bırakıldı",

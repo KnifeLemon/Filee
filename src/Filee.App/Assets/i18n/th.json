@@ -158,6 +158,8 @@
   "notice.under_min_size": "บันทึกแล้ว แต่เล็กกว่าขนาดไฟล์ขั้นต่ำ",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "ละวัตถุที่ AutoCAD เวอร์ชันที่เลือกไม่มี (มัลติลีดเดอร์ เมช …) ไว้",
+  "notice.cmyk_needs_ghostscript": "ไฟล์นี้เป็น CMYK แต่บันทึกเป็น RGB: ติดตั้ง Ghostscript ในการตั้งค่า → เครื่องมือแปลงไฟล์ เพื่อคง CMYK ไว้",
+  "notice.cmyk_render_failed": "ไฟล์นี้เป็น CMYK แต่ Ghostscript วาดไม่ได้ จึงบันทึกเป็น RGB",
   "notice.original_kept": "เก็บไฟล์ต้นฉบับไว้ และบันทึกผลลัพธ์เป็นสำเนา",
   "notice.original_in_trash": "ไฟล์ต้นฉบับอยู่ในถังขยะ ผลลัพธ์ยังใช้ชื่อของตัวเอง",
   "notice.original_unchanged": "ทำให้เล็กลงไม่ได้ จึงปล่อยไฟล์ต้นฉบับไว้ตามเดิม",

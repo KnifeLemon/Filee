@@ -164,6 +164,8 @@
   "notice.under_min_size": "Enregistré, mais plus petit que la taille de fichier minimale",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Des objets que la version d'AutoCAD choisie n'a pas (multilignes de repère, maillages…) ont été omis",
+  "notice.cmyk_needs_ghostscript": "Ce fichier est en CMJN mais a été enregistré en RVB : installez Ghostscript dans Paramètres → Moteurs pour garder le CMJN",
+  "notice.cmyk_render_failed": "Ce fichier est en CMJN, mais Ghostscript n'a pas pu le dessiner : il a été enregistré en RVB",
   "notice.original_kept": "L'original a été conservé, le résultat a été enregistré en copie",
   "notice.original_in_trash": "L'original est dans la Corbeille, le résultat a gardé son propre nom",
   "notice.original_unchanged": "Impossible de le rendre plus petit : l'original a été laissé tel quel",

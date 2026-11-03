@@ -164,6 +164,8 @@
   "notice.under_min_size": "Saved, but smaller than the minimum file size",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objects the chosen AutoCAD version doesn't have (multileaders, meshes …) were left out",
+  "notice.cmyk_needs_ghostscript": "This file is CMYK but was saved as RGB: install Ghostscript in Settings → Engines to keep CMYK",
+  "notice.cmyk_render_failed": "This file is CMYK, but Ghostscript couldn't draw it, so it was saved as RGB",
   "notice.original_kept": "The original was kept, the result was saved as a copy",
   "notice.original_in_trash": "The original is in the Recycle Bin / Trash, the result kept its own name",
   "notice.original_unchanged": "Couldn't make it smaller, so the original was left as it is",
