@@ -50,7 +50,7 @@ public class TranslateRouteTests
     [InlineData("json", false)]
     [InlineData("yaml", false)]
     [InlineData("srt", true)]
-        [InlineData("vtt", true)]
+    [InlineData("vtt", true)]
     [InlineData("png", false)]
     [InlineData("mp4", false)]
     [InlineData("zip", false)]

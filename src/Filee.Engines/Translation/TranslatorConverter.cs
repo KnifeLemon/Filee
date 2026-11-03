@@ -27,8 +27,8 @@ public sealed class TranslatorConverter : IConverter
     ];
 
     // Subtitle formats are translated cue-by-cue: only each cue's text goes to the model, so cue numbers and
-    // timestamps survive byte-for-byte. SRT and WebVTT, the two formats with nothing structural to lose; the
-    // other subtitle readers/writers stay untouched.
+    // timestamps are kept unchanged (the subtitle writer writes them again). SRT and WebVTT, the two formats with
+    // nothing structural to lose; the other subtitle readers/writers stay untouched.
     private static readonly string[] SubtitleFormats =
     [
         "srt", "vtt"
