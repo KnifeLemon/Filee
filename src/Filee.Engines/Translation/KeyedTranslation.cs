@@ -23,9 +23,14 @@ internal static partial class KeyedTranslation
     /// answer stays. Returns one trimmed, marker-free entry per text; <c>null</c> means it never came
     /// back and the caller applies its own fallback.
     /// </summary>
+    /// <param name="separator">
+    /// Between the markers. Subtitle cues are lines of their own ("\n"); the runs of a paragraph are pieces of one
+    /// sentence, cut wherever the formatting changes, so they go joined (""), and the model reads the whole sentence
+    /// instead of translating each piece as a line, which matters for languages that reorder it.
+    /// </param>
     public static async Task<IReadOnlyList<string?>> TranslateAsync(
         IReadOnlyList<string> texts, string toLang, string fromLang,
-        ITranslationService service, CancellationToken cancellationToken)
+        ITranslationService service, string separator, CancellationToken cancellationToken)
     {
         var results = new string?[texts.Count];
         var missing = Enumerable.Range(0, texts.Count).ToHashSet();
@@ -35,7 +40,7 @@ internal static partial class KeyedTranslation
             // Slot order on every request: the model reads the runs as one text, so a re-asked run
             // belongs where it was, not at the end of the queue.
             var asked = missing.OrderBy(i => i).ToList();
-            var reply = await service.TranslateTextAsync(Keyed(asked, texts), toLang, fromLang, cancellationToken);
+            var reply = await service.TranslateTextAsync(Keyed(asked, texts, separator), toLang, fromLang, cancellationToken);
             var recovered = 0;
             foreach (Match match in SlotTag().Matches(reply))
             {
@@ -61,14 +66,17 @@ internal static partial class KeyedTranslation
         return results;
     }
 
-    /// <summary>Keyed text, one marker per text, in slot order: <c>&lt;s0&gt;…&lt;/s0&gt;\n&lt;s1&gt;…&lt;/s1&gt;</c></summary>
-    private static string Keyed(List<int> indices, IReadOnlyList<string> texts)
+    /// <summary>
+    /// Keyed text, one marker per text, in slot order: <c>&lt;s0&gt;…&lt;/s0&gt;</c>, <paramref name="separator"/>,
+    /// <c>&lt;s1&gt;…&lt;/s1&gt;</c>.
+    /// </summary>
+    private static string Keyed(List<int> indices, IReadOnlyList<string> texts, string separator)
     {
         var sb = new StringBuilder();
         for (var i = 0; i < indices.Count; i++)
         {
             if (i > 0)
-                sb.Append('\n');
+                sb.Append(separator);
             sb.Append("<s").Append(indices[i]).Append('>').Append(texts[indices[i]])
               .Append("</s").Append(indices[i]).Append('>');
         }

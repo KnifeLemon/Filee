@@ -35,7 +35,7 @@ internal static class SubtitleTranslator
             for (var i = 0; i < count; i++)
                 texts.Add(cues[first + i].Text);
 
-            var translated = await KeyedTranslation.TranslateAsync(texts, toLang, fromLang, service, cancellationToken);
+            var translated = await KeyedTranslation.TranslateAsync(texts, toLang, fromLang, service, separator: "\n", cancellationToken);
             for (var i = 0; i < count; i++)
             {
                 // If the model never answered a cue, or answered it with nothing, the cue keeps its

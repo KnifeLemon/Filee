@@ -227,7 +227,7 @@ public class TranslationTests
         var service = new FlakyTranslationService([1, 3], 1, [1]);
         var inlines = await TranslateParagraph(service, "Alpha.", "Beta.", "Gamma.", "Delta.");
         Assert.Equal(2, service.Calls);
-        Assert.Equal("<s1>Beta.</s1>\n<s3>Delta.</s3>", service.Requests[1]);
+        Assert.Equal("<s1>Beta.</s1><s3>Delta.</s3>", service.Requests[1]); // one sentence: the runs go joined
         Assert.Equal("[T] Beta.", inlines[1].Text);
         Assert.Equal("[T] Delta.", inlines[3].Text);
     }

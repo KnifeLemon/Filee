@@ -76,7 +76,7 @@ internal static class DocumentTranslator
             else
             {
                 var translated = await KeyedTranslation.TranslateAsync(
-                    slots.Select(s => s.Text).ToList(), toLang, fromLang, service, cancellationToken);
+                    slots.Select(s => s.Text).ToList(), toLang, fromLang, service, separator: "", cancellationToken);
 
                 // A run the model never returned is translated on its own so no text stays in the source
                 // language and no inline formatting is lost
