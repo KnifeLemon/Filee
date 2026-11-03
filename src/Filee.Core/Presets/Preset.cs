@@ -155,13 +155,13 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
 
-    /// <summary>Formats the translator can directly read from.</summary>
+    /// <summary>Formats the translator can directly read from (documents, e-books, text and SRT / WebVTT subtitles).</summary>
     public static readonly string[] TranslatorSourceFormats =
     [
-        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html"
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html", "srt", "vtt"
     ];
 
-    /// <summary>True if converting a document or e-book using local AI translation.</summary>
+    /// <summary>True if converting a document, e-book, text file or subtitle using local AI translation.</summary>
     public bool TranslatesDocument(string sourceFormat) =>
         Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
 
