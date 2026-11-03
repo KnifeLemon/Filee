@@ -1,9 +1,10 @@
 // The order of a merge into one PDF (issue #268), one video or one image (#645): the files start sorted by name the way
-// people count ("page 2" before "page 10"), and the user moves them before the merge starts. Moving a row changes only
-// this copy of the selection. Pictures merged into one image also get their layout here: one under another or side by
-// side, the same width or their own sizes, the gap and the background.
+// people count ("page 2" before "page 10"); the user can sort them by name or date, and move them, before the merge
+// starts. Moving a row changes only this copy of the selection. Pictures merged into one image also get their layout
+// here: one under another or side by side, the same width or their own sizes, the gap and the background.
 
 using System.Collections.ObjectModel;
+using System.Globalization;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -13,12 +14,26 @@ using Filee.Core.Web;
 
 namespace Filee.App.ViewModels;
 
-/// <summary>One file of the merge: its name, and the folder it is in (none for a file from a browser, not saved yet).</summary>
-public sealed class MergeSource(string path)
+/// <summary>
+/// One file of the merge: its name, its date and the folder it is in (no date or folder for a file from a browser, not
+/// saved yet).
+/// </summary>
+public sealed partial class MergeSource(string path) : ObservableObject
 {
     public string Path { get; } = path;
     public string Name => System.IO.Path.GetFileName(Path);
     public string Folder => WebDrop.IsPlaceholder(Path) ? "" : System.IO.Path.GetDirectoryName(Path) ?? "";
+
+    /// <summary>The dates, read once: the order and the dates shown stay the same while the window is open.</summary>
+    public FileStamp Stamp { get; } = WebDrop.IsPlaceholder(path) ? new FileStamp(path) : FileStamp.Read(path);
+
+    /// <summary>The row shows the date created rather than the date modified (while sorted by it).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Time))]
+    private bool _showsCreated;
+
+    /// <summary>The date and time shown, in the user's format.</summary>
+    public string Time => (ShowsCreated ? Stamp.Created : Stamp.Modified)?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "";
 }
 
 public sealed partial class MergeOrderViewModel : ObservableObject
@@ -30,10 +45,7 @@ public sealed partial class MergeOrderViewModel : ObservableObject
     /// </param>
     public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null)
     {
-        Files = new(files
-            .OrderBy(file => System.IO.Path.GetFileName(file), NaturalComparer.Instance)
-            .ThenBy(file => file, NaturalComparer.Instance)
-            .Select(file => new MergeSource(file)));
+        Files = new(FileSorter.Sort(files.Select(file => new MergeSource(file)), file => file.Stamp, FileSortOrder.NameAscending));
         SelectedFile = Files.FirstOrDefault();
         if (images is null)
             return;
@@ -47,6 +59,37 @@ public sealed partial class MergeOrderViewModel : ObservableObject
     }
 
     public ObservableCollection<MergeSource> Files { get; }
+
+    /// <summary>The list entry after the sort orders: the files were moved by hand.</summary>
+    public const int CustomSortIndex = (int)FileSortOrder.CreatedDescending + 1;
+
+    /// <summary>The entry chosen in the sort list: a <see cref="FileSortOrder"/>, or <see cref="CustomSortIndex"/>.</summary>
+    [ObservableProperty]
+    private int _sortIndex = (int)FileSortOrder.NameAscending;
+
+    partial void OnSortIndexChanged(int value)
+    {
+        // "Custom order" keeps the order as it is; nothing is selected (-1) only in passing.
+        if (value is >= 0 and < CustomSortIndex)
+            ApplySort((FileSortOrder)value);
+    }
+
+    private void ApplySort(FileSortOrder order)
+    {
+        var selected = SelectedFile;
+        var sorted = FileSorter.Sort(Files, file => file.Stamp, order);
+        for (var i = 0; i < sorted.Count; i++)
+        {
+            var from = Files.IndexOf(sorted[i]);
+            if (from != i)
+                Files.Move(from, i);
+            sorted[i].ShowsCreated = order is FileSortOrder.CreatedAscending or FileSortOrder.CreatedDescending;
+        }
+        // The list box can drop its selection while it moves the row.
+        SelectedFile = selected;
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
 
     /// <summary>The files are pictures that become one image: the window shows the layout too.</summary>
     public bool MergesImages { get; }
@@ -136,6 +179,7 @@ public sealed partial class MergeOrderViewModel : ObservableObject
         Files.Move(index, target);
         // The list box can drop its selection while it moves the row.
         SelectedFile = selected;
+        SortIndex = CustomSortIndex;
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
     }
