@@ -128,6 +128,7 @@
   "error.rhwp_timeout": "문서가 길어서 rhwp가 제한 시간 안에 끝내지 못했어요",
   "error.rhwp_timeout_calibre": "문서가 길어서 rhwp가 제한 시간 안에 끝내지 못했어요. 전자책이라면 설정 → 변환 엔진에서 Calibre를 HWPX writer보다 위로 옮겨 주세요. Calibre가 PDF를 훨씬 빨리 만들어요",
   "error.engine_stalled": "엔진이 응답하지 않아요. 오랫동안 진행되지 않아서 중지했어요",
+  "error.engine_busy": "다른 Filee(앱, 명령줄 또는 다른 복사본)가 이 엔진을 설치하거나 지우고 있어요. 끝난 뒤에 다시 해 보세요.",
   "error.needs_shaping": "이 문자는 LibreOffice가 있어야 제대로 변환돼요. 설정 → 변환 엔진에서 설치해 주세요",
   "error.runtime_missing": "이 엔진에 필요한 Microsoft Visual C++ 런타임 파일이 없거나 오래됐어요. Filee를 업데이트하거나 다시 설치하거나, Microsoft Visual C++ 재배포 가능 패키지(x64)를 설치해 주세요",
   "error.conversion_failed": "엔진에서 오류가 발생했어요",

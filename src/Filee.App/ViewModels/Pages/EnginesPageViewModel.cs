@@ -121,7 +121,8 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     private void Cancel(EnginePackageState package) => _downloads.Cancel(package);
 
     /// <summary>Removes a package (after the view asked for confirmation). False when its files are in use.</summary>
-    public bool Remove(EnginePackageState package) => _downloads.Uninstall(package);
+    /// <summary>Removes a package: null when it's gone, else the key of the reason (see <see cref="EngineDownloadService.Uninstall"/>).</summary>
+    public string? Remove(EnginePackageState package) => _downloads.Uninstall(package);
 
     /// <summary>
     /// Uses the user's own copy of a package from <paramref name="path"/> (a program they picked). Returns false when

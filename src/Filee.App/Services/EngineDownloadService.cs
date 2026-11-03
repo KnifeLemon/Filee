@@ -308,9 +308,13 @@ public sealed class EngineDownloadService
         }
     }
 
-    /// <summary>The reason on the Engines card: an installer's error.* reason in the user's language (#527).</summary>
+    /// <summary>
+    /// The reason on the Engines card: an installer's error.* reason in the user's language (#527), also when another
+    /// Filee holds the package (#963).
+    /// </summary>
     internal static string ErrorText(ILocalizer loc, Exception ex) =>
         ex is HttpRequestException ? ex.Message
+        : ex.GetBaseException() is EngineBusyException ? loc["error.engine_busy"]
         : ex.GetBaseException() is ConversionRefusedException refused ? FailureText.Reason(loc, refused.ErrorKey, refused.Detail)
         : ex.GetBaseException().Message;
 
@@ -348,23 +352,31 @@ public sealed class EngineDownloadService
         });
     }
 
-    /// <summary>Removes a package. Returns false when its files are in use (a conversion is running).</summary>
-    public bool Uninstall(EnginePackageState state)
+    /// <summary>
+    /// Removes a package. Returns null when it's gone, else the key of the reason: its files are in use (a conversion
+    /// is running), or another Filee is installing or removing it (#963).
+    /// </summary>
+    public string? Uninstall(EnginePackageState state)
     {
         if (state.IsBusy)
-            return false;
+            return "engines.remove_failed";
         try
         {
             _installer.Uninstall(state.Package);
             state.Status = EnginePackageStatus.NotInstalled;
             _catalog.Refresh();
-            return true;
+            return null;
+        }
+        catch (EngineBusyException ex)
+        {
+            _logger.LogWarning(ex, "Removing engine package {Package} failed", state.Package.Id);
+            return "error.engine_busy";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(ex, "Removing engine package {Package} failed", state.Package.Id);
             RefreshStatus();
-            return false;
+            return "engines.remove_failed";
         }
     }
 }

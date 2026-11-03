@@ -122,6 +122,7 @@
   "error.rhwp_timeout": "文書が長いため、rhwpが制限時間内に処理を終えられませんでした",
   "error.rhwp_timeout_calibre": "文書が長いため、rhwpが制限時間内に処理を終えられませんでした。電子書籍の場合は、「設定」→「変換エンジン」でCalibreを「HWPX writer」より上に移動してください。CalibreならPDFを大幅に速く作成できます",
   "error.engine_stalled": "変換エンジンが応答しなくなりました。長時間進まなかったため停止しました",
+  "error.engine_busy": "別の Filee（アプリ、コマンドライン、または別のコピー）がこのエンジンをインストールまたは削除しています。終わってから、もう一度お試しください。",
   "error.needs_shaping": "この文字体系の文書を正しく変換するにはLibreOfficeが必要です。「設定」→「変換エンジン」でインストールしてください",
   "error.runtime_missing": "このエンジンに必要なMicrosoft Visual C++ランタイムのファイルがないか、古くなっています。Filee を更新または再インストールするか、Microsoft Visual C++ 再頒布可能パッケージ（x64）をインストールしてください",
   "error.conversion_failed": "変換エンジンからエラーが報告されました",

@@ -122,6 +122,7 @@
   "error.rhwp_timeout": "rhwp bu uzun belgeyi zamanında tamamlayamadı",
   "error.rhwp_timeout_calibre": "rhwp bu uzun belgeyi zamanında tamamlayamadı. E-kitaplar için Ayarlar → Dönüştürme motorları bölümünde Calibre'yi HWPX yazıcısının üstüne taşıyın; Calibre PDF'yi çok daha hızlı oluşturur",
   "error.engine_stalled": "Motor yanıt vermeyi bıraktı: uzun süre ilerleme göstermediği için durduruldu",
+  "error.engine_busy": "Başka bir Filee (uygulama, komut satırı ya da ikinci bir kopya) bu motoru yüklüyor veya kaldırıyor. Bitince yeniden deneyin.",
   "error.needs_shaping": "Bu yazı sisteminin doğru dönüştürülmesi için LibreOffice gerekli. Ayarlar → Dönüştürme motorları bölümünden kurun",
   "error.runtime_missing": "Bu motorun ihtiyaç duyduğu bir Microsoft Visual C++ çalışma zamanı dosyası eksik veya eski. Filee'yi güncelleyin ya da yeniden kurun veya Microsoft Visual C++ Redistributable (x64) yükleyin",
   "error.conversion_failed": "Motor bir hata bildirdi",
