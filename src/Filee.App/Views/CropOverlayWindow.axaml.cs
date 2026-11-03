@@ -41,6 +41,14 @@ public partial class CropOverlayWindow : Window
         AddHandler(KeyDownEvent, OnKeyDownFirst, RoutingStrategies.Tunnel);
         ResizeGrip.PointerPressed += OnGripPressed;
         Stage.SizeChanged += (_, _) => PlaceDial();
+        Canvas.SizeChanged += (_, _) => PlaceCorners();
+        var corners = CornerButtons;
+        for (var i = 0; i < corners.Length; i++)
+        {
+            var corner = i;
+            corners[i].GotFocus += (_, _) => Canvas.SelectedCorner = corner;
+        }
+        Canvas.CornerPressed += corner => corners[corner].Focus(NavigationMethod.Pointer);
         // Every move over the stage, also over the canvas and the buttons that handle it.
         Stage.AddHandler(PointerMovedEvent, (_, e) => _pointer = e.GetPosition(Stage), RoutingStrategies.Tunnel, handledEventsToo: true);
         Stage.PointerExited += (_, _) => _pointer = null;
@@ -90,8 +98,16 @@ public partial class CropOverlayWindow : Window
             vm.CloseRequested += Close;
             vm.ResetRequested += frame => Canvas.ResetCrop(frame);
             vm.AspectRatioChanged += ratio => Canvas.SetAspectRatio(ratio);
+            vm.CornersResetRequested += Canvas.ResetCorners;
+            vm.PerspectiveTurnedOn += () =>
+                Dispatcher.UIThread.Post(() => CornerTopLeft.Focus(NavigationMethod.Tab), DispatcherPriority.Input);
             vm.PropertyChanged += OnViewModelChanged;
             Canvas.CropRectChanged += rect => vm.UpdateDimensions(rect);
+            Canvas.CornersChanged += corners =>
+            {
+                vm.UpdateCorners(corners);
+                PlaceCorners();
+            };
             Closed += (_, _) => vm.Dispose();
         }
     }
@@ -102,11 +118,28 @@ public partial class CropOverlayWindow : Window
             return;
         if (e.PropertyName == nameof(CropOverlayViewModel.IsAspectDialOpen))
             ShowDial(_vm.IsAspectDialOpen);
+        else if (e.PropertyName == nameof(CropOverlayViewModel.IsPerspectiveOn) && _vm.IsPerspectiveOn
+                 && FocusManager?.GetFocusedElement() is null)
+            // Back after a PDF, whose rectangle hid the corners and dropped their focus: hand it back.
+            Dispatcher.UIThread.Post(() => CornerButtons[Canvas.SelectedCorner].Focus(NavigationMethod.Tab), DispatcherPriority.Input);
         else if (e.PropertyName == nameof(CropOverlayViewModel.CurrentIndex))
             Dispatcher.UIThread.Post(() => Strip.ContainerFromIndex(_vm.CurrentIndex)?.BringIntoView(), DispatcherPriority.Background);
     }
 
     private void OnMotionChanged(object? sender, EventArgs e) => Canvas.PlayAnimations = Motion.Enabled;
+
+    private Button[] CornerButtons => [CornerTopLeft, CornerTopRight, CornerBottomRight, CornerBottomLeft];
+
+    private void PlaceCorners()
+    {
+        var corners = CornerButtons;
+        for (var i = 0; i < corners.Length; i++)
+        {
+            var p = Canvas.CornerScreenPoint(i);
+            Avalonia.Controls.Canvas.SetLeft(corners[i], p.X - 12);
+            Avalonia.Controls.Canvas.SetTop(corners[i], p.Y - 12);
+        }
+    }
 
     // ───────────────────────── The aspect dial ─────────────────────────
 
@@ -183,6 +216,9 @@ public partial class CropOverlayWindow : Window
             return;
         switch (e.Key)
         {
+            case Key.A or Key.X when plain && vm.IsPerspectiveOn:
+                e.Handled = true;
+                break;
             case Key.Escape:
                 if (dialOpen)
                     vm.IsAspectDialOpen = false;
@@ -222,8 +258,12 @@ public partial class CropOverlayWindow : Window
             case Key.Left or Key.Right or Key.Up or Key.Down when vm.IsEditing && !vm.IsBusy
                 && (e.KeyModifiers & ~KeyModifiers.Shift) == KeyModifiers.None:
                 var step = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? 10 : 1;
-                Canvas.Nudge(e.Key switch { Key.Left => -step, Key.Right => step, _ => 0 },
-                    e.Key switch { Key.Up => -step, Key.Down => step, _ => 0 });
+                var dx = e.Key switch { Key.Left => -step, Key.Right => step, _ => 0 };
+                var dy = e.Key switch { Key.Up => -step, Key.Down => step, _ => 0 };
+                if (vm.IsPerspectiveOn)
+                    Canvas.NudgeCorner(dx, dy);
+                else
+                    Canvas.Nudge(dx, dy);
                 e.Handled = true;
                 break;
         }

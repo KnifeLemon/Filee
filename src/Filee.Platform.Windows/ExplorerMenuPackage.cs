@@ -51,8 +51,14 @@ public static class ExplorerMenuPackage
     /// </summary>
     public const string TitleFileName = "explorer-menu.txt";
 
-    /// <summary>Processor architecture of the DLL (it is loaded into explorer.exe, so it must match Explorer).</summary>
+    /// <summary>
+    /// Processor architecture of the DLL (it is loaded into explorer.exe, so it must match Explorer) when the build
+    /// names none: x64. ARM64 builds of Filee ship an ARM64 DLL in an "arm64" package.
+    /// </summary>
     public const string Architecture = "x64";
+
+    /// <summary>The package architectures <see cref="CreateManifest"/> accepts (build/build-explorer-menu.ps1 -Architecture).</summary>
+    public static IReadOnlyList<string> Architectures { get; } = ["x64", "arm64"];
 
     /// <summary>Windows 11 (build 22000) is the first version with the new context menu and unsigned packages.</summary>
     public const int MinimumBuild = 22000;
@@ -69,11 +75,14 @@ public static class ExplorerMenuPackage
     private static readonly XNamespace Rescap = "http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities";
 
     /// <summary>
-    /// Builds AppxManifest.xml. Paths in it (Filee.exe, the DLL) are relative to the external location, i.e. the
-    /// install folder given at registration.
+    /// Builds AppxManifest.xml for a DLL built for <paramref name="architecture"/> (one of <see cref="Architectures"/>).
+    /// Paths in it (Filee.exe, the DLL) are relative to the external location, i.e. the install folder given at
+    /// registration.
     /// </summary>
-    public static string CreateManifest()
+    public static string CreateManifest(string architecture = Architecture)
     {
+        if (!Architectures.Contains(architecture))
+            throw new ArgumentOutOfRangeException(nameof(architecture), architecture, $"Expected one of {string.Join(", ", Architectures)}.");
         var clsid = ClassId.ToString("D").ToUpperInvariant();
         var package = new XElement(Foundation + "Package",
             new XAttribute("xmlns", Foundation.NamespaceName),
@@ -88,7 +97,7 @@ public static class ExplorerMenuPackage
                 new XAttribute("Name", PackageName),
                 new XAttribute("Publisher", Publisher),
                 new XAttribute("Version", ManifestVersion.ToString(4)),
-                new XAttribute("ProcessorArchitecture", Architecture)),
+                new XAttribute("ProcessorArchitecture", architecture)),
             new XElement(Foundation + "Properties",
                 new XElement(Foundation + "DisplayName", "Filee"),
                 new XElement(Foundation + "PublisherDisplayName", "Filee contributors"),

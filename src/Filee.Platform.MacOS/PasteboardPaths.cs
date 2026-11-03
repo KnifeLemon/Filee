@@ -37,6 +37,31 @@ public static class PasteboardPaths
         "public.url", "public.html", "public.png", "public.jpeg", "public.tiff", "com.compuserve.gif", "org.webmproject.webp",
     ];
 
+    /// <summary>
+    /// Picture types read from the clipboard, in order of preference, with the extension their bytes are saved under.
+    /// A screenshot copied with Ctrl comes as PNG and TIFF: PNG first, TIFF (the largest) last.
+    /// </summary>
+    public static IReadOnlyList<(string Type, string Extension)> PictureTypes { get; } =
+    [
+        ("public.png", "png"), ("public.jpeg", "jpg"), ("public.heic", "heic"), ("org.webmproject.webp", "webp"),
+        ("com.compuserve.gif", "gif"), ("public.tiff", "tiff"),
+    ];
+
+    /// <summary>
+    /// The pasteboard type of the picture at <paramref name="path"/>, by its extension, for pasting it as itself; null
+    /// for anything else.
+    /// </summary>
+    public static string? PictureTypeOf(string path)
+    {
+        var extension = Path.GetExtension(path).TrimStart('.').ToLowerInvariant() switch
+        {
+            "jpeg" or "jpe" => "jpg",
+            "tif" => "tiff",
+            var other => other,
+        };
+        return PictureTypes.FirstOrDefault(t => t.Extension == extension).Type;
+    }
+
     /// <summary>Whether <paramref name="type"/> names NSFilenamesPboardType, by its name or its dynamic UTI.</summary>
     public static bool IsFilenamesType(string type) => type is FilenamesType or FilenamesUti;
 

@@ -1,7 +1,9 @@
 // The crop overlay's stage: the picture on a dimmed backdrop with soft accent glows, the part outside the frame
 // frosted (a tiny copy of the preview drawn large, so nothing is decoded again while dragging), the frame in the
 // accent colour with round handles, a rule-of-thirds grid that fades in while dragging and a size chip that follows
-// the frame. Programmatic changes (reset, ratio, a new picture) ease in; dragging follows the pointer directly.
+// the frame. Programmatic changes (reset, ratio, a new picture) ease in; dragging follows the pointer directly. In the
+// perspective mode the frame gives way to four corners that move on their own (by pointer or keyboard), joined by the
+// outline of the quadrilateral to straighten, with the size chip showing the straightened size.
 
 using System.Diagnostics;
 using System.Globalization;
@@ -40,6 +42,15 @@ public sealed class CropCanvas : Control
 
     public static readonly StyledProperty<double> AspectRatioProperty =
         AvaloniaProperty.Register<CropCanvas, double>(nameof(AspectRatio), 0);
+
+    public static readonly StyledProperty<bool> IsPerspectiveProperty =
+        AvaloniaProperty.Register<CropCanvas, bool>(nameof(IsPerspective));
+
+    public static readonly StyledProperty<CropQuad> NormalizedCornersProperty =
+        AvaloniaProperty.Register<CropCanvas, CropQuad>(nameof(NormalizedCorners), CropQuad.Full);
+
+    public static readonly StyledProperty<int> SelectedCornerProperty =
+        AvaloniaProperty.Register<CropCanvas, int>(nameof(SelectedCorner));
 
     /// <summary>Room kept free around the picture for the floating chips and the toolbar.</summary>
     public static readonly StyledProperty<Thickness> ImagePaddingProperty =
@@ -96,13 +107,20 @@ public sealed class CropCanvas : Control
     public IBrush? ChipBackground { get => GetValue(ChipBackgroundProperty); set => SetValue(ChipBackgroundProperty, value); }
     public IBrush? ChipForeground { get => GetValue(ChipForegroundProperty); set => SetValue(ChipForegroundProperty, value); }
     public bool PlayAnimations { get => GetValue(PlayAnimationsProperty); set => SetValue(PlayAnimationsProperty, value); }
+    public bool IsPerspective { get => GetValue(IsPerspectiveProperty); set => SetValue(IsPerspectiveProperty, value); }
+    public CropQuad NormalizedCorners { get => GetValue(NormalizedCornersProperty); set => SetValue(NormalizedCornersProperty, value); }
+    public int SelectedCorner { get => GetValue(SelectedCornerProperty); set => SetValue(SelectedCornerProperty, value); }
 
     public event Action<Rect>? CropRectChanged;
+    public event Action<CropQuad>? CornersChanged;
+    public event Action<int>? CornerPressed;
 
     private CropHandle _activeHandle = CropHandle.None;
+    private IPointer? _dragPointer;
     private CropHandle _hoverHandle = CropHandle.None;
     private Point _dragStartPoint;
     private Rect _dragStartCrop;
+    private CropQuad _dragStartCorners;
 
     // The frame being moved sits on the picture's vertical / horizontal centre line: its guide is drawn.
     private bool _snappedX, _snappedY;
@@ -154,7 +172,8 @@ public sealed class CropCanvas : Control
     static CropCanvas()
     {
         AffectsRender<CropCanvas>(SourceImageProperty, NormalizedCropRectProperty, AspectRatioProperty, ImagePaddingProperty,
-            SizeTextProperty, AccentBrushProperty, StageBrushProperty, ChipBackgroundProperty, ChipForegroundProperty);
+            SizeTextProperty, AccentBrushProperty, StageBrushProperty, ChipBackgroundProperty, ChipForegroundProperty,
+            IsPerspectiveProperty, NormalizedCornersProperty, SelectedCornerProperty);
         FocusableProperty.OverrideDefaultValue<CropCanvas>(false);
     }
 
@@ -165,6 +184,32 @@ public sealed class CropCanvas : Control
     public void ResetCrop(Rect? frame = null)
     {
         SetRect(frame ?? new Rect(0, 0, 1, 1), animate: true);
+    }
+
+    /// <summary>Starts the corners over without changing the focused corner.</summary>
+    public void ResetCorners()
+    {
+        var same = NormalizedCorners == CropQuad.Full;
+        NormalizedCorners = CropQuad.Full;
+        if (same)
+            CornersChanged?.Invoke(CropQuad.Full);
+        InvalidateVisual();
+    }
+
+    /// <summary>Moves the selected corner by whole pixels of the picture.</summary>
+    public void NudgeCorner(int dx, int dy)
+    {
+        var size = PixelSize;
+        if (SourceImage is null || size.Width <= 0 || size.Height <= 0)
+            return;
+        NormalizedCorners = CropMath.NudgeCorner(NormalizedCorners, SelectedCorner, dx, dy, size.Width, size.Height);
+    }
+
+    internal Point CornerScreenPoint(int corner)
+    {
+        var image = CalculateImageBounds();
+        var p = NormalizedCorners[corner];
+        return new Point(image.X + p.X * image.Width, image.Y + p.Y * image.Height);
     }
 
     public void SetAspectRatio(double ratio)
@@ -297,6 +342,12 @@ public sealed class CropCanvas : Control
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
+        // A drag pressed in one mode or on one picture means nothing in the other (a frame body is no corner, a
+        // corner's delta would move the frame being restored or the next picture's fresh corners): let go of it.
+        if ((change.Property == IsPerspectiveProperty || change.Property == SourceImageProperty)
+            && _activeHandle != CropHandle.None)
+            _dragPointer?.Capture(null);
+
         if (change.Property == NormalizedCropRectProperty)
         {
             var now = Now();
@@ -314,6 +365,10 @@ public sealed class CropCanvas : Control
                 _frame = Tween.Done(1);
             }
             CropRectChanged?.Invoke(change.GetNewValue<Rect>());
+        }
+        else if (change.Property == NormalizedCornersProperty)
+        {
+            CornersChanged?.Invoke(change.GetNewValue<CropQuad>());
         }
         else if (change.Property == SourceImageProperty)
         {
@@ -405,6 +460,34 @@ public sealed class CropCanvas : Control
         }
         using (context.PushOpacity(IsDark ? 0.62 : 0.58))
             context.FillRectangle(StageBrush ?? Brushes.Gray, imgBounds);
+
+        if (IsPerspective)
+        {
+            var polygon = new StreamGeometry();
+            using (var path = polygon.Open())
+            {
+                path.BeginFigure(CornerScreenPoint(0), true);
+                for (var i = 1; i < 4; i++)
+                    path.LineTo(CornerScreenPoint(i));
+                path.EndFigure(true);
+            }
+            using (context.PushGeometryClip(polygon))
+            using (context.PushRenderOptions(new RenderOptions { BitmapInterpolationMode = BitmapInterpolationMode.HighQuality }))
+                context.DrawImage(SourceImage, source, imgBounds);
+            var accent = AccentBrush ?? Brushes.MediumPurple;
+            context.DrawGeometry(null, FrameShadowPen, polygon);
+            context.DrawGeometry(null, new Pen(accent, 2), polygon);
+            var pop = EaseOutBack(_handlePop.Value(now));
+            for (var i = 0; i < 4; i++)
+            {
+                var radius = 6.5 + (CornerHandle(i) == _poppedHandle ? 2.5 * pop : 0);
+                DrawDot(context, accent, CornerScreenPoint(i), radius);
+                if (i == SelectedCorner)
+                    context.DrawEllipse(null, new Pen(accent, 2), CornerScreenPoint(i), radius + 5, radius + 5);
+            }
+            DrawSizeChip(context, polygon.Bounds, imgBounds, bounds);
+            return;
+        }
 
         // Inside: the picture itself.
         var crop = ToScreen(ShownCropRect, imgBounds);
@@ -522,6 +605,17 @@ public sealed class CropCanvas : Control
         context.DrawEllipse(HandleShadowBrush, null, center + new Vector(0, 1), radius + 2, radius + 2);
         context.DrawEllipse(accent, HandleRingPen, center, radius, radius);
     }
+
+    /// <summary>The corner index (TopLeft, TopRight, BottomRight, BottomLeft) of a perspective corner handle.</summary>
+    private static int CornerOf(CropHandle handle) => handle switch
+    {
+        CropHandle.TopLeft => 0,
+        CropHandle.TopRight => 1,
+        CropHandle.BottomRight => 2,
+        CropHandle.BottomLeft => 3,
+        // Perspective hit-testing only hands out corners, and a mode switch lets go of any other handle.
+        _ => throw new UnreachableException($"{handle} is not a corner handle."),
+    };
 
     private static Point HandlePoint(Rect crop, CropHandle handle) => handle switch
     {
@@ -653,6 +747,14 @@ public sealed class CropCanvas : Control
     {
         const double hitTol = 16.0;
 
+        if (IsPerspective)
+        {
+            for (var i = 0; i < 4; i++)
+                if (Distance(pt, CornerScreenPoint(i)) <= hitTol)
+                    return CornerHandle(i);
+            return CropHandle.None;
+        }
+
         if (Distance(pt, crop.TopLeft) <= hitTol) return CropHandle.TopLeft;
         if (Distance(pt, crop.TopRight) <= hitTol) return CropHandle.TopRight;
         if (Distance(pt, crop.BottomLeft) <= hitTol) return CropHandle.BottomLeft;
@@ -669,6 +771,14 @@ public sealed class CropCanvas : Control
     }
 
     private static double Distance(Point a, Point b) => Math.Sqrt(Math.Pow(a.X - b.X, 2) + Math.Pow(a.Y - b.Y, 2));
+
+    private static CropHandle CornerHandle(int corner) => corner switch
+    {
+        0 => CropHandle.TopLeft,
+        1 => CropHandle.TopRight,
+        2 => CropHandle.BottomRight,
+        _ => CropHandle.BottomLeft,
+    };
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
@@ -702,6 +812,19 @@ public sealed class CropCanvas : Control
             };
             _hoverHandle = h;
             PopHandle(h);
+            return;
+        }
+
+        if (IsPerspective)
+        {
+            // The corner the pointer took hold of, not SelectedCorner: Tab can move the selection mid-drag. It moves
+            // by the pointer's travel, like the frame's handles, so grabbing it off-centre doesn't make it jump.
+            var corner = CornerOf(_activeHandle);
+            var from = _dragStartCorners[corner];
+            var target = new Point(
+                from.X + (pt.X - _dragStartPoint.X) / imgBounds.Width,
+                from.Y + (pt.Y - _dragStartPoint.Y) / imgBounds.Height);
+            NormalizedCorners = CropMath.MoveCorner(NormalizedCorners, corner, target, PixelSize.Width, PixelSize.Height);
             return;
         }
 
@@ -923,13 +1046,26 @@ public sealed class CropCanvas : Control
 
         if (_activeHandle != CropHandle.None)
         {
+            if (IsPerspective)
+            {
+                var corner = CornerOf(_activeHandle);
+                SelectedCorner = corner;
+                CornerPressed?.Invoke(corner);
+            }
             _dragStartPoint = pt;
             _dragStartCrop = crop;
+            _dragStartCorners = NormalizedCorners;
             _snappedX = _snappedY = false;
             e.Pointer.Capture(this);
+            _dragPointer = e.Pointer;
             e.Handled = true;
             PopHandle(_activeHandle);
             SetGrid(true);
+        }
+        else if (IsPerspective && imgBounds.Contains(pt))
+        {
+            // A press that misses the corners still lands on the picture: it isn't the stage that moves the window.
+            e.Handled = true;
         }
     }
 
@@ -939,6 +1075,7 @@ public sealed class CropCanvas : Control
         if (_activeHandle != CropHandle.None)
         {
             _activeHandle = CropHandle.None;
+            _dragPointer = null;
             e.Pointer.Capture(null);
             e.Handled = true;
             SetGrid(false);
@@ -952,6 +1089,7 @@ public sealed class CropCanvas : Control
         if (_activeHandle != CropHandle.None)
         {
             _activeHandle = CropHandle.None;
+            _dragPointer = null;
             SetGrid(false);
             PopHandle(CropHandle.None);
         }
@@ -959,6 +1097,8 @@ public sealed class CropCanvas : Control
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
+        if (IsPerspective)
+            return;
         base.OnPointerWheelChanged(e);
         var imgBounds = CalculateImageBounds();
         if (imgBounds.Width <= 0 || imgBounds.Height <= 0) return;

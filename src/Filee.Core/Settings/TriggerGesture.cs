@@ -72,6 +72,15 @@ public sealed class TriggerGesture
 
     public TriggerScope Scope { get; set; } = TriggerScope.FileManager;
 
+    /// <summary>
+    /// <see cref="TriggerKind.KeyChord"/> only, where the platform has a clipboard (<c>SupportsClipboard</c>): the
+    /// donut opens for the files on the clipboard, else the picture on it (a screenshot), and the results are put back
+    /// on the clipboard. With neither on it, the shortcut does nothing. Off unless the user turns it on for a shortcut
+    /// of their own choosing: the hook can't hold the keys back, so a preset combination (Shift + Cmd + V is Paste and
+    /// Match Style in most text fields) would also reach the app in front.
+    /// </summary>
+    public bool Clipboard { get; set; }
+
     public TriggerGesture Clone() => (TriggerGesture)MemberwiseClone();
 
     /// <summary>Default gestures for the current OS.</summary>

@@ -29,6 +29,7 @@
 <p align="center">
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/weekly?language=C%23&v=2" alt="Filee: #1 C# repository of the week on Trendshift" width="250" height="55"></a>
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
+  <a href="https://hellogithub.com/repository/KnifeLemon/Filee" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=0847caedd5bd4077a70b90f83afdf83c&claim_uid=jAlIvVMhn0kcEsU" alt="Featured｜HelloGitHub" width="250" height="54" /></a>
 </p>
 
 <p align="center">
@@ -46,7 +47,9 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a> ·
+  <a href="README.it.md">Italiano</a>
 </p>
 
 <table>
@@ -57,7 +60,7 @@
       Форматы появляются там, где вы уже работаете, и только те, что подходят перетаскиваемым файлам.
     </td>
     <td width="33%" valign="top">
-      <b>268 форматов без лишних программ</b><br>
+      <b>270 форматов без лишних программ</b><br>
       Изображения, PDF, Word, Excel, PowerPoint, HWP, электронные книги, архивы, шрифты, чертежи CAD, 3D-модели и геоданные работают без Office, Hancom Office и LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -131,7 +134,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **Папки наблюдения** конвертируют каждый файл, который в них попадает.
 - **Недавние конвертации** на главной, у каждой миниатюра: результат можно открыть («Открыть файл») или открыть в другой программе («Открыть с помощью»).
 - **Другие способы**: контекстное меню, горячая клавиша, зона перетаскивания и [команда `filee`](#командная-строка).
-- Светлая и тёмная темы со своим акцентным цветом и непрозрачностью кругового меню, интерфейс на языках English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (справа налево), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal) и Deutsch.
+- Светлая и тёмная темы со своим акцентным цветом и непрозрачностью кругового меню, интерфейс на языках English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (справа налево), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano и Bahasa Indonesia.
 
 ## Скриншоты
 

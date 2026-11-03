@@ -29,6 +29,7 @@
 <p align="center" dir="ltr">
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/weekly?language=C%23&v=2" alt="Filee: #1 C# repository of the week on Trendshift" width="250" height="55"></a>
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: #1 C# repository of the day on Trendshift" width="250" height="55"></a>
+  <a href="https://hellogithub.com/repository/KnifeLemon/Filee" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=0847caedd5bd4077a70b90f83afdf83c&claim_uid=jAlIvVMhn0kcEsU" alt="Featured｜HelloGitHub" width="250" height="54" /></a>
 </p>
 
 <p align="center" dir="ltr">
@@ -46,7 +47,9 @@
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a> ·
+  <a href="README.it.md">Italiano</a>
 </p>
 
 <div dir="rtl">
@@ -59,7 +62,7 @@
       تظهر الصيغ حيث أنت، ولا يظهر منها إلا ما يناسب الملفات التي تسحبها.
     </td>
     <td width="33%" valign="top">
-      <b>268 صيغة دون برامج أخرى</b><br>
+      <b>270 صيغة دون برامج أخرى</b><br>
       الصور وPDF وWord وExcel وPowerPoint وHWP والكتب الإلكترونية والأرشيفات والخطوط وCAD والنماذج ثلاثية الأبعاد والبيانات الجغرافية، كلها تعمل دون Office أو Hancom Office أو LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -137,7 +140,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **مراقبة المجلدات**: يُحوَّل كل ملف يصل إلى المجلد المراقَب.
 - **التحويلات الأخيرة** في الصفحة الرئيسية، لكل نتيجة صورة مصغّرة: افتح الملف، أو افتحه باستخدام تطبيق آخر.
 - **طرق أخرى**: قائمة النقر بالزر الأيمن، واختصار لوحة المفاتيح، ومنطقة الإفلات، و[الأمر `filee`](#سطر-الأوامر).
-- مظهر فاتح وداكن، باللون المميّز وشفافية الشريط الدائري اللذين تختارهما، وباللغات: English · Español · 日本語 · 한국어 · 简体中文 · 繁體中文 · Polski · हिन्दी · Русский · العربية (من اليمين إلى اليسار) · Português (Brasil) · Français · नेपाली · ไทย · Türkçe · Português (Portugal) · Deutsch.
+- مظهر فاتح وداكن، باللون المميّز وشفافية الشريط الدائري اللذين تختارهما، وباللغات: English · Español · 日本語 · 한국어 · 简体中文 · 繁體中文 · Polski · हिन्दी · Русский · العربية (من اليمين إلى اليسار) · Português (Brasil) · Français · नेपाली · ไทย · Türkçe · Português (Portugal) · Deutsch · Italiano · Bahasa Indonesia.
 
 ## لقطات الشاشة
 

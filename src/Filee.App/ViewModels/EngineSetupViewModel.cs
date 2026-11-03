@@ -84,9 +84,14 @@ public sealed partial class EngineSetupViewModel : ObservableObject
     [RelayCommand]
     private void Close()
     {
+        Release();
+        CloseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    internal void Release()
+    {
         foreach (var package in Packages)
             package.PropertyChanged -= OnPackageChanged;
-        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     private void OnPackageChanged(object? sender, PropertyChangedEventArgs e)

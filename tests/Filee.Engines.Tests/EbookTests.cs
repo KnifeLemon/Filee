@@ -202,6 +202,28 @@ public class EbookTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.DoesNotContain("![", withoutPictures);
     }
 
+    [Theory]
+    [InlineData(0x41u)]
+    [InlineData(0x40u)]
+    public async Task Markdown_dds_picture_keeps_its_colours_in_epub(uint flags)
+    {
+        var dir = fx.NewFolder();
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        File.WriteAllBytes(Path.Combine(dir, "red.dds"), ImageFormatTests.Dds(flags, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels));
+        var md = Path.Combine(dir, "book.md");
+        await File.WriteAllTextAsync(md, "![red](red.dds)", TestContext.Current.CancellationToken);
+
+        var epub = await ConvertAsync(md, "epub");
+
+        using var zip = ZipFile.OpenRead(epub);
+        using var stream = Assert.Single(zip.Entries, e => e.FullName.StartsWith("OEBPS/images/", StringComparison.Ordinal)
+            && e.FullName.EndsWith(".png", StringComparison.Ordinal)).Open();
+        using var image = new MagickImage(stream);
+        Assert.Equal(MagickFormat.Png, image.Format);
+        Assert.Equal((4u, 4u), (image.Width, image.Height));
+        Assert.Equal(pixels.Where((_, i) => i % 4 != 3).ToArray(), image.GetPixels().ToByteArray(PixelMapping.RGB));
+    }
+
     [Fact]
     public async Task Markdown_to_epub_is_a_valid_package_that_reads_back()
     {

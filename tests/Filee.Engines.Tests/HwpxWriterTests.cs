@@ -2,6 +2,7 @@
 // Output is checked structurally, read back with Unhwp and rendered with rhwp. DOCX has its own tests
 // (DocxToHwpxTests) because it is read without Pandoc.
 
+using System.IO.Compression;
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -55,6 +56,28 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var errors = string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}"));
         Assert.True(job.State == JobState.Completed, errors);
         return job.Outputs.Single();
+    }
+
+    [Theory]
+    [InlineData(0x41u)]
+    [InlineData(0x40u)]
+    public async Task Markdown_dds_picture_keeps_its_colours_in_hwpx(uint flags)
+    {
+        var dir = fx.NewFolder();
+        byte[] pixels = [.. Enumerable.Repeat<byte[]>([255, 0, 0, 255], 16).SelectMany(p => p)];
+        File.WriteAllBytes(Path.Combine(dir, "red.dds"), ImageFormatTests.Dds(flags, 0xFF, 0xFF00, 0xFF0000, 0xFF000000, pixels));
+        var md = Path.Combine(dir, "document.md");
+        await File.WriteAllTextAsync(md, "![red](red.dds)", TestContext.Current.CancellationToken);
+
+        var hwpx = await ConvertAsync(md);
+
+        using var zip = ZipFile.OpenRead(hwpx);
+        using var stream = Assert.Single(zip.Entries, e => e.FullName.StartsWith("BinData/", StringComparison.Ordinal)
+            && e.FullName.EndsWith(".png", StringComparison.Ordinal)).Open();
+        using var image = new MagickImage(stream);
+        Assert.Equal(MagickFormat.Png, image.Format);
+        Assert.Equal((4u, 4u), (image.Width, image.Height));
+        Assert.Equal(pixels.Where((_, i) => i % 4 != 3).ToArray(), image.GetPixels().ToByteArray(PixelMapping.RGB));
     }
 
     [Fact]

@@ -190,3 +190,92 @@ jobs:
             tests/Filee.App.Tests/bin/Release/net10.0/screenshots/
             tests/Filee.Setup.Tests/bin/Release/net10.0/screenshots/
           if-no-files-found: ignore
+
+  # Windows on ARM64 (#236), built and tested natively: the Explorer menu DLL, Setup, 7-Zip, rhwp and Unhwp's library
+  # are ARM64 builds, the downloaded engines (Pandoc here) x64 ones under emulation. rhwp and Unhwp come from pinned
+  # builds of .github/workflows/windows-arm64-native.yml (build/fetch-engines.ps1). Until both are pinned, their tests
+  # skip and no package is built; once they are, the job also builds the win-arm64 Setup and portable zip to try out.
+  build-arm64:
+    name: build (win-arm64)
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.code != 'false' }}
+    runs-on: windows-11-arm
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+
+      - name: ARM64 pins
+        id: pins
+        run: |
+          $missing = @(./build/fetch-engines.ps1 -Runtime win-arm64 -MissingPins)
+          if ($missing) {
+            Write-Host "::warning::Not pinned yet for win-arm64: $($missing -join ', '). Their tests skip and no package is built (build/fetch-engines.ps1)."
+          }
+          "ready=$(([string](-not $missing)).ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Restore
+        run: dotnet restore Filee.slnx
+
+      - name: Fonts
+        run: ./build/fetch-fonts.ps1
+
+      # The pinned rhwp and Unhwp builds when there are, as for the package; Unhwp's library goes next to the test
+      # programs through the build.
+      - name: Fetch engines for engine tests
+        run: |
+          $only = @('pandoc', '7zip')
+          if ('${{ steps.pins.outputs.ready }}' -eq 'true') { $only += @('rhwp', 'unhwp') }
+          ./build/fetch-engines.ps1 -Runtime win-arm64 -Only $only
+
+      - name: Build
+        run: |
+          $native = @()
+          if ('${{ steps.pins.outputs.ready }}' -eq 'true') { $native = @("-p:UnhwpNativeLibrary=$((Resolve-Path engines/unhwp/unhwp.dll).Path)") }
+          dotnet build Filee.slnx --no-restore -c Release @native
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # The x64 Zig toolchain the build job saves; it cross-compiles the ARM64 DLL under x64 emulation.
+      - name: Restore Zig toolchain
+        uses: actions/cache/restore@v5
+        with:
+          path: build/.cache/zig-x86_64-windows-0.16.0
+          key: zig-0.16.0-x86_64-windows
+
+      - name: Build Explorer menu extension
+        run: ./build/build-explorer-menu.ps1 -Architecture arm64
+
+      - name: Test UI on its own
+        run: dotnet test tests/Filee.App.Tests --no-build -c Release --blame-crash --blame-hang-timeout 5m --logger "console;verbosity=normal" --results-directory TestResults/app
+
+      - name: Test
+        run: dotnet test Filee.slnx --no-build -c Release --filter "FullyQualifiedName!~Filee.App.Tests" --logger "trx" --results-directory TestResults
+
+      - name: Check the installer
+        run: ./build/build-installer.ps1 -CheckOnly -Runtime win-arm64
+
+      - name: Build package
+        if: steps.pins.outputs.ready == 'true'
+        run: ./build/build-installer.ps1 -Runtime win-arm64 -Portable
+
+      - name: Upload package
+        if: steps.pins.outputs.ready == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-arm64-package
+          path: Releases/*-win-arm64-*
+          if-no-files-found: error
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-windows-arm64
+          path: TestResults/
+          if-no-files-found: ignore

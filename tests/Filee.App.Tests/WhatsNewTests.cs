@@ -531,7 +531,7 @@ public class WhatsNewTests
         try
         {
             service.CurrentVersion = new Version(2, 0, 3);
-            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate("about");
             var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
             window.Show();

@@ -478,8 +478,8 @@ internal static class ImageEncoder
                 continue;
             frames[i].Write(path, format);
             // Animations and multi-page files written above aren't fitted: the queue refuses them when they're too large.
-            if (options is { MaxSizeMb: > 0 })
-                FitToSize(frames[i], path, format, SizeLimit.Bytes(options.MaxSizeMb));
+            if (options is { MaxSizeMb: > 0 } or { MinSizeMb: > 0 })
+                FitToSize(frames[i], path, format, SizeLimit.Bytes(options.MaxSizeMb), SizeLimit.MinimumBytes(options.MinSizeMb));
             written.Add(path);
         }
         return written;
@@ -492,12 +492,18 @@ internal static class ImageEncoder
     /// Saves <paramref name="image"/> again until <paramref name="path"/> is at most <paramref name="limit"/> bytes: a
     /// lower quality first (down to 50, where a lossy format still looks fine), then fewer pixels, but never below a
     /// long edge of <see cref="MinFittedLongEdge"/>. Refuses when it still doesn't fit, rather than hand over a file
-    /// that breaks the limit or a thumbnail.
+    /// that breaks the limit or a thumbnail. Under <paramref name="minimum"/> (#662), a lossy format is saved again at a
+    /// higher quality, never with more pixels, up to 100 or until the next step would break the limit; the queue tells
+    /// about a file that stays under it.
     /// </summary>
-    internal static void FitToSize(IMagickImage<byte> image, string path, MagickFormat format, long limit)
+    /// <param name="limit">Most bytes; 0 = no limit.</param>
+    /// <param name="minimum">Fewest bytes; 0 = no minimum.</param>
+    internal static void FitToSize(IMagickImage<byte> image, string path, MagickFormat format, long limit, long minimum = 0)
     {
         var size = new FileInfo(path).Length;
-        if (size <= limit)
+        if (limit <= 0)
+            limit = long.MaxValue;
+        if (size <= limit && size >= minimum)
             return;
         using var copy = image.Clone();
         var lossy = format is MagickFormat.Jpeg or MagickFormat.WebP or MagickFormat.Avif or MagickFormat.Jxl or MagickFormat.Jp2;
@@ -519,7 +525,22 @@ internal static class ImageEncoder
             size = new FileInfo(path).Length;
         }
         if (size > limit)
-            throw new ConversionRefusedException("error.over_size_limit", SizeLimit.Describe(size, limit));
+            throw new ConversionRefusedException("error.over_size_limit", SizeLimit.Describe(size, limit, image: true));
+
+        // Still the copy fitted above (its quality and pixels), never the picture as it came.
+        while (lossy && size < minimum && copy.Quality < 100)
+        {
+            var previous = copy.Quality;
+            copy.Quality = Math.Min(100, previous + 10);
+            copy.Write(path, format);
+            size = new FileInfo(path).Length;
+            if (size > limit)
+            {
+                copy.Quality = previous;
+                copy.Write(path, format);
+                break;
+            }
+        }
     }
 
     /// <summary>Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>).</summary>

@@ -119,6 +119,28 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     // ───────────────────────── Merge videos ─────────────────────────
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Separate_m4s_video_and_audio_are_muxed_without_reencoding(bool audioFirst)
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var video = await MakeClipAsync(folder, "画面.m4s", 2, audio: false,
+            extra: ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-movflags", "frag_keyframe+empty_moov", "-f", "mp4"]);
+        var audio = await MakeToneAsync(folder, "声音.m4s", 2,
+            extra: ["-c:a", "aac", "-movflags", "frag_keyframe+empty_moov", "-f", "mp4"]);
+
+        var output = await RunAsync(audioFirst ? [audio, video] : [video, audio], BuiltIn("merge-videos"));
+
+        var info = await ProbeAsync(output);
+        Assert.Equal("h264", info.Video!.Codec);
+        Assert.Equal("aac", info.Audio!.Codec);
+        Assert.InRange(info.Duration, 1.9, 2.2);
+        Assert.Equal(await StreamHashAsync(video, "v"), await StreamHashAsync(output, "v"));
+        Assert.Equal(await StreamHashAsync(audio, "a"), await StreamHashAsync(output, "a"));
+    }
+
     [Fact]
     public async Task Clips_from_one_camera_are_merged_without_an_encode()
     {
@@ -139,6 +161,34 @@ public class MediaToolRealTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(firstPackets.Skip(1), (await PacketHashesAsync(output)).Take(firstPackets.Count).Skip(1));
         Assert.Equal(("h264", 320, 240), (probed.Video!.Codec, probed.Video.Width, probed.Video.Height));
         Assert.Equal("aac", probed.Audio!.Codec);
+    }
+
+    [Fact]
+    public async Task Clips_whose_sound_is_on_another_track_keep_every_parts_sound_when_merged()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var first = Path.Combine(folder, "a.mov");
+        await FfmpegAsync(["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=320x240:rate=25:duration=1",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=1",
+            "-f", "lavfi", "-i", "sine=frequency=880:sample_rate=48000:duration=1",
+            "-map", "0:v", "-map", "1:a", "-map", "2:a", "-ac:a:0", "4", "-ac:a:1", "2",
+            "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-f", "mov", first]);
+        MediaTests.WithoutDecoder(first);
+        var second = await MakeClipAsync(folder, "b.mov", 1, extra: ["-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-f", "mov"]);
+        var a = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, first, TestContext.Current.CancellationToken);
+        var b = await MediaInfo.ProbeAsync(Tools.Value.Ffprobe, second, TestContext.Current.CancellationToken);
+        Assert.Equal(a.Video, b.Video);
+        Assert.Equal(new AudioStreamInfo(2, 48000, "aac", 1), a.Audio);
+        Assert.Equal(new AudioStreamInfo(2, 48000, "aac", 0), b.Audio);
+
+        var output = await RunAsync([first, second], BuiltIn("merge-videos"));
+        var duration = await ProcessRunner.RunAsync(Tools.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "a:0", "-show_entries", "stream=duration", "-of", "csv=p=0", output],
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
+        Assert.True(duration.ExitCode == 0, duration.StandardError);
+        Assert.InRange(double.Parse(duration.StandardOutput.Trim(), CultureInfo.InvariantCulture), 1.8, 2.2);
     }
 
     [Fact]

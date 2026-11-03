@@ -16,6 +16,7 @@ using Filee.App.Services;
 using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 using Filee.App.Views;
+using Filee.Core.Conversion;
 using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
@@ -134,6 +135,7 @@ public class DonutFlipTests
             AppHost.Get<IPlatformServices>(), triggers, NullLogger<RadialController>.Instance);
         var folder = Directory.CreateTempSubdirectory("filee-wave-drop-");
         var conversions = AppHost.Get<ConversionService>();
+        ConversionJob? started = null;
         try
         {
             var file = Path.Combine(folder.FullName, "photo.jpg");
@@ -158,6 +160,7 @@ public class DonutFlipTests
             window.DragDrop(inWindow, RawDragEventType.Drop, data, DragDropEffects.Copy, RawInputModifiers.Control);
             var job = Assert.Single(conversions.Jobs, j => !before.Contains(j.Job.Id));
             Assert.Equal(preset.Id, job.Job.Preset.Id);
+            started = job.Job;
             job.CancelCommand.Execute(null);
             radial.Close(animate: false);
             window.Close();
@@ -165,7 +168,10 @@ public class DonutFlipTests
         finally
         {
             radial.Close(animate: false);
-            folder.Delete(recursive: true);
+            // The cancelled conversion may still be reading photo.jpg: the folder goes once it has stopped.
+            if (started is not null)
+                ClipWindowTests.WaitFor(() => started.State is not (JobState.Queued or JobState.Running));
+            try { folder.Delete(recursive: true); } catch (IOException) { }
         }
     });
 
@@ -524,7 +530,7 @@ public class DonutFlipTests
         TestServices.EnsureInitialized();
         Motion.Configure(false, () => false);
         var originalBack = Images.BackPresetIds?.ToList();
-        using var main = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        using var main = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         main.Navigate("toolbar");
         var window = new MainWindow { DataContext = main, Width = 1080, Height = 1000 };
         try
@@ -543,9 +549,12 @@ public class DonutFlipTests
             Assert.True(donut.IsFlipping);
             Assert.False(donut.HasOldFace);
             Assert.Equal(0, donut.FlipOrigin);
-            Assert.True(donut.SliceFlipWidth(false, 0) > 0);
+            // The incoming face starts exactly edge-on, without a minimum-width stripe.
+            Assert.Equal(0, donut.SliceFlipWidth(false, 0));
             Assert.Equal(0, donut.SliceFlipWidth(false, 2));
-            donut.Advance(DonutMenu.FlipDuration - DonutMenu.SliceTurn / 2);
+            donut.Advance(0.01);
+            Assert.InRange(donut.SliceFlipWidth(false, 0), 0.01, 0.99);
+            donut.Advance(DonutMenu.FlipDuration - DonutMenu.SliceTurn / 2 - 0.01);
             Assert.False(donut.IsFlipping);
             Assert.Equal(1, donut.SliceFlipWidth(false, 2));
             donut.AccentBrush = Avalonia.Media.Brushes.Red;
@@ -1157,7 +1166,9 @@ public class DonutFlipTests
 
             // Drawn right here, not by the render loop: that would play the rest of the turn first.
             donut.HandleKey(Key.Tab);
-            donut.Advance(DonutMenu.FlipDuration * 0.3);
+            donut.Advance(DonutMenu.SliceTurn / 2);
+            Assert.Equal(0, donut.SliceFlipWidth(false, 0));
+            donut.Advance(DonutMenu.SliceTurn / 4);
             Assert.InRange(donut.SliceFlipWidth(false, 0), 0.01, 0.99);
             var size = new PixelSize((int)window.Bounds.Width, (int)window.Bounds.Height);
             using (var turning = new Avalonia.Media.Imaging.RenderTargetBitmap(size))
@@ -1234,7 +1245,7 @@ public class DonutFlipTests
         {
             if (dark)
                 theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
-            using var main = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+            using var main = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             main.Navigate("toolbar");
             window = new MainWindow { DataContext = main, Width = 1080, Height = 1000 };
             window.Show();

@@ -241,7 +241,7 @@ internal static class Program
         int exitCode;
         if (options.Ui == SetupUi.VerySilent)
         {
-            exitCode = runner.Uninstall(deleteSettings: false, new SyncProgress<SetupProgress>(_ => { })) is { } error
+            exitCode = runner.Uninstall(deleteSettings: false, new SyncProgress<SetupProgress>(_ => { })).Error is { } error
                 ? Fail(error)
                 : ExitOk;
         }
@@ -490,17 +490,17 @@ internal sealed class SetupRunner(SetupContext context, SetupPayload? payload, P
     /// <summary>Lets the uninstaller in the install folder end before its file is deleted.</summary>
     public Action? ReleaseFirstPhase { get; init; }
 
-    public Exception? Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
+    public UninstallResult Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
     {
         try
         {
-            new Uninstaller(context).Run(folder!, record!, deleteSettings, trash!, progress, ReleaseFirstPhase);
-            return null;
+            var later = new Uninstaller(context).Run(folder!, record!, deleteSettings, trash!, progress, ReleaseFirstPhase);
+            return new UninstallResult(DeletedAtRestart: later.Count);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             context.Log.Error($"Uninstall failed: {ex}");
-            return ex;
+            return new UninstallResult(ex);
         }
     }
 }

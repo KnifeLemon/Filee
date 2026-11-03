@@ -22,6 +22,9 @@ public enum PresetKind
     /// <see cref="Preset.Tool"/>). Like a group, never offered where a conversion is picked.
     /// </summary>
     Tool,
+
+    /// <summary>Copies files and folders byte for byte to a chosen destination.</summary>
+    CopyToFolder,
 }
 
 /// <summary>
@@ -115,6 +118,9 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used for offline AI translation.</summary>
+    public TranslateOptions Translate { get; set; } = new();
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
@@ -149,6 +155,16 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
 
+    /// <summary>Formats the translator can directly read from.</summary>
+    public static readonly string[] TranslatorSourceFormats =
+    [
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html"
+    ];
+
+    /// <summary>True if converting a document or e-book using local AI translation.</summary>
+    public bool TranslatesDocument(string sourceFormat) =>
+        Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
+
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file saves every frame as a picture
     /// (<see cref="MediaOptions.SaveEveryFrame"/>): the file is a video and the target one of
@@ -181,6 +197,16 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
     /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file transcribes speech into captions
+    /// (<see cref="MediaOptions.Caption"/>): the file is a video or audio.
+    /// </summary>
+    public bool CaptionsVideo(string sourceFormat) =>
+        Media.Caption && TargetFormat == "srt" && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
+
+
+
+
+    /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file recognizes its text first (<see cref="PdfOptions.Ocr"/>):
     /// the file is a PDF or a picture and the target one of <see cref="PdfOptions.OcrTargets"/>.
     /// </summary>
@@ -208,7 +234,12 @@ public sealed class Preset
 
     /// <summary>True for a <see cref="PresetKind.Tool"/>.</summary>
     [JsonIgnore]
-    public bool IsTool => Kind == PresetKind.Tool;
+    public bool IsTool => Kind is PresetKind.Tool or PresetKind.CopyToFolder;
+
+    [JsonIgnore]
+    public bool IsCopyToFolder => Kind == PresetKind.CopyToFolder;
+
+    public const string CopyTarget = "copy-to-folder";
 
     /// <summary><see cref="Tool"/> of the interactive crop (also a tool saved without one, from before clips).</summary>
     public const string CropTool = "crop";
@@ -236,7 +267,7 @@ public sealed class Preset
 
     /// <summary>True for the interactive crop.</summary>
     [JsonIgnore]
-    public bool IsCropTool => IsTool && Tool is null or CropTool;
+    public bool IsCropTool => Kind == PresetKind.Tool && Tool is null or CropTool;
 
     /// <summary>True for "Cut a clip".</summary>
     [JsonIgnore]
@@ -288,6 +319,7 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Translate = Translate.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
         Tool = Tool,
@@ -384,6 +416,10 @@ public enum HideStyle
     Pixelate,
     /// <summary>A strong blur.</summary>
     Blur,
+    /// <summary>
+    /// Solid, opaque black: nothing of what was there is left. An older Filee reads it as <see cref="Pixelate"/>.
+    /// </summary>
+    Box,
 }
 
 /// <summary>
@@ -396,6 +432,10 @@ public sealed class HiddenArea
     public double Y { get; set; }
     public double Width { get; set; }
     public double Height { get; set; }
+
+    /// <summary>How this part is covered; null for the preset's <see cref="ImageOptions.HideStyle"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
+    public HideStyle? Style { get; set; }
 
     public HiddenArea Clone() => (HiddenArea)MemberwiseClone();
 }
@@ -411,6 +451,12 @@ public sealed class ImageOptions
     /// quality, then smaller (down to a long edge of 640 px), until it fits (#553).
     /// </summary>
     public double MaxSizeMb { get; set; }
+
+    /// <summary>
+    /// Keep each picture at least this many MB of 1,000,000 bytes; 0 = no minimum. A smaller one in a lossy format is
+    /// saved again at a higher quality (never padded or enlarged); one that stays under it is kept, with a notice (#662).
+    /// </summary>
+    public double MinSizeMb { get; set; }
 
     /// <summary>
     /// How the picture is scaled. A preset with <see cref="CustomSize"/> or <see cref="MinShortEdge"/> set stores None
@@ -592,8 +638,9 @@ public sealed class ImageOptions
     public List<int> IcoSizes { get; set; } = [256, 128, 64, 48, 32, 16];
 
     /// <summary>
-    /// "Pixelate / blur": how <see cref="HiddenAreas"/> are covered. Kept in the tool, so its window opens with the last
-    /// one. A field of its own (not a value added to another option), read leniently: an older Filee skips it.
+    /// "Pixelate / blur": how <see cref="HiddenAreas"/> without a <see cref="HiddenArea.Style"/> of their own are
+    /// covered. Kept in the tool as the last style picked, so its window opens with it. A field of its own (not a value
+    /// added to another option), read leniently: an older Filee skips it.
     /// </summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
     public HideStyle HideStyle { get; set; }
@@ -892,6 +939,12 @@ public sealed class MediaOptions
     /// </summary>
     public double MaxSizeMb { get; set; }
 
+    /// <summary>
+    /// Keep each video under this percentage (1–99) of the original file's size (#680); 0 = off. One of
+    /// <see cref="MaxSizeMb"/> and this is in use at a time.
+    /// </summary>
+    public int MaxSizePercent { get; set; }
+
     /// <summary>Audio bitrate in kbit/s for lossy audio; 0 uses a good default for the format.</summary>
     public int AudioBitrateKbps { get; set; }
 
@@ -949,6 +1002,17 @@ public sealed class MediaOptions
     /// fails with <c>error.no_motion_photo</c>.
     /// </summary>
     public bool ExtractMotionPhoto { get; set; }
+
+    /// <summary>
+    /// Transcribes speech using Whisper AI to an SRT subtitle file.
+    /// </summary>
+    public bool Caption { get; set; }
+
+    /// <summary>
+    /// Spoken language code for transcription (e.g. "auto", "en", "hi", "es", "fr", "de", "ja", "zh").
+    /// Passed to whisper.cpp (-l). Defaults to "auto".
+    /// </summary>
+    public string SpokenLanguage { get; set; } = "auto";
 
     /// <summary>
     /// Video → JPG (or HEIC for an iPhone): a Live / Motion Photo of a short clip instead of one still frame. Only for
@@ -1244,3 +1308,13 @@ public sealed class CadOptions
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
 }
 
+/// <summary>Options for offline AI document translation.</summary>
+public sealed class TranslateOptions
+{
+    public bool Enabled { get; set; }
+    public string TargetLanguage { get; set; } = "en";
+    public string SourceLanguage { get; set; } = "auto";
+    public string? Model { get; set; }
+
+    public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+}

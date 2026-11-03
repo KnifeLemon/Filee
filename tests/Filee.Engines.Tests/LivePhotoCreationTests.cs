@@ -54,6 +54,15 @@ public class LivePhotoCreationTests(EngineFixture fx) : IClassFixture<EngineFixt
         return result.StandardOutput;
     }
 
+    [Fact]
+    public void The_live_photo_clip_takes_the_sound_track_the_probe_chose()
+    {
+        var video = new VideoStreamInfo(1920, 1080, 1, 0, 30, "h264", "yuv420p");
+        var args = LivePhotoWriter.ClipArguments("in.mov", "out.mov", "mov", new LivePhotoClip(0, 3, 1), video,
+            new AudioStreamInfo(2, 48000, "aac", 1), new MediaOptions(), "libx264", "");
+        Assert.Equal(["0:V:0", "0:a:1"], args.Where((a, i) => i > 0 && args[i - 1] == "-map"));
+    }
+
     // ───────────────────────── iPhone ─────────────────────────
 
     [Theory]

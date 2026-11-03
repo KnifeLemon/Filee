@@ -22,6 +22,12 @@ public partial class EngineSetupWindow : Window
             if (DataContext is EngineSetupViewModel vm)
                 vm.CloseRequested += (_, _) => Close();
         };
+        Closed += (_, _) =>
+        {
+            // The title bar closes the window without running the command.
+            if (DataContext is EngineSetupViewModel vm)
+                vm.Release();
+        };
         Opened += (_, _) => FitToScreen();
         // Progress bars make the cards taller while engines install.
         SizeChanged += (_, e) => KeepInside(e.NewSize.Height);

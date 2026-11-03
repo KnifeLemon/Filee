@@ -56,6 +56,18 @@ public sealed class PortableEngineTests : IDisposable
         Assert.Empty(EngineDownloads.ComponentsForRuntime("linux-riscv64"));
 
     [Theory]
+    [InlineData("win-arm64", 26100, "win-x64")] // Windows 11 on ARM runs the x64 downloads under emulation
+    [InlineData("win-arm64", 22000, "win-x64")]
+    [InlineData("win-arm64", 19045, "win-arm64")] // Windows 10 on ARM can't: no downloads
+    [InlineData("win-x64", 19045, "win-x64")]
+    [InlineData("linux-arm64", 0, "linux-arm64")]
+    public void Windows_on_ARM64_downloads_the_x64_engines_from_Windows_11_on(string runtime, int build, string downloads)
+    {
+        Assert.Equal(downloads, EngineDownloads.DownloadRuntime(runtime, build));
+        Assert.Empty(EngineDownloads.ComponentsForRuntime("win-arm64"));
+    }
+
+    [Theory]
     [InlineData("libreoffice", "LibreOffice.app/Contents/MacOS", "soffice")]
     [InlineData("calibre", "calibre.app/Contents/MacOS", "ebook-convert")]
     [InlineData("pandoc", "bin", "pandoc")]

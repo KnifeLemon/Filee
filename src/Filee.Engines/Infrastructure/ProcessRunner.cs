@@ -45,6 +45,9 @@ public static class ProcessRunner
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            // Closed right after the start: a program that asks a question (7-Zip's password prompt) reads end of
+            // input instead of waiting on the console or pipe Filee itself was started with.
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -67,6 +70,7 @@ public static class ProcessRunner
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");
         Lower(process);
+        process.StandardInput.Close();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 

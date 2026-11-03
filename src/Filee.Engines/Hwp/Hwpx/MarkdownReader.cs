@@ -3,7 +3,8 @@
 // Mirrors PandocAstReader: headings (with their ids as bookmarks), paragraphs, bold / italic / strike / sub- and
 // superscript / inserted / marked text, code, lists (1. / a. / i. / A. / I. with the start number, nested levels),
 // task lists, block quotes, pipe and grid tables with spans, definition lists, links, images, footnotes and math.
-// The YAML front matter's "title" becomes the document title. Raw HTML is skipped, except <br>.
+// The YAML front matter's "title" becomes the document title. Raw HTML is skipped, except <br>. A code block is one
+// shaded box in a monospace font: a borderless one-column table with a row per line, so it can break across pages.
 
 using Markdig;
 using Markdig.Extensions.DefinitionLists;
@@ -31,6 +32,19 @@ internal sealed class MarkdownReader
 
     private static readonly HCharFormat Plain = default;
     private static readonly HCharFormat CodeFormat = new(Shade: "#F1F0F5");
+
+    /// <summary>Monospace fonts for code blocks, the first installed one wins (Windows, macOS, Linux).</summary>
+    private static readonly string[] MonospaceFonts = ["Consolas", "Menlo", "DejaVu Sans Mono", "Liberation Mono", "Courier New"];
+
+    private static readonly Lazy<HCharFormat> CodeBlockFormat = new(() =>
+    {
+        var font = MonospaceFonts.FirstOrDefault(f => RhwpFonts.Find(f) is { Usable: true }) ?? "Courier New";
+        return new HCharFormat(Font: font);
+    });
+
+    /// <summary>Padding inside a code box: 2 mm at the sides, 1.5 mm above the first line and below the last.</summary>
+    private const int CodeSidePadding = 567;
+    private const int CodeEndPadding = 425;
     private readonly string _baseFolder;
     private readonly string? _resourceRoot;
 
@@ -89,7 +103,7 @@ internal sealed class MarkdownReader
                 CodeLines(math, output, context, Plain with { Italic = true });
                 break;
             case CodeBlock code:
-                CodeLines(code, output, context, CodeFormat);
+                output.Add(CodeBox(code, context));
                 break;
             case ThematicBreakBlock:
                 output.Add(NewParagraph(context));
@@ -138,6 +152,38 @@ internal sealed class MarkdownReader
                 paragraph.Inlines.Add(new HText(line, format));
             output.Add(paragraph);
         }
+    }
+
+    /// <summary>
+    /// A code block as one shaded box (#406): before, each line was a paragraph with shaded text, which left a strip per
+    /// line, gaps between them and none on empty lines.
+    /// </summary>
+    private static HTable CodeBox(LeafBlock code, Context context)
+    {
+        var lines = code.Lines.ToString().Replace("\r\n", "\n").Split('\n');
+        // The sides are padded by the table; the first line's cell is padded above and the last one's below.
+        var single = lines.Length == 1;
+        var table = new HTable
+        {
+            ColumnCount = 1,
+            Indent = context.Indent,
+            Borders = HBorders.Empty,
+            CellMargin = new HInsets(CodeSidePadding, CodeSidePadding, single ? CodeEndPadding : 0, single ? CodeEndPadding : 0),
+        };
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var cell = new HCell { Fill = CodeFormat.Shade, Borders = HBorders.Empty };
+            if (!single && (i == 0 || i == lines.Length - 1))
+                cell.CellMargin = new HInsets(CodeSidePadding, CodeSidePadding, i == 0 ? CodeEndPadding : 0, i == 0 ? 0 : CodeEndPadding);
+            var paragraph = new HParagraph();
+            if (lines[i].Length > 0)
+                paragraph.Inlines.Add(new HText(lines[i], CodeBlockFormat.Value));
+            cell.Blocks.Add(paragraph);
+            var row = new HRow();
+            row.Cells.Add(cell);
+            table.Rows.Add(row);
+        }
+        return table;
     }
 
     private static HNumbering Numbering(ListBlock list)

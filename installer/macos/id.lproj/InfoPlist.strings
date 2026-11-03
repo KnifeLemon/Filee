@@ -1,0 +1,3 @@
+/* macOS permission explanations; the operating system chooses the bundle localization. */
+"NSAppleEventsUsageDescription" = "Filee membaca file yang dipilih di Finder saat Anda menggunakan pintasan keyboard untuk mengonversinya.";
+"NSInputMonitoringUsageDescription" = "Filee mengenali pintasan keyboard konversi Anda dan gestur seret untuk menampilkan menu konversi.";

@@ -150,7 +150,7 @@ internal static class LivePhotoWriter
         List<string> args =
         [
             .. MediaEncoding.Common, "-ss", Seconds(clip.Start), "-i", input, "-map", "0:V:0",
-            .. audio is null ? Array.Empty<string>() : ["-map", "0:a:0"],
+            .. audio is null ? Array.Empty<string>() : ["-map", $"0:a:{audio.Ordinal}"],
             "-t", Seconds(clip.Length),
             "-vf", $"{toneMap}fps={Fps},scale={width}:{height},setsar=1,format=yuv420p",
         ];

@@ -123,6 +123,23 @@ public sealed class FolderWatcher : IAsyncDisposable
     /// <summary>Registers a file that appeared or changed; it is converted once it has settled.</summary>
     public void Notice(string path)
     {
+        if (Presets.FolderCopy.IsWorkPath(path))
+            return;
+        // A complete folder can arrive in one rename (Copy to folder publishes it atomically).
+        if (Rule.IncludeSubfolders && Directory.Exists(path))
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(path, "*", new EnumerationOptions
+                { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true }))
+                    Notice(file);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _log.LogWarning(ex, "Could not list arriving folder {Folder}", path);
+            }
+            return;
+        }
         if (ShouldIgnore(path, Rule))
             return;
         var now = _time.GetUtcNow();
@@ -211,6 +228,8 @@ public sealed class FolderWatcher : IAsyncDisposable
     /// anything inside the output or originals folder, and names the rule's <see cref="WatchRule.Include"/> leaves out.</summary>
     public static bool ShouldIgnore(string path, WatchRule rule)
     {
+        if (Presets.FolderCopy.IsWorkPath(path))
+            return true;
         var name = Path.GetFileName(path);
         if (name.Length == 0 || name.StartsWith("~$", StringComparison.Ordinal) || name.StartsWith('.')
             || SystemFiles.Contains(name) || TemporaryExtensions.Contains(Path.GetExtension(name)))

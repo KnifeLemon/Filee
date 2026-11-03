@@ -10,15 +10,21 @@
 
   Both files belong next to Filee.exe; the release workflow passes the publish folder as -Destination.
 
+  The DLL is loaded into explorer.exe, so it is built for the architecture of the Filee build it ships with
+  (-Architecture): x64, or arm64 for win-arm64 (the package then says arm64 too). The x64 Zig toolchain cross-compiles
+  both; on Windows on ARM it runs under x64 emulation.
+
 .EXAMPLE
   pwsh build/build-explorer-menu.ps1
   pwsh build/build-explorer-menu.ps1 -Destination publish/win-x64 -Version 1.2.0
+  pwsh build/build-explorer-menu.ps1 -Destination publish/win-arm64 -Architecture arm64
 #>
 [CmdletBinding()]
 param(
     [string]$Destination = (Join-Path $PSScriptRoot '.cache\explorer-menu'),
     # Written into the DLL's version resource; defaults to <Version> in Directory.Build.props.
-    [string]$Version
+    [string]$Version,
+    [ValidateSet('x64', 'arm64')][string]$Architecture = 'x64'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -95,10 +101,11 @@ $rc = Join-Path $obj 'FileeExplorerMenu.rc'
 $defines = "#define FILEE_VERSION_MAJOR $major`r`n#define FILEE_VERSION_MINOR $minor`r`n#define FILEE_VERSION_PATCH $patch`r`n#define FILEE_VERSION_TEXT `"$Version`"`r`n"
 Set-Content -Path $rc -Value ($defines + (Get-Content (Join-Path $source 'FileeExplorerMenu.rc') -Raw)) -Encoding utf8NoBOM -NoNewline
 
-Write-Host "build FileeExplorerMenu.dll $Version"
+Write-Host "build FileeExplorerMenu.dll $Version ($Architecture)"
 $dll = Join-Path $obj 'FileeExplorerMenu.dll'
+$target = @{ 'x64' = 'x86_64-windows-gnu'; 'arm64' = 'aarch64-windows-gnu' }[$Architecture]
 # -nostdlib: no C runtime inside explorer.exe; the entry point is DllMain itself. -s strips symbols.
-& $zig cc -target x86_64-windows-gnu -shared -O2 -s -nostdlib -Wall -Wextra -Werror `
+& $zig cc -target $target -shared -O2 -s -nostdlib -Wall -Wextra -Werror `
     -isystem (Join-Path (Split-Path $zig) 'lib\libc\include\any-windows-any') `
     (Join-Path $source 'FileeExplorerMenu.c') (Join-Path $source 'FileeExplorerMenu.def') $rc `
     -lkernel32 -luser32 -lole32 -lshell32 -lshlwapi '-Wl,--entry=DllMain' -o $dll
@@ -109,7 +116,7 @@ Write-Host "pack FileeExplorerMenu.msix"
 $Destination = (Resolve-Path $Destination).Path
 Push-Location $root
 try {
-    & dotnet run build/tools/make-explorer-package.cs -- $Destination
+    & dotnet run build/tools/make-explorer-package.cs -- $Destination $Architecture
     if ($LASTEXITCODE -ne 0) { throw "make-explorer-package failed with exit code $LASTEXITCODE" }
 }
 finally {

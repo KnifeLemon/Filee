@@ -142,7 +142,10 @@ public sealed partial class DonutMenu
         var u = Progress(oldFace, index);
         if (oldFace ? u >= 0.5 : u < 0.5)
             return 0;
-        return Math.Max(Math.Abs(Math.Cos(Math.PI * u)), 0.01);
+        // Ease each half to zero velocity at the edge: no minimum-width stripe or
+        // abrupt change of direction as the old face hands over to the new one.
+        var half = oldFace ? 1 - 2 * u : 2 * u - 1;
+        return half * half * (3 - 2 * half);
     }
 
     internal Matrix SliceFlipTransform(bool oldFace, int index)
@@ -153,7 +156,7 @@ public sealed partial class DonutMenu
         var mid = oldFace ? _oldFace![index].Mid : IsEditMode ? _mid[index].Value : DonutGeometry.MidAngle(index, Count);
         var center = Center;
         return Matrix.CreateTranslation(-center.X, -center.Y) * Matrix.CreateRotation(-mid) *
-               Matrix.CreateScale(Math.Max(width, 0.01), 1) * Matrix.CreateRotation(mid) *
+               Matrix.CreateScale(width, 1) * Matrix.CreateRotation(mid) *
                Matrix.CreateTranslation(center.X, center.Y);
     }
 
@@ -291,6 +294,7 @@ public sealed partial class DonutMenu
             return true;
         }
         CaptureOldFace();
+        _openClock = double.MaxValue; // The captured outgoing pose owns any unfinished opening.
         BeginWave(incomingOnly: false);
         var pointed = _lastExternalAt is { } drag && HitTest(drag).Kind is DonutHitKind.Segment or DonutHitKind.SubSegment
             ? drag : !_keyboardHold && _lastPointer is { } pointer &&
@@ -334,11 +338,20 @@ public sealed partial class DonutMenu
     {
         if (_flipClock < 0)
             return false;
-        _flipClock += dt;
-        if (_flipClock < FlipDuration)
-            return true;
-        EndFlip();
-        return IsFlipping; // a queued flip started
+        // Consume the remainder on a queued turn instead of losing a frame at the seam.
+        // A single queued turn is the maximum; extra key presses toggle its parity.
+        for (var turn = 0; turn < 2 && IsFlipping; turn++)
+        {
+            var remaining = FlipDuration - _flipClock;
+            if (dt < remaining)
+            {
+                _flipClock += dt;
+                return true;
+            }
+            dt -= remaining;
+            EndFlip();
+        }
+        return IsFlipping;
     }
 
     /// <summary>Ends a running wave on the new face: animations off or frames stalled.</summary>

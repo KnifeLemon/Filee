@@ -445,7 +445,7 @@ public class WhatsNewMedia
         store.Settings.Theme = new ThemeSettings { ReduceMotion = false, Mode = ThemeMode.Light };
         store.Settings.Donut.Opacity = 1;
         theme.Apply(store.Settings.Theme, AppHost.Get<ILocalizer>().Language);
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 608 };
         try
         {
@@ -553,7 +553,7 @@ public class WhatsNewMedia
         {
             TestServices.EnsureInitialized(language);
             AppHost.Get<ThemeService>().Apply(new ThemeSettings { ReduceMotion = false, Mode = ThemeMode.Light }, language);
-            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+            var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate("home");
             var window = new MainWindow { DataContext = vm, Width = 960, Height = 540 };
             window.Show();
@@ -589,7 +589,7 @@ public class WhatsNewMedia
         var profiles = store.Profiles.Select(p => p.Clone()).ToList();
         try
         {
-            var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>());
+            var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate("home");
             var window = new MainWindow { DataContext = vm, Width = 960, Height = 540 };
             window.Show();

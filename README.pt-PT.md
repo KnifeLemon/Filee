@@ -29,6 +29,7 @@
 <p align="center">
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/weekly?language=C%23&v=2" alt="Filee: repositório C# da semana em primeiro lugar no Trendshift" width="250" height="55"></a>
   <a href="https://trendshift.io/repositories/276987"><img src="https://trendshift.io/api/badge/trendshift/repositories/276987/daily?language=C%23&v=2" alt="Filee: repositório C# do dia em primeiro lugar no Trendshift" width="250" height="55"></a>
+  <a href="https://hellogithub.com/repository/KnifeLemon/Filee" target="_blank"><img src="https://abroad.hellogithub.com/v1/widgets/recommend.svg?rid=0847caedd5bd4077a70b90f83afdf83c&claim_uid=jAlIvVMhn0kcEsU" alt="Featured｜HelloGitHub" width="250" height="54" /></a>
 </p>
 
 <p align="center">
@@ -46,7 +47,9 @@
   <b>Português (Portugal)</b> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
-  <a href="README.tr.md">Türkçe</a>
+  <a href="README.tr.md">Türkçe</a> ·
+  <a href="README.id.md">Bahasa Indonesia</a> ·
+  <a href="README.it.md">Italiano</a>
 </p>
 
 <table>
@@ -57,7 +60,7 @@
       Os formatos aparecem onde estás, apenas os que fazem sentido para os ficheiros que arrastas.
     </td>
     <td width="33%" valign="top">
-      <b>268 formatos, sem outro software</b><br>
+      <b>270 formatos, sem outro software</b><br>
       Imagens, PDF, Word, Excel, PowerPoint, HWP, livros digitais, arquivos, tipos de letra, CAD, modelos 3D e dados geoespaciais funcionam sem Office, Hancom Office ou LibreOffice.
     </td>
     <td width="33%" valign="top">
@@ -131,7 +134,7 @@ Para reverter a alteração, remove as entradas em Segurança do Windows → Con
 - **Pastas monitorizadas** convertem todos os ficheiros que nelas entram.
 - **Conversões recentes** na Página inicial, cada uma com uma miniatura: abre o resultado ou escolhe outra aplicação para o abrir.
 - **Outras formas de converter**: o menu de contexto, um atalho de teclado, a zona de largada e o [comando `filee`](#linha-de-comandos).
-- Temas claro e escuro, com a tua cor de destaque e a opacidade da barra circular à tua escolha, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal) e Deutsch.
+- Temas claro e escuro, com a tua cor de destaque e a opacidade da barra circular à tua escolha, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano e Bahasa Indonesia.
 
 ## Capturas de ecrã
 

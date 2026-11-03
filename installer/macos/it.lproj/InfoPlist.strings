@@ -1,0 +1,3 @@
+/* macOS permission explanations; the operating system chooses the bundle localization. */
+"NSAppleEventsUsageDescription" = "Filee legge i file selezionati nel Finder quando usi una scorciatoia da tastiera per convertirli.";
+"NSInputMonitoringUsageDescription" = "Filee riconosce la tua scorciatoia da tastiera per la conversione e il gesto di trascinamento per mostrare il menu di conversione.";

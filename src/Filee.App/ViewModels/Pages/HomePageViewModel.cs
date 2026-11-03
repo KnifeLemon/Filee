@@ -34,7 +34,7 @@ public sealed partial class HistoryItemViewModel : ObservableObject
         _platform = platform;
         _conversions = conversions;
         _store = store;
-        Title = entry.PresetName;
+        Title = NameOf(entry, loc);
         Subtitle = entry.Sources.Count == 1 ? Path.GetFileName(entry.Sources[0]) : loc.Format("home.files", entry.Sources.Count);
         Time = entry.FinishedAt.Date == DateTime.Today ? entry.FinishedAt.ToString("t") : entry.FinishedAt.ToString("d");
         Failures = entry.Failures.Count > 0
@@ -60,6 +60,10 @@ public sealed partial class HistoryItemViewModel : ObservableObject
         CanUndo = store is not null && UndoLeft();
         UndoneText = entry.Undone ? loc[entry.OriginalsInTrash ? "home.undone_original" : "home.undone"] : "";
     }
+
+    /// <summary>The preset's name in the language Filee is in now when it is a built-in one, else as it was saved.</summary>
+    internal static string NameOf(HistoryEntry entry, ILocalizer loc) =>
+        entry.PresetNameKey is { } key && loc[key] is var name && name != key ? name : entry.PresetName;
 
     /// <summary>
     /// Undo (#553) is offered while the results not moved yet are all as the job left them, so a file changed since is
@@ -288,7 +292,7 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         var query = Search.Trim();
         // The entries are picked first, then built: building one looks for its outputs on disk.
         var entries = _store.History
-            .Where(entry => query.Length == 0 || Matches(entry, query))
+            .Where(entry => query.Length == 0 || Matches(entry, query, _loc))
             .Take(Shown)
             .ToList();
         History.Clear();
@@ -338,9 +342,9 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         }, token);
     }
 
-    private static bool Matches(HistoryEntry entry, string query)
+    private static bool Matches(HistoryEntry entry, string query, ILocalizer loc)
     {
-        return Contains(entry.PresetName) || entry.Sources.Any(source => Contains(Path.GetFileName(source)));
+        return Contains(HistoryItemViewModel.NameOf(entry, loc)) || Contains(entry.PresetName) || entry.Sources.Any(source => Contains(Path.GetFileName(source)));
 
         bool Contains(string? text) => text?.Contains(query, StringComparison.CurrentCultureIgnoreCase) == true;
     }

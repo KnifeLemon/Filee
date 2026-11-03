@@ -180,15 +180,16 @@ public sealed class EngineDownloadService
     private readonly SemaphoreSlim _oneAtATime = new(1, 1);
     private int _warmingUp;
 
+    /// <summary>Downloads and unpacks one package; tests swap it to hold an install open.</summary>
+    internal Func<EnginePackage, IProgress<EngineInstallProgress>, CancellationToken, Task> InstallPackage { get; set; }
+
     public EngineDownloadService(ConverterCatalog catalog, ILocalizer loc, ILogger<EngineDownloadService> logger)
     {
         _catalog = catalog;
         _logger = logger;
         _loc = loc;
-        // Redirects are followed by the installer (mirrors may use plain HTTP; files are verified by SHA-256).
-        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(EngineDownloadService).Assembly.GetName().Version}");
-        _installer = new EngineInstaller(http, logger: logger);
+        _installer = new EngineInstaller(EngineInstaller.CreateHttpClient(Timeout.InfiniteTimeSpan), logger: logger);
+        InstallPackage = _installer.InstallAsync;
         Packages = EngineDownloads.Packages.Select(p => new EnginePackageState(p, loc)).ToList();
         if (loc is LocalizationService localization)
             localization.LanguageChanged += (_, _) => Packages.ToList().ForEach(p => p.Relocalize());
@@ -208,23 +209,24 @@ public sealed class EngineDownloadService
     }
 
     /// <summary>
-    /// In the order the engines look: the user's own copy, Filee's download, a copy on the PC. A copy Filee didn't
-    /// download gets its version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
+    /// The copy the engines use (<see cref="EngineInstaller.StatusOf"/>). A copy Filee didn't download gets its
+    /// version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
     /// </summary>
     private EnginePackageStatus StatusOf(EnginePackageState state)
     {
-        var id = state.Package.Id;
-        var own = EngineEnvironment.OwnCopyFolder(id);
-        var system = own is null && !_installer.IsInstalled(state.Package) ? EngineEnvironment.SystemCopyFolder(id) : null;
-        state.OwnCopyFolder = own ?? system;
-        state.FromSystem = system is not null;
+        var copy = _installer.StatusOf(state.Package);
+        state.OwnCopyFolder = copy.Folder;
+        state.FromSystem = copy.FromSystem;
         state.UpdateNote = null;
-        state.IsOutdated = state.OwnCopyFolder is null && _installer.IsInstalled(state.Package) && !_installer.IsUpToDate(state.Package);
-        if (state.OwnCopyFolder is { } folder)
+        state.IsOutdated = copy.Outdated;
+        if (copy.Folder is { } folder)
             _ = CheckVersionAsync(state, folder);
-        return state.OwnCopyFolder is not null ? EnginePackageStatus.OwnCopy
-            : _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed
-            : EnginePackageStatus.NotInstalled;
+        return copy.Status switch
+        {
+            EngineCopyStatus.OwnCopy => EnginePackageStatus.OwnCopy,
+            EngineCopyStatus.Installed => EnginePackageStatus.Installed,
+            _ => EnginePackageStatus.NotInstalled,
+        };
     }
 
     /// <summary>Runs the copy's version check off the UI thread (it starts the program once) and notes an old one.</summary>
@@ -278,7 +280,7 @@ public sealed class EngineDownloadService
                         state.ProgressDetail = "";
                     }
                 });
-                await Task.Run(() => _installer.InstallAsync(state.Package, progress, cancellation.Token), cancellation.Token);
+                await Task.Run(() => InstallPackage(state.Package, progress, cancellation.Token), cancellation.Token);
             }
             finally
             {

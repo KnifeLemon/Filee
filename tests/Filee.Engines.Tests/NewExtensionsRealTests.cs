@@ -57,7 +57,7 @@ public class NewExtensionsRealTests(EngineFixture fx) : IClassFixture<EngineFixt
             """, TestContext.Current.CancellationToken);
 
         // One row per request: method, address and status side by side. CSV is the table step every table route
-        // (Markdown, spreadsheets, PDF) starts from; Markdown itself goes through Unhwp, which Linux ARM64 lacks.
+        // (Markdown, spreadsheets, PDF) starts from; Markdown itself goes through Unhwp, which an ARM64 build may lack.
         var csv = await File.ReadAllTextAsync(await ConvertAsync(har, "csv"), TestContext.Current.CancellationToken);
         Assert.Contains("GET,https://example.com/api/items,200", csv);
         var json = await File.ReadAllTextAsync(await ConvertAsync(har, "json"), TestContext.Current.CancellationToken);

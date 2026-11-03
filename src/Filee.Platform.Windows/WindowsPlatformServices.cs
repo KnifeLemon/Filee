@@ -141,7 +141,7 @@ public sealed class WindowsPlatformServices : IPlatformServices
             });
         }
         catch (Exception ex) when (ex is COMException or InvalidOperationException or InvalidCastException
-                                       or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+                                       or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException or MissingMemberException)
         {
             // No Explorer desktop (another shell, Explorer restarting): nothing selected to read.
             return [];
@@ -195,6 +195,8 @@ public sealed class WindowsPlatformServices : IPlatformServices
                 }
                 catch (COMException) { }
                 catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException) { } // e.g. Internet Explorer windows
+                // "Could not get dispatch ID for HWND (error: 0x8000FFFF)": a shell window that answers no names (#606).
+                catch (MissingMemberException) { }
                 found.Add(window);
                 entries.Add(new ShellWindowEntry(topLevel, tab));
             }
@@ -213,9 +215,11 @@ public sealed class WindowsPlatformServices : IPlatformServices
                 }
                 catch (COMException) { }
                 catch (Microsoft.CSharp.RuntimeBinder.RuntimeBinderException) { } // e.g. Internet Explorer windows
+                // The same for Document (#606).
+                catch (MissingMemberException) { }
             }
         }
-        catch (COMException)
+        catch (Exception ex) when (ex is COMException or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException or MissingMemberException)
         {
         }
         finally

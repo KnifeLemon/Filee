@@ -3,6 +3,7 @@
 
 using System.IO.Compression;
 using Filee.Engines.Hwp.Hwpx;
+using Filee.Engines.Magick;
 
 namespace Filee.Engines.Ebooks;
 
@@ -130,6 +131,7 @@ internal static class EbookFiles
         try
         {
             using var image = new ImageMagick.MagickImage(path);
+            DdsChannelOrder.Correct(path, image);
             var jpeg = !image.HasAlpha && mediaType is "image/webp" or "image/avif" or "image/jxl" or "image/tiff";
             Directory.CreateDirectory(folder);
             var file = Path.Combine(folder, $"{Guid.NewGuid():N}.{(jpeg ? "jpg" : "png")}");

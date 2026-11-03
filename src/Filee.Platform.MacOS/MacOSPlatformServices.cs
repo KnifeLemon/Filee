@@ -62,6 +62,12 @@ public sealed class MacOSPlatformServices : IPlatformServices
         }
     }
 
+    public bool SupportsClipboard => true;
+
+    public ClipboardContent? ReadClipboard() => MacOSClipboard.Read();
+
+    public bool CopyToClipboard(IReadOnlyList<string> paths) => MacOSClipboard.Write(paths);
+
     // AppKit exposes no public system drag-distance preference; match its usual four-point threshold.
     public int SystemDragThreshold => 4;
 
@@ -121,6 +127,13 @@ public sealed class MacOSPlatformServices : IPlatformServices
     {
         if (windowHandle != 0)
             NativeMethods.RaiseTopmost(windowHandle);
+    }
+
+    /// <summary>Restores a topmost window's native class and style after it hides or before it closes.</summary>
+    public void RestoreWindow(nint windowHandle)
+    {
+        if (windowHandle != 0)
+            NativeMethods.RestoreWindow(windowHandle);
     }
 
     /// <summary>

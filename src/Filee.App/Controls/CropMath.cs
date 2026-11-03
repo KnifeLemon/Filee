@@ -1,12 +1,113 @@
 // The crop overlay's arithmetic without a window: the ratios of the aspect dial, keyboard nudges, the frame's size in
-// pixels, where the size chip sits next to the frame and where the aspect dial opens.
+// pixels, where the size chip sits next to the frame and where the aspect dial opens. For the perspective mode it holds
+// the four corners (CropQuad), which shapes they may form and how they move, the straightened output size and whether
+// the corners still form a plain rectangle.
 
 using Avalonia;
 
 namespace Filee.App.Controls;
 
+/// <summary>Four normalized picture corners, clockwise from the top left.</summary>
+public readonly record struct CropQuad(Point TopLeft, Point TopRight, Point BottomRight, Point BottomLeft)
+{
+    /// <summary>The whole picture.</summary>
+    public static CropQuad Full => new(new Point(0, 0), new Point(1, 0), new Point(1, 1), new Point(0, 1));
+
+    /// <summary>A corner in clockwise order, starting at the top left.</summary>
+    public Point this[int corner] => corner switch
+    {
+        0 => TopLeft,
+        1 => TopRight,
+        2 => BottomRight,
+        3 => BottomLeft,
+        _ => throw new ArgumentOutOfRangeException(nameof(corner)),
+    };
+
+    /// <summary>A copy with one corner replaced.</summary>
+    public CropQuad With(int corner, Point p) => corner switch
+    {
+        0 => this with { TopLeft = p },
+        1 => this with { TopRight = p },
+        2 => this with { BottomRight = p },
+        3 => this with { BottomLeft = p },
+        _ => throw new ArgumentOutOfRangeException(nameof(corner)),
+    };
+}
+
 public static class CropMath
 {
+    /// <summary>Minimum clockwise turn in square original pixels.</summary>
+    public const double TurnEpsilon = 1e-6;
+
+    /// <summary>Whether all corners are inside the picture and form a strictly convex clockwise quadrilateral.</summary>
+    public static bool IsValidQuad(CropQuad q, int width, int height)
+    {
+        for (var i = 0; i < 4; i++)
+        {
+            var p = q[i];
+            if (!(p.X >= 0 && p.X <= 1 && p.Y >= 0 && p.Y <= 1))
+                return false;
+            var next = q[(i + 1) % 4];
+            var last = q[(i + 2) % 4];
+            var cross = ((next.X - p.X) * width) * ((last.Y - next.Y) * height)
+                - ((next.Y - p.Y) * height) * ((last.X - next.X) * width);
+            if (!(cross > TurnEpsilon))
+                return false;
+        }
+        return true;
+    }
+
+    /// <summary>
+    /// Moves one corner, stopping it on the picture's edge when the target lies outside, and only when the resulting
+    /// quadrilateral is valid.
+    /// </summary>
+    public static CropQuad MoveCorner(CropQuad q, int corner, Point target, int width, int height)
+    {
+        var moved = q.With(corner, new Point(Math.Clamp(target.X, 0, 1), Math.Clamp(target.Y, 0, 1)));
+        return IsValidQuad(moved, width, height) ? moved : q;
+    }
+
+    /// <summary>Snaps one corner to the original pixel grid and moves it by whole pixels.</summary>
+    public static CropQuad NudgeCorner(CropQuad q, int corner, int dx, int dy, int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+            return q;
+        var p = q[corner];
+        var target = new Point((Math.Round(p.X * width) + dx) / width, (Math.Round(p.Y * height) + dy) / height);
+        return MoveCorner(q, corner, target, width, height);
+    }
+
+    /// <summary>Output size from the longer opposing sides in original pixels, at least 1 by 1.</summary>
+    public static PixelSize PerspectiveSize(CropQuad q, int width, int height)
+    {
+        double Length(Point a, Point b) =>
+            Math.Sqrt(Math.Pow((a.X - b.X) * width, 2) + Math.Pow((a.Y - b.Y) * height, 2));
+
+        return new PixelSize(
+            Math.Max(1, (int)Math.Round(Math.Max(Length(q.TopLeft, q.TopRight), Length(q.BottomLeft, q.BottomRight)))),
+            Math.Max(1, (int)Math.Round(Math.Max(Length(q.TopLeft, q.BottomLeft), Length(q.TopRight, q.BottomRight)))));
+    }
+
+    /// <summary>
+    /// The quadrilateral as a rectangle in original pixels when it already is one: sides along the picture's edges and
+    /// every corner on a whole pixel, as the corners are until they're dragged off the grid. Saving it is then a plain
+    /// crop, with no resampling.
+    /// </summary>
+    public static PixelRect? AxisAlignedRect(CropQuad q, int width, int height)
+    {
+        static int? Whole(double v) => Math.Abs(v - Math.Round(v)) < 1e-6 ? (int)Math.Round(v) : null;
+        var left = Whole(q.TopLeft.X * width);
+        var top = Whole(q.TopLeft.Y * height);
+        var right = Whole(q.BottomRight.X * width);
+        var bottom = Whole(q.BottomRight.Y * height);
+        if (left is not { } l || top is not { } t || right is not { } r || bottom is not { } b
+            || Whole(q.TopRight.X * width) != r || Whole(q.TopRight.Y * height) != t
+            || Whole(q.BottomLeft.X * width) != l || Whole(q.BottomLeft.Y * height) != b
+            || r <= l || b <= t)
+            return null;
+        return new PixelRect(l, t, r - l, b - t);
+    }
+
     /// <summary>The aspect dial's choices, clockwise from the top.</summary>
     public static IReadOnlyList<string> AspectModes => Modes;
 

@@ -1,5 +1,6 @@
 // Central list of supported formats and extension lookup.
-// To add a new format: add one line to Known and give at least one converter an edge for it.
+// To add a new format: add one line to Known and give at least one converter an edge for it. Then give it a grade, and
+// any fields beyond its category's, in FormatFields.
 
 namespace Filee.Core.Formats;
 
@@ -140,10 +141,11 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source/proxy scripts, style sheets and settings files are read as plain text, never executed (issues
-        // #273, #284, #254, #388, #368, #607, #536, #630, #661, #660).
+        // Text logs, source code, proxy scripts, style sheets and settings files are read as plain text, never executed or
+        // compiled (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828).
         new("txt", "TXT", FormatCategory.Text,
-            ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc"]),
+            ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.
@@ -233,6 +235,8 @@ public static class FormatRegistry
         // Dahua and similar DVR / NVR recordings (#594): FFmpeg's dhav demuxer reads them (H.264 / H.265 video, often
         // with G.711 or AAC sound).
         new("dav", "DAV", FormatCategory.Video, ["dav"], Writable: false),
+        // Bink Video, the game cutscene format of RAD Game Tools (#751): FFmpeg's bink demuxer reads it. Never a target.
+        new("bik", "BIK", FormatCategory.Video, ["bik"], Writable: false),
         // Raw H.265 / H.264 streams with no container, as security cameras and VMS software export them (issue #301).
         new("h265", "H.265", FormatCategory.Video, ["h265", "265", "hevc"], Writable: false),
         new("h264", "H.264", FormatCategory.Video, ["h264", "264"], Writable: false),
@@ -268,6 +272,8 @@ public static class FormatRegistry
         new("dff", "DFF", FormatCategory.Audio, ["dff"], Writable: false),
         new("dts", "DTS", FormatCategory.Audio, ["dts"], Writable: false),
         new("spx", "Speex", FormatCategory.Audio, ["spx"], Writable: false),
+        // Apple Voice Memos recordings (#646): QuickTime audio, read by FFmpeg's mov demuxer.
+        new("qta", "QTA", FormatCategory.Audio, ["qta"], Writable: false),
 
         // Archives
         // ANSYS Workbench project archives use the ZIP container (issue #294).

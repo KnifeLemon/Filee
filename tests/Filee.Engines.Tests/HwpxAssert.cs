@@ -87,7 +87,7 @@ internal static class HwpxAssert
     }
 
     /// <summary>
-    /// The text of an HWPX as an independent reader sees it: Unhwp where its native library exists, else (Linux ARM64)
+    /// The text of an HWPX as an independent reader sees it: Unhwp where its native library exists, else (an ARM64 build without it)
     /// the text of the section XML.
     /// </summary>
     public static string ReadBackText(string hwpx)

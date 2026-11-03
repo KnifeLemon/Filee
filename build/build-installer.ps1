@@ -14,6 +14,12 @@
   engines Setup offers from EngineDownloads. The portable zip is the publish folder as it is: without Setup's
   uninstall.exe next to Filee.exe, Filee knows it is a portable copy.
 
+.PARAMETER Runtime
+  win-x64 (default) or win-arm64. The ARM64 build (Filee-<version>-win-arm64-Setup.exe and -Portable.zip) has an ARM64
+  Setup, Explorer menu DLL, rhwp, 7-Zip and Unhwp library (fetch-engines.ps1 -Runtime win-arm64, which fails while
+  the ARM64 rhwp and Unhwp builds are not pinned yet). They link the C runtime statically: no Microsoft C++ runtime
+  DLLs are copied.
+
 .PARAMETER CertificateThumbprint
   Signs the release (build/sign-windows.ps1): the programs in the publish folder that come unsigned, the Setup
   program (it becomes uninstall.exe) and, after the payload is appended, Setup.exe. The release workflow builds
@@ -40,7 +46,8 @@ param(
     [string]$OutputDir = (Join-Path $PSScriptRoot '..\Releases'),
     [switch]$Portable,
     [string]$CertificateThumbprint,
-    [switch]$CheckOnly
+    [switch]$CheckOnly,
+    [ValidateSet('win-x64', 'win-arm64')][string]$Runtime = 'win-x64'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -70,17 +77,24 @@ if ($CheckOnly) {
     $OutputDir = $check
 }
 elseif (-not $PublishDir) {
-    $PublishDir = Join-Path $root 'publish\win-x64'
+    $PublishDir = Join-Path $root "publish\$Runtime"
     Remove-Item $PublishDir -Recurse -Force -ErrorAction SilentlyContinue
+    # Unhwp's package has no win-arm64 library: the pinned ARM64 build goes next to Filee.exe through the build.
+    $native = @()
+    if ($Runtime -eq 'win-arm64') {
+        $natives = Join-Path $cache 'win-arm64-native'
+        & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Runtime $Runtime -Only unhwp -Destination $natives
+        $native = @("-p:UnhwpNativeLibrary=$(Join-Path $natives 'unhwp\unhwp.dll')")
+    }
     Invoke-Checked 'dotnet publish' {
-        dotnet publish (Join-Path $root 'src\Filee.App\Filee.App.csproj') -c Release -r win-x64 --self-contained `
-            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true -o $PublishDir
+        dotnet publish (Join-Path $root 'src\Filee.App\Filee.App.csproj') -c Release -r $Runtime --self-contained `
+            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true @native -o $PublishDir
     }
     # The command line, in the same folder so it shares the runtime and the engines (filee-cli.exe). Its name can't
     # be filee.exe next to Filee.exe, so the "filee" command is cli\filee.cmd, which Setup can put on PATH.
     Invoke-Checked 'dotnet publish (cli)' {
-        dotnet publish (Join-Path $root 'src\Filee.Cli\Filee.Cli.csproj') -c Release -r win-x64 --self-contained `
-            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true -o $PublishDir
+        dotnet publish (Join-Path $root 'src\Filee.Cli\Filee.Cli.csproj') -c Release -r $Runtime --self-contained `
+            "-p:Version=$Version" -p:PublishReadyToRun=true -p:FileeRelease=true @native -o $PublishDir
     }
     # Native debug symbols from NuGet packages (libSkiaSharp.pdb, libHarfBuzzSharp.pdb: ~105 MB) are useless to users.
     # Filee.App's publish removes them, but publishing the command line into the same folder brings them back.
@@ -88,19 +102,23 @@ elseif (-not $PublishDir) {
     New-Item -ItemType Directory -Force -Path (Join-Path $PublishDir 'cli') | Out-Null
     Set-Content (Join-Path $PublishDir 'cli\filee.cmd') "@`"%~dp0..\filee-cli.exe`" %*" -Encoding ascii
     # Next to Filee.exe: the Explorer menu package's external location is the install folder.
-    & (Join-Path $PSScriptRoot 'build-explorer-menu.ps1') -Destination $PublishDir -Version $Version
+    $architecture = $Runtime.Substring(4)
+    & (Join-Path $PSScriptRoot 'build-explorer-menu.ps1') -Destination $PublishDir -Version $Version -Architecture $architecture
     # Only the small rhwp and 7-Zip are bundled; the app downloads the others when the user picks them. The Microsoft
     # C++ runtime goes next to rhwp.exe and next to Filee.exe (unhwp.dll imports VCRUNTIME140.dll), so neither needs
-    # the Visual C++ Redistributable (#248).
-    & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Only rhwp, 7zip -Destination (Join-Path $PublishDir 'engines') -RuntimeTo $PublishDir
+    # the Visual C++ Redistributable (#248). The ARM64 builds need none.
+    $runtimeTo = @{}
+    if ($Runtime -eq 'win-x64') { $runtimeTo = @{ RuntimeTo = $PublishDir } }
+    & (Join-Path $PSScriptRoot 'fetch-engines.ps1') -Runtime $Runtime -Only rhwp, 7zip -Destination (Join-Path $PublishDir 'engines') @runtimeTo
 }
 $PublishDir = (Resolve-Path $PublishDir).Path
 if (-not (Test-Path (Join-Path $PublishDir 'Filee.exe'))) { throw "Filee.exe is missing in $PublishDir" }
 if (-not $CheckOnly) {
     # Without them rhwp and unhwp fail on PCs without the Visual C++ Redistributable (#248). They go into the payload
     # and the portable zip; Setup checks again after unpacking (RuntimeCheck) on the user's PC.
-    foreach ($dll in 'vcruntime140.dll', 'engines\rhwp\msvcp140.dll', 'engines\rhwp\vcruntime140.dll') {
-        if (-not (Test-Path (Join-Path $PublishDir $dll))) { throw "$dll is missing in $PublishDir (see fetch-engines.ps1 -RuntimeTo)" }
+    $required = if ($Runtime -eq 'win-x64') { 'vcruntime140.dll', 'engines\rhwp\msvcp140.dll', 'engines\rhwp\vcruntime140.dll' } else { @('unhwp.dll') }
+    foreach ($dll in $required) {
+        if (-not (Test-Path (Join-Path $PublishDir $dll))) { throw "$dll is missing in $PublishDir (see fetch-engines.ps1)" }
     }
     # A leftover from a run of the old installer or of Setup would make the zip an "installed" copy.
     foreach ($file in 'uninstall.exe', 'uninstall.json', 'unins000.exe') {
@@ -113,7 +131,7 @@ if (-not $SetupProgram) {
     $setupFolder = Join-Path $cache 'setup'
     Remove-Item $setupFolder -Recurse -Force -ErrorAction SilentlyContinue
     Invoke-Checked 'dotnet publish (setup)' {
-        dotnet publish (Join-Path $root 'src\Filee.Setup\Filee.Setup.csproj') -c Release -r win-x64 -p:FileeSetupPublish=true `
+        dotnet publish (Join-Path $root 'src\Filee.Setup\Filee.Setup.csproj') -c Release -r $Runtime -p:FileeSetupPublish=true `
             "-p:Version=$Version" -o $setupFolder
     }
     $SetupProgram = Join-Path $setupFolder 'Filee.Setup.exe'
@@ -127,7 +145,9 @@ if ($sign) {
     & $sign -Path $PublishDir, $SetupProgram -CertificateThumbprint $CertificateThumbprint
 }
 
-$setupExe = Join-Path $OutputDir "Filee-$Version-win-Setup.exe"
+# The x64 names are the ones Filee's updater looks for (-win-Setup.exe, -SHA256SUMS.txt).
+$prefix = if ($Runtime -eq 'win-x64') { "Filee-$Version-win" } else { "Filee-$Version-$Runtime" }
+$setupExe = Join-Path $OutputDir "$prefix-Setup.exe"
 Write-Host "pack installer $Version"
 $fast = @(if ($CheckOnly) { '--fast' })
 Push-Location $root
@@ -170,7 +190,7 @@ if ($CheckOnly) {
 
 $files = @($setupExe)
 if ($Portable) {
-    $zip = Join-Path $OutputDir "Filee-$Version-win-Portable.zip"
+    $zip = Join-Path $OutputDir "$prefix-Portable.zip"
     Remove-Item $zip -ErrorAction SilentlyContinue
     Write-Host "zip  $zip"
     Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -179,7 +199,7 @@ if ($Portable) {
 }
 
 # Checksums for people who verify their download.
-$sums = Join-Path $OutputDir "Filee-$Version-SHA256SUMS.txt"
+$sums = Join-Path $OutputDir $(if ($Runtime -eq 'win-x64') { "Filee-$Version-SHA256SUMS.txt" } else { "$prefix-SHA256SUMS.txt" })
 $files | ForEach-Object { "$((Get-FileHash $_ -Algorithm SHA256).Hash.ToLowerInvariant())  $(Split-Path $_ -Leaf)" } |
     Set-Content $sums -Encoding ascii
 Get-Item ($files + $sums) | Format-Table Name, Length

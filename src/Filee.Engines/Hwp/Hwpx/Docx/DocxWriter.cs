@@ -12,6 +12,7 @@
 using System.Globalization;
 using System.IO.Compression;
 using System.Text;
+using Filee.Engines.Magick;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx.Docx;
@@ -200,6 +201,7 @@ internal sealed partial class DocxWriter
                 {
                     // WEBP, TIFF, SVG, AVIF ... → PNG, which every Word version shows.
                     using var image = new MagickImage(source);
+                    DdsChannelOrder.Correct(source, image);
                     image.Write(target, MagickFormat.Png);
                 }
             }

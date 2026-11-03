@@ -32,6 +32,9 @@ internal static class DdsChannelOrder
     /// <summary>Swaps red and blue back in the picture ImageMagick read from the DDS at <paramref name="path"/>, when needed.</summary>
     public static void Correct(string path, IMagickImage<byte> image) => Swap(image, NeedsCorrection(path));
 
+    /// <summary>Swaps red and blue back in the picture ImageMagick read from DDS <paramref name="data"/>, when needed.</summary>
+    public static void Correct(ReadOnlySpan<byte> data, IMagickImage<byte> image) => Swap(image, NeedsCorrection(data));
+
     /// <summary>Swaps red and blue of <paramref name="image"/> when <paramref name="readsSwapped"/>.</summary>
     internal static void Swap(IMagickImage<byte> image, bool readsSwapped)
     {
@@ -42,7 +45,11 @@ internal static class DdsChannelOrder
         image.ImportPixels(pixels, new PixelImportSettings(image.Width, image.Height, StorageType.Char, written));
     }
 
-    private static bool NeedsCorrection(string path) => ReadLayout(path) switch
+    private static bool NeedsCorrection(string path) => NeedsCorrection(ReadLayout(path));
+
+    internal static bool NeedsCorrection(ReadOnlySpan<byte> data) => NeedsCorrection(LayoutOf(data));
+
+    private static bool NeedsCorrection(Layout layout) => layout switch
     {
         Layout.Alpha => AlphaReadsSwapped.Value,
         Layout.NoAlpha => NoAlphaReadsSwapped.Value,
@@ -68,6 +75,8 @@ internal static class DdsChannelOrder
 
     private static Layout LayoutOf(ReadOnlySpan<byte> header)
     {
+        if (header.Length < HeaderLength)
+            return Layout.Other;
         var flags = At(header, 80);
         var matches = header[..4].SequenceEqual("DDS "u8) && At(header, 4) == 124 && At(header, 76) == 32
             && (flags & RgbFlag) != 0 && (flags & FourCcFlag) == 0 && At(header, 88) == 32

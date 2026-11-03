@@ -1,0 +1,99 @@
+name: ImageMagick for macOS 13
+
+# Magick.NET's macOS libraries are built without a deployment target, so they need the macOS of the runner that built
+# them: 14.0 on Apple silicon and 15.0 on Intel for Magick.NET 14.17.2 (#600). Filee supports macOS 13, so this job
+# builds the same Magick.Native release from its pinned source with MACOSX_DEPLOYMENT_TARGET=13.0: ImageMagick's
+# dependencies (ImageMagick/Dependencies, every library at the commit its release pins), ImageMagick at the commit
+# Magick.Native pins, then Magick.Native itself. The steps are upstream's own (Magick.Native and Dependencies
+# .github/workflows/main.yml), without the prebuilt dependency download.
+#
+# Run it once per Magick.NET version. The two dylibs are then hosted on dl.filee.sh and pinned by SHA-256 in
+# build/build-portable.ps1, which puts them into the macOS packages. build/check-macho-minos.py fails the package
+# build if a Magick.NET update brings back a library that needs a newer macOS.
+#
+# Pins for Magick.NET 14.17.2 (Directory.Packages.props): its nuspec commit aa58615 reads Magick.Native 2026.927.1314,
+# which pins ImageMagick and downloads Dependencies 2026.09.26.1516.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  MACOSX_DEPLOYMENT_TARGET: '13.0'
+  MAGICK_NATIVE_COMMIT: 999720f7ebe03d5a0029536f1586a2cb82b500ae # tag 2026.927.1314
+  DEPENDENCIES_COMMIT: 1c21ff03809da9cc544427fcd04e965d1558d06f # tag 2026.09.26.1516
+  QUANTUM: Q8
+
+jobs:
+  build:
+    name: Magick.Native Q8 ${{ matrix.arch }} (macOS 13.0)
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: filee
+          persist-credentials: false
+
+      - name: Get pinned sources
+        run: |
+          fetch() {
+            git init -q "$2"
+            git -C "$2" fetch -q --depth 1 "https://github.com/$1.git" "$3"
+            git -C "$2" checkout -q FETCH_HEAD
+          }
+          fetch dlemstra/Magick.Native native "$MAGICK_NATIVE_COMMIT"
+          fetch ImageMagick/Dependencies dependencies "$DEPENDENCIES_COMMIT"
+          fetch ImageMagick/ImageMagick native/src/ImageMagick/ImageMagick "$(< native/src/ImageMagick/ImageMagick.commit)"
+
+      # Dependencies' install script covers Magick.Native's build tools too; running both fails, as both uninstall
+      # the same Homebrew packages.
+      - name: Install build tools
+        working-directory: dependencies
+        run: ./.github/build/macos-${{ matrix.arch }}/install.sh
+
+      - name: Clone dependencies
+        working-directory: dependencies
+        run: ./clone-dependencies.sh macos
+
+      - name: Build dependencies
+        working-directory: dependencies
+        run: ./.github/build/macos-${{ matrix.arch }}/build.sh
+
+      - name: Build ImageMagick
+        working-directory: native/src/ImageMagick/ImageMagick
+        run: ../../../build/shared/build.imagemagick.sh macos ${{ matrix.arch }} "$QUANTUM"
+
+      - name: Build Native
+        working-directory: native/src/Magick.Native
+        run: ../../build/shared/build.native.sh macos ${{ matrix.arch }} "$QUANTUM"
+
+      - name: Copy Native
+        working-directory: native/src/Magick.Native
+        run: ../../build/shared/copy.native.sh "$GITHUB_WORKSPACE/out" macos ${{ matrix.arch }} "$QUANTUM"
+
+      - name: Check minimum macOS
+        run: python3 filee/build/check-macho-minos.py --max "$MACOSX_DEPLOYMENT_TARGET" out
+
+      - name: Checksum
+        working-directory: out
+        run: shasum -a 256 * | tee SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: magick-native-${{ env.QUANTUM }}-osx-${{ matrix.arch }}
+          path: out/
+          if-no-files-found: error
