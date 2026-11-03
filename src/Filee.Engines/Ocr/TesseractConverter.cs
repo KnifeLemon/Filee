@@ -52,6 +52,8 @@ public sealed class TesseractConverter : IConverter
         ["TESSDATA_PREFIX"] = "",
     };
 
+    private const string PdfFontName = "pdf.ttf";
+
     private string? _executable;
 
     public string Id => "tesseract";
@@ -92,7 +94,7 @@ public sealed class TesseractConverter : IConverter
         var tessdata = Path.Combine(scratch, "tessdata");
         Directory.CreateDirectory(tessdata);
         File.Copy(data, Path.Combine(tessdata, Path.GetFileName(data)));
-        CopyPdfFont(tesseract, tessdata);
+        CopyPdfFont(tessdata, PdfFontFolders(tesseract, System.Environment.GetEnvironmentVariable("TESSDATA_PREFIX")));
         var ocr = new Run(tesseract, scratch, language.Code);
         progress?.Report(0.05);
 
@@ -122,44 +124,91 @@ public sealed class TesseractConverter : IConverter
     /// data is there. Newer versions embed it, so a missing font anywhere is not an error: the file is copied from the
     /// system's Tesseract when it can be found.
     /// </summary>
-    private static void CopyPdfFont(string executable, string tessdata)
+    /// <param name="tessdata">The job's tessdata folder, which exists already.</param>
+    /// <param name="folders">Where to look for the font, in order (<see cref="PdfFontFolders"/>).</param>
+    internal static void CopyPdfFont(string tessdata, IEnumerable<string> folders)
     {
-        const string font = "pdf.ttf";
-        var target = Path.Combine(tessdata, font);
-        if (File.Exists(target))
+        var font = FindPdfFont(folders);
+        if (font is null)
             return;
-        var folders = new List<string>();
-        var prefix = System.Environment.GetEnvironmentVariable("TESSDATA_PREFIX");
-        if (!string.IsNullOrWhiteSpace(prefix))
+        try
         {
-            folders.Add(prefix);
-            folders.Add(Path.Combine(prefix, "tessdata"));
+            File.Copy(font, Path.Combine(tessdata, PdfFontName), overwrite: true);
         }
-        var home = Path.GetDirectoryName(executable);
-        if (!string.IsNullOrEmpty(home))
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            folders.Add(Path.Combine(home, "tessdata"));
-            folders.Add(Path.Combine(home, "..", "share", "tessdata"));
-            folders.Add(Path.Combine(home, "..", "share", "tesseract-ocr", "tessdata"));
+            // Recognition goes on: Tesseract 4.1 and later do not need the font, and 4.0 reports it when it does.
         }
-        folders.AddRange(["/usr/share/tesseract-ocr/4.00/tessdata", "/usr/share/tesseract-ocr/5/tessdata", "/usr/share/tesseract-ocr/tessdata",
-            "/usr/share/tessdata", "/usr/local/share/tessdata", "/usr/local/share/tesseract-ocr/tessdata",
-            "/opt/homebrew/share/tessdata", "/opt/local/share/tessdata"]);
+    }
+
+    /// <summary>The first <c>pdf.ttf</c> that exists and can be read in <paramref name="folders"/> (in their order), or null.</summary>
+    internal static string? FindPdfFont(IEnumerable<string> folders)
+    {
         foreach (var folder in folders)
         {
+            if (string.IsNullOrWhiteSpace(folder))
+                continue;
             try
             {
-                var candidate = Path.Combine(folder, font);
-                if (File.Exists(candidate))
-                {
-                    File.Copy(candidate, target, overwrite: true);
-                    return;
-                }
+                var candidate = Path.Combine(folder, PdfFontName);
+                if (!File.Exists(candidate))
+                    continue;
+                using (File.OpenRead(candidate))
+                    return candidate;
             }
-            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
             {
-                // Try the next folder.
+                // Not readable: try the next folder.
             }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Where Tesseract's own <c>pdf.ttf</c> may be, best first: <paramref name="prefix"/> (TESSDATA_PREFIX, which is the
+    /// tessdata folder in Tesseract 4 and its parent in older ones) and its <c>tessdata</c>, the folder of
+    /// <paramref name="executable"/> and the places packages put it. Each folder once; they need not exist.
+    /// </summary>
+    internal static IEnumerable<string> PdfFontFolders(string executable, string? prefix)
+    {
+        var seen = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        foreach (var folder in Candidates())
+        {
+            string full;
+            try
+            {
+                full = Path.GetFullPath(folder);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                continue;
+            }
+            if (seen.Add(full))
+                yield return full;
+        }
+
+        IEnumerable<string> Candidates()
+        {
+            if (!string.IsNullOrWhiteSpace(prefix))
+            {
+                yield return prefix;
+                yield return Path.Combine(prefix, "tessdata");
+            }
+            if (Path.GetDirectoryName(executable) is { Length: > 0 } home)
+            {
+                yield return home;
+                yield return Path.Combine(home, "tessdata");
+                yield return Path.Combine(home, "..", "share", "tessdata");
+                yield return Path.Combine(home, "..", "share", "tesseract-ocr", "tessdata");
+            }
+            yield return "/usr/share/tesseract-ocr/4.00/tessdata"; // Debian, Ubuntu
+            yield return "/usr/share/tesseract-ocr/5/tessdata";
+            yield return "/usr/share/tesseract-ocr/tessdata";
+            yield return "/usr/share/tessdata"; // Fedora, Arch
+            yield return "/usr/local/share/tessdata";
+            yield return "/usr/local/share/tesseract-ocr/tessdata";
+            yield return "/opt/homebrew/share/tessdata"; // Homebrew (Apple silicon), MacPorts
+            yield return "/opt/local/share/tessdata";
         }
     }
 
