@@ -14,6 +14,7 @@ internal sealed class ArchiveExtractor(SevenZip? sevenZip)
     [
         "zip", "jar", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z", "tz", "gz", "bz2", "xz", "lzma", "z",
         "cab", "cpio", "deb", "rpm", "dmg", "iso", "img", "lha", "arj", "split",
+        "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack",
     ];
 
     /// <summary>Formats read by Filee's own code (lzip still needs 7-Zip's LZMA decoder).</summary>

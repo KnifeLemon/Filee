@@ -1,4 +1,4 @@
-// Writes archives. ZIP, TAR and TAR.GZ are written in-process (System.IO.Compression / System.Formats.Tar), so file
+// Writes archives. ZIP (and the game packs that are ZIPs, see GamePacks), TAR and TAR.GZ are written in-process (System.IO.Compression / System.Formats.Tar), so file
 // names are exactly what Filee chooses: UTF-8 in ZIP (with the language encoding flag), PAX headers in TAR. 7Z, the
 // bzip2 / xz TAR variants and single-file GZ / BZ2 / XZ are written by the bundled 7-Zip.
 
@@ -17,7 +17,8 @@ internal sealed record PackItem(string SourcePath, string EntryName);
 internal sealed class ArchivePacker(SevenZip? sevenZip)
 {
     /// <summary>Formats written without 7-Zip.</summary>
-    public static readonly IReadOnlySet<string> BuiltInFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "zip", "tar", "tgz" };
+    public static readonly IReadOnlySet<string> BuiltInFormats =
+        new HashSet<string>(["zip", "tar", "tgz", .. GamePacks.Formats], StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Formats that hold exactly one file, without name or folders.</summary>
     public static readonly IReadOnlySet<string> SingleFileFormats = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "gz", "bz2", "xz" };
@@ -37,7 +38,7 @@ internal sealed class ArchivePacker(SevenZip? sevenZip)
         {
             switch (format)
             {
-                case "zip":
+                case "zip" or "mcpack" or "mcaddon" or "mcworld" or "mctemplate" or "mrpack":
                     await Task.Run(() => WriteZip(items, temp, level, progress, cancellationToken), cancellationToken);
                     break;
                 case "tar":

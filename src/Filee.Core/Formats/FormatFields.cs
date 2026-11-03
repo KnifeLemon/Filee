@@ -79,7 +79,8 @@ public static class FormatFields
             "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
             "jsonl", "yaml", "toml", "har", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
-            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "cab",
+            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "mcpack", "mcaddon",
+            "mcworld", "mctemplate", "mrpack", "cab",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
             "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit"
         ]),
@@ -97,8 +98,8 @@ public static class FormatFields
     [
         // Layout, print, photo post-production, signs and embroidery.
         (["psd", "psb", "exr", "hdr", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
-        // Game textures and cutscenes.
-        (["dds", "usm", "bik"], ["game"]),
+        // Game textures and cutscenes, Minecraft packs and modpacks.
+        (["dds", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),
         // Software work: raw image formats of graphics tools, app icons and cursors, config and data files, flat XML
