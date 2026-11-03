@@ -192,6 +192,8 @@ internal sealed class FakeJoiner : IMediaJoiner
     /// <summary>Called when the join starts, before anything is written.</summary>
     public Action? Joining { get; set; }
 
+    public int? OutputLength { get; set; }
+
     public Task JoinAsync(IReadOnlyList<string> inputPaths, string outputPath, string format, Filee.Core.Presets.Preset preset,
         string workDirectory, IProgress<double>? progress, CancellationToken cancellationToken)
     {
@@ -199,7 +201,10 @@ internal sealed class FakeJoiner : IMediaJoiner
         if (Throw)
             throw new InvalidOperationException("boom");
         Inputs.AddRange(inputPaths);
-        File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
+        if (OutputLength is { } length)
+            File.WriteAllBytes(outputPath, new byte[length]);
+        else
+            File.WriteAllText(outputPath, string.Join("|", inputPaths.Select(Path.GetFileName)));
         return Task.CompletedTask;
     }
 }

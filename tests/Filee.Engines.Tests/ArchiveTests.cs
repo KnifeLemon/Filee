@@ -111,7 +111,11 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ZipFile.ExtractToDirectory(current, check);
         Assert.Equal(expected, Snapshot(Path.Combine(check, "프로젝트")));
         var time = File.GetLastWriteTime(Path.Combine(check, "프로젝트", "readme.txt"));
-        Assert.True(Math.Abs((time - KnownTime).TotalSeconds) <= 2, $"time {time} instead of {KnownTime}");
+        // 7-Zip turns a ZIP's local times into UTC with Windows' current offset, which in a time zone with daylight
+        // saving time can be an hour off .NET's offset for that date (seen on a Pacific-time CI runner).
+        var off = Math.Abs((time - KnownTime).TotalSeconds);
+        var dstHour = TimeZoneInfo.Local.SupportsDaylightSavingTime && Math.Abs(off - 3600) <= 2;
+        Assert.True(off <= 2 || dstHour, $"time {time} instead of {KnownTime}");
     }
 
     [Fact]

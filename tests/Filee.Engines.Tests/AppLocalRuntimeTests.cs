@@ -49,6 +49,19 @@ public sealed class AppLocalRuntimeTests : IDisposable
     }
 
     [Fact]
+    public async Task ProcessRunner_gives_a_program_that_reads_input_an_empty_input()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "cmd.exe.");
+        var cmd = Path.Combine(Environment.SystemDirectory, "cmd.exe");
+
+        // "set /p" waits for a line; with Filee's own input passed on it would wait until the timeout.
+        var result = await ProcessRunner.RunAsync(cmd, ["/c", "set /p answer=Password? & exit 4"], TimeSpan.FromSeconds(30),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(4, result.ExitCode);
+    }
+
+    [Fact]
     public void LibreOffice_gets_its_own_runtime_next_to_soffice()
     {
         var lo = Path.Combine(_root, "libreoffice");

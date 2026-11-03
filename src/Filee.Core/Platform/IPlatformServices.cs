@@ -151,6 +151,9 @@ public interface IPlatformServices
     /// window below normal ones (seen after the Photos app opened) while it still reports itself as topmost.
     /// </summary>
     void RaiseTopmost(nint windowHandle);
+
+    /// <summary>Restores temporary native window configuration after a raised window hides or before it closes.</summary>
+    void RestoreWindow(nint windowHandle) { }
 }
 
 /// <summary>

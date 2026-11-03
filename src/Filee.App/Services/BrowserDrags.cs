@@ -22,7 +22,7 @@ internal static class BrowserDrags
         BrowserDragFormats.UniformResourceLocatorW, BrowserDragFormats.UniformResourceLocator, BrowserDragFormats.MozUrl,
         BrowserDragFormats.NetscapeUrl, BrowserDragFormats.UriList, BrowserDragFormats.DownloadUrlFormat,
         BrowserDragFormats.MozFilePromiseUrl, BrowserDragFormats.MozFilePromiseName, BrowserDragFormats.MacUrl,
-        BrowserDragFormats.MacUrlName, BrowserDragFormats.Html, BrowserDragFormats.WindowsHtml, BrowserDragFormats.MacHtml,
+        BrowserDragFormats.MacUrlName, BrowserDragFormats.Html, BrowserDragFormats.WindowsHtml, BrowserDragFormats.MacHtml, BrowserDragFormats.PlainText,
     ];
 
     /// <summary>Picture data some browsers put on a drag (macOS, X11), with the extension it is saved with.</summary>
@@ -39,7 +39,8 @@ internal static class BrowserDrags
     public static bool MayOffer(IDataTransfer data) =>
         data.Formats.Any(f => f.Kind == DataFormatKind.Platform
                               && (BrowserDragFormats.FileGroupDescriptorW.Equals(f.Identifier, StringComparison.OrdinalIgnoreCase)
-                                  || BrowserDragContent.AddressFormatNames.Contains(f.Identifier, StringComparer.OrdinalIgnoreCase)));
+                                  || BrowserDragContent.AddressFormatNames.Contains(f.Identifier, StringComparer.OrdinalIgnoreCase)))
+        || InlineSvg.Read(data.TryGetText()) is not null;
 
     /// <summary>
     /// The files of a drag from a browser (or another app that holds them only in memory), standing as placeholders;
@@ -96,7 +97,7 @@ internal static class BrowserDrags
                 files.Add(WebDropItem.FromStream(entry.Name, _ => throw new IOException("The file's contents weren't handed over.")));
         }
 
-        if (files.Count == 0 && !hasAddress)
+        if (files.Count == 0 && !hasAddress && !texts.ContainsKey(BrowserDragFormats.PlainText))
             return null;
         return new BrowserDragContent { Files = files, Texts = texts, Picture = Picture(data, texts) };
     }
@@ -120,6 +121,8 @@ internal static class BrowserDrags
     private static Dictionary<string, string> Texts(IDataTransfer data)
     {
         var texts = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (data.TryGetText() is { } plain)
+            texts[BrowserDragFormats.PlainText] = plain;
         foreach (var item in data.Items)
         {
             foreach (var format in item.Formats)

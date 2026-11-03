@@ -4,10 +4,14 @@
 // Works on a clone; Apply() copies the edits back into the original preset (Cancel = just drop the VM).
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Filee.App.Services;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 using Filee.Engines.Ocr;
+using Filee.Engines.Translation;
 
 namespace Filee.App.ViewModels;
 
@@ -27,6 +31,13 @@ public enum FileSizeUnit
     KB,
     /// <summary>1,000,000 bytes.</summary>
     MB,
+}
+
+/// <summary>The unit of a video's size limit in the preset editor (#680); the preset itself keeps megabytes or a percentage.</summary>
+public enum VideoSizeUnit
+{
+    MB,
+    Percent,
 }
 
 /// <summary>A value with a localized label for combo boxes.</summary>
@@ -86,6 +97,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
                     f.Id == FormatRegistry.Folder ? loc["presets.target_folder"] : f.DisplayName,
                     FormatLabels.Category(loc, f.Category))),
         ];
+        if (preset.IsCopyToFolder)
+            Targets = [new Choice<string>(Preset.CopyTarget, loc["presets.copy_to_folder"])];
         ResizeModes = Enum.GetValues<ResizeMode>().Select(v => new Choice<ResizeMode>(v, loc[$"presets.resize.{v}"])).ToList();
         Rotations = Enum.GetValues<ImageRotation>().Select(v => new Choice<ImageRotation>(v, loc[$"presets.rotation.{v}"])).ToList();
         Flips = Enum.GetValues<ImageFlip>().Select(v => new Choice<ImageFlip>(v, loc[$"presets.flip.{v}"])).ToList();
@@ -104,6 +117,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         Locations = [.. Enum.GetValues<OutputLocation>().Select(v => new Choice<OutputLocation?>(v, loc[$"presets.location.{v}"])),
             new Choice<OutputLocation?>(null, loc["presets.location.Ask"])];
         Conflicts = Enum.GetValues<ConflictPolicy>().Select(v => new Choice<ConflictPolicy>(v, loc[$"presets.conflict.{v}"])).ToList();
+        if (preset.IsCopyToFolder)
+        {
+            Locations = Locations.Where(l => l.Value is null or OutputLocation.CustomFolder).ToList();
+            Conflicts = Conflicts.Where(c => c.Value == ConflictPolicy.Rename).ToList();
+            _edit.Output.Location = OutputLocation.CustomFolder;
+            _edit.Output.Conflict = ConflictPolicy.Rename;
+        }
         TiffCompressions = Enum.GetValues<TiffCompression>().Select(v => new Choice<TiffCompression>(v, v.ToString().ToUpperInvariant())).ToList();
         FitsTiffModes = Enum.GetValues<FitsTiffMode>().Select(v => new Choice<FitsTiffMode>(v, loc[$"presets.fits_tiff.{v}"])).ToList();
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
@@ -163,6 +183,29 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _caption = _edit.Media.Caption;
         _spokenLanguage = SpokenLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Media.SpokenLanguage, StringComparison.OrdinalIgnoreCase))
             ?? SpokenLanguageChoices[0];
+        TranslationLanguageChoices =
+        [
+            new Choice<string>("en", "English"),
+            new Choice<string>("es", "Español"),
+            new Choice<string>("fr", "Français"),
+            new Choice<string>("de", "Deutsch"),
+            new Choice<string>("zh", "中文"),
+            new Choice<string>("hi", "हिन्दी"),
+            new Choice<string>("ja", "日本語"),
+            new Choice<string>("ko", "한국어"),
+            new Choice<string>("ru", "Русский"),
+            new Choice<string>("pt", "Português"),
+            new Choice<string>("ar", "العربية"),
+            new Choice<string>("it", "Italiano"),
+            new Choice<string>("nl", "Nederlands"),
+            new Choice<string>("pl", "Polski"),
+            new Choice<string>("tr", "Türkçe"),
+            new Choice<string>("ne", "नेपाली"),
+            new Choice<string>("th", "ไทย"),
+            new Choice<string>("id", "Bahasa Indonesia")
+        ];
+        _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? TranslationLanguageChoices[0];
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -188,7 +231,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var perMegabyte = _imageSizeUnit.Value == FileSizeUnit.KB ? 1000m : 1m;
         _imageMaxSize = (decimal)_edit.Image.MaxSizeMb * perMegabyte;
         _imageMinSize = (decimal)_edit.Image.MinSizeMb * perMegabyte;
-        _videoMaxSizeMb = (decimal)_edit.Media.MaxSizeMb;
+        _videoSizeUnitChoice = _edit.Media.MaxSizePercent > 0 ? VideoSizeUnits[1] : VideoSizeUnits[0];
+        _videoMaxSizeMb = _edit.Media.MaxSizeMb > 0 ? (decimal)_edit.Media.MaxSizeMb : null;
+        _videoMaxSizePercent = _edit.Media.MaxSizePercent > 0 ? _edit.Media.MaxSizePercent : null;
         _resizePercent = _edit.Image.ResizePercent;
         _longEdge = _edit.Image.LongEdge;
         _width = _edit.Image.Width;
@@ -225,9 +270,15 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _keepDates = _edit.Output.KeepDates;
         _zipResult = _edit.Output.ZipResult;
         _replaceOriginal = _edit.Output.ReplaceOriginal;
+        _moveInsteadOfCopy = _edit.Output.MoveInsteadOfCopy;
     }
 
     public string PresetId => _original.Id;
+    public bool IsCopyToFolder => _original.IsCopyToFolder;
+    public bool ShowConversionOutput => !IsCopyToFolder;
+    public string? DestinationError => IsCopyToFolder && Location.Value is not null && string.IsNullOrWhiteSpace(CustomFolder)
+        ? _loc["presets.copy_choose_folder"] : null;
+
     public bool IsTool => _original.IsTool;
     public bool CanChangeTarget => !IsTool;
 
@@ -243,6 +294,48 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<string>> OcrLanguageChoices { get; }
     /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
     public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
+
+    public IReadOnlyList<Choice<string>> TranslationLanguageChoices { get; }
+
+    [ObservableProperty] private Choice<string> _targetLanguage;
+
+    public bool ShowTranslate => _original.Id == "translate" || _edit.Translate.Enabled;
+
+    [ObservableProperty] private string _testTranslationResult = "";
+    [ObservableProperty] private bool _isTestingTranslation;
+    [ObservableProperty] private bool _testTranslationHasError;
+
+    [RelayCommand]
+    public async Task TestTranslationAsync()
+    {
+        if (IsTestingTranslation) return;
+        IsTestingTranslation = true;
+        TestTranslationHasError = false;
+        TestTranslationResult = _loc["engines.ollama.connecting"];
+
+        try
+        {
+            var targetLang = TargetLanguage?.Value ?? "es";
+            var preferred = AppHost.Get<UserDataStore>()?.Settings.PreferredOllamaModel;
+            var model = !string.IsNullOrWhiteSpace(_edit.Translate.Model) ? _edit.Translate.Model
+                : !string.IsNullOrWhiteSpace(preferred) ? preferred
+                : await TranslationService.GetPreferredLocalOllamaModelAsync();
+            var service = new TranslationService(new TranslateOptions { TargetLanguage = targetLang, Model = model });
+            var sample = "Hello, world!";
+            var translated = await service.TranslateTextAsync(sample, targetLang);
+            TestTranslationResult = $"\"{sample}\" → \"{translated}\"  ({model ?? "local model"})";
+            TestTranslationHasError = false;
+        }
+        catch (Exception ex)
+        {
+            TestTranslationResult = $"{_loc["engines.ollama.error"]} {ex.Message}";
+            TestTranslationHasError = true;
+        }
+        finally
+        {
+            IsTestingTranslation = false;
+        }
+    }
 
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
@@ -415,6 +508,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private Choice<PdfPageSize> _pageSize;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowSubfolder), nameof(ShowCustomFolder))]
+    [NotifyPropertyChangedFor(nameof(DestinationError), nameof(IsValid))]
     private Choice<OutputLocation?> _location;
 
     [ObservableProperty] private Choice<ConflictPolicy> _conflict;
@@ -448,8 +542,36 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>A minimum over the maximum, while the boxes are shown; a maximum of 0 is no maximum.</summary>
     public string? SizeRangeError => ShowImageSize && ImageMaxSize > 0 && ImageMinSize > ImageMaxSize ? _loc["presets.size_range_invalid"] : null;
 
-    /// <summary>"Size limit (MB)" for a video (0 = none, #553).</summary>
-    [ObservableProperty] private decimal? _videoMaxSizeMb;
+    /// <summary>The unit of the video size limit: MB or % of original (#680).</summary>
+    public IReadOnlyList<Choice<VideoSizeUnit>> VideoSizeUnits { get; } =
+        [new(VideoSizeUnit.MB, "MB"), new(VideoSizeUnit.Percent, "%")];
+
+    [ObservableProperty] private Choice<VideoSizeUnit> _videoSizeUnitChoice;
+
+    /// <summary>Video size limit in MB (0 or empty = none, #553).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(VideoMaxSize))] private decimal? _videoMaxSizeMb;
+
+    /// <summary>Video size limit as percentage of original (1–99, 0 or empty = none, #680).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(VideoMaxSize))] private decimal? _videoMaxSizePercent;
+
+    /// <summary>The value bound to the video size NumericUpDown.</summary>
+    public decimal? VideoMaxSize
+    {
+        get => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? VideoMaxSizePercent : VideoMaxSizeMb;
+        set
+        {
+            if (VideoSizeUnitChoice.Value == VideoSizeUnit.Percent)
+                VideoMaxSizePercent = value;
+            else
+                VideoMaxSizeMb = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Maximum value for the video size NumericUpDown: 99 for %, 4096 for MB.</summary>
+    public decimal VideoSizeMaximum => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? 99 : 4096;
+    public decimal VideoSizeIncrement => 1;
+    public string VideoSizeFormat => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? "0" : "0.#";
     [ObservableProperty] private int _resizePercent;
     [ObservableProperty] private int _longEdge;
     [ObservableProperty] private int _width;
@@ -542,13 +664,35 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private string _subfolderName;
     /// <summary>The subfolder only for a file that becomes several (OutputRule.SubfolderOnlyForSeveralFiles).</summary>
     [ObservableProperty] private bool _subfolderOnlyForSeveralFiles;
-    [ObservableProperty] private string _customFolder;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DestinationError), nameof(IsValid))]
+    private string _customFolder;
     [ObservableProperty] private string _pattern;
     [ObservableProperty] private bool _keepDates;
     /// <summary>Geospatial targets: the result is saved as one ZIP (OutputRule.ZipResult).</summary>
     [ObservableProperty] private bool _zipResult;
     /// <summary>The result takes the original's place, which goes to the Recycle Bin / Trash (OutputRule.ReplaceOriginal).</summary>
     [ObservableProperty] private bool _replaceOriginal;
+    /// <summary>Copy to folder: the files are moved instead of copied (OutputRule.MoveInsteadOfCopy, #856).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CopyHint), nameof(CopyAction))]
+    private bool _moveInsteadOfCopy;
+
+    /// <summary>Copy to folder's Action: copy (the default) or move.</summary>
+    public IReadOnlyList<Choice<bool>> CopyActions =>
+        [new(false, _loc["presets.copy_to_folder"]), new(true, _loc["presets.move_to_folder"])];
+
+    public Choice<bool> CopyAction
+    {
+        get => CopyActions[MoveInsteadOfCopy ? 1 : 0];
+        set
+        {
+            if (value is not null)
+                MoveInsteadOfCopy = value.Value;
+        }
+    }
+
+    /// <summary>What Copy to folder does with the originals, as the box below it is set.</summary>
+    public string CopyHint => _loc[MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
     [ObservableProperty] private Choice<int> _audioBitrate;
@@ -591,6 +735,20 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     // A combo box that loses its selection sets null: every choice keeps its value (see Choices.Restore).
     partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => Target = v);
+
+    partial void OnVideoSizeUnitChoiceChanged(Choice<VideoSizeUnit>? oldValue, Choice<VideoSizeUnit> newValue)
+    {
+        if (Choices.Restore(oldValue, newValue, v => VideoSizeUnitChoice = v) || oldValue is null || oldValue.Value == newValue.Value)
+            return;
+        var toPercent = newValue.Value == VideoSizeUnit.Percent;
+        if (!toPercent)
+            OnPropertyChanged(nameof(VideoSizeMaximum));
+        OnPropertyChanged(nameof(VideoSizeIncrement));
+        OnPropertyChanged(nameof(VideoSizeFormat));
+        OnPropertyChanged(nameof(VideoMaxSize));
+        if (toPercent)
+            OnPropertyChanged(nameof(VideoSizeMaximum));
+    }
 
     /// <summary>
     /// Both ends keep their size in the other unit: 500 KB becomes 0.5 MB. The boxes' maximum is raised before the
@@ -753,7 +911,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private static double SizeLimit(decimal? megabytes) => (double)Math.Clamp(megabytes ?? 0, 0, 4096);
 
     public string? NameError => string.IsNullOrWhiteSpace(Name) ? _loc["presets.name_required"] : null;
-    public bool IsValid => NameError is null && SizeRangeError is null;
+    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null;
 
     /// <summary>A size from the range's boxes in megabytes.</summary>
     private decimal? Megabytes(decimal? size) => ImageSizeUnit.Value == FileSizeUnit.KB ? size / 1000 : size;
@@ -863,7 +1021,24 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var media = _original.Media;
         media.Quality = MediaQuality.Value;
         media.MaxHeight = MaxHeight.Value;
-        media.MaxSizeMb = ShowVideoMaxSize ? SizeLimit(VideoMaxSizeMb) : 0;
+        if (ShowVideoMaxSize)
+        {
+            if (VideoSizeUnitChoice.Value == VideoSizeUnit.Percent)
+            {
+                media.MaxSizeMb = 0;
+                media.MaxSizePercent = VideoMaxSizePercent is > 0 and < 100 ? (int)Math.Clamp(VideoMaxSizePercent.Value, 1, 99) : 0;
+            }
+            else
+            {
+                media.MaxSizePercent = 0;
+                media.MaxSizeMb = SizeLimit(VideoMaxSizeMb);
+            }
+        }
+        else
+        {
+            media.MaxSizeMb = 0;
+            media.MaxSizePercent = 0;
+        }
         media.AudioBitrateKbps = AudioBitrate.Value;
         media.RemoveAudio = RemoveAudio;
         media.AudioChannels = AudioChannels.Value;
@@ -901,6 +1076,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // black and white chosen for PDF and left behind by a DWG target.
         _original.Cad.Version = ShowCad ? CadVersion.Value : default;
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
+        _original.Translate.TargetLanguage = TargetLanguage.Value;
+        _original.Translate.Enabled = ShowTranslate;
 
         var output = _original.Output;
         // Asking keeps the location it had: a Filee that can't ask (or one from before it) saves there.
@@ -916,7 +1093,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         output.KeepDates = KeepDates;
         // Only for geospatial targets, where it is offered: a box ticked for Shapefile must not zip a later PNG.
         output.ZipResult = ShowZipResult && ZipResult;
-        output.ReplaceOriginal = ReplaceOriginal;
+        output.ReplaceOriginal = !IsCopyToFolder && ReplaceOriginal;
+        output.MoveInsteadOfCopy = IsCopyToFolder && MoveInsteadOfCopy;
         return true;
     }
 

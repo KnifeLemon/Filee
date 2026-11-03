@@ -124,7 +124,7 @@ public class PortugueseRenderTests
     {
         TestServices.EnsureInitialized(language);
         var loc = AppHost.Get<ILocalizer>();
-        using var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>());
+        using var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         var window = new MainWindow { DataContext = vm };
         try
         {
@@ -147,7 +147,7 @@ public class PortugueseRenderTests
     {
         TestServices.EnsureInitialized(language);
         var loc = AppHost.Get<ILocalizer>();
-        using var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>());
+        using var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("presets");
         var window = new MainWindow { DataContext = vm };
         try
@@ -190,7 +190,7 @@ public class PortugueseRenderTests
         var theme = AppHost.Get<ThemeService>();
         var settings = AppHost.Get<UserDataStore>().Settings.Theme;
         theme.Apply(new ThemeSettings { Mode = dark ? ThemeMode.Dark : ThemeMode.Light, ReduceMotion = true }, language);
-        using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate(page);
         var window = new MainWindow { DataContext = vm, Width = 820, Height = 820 };
         try
@@ -249,7 +249,7 @@ public class PortugueseRenderTests
     public void Editors_fit_at_the_default_window_width(string language, string page)
     {
         TestServices.EnsureInitialized(language);
-        using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        using var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate(page);
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         try

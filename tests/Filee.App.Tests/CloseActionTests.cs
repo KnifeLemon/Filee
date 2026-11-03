@@ -33,7 +33,7 @@ public class CloseActionTests
 
     private static MainWindow ShowMain()
     {
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("general");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();

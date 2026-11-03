@@ -43,8 +43,8 @@ install/uninstall scripts. `Filee-<version>-<rid>-SHA256SUMS.txt` verifies the a
 and notarization. `-SigningIdentity` can supply a signing identity, but does not perform notarization.
 
 Linux release packages must run on Ubuntu 22.04 (glibc 2.35). CI builds rhwp from source on Ubuntu 22.04
-(`build/build-linux-native.py`) and passes it with `-RhwpOverride`; a local package without it needs the glibc of the
-machine that built it. Check a package with
+(`build/build-native.py`) and passes it with `-RhwpOverride` (and on ARM64 Unhwp's library with `-UnhwpOverride`); a
+local package without it needs the glibc of the machine that built it. Check a package with
 `python3 build/check-elf-glibc.py --max 2.35 <unpacked package>`. See [docs/ENGINES.md](docs/ENGINES.md#linux-builds-for-older-glibc).
 
 - **Linux:** drag gestures require X11 by default. Install the Avalonia desktop dependencies (fontconfig, FreeType, X11,
@@ -80,6 +80,8 @@ keep macOS marked as a preview until it is notarized.
 Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) first. In short:
 
 - **New file format or engine** → `src/Filee.Engines`, see [docs/ADDING-A-CONVERTER.md](docs/ADDING-A-CONVERTER.md).
+  Which formats and tools are shown by default, and which new output formats come in, is in
+  [docs/FORMAT-RULES.md](docs/FORMAT-RULES.md).
 - **New language** → `src/Filee.App/Assets/i18n`, see [docs/ADDING-A-LANGUAGE.md](docs/ADDING-A-LANGUAGE.md).
 - **UI** → `src/Filee.App/Views` (XAML) + `ViewModels` (CommunityToolkit.Mvvm).
 - **Domain rules** (routes, output names, settings) → `src/Filee.Core` — no UI or OS code here.

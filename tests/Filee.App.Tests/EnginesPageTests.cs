@@ -63,7 +63,7 @@ public class EnginesPageTests
         TestServices.EnsureInitialized("en");
         var store = AppHost.Get<UserDataStore>();
         var saved = store.Settings.EnginePriority.ToList();
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("engines");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();
@@ -116,7 +116,7 @@ public class EnginesPageTests
     public void Font_card_describes_fon_input_only()
     {
         TestServices.EnsureInitialized("en");
-        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>());
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("engines");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
         window.Show();

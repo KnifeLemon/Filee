@@ -1,6 +1,6 @@
-// The "filee" commands: convert, watch, formats, presets. Writes results for people (one line per file) or, with
-// --json, one JSON document for other programs. Exit codes: 0 everything converted, 1 some files failed,
-// 2 wrong arguments or a missing input, 3 nothing to convert.
+// The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
+// --json, one JSON document for other programs. Exit codes: 0 nothing failed (skipped files included), 1 some
+// failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
 
 using System.Text.Json;
 using Filee.Core.Conversion;
@@ -47,6 +47,7 @@ internal static class Cli
             "convert" => await ConvertAsync(options, host, output, errors, cancellationToken),
             "watch" => await WatchAsync(options, host, output, errors, cancellationToken),
             "formats" => ListFormats(options, host, output, errors),
+            "engines" => await EnginesCommand.RunAsync(options, host, output, errors, cancellationToken),
             _ => ListPresets(options, host, output),
         };
     }
@@ -69,8 +70,12 @@ internal static class Cli
             errors.WriteLine("filee: no files to convert.");
             return NothingToDo;
         }
+        // Without it files stay as given, and a folder or wildcard as the file system lists it.
+        IReadOnlyList<string> ordered = options.Sort is { } sort
+            ? FileSorter.Sort(files.Select(FileStamp.Read).ToList(), file => file, sort, foldersTogether: true).Select(file => file.FilePath).ToList()
+            : files;
 
-        var job = await RunJobAsync(files, preset, host, options.Json || options.Quiet ? null : output, cancellationToken);
+        var job = await RunJobAsync(ordered, preset, host, options.Json || options.Quiet ? null : output, cancellationToken);
         var done = job.Files.Count(f => f.State == FileState.Done);
         var failed = job.Files.Count(f => f.State is FileState.Failed or FileState.Cancelled);
         if (options.Json)
@@ -279,6 +284,8 @@ internal static class Cli
             preset = found.Clone();
         }
         preset = host.Store.Settings.WithDefaultOutput(preset);
+        if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model))
+            preset.Translate.Model = host.Store.Settings.PreferredOllamaModel;
         if (options.Quality is { } quality)
             preset.Image.Quality = quality;
         if (options.Conflict is { } conflict)
@@ -363,7 +370,7 @@ internal static class Cli
             output.WriteLine($"{from.DisplayName} ({string.Join(", ", from.Extensions)}) converts to:");
             output.WriteLine(now.Count > 0 ? "  " + string.Join(", ", now) : "  (nothing with the engines installed now)");
             if (later.Count > 0)
-                output.WriteLine($"With optional engines (install them in Filee, Settings → Engines):{Environment.NewLine}  {string.Join(", ", later)}");
+                output.WriteLine($"With optional engines (install them with 'filee engines'):{Environment.NewLine}  {string.Join(", ", later)}");
             return Success;
         }
 
@@ -406,7 +413,7 @@ internal static class Cli
         json.WriteBoolean("writable", format.Writable);
     }
 
-    private static void WriteStrings(Utf8JsonWriter json, string name, IEnumerable<string> values)
+    internal static void WriteStrings(Utf8JsonWriter json, string name, IEnumerable<string> values)
     {
         json.WriteStartArray(name);
         foreach (var value in values)
@@ -414,7 +421,7 @@ internal static class Cli
         json.WriteEndArray();
     }
 
-    private static void WriteJsonDocument(TextWriter output, Action<Utf8JsonWriter> write)
+    internal static void WriteJsonDocument(TextWriter output, Action<Utf8JsonWriter> write)
     {
         using var stream = new MemoryStream();
         using (var json = new Utf8JsonWriter(stream, new JsonWriterOptions { Indented = true }))

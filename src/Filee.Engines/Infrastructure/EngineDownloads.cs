@@ -31,7 +31,16 @@ public static class EngineDownloads
     /// download is left out, so the package is offered like one Filee has no download of.
     /// </summary>
     public static IReadOnlyDictionary<string, EngineComponent> Components { get; } =
-        ComponentsForRuntime(RuntimeIdentifier, OperatingSystem.IsMacOS() ? Environment.OSVersion.Version : null);
+        ComponentsForRuntime(DownloadRuntime(RuntimeIdentifier, OperatingSystem.IsWindows() ? Environment.OSVersion.Version.Build : 0),
+            OperatingSystem.IsMacOS() ? Environment.OSVersion.Version : null);
+
+    /// <summary>
+    /// The downloads a Windows build runs: Filee has no ARM64 builds of the engines it downloads, and Windows 11 on ARM64
+    /// (build 22000 and later) runs the x64 ones under emulation, so win-arm64 gets the win-x64 list there. Windows 10 on
+    /// ARM64 can't run x64 programs and gets none. The bundled rhwp and 7-Zip are ARM64 builds of the same versions.
+    /// </summary>
+    internal static string DownloadRuntime(string runtimeIdentifier, int windowsBuild) =>
+        runtimeIdentifier == "win-arm64" && windowsBuild >= 22000 ? "win-x64" : runtimeIdentifier;
 
     /// <summary>
     /// Packages offered in Settings → Engines and on first run. rhwp and 7-Zip are not listed: they are small and bundled.

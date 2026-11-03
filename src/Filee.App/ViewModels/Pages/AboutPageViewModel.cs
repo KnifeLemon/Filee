@@ -65,8 +65,18 @@ public sealed partial class AboutPageViewModel : ObservableObject, IDisposable
             ShowUpdateState(_updates.LatestVersion);
     }
 
+    /// <summary>A check can finish in a blink; the arrow on "Check now" keeps turning for at least this long so it reads as checking.</summary>
+    private static readonly TimeSpan MinimumCheckTime = TimeSpan.FromMilliseconds(900);
+
     [RelayCommand]
-    private async Task CheckNow() => ShowUpdateState(await _updates.CheckAsync(), afterCheck: true);
+    private async Task CheckNow()
+    {
+        // With "Reduce animations" on there is no arrow turning, so there is nothing to hold the result back for.
+        var minimumSpin = Task.Delay(Motion.Enabled ? MinimumCheckTime : TimeSpan.Zero);
+        var newer = await _updates.CheckAsync();
+        await minimumSpin;
+        ShowUpdateState(newer, afterCheck: true);
+    }
 
     /// <summary>Downloads and runs the new installer, which updates Filee in place (a portable copy opens the download page).</summary>
     [RelayCommand]

@@ -168,15 +168,21 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             return [output];
         }
 
-        // The size limit (#553): refused before anything is encoded when not even a low bitrate fits, else one encode with
+        // The size limit (#553, #680): refused before anything is encoded when not even a low bitrate fits, else one encode with
         // the bitrate capped at what fits (MediaEncoding.ForSizeLimit), and another at that bitrate only if it missed.
-        var limit = !still && media.MaxSizeMb > 0 && MediaEncoding.VideoTargets.ContainsKey(step.To) ? SizeLimit.Bytes(media.MaxSizeMb) : 0;
+        var source = step.OriginalSourcePath ?? step.InputPath;
+        var limit = !still && MediaEncoding.VideoTargets.ContainsKey(step.To) ? SizeLimit.ForVideo(media, source) : 0;
         var kbps = 0;
         if (limit > 0)
         {
             (media, kbps) = MediaEncoding.ForSizeLimit(media, info, limit);
             if (kbps == 0 && info.Duration is { TotalSeconds: > 0 })
-                throw new ConversionRefusedException("error.over_size_limit", $"{info.Duration.Value.TotalSeconds:0} s in {media.MaxSizeMb:0.##} MB");
+            {
+                var detail = media.MaxSizePercent > 0
+                    ? $"{info.Duration.Value.TotalSeconds:0} s in {media.MaxSizePercent}%"
+                    : $"{info.Duration.Value.TotalSeconds:0} s in {media.MaxSizeMb:0.##} MB";
+                throw new ConversionRefusedException("error.over_size_limit", detail);
+            }
         }
 
         var encoders = still ? null : await EncodersOfAsync(ffmpeg);

@@ -29,7 +29,7 @@ public class DonutOpacityTests
         try
         {
             store.Settings.Donut.Opacity = 0.96;
-            var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>());
+            var vm = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
             vm.Navigate("theme");
             var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
             window.Show();

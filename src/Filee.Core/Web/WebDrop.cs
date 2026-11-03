@@ -28,6 +28,14 @@ public abstract class WebDropItem : IDisposable
     public static WebDropItem FromBytes(string name, byte[] bytes, string? mime = null) =>
         new StreamItem(name, _ => Task.FromResult<Stream>(new MemoryStream(bytes, writable: false)), bytes.Length, mime, null);
 
+    /// <summary>A standalone SVG selection, checked for unresolved resources when its job runs.</summary>
+    public static WebDropItem FromInlineSvg(byte[] svg) =>
+        new StreamItem("image.svg", _ =>
+        {
+            InlineSvg.EnsureSelfContained(svg);
+            return Task.FromResult<Stream>(new MemoryStream(svg, writable: false));
+        }, svg.Length, "image/svg+xml", null);
+
     /// <summary>
     /// A file whose bytes the source app streams on request (a Windows virtual file). <paramref name="owner"/> is
     /// disposed with the item, telling the source the transfer is over.

@@ -47,6 +47,9 @@ public class ExplorerMenuTests
         Assert.Contains("OID.2.25.311729368913984317654407730594956997722=1", (string?)identity.Attribute("Publisher"));
         Assert.Equal(ExplorerMenuPackage.ManifestVersion.ToString(4), (string?)identity.Attribute("Version"));
         Assert.Equal("x64", (string?)identity.Attribute("ProcessorArchitecture"));
+        Assert.Equal("arm64", (string?)XDocument.Parse(ExplorerMenuPackage.CreateManifest("arm64")).Root!
+            .Element(F + "Identity")!.Attribute("ProcessorArchitecture"));
+        Assert.Throws<ArgumentOutOfRangeException>(() => ExplorerMenuPackage.CreateManifest("x86"));
         Assert.Equal("true", (string?)manifest.Element(F + "Properties")!.Element(Uap10 + "AllowExternalContent"));
         Assert.Equal("10.0.22000.0", (string?)manifest.Descendants(F + "TargetDeviceFamily").Single().Attribute("MinVersion"));
 
@@ -212,7 +215,10 @@ public class ExplorerMenuTests
         Assert.NotNull(zip.GetEntry("[Content_Types].xml"));
         Assert.NotNull(zip.GetEntry(ExplorerMenuPackage.LogoPath.Replace('\\', '/')));
         using var stream = zip.GetEntry("AppxManifest.xml")!.Open();
-        Assert.True(XNode.DeepEquals(XDocument.Parse(ExplorerMenuPackage.CreateManifest()).Root, XDocument.Load(stream).Root),
+        var built = XDocument.Load(stream).Root!;
+        // Built for x64 or, with -Architecture arm64, for ARM64 (CreateManifest rejects any other).
+        var architecture = (string)built.Element(F + "Identity")!.Attribute("ProcessorArchitecture")!;
+        Assert.True(XNode.DeepEquals(XDocument.Parse(ExplorerMenuPackage.CreateManifest(architecture)).Root, built),
             "The package is stale: run build/build-explorer-menu.ps1 again.");
     }
 
@@ -220,8 +226,8 @@ public class ExplorerMenuTests
     public void Native_dll_serves_the_explorer_command_in_process()
     {
         var dll = Path.Combine(BuiltFolder, ExplorerMenuPackage.DllFileName);
-        Assert.SkipUnless(OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture == Architecture.X64 && File.Exists(dll),
-            "Run build/build-explorer-menu.ps1 first (x64 Windows).");
+        Assert.SkipUnless(OperatingSystem.IsWindows() && File.Exists(dll) && DllArchitecture(dll) == RuntimeInformation.ProcessArchitecture,
+            "Run build/build-explorer-menu.ps1 first (-Architecture arm64 on Windows on ARM).");
 
         using var command = NativeCommand.Create(dll);
         // The title comes from the file the app writes into its data folder; without it the English default is used.
@@ -243,6 +249,20 @@ public class ExplorerMenuTests
             File.Delete(file);
             Directory.Delete(folder);
         }
+    }
+
+    /// <summary>The machine a PE file is built for (its COFF header), or null for any other than x64 and ARM64.</summary>
+    private static Architecture? DllArchitecture(string path)
+    {
+        using var reader = new BinaryReader(File.OpenRead(path));
+        reader.BaseStream.Position = 0x3C;
+        reader.BaseStream.Position = reader.ReadInt32() + 4;
+        return reader.ReadUInt16() switch
+        {
+            0x8664 => Architecture.X64,
+            0xAA64 => Architecture.Arm64,
+            _ => null,
+        };
     }
 
     /// <summary>Calls FileeExplorerMenu.dll through its exports and the raw IExplorerCommand vtable.</summary>

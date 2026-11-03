@@ -131,9 +131,8 @@ internal static class NativeMethods
         behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
         // Finder can occupy a full-screen Space that would otherwise hide another app's toolbar.
         SendInteger(window, sel_registerName("setCollectionBehavior:"), behavior);
-        // While Filee shows in the Dock, AppKit keeps its windows off another app's full-screen Space and lets only a
-        // non-activating panel join it (#251). AvnPanel is Avalonia's NSPanel build of AvnWindow, same ivars and methods
-        // but canBecomeMainWindow, so the donut becomes one in place.
+        // A non-activating panel can join another app's full-screen Space while Filee remains in the Dock (#251).
+        // Restore AvnWindow when hidden and before close so AppKit's KVO cleanup sees the initialized class (#805).
         var panel = objc_getClass("AvnPanel");
         if (panel != 0 && object_getClass(window) == objc_getClass("AvnWindow"))
         {
@@ -144,6 +143,21 @@ internal static class NativeMethods
         }
         SendInteger(window, sel_registerName("setLevel:"), 3);
         SendVoid(window, sel_registerName("orderFrontRegardless"));
+    }
+
+    internal static void RestoreWindow(nint window)
+    {
+        if (window == 0)
+            return;
+
+        var panel = objc_getClass("AvnPanel");
+        var avnWindow = objc_getClass("AvnWindow");
+        if (panel == 0 || avnWindow == 0 || object_getClass(window) != panel)
+            return;
+
+        const nint nonactivatingPanel = 1 << 7;
+        SendInteger(window, sel_registerName("setStyleMask:"), Send(window, sel_registerName("styleMask")) & ~nonactivatingPanel);
+        object_setClass(window, avnWindow);
     }
 
     /// <summary>

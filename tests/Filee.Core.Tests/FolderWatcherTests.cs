@@ -40,6 +40,22 @@ public class FolderWatcherTests
     }
 
     [Fact]
+    public async Task An_atomically_published_folder_is_scanned_after_copying()
+    {
+        using var source = new TempDir(); using var target = new TempDir();
+        var folder = Path.Combine(source.Path, "incoming"); Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "a.jpg"), "bytes");
+        var rule = new WatchRule { Folder = target.Path, IncludeSubfolders = true };
+        var (watcher, time, jobs, queue) = Create(rule);
+        await using var watcherLifetime = watcher; await using var queueLifetime = queue;
+        var output = await FolderCopy.CopyAsync(folder, new OutputRule { Location = OutputLocation.CustomFolder, CustomFolder = target.Path }, TestContext.Current.CancellationToken);
+        watcher.Notice(output!); time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(JobState.Completed, Assert.Single(jobs).State);
+        Assert.True(File.Exists(Path.Combine(folder, "a.jpg")));
+    }
+
+    [Fact]
     public void Default_wait_is_longer_where_files_being_written_are_not_locked() =>
         Assert.Equal(TimeSpan.FromSeconds(OperatingSystem.IsWindows() ? 2 : 5), FolderWatcher.DefaultSettleTime);
 

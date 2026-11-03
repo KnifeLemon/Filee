@@ -28,8 +28,8 @@ public interface ISetupRunner
 {
     InstallResult Install(InstallChoices choices, IProgress<SetupProgress> progress);
 
-    /// <summary>Uninstalls; null when it worked, else the error.</summary>
-    Exception? Uninstall(bool deleteSettings, IProgress<SetupProgress> progress);
+    /// <summary>Uninstalls; the result has the error when it failed.</summary>
+    UninstallResult Uninstall(bool deleteSettings, IProgress<SetupProgress> progress);
 }
 
 /// <summary>A language in the picker.</summary>
@@ -394,12 +394,15 @@ public sealed partial class SetupViewModel : ObservableObject
         Page = SetupPage.Progress;
         Percent = 0;
         var progress = new SyncProgress<SetupProgress>(p => Dispatcher.UIThread.Post(() => ShowProgress(p)));
-        var error = await Task.Run(() => _runner.Uninstall(deleteSettings, progress));
-        if (error is null)
+        var result = await Task.Run(() => _runner.Uninstall(deleteSettings, progress));
+        if (result.Error is not { } error)
         {
             ExitCode = 0;
             Percent = 100;
+            // Files still in use (the Explorer menu, Filee in the tray) go at the next restart: nothing is left to delete
+            // by hand (#519).
             UninstalledText = _texts["installer.uninstall.done"]
+                              + (result.DeletedAtRestart > 0 ? Environment.NewLine + Environment.NewLine + _texts["installer.uninstall.restart"] : "")
                               + (deleteSettings ? "" : Environment.NewLine + Environment.NewLine + _texts["installer.uninstall.settings_kept"]);
             Page = SetupPage.Uninstalled;
         }

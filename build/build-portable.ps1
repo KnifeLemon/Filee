@@ -2,10 +2,13 @@
 # disk image (Filee.app next to an Applications link, to drag it there), signed and notarized as the app is.
 #
 # Linux packages must run on Ubuntu 22.04 (glibc 2.35). rhwp's Linux release needs a newer glibc, so CI builds it from
-# source on Ubuntu 22.04 (build/build-linux-native.py) and passes it in:
-#   -RhwpOverride <dir>  a folder with the rhwp program (rhwp's release archive layout) used instead of the rhwp
-#                        download pinned in engines.json
+# source on Ubuntu 22.04 (build/build-native.py) and passes it in:
+#   -RhwpOverride <dir>     a folder with the rhwp program (rhwp's release archive layout) used instead of the rhwp
+#                           download pinned in engines.json
 # Without it (local builds) the package uses the download, which needs a newer glibc.
+# Unhwp's NuGet package has no linux-arm64 library; CI builds it the same way and passes it in:
+#   -UnhwpOverride <file>   libunhwp.so, put next to the app (dotnet publish -p:UnhwpNativeLibrary)
+# Without it a linux-arm64 package has no Unhwp (HWP/HWPX to text, Markdown and HTML).
 #
 # macOS packages must run on macOS 13 (LSMinimumSystemVersion). Magick.NET's own macOS ImageMagick library needs a
 # newer macOS, and Magick.NET 15 has none for Intel Macs, so the same Magick.Native release built for macOS 13
@@ -19,7 +22,8 @@ param(
     [string]$OutputDir = (Join-Path $PSScriptRoot '../Releases'),
     [string]$SigningIdentity = '-',
     [switch]$SkipFonts,
-    [string]$RhwpOverride
+    [string]$RhwpOverride,
+    [string]$UnhwpOverride
 )
 
 $ErrorActionPreference = 'Stop'
@@ -34,6 +38,15 @@ if (($Runtime.StartsWith('osx-') -and -not $IsMacOS) -or ($Runtime.StartsWith('l
 }
 if ($RhwpOverride -and -not $Runtime.StartsWith('linux-')) {
     throw '-RhwpOverride is for Linux packages.'
+}
+if ($UnhwpOverride -and $Runtime -ne 'linux-arm64') {
+    throw '-UnhwpOverride is for linux-arm64 packages (the others get the library from the Unhwp package).'
+}
+$native = @()
+if ($UnhwpOverride) {
+    $UnhwpOverride = (Resolve-Path -LiteralPath $UnhwpOverride).Path
+    if ((Split-Path $UnhwpOverride -Leaf) -ne 'libunhwp.so') { throw "-UnhwpOverride: $UnhwpOverride is not libunhwp.so." }
+    $native = @("-p:UnhwpNativeLibrary=$UnhwpOverride")
 }
 if ($RhwpOverride) {
     $RhwpOverride = (Resolve-Path -LiteralPath $RhwpOverride).Path
@@ -74,7 +87,7 @@ if (-not $SkipFonts) { & (Join-Path $PSScriptRoot 'fetch-fonts.ps1') }
 foreach ($project in @('Filee.App', 'Filee.Cli')) {
     Invoke-Checked "Publish $project" {
         dotnet publish (Join-Path $root "src/$project/$project.csproj") -c Release -r $Runtime --self-contained true `
-            "-p:Version=$Version" -p:FileeRelease=true -p:PublishReadyToRun=false -o $publish
+            "-p:Version=$Version" -p:FileeRelease=true -p:PublishReadyToRun=false @native -o $publish
     }
 }
 $engines = Join-Path $publish 'engines'

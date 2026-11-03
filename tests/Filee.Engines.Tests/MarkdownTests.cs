@@ -121,6 +121,24 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_code_block_is_one_shaded_box_in_a_monospace_font()
+    {
+        // Issue #406: each line used to be a paragraph with shaded text, a strip per line with gaps and none on empty lines.
+        var document = Filee.Engines.Hwp.Hwpx.MarkdownReader.Read("Before\n\n```\nint main()\n\n    return 0;\n```\n\nAfter", fx.NewFolder());
+
+        var blocks = document.Sections.Single().Blocks;
+        var box = Assert.IsType<Filee.Engines.Hwp.Hwpx.HTable>(blocks[1]);
+        Assert.Equal(3, box.Rows.Count);
+        Assert.All(box.Rows, r => Assert.Equal("#F1F0F5", Assert.Single(r.Cells).Fill));
+        var texts = box.Rows.SelectMany(r => r.Cells[0].Blocks.OfType<Filee.Engines.Hwp.Hwpx.HParagraph>())
+            .SelectMany(p => p.Inlines.OfType<Filee.Engines.Hwp.Hwpx.HText>()).ToList();
+        Assert.Equal(["int main()", "    return 0;"], texts.Select(t => t.Text));
+        Assert.All(texts, t => Assert.Null(t.Format.Shade));
+        Assert.All(texts, t => Assert.False(string.IsNullOrEmpty(t.Format.Font)));
+        Assert.Equal(box.Rows[0].Cells[0].CellMargin!.Value.Top, box.Rows[2].Cells[0].CellMargin!.Value.Bottom);
+    }
+
+    [Fact]
     public async Task Markdown_to_pdf_with_built_in_engines()
     {
         var rhwp = fx.Converters.Single(c => c.Id == "rhwp");

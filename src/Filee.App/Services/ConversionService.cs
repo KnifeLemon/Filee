@@ -77,18 +77,25 @@ public sealed class ConversionService
     public JobViewModel? Start(IReadOnlyList<string> files, Preset preset, bool showInToast = true, WebDrop? web = null,
         bool toClipboard = false)
     {
-        if (files.Count == 0 || preset.IsGroup || preset.IsTool)
+        if (files.Count == 0 || preset.IsGroup || preset.IsTool && !preset.IsCopyToFolder || preset.IsCopyToFolder && preset.Output.AskEveryTime)
         {
             web?.Dispose();
             return null;
         }
         // A preset on "Default" saves where Settings > General says (read now, so a changed default applies at once).
         preset = _store.Settings.WithDefaultOutput(preset);
+        if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model) && !string.IsNullOrWhiteSpace(_store.Settings.PreferredOllamaModel))
+        {
+            preset = preset.Clone();
+            preset.Translate.Model = _store.Settings.PreferredOllamaModel;
+        }
         WebDropFetcher? fetcher = null;
         if (web is not null)
         {
             var options = BrowserDropOptions();
-            if (web.SaveOnlyConverted is { } only)
+            if (preset.IsCopyToFolder)
+                options = options with { SaveOnlyConverted = true };
+            else if (web.SaveOnlyConverted is { } only)
                 options = options with { SaveOnlyConverted = only };
             fetcher = web.CreateFetcher(options, _downloader);
             // "Next to the source" is the download folder, also when the original is only kept until converted.
@@ -108,6 +115,24 @@ public sealed class ConversionService
         if (showInToast)
             ToastJobs.Insert(0, vm);
         return vm;
+    }
+
+    /// <summary>The existing save picker, before creating a job; cancellation releases browser data.</summary>
+    internal async Task<JobViewModel?> AskThenStartAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web,
+        Func<Preset, bool, Task<Preset?>> choose, bool toClipboard = false)
+    {
+        try
+        {
+            var running = _store.Settings.WithDefaultOutput(preset);
+            var one = AskedLocation.MakesOneResult(running, files.Count)
+                && !(running.IsCopyToFolder && Directory.Exists(files[0]));
+            if (await choose(running, one) is not { } asked)
+                return null;
+            var job = Start(files, asked, web: web, toClipboard: toClipboard);
+            web = null;
+            return job;
+        }
+        finally { web?.Dispose(); }
     }
 
     /// <summary>

@@ -123,7 +123,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 57;
+    public const int CurrentSchemaVersion = 58;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -231,6 +231,9 @@ public sealed class AppSettings
     /// </summary>
     public bool LibreOfficeForSlides { get; set; } = true;
 
+    /// <summary>Active local model for offline translation (e.g. "llama3.2", "qwen2.5").</summary>
+    public string? PreferredOllamaModel { get; set; }
+
     /// <summary>
     /// With LibreOffice and H2Orestart installed, HWP / HWPX → PDF go through it instead of rhwp: a way around a
     /// document rhwp lays out wrong (each engine gets different documents right).
@@ -260,6 +263,12 @@ public sealed class AppSettings
     /// 1 as designed, 0.7 to 1.8. A missing value (settings from before it) reads as 1, so it needs no schema step.
     /// </summary>
     public double UiScale { get; set; } = 1;
+
+    /// <summary>
+    /// The main window's navigation is collapsed to an icon rail (the button at its bottom). A missing value (settings from
+    /// before it) reads as expanded, so it needs no schema step.
+    /// </summary>
+    public bool NavCollapsed { get; set; }
 
     /// <summary>
     /// Where the main window was when it last closed, so the next start opens it there (#586). Null until it has closed

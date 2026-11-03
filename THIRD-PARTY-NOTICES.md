@@ -58,8 +58,13 @@ Bundled with the installer:
 
 The Linux packages contain an rhwp built by Filee's CI from the unmodified source of the same release (tag `v0.8.7`,
 commit `1a76570e833917d15817415a53c09ad61ab3203f`, `cargo build --release --locked --bin rhwp` on Ubuntu 22.04), so it
-runs on older Linux systems than rhwp's own Linux build. It is under the same MIT license; its `LICENSE` is next to it
-(`engines/rhwp`). Windows and macOS use rhwp's release builds.
+runs on older Linux systems than rhwp's own Linux build. The Windows ARM64 build contains an rhwp built the same way
+on Windows ARM64 (with the C runtime linked statically), as rhwp has no ARM64 release. Both are under the same MIT
+license; its `LICENSE` is next to them (`engines/rhwp`). Windows x64 and macOS use rhwp's release builds.
+
+Unhwp's NuGet package has no native library for Linux ARM64 and Windows ARM64. Those builds contain one built by
+Filee's CI from the unmodified source the package was built from (commit `405b17e137b3ca06299dcbc8a156599ac7027e91`,
+`cargo build --release --locked -p unhwp --lib --features ffi`), under Unhwp's MIT license.
 
 7-Zip is Copyright (C) 1999-2026 Igor Pavlov; its `License.txt` is installed next to it (`engines/7zip`). The RAR
 decompression code in `7z.dll` is under the unRAR license restriction: it may be used to unpack RAR archives, but not

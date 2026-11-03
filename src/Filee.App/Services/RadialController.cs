@@ -137,9 +137,10 @@ public sealed class RadialController(
         viewModel.Load(files, clickMode: true);
         viewModel.FitToThisDonut();
         window.DonutControl.AllowContextEdit = true;
+        // Set the initial pose before showing the reused window, avoiding a fully-open flash.
+        window.DonutControl.PlayOpenAnimation();
         PlaceAndShow(window, x, y, activate: true);
         WatchFlipKey();
-        window.DonutControl.PlayOpenAnimation();
     }
 
     /// <summary>The mouse button of the drag gesture was released somewhere.</summary>
@@ -224,6 +225,16 @@ public sealed class RadialController(
 
         var window = new RadialWindow { DataContext = viewModel };
         var donut = window.DonutControl;
+
+        // macOS uses a panel while the donut is shown over a full-screen app. Restore its original window class
+        // after any hide and before Avalonia releases it at quit, including a quit while it is still visible (#805).
+        void RestoreNativeWindow() => platform.RestoreWindow(window.TryGetPlatformHandle()?.Handle ?? 0);
+        window.Closing += (_, _) => RestoreNativeWindow();
+        window.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == RadialWindow.IsVisibleProperty && !change.GetNewValue<bool>())
+                RestoreNativeWindow();
+        };
 
         // On native Wayland, hiding an xdg_toplevel surface causes the compositor to destroy its surface,
         // and re-showing raises an InvalidOperationException. Track Closed to re-create on the next gesture.
@@ -337,7 +348,7 @@ public sealed class RadialController(
             return;
         }
 
-        if (preset.IsTool)
+        if (preset.IsTool && !preset.IsCopyToFolder)
         {
             log.LogInformation("Opening {Preset} for {Count} file(s)", preset.Id, sources.Count);
             var near = _window?.Position;
@@ -359,10 +370,10 @@ public sealed class RadialController(
 
         // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
         // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
-        if (preset.Output.AskEveryTime && web is null)
+        if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
         {
             Close(animate: false);
-            _ = AskThenConvertAsync(sources, preset, _toClipboard);
+            _ = AskThenConvertAsync(sources, preset, _toClipboard, web);
             return;
         }
 
@@ -429,17 +440,12 @@ public sealed class RadialController(
         }
     }
 
-    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard)
+    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null)
     {
         try
         {
-            // Asked as it will run (a ZIP from Settings › General is a .zip), for one file or a folder as the job makes them.
-            var running = store.Settings.WithDefaultOutput(preset);
-            if (await windows.AskSaveLocationAsync(sources, running, AskedLocation.MakesOneResult(running, sources.Count)) is { } asked)
-            {
-                log.LogInformation("Converting {Count} file(s) with preset {Preset} where the user chose", sources.Count, preset.Id);
-                conversions.Start(sources, asked, toClipboard: toClipboard);
-            }
+            await conversions.AskThenStartAsync(sources, preset, web,
+                (running, one) => windows.AskSaveLocationAsync(sources, running, one), toClipboard);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -461,7 +467,7 @@ public sealed class RadialController(
     /// archive"; any other preset converts the files beside them (issue #186).
     /// </summary>
     internal static IReadOnlyList<string> SourcesFor(Preset preset, IReadOnlyList<string> files) =>
-        preset.PacksIntoOneArchive ? files : [.. files.Where(path => !Directory.Exists(path))];
+        preset.PacksIntoOneArchive || preset.IsCopyToFolder ? files : [.. files.Where(path => !Directory.Exists(path))];
 
     // ───────── Progress ring ─────────
 

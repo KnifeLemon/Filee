@@ -129,6 +129,13 @@ public sealed class MacOSPlatformServices : IPlatformServices
             NativeMethods.RaiseTopmost(windowHandle);
     }
 
+    /// <summary>Restores a topmost window's native class and style after it hides or before it closes.</summary>
+    public void RestoreWindow(nint windowHandle)
+    {
+        if (windowHandle != 0)
+            NativeMethods.RestoreWindow(windowHandle);
+    }
+
     /// <summary>
     /// Lets drags that offer file paths or file promises in older forms reach the window (the donut), not just ones
     /// offering file URLs: other file managers than Finder write those (issue #160).
