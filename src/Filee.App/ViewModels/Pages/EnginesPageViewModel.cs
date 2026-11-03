@@ -171,8 +171,9 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
         var minimumSpin = Task.Delay(Motion.Enabled ? MinimumRecheckTime : TimeSpan.Zero);
         EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        _ = Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
         _catalog.Refresh();
+        _ = _catalog.CheckInBackgroundAsync();
         await minimumSpin;
     }
 

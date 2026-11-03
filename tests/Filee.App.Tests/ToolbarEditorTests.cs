@@ -329,8 +329,8 @@ public class ToolbarPageTests
 
             Assert.Equal("", vm.PaletteSearch);
             Assert.Equal(PaletteTab.Image, vm.SelectedTab!.Id);
-            // Both unplaced built-in groups stay available ahead of the new one.
-            Assert.Equal(["pdf-edit", "flip", "test-new-group"], vm.VisiblePalette.Take(3).Select(c => c.PresetId));
+            // The unplaced built-in groups ("Crop video" is on the video donut only) stay available ahead of the new one.
+            Assert.Equal(["pdf-edit", "flip", "crop-video", "test-new-group"], vm.VisiblePalette.Take(4).Select(c => c.PresetId));
             // Up with the groups at the top, above every conversion: not below ~80 presets.
             var chips = vm.VisiblePalette.Select(c => store.FindPreset(c.PresetId)!).ToList();
             var at = chips.FindIndex(p => p.Id == "test-new-group");

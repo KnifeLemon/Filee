@@ -209,6 +209,23 @@ job. The window only chooses the clip; writing it is an ordinary conversion.
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
   size and codec.
 
+## Crop video
+
+"Crop video" (`crop-video`, after Cut a clip on the back of the video donut, #830) is a group of ordinary
+conversions, not a window: each preset keeps the video's own format (MP4 for VOB and DV, whose fixed frame sizes would
+stretch the crop back: `VideoCrop.TargetFor`) and sets `MediaOptions.CropFrame` to `auto` or a `width:height` ratio
+(`Core/Presets/VideoCrop`).
+
+- A ratio crops the largest centred box of the upright picture with square pixels (`MediaEncoding.RatioBox`); a video
+  already that shape is refused (`error.crop_same_frame`).
+- Auto runs `cropdetect` (limit as a part of the range, so 10-bit and HDR read alike) over a second at five points of
+  the video (the first five seconds of a short one), takes each stretch's final box and the largest of those
+  (`MediaEncoding.FinalCrop`, `LargestCrop`); no black bars, or a box under a quarter of the picture, refuses the file
+  (`error.no_black_bars`), and cropdetect failing everywhere is an error with FFmpeg's message.
+- The crop goes before the scale filter, so the video is always encoded: an HEVC or AV1 source stays in its codec where
+  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and an
+  MKV keeps its subtitles and attachments.
+
 ## Spreadsheet print studio
 
 The `tool-sheet-studio` tool opens an independent `Views/SpreadsheetPrintStudioWindow` for each dropped XLSX workbook
@@ -354,7 +371,10 @@ transparent area into a blurred rectangle (issue #269). Filee sets neither, so o
 program: each time the window shows, a backdrop is set back to none and the accent (which can't be read back) is
 turned off. For a report that still shows the wrong thing, the `FILEE_RENDERING` environment variable picks another
 way to draw (`WindowsRendering`): `dcomp` (skip WinUI composition), `redirection` (Direct3D into the redirection
-surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start.
+surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start. On ARM64, Avalonia's
+Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236), and three values try the GPU
+there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver), `vulkan` and `wgl` (OpenGL), the
+last two falling back to software when they can't start.
 
 ## Explorer integration
 

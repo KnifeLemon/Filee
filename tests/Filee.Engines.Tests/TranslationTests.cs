@@ -188,4 +188,32 @@ public class TranslationTests
         Assert.Equal("[T] Beta.", inlines[1].Text); // salvaged by the plain single-run translation
     }
 
+
+    private sealed class StatusMockHandler(System.Net.HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(statusCode));
+    }
+
+    [Fact]
+    public async Task TranslationService_throws_model_not_found_on_404()
+    {
+        using var client = new HttpClient(new StatusMockHandler(System.Net.HttpStatusCode.NotFound));
+        var options = new Filee.Core.Presets.TranslateOptions { Model = "deleted-model:latest" };
+        var service = new TranslationService(options, client);
+
+        var ex = await Assert.ThrowsAsync<ConversionRefusedException>(() => service.TranslateTextAsync("Hello", "es", "en", cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal("error.translation_model_not_found", ex.Message);
+    }
+
+    [Fact]
+    public async Task TranslationService_throws_cloud_forbidden_on_non_404_error()
+    {
+        using var client = new HttpClient(new StatusMockHandler(System.Net.HttpStatusCode.InternalServerError));
+        var options = new Filee.Core.Presets.TranslateOptions { Model = "error-model:latest" };
+        var service = new TranslationService(options, client);
+
+        var ex = await Assert.ThrowsAsync<ConversionRefusedException>(() => service.TranslateTextAsync("Hello", "es", "en", cancellationToken: TestContext.Current.CancellationToken));
+        Assert.Equal("error.translation_cloud_model_forbidden", ex.Message);
+    }
 }
