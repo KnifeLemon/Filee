@@ -54,9 +54,20 @@ internal static class LabelText
     public static SKTypeface Primary => Fonts is [var first, ..] ? first : SystemPrimary.Value;
 
     public static SKFont FontOf(SKTypeface face, float size) =>
-        // Made bold by Skia when the face isn't (fonts the system finds for Arabic, Korean, Thai … are regular), as
-        // Avalonia makes them bold in the text box.
-        new(face, size) { Edging = SKFontEdging.Antialias, Subpixel = true, Embolden = face.FontWeight < 600 };
+        new(face, size) { Edging = SKFontEdging.Antialias, Subpixel = true, Embolden = MadeBold(face) };
+
+    /// <summary>
+    /// Whether Skia makes the face bold, as Avalonia does in the text box: a font of the chain that has no bold face
+    /// is (a system font named there); one the system finds for a letter the chain lacks never is (Avalonia's font
+    /// fallback asks for no simulation), so an emoji font's colour glyphs keep their shape.
+    /// </summary>
+    internal static bool MadeBold(SKTypeface face)
+    {
+        if (face.IsBold)
+            return false;
+        var chain = Fonts;
+        return chain.Length > 0 ? Array.IndexOf(chain, face) >= 0 : face == SystemPrimary.Value;
+    }
 
     /// <summary>
     /// Lays <paramref name="text"/> out from <paramref name="x"/> on <paramref name="baseline"/>, adding its glyphs to

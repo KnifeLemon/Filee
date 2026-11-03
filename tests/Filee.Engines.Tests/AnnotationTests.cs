@@ -142,6 +142,16 @@ public class AnnotationTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_font_the_system_finds_for_a_letter_is_not_made_bold()
+    {
+        // As in the text box (Avalonia asks for no bold simulation on its font fallback): made bold, Windows' colour
+        // emoji (outlines) came out heavier in the label than in the box.
+        var fallback = LabelText.Runs("OK 👍 저장").Select(r => r.Face).Where(f => f != LabelText.Primary).ToList();
+        Assert.SkipWhen(fallback.Count == 0, "The system's own font has every letter here: nothing falls back.");
+        Assert.All(fallback, face => Assert.False(LabelText.MadeBold(face), $"{face.FamilyName} made bold"));
+    }
+
+    [Fact]
     public void Brackets_in_right_to_left_text_are_shaped_right_to_left_so_they_mirror()
     {
         var runs = LabelText.Runs("(مرحبا)");
