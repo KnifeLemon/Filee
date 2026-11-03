@@ -966,6 +966,14 @@ internal static class SettingsMigrations
         //      another change takes it first.)
         if (from < 59)
             changed |= AddCropVideo(presets);
+        // v60: the "Annotate" tool, in the palette only, after "Pixelate / blur" as in a new library (at the end
+        //      without it).
+        if (from < 60 && presets.All(p => p.Id != BuiltInData.AnnotateId))
+        {
+            var hide = presets.FindIndex(p => p.Id == BuiltInData.HidePresets().Single().Id);
+            presets.InsertRange(hide < 0 ? presets.Count : hide + 1, BuiltInData.AnnotatePresets());
+            changed = true;
+        }
         return changed;
     }
 

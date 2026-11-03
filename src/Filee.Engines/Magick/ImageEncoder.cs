@@ -296,6 +296,8 @@ internal static class ImageEncoder
         // "Pixelate / blur": the parts were drawn on the picture as it is seen, before it is turned or resized. It also
         // drops the small previews of the uncovered picture a file can carry.
         AreaHider.Apply(image, options);
+        // "Annotate": the marks were drawn on the picture as it is seen too, after any parts were hidden.
+        Annotations.Annotator.Apply(image, options);
 
         // After AutoOrient, so a phone photo turns the way it looks, not the way its pixels are stored.
         Turn(image, options);

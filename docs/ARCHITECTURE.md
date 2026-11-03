@@ -148,6 +148,22 @@ A group is one slice that opens up to six non-group actions. Its members may be 
 editor offers both kinds, and `UserDataStore.EnsureConsistency` removes missing, duplicate, nested or excess members
 without excluding tools.
 
+## Annotate tool
+
+"Annotate" (`tool-annotate`, palette only, settings schema 60) draws pen lines, arrows, boxes, highlights, text and
+numbers on pictures (`ImageOptions.Annotations`): points are parts of the picture, sizes parts of its shorter side.
+
+- `Engines/Annotations/AnnotationPainter` (SkiaSharp) draws the marks, always at the picture's own size in pixels. The
+  window's `AnnotationCanvas` calls it on Avalonia's own Skia canvas (a custom draw operation through
+  `ISkiaSharpApiLeaseFeature`), scaled to where the picture is shown, and `Annotator` on layers over the part the marks
+  cover, a band at a time, laid over the picture in `ImageEncoder.ApplyOptions` after hidden areas (converted to a CMYK
+  picture's colours; a greyscale picture becomes a colour one): the preview is the file. Text is shaped with HarfBuzz
+  (`Vector/GlyphOutlines`) in the system's bold sans-serif, each run of letters it lacks in a font the system finds.
+- `AnnotationSet` keeps the marks, the selection and undo / redo (a drag is one step). A mark just drawn isn't selected:
+  a colour picked next goes to the next mark; with Select, colour and width restyle the selected one.
+- `AnnotateTool.ConversionOf` (Core) turns the tool into a conversion in the picture's own format (as Pixelate / blur),
+  run by the job queue; `ReworksPixels` includes the marks.
+
 ## Crop overlay and PDF page editor
 
 The image Crop tool (`tool-crop`) and PDF Crop (`tool-pdf-crop`) open `Views/CropOverlayWindow` instead of running a job:
