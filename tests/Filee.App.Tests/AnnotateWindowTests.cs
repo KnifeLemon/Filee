@@ -632,7 +632,16 @@ public sealed class AnnotateWindowTests : IDisposable
                 typed.Grayscale();
                 drawn.Grayscale();
                 var (difference, dx, dy) = Aligned(typed, drawn);
-                Assert.True(difference < 5.5, $"\"{text}\": the label differs from its box by {difference:0.00} of 255 (at {dx}, {dy})");
+                if (difference >= 5.5)
+                {
+                    // What each side drew with, and the two pictures with the screenshots, for a platform this can't be
+                    // run on by hand (a CI runner).
+                    var name = $"annotate-label-{string.Concat(text.Where(char.IsAsciiLetterOrDigit))}";
+                    typed.Write(Path.Combine(TestServices.ScreenshotDirectory, name + "-box.png"));
+                    drawn.Write(Path.Combine(TestServices.ScreenshotDirectory, name + "-label.png"));
+                    Assert.Fail($"\"{text}\": the label differs from its box by {difference:0.00} of 255 (at {dx}, {dy}).\n"
+                        + $"Box: {Fonts(BoxRuns(window.Editor, text))}\nLabel: {Fonts(LabelRuns(text))}");
+                }
                 Assert.True(Math.Abs(box.Bounds.Width - tag.Width) < 3, $"\"{text}\": box {box.Bounds.Width:0.0} wide, the tag {tag.Width:0.0}");
             }
         }
@@ -708,6 +717,22 @@ public sealed class AnnotateWindowTests : IDisposable
         TestServices.EnsureInitialized("en");
         Assert.Equal(BoxSeen(text), Seen(Filee.Engines.Annotations.LabelText.Runs(text).Select(r => (r.Text, r.RightToLeft))));
     }
+
+    private static string Fonts(IEnumerable<(string Text, string Font)> runs) => string.Join(" | ", runs.Select(r => $"\"{r.Text}\" {r.Font}"));
+
+    /// <summary>The fonts Avalonia lays the box's text out in, with the simulations it applies.</summary>
+    private static IEnumerable<(string Text, string Font)> BoxRuns(TextBox box, string text)
+    {
+        using var layout = new Avalonia.Media.TextFormatting.TextLayout(text,
+            new Avalonia.Media.Typeface(box.FontFamily, box.FontStyle, box.FontWeight), box.FontSize, Avalonia.Media.Brushes.Black);
+        return [.. layout.TextLines.SelectMany(l => l.TextRuns).OfType<Avalonia.Media.TextFormatting.ShapedTextRun>().Select(r =>
+            (r.Text.ToString(), $"{r.ShapedBuffer.GlyphTypeface.FamilyName} {r.ShapedBuffer.GlyphTypeface.Weight} {r.ShapedBuffer.GlyphTypeface.FontSimulations}"))];
+    }
+
+    /// <summary>The fonts the painter draws the label in, and whether Skia makes them bold.</summary>
+    private static IEnumerable<(string Text, string Font)> LabelRuns(string text) =>
+        [.. Filee.Engines.Annotations.LabelText.Runs(text).Select(r => (r.Text,
+            $"{r.Face.FamilyName} {r.Face.FontWeight}{(Filee.Engines.Annotations.LabelText.MadeBold(r.Face) ? " made bold" : "")}"))];
 
     /// <summary>
     /// How far apart two captures are, per channel of 255 over their common part, at the best shift of up to two pixels
