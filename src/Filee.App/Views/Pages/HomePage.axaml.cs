@@ -200,7 +200,12 @@ public partial class HomePage : UserControl
         var alt = e.KeyModifiers.HasFlag(KeyModifiers.Alt);
         var inQueue = IsWithin(e.Source, QueueList);
         if (alt && e.Key is Key.Up or Key.Down)
+        {
+            // Only with a card selected: with none, the keys are left to the page.
+            if (!vm.Queue.Any(card => card.IsSelected))
+                return;
             vm.MoveSelectedQueued(e.Key == Key.Down ? 1 : -1);
+        }
         else if (!inQueue || e.KeyModifiers != KeyModifiers.None)
             return;
         else

@@ -1,6 +1,7 @@
 // Home: drop zone (handled in the view) and recent conversions.
 
 using System.Collections.ObjectModel;
+using System.Collections.Specialized;
 using System.Globalization;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -227,15 +228,20 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
         var drag = store.Settings.Triggers.FirstOrDefault(t => t.Enabled && t.Kind == TriggerKind.Drag);
         DropHint = loc.Format(OperatingSystem.IsMacOS() ? "home.drop_hint_macos" : OperatingSystem.IsLinux() ? "home.drop_hint_linux" : "home.drop_hint", drag is null ? "—" : GestureText.Modifiers(drag.Modifiers));
         store.HistoryChanged += OnHistoryChanged;
-        Queue.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasQueue));
-        _staged.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName != nameof(StagedFiles.Error))
-                return;
-            OnPropertyChanged(nameof(QueueError));
-            OnPropertyChanged(nameof(HasQueueError));
-        };
+        // The queue outlives this page (it is the service's), so these are unsubscribed in Dispose.
+        Queue.CollectionChanged += OnQueueChanged;
+        _staged.PropertyChanged += OnStagedChanged;
         Reload();
+    }
+
+    private void OnQueueChanged(object? sender, NotifyCollectionChangedEventArgs e) => OnPropertyChanged(nameof(HasQueue));
+
+    private void OnStagedChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(StagedFiles.Error))
+            return;
+        OnPropertyChanged(nameof(QueueError));
+        OnPropertyChanged(nameof(HasQueueError));
     }
 
     private void OnHistoryChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
@@ -247,6 +253,8 @@ public sealed partial class HomePageViewModel : ObservableObject, IDisposable
     {
         _thumbnails?.Cancel();
         _store.HistoryChanged -= OnHistoryChanged;
+        Queue.CollectionChanged -= OnQueueChanged;
+        _staged.PropertyChanged -= OnStagedChanged;
         if (_triggers is not null)
             _triggers.StatusChanged -= OnTriggerStatusChanged;
         if (_elevation is not null)

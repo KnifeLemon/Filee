@@ -44,26 +44,46 @@ internal static class FilePreviews
     {
         if (format is null || IsTooLarge(path, format))
             return null;
-        using var limit = CancellationTokenSource.CreateLinkedTokenSource(cancel);
-        limit.CancelAfter(RenderLimit);
+        // The wait for a turn is not counted: the limit starts when this picture is drawn.
+        await Gate.WaitAsync(cancel);
+        var released = 0;
+        void Release()
+        {
+            if (Interlocked.Exchange(ref released, 1) == 0)
+                Gate.Release();
+        }
+        var draw = Task.Run(() => Make(path, format));
         try
         {
-            await Gate.WaitAsync(limit.Token);
-            try
-            {
-                return await Task.Run(() => Make(path, format), limit.Token);
-            }
-            finally
-            {
-                Gate.Release();
-            }
+            return await draw.WaitAsync(RenderLimit, cancel);
         }
-        catch (OperationCanceledException) when (!cancel.IsCancellationRequested)
+        catch (TimeoutException)
         {
-            // Too slow: this file gets no picture, and the files after it are not kept waiting.
+            // Too slow: this file gets no picture, and the files after it are not kept waiting. The stuck draw goes on in
+            // the background, so the next picture can take the gate now; what it draws is dropped.
+            Release();
+            Abandon(draw, format);
             return null;
         }
+        catch (OperationCanceledException)
+        {
+            // The card went (or the page closed) while its picture was drawn: the picture is dropped when it is ready.
+            Abandon(draw, format);
+            throw;
+        }
+        finally
+        {
+            Release();
+        }
     }
+
+    /// <summary>A draw nobody waits for any more: its picture is disposed when it completes (a PDF's; images are shared).</summary>
+    private static void Abandon(Task<Bitmap?> draw, FileFormat format) =>
+        _ = draw.ContinueWith(task =>
+        {
+            if (task.Status == TaskStatus.RanToCompletion && Owns(format))
+                task.Result?.Dispose();
+        }, TaskScheduler.Default);
 
     /// <summary>Draws the picture now. Pictures of images are cached and shared; a PDF's picture belongs to its caller.</summary>
     private static Bitmap? Make(string path, FileFormat format)

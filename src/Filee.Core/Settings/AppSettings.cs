@@ -258,7 +258,7 @@ public sealed class AppSettings
     /// <summary>
     /// Files dropped or picked on the Home page wait in its list (<c>true</c>), instead of opening the donut for each drop.
     /// </summary>
-    public bool CollectDroppedFiles { get; set; } = true;
+    public bool CollectDroppedFiles { get; set; } = false;
 
     /// <summary>Every geospatial conversion is saved as a ZIP, whatever the preset says (see <see cref="OutputRule.ZipResult"/>).</summary>
     public bool ZipGeoResults { get; set; }

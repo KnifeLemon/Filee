@@ -397,7 +397,7 @@
   "preset.merge_pdf": "Merge PDF",
   "merge.order_title": "Choose merge order",
   "merge.order_hint": "Use the arrows to move between cards. To change the order, drag a card or press Alt + ↑ / Alt + ↓. Files merge from top to bottom. Delete removes the selected file.",
-  "merge.images_hint": "Select a picture and move it up or down. The first one goes at the top, or on the left side by side. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Use the arrows to move between pictures. To change the order, drag a picture or press Alt + ↑ / Alt + ↓. The first one goes at the top, or on the left side by side. Delete removes the selected picture.",
   "merge.vertical": "Top to bottom",
   "merge.horizontal": "Side by side",
   "merge.same_width": "Same width",

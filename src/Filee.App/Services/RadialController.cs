@@ -382,7 +382,7 @@ public sealed class RadialController(
         if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
         {
             Close(animate: false);
-            _ = AskThenConvertAsync(sources, preset, _toClipboard, web);
+            _ = AskThenConvertAsync(sources, preset, _toClipboard, web, _onJob);
             return;
         }
 
@@ -401,6 +401,8 @@ public sealed class RadialController(
 
     private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard, bool keepOrder)
     {
+        // The donut's job callback, taken now: the window may be waiting a while, and another donut may open meanwhile.
+        var onJob = _onJob;
         try
         {
             // The queue's order is the one the user already set on the Home page: the chooser only shows for a merge that
@@ -411,12 +413,12 @@ public sealed class RadialController(
             if (ordered is not null && preset.JoinsImages)
                 RememberMergeLayout(preset);
             if (ordered is not null && preset.Output.AskEveryTime && web is null)
-                await AskThenConvertAsync(ordered, preset, toClipboard);
+                await AskThenConvertAsync(ordered, preset, toClipboard, null, onJob);
             else if (ordered is not null)
             {
                 var job = conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
                 if (job is not null)
-                    _onJob?.Invoke(job.Job);
+                    onJob?.Invoke(job.Job);
                 web = null; // the conversion owns the browser drop now
             }
         }
@@ -456,12 +458,16 @@ public sealed class RadialController(
         }
     }
 
-    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null)
+    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null,
+        Action<ConversionJob>? onJob = null)
     {
         try
         {
-            await conversions.AskThenStartAsync(sources, preset, web,
+            // The job starts only once the user has chosen where to save: the list follows it then, as any other job.
+            var job = await conversions.AskThenStartAsync(sources, preset, web,
                 (running, one) => windows.AskSaveLocationAsync(sources, running, one), toClipboard);
+            if (job is not null)
+                onJob?.Invoke(job.Job);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
