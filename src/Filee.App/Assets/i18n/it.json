@@ -121,6 +121,7 @@
 "error.rhwp_timeout": "rhwp non è riuscito a completare in tempo questo documento lungo",
 "error.rhwp_timeout_calibre": "rhwp non è riuscito a completare in tempo questo documento lungo. Per un e-book, sposta Calibre sopra il writer HWPX in Impostazioni → Motori: Calibre crea il PDF molto più in fretta",
 "error.engine_stalled": "Il motore ha smesso di rispondere: non ha mostrato progressi per molto tempo, quindi è stato interrotto",
+"error.engine_busy": "Un altro Filee (l'app, la riga di comando o un'altra copia) sta installando o rimuovendo questo motore. Riprova quando ha finito.",
 "error.needs_shaping": "Questa scrittura richiede LibreOffice per essere convertita correttamente. Installalo in Impostazioni → Motori",
 "error.runtime_missing": "Manca un file di runtime di Microsoft Visual C++ necessario a questo motore, oppure è obsoleto. Aggiorna o reinstalla Filee, oppure installa Microsoft Visual C++ Redistributable (x64)",
 "error.conversion_failed": "Il motore ha segnalato un errore",

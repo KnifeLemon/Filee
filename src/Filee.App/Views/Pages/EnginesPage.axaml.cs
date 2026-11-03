@@ -192,7 +192,7 @@ public partial class EnginesPage : UserControl
         var loc = AppHost.Get<ILocalizer>();
         if (!await AppHost.Get<WindowService>().ConfirmAsync(window, loc.Format("engines.remove_confirm", package.Name), destructive: true))
             return;
-        if (!vm.Remove(package))
-            await AppHost.Get<WindowService>().MessageAsync(window, loc["engines.remove_failed"]);
+        if (vm.Remove(package) is { } reason)
+            await AppHost.Get<WindowService>().MessageAsync(window, loc[reason]);
     }
 }

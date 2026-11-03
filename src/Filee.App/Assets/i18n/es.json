@@ -122,6 +122,7 @@
   "error.rhwp_timeout": "rhwp no pudo terminar este documento largo a tiempo",
   "error.rhwp_timeout_calibre": "rhwp no pudo terminar este documento largo a tiempo. Para un libro electrónico, mueve Calibre por encima del escritor HWPX en Ajustes → Motores; Calibre genera el PDF mucho más rápido",
   "error.engine_stalled": "El motor dejó de responder: no avanzó durante mucho tiempo y se detuvo",
+  "error.engine_busy": "Otro Filee (la app, la línea de comandos u otra copia) está instalando o quitando este motor. Inténtalo otra vez cuando termine.",
   "error.needs_shaping": "Este sistema de escritura necesita LibreOffice para convertirse bien. Instálalo en Ajustes → Motores",
   "error.runtime_missing": "Falta un archivo del runtime de Microsoft Visual C++ que necesita este motor, o está desactualizado. Actualiza o reinstala Filee, o instala Microsoft Visual C++ Redistributable (x64)",
   "error.conversion_failed": "El motor devolvió un error",
