@@ -127,7 +127,7 @@
                             </Style>
                           </Button.Styles>
                         </Button>
-                        <Button Content="🗑" ToolTip.Tip="{DynamicResource common.delete}"
+                        <Button Classes="danger" Content="🗑" ToolTip.Tip="{DynamicResource common.delete}"
                                 AutomationProperties.Name="{Binding DeleteAutomationName}"
                                 Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).DeleteModelCommand}"
                                 CommandParameter="{Binding}"
