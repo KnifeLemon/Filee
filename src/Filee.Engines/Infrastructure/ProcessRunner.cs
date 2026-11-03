@@ -93,7 +93,7 @@ public static class ProcessRunner
         var finishedEarly = false;
         try
         {
-            var exited = process.WaitForExitAsync(timeoutCts.Token);
+            var exited = WaitForExitOnlyAsync(process, timeoutCts.Token);
             if (watch is null && outputReady is not null && await WatchOutputAsync(outputReady, exited, timeoutCts.Token))
             {
                 TryKill(process, job);
@@ -123,10 +123,14 @@ public static class ProcessRunner
                     return new ProcessResult(0, stdout.ToString(), stderr.ToString());
         }
 
+        // The program exited; the ones it started that still run (and may hold the output) end with the job.
+        job?.Terminate();
         // Make sure the async output readers have drained.
-        process.WaitForExit();
+        await DrainAsync(process, executable, stderr, cancellationToken);
         AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
-        return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+        lock (stdout)
+            lock (stderr)
+                return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString());
     }
 
     /// <summary>
@@ -159,6 +163,43 @@ public static class ProcessRunner
     /// <summary>"10 min", or "30 s" below a minute.</summary>
     internal static string Describe(TimeSpan limit) =>
         limit >= TimeSpan.FromMinutes(1) ? $"{limit.TotalMinutes:0} min" : $"{limit.TotalSeconds:0} s";
+
+    /// <summary>How long the rest of the output may take once the program has exited.</summary>
+    private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Waits for the program itself to exit. <see cref="Process.WaitForExitAsync"/> also waits for the end of its
+    /// output, which a program it started can hold open long after (soffice.bin after soffice.exe): see
+    /// <see cref="DrainAsync"/>.
+    /// </summary>
+    private static async Task WaitForExitOnlyAsync(Process process, CancellationToken cancellationToken)
+    {
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        process.EnableRaisingEvents = true;
+        process.Exited += (_, _) => exited.TrySetResult();
+        if (process.HasExited)
+            exited.TrySetResult();
+        await exited.Task.WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Waits for the rest of the output after the program exited, for <see cref="DrainTimeout"/> at most, rather than
+    /// block the conversion until its time limit: only the rest of the output is lost, with a note in standard error.
+    /// </summary>
+    private static async Task DrainAsync(Process process, string executable, StringBuilder stderr, CancellationToken cancellationToken)
+    {
+        using var drain = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        drain.CancelAfter(DrainTimeout);
+        try
+        {
+            await process.WaitForExitAsync(drain.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            lock (stderr)
+                stderr.AppendLine($"(output not complete: a program {Path.GetFileName(executable)} started still holds it)");
+        }
+    }
 
     /// <summary>
     /// Below normal priority, so a long conversion on every core leaves room for the desktop and Filee's own input
