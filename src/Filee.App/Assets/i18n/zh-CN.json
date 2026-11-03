@@ -1408,7 +1408,7 @@
   "whats_new.2_3_0.translate.title": "在本机生成字幕和翻译",
   "whats_new.2_3_0.translate.text": "从视频生成 SRT 字幕，并用本机 AI 翻译文档、电子书和字幕。文件不会离开您的电脑。",
   "whats_new.2_3_0.more.title": "还有更多",
-  "whats_new.2_3_0.more.text": "复制或移动到文件夹、透视校正裁剪、印刷用 CMYK 文件、Krita 和 Minecraft 文件，以及意大利语和印度尼西亚语。",
+  "whats_new.2_3_0.more.text": "复制或移动到文件夹、透视校正裁剪、印刷用 CMYK 文件、Krita 和 Minecraft 文件，以及意大利语、印度尼西亚语和越南语。",
   "preset.extract_motion.donut": "提取实况/动态照片视频",
   "presets.copy_to_folder": "复制到文件夹",
   "presets.copy_hint": "直接复制文件和文件夹，不转换格式。原件保留，重名时自动编号。",

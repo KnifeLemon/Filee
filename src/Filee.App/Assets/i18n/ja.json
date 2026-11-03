@@ -1388,7 +1388,7 @@
   "whats_new.2_3_0.translate.title": "字幕と翻訳を PC の中で",
   "whats_new.2_3_0.translate.text": "動画から SRT 字幕を作成し、文書、電子書籍、字幕をローカル AI で翻訳します。ファイルが PC の外に出ることはありません。",
   "whats_new.2_3_0.more.title": "ほかにも",
-  "whats_new.2_3_0.more.text": "フォルダーへのコピー・移動、遠近補正のトリミング、印刷用 CMYK ファイル、Krita と Minecraft のファイル、イタリア語とインドネシア語に対応しました。",
+  "whats_new.2_3_0.more.text": "フォルダーへのコピー・移動、遠近補正のトリミング、印刷用 CMYK ファイル、Krita と Minecraft のファイル、イタリア語、インドネシア語、ベトナム語に対応しました。",
   "preset.extract_motion.donut": "Live Photoの動画を抽出",
   "presets.copy_to_folder": "フォルダーにコピー",
   "presets.copy_hint": "ファイルとフォルダーを変換せずにコピーします。元のファイルはそのまま残り、同じ名前があれば番号が付きます。",
