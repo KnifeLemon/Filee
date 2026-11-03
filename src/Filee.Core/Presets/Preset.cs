@@ -926,6 +926,34 @@ public enum PdfRotation
     Rotate180,
 }
 
+/// <summary>The paper "Pages per sheet" puts the pages on (<see cref="PdfOptions.PagesPerSheet"/>).</summary>
+public enum PdfSheetPaper
+{
+    A4,
+    Letter,
+    A3,
+    /// <summary>The size of the first page.</summary>
+    SameAsFirstPage,
+}
+
+/// <summary>Which way a sheet of "Pages per sheet" stands.</summary>
+public enum PdfSheetOrientation
+{
+    /// <summary>Whichever fits the first page larger.</summary>
+    Auto,
+    Portrait,
+    Landscape,
+}
+
+/// <summary>The order the pages fill a sheet of "Pages per sheet" in.</summary>
+public enum PdfSheetOrder
+{
+    /// <summary>Left to right, then the next row.</summary>
+    AcrossFirst,
+    /// <summary>Top to bottom, then the next column.</summary>
+    DownFirst,
+}
+
 /// <summary>PDF related options.</summary>
 public sealed class PdfOptions
 {
@@ -949,6 +977,40 @@ public sealed class PdfOptions
     /// <summary>For PDF → PDF: rotate every selected page without rendering it.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<PdfRotation>))]
     public PdfRotation Rotation { get; set; }
+
+    /// <summary>
+    /// For PDF → PDF: put this many pages on each sheet ("Pages per sheet", N-up, #737), one of
+    /// <see cref="SheetLayouts"/>; 0 keeps one page per sheet.
+    /// </summary>
+    public int PagesPerSheet { get; set; }
+
+    /// <summary>The numbers of pages per sheet offered.</summary>
+    public static readonly IReadOnlyList<int> SheetLayouts = [2, 4, 6, 8, 9];
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the paper.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetPaper>))]
+    public PdfSheetPaper SheetPaper { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: which way the sheet stands.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrientation>))]
+    public PdfSheetOrientation SheetOrientation { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the order the pages fill a sheet in.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrder>))]
+    public PdfSheetOrder SheetOrder { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the space around the edge of each sheet, in millimetres.</summary>
+    public double SheetMarginMm { get; set; } = 10;
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the space between the pages, in millimetres.</summary>
+    public double SheetGapMm { get; set; } = 5;
+
+    /// <summary>With <see cref="PagesPerSheet"/>: a thin line around each page.</summary>
+    public bool SheetBorders { get; set; }
+
+    /// <summary>True when PDF pages are put several to a sheet (<see cref="PagesPerSheet"/>).</summary>
+    [JsonIgnore]
+    public bool MakesSheets => PagesPerSheet > 1;
 
     /// <summary>For PDF → image: stack the pages into one tall image instead of one image per page.</summary>
     public bool CombinePages { get; set; }
