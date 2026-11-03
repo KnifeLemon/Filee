@@ -52,6 +52,43 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(320u, result.Width);
     }
 
+    /// <summary>
+    /// An orange CMYK JPEG, as print work comes (#1055), with the U.S. Web Coated (SWOP) profile, or none (the formula).
+    /// </summary>
+    public static string MakeCmykJpeg(string folder, string name = "print.jpg", bool profile = true)
+    {
+        using var image = new MagickImage(MagickColors.Orange, 120, 80);
+        image.SetProfile(ColorProfiles.SRGB);
+        image.TransformColorSpace(ColorProfiles.SRGB, ColorProfiles.USWebCoatedSWOP);
+        if (!profile)
+            image.RemoveProfile("icc");
+        var path = Path.Combine(folder, name);
+        image.Write(path, MagickFormat.Jpeg);
+        using (var check = new MagickImage(path))
+            Assert.Equal(ColorSpace.CMYK, check.ColorSpace);
+        return path;
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_cmyk_jpeg_becomes_a_pdf_in_its_colours(bool profile)
+    {
+        // #1055: PDFsharp refuses CMYK JPEGs ("Unsupported image format").
+        var dir = fx.NewFolder();
+        var jpeg = MakeCmykJpeg(dir, profile: profile);
+
+        var job = await fx.ConvertAsync([jpeg], new Preset { TargetFormat = "pdf" });
+
+        AssertDone(job);
+        var page = await fx.ConvertAsync([job.Outputs.Single()], new Preset { TargetFormat = "png", Output = { FileNamePattern = "{name}_page" } });
+        AssertDone(page);
+        using var rendered = new MagickImage(page.Outputs.Single());
+        var colour = rendered.GetPixels().GetPixel((int)rendered.Width / 2, (int)rendered.Height / 2)!.ToColor()!;
+        // Orange is R 255, G 165, B 0; through a print profile it comes back a little duller, never another hue.
+        Assert.True(colour.R > 200 && colour.G is > 100 and < 200 && colour.B < 90, $"centre is {colour}");
+    }
+
     /// <summary>A 3-frame animated GIF (red, green, blue; 20, 30 and 40 hundredths of a second, looping).</summary>
     private static string MakeAnimatedGif(string folder)
     {

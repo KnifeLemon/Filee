@@ -869,6 +869,7 @@ public class DonutFlipTests
             Assert.Equal(new[] { file }, vm.Files);
             Assert.False(vm.IsBackFace);
             Assert.True(triggers.WatchFlipKey);
+            var other = TakeKeyboardAway(window);
 
             provider.PostKey(EventType.KeyPressed, KeyCode.VcTab, EventMask.LeftCtrl);
             // #504: macOS can hand the donut's window the same press as well; it must not flip a second time.
@@ -887,6 +888,96 @@ public class DonutFlipTests
             provider.PostKey(EventType.KeyPressed, KeyCode.VcTab);
             Assert.False(TriggerServiceLifecycleTests.Settle(() => vm.IsBackFace));
             window.Close();
+            other?.Close();
+        }
+        finally
+        {
+            folder.Delete(recursive: true);
+        }
+    });
+
+    /// <summary>
+    /// macOS: these tests are about the hook, which flips while the donut's window doesn't have the keyboard, as on
+    /// Windows and Linux; on macOS the donut takes it once files are on it (see the test after this one). Another window
+    /// takes it back; null where the donut didn't have it.
+    /// </summary>
+    private static Window? TakeKeyboardAway(RadialWindow window)
+    {
+        if (!window.IsActive)
+            return null;
+        // Showing another headless window doesn't take the keyboard from this one: the platform says it lost it, through
+        // the callback Avalonia keeps on the window's platform half (not public).
+        var impl = window.PlatformImpl!;
+        var deactivated = impl.GetType().GetInterfaces().Append(impl.GetType())
+            .Select(t => t.GetProperty("Deactivated", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic))
+            .First(p => p is not null)!;
+        ((Action)deactivated.GetValue(impl)!).Invoke();
+        Dispatcher.UIThread.RunJobs();
+        Assert.False(window.IsActive);
+        return null;
+    }
+
+    /// <summary>
+    /// macOS: once files are dragged onto the donut it takes the keyboard, so the flip key reaches its window as a key
+    /// press, which works while another app holds Secure Input and hides every key from the hook. One flip per press:
+    /// the hook's copy of it is ignored meanwhile. The keyboard goes back to the app that had it on the drop or when the
+    /// donut closes, and the hook takes over again if the user clicks elsewhere.
+    /// </summary>
+    [AvaloniaFact]
+    public void On_macos_the_drag_donut_takes_the_keyboard_so_the_flip_key_reaches_it() => With(animations: false, back: null, () =>
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The donut takes the keyboard during a drag on macOS only");
+        var provider = new TriggerServiceLifecycleTests.DelayedProvider();
+        provider.AllowExit.Set();
+        using var triggers = TriggerServiceLifecycleTests.Create(provider, () => { });
+        triggers.Start();
+        Assert.True(SpinWait.SpinUntil(() => provider.Runs == 1, 2000));
+        var vm = AppHost.Get<RadialViewModel>();
+        var platform = new TriggerServiceLifecycleTests.NullPlatformServicesForHooks();
+        var radial = new RadialController(vm, AppHost.Get<ConversionService>(), AppHost.Get<WindowService>(), Store,
+            platform, triggers, NullLogger<RadialController>.Instance);
+        var folder = Directory.CreateTempSubdirectory("filee-flip-");
+        try
+        {
+            var file = Path.Combine(folder.FullName, "photo.jpg");
+            File.WriteAllBytes(file, [0xFF, 0xD8, 0xFF]);
+            radial.ShowForDrag(400, 400);
+            var window = radial.Window!;
+            RenderTests.Pump(); // laid out: the drag enters where the donut is
+            // A modifier-drag without files (a rubber-band selection) takes nothing.
+            Assert.False(window.IsActive);
+            Assert.Equal(0, platform.Remembered);
+
+            var data = new DataTransfer();
+            data.Add(DataTransferItem.CreateFile(window.StorageProvider.TryGetFileFromPathAsync(file).GetAwaiter().GetResult()!));
+            window.DragDrop(new Point(window.Bounds.Width / 2 + 60, window.Bounds.Height / 2), RawDragEventType.DragEnter, data,
+                DragDropEffects.Copy, RawInputModifiers.Control);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(window.IsActive);
+            Assert.Equal(1, platform.Remembered);
+
+            // Secure Input: only the window gets the press, and it flips on its own.
+            window.KeyPress(Key.Tab, RawInputModifiers.Control, PhysicalKey.Tab, null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(vm.IsBackFace);
+            // Without it the hook sees the same press too, and doesn't flip a second time (#504).
+            window.KeyPress(Key.Tab, RawInputModifiers.Control, PhysicalKey.Tab, null);
+            provider.PostKey(EventType.KeyPressed, KeyCode.VcTab, EventMask.LeftCtrl);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(TriggerServiceLifecycleTests.Settle(() => vm.IsBackFace));
+            provider.PostKey(EventType.KeyReleased, KeyCode.VcTab, EventMask.LeftCtrl);
+
+            // The user clicked elsewhere: the hook flips again.
+            var other = TakeKeyboardAway(window);
+            provider.PostKey(EventType.KeyPressed, KeyCode.VcTab, EventMask.LeftCtrl);
+            Assert.True(TriggerServiceLifecycleTests.Settle(() => vm.IsBackFace));
+
+            radial.Close(animate: false);
+            Assert.Equal(1, platform.Returned);
+            radial.Close(animate: false); // given back once
+            Assert.Equal(1, platform.Returned);
+            window.Close();
+            other?.Close();
         }
         finally
         {
@@ -1001,6 +1092,7 @@ public class DonutFlipTests
                     DragDropEffects.Copy, RawInputModifiers.Control);
                 Dispatcher.UIThread.RunJobs();
                 Assert.True(triggers.WatchFlipKey);
+                using var away = new Disposer(TakeKeyboardAway(window));
 
                 // Tab isn't the flip key now; F2 is.
                 provider.PostKey(EventType.KeyPressed, KeyCode.VcTab, EventMask.LeftCtrl);
@@ -1300,4 +1392,90 @@ public class DonutFlipTests
             Store.SaveLibrary();
         }
     }, language);
+
+    /// <summary>
+    /// macOS: the keyboard the drag donut took goes back to the app that had it once a conversion starts, but stays with
+    /// Filee when the drop opens a window of its own (here the crop tool), or that window would open behind the app.
+    /// </summary>
+    [AvaloniaFact]
+    public void On_macos_the_keyboard_goes_back_after_a_conversion_and_stays_for_a_tools_window() => With(animations: false, back: null, () =>
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), "The donut takes the keyboard during a drag on macOS only");
+        var provider = new TriggerServiceLifecycleTests.DelayedProvider();
+        provider.AllowExit.Set();
+        using var triggers = TriggerServiceLifecycleTests.Create(provider, () => { });
+        var vm = AppHost.Get<RadialViewModel>();
+        var platform = new TriggerServiceLifecycleTests.NullPlatformServicesForHooks();
+        var radial = new RadialController(vm, AppHost.Get<ConversionService>(), AppHost.Get<WindowService>(), Store,
+            platform, triggers, NullLogger<RadialController>.Instance);
+        var conversions = AppHost.Get<ConversionService>();
+        var folder = Directory.CreateTempSubdirectory("filee-flip-");
+        ConversionJob? started = null;
+        try
+        {
+            var file = Path.Combine(folder.FullName, "photo.jpg");
+            File.WriteAllBytes(file, [0xFF, 0xD8, 0xFF]);
+
+            // A slice that converts: the keyboard goes back once the ring shows the conversion.
+            var (window, data) = DragOnto(radial, file);
+            var donut = window.DonutControl;
+            var convert = Enumerable.Range(0, vm.Items.Count).First(i => vm.PresetAt(i, -1) is { IsTool: false, IsGroup: false });
+            var at = donut.TranslatePoint(At(donut, DonutGeometry.MidAngle(convert, vm.Items.Count)), window)!.Value;
+            var before = conversions.Jobs.Select(j => j.Job.Id).ToHashSet();
+            window.DragDrop(at, RawDragEventType.DragOver, data, DragDropEffects.Copy, RawInputModifiers.Control);
+            window.DragDrop(at, RawDragEventType.Drop, data, DragDropEffects.Copy, RawInputModifiers.Control);
+            var job = Assert.Single(conversions.Jobs, j => !before.Contains(j.Job.Id));
+            started = job.Job;
+            job.CancelCommand.Execute(null);
+            Assert.Equal(1, platform.Remembered);
+            Assert.Equal(1, platform.Returned);
+            radial.Close(animate: false);
+            Assert.Equal(1, platform.Returned); // given back once
+
+            // The crop tool on the back face: its window gets the keyboard, so it isn't given back.
+            (window, data) = DragOnto(radial, file);
+            donut = window.DonutControl;
+            Assert.Equal(2, platform.Remembered);
+            window.KeyPress(Key.Tab, RawInputModifiers.Control, PhysicalKey.Tab, null);
+            Dispatcher.UIThread.RunJobs();
+            Assert.True(vm.IsBackFace);
+            var crop = Enumerable.Range(0, vm.Items.Count).First(i => vm.PresetAt(i, -1) is { IsCropTool: true });
+            at = donut.TranslatePoint(At(donut, DonutGeometry.MidAngle(crop, vm.Items.Count)), window)!.Value;
+            window.DragDrop(at, RawDragEventType.DragOver, data, DragDropEffects.Copy, RawInputModifiers.Control);
+            window.DragDrop(at, RawDragEventType.Drop, data, DragDropEffects.Copy, RawInputModifiers.Control);
+            Dispatcher.UIThread.RunJobs();
+            Assert.False(radial.IsVisible);
+            Assert.Equal(1, platform.Returned);
+            window.Close();
+        }
+        finally
+        {
+            radial.Close(animate: false);
+            (typeof(WindowService).GetField("_cropOverlay", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .GetValue(AppHost.Get<WindowService>()) as Window)?.Close();
+            if (started is not null)
+                ClipWindowTests.WaitFor(() => started.State is not (JobState.Queued or JobState.Running));
+            try { folder.Delete(recursive: true); } catch (IOException) { }
+        }
+    });
+
+    // A drag of file onto the donut, laid out first so the drag enters where the donut is.
+    private static (RadialWindow Window, DataTransfer Data) DragOnto(RadialController radial, string file)
+    {
+        radial.ShowForDrag(400, 400);
+        var window = radial.Window!;
+        RenderTests.Pump();
+        var data = new DataTransfer();
+        data.Add(DataTransferItem.CreateFile(window.StorageProvider.TryGetFileFromPathAsync(file).GetAwaiter().GetResult()!));
+        window.DragDrop(new Point(window.Bounds.Width / 2 + 60, window.Bounds.Height / 2), RawDragEventType.DragEnter, data,
+            DragDropEffects.Copy, RawInputModifiers.Control);
+        Dispatcher.UIThread.RunJobs();
+        Assert.True(window.IsActive);
+        return (window, data);
+    }
+
+    private sealed class Disposer(Window? window) : IDisposable
+    {
+        public void Dispose() => window?.Close();
+    }
 }
