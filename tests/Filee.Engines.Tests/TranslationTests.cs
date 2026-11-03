@@ -90,14 +90,17 @@ public class TranslationTests
 
         private readonly int[] _drop;
         private readonly int _dropUntil;
-        private readonly bool _answerEmpty;
+        private readonly int[] _empty;
         private int _calls;
 
-        public FlakyTranslationService(int[] drop, int dropUntil, bool answerEmpty = false)
+        /// <param name="drop">Slots answered without their marker while the call count is within <paramref name="dropUntil"/>.</param>
+        /// <param name="dropUntil">Last call the drop behaviour applies to.</param>
+        /// <param name="empty">Slots among <paramref name="drop"/> answered with an empty marker instead of being omitted.</param>
+        public FlakyTranslationService(int[] drop, int dropUntil, int[]? empty = null)
         {
             _drop = drop;
             _dropUntil = dropUntil;
-            _answerEmpty = answerEmpty;
+            _empty = empty ?? [];
         }
 
         public int Calls => _calls;
@@ -113,7 +116,7 @@ public class TranslationTests
                 var key = int.Parse(m.Groups[1].Value);
                 if (_drop.Contains(key) && _calls <= _dropUntil)
                 {
-                    if (_answerEmpty)
+                    if (_empty.Contains(key))
                         sb.Append($"<s{key}></s{key}>");
                     continue;
                 }
@@ -182,7 +185,7 @@ public class TranslationTests
     [Fact]
     public async Task A_run_answered_with_empty_text_is_never_emptied()
     {
-        var service = new FlakyTranslationService([1], int.MaxValue, answerEmpty: true);
+        var service = new FlakyTranslationService([1], int.MaxValue, [1]);
         var inlines = await TranslateParagraph(service, "Alpha.", "Beta.", "Gamma.");
         Assert.Equal(3, service.Calls);
         Assert.Equal("[T] Beta.", inlines[1].Text); // salvaged by the plain single-run translation
@@ -215,4 +218,18 @@ public class TranslationTests
         var ex = await Assert.ThrowsAsync<ConversionRefusedException>(() => service.TranslateTextAsync("Hello", "es", "en", cancellationToken: TestContext.Current.CancellationToken));
         Assert.Equal("error.translation_cloud_model_forbidden", ex.Message);
     }
+
+    [Fact]
+    public async Task A_re_asked_run_stays_in_slot_order()
+    {
+        // call 1 answers s1 with an empty marker and drops s3 entirely: the recovery request must list
+        // the two missing runs in slot order, not in the order the empty answer was re-added
+        var service = new FlakyTranslationService([1, 3], 1, [1]);
+        var inlines = await TranslateParagraph(service, "Alpha.", "Beta.", "Gamma.", "Delta.");
+        Assert.Equal(2, service.Calls);
+        Assert.Equal("<s1>Beta.</s1><s3>Delta.</s3>", service.Requests[1]); // one sentence: the runs go joined
+        Assert.Equal("[T] Beta.", inlines[1].Text);
+        Assert.Equal("[T] Delta.", inlines[3].Text);
+    }
+
 }
