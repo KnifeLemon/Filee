@@ -92,6 +92,7 @@ public sealed class TesseractConverter : IConverter
         var tessdata = Path.Combine(scratch, "tessdata");
         Directory.CreateDirectory(tessdata);
         File.Copy(data, Path.Combine(tessdata, Path.GetFileName(data)));
+        CopyPdfFont(tesseract, tessdata);
         var ocr = new Run(tesseract, scratch, language.Code);
         progress?.Report(0.05);
 
@@ -113,6 +114,53 @@ public sealed class TesseractConverter : IConverter
         }
         progress?.Report(1);
         return [output];
+    }
+
+    /// <summary>
+    /// Tesseract 4.0.x does not embed the invisible-text font of its PDF output: it reads <c>pdf.ttf</c> from the
+    /// tessdata folder it is given (<c>tessdata//pdf.ttf</c>), and fails with "Can not open file" when only the language
+    /// data is there. Newer versions embed it, so a missing font anywhere is not an error: the file is copied from the
+    /// system's Tesseract when it can be found.
+    /// </summary>
+    private static void CopyPdfFont(string executable, string tessdata)
+    {
+        const string font = "pdf.ttf";
+        var target = Path.Combine(tessdata, font);
+        if (File.Exists(target))
+            return;
+        var folders = new List<string>();
+        var prefix = System.Environment.GetEnvironmentVariable("TESSDATA_PREFIX");
+        if (!string.IsNullOrWhiteSpace(prefix))
+        {
+            folders.Add(prefix);
+            folders.Add(Path.Combine(prefix, "tessdata"));
+        }
+        var home = Path.GetDirectoryName(executable);
+        if (!string.IsNullOrEmpty(home))
+        {
+            folders.Add(Path.Combine(home, "tessdata"));
+            folders.Add(Path.Combine(home, "..", "share", "tessdata"));
+            folders.Add(Path.Combine(home, "..", "share", "tesseract-ocr", "tessdata"));
+        }
+        folders.AddRange(["/usr/share/tesseract-ocr/4.00/tessdata", "/usr/share/tesseract-ocr/5/tessdata", "/usr/share/tesseract-ocr/tessdata",
+            "/usr/share/tessdata", "/usr/local/share/tessdata", "/usr/local/share/tesseract-ocr/tessdata",
+            "/opt/homebrew/share/tessdata", "/opt/local/share/tessdata"]);
+        foreach (var folder in folders)
+        {
+            try
+            {
+                var candidate = Path.Combine(folder, font);
+                if (File.Exists(candidate))
+                {
+                    File.Copy(candidate, target, overwrite: true);
+                    return;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException)
+            {
+                // Try the next folder.
+            }
+        }
     }
 
     /// <summary>
