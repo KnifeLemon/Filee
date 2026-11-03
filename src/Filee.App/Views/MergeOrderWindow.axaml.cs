@@ -116,10 +116,10 @@ public partial class MergeOrderWindow : Window
             card.Focus();
     }, DispatcherPriority.Background);
 
-    /// <summary>Whether the focus is in a box or a choice that keeps its own arrows (a text box, a number, a colour, a radio button).</summary>
+    /// <summary>Whether the focus is in a box or a choice that keeps its own arrows (a text box, a number, a colour, a radio button, a sort list).</summary>
     private static bool IsEditing(object? source) =>
-        source is Visual visual && (visual is TextBox or NumericUpDown or ColorPicker or RadioButton
-                                    || visual.GetVisualAncestors().Any(ancestor => ancestor is TextBox or NumericUpDown or ColorPicker or RadioButton));
+        source is Visual visual && (visual is TextBox or NumericUpDown or ColorPicker or RadioButton or ComboBox
+                                    || visual.GetVisualAncestors().Any(ancestor => ancestor is TextBox or NumericUpDown or ColorPicker or RadioButton or ComboBox));
 
     /// <summary>How many cards are in a row: the cards from the first one that sit on its line.</summary>
     private int ColumnCount()

@@ -8,7 +8,7 @@
         x:DataType="vm:MergeOrderViewModel"
         Title="{DynamicResource merge.order_title}"
         Icon="avares://Filee/Assets/Icons/filee.ico"
-        Width="560" Height="480" MinWidth="440" MinHeight="320"
+        Width="560" Height="530" MinWidth="440" MinHeight="320"
         WindowStartupLocation="CenterScreen">
   <!-- The keys of the list are handled in the code-behind: the arrows and Delete while the list has the focus, Alt+Up / Alt+Down
        from anywhere in the window. -->
@@ -86,6 +86,20 @@
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource merge.order_hint}" IsVisible="{Binding !MergesImages}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource merge.images_hint}" IsVisible="{Binding MergesImages}" />
       </StackPanel>
+      <!-- In the order of FileSortOrder, then "Custom order", which moving a row selects. -->
+      <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+        <TextBlock DockPanel.Dock="Left" Classes="label" Margin="0,0,10,0" VerticalAlignment="Center" Text="{DynamicResource merge.sort_by}" />
+        <ComboBox x:Name="SortOrder" HorizontalAlignment="Stretch" SelectedIndex="{Binding SortIndex, Mode=TwoWay}"
+                  AutomationProperties.Name="{DynamicResource merge.sort_by}">
+          <ComboBoxItem Content="{DynamicResource merge.sort_name_asc}" />
+          <ComboBoxItem Content="{DynamicResource merge.sort_name_desc}" />
+          <ComboBoxItem Content="{DynamicResource merge.sort_modified_asc}" />
+          <ComboBoxItem Content="{DynamicResource merge.sort_modified_desc}" />
+          <ComboBoxItem Content="{DynamicResource merge.sort_created_asc}" />
+          <ComboBoxItem Content="{DynamicResource merge.sort_created_desc}" />
+          <ComboBoxItem Content="{DynamicResource merge.sort_custom}" />
+        </ComboBox>
+      </DockPanel>
       <!-- "Merge images": how the pictures are laid out. -->
       <Border x:Name="MergeLayout" DockPanel.Dock="Bottom" Margin="0,12,0,0" Padding="14,12" CornerRadius="10"
               Background="{DynamicResource SurfaceAltBrush}" IsVisible="{Binding MergesImages}">
