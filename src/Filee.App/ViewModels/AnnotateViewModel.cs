@@ -26,6 +26,9 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     private readonly ILogger? _log;
     private bool _closed;
 
+    /// <summary>How each picture went: saved, skipped or failed (none yet while it is open).</summary>
+    private readonly CropItemState?[] _outcomes;
+
     public AnnotateViewModel(IReadOnlyList<string> files, Preset tool, ILocalizer loc, UserDataStore store,
         Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null)
     {
@@ -39,8 +42,12 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         _color = AnnotateTool.Colors.Contains(tool.Image.AnnotationColor) ? tool.Image.AnnotationColor! : AnnotateTool.Colors[0];
         _width = tool.Image.AnnotationWidth;
         _hasMultipleFiles = files.Count > 1;
-        Swatches = [.. AnnotateTool.Colors.Select(c => new AnnotateSwatch(c, this))];
+        _outcomes = new CropItemState?[files.Count];
+        Swatches = [.. AnnotateTool.Colors.Select((c, i) => new AnnotateSwatch(c, AnnotateTool.ColorNameKeys[i], this) { Name = loc[AnnotateTool.ColorNameKeys[i]] })];
         Marks.Changed += OnMarksChanged;
+        loc.LanguageChanged += OnLanguageChanged;
+        // The fonts labels are drawn in, read now off the UI thread rather than on the first text.
+        _ = Task.Run(Filee.Engines.Annotations.AnnotationPainter.WarmFonts);
         UpdateSwatches();
         _ = LoadFileAsync(0);
     }
@@ -54,8 +61,31 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _currentFileName = "";
     [ObservableProperty] private string _counterText = "";
     [ObservableProperty] private bool _hasMultipleFiles;
-    [ObservableProperty] private Bitmap? _previewImage;
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
+    private Bitmap? _previewImage;
+
+    /// <summary>The picture's own size, upright: the window paints the marks at it, as the file gets them.</summary>
+    [ObservableProperty] private Avalonia.PixelSize _pictureSize;
     [ObservableProperty] private string _statusNotice = "";
+
+    /// <summary>
+    /// All pictures are done and some could not be opened or saved: the window stays open on <see cref="Summary"/> and
+    /// <see cref="Problems"/> until it is closed (as "Pixelate / blur" does).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditing))]
+    private bool _isFinished;
+
+    [ObservableProperty] private string _summary = "";
+    [ObservableProperty] private int _doneCount;
+    [ObservableProperty] private int _skippedCount;
+    [ObservableProperty] private int _failedCount;
+
+    /// <summary>"file: reason" for each picture that could not be opened or saved.</summary>
+    public System.Collections.ObjectModel.ObservableCollection<string> Problems { get; } = [];
+
+    public bool IsEditing => !IsFinished;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand))]
@@ -103,6 +133,7 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(CanUndo));
         OnPropertyChanged(nameof(CanRedo));
         OnPropertyChanged(nameof(HasSelection));
+        SaveCommand.NotifyCanExecuteChanged();
         // A selected mark's colour and width show in the bar.
         if (Marks.SelectedMark is { } mark && (mark.Color != Color || mark.Width != Width))
         {
@@ -179,14 +210,17 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
 
     // ───────── Pictures and saving ─────────
 
-    /// <summary>Opens picture <paramref name="index"/> with no marks; past the last one, closes.</summary>
+    /// <summary>
+    /// Opens picture <paramref name="index"/> with no marks; past the last one, closes, or shows the summary when a
+    /// picture could not be opened or saved.
+    /// </summary>
     public async Task LoadFileAsync(int index)
     {
         if (_closed)
             return;
         if (index >= _files.Count)
         {
-            CloseRequested?.Invoke();
+            Finish();
             return;
         }
         IsBusy = true;
@@ -195,11 +229,10 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         CurrentFileName = Path.GetFileName(path);
         CounterText = _loc.Format("crop.page_counter", index + 1, _files.Count);
         OnPropertyChanged(nameof(SaveText));
-        StatusNotice = "";
         Marks.Reset();
         try
         {
-            var (preview, _, _) = await HideService.LoadPreviewAsync(path, _preset);
+            var (preview, width, height) = await HideService.LoadPreviewAsync(path, _preset);
             Bitmap bitmap;
             using (preview)
                 bitmap = await Task.Run(() => HideService.ToBitmap(preview));
@@ -209,13 +242,14 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
                 return;
             }
             var old = PreviewImage;
+            PictureSize = new Avalonia.PixelSize(width, height);
             PreviewImage = bitmap;
             old?.Dispose();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log?.LogInformation(ex, "Could not open {File} to annotate", CurrentFileName);
-            StatusNotice = $"{CurrentFileName}: {_loc[ex is NotSupportedException ? "error.unsupported_source" : "error.conversion_failed"]}";
+            AddProblem(index, ex is NotSupportedException ? "error.unsupported_source" : "error.conversion_failed");
             IsBusy = false;
             await LoadFileAsync(index + 1);
             return;
@@ -223,37 +257,93 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         IsBusy = false;
     }
 
-    private bool CanSave() => !IsBusy && PreviewImage is not null;
+    /// <summary>
+    /// Only with a mark on the picture, as "Pixelate / blur" only with a part: Skip moves on without one.
+    /// </summary>
+    private bool CanSave() => !IsBusy && PreviewImage is not null && Marks.Marks.Any(AnnotateTool.IsDrawable);
 
     /// <summary>
     /// Starts the conversion that writes the picture with its marks (shown in the toast), keeps the colour and width,
-    /// opens the next picture or closes. A picture without marks is saved as it is drawn: a copy.
+    /// and opens the next picture or closes. When it can't be started, the picture stays with its marks, to save again
+    /// or skip.
     /// </summary>
     [RelayCommand(CanExecute = nameof(CanSave))]
     private async Task SaveAsync()
     {
         var path = _files[CurrentIndex];
         Remember();
-        if (Marks.Marks.Any(AnnotateTool.IsDrawable))
+        try
         {
-            try
-            {
-                _export(path, AnnotateTool.ConversionOf(_preset, _targetFor(path), Marks.Marks));
-            }
-            catch (Exception ex) when (ex is not OutOfMemoryException)
-            {
-                _log?.LogError(ex, "Could not start annotating {File}", CurrentFileName);
-                StatusNotice = $"{CurrentFileName}: {_loc["error.conversion_failed"]}";
-            }
+            _export(path, AnnotateTool.ConversionOf(_preset, _targetFor(path), Marks.Marks));
         }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            _log?.LogError(ex, "Could not start annotating {File}", CurrentFileName);
+            AddProblem(CurrentIndex, "error.conversion_failed");
+            return;
+        }
+        _outcomes[CurrentIndex] = CropItemState.Done;
+        ClearProblems(CurrentIndex);
         await LoadFileAsync(CurrentIndex + 1);
     }
 
     [RelayCommand]
     private async Task SkipAsync()
     {
-        if (!IsBusy)
-            await LoadFileAsync(CurrentIndex + 1);
+        if (IsBusy || IsFinished)
+            return;
+        _outcomes[CurrentIndex] ??= CropItemState.Skipped;
+        await LoadFileAsync(CurrentIndex + 1);
+    }
+
+    private void AddProblem(int index, string key)
+    {
+        _outcomes[index] = CropItemState.Failed;
+        var line = $"{Path.GetFileName(_files[index])}: {_loc[key]}";
+        Problems.Add(line);
+        _problemFiles.Add(index);
+        StatusNotice = line;
+    }
+
+    /// <summary>A picture saved after all: what went wrong with it before is no failure any more.</summary>
+    private void ClearProblems(int index)
+    {
+        for (var i = _problemFiles.Count - 1; i >= 0; i--)
+        {
+            if (_problemFiles[i] != index)
+                continue;
+            _problemFiles.RemoveAt(i);
+            Problems.RemoveAt(i);
+        }
+        StatusNotice = Problems.LastOrDefault() ?? "";
+    }
+
+    /// <summary>The picture each of <see cref="Problems"/> is about.</summary>
+    private readonly List<int> _problemFiles = [];
+
+    /// <summary>
+    /// Closes after the last picture, or stays open on the summary when a picture could not be opened or saved.
+    /// </summary>
+    private void Finish()
+    {
+        if (Problems.Count == 0)
+        {
+            Close();
+            return;
+        }
+        Remember();
+        FailedCount = _outcomes.Count(o => o == CropItemState.Failed);
+        DoneCount = _outcomes.Count(o => o == CropItemState.Done);
+        SkippedCount = _outcomes.Count(o => o == CropItemState.Skipped);
+        Summary = _loc.Format("toast.done_errors", FailedCount, _files.Count);
+        StatusNotice = "";
+        HasMultipleFiles = false;
+        IsBusy = false;
+        Marks.Reset();
+        var old = PreviewImage;
+        PreviewImage = null;
+        old?.Dispose();
+        IsFinished = true;
     }
 
     [RelayCommand]
@@ -280,19 +370,35 @@ public sealed partial class AnnotateViewModel : ObservableObject, IDisposable
         }
     }
 
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        if (CurrentIndex < _files.Count)
+            CounterText = _loc.Format("crop.page_counter", CurrentIndex + 1, _files.Count);
+        OnPropertyChanged(nameof(SaveText));
+        foreach (var swatch in Swatches)
+            swatch.Name = _loc[swatch.NameKey];
+    }
+
     public void Dispose()
     {
+        // Closed with the title bar or Alt+F4 too: the colour and width are kept for next time.
+        if (!_closed && PreviewImage is not null)
+            Remember();
         _closed = true;
+        _loc.LanguageChanged -= OnLanguageChanged;
         Marks.Changed -= OnMarksChanged;
         PreviewImage?.Dispose();
         PreviewImage = null;
     }
 }
 
-/// <summary>A colour in the bar.</summary>
-public sealed partial class AnnotateSwatch(string color, AnnotateViewModel owner) : ObservableObject
+/// <summary>A colour in the bar, named for screen readers and its tooltip.</summary>
+public sealed partial class AnnotateSwatch(string color, string nameKey, AnnotateViewModel owner) : ObservableObject
 {
     public string Color { get; } = color;
+    public string NameKey { get; } = nameKey;
+
+    [ObservableProperty] private string _name = "";
     public Avalonia.Media.IBrush Brush { get; } = new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse(color));
 
     [ObservableProperty] private bool _isSelected;

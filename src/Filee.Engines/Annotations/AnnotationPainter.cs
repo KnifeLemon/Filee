@@ -2,7 +2,7 @@
 // Annotator draws the file with it, so what one sees is what one gets. Points are parts of the picture; every size is a
 // part of the picture's shorter side, so marks look the same on a small preview and the full-size file.
 
-using System.Collections.Concurrent;
+using System.Globalization;
 using Filee.Core.Presets;
 using SkiaSharp;
 
@@ -103,9 +103,8 @@ public static class AnnotationPainter
     /// </summary>
     public static SKRect TagOf(Annotation mark, float width, float height)
     {
-        using var font = FontFor(mark.Text ?? "", FontSizeOf(mark.Width, width, height));
-        var size = font.Size;
-        var textWidth = font.MeasureText(string.IsNullOrEmpty(mark.Text) ? " " : mark.Text);
+        var size = FontSizeOf(mark.Width, width, height);
+        var textWidth = LabelText.Lay(string.IsNullOrEmpty(mark.Text) ? " " : mark.Text, size, null, 0, 0);
         var at = At(mark.Points[0], width, height);
         return new SKRect(at.X, at.Y, at.X + textWidth + size * 0.9f, at.Y + size * 1.5f);
     }
@@ -116,6 +115,36 @@ public static class AnnotationPainter
         var radius = NumberSizeOf(mark.Width, width, height) / 2;
         var at = At(mark.Points[0], width, height);
         return new SKRect(at.X - radius, at.Y - radius, at.X + radius, at.Y + radius);
+    }
+
+    /// <summary>
+    /// Every pixel a mark can touch, an arrow's head and the smoothed edge included; empty for one that draws nothing.
+    /// </summary>
+    public static SKRect ExtentOf(Annotation mark, float width, float height)
+    {
+        if (mark.Points.Count == 0 || mark.Kind == AnnotationKind.Unknown || (mark.Kind == AnnotationKind.Text && string.IsNullOrEmpty(mark.Text)))
+            return SKRect.Empty;
+        SKRect rect;
+        var margin = 2f;
+        switch (mark.Kind)
+        {
+            case AnnotationKind.Text:
+                rect = TagOf(mark, width, height);
+                // Accents stacked on a letter, and deep descenders, can reach well past the tag.
+                margin += rect.Height;
+                break;
+            case AnnotationKind.Number:
+                rect = CircleOf(mark, width, height);
+                break;
+            default:
+                var points = mark.Points.Select(p => At(p, width, height)).ToList();
+                rect = new SKRect(points.Min(p => p.X), points.Min(p => p.Y), points.Max(p => p.X), points.Max(p => p.Y));
+                // An arrow's head reaches out about 2.6 lines from its middle; a line, half of one.
+                margin += StrokeOf(mark.Width, width, height) * 3;
+                break;
+        }
+        rect.Inflate(margin, margin);
+        return rect;
     }
 
     private static void DrawArrow(SKCanvas canvas, SKPoint tail, SKPoint tip, SKColor color, float stroke)
@@ -147,11 +176,7 @@ public static class AnnotationPainter
         var size = FontSizeOf(mark.Width, width, height);
         using (var fill = new SKPaint { Color = color, IsAntialias = true, Style = SKPaintStyle.Fill })
             canvas.DrawRoundRect(tag, size * 0.3f, size * 0.3f, fill);
-        using var font = FontFor(mark.Text!, size);
-        using var ink = new SKPaint { Color = InkOn(color), IsAntialias = true };
-        font.GetFontMetrics(out var metrics);
-        var baseline = tag.MidY - (metrics.Ascent + metrics.Descent) / 2;
-        canvas.DrawText(mark.Text!, tag.Left + size * 0.45f, baseline, SKTextAlign.Left, font, ink);
+        DrawText(canvas, mark.Text!, size, tag.Left + size * 0.45f, tag.MidY, centred: false, InkOn(color));
     }
 
     private static void DrawNumber(SKCanvas canvas, Annotation mark, float width, float height, SKColor color)
@@ -162,12 +187,45 @@ public static class AnnotationPainter
             canvas.DrawCircle(circle.MidX, circle.MidY, radius, ring);
         using (var fill = new SKPaint { Color = color, IsAntialias = true, Style = SKPaintStyle.Fill })
             canvas.DrawCircle(circle.MidX, circle.MidY, radius * 0.86f, fill);
-        var text = mark.Number.ToString(System.Globalization.CultureInfo.InvariantCulture);
-        using var font = FontFor(text, radius * (text.Length > 1 ? 0.95f : 1.15f));
-        using var ink = new SKPaint { Color = InkOn(color), IsAntialias = true };
-        font.GetFontMetrics(out var metrics);
-        canvas.DrawText(text, circle.MidX, circle.MidY - (metrics.Ascent + metrics.Descent) / 2, SKTextAlign.Center, font, ink);
+        var text = mark.Number.ToString(CultureInfo.InvariantCulture);
+        var size = radius * (text.Length > 1 ? 0.95f : 1.15f);
+        // Three digits and more are made smaller to stay inside the coloured disc.
+        var room = radius * 0.86f * 1.56f;
+        var wide = LabelText.Lay(text, size, null, 0, 0);
+        if (wide > room)
+            size *= room / wide;
+        DrawText(canvas, text, size, circle.MidX, circle.MidY, centred: true, InkOn(color));
     }
+
+    /// <summary>
+    /// Draws <paramref name="text"/> from <paramref name="x"/> (or centred on it), its letters' height centred on
+    /// <paramref name="middle"/>. Shaped as typed: Arabic joined and right to left, Indic and Thai marks in place.
+    /// </summary>
+    private static void DrawText(SKCanvas canvas, string text, float size, float x, float middle, bool centred, SKColor ink)
+    {
+        middle = LabelText.BaselineFor(text, size, middle);
+        if (centred)
+            x -= LabelText.Lay(text, size, null, 0, 0) / 2;
+        using var builder = new SKTextBlobBuilder();
+        LabelText.Lay(text, size, builder, x, middle);
+        using var blob = builder.Build();
+        if (blob is null)
+            return;
+        using var paint = new SKPaint { Color = ink, IsAntialias = true, Style = SKPaintStyle.Fill };
+        canvas.DrawText(blob, 0, 0, paint);
+    }
+
+    /// <summary>
+    /// The fonts labels are drawn in: the UI's font chain in bold, as the box they are typed in uses it (the app passes
+    /// it at start and when the language changes).
+    /// </summary>
+    public static void UseFonts(Func<IEnumerable<SKTypeface>> fonts) => LabelText.UseFonts(fonts);
+
+    /// <summary>Reads the fonts labels will need ahead (off the UI thread), so the first label doesn't wait.</summary>
+    public static void WarmFonts() => LabelText.Warm();
+
+    /// <summary>Whether a label reads right to left as a whole, as its text box is typed.</summary>
+    internal static bool IsRightToLeft(string text) => LabelText.IsRightToLeft(text);
 
     private static SKPaint Line(SKColor color, float stroke) => new()
     {
@@ -178,44 +236,6 @@ public static class AnnotationPainter
         StrokeCap = SKStrokeCap.Round,
         StrokeJoin = SKStrokeJoin.Round,
     };
-
-    /// <summary>
-    /// A bold font that has the text's letters: the system's own, else one the system finds for them (Korean, Thai …).
-    /// </summary>
-    private static SKFont FontFor(string text, float size)
-    {
-        var typeface = SKTypeface.FromFamilyName(null, SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright)
-                       ?? SKTypeface.Default;
-        var missing = text.EnumerateRunes().FirstOrDefault(r => !char.IsWhiteSpace((char)Math.Min(r.Value, char.MaxValue))
-                                                                && typeface.GetGlyph(r.Value) == 0);
-        if (missing.Value != 0 && FallbackFor(missing.Value) is { } fallback)
-            typeface = fallback;
-        return new SKFont(typeface, size) { Edging = SKFontEdging.Antialias, Subpixel = true };
-    }
-
-    private static readonly ConcurrentDictionary<int, SKTypeface?> Fallbacks = new();
-
-    /// <summary>
-    /// A bold font for a letter the system's own lacks, or null when no installed font has it. Skia's Linux build here
-    /// finds fonts by family name but never by letter (MatchCharacter returns null even with a Korean font installed),
-    /// so the installed families are looked through for one that has it, sans-serif ones first.
-    /// </summary>
-    private static SKTypeface? FallbackFor(int codePoint) => Fallbacks.GetOrAdd(codePoint, static letter =>
-    {
-        var fonts = SKFontManager.Default;
-        if (fonts.MatchCharacter(null, SKFontStyleWeight.Bold, SKFontStyleWidth.Normal, SKFontStyleSlant.Upright, null, letter)
-            is { } matched)
-            return matched;
-        foreach (var family in fonts.FontFamilies.OrderBy(f => f.Contains("Serif", StringComparison.OrdinalIgnoreCase)
-                                                               || f.Contains("Mono", StringComparison.OrdinalIgnoreCase)))
-        {
-            var face = fonts.MatchFamily(family, SKFontStyle.Bold);
-            if (face?.ContainsGlyph(letter) == true)
-                return face;
-            face?.Dispose();
-        }
-        return null;
-    });
 
     /// <summary>White on a dark colour, near-black on a light one (yellow), so text and numbers read.</summary>
     internal static SKColor InkOn(SKColor color) =>

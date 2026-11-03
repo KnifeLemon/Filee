@@ -57,6 +57,14 @@ public class LenientEnumJsonConverter<TEnum> : JsonConverter<TEnum> where TEnum 
         writer.WriteStringValue(value.ToString());
 }
 
+/// <summary>
+/// An unknown mark kind (a newer Filee's) is read as <see cref="AnnotationKind.Unknown"/>: never drawn.
+/// </summary>
+public sealed class AnnotationKindJsonConverter : LenientEnumJsonConverter<AnnotationKind>
+{
+    protected override AnnotationKind Unknown => AnnotationKind.Unknown;
+}
+
 /// <summary>An unknown kind is read as a group: never run as a conversion.</summary>
 public sealed class PresetKindJsonConverter : LenientEnumJsonConverter<PresetKind>
 {
@@ -265,9 +273,10 @@ public sealed class Preset
     public const string AnnotateTool = "annotate";
 
     /// <summary>
-    /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there were
-    /// other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/> or <see cref="HideTool"/>. A tool this version
-    /// doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
+    /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there
+    /// were other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/>, <see cref="HideTool"/> or
+    /// <see cref="AnnotateTool"/>. A tool this version doesn't know (from a newer Filee) opens nothing. Ignored for
+    /// other kinds.
     /// </summary>
     public string? Tool { get; set; }
 
@@ -453,6 +462,8 @@ public sealed class HiddenArea
 /// <summary>What an "Annotate" mark is (<see cref="Annotation.Kind"/>).</summary>
 public enum AnnotationKind
 {
+    /// <summary>A kind from a newer Filee: not drawn, rather than drawn as something it isn't.</summary>
+    Unknown = -1,
     /// <summary>A freehand line through <see cref="Annotation.Points"/>.</summary>
     Pen,
     /// <summary>An arrow from its first point (the tail) to its second (the tip).</summary>
@@ -490,7 +501,7 @@ public sealed class AnnotationPoint
 /// </summary>
 public sealed class Annotation
 {
-    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationKind>))]
+    [JsonConverter(typeof(AnnotationKindJsonConverter))]
     public AnnotationKind Kind { get; set; }
 
     /// <summary>"#RRGGBB".</summary>
@@ -502,7 +513,14 @@ public sealed class Annotation
     /// <summary>
     /// The pen's line; the two corners of a box or highlight; an arrow's tail and tip; a text's or number's place.
     /// </summary>
-    public List<AnnotationPoint> Points { get; set; } = [];
+    public List<AnnotationPoint> Points
+    {
+        get => _points;
+        // Read leniently: no list, or empty places in it, are no points.
+        set => _points = value is null ? [] : [.. value.Where(point => point is not null)];
+    }
+
+    private List<AnnotationPoint> _points = [];
 
     /// <summary>What a <see cref="AnnotationKind.Text"/> says.</summary>
     public string? Text { get; set; }

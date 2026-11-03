@@ -29,7 +29,8 @@
       <Setter Property="CornerRadius" Value="999" />
       <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
     </Style>
-    <Style Selector="Button.tool">
+    <!-- The tools and widths are radio buttons drawn as tool buttons: a screen reader says which one is chosen. -->
+    <Style Selector="Button.tool, RadioButton.tool">
       <Setter Property="Background" Value="Transparent" />
       <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
       <Setter Property="BorderThickness" Value="0" />
@@ -37,16 +38,28 @@
       <Setter Property="Padding" Value="9" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Style Selector="Button.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter, RadioButton.tool:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
     </Style>
-    <Style Selector="Button.tool.open /template/ ContentPresenter#PART_ContentPresenter">
+    <Style Selector="RadioButton.tool:checked /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{DynamicResource AccentSoftBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <!-- Faded when it can't be used, with no disc of its own behind it (as in Pixelate / blur). -->
+    <Style Selector="Button.tool:disabled /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="Transparent" />
     </Style>
     <Style Selector="Button.tool:disabled">
       <Setter Property="Opacity" Value="0.45" />
     </Style>
-    <Style Selector="Button.swatch">
+    <Style Selector="RadioButton.swatch">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="999" />
+        </ControlTemplate>
+      </Setter>
       <Setter Property="Width" Value="22" />
       <Setter Property="Height" Value="22" />
       <Setter Property="Padding" Value="0" />
@@ -56,7 +69,7 @@
       <Setter Property="BorderBrush" Value="#22000000" />
       <Setter Property="VerticalAlignment" Value="Center" />
     </Style>
-    <Style Selector="Button.swatch.on">
+    <Style Selector="RadioButton.swatch:checked">
       <Setter Property="BorderThickness" Value="2.5" />
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
     </Style>
@@ -83,6 +96,7 @@
   <Panel Background="{DynamicResource PageBrush}">
     <c:AnnotationCanvas x:Name="Canvas"
                         SourceImage="{Binding PreviewImage}"
+                        PictureSize="{Binding PictureSize}"
                         Marks="{Binding Marks}"
                         Tool="{Binding Mode}"
                         MarkColor="{Binding Color}"
@@ -91,8 +105,10 @@
                         AccentBrush="{DynamicResource AccentBrush}" />
 
     <!-- Typing a text: the tag itself over the picture where it goes, in its colour and size (TextTag gets them when
-         typing starts), the text and caret in its ink; Enter or a click elsewhere keeps it, Esc drops it. -->
-    <Canvas x:Name="Overlay" IsHitTestVisible="True" Background="{x:Null}">
+         typing starts), the text and caret in its ink; Enter or a click elsewhere keeps it, Esc drops it. Never mirrored,
+         as the picture isn't, so in a right-to-left UI the box still opens where the click was. -->
+    <Canvas x:Name="Overlay" IsHitTestVisible="True" Background="{x:Null}" FlowDirection="LeftToRight">
+      <Border x:Name="TagFill" IsVisible="{Binding #TextEditor.IsVisible}" />
       <Border x:Name="TextTag" IsVisible="{Binding #TextEditor.IsVisible}">
         <TextBox x:Name="TextEditor" Classes="tag" IsVisible="False" AcceptsReturn="False"
                  AutomationProperties.Name="{DynamicResource annotate.text}" />
@@ -100,7 +116,7 @@
     </Canvas>
 
     <!-- Top: the file and close -->
-    <Border Classes="float" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Padding="14,6">
+    <Border Classes="float" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Padding="14,6" IsVisible="{Binding IsEditing}">
       <StackPanel Orientation="Horizontal" Spacing="8">
         <TextBlock Text="{Binding CurrentFileName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420" />
         <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="999" Padding="8,2" IsVisible="{Binding HasMultipleFiles}">
@@ -108,75 +124,78 @@
         </Border>
       </StackPanel>
     </Border>
+    <!-- Out of the Tab order, which starts at the tools: Enter there would close without saving (Esc closes). -->
     <Button Classes="tool" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16" Padding="10" Command="{Binding CloseCommand}"
+            KeyboardNavigation.IsTabStop="False"
             ToolTip.Tip="{DynamicResource common.close}" AutomationProperties.Name="{DynamicResource common.close}">
       <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
     </Button>
 
     <!-- Bottom: the bar and the keys -->
-    <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7">
+    <StackPanel VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="16,0,16,12" Spacing="7" IsVisible="{Binding IsEditing}">
       <TextBlock Classes="caption danger" Text="{Binding StatusNotice}" HorizontalAlignment="Center"
                  IsVisible="{Binding StatusNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       <Border Classes="float" Padding="5">
         <StackPanel Orientation="Horizontal" Spacing="2">
-          <Button x:Name="SelectTool" Classes="tool round" Classes.open="{Binding IsSelect}" Command="{Binding SetModeCommand}"
+          <RadioButton x:Name="SelectTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsSelect, Mode=OneWay}" Command="{Binding SetModeCommand}"
                   CommandParameter="{x:Static c:AnnotateMode.Select}" ToolTip.Tip="{DynamicResource annotate.select_hint}"
                   AutomationProperties.Name="{DynamicResource annotate.select}">
             <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Select}" />
-          </Button>
-          <Button x:Name="PenTool" Classes="tool round" Classes.open="{Binding IsPen}" Command="{Binding SetModeCommand}"
+          </RadioButton>
+          <RadioButton x:Name="PenTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsPen, Mode=OneWay}" Command="{Binding SetModeCommand}"
                   CommandParameter="{x:Static c:AnnotateMode.Pen}" ToolTip.Tip="{DynamicResource annotate.pen_hint}"
                   AutomationProperties.Name="{DynamicResource annotate.pen}">
             <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Pen}" />
-          </Button>
-          <Button x:Name="ArrowTool" Classes="tool round" Classes.open="{Binding IsArrow}" Command="{Binding SetModeCommand}"
+          </RadioButton>
+          <RadioButton x:Name="ArrowTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsArrow, Mode=OneWay}" Command="{Binding SetModeCommand}"
                   CommandParameter="{x:Static c:AnnotateMode.Arrow}" ToolTip.Tip="{DynamicResource annotate.arrow_hint}"
                   AutomationProperties.Name="{DynamicResource annotate.arrow}">
             <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Arrow}" />
-          </Button>
-          <Button x:Name="BoxTool" Classes="tool round" Classes.open="{Binding IsBox}" Command="{Binding SetModeCommand}"
+          </RadioButton>
+          <RadioButton x:Name="BoxTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsBox, Mode=OneWay}" Command="{Binding SetModeCommand}"
                   CommandParameter="{x:Static c:AnnotateMode.Box}" ToolTip.Tip="{DynamicResource annotate.box_hint}"
                   AutomationProperties.Name="{DynamicResource annotate.box}">
             <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Box}" />
-          </Button>
-          <Button x:Name="HighlightTool" Classes="tool round" Classes.open="{Binding IsHighlight}" Command="{Binding SetModeCommand}"
+          </RadioButton>
+          <RadioButton x:Name="HighlightTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsHighlight, Mode=OneWay}" Command="{Binding SetModeCommand}"
                   CommandParameter="{x:Static c:AnnotateMode.Highlight}" ToolTip.Tip="{DynamicResource annotate.highlight_hint}"
                   AutomationProperties.Name="{DynamicResource annotate.highlight}">
             <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Highlight}" />
-          </Button>
-          <Button x:Name="TextTool" Classes="tool round" Classes.open="{Binding IsText}" Command="{Binding SetModeCommand}"
+          </RadioButton>
+          <RadioButton x:Name="TextTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsText, Mode=OneWay}" Command="{Binding SetModeCommand}"
                   CommandParameter="{x:Static c:AnnotateMode.Text}" ToolTip.Tip="{DynamicResource annotate.text_hint}"
                   AutomationProperties.Name="{DynamicResource annotate.text}">
             <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Text}" />
-          </Button>
-          <Button x:Name="NumberTool" Classes="tool round" Classes.open="{Binding IsNumber}" Command="{Binding SetModeCommand}"
+          </RadioButton>
+          <RadioButton x:Name="NumberTool" Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateTool" IsChecked="{Binding IsNumber, Mode=OneWay}" Command="{Binding SetModeCommand}"
                   CommandParameter="{x:Static c:AnnotateMode.Number}" ToolTip.Tip="{DynamicResource annotate.number_hint}"
                   AutomationProperties.Name="{DynamicResource annotate.number}">
             <PathIcon Width="15" Height="15" Data="{StaticResource Ann.Number}" />
-          </Button>
+          </RadioButton>
           <Border Classes="divider" />
           <ItemsControl ItemsSource="{Binding Swatches}" VerticalAlignment="Center">
             <ItemsControl.ItemsPanel><ItemsPanelTemplate><StackPanel Orientation="Horizontal" /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:AnnotateSwatch">
-                <Button Classes="swatch" Classes.on="{Binding IsSelected}" Background="{Binding Brush}" Command="{Binding ChooseCommand}"
-                        AutomationProperties.Name="{Binding Color}" />
+                <RadioButton Classes="swatch" GroupName="AnnotateColor" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                             Background="{Binding Brush}" Command="{Binding ChooseCommand}"
+                             ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}" />
               </DataTemplate>
             </ItemsControl.ItemTemplate>
           </ItemsControl>
           <Border Classes="divider" />
-          <Button Classes="tool round" Classes.open="{Binding IsThin}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Thin}"
+          <RadioButton Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateWidth" IsChecked="{Binding IsThin, Mode=OneWay}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Thin}"
                   ToolTip.Tip="{DynamicResource annotate.thin}" AutomationProperties.Name="{DynamicResource annotate.thin}">
             <Ellipse Width="4" Height="4" Fill="{DynamicResource TextPrimaryBrush}" Margin="4" />
-          </Button>
-          <Button Classes="tool round" Classes.open="{Binding IsMedium}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Medium}"
+          </RadioButton>
+          <RadioButton Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateWidth" IsChecked="{Binding IsMedium, Mode=OneWay}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Medium}"
                   ToolTip.Tip="{DynamicResource annotate.medium}" AutomationProperties.Name="{DynamicResource annotate.medium}">
             <Ellipse Width="7" Height="7" Fill="{DynamicResource TextPrimaryBrush}" Margin="2.5" />
-          </Button>
-          <Button Classes="tool round" Classes.open="{Binding IsThick}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Thick}"
+          </RadioButton>
+          <RadioButton Classes="tool round" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="AnnotateWidth" IsChecked="{Binding IsThick, Mode=OneWay}" Command="{Binding SetWidthCommand}" CommandParameter="{x:Static p:AnnotationWidth.Thick}"
                   ToolTip.Tip="{DynamicResource annotate.thick}" AutomationProperties.Name="{DynamicResource annotate.thick}">
             <Ellipse Width="11" Height="11" Fill="{DynamicResource TextPrimaryBrush}" Margin="0.5" />
-          </Button>
+          </RadioButton>
           <Border Classes="divider" />
           <Button Classes="tool round" Command="{Binding UndoCommand}" IsEnabled="{Binding CanUndo}"
                   ToolTip.Tip="{DynamicResource annotate.undo}" AutomationProperties.Name="{DynamicResource annotate.undo}">
@@ -198,5 +217,32 @@
       </Border>
       <TextBlock Classes="caption" HorizontalAlignment="Center" Text="{DynamicResource annotate.keys}" />
     </StackPanel>
+
+    <!-- After the last picture, when a picture could not be opened or saved (as in Pixelate / blur) -->
+    <Border Classes="card" IsVisible="{Binding IsFinished}" HorizontalAlignment="Center" VerticalAlignment="Center"
+            MaxWidth="540" Margin="24" Padding="26,24">
+      <StackPanel Spacing="14">
+        <c:CropSummaryRing Width="112" Height="112" HorizontalAlignment="Center"
+                           Done="{Binding DoneCount}" Skipped="{Binding SkippedCount}" Failed="{Binding FailedCount}"
+                           AccentBrush="{DynamicResource AccentBrush}" MutedBrush="{DynamicResource TextSecondaryBrush}"
+                           DangerBrush="{DynamicResource DangerBrush}" HubBrush="{DynamicResource SurfaceBrush}"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" FontSize="16" TextAlignment="Center" TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="{DynamicResource SoftRadiusSmall}" Padding="14,10">
+          <ScrollViewer MaxHeight="220">
+            <ItemsControl ItemsSource="{Binding Problems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Text="{Binding}" FontSize="12" Margin="0,2" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
+        <Button x:Name="CloseSummaryButton" Classes="accent primary" HorizontalAlignment="Center" MinWidth="120"
+                HorizontalContentAlignment="Center" Content="{DynamicResource common.close}" Command="{Binding CloseCommand}" />
+      </StackPanel>
+    </Border>
   </Panel>
 </Window>

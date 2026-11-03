@@ -581,11 +581,19 @@ public sealed partial class JobQueue : IAsyncDisposable
         Notify(job);
     }
 
-    /// <summary>A file that would be used as it is although the preset turns, mirrors or covers parts of it.</summary>
+    /// <summary>
+    /// Why a file the preset turns, mirrors, covers parts of or draws on can't be: no step of its route changes images.
+    /// </summary>
+    private static string CannotReworkKey(ImageOptions image) =>
+        image.HidesAreas ? "error.cannot_hide" : image.HasAnnotations ? "error.images_only" : "error.cannot_turn";
+
+    /// <summary>
+    /// A file that would be used as it is although the preset turns, mirrors, covers parts of or draws on it.
+    /// </summary>
     private void FailUnturned(ConversionJob job, FileResult file, string detail)
     {
         file.State = FileState.Failed;
-        file.ErrorKey = job.Preset.Image.HidesAreas ? "error.cannot_hide" : "error.cannot_turn";
+        file.ErrorKey = CannotReworkKey(job.Preset.Image);
         file.ErrorDetail = detail;
         file.Progress = 1;
         Notify(job);
@@ -812,7 +820,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         // Parts of a picture to hide likewise, once: a route that can't cover them must not write the picture uncovered.
         var turnAt = runWith.Image.ReworksPixels ? route.FirstTransformStep() : -1;
         if (runWith.Image.ReworksPixels && turnAt < 0)
-            return Fail(file, runWith.Image.HidesAreas ? "error.cannot_hide" : "error.cannot_turn", $"{source.Id} → {target}");
+            return Fail(file, CannotReworkKey(runWith.Image), $"{source.Id} → {target}");
         var unturned = turnAt < 0 ? runWith : Unturned(runWith);
 
         file.State = FileState.Running;

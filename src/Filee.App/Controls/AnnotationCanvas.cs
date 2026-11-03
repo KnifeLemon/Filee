@@ -1,6 +1,8 @@
 // The "Annotate" window's picture and its marks: the marks are painted by AnnotationPainter on Avalonia's own Skia
-// canvas, so they look exactly as they will in the file; the selected one has its handles. A drag with a drawing tool
-// draws a mark; with Select it moves a mark or, on a handle, resizes it. Text is typed in the window (TextRequested).
+// canvas in the picture's own pixels, scaled to the picture's place, so they look exactly as they will in the file (a
+// small picture shown large gets the file's smallest line, text and number, not the screen's); the selected one has its
+// handles. A drag with a drawing tool draws a mark; with Select it moves a mark or, on a handle, resizes it. Text is
+// typed in the window (TextRequested).
 
 using Avalonia;
 using Avalonia.Controls;
@@ -46,6 +48,12 @@ public sealed class AnnotationCanvas : Control
     public static readonly StyledProperty<AnnotationWidth> MarkWidthProperty =
         AvaloniaProperty.Register<AnnotationCanvas, AnnotationWidth>(nameof(MarkWidth), AnnotationWidth.Medium);
 
+    /// <summary>
+    /// The picture's own size in pixels, upright, which the file's marks are painted at; the preview can be smaller.
+    /// </summary>
+    public static readonly StyledProperty<PixelSize> PictureSizeProperty =
+        AvaloniaProperty.Register<AnnotationCanvas, PixelSize>(nameof(PictureSize));
+
     public static readonly StyledProperty<Thickness> ImagePaddingProperty =
         AvaloniaProperty.Register<AnnotationCanvas, Thickness>(nameof(ImagePadding));
 
@@ -57,6 +65,7 @@ public sealed class AnnotationCanvas : Control
     public AnnotateMode Tool { get => GetValue(ToolProperty); set => SetValue(ToolProperty, value); }
     public string MarkColor { get => GetValue(MarkColorProperty); set => SetValue(MarkColorProperty, value); }
     public AnnotationWidth MarkWidth { get => GetValue(MarkWidthProperty); set => SetValue(MarkWidthProperty, value); }
+    public PixelSize PictureSize { get => GetValue(PictureSizeProperty); set => SetValue(PictureSizeProperty, value); }
     public Thickness ImagePadding { get => GetValue(ImagePaddingProperty); set => SetValue(ImagePaddingProperty, value); }
     public IBrush? AccentBrush { get => GetValue(AccentBrushProperty); set => SetValue(AccentBrushProperty, value); }
 
@@ -81,7 +90,7 @@ public sealed class AnnotationCanvas : Control
 
     static AnnotationCanvas()
     {
-        AffectsRender<AnnotationCanvas>(SourceImageProperty, ImagePaddingProperty, AccentBrushProperty);
+        AffectsRender<AnnotationCanvas>(SourceImageProperty, PictureSizeProperty, ImagePaddingProperty, AccentBrushProperty);
         FocusableProperty.OverrideDefaultValue<AnnotationCanvas>(false);
     }
 
@@ -123,6 +132,13 @@ public sealed class AnnotationCanvas : Control
             size.Width * scale, size.Height * scale);
     }
 
+    /// <summary>The size the marks are painted at: <see cref="PictureSize"/>, else the preview's.</summary>
+    internal Size Pixels => PictureSize is { Width: > 0, Height: > 0 } size ? new Size(size.Width, size.Height)
+        : SourceImage is { } image ? new Size(image.PixelSize.Width, image.PixelSize.Height) : default;
+
+    /// <summary>The screen rectangle <paramref name="mark"/> covers.</summary>
+    internal Rect BoundsOf(Annotation mark) => BoundsOf(mark, CalculateImageBounds(), Pixels);
+
     // ───────── Drawing ─────────
 
     public override void Render(DrawingContext context)
@@ -136,9 +152,10 @@ public sealed class AnnotationCanvas : Control
             context.DrawImage(SourceImage, new Rect(SourceImage.Size), picture);
         if (Marks is not { Count: > 0 } marks)
             return;
-        context.Custom(new MarksDrawing(new Rect(Bounds.Size), picture, [.. marks.Marks.Where((_, i) => i != TypingIndex).Select(m => m.Clone())]));
+        var pixels = Pixels;
+        context.Custom(new MarksDrawing(new Rect(Bounds.Size), picture, pixels, [.. marks.Marks.Where((_, i) => i != TypingIndex).Select(m => m.Clone())]));
         if (ShowsSelection && marks.Selected != TypingIndex)
-            DrawSelection(context, marks.SelectedMark!, picture);
+            DrawSelection(context, marks.SelectedMark!, picture, pixels);
     }
 
     /// <summary>
@@ -162,8 +179,10 @@ public sealed class AnnotationCanvas : Control
     /// </summary>
     internal bool ShowsSelection => Marks?.SelectedMark is not null && _drag != Drag.Draw;
 
-    /// <summary>The marks, painted by the file's own painter on Avalonia's Skia canvas.</summary>
-    private sealed class MarksDrawing(Rect bounds, Rect picture, IReadOnlyList<Annotation> marks) : ICustomDrawOperation
+    /// <summary>
+    /// The marks, painted by the file's own painter on Avalonia's Skia canvas at the picture's size and scaled to fit.
+    /// </summary>
+    private sealed class MarksDrawing(Rect bounds, Rect picture, Size pixels, IReadOnlyList<Annotation> marks) : ICustomDrawOperation
     {
         public Rect Bounds => bounds;
         public bool HitTest(Point p) => false;
@@ -179,19 +198,20 @@ public sealed class AnnotationCanvas : Control
             canvas.Save();
             canvas.ClipRect(new SKRect((float)picture.Left, (float)picture.Top, (float)picture.Right, (float)picture.Bottom));
             canvas.Translate((float)picture.X, (float)picture.Y);
-            AnnotationPainter.Paint(canvas, marks, (float)picture.Width, (float)picture.Height);
+            canvas.Scale((float)(picture.Width / pixels.Width), (float)(picture.Height / pixels.Height));
+            AnnotationPainter.Paint(canvas, marks, (float)pixels.Width, (float)pixels.Height);
             canvas.Restore();
         }
     }
 
-    private void DrawSelection(DrawingContext context, Annotation mark, Rect picture)
+    private void DrawSelection(DrawingContext context, Annotation mark, Rect picture, Size pixels)
     {
         var accent = AccentBrush ?? Brushes.MediumPurple;
         var handles = HandlesOf(mark, picture);
         if (handles.Count == 0)
         {
             // Pen, text and number: their outline, dashed, to show which is selected.
-            var box = BoundsOf(mark, picture).Inflate(4);
+            var box = BoundsOf(mark, picture, pixels).Inflate(4);
             context.DrawRectangle(null, new Pen(accent, 1.5, new DashStyle([4, 3], 0)), box, 3, 3);
             return;
         }
@@ -229,10 +249,13 @@ public sealed class AnnotationCanvas : Control
         };
     }
 
-    /// <summary>The screen rectangle a mark covers.</summary>
-    internal static Rect BoundsOf(Annotation mark, Rect picture)
+    /// <summary>
+    /// The screen rectangle a mark covers: worked out in the picture's own <paramref name="pixels"/>, as it is painted,
+    /// and scaled to the picture's place.
+    /// </summary>
+    internal static Rect BoundsOf(Annotation mark, Rect picture, Size pixels)
     {
-        float w = (float)picture.Width, h = (float)picture.Height;
+        float w = (float)pixels.Width, h = (float)pixels.Height;
         SKRect rect;
         switch (mark.Kind)
         {
@@ -248,27 +271,28 @@ public sealed class AnnotationCanvas : Control
                 rect = new SKRect((float)xs.Min(), (float)ys.Min(), (float)xs.Max(), (float)ys.Max());
                 break;
         }
-        return new Rect(picture.X + rect.Left, picture.Y + rect.Top, rect.Width, rect.Height);
+        double sx = picture.Width / w, sy = picture.Height / h;
+        return new Rect(picture.X + rect.Left * sx, picture.Y + rect.Top * sy, rect.Width * sx, rect.Height * sy);
     }
 
     /// <summary>The mark on top under <paramref name="point"/>, -1 for none; the selected one first.</summary>
-    internal static int HitTest(IReadOnlyList<Annotation> marks, int selected, Point point, Rect picture)
+    internal static int HitTest(IReadOnlyList<Annotation> marks, int selected, Point point, Rect picture, Size pixels)
     {
-        if (selected >= 0 && selected < marks.Count && Hits(marks[selected], point, picture))
+        if (selected >= 0 && selected < marks.Count && Hits(marks[selected], point, picture, pixels))
             return selected;
         for (var i = marks.Count - 1; i >= 0; i--)
         {
-            if (Hits(marks[i], point, picture))
+            if (Hits(marks[i], point, picture, pixels))
                 return i;
         }
         return -1;
     }
 
-    private static bool Hits(Annotation mark, Point point, Rect picture)
+    private static bool Hits(Annotation mark, Point point, Rect picture, Size pixels)
     {
         if (mark.Points.Count == 0)
             return false;
-        var slop = HitSlop + AnnotationPainter.StrokeOf(mark.Width, (float)picture.Width, (float)picture.Height) / 2;
+        var slop = HitSlop + AnnotationPainter.StrokeOf(mark.Width, (float)pixels.Width, (float)pixels.Height) * picture.Width / pixels.Width / 2;
         var screen = mark.Points.Select(p => ToScreen(p, picture)).ToList();
         switch (mark.Kind)
         {
@@ -288,7 +312,7 @@ public sealed class AnnotationCanvas : Control
             case AnnotationKind.Highlight when screen.Count >= 2:
                 return new Rect(screen[0], screen[1]).Normalize().Contains(point);
             default:
-                return BoundsOf(mark, picture).Inflate(2).Contains(point);
+                return BoundsOf(mark, picture, pixels).Inflate(2).Contains(point);
         }
     }
 
@@ -324,7 +348,7 @@ public sealed class AnnotationCanvas : Control
                     Begin(Drag.Handle, e, selected);
                     return;
                 }
-                var hit = HitTest(marks.Marks, marks.Selected, point, picture);
+                var hit = HitTest(marks.Marks, marks.Selected, point, picture, Pixels);
                 marks.Select(hit);
                 if (hit < 0)
                     return;
@@ -395,12 +419,21 @@ public sealed class AnnotationCanvas : Control
     /// </summary>
     internal void TypeAgain(int index) => RequestText(index, Marks!.Marks[index].Points[0], CalculateImageBounds());
 
-    private void RequestText(int index, AnnotationPoint at, Rect picture)
+    private void RequestText(int index, AnnotationPoint at, Rect picture) => TextRequested?.Invoke(this, RequestFor(index, at, picture));
+
+    /// <summary>
+    /// Text mark <paramref name="index"/> (or a new one, -1) at <paramref name="at"/>: where its box goes on screen
+    /// now, and its size.
+    /// </summary>
+    internal TextRequest RequestFor(int index, AnnotationPoint at) => RequestFor(index, at, CalculateImageBounds());
+
+    private TextRequest RequestFor(int index, AnnotationPoint at, Rect picture)
     {
         var width = index >= 0 ? Marks!.Marks[index].Width : MarkWidth;
         var empty = new Annotation { Kind = AnnotationKind.Text, Width = width, Points = [at], Text = " " };
-        TextRequested?.Invoke(this, new TextRequest(index, at, BoundsOf(empty, picture),
-            AnnotationPainter.FontSizeOf(width, (float)picture.Width, (float)picture.Height)));
+        var pixels = Pixels;
+        return new TextRequest(index, at, BoundsOf(empty, picture, pixels),
+            AnnotationPainter.FontSizeOf(width, (float)pixels.Width, (float)pixels.Height) * picture.Width / pixels.Width);
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)

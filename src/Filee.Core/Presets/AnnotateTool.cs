@@ -11,6 +11,9 @@ public static class AnnotateTool
     /// <summary>The colours the window offers, in order (the first is the one it starts with).</summary>
     public static readonly string[] Colors = ["#E5484D", "#F5A524", "#F9D84A", "#30A46C", "#3E63DD", "#1C1C1C"];
 
+    /// <summary>The names of <see cref="Colors"/>, in order: what a screen reader says for each.</summary>
+    public static readonly string[] ColorNameKeys = ["annotate.red", "annotate.orange", "annotate.yellow", "annotate.green", "annotate.blue", "annotate.black"];
+
     /// <summary>Marks too small to mean anything (a click, not a drag), in parts of the picture's side.</summary>
     public const double MinSize = 0.004;
 
@@ -38,7 +41,8 @@ public static class AnnotateTool
         AnnotationKind.Pen => mark.Points.Count >= 2,
         AnnotationKind.Arrow or AnnotationKind.Box or AnnotationKind.Highlight => mark.Points.Count >= 2,
         AnnotationKind.Text => mark.Points.Count >= 1 && !string.IsNullOrWhiteSpace(mark.Text),
-        _ => mark.Points.Count >= 1,
+        AnnotationKind.Number => mark.Points.Count >= 1,
+        _ => false,
     };
 
     /// <summary>Keeps the colour and width picked last in <paramref name="tool"/>.</summary>

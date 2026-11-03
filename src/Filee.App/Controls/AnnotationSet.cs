@@ -98,6 +98,37 @@ public sealed class AnnotationSet
         Changed?.Invoke();
     }
 
+    /// <summary>
+    /// The next (or previous) mark in the order they were drawn, round and round: from none, the first (or the last).
+    /// </summary>
+    public void SelectNext(int step)
+    {
+        if (_marks.Count == 0)
+            return;
+        Select(Selected < 0
+            ? (step >= 0 ? 0 : _marks.Count - 1)
+            : ((Selected + step) % _marks.Count + _marks.Count) % _marks.Count);
+    }
+
+    /// <summary>
+    /// Moves the selected mark by whole pixels of a <paramref name="width"/> × <paramref name="height"/> picture, as
+    /// far as it stays on the picture (one undo step).
+    /// </summary>
+    public void Nudge(int dx, int dy, int width, int height)
+    {
+        if (SelectedMark is not { } mark || width <= 0 || height <= 0)
+            return;
+        var moveX = Math.Clamp((double)dx / width, -mark.Points.Min(p => p.X), 1 - mark.Points.Max(p => p.X));
+        var moveY = Math.Clamp((double)dy / height, -mark.Points.Min(p => p.Y), 1 - mark.Points.Max(p => p.Y));
+        if (moveX == 0 && moveY == 0)
+            return;
+        Change(Selected, moved =>
+        {
+            for (var i = 0; i < moved.Points.Count; i++)
+                moved.Points[i] = new AnnotationPoint { X = moved.Points[i].X + moveX, Y = moved.Points[i].Y + moveY };
+        });
+    }
+
     /// <summary>Removes the selected mark; none is selected afterwards. False when none was.</summary>
     public bool RemoveSelected()
     {
