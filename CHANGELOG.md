@@ -25,7 +25,7 @@ ko: 설정 → 분야: 쓰지 않는 분야(CAD, 3D, 글꼴 등)의 형식을 �
 ko: 문서·전자책·자막(SRT, WebVTT)을 내 PC의 AI로 번역하고, 동영상·음성에서 자막(SRT)을 만들어요
 ko: 인쇄용 CMYK 파일: PSD·TIFF·JPG → PDF, AI·PDF → JPG·TIFF가 CMYK 그대로 나와요
 ko: 폴더로 복사·이동, 이미지·동영상 크기 제한, 원근 보정 자르기, 합치기 전에 순서 정렬, 접히는 사이드바
-ko: 새 형식: Krita, 마인크래프트 팩, Modrinth 모드팩, Dart·HiveQL, 음성 메모(.qta), Bink, 사진 → 3D 부조, 이탈리아어·인도네시아어
+ko: 새 형식: Krita, 마인크래프트 팩, Modrinth 모드팩, Dart·HiveQL, 음성 메모(.qta), Bink, 사진 → 3D 부조, 이탈리아어·인도네시아어·베트남어
 ko: Ubuntu 22.04에서 OCR → PDF가 실패하던 문제, DOCX → PDF가 멈추던 문제, 움직이는 GIF → JXL이 한 장만 나오던 문제 등을 고쳤어요
 en: Annotate: arrows, boxes, highlights, text and numbers on a picture
 en: Crop video: remove black bars, or crop to a ratio
@@ -34,7 +34,7 @@ en: Settings → Fields: hide the formats of fields you don't work in (CAD, 3D, 
 en: Translate documents, e-books and SRT / WebVTT subtitles with a local AI, and make captions (SRT) from video and audio
 en: CMYK print files stay CMYK: PSD, TIFF, JPG → PDF, and AI, PDF → JPG, TIFF
 en: Copy or move to a folder, size limits for pictures and videos, perspective crop, sort files before merging, a collapsible sidebar
-en: New formats: Krita, Minecraft packs, Modrinth modpacks, Dart and HiveQL, Voice Memos (.qta), Bink, pictures → 3D relief; Italian and Indonesian
+en: New formats: Krita, Minecraft packs, Modrinth modpacks, Dart and HiveQL, Voice Memos (.qta), Bink, pictures → 3D relief; Italian, Indonesian and Vietnamese
 en: Fixed OCR to PDF on Ubuntu 22.04, DOCX → PDF hanging, animated GIF → JPEG XL keeping one frame, and more
 zh: 标注：在图片上添加箭头、方框、高亮、文字和编号
 zh: 视频裁剪：去掉黑边，或按比例裁剪
@@ -43,7 +43,7 @@ zh: 设置 → 领域：隐藏你不用的领域（CAD、3D、字体等）的格
 zh: 用本机 AI 翻译文档、电子书和 SRT / WebVTT 字幕，并从视频和音频生成字幕（SRT）
 zh: 印刷用 CMYK 文件保持 CMYK：PSD、TIFF、JPG → PDF，以及 AI、PDF → JPG、TIFF
 zh: 复制或移动到文件夹、图片和视频大小限制、透视校正裁剪、合并前排序、可折叠侧边栏
-zh: 新格式：Krita、Minecraft 资源包、Modrinth 整合包、Dart 和 HiveQL、语音备忘录（.qta）、Bink、图片 → 3D 浮雕；新增意大利语和印度尼西亚语
+zh: 新格式：Krita、Minecraft 资源包、Modrinth 整合包、Dart 和 HiveQL、语音备忘录（.qta）、Bink、图片 → 3D 浮雕；新增意大利语、印度尼西亚语和越南语
 zh: 修复了 Ubuntu 22.04 上 OCR → PDF 失败、DOCX → PDF 卡住、动图 GIF → JPEG XL 只剩一帧等问题
 -->
 
@@ -79,7 +79,7 @@ zh: 修复了 Ubuntu 22.04 上 OCR → PDF 失败、DOCX → PDF 卡住、动图
 
 - New: Krita (.kra), Minecraft packs, add-ons, worlds and templates, Modrinth modpacks (.mrpack, in the Games field), Dart and HiveQL as text, C / C++ / C# source, Apple Voice Memos (.qta), Bink video (.bik), FreeMASTER oscilloscope text → CSV, standalone SVG text dropped from a browser.
 - Animated GIF, WebP, APNG and MNG → JPEG XL stay animated.
-- Languages: Italian and Indonesian.
+- Languages: Italian, Indonesian and Vietnamese (by @dinhkarate).
 
 ### Command line
 
