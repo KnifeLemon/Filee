@@ -52,6 +52,8 @@ public sealed class TesseractConverter : IConverter
         ["TESSDATA_PREFIX"] = "",
     };
 
+    private const string PdfFontName = "pdf.ttf";
+
     private string? _executable;
 
     public string Id => "tesseract";
@@ -92,6 +94,7 @@ public sealed class TesseractConverter : IConverter
         var tessdata = Path.Combine(scratch, "tessdata");
         Directory.CreateDirectory(tessdata);
         File.Copy(data, Path.Combine(tessdata, Path.GetFileName(data)));
+        CopyPdfFont(tessdata, PdfFontFolders(tesseract, System.Environment.GetEnvironmentVariable("TESSDATA_PREFIX")));
         var ocr = new Run(tesseract, scratch, language.Code);
         progress?.Report(0.05);
 
@@ -113,6 +116,100 @@ public sealed class TesseractConverter : IConverter
         }
         progress?.Report(1);
         return [output];
+    }
+
+    /// <summary>
+    /// Tesseract 4.x (4.0.0 to 4.1.3; Ubuntu 20.04 and 22.04 ship 4.1.1) has no built-in copy of the invisible-text font
+    /// of its PDF output: it reads <c>pdf.ttf</c> from the tessdata folder it is given (<c>tessdata//pdf.ttf</c>), and
+    /// fails with "Can not open file" when only the language data is there. 5.0 and later fall back to a copy built in,
+    /// so a missing font anywhere is not an error: the file is copied from the system's Tesseract when it can be found.
+    /// </summary>
+    /// <param name="tessdata">The job's tessdata folder, which exists already.</param>
+    /// <param name="folders">Where to look for the font, in order (<see cref="PdfFontFolders"/>).</param>
+    internal static void CopyPdfFont(string tessdata, IEnumerable<string> folders)
+    {
+        var font = FindPdfFont(folders);
+        if (font is null)
+            return;
+        try
+        {
+            File.Copy(font, Path.Combine(tessdata, PdfFontName), overwrite: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Recognition goes on: Tesseract 5.0 and later do not need the font, and 4.x reports it when it does.
+        }
+    }
+
+    /// <summary>The first <c>pdf.ttf</c> that exists and can be read in <paramref name="folders"/> (in their order), or null.</summary>
+    internal static string? FindPdfFont(IEnumerable<string> folders)
+    {
+        foreach (var folder in folders)
+        {
+            if (string.IsNullOrWhiteSpace(folder))
+                continue;
+            try
+            {
+                var candidate = Path.Combine(folder, PdfFontName);
+                if (!File.Exists(candidate))
+                    continue;
+                using (File.OpenRead(candidate))
+                    return candidate;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+            {
+                // Not readable: try the next folder.
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// Where Tesseract's own <c>pdf.ttf</c> may be, best first: <paramref name="prefix"/> (TESSDATA_PREFIX, which is the
+    /// tessdata folder in Tesseract 4 and its parent in older ones) and its <c>tessdata</c>, the folder of
+    /// <paramref name="executable"/> and the places packages put it. Each folder once; they need not exist.
+    /// </summary>
+    internal static IEnumerable<string> PdfFontFolders(string executable, string? prefix)
+    {
+        var seen = new HashSet<string>(OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+        foreach (var folder in Candidates())
+        {
+            string full;
+            try
+            {
+                full = Path.GetFullPath(folder);
+            }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+            {
+                continue;
+            }
+            if (seen.Add(full))
+                yield return full;
+        }
+
+        IEnumerable<string> Candidates()
+        {
+            if (!string.IsNullOrWhiteSpace(prefix))
+            {
+                yield return prefix;
+                yield return Path.Combine(prefix, "tessdata");
+            }
+            if (Path.GetDirectoryName(executable) is { Length: > 0 } home)
+            {
+                yield return home;
+                yield return Path.Combine(home, "tessdata");
+                yield return Path.Combine(home, "..", "share", "tessdata");
+                yield return Path.Combine(home, "..", "share", "tesseract-ocr", "tessdata");
+            }
+            yield return "/usr/share/tesseract-ocr/4.00/tessdata"; // Debian, Ubuntu
+            yield return "/usr/share/tesseract-ocr/5/tessdata";
+            yield return "/usr/share/tesseract-ocr/tessdata";
+            yield return "/usr/share/tessdata"; // Fedora, Arch
+            yield return "/usr/local/share/tessdata";
+            yield return "/usr/local/share/tesseract-ocr/tessdata";
+            yield return "/opt/homebrew/share/tessdata"; // Homebrew (Apple silicon), MacPorts
+            yield return "/opt/local/share/tessdata";
+        }
     }
 
     /// <summary>

@@ -200,6 +200,80 @@ public sealed class EngineInstallerTests : IDisposable
         Assert.Equal(100_000, rate.BytesPerSecond, 0);
     }
 
+    /// <summary>Serves <paramref name="bytes"/> but breaks off after half of them, as a dropped connection does.</summary>
+    private sealed class BrokenServer(byte[] bytes) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BreakingStream(bytes)) });
+
+        private sealed class BreakingStream(byte[] bytes) : MemoryStream(bytes)
+        {
+            public override int Read(byte[] buffer, int offset, int count) =>
+                Position >= Length / 2 ? throw new IOException("The connection was reset.") : base.Read(buffer, offset, Math.Min(count, 64));
+
+            public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+                Position >= Length / 2 ? throw new IOException("The connection was reset.") : base.ReadAsync(buffer[..Math.Min(buffer.Length, 64)], cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task A_broken_off_download_leaves_no_partial_file()
+    {
+        // #963: the .part file of an interrupted download stayed (up to ~420 MB for LibreOffice).
+        var archive = Zip(("tool.exe", new string('x', 4096)));
+        var component = Component("tool", "zip", archive);
+        var installer = new EngineInstaller(new HttpClient(new BrokenServer(archive)), _root, new Dictionary<string, EngineComponent> { ["tool"] = component });
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+
+        await Assert.ThrowsAnyAsync<IOException>(() => installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.False(installer.IsInstalled(package));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, ".downloads")));
+    }
+
+    [Fact]
+    public async Task Removing_a_package_with_a_file_in_use_leaves_it_whole_and_installed()
+    {
+        // #963: the delete went in name order, so the marker went first and a half-deleted engine looked not installed.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows refuses to move a folder with an open file.");
+        var first = Zip(("a.exe", "first"));
+        var second = Zip(("b.exe", "second"));
+        var a = Component("a", "zip", first);
+        var b = Component("b", "zip", second);
+        var installer = Installer(new FakeServer(new() { [a.Url] = first, [b.Url] = second }), a, b);
+        var package = new EnginePackage("pair", ["a", "b"], 1000, ["pair"]);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        using (new FileStream(Path.Combine(_root, "b", "b.exe"), FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.ThrowsAny<IOException>(() => installer.Uninstall(package));
+
+        Assert.True(installer.IsInstalled(package));
+        Assert.True(File.Exists(Path.Combine(_root, "a", "a.exe")));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+
+        installer.Uninstall(package);
+        Assert.False(installer.IsInstalled(package));
+        Assert.Equal([".downloads"], Directory.GetDirectories(_root).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task What_a_cut_short_removal_left_aside_goes_with_the_next_install()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var installer = Installer(new FakeServer(new() { [component.Url] = archive }), component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        var left = Directory.CreateDirectory(Path.Combine(_root, "~removed-tool-0badf00d")).FullName;
+        File.WriteAllText(Path.Combine(left, "soffice.exe"), "leftover");
+        var other = Directory.CreateDirectory(Path.Combine(_root, "~removed-other-0badf00d")).FullName;
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.False(Directory.Exists(left));
+        Assert.True(Directory.Exists(other)); // another package's leftovers wait for that package's lock
+        Assert.True(installer.IsInstalled(package));
+    }
+
     [Fact]
     public async Task A_download_with_the_wrong_checksum_is_rejected_and_nothing_is_installed()
     {

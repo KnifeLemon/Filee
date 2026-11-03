@@ -9,8 +9,8 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
-| PDFsharp | built in (library) | images → PDF, merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
-| PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported) |
+| PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
+| PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
@@ -33,7 +33,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
 | Pandoc | **optional download** (~42 MB, 240 MB on disk) | Markdown ↔ DOCX/ODT/RTF, DOCX/ODT/HTML/RTF → Markdown, HTML ↔ DOCX/ODT, markup languages (reStructuredText, LaTeX, Org, AsciiDoc, Typst, MediaWiki, DocBook, Jupyter, Textile, man, OPML) ↔ Markdown/HTML/DOCX/ODT and each other (and → RTF, EPUB, TXT), Markdown and markup → PPTX slides |
-| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it |
+| Ghostscript | **optional download** (~20 MB, 31 MB on disk) | EPS/PS → PDF, PDF → EPS/PS, PostScript-based AI → PDF (images through PDF and PDFium); smaller PDFs when a preset asks for it; renders CMYK PDF/AI pages for CMYK JPG/TIFF |
 | Tesseract | **optional download** (~50 MB, 160 MB on disk; each language 0.4–10 MB when first used) | **text recognition (OCR)**: scans and pictures → searchable PDF, and their text into DOCX, TXT, Markdown and HWPX ("Recognize text" in the preset, see below) |
 | Apple Vision | part of macOS (Mac only) | **text recognition (OCR) on a Mac**, the same step as Tesseract without a download; Tesseract reads the languages Vision doesn't (see "Apple Vision on macOS") |
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, copies without metadata (see "Media tools") |
@@ -196,13 +196,14 @@ in it also builds the package (artifact `windows-arm64-package`).
   borders, fully transparent ones and multi-frame animations (each frame alone would shift) come out as they are.
   Formats that can't be transparent (JPG, HEIC, …) have nothing to trim: the preset is greyed out for them, and a
   JPG in a mixed selection fails with that reason instead of being re-encoded.
-- **Animations.** An animated GIF, WebP, APNG or MNG keeps every frame and its timing when converted to one of these
-  (animated GIF ↔ animated WebP ↔ APNG ↔ MNG, WebP lossy or lossless as the preset says) and becomes a multi-page TIFF;
+- **Animations.** An animated GIF, WebP, APNG, MNG or JPEG XL keeps every frame and its timing when converted to one of
+  these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL, WebP lossy or lossless as the preset says, #988) and
+  becomes a multi-page TIFF;
   other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP.
 - **Playback speed** (preset option *Playback speed*, `ImageOptions.AnimationSpeed`: 0.25×, 0.5×, 0.75×, 1×, 1.5×,
-  2×, 4×; shown for GIF, WebP, APNG, MNG and "same as source") rewrites the frame delays of an animation that stays
+  2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL and "same as source") rewrites the frame delays of an animation that stays
   animated (`Magick/AnimationTiming.cs`). Delays are divided by the speed in the target's own units (hundredths of a
-  second for GIF and MNG, milliseconds for WebP and APNG) and rounded on the running total, so the whole animation
+  second for GIF, MNG and JPEG XL, milliseconds for WebP and APNG) and rounded on the running total, so the whole animation
   keeps its new length. Players show a frame of 10 ms or less for 100 ms, so no delay goes below 20 ms (50 frames a
   second): a frame that would start sooner than that after the one before is dropped and its time goes to that one,
   which leaves frames out evenly. Source delays of 10 ms or less count as the 100 ms players show. Loop count and
@@ -291,6 +292,11 @@ in it also builds the package (artifact `windows-arm64-package`).
 - **LIVP** (an iPhone Live Photo as iCloud downloads it: a ZIP of the photo, HEIC or JPEG, and its MOV) is read as its
   photo, taken out of the package in memory (`LivePhotoSource.ReadStill`, at most 64 MB); its video is FFmpeg's (see
   Live / Motion Photos there).
+- **CMYK pictures → PDF** (#1027, #1055): print work keeps its colours. PDFsharp's image import takes grey and RGB
+  only, so `Pdf/CmykPictures.cs` writes the image itself: CMYK, with the picture's own ICC profile as an ICCBased
+  colour space (else DeviceCMYK); a JPEG source as JPEG data (ImageMagick writes CMYK JPEGs inverted with Adobe's
+  APP14 marker, undone with a Decode array), others as their samples compressed losslessly; transparency as a soft
+  mask. Grey and RGB pictures go in through PDFsharp as before.
 - **KRA** (Krita's own file, a ZIP of the layers) is read as the merged picture Krita stores at its top for other
   programs (`mergedimage.png`, `Krita.ReadMerged`, at most 256 MB, in memory), so it looks as it does in Krita. A file
   without one gives a clear error.
@@ -309,6 +315,19 @@ in it also builds the package (artifact `windows-arm64-package`).
   square; reading takes the largest image (PNG, JPEG 2000 or the old RLE + mask entries).
 - **Illustrator** files saved with "Create PDF compatible file" (the default since Illustrator 9) are PDFs and need
   nothing extra; PostScript-based ones need Ghostscript.
+- **CMYK pages** (#1027). PDFium renders RGB only, so a print file (a CMYK PDF, or an Illustrator file through its
+  PDF) → JPG or TIFF is rendered by Ghostscript instead when it is installed: `tiff32nc` (8-bit CMYK) at the preset's
+  render DPI, cut to the crop box, anti-aliased, then written like PDFium's pages (quality, resize, `_p{n}` names,
+  multi-page TIFF, long images, size limits). `Pdf/PdfCmykContent.cs` decides per document with PdfPig, from the
+  first 20 selected pages: DeviceCMYK colours (`k` / `K`, also inside forms), four-channel ICC colour spaces,
+  Separation / DeviceN (spot colours), CMYK pictures and gradients. DeviceCMYK values come out as the document gives
+  them (Ghostscript's default CMYK profile is both their source and the output). When the PDF has an output intent
+  with a CMYK profile (PDF/X), Ghostscript renders into that profile and the picture carries it; otherwise the picture
+  is untagged CMYK, which keeps the numbers and leaves the profile to the print shop (Ghostscript's own default
+  profile is removed). RGB documents, a grayscale preset, other targets (PNG, WebP, …), a PDF PdfPig can't read and
+  PCs without Ghostscript keep PDFium's RGB rendering. When a CMYK file comes out in RGB only because Ghostscript is
+  missing or failed on it, the result says so (`notice.cmyk_needs_ghostscript`, `notice.cmyk_render_failed`): print
+  work shouldn't change colour unseen.
 - EPS and PS → PNG go straight through Ghostscript's `pngalpha` device, so the background stays transparent;
   JPG, WebP, … and AI reach images through PDF (Ghostscript → PDFium), and SVG reaches EPS through PDF.
 
@@ -844,6 +863,21 @@ in the preset library only). Video and audio need FFmpeg.
   attachments (subtitle fonts) stay, with their file name and type. PDFs lose their document information and every
   XMP packet (`PdfSharpConverter.StripMetadata`), and PDFsharp writes a new one holding only its own name and the save
   date; pages, links, bookmarks and form fields stay.
+
+## Pages per sheet (N-up)
+
+"Pages per sheet" (#737, `pdf-nup` group in the palette, `PdfOptions.PagesPerSheet` 2, 4, 6, 8 or 9;
+`Pdf/PdfSheets.cs`, PDFsharp only) puts several pages of a PDF on each sheet of a new PDF.
+
+- Each page goes in as a vector form (`XPdfForm`): text stays text, nothing is rasterised. It is placed by its crop
+  box and its `/Rotate`, as a viewer shows it, clipped to the crop box, as large as fits in its cell and centred; a
+  page that fits larger turned (a landscape page in a portrait cell) is turned a quarter to the left.
+- The sheet: A4, Letter, A3 or the size of the first page; portrait, landscape or (auto) whichever fits the first page
+  larger. The long side of the sheet takes more pages (4-up 2 × 2, 6-up 2 × 3, 8-up 2 × 4, 9-up 3 × 3).
+- Options: order (across then down, or down then across), margin and gap in mm (cut down when too large for the
+  sheet), a thin grey border around each page. The page range applies.
+- Only the page content comes along (as in any N-up): the values of filled form fields, link and comment
+  annotations and bookmarks of the source are not on the sheets.
 
 ## PDF watermark, page numbers and password
 

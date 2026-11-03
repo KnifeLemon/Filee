@@ -129,6 +129,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
         MaxHeights = Steps(MaxHeightSteps, _edit.Media.MaxHeight, h => h == 0 ? loc["presets.max_height.original"] : $"{h}p");
         // A ratio set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
+        // "Pages per sheet" (#737): a number set outside the editor (a hand-edited preset file) is offered too.
+        SheetLayouts = [.. PdfOptions.SheetLayouts.Append(_edit.Pdf.PagesPerSheet).Where(n => n is > 1 and <= 16).Distinct().Order()
+            .Select(n => new Choice<int>(n, $"{n}"))];
+        SheetPapers = Enum.GetValues<PdfSheetPaper>().Select(v => new Choice<PdfSheetPaper>(v, loc[$"presets.sheet_paper.{v}"])).ToList();
+        SheetOrientations = Enum.GetValues<PdfSheetOrientation>().Select(v => new Choice<PdfSheetOrientation>(v, loc[$"presets.sheet_orientation.{v}"])).ToList();
+        SheetOrders = Enum.GetValues<PdfSheetOrder>().Select(v => new Choice<PdfSheetOrder>(v, loc[$"presets.sheet_order.{v}"])).ToList();
         CropFrames = [new(VideoCrop.Auto, loc["presets.crop_frame.auto"]),
             .. VideoCrop.Ratios.Append(_edit.Media.CropFrame).Where(r => VideoCrop.TryParseRatio(r, out _, out _)).Distinct()
                 .Select(r => new Choice<string>(r, r))];
@@ -185,6 +191,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _mediaQuality = MediaQualities.First(q => q.Value == _edit.Media.Quality);
         _maxHeight = MaxHeights.First(h => h.Value == _edit.Media.MaxHeight);
         _cropFrame = CropFrames.FirstOrDefault(c => c.Value == _edit.Media.CropFrame) ?? CropFrames[0];
+        _pagesPerSheet = SheetLayouts.FirstOrDefault(c => c.Value == _edit.Pdf.PagesPerSheet) ?? SheetLayouts.First(c => c.Value == 4);
+        _sheetPaper = SheetPapers.FirstOrDefault(c => c.Value == _edit.Pdf.SheetPaper) ?? SheetPapers[0];
+        _sheetOrientation = SheetOrientations.FirstOrDefault(c => c.Value == _edit.Pdf.SheetOrientation) ?? SheetOrientations[0];
+        _sheetOrder = SheetOrders.FirstOrDefault(c => c.Value == _edit.Pdf.SheetOrder) ?? SheetOrders[0];
+        _sheetMarginMm = _edit.Pdf.SheetMarginMm;
+        _sheetGapMm = _edit.Pdf.SheetGapMm;
+        _sheetBorders = _edit.Pdf.SheetBorders;
         _audioBitrate = AudioBitrates.First(b => b.Value == _edit.Media.AudioBitrateKbps);
         _removeAudio = _edit.Media.RemoveAudio;
         _audioChannels = AudioChannelChoices.FirstOrDefault(c => c.Value == _edit.Media.AudioChannels) ?? AudioChannelChoices[0];
@@ -365,6 +378,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<int>> MaxHeights { get; }
     /// <summary>"Crop video": the picture inside the black bars, or a ratio.</summary>
     public IReadOnlyList<Choice<string>> CropFrames { get; }
+    public IReadOnlyList<Choice<int>> SheetLayouts { get; }
+    public IReadOnlyList<Choice<PdfSheetPaper>> SheetPapers { get; }
+    public IReadOnlyList<Choice<PdfSheetOrientation>> SheetOrientations { get; }
+    public IReadOnlyList<Choice<PdfSheetOrder>> SheetOrders { get; }
     public IReadOnlyList<Choice<int>> AudioBitrates { get; }
     public IReadOnlyList<Choice<int>> AudioChannelChoices { get; }
     public IReadOnlyList<Choice<int>> SampleRates { get; }
@@ -388,7 +405,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPdfCombine),
-        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
+        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
@@ -734,6 +751,15 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
     [ObservableProperty] private Choice<string> _cropFrame;
+
+    /// <summary>"Pages per sheet" (#737), for the presets that make sheets (<see cref="ShowSheets"/>).</summary>
+    [ObservableProperty] private Choice<int> _pagesPerSheet;
+    [ObservableProperty] private Choice<PdfSheetPaper> _sheetPaper;
+    [ObservableProperty] private Choice<PdfSheetOrientation> _sheetOrientation;
+    [ObservableProperty] private Choice<PdfSheetOrder> _sheetOrder;
+    [ObservableProperty] private double _sheetMarginMm;
+    [ObservableProperty] private double _sheetGapMm;
+    [ObservableProperty] private bool _sheetBorders;
     [ObservableProperty] private Choice<int> _audioBitrate;
     [ObservableProperty] private Choice<int> _audioChannels;
     [ObservableProperty] private Choice<int> _sampleRate;
@@ -823,6 +849,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     partial void OnMediaQualityChanged(Choice<MediaQuality>? oldValue, Choice<MediaQuality> newValue) => Choices.Restore(oldValue, newValue, v => MediaQuality = v);
     partial void OnMaxHeightChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => MaxHeight = v);
     partial void OnCropFrameChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => CropFrame = v);
+    partial void OnPagesPerSheetChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => PagesPerSheet = v);
+    partial void OnSheetPaperChanged(Choice<PdfSheetPaper>? oldValue, Choice<PdfSheetPaper> newValue) => Choices.Restore(oldValue, newValue, v => SheetPaper = v);
+    partial void OnSheetOrientationChanged(Choice<PdfSheetOrientation>? oldValue, Choice<PdfSheetOrientation> newValue) =>
+        Choices.Restore(oldValue, newValue, v => SheetOrientation = v);
+    partial void OnSheetOrderChanged(Choice<PdfSheetOrder>? oldValue, Choice<PdfSheetOrder> newValue) => Choices.Restore(oldValue, newValue, v => SheetOrder = v);
     partial void OnAudioBitrateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioBitrate = v);
     partial void OnAudioChannelsChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioChannels = v);
     partial void OnSampleRateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => SampleRate = v);
@@ -911,6 +942,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowMaxHeight => TargetIsVideo;
     /// <summary>"Crop video" presets (#830), which keep the video's own format.</summary>
     public bool ShowCropFrame => _original.CropsVideo;
+
+    /// <summary>"Pages per sheet": shown for the presets that put several PDF pages on a sheet, while they write a PDF.</summary>
+    public bool ShowSheets => ShowPdfBuild && _original.Pdf.MakesSheets;
     /// <summary>A size limit for a converted video; a clip is cut, not fitted.</summary>
     public bool ShowVideoMaxSize => TargetCategory == FormatCategory.Video && !_original.IsClipTool
         // Not where nothing fits it: a join or slideshow, or VOB and DV, which have a fixed bitrate.
@@ -931,7 +965,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// Playback speed: for the formats an animation stays animated in (an animated GIF, WebP, APNG or MNG, or a video
     /// made into a GIF or APNG). Other targets get one frame.
     /// </summary>
-    public bool ShowAnimationSpeed => TargetId is "gif" or "webp" or "apng" or "mng" or BuiltInData.SameAsSource;
+    public bool ShowAnimationSpeed => TargetId is "gif" or "webp" or "apng" or "mng" or "jxl" or BuiltInData.SameAsSource;
     /// <summary>
     /// Tracing options: raster images reach SVG (and DXF / DWG through it) only by tracing. For other sources (a
     /// drawing, a CAD file) the options are ignored.
@@ -1042,6 +1076,16 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         pdf.SplitTallImage = SplitTallImage;
         pdf.Compression = CompressionLevel.Value;
         pdf.CompressWithGhostscript = CompressWithGhostscript;
+        if (ShowSheets)
+        {
+            pdf.PagesPerSheet = PagesPerSheet.Value;
+            pdf.SheetPaper = SheetPaper.Value;
+            pdf.SheetOrientation = SheetOrientation.Value;
+            pdf.SheetOrder = SheetOrder.Value;
+            pdf.SheetMarginMm = Math.Clamp(SheetMarginMm, 0, 50);
+            pdf.SheetGapMm = Math.Clamp(SheetGapMm, 0, 50);
+            pdf.SheetBorders = SheetBorders;
+        }
         // Only for a PDF target, where they are shown: a password left behind by it must not lock nothing.
         pdf.Watermark = ShowPdfBuild ? Watermark.Trim() : "";
         pdf.PageNumbers = ShowPdfBuild && PageNumbers;
