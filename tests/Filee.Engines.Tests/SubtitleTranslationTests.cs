@@ -1,4 +1,4 @@
-// Subtitle translation: cue numbers, timestamps and headers must survive byte-for-byte; only the cue text is
+// Subtitle translation: cue numbers, timestamps and headers must survive unchanged; only the cue text is
 // sent to the model (in keyed batches), and cues the model drops are asked for again — only the missing ones.
 
 using Filee.Core.Conversion;
@@ -26,8 +26,8 @@ public class SubtitleTranslationTests
 
     /// <summary>
     /// Translates a keyed request by re-emitting each <c>&lt;sN&gt;…&lt;/sN&gt;</c> with "[en] " prepended to the text.
-    /// When <paramref name="dropKeys"/> is non-empty, the first reply omits exactly those markers (simulating a
-    /// partial model answer) and later replies translate what is asked.
+    /// The first reply omits exactly the markers given to the constructor (simulating a partial model
+    /// answer) and later replies translate whatever is asked.
     /// </summary>
     private sealed class KeyedService : ITranslationService
     {
