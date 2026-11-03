@@ -157,6 +157,8 @@
 "notice.under_min_size": "Salvato, ma più piccolo della dimensione minima del file",
 "notice.with_under_min_size": "{0} · {1}",
 "notice.cad_newer_left_out": "Gli oggetti che la versione AutoCAD scelta non supporta (multilinee guida, mesh …) sono stati omessi",
+"notice.cmyk_needs_ghostscript": "Questo file è CMYK ma è stato salvato in RGB: installa Ghostscript in Impostazioni → Motori per mantenere il CMYK",
+"notice.cmyk_render_failed": "Questo file è CMYK, ma Ghostscript non è riuscito a disegnarlo, quindi è stato salvato in RGB",
 "notice.original_kept": "L'originale è stato conservato, il risultato è stato salvato come copia",
 "notice.original_in_trash": "L'originale è nel Cestino, il risultato ha mantenuto il proprio nome",
 "notice.original_unchanged": "Impossibile ridurlo, quindi l'originale è stato lasciato com'è",

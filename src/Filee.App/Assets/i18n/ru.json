@@ -164,6 +164,8 @@
   "notice.under_min_size": "Сохранено, но меньше минимального размера файла",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Объекты, которых нет в выбранной версии AutoCAD (мультивыноски, сети…), не сохранены",
+  "notice.cmyk_needs_ghostscript": "Это файл CMYK, но он сохранён в RGB: чтобы сохранить CMYK, установите Ghostscript в разделе Настройки → Движки",
+  "notice.cmyk_render_failed": "Это файл CMYK, но Ghostscript не смог его отрисовать, поэтому он сохранён в RGB",
   "notice.original_kept": "Оригинал оставлен, результат сохранён как копия",
   "notice.original_in_trash": "Оригинал в Корзине, результат сохранил своё имя",
   "notice.original_unchanged": "Не удалось сделать его меньше, поэтому оригинал оставлен как есть",

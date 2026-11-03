@@ -158,6 +158,8 @@
   "notice.under_min_size": "Disimpan, tetapi lebih kecil dari ukuran file minimum",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "Objek yang tidak dimiliki versi AutoCAD yang dipilih (multileader, mesh …) tidak disertakan",
+  "notice.cmyk_needs_ghostscript": "File ini CMYK, tetapi disimpan sebagai RGB: pasang Ghostscript di Pengaturan → Engine agar tetap CMYK",
+  "notice.cmyk_render_failed": "File ini CMYK, tetapi Ghostscript tidak bisa menggambarnya, jadi disimpan sebagai RGB",
   "notice.original_kept": "File asli dipertahankan, hasil konversi disimpan sebagai salinan",
   "notice.original_in_trash": "File asli ada di Tong Sampah, hasil konversi mempertahankan namanya sendiri",
   "notice.original_unchanged": "Ukuran tidak dapat diperkecil lagi, sehingga file asli dibiarkan apa adanya",

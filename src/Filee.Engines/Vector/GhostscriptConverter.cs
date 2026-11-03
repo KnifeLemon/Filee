@@ -2,7 +2,8 @@
 // EPS/PS → PDF with pdfwrite; PDF → EPS/PS with eps2write/ps2write; EPS/PS → PNG with pngalpha, which keeps a
 // transparent background (through PDF the page would be drawn on white paper). Everything else (EPS → JPG,
 // SVG → EPS, …) is planned through PDF or PNG by the route planner. "Compress PDF" may also run a PDF through pdfwrite
-// (PdfSharpConverter calls CompressPdfAsync; there is no PDF → PDF edge here, so routes don't change).
+// (PdfSharpConverter calls CompressPdfAsync; there is no PDF → PDF edge here, so routes don't change), and
+// PdfiumConverter has CMYK pages rendered here for a CMYK JPG or TIFF (RenderCmykAsync).
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -112,6 +113,36 @@ public sealed class GhostscriptConverter : IConverter, IImageTransformer
         List<string> args = ["-sDEVICE=pdfwrite", "-dPDFSETTINGS=" + settings, "-dCompatibilityLevel=1.6", "-dAutoRotatePages=/None"];
         await RunAsync(gs, args, target, input, cancellationToken, progress: null);
         File.Move(target, output, overwrite: true);
+    }
+
+    /// <summary>
+    /// Renders PDF pages to 8-bit CMYK TIFFs (tiff32nc), one per page in page order, for
+    /// <see cref="Pdf.PdfiumConverter"/>, which renders RGB only. DeviceCMYK colours keep the numbers the document
+    /// gives them: Ghostscript's default CMYK profile is both their source and the output, so nothing is converted.
+    /// With <paramref name="profile"/> (the document's CMYK output intent) that profile takes both places instead, and
+    /// RGB or ICC-based content is converted into it. Pages are cut to the crop box, as PDFium does.
+    /// </summary>
+    /// <param name="pages">Zero-based pages, or null for every page.</param>
+    internal static async Task<IReadOnlyList<string>> RenderCmykAsync(string gs, string input, IReadOnlyList<int>? pages, int dpi,
+        byte[]? profile, string workDirectory, CancellationToken cancellationToken, IProgress<double>? progress = null)
+    {
+        List<string> args = ["-sDEVICE=tiff32nc", $"-r{dpi}", "-dTextAlphaBits=4", "-dGraphicsAlphaBits=4", "-dUseCropBox"];
+        if (pages is not null)
+            args.Add("-sPageList=" + string.Join(',', pages.Select(p => p + 1)));
+        if (profile is not null)
+        {
+            // Its own folder: RunAsync takes any file in the output folder for a rendered page.
+            var icc = Path.Combine(NewScratch(workDirectory), "output.icc");
+            await File.WriteAllBytesAsync(icc, profile, cancellationToken);
+            args.Add("-sOutputICCProfile=" + icc);
+            args.Add("-sDefaultCMYKProfile=" + icc);
+        }
+        var scratch = NewScratch(workDirectory);
+        await RunAsync(gs, args, Path.Combine(scratch, "page-%d.tif"), input, cancellationToken, progress);
+
+        return Directory.GetFiles(scratch, "page-*.tif")
+            .OrderBy(f => int.Parse(Path.GetFileNameWithoutExtension(f)["page-".Length..], System.Globalization.CultureInfo.InvariantCulture))
+            .ToList();
     }
 
     private static async Task<IReadOnlyList<string>> ToPdfAsync(string gs, ConversionStep step, CancellationToken ct, IProgress<double>? progress)

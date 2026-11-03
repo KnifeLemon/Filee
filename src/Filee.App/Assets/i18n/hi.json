@@ -158,6 +158,8 @@
   "notice.under_min_size": "सहेजा गया, लेकिन न्यूनतम फ़ाइल आकार से छोटा है",
   "notice.with_under_min_size": "{0} · {1}",
   "notice.cad_newer_left_out": "चुने गए AutoCAD संस्करण में न होने वाले ऑब्जेक्ट (मल्टीलीडर, मेश …) छोड़ दिए गए",
+  "notice.cmyk_needs_ghostscript": "यह फ़ाइल CMYK है, लेकिन RGB में सेव हुई: CMYK बनाए रखने के लिए सेटिंग्स → इंजन में Ghostscript इंस्टॉल करें",
+  "notice.cmyk_render_failed": "यह फ़ाइल CMYK है, लेकिन Ghostscript इसे नहीं बना सका, इसलिए यह RGB में सेव हुई",
   "notice.original_kept": "मूल फ़ाइल रखी गई, परिणाम कॉपी के रूप में सहेजा गया",
   "notice.original_in_trash": "मूल फ़ाइल रीसायकल बिन / ट्रैश में है, परिणाम ने अपना नाम रखा",
   "notice.original_unchanged": "इसे छोटा नहीं किया जा सका, इसलिए मूल फ़ाइल जैसी थी वैसी छोड़ दी गई",
