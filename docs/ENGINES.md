@@ -9,7 +9,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
-| PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
+| PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
 | Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
@@ -863,6 +863,21 @@ in the preset library only). Video and audio need FFmpeg.
   attachments (subtitle fonts) stay, with their file name and type. PDFs lose their document information and every
   XMP packet (`PdfSharpConverter.StripMetadata`), and PDFsharp writes a new one holding only its own name and the save
   date; pages, links, bookmarks and form fields stay.
+
+## Pages per sheet (N-up)
+
+"Pages per sheet" (#737, `pdf-nup` group in the palette, `PdfOptions.PagesPerSheet` 2, 4, 6, 8 or 9;
+`Pdf/PdfSheets.cs`, PDFsharp only) puts several pages of a PDF on each sheet of a new PDF.
+
+- Each page goes in as a vector form (`XPdfForm`): text stays text, nothing is rasterised. It is placed by its crop
+  box and its `/Rotate`, as a viewer shows it, clipped to the crop box, as large as fits in its cell and centred; a
+  page that fits larger turned (a landscape page in a portrait cell) is turned a quarter to the left.
+- The sheet: A4, Letter, A3 or the size of the first page; portrait, landscape or (auto) whichever fits the first page
+  larger. The long side of the sheet takes more pages (4-up 2 × 2, 6-up 2 × 3, 8-up 2 × 4, 9-up 3 × 3).
+- Options: order (across then down, or down then across), margin and gap in mm (cut down when too large for the
+  sheet), a thin grey border around each page. The page range applies.
+- Only the page content comes along (as in any N-up): the values of filled form fields, link and comment
+  annotations and bookmarks of the source are not on the sheets.
 
 ## PDF watermark, page numbers and password
 

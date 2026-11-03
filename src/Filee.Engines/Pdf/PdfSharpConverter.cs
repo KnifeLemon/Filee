@@ -37,6 +37,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         step.From != "pdf" ? Task.Run(() => ImageToPdf(step, progress, cancellationToken), cancellationToken)
+        : step.Preset.Pdf.MakesSheets ? Task.Run(() => Sheets(step, progress, cancellationToken), cancellationToken)
         : step.Preset.Pdf is { Compression: PdfCompression.None, RemoveMetadata: true, SplitPages: false, PageRange: "" }
             ? Task.Run(() => WithoutMetadata(step, progress, cancellationToken), cancellationToken)
         : step.Preset.Pdf.Compression == PdfCompression.None ? Task.Run(() => SplitOrExtract(step, progress, cancellationToken), cancellationToken)
@@ -119,6 +120,16 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             return [];
         document.Save(path);
         return [path];
+    }
+
+    /// <summary>"Pages per sheet" (PdfSheets): the pages of the range, several to a sheet, in one new PDF.</summary>
+    private static IReadOnlyList<string> Sheets(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
+    {
+        var output = step.Output.Allocate("pdf");
+        if (output is null)
+            return [];
+        PdfSheets.Write(step.InputPath, output, step.Preset.Pdf, progress, ct);
+        return [output];
     }
 
     /// <summary>

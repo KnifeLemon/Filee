@@ -96,6 +96,7 @@ public static class BuiltInData
             Kind = PresetKind.Group,
             SubPresetIds = ["tool-pdf-crop", "pdf-rotate-left", "pdf-rotate-right", "tool-pdf-pages", "pdf-split", "tool-pdf-add"],
         },
+        .. PdfSheetPresets(),
         .. ImageToolPresets(),
         new()
         {
@@ -236,6 +237,27 @@ public static class BuiltInData
         {
             Id = "crop-video", NameKey = "preset.group_crop_video", TargetFormat = Preset.GroupTarget, Kind = PresetKind.Group,
             SubPresetIds = ["crop-video-auto", "crop-video-16-9", "crop-video-9-16", "crop-video-4-3", "crop-video-1-1", "crop-video-21-9"],
+        },
+    ];
+
+    /// <summary>
+    /// "Pages per sheet" (#737, added in settings schema 63): 2, 4, 6, 8 or 9 PDF pages on each sheet, and their group
+    /// after "Edit". In the palette only: no donut gets a slot.
+    /// </summary>
+    public static List<Preset> PdfSheetPresets() =>
+    [
+        .. PdfOptions.SheetLayouts.Select(n => new Preset
+        {
+            Id = $"pdf-nup-{n}",
+            NameKey = $"preset.pdf_nup_{n}",
+            TargetFormat = "pdf",
+            Pdf = { PagesPerSheet = n },
+            Output = { FileNamePattern = $"{{name}}_{n}up" },
+        }),
+        new()
+        {
+            Id = "pdf-nup", NameKey = "preset.group_pdf_nup", TargetFormat = Preset.GroupTarget, Kind = PresetKind.Group,
+            SubPresetIds = [.. PdfOptions.SheetLayouts.Select(n => $"pdf-nup-{n}")],
         },
     ];
 

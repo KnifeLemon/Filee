@@ -442,6 +442,40 @@
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
         <CheckBox Content="{DynamicResource presets.split}" IsChecked="{Binding SplitPages}" IsVisible="{Binding ShowPdfSplit}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <!-- "Pages per sheet" (#737): several pages on each sheet -->
+        <StackPanel Spacing="10" IsVisible="{Binding ShowSheets}">
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.pages_per_sheet}" />
+              <ComboBox ItemsSource="{Binding SheetLayouts}" SelectedItem="{Binding PagesPerSheet}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.pages_per_sheet}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_paper}" />
+              <ComboBox ItemsSource="{Binding SheetPapers}" SelectedItem="{Binding SheetPaper}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_paper}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_orientation}" />
+              <ComboBox ItemsSource="{Binding SheetOrientations}" SelectedItem="{Binding SheetOrientation}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_orientation}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_order}" />
+              <ComboBox ItemsSource="{Binding SheetOrders}" SelectedItem="{Binding SheetOrder}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_order}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_margin}" />
+              <NumericUpDown Value="{Binding SheetMarginMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_margin}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_gap}" />
+              <NumericUpDown Value="{Binding SheetGapMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_gap}" />
+            </StackPanel>
+          </Grid>
+          <CheckBox Content="{DynamicResource presets.sheet_borders}" IsChecked="{Binding SheetBorders}" />
+        </StackPanel>
         <!-- PDF → PDF: make the file smaller -->
         <StackPanel Spacing="2" IsVisible="{Binding ShowPdfCompression}">
           <Grid ColumnDefinitions="*,12,*">

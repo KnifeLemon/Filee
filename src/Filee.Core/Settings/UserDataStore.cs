@@ -992,6 +992,34 @@ internal static class SettingsMigrations
             changed |= AddGamePacks(presets);
             changed |= LearnExtensions(profiles, out _, ["mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"]);
         }
+        // v63: "Pages per sheet" (#737): its group and presets join the library after the PDF "Edit" group (no donut gets
+        //      a slot, #806). (Schema 63 may be renumbered if another change takes it first.)
+        if (from < 63)
+            changed |= AddPdfSheets(presets);
+        return changed;
+    }
+
+    private static bool AddPdfSheets(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "pdf-edit");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.PdfSheetPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                // Saved since by an older Filee, which dropped the option and left a plain PDF preset.
+                if (preset.Pdf.MakesSheets && !existing.Pdf.MakesSheets && existing.TargetFormat == preset.TargetFormat)
+                {
+                    existing.Pdf.PagesPerSheet = preset.Pdf.PagesPerSheet;
+                    changed = true;
+                }
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
         return changed;
     }
 
