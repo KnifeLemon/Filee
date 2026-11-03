@@ -1,10 +1,12 @@
 // Renders PDF pages to raster images with PDFium (via PDFtoImage, MIT / PDFium BSD-3): one image per page, one
-// multi-page TIFF or GIF, or (PdfOptions.CombinePages) the pages stacked into one tall image.
+// multi-page TIFF or GIF, or (PdfOptions.CombinePages) the pages stacked into one tall image. PDFium renders RGB: a
+// document drawn in CMYK (a print file, issue #1027) is rendered by Ghostscript instead when the target holds CMYK.
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
+using Filee.Engines.Vector;
 using ImageMagick;
 using PDFtoImage;
 using SkiaSharp;
@@ -19,6 +21,12 @@ namespace Filee.Engines.Pdf;
 public sealed class PdfiumConverter : IConverter, IImageTransformer
 {
     private static readonly HashSet<string> MultiPageTargets = ["tiff", "gif", "apng", "mng"];
+
+    /// <summary>
+    /// Targets that store CMYK pictures, the ones a print shop takes. Pages drawn in CMYK (<see cref="PdfCmykContent"/>)
+    /// are rendered in CMYK for them when Ghostscript is installed; a grayscale preset keeps PDFium's rendering.
+    /// </summary>
+    private static readonly HashSet<string> CmykTargets = ["jpg", "tiff"];
 
     /// <summary>A tall image beyond this many pixels is scaled down (a 300-page PDF at 300 dpi would need gigabytes).</summary>
     internal const long MaxStackedPixels = 200_000_000;
@@ -38,88 +46,116 @@ public sealed class PdfiumConverter : IConverter, IImageTransformer
     public EngineStatus GetStatus() => EngineStatus.Available(version: EngineVersions.Library("PDFtoImage", typeof(Conversion)));
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
-        Task.Run<IReadOnlyList<string>>(() =>
+        Task.Run<IReadOnlyList<string>>(async () =>
         {
-            var pdf = File.ReadAllBytes(step.InputPath);
+            var pdf = await File.ReadAllBytesAsync(step.InputPath, cancellationToken);
             var pageCount = Conversion.GetPageCount(pdf, null);
             var pages = PageRange.Parse(step.Preset.Pdf.PageRange, pageCount);
             var dpi = Math.Clamp(step.Preset.Pdf.RenderDpi, 36, 1200);
-            var options = new RenderOptions(Dpi: dpi, WithAnnotations: true, WithFormFill: true, BackgroundColor: SKColors.White);
-            var written = new List<string>();
-            var collected = new List<IMagickImage<byte>>();
-            var (format, extension) = ImageEncoder.OutputFormat(step.To, step.Preset.Image);
-            var stack = step.Preset.Pdf.CombinePages && pages.Count > 1 && !MultiPageTargets.Contains(step.To);
 
-            try
+            if (CmykTargets.Contains(step.To) && !step.Preset.Image.Grayscale && GhostscriptConverter.Locate() is { } gs
+                && PdfCmykContent.Inspect(step.InputPath, pages) is { UsesCmyk: true } cmyk)
             {
-                var index = 0;
-                foreach (var bitmap in Conversion.ToImages(pdf, pages, null, options))
+                IReadOnlyList<string> files = [];
+                try
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    var pageNumber = pages[index] + 1;
-                    index++;
-
-                    var frame = ToMagick(bitmap, dpi);
-                    if (stack)
-                    {
-                        // Each page turns, then they stack: a turned long image would lie on its side instead.
-                        ImageEncoder.Turn(frame, step.Preset.Image);
-                        if (step.Preset.Pdf.TrimPageMargins)
-                            TrimVertically(frame, dpi);
-                        collected.Add(frame); // stacked after the loop; the image options apply to the tall image
-                        progress?.Report((double)index / pages.Count * 0.8);
-                        continue;
-                    }
-                    ImageEncoder.ApplyOptions(frame, step.Preset.Image, step.To);
-
-                    if (MultiPageTargets.Contains(step.To))
-                    {
-                        collected.Add(frame); // one multi-page file, written after the loop
-                    }
-                    else
-                    {
-                        using (frame)
-                        {
-                            var path = step.Output.Allocate(extension, pages.Count > 1 ? $"_p{pageNumber}" : null);
-                            if (path is not null)
-                            {
-                                frame.Write(path, format);
-                                written.Add(path);
-                            }
-                        }
-                    }
-                    progress?.Report((double)index / pages.Count);
+                    files = await GhostscriptConverter.RenderCmykAsync(gs, step.InputPath, pages.Count < pageCount ? pages : null, dpi,
+                        cmyk.OutputProfile, step.WorkDirectory, cancellationToken, progress is null ? null : new SubProgress(progress, 0, 0.6));
                 }
+                catch (InvalidOperationException)
+                {
+                    // Ghostscript fails on some files PDFium renders: those come out in RGB, as before.
+                }
+                if (files.Count == pages.Count)
+                {
+                    var frames = files.Select(file => ReadCmyk(file, dpi, cmyk.OutputProfile));
+                    return Encode(step, pages, dpi, frames, progress is null ? null : new SubProgress(progress, 0.6, 0.4), cancellationToken);
+                }
+            }
+
+            var options = new RenderOptions(Dpi: dpi, WithAnnotations: true, WithFormFill: true, BackgroundColor: SKColors.White);
+            var rendered = Conversion.ToImages(pdf, pages, null, options).Select(bitmap => ToMagick(bitmap, dpi));
+            return Encode(step, pages, dpi, rendered, progress, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>Applies the image options to the rendered pages and writes them: one file per page, one multi-page file or one tall image.</summary>
+    private static List<string> Encode(ConversionStep step, IReadOnlyList<int> pages, int dpi, IEnumerable<IMagickImage<byte>> rendered,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        var written = new List<string>();
+        var collected = new List<IMagickImage<byte>>();
+        var (format, extension) = ImageEncoder.OutputFormat(step.To, step.Preset.Image);
+        var stack = step.Preset.Pdf.CombinePages && pages.Count > 1 && !MultiPageTargets.Contains(step.To);
+
+        try
+        {
+            var index = 0;
+            foreach (var frame in rendered)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var pageNumber = pages[index] + 1;
+                index++;
 
                 if (stack)
                 {
-                    var unturned = step.Preset.Image.Clone(); // the pages are turned already
-                    unturned.Rotation = ImageRotation.None;
-                    unturned.Flip = ImageFlip.None;
-                    var parts = step.Preset.Pdf.SplitTallImage ? Split(collected, step.To, unturned) : [collected];
-                    for (var part = 0; part < parts.Count; part++)
+                    // Each page turns, then they stack: a turned long image would lie on its side instead.
+                    ImageEncoder.Turn(frame, step.Preset.Image);
+                    if (step.Preset.Pdf.TrimPageMargins)
+                        TrimVertically(frame, dpi);
+                    collected.Add(frame); // stacked after the loop; the image options apply to the tall image
+                    progress?.Report((double)index / pages.Count * 0.8);
+                    continue;
+                }
+                ImageEncoder.ApplyOptions(frame, step.Preset.Image, step.To);
+
+                if (MultiPageTargets.Contains(step.To))
+                {
+                    collected.Add(frame); // one multi-page file, written after the loop
+                }
+                else
+                {
+                    using (frame)
                     {
-                        using var tall = Stack(parts[part]);
-                        ImageEncoder.ApplyOptions(tall, unturned, step.To); // also scales it to fit the format
-                        if (step.Output.Allocate(extension, parts.Count > 1 ? $"_{part + 1}" : null) is { } path)
+                        var path = step.Output.Allocate(extension, pages.Count > 1 ? $"_p{pageNumber}" : null);
+                        if (path is not null)
                         {
-                            tall.Write(path, format);
+                            frame.Write(path, format);
                             written.Add(path);
                         }
                     }
                 }
-                else if (collected.Count > 0)
+                progress?.Report((double)index / pages.Count);
+            }
+
+            if (stack)
+            {
+                var unturned = step.Preset.Image.Clone(); // the pages are turned already
+                unturned.Rotation = ImageRotation.None;
+                unturned.Flip = ImageFlip.None;
+                var parts = step.Preset.Pdf.SplitTallImage ? Split(collected, step.To, unturned) : [collected];
+                for (var part = 0; part < parts.Count; part++)
                 {
-                    written.AddRange(ImageEncoder.Write(collected, step.To, step.Output, step.Preset.Image));
+                    using var tall = Stack(parts[part]);
+                    ImageEncoder.ApplyOptions(tall, unturned, step.To); // also scales it to fit the format
+                    if (step.Output.Allocate(extension, parts.Count > 1 ? $"_{part + 1}" : null) is { } path)
+                    {
+                        tall.Write(path, format);
+                        written.Add(path);
+                    }
                 }
             }
-            finally
+            else if (collected.Count > 0)
             {
-                foreach (var frame in collected)
-                    frame.Dispose();
+                written.AddRange(ImageEncoder.Write(collected, step.To, step.Output, step.Preset.Image));
             }
-            return written;
-        }, cancellationToken);
+        }
+        finally
+        {
+            foreach (var frame in collected)
+                frame.Dispose();
+        }
+        return written;
+    }
 
     /// <summary>
     /// The pages one under another, centred on a white strip as wide as the widest page. Scaled down when larger than
@@ -205,6 +241,21 @@ public sealed class PdfiumConverter : IConverter, IImageTransformer
         page.ResetPage();
     }
 
+    /// <summary>
+    /// One page Ghostscript rendered. Its TIFF carries Ghostscript's default CMYK profile, which isn't the document's:
+    /// the picture carries the output intent's profile or none (untagged CMYK keeps its numbers, and the print shop
+    /// applies its own).
+    /// </summary>
+    private static MagickImage ReadCmyk(string file, int dpi, byte[]? profile)
+    {
+        var image = new MagickImage(file);
+        image.RemoveProfile("icc");
+        if (profile is not null)
+            image.SetProfile(new ColorProfile(profile));
+        image.Density = new Density(dpi, dpi, DensityUnit.PixelsPerInch);
+        return image;
+    }
+
     private static MagickImage ToMagick(SKBitmap bitmap, int dpi)
     {
         using (bitmap)
@@ -214,5 +265,10 @@ public sealed class PdfiumConverter : IConverter, IImageTransformer
             image.Density = new Density(dpi, dpi, DensityUnit.PixelsPerInch);
             return image;
         }
+    }
+
+    private sealed class SubProgress(IProgress<double> parent, double start, double length) : IProgress<double>
+    {
+        public void Report(double value) => parent.Report(start + length * value);
     }
 }
