@@ -1,0 +1,273 @@
+<!-- "Add background": the picture as it will be saved, set on its background and drawn live, large on the left; the
+     look on a card on the right (background, padding, corners, shadow, canvas), Skip and Save & next; the file chip and
+     close on top; after the last picture, a summary when one could not be opened or saved. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        xmlns:c="using:Filee.App.Controls"
+        xmlns:p="using:Filee.Core.Presets"
+        x:Class="Filee.App.Views.BackgroundWindow"
+        x:DataType="vm:BackgroundViewModel"
+        Title="{DynamicResource preset.background}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="1040" Height="720" MinWidth="760" MinHeight="520">
+  <Window.Styles>
+    <Style Selector="Border.float">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="BoxShadow" Value="{DynamicResource CardShadow}" />
+    </Style>
+    <!-- A segmented choice: radio buttons drawn as segments, the one chosen raised (a screen reader says which). -->
+    <Style Selector="Border.segments">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="3" />
+    </Style>
+    <Style Selector="RadioButton.segment">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="Padding" Value="4,5" />
+      <Setter Property="FontSize" Value="12.5" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="VerticalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Center" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="RadioButton.segment:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource AccentFaintBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+    </Style>
+    <Style Selector="RadioButton.segment:checked /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+      <Setter Property="BoxShadow" Value="0 1 3 0 #22000000" />
+    </Style>
+    <Style Selector="RadioButton.segment:checked">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="RadioButton.swatch">
+      <Setter Property="Template">
+        <ControlTemplate>
+          <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="8" />
+        </ControlTemplate>
+      </Setter>
+      <Setter Property="Width" Value="30" />
+      <Setter Property="Height" Value="30" />
+      <Setter Property="Padding" Value="0" />
+      <Setter Property="Margin" Value="0,0,6,6" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+    </Style>
+    <Style Selector="RadioButton.swatch:checked">
+      <Setter Property="BorderThickness" Value="2.5" />
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+    <!-- Tab lands on the button inside a colour picker: it says the picker's name ("First colour"), not its panel's. -->
+    <Style Selector="ColorPicker /template/ DropDownButton">
+      <Setter Property="AutomationProperties.Name" Value="{Binding $parent[ColorPicker].(AutomationProperties.Name)}" />
+    </Style>
+    <Style Selector="RadioButton.swatch:focus-visible">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+    </Style>
+  </Window.Styles>
+
+  <Panel Background="{DynamicResource PageBrush}">
+    <Grid ColumnDefinitions="*,380" IsVisible="{Binding IsEditing}">
+      <!-- The result as it will be saved -->
+      <Panel Grid.Column="0" Margin="28,72,16,40">
+        <!-- Drawn live: the canvas with its background, the picture clipped to its corners, its shadow; the same layout
+             and shadow the file gets, scaled to fit. Never mirrored, as the file isn't: in a right-to-left UI the
+             gradient still runs from the top left and the picture sits where the file has it. -->
+        <Viewbox Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center" FlowDirection="LeftToRight">
+          <Panel x:Name="Canvas" Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}" Background="{Binding BackgroundBrush}"
+                 ClipToBounds="True">
+            <Border HorizontalAlignment="Left" VerticalAlignment="Top" Margin="{Binding PictureMargin}"
+                    Width="{Binding PictureWidth}" Height="{Binding PictureHeight}" Effect="{Binding ShadowEffect}">
+              <Border CornerRadius="{Binding PictureCorners}" ClipToBounds="True">
+                <Image Source="{Binding PictureImage}" Stretch="Fill" RenderOptions.BitmapInterpolationMode="HighQuality" />
+              </Border>
+            </Border>
+          </Panel>
+        </Viewbox>
+        <Border Classes="float" HorizontalAlignment="Center" VerticalAlignment="Bottom" Padding="12,4" Margin="0,0,0,-30">
+          <TextBlock Classes="caption" Text="{Binding SizeText}" />
+        </Border>
+      </Panel>
+
+      <!-- The look -->
+      <Border Grid.Column="1" Classes="card" Margin="0,72,24,24" Padding="18,16">
+        <!-- The look first and Save after it, in the Tab order and for a screen reader as on the card. -->
+        <Grid RowDefinitions="*,Auto">
+          <ScrollViewer>
+            <!-- Clear of the scroll bar, which lies over what scrolls. -->
+            <StackPanel Spacing="14" Margin="0,0,16,0">
+              <StackPanel Spacing="8">
+                <TextBlock x:Name="BackgroundLabel" Text="{DynamicResource background.background}" FontWeight="SemiBold" />
+                <Border Classes="segments" HorizontalAlignment="Stretch">
+                  <UniformGrid Rows="1">
+                    <RadioButton x:Name="GradientChoice" Classes="segment" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="BackdropKind"
+                                 IsChecked="{Binding IsGradient, Mode=OneWay}" Content="{DynamicResource background.gradient}"
+                                 Command="{Binding SetKindCommand}" CommandParameter="{x:Static p:BackdropKind.Gradient}" />
+                    <RadioButton Classes="segment" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="BackdropKind"
+                                 IsChecked="{Binding IsColor, Mode=OneWay}" Content="{DynamicResource background.color}"
+                                 Command="{Binding SetKindCommand}" CommandParameter="{x:Static p:BackdropKind.Color}" />
+                    <RadioButton Classes="segment" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="BackdropKind"
+                                 IsChecked="{Binding IsPicture, Mode=OneWay}" Content="{DynamicResource background.picture}"
+                                 Command="{Binding SetKindCommand}" CommandParameter="{x:Static p:BackdropKind.Picture}" />
+                  </UniformGrid>
+                </Border>
+                <!-- Gradient: presets, and its two colours to pick -->
+                <StackPanel Spacing="4" IsVisible="{Binding IsGradient}">
+                  <ItemsControl ItemsSource="{Binding Gradients}" Margin="0,4,0,0">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:BackdropSwatch">
+                        <RadioButton Classes="swatch" GroupName="BackdropGradient" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                     Background="{Binding Brush}" Command="{Binding ChooseCommand}"
+                                     ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <ColorPicker Color="{Binding FromColor, Mode=TwoWay}" IsAlphaEnabled="False" IsAlphaVisible="False" IsColorPaletteVisible="False"
+                                 IsColorComponentsVisible="False" IsColorModelVisible="False" FlowDirection="LeftToRight" MinWidth="64"
+                                 AutomationProperties.Name="{DynamicResource background.from}" ToolTip.Tip="{DynamicResource background.from}" />
+                    <ColorPicker Color="{Binding ToColor, Mode=TwoWay}" IsAlphaEnabled="False" IsAlphaVisible="False" IsColorPaletteVisible="False"
+                                 IsColorComponentsVisible="False" IsColorModelVisible="False" FlowDirection="LeftToRight" MinWidth="64"
+                                 AutomationProperties.Name="{DynamicResource background.to}" ToolTip.Tip="{DynamicResource background.to}" />
+                  </StackPanel>
+                </StackPanel>
+                <!-- Colour: swatches and one to pick -->
+                <StackPanel Spacing="4" IsVisible="{Binding IsColor}">
+                  <ItemsControl ItemsSource="{Binding Colors}" Margin="0,4,0,0">
+                    <ItemsControl.ItemsPanel><ItemsPanelTemplate><WrapPanel /></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:BackdropSwatch">
+                        <RadioButton Classes="swatch" GroupName="BackdropColor" IsChecked="{Binding IsSelected, Mode=OneWay}"
+                                     Background="{Binding Brush}" Command="{Binding ChooseCommand}"
+                                     ToolTip.Tip="{Binding Name}" AutomationProperties.Name="{Binding Name}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <ColorPicker Color="{Binding FillColor, Mode=TwoWay}" IsAlphaEnabled="False" IsAlphaVisible="False" IsColorPaletteVisible="False"
+                               IsColorComponentsVisible="False" IsColorModelVisible="False" FlowDirection="LeftToRight" MinWidth="64"
+                               HorizontalAlignment="Left" AutomationProperties.Name="{DynamicResource background.color}"
+                               ToolTip.Tip="{DynamicResource background.color}" />
+                </StackPanel>
+                <!-- Picture: one of one's own; a picture that can't be read says so (the gradient shows instead) -->
+                <StackPanel Spacing="4" IsVisible="{Binding IsPicture}" Margin="0,4,0,0">
+                  <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="{DynamicResource background.choose}" Command="{Binding ChoosePictureCommand}" Margin="8,0,0,0" />
+                    <TextBlock Classes="caption" Text="{Binding PictureName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  </DockPanel>
+                  <TextBlock Classes="caption danger" Text="{Binding PictureNotice}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                             IsVisible="{Binding PictureNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                </StackPanel>
+              </StackPanel>
+
+              <StackPanel Spacing="2">
+                <DockPanel><TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding PaddingText}" />
+                  <TextBlock Classes="caption" Text="{DynamicResource background.padding}" /></DockPanel>
+                <Slider Minimum="0" Maximum="{Binding MaxPadding}" Value="{Binding Padding}" TickFrequency="1" IsSnapToTickEnabled="True"
+                        AutomationProperties.Name="{DynamicResource background.padding}" />
+              </StackPanel>
+              <StackPanel Spacing="2">
+                <DockPanel><TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding CornersText}" />
+                  <TextBlock Classes="caption" Text="{DynamicResource background.corners}" /></DockPanel>
+                <Slider Minimum="0" Maximum="{Binding MaxCorners}" Value="{Binding Corners}" TickFrequency="1" IsSnapToTickEnabled="True"
+                        AutomationProperties.Name="{DynamicResource background.corners}" />
+              </StackPanel>
+              <StackPanel Spacing="2">
+                <DockPanel><TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding ShadowText}" />
+                  <TextBlock Classes="caption" Text="{DynamicResource background.shadow}" /></DockPanel>
+                <Slider Minimum="0" Maximum="{Binding MaxShadow}" Value="{Binding Shadow}" TickFrequency="5" IsSnapToTickEnabled="True"
+                        AutomationProperties.Name="{DynamicResource background.shadow}" />
+              </StackPanel>
+              <StackPanel Spacing="8">
+                <TextBlock Classes="caption" Text="{DynamicResource background.canvas}" />
+                <Border Classes="segments">
+                  <UniformGrid Columns="2">
+                    <RadioButton Classes="segment" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="BackdropCanvas"
+                                 IsChecked="{Binding IsAuto, Mode=OneWay}" Content="{DynamicResource background.auto}"
+                                 Command="{Binding SetCanvasCommand}" CommandParameter="{x:Static p:BackdropCanvas.Auto}" />
+                    <RadioButton Classes="segment" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="BackdropCanvas"
+                                 IsChecked="{Binding IsSquare, Mode=OneWay}" Content="{DynamicResource background.square}"
+                                 Command="{Binding SetCanvasCommand}" CommandParameter="{x:Static p:BackdropCanvas.Square}" />
+                    <RadioButton Classes="segment" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="BackdropCanvas"
+                                 IsChecked="{Binding IsLandscape, Mode=OneWay}" Content="16:9"
+                                 Command="{Binding SetCanvasCommand}" CommandParameter="{x:Static p:BackdropCanvas.Landscape}"
+                                 ToolTip.Tip="{DynamicResource background.landscape}" AutomationProperties.Name="{DynamicResource background.landscape}" />
+                    <RadioButton Classes="segment" Theme="{StaticResource {x:Type ToggleButton}}" GroupName="BackdropCanvas"
+                                 IsChecked="{Binding IsPortrait, Mode=OneWay}" Content="4:5"
+                                 Command="{Binding SetCanvasCommand}" CommandParameter="{x:Static p:BackdropCanvas.Portrait}"
+                                 ToolTip.Tip="{DynamicResource background.portrait}" AutomationProperties.Name="{DynamicResource background.portrait}" />
+                  </UniformGrid>
+                </Border>
+              </StackPanel>
+              <TextBlock Classes="caption" Text="{DynamicResource background.keys}" TextWrapping="Wrap" />
+            </StackPanel>
+          </ScrollViewer>
+          <StackPanel Grid.Row="1" Spacing="10" Margin="0,10,0,0">
+            <TextBlock Classes="caption danger" Text="{Binding StatusNotice}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                       IsVisible="{Binding StatusNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+            <CheckBox Content="{DynamicResource background.same_look}" IsChecked="{Binding SameLook}" IsVisible="{Binding HasMultipleFiles}" />
+            <DockPanel>
+              <Button DockPanel.Dock="Left" Content="{DynamicResource crop.skip}" Command="{Binding SkipCommand}"
+                      IsVisible="{Binding HasMultipleFiles}" />
+              <Button x:Name="SaveButton" Classes="accent" Content="{Binding SaveText}" Command="{Binding SaveCommand}"
+                      HorizontalAlignment="Right" />
+            </DockPanel>
+          </StackPanel>
+        </Grid>
+      </Border>
+    </Grid>
+
+    <!-- Top: the file and close -->
+    <Border Classes="float" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" Padding="14,6" IsVisible="{Binding IsEditing}">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <TextBlock Text="{Binding CurrentFileName}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="420" />
+        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="999" Padding="8,2" IsVisible="{Binding HasMultipleFiles}">
+          <TextBlock Classes="caption" Text="{Binding CounterText}" />
+        </Border>
+      </StackPanel>
+    </Border>
+    <!-- Out of the Tab order, which starts at the look: Enter there would close without saving (Esc closes). -->
+    <Button Classes="icon" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16" Padding="10" Command="{Binding CloseCommand}"
+            KeyboardNavigation.IsTabStop="False"
+            ToolTip.Tip="{DynamicResource common.close}" AutomationProperties.Name="{DynamicResource common.close}">
+      <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
+    </Button>
+
+    <!-- After the last picture, when a picture could not be opened or saved (as in Pixelate / blur) -->
+    <Border Classes="card" IsVisible="{Binding IsFinished}" HorizontalAlignment="Center" VerticalAlignment="Center"
+            MaxWidth="540" Margin="24" Padding="26,24">
+      <StackPanel Spacing="14">
+        <c:CropSummaryRing Width="112" Height="112" HorizontalAlignment="Center"
+                           Done="{Binding DoneCount}" Skipped="{Binding SkippedCount}" Failed="{Binding FailedCount}"
+                           AccentBrush="{DynamicResource AccentBrush}" MutedBrush="{DynamicResource TextSecondaryBrush}"
+                           DangerBrush="{DynamicResource DangerBrush}" HubBrush="{DynamicResource SurfaceBrush}"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" FontSize="16" TextAlignment="Center" TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="{DynamicResource SoftRadiusSmall}" Padding="14,10">
+          <ScrollViewer MaxHeight="220">
+            <ItemsControl ItemsSource="{Binding Problems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Text="{Binding}" FontSize="12" Margin="0,2" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
+        <Button x:Name="CloseSummaryButton" Classes="accent primary" HorizontalAlignment="Center" MinWidth="120"
+                HorizontalContentAlignment="Center" Content="{DynamicResource common.close}" Command="{Binding CloseCommand}" />
+      </StackPanel>
+    </Border>
+  </Panel>
+</Window>

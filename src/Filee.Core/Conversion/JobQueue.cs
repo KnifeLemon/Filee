@@ -582,13 +582,17 @@ public sealed partial class JobQueue : IAsyncDisposable
     }
 
     /// <summary>
-    /// Why a file the preset turns, mirrors, covers parts of or draws on can't be: no step of its route changes images.
+    /// Why a file the preset turns, mirrors, covers parts of, draws on or sets on a background can't be: no step of its
+    /// route changes images.
     /// </summary>
     private static string CannotReworkKey(ImageOptions image) =>
-        image.HidesAreas ? "error.cannot_hide" : image.HasAnnotations ? "error.images_only" : "error.cannot_turn";
+        image.HidesAreas ? "error.cannot_hide"
+        : image.HasAnnotations || image.AddsBackdrop ? "error.images_only"
+        : "error.cannot_turn";
 
     /// <summary>
-    /// A file that would be used as it is although the preset turns, mirrors, covers parts of or draws on it.
+    /// A file that would be used as it is although the preset turns, mirrors, covers parts of, draws on or sets it on a
+    /// background.
     /// </summary>
     private void FailUnturned(ConversionJob job, FileResult file, string detail)
     {
@@ -961,6 +965,7 @@ public sealed partial class JobQueue : IAsyncDisposable
             copy.Image.Flip = ImageFlip.None;
             copy.Image.HiddenAreas = null;
             copy.Image.Annotations = null;
+            copy.Image.Backdrop = null;
             return copy;
         }
 

@@ -273,10 +273,16 @@ public sealed class Preset
     public const string AnnotateTool = "annotate";
 
     /// <summary>
+    /// <see cref="Tool"/> of "Add background" (settings schema 64): a picture on a gradient, a colour or a picture of
+    /// one's own, with padding, rounded corners and a shadow (<see cref="ImageOptions.Backdrop"/>).
+    /// </summary>
+    public const string BackgroundTool = "background";
+
+    /// <summary>
     /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there
-    /// were other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/>, <see cref="HideTool"/> or
-    /// <see cref="AnnotateTool"/>. A tool this version doesn't know (from a newer Filee) opens nothing. Ignored for
-    /// other kinds.
+    /// were other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/>, <see cref="HideTool"/>,
+    /// <see cref="AnnotateTool"/> or <see cref="BackgroundTool"/>. A tool this version doesn't know (from a newer
+    /// Filee) opens nothing. Ignored for other kinds.
     /// </summary>
     public string? Tool { get; set; }
 
@@ -299,6 +305,9 @@ public sealed class Preset
     /// <summary>True for "Annotate".</summary>
     [JsonIgnore]
     public bool IsAnnotateTool => IsTool && Tool == AnnotateTool;
+    /// <summary>True for "Add background".</summary>
+    [JsonIgnore]
+    public bool IsBackgroundTool => IsTool && Tool == BackgroundTool;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
@@ -326,6 +335,20 @@ public sealed class Preset
         var copy = Clone();
         copy.Pdf.Password = "";
         copy.Pdf.PasswordLeftOut = mark;
+        return copy;
+    }
+
+    /// <summary>
+    /// A copy fit to leave this computer (an exported bundle): no PDF password and no path to a file of one's own
+    /// (Add background's picture, which would tell where one's files are).
+    /// </summary>
+    public Preset ForSharing()
+    {
+        var copy = WithoutPassword(mark: false);
+        if (copy.Image.Backdrop?.Picture is null && copy.Image.BackdropLook?.Picture is null)
+            return copy;
+        copy = ReferenceEquals(copy, this) ? Clone() : copy;
+        copy.Image.ForgetBackdropPictures();
         return copy;
     }
 
@@ -540,6 +563,111 @@ public sealed class Annotation
     }
 }
 
+/// <summary>What "Add background" sets a picture on (<see cref="BackdropOptions.Kind"/>).</summary>
+public enum BackdropKind
+{
+    /// <summary>
+    /// A diagonal gradient from <see cref="BackdropOptions.From"/> to <see cref="BackdropOptions.To"/>.
+    /// </summary>
+    Gradient,
+    /// <summary>One colour, <see cref="BackdropOptions.Color"/>.</summary>
+    Color,
+    /// <summary>A picture of one's own (<see cref="BackdropOptions.Picture"/>), covering the canvas.</summary>
+    Picture,
+}
+
+/// <summary>The shape of the canvas "Add background" makes (<see cref="BackdropOptions.Canvas"/>).</summary>
+public enum BackdropCanvas
+{
+    /// <summary>The picture and its padding, nothing more.</summary>
+    Auto,
+    Square,
+    /// <summary>16:9, wider than tall.</summary>
+    Landscape,
+    /// <summary>4:5, taller than wide.</summary>
+    Portrait,
+}
+
+/// <summary>
+/// How "Add background" sets a picture on a background: what is behind it, the space around it, its corners and its
+/// shadow, and the canvas's shape. Sizes are parts of the picture, so a look suits a screenshot and a photo alike.
+/// </summary>
+public sealed class BackdropOptions
+{
+    public const int MaxPadding = 40, MaxCorners = 20, MaxShadow = 100;
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<BackdropKind>))]
+    public BackdropKind Kind { get; set; }
+
+    /// <summary>The gradient's first colour (top left), "#RRGGBB".</summary>
+    public string From { get; set; } = "#8EC5FC";
+
+    /// <summary>The gradient's last colour (bottom right).</summary>
+    public string To { get; set; } = "#E0C3FC";
+
+    public string Color { get; set; } = "#FFFFFF";
+
+    /// <summary>
+    /// The picture behind, for <see cref="BackdropKind.Picture"/>. While it is missing or can't be read, the window
+    /// shows the gradient and won't save, and a conversion is refused.
+    /// </summary>
+    public string? Picture { get; set; }
+
+    /// <summary>
+    /// When <see cref="Picture"/>'s file was last written, as the window showed it (on the conversion it starts only):
+    /// a file changed since (by its time or length, before it is read and after) is refused rather than written with a
+    /// picture behind the window didn't show.
+    /// </summary>
+    public DateTime? PictureWritten { get; set; }
+
+    /// <summary>
+    /// How long <see cref="Picture"/>'s file was, as the window showed it (with <see cref="PictureWritten"/>).
+    /// </summary>
+    public long? PictureLength { get; set; }
+
+    /// <summary>Space round the picture, in percent of its longer side (0–<see cref="MaxPadding"/>).</summary>
+    public int Padding { get; set; } = 12;
+
+    /// <summary>Corner radius, in percent of the picture's shorter side (0–<see cref="MaxCorners"/>).</summary>
+    public int Corners { get; set; } = 3;
+
+    /// <summary>How strong the shadow is, 0 (none) to <see cref="MaxShadow"/>.</summary>
+    public int Shadow { get; set; } = 45;
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<BackdropCanvas>))]
+    public BackdropCanvas Canvas { get; set; }
+
+    public BackdropOptions Clone() => (BackdropOptions)MemberwiseClone();
+
+    /// <summary>
+    /// Every number within its range and every colour "#RRGGBB", the default's where it isn't one (a hand-edited file
+    /// can hold anything, a colour left out included).
+    /// </summary>
+    public BackdropOptions Clamped()
+    {
+        var copy = Clone();
+        var defaults = new BackdropOptions();
+        copy.From = HexOr(From, defaults.From);
+        copy.To = HexOr(To, defaults.To);
+        copy.Color = HexOr(Color, defaults.Color);
+        copy.Padding = Math.Clamp(Padding, 0, MaxPadding);
+        copy.Corners = Math.Clamp(Corners, 0, MaxCorners);
+        copy.Shadow = Math.Clamp(Shadow, 0, MaxShadow);
+        return copy;
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> as "#RRGGBB" when it is a colour that way (or "#RGB"), else <paramref name="fallback"/>.
+    /// </summary>
+    private static string HexOr(string? text, string fallback)
+    {
+        var hex = text?.Trim().TrimStart('#') ?? "";
+        if (hex.Length == 3)
+            hex = string.Concat(hex.Select(c => new string(c, 2)));
+        return hex.Length == 6 && hex.All(Uri.IsHexDigit) ? "#" + hex.ToUpperInvariant() : fallback;
+    }
+}
+
 /// <summary>Raster image encoding options.</summary>
 public sealed class ImageOptions
 {
@@ -580,11 +708,12 @@ public sealed class ImageOptions
     public bool TurnsOrMirrors => Rotation != ImageRotation.None || Flip != ImageFlip.None;
 
     /// <summary>
-    /// Turns, mirrors or covers parts of the image (<see cref="HidesAreas"/>): done once, in the first step of a route whose
-    /// engine applies image options (<see cref="Conversion.IImageTransformer"/>); a file is never passed on as it is.
+    /// Turns, mirrors, covers parts of, draws on or sets the image on a background: done once, in the first step of a
+    /// route whose engine applies image options (<see cref="Conversion.IImageTransformer"/>); a file is never passed on
+    /// as it is.
     /// </summary>
     [JsonIgnore]
-    public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations;
+    public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations || AddsBackdrop;
 
     /// <summary>"Annotate": the marks drawn on the picture as it is seen; null for every other preset.</summary>
     public List<Annotation>? Annotations
@@ -606,6 +735,35 @@ public sealed class ImageOptions
     /// <summary>"Annotate": the width picked last, kept in the tool for the next time.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationWidth>))]
     public AnnotationWidth AnnotationWidth { get; set; } = AnnotationWidth.Medium;
+
+    /// <summary>
+    /// "Add background": the picture set on a background (<see cref="BackdropOptions"/>), on the conversion the window
+    /// starts; null for every other preset.
+    /// </summary>
+    public BackdropOptions? Backdrop { get; set; }
+
+    /// <summary>The picture is set on a background (<see cref="Backdrop"/>).</summary>
+    [JsonIgnore]
+    public bool AddsBackdrop => Backdrop is not null;
+
+    /// <summary>"Add background": the look used last, kept in the tool for the next time.</summary>
+    public BackdropOptions? BackdropLook { get; set; }
+
+    /// <summary>
+    /// Leaves out the pictures of one's own that <see cref="Backdrop"/> and <see cref="BackdropLook"/> name: their
+    /// paths tell where one's files are, and a path from another computer is not one of ours to open.
+    /// </summary>
+    public void ForgetBackdropPictures()
+    {
+        foreach (var look in new[] { Backdrop, BackdropLook })
+        {
+            if (look is null)
+                continue;
+            look.Picture = null;
+            look.PictureWritten = null;
+            look.PictureLength = null;
+        }
+    }
 
     /// <summary>Whether the preset edits picture content, size, or playback speed.</summary>
     [JsonIgnore]
@@ -809,6 +967,8 @@ public sealed class ImageOptions
         copy.IcoSizes = [.. IcoSizes];
         copy.HiddenAreas = HiddenAreas?.Select(area => area.Clone()).ToList();
         copy.Annotations = Annotations?.Select(mark => mark.Clone()).ToList();
+        copy.Backdrop = Backdrop?.Clone();
+        copy.BackdropLook = BackdropLook?.Clone();
         copy.CustomSize = CustomSize is { } size
             ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, Unit = size.Unit, Dpi = size.Dpi }
             : null;
