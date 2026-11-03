@@ -43,9 +43,9 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Formats whose frames are an animation. Between these, all frames are kept with their timing (an animated GIF
-    /// becomes an animated WebP and the other way round); any other target gets the first frame.
+    /// becomes an animated WebP or JPEG XL and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng"];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl"];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
@@ -157,7 +157,7 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG): every frame for an animated or TIFF
+    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL): every frame for an animated or TIFF
     /// target, else the first frame.
     /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
