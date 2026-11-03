@@ -134,7 +134,7 @@ To undo it, remove the entries in Windows Security → App & browser control →
 - **Watch folders** convert every file that lands in them.
 - **Recent conversions** on Home, each with a thumbnail: open the result, or open it with another app.
 - **Other ways in**: the right-click menu, a keyboard shortcut, the drop zone and the [`filee` command](#command-line).
-- Light and dark themes with your own accent colour and donut opacity, in English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (right to left), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano and Bahasa Indonesia.
+- Light and dark themes with your own accent colour and donut opacity, in English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (right to left), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia and Tiếng Việt.
 
 ## Screenshots
 
