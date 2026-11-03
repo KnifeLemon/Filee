@@ -280,6 +280,8 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
             return;
         Files.Move(from, to);
         Renumber();
+        // A card moved by hand is a custom order: the sort list shows that, and a later sort starts from it.
+        SortIndex = CustomSortIndex;
         SelectedFile = Files[to];
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
