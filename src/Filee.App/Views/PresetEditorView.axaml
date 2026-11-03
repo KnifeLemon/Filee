@@ -288,6 +288,10 @@
           <CheckBox Content="{DynamicResource presets.crossfade}" IsChecked="{Binding Crossfade}"
                     ToolTip.Tip="{DynamicResource presets.crossfade_hint}" />
         </StackPanel>
+        <StackPanel IsVisible="{Binding ShowCropFrame}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.crop_frame}" />
+          <ComboBox ItemsSource="{Binding CropFrames}" SelectedItem="{Binding CropFrame}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.crop_frame}" />
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />

@@ -155,13 +155,13 @@ public sealed class Preset
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
 
-    /// <summary>Formats the translator can directly read from.</summary>
+    /// <summary>Formats the translator can directly read from (documents, e-books, text and SRT / WebVTT subtitles).</summary>
     public static readonly string[] TranslatorSourceFormats =
     [
-        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html"
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html", "srt", "vtt"
     ];
 
-    /// <summary>True if converting a document or e-book using local AI translation.</summary>
+    /// <summary>True if converting a document, e-book, text file or subtitle using local AI translation.</summary>
     public bool TranslatesDocument(string sourceFormat) =>
         Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
 
@@ -287,6 +287,10 @@ public sealed class Preset
     /// </summary>
     public bool CutsClipOf(string sourceFormat) =>
         Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+
+    /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
+    [JsonIgnore]
+    public bool CropsVideo => VideoCrop.Crops(Media.CropFrame);
 
     /// <summary>Creates a new random preset id.</summary>
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
@@ -950,6 +954,12 @@ public sealed class MediaOptions
 
     /// <summary>Drop the audio track of a video.</summary>
     public bool RemoveAudio { get; set; }
+
+    /// <summary>
+    /// "Crop video" (#830): the frame cut to a "width:height" ratio, centred, or to <see cref="VideoCrop.Auto"/> (the
+    /// picture inside black bars); empty keeps the whole frame. The video is encoded again, the sound copied.
+    /// </summary>
+    public string CropFrame { get; set; } = "";
 
     /// <summary>Audio channels of an audio file: 0 keeps the source's, 1 mono, 2 stereo.</summary>
     public int AudioChannels { get; set; }
