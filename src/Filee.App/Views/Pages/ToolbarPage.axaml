@@ -428,7 +428,7 @@
               <StackPanel x:Name="ProfileActions" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
                 <Button Content="{DynamicResource toolbar.reset_profile}" Command="{Binding ResetProfileCommand}"
                         IsVisible="{Binding CanReset}" />
-                <Button Content="{DynamicResource toolbar.delete_profile}" Command="{Binding DeleteProfileCommand}"
+                <Button Classes="danger" Content="{DynamicResource toolbar.delete_profile}" Command="{Binding DeleteProfileCommand}"
                         IsVisible="{Binding CanDelete}" />
               </StackPanel>
             </StackPanel>

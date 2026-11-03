@@ -43,7 +43,7 @@
             <StackPanel Spacing="14">
               <!-- Header: on/off, summary, remove -->
               <DockPanel>
-                <Button DockPanel.Dock="Right" Classes="icon"
+                <Button DockPanel.Dock="Right" Classes="icon danger"
                         Command="{Binding $parent[ItemsControl].((vm:TriggersPageViewModel)DataContext).RemoveCommand}"
                         CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource triggers.remove}" AutomationProperties.Name="{DynamicResource triggers.remove}">
                   <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Delete}" />
