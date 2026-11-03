@@ -9,7 +9,9 @@ public partial class OllamaModelManagerWindow : Window
     public OllamaModelManagerWindow()
     {
         InitializeComponent();
-        DataContext = new OllamaModelManagerViewModel();
+        var vm = new OllamaModelManagerViewModel();
+        vm.OwnerWindow = this;
+        DataContext = vm;
     }
 
     private void OnClose(object? sender, RoutedEventArgs e) => Close();

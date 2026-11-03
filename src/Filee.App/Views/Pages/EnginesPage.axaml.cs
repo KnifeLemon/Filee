@@ -138,8 +138,10 @@ public partial class EnginesPage : UserControl
             return;
         var dlg = new OllamaModelManagerWindow();
         await dlg.ShowDialog(window);
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
-        AppHost.Get<Filee.Core.Conversion.ConverterCatalog>().Refresh();
+        await Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
+        var catalog = AppHost.Get<Filee.Core.Conversion.ConverterCatalog>();
+        catalog.Refresh();
+        _ = catalog.CheckInBackgroundAsync();
     }
 
     /// <summary>Picks the program of a copy the user already has (ffmpeg.exe, ebook-convert.exe, …) and uses it.</summary>
