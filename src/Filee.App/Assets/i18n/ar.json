@@ -200,6 +200,8 @@
   "engine.cad.description": "رسومات AutoCAD: التحويل بين DWG وDXF، وتحويل كليهما إلى PDF وSVG وPNG.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "التحويل بين النماذج ثلاثية الأبعاد: GLB وglTF وSTL وOBJ و3MF وPLY، وتحويل FBX إلى أي منها، وإنشاء معاينة PNG.",
+  "engine.image3d.name": "صور إلى نقش بارز ثلاثي الأبعاد (مدمج)",
+  "engine.image3d.description": "تحويل الصور إلى نماذج نقش بارز ثلاثية الأبعاد للطباعة أو العرض: المناطق الأفتح أعلى، فوق قاعدة مسطحة. GLB وglTF وSTL وOBJ و3MF وPLY.",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "التحويل بين البيانات الجغرافية المتجهية: GeoJSON وKML وKMZ وGPX وShapefile وCSV (خطوط طول وعرض أو WKT).\nتُحفَظ النتائج بخطوط طول وعرض وفق WGS 84؛ وتُحوَّل ملفات Shapefile ذات الإحداثيات المسقطة (UTM وWeb Mercator وLambert وAlbers).",
   "engine.archive.name": "Archives (7-Zip)",

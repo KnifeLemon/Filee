@@ -200,6 +200,8 @@
   "engine.cad.description": "Planos de AutoCAD: DWG ↔ DXF, y ambos a PDF, SVG y PNG.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "Modelos 3D: GLB, glTF, STL, OBJ, 3MF y PLY entre sí, FBX a cualquiera de ellos, además de una vista previa en PNG.",
+  "engine.image3d.name": "Imágenes a relieve 3D (integrado)",
+  "engine.image3d.description": "Imágenes a modelos 3D en relieve para imprimir o ver: las zonas más claras quedan más altas, sobre una base plana. GLB, glTF, STL, OBJ, 3MF y PLY.",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "Datos vectoriales geoespaciales: GeoJSON, KML, KMZ, GPX, Shapefile y CSV (longitud/latitud o WKT) entre sí.\nEl resultado es longitud/latitud WGS 84; los sistemas proyectados de Shapefile (UTM, Web Mercator, Lambert, Albers) se convierten.",
   "engine.archive.name": "Archives (7-Zip)",

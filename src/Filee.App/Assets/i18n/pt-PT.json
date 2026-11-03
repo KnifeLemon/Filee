@@ -207,6 +207,8 @@
   "engine.cad.description": "Desenhos AutoCAD: DWG ↔ DXF e ambos para PDF, SVG e PNG.",
   "engine.model3d.name": "Modelos 3D (motor integrado)",
   "engine.model3d.description": "Converte modelos 3D entre GLB, glTF, STL, OBJ, 3MF e PLY, de FBX para qualquer um destes formatos e para uma pré-visualização PNG.",
+  "engine.image3d.name": "Imagens para relevo 3D (motor integrado)",
+  "engine.image3d.description": "Converte imagens em modelos 3D em relevo para imprimir ou visualizar: as zonas mais claras ficam mais altas, sobre uma base plana. GLB, glTF, STL, OBJ, 3MF e PLY.",
   "engine.geo.name": "Dados geoespaciais vetoriais (motor integrado)",
   "engine.geo.description": "Converte dados geoespaciais vetoriais entre GeoJSON, KML, KMZ, GPX, Shapefile e CSV (longitude/latitude ou WKT).\nOs resultados usam longitude/latitude WGS 84; os ficheiros Shapefile com coordenadas projetadas (UTM, Web Mercator, Lambert, Albers) são convertidos.",
   "engine.archive.name": "Ficheiros comprimidos (7-Zip)",

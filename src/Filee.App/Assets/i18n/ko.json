@@ -207,6 +207,8 @@
   "engine.cad.description": "오토캐드 도면: DWG ↔ DXF, 그리고 둘 다 PDF, SVG, PNG로.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D 모델: GLB, glTF, STL, OBJ, 3MF, PLY를 서로 변환하고, FBX도 이 형식들로 바꾸고, PNG 미리보기도 만들어요.",
+  "engine.image3d.name": "이미지를 3D 부조로 (내장)",
+  "engine.image3d.description": "이미지를 출력하거나 볼 수 있는 3D 부조 모델로 바꿔요. 밝은 부분일수록 높이 솟고, 평평한 받침 위에 놓여요. GLB, glTF, STL, OBJ, 3MF, PLY로 만들어요.",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "지리 공간 벡터 데이터: GeoJSON, KML, KMZ, GPX, Shapefile, CSV(경도·위도 또는 WKT)를 서로 변환해요.\n결과는 WGS 84 경위도예요. Shapefile의 투영 좌표계(UTM, 웹 메르카토르, 람베르트, 알버스)는 변환해요.",
   "engine.archive.name": "Archives (7-Zip)",

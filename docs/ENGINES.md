@@ -27,6 +27,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
+| Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
 | **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
@@ -1102,13 +1103,26 @@ with one light and flat shading per triangle, vertex colours or the texture inte
 at 2048 px and scaled down to 1024 px for smooth edges, on a transparent background. The preset's image options
 (resize, background for JPG, quality) apply as for other pictures.
 
+**Pictures → 3D relief** (`ImageTo3DConverter`, engine `image3d`): every picture ImageMagick reads (PNG, JPG, WebP,
+HEIC, camera RAW, …; not EMF/WMF) becomes a relief in any of the six formats, only as a direct conversion (a picture
+never reaches a model through another format). The picture is turned upright and scaled down to at most 200 × 200
+grid points, one per pixel; its longer side is **100 mm** (from the first pixel's centre to the last one's), the other in
+proportion. Each point stands on a **2 mm base** plus **8 mm × its brightness** (Rec. 601 luma) × its opacity, so white
+is 10 mm high and black or transparent pixels 2 mm. The mesh is one closed solid (the top grid, the same grid flat
+underneath and four walls; every edge is shared by two triangles), so slicers take it as it is, and the picture reads
+upright seen from above. GLB, glTF and OBJ get the picture as the material's texture (a PNG at the grid's size), 3MF and
+PLY vertex colours, STL none; transparent pixels are light grey (#D9D9D9) and the walls take their edge pixels' colour.
+A 200 × 200 grid is about 160,000 triangles, some 8 MB as STL.
+
 Tests (`tests/Filee.Engines.Tests/ModelTests.cs`) build a cube, a sphere and a fan of coloured triangles in code and
 convert each through every format pair, checking triangle counts, bounds, signed volume (winding), normals, UVs,
 colours and materials where both formats keep them; hand-written STL, OBJ, PLY, 3MF and glTF files cover the reading
 details, and a generated 1,000,000-triangle STL the speed. `FbxTests.cs` writes FBX files in code (`FbxBuilder`:
 binary 7.4 and 7.5, plain and compressed arrays, ASCII): a cube under a moved parent, turned and scaled, with a
 templated material and an embedded or neighbouring texture, Z-up files in metres, rotation orders, concave polygons and
-materials by polygon, and every cut or flipped byte of a file, which must read or fail with a clear message.
+materials by polygon, and every cut or flipped byte of a file, which must read or fail with a clear message. The relief
+tests draw pictures in code and check that the mesh is closed, the sizes and heights above, transparency, the 200-point
+grid and every output format.
 
 ## Geospatial data (GeoJSON, KML / KMZ, GPX, Shapefile, CSV, FIT)
 

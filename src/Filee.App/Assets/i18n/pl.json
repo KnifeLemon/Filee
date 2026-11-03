@@ -207,6 +207,8 @@
   "engine.cad.description": "Rysunki AutoCAD: DWG ↔ DXF, oba także do PDF, SVG i PNG.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "Modele 3D: GLB, glTF, STL, OBJ, 3MF i PLY między sobą, FBX do każdego z nich oraz podgląd PNG.",
+  "engine.image3d.name": "Obrazy na płaskorzeźbę 3D (wbudowany)",
+  "engine.image3d.description": "Obrazy jako modele 3D w formie płaskorzeźby do druku lub oglądania: jaśniejsze miejsca są wyżej, na płaskiej podstawie. GLB, glTF, STL, OBJ, 3MF i PLY.",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "Wektorowe dane geoprzestrzenne: GeoJSON, KML, KMZ, GPX, Shapefile i CSV (długość/szerokość lub WKT) wzajemnie.\nWynik to długość i szerokość WGS 84; układy rzutowane w Shapefile (UTM, Web Mercator, Lambert, Albers) są przeliczane.",
   "engine.archive.name": "Archives (7-Zip)",

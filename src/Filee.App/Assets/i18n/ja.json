@@ -200,6 +200,8 @@
   "engine.cad.description": "AutoCAD図面に対応します。DWGとDXFの相互変換、および両形式からPDF、SVG、PNGへの変換ができます。",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3Dモデル（GLB、glTF、STL、OBJ、3MF、PLY）を相互変換します。FBXから各形式への変換と、PNGプレビューの作成にも対応します。",
+  "engine.image3d.name": "画像から3Dレリーフ（内蔵）",
+  "engine.image3d.description": "画像を印刷や表示用の3Dレリーフモデルに変換します。明るい部分ほど高くなり、平らな土台に乗ります。GLB、glTF、STL、OBJ、3MF、PLYに対応します。",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "地理空間ベクターデータ（GeoJSON、KML、KMZ、GPX、Shapefile、経度・緯度またはWKTのCSV）を相互変換します。\n結果はWGS 84の経度・緯度です。投影座標系のShapefile（UTM、Webメルカトル、ランベルト、アルベルス）も変換します。",
   "engine.archive.name": "Archives (7-Zip)",

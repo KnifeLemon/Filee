@@ -207,6 +207,8 @@
   "engine.cad.description": "AutoCAD 圖紙：DWG ↔ DXF，並可轉為 PDF、SVG 和 PNG。",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "GLB、glTF、STL、OBJ、3MF 和 PLY 3D 模型互相轉換，FBX 可轉換為其中任意格式，並可產生 PNG 預覽。",
+  "engine.image3d.name": "圖片轉 3D 浮雕（內建）",
+  "engine.image3d.description": "將圖片轉換為可列印或檢視的 3D 浮雕模型：越亮的區域越高，下方是平整的底座。支援 GLB、glTF、STL、OBJ、3MF 和 PLY。",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "地理空間向量資料 GeoJSON、KML、KMZ、GPX、Shapefile 和 CSV（經緯度或 WKT）互相轉換。\n結果為 WGS 84 經緯度，Shapefile 的投影座標系統（UTM、Web 麥卡托、蘭伯特、阿爾伯斯）會被轉換。",
   "engine.archive.name": "Archives (7-Zip)",
