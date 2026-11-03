@@ -209,6 +209,8 @@
   "engine.cad.description": "Чертежи AutoCAD: DWG ↔ DXF, и оба — в PDF, SVG и PNG.",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D-модели: GLB, glTF, STL, OBJ, 3MF и PLY друг в друга, FBX — в любой из них, плюс превью в PNG.",
+  "engine.image3d.name": "Изображения в 3D-рельеф (встроенный)",
+  "engine.image3d.description": "Изображения в 3D-модели рельефа для печати или просмотра: светлые участки выше, на плоском основании. GLB, glTF, STL, OBJ, 3MF и PLY.",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "Векторные геоданные: GeoJSON, KML, KMZ, GPX, Shapefile и CSV (долгота/широта или WKT) друг в друга.\nРезультат — долгота и широта в WGS 84; Shapefile в проекциях (UTM, Web Mercator, Lambert, Albers) пересчитываются.",
   "engine.archive.name": "Archives (7-Zip)",

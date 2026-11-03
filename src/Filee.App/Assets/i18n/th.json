@@ -202,6 +202,8 @@
   "engine.cad.description": "แบบแปลน AutoCAD: DWG ↔ DXF และแปลงทั้งสองเป็น PDF, SVG และ PNG",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "โมเดล 3D: GLB, glTF, STL, OBJ, 3MF และ PLY สลับกันได้ FBX เป็นฟอร์แมตใดก็ได้ และแสดงตัวอย่างเป็น PNG",
+  "engine.image3d.name": "รูปภาพเป็นภาพนูน 3D (ในตัว)",
+  "engine.image3d.description": "แปลงรูปภาพเป็นโมเดลภาพนูน 3D สำหรับพิมพ์หรือดู: ส่วนที่สว่างกว่าจะสูงกว่า บนฐานเรียบ GLB, glTF, STL, OBJ, 3MF และ PLY",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "ข้อมูลเวกเตอร์เชิงพื้นที่: GeoJSON, KML, KMZ, GPX, Shapefile และ CSV (ลองจิจูด/ละติจูด หรือ WKT) สลับกันได้\nผลลัพธ์เป็นลองจิจูด/ละติจูด WGS 84 ส่วน Shapefile ที่มีพิกัดโปรเจกชัน (UTM, Web Mercator, Lambert, Albers) จะได้รับการแปลงค่า",
   "engine.archive.name": "Archives (7-Zip)",

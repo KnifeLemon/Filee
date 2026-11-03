@@ -209,6 +209,8 @@
   "engine.cad.description": "Desenhos do AutoCAD: DWG ↔ DXF, e os dois para PDF, SVG e PNG.",
   "engine.model3d.name": "Modelos 3D (mecanismo integrado)",
   "engine.model3d.description": "Modelos 3D: GLB, glTF, STL, OBJ, 3MF e PLY entre si, FBX para qualquer um deles, e uma prévia em PNG.",
+  "engine.image3d.name": "Imagens para relevo 3D (mecanismo integrado)",
+  "engine.image3d.description": "Imagens em modelos 3D em relevo para imprimir ou visualizar: as áreas mais claras ficam mais altas, sobre uma base plana. GLB, glTF, STL, OBJ, 3MF e PLY.",
   "engine.geo.name": "Dados geoespaciais vetoriais (mecanismo integrado)",
   "engine.geo.description": "Dados vetoriais geoespaciais: GeoJSON, KML, KMZ, GPX, Shapefile e CSV (longitude/latitude ou WKT) entre si.\nOs resultados são longitude/latitude em WGS 84; Shapefiles projetados (UTM, Web Mercator, Lambert, Albers) são convertidos.",
   "engine.archive.name": "Arquivos compactados (7-Zip)",

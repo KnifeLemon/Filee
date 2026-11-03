@@ -202,6 +202,8 @@
   "engine.cad.description": "AutoCAD ड्रॉइंग: DWG ↔ DXF, और दोनों से PDF, SVG और PNG।",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "3D मॉडल: GLB, glTF, STL, OBJ, 3MF और PLY एक-दूसरे में, FBX इनमें से किसी में भी, और PNG प्रीव्यू।",
+  "engine.image3d.name": "चित्र से 3D रिलीफ़ (बिल्ट-इन)",
+  "engine.image3d.description": "चित्रों को प्रिंट करने या देखने के लिए 3D रिलीफ़ मॉडल में: हल्के हिस्से ऊँचे उठते हैं, एक समतल आधार पर। GLB, glTF, STL, OBJ, 3MF और PLY।",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "भू-स्थानिक वेक्टर डेटा: GeoJSON, KML, KMZ, GPX, Shapefile और CSV (देशांतर/अक्षांश या WKT) एक-दूसरे में।\nनतीजे WGS 84 देशांतर/अक्षांश में होते हैं। प्रोजेक्टेड Shapefile (UTM, Web Mercator, Lambert, Albers) कन्वर्ट किए जाते हैं।",
   "engine.archive.name": "Archives (7-Zip)",

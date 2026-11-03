@@ -202,6 +202,8 @@
   "engine.cad.description": "Gambar AutoCAD: DWG ↔ DXF, dan keduanya ke PDF, SVG, serta PNG.",
   "engine.model3d.name": "Model 3D (bawaan)",
   "engine.model3d.description": "Model 3D: GLB, glTF, STL, OBJ, 3MF, dan PLY saling konversi, FBX ke format mana pun, serta pratinjau gambar PNG.",
+  "engine.image3d.name": "Gambar ke relief 3D (bawaan)",
+  "engine.image3d.description": "Gambar menjadi model relief 3D untuk dicetak atau dilihat: bagian yang lebih terang lebih tinggi, di atas alas datar. GLB, glTF, STL, OBJ, 3MF, dan PLY.",
   "engine.geo.name": "Data vektor geospasial (bawaan)",
   "engine.geo.description": "Data vektor geospasial: GeoJSON, KML, KMZ, GPX, Shapefile, dan CSV (garis bujur/lintang atau WKT) saling konversi.\nHasilnya adalah garis bujur/lintang WGS 84; Shapefile terproyeksi (UTM, Web Mercator, Lambert, Albers) otomatis dikonversi.",
   "engine.archive.name": "Arsip (7-Zip)",

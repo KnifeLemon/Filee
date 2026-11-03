@@ -202,6 +202,8 @@
   "engine.cad.description": "AutoCAD-Zeichnungen: DWG ↔ DXF und beide in PDF, SVG und PNG.",
   "engine.model3d.name": "3D-Modelle (integriert)",
   "engine.model3d.description": "3D-Modelle: Konvertiert GLB, glTF, STL, OBJ, 3MF und PLY untereinander, FBX in jedes dieser Formate und erstellt eine PNG-Vorschau.",
+  "engine.image3d.name": "Bilder zu 3D-Relief (integriert)",
+  "engine.image3d.description": "Bilder als 3D-Reliefmodelle zum Drucken oder Ansehen: Hellere Bereiche stehen höher, auf einer flachen Grundplatte. GLB, glTF, STL, OBJ, 3MF und PLY.",
   "engine.geo.name": "Vektor-Geodaten (integriert)",
   "engine.geo.description": "Vektor-Geodaten: Konvertiert GeoJSON, KML, KMZ, GPX, Shapefile und CSV (Längen-/Breitengrad oder WKT) untereinander.\nErgebnisse verwenden WGS-84-Längen- und Breitengrade. Projizierte Shapefiles (UTM, Web Mercator, Lambert, Albers) werden umgerechnet.",
   "engine.archive.name": "Archive (7-Zip)",

@@ -202,6 +202,8 @@
   "engine.cad.description": "AutoCAD रेखाचित्रहरू: DWG ↔ DXF, र दुवैबाट PDF, SVG र PNG।",
   "engine.model3d.name": "3D models (built-in)",
   "engine.model3d.description": "थ्रीडी मोडलहरू: GLB, glTF, STL, OBJ, 3MF र PLY एकअर्कामा, FBX यीमध्ये कुनैमा पनि, र PNG पूर्वावलोकन।",
+  "engine.image3d.name": "चित्रबाट थ्रीडी रिलिफ (बिल्ट-इन)",
+  "engine.image3d.description": "चित्रहरूलाई छाप्न वा हेर्नका लागि थ्रीडी रिलिफ मोडलमा: उज्यालो भागहरू अग्लो हुन्छन्, समतल आधारमाथि। GLB, glTF, STL, OBJ, 3MF र PLY।",
   "engine.geo.name": "Geospatial vector data (built-in)",
   "engine.geo.description": "भौगोलिक भेक्टर डाटा: GeoJSON, KML, KMZ, GPX, Shapefile र CSV (देशान्तर/अक्षांश वा WKT) एकअर्कामा।\nपरिणामहरू WGS 84 देशान्तर/अक्षांशमा हुन्छन्; प्रोजेक्टेड Shapefile (UTM, Web Mercator, Lambert, Albers) रूपान्तरण गरिन्छ।",
   "engine.archive.name": "Archives (7-Zip)",
