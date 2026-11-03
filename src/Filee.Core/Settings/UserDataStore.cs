@@ -961,6 +961,35 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 58)
             changed |= LearnExtensions(profiles, out _, ["c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs"]);
+        // v59: "Crop video" (#830): its group and presets join the library after "Cut a clip". No donut gets a slot (#806:
+        //      new defaults are for new installs); the user places it from the palette. (Schema 59 may be renumbered if
+        //      another change takes it first.)
+        if (from < 59)
+            changed |= AddCropVideo(presets);
+        return changed;
+    }
+
+    private static bool AddCropVideo(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "tool-clip");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.CropVideoPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                // Saved since by an older Filee, which dropped the option and left a plain "same format" preset.
+                if (preset.CropsVideo && !existing.CropsVideo && existing.TargetFormat == preset.TargetFormat)
+                {
+                    existing.Media.CropFrame = preset.Media.CropFrame;
+                    changed = true;
+                }
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
         return changed;
     }
 

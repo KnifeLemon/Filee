@@ -150,10 +150,14 @@ internal static partial class MediaEncoding
     /// A video target: only this part of the video, cut exactly (the video is always encoded; <see cref="ClipCopy"/>
     /// copies it instead, cut at key frames).
     /// </param>
+    /// <param name="crop">
+    /// A video target: the filters that crop the frame first ("Crop video", <see cref="CropFilter"/>); the video is
+    /// always encoded then, and an MKV keeps its subtitles and attachments.
+    /// </param>
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
         CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1,
-        ClipRange? clip = null)
+        ClipRange? clip = null, string? crop = null)
     {
         if (clip is { } part && VideoTargets.TryGetValue(target, out var clipTarget))
             return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part), 1)];
@@ -164,7 +168,7 @@ internal static partial class MediaEncoding
         if (target == "png")
             return [new FfmpegPass(PosterFrame(input, output, info), 1)];
         if (VideoTargets.TryGetValue(target, out var video))
-            return [new FfmpegPass(Video(input, output, target, video, options, info, encoders, hardware), 1)];
+            return [new FfmpegPass(Video(input, output, target, video, options, info, encoders, hardware, crop: crop), 1)];
         if (AudioTargets.TryGetValue(target, out var audio))
             return [new FfmpegPass(Audio(input, output, target, audio, options, info, cover), 1)];
         if (SubtitleTargets.ContainsKey(target))
@@ -235,7 +239,7 @@ internal static partial class MediaEncoding
             : null;
 
     private static List<string> Video(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,
-        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null)
+        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         // An input without sound is fine: the output simply has no audio track. Every track is kept (languages,
@@ -249,25 +253,29 @@ internal static partial class MediaEncoding
         List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
+        // A crop to MKV keeps the subtitles and attachments (fonts) as they are; MP4 and MOV can't hold most of them.
+        var extras = crop is not null && target == "mkv";
+        if (extras)
+            args.AddRange(["-map", "0:s?", "-map", "0:t?"]);
 
-        if (clip is null && !info.RawStream && CanCopyVideo(target, video, options))
+        if (clip is null && crop is null && !info.RawStream && CanCopyVideo(target, video, options))
         {
             args.AddRange(["-c:v", "copy"]);
             // Apple plays HEVC in MP4/MOV only under the "hvc1" tag (FFmpeg keeps "hev1" from some sources).
             if (video.Codec == "hevc" && target is "mp4" or "m4v" or "mov")
                 args.AddRange(["-tag:v", "hvc1"]);
         }
-        else if (hardware is not null && HardwareCodec(target, options, info, encode: clip is not null) == hardware.Codec)
+        else if (hardware is not null && HardwareCodec(target, options, info, encode: clip is not null || crop is not null) == hardware.Codec)
         {
             // VA-API's device is a global option, so it goes before the input.
             args.InsertRange(Common.Length, HardwareVideo.InputArguments(hardware));
-            args.AddRange(["-vf", ScaleFilter(options.MaxHeight) + HardwareVideo.FilterSuffix(hardware, HardwareVideo.TenBit(hardware.Codec, video))]);
+            args.AddRange(["-vf", crop + ScaleFilter(options.MaxHeight) + HardwareVideo.FilterSuffix(hardware, HardwareVideo.TenBit(hardware.Codec, video))]);
             args.AddRange(HardwareVideo.CodecArguments(hardware, target, options.Quality, video, options.MaxHeight));
         }
         else
         {
             var pal = IsPal(video.FrameRate);
-            args.AddRange(["-vf", target is "vob" or "dv" ? DvdOrDvFilter(video, pal) : ScaleFilter(options.MaxHeight)]);
+            args.AddRange(["-vf", crop + (target is "vob" or "dv" ? DvdOrDvFilter(video, pal) : ScaleFilter(options.MaxHeight))]);
             args.AddRange(VideoCodecArguments(target, VideoEncoder(target, spec.VideoCodec!, options.VideoCodec, encoders), options.Quality, video, pal));
         }
 
@@ -282,6 +290,8 @@ internal static partial class MediaEncoding
                 : AudioCodecArguments(target, spec.AudioCodec, options, tracks[i], inVideo: true);
             args.AddRange(tracks.Count == 1 ? trackArgs : ForAudioTrack(trackArgs, i));
         }
+        if (extras)
+            args.AddRange(["-c:s", "copy", "-c:t", "copy"]);
 
         args.AddRange(MetadataArguments());
         args.AddRange(ContainerArguments(target));

@@ -1520,6 +1520,8 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   and Vulkan libraries are loaded only if present. Being over 60 MB, it is offered but not ticked on first run.
 - The Cut a clip window's preview plays its sound through `ffplay` when it sits next to Filee's FFmpeg (the gyan.dev
   build has it); without it, the preview plays silently. Nothing else uses ffplay.
+- Crop video (#830) cuts the frame with the `crop` filter, to a ratio or to the box `cropdetect` finds inside the black
+  bars (`Media/MediaEncoding.Crop.cs`); the video is encoded again in its own format and the sound copied.
 - Container and codecs per target (`Media/MediaEncoding.cs`, every encoder checked with `ffmpeg -encoders`):
 
   | Target | Written as |

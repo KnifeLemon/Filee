@@ -211,8 +211,8 @@ public partial class BackFaceTests
                 backFace = ["tool-crop", "rotate", "remove-background", "trim-transparent", "merge-images", "compress-image", "half-size",
                     "tool-image-edit", "remove-metadata", "zip-all"];
             if (schema == 29 && expected.Id == "video")
-                backFace = ["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio",
-                    "live-photo-iphone", "motion-photo-android", "zip-all"];
+                backFace = ["tool-clip", "crop-video", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png",
+                    "live-photo-iphone", "motion-photo-android", "extract-audio", "zip-all"];
             Assert.Equal(backFace, profile.BackPresetIds);
         }
         Assert.Equal(AppSettings.CurrentSchemaVersion, back.Settings.SchemaVersion);
@@ -245,8 +245,8 @@ public partial class BackFaceTests
             "tool-image-edit", "remove-metadata", "zip-all"], Profile(back, "images").BackPresetIds);
         Assert.Equal(["to-mp4", "mp4-720", "mp4-hevc", "to-mov", "to-gif", "to-mp3", "extract-subtitles", "caption-video"],
             Profile(back, "video").PresetIds);
-        Assert.Equal(["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio",
-            "live-photo-iphone", "motion-photo-android", "zip-all"], Profile(back, "video").BackPresetIds);
+        Assert.Equal(["tool-clip", "crop-video", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png",
+            "live-photo-iphone", "motion-photo-android", "extract-audio", "zip-all"], Profile(back, "video").BackPresetIds);
         Assert.Equal(["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-jpg", "to-txt", "merge-pdf", "to-epub"], Profile(back, "hwp").PresetIds);
         Assert.Equal(["to-html", "to-odt", "pdf-long-image", "zip-all"], Profile(back, "hwp").BackPresetIds);
     }

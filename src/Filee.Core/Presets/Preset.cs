@@ -288,6 +288,10 @@ public sealed class Preset
     public bool CutsClipOf(string sourceFormat) =>
         Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
+    /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
+    [JsonIgnore]
+    public bool CropsVideo => VideoCrop.Crops(Media.CropFrame);
+
     /// <summary>Creates a new random preset id.</summary>
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
 
@@ -950,6 +954,12 @@ public sealed class MediaOptions
 
     /// <summary>Drop the audio track of a video.</summary>
     public bool RemoveAudio { get; set; }
+
+    /// <summary>
+    /// "Crop video" (#830): the frame cut to a "width:height" ratio, centred, or to <see cref="VideoCrop.Auto"/> (the
+    /// picture inside black bars); empty keeps the whole frame. The video is encoded again, the sound copied.
+    /// </summary>
+    public string CropFrame { get; set; } = "";
 
     /// <summary>Audio channels of an audio file: 0 keeps the source's, 1 mono, 2 stereo.</summary>
     public int AudioChannels { get; set; }

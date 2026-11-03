@@ -128,6 +128,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         FitsTiffModes = Enum.GetValues<FitsTiffMode>().Select(v => new Choice<FitsTiffMode>(v, loc[$"presets.fits_tiff.{v}"])).ToList();
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
         MaxHeights = Steps(MaxHeightSteps, _edit.Media.MaxHeight, h => h == 0 ? loc["presets.max_height.original"] : $"{h}p");
+        // A ratio set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
+        CropFrames = [new(VideoCrop.Auto, loc["presets.crop_frame.auto"]),
+            .. VideoCrop.Ratios.Append(_edit.Media.CropFrame).Where(r => VideoCrop.TryParseRatio(r, out _, out _)).Distinct()
+                .Select(r => new Choice<string>(r, r))];
         AudioBitrates = Steps(BitrateSteps, _edit.Media.AudioBitrateKbps, k => k == 0 ? loc["presets.audio_bitrate.auto"] : $"{k} kbps");
         AudioChannelChoices = new[] { 0, 1, 2 }.Select(c => new Choice<int>(c, loc[$"presets.audio_channels.{c}"])).ToList();
         SampleRates = Steps(SampleRateSteps, _edit.Media.AudioSampleRate,
@@ -172,6 +176,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _fitsDebayer = _edit.Image.FitsDebayer;
         _mediaQuality = MediaQualities.First(q => q.Value == _edit.Media.Quality);
         _maxHeight = MaxHeights.First(h => h.Value == _edit.Media.MaxHeight);
+        _cropFrame = CropFrames.FirstOrDefault(c => c.Value == _edit.Media.CropFrame) ?? CropFrames[0];
         _audioBitrate = AudioBitrates.First(b => b.Value == _edit.Media.AudioBitrateKbps);
         _removeAudio = _edit.Media.RemoveAudio;
         _audioChannels = AudioChannelChoices.FirstOrDefault(c => c.Value == _edit.Media.AudioChannels) ?? AudioChannelChoices[0];
@@ -350,6 +355,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<FitsTiffMode>> FitsTiffModes { get; }
     public IReadOnlyList<Choice<MediaQuality>> MediaQualities { get; }
     public IReadOnlyList<Choice<int>> MaxHeights { get; }
+    /// <summary>"Crop video": the picture inside the black bars, or a ratio.</summary>
+    public IReadOnlyList<Choice<string>> CropFrames { get; }
     public IReadOnlyList<Choice<int>> AudioBitrates { get; }
     public IReadOnlyList<Choice<int>> AudioChannelChoices { get; }
     public IReadOnlyList<Choice<int>> SampleRates { get; }
@@ -695,6 +702,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public string CopyHint => _loc[MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
+    [ObservableProperty] private Choice<string> _cropFrame;
     [ObservableProperty] private Choice<int> _audioBitrate;
     [ObservableProperty] private Choice<int> _audioChannels;
     [ObservableProperty] private Choice<int> _sampleRate;
@@ -779,6 +787,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         Choices.Restore(oldValue, newValue, v => FitsTiffMode = v);
     partial void OnMediaQualityChanged(Choice<MediaQuality>? oldValue, Choice<MediaQuality> newValue) => Choices.Restore(oldValue, newValue, v => MediaQuality = v);
     partial void OnMaxHeightChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => MaxHeight = v);
+    partial void OnCropFrameChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => CropFrame = v);
     partial void OnAudioBitrateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioBitrate = v);
     partial void OnAudioChannelsChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioChannels = v);
     partial void OnSampleRateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => SampleRate = v);
@@ -850,7 +859,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowDocument => TargetId == "pdf";
     /// <summary>Markdown can't hold pictures: they go into a folder next to it, or are left out.</summary>
     public bool ShowLeaveOutPictures => TargetId == "md";
-    public bool ShowMedia => ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption;
+    public bool ShowMedia => ShowCropFrame || ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption;
     /// <summary>Mono / stereo for every audio target but AMR, which is mono by definition.</summary>
     public bool ShowAudioChannels => TargetIsAudio && TargetId != "amr";
     /// <summary>Sample rate and sample format: the PCM of WAV and W64 takes any.</summary>
@@ -865,6 +874,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowAudioCodec => AudioCodecs.Count > 1;
     public bool ShowMediaQuality => TargetIsLossyMedia;
     public bool ShowMaxHeight => TargetIsVideo;
+    /// <summary>"Crop video" presets (#830), which keep the video's own format.</summary>
+    public bool ShowCropFrame => _original.CropsVideo;
     /// <summary>A size limit for a converted video; a clip is cut, not fitted.</summary>
     public bool ShowVideoMaxSize => TargetCategory == FormatCategory.Video && !_original.IsClipTool
         // Not where nothing fits it: a join or slideshow, or VOB and DV, which have a fixed bitrate.
@@ -1021,6 +1032,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var media = _original.Media;
         media.Quality = MediaQuality.Value;
         media.MaxHeight = MaxHeight.Value;
+        if (ShowCropFrame)
+            media.CropFrame = CropFrame.Value;
         if (ShowVideoMaxSize)
         {
             if (VideoSizeUnitChoice.Value == VideoSizeUnit.Percent)
