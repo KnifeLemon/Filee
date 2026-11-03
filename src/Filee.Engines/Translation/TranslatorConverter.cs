@@ -26,6 +26,14 @@ public sealed class TranslatorConverter : IConverter
         "mobi", "azw3", "azw", "prc"
     ];
 
+    // Subtitle formats are translated cue-by-cue: only each cue's text goes to the model, so cue numbers and
+    // timestamps are kept unchanged (the subtitle writer writes them again). SRT and WebVTT, the two formats with
+    // nothing structural to lose; the other subtitle readers/writers stay untouched.
+    private static readonly string[] SubtitleFormats =
+    [
+        "srt", "vtt"
+    ];
+
     private readonly ITranslationService? _translationService;
     private readonly ILogger? _logger;
 
@@ -48,6 +56,7 @@ public sealed class TranslatorConverter : IConverter
         WritableFormats.SelectMany(from =>
             WritableFormats.Select(to => new ConversionEdge(from, to, from == to ? 10 : 12, Translate: true)))
         .Concat(KindleFormats.Select(from => new ConversionEdge(from, "epub", 12, Translate: true)))
+        .Concat(SubtitleFormats.Select(from => new ConversionEdge(from, from, 10, Translate: true)))
         .ToList();
 
     private static readonly HttpClient SharedStatusClient = new(new SocketsHttpHandler
@@ -179,6 +188,11 @@ public sealed class TranslatorConverter : IConverter
         var sourceLang = step.Preset.Translate.SourceLanguage;
 
         var service = _translationService ?? new TranslationService(step.Preset.Translate, logger: _logger);
+
+        // Subtitles: only the cue text goes to the model; cue numbers, timestamps and headers are written back
+        // by the subtitle writer, so timings survive untouched.
+        if (SubtitleFormats.Contains(step.From, StringComparer.OrdinalIgnoreCase))
+            return await SubtitleTranslator.TranslateAsync(step, service, targetLang, sourceLang, progress, cancellationToken);
 
         // 1. Read document / e-book into in-memory model
         progress?.Report(0.15);

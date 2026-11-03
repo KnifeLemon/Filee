@@ -1,4 +1,4 @@
-// "Annotate": settings schema 59 brings the tool to existing libraries (in the palette only), and the marks a
+// "Annotate": settings schema 60 brings the tool to existing libraries (in the palette only), and the marks a
 // conversion carries keep their shape through saving.
 
 using System.Text.Json.Nodes;
@@ -31,7 +31,7 @@ public class AnnotateToolTests
     }
 
     [Fact]
-    public void Schema_59_adds_the_Annotate_tool_and_marks_keep_their_shape_through_saving()
+    public void Schema_60_adds_the_Annotate_tool_and_marks_keep_their_shape_through_saving()
     {
         using var dir = new TempDir();
         Saved(dir);
@@ -41,7 +41,7 @@ public class AnnotateToolTests
         File.WriteAllText(path, presets.ToJsonString());
         var settingsPath = Path.Combine(dir.Path, "settings.json");
         var settings = JsonNode.Parse(File.ReadAllText(settingsPath))!.AsObject();
-        settings["schemaVersion"] = 58;
+        settings["schemaVersion"] = 59;
         File.WriteAllText(settingsPath, settings.ToJsonString());
 
         var store = new UserDataStore(dir.Path);

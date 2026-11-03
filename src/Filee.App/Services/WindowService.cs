@@ -70,8 +70,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         if (images)
         {
             // Room for the layout below the list.
-            dialog.Height = 640;
-            dialog.MinHeight = 540;
+            dialog.Height = 690;
+            dialog.MinHeight = 590;
         }
         PrepareWindow(dialog);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

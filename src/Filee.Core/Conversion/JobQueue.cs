@@ -768,7 +768,7 @@ public sealed partial class JobQueue : IAsyncDisposable
             return Fail(file, "error.empty_file", null);
 
         var target = !finalOutput ? intermediate
-            : runWith.TargetFormat == BuiltInData.SameAsSource ? source.Id
+            : runWith.TargetFormat == BuiltInData.SameAsSource ? runWith.CropsVideo ? VideoCrop.TargetFor(source.Id) : source.Id
             : runWith.TargetFormat;
 
         // "Save every frame": a video becomes a folder of pictures in one step of its own; "Extract Live/Motion Photo
