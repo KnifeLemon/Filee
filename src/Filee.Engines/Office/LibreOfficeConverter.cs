@@ -185,22 +185,19 @@ public sealed class LibreOfficeConverter : IConverter
     /// has not changed size since the last call and ends with its %%EOF marker.
     /// Non-PDF formats are deliberately not probed: a stable file size alone does not prove completion.
     /// </summary>
-    private static Func<bool> OutputComplete(string outDir)
+    internal static Func<bool> OutputComplete(string outDir)
     {
         long last = -1;
         return () =>
         {
             if (!Directory.Exists(outDir))
                 return false;
-
             var file = Directory.EnumerateFiles(outDir).FirstOrDefault(f => new FileInfo(f).Length > 0);
             if (file is null || !file.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
                 return false;
-
             var length = new FileInfo(file).Length;
             var steady = length == last;
             last = length;
-
             if (!steady || length == 0)
                 return false;
 

@@ -29,12 +29,14 @@ public static class ProcessRunner
     /// <exception cref="TimeoutException">The program did not exit within <paramref name="timeout"/>; it was killed.</exception>
     /// <param name="timeout">The longest the program may run; <see cref="Timeout.InfiniteTimeSpan"/> for no limit.</param>
     /// <param name="onOutput">Called with every line of standard output and error as it arrives (e.g. to parse progress).</param>
-    /// <param name="outputReady">
-    /// Polled while the program runs; once it has returned true on several polls in a row the program is killed and
-    /// treated as finished (exit code 0). On Windows, a Job Object also terminates child processes.
-    /// </param>
     /// <param name="stallTimeout">
-    /// When set, the program is also killed once it has written nothing (no line on either stream) for this long.
+    /// When set, the program is also killed once it has written nothing (no line on either stream) for this long: for
+    /// engines that keep reporting progress, so a long run that does goes on and a hung one stops early.
+    /// </param>
+    /// <param name="outputReady">
+    /// Polled while the program runs (not together with <paramref name="stallTimeout"/>); once it has returned true on
+    /// several polls in a row the program is killed and treated as finished (exit code 0). On Windows, a Job Object also
+    /// ends the programs it started, even after it exited itself.
     /// </param>
     public static async Task<ProcessResult> RunAsync(
         string executable,
@@ -51,8 +53,8 @@ public static class ProcessRunner
         {
             UseShellExecute = false,
             CreateNoWindow = true,
-            // Closed right after the start: a program that asks a question reads end of input
-            // instead of waiting on the console or pipe Filee itself was started with.
+            // Closed right after the start: a program that asks a question (7-Zip's password prompt) reads end of
+            // input instead of waiting on the console or pipe Filee itself was started with.
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
@@ -60,55 +62,27 @@ public static class ProcessRunner
             StandardErrorEncoding = Encoding.UTF8,
             WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(executable) ?? "",
         };
-
         foreach (var arg in arguments)
             psi.ArgumentList.Add(arg);
-
         if (environment is not null)
-        {
             foreach (var (key, value) in environment)
                 psi.Environment[key] = value;
-        }
 
         using var process = new Process { StartInfo = psi };
-        using var job = outputReady is not null && OperatingSystem.IsWindows()
-            ? ProcessJob.TryCreate()
-            : null;
-
+        using var job = outputReady is not null && OperatingSystem.IsWindows() ? ProcessJob.TryCreate() : null;
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
         var watch = stallTimeout is { } limit ? new StallWatch(limit) : null;
-
-        process.OutputDataReceived += (_, e) =>
-        {
-            if (e.Data is not null)
-            {
-                watch?.Touch();
-                lock (stdout)
-                    stdout.AppendLine(e.Data);
-                onOutput?.Invoke(e.Data);
-            }
-        };
-
-        process.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is not null)
-            {
-                watch?.Touch();
-                lock (stderr)
-                    stderr.AppendLine(e.Data);
-                onOutput?.Invoke(e.Data);
-            }
-        };
+        process.OutputDataReceived += (_, e) => { if (e.Data is not null) { watch?.Touch(); lock (stdout) stdout.AppendLine(e.Data); onOutput?.Invoke(e.Data); } };
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) { watch?.Touch(); lock (stderr) stderr.AppendLine(e.Data); onOutput?.Invoke(e.Data); } };
 
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");
-
-        // Assign immediately after starting, so the Job Object tracks the process and its children.
-        // If assignment is unavailable, retain the normal process-tree kill fallback.
+        // Joined right after the start, so the job holds the programs it starts later. One it started in that first
+        // instant would escape the job (very unlikely with soffice, which loads for a while before it starts
+        // soffice.bin). Without a job, TryKill still ends the process tree.
         if (job is not null && !job.TryAssign(process))
             job.Dispose();
-
         Lower(process);
         process.StandardInput.Close();
         process.BeginOutputReadLine();
@@ -116,108 +90,75 @@ public static class ProcessRunner
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
-
         var finishedEarly = false;
-
         try
         {
             var exited = process.WaitForExitAsync(timeoutCts.Token);
-
-            if (watch is null && outputReady is not null)
+            if (watch is null && outputReady is not null && await WatchOutputAsync(outputReady, exited, timeoutCts.Token))
             {
-                var ready = WatchOutputAsync(outputReady, timeoutCts.Token);
-
-                if (await Task.WhenAny(exited, ready) == ready && await ready)
-                {
-                    TryKill(process, job);
-                    finishedEarly = true;
-                }
-                else
-                {
-                    await exited;
-                }
+                TryKill(process, job);
+                finishedEarly = true;
             }
             else if (watch is null)
-            {
                 await exited;
-            }
             else if (!await watch.WaitAsync(exited, timeoutCts.Token))
             {
                 TryKill(process, job);
-                throw new ConversionRefusedException(
-                    StalledErrorKey,
-                    $"{Path.GetFileName(executable)}, {Describe(watch.Limit)}");
+                throw new ConversionRefusedException(StalledErrorKey, $"{Path.GetFileName(executable)}, {Describe(watch.Limit)}");
             }
         }
         catch (OperationCanceledException)
         {
             TryKill(process, job);
             cancellationToken.ThrowIfCancellationRequested();
-            throw new TimeoutException(
-                $"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
+            throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
         }
 
         if (finishedEarly)
         {
-            // Do not wait for redirected streams: a child may have inherited their handles.
+            // Not waiting for the end of the output: a child the job could not end may still hold the inherited pipes.
             process.WaitForExit(3000);
-
             lock (stdout)
-            {
                 lock (stderr)
-                {
                     return new ProcessResult(0, stdout.ToString(), stderr.ToString());
-                }
-            }
         }
 
         // Make sure the async output readers have drained.
         process.WaitForExit();
         AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
-
         return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString());
     }
 
     /// <summary>
-    /// True once <paramref name="ready"/> has held on 4 polls in a row (2 s); false when cancelled first.
+    /// True once <paramref name="ready"/> has held on 4 polls in a row (2 s); false when the program exits or the wait is
+    /// cancelled first.
     /// </summary>
-    private static async Task<bool> WatchOutputAsync(Func<bool> ready, CancellationToken cancellationToken)
+    private static async Task<bool> WatchOutputAsync(Func<bool> ready, Task exited, CancellationToken cancellationToken)
     {
         var streak = 0;
-
-        try
+        while (streak < 4)
         {
-            while (true)
+            await Task.WhenAny(exited, Task.Delay(500, cancellationToken));
+            if (exited.IsCompleted || cancellationToken.IsCancellationRequested)
+                return false;
+
+            bool ok;
+            try
             {
-                await Task.Delay(500, cancellationToken);
-
-                bool ok;
-                try
-                {
-                    ok = ready();
-                }
-                catch (Exception e) when (e is IOException or UnauthorizedAccessException)
-                {
-                    ok = false;
-                }
-
-                streak = ok ? streak + 1 : 0;
-
-                if (streak >= 4)
-                    return true;
+                ok = ready();
             }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                ok = false;
+            }
+            streak = ok ? streak + 1 : 0;
         }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
+        return true;
     }
 
     /// <summary>"10 min", or "30 s" below a minute.</summary>
     internal static string Describe(TimeSpan limit) =>
-        limit >= TimeSpan.FromMinutes(1)
-            ? $"{limit.TotalMinutes:0} min"
-            : $"{limit.TotalSeconds:0} s";
+        limit >= TimeSpan.FromMinutes(1) ? $"{limit.TotalMinutes:0} min" : $"{limit.TotalSeconds:0} s";
 
     /// <summary>
     /// Below normal priority, so a long conversion on every core leaves room for the desktop and Filee's own input
@@ -230,30 +171,22 @@ public static class ProcessRunner
         {
             process.PriorityClass = ProcessPriorityClass.BelowNormal;
         }
-        catch (Exception ex) when (
-            ex is InvalidOperationException
-                or System.ComponentModel.Win32Exception
-                or NotSupportedException)
+        catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
         {
         }
     }
 
     private static void TryKill(Process process, ProcessJob? job)
     {
-        // Terminate the Job Object first: the parent may already have exited while a child is still running.
+        // The job first: the program may already have exited while a child it started still runs.
         job?.Terminate();
-
         try
         {
             if (!process.HasExited)
                 process.Kill(entireProcessTree: true);
         }
-        catch (InvalidOperationException)
-        {
-        }
-        catch (System.ComponentModel.Win32Exception)
-        {
-        }
+        catch (InvalidOperationException) { }
+        catch (System.ComponentModel.Win32Exception) { }
     }
 
     /// <summary>
