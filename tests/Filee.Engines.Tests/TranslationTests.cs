@@ -188,7 +188,6 @@ public class TranslationTests
         Assert.Equal("[T] Beta.", inlines[1].Text); // salvaged by the plain single-run translation
     }
 
-
     private sealed class StatusMockHandler(System.Net.HttpStatusCode statusCode) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
