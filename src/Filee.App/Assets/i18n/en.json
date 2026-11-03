@@ -128,6 +128,7 @@
   "error.rhwp_timeout": "rhwp couldn't finish this long document in time",
   "error.rhwp_timeout_calibre": "rhwp couldn't finish this long document in time. For an e-book, move Calibre above the HWPX writer in Settings → Engines, and Calibre makes the PDF much faster",
   "error.engine_stalled": "The engine stopped responding: it showed no progress for a long time, so it was stopped",
+  "error.engine_busy": "Another Filee (the app, the command line or a second copy) is installing or removing this engine. Try again when it has finished.",
   "error.needs_shaping": "This script needs LibreOffice to convert correctly. Install it in Settings → Engines",
   "error.runtime_missing": "A Microsoft Visual C++ runtime file this engine needs is missing or outdated. Update or reinstall Filee, or install the Microsoft Visual C++ Redistributable (x64)",
   "error.conversion_failed": "The engine reported an error",

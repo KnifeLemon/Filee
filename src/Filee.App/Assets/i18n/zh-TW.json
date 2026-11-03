@@ -128,6 +128,7 @@
   "error.rhwp_timeout": "文件太長，rhwp 未能在時限內完成",
   "error.rhwp_timeout_calibre": "文件太長，rhwp 未能在時限內完成。如果是電子書，請在「設定 → 轉換引擎」中把 Calibre 移到 HWPX writer 之上，Calibre 產生 PDF 要快得多",
   "error.engine_stalled": "轉換引擎停止回應：長時間沒有進展，已將其停止",
+  "error.engine_busy": "另一個 Filee（應用程式、命令列或另一個副本）正在安裝或移除這個引擎。請在它完成後重試。",
   "error.needs_shaping": "這種文字需要 LibreOffice 才能正確轉換，請在「設定 → 轉換引擎」中安裝",
   "error.runtime_missing": "此引擎所需的 Microsoft Visual C++ 執行階段程式庫檔案缺失或版本過舊。請更新或重新安裝 Filee，或安裝 Microsoft Visual C++ 可轉散發套件 (x64)",
   "error.conversion_failed": "轉換引擎出錯",

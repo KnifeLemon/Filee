@@ -122,6 +122,7 @@
   "error.rhwp_timeout": "rhwp tidak dapat menyelesaikan dokumen panjang ini tepat waktu",
   "error.rhwp_timeout_calibre": "rhwp tidak dapat menyelesaikan dokumen panjang ini tepat waktu. Untuk e-book, pindahkan Calibre ke atas pembuat HWPX di Pengaturan → Engine, dan Calibre akan membuat PDF jauh lebih cepat",
   "error.engine_stalled": "Engine berhenti merespons: tidak menunjukkan progres dalam waktu lama, sehingga dihentikan",
+  "error.engine_busy": "Filee lain (aplikasi, baris perintah, atau salinan kedua) sedang memasang atau menghapus engine ini. Coba lagi setelah selesai.",
   "error.needs_shaping": "Skrip ini memerlukan LibreOffice untuk mengonversi dengan benar. Pasang di Pengaturan → Engine",
   "error.runtime_missing": "File runtime Microsoft Visual C++ yang dibutuhkan engine ini hilang atau kedaluwarsa. Perbarui atau pasang ulang Filee, atau pasang Microsoft Visual C++ Redistributable (x64)",
   "error.conversion_failed": "Engine melaporkan kesalahan",

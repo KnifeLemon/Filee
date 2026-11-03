@@ -122,6 +122,7 @@
   "error.rhwp_timeout": "rhwp konnte dieses lange Dokument nicht rechtzeitig fertigstellen",
   "error.rhwp_timeout_calibre": "rhwp konnte dieses lange Dokument nicht rechtzeitig fertigstellen. Verschiebe bei E-Books Calibre unter Einstellungen → Module über den HWPX-Writer. Calibre erstellt die PDF deutlich schneller",
   "error.engine_stalled": "Das Modul reagiert nicht mehr: Es kam lange nicht voran und wurde beendet",
+  "error.engine_busy": "Ein anderes Filee (die App, die Befehlszeile oder eine zweite Kopie) installiert oder entfernt dieses Modul gerade. Versuche es erneut, wenn es fertig ist.",
   "error.needs_shaping": "Diese Schrift benötigt LibreOffice für eine korrekte Konvertierung. Installiere es unter Einstellungen → Module",
   "error.runtime_missing": "Eine von diesem Modul benötigte Microsoft-Visual-C++-Laufzeitdatei fehlt oder ist veraltet. Aktualisiere Filee, installiere es neu oder installiere Microsoft Visual C++ Redistributable (x64)",
   "error.conversion_failed": "Das Modul hat einen Fehler gemeldet",

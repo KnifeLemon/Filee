@@ -58,6 +58,26 @@ public class EnginesPageTests
     }
 
     [AvaloniaFact]
+    public void Another_Filee_installing_the_package_is_said_in_the_users_language()
+    {
+        // #963: the card showed EngineBusyException's English message.
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<LocalizationService>();
+        try
+        {
+            loc.SetLanguage("ko");
+            var text = EngineDownloadService.ErrorText(loc, new Filee.Engines.Infrastructure.EngineBusyException("libreoffice"));
+            Assert.Equal(loc["error.engine_busy"], text);
+            Assert.NotEqual("error.engine_busy", text);
+            Assert.DoesNotContain("being installed by another Filee", text);
+        }
+        finally
+        {
+            loc.SetLanguage("en");
+        }
+    }
+
+    [AvaloniaFact]
     public void Dragging_a_card_below_the_next_one_moves_it_there_and_saves_the_order()
     {
         TestServices.EnsureInitialized("en");
