@@ -38,7 +38,8 @@
         <TextBlock Classes="label" Text="{DynamicResource presets.copy_action}" IsVisible="{Binding IsCopyToFolder}" />
         <ComboBox x:Name="CopyActionBox" ItemsSource="{Binding CopyActions}" SelectedItem="{Binding CopyAction}" IsVisible="{Binding IsCopyToFolder}"
                   HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.copy_action}" />
-        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}"
+        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding TargetSelection}"
+                  PlaceholderText="{Binding HiddenTarget}"
                   IsEnabled="{Binding CanChangeTarget}" IsVisible="{Binding !IsCopyToFolder}"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.target}">
           <ComboBox.ItemTemplate>
@@ -50,6 +51,7 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
+        <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
 

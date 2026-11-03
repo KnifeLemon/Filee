@@ -726,7 +726,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         }
         var candidates = new List<(PaletteChip Chip, PaletteTab Tab, bool Group)>();
         // Groups first: few, and otherwise at the very end, below every conversion.
-        foreach (var preset in _store.Presets.Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
+        foreach (var preset in ShownPresets().Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
         {
             string? reason = null;
             var use = PresetUse.Usable;
@@ -816,13 +816,19 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(BackCount));
     }
 
+    private IEnumerable<Preset> ShownPresets()
+    {
+        var off = _store.Settings.TurnedOffFieldSet();
+        return _store.Presets.Where(p => FormatFields.IsShown(p.TargetFormat, off));
+    }
+
     private void RefreshVisiblePalette()
     {
         var query = PaletteSearch.Trim();
         var placed = Profile is null ? [] : Profile.PresetIds.Concat(Profile.BackPresetIds ?? []).ToHashSet();
         _judgingByProfile.TryGetValue(Profile?.Id ?? "", out var judging);
         var candidates = new List<(PaletteChip Chip, PaletteTab Tab, bool Group)>();
-        foreach (var preset in _store.Presets.Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
+        foreach (var preset in ShownPresets().Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
         {
             var judgement = judging?.Judged.GetValueOrDefault(preset.Id) ?? new(PresetUse.Usable, null);
             if (Profile is { Extensions.Count: > 0 } && !preset.IsGroup && !HasJudgement(Profile.Id, preset.Id))
@@ -860,7 +866,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         if (!_judgingByProfile.TryGetValue(profileId, out var judging))
             _judgingByProfile[profileId] = judging = new PaletteJudging();
         var placed = profile.PresetIds.Concat(profile.BackPresetIds ?? []).ToHashSet();
-        var pending = _store.Presets.Where(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)).ToList();
+        var pending = ShownPresets().Where(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)).ToList();
         if (pending.Count > 0)
         {
             judging.Session ??= _availability.ForPalette(profile.Extensions.Select(FormatRegistry.FindByExtension)
@@ -874,7 +880,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                     break;
             }
         }
-        if (_store.Presets.Any(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)))
+        if (ShownPresets().Any(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)))
             Dispatcher.UIThread.Post(() => JudgeSome(pass, profileId), DispatcherPriority.Background);
         else
         {
