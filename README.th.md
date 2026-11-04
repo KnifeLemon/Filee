@@ -84,6 +84,12 @@
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/th%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+หรือใช้ WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: รัน `Filee-<version>-win-Setup.exe` หรือแตกไฟล์ `win-Portable.zip` แล้วเปิด `Filee.exe`
   - ตัวติดตั้ง Setup เป็นของ Filee เอง มีเมนูภาษาไทย และไม่ต้องติดตั้งโปรแกรมเสริมใดๆ
   - สามารถเพิ่มลงในเมนูคลิกขวาของ Explorer, ตั้งให้เปิดพร้อมระบบ, เพิ่มคำสั่ง `filee` และดาวน์โหลดเครื่องมือแปลงไฟล์เพิ่มเติมได้

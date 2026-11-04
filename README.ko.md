@@ -85,6 +85,12 @@
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/ko%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+또는 WinGet으로:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: `Filee-<version>-win-Setup.exe`를 실행하거나, `win-Portable.zip`을 풀고 `Filee.exe`를 실행해요.
   - 설치 프로그램은 Filee가 직접 만든 것이라 Filee와 같은 언어로 안내하고, PC에 따로 설치할 것이 없어요.
   - 설치할 때 탐색기 메뉴, 로그인 시 자동 실행, `filee` 명령, 추가 엔진을 고를 수 있어요.

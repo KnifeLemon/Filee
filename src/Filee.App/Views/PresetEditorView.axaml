@@ -590,9 +590,14 @@
           </StackPanel>
           <StackPanel Grid.Column="2">
             <TextBlock Classes="label" Text="{DynamicResource presets.page_range}" />
-            <TextBox Text="{Binding PageRange}" PlaceholderText="{DynamicResource presets.page_range_hint}" />
+            <TextBox Text="{Binding PageRange}" PlaceholderText="{DynamicResource presets.page_range_hint}"
+                     AutomationProperties.Name="{DynamicResource presets.page_range}" />
+            <!-- #981: a small window asks for the pages of each PDF dropped on the donut. -->
+            <CheckBox x:Name="AskPages" Margin="0,6,0,0" Content="{DynamicResource presets.ask_pages}" IsChecked="{Binding AskPageRange}"
+                      IsVisible="{Binding ShowAskPages}" />
           </StackPanel>
         </Grid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ask_pages_hint}" IsVisible="{Binding ShowAskPagesHint}" />
         <CheckBox Content="{DynamicResource presets.pdfa}" IsChecked="{Binding PdfA}" IsVisible="{Binding ShowDocument}" />
         <!-- Finishing of every PDF the preset writes: watermark, page numbers, password -->
         <StackPanel Spacing="10" IsVisible="{Binding ShowPdfBuild}">

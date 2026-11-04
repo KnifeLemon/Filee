@@ -82,6 +82,12 @@ Unduh melalui halaman [Releases](https://github.com/KnifeLemon/Filee/releases/la
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+Atau dengan WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: Jalankan `Filee-<version>-win-Setup.exe`, atau ekstrak `win-Portable.zip` lalu jalankan `Filee.exe`.
   - Installer bawaan Filee mendukung berbagai bahasa dan tidak memerlukan dependensi tambahan di PC.
   - Opsi instalasi mencakup: integrasi menu klik kanan Explorer, jalan otomatis saat login (*start at sign-in*), perintah CLI `filee`, serta engine opsional.

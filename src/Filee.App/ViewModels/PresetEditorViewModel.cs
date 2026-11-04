@@ -287,6 +287,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _marginMm = _edit.Pdf.MarginMm;
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
+        _askPageRange = _edit.Pdf.AskPageRange;
         _splitPages = _edit.Pdf.SplitPages;
         _combinePages = _edit.Pdf.CombinePages;
         _trimPageMargins = _edit.Pdf.TrimPageMargins;
@@ -415,6 +416,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPdfCombine),
+        nameof(ShowAskPages), nameof(ShowAskPagesHint),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
@@ -678,10 +680,15 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _webpLossless;
     [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
-    [ObservableProperty] private bool _merge;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint))]
+    private bool _merge;
     [ObservableProperty] private double _marginMm;
     [ObservableProperty] private int _renderDpi;
     [ObservableProperty] private string _pageRange;
+
+    /// <summary>"Ask every time" for the pages (PdfOptions.AskPageRange, #981).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPagesHint))]
+    private bool _askPageRange;
     [ObservableProperty] private bool _splitPages;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowPdfCompressionOptions))]
@@ -919,6 +926,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowPageSize => ShowPdfBuild && !Recognizes;
     public bool ShowPdfSplit => TargetId == "pdf" && !Recognizes;
 
+    /// <summary>
+    /// "Ask every time" under Pages: wherever the pages are, except a merge, where one range would go for every file
+    /// (AskedPages.Asks).
+    /// </summary>
+    public bool ShowAskPages => ShowPdf && !(TargetId == "pdf" && Merge);
+    public bool ShowAskPagesHint => ShowAskPages && AskPageRange;
+
     /// <summary>Compression is for PDF → PDF; Ghostscript and metadata only matter while it is on.</summary>
     public bool ShowPdfCompression => TargetId == "pdf" && !Recognizes;
 
@@ -1080,6 +1094,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         pdf.MarginMm = Math.Clamp(MarginMm, 0, 100);
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);
         pdf.PageRange = PageRange.Trim();
+        pdf.AskPageRange = ShowAskPages && AskPageRange;
         pdf.SplitPages = SplitPages;
         pdf.CombinePages = CombinePages;
         pdf.TrimPageMargins = TrimPageMargins;

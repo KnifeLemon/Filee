@@ -143,6 +143,7 @@ jobs:
           key: zig-0.16.0-x86_64-windows
 
       - name: Build Explorer menu extension
+        timeout-minutes: 30
         shell: pwsh
         run: ./build/build-explorer-menu.ps1
 
@@ -249,6 +250,7 @@ jobs:
           key: zig-0.16.0-x86_64-windows
 
       - name: Build Explorer menu extension
+        timeout-minutes: 30
         run: ./build/build-explorer-menu.ps1 -Architecture arm64
 
       - name: Test UI on its own

@@ -84,6 +84,12 @@ Descarrega o Filee da [página de versões](https://github.com/KnifeLemon/Filee/
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/pt-pt%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+Ou pelo WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: executa `Filee-<version>-win-Setup.exe` ou extrai o `win-Portable.zip` e executa `Filee.exe`.
   - O Filee tem um instalador próprio, disponível nos idiomas da aplicação, que não precisa de mais nada no computador.
   - Permite adicionar o menu do Explorador, o arranque ao iniciar sessão, o comando `filee` e motores opcionais.

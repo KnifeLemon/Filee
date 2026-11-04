@@ -105,11 +105,30 @@ Write-Host "build FileeExplorerMenu.dll $Version ($Architecture)"
 $dll = Join-Path $obj 'FileeExplorerMenu.dll'
 $target = @{ 'x64' = 'x86_64-windows-gnu'; 'arm64' = 'aarch64-windows-gnu' }[$Architecture]
 # -nostdlib: no C runtime inside explorer.exe; the entry point is DllMain itself. -s strips symbols.
-& $zig cc -target $target -shared -O2 -s -nostdlib -Wall -Wextra -Werror `
-    -isystem (Join-Path (Split-Path $zig) 'lib\libc\include\any-windows-any') `
-    (Join-Path $source 'FileeExplorerMenu.c') (Join-Path $source 'FileeExplorerMenu.def') $rc `
-    -lkernel32 -luser32 -lole32 -lshell32 -lshlwapi '-Wl,--entry=DllMain' -o $dll
-if ($LASTEXITCODE -ne 0) { throw "zig cc failed with exit code $LASTEXITCODE" }
+$zigArgs = @('cc', '-target', $target, '-shared', '-O2', '-s', '-nostdlib', '-Wall', '-Wextra', '-Werror',
+    '-isystem', (Join-Path (Split-Path $zig) 'lib\libc\include\any-windows-any'),
+    (Join-Path $source 'FileeExplorerMenu.c'), (Join-Path $source 'FileeExplorerMenu.def'), $rc,
+    '-lkernel32', '-luser32', '-lole32', '-lshell32', '-lshlwapi', '-Wl,--entry=DllMain', '-o', $dll)
+# Under x64 emulation on Windows on ARM, zig cc now and then never finishes (it normally takes a minute or two there,
+# seconds on x64), which held CI until its two-hour limit. A run that takes far longer is stopped and tried again with
+# a cache of its own.
+$zigMinutes = 8
+for ($attempt = 1; ; $attempt++) {
+    $start = [System.Diagnostics.ProcessStartInfo]::new($zig)
+    foreach ($argument in $zigArgs) { $start.ArgumentList.Add($argument) }
+    $start.UseShellExecute = $false
+    $process = [System.Diagnostics.Process]::Start($start)
+    if ($process.WaitForExit($zigMinutes * 60 * 1000)) {
+        $process.WaitForExit() # lets its output finish
+        if ($process.ExitCode -ne 0) { throw "zig cc failed with exit code $($process.ExitCode)" }
+        break
+    }
+    $process.Kill($true)
+    $process.WaitForExit()
+    if ($attempt -ge 3) { throw "zig cc did not finish in $zigMinutes minutes, $attempt times" }
+    Write-Warning "zig cc did not finish in $zigMinutes minutes; trying again ($($attempt + 1) of 3)"
+    $env:ZIG_GLOBAL_CACHE_DIR = $env:ZIG_LOCAL_CACHE_DIR = Join-Path $cache "zig-cache-$($attempt + 1)"
+}
 Copy-Item $dll $Destination -Force
 
 Write-Host "pack FileeExplorerMenu.msix"

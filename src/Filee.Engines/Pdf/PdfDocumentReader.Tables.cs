@@ -5,6 +5,8 @@
 // and the grid's lines are the column and row edges. A unit of the grid without a rule between it and its neighbour
 // is merged with it (a spanned cell). Words go into the cell under their centre; each cell's text is read like the
 // page (lines, paragraphs, alignment within the cell), and cell borders, shading and row heights come from the PDF.
+// Pictures lying in a cell go into it too (#1082), between its paragraphs from top to bottom as in the PDF, shrunk to
+// the cell's width when they are wider.
 //
 // Conservative on purpose: a grid needs 2 rows and 2 columns, merged cells must be rectangles, text must sit in the
 // cells (a rule through a word means a chart or a strike-through, not a table; only a few words may run on past
@@ -44,7 +46,7 @@ internal sealed partial class PdfDocumentReader
         public double Length => End - Start;
     }
 
-    /// <summary>A cell of a ruled table: its place in the grid, its box (points) and the words in it.</summary>
+    /// <summary>A cell of a ruled table: its place in the grid, its box (points) and the words and pictures in it.</summary>
     private sealed class RuledCell(int row, int column, int rowSpan, int columnSpan, PdfRectangle bounds)
     {
         public int Row { get; } = row;
@@ -53,6 +55,10 @@ internal sealed partial class PdfDocumentReader
         public int ColumnSpan { get; } = columnSpan;
         public PdfRectangle Bounds { get; } = bounds;
         public List<TextWord> Words { get; } = [];
+
+        /// <summary>Picture items (<see cref="Item.IsPicture"/>) that lie in the cell (<see cref="PlacePictures"/>).</summary>
+        public List<Item> Pictures { get; } = [];
+
         public HBorders Borders { get; set; } = HBorders.Empty;
         public string? Fill { get; set; }
     }
@@ -422,6 +428,28 @@ internal sealed partial class PdfDocumentReader
         return table;
     }
 
+    /// <summary>
+    /// Moves each picture that lies in a cell of <paramref name="tables"/> into that cell (#1082): its centre is in the
+    /// cell and at least half of it is. Returns the pictures left for the page; a picture behind or across the whole
+    /// table stays there.
+    /// </summary>
+    private static List<Item> PlacePictures(List<RuledTable> tables, IEnumerable<Item> pictures)
+    {
+        var rest = new List<Item>();
+        foreach (var picture in pictures)
+        {
+            var box = picture.PictureBounds!.Value;
+            var center = new PdfPoint((box.Left + box.Right) / 2, (box.Bottom + box.Top) / 2);
+            var cell = tables.SelectMany(t => t.Cells)
+                .FirstOrDefault(c => Inside(c.Bounds, center) && Intersection(c.Bounds, box) >= 0.5 * Area(box));
+            if (cell is null)
+                rest.Add(picture);
+            else
+                cell.Pictures.Add(picture);
+        }
+        return rest;
+    }
+
     private static HBorder Border(Rule? rule) => rule is null
         ? HBorder.None
         : new HBorder(rule.Dashed ? HBorderStyle.Dash : HBorderStyle.Solid, Math.Max(0.1, rule.Thickness * 25.4 / 72), rule.Color);
@@ -466,22 +494,41 @@ internal sealed partial class PdfDocumentReader
                 Borders = cell.Borders,
                 Fill = cell.Fill,
             };
-            if (cell.Words.Count > 0)
+            // Text and pictures from top to bottom as in the PDF; pictures side by side share a paragraph.
+            var items = (cell.Words.Count > 0 ? TextItems(cell.Words) : []).Concat(cell.Pictures)
+                .OrderByDescending(i => i.Top).ThenBy(i => i.Left).ToList();
+            var (innerLeft, innerRight) = (cell.Bounds.Left + padding, cell.Bounds.Right - padding);
+            Item? previous = null;
+            for (var i = 0; i < items.Count; i++)
             {
-                var items = TextItems(cell.Words).OrderByDescending(i => i.Top).ThenBy(i => i.Left).ToList();
-                Item? previous = null;
-                foreach (var paragraph in items)
+                var part = items[i];
+                (part.ContainerLeft, part.ContainerRight) = (innerLeft, innerRight);
+                if (!part.IsPicture)
                 {
-                    (paragraph.ContainerLeft, paragraph.ContainerRight) = (cell.Bounds.Left + padding, cell.Bounds.Right - padding);
-                    hcell.Blocks.Add(TextParagraph(paragraph, previous, noHeadings, lineRatio));
-                    previous = paragraph;
+                    hcell.Blocks.Add(TextParagraph(part, previous, noHeadings, lineRatio));
+                    previous = part;
+                    continue;
                 }
-                hcell.VerticalAlign = VerticalAlign(cell, items);
+                var row = new List<Item> { part };
+                while (i + 1 < items.Count && items[i + 1].IsPicture && SideBySide(part, items[i + 1]))
+                {
+                    var next = items[++i];
+                    (next.ContainerLeft, next.ContainerRight) = (innerLeft, innerRight);
+                    row.Add(next);
+                }
+                hcell.Blocks.Add(PictureParagraph(row, previous, innerRight - innerLeft));
+                previous = row.MinBy(p => p.Bottom);
             }
+            if (items.Count > 0)
+                hcell.VerticalAlign = VerticalAlign(cell, items);
             table.Rows[cell.Row].Cells.Add(hcell);
         }
         return table;
     }
+
+    /// <summary>Two pictures next to each other: they overlap over at least half the height of the smaller one.</summary>
+    private static bool SideBySide(Item a, Item b) =>
+        Math.Min(a.Top, b.Top) - Math.Max(a.Bottom, b.Bottom) >= 0.5 * Math.Min(a.Top - a.Bottom, b.Top - b.Bottom);
 
     /// <summary>Text about as far from the top as from the bottom of a taller cell is centred; text at the bottom stays there.</summary>
     private static HVerticalAlign VerticalAlign(RuledCell cell, List<Item> items)
