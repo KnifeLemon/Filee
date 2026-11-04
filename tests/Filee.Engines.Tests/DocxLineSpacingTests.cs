@@ -9,7 +9,7 @@ public class DocxLineSpacingTests(EngineFixture fx) : IClassFixture<EngineFixtur
 {
     private const string LatinStyles = """
         <w:docDefaults>
-          <w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault>
+          <w:rPrDefault><w:rPr><w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:eastAsia="Calibri"/><w:sz w:val="22"/></w:rPr></w:rPrDefault>
           <w:pPrDefault><w:pPr><w:spacing w:line="240" w:lineRule="auto"/></w:pPr></w:pPrDefault>
         </w:docDefaults>
         <w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/></w:style>
@@ -32,7 +32,7 @@ public class DocxLineSpacingTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
-    public void Latin_single_spacing_uses_a_compact_font_metric_factor()
+    public void Latin_single_spacing_uses_a_compact_font_metric_factor_even_when_both_script_slots_use_Calibri()
     {
         var paragraph = ReadParagraph(new DocxBuilder { Styles = LatinStyles }
             .Paragraph(P(R("A compact Calibri paragraph."))));
