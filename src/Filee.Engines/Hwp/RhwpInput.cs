@@ -99,7 +99,7 @@ internal static partial class RhwpInput
 
             foreach (var (name, xml) in sections)
             {
-                if (FixShapeSizes(xml) | NormaliseEquations(xml) | (fromHwp && AnchorTablesInCells(xml)))
+                if (FixShapeSizes(xml) | NormaliseEquations(xml) | ShowHeaderPictures(xml) | (fromHwp && AnchorTablesInCells(xml)))
                     changed[name] = xml;
                 if (SpaceEquationLines(xml, header))
                 {
@@ -198,6 +198,28 @@ internal static partial class RhwpInput
             size.SetAttributeValue("height", height);
             size.SetAttributeValue("widthRelTo", "ABSOLUTE");
             size.SetAttributeValue("heightRelTo", "ABSOLUTE");
+            changed = true;
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// rhwp leaves out a picture that is all a paragraph of a header or footer holds, such as a logo (issue #280); it
+    /// draws it with a space beside it. True when something changed.
+    /// </summary>
+    internal static bool ShowHeaderPictures(XDocument section)
+    {
+        var changed = false;
+        foreach (var paragraph in section.Descendants().Where(e => e.Name.LocalName is "header" or "footer").SelectMany(e => e.Descendants().Where(p => p.Name.LocalName == "p")))
+        {
+            var runs = paragraph.Elements().Where(e => e.Name.LocalName == "run").ToList();
+            var content = runs.SelectMany(r => r.Elements()).ToList();
+            if (!content.Any(e => e.Name.LocalName == "pic") || content.Any(e => e.Name.LocalName == "t" && e.Value.Length > 0))
+                continue;
+            if (content.FirstOrDefault(e => e.Name.LocalName == "t") is { } text)
+                text.Value = " ";
+            else
+                runs[^1].Add(new XElement(runs[^1].Name.Namespace + "t", " "));
             changed = true;
         }
         return changed;
