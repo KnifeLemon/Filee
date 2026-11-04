@@ -1,5 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using Avalonia.Media;
+using Avalonia.Styling;
 using Filee.App.Services;
 using Filee.App.ViewModels.Pages;
 using Filee.Core.Localization;
@@ -15,6 +18,19 @@ public partial class AboutPage : UserControl
     {
         InitializeComponent();
         InfoUpdateGrid.SizeChanged += (_, e) => InfoUpdateGrid.Classes.Set("stacked", e.NewSize.Width < StackBelowWidth);
+        AttachedToVisualTree += (_, _) => ApplyVersionColour();
+        ActualThemeVariantChanged += (_, _) => ApplyVersionColour();
+    }
+
+    /// <summary>
+    /// The text of the version pill: the accent itself on dark, the deeper accent on light (enough contrast on both),
+    /// like the version pill in Setup. The pill's tint (AccentSoftBrush) follows the accent by itself.
+    /// </summary>
+    private void ApplyVersionColour()
+    {
+        var dark = ActualThemeVariant == ThemeVariant.Dark;
+        if (Application.Current?.FindResource(dark ? "AccentBrush" : "AccentStrongBrush") is IBrush brush)
+            VersionText.Foreground = brush;
     }
 
     private async void OnOpenRepository(object? sender, RoutedEventArgs e)
