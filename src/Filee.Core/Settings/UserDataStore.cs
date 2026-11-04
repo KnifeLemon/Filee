@@ -1016,6 +1016,10 @@ internal static class SettingsMigrations
         //      if another change takes it first.)
         if (from < 66)
             changed |= LearnExtensions(profiles, out _, ["kra~"]);
+        // v67: FLIC animations (.flc, .fli, #940) learn the video donut; custom claims stay put. (Schema 67 may be
+        //      renumbered if another change takes it first.)
+        if (from < 67)
+            changed |= LearnExtensions(profiles, out _, ["flc", "fli"]);
         return changed;
     }
 
