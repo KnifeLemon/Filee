@@ -6,7 +6,10 @@
 //
 // FindInFile scans a document's text cheaply, without reading it into the document model: the content parts of an
 // Office Open XML / OWPML / OpenDocument / EPUB package as they are (markup is ASCII, so any match is text), a text
-// file decoded like the plain text reader does (character references of HTML and RTF included).
+// file decoded like the plain text reader does (character references of HTML and RTF included). Two kinds of text show
+// outside those parts, and looking for them costs little because few files have them: the text of an Excel number format
+// (#,##0 "ریال", read from the cells that use it, since Excel also keeps formats nobody uses) and the text boxes of a
+// PowerPoint master or layout (placeholders there are prompts, which are never drawn).
 //
 // The same scan also finds text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general
 // punctuation, math, the CJK forms and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish,
@@ -17,6 +20,8 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Xml;
+using System.Xml.Linq;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Office.Sheets;
 
@@ -340,8 +345,7 @@ internal static partial class ComplexScripts
                 return FindInPackage(path, format, classifier, skipBelow);
             // Excel 97–2003 is binary: its cells, as the built-in reader reads them (issue #345).
             if (format is "xls" or "xlt")
-                return XlsReader.Read(path).Sheets.SelectMany(sheet => sheet.Rows.Values).SelectMany(cells => cells.Values)
-                    .Select(cell => Find(cell.Text, classifier, skipBelow)).FirstOrDefault(script => script is not null);
+                return FindInCells(XlsReader.Read(path), classifier, skipBelow);
             // Web archives and mail are MIME: their HTML (or text) part is what reaches the PDF.
             if (format is "mhtml" or "eml")
             {
@@ -353,11 +357,16 @@ internal static partial class ComplexScripts
                 ? FindInText(path, classifier, skipBelow)
                 : null; // binary formats (HWP, DOC, MOBI, ...): left to the engines
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException or XmlException)
         {
             return null;
         }
     }
+
+    /// <summary>The first answer of <paramref name="classifier"/> in the cells of a workbook, as they are shown.</summary>
+    private static string? FindInCells(Workbook workbook, Classifier classifier, int skipBelow) =>
+        workbook.Sheets.SelectMany(sheet => sheet.Rows.Values).SelectMany(cells => cells.Values)
+            .Select(cell => Find(cell.Text, classifier, skipBelow)).FirstOrDefault(script => script is not null);
 
     private static bool IsZip(string path)
     {
@@ -385,7 +394,12 @@ internal static partial class ComplexScripts
         if (Find(text, classifier, skipBelow) is { } script)
             return script;
         // &#2693; / &#x0A85; in HTML and XML, ⚓? in RTF.
-        foreach (Match match in CharacterReference().Matches(text))
+        return FindReferences(text, CharacterReference(), classifier);
+    }
+
+    private static string? FindReferences(string text, Regex references, Classifier classifier)
+    {
+        foreach (Match match in references.Matches(text))
         {
             var value = match.Groups["hex"].Success
                 ? int.Parse(match.Groups["hex"].ValueSpan, System.Globalization.NumberStyles.HexNumber, null)
@@ -403,6 +417,9 @@ internal static partial class ComplexScripts
     [GeneratedRegex(@"&#(?:[xX](?<hex>[0-9a-fA-F]{1,6})|(?<dec>[0-9]{1,7}));|\\u(?<dec>-?[0-9]{1,5})", RegexOptions.CultureInvariant)]
     private static partial Regex CharacterReference();
 
+    [GeneratedRegex(@"&#(?:[xX](?<hex>[0-9a-fA-F]{1,6})|(?<dec>[0-9]{1,7}));", RegexOptions.CultureInvariant)]
+    private static partial Regex XmlCharacterReference();
+
     /// <summary>The parts of a package that hold its text (not styles, themes or font tables, which name fonts per script).</summary>
     private static bool IsContentPart(string name, string format)
     {
@@ -413,7 +430,7 @@ internal static partial class ComplexScripts
         {
             "docx" or "docm" or "dotx" or "dotm" => Xml("word/", "document") || Xml("word/", "header") || Xml("word/", "footer")
                                                      || Xml("word/", "footnotes") || Xml("word/", "endnotes"),
-            "pptx" or "pptm" or "potx" or "ppsx" => Xml("ppt/slides/", "slide"),
+            "pptx" or "pptm" or "potx" or "potm" or "ppsx" => Xml("ppt/slides/", "slide"),
             "xlsx" or "xlsm" or "xltx" => Xml("xl/", "sharedStrings") || Xml("xl/worksheets/", "sheet"),
             "hwpx" => Xml("Contents/", "section"),
             "odt" or "ods" or "odp" => name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
@@ -438,8 +455,47 @@ internal static partial class ComplexScripts
             int read;
             while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
             {
-                // A surrogate pair cut at the end of the buffer only hides a supplementary-plane letter there.
+                // A surrogate pair or a reference cut at the end of the buffer only hides that one letter.
                 if (Find(buffer.AsSpan(0, read), classifier, skipBelow) is { } script)
+                    return script;
+                // Markup is ASCII, but some writers put all other text in character references too.
+                if (buffer.AsSpan(0, read).Contains("&#", StringComparison.Ordinal)
+                    && FindReferences(new string(buffer, 0, read), XmlCharacterReference(), classifier) is { } referenced)
+                    return referenced;
+            }
+        }
+        return format switch
+        {
+            "xlsx" or "xlsm" or "xltx" when NumberFormatsHaveLetters(zip) => FindInCells(XlsxReader.Read(path), classifier, skipBelow),
+            "pptx" or "pptm" or "potx" or "potm" or "ppsx" => FindInDecorations(zip, classifier, skipBelow),
+            _ => null,
+        };
+    }
+
+    /// <summary>Whether a number format of the workbook has letters that need shaping or that rhwp has no widths for.</summary>
+    private static bool NumberFormatsHaveLetters(ZipArchive zip)
+    {
+        if (zip.GetEntry("xl/styles.xml") is not { } styles)
+            return false;
+        using var stream = styles.Open();
+        return XDocument.Load(stream).Descendants().Attributes("formatCode")
+            .Any(code => Find(code.Value, (codePoint, _, _) => ScriptOf(codePoint) ?? UnmeasuredScriptOf(codePoint), 0x0100) is not null);
+    }
+
+    /// <summary>The first answer of <paramref name="classifier"/> in the text boxes of a presentation's masters and layouts.</summary>
+    private static string? FindInDecorations(ZipArchive zip, Classifier classifier, int skipBelow)
+    {
+        foreach (var entry in zip.Entries)
+        {
+            if (!(entry.FullName.StartsWith("ppt/slideMasters/", StringComparison.OrdinalIgnoreCase) || entry.FullName.StartsWith("ppt/slideLayouts/", StringComparison.OrdinalIgnoreCase))
+                || !entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+                continue;
+            using var stream = entry.Open();
+            var boxes = XDocument.Load(stream).Descendants().Where(e => e.Name.LocalName == "sp")
+                .Where(shape => !shape.Descendants().Any(e => e.Name.LocalName == "ph"));
+            foreach (var text in boxes.SelectMany(shape => shape.Descendants()).Where(e => e.Name.LocalName == "t"))
+            {
+                if (Find(text.Value, classifier, skipBelow) is { } script)
                     return script;
             }
         }
