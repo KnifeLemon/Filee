@@ -224,14 +224,17 @@ public sealed class FolderWatcher : IAsyncDisposable
         }
     }
 
-    /// <summary>True for files a watch folder never converts: temporary, hidden or system files, unknown formats,
-    /// anything inside the output or originals folder, and names the rule's <see cref="WatchRule.Include"/> leaves out.</summary>
+    /// <summary>True for files a watch folder never converts: temporary, hidden or system files, backups of the previous
+    /// save ("sketch.kra~"), unknown formats, anything inside the output or originals folder, and names the rule's
+    /// <see cref="WatchRule.Include"/> leaves out.</summary>
     public static bool ShouldIgnore(string path, WatchRule rule)
     {
         if (Presets.FolderCopy.IsWorkPath(path))
             return true;
         var name = Path.GetFileName(path);
-        if (name.Length == 0 || name.StartsWith("~$", StringComparison.Ordinal) || name.StartsWith('.')
+        // A backup is written next to the file on every save; converting it too would put the previous picture under the
+        // same output name.
+        if (name.Length == 0 || name.StartsWith("~$", StringComparison.Ordinal) || name.StartsWith('.') || name.EndsWith('~')
             || SystemFiles.Contains(name) || TemporaryExtensions.Contains(Path.GetExtension(name)))
             return true;
         // Exclude a dedicated output subtree, but never exclude the entire watch root when output is the same

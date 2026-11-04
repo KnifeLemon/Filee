@@ -54,8 +54,9 @@ public static class FormatRegistry
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
         new("xcf", "XCF", FormatCategory.Image, ["xcf"], Writable: false),
-        // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it.
-        new("kra", "Krita (KRA)", FormatCategory.Image, ["kra"], Writable: false),
+        // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it. ".kra~" is the
+        // backup Krita keeps of the previous save, the same file under another name (#1077).
+        new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,

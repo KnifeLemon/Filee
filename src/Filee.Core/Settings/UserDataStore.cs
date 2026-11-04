@@ -1012,6 +1012,10 @@ internal static class SettingsMigrations
         //      another change takes it first.)
         if (from < 65)
             changed |= LearnExtensions(profiles, out _, ["dbml"]);
+        // v66: Krita's backups (.kra~, #1077) learn the images donut; custom claims stay put. (Schema 66 may be renumbered
+        //      if another change takes it first.)
+        if (from < 66)
+            changed |= LearnExtensions(profiles, out _, ["kra~"]);
         return changed;
     }
 
