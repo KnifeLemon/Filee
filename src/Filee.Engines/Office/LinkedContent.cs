@@ -9,7 +9,9 @@
 //  * Office Open XML: relationships with TargetMode="External", except hyperlinks;
 //  * OpenDocument (packages and flat XML): xlink:href outside the package on anything but hyperlinks and event
 //    listeners (pictures, objects, section and table sources, sounds, fill images);
-//  * HTML: picture, frame, object and style sheet addresses and CSS url() other than data: URIs (hyperlinks stay);
+//  * HTML: picture, frame, object and style sheet addresses and CSS url() other than data: URIs (hyperlinks stay).
+//    Pictures the page may use by the rule every reader follows (DocumentFiles: inside the document's own folder) are
+//    put into the copy as data: URIs, because the profile keeps LibreOffice from loading even those;
 //  * RTF: INCLUDEPICTURE fields (their last result stays, as for any field LibreOffice doesn't know).
 // The user's own file is never changed: the result is a copy under the same name in a folder of its own.
 
@@ -19,6 +21,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office;
 
@@ -36,12 +39,20 @@ internal static partial class LinkedContent
         XName.Get("event-listener", "urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"),
     ];
 
+    /// <summary>Most bytes of pictures put into one page, so that many references to a large file can't fill the memory.</summary>
+    private const long MaxEmbeddedBytes = 256L * 1024 * 1024;
+
     /// <summary>
     /// A copy of <paramref name="input"/> (format <paramref name="from"/>) without links to content outside it, in a new
     /// folder under <paramref name="workDirectory"/>; null when it has none, or is a format this doesn't look into
     /// (binary Office files are left to the profile).
     /// </summary>
-    public static string? Strip(string input, string from, string workDirectory)
+    /// <param name="originalSource">
+    /// The user's file when <paramref name="input"/> is a step made from it: a page made from Markdown names the pictures
+    /// beside the Markdown file.
+    /// </param>
+    /// <exception cref="Core.Conversion.ConversionRefusedException">An XML part over the limits of <see cref="BoundedXml"/>.</exception>
+    public static string? Strip(string input, string from, string workDirectory, string? originalSource = null)
     {
         byte[] head = new byte[8];
         using (var stream = File.OpenRead(input))
@@ -53,7 +64,7 @@ internal static partial class LinkedContent
         if (from is "fodt" or "fods" or "fodp" or "fodg")
             return Write(input, workDirectory, StripOpenDocument(File.ReadAllBytes(input), entries: null));
         if (from == "html")
-            return Write(input, workDirectory, StripHtml(File.ReadAllBytes(input)));
+            return Write(input, workDirectory, StripHtml(File.ReadAllBytes(input), PagePictures(input, originalSource)));
         return null;
     }
 
@@ -65,6 +76,7 @@ internal static partial class LinkedContent
             using var zip = ZipFile.OpenRead(input);
             var names = zip.Entries.Select(e => e.FullName).ToHashSet(StringComparer.Ordinal);
             var openDocument = names.Contains("mimetype");
+            var parts = new BoundedXml();
             foreach (var entry in zip.Entries)
             {
                 var name = entry.FullName;
@@ -73,12 +85,17 @@ internal static partial class LinkedContent
                     : name.EndsWith(".rels", StringComparison.OrdinalIgnoreCase);
                 if (!isPart)
                     continue;
-                using var stream = entry.Open();
-                using var buffer = new MemoryStream();
-                stream.CopyTo(buffer);
-                var stripped = openDocument ? StripOpenDocument(buffer.ToArray(), names) : StripRelationships(buffer.ToArray());
-                if (stripped is not null)
-                    replaced[name] = stripped;
+                XDocument document;
+                try
+                {
+                    document = parts.Load(entry, LoadOptions.PreserveWhitespace);
+                }
+                catch (XmlException)
+                {
+                    continue; // LibreOffice can't read the part either
+                }
+                if (openDocument ? StripOpenDocument(document, names) : StripRelationships(document))
+                    replaced[name] = Save(document);
             }
         }
         catch (InvalidDataException)
@@ -93,38 +110,40 @@ internal static partial class LinkedContent
     }
 
     /// <summary>An Office Open XML .rels part without its external relationships other than hyperlinks, or null.</summary>
-    internal static byte[]? StripRelationships(byte[] part)
+    internal static byte[]? StripRelationships(byte[] part) =>
+        Load(part) is { } document && StripRelationships(document) ? Save(document) : null;
+
+    private static bool StripRelationships(XDocument document)
     {
-        if (Load(part) is not { Root: { } root } document)
-            return null;
+        if (document.Root is not { } root)
+            return false;
         var external = root.Elements(Relationships + "Relationship")
             .Where(r => string.Equals((string?)r.Attribute("TargetMode"), "External", StringComparison.OrdinalIgnoreCase)
                         && !((string?)r.Attribute("Type") ?? "").EndsWith("/hyperlink", StringComparison.OrdinalIgnoreCase))
             .ToList();
-        if (external.Count == 0)
-            return null;
         external.ForEach(r => r.Remove());
-        return Save(document);
+        return external.Count > 0;
     }
 
     /// <summary>
     /// An OpenDocument part (or flat document) without xlink:href outside the package, or null when it has none.
     /// <paramref name="entries"/> are the package's part names; a flat document has none, so every address is outside.
     /// </summary>
-    internal static byte[]? StripOpenDocument(byte[] part, IReadOnlySet<string>? entries)
+    internal static byte[]? StripOpenDocument(byte[] part, IReadOnlySet<string>? entries) =>
+        Load(part) is { } document && StripOpenDocument(document, entries) ? Save(document) : null;
+
+    private static bool StripOpenDocument(XDocument document, IReadOnlySet<string>? entries)
     {
-        if (Load(part) is not { Root: { } root } document)
-            return null;
+        if (document.Root is not { } root)
+            return false;
         var outside = root.DescendantsAndSelf()
             .Where(e => !KeepHref.Contains(e.Name))
             .Select(e => e.Attribute(XLink + "href"))
             .OfType<XAttribute>()
             .Where(href => IsOutside(href.Value, entries))
             .ToList();
-        if (outside.Count == 0)
-            return null;
         outside.ForEach(href => href.Remove());
-        return Save(document);
+        return outside.Count > 0;
     }
 
     /// <summary>True for an address that isn't a part of the package: a URL, an absolute or parent path, a missing part.</summary>
@@ -148,8 +167,11 @@ internal static partial class LinkedContent
         return !entries.Contains(path) && !entries.Any(e => e.StartsWith(path + "/", StringComparison.Ordinal));
     }
 
-    /// <summary>HTML without addresses of pictures, frames, objects and style sheets other than data: URIs, or null.</summary>
-    internal static byte[]? StripHtml(byte[] html)
+    /// <summary>
+    /// HTML without addresses of pictures, frames, objects and style sheets other than data: URIs, or null when nothing
+    /// changed. <paramref name="picture"/> gives the data: URI of an &lt;img&gt; address the page may keep, or null.
+    /// </summary>
+    internal static byte[]? StripHtml(byte[] html, Func<string, string?>? picture = null)
     {
         // Latin-1 keeps every byte as it is, whatever the page's encoding: only ASCII markup is changed.
         var text = Encoding.Latin1.GetString(html);
@@ -165,12 +187,43 @@ internal static partial class LinkedContent
                 var resource = key is "src" or "srcset" or "lowsrc" or "dynsrc" or "data" or "poster" or "background" or "codebase"
                                    or "xlink:href" or "longdesc"
                                || key == "href" && name is "link" or "base" or "image" or "use";
-                return resource && !value.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? "" : attribute.Value;
+                if (!resource || value.TrimStart().StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                    return attribute.Value;
+                return name == "img" && key == "src" && picture?.Invoke(Utf8(attribute.Groups["value"].Value)) is { } uri
+                    ? $"{attribute.Groups["space"].Value}src=\"{uri}\""
+                    : "";
             });
             return $"<{tag.Groups["name"].Value}{attributes}{tag.Groups["end"].Value}>";
         });
         stripped = StyleBlock().Replace(stripped, block => block.Groups["open"].Value + CssUrls(block.Groups["css"].Value) + block.Groups["close"].Value);
         return stripped == text ? null : Encoding.Latin1.GetBytes(stripped);
+    }
+
+    /// <summary>An attribute of the Latin-1 text as the UTF-8 it usually is, for files with other letters in their names.</summary>
+    private static string Utf8(string attribute) =>
+        WebUtility.HtmlDecode(Encoding.UTF8.GetString(Encoding.Latin1.GetBytes(attribute.Trim('"', '\''))));
+
+    /// <summary>
+    /// The data: URI of a picture inside the page's folder (or the original document's, for a page made from it), by
+    /// <see cref="DocumentFiles"/>. SVG stays out: a drawing can link to further files, and LibreOffice would load them.
+    /// </summary>
+    private static Func<string, string?> PagePictures(string page, string? originalSource)
+    {
+        var folder = Path.GetDirectoryName(Path.GetFullPath(page))!;
+        string[] roots = originalSource is null ? [folder] : [folder, Path.GetDirectoryName(Path.GetFullPath(originalSource))!];
+        var left = MaxEmbeddedBytes;
+        return address =>
+        {
+            if (DocumentFiles.Find(address, folder, roots) is not { } file
+                || Path.GetExtension(file).TrimStart('.').ToLowerInvariant() is var extension
+                && extension is not ("png" or "jpg" or "jpeg" or "gif" or "bmp" or "webp" or "tif" or "tiff"))
+                return null;
+            var length = new FileInfo(file).Length;
+            if (length > left)
+                return null;
+            left -= length;
+            return $"data:image/{extension};base64,{Convert.ToBase64String(File.ReadAllBytes(file))}";
+        };
     }
 
     /// <summary>CSS with url() other than data: emptied and @import rules taken out.</summary>
@@ -222,9 +275,7 @@ internal static partial class LinkedContent
     {
         try
         {
-            using var reader = XmlReader.Create(new MemoryStream(part),
-                new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null });
-            return XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+            return BoundedXml.Bytes(part, "document", LoadOptions.PreserveWhitespace);
         }
         catch (XmlException)
         {

@@ -86,6 +86,15 @@ internal sealed class BoundedXml
         return Parse(stream, name, options, dtd);
     }
 
+    /// <summary>XML already in memory (a flat OpenDocument file).</summary>
+    public static XDocument Bytes(byte[] xml, string name, LoadOptions options)
+    {
+        if (xml.Length > MaxPartBytes)
+            throw TooLarge(name, "over " + Size(MaxPartBytes));
+        using var stream = new MemoryStream(xml);
+        return Parse(stream, name, options, DtdProcessing.Prohibit);
+    }
+
     private static XDocument Parse(Stream stream, string name, LoadOptions options, DtdProcessing dtd)
     {
         var settings = new XmlReaderSettings

@@ -5,6 +5,8 @@ using System.IO.Compression;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office;
 
 namespace Filee.Engines.Tests;
@@ -173,6 +175,69 @@ public class LibreOfficeLinkedContentTests(EngineFixture fx) : IClassFixture<Eng
         Assert.Contains("url(data:image/png;base64,AAAA)", text);
         Assert.Contains("<a href=\"https://filee.sh/\">site</a>", text);
         Assert.Contains("alt=\"a\"", text);
+    }
+
+    [Fact]
+    public void Html_pictures_inside_the_page_folder_go_into_the_copy()
+    {
+        var folder = fx.NewFolder();
+        var outside = fx.NewFolder();
+        Directory.CreateDirectory(Path.Combine(folder, "img"));
+        File.WriteAllBytes(Path.Combine(folder, "img", "beside.png"), [1, 2, 3]);
+        File.WriteAllBytes(Path.Combine(folder, "그림.png"), [4, 5, 6]);
+        File.WriteAllBytes(Path.Combine(folder, "drawing.svg"), [7]);
+        File.WriteAllBytes(Path.Combine(outside, "secret.png"), [8, 9]);
+        var secretUrl = new Uri(Path.Combine(outside, "secret.png")).AbsoluteUri;
+        var html = Path.Combine(folder, "page.html");
+        File.WriteAllText(html, $"""
+            <html><body><img src="img/beside.png" alt="a"><img src="그림.png"><img src="drawing.svg">
+            <img src="../{Path.GetFileName(outside)}/secret.png"><img src="{secretUrl}"><img src="\\127.0.0.1\share\x.png"></body></html>
+            """, new UTF8Encoding(false));
+
+        var text = File.ReadAllText(LinkedContent.Strip(html, "html", folder)!);
+
+        Assert.Contains($"src=\"data:image/png;base64,{Convert.ToBase64String([1, 2, 3])}\" alt=\"a\"", text);
+        Assert.Contains($"src=\"data:image/png;base64,{Convert.ToBase64String([4, 5, 6])}\"", text);
+        Assert.Equal(2, Regex.Matches(text, "data:").Count); // not the drawing, the picture outside or the share
+        Assert.Equal(6, Regex.Matches(text, "<img").Count);
+        foreach (var gone in new[] { "drawing", "secret", "127.0.0.1" })
+            Assert.DoesNotContain(gone, text);
+    }
+
+    [Fact]
+    public void A_page_made_from_a_document_may_use_the_pictures_beside_that_document()
+    {
+        var folder = fx.NewFolder();
+        var work = fx.NewFolder();
+        var picture = Path.Combine(folder, "beside.png");
+        File.WriteAllBytes(picture, [1, 2, 3]);
+        var page = Path.Combine(work, "notes.html");
+        File.WriteAllText(page, $"""<html><body><img src="{new Uri(picture).AbsoluteUri}"></body></html>""");
+
+        var alone = File.ReadAllText(LinkedContent.Strip(page, "html", work)!);
+        var fromMarkdown = File.ReadAllText(LinkedContent.Strip(page, "html", work, Path.Combine(folder, "notes.md"))!);
+
+        Assert.DoesNotContain("src=", alone);
+        Assert.Contains($"src=\"data:image/png;base64,{Convert.ToBase64String([1, 2, 3])}\"", fromMarkdown);
+    }
+
+    [Fact]
+    public void Parts_over_the_xml_limits_are_refused_before_they_are_loaded()
+    {
+        var folder = fx.NewFolder();
+        var deep = string.Concat(Enumerable.Repeat("<a>", BoundedXml.MaxElementDepth + 1)) + string.Concat(Enumerable.Repeat("</a>", BoundedXml.MaxElementDepth + 1));
+        var docx = Path.Combine(folder, "deep.docx");
+        Package(docx, new() { ["_rels/.rels"] = deep });
+        var odt = Path.Combine(folder, "deep.odt");
+        Package(odt, new() { ["mimetype"] = "application/vnd.oasis.opendocument.text", ["content.xml"] = deep });
+        var flat = Path.Combine(folder, "deep.fodt");
+        File.WriteAllText(flat, deep);
+
+        foreach (var (input, from) in new[] { (docx, "docx"), (odt, "odt"), (flat, "fodt") })
+        {
+            var refused = Assert.Throws<ConversionRefusedException>(() => LinkedContent.Strip(input, from, folder));
+            Assert.Equal("error.document_too_large", refused.ErrorKey);
+        }
     }
 
     [Fact]

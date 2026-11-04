@@ -119,7 +119,7 @@ public sealed class LibreOfficeConverter : IConverter
         {
             progress?.Report(0.1);
             var input = step.From == "pdf" && step.To == "svg" ? FirstPage(step) : step.InputPath;
-            if (LinkedContent.Strip(input, step.From, step.WorkDirectory) is { } unlinked)
+            if (LinkedContent.Strip(input, step.From, step.WorkDirectory, step.OriginalSourcePath) is { } unlinked)
             {
                 _logger.LogInformation("{File}: links to content outside the document were taken out of the copy for LibreOffice", step.InputPath);
                 input = unlinked;

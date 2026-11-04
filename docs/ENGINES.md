@@ -1511,7 +1511,9 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   (not hyperlinks) of Office Open XML, `xlink:href` outside an OpenDocument package, picture and style sheet addresses
   of HTML other than `data:`, and RTF `INCLUDEPICTURE` fields, whose file the RTF reader loads whatever the profile
   says. A local picture outside the document never ends up in the result, and no share or address is contacted.
-  Binary Office files (DOC, XLS, PPT) are left to the profile.
+  An HTML page's pictures inside its own folder (the rule of `DocumentFiles.cs`) go into the copy as `data:` URIs,
+  except SVG, which can link to further files. XML parts are read with the limits of `BoundedXml.cs`. Binary Office
+  files (DOC, XLS, PPT) are left to the profile.
 - HWP/HWPX import comes from the H2Orestart extension, which is written in Java; Filee points LibreOffice at the
   downloaded JRE (`-env:UNO_JAVA_JFW_JREHOME`).
 - When LibreOffice can't load an Office Open XML or OpenDocument file ("source file could not be loaded"), Filee

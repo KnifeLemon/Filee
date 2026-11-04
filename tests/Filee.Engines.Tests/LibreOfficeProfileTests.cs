@@ -385,6 +385,28 @@ public class LibreOfficeProfileTests(EngineFixture fx) : IClassFixture<EngineFix
         }
     }
 
+    [Fact]
+    public async Task A_picture_inside_the_page_folder_is_in_the_result_and_one_outside_is_not()
+    {
+        SkipUnlessInstalled();
+        var root = fx.NewFolder();
+        var folder = Directory.CreateDirectory(Path.Combine(root, "page")).FullName;
+        var outside = Directory.CreateDirectory(Path.Combine(root, "outside")).FullName;
+        using (var image = new MagickImage(MagickColors.Red, 64, 64))
+        {
+            image.Write(Path.Combine(folder, "beside.png"));
+            image.Write(Path.Combine(outside, "secret.png"));
+        }
+        var html = Path.Combine(folder, "pictures.html");
+        await File.WriteAllTextAsync(html, """<html><body><p>Hello pictures</p><img src="beside.png" width="64" height="64"><img src="../outside/secret.png" width="64" height="64"></body></html>""",
+            TestContext.Current.CancellationToken);
+
+        var (pdf, _) = await ConvertAsync(html, "html", "pdf");
+
+        using var document = PdfDocument.Open(pdf);
+        Assert.Single(document.GetPages().SelectMany(p => p.GetImages()));
+    }
+
     private static string LinkedPicture(string relationship, int id) => $"""
         <w:p><w:r><w:drawing><wp:inline><wp:extent cx="914400" cy="914400"/><wp:docPr id="{id}" name="Picture {id}"/>
         <a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic>
