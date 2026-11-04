@@ -404,6 +404,22 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public void Staging_cleanup_removes_read_only_MSI_files_on_Windows()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows MSI packages preserve read-only file attributes.");
+
+        var staging = Path.Combine(_root, "~staging");
+        var nested = Directory.CreateDirectory(Path.Combine(staging, "Program", "bin")).FullName;
+        var dll = Path.Combine(nested, "amatch.dll");
+        File.WriteAllText(dll, "MSI payload");
+        File.SetAttributes(dll, File.GetAttributes(dll) | FileAttributes.ReadOnly);
+
+        EngineInstaller.DeleteStagingDirectory(staging);
+
+        Assert.False(Directory.Exists(staging));
+    }
+
+    [Fact]
     public void LibreOffice_is_trimmed_to_what_headless_conversion_needs()
     {
         var root = Path.Combine(_root, "lo");
