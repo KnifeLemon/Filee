@@ -369,4 +369,10 @@ public sealed class BrowserDropSettings
 
     /// <summary>Keep only the converted file: the original goes into a work folder and is deleted after the conversion.</summary>
     public bool SaveOnlyConverted { get; set; }
+
+    /// <summary>
+    /// Links may lead to this computer and the local network (an intranet, a NAS). Off: a web page could otherwise make
+    /// Filee send requests to the router or other devices at home or at work.
+    /// </summary>
+    public bool AllowLocalNetwork { get; set; }
 }

@@ -75,6 +75,18 @@ public class ComplexScriptTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
         Assert.Equal("Arabic", ComplexScripts.FindInFile(Ofd("uyghur.ofd", "ئۇيغۇرچە ھۆججەت"), "ofd"));
         Assert.Null(ComplexScripts.FindInFile(Ofd("chinese.ofd", "电子发票（普通发票）"), "ofd"));
+
+        // Presentations: the slides, in every PowerPoint variant (a macro-enabled template too).
+        string Slides(string name, string text)
+        {
+            var path = Path.Combine(folder, name);
+            using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+            using (var writer = new StreamWriter(zip.CreateEntry("ppt/slides/slide1.xml").Open()))
+                writer.Write($"<p:sld xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"><a:t>{text}</a:t></p:sld>");
+            return path;
+        }
+        foreach (var format in new[] { "pptx", "pptm", "potx", "potm", "ppsx" })
+            Assert.Equal("Arabic", ComplexScripts.FindInFile(Slides($"arabic.{format}", "تقرير الربع الأول"), format));
     }
 
     [Fact]

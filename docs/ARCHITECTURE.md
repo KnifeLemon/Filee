@@ -45,8 +45,9 @@
    own (`DirectOnly`), never a step of a longer one. An envelope (a signed `.p7m`) is planned from the file inside
    it: its engine (`IEnvelopeOpener`) names that file's format, and the route opens it first, then goes on from there
    (`RoutePlanner.PlanThrough`: P7M → PDF → PNG).
-5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a temp folder;
-   final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
+5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a work folder only
+   the user can open (`WorkFolders.Root`: `%TEMP%\Filee` on Windows; `~/.cache/filee` on Linux and
+   `~/Library/Caches/Filee` on macOS, mode 700, because `/tmp` is shared by every user); final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
    Each name stays reserved while a conversion holds it. A conversion that fails or is cancelled deletes what it began
    writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
    same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
@@ -97,7 +98,7 @@ ends in an extension Filee converts and isn't a web page (`.html`, `.php`, none)
 picture. Plain text is never read. `data:` addresses are decoded.
 
 Until the conversion runs, the files stand as **placeholders** (`WebDrop`): paths in `%TEMP%\Filee\web\<drop>\drop\<n>\`
-named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
+(`web/` in the work root on Linux and macOS) named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
 is made: a picture without an extension stands as `.jpg` and a link without one isn't offered. `ConversionService.Start`
 gives the job a `WebDropFetcher` (`ISourceFetcher`): `JobQueue` saves every source first (half of its progress), then
 converts. Failures are per file (`error.web_*`), cancelling stops a download, and the job toast/ring shows both phases.
@@ -116,6 +117,14 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   2 GB cap whether or not the server says the size, 30 s to answer and 30 s without data at most. No cookies or
   credentials are sent: a file behind a sign-in comes back as the sign-in page, which is refused as a web page
   ("save it from the browser first"). A browser's own bytes (virtual files, Firefox's copy) don't have that limit.
+  Only the public internet is reached (`LocalNetwork`): an address on this computer or the local network (loopback,
+  private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
+  is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
+  `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
+  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
+  off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
+  of their own, so a pooled connection to a local address never serves a drop that may not go there.
 - **Names and safety**: Content-Disposition, else the page's name, else the address; then the first bytes decide the
   extension of pictures and PDFs (`.jpg` that is WebP becomes `.webp`). Names are cut to a plain file name (no folders,
   no device names, at most 120 characters) and never replace an existing file (`name (2).ext`). Programs, installers and
