@@ -65,7 +65,8 @@ public sealed class SetupException(string textKey, string message, params string
 /// <param name="RolledBack">The install folder is as it was before (the previous Filee still works).</param>
 /// <summary>How an uninstall went: <paramref name="Error"/> is null when it worked.</summary>
 /// <param name="DeletedAtRestart">Files and folders still in use, which Windows deletes at the next restart.</param>
-public sealed record UninstallResult(Exception? Error = null, int DeletedAtRestart = 0);
+/// <param name="CleanupFailed">Filee is gone, but what it registered for the user (see <see cref="Uninstaller.CleanupFailed"/>) may be left.</param>
+public sealed record UninstallResult(Exception? Error = null, int DeletedAtRestart = 0, bool CleanupFailed = false);
 
 public sealed record InstallResult(LaunchRequest? Launch, IReadOnlyList<SetupWarning> Warnings, Exception? Error = null, bool RolledBack = false)
 {

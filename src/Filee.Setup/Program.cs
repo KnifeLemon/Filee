@@ -232,6 +232,8 @@ internal static class Program
             return RunElevated(exe, args, log, launchFile: null);
 
         // Phase 2: from a copy in %TEMP%.
+        if (sandbox is null)
+            WindowsSetupSystem.SeeOtherAccounts(log);
         var fromTemp = Path.GetFileName(exeFolder).StartsWith("Filee-Uninstall-", StringComparison.OrdinalIgnoreCase);
         var trash = fromTemp ? Path.Combine(exeFolder, "trash") : Path.Combine(paths.Temp, $"Filee-Uninstall-{Guid.NewGuid():N}");
         var runner = new SetupRunner(context, null, null, folder, record, trash)
@@ -494,8 +496,9 @@ internal sealed class SetupRunner(SetupContext context, SetupPayload? payload, P
     {
         try
         {
-            var later = new Uninstaller(context).Run(folder!, record!, deleteSettings, trash!, progress, ReleaseFirstPhase);
-            return new UninstallResult(DeletedAtRestart: later.Count);
+            var uninstaller = new Uninstaller(context);
+            var later = uninstaller.Run(folder!, record!, deleteSettings, trash!, progress, ReleaseFirstPhase);
+            return new UninstallResult(DeletedAtRestart: later.Count, CleanupFailed: uninstaller.CleanupFailed);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

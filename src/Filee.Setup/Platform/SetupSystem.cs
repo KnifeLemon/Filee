@@ -38,12 +38,23 @@ public interface ISetupSystem
     /// <summary>Runs a program without a window and waits; the exit code, or -1 when it failed or took too long.</summary>
     int RunAndWait(string executable, string arguments, TimeSpan timeout);
 
+    /// <summary>
+    /// Like <see cref="RunAndWait"/>, as the user signed in to Windows: their registry and folders, and able to reach the
+    /// Filee they run. An elevated program can't do either, as another account (a standard user's administrator prompt)
+    /// or even as the same one (the pipe of a Filee without administrator rights refuses it). -1 also when it can't
+    /// be run as that user.
+    /// </summary>
+    int RunAsSignedInUser(string executable, string arguments, TimeSpan timeout);
+
     IReadOnlyList<RunningProgram> ProgramsIn(string folder);
 
     void Kill(int processId);
 
-    /// <summary>Has Windows delete a file or an empty folder at the next restart (what is still in use now).</summary>
-    void DeleteAtRestart(string path);
+    /// <summary>
+    /// Has Windows delete a file or an empty folder at the next restart (what is still in use now); false when Windows
+    /// refused.
+    /// </summary>
+    bool DeleteAtRestart(string path);
 }
 
 /// <summary>The real thing.</summary>
@@ -155,6 +166,45 @@ public class WindowsSetupSystem(SetupLog log) : ISetupSystem
         }
     }
 
+    public virtual int RunAsSignedInUser(string executable, string arguments, TimeSpan timeout)
+    {
+        if (!NativeMethods.IsElevated())
+            return RunAndWait(executable, arguments, timeout);
+        if (!IsProgram(executable))
+        {
+            Log.Warn($"Not running {executable}: it is not a Windows program");
+            return -1;
+        }
+        var started = NativeMethods.RunAsShellUser(executable, arguments, Path.GetDirectoryName(executable) ?? "", timeout, out var exitCode, out var error);
+        if (error is not null)
+            Log.Warn($"{Path.GetFileName(executable)} {arguments} as the signed-in user: {error}");
+        if (started)
+            return exitCode;
+        // Only the rights differ when this is the signed-in user's account: same registry, same folders. Another
+        // account would clean up its own and report that nothing is left.
+        return string.Equals(NativeMethods.SignedInUserName(), Environment.UserName, StringComparison.OrdinalIgnoreCase)
+            ? RunAndWait(executable, arguments, timeout)
+            : -1;
+    }
+
+    /// <summary>
+    /// Lets this elevated uninstaller see and end programs of other accounts (a standard user's Filee, when an
+    /// administrator's account answered the prompt), which Windows otherwise hides from it.
+    /// </summary>
+    public static void SeeOtherAccounts(SetupLog log)
+    {
+        if (!NativeMethods.IsElevated())
+            return;
+        try
+        {
+            Process.EnterDebugMode();
+        }
+        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            log.Warn($"Programs of other accounts stay out of sight: {ex.Message}");
+        }
+    }
+
     private static bool IsProgram(string path)
     {
         try
@@ -209,10 +259,12 @@ public class WindowsSetupSystem(SetupLog log) : ISetupSystem
         }
     }
 
-    public virtual void DeleteAtRestart(string path)
+    public virtual bool DeleteAtRestart(string path)
     {
-        if (!NativeMethods.MoveFileEx(path, null, NativeMethods.MOVEFILE_DELAY_UNTIL_REBOOT))
-            Log.Warn($"Could not schedule {path} for deletion at the next restart");
+        if (NativeMethods.MoveFileEx(path, null, NativeMethods.MOVEFILE_DELAY_UNTIL_REBOOT))
+            return true;
+        Log.Warn($"Could not schedule {path} for deletion at the next restart");
+        return false;
     }
 
     private static void TryDelete(string file)
@@ -251,7 +303,14 @@ public sealed class SandboxSetupSystem(SetupLog log, string dataFolder) : Window
     {
     }
 
-    public override void DeleteAtRestart(string path) => Log.Info($"Sandbox: would delete {path} at the next restart");
+    public override bool DeleteAtRestart(string path)
+    {
+        Log.Info($"Sandbox: would delete {path} at the next restart");
+        return true;
+    }
+
+    // Keeps FILEE_DATA_DIR, which the signed-in user's own start of a program wouldn't have.
+    public override int RunAsSignedInUser(string executable, string arguments, TimeSpan timeout) => RunAndWait(executable, arguments, timeout);
 
     protected override ProcessStartInfo CreateStartInfo(string executable, string arguments)
     {

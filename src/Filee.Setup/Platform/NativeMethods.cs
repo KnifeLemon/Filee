@@ -18,6 +18,9 @@ internal static partial class NativeMethods
     private const int TokenElevation = 20;
     private const int SecurityImpersonation = 2;
     private const int TokenPrimary = 1;
+    private const uint WTS_CURRENT_SESSION = uint.MaxValue;
+    private const int WTSUserName = 5;
+    private const uint WAIT_OBJECT_0 = 0;
     private const int HWND_BROADCAST = 0xFFFF;
     private const uint WM_SETTINGCHANGE = 0x001A;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
@@ -73,6 +76,24 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     private static unsafe partial bool CreateProcessWithToken(nint token, uint logonFlags, string? application, char* commandLine,
         uint creationFlags, nint environment, string? currentDirectory, StartupInfo* startupInfo, ProcessInformation* processInformation);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial uint WaitForSingleObject(nint handle, uint milliseconds);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetExitCodeProcess(nint process, out uint exitCode);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TerminateProcess(nint process, uint exitCode);
+
+    [LibraryImport("wtsapi32.dll", EntryPoint = "WTSQuerySessionInformationW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool WTSQuerySessionInformation(nint server, uint session, int infoClass, out nint buffer, out uint bytes);
+
+    [LibraryImport("wtsapi32.dll")]
+    private static partial void WTSFreeMemory(nint memory);
 
     [LibraryImport("user32.dll")]
     private static partial nint GetShellWindow();
@@ -154,8 +175,61 @@ internal static partial class NativeMethods
     /// Starts a program with Explorer's rights: with the token of the desktop's process (the signed-in user, not
     /// elevated). For an elevated Setup that nobody unelevated started (run "as administrator", a package manager).
     /// </summary>
-    public static unsafe bool StartAsShellUser(string executable, string arguments, string workingFolder, out string? error)
+    public static bool StartAsShellUser(string executable, string arguments, string workingFolder, out string? error)
     {
+        if (!CreateAsShellUser(executable, arguments, workingFolder, out var process, out error))
+            return false;
+        CloseHandle(process);
+        return true;
+    }
+
+    /// <summary>
+    /// Like <see cref="StartAsShellUser"/>, and waits: false when it could not be started. A program that takes longer
+    /// than <paramref name="timeout"/> is ended and has exit code -1.
+    /// </summary>
+    public static bool RunAsShellUser(string executable, string arguments, string workingFolder, TimeSpan timeout, out int exitCode, out string? error)
+    {
+        exitCode = -1;
+        if (!CreateAsShellUser(executable, arguments, workingFolder, out var process, out error))
+            return false;
+        try
+        {
+            if (WaitForSingleObject(process, (uint)timeout.TotalMilliseconds) != WAIT_OBJECT_0)
+            {
+                error = $"It did not finish within {timeout.TotalSeconds:0} s";
+                TerminateProcess(process, 1);
+                WaitForSingleObject(process, 5000);
+            }
+            else if (GetExitCodeProcess(process, out var code))
+            {
+                exitCode = (int)code;
+            }
+            return true;
+        }
+        finally
+        {
+            CloseHandle(process);
+        }
+    }
+
+    /// <summary>The account signed in to this Windows session (not the one an elevated program runs as); null when there is none.</summary>
+    public static string? SignedInUserName()
+    {
+        if (!WTSQuerySessionInformation(0, WTS_CURRENT_SESSION, WTSUserName, out var buffer, out _))
+            return null;
+        try
+        {
+            return Marshal.PtrToStringUni(buffer);
+        }
+        finally
+        {
+            WTSFreeMemory(buffer);
+        }
+    }
+
+    private static unsafe bool CreateAsShellUser(string executable, string arguments, string workingFolder, out nint process, out string? error)
+    {
+        process = 0;
         error = null;
         var desktop = GetShellWindow();
         if (desktop == 0 || GetWindowThreadProcessId(desktop, out var shellId) == 0 || shellId == 0)
@@ -191,7 +265,7 @@ internal static partial class NativeMethods
                 }
             }
             CloseHandle(info.Thread);
-            CloseHandle(info.Process);
+            process = info.Process;
             return true;
         }
         finally
