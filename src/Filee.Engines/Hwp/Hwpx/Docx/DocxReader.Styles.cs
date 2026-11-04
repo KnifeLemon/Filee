@@ -9,10 +9,17 @@ namespace Filee.Engines.Hwp.Hwpx.Docx;
 internal sealed partial class DocxReader
 {
     /// <summary>
-    /// 한글 line spacing is a percentage of the font size, Word's "multiple" of the font's natural line height
-    /// (about 1.3 em for the fonts Korean documents use). Word "single" therefore corresponds to about 130%.
+    /// Word's automatic line spacing follows the font's natural metrics. HWPX expresses it as a percentage
+    /// of the em size, so Latin fonts need a smaller baseline factor than common Korean/CJK fonts.
+    /// Keep the multiplier proportional (e.g. 1.5 lines remains 1.5 times the corresponding single-line factor).
     /// </summary>
-    private const double WordLineToHwpPercent = 130;
+    private const int WordLatinLineToHwpPercent = 120;
+    private const int WordEastAsianLineToHwpPercent = 130;
+
+    private static int WordLineToHwpPercent(RunProps mark) =>
+        !string.IsNullOrWhiteSpace(mark.EastAsia) || !string.IsNullOrWhiteSpace(mark.EastAsiaTheme)
+            ? WordEastAsianLineToHwpPercent
+            : WordLatinLineToHwpPercent;
 
     // ───────────────────────── Property bags ─────────────────────────
 
@@ -352,8 +359,10 @@ internal sealed partial class DocxReader
     }
 
     /// <param name="fontSize">Font size of the paragraph (half points): one character of the *Chars indents.</param>
-    private HParaFormat ParaFormat(ParaProps p, int? fontSize)
+    private HParaFormat ParaFormat(ParaProps p, RunProps mark)
     {
+        var fontSize = mark.Size;
+        var linePercent = WordLineToHwpPercent(mark);
         // A character is the paragraph's font size: 10.5 pt (21 half points) = 210 twips.
         var character = (fontSize ?? 20) * 10;
         int? Chars(int? hundredths) => hundredths is { } value ? (int)Math.Round(value * character / 100.0) : null;
@@ -366,7 +375,7 @@ internal sealed partial class DocxReader
         {
             "exact" => new HLineSpacing(HLineSpacingKind.Fixed, HwpxUnits.FromTwips(line)),
             "atLeast" => new HLineSpacing(HLineSpacingKind.AtLeast, HwpxUnits.FromTwips(line)),
-            _ => new HLineSpacing(HLineSpacingKind.Percent, (int)Math.Round(line / 240.0 * WordLineToHwpPercent)),
+            _ => new HLineSpacing(HLineSpacingKind.Percent, (int)Math.Round(line / 240.0 * linePercent)),
         };
         return new HParaFormat(
             Align: p.Jc switch
@@ -382,7 +391,7 @@ internal sealed partial class DocxReader
             FirstLine: HwpxUnits.FromTwips(firstLine),
             Before: HwpxUnits.FromTwips(p.Before ?? 0),
             After: HwpxUnits.FromTwips(p.After ?? 0),
-            LineSpacing: lineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, (int)WordLineToHwpPercent),
+            LineSpacing: lineSpacing ?? new HLineSpacing(HLineSpacingKind.Percent, linePercent),
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,
             WidowOrphan: p.WidowControl ?? true,
