@@ -86,15 +86,19 @@ public class LocalizationResourceTests
         finally { TestServices.EnsureInitialized("en"); }
     }
 
-    /// <summary>#1095: no embedded font has Traditional shapes, so none of them may step in before the system's.</summary>
+    /// <summary>
+    /// #1095: the only embedded font zh-TW may land on is Noto Sans SC, and that only on a machine with no Traditional
+    /// one (macOS answers PingFang TC here, Windows Microsoft JhengHei UI).
+    /// </summary>
     [AvaloniaFact]
     public void Traditional_chinese_text_reaches_the_system_traditional_font()
     {
-        Assert.SkipUnless(FontManager.Current.SystemFonts.Any(f => f.Name == "Microsoft JhengHei UI"), "Needs a Windows font.");
+        Assert.SkipUnless(AssetLoader.Exists(new Uri("avares://Filee/Assets/Fonts/NotoSansSC-Regular.otf")), "Needs build/fetch-fonts.ps1.");
         TestServices.EnsureInitialized("zh-TW");
         try
         {
-            Assert.Equal([("將文件體", "Microsoft JhengHei UI")], FontsDrawing("將文件體", "zh-TW"));
+            string[] allowed = ["Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans CJK TC", "Noto Sans SC"];
+            Assert.All(FontsDrawing("將文件體", "zh-TW"), run => Assert.Contains(run.Family, allowed));
         }
         finally { TestServices.EnsureInitialized("en"); }
     }
