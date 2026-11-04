@@ -22,7 +22,7 @@
             │ Built in: Magick (images, RAW) · PdfSharp · Pdfium · PdfPig · Svg.Skia · ICNS      │
             │ HwpxWriter + DocxWriter over DocumentReaders (DOCX, XLSX, XLS, ODS, PPTX,          │
             │   PDF, HTML, EPUB, MOBI, FB2, HWPX, Markdown) · Spreadsheets · OOXML variants      │
-            │   · E-mail · Data · E-books · CAD · Fonts · Subtitles · 3D models                  │
+            │   · E-mail · Signed files · Data · E-books · CAD · Fonts · Subtitles · 3D models   │
             │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · 7-Zip (archives) · Unhwp · Markdig             │
             │ Optional: FFmpeg · LibreOffice + H2Orestart · calibre · Ghostscript · Pandoc       │
             └────────────────────────────────────────────────────────────────────────────────────┘
@@ -42,7 +42,9 @@
 4. **Plan** – for every file, `RoutePlanner` finds the cheapest chain of converter edges from the source format to
    the target (at most 3 hops). Engine priority (Settings → Engines) breaks ties. Some edges are limited: tracing
    only starts from raster images (`ImageSourcesOnly`), and PDF → PPTX picture slides are only ever a route of their
-   own (`DirectOnly`), never a step of a longer one.
+   own (`DirectOnly`), never a step of a longer one. An envelope (a signed `.p7m`) is planned from the file inside
+   it: its engine (`IEnvelopeOpener`) names that file's format, and the route opens it first, then goes on from there
+   (`RoutePlanner.PlanThrough`: P7M → PDF → PNG).
 5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a temp folder;
    final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
    Each name stays reserved while a conversion holds it. A conversion that fails or is cancelled deletes what it began
