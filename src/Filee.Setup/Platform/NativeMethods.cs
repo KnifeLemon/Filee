@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Security.Principal;
 
 namespace Filee.Setup.Platform;
 
@@ -18,6 +19,7 @@ internal static partial class NativeMethods
     private const int TokenElevation = 20;
     private const int SecurityImpersonation = 2;
     private const int TokenPrimary = 1;
+    private const uint WAIT_OBJECT_0 = 0;
     private const int HWND_BROADCAST = 0xFFFF;
     private const uint WM_SETTINGCHANGE = 0x001A;
     private const uint SMTO_ABORTIFHUNG = 0x0002;
@@ -73,6 +75,17 @@ internal static partial class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     private static unsafe partial bool CreateProcessWithToken(nint token, uint logonFlags, string? application, char* commandLine,
         uint creationFlags, nint environment, string? currentDirectory, StartupInfo* startupInfo, ProcessInformation* processInformation);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    private static partial uint WaitForSingleObject(nint handle, uint milliseconds);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetExitCodeProcess(nint process, out uint exitCode);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool TerminateProcess(nint process, uint exitCode);
 
     [LibraryImport("user32.dll")]
     private static partial nint GetShellWindow();
@@ -154,21 +167,95 @@ internal static partial class NativeMethods
     /// Starts a program with Explorer's rights: with the token of the desktop's process (the signed-in user, not
     /// elevated). For an elevated Setup that nobody unelevated started (run "as administrator", a package manager).
     /// </summary>
-    public static unsafe bool StartAsShellUser(string executable, string arguments, string workingFolder, out string? error)
+    public static bool StartAsShellUser(string executable, string arguments, string workingFolder, out string? error)
+    {
+        if (!CreateAsShellUser(executable, arguments, workingFolder, out var process, out error))
+            return false;
+        CloseHandle(process);
+        return true;
+    }
+
+    /// <summary>
+    /// Like <see cref="StartAsShellUser"/>, and waits: false when it could not be started. A program that takes longer
+    /// than <paramref name="timeout"/> is ended and has exit code -1.
+    /// </summary>
+    public static bool RunAsShellUser(string executable, string arguments, string workingFolder, TimeSpan timeout, out int exitCode, out string? error)
+    {
+        exitCode = -1;
+        if (!CreateAsShellUser(executable, arguments, workingFolder, out var process, out error))
+            return false;
+        try
+        {
+            if (WaitForSingleObject(process, (uint)timeout.TotalMilliseconds) != WAIT_OBJECT_0)
+            {
+                error = $"It did not finish within {timeout.TotalSeconds:0} s";
+                TerminateProcess(process, 1);
+                WaitForSingleObject(process, 5000);
+            }
+            else if (GetExitCodeProcess(process, out var code))
+            {
+                exitCode = (int)code;
+            }
+            return true;
+        }
+        finally
+        {
+            CloseHandle(process);
+        }
+    }
+
+    /// <summary>
+    /// Whether this program runs as the account of the desktop's process, whatever its rights; false when that can't be
+    /// told. Compares the accounts' SIDs: names can be the same in a domain and on this PC.
+    /// </summary>
+    public static bool IsShellUser()
+    {
+        var shell = OpenShellProcess(out _);
+        if (shell == 0)
+            return false;
+        nint token = 0;
+        try
+        {
+            if (!OpenProcessToken(shell, TOKEN_QUERY, out token))
+                return false;
+            using var theirs = new WindowsIdentity(token);
+            using var mine = WindowsIdentity.GetCurrent();
+            return theirs.User == mine.User;
+        }
+        catch (Exception ex) when (ex is ArgumentException or System.Security.SecurityException)
+        {
+            return false;
+        }
+        finally
+        {
+            if (token != 0)
+                CloseHandle(token);
+            CloseHandle(shell);
+        }
+    }
+
+    /// <summary>The process of the Explorer desktop, or 0 with the reason.</summary>
+    private static nint OpenShellProcess(out string? error)
     {
         error = null;
         var desktop = GetShellWindow();
         if (desktop == 0 || GetWindowThreadProcessId(desktop, out var shellId) == 0 || shellId == 0)
         {
             error = "There is no Explorer desktop.";
-            return false;
+            return 0;
         }
         var shell = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, shellId);
         if (shell == 0)
-        {
             error = $"OpenProcess: {Marshal.GetLastPInvokeError()}";
+        return shell;
+    }
+
+    private static unsafe bool CreateAsShellUser(string executable, string arguments, string workingFolder, out nint process, out string? error)
+    {
+        process = 0;
+        var shell = OpenShellProcess(out error);
+        if (shell == 0)
             return false;
-        }
         nint shellToken = 0, token = 0;
         try
         {
@@ -191,7 +278,7 @@ internal static partial class NativeMethods
                 }
             }
             CloseHandle(info.Thread);
-            CloseHandle(info.Process);
+            process = info.Process;
             return true;
         }
         finally

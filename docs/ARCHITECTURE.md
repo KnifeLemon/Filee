@@ -530,8 +530,13 @@ have no semibold) instead of the app's embedded Noto fonts.
   counts as installed when `uninstall.exe` (or 1.x's `unins000.exe`) is next to it (`UpdateService.IsInstalled`).
 - **Uninstall**: `uninstall.exe` is Setup without its payload. Run from the install folder it copies itself to
   `%TEMP%` and waits for the copy, which removes what `uninstall.json` lists (other files in the folder stay), the
-  shortcuts, the PATH entry and the key. Files in use are moved out and deleted at the next restart. A program without
-  a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
+  shortcuts, the PATH entry and the key. `Filee.exe --uninstall-cleanup` runs as the signed-in user (`RunAsSignedInUser`):
+  the startup entry, the classic verb and the engines are theirs, and the pipe of a Filee without administrator rights
+  refuses an elevated client (`CurrentUserOnly` compares the pipe's owner with the token's owner, which is
+  Administrators when elevated), so that Filee would never hear `--quit`. Files in use are moved out and deleted at the
+  next restart. Only programs `uninstall.json` lists are ended. A Filee that can't be ended, or a file that can't be
+  moved or renamed, fails the uninstall and keeps the key, `uninstall.json` and `uninstall.exe`, so it can be run again;
+  `uninstall.json` itself is never scheduled or renamed. A program without a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
   (`SetupStart`); any other name is a Setup.exe whose download didn't finish, and it says so instead (exit code 1).
 - **Command line**: Inno Setup's switches (`SetupOptions`, documented at the top of the file), because Filee 1.x
   updates itself with `/SILENT /NORESTART` and winget passes `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Exit codes as
