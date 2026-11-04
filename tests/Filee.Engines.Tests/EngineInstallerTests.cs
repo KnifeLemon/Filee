@@ -409,7 +409,7 @@ public sealed class EngineInstallerTests : IDisposable
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows MSI packages preserve read-only file attributes.");
 
         var staging = Path.Combine(_root, "~staging");
-        var nested = Directory.CreateDirectory(Path.Combine(staging, "Program", "bin")).FullName;
+        Directory.CreateDirectory(Path.Combine(staging, "Program", "bin"));
         var dll = Path.Combine(nested, "amatch.dll");
         File.WriteAllText(dll, "MSI payload");
         File.SetAttributes(dll, File.GetAttributes(dll) | FileAttributes.ReadOnly);
