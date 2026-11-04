@@ -99,6 +99,10 @@ internal sealed partial class HwpxWriter
         Count("numberings", "numbering");
         Count("borderFills", "borderFill");
         Count("tabProperties", "tabPr");
+        // Spaces as wide as the font makes them, as in Word and in a browser. 한글's default is half a character, about
+        // twice Calibri's or Times New Roman's: lines wrapped early and the text after tabs went past the margin (#510).
+        foreach (var shape in _head.Descendants(Hh + "charPr"))
+            shape.SetAttributeValue("useFontSpace", 1);
         _head.SetAttributeValue("secCnt", sectionCount);
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + _head.ToString(SaveOptions.DisableFormatting);
     }
