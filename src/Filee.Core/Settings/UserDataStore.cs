@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
+using Filee.Core.Formats;
 using Filee.Core.History;
 using Filee.Core.Presets;
 using Filee.Core.Profiles;
@@ -70,7 +71,13 @@ public sealed class UserDataStore
     public void Load()
     {
         System.IO.Directory.CreateDirectory(Directory);
+        // A new install is told by the file missing, not by Read returning null: a settings file that can't be read is an
+        // existing user's, who keeps every field on. Only a new install gets the fields that are off by default.
+        var fresh = !File.Exists(SettingsPath);
         Settings = Read(SettingsPath, FileeJsonContext.Default.AppSettings) ?? new AppSettings();
+        Settings.TurnedOffFields ??= [];
+        if (fresh)
+            Settings.TurnedOffFields = FormatFields.All.Where(f => f.CanTurnOff && !f.OnByDefault).Select(f => f.Id).ToList();
         Presets = Read(PresetsPath, FileeJsonContext.Default.ListPreset) ?? BuiltInData.CreatePresets();
         Profiles = Read(ProfilesPath, FileeJsonContext.Default.ListToolbarProfile) ?? BuiltInData.CreateProfiles();
         History = Read(HistoryPath, FileeJsonContext.Default.ListHistoryEntry) ?? [];
@@ -245,9 +252,11 @@ public sealed class UserDataStore
     /// <summary>The preset <paramref name="id"/> when it converts (a group or tool doesn't), for every place that runs one.</summary>
     public Preset? FindConversion(string id) => Presets.FirstOrDefault(p => p.Id == id && !p.IsGroup && !p.IsTool);
 
-    /// <summary>Exports presets and profiles to a shareable JSON file, without PDF passwords.</summary>
+    /// <summary>
+    /// Exports presets and profiles to a shareable JSON file, without PDF passwords or paths to one's own pictures.
+    /// </summary>
     public void Export(string path) =>
-        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.WithoutPassword(mark: false))], Profiles = Profiles },
+        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.ForSharing())], Profiles = Profiles },
             FileeJsonContext.Default.PresetBundle);
 
     /// <summary>
@@ -262,6 +271,8 @@ public sealed class UserDataStore
 
         foreach (var preset in bundle.Presets)
         {
+            // A path to a picture in someone else's bundle is not one of ours to open (a network share, say).
+            preset.Image.ForgetBackdropPictures();
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }
@@ -961,6 +972,108 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 58)
             changed |= LearnExtensions(profiles, out _, ["c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs"]);
+        // v59: "Crop video" (#830): its group and presets join the library after "Cut a clip". No donut gets a slot (#806:
+        //      new defaults are for new installs); the user places it from the palette. (Schema 59 may be renumbered if
+        //      another change takes it first.)
+        if (from < 59)
+            changed |= AddCropVideo(presets);
+        // v60: the "Annotate" tool, in the palette only, after "Pixelate / blur" as in a new library (at the end
+        //      without it).
+        if (from < 60 && presets.All(p => p.Id != BuiltInData.AnnotateId))
+        {
+            var hide = presets.FindIndex(p => p.Id == BuiltInData.HidePresets().Single().Id);
+            presets.InsertRange(hide < 0 ? presets.Count : hide + 1, BuiltInData.AnnotatePresets());
+            changed = true;
+        }
+        // v61: Dart and HiveQL sources (#980, #997) learn the text donut, Krita files (#903) the images donut; custom
+        //      claims stay put.
+        if (from < 61)
+            changed |= LearnExtensions(profiles, out _, ["dart", "hql", "kra"]);
+        // v62: Minecraft packs and Modrinth modpacks (#824, #898): their presets join the library after "TAR" (no donut gets
+        //      a slot, #806), and the archives donut learns their extensions; custom claims stay put.
+        if (from < 62)
+        {
+            changed |= AddGamePacks(presets);
+            changed |= LearnExtensions(profiles, out _, ["mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"]);
+        }
+        // v63: "Pages per sheet" (#737): its group and presets join the library after the PDF "Edit" group (no donut gets
+        //      a slot, #806). (Schema 63 may be renumbered if another change takes it first.)
+        if (from < 63)
+            changed |= AddPdfSheets(presets);
+        // v64: the "Add background" tool, in the palette only, after "Annotate" as in a new library (at the end
+        //      without it). (Schema 64 may be renumbered if another change takes it first.)
+        if (from < 64 && presets.All(p => p.Id != BuiltInData.BackgroundId))
+        {
+            var annotate = presets.FindIndex(p => p.Id == BuiltInData.AnnotateId);
+            presets.InsertRange(annotate < 0 ? presets.Count : annotate + 1, BuiltInData.BackgroundPresets());
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool AddPdfSheets(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "pdf-edit");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.PdfSheetPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                // Saved since by an older Filee, which dropped the option and left a plain PDF preset.
+                if (preset.Pdf.MakesSheets && !existing.Pdf.MakesSheets && existing.TargetFormat == preset.TargetFormat)
+                {
+                    existing.Pdf.PagesPerSheet = preset.Pdf.PagesPerSheet;
+                    changed = true;
+                }
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool AddGamePacks(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "to-tar");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.GamePackPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static bool AddCropVideo(List<Preset> presets)
+    {
+        var at = presets.FindIndex(p => p.Id == "tool-clip");
+        at = at < 0 ? presets.Count : at + 1;
+        var changed = false;
+        foreach (var preset in BuiltInData.CropVideoPresets())
+        {
+            if (presets.FirstOrDefault(p => p.Id == preset.Id) is { } existing)
+            {
+                // Saved since by an older Filee, which dropped the option and left a plain "same format" preset.
+                if (preset.CropsVideo && !existing.CropsVideo && existing.TargetFormat == preset.TargetFormat)
+                {
+                    existing.Media.CropFrame = preset.Media.CropFrame;
+                    changed = true;
+                }
+                at = presets.IndexOf(existing) + 1;
+                continue;
+            }
+            presets.Insert(at++, preset);
+            changed = true;
+        }
         return changed;
     }
 

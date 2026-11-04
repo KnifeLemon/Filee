@@ -44,7 +44,7 @@ public sealed class EngineFixture : IDisposable
     public static string MakeImage(string folder, string name, MagickFormat format, uint width = 320, uint height = 200)
     {
         using var image = new MagickImage("gradient:#7F77DD-#1D9E75", width, height);
-        image.Alpha(AlphaOption.Set);
+        image.Alpha(AlphaAction.Set);
         // Punch a fully transparent 40×40 hole in the top-left corner (RGBA = 0).
         using (var pixels = image.GetPixels())
             pixels.SetArea(0, 0, 40, 40, new byte[40 * 40 * image.ChannelCount]);

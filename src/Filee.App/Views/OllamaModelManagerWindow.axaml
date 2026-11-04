@@ -100,6 +100,8 @@
             <TextBlock Classes="caption" Text="{DynamicResource engines.ollama.no_models}"
                        IsVisible="{Binding !Models.Count}" />
 
+
+
             <ItemsControl ItemsSource="{Binding Models}">
               <ItemsControl.ItemsPanel>
                 <ItemsPanelTemplate>
@@ -110,20 +112,28 @@
                 <DataTemplate x:DataType="vm:OllamaModelItem">
                   <Border BorderBrush="{DynamicResource BorderBrush}" BorderThickness="1" CornerRadius="6" Padding="12,10">
                     <DockPanel LastChildFill="True">
-                      <!-- Right Action Button -->
-                      <Button DockPanel.Dock="Right" Content="{Binding ActionText}"
-                              IsEnabled="{Binding IsActionEnabled}"
-                              Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).UseModelCommand}"
-                              CommandParameter="{Binding}"
-                              Classes.using="{Binding IsUsing}"
-                              MinWidth="120" HorizontalContentAlignment="Center">
-                        <Button.Styles>
-                          <Style Selector="Button.using">
-                            <Setter Property="Foreground" Value="#16A34A" />
-                            <Setter Property="FontWeight" Value="SemiBold" />
-                          </Style>
-                        </Button.Styles>
-                      </Button>
+                      <!-- Right Action Buttons -->
+                      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                        <Button Content="{Binding ActionText}"
+                                IsEnabled="{Binding IsActionEnabled}"
+                                Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).UseModelCommand}"
+                                CommandParameter="{Binding}"
+                                Classes.using="{Binding IsUsing}"
+                                MinWidth="120" HorizontalContentAlignment="Center">
+                          <Button.Styles>
+                            <Style Selector="Button.using">
+                              <Setter Property="Foreground" Value="#16A34A" />
+                              <Setter Property="FontWeight" Value="SemiBold" />
+                            </Style>
+                          </Button.Styles>
+                        </Button>
+                        <Button Classes="danger" Content="🗑" ToolTip.Tip="{DynamicResource common.delete}"
+                                AutomationProperties.Name="{Binding DeleteAutomationName}"
+                                Command="{Binding $parent[Window].((vm:OllamaModelManagerViewModel)DataContext).DeleteModelCommand}"
+                                CommandParameter="{Binding}"
+                                IsEnabled="{Binding !IsDeleting}"
+                                Padding="8,6" />
+                      </StackPanel>
 
                       <!-- Left Details -->
                       <StackPanel Spacing="4" VerticalAlignment="Center">

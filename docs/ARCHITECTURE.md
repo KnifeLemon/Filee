@@ -140,13 +140,68 @@ flipped to, and only then does the hub leave out its "⟳ Tab back" hint (a mous
 wheel flips). In click mode the focused window gets the key (`DonutMenu.HandleKey`) and the donut the wheel. During a
 drag the donut's window has no keyboard focus, so `RadialController` turns on `TriggerService.WatchFlipKey` while
 the drag donut shows files and flips on `FlipKeyPressed` / `FlipWheelTurned`: the global hook only listens (it
-can't hold an event back; Explorer and Finder ignore Tab during a drag) and reports one flip per key press.
+can't hold an event back; Explorer and Finder ignore Tab during a drag) and reports one flip per key press. On
+macOS the drag donut takes the keyboard once files are on it (`RadialController.TakeKeyboard`), and the key reaches
+its window as in click mode: while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it
+from the background) macOS gives no keys to a hook, only to the app in front. The hook's copy of a press is ignored
+while the window has the keyboard (`HookFlipsKey`, one flip per press, following `IsActive`); the keyboard goes back
+to the app that had it once a conversion starts or the donut closes (`IPlatformServices.RememberFrontApp` /
+`ReturnFocus`), unless the user clicked elsewhere meanwhile, and stays with Filee when the drop opens a window of its
+own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
 editor offers both kinds, and `UserDataStore.EnsureConsistency` removes missing, duplicate, nested or excess members
 without excluding tools.
+
+## Annotate tool
+
+"Annotate" (`tool-annotate`, palette only, settings schema 60) draws pen lines, arrows, boxes, highlights, text and
+numbers on pictures (`ImageOptions.Annotations`): points are parts of the picture, sizes parts of its shorter side.
+
+- `Engines/Annotations/AnnotationPainter` (SkiaSharp) draws the marks, always at the picture's own size in pixels. The
+  window's `AnnotationCanvas` calls it on Avalonia's own Skia canvas (a custom draw operation through
+  `ISkiaSharpApiLeaseFeature`), scaled to where the picture is shown, and `Annotator` on layers over the part the marks
+  cover, a band at a time, laid over the picture in `ImageEncoder.ApplyOptions` after hidden areas (converted to a CMYK
+  picture's colours; a greyscale picture becomes a colour one): the preview is the file. Text is shaped with HarfBuzz
+  (`Vector/GlyphOutlines`) in the system's bold sans-serif, each run of letters it lacks in a font the system finds.
+- `AnnotationSet` keeps the marks, the selection and undo / redo (a drag is one step). A mark just drawn isn't selected:
+  a colour picked next goes to the next mark; with Select, colour and width restyle the selected one.
+- `AnnotateTool.ConversionOf` (Core) turns the tool into a conversion in the picture's own format (as Pixelate / blur),
+  run by the job queue; `ReworksPixels` includes the marks.
+
+## Add background tool
+
+"Add background" (`tool-background`, palette only, settings schema 64) sets pictures on a gradient, a colour or a
+picture of one's own, with padding, rounded corners, a shadow and a canvas shape (`BackdropOptions`). Sizes are parts of
+the picture (padding of its longer side, corners of its shorter side), so a look suits any picture.
+
+- `BackgroundTool.ConversionOf` (Core) turns the tool into a PNG conversion with `ImageOptions.Backdrop`, run by the job
+  queue like Pixelate / blur's areas: `ReworksPixels` includes it, so it is applied once, in the first transform step.
+  The tool keeps the last look apart, in `ImageOptions.BackdropLook`; an export or import leaves out the path of a
+  picture of one's own.
+- `Engines/Magick/BackdropComposer` composes it in `ImageEncoder.ApplyOptions`, after resizing, background removal and
+  grayscale and before the density, metadata and alpha steps. The picture is brought to sRGB as it is seen (through its
+  profile, or by formula for CMYK and grey); the canvas grows round it to the shape (never crops) and stays within a
+  pixel limit (`PictureSizeOn`). It is drawn by Skia as the window draws it: a linear gradient shader, a colour, or
+  one's own picture covering (`ReadPictureBehind`: a raster picture of a few kinds, by extension or by its first bytes,
+  its size checked before it is decoded, read as large as covering the canvas takes and cropped to it, in sRGB, white
+  where see-through; one that can't be read refuses the file); the picture with its corners cut round in its own pixels;
+  Skia's drop shadow of what shows of it, blurred at most at a sigma of 100 (a wider one drawn smaller and scaled up,
+  where Skia's blur stays Gaussian). The canvas is drawn in tiles at most 2048 px wide, a band at a time, as RGB: a blur
+  is never larger than a tile and the shadow's reach round it (a wider shadow is blurred once, scaled down until its
+  sigma is 100 or less). The EXIF thumbnail is dropped.
+- `BackgroundViewModel` draws the same composition live with Avalonia: the layout and shadow from the composer's
+  formulas (an Avalonia drop shadow is Skia's), the picture and the one behind read through the composer's functions,
+  the preview never mirrored in a right-to-left UI. A picture behind is read when it is chosen, and again when it is
+  picked again; Save waits for one that can be read, and one whose file changed since it was read (time written or
+  length) is read again and shown before it is saved. The conversion carries that stamp, and the composer refuses the
+  file (`error.background_picture_changed`, which the toast offers no Retry for) when the picture behind changed since,
+  before it is read or after: a change after Save gives no file rather than one with a picture behind the window didn't
+  show. A change that keeps both the time and the length (a copy that keeps the time, of a picture of the same size)
+  isn't told apart, and the picture itself edited meanwhile isn't looked for (as in Pixelate / blur and Annotate). One
+  look for all pictures or one each; failures end on a summary, as in Pixelate / blur.
 
 ## Crop overlay and PDF page editor
 
@@ -208,6 +263,23 @@ job. The window only chooses the clip; writing it is an ordinary conversion.
   `setpts` and chained `atempo` for speed, `volume`, `color`/`anullsrc` for gaps, `concat`, the music as a second
   input (`atrim`, `volume`, `afade`, `adelay`, `amix`), then `fade`/`afade`. It is encoded with the preset's quality,
   size and codec.
+
+## Crop video
+
+"Crop video" (`crop-video`, after Cut a clip on the back of the video donut, #830) is a group of ordinary
+conversions, not a window: each preset keeps the video's own format (MP4 for VOB and DV, whose fixed frame sizes would
+stretch the crop back: `VideoCrop.TargetFor`) and sets `MediaOptions.CropFrame` to `auto` or a `width:height` ratio
+(`Core/Presets/VideoCrop`).
+
+- A ratio crops the largest centred box of the upright picture with square pixels (`MediaEncoding.RatioBox`); a video
+  already that shape is refused (`error.crop_same_frame`).
+- Auto runs `cropdetect` (limit as a part of the range, so 10-bit and HDR read alike) over a second at five points of
+  the video (the first five seconds of a short one), takes each stretch's final box and the largest of those
+  (`MediaEncoding.FinalCrop`, `LargestCrop`); no black bars, or a box under a quarter of the picture, refuses the file
+  (`error.no_black_bars`), and cropdetect failing everywhere is an error with FFmpeg's message.
+- The crop goes before the scale filter, so the video is always encoded: an HEVC or AV1 source stays in its codec where
+  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and an
+  MKV keeps its subtitles and attachments.
 
 ## Spreadsheet print studio
 
@@ -354,7 +426,10 @@ transparent area into a blurred rectangle (issue #269). Filee sets neither, so o
 program: each time the window shows, a backdrop is set back to none and the accent (which can't be read back) is
 turned off. For a report that still shows the wrong thing, the `FILEE_RENDERING` environment variable picks another
 way to draw (`WindowsRendering`): `dcomp` (skip WinUI composition), `redirection` (Direct3D into the redirection
-surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start.
+surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start. On ARM64, Avalonia's
+Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236), and three values try the GPU
+there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver), `vulkan` and `wgl` (OpenGL), the
+last two falling back to software when they can't start.
 
 ## Explorer integration
 

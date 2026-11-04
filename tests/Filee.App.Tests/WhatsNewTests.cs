@@ -33,19 +33,21 @@ public class WhatsNewTests
 
     // ───────────────────────── Manifests ─────────────────────────
 
-    [AvaloniaFact]
-    public void The_2_0_0_deck_ships_with_its_media_and_texts()
+    [AvaloniaTheory]
+    [InlineData("2.0.0")]
+    [InlineData("2.3.0")]
+    public void A_deck_ships_with_its_media_and_texts(string version)
     {
         TestServices.EnsureInitialized("en");
         var decks = SlideDeck.LoadAll("Filee");
-        var deck = Assert.Single(decks, d => d.Version == V2);
+        var deck = Assert.Single(decks, d => d.Version == new Version(version));
         Assert.InRange(deck.Slides.Count, 5, 7);
         Assert.Equal(deck.Slides.Count, deck.Slides.Select(s => s.Id).Distinct().Count());
         var english = LoadStrings("en");
         foreach (var slide in deck.Slides)
         {
             Assert.True(AssetLoader.Exists(slide.Media), $"{slide.Media} is missing");
-            Assert.StartsWith("avares://Filee/Assets/WhatsNew/2.0.0/", slide.Media.ToString(), StringComparison.Ordinal);
+            Assert.StartsWith($"avares://Filee/Assets/WhatsNew/{version}/", slide.Media.ToString(), StringComparison.Ordinal);
             Assert.Contains(slide.TitleKey, english.Keys);
             Assert.Contains(slide.TextKey, english.Keys);
         }
@@ -318,11 +320,11 @@ public class WhatsNewTests
 
     // ───────────────────────── The window ─────────────────────────
 
-    private static WhatsNewWindow Open(string language = "en", Action? beforeOpening = null)
+    private static WhatsNewWindow Open(string language = "en", Action? beforeOpening = null, Version? version = null)
     {
         TestServices.EnsureInitialized(language);
         beforeOpening?.Invoke();
-        var deck = SlideDeck.LoadAll("Filee").Single(d => d.Version == V2);
+        var deck = SlideDeck.LoadAll("Filee").Single(d => d.Version == (version ?? V2));
         var window = new WhatsNewWindow(deck, AppHost.Get<ILocalizer>());
         window.Show();
         window.Activate();
@@ -600,6 +602,55 @@ public class WhatsNewTests
         finally
         {
             window.Close();
+            theme.Apply(new ThemeSettings(), "en");
+        }
+    }
+
+    /// <summary>
+    /// The 2.3.0 slides in a few languages: every slide's text fits and, with reduced motion, shows its poster frame
+    /// (what the installer shows too). A screenshot of each slide.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("en", false)]
+    [InlineData("en", true)]
+    [InlineData("ko", false)]
+    [InlineData("ar", false)]
+    [InlineData("de", false)]
+    [InlineData("ja", false)]
+    [InlineData("it", false)]
+    [InlineData("id", false)]
+    public void The_2_3_0_slides_render_on_their_posters(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        var motion = Motion.Enabled;
+        var window = Open(language, () =>
+        {
+            theme.Apply(new ThemeSettings { Mode = dark ? ThemeMode.Dark : ThemeMode.Light }, language);
+            Motion.Set(false);
+        }, new Version(2, 3, 0));
+        try
+        {
+            var slides = window.SlideShow;
+            Assert.Equal(6, slides.Slides.Count);
+            var heights = new HashSet<double>();
+            for (var i = 0; i < slides.Slides.Count; i++)
+            {
+                slides.GoTo(i);
+                Pump();
+                heights.Add(window.Bounds.Height);
+                var media = slides.Media;
+                Assert.True(media.HasPicture, $"slide {i} has no picture");
+                Assert.InRange(slides.Slides[i].PosterFrame, 0, media.FrameCount - 1);
+                Assert.Equal(slides.Slides[i].PosterFrame, media.CurrentFrame);
+                Save(window, $"whatsnew-2.3.0-{language}-{(dark ? "dark" : "light")}-{i + 1}-{slides.Slides[i].Id}.png");
+            }
+            Assert.Single(heights);
+        }
+        finally
+        {
+            window.Close();
+            Motion.Set(motion);
             theme.Apply(new ThemeSettings(), "en");
         }
     }

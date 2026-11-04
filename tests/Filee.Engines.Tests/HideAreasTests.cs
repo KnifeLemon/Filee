@@ -93,7 +93,7 @@ public class HideAreasTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using (var source = Noise(400, 200))
         {
             // Half transparent everywhere: a box must not let any of what was there show through.
-            source.Alpha(AlphaOption.Set);
+            source.Alpha(AlphaAction.Set);
             source.Evaluate(Channels.Alpha, EvaluateOperator.Set, Quantum.Max / 2);
             source.Write(path, MagickFormat.Png);
         }
@@ -291,7 +291,7 @@ public class HideAreasTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var path = Path.Combine(folder, "phone.png");
         using (var stored = Noise(300, 200))
         {
-            stored.Orientation = OrientationType.RightTop;
+            stored.Orientation = Orientation.RightTop;
             stored.Write(path, MagickFormat.Png);
         }
         using var upright = new MagickImage(path);

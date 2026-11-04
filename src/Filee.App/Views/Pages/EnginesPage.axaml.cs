@@ -138,8 +138,10 @@ public partial class EnginesPage : UserControl
             return;
         var dlg = new OllamaModelManagerWindow();
         await dlg.ShowDialog(window);
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
-        AppHost.Get<Filee.Core.Conversion.ConverterCatalog>().Refresh();
+        await Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
+        var catalog = AppHost.Get<Filee.Core.Conversion.ConverterCatalog>();
+        catalog.Refresh();
+        _ = catalog.CheckInBackgroundAsync();
     }
 
     /// <summary>Picks the program of a copy the user already has (ffmpeg.exe, ebook-convert.exe, …) and uses it.</summary>
@@ -190,7 +192,7 @@ public partial class EnginesPage : UserControl
         var loc = AppHost.Get<ILocalizer>();
         if (!await AppHost.Get<WindowService>().ConfirmAsync(window, loc.Format("engines.remove_confirm", package.Name), destructive: true))
             return;
-        if (!vm.Remove(package))
-            await AppHost.Get<WindowService>().MessageAsync(window, loc["engines.remove_failed"]);
+        if (vm.Remove(package) is { } reason)
+            await AppHost.Get<WindowService>().MessageAsync(window, loc[reason]);
     }
 }

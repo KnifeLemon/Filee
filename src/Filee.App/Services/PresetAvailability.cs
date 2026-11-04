@@ -133,6 +133,14 @@ public sealed class PresetAvailability
             return formats.Any(f => ImageEditTool.CanEdit(f.Id))
                 ? new(PresetUse.Usable, null)
                 : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsAnnotateTool)
+            return formats.Any(f => HideService.CanOpen(f.Id))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsBackgroundTool)
+            return formats.Any(f => HideService.CanOpen(f.Id))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.images_only"]);
         if (preset.IsHideTool)
             return formats.Any(f => HideService.CanOpen(f.Id))
                 ? new(PresetUse.Usable, null)
@@ -181,6 +189,14 @@ public sealed class PresetAvailability
             formats = [.. formats.Where(f => f.Category == FormatCategory.Image)];
             if (formats.Count == 0)
                 return new(PresetUse.Unusable, _loc["error.images_only"]);
+        }
+
+        // "Crop video" cuts the frame of a video: a picture or a song has none to cut.
+        if (preset.CropsVideo)
+        {
+            formats = [.. formats.Where(f => f.Category == FormatCategory.Video)];
+            if (formats.Count == 0)
+                return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
         }
 
         // "Trim transparent borders" on JPG and other formats without transparency would only re-encode them.
@@ -258,7 +274,8 @@ public sealed class PresetAvailability
 
         var merge = preset.Pdf.MergeIntoSingle && preset.TargetFormat == "pdf";
         var turns = preset.Image.TurnsOrMirrors;
-        string TargetFor(FileFormat f) => preset.TargetFormat == BuiltInData.SameAsSource ? f.Id : preset.TargetFormat;
+        string TargetFor(FileFormat f) => preset.TargetFormat != BuiltInData.SameAsSource ? preset.TargetFormat
+            : preset.CropsVideo ? VideoCrop.TargetFor(f.Id) : f.Id;
         var copiesUnturned = false;
         bool Possible(RoutePlanner planner) => formats.Any(f =>
         {

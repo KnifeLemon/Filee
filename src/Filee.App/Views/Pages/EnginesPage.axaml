@@ -70,7 +70,7 @@
                     <Button Content="{DynamicResource engines.use_own}" IsVisible="{Binding CanUseOwnCopy}" Click="OnUseOwnCopy"
                             ToolTip.Tip="{DynamicResource engines.use_own_hint}" />
                     <Button Content="{DynamicResource engines.stop_own}" IsVisible="{Binding UsesOwnCopy}" Click="OnStopOwnCopy" />
-                    <Button Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
+                    <Button Classes="danger" Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
                   </StackPanel>
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="10">

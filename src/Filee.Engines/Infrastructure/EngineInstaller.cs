@@ -125,6 +125,7 @@ public sealed class EngineInstaller
             throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
                 ?? $"The {package.Id} package is unavailable on this platform.");
         using var packageLock = LockPackage(package);
+        ClearAside(package);
         var pending = package.Components
             .Where(c => !string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase))
             .Select(c => _components[c])
@@ -157,15 +158,62 @@ public sealed class EngineInstaller
             CopyRuntime(package);
     }
 
-    /// <summary>Removes the package's folders. Fails if an engine is running (its files are locked).</summary>
+    /// <summary>
+    /// Removes the package's folders. Fails if an engine is running (its files are locked), and then leaves the package
+    /// as it was: each folder is first moved aside to a "~" name (on Windows that fails while a file in it is open), and
+    /// only once all of them are aside are they deleted. A delete Windows cuts short leaves a "~" folder, which no engine
+    /// reads and the next install or removal clears (#963).
+    /// </summary>
     public void Uninstall(EnginePackage package)
     {
         using var packageLock = LockPackage(package);
-        foreach (var id in package.Components)
+        ClearAside(package);
+        var aside = new List<(string Folder, string Moved)>();
+        try
         {
-            var folder = FolderOf(id);
-            if (Directory.Exists(folder))
-                Directory.Delete(folder, recursive: true);
+            foreach (var id in package.Components)
+            {
+                var folder = FolderOf(id);
+                if (!Directory.Exists(folder))
+                    continue;
+                var moved = Path.Combine(_root, $"{AsidePrefix}{id}-{Guid.NewGuid().ToString("N")[..8]}");
+                Directory.Move(folder, moved);
+                aside.Add((folder, moved));
+            }
+        }
+        catch
+        {
+            // One folder is in use: put back the ones already moved, so the package stays whole and installed.
+            foreach (var (folder, moved) in aside)
+                Directory.Move(moved, folder);
+            throw;
+        }
+        foreach (var (_, moved) in aside)
+            TryDeleteFolder(moved);
+    }
+
+    /// <summary>Start of the name of a folder an earlier removal moved aside but couldn't delete.</summary>
+    private const string AsidePrefix = "~removed-";
+
+    /// <summary>Deletes what an earlier removal of the package left aside (under the package's lock).</summary>
+    private void ClearAside(EnginePackage package)
+    {
+        if (!Directory.Exists(_root))
+            return;
+        foreach (var id in package.Components)
+            foreach (var folder in Directory.EnumerateDirectories(_root, $"{AsidePrefix}{id}-*"))
+                TryDeleteFolder(folder);
+    }
+
+    private static void TryDeleteFolder(string folder)
+    {
+        try
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Left for the next install or removal (ClearAside).
         }
     }
 
@@ -201,9 +249,30 @@ public sealed class EngineInstaller
         using var response = await GetFollowingRedirectsAsync(new Uri(component.Url), cancellationToken);
         response.EnsureSuccessStatusCode();
         using var hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256);
-        await using (var source = await response.Content.ReadAsStreamAsync(cancellationToken))
-        await using (var target = File.Create(partial))
+        try
         {
+            await CopyAsync();
+        }
+        catch
+        {
+            // Cancelled or cut off: the partial download (up to ~420 MB for LibreOffice) isn't kept (#963).
+            TryDelete(partial);
+            throw;
+        }
+
+        var actual = Convert.ToHexString(hash.GetHashAndReset());
+        if (!string.Equals(actual, component.Sha256, StringComparison.OrdinalIgnoreCase))
+        {
+            TryDelete(partial);
+            throw new InvalidDataException($"{component.Id}: checksum mismatch (expected {component.Sha256}, got {actual}). The download was discarded.");
+        }
+        File.Move(partial, file, overwrite: true);
+        return file;
+
+        async Task CopyAsync()
+        {
+            await using var source = await response.Content.ReadAsStreamAsync(cancellationToken);
+            await using var target = File.Create(partial);
             var buffer = new byte[1 << 16];
             long received = 0;
             var lastReport = Stopwatch.StartNew();
@@ -221,15 +290,6 @@ public sealed class EngineInstaller
             }
             reportBytes(received);
         }
-
-        var actual = Convert.ToHexString(hash.GetHashAndReset());
-        if (!string.Equals(actual, component.Sha256, StringComparison.OrdinalIgnoreCase))
-        {
-            TryDelete(partial);
-            throw new InvalidDataException($"{component.Id}: checksum mismatch (expected {component.Sha256}, got {actual}). The download was discarded.");
-        }
-        File.Move(partial, file, overwrite: true);
-        return file;
     }
 
     /// <summary>
@@ -456,6 +516,14 @@ public sealed class EngineInstaller
         }
         if (process.ExitCode != 0)
             throw MsiFailure(id, process.ExitCode, log);
+        // The verbose log is only worth keeping when unpacking failed (the error names it); else it would stay in %TEMP%.
+        try
+        {
+            File.Delete(log);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+        }
     }
 
     /// <summary>What the Engines card shows: the reasons a user can act on in their language (error.* keys).</summary>

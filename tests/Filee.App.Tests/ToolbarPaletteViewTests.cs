@@ -114,6 +114,13 @@ public class ToolbarPaletteViewTests
         public void Dispose() => Window.Close();
     }
 
+    /// <summary>
+    /// The library without the Annotate and Add background tools: every picture donut offers them in its Edit tab,
+    /// which a test of the picture tools would otherwise always see.
+    /// </summary>
+    private static void WithoutPictureEditTools(PresetAvailabilityTests.Fixture f) =>
+        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool);
+
     private static ToolbarProfile Profile(string id, params string[] extensions) => new()
     {
         Id = id,
@@ -191,7 +198,7 @@ public class ToolbarPaletteViewTests
         Dispatcher.UIThread.RunJobs();
         using var view = new View(vm);
         Assert.False(view.Tabs.IsVisible);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group"], view.Chips);
 
         // PDF: one kind (Documents) that would only repeat All. Two tabs, but the row stays hidden.
         // (Without the PDF page tools, which would add the Edit kind.)
@@ -204,7 +211,7 @@ public class ToolbarPaletteViewTests
         Assert.Equal([PaletteTab.All, PaletteTab.Document], view.TabIds);
         Assert.False(view.Tabs.IsVisible);
         Assert.Equal(PaletteTab.All, view.Selected);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "merge-pdf", "test-merge"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "merge-pdf", "test-merge"], view.Chips);
 
         // PNG: several kinds, so the row shows.
         f.Store.Profiles.Add(Profile("tabs-png", "png"));
@@ -453,6 +460,7 @@ public class ToolbarPaletteViewTests
     public void Profile_change_resets_tab_but_face_flip_keeps_it()
     {
         using var f = new PresetAvailabilityTests.Fixture();
+        WithoutPictureEditTools(f);
         var jpg = Profile("tabs-jpg", "jpg");
         using var vm = f.Page(jpg);
         var png = Profile("tabs-png", "png");
@@ -474,7 +482,7 @@ public class ToolbarPaletteViewTests
         view.Click(faces[1]);
         Assert.True(vm.EditingBack);
         Assert.Equal(PaletteTab.Media, view.Selected);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "extract-motion", "test-motion"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "extract-motion", "test-motion"], view.Chips);
         view.Click(faces[0]);
         Assert.False(vm.EditingBack);
         Assert.Equal(PaletteTab.Media, view.Selected);
@@ -491,7 +499,7 @@ public class ToolbarPaletteViewTests
         RenderTests.Pump();
         Assert.Equal(PaletteTab.All, view.Selected);
         view.ClickTab(PaletteTab.Edit);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "tool-crop", "tool-image-edit", "tool-hide"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "tool-crop", "tool-image-edit", "tool-hide"], view.Chips);
         DoubleTap(view.Chip("tool-crop"));
         RenderTests.Pump();
         Assert.Equal(["tool-crop"], jpg.PresetIds);
@@ -503,7 +511,7 @@ public class ToolbarPaletteViewTests
         Assert.Equal(["tool-crop", "tool-image-edit", "tool-hide"], jpg.PresetIds);
         Assert.DoesNotContain(PaletteTab.Edit, view.TabIds);
         Assert.Equal(PaletteTab.All, view.Selected);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "extract-motion", "test-motion"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "extract-motion", "test-motion"], view.Chips);
     }
 
     [AvaloniaFact]

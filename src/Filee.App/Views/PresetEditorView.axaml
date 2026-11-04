@@ -38,7 +38,8 @@
         <TextBlock Classes="label" Text="{DynamicResource presets.copy_action}" IsVisible="{Binding IsCopyToFolder}" />
         <ComboBox x:Name="CopyActionBox" ItemsSource="{Binding CopyActions}" SelectedItem="{Binding CopyAction}" IsVisible="{Binding IsCopyToFolder}"
                   HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.copy_action}" />
-        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}"
+        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding TargetSelection}"
+                  PlaceholderText="{Binding HiddenTarget}"
                   IsEnabled="{Binding CanChangeTarget}" IsVisible="{Binding !IsCopyToFolder}"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.target}">
           <ComboBox.ItemTemplate>
@@ -50,6 +51,7 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
+        <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
 
@@ -286,6 +288,10 @@
           <CheckBox Content="{DynamicResource presets.crossfade}" IsChecked="{Binding Crossfade}"
                     ToolTip.Tip="{DynamicResource presets.crossfade_hint}" />
         </StackPanel>
+        <StackPanel IsVisible="{Binding ShowCropFrame}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.crop_frame}" />
+          <ComboBox ItemsSource="{Binding CropFrames}" SelectedItem="{Binding CropFrame}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.crop_frame}" />
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />
@@ -436,6 +442,40 @@
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
         <CheckBox Content="{DynamicResource presets.split}" IsChecked="{Binding SplitPages}" IsVisible="{Binding ShowPdfSplit}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <!-- "Pages per sheet" (#737): several pages on each sheet -->
+        <StackPanel Spacing="10" IsVisible="{Binding ShowSheets}">
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.pages_per_sheet}" />
+              <ComboBox ItemsSource="{Binding SheetLayouts}" SelectedItem="{Binding PagesPerSheet}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.pages_per_sheet}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_paper}" />
+              <ComboBox ItemsSource="{Binding SheetPapers}" SelectedItem="{Binding SheetPaper}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_paper}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_orientation}" />
+              <ComboBox ItemsSource="{Binding SheetOrientations}" SelectedItem="{Binding SheetOrientation}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_orientation}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_order}" />
+              <ComboBox ItemsSource="{Binding SheetOrders}" SelectedItem="{Binding SheetOrder}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_order}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_margin}" />
+              <NumericUpDown Value="{Binding SheetMarginMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_margin}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_gap}" />
+              <NumericUpDown Value="{Binding SheetGapMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_gap}" />
+            </StackPanel>
+          </Grid>
+          <CheckBox Content="{DynamicResource presets.sheet_borders}" IsChecked="{Binding SheetBorders}" />
+        </StackPanel>
         <!-- PDF → PDF: make the file smaller -->
         <StackPanel Spacing="2" IsVisible="{Binding ShowPdfCompression}">
           <Grid ColumnDefinitions="*,12,*">

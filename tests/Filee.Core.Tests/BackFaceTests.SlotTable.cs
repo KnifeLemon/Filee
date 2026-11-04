@@ -5,7 +5,8 @@ namespace Filee.Core.Tests;
 
 public partial class BackFaceTests
 {
-    // Slot table of #806, with Translate from #836 first on the document, text and e-book backs. This is a new-install/reset contract, not migration input.
+    // Slot table of #806, with Translate from #836 first on the document, text and e-book backs, and Crop video (#830)
+    // after Cut a clip. This is a new-install/reset contract, not migration input.
     internal static readonly Dictionary<string, (string[] Front, string[] Back)> ExpectedFaces = new()
     {
         ["images"] = (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"], ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
@@ -16,7 +17,7 @@ public partial class BackFaceTests
         ["hwp"] = (["to-pdf", "to-docx", "to-hwpx", "to-hwp", "to-png", "to-txt", "merge-pdf"], ["to-html", "to-odt", "pdf-long-image", "zip-all"]),
         ["text"] = (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-html", "to-txt"], ["translate", "to-md", "to-odt", "merge-pdf", "zip-all"]),
         ["ebooks"] = (["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-kepub"], ["translate", "to-md", "zip-all"]),
-        ["video"] = (["to-mp4", "mp4-720", "to-mov", "to-gif", "to-mp3", "caption-video"], ["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio", "zip-all"]),
+        ["video"] = (["to-mp4", "mp4-720", "to-mov", "to-gif", "to-mp3", "caption-video"], ["tool-clip", "crop-video", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "zip-all"]),
         ["audio"] = (["to-mp3", "mp3-128", "to-m4a", "to-wav", "caption-video"], ["compress-audio", "merge-audio", "remove-metadata", "to-alac", "zip-all"]),
         ["subtitles"] = (["to-srt", "to-vtt"], ["zip-all"]),
         ["vector"] = (["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp"], ["to-tiff", "to-ico", "to-icns", "to-dxf", "zip-all"]),
@@ -46,11 +47,12 @@ public partial class BackFaceTests
     {
         if (presets[id].IsGroup)
         {
-            // Both built-in groups in the table contain only edits, including every leaf.
+            // The built-in groups in the table contain only edits, including every leaf.
             foreach (var child in presets[id].SubPresetIds)
             {
                 Assert.Contains(child, new[] { "rotate-left", "rotate-right", "rotate-180", "tool-pdf-crop",
-                    "pdf-rotate-left", "pdf-rotate-right", "tool-pdf-pages", "pdf-split", "tool-pdf-add" });
+                    "pdf-rotate-left", "pdf-rotate-right", "tool-pdf-pages", "pdf-split", "tool-pdf-add", "crop-video-auto",
+                    "crop-video-16-9", "crop-video-9-16", "crop-video-4-3", "crop-video-1-1", "crop-video-21-9" });
                 Assert.False(presets[child].IsGroup);
                 yield return 'E';
             }

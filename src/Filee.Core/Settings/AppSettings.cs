@@ -123,7 +123,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 58;
+    public const int CurrentSchemaVersion = 64;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -280,6 +280,17 @@ public sealed class AppSettings
     /// once. A Filee from before it skips the property, so it needs no schema step.
     /// </summary>
     public WindowBounds? MainWindow { get; set; }
+
+    /// <summary>
+    /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to
+    /// them is left out of the donut and the preset lists. An empty list and a missing value both mean every field is on, so
+    /// settings from before it read as every field on and need no schema step. A new install gets its defaults from
+    /// <see cref="UserDataStore.Load"/>.
+    /// </summary>
+    public List<string> TurnedOffFields { get; set; } = [];
+
+    /// <summary><see cref="TurnedOffFields"/> as a set that ignores case, for <see cref="Formats.FormatFields.IsShown"/>.</summary>
+    public IReadOnlySet<string> TurnedOffFieldSet() => TurnedOffFields.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to

@@ -94,7 +94,8 @@ public class MediaToolTests
         Assert.All(ToolIds, id => Assert.Single(presets, p => p.Id == id));
         var audio = profiles.Single(p => p.Id == "audio").BackPresetIds!;
         Assert.Equal(["to-alac", "compress-audio", "merge-audio", "remove-metadata", "zip-all"], audio);
-        // "Extract audio" takes the M4A slice's place; the new library's back face is what an upgraded one gets.
+        // "Extract audio" takes the M4A slice's place; the new library's back face is what an upgraded one gets, but
+        // with WAV where a new one has "Crop video" (#830: placed on new installs only).
         var video = profiles.Single(p => p.Id == "video").BackPresetIds!;
         Assert.Equal(BuiltInData.ProfilesSchema58().Single(p => p.Id == "video").BackPresetIds, video);
         Assert.Equal(full, pdf.BackPresetIds);

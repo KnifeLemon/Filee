@@ -37,6 +37,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         step.From != "pdf" ? Task.Run(() => ImageToPdf(step, progress, cancellationToken), cancellationToken)
+        : step.Preset.Pdf.MakesSheets ? Task.Run(() => Sheets(step, progress, cancellationToken), cancellationToken)
         : step.Preset.Pdf is { Compression: PdfCompression.None, RemoveMetadata: true, SplitPages: false, PageRange: "" }
             ? Task.Run(() => WithoutMetadata(step, progress, cancellationToken), cancellationToken)
         : step.Preset.Pdf.Compression == PdfCompression.None ? Task.Run(() => SplitOrExtract(step, progress, cancellationToken), cancellationToken)
@@ -79,8 +80,6 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
             // "pdf" as target: resize / grayscale / metadata apply, no format-specific encoding settings.
             ImageEncoder.ApplyOptions(frame, options, "pdf");
-            using var stream = EncodeForPdf(frame, step.From, options);
-            using var ximage = XImage.FromStream(stream);
 
             var imageWidthPt = frame.Width / dpi * PointsPerInch;
             var imageHeightPt = frame.Height / dpi * PointsPerInch;
@@ -99,8 +98,19 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             var drawWidth = imageWidthPt * scale;
             var drawHeight = imageHeightPt * scale;
 
-            using (var gfx = XGraphics.FromPdfPage(page))
-                gfx.DrawImage(ximage, margin + (boxWidth - drawWidth) / 2, margin + (boxHeight - drawHeight) / 2, drawWidth, drawHeight);
+            var box = new XRect(margin + (boxWidth - drawWidth) / 2, margin + (boxHeight - drawHeight) / 2, drawWidth, drawHeight);
+            if (CmykPictures.Keeps(frame))
+            {
+                // Print work keeps its colours: CMYK (and its profile) in the PDF too (#1027).
+                CmykPictures.Place(document, page, frame, asJpeg: step.From == "jpg", JpegQuality(options), box);
+            }
+            else
+            {
+                using var stream = EncodeForPdf(frame, step.From, options);
+                using var ximage = XImage.FromStream(stream);
+                using var gfx = XGraphics.FromPdfPage(page);
+                gfx.DrawImage(ximage, box);
+            }
 
             progress?.Report((i + 1.0) / frames.Count);
         }
@@ -110,6 +120,16 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             return [];
         document.Save(path);
         return [path];
+    }
+
+    /// <summary>"Pages per sheet" (PdfSheets): the pages of the range, several to a sheet, in one new PDF.</summary>
+    private static IReadOnlyList<string> Sheets(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
+    {
+        var output = step.Output.Allocate("pdf");
+        if (output is null)
+            return [];
+        PdfSheets.Write(step.InputPath, output, step.Preset.Pdf, progress, ct);
+        return [output];
     }
 
     /// <summary>
@@ -383,10 +403,12 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// </summary>
     private static MemoryStream EncodeForPdf(IMagickImage<byte> frame, string sourceFormat, ImageOptions options)
     {
+        // PDFsharp takes grey and RGB pictures; CMYK ones are placed by CmykPictures, this is only a safety net (#1055).
+        PdfPictures.ToRgb(frame);
         var stream = new MemoryStream();
         if (sourceFormat == "jpg" && !frame.HasAlpha)
         {
-            frame.Quality = (uint)Math.Clamp(Math.Max(options.Quality, 85), 1, 100);
+            frame.Quality = JpegQuality(options);
             frame.Write(stream, MagickFormat.Jpeg);
         }
         else
@@ -396,6 +418,9 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         stream.Position = 0;
         return stream;
     }
+
+    /// <summary>A JPEG source goes into the PDF as JPEG again, at the preset's quality but never below 85.</summary>
+    private static uint JpegQuality(ImageOptions options) => (uint)Math.Clamp(Math.Max(options.Quality, 85), 1, 100);
 
     private static (double Width, double Height) PageSize(PdfPageSize size, bool landscape)
     {

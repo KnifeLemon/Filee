@@ -54,6 +54,8 @@ public static class FormatRegistry
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
         new("xcf", "XCF", FormatCategory.Image, ["xcf"], Writable: false),
+        // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it.
+        new("kra", "Krita (KRA)", FormatCategory.Image, ["kra"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,
@@ -142,10 +144,10 @@ public static class FormatRegistry
 
         // Plain text / markup
         // Text logs, source code, proxy scripts, style sheets and settings files are read as plain text, never executed or
-        // compiled (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828).
+        // compiled (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828, #980, #997).
         new("txt", "TXT", FormatCategory.Text,
             ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
-             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs"]),
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.
@@ -294,6 +296,14 @@ public static class FormatRegistry
         new("lzma", "LZMA", FormatCategory.Archive, ["lzma"], Writable: false),
         new("z", "Z", FormatCategory.Archive, ["z"], Writable: false),
         new("jar", "JAR", FormatCategory.Archive, ["jar"], Writable: false),
+        // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
+        // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
+        // the top.
+        new("mcpack", "Minecraft pack", FormatCategory.Archive, ["mcpack"]),
+        new("mcaddon", "Minecraft add-on", FormatCategory.Archive, ["mcaddon"]),
+        new("mcworld", "Minecraft world", FormatCategory.Archive, ["mcworld"]),
+        new("mctemplate", "Minecraft world template", FormatCategory.Archive, ["mctemplate"]),
+        new("mrpack", "Modrinth modpack", FormatCategory.Archive, ["mrpack"]),
         new("cab", "CAB", FormatCategory.Archive, ["cab"], Writable: false),
         new("cpio", "CPIO", FormatCategory.Archive, ["cpio"], Writable: false),
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),

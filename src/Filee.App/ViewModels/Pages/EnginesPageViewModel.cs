@@ -121,7 +121,8 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     private void Cancel(EnginePackageState package) => _downloads.Cancel(package);
 
     /// <summary>Removes a package (after the view asked for confirmation). False when its files are in use.</summary>
-    public bool Remove(EnginePackageState package) => _downloads.Uninstall(package);
+    /// <summary>Removes a package: null when it's gone, else the key of the reason (see <see cref="EngineDownloadService.Uninstall"/>).</summary>
+    public string? Remove(EnginePackageState package) => _downloads.Uninstall(package);
 
     /// <summary>
     /// Uses the user's own copy of a package from <paramref name="path"/> (a program they picked). Returns false when
@@ -171,8 +172,9 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
         var minimumSpin = Task.Delay(Motion.Enabled ? MinimumRecheckTime : TimeSpan.Zero);
         EngineEnvironment.ForgetSystemCopies(); // a tool installed meanwhile is found
         _downloads.RefreshStatus();
-        Filee.Engines.Translation.TranslatorConverter.PerformCheck();
+        _ = Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
         _catalog.Refresh();
+        _ = _catalog.CheckInBackgroundAsync();
         await minimumSpin;
     }
 

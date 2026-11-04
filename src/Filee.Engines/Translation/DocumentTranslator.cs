@@ -1,4 +1,3 @@
-using System.Text;
 using System.Text.RegularExpressions;
 using Filee.Engines.Ebooks;
 using Filee.Engines.Hwp.Hwpx;
@@ -10,8 +9,6 @@ namespace Filee.Engines.Translation;
 /// </summary>
 internal static class DocumentTranslator
 {
-    private static readonly Regex TagRegex = new(@"<s(\d+)>(.*?)<\/s\1>", RegexOptions.Singleline | RegexOptions.Compiled);
-
     private sealed class TextSlot(Func<string> get, Action<string> set, HCharFormat format)
     {
         public string Text => get();
@@ -78,36 +75,16 @@ internal static class DocumentTranslator
             }
             else
             {
-                var sb = new StringBuilder();
-                for (var k = 0; k < slots.Count; k++)
-                    sb.Append($"<s{k}>{slots[k].Text}</s{k}>");
+                var translated = await KeyedTranslation.TranslateAsync(
+                    slots.Select(s => s.Text).ToList(), toLang, fromLang, service, separator: "", cancellationToken);
 
-                var translated = await service.TranslateTextAsync(sb.ToString(), toLang, fromLang, cancellationToken);
-                var matches = TagRegex.Matches(translated);
-                var matchedIndices = new HashSet<int>();
-
-                foreach (Match match in matches)
-                {
-                    if (int.TryParse(match.Groups[1].Value, out var slotIdx) && slotIdx >= 0 && slotIdx < slots.Count)
-                    {
-                        var origText = slots[slotIdx].Text;
-                        var clean = StripSlotMarkers(match.Groups[2].Value);
-                        slots[slotIdx].SetText(PreserveWhitespace(origText, clean));
-                        matchedIndices.Add(slotIdx);
-                    }
-                }
-
-                // If any tags were dropped by the model, translate those missing runs directly
-                // so no text stays in the source language and no inline formatting is lost
+                // A run the model never returned is translated on its own so no text stays in the source
+                // language and no inline formatting is lost
                 for (var k = 0; k < slots.Count; k++)
                 {
-                    if (!matchedIndices.Contains(k))
-                    {
-                        var origText = slots[k].Text;
-                        var slotTranslated = await service.TranslateTextAsync(origText.Trim(), toLang, fromLang, cancellationToken);
-                        var clean = StripSlotMarkers(slotTranslated);
-                        slots[k].SetText(PreserveWhitespace(origText, clean));
-                    }
+                    var origText = slots[k].Text;
+                    var clean = translated[k] ?? StripSlotMarkers(await service.TranslateTextAsync(origText.Trim(), toLang, fromLang, cancellationToken));
+                    slots[k].SetText(PreserveWhitespace(origText, clean));
                 }
             }
 

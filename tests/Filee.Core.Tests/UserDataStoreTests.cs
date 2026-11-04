@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Core.Profiles;
 using Filee.Core.Settings;
@@ -7,6 +9,127 @@ namespace Filee.Core.Tests;
 
 public partial class UserDataStoreTests
 {
+    [Fact]
+    public void A_new_install_turns_off_every_field_but_developer()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        string[] expected = ["cad", "font", "model3d", "geo", "game", "design", "science", "writing", "video-pro", "audio-pro", "legacy"];
+        Assert.Equal(expected, store.Settings.TurnedOffFields);
+        Assert.Equal(FormatFields.All.Where(f => f.CanTurnOff && !f.OnByDefault).Select(f => f.Id), store.Settings.TurnedOffFields);
+        Assert.DoesNotContain("developer", store.Settings.TurnedOffFields);
+        var path = Path.Combine(dir.Path, "settings.json");
+        Assert.False(File.Exists(path));
+        store.SaveSettings();
+        Assert.Equal(expected, JsonNode.Parse(File.ReadAllText(path))!["turnedOffFields"]!.AsArray().Select(x => x!.GetValue<string>()));
+        var again = new UserDataStore(dir.Path);
+        again.Load();
+        Assert.Equal(expected, again.Settings.TurnedOffFields);
+    }
+
+    [Fact]
+    public void Settings_without_turned_off_fields_start_with_every_field_on_and_keep_the_library()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        string[] slots = ["to-jpg", "to-woff2"];
+        store.Profiles.Single(p => p.Id == "images").PresetIds = [.. slots];
+        store.Presets.Add(new Preset { Id = "test-field-custom", TargetFormat = "png" });
+        store.SaveLibrary();
+        Assert.Equal(slots, store.Profiles.Single(p => p.Id == "images").PresetIds);
+        Assert.Equal(slots, StoredImageSlots(dir.Path));
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), $$"""{"schemaVersion":{{AppSettings.CurrentSchemaVersion}},"language":"ko"}""");
+        var paths = new[] { "settings.json", "presets.json", "profiles.json" }.Select(f => Path.Combine(dir.Path, f)).ToArray();
+        var before = paths.Select(File.ReadAllBytes).ToArray();
+        var again = new UserDataStore(dir.Path);
+        again.Load();
+        Assert.Empty(again.Settings.TurnedOffFields);
+        Assert.Equal("ko", again.Settings.Language);
+        for (var i = 0; i < paths.Length; i++) Assert.Equal(before[i], File.ReadAllBytes(paths[i]));
+        Assert.Equal(slots, again.Profiles.Single(p => p.Id == "images").PresetIds);
+    }
+
+    [Theory]
+    [InlineData("{not json", true)]
+    [InlineData("null", false)]
+    public void A_settings_file_that_cannot_be_read_keeps_every_field_on(string json, bool broken)
+    {
+        using var dir = new TempDir();
+        var path = Path.Combine(dir.Path, "settings.json");
+        File.WriteAllText(path, json);
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        Assert.Empty(store.Settings.TurnedOffFields);
+        if (broken) Assert.True(File.Exists(path + ".broken"));
+    }
+
+    [Fact]
+    public void Turned_off_fields_written_as_null_read_as_every_field_on()
+    {
+        using var dir = new TempDir();
+        var path = Path.Combine(dir.Path, "settings.json");
+        File.WriteAllText(path, """{"schemaVersion":58,"turnedOffFields":null}""");
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        Assert.NotNull(store.Settings.TurnedOffFields);
+        Assert.Empty(store.Settings.TurnedOffFields);
+        Assert.False(File.Exists(path + ".broken"));
+    }
+
+    [Fact]
+    public void An_older_Filee_saving_the_settings_brings_every_field_back_on()
+    {
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        Assert.Contains("font", store.Settings.TurnedOffFields);
+        string[] slots = ["to-png", "to-woff2"];
+        store.Profiles.Single(p => p.Id == "images").PresetIds = [.. slots];
+        store.SaveSettings();
+        store.SaveLibrary();
+        Assert.Equal(slots, store.Profiles.Single(p => p.Id == "images").PresetIds);
+        Assert.Equal(slots, StoredImageSlots(dir.Path));
+        var profilesPath = Path.Combine(dir.Path, "profiles.json");
+        var before = File.ReadAllBytes(profilesPath);
+        var path = Path.Combine(dir.Path, "settings.json");
+        var json = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
+        Assert.True(json.Remove("turnedOffFields"));
+        File.WriteAllText(path, json.ToJsonString());
+        var again = new UserDataStore(dir.Path);
+        again.Load();
+        Assert.Empty(again.Settings.TurnedOffFields);
+        Assert.False(File.Exists(path + ".broken"));
+        Assert.Equal(before, File.ReadAllBytes(profilesPath));
+        Assert.Equal(slots, again.Profiles.Single(p => p.Id == "images").PresetIds);
+    }
+
+    [Fact]
+    public void Unknown_field_ids_are_ignored_and_kept()
+    {
+        using var dir = new TempDir();
+        var path = Path.Combine(dir.Path, "settings.json");
+        File.WriteAllText(path, """{"schemaVersion":58,"turnedOffFields":["cad","no-such-field","IMAGE"]}""");
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        string[] expected = ["cad", "no-such-field", "IMAGE"];
+        Assert.Equal(expected, store.Settings.TurnedOffFields);
+        var off = store.Settings.TurnedOffFieldSet();
+        Assert.False(FormatFields.IsShown("dwg", off));
+        Assert.True(FormatFields.IsShown("png", off));
+        Assert.True(FormatFields.IsShown("glb", off));
+        store.SaveSettings();
+        var again = new UserDataStore(dir.Path);
+        again.Load();
+        Assert.Equal(expected, again.Settings.TurnedOffFields);
+    }
+
+    private static string[] StoredImageSlots(string directory) =>
+        JsonNode.Parse(File.ReadAllText(Path.Combine(directory, "profiles.json")))!.AsArray()
+            .Single(p => p!["id"]!.GetValue<string>() == "images")!["presetIds"]!.AsArray()
+            .Select(p => p!.GetValue<string>()).ToArray();
+
     [Theory]
     [InlineData(30)]
     [InlineData(31)]

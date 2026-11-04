@@ -59,6 +59,8 @@ public static class BuiltInData
         },
         .. ImageEditPresets(),
         .. HidePresets(),
+        .. AnnotatePresets(),
+        .. BackgroundPresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -95,6 +97,7 @@ public static class BuiltInData
             Kind = PresetKind.Group,
             SubPresetIds = ["tool-pdf-crop", "pdf-rotate-left", "pdf-rotate-right", "tool-pdf-pages", "pdf-split", "tool-pdf-add"],
         },
+        .. PdfSheetPresets(),
         .. ImageToolPresets(),
         new()
         {
@@ -124,6 +127,7 @@ public static class BuiltInData
         .. MotionPhotoPresets(),
         .. LivePhotoPresets(),
         .. ClipPresets(),
+        .. CropVideoPresets(),
         .. MediaToolPresets(),
         .. MergeImagesPresets(),
         new() { Id = "to-docx", Name = "DOCX", TargetFormat = "docx" },
@@ -205,6 +209,69 @@ public static class BuiltInData
     ];
 
     /// <summary>
+    /// Minecraft packs and Modrinth modpacks (#824, #898, added to the library in settings schema 62): in the palette
+    /// only, after "TAR", in the Games field (off in a new install).
+    /// </summary>
+    public static List<Preset> GamePackPresets() =>
+    [
+        new() { Id = "to-mcpack", Name = "MCPACK", TargetFormat = "mcpack" },
+        new() { Id = "to-mcaddon", Name = "MCADDON", TargetFormat = "mcaddon" },
+        new() { Id = "to-mcworld", Name = "MCWORLD", TargetFormat = "mcworld" },
+        new() { Id = "to-mctemplate", Name = "MCTEMPLATE", TargetFormat = "mctemplate" },
+        new() { Id = "to-mrpack", Name = "MRPACK", TargetFormat = "mrpack" },
+    ];
+
+    /// <summary>
+    /// "Crop video" (#830, added to the library in settings schema 59): a group of the frame cut to the picture inside
+    /// its black bars or to a ratio, centred. On the back of the video donut after "Cut a clip" for new installs (in
+    /// place of "Extract audio", which stays in the library; MP3 on the front takes the sound out too).
+    /// </summary>
+    public static List<Preset> CropVideoPresets() =>
+    [
+        CropVideo("crop-video-auto", "preset.crop_video_auto", VideoCrop.Auto),
+        CropVideo("crop-video-16-9", "preset.crop_video_16_9", "16:9"),
+        CropVideo("crop-video-9-16", "preset.crop_video_9_16", "9:16"),
+        CropVideo("crop-video-4-3", "preset.crop_video_4_3", "4:3"),
+        CropVideo("crop-video-1-1", "preset.crop_video_1_1", "1:1"),
+        CropVideo("crop-video-21-9", "preset.crop_video_21_9", "21:9"),
+        new()
+        {
+            Id = "crop-video", NameKey = "preset.group_crop_video", TargetFormat = Preset.GroupTarget, Kind = PresetKind.Group,
+            SubPresetIds = ["crop-video-auto", "crop-video-16-9", "crop-video-9-16", "crop-video-4-3", "crop-video-1-1", "crop-video-21-9"],
+        },
+    ];
+
+    /// <summary>
+    /// "Pages per sheet" (#737, added in settings schema 63): 2, 4, 6, 8 or 9 PDF pages on each sheet, and their group
+    /// after "Edit". In the palette only: no donut gets a slot.
+    /// </summary>
+    public static List<Preset> PdfSheetPresets() =>
+    [
+        .. PdfOptions.SheetLayouts.Select(n => new Preset
+        {
+            Id = $"pdf-nup-{n}",
+            NameKey = $"preset.pdf_nup_{n}",
+            TargetFormat = "pdf",
+            Pdf = { PagesPerSheet = n },
+            Output = { FileNamePattern = $"{{name}}_{n}up" },
+        }),
+        new()
+        {
+            Id = "pdf-nup", NameKey = "preset.group_pdf_nup", TargetFormat = Preset.GroupTarget, Kind = PresetKind.Group,
+            SubPresetIds = [.. PdfOptions.SheetLayouts.Select(n => $"pdf-nup-{n}")],
+        },
+    ];
+
+    private static Preset CropVideo(string id, string nameKey, string frame) => new()
+    {
+        Id = id,
+        NameKey = nameKey,
+        TargetFormat = SameAsSource,
+        Media = { CropFrame = frame },
+        Output = { FileNamePattern = "{name}_cropped" },
+    };
+
+    /// <summary>
     /// "Edit pictures" (#584, added in settings schema 51): size, format, turn and colour chosen in a window each time, on
     /// the front of the images donut after "Half size".
     /// </summary>
@@ -227,6 +294,38 @@ public static class BuiltInData
         {
             Id = "tool-hide", NameKey = "preset.hide", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Tool = Preset.HideTool, Output = { FileNamePattern = "{name}_hidden" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Annotate" tool (settings schema 60): in the palette, on no donut.</summary>
+    public const string AnnotateId = "tool-annotate";
+
+    /// <summary>
+    /// "Annotate" (settings schema 60): pen, arrows, boxes, highlights, text and numbers drawn on pictures, saved as
+    /// "{name} Annotated". In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> AnnotatePresets() =>
+    [
+        new()
+        {
+            Id = AnnotateId, NameKey = "preset.annotate", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.AnnotateTool, Output = { FileNamePattern = "{name} Annotated" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Add background" tool (settings schema 64): in the palette, on no donut.</summary>
+    public const string BackgroundId = "tool-background";
+
+    /// <summary>
+    /// "Add background" (settings schema 64): a picture set on a gradient, a colour or a picture of one's own, saved as
+    /// "{name} With Background.png". In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> BackgroundPresets() =>
+    [
+        new()
+        {
+            Id = BackgroundId, NameKey = "preset.background", TargetFormat = BackgroundTool.Target,
+            Kind = PresetKind.Tool, Tool = Preset.BackgroundTool, Output = { FileNamePattern = "{name} With Background" },
         },
     ];
 
@@ -498,6 +597,7 @@ public static class BuiltInData
         new() { Id = "to-7z", Name = "7Z", TargetFormat = "7z" },
         new() { Id = "to-tgz", Name = "TAR.GZ", TargetFormat = "tgz" },
         new() { Id = "to-tar", Name = "TAR", TargetFormat = "tar" },
+        .. GamePackPresets(),
         new() { Id = "extract", NameKey = "preset.extract", TargetFormat = FormatRegistry.Folder },
         new()
         {
@@ -603,7 +703,7 @@ public static class BuiltInData
                 "ebooks" => (["to-pdf", "to-epub", "to-docx", "to-txt", "to-azw3", "to-kepub"], ["translate", "to-md", "zip-all"]),
                 // Every frame as pictures stays behind a flip: a missed front slice must not create thousands of files.
                 "video" => (["to-mp4", "mp4-720", "to-mov", "to-gif", "to-mp3", "caption-video"],
-                    ["tool-clip", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "extract-audio", "zip-all"]),
+                    ["tool-clip", "crop-video", "compress-video", "merge-videos", "remove-metadata", "mp4-av1", "extract-frames-png", "zip-all"]),
                 "audio" => (["to-mp3", "mp3-128", "to-m4a", "to-wav", "caption-video"],
                     ["compress-audio", "merge-audio", "remove-metadata", "to-alac", "zip-all"]),
                 "subtitles" => (["to-srt", "to-vtt"], ["zip-all"]),
