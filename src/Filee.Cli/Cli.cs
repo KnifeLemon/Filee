@@ -488,7 +488,7 @@ internal static class Cli
             return packages.Count > 0 ? packages : null;
 
             Route? Plan(RoutePlanner planner) => planner.Plan(request.Source, request.Target, frames: request.Frames,
-                shaping: request.Shaping, motionPhoto: request.MotionPhoto, livePhoto: request.LivePhoto, ocr: request.Ocr);
+                shaping: request.Shaping, motionPhoto: request.MotionPhoto, livePhoto: request.LivePhoto, ocr: request.Ocr, metadata: request.Metadata);
         }
     }
 }

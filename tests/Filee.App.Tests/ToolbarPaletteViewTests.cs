@@ -115,11 +115,12 @@ public class ToolbarPaletteViewTests
     }
 
     /// <summary>
-    /// The library without the Annotate and Add background tools: every picture donut offers them in its Edit tab,
-    /// which a test of the picture tools would otherwise always see.
+    /// The library without the Annotate, Add background and Metadata tools: every picture donut offers them in its Edit
+    /// tab, and every PDF, video or sound donut the Metadata tool, which a test of the tools would otherwise always
+    /// see.
     /// </summary>
     private static void WithoutPictureEditTools(PresetAvailabilityTests.Fixture f) =>
-        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool);
+        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool || p.IsMetadataTool);
 
     private static ToolbarProfile Profile(string id, params string[] extensions) => new()
     {
@@ -193,6 +194,7 @@ public class ToolbarPaletteViewTests
     public void Empty_tabs_and_redundant_row_disappear()
     {
         using var f = new PresetAvailabilityTests.Fixture();
+        WithoutPictureEditTools(f);
         // Nothing converts a WAV here: only the groups are left, and no tab row.
         using var vm = f.Page(Profile("tabs-wav", "wav"));
         Dispatcher.UIThread.RunJobs();

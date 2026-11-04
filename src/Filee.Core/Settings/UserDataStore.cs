@@ -1020,6 +1020,14 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 67)
             changed |= LearnExtensions(profiles, out _, ["flc", "fli"]);
+        // v68: the "Metadata" tool, in the palette only, after "Add background" as in a new library (at the end
+        //      without it). (Schema 68 may be renumbered if another change takes it first.)
+        if (from < 68 && presets.All(p => p.Id != BuiltInData.MetadataId))
+        {
+            var background = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
+            presets.InsertRange(background < 0 ? presets.Count : background + 1, BuiltInData.MetadataPresets());
+            changed = true;
+        }
         return changed;
     }
 

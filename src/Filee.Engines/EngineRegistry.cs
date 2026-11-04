@@ -14,6 +14,7 @@ using Filee.Engines.Icns;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Media;
+using Filee.Engines.Metadata;
 using Filee.Engines.Models3D;
 using Filee.Engines.Ocr;
 using Filee.Engines.Office;
@@ -63,6 +64,7 @@ public static class EngineRegistry
         new SubtitleConverter(),
         new WicImageConverter(),
         new WhisperConverter(loggers?.CreateLogger<WhisperConverter>()),
+        new ExifToolConverter(),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
         new ModelConverter(),

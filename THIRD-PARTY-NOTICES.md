@@ -22,6 +22,8 @@ Each component remains under its own license.
 | SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
+| MetadataExtractor (reading metadata for the Metadata tool when ExifTool is not installed) | Apache-2.0 | https://github.com/drewnoakes/metadata-extractor-dotnet |
+| ExifTool (optional engine, downloaded on request: the Metadata tool reads and writes with it) | Perl's licence (Artistic or GPL), separate program | https://exiftool.org |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | ExcelDataReader | MIT | https://github.com/ExcelDataReader/ExcelDataReader |
 | PdfPig (PDF text, layout and pictures) | Apache-2.0 | https://github.com/UglyToad/PdfPig |
