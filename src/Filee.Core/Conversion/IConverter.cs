@@ -220,6 +220,24 @@ public interface ITextShapingCheck
     TextScripts ScanScripts(string sourcePath, string sourceFormat);
 }
 
+/// <summary>
+/// An engine that opens envelopes: files that wrap one file of another format, such as a signed .p7m around a PDF or
+/// an XML invoice. Which format is inside is known only from the file, so <see cref="JobQueue"/> asks before planning
+/// and plans the route from that format, with the engine's step to it first (<see cref="RoutePlanner.PlanThrough"/>).
+/// The engine has an edge from the envelope to every format it can find inside.
+/// </summary>
+public interface IEnvelopeOpener
+{
+    /// <summary>True for an envelope format this engine opens.</summary>
+    bool Opens(string format);
+
+    /// <summary>
+    /// The format id of the file inside <paramref name="path"/> (an envelope of <paramref name="format"/>). Throws
+    /// <see cref="ConversionRefusedException"/> when it can't be opened or holds nothing Filee converts.
+    /// </summary>
+    string InnerFormat(string path, string format);
+}
+
 /// <summary>Merges several PDF files into one. Implemented by the PDF engine.</summary>
 public interface IPdfMerger
 {

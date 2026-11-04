@@ -33,13 +33,13 @@ public class UpscaleToolTests
     }
 
     [Fact]
-    public void Schema_66_adds_the_tool_to_the_library_and_no_slot()
+    public void Schema_69_adds_the_tool_to_the_library_and_no_slot()
     {
         var presets = BuiltInData.CreatePresets().Where(p => p.Id != BuiltInData.UpscaleId).ToList();
         var profiles = BuiltInData.CreateProfiles();
         var slots = Slots(profiles);
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(65, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(68, presets, profiles));
 
         var after = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
         if (after < 0)

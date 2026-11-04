@@ -199,6 +199,32 @@ public sealed class RoutePlanner
     public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false, bool upscale = false) =>
         Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, upscale: upscale) is not null;
 
+    /// <summary>
+    /// The route for an envelope (<see cref="IEnvelopeOpener"/>): the cheapest edge from <paramref name="from"/> to the
+    /// format inside it, <paramref name="through"/>, then the route from there to <paramref name="to"/> as
+    /// <see cref="Plan"/> finds it with the same options. Null when the envelope can't be opened to that format or the
+    /// file inside can't become <paramref name="to"/>.
+    /// </summary>
+    public Route? PlanThrough(string from, string through, string to, bool frames = false, bool shaping = false, bool motionPhoto = false,
+        bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false, bool upscale = false)
+    {
+        from = from.ToLowerInvariant();
+        through = through.ToLowerInvariant();
+        to = to.ToLowerInvariant();
+        var open = EdgesFrom(from)
+            .Where(e => e.Edge.To == through && e.Edge.To != from)
+            .OrderBy(e => e.Cost)
+            .FirstOrDefault();
+        if (open.Converter is null)
+            return null;
+        var step = new RouteStep(open.Converter, from, through);
+        if (through == to && !(frames || motionPhoto || livePhoto || ocr || caption || translate || upscale))
+            return new Route([step], open.Cost);
+        return Plan(through, to, frames, shaping, motionPhoto, livePhoto, ocr, caption, translate, upscale) is { } rest
+            ? new Route([step, .. rest.Steps], open.Cost + rest.Cost)
+            : null;
+    }
+
     private Route? PlanWithTranslate(string from, string to, bool shaping)
     {
         var direct = EdgesFrom(from)

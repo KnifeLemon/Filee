@@ -22,6 +22,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
+| Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
@@ -963,6 +964,31 @@ saved as octet-stream, and scripts, frames, remote pictures, fonts and style she
 (windows-1252, `file:///C:/` locations, VML fallbacks), a `cid:`-only page in EUC-KR, a picture on disk named by a
 `file:` URI that must not be read, and the routes to HTML, TXT, DOCX, HWPX and PDF.
 
+## Signed files (.p7m)
+
+A `.p7m` (#1010) is a CMS / PKCS #7 SignedData envelope (RFC 5652; CAdES as Italian e-invoices and signed PDFs are
+made): the signed file with its signature around it. `Signed/P7mConverter.cs` takes the file out with .NET's
+`SignedCms` (System.Security.Cryptography.Pkcs): DER or BER, or the same saved as Base64 or PEM text. An envelope
+signed again is opened again, up to 8 deep. Envelopes over 512 MB are refused.
+
+- **The signature is not checked**, and nothing in it is trusted: no certificate chain, no revocation list, no
+  time-stamp server, no network. The result is the plain file without the proof the signature gives; the `.p7m` is
+  left as it was.
+- **The format inside** comes from the envelope's name (`invoice.xml.p7m` → XML), else from the first bytes: PDF and
+  pictures (as for files from a browser), XML, HTML, RTF, a MIME message (a signed e-mail, `smime.p7m`), ZIP and the
+  Word, Excel, PowerPoint, OpenDocument and EPUB files in one, plain UTF-8 text. Anything else is refused
+  (`error.p7m_unknown_content`).
+- **The route** goes on from that format. The converter is an `IEnvelopeOpener`: `JobQueue` asks it for the format
+  inside before planning, and `RoutePlanner.PlanThrough` puts the step to it first (P7M → PDF → PNG); "same format",
+  OCR and the other options apply to the file inside. The converter has an edge from P7M to every format, so the donut
+  offers what any file inside could become, and a file inside that can't become the target fails with its own
+  format's "no route" (`xml → mp4`).
+- **Names**: outputs are named after the file inside (`FormatRegistry.NameWithoutExtension`: `invoice.pdf.p7m` →
+  `invoice.pdf`, `invoice.png`).
+- **Refused**: a detached signature (`error.p7m_detached`: the signed file is kept elsewhere), an encrypted S/MIME
+  envelope (`error.p7m_encrypted`: EnvelopedData, only the recipient's key opens it) and anything that isn't a
+  SignedData (`error.p7m_unreadable`).
+
 ## Data (JSON, YAML, TOML, XML, CSV, vCard, iCalendar)
 
 `Data/DataConverter.cs` (engine id `data`) reads every format into one tree (`Data/DataTree.cs`: objects with their
@@ -1570,6 +1596,9 @@ can't hold it. The chunks carry the camera's wall-clock time, so FFmpeg reports 
 the output starts at zero.
 Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
 decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
+FLIC animations (`.flc` and `.fli`, read only, #940), from Autodesk Animator and Animator Pro and the cutscenes of DOS
+games, are read by FFmpeg's `flic` demuxer and decoder (8-bit palette pictures, no sound) and go to GIF, every video
+target and PNG frames. FFmpeg has no FLIC encoder, so nothing writes them.
 A Video CD's `MPEGAV/AVSEQ01.DAT` (MPEG-1 in a RIFF/CDXA wrapper) counts as MPEG: `.dat` is an extension of that
 format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fails instead of making a file.
 

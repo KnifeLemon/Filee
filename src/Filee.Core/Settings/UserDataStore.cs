@@ -1012,9 +1012,21 @@ internal static class SettingsMigrations
         //      another change takes it first.)
         if (from < 65)
             changed |= LearnExtensions(profiles, out _, ["dbml"]);
-        // v66: the "Upscale" tool, in the palette only, after "Add background" (or "Annotate") as in a new library (at the end
+        // v66: Krita's backups (.kra~, #1077) learn the images donut; custom claims stay put. (Schema 66 may be renumbered
+        //      if another change takes it first.)
+        if (from < 66)
+            changed |= LearnExtensions(profiles, out _, ["kra~"]);
+        // v67: FLIC animations (.flc, .fli, #940) learn the video donut; custom claims stay put. (Schema 67 may be
+        //      renumbered if another change takes it first.)
+        if (from < 67)
+            changed |= LearnExtensions(profiles, out _, ["flc", "fli"]);
+        // v68: signed files (.p7m, #1010) learn the documents donut; custom claims stay put. (Schema 68 may be
+        //      renumbered if another change takes it first.)
+        if (from < 68)
+            changed |= LearnExtensions(profiles, out _, ["p7m"]);
+        // v69: the "Upscale" tool, in the palette only, after "Add background" (or "Annotate") as in a new library (at the end
         //      without it, #806).
-        if (from < 66 && presets.All(p => p.Id != BuiltInData.UpscaleId))
+        if (from < 69 && presets.All(p => p.Id != BuiltInData.UpscaleId))
         {
             var after = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
             if (after < 0)
@@ -1022,10 +1034,6 @@ internal static class SettingsMigrations
             presets.InsertRange(after < 0 ? presets.Count : after + 1, BuiltInData.UpscalePresets());
             changed = true;
         }
-        // v66: Krita's backups (.kra~, #1077) learn the images donut; custom claims stay put. (Schema 66 may be renumbered
-        //      if another change takes it first.)
-        if (from < 66)
-            changed |= LearnExtensions(profiles, out _, ["kra~"]);
         return changed;
     }
 
