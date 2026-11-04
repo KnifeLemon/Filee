@@ -1254,7 +1254,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal(1, root.GetProperty("failed").GetInt32());
         Assert.Equal(0, root.GetProperty("converted").GetInt32());
         OnlyEvents(errors.ToString());
-        Assert.Equal("failed", Assert.Single(Events(errors.ToString()), e => e.GetProperty("event").GetString() == "file").GetProperty("state").GetString());
+        Assert.Equal("cancelled", Assert.Single(Events(errors.ToString()), e => e.GetProperty("event").GetString() == "file").GetProperty("state").GetString());
         var file = root.GetProperty("files")[0];
         Assert.Equal(["source", "state", "outputs", "error"], file.EnumerateObject().Select(p => p.Name));
         Assert.Equal("cancelled", file.GetProperty("state").GetString());
