@@ -6,6 +6,7 @@
 // The YAML front matter's "title" becomes the document title. Raw HTML is skipped, except <br>. A code block is one
 // shaded box in a monospace font: a borderless one-column table with a row per line, so it can break across pages.
 
+using Filee.Engines.Infrastructure;
 using Markdig;
 using Markdig.Extensions.DefinitionLists;
 using Markdig.Extensions.Footnotes;
@@ -57,7 +58,7 @@ internal sealed class MarkdownReader
     /// <summary>Parses Markdown text.</summary>
     /// <param name="markdown">The document text.</param>
     /// <param name="baseFolder">Folder of the Markdown file: relative image paths are resolved against it.</param>
-    /// <param name="resourceRoot">When set, images must be inside this folder (e.g. an unpacked TXTZ book).</param>
+    /// <param name="resourceRoot">Folder images must be inside (e.g. an unpacked TXTZ book); default: <paramref name="baseFolder"/>.</param>
     public static HDocument Read(string markdown, string baseFolder, string? resourceRoot = null)
     {
         var parsed = Markdown.Parse(markdown, Pipeline);
@@ -416,24 +417,12 @@ internal sealed class MarkdownReader
         };
     }
 
-    /// <summary>Local image path of a Markdown image target, or null for remote / missing images.</summary>
-    internal static string? ResolveImage(string? target, string baseFolder, string? resourceRoot = null)
-    {
-        if (string.IsNullOrWhiteSpace(target) || target.Contains("://", StringComparison.Ordinal) && !target.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-            return null;
-        try
-        {
-            var path = target.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
-                ? new Uri(target).LocalPath
-                : Uri.UnescapeDataString(target);
-            var candidate = Path.IsPathRooted(path) ? path : Path.Combine(baseFolder, path);
-            return HtmlReader.InsideFolder(candidate, resourceRoot) && File.Exists(candidate) ? Path.GetFullPath(candidate) : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or UriFormatException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
-    }
+    /// <summary>
+    /// Local image path of a Markdown image target, or null for remote / missing images and images outside
+    /// <paramref name="resourceRoot"/> (default: <paramref name="baseFolder"/>, see <see cref="DocumentFiles"/>).
+    /// </summary>
+    internal static string? ResolveImage(string? target, string baseFolder, string? resourceRoot = null) =>
+        DocumentFiles.Find(target, baseFolder, resourceRoot ?? baseFolder);
 
     // ───────────────────────── Helpers ─────────────────────────
 
