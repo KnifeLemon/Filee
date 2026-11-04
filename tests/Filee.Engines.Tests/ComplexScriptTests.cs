@@ -390,4 +390,124 @@ public class ComplexScriptTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.All(runs.Where(r => ComplexScripts.Direction(r.Element(W + "t")!.Value) < 0), r => Assert.NotNull(r.Element(W + "rPr")?.Element(W + "rtl")));
         Assert.Empty(paragraphs[2].Descendants(W + "rtl"));
     }
+
+    [Theory]
+    // Issue #979, as Chrome (Skia) and LibreOffice leave them: the glyph drawn at the left of "(3)" stands for ")".
+    [InlineData(")3(", "البطولة المفتوحة (3) في الرياض")]
+    // As engines leave them whose ToUnicode entries name the glyph drawn: "(" at the left, so the paragraph reads ")3(".
+    [InlineData("(3)", "البطولة المفتوحة (3) في الرياض")]
+    public void Brackets_around_a_number_stay_around_it_in_right_to_left_text(string drawn, string expected)
+    {
+        var pdf = new GlyphPdfBuilder();
+        RightToLeft(pdf, ["البطولة", "المفتوحة", drawn, "في", "الرياض"], 523, 100);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "brackets.pdf"));
+
+        Assert.Equal(expected, PlainText(path));
+    }
+
+    [Fact]
+    public void Punctuation_around_latin_words_and_numbers_goes_to_the_side_it_is_read_on()
+    {
+        // The brackets belong to the Arabic around them (drawn from the right: "(" then the Latin words left to right),
+        // a percent sign to its number, and two numbers read from the right like the text.
+        var pdf = new GlyphPdfBuilder();
+        var end = RightToLeft(pdf, ["الفريق", "يضم", "Pace(", ")Robo", "50%", "جديد", ",10", "20"], 523, 100);
+        pdf.Glyph(".", end - 6, 100, 6);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "neutrals.pdf"));
+
+        Assert.Equal("الفريق يضم (Robo Pace) 50% جديد 10, 20.", PlainText(path));
+    }
+
+    [Fact]
+    public void Brackets_around_an_arabic_word_in_english_text_stay_around_it()
+    {
+        // Left to right the bracket pair stays outside the Arabic word: "(" at its left, ")" at its right.
+        var pdf = new GlyphPdfBuilder();
+        pdf.Run("Open", 72, 100, 6);
+        pdf.Run("(" + Backwards("البطولة") + ")", 102, 100, 6);
+        pdf.Run("tournament", 162, 100, 6);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "ltr-brackets.pdf"));
+
+        Assert.Equal("Open (البطولة) tournament", PlainText(path));
+    }
+
+    [Fact]
+    public void Presentation_forms_become_letters()
+    {
+        // Some engines map their glyphs to the positional forms: البطولة drawn left to right from its last letter, then
+        // the lam-alef ligature on its left.
+        var pdf = new GlyphPdfBuilder();
+        pdf.Run("ﺔﻟﻮﻄﺒﻟﺍ", 300, 100, 6);
+        pdf.Run("ﻻ", 280, 100, 6);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "forms.pdf"));
+
+        Assert.Equal("البطولة لا", PlainText(path));
+    }
+
+    [Theory]
+    [InlineData("البطولة المفتوحة في الرياض")]
+    [InlineData("قيمة الفاتورة كاملة")] // no common word: the letters that only end a word tell
+    [InlineData("گزارش فروش در این شرکت به ریال")] // Persian: no ة or ى, the common words tell
+    [InlineData("מרכז הספורט בירושלים הפתוח")] // Hebrew: the final forms tell
+    [InlineData("فريق RoboPace يضم 8 مهندسين في المدرسة")]
+    public void Text_drawn_left_to_right_in_reading_order_is_not_turned_around(string text)
+    {
+        // rhwp (no right-to-left layout) draws characters left to right as they come: reading them from the right would
+        // give ةلوطبلا for البطولة.
+        var pdf = new GlyphPdfBuilder();
+        var x = 72.0;
+        foreach (var word in text.Split(' '))
+        {
+            pdf.Run(word, x, 100, 6);
+            x += (word.Length + 1) * 6;
+        }
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "forward.pdf"));
+
+        Assert.Equal(text, PlainText(path));
+    }
+
+    [Theory]
+    [InlineData("البطولة المفتوحة في الرياض")]
+    [InlineData("قيمة الفاتورة كاملة")]
+    [InlineData("گزارش فروش در این شرکت به ریال")]
+    [InlineData("מרכז הספורט בירושלים הפתוח")]
+    public void Text_drawn_visually_is_not_taken_for_text_drawn_forward(string text)
+    {
+        var pdf = new GlyphPdfBuilder();
+        RightToLeft(pdf, text.Split(' '), 523, 100);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "visual.pdf"));
+
+        Assert.Equal(text, PlainText(path));
+    }
+
+    [Fact]
+    public void The_parts_of_a_tabbed_right_to_left_row_read_from_the_right()
+    {
+        // A form: a label at the right, its value far to the left of it (a tab), both right to left.
+        var pdf = new GlyphPdfBuilder();
+        for (var row = 0; row < 3; row++)
+        {
+            RightToLeft(pdf, ["اسم", "الشركة"], 523, 100 + row * 40, advance: 12);
+            RightToLeft(pdf, ["شركة", "الرياض"], 200, 100 + row * 40, advance: 12);
+        }
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "tabbed.pdf"));
+
+        Assert.StartsWith("اسم الشركة\tشركة الرياض", PlainText(path));
+    }
+
+    [Fact]
+    public async Task Word_output_reads_the_same_as_the_text()
+    {
+        // PDF → DOCX goes through the same reader.
+        var pdf = new GlyphPdfBuilder();
+        RightToLeft(pdf, ["البطولة", ")3(", "في", "الرياض"], 523, 100);
+        var path = pdf.Save(Path.Combine(fx.NewFolder(), "docx.pdf"));
+
+        var job = await fx.ConvertAsync([path], new Preset { TargetFormat = "docx" });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal("البطولة (3) في الرياض", string.Concat(Body(job.Outputs.Single()).Descendants(W + "t").Select(t => t.Value)));
+    }
+
+    private static string Backwards(string text) => new([.. text.Reverse()]);
 }
