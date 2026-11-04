@@ -386,8 +386,27 @@ public sealed class EngineInstaller
         finally
         {
             if (Directory.Exists(staging))
-                Directory.Delete(staging, recursive: true);
+                DeleteStagingDirectory(staging);
         }
+    }
+
+    /// <summary>
+    /// Removes read-only attributes before deleting an unpacking folder. Administrative MSI extraction preserves
+    /// Windows file attributes; Calibre includes read-only DLLs (e.g. amatch.dll), which make recursive deletion fail.
+    /// </summary>
+    internal static void DeleteStagingDirectory(string folder)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories))
+            {
+                var attributes = File.GetAttributes(file);
+                if ((attributes & FileAttributes.ReadOnly) != 0)
+                    File.SetAttributes(file, attributes & ~FileAttributes.ReadOnly);
+            }
+        }
+
+        Directory.Delete(folder, recursive: true);
     }
 
     internal static async Task UnpackTarAsync(string file, string target, string kind, CancellationToken cancellationToken)
