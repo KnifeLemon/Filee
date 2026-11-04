@@ -2,9 +2,11 @@
 // LibreOffice's package reader (26.2) refuses archives that other readers open, such as Tencent Docs exports (issue
 // #141): it fails on entries stored uncompressed with a data descriptor, bytes between entries and a name that appears
 // twice, saying only "source file could not be loaded". The parts are fine, so a copy with the same parts written by
-// System.IO.Compression loads.
+// System.IO.Compression loads. The copies are checked while they are made: a few kilobytes can unpack to terabytes.
 
 using System.IO.Compression;
+using Filee.Core.Conversion;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office;
 
@@ -13,6 +15,12 @@ internal static class PackageRepacker
 {
     private const string ContentTypes = "[Content_Types].xml";
     private const string Mimetype = "mimetype";
+
+    /// <summary>
+    /// What a copy may unpack to at least. A larger file may unpack to twice its own size: a presentation of many
+    /// gigabytes of video is stored as it is, and its size doesn't grow from a few kilobytes.
+    /// </summary>
+    private const long MaxUnpackedBytes = 2048L * 1024 * 1024;
 
     /// <summary>The file is a ZIP that holds <c>[Content_Types].xml</c> (Office Open XML) or <c>mimetype</c> (OpenDocument).</summary>
     public static bool IsPackage(string path)
@@ -34,7 +42,13 @@ internal static class PackageRepacker
     /// twice keeps its first part.
     /// </summary>
     /// <param name="replaced">Parts written with other content (<see cref="LinkedContent"/>), by name.</param>
-    public static void Repack(string input, string output, IReadOnlyDictionary<string, byte[]>? replaced = null)
+    /// <exception cref="ConversionRefusedException">The parts unpack to more than a document of this size can hold.</exception>
+    public static void Repack(string input, string output, IReadOnlyDictionary<string, byte[]>? replaced = null) =>
+        Repack(input, output, replaced, Math.Max(MaxUnpackedBytes, 2 * new FileInfo(input).Length));
+
+    /// <inheritdoc cref="Repack(string, string, IReadOnlyDictionary{string, byte[]}?)"/>
+    /// <param name="maxBytes">The limit (for tests).</param>
+    internal static void Repack(string input, string output, IReadOnlyDictionary<string, byte[]>? replaced, long maxBytes)
     {
         using var source = ZipFile.OpenRead(input);
         var parts = source.Entries.Where(e => !e.FullName.EndsWith('/') && !e.FullName.EndsWith('\\'))
@@ -45,6 +59,8 @@ internal static class PackageRepacker
         using var file = File.Create(output);
         using var zip = new ZipArchive(file, ZipArchiveMode.Create);
         var written = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var buffer = new byte[81920];
+        long total = 0;
         foreach (var part in parts)
         {
             if (!written.Add(part.FullName))
@@ -60,7 +76,14 @@ internal static class PackageRepacker
                 continue;
             }
             using var from = part.Open();
-            from.CopyTo(to);
+            int count;
+            while ((count = from.Read(buffer)) > 0)
+            {
+                total += count;
+                if (total > maxBytes)
+                    throw new ConversionRefusedException("error.document_too_large", $"{part.FullName}: the package unpacks to over {BoundedXml.Size(maxBytes)}");
+                to.Write(buffer, 0, count);
+            }
         }
     }
 }

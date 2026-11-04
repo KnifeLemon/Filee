@@ -8,9 +8,12 @@
 // A custom mark doesn't count in the numbering, so all footnotes change together and the numbers are worked out here.
 // That takes numbers that don't depend on the pages: a document restarting them per page or section, or with a number
 // format not known here, stays as it was. Endnotes stay LibreOffice's.
+//
+// The parts are read with the XML limits (OpcPackage, BoundedXml) and the copy is written by PackageRepacker, which has
+// the limit for a package's other parts. LibreOfficeConverter hands this the copy without outside links (LinkedContent).
+// A crafted note can hold a million runs in one paragraph, and nothing can cancel this: every walk here is a single one.
 
 using System.Globalization;
-using System.IO.Compression;
 using System.Xml;
 using System.Xml.Linq;
 using Filee.Engines.Office.Ooxml;
@@ -55,7 +58,11 @@ internal static class DocxNoteMarks
             var folder = Path.Combine(workDirectory, "lo-notes-" + Guid.NewGuid().ToString("N")[..8]);
             Directory.CreateDirectory(folder);
             var copy = Path.Combine(folder, Path.GetFileName(path));
-            WriteCopy(path, copy, new(StringComparer.OrdinalIgnoreCase) { [main] = document, [notesPath] = notes });
+            PackageRepacker.Repack(path, copy, new Dictionary<string, byte[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                [main] = Bytes(document),
+                [notesPath] = Bytes(notes),
+            });
             return copy;
         }
         catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException or XmlException)
@@ -69,8 +76,8 @@ internal static class DocxNoteMarks
     {
         if (note.Descendants(W + "footnoteRef").FirstOrDefault() is not { } mark)
             return false;
-        return mark.Ancestors(W + "p").FirstOrDefault()?.Descendants(W + "t")
-            .Any(t => t.IsBefore(mark) && !string.IsNullOrWhiteSpace(t.Value)) ?? false;
+        return mark.Ancestors(W + "p").FirstOrDefault()?.Descendants().TakeWhile(e => e != mark)
+            .Any(e => e.Name == W + "t" && !string.IsNullOrWhiteSpace(e.Value)) ?? false;
     }
 
     private static void WriteNumbers(XDocument document, XDocument notes, int start, Func<int, string> text)
@@ -104,8 +111,14 @@ internal static class DocxNoteMarks
         var run = reference.Parent!;
         var numberRun = new XElement(W + "r", run.Element(W + "rPr") is { } format ? new XElement(format) : null, Text(number));
         var rest = reference.ElementsAfterSelf().ToList();
-        rest.ForEach(e => e.Remove());
-        numberRun.Add(rest);
+        if (rest.Count > 0)
+        {
+            // All at once: removing one walks past everything before it.
+            var nodes = run.Nodes().Except(rest).ToList();
+            run.RemoveNodes();
+            run.Add(nodes);
+            numberRun.Add(rest);
+        }
         reference.AddAfterSelf(Text(InvisibleMark));
         run.AddAfterSelf(numberRun);
     }
@@ -132,22 +145,10 @@ internal static class DocxNoteMarks
         };
     }
 
-    /// <summary>A copy of the package with <paramref name="changed"/> parts in place of the originals.</summary>
-    private static void WriteCopy(string path, string copy, Dictionary<string, XDocument> changed)
+    private static byte[] Bytes(XDocument part)
     {
-        using var source = ZipFile.OpenRead(path);
-        using var file = File.Create(copy);
-        using var zip = new ZipArchive(file, ZipArchiveMode.Create);
-        foreach (var entry in source.Entries)
-        {
-            using var output = zip.CreateEntry(entry.FullName).Open();
-            if (changed.TryGetValue(entry.FullName, out var part))
-            {
-                part.Save(output, SaveOptions.DisableFormatting);
-                continue;
-            }
-            using var input = entry.Open();
-            input.CopyTo(output);
-        }
+        using var buffer = new MemoryStream();
+        part.Save(buffer, SaveOptions.DisableFormatting);
+        return buffer.ToArray();
     }
 }
