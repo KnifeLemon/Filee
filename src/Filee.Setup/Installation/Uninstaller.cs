@@ -12,7 +12,8 @@
 // another volume it is renamed in place; without administrator rights Windows won't delete that one at the restart, so
 // the user is told it stays. A file that can't even be renamed keeps the uninstall entry, uninstall.json and
 // uninstall.exe, and the uninstall fails: Filee stays listed in Apps and can be uninstalled again, rather than left
-// behind without a way to remove it.
+// behind without a way to remove it. Before that, about two seconds in all go to waiting for a security scan, which
+// holds a file for a moment and likes a program's files just when they are being removed.
 
 using Filee.Setup.Platform;
 
@@ -29,6 +30,14 @@ public sealed class Uninstaller(SetupContext context)
 
     /// <summary>How long a program may still be listed after it was ended.</summary>
     private static readonly TimeSpan EndTimeout = TimeSpan.FromSeconds(3);
+
+    /// <summary>
+    /// Tries left for locked files, for the whole uninstall and not per file: however many are locked, the wait stays
+    /// <see cref="LockWait"/> times this many.
+    /// </summary>
+    private int _lockAttempts = 8;
+
+    private static readonly TimeSpan LockWait = TimeSpan.FromMilliseconds(250);
 
     /// <summary>Renamed files Windows won't delete at the next restart; nothing runs them now.</summary>
     private readonly List<string> _kept = [];
@@ -103,6 +112,7 @@ public sealed class Uninstaller(SetupContext context)
             DeleteFile(Path.Combine(folder, files[i]), trash, later, stuck);
             progress?.Report(new SetupProgress(SetupStep.Removing, 0.5 + 0.4 * (i + 1) / files.Count));
         }
+        GiveUpOnLockedFiles(stuck, trash, later);
         // Left by an interrupted Setup, and FileeExplorerMenu.dll copies an update moved aside.
         if (Directory.Exists(folder))
         {
@@ -111,8 +121,11 @@ public sealed class Uninstaller(SetupContext context)
         }
 
         // Uninstalling again needs the list and the entry, so these go only when nothing stayed behind.
-        if (stuck.Count == 0)
-            DeleteRecord(folder, stuck);
+        if (stuck.Count == 0 && !DeleteRecord(folder))
+        {
+            stuck.Add(InstallRecord.PathIn(folder));
+            WaitForLockedFiles(stuck, _ => DeleteRecord(folder));
+        }
         if (stuck.Count > 0)
         {
             Log.Error($"Could not remove: {string.Join(", ", stuck)}");
@@ -128,6 +141,7 @@ public sealed class Uninstaller(SetupContext context)
 
         releaseUninstaller?.Invoke();
         DeleteFile(Path.Combine(folder, SetupNames.UninstallerExe), trash, later, stuck);
+        GiveUpOnLockedFiles(stuck, trash, later);
         later.AddRange(stuck);
         FileSwap.RemoveEmptyFolders(folder);
         try
@@ -211,72 +225,118 @@ public sealed class Uninstaller(SetupContext context)
     /// Deletes uninstall.json, or leaves it as it is: never at the next restart or under another name, because uninstalling
     /// again after that restart can't do without it.
     /// </summary>
-    private void DeleteRecord(string folder, List<string> stuck)
+    private bool DeleteRecord(string folder)
     {
         var path = InstallRecord.PathIn(folder);
         try
         {
-            if (!File.Exists(path))
-                return;
-            File.SetAttributes(path, FileAttributes.Normal);
-            File.Delete(path);
+            if (File.Exists(path))
+            {
+                File.SetAttributes(path, FileAttributes.Normal);
+                File.Delete(path);
+            }
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Log.Warn($"Could not delete {path}: {ex.Message}");
+            Log.Info($"Locked: {path} ({ex.Message})");
+            return false;
+        }
+    }
+
+    /// <summary>Tries the files in <paramref name="stuck"/> again while tries are left; those that went leave the list.</summary>
+    private void WaitForLockedFiles(List<string> stuck, Func<string, bool> remove)
+    {
+        while (stuck.Count > 0 && _lockAttempts > 0)
+        {
+            _lockAttempts--;
+            Thread.Sleep(LockWait);
+            stuck.RemoveAll(path => remove(path));
+        }
+    }
+
+    /// <summary>
+    /// After waiting for them, what is left in <paramref name="stuck"/> counts as left. Windows may still delete those
+    /// at the next restart; uninstalling again then finds them gone.
+    /// </summary>
+    private void GiveUpOnLockedFiles(List<string> stuck, string trash, List<string> later)
+    {
+        WaitForLockedFiles(stuck, path => RemoveFile(path, trash, later));
+        foreach (var path in stuck)
+        {
+            Log.Warn($"Still locked: {path}");
+            System.DeleteAtRestart(path);
+        }
+    }
+
+    /// <summary>Removes a file (see <see cref="RemoveFile"/>); one that can't even be renamed goes on the <paramref name="stuck"/> list.</summary>
+    private void DeleteFile(string path, string trash, List<string> later, List<string> stuck)
+    {
+        if (!RemoveFile(path, trash, later))
+        {
+            Log.Info($"Locked: {path}");
             stuck.Add(path);
         }
     }
 
     /// <summary>
     /// Deletes a file; one in use is moved into <paramref name="trash"/> (or renamed in place) and deleted at the next
-    /// restart. One that can't even be renamed is <paramref name="stuck"/>: it is still there under its own name. One
-    /// renamed in place that Windows won't delete at the restart (it takes administrator rights) stays too, but nothing
-    /// runs it now and uninstalling again wouldn't know its new name: the user is told.
+    /// restart. False when it can't even be renamed: it is still there under its own name. One renamed in place that
+    /// Windows won't delete at the restart (it takes administrator rights) stays too, but nothing runs it now and
+    /// uninstalling again wouldn't know its new name: the user is told.
     /// </summary>
-    private void DeleteFile(string path, string trash, List<string> later, List<string> stuck)
+    private bool RemoveFile(string path, string trash, List<string> later)
     {
         if (!File.Exists(path))
-            return;
+            return true;
         try
         {
             File.SetAttributes(path, FileAttributes.Normal);
             File.Delete(path);
-            return;
+            return true;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             Log.Info($"In use: {path} ({ex.Message})");
         }
         var aside = Path.Combine(trash, $"{Guid.NewGuid():N}-{Path.GetFileName(path)}");
-        var left = false;
-        try
-        {
-            Directory.CreateDirectory(trash);
-            File.Move(path, aside);
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        var left = !MoveToTrash(path, aside, trash);
+        if (left)
         {
             // Another volume: renaming works only on the same one. Stay in the folder under another name.
-            left = true;
             aside = path + "." + Guid.NewGuid().ToString("N")[..8] + ".old";
             try
             {
                 File.Move(path, aside);
             }
-            catch (Exception again) when (again is IOException or UnauthorizedAccessException)
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                Log.Warn($"Could not move {path} aside: {again.Message} ({ex.Message})");
-                // Windows may still delete it at the next restart; uninstalling again then finds it gone.
-                System.DeleteAtRestart(path);
-                stuck.Add(path);
-                return;
+                return false;
             }
         }
         if (System.DeleteAtRestart(aside) || !left)
             later.Add(aside);
         else
             _kept.Add(aside);
+        return true;
+    }
+
+    private static bool MoveToTrash(string path, string aside, string trash)
+    {
+        // Across volumes File.Move copies, and when it can't then delete the original it still succeeds, with the file
+        // where it was. Trying again would copy all of it each time.
+        if (!string.Equals(Path.GetPathRoot(path), Path.GetPathRoot(trash), StringComparison.OrdinalIgnoreCase))
+            return false;
+        try
+        {
+            Directory.CreateDirectory(trash);
+            File.Move(path, aside);
+            return !File.Exists(path);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

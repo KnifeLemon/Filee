@@ -311,6 +311,58 @@ public class UninstallerTests
         Assert.False(Directory.Exists(bench.InstallFolder));
     }
 
+    /// <summary>Holds a file with no sharing at all, as a security scan can, and lets go after a moment.</summary>
+    private static Task LockFor(string path, TimeSpan time)
+    {
+        var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+        return Task.Delay(time).ContinueWith(_ => locked.Dispose(), TaskScheduler.Default);
+    }
+
+    [Theory]
+    [InlineData("Filee.dll")]
+    [InlineData("uninstall.json")]
+    public async Task A_file_a_scan_holds_for_a_moment_does_not_fail_the_uninstall(string file)
+    {
+        var (bench, record) = Installed();
+        using var _ = bench;
+        var scan = LockFor(Path.Combine(bench.InstallFolder, file), TimeSpan.FromMilliseconds(700));
+
+        var later = new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash"));
+        await scan;
+
+        Assert.Empty(later);
+        Assert.DoesNotContain(bench.System.Calls, c => c.Contains("delete-at-restart", StringComparison.Ordinal));
+        Assert.False(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
+        Assert.False(Directory.Exists(bench.InstallFolder));
+    }
+
+    [Fact]
+    public void The_wait_for_locked_files_is_one_wait_however_many_are_locked()
+    {
+        var (bench, record) = Installed();
+        using var _ = bench;
+        var names = new[] { "Filee.dll", "filee-cli.exe", "FileeExplorerMenu.dll", "FileeExplorerMenu.msix", @"cli\filee.cmd", @"engines\rhwp\rhwp.exe" };
+        var locks = names.Select(f => new FileStream(Path.Combine(bench.InstallFolder, f), FileMode.Open, FileAccess.Read, FileShare.None)).ToList();
+        try
+        {
+            var watch = global::System.Diagnostics.Stopwatch.StartNew();
+            var error = Assert.Throws<SetupException>(() =>
+                new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash")));
+            watch.Stop();
+
+            Assert.Equal("installer.uninstall.files_left", error.TextKey);
+            // About two seconds: it did wait, and not two seconds for each of the six.
+            Assert.True(watch.Elapsed >= TimeSpan.FromSeconds(1.5), $"took {watch.Elapsed}");
+            Assert.True(watch.Elapsed < TimeSpan.FromSeconds(8), $"took {watch.Elapsed}");
+            foreach (var name in names)
+                Assert.Contains($"delete-at-restart {Path.Combine(bench.InstallFolder, name)}", bench.System.Calls);
+        }
+        finally
+        {
+            locks.ForEach(l => l.Dispose());
+        }
+    }
+
     [Fact]
     public void The_list_of_files_is_never_scheduled_or_renamed_so_a_later_try_can_read_it()
     {
