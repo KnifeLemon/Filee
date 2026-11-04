@@ -103,6 +103,7 @@
   "error.p7m_encrypted": "この .p7m は署名だけでなく暗号化されています。受信者の鍵でしか開けません",
   "error.p7m_unknown_content": "この .p7m の中のファイルは、Filee が変換できない形式です",
   "error.p7m_too_large": "署名付きファイルが大きすぎて開けません",
+  "error.document_too_large": "この文書は展開するとデータが大きすぎるか、入れ子が深すぎるため、安全に開けません",
   "format_request.request": "この形式への対応をリクエスト",
   "format_request.notice_title": "Fileeはまだ{0}ファイルを変換できません",
   "format_request.notice_text": "必要な形式を教えてください。\nリクエストをもとに、今後Fileeが対応する形式を決めます。\n暗号化またはコピー保護（DRM）されたファイルは、形式にかかわらず変換できません。",

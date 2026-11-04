@@ -109,6 +109,7 @@
   "error.p7m_encrypted": "This .p7m is encrypted, not only signed: only the recipient's key opens it",
   "error.p7m_unknown_content": "The file inside this .p7m is of a type Filee doesn't convert",
   "error.p7m_too_large": "The signed file is too large to open",
+  "error.document_too_large": "This document unpacks to too much data or is nested too deeply to open safely",
   "format_request.request": "Request this format",
   "format_request.notice_title": "Filee can't convert {0} files yet",
   "format_request.notice_text": "Tell us which format you need.\nRequests decide what Filee supports next.\nEncrypted or copy-protected (DRM) files can't be converted, whatever the format.",

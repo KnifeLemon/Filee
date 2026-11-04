@@ -46,6 +46,7 @@ internal sealed partial class HwpxWriter
     /// <param name="template">Reference HWPX supplying styles and the default page; the built-in blank.hwpx when null.</param>
     public static void Write(HDocument document, string outputPath, Stream? template = null)
     {
+        Nesting.Limit(document); // the writer recurses per table, text box and note level
         using var templateStream = template ?? OpenBuiltInTemplate();
         using var buffer = new MemoryStream();
         templateStream.CopyTo(buffer);

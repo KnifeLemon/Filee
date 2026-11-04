@@ -109,6 +109,7 @@
   "error.p7m_encrypted": "이 .p7m은 서명만이 아니라 암호화돼 있어요. 받는 사람의 키로만 열 수 있어요",
   "error.p7m_unknown_content": "이 .p7m 안의 파일은 Filee가 변환하지 않는 형식이에요",
   "error.p7m_too_large": "서명 파일이 너무 커서 열 수 없어요",
+  "error.document_too_large": "이 문서는 풀면 데이터가 너무 크거나 너무 깊이 중첩되어 있어서 안전하게 열 수 없어요",
   "format_request.request": "이 형식 요청하기",
   "format_request.notice_title": "아직 {0} 파일은 변환할 수 없어요",
   "format_request.notice_text": "필요한 형식을 알려주세요.\n요청을 보고 다음에 지원할 형식을 정해요.\n암호화되거나 DRM이 걸린 파일은 변환할 수 없어요.",

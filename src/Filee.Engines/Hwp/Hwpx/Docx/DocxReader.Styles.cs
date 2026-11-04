@@ -280,7 +280,8 @@ internal sealed partial class DocxReader
     // ───────────────────────── Resolution ─────────────────────────
 
     /// <summary>Merged properties of a paragraph or character style including everything it is based on.</summary>
-    private (ParaProps Para, RunProps Run) ResolveStyle(string? styleId)
+    /// <param name="depth">Styles followed so far: like <see cref="StyleChain"/>, a chain is followed for 20 styles.</param>
+    private (ParaProps Para, RunProps Run) ResolveStyle(string? styleId, int depth = 0)
     {
         if (styleId is null || !_styles.TryGetValue(styleId, out var style))
             return (_defaultPara.Clone(), _defaultRun.Clone());
@@ -289,7 +290,7 @@ internal sealed partial class DocxReader
 
         // Guard against basedOn cycles in damaged files.
         _resolvedStyles[styleId] = (_defaultPara.Clone(), _defaultRun.Clone());
-        var (para, run) = style.BasedOn is { } parent && parent != styleId ? ResolveStyle(parent) : (_defaultPara.Clone(), _defaultRun.Clone());
+        var (para, run) = style.BasedOn is { } parent && parent != styleId && depth < 20 ? ResolveStyle(parent, depth + 1) : (_defaultPara.Clone(), _defaultRun.Clone());
         para.Apply(style.PPr);
         run.Apply(style.RPr);
         _resolvedStyles[styleId] = (para.Clone(), run.Clone());

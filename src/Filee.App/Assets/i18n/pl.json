@@ -109,6 +109,7 @@
   "error.p7m_encrypted": "Ten .p7m jest zaszyfrowany, a nie tylko podpisany: otworzy go tylko klucz odbiorcy",
   "error.p7m_unknown_content": "Plik w tym .p7m jest typu, którego Filee nie konwertuje",
   "error.p7m_too_large": "Podpisany plik jest za duży, by go otworzyć",
+  "error.document_too_large": "Ten dokument rozpakowuje się do zbyt dużej ilości danych lub jest zagnieżdżony zbyt głęboko, by bezpiecznie go otworzyć",
   "format_request.request": "Poproś o ten format",
   "format_request.notice_title": "Filee nie potrafi jeszcze konwertować plików {0}",
   "format_request.notice_text": "Napisz, jakiego formatu potrzebujesz.\nNa podstawie próśb wybieramy kolejne obsługiwane formaty.\nPlików zaszyfrowanych lub chronionych przed kopiowaniem (DRM) nie da się konwertować, niezależnie od formatu.",

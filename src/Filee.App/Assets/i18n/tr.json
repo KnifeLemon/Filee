@@ -103,6 +103,7 @@
   "error.p7m_encrypted": "Bu .p7m yalnızca imzalı değil, şifreli: yalnızca alıcının anahtarı açabilir",
   "error.p7m_unknown_content": "Bu .p7m içindeki dosya, Filee'nin dönüştürmediği bir türde",
   "error.p7m_too_large": "İmzalı dosya açılamayacak kadar büyük",
+  "error.document_too_large": "Bu belge açıldığında çok fazla veriye dönüşüyor ya da çok derin iç içe geçmiş, güvenle açılamıyor",
   "format_request.request": "Bu biçimi talep et",
   "format_request.notice_title": "Filee henüz {0} dosyalarını dönüştüremiyor",
   "format_request.notice_text": "İhtiyacınız olan biçimi bize bildirin.\nFilee'nin sırada hangi biçimleri destekleyeceğini talepler belirler.\nŞifreli veya kopya korumalı (DRM) dosyalar, biçimi ne olursa olsun dönüştürülemez.",

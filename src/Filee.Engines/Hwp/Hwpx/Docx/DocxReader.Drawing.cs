@@ -193,7 +193,7 @@ internal sealed partial class DocxReader
         _textBoxDepth++;
         try
         {
-            ReadBlocks(content.Elements(), output);
+            ReadNestedBlocks(content, output);
         }
         finally
         {
