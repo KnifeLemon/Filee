@@ -376,8 +376,8 @@ installed yet; the slides introduce the installed one. The demo animations are r
   and reads the app's presets and engine order. It is published into the app folder, so both share one runtime and
   the bundled engines; its name can't be `filee.exe` next to `Filee.exe` on a case-insensitive file system.
 - `Filee.Core/Watching/FolderWatcher` watches one `WatchRule` with a `FileSystemWatcher` and converts a file once it
-  has kept its size and time for a moment and opens without sharing (downloads and copies in progress are skipped).
-  Temporary files, unknown formats and dedicated output and originals folders are ignored. A rule may also write
+  has kept its size and time for a moment, opens without sharing and has data at its start (downloads and copies in
+  progress are skipped). A file that didn't convert gets one more turn after 10 seconds. Temporary files, unknown formats and dedicated output and originals folders are ignored. A rule may also write
   into the watched folder itself. In that case, generated file versions (path, size and modification time) and
   generated result directories are recorded in `.filee-watch-<rule hash>.json` inside the watched root. The hidden
   state file prevents those results from becoming new inputs, including after an inbox watcher restarts; a changed
