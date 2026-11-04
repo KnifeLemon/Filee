@@ -1020,6 +1020,10 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 67)
             changed |= LearnExtensions(profiles, out _, ["flc", "fli"]);
+        // v68: signed files (.p7m, #1010) learn the documents donut; custom claims stay put. (Schema 68 may be
+        //      renumbered if another change takes it first.)
+        if (from < 68)
+            changed |= LearnExtensions(profiles, out _, ["p7m"]);
         return changed;
     }
 
