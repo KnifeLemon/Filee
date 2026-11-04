@@ -54,8 +54,9 @@ public static class FormatRegistry
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
         new("xcf", "XCF", FormatCategory.Image, ["xcf"], Writable: false),
-        // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it.
-        new("kra", "Krita (KRA)", FormatCategory.Image, ["kra"], Writable: false),
+        // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it. ".kra~" is the
+        // backup Krita keeps of the previous save, the same file under another name (#1077).
+        new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,
@@ -243,6 +244,9 @@ public static class FormatRegistry
         new("dav", "DAV", FormatCategory.Video, ["dav"], Writable: false),
         // Bink Video, the game cutscene format of RAD Game Tools (#751): FFmpeg's bink demuxer reads it. Never a target.
         new("bik", "BIK", FormatCategory.Video, ["bik"], Writable: false),
+        // FLIC, the animations of Autodesk Animator (.fli) and Animator Pro (.flc), also in DOS games and pixel-art tools
+        // (#940): FFmpeg's flic demuxer reads them. FFmpeg has no FLIC encoder, so never a target.
+        new("flc", "FLIC", FormatCategory.Video, ["flc", "fli"], Writable: false),
         // Raw H.265 / H.264 streams with no container, as security cameras and VMS software export them (issue #301).
         new("h265", "H.265", FormatCategory.Video, ["h265", "265", "hevc"], Writable: false),
         new("h264", "H.264", FormatCategory.Video, ["h264", "264"], Writable: false),

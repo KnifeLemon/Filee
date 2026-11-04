@@ -158,6 +158,119 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Flic_animations_are_read_but_never_written()
+    {
+        // #940: Autodesk Animator's FLIC, read by FFmpeg's flic demuxer; FFmpeg has no FLIC encoder, so never a target.
+        var route = Planner().Plan("flc", "gif");
+        Assert.NotNull(route);
+        Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        Assert.Null(Planner().Plan("mp4", "flc"));
+    }
+
+    [Theory]
+    [InlineData("intro.flc", "gif")]
+    [InlineData("intro.flc", "mp4")]
+    [InlineData("intro.fli", "gif")]
+    public async Task A_flic_animation_converts_whole(string name, string target)
+    {
+        // FFmpeg has no FLIC encoder, so the animation is put together here the way Autodesk Animator writes it: ten
+        // frames at 10 per second.
+        SkipUnlessInstalled();
+        var flic = await MakeFlicAsync(name);
+
+        var probed = await ProbeAsync(await ConvertAsync(flic, target));
+
+        Assert.Equal((64, 48), (probed.Video!.Width, probed.Video.Height));
+        Assert.True(probed.Video.Frames >= 10, $"{probed.Video.Frames} frames");
+        Assert.InRange(probed.Duration, 0.9, 1.2);
+    }
+
+    [Fact]
+    public async Task A_fli_palette_of_six_bits_keeps_its_colours()
+    {
+        // Animator's FLI keeps its palette in 6 bits (0-63): full red and blue must stay full, not come out dark.
+        SkipUnlessInstalled();
+        var still = await ConvertAsync(await MakeFlicAsync("intro.fli"), "png");
+
+        using var png = new ImageMagick.MagickImage(still);
+        using var pixels = png.GetPixels();
+        Assert.Equal(ImageMagick.MagickColors.Red, pixels.GetPixel(0, 24)!.ToColor());
+        Assert.Equal(ImageMagick.MagickColors.Blue, pixels.GetPixel(63, 24)!.ToColor());
+    }
+
+    private async Task<string> MakeFlicAsync(string name)
+    {
+        var path = Path.Combine(fx.NewFolder(), name);
+        await File.WriteAllBytesAsync(path, Flic.Animation(name.EndsWith(".fli", StringComparison.Ordinal), 64, 48, frames: 10),
+            TestContext.Current.CancellationToken);
+        return path;
+    }
+
+    /// <summary>Autodesk Animator's FLIC, as far as FFmpeg's flic demuxer and decoder read it.</summary>
+    private static class Flic
+    {
+        /// <summary>
+        /// The 128-byte header, then one frame chunk per picture: the first holds the palette (1 red, 2 blue), each one
+        /// its pixels uncompressed (a red bar growing from the left over blue). FLI (Animator) keeps the palette in 6 bits
+        /// and the speed in 1/70 s, FLC (Animator Pro) in 8 bits and milliseconds; both play at 10 frames a second here.
+        /// </summary>
+        public static byte[] Animation(bool fli, int width, int height, int frames)
+        {
+            var body = new MemoryStream();
+            for (var n = 0; n < frames; n++)
+            {
+                var chunks = new MemoryStream();
+                var count = 1;
+                if (n == 0)
+                {
+                    var full = fli ? (byte)63 : (byte)255;
+                    // One packet: skip no colours, change 256 (written as 0); three bytes per colour.
+                    var palette = new byte[4 + 256 * 3];
+                    BinaryPrimitives.WriteUInt16LittleEndian(palette, 1);
+                    palette[4 + 3] = full;
+                    palette[4 + 6 + 2] = full;
+                    Chunk(chunks, fli ? (ushort)11 : (ushort)4, palette); // COLOR_64 / COLOR_256
+                    count++;
+                }
+                var pixels = new byte[width * height];
+                for (var y = 0; y < height; y++)
+                    for (var x = 0; x < width; x++)
+                        pixels[y * width + x] = x < (n + 1) * width / (frames + 1) ? (byte)1 : (byte)2;
+                Chunk(chunks, 16, pixels); // COPY
+
+                var frame = new byte[16];
+                BinaryPrimitives.WriteUInt32LittleEndian(frame, (uint)(16 + chunks.Length));
+                BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(4), 0xF1FA);
+                BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(6), (ushort)count);
+                body.Write(frame);
+                chunks.WriteTo(body);
+            }
+
+            var header = new byte[128];
+            BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)(header.Length + body.Length));
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(4), fli ? (ushort)0xAF11 : (ushort)0xAF12);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(6), (ushort)frames);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(8), (ushort)width);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(10), (ushort)height);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(12), 8); // bits per pixel
+            if (fli)
+                BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(16), 7);
+            else
+                BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(16), 100);
+            return [.. header, .. body.ToArray()];
+        }
+
+        private static void Chunk(MemoryStream output, ushort type, byte[] data)
+        {
+            Span<byte> head = stackalloc byte[6];
+            BinaryPrimitives.WriteUInt32LittleEndian(head, (uint)(6 + data.Length));
+            BinaryPrimitives.WriteUInt16LittleEndian(head[4..], type);
+            output.Write(head);
+            output.Write(data);
+        }
+    }
+
+    [Fact]
     public async Task A_self_contained_m4s_converts_and_a_bare_dash_segment_is_refused()
     {
         SkipUnlessInstalled();

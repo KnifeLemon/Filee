@@ -300,7 +300,9 @@ in it also builds the package (artifact `windows-arm64-package`).
   mask. Grey and RGB pictures go in through PDFsharp as before.
 - **KRA** (Krita's own file, a ZIP of the layers) is read as the merged picture Krita stores at its top for other
   programs (`mergedimage.png`, `Krita.ReadMerged`, at most 256 MB, in memory), so it looks as it does in Krita. A file
-  without one gives a clear error.
+  without one gives a clear error. Krita's backup of the previous save, `name.kra~`, is the same file and is read the
+  same way; its output is named `name.png`. Watch folders skip it (and any name ending in `~`), as it is written next
+  to the drawing on every save.
 - **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,
@@ -1594,6 +1596,9 @@ can't hold it. The chunks carry the camera's wall-clock time, so FFmpeg reports 
 the output starts at zero.
 Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
 decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
+FLIC animations (`.flc` and `.fli`, read only, #940), from Autodesk Animator and Animator Pro and the cutscenes of DOS
+games, are read by FFmpeg's `flic` demuxer and decoder (8-bit palette pictures, no sound) and go to GIF, every video
+target and PNG frames. FFmpeg has no FLIC encoder, so nothing writes them.
 A Video CD's `MPEGAV/AVSEQ01.DAT` (MPEG-1 in a RIFF/CDXA wrapper) counts as MPEG: `.dat` is an extension of that
 format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fails instead of making a file.
 

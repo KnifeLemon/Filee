@@ -52,17 +52,17 @@ public class EnvelopeTests
     }
 
     [Fact]
-    public void Version_66_libraries_learn_p7m_once()
+    public void Version_67_libraries_learn_p7m_once()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var office = profiles.Single(p => p.Id == "office");
         office.Extensions.Remove("p7m");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(65, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(67, presets, profiles));
 
         Assert.Contains("p7m", office.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(65, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(67, presets, profiles));
     }
 
     [Fact]

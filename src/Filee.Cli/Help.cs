@@ -82,6 +82,7 @@ internal static class Help
                                  By name, each folder's files stay together, sub folders first. Where a file has
                                  no creation date (some Linux file systems), created uses its change or modified date
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
+              --pages <range>    The pages of PDFs, e.g. 13-55 or 1-3,8,12-15 (default: the preset's)
               --overwrite        Replace existing output files (default: add a number)
               --skip             Leave existing output files alone
               --keep-dates       Give converted files the created and modified dates of the originals

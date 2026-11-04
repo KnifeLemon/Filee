@@ -206,6 +206,7 @@ public class FolderWatcherTests
     [Theory]
     [InlineData("photo.jpg.crdownload")]
     [InlineData("~$report.docx")]
+    [InlineData("sketch.kra~")] // Krita's backup of the previous save, written next to sketch.kra
     [InlineData(".hidden.jpg")]
     [InlineData("notes.unknownformat")]
     [InlineData("converted/photo.jpg")]

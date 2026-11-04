@@ -28,7 +28,7 @@ public class FormatFieldsTests
         "3g2", "3gp", "3mf", "602", "ac3", "adoc", "ai", "amr", "ape", "arj", "ass", "au", "azw", "azw4", "bik",
         "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
-        "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
+        "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
         "hdr", "htmlz", "icns", "ipynb", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mediawiki", "miff", "mng", "mobi",
         "mod", "mp2", "mpc", "mrpack", "mxf", "obj", "oeb",
@@ -72,7 +72,7 @@ public class FormatFieldsTests
         { "model3d", ["3mf", "fbx", "glb", "gltf", "obj", "ply", "stl"] },
         { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm"] },
+        { "game", ["bik", "dds", "flc", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
@@ -86,7 +86,7 @@ public class FormatFieldsTests
             ] },
         { "audio-pro", ["ape", "caf", "dff", "dsf", "dss", "mpc", "tak", "tta", "w64", "wv"] },
         { "legacy", [
-                "3g2", "3gp", "602", "amr", "arj", "au", "azw", "azw4", "cwk", "dot", "eot", "flv", "fon", "lha",
+                "3g2", "3gp", "602", "amr", "arj", "au", "azw", "azw4", "cwk", "dot", "eot", "flc", "flv", "fon", "lha",
                 "lit", "lrf", "lwp", "mcw", "mng", "mobi", "mod", "mpc", "oeb", "pcd", "pcx", "pdb", "pml", "prc",
                 "psw", "ras", "rb", "rm", "sda", "sdc", "sdw", "sgi", "snb", "spx", "sub", "swf", "tcr", "tz", "vob",
                 "voc", "wbmp", "wmf", "wpd", "wtv", "xlt", "z"
@@ -146,7 +146,7 @@ public class FormatFieldsTests
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 95,
                 [FormatGrade.Specialist] = 113,
-                [FormatGrade.Legacy] = 50,
+                [FormatGrade.Legacy] = 51,
             },
             counts);
     }
