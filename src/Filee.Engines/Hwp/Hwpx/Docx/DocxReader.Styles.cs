@@ -34,6 +34,7 @@ internal sealed partial class DocxReader
         public string? NumId;
         public int? Ilvl;
         public List<(int Position, string Kind, string Leader)> Tabs = [];
+        public XElement? BorderLeft, BorderRight, BorderTop, BorderBottom;
 
         public ParaProps Clone()
         {
@@ -85,6 +86,13 @@ internal sealed partial class DocxReader
             KeepLines = Toggle(pPr, "keepLines") ?? KeepLines;
             PageBreakBefore = Toggle(pPr, "pageBreakBefore") ?? PageBreakBefore;
             WidowControl = Toggle(pPr, "widowControl") ?? WidowControl;
+            if (pPr.Element(W + "pBdr") is { } borders)
+            {
+                BorderLeft = borders.Element(W + "left") ?? BorderLeft;
+                BorderRight = borders.Element(W + "right") ?? BorderRight;
+                BorderTop = borders.Element(W + "top") ?? BorderTop;
+                BorderBottom = borders.Element(W + "bottom") ?? BorderBottom;
+            }
             SnapToGrid = Toggle(pPr, "snapToGrid") ?? SnapToGrid;
             if (pPr.Element(W + "outlineLvl") is { } outline && int.TryParse(Val(outline), out var level))
                 OutlineLevel = level;
@@ -351,6 +359,29 @@ internal sealed partial class DocxReader
                int.TryParse(name.AsSpan(8), out var byName) && byName is >= 1 and <= 9 ? byName : 0;
     }
 
+    /// <summary>The lines of a paragraph's w:pBdr, or null when it has none ("nil" turns off a style's).</summary>
+    private static HBorders? ParagraphBorders(ParaProps p)
+    {
+        static HBorder Side(XElement? edge) => edge is null ? HBorder.None : Border(edge);
+        var borders = new HBorders(Side(p.BorderLeft), Side(p.BorderRight), Side(p.BorderTop), Side(p.BorderBottom));
+        return borders is { Left.Style: HBorderStyle.None, Right.Style: HBorderStyle.None, Top.Style: HBorderStyle.None, Bottom.Style: HBorderStyle.None }
+            ? null : borders;
+    }
+
+    /// <summary>
+    /// Paragraphs with the same borders and indents side by side share one box in Word: no line between them. rhwp draws
+    /// nothing for 한글's own way of saying so (connect), so the lines inside the box are left out.
+    /// </summary>
+    private static void JoinBorders(HParagraph previous, HParagraph next)
+    {
+        if (previous.Format.Borders is not { } above || next.Format.Borders is not { } below
+            || above.Left != below.Left || above.Right != below.Right || above.Bottom != below.Bottom
+            || previous.Format.Left != next.Format.Left || previous.Format.Right != next.Format.Right)
+            return;
+        previous.Format = previous.Format with { Borders = above with { Bottom = HBorder.None } };
+        next.Format = next.Format with { Borders = below with { Top = HBorder.None } };
+    }
+
     /// <param name="fontSize">Font size of the paragraph (half points): one character of the *Chars indents.</param>
     private HParaFormat ParaFormat(ParaProps p, int? fontSize)
     {
@@ -386,6 +417,7 @@ internal sealed partial class DocxReader
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,
             WidowOrphan: p.WidowControl ?? true,
+            Borders: ParagraphBorders(p),
             Tabs: p.Tabs.Count == 0 ? null : p.Tabs
                 .Where(t => t.Kind is not ("bar" or "num"))
                 .Select(t => new HTabStop(HwpxUnits.FromTwips(t.Position), t.Kind switch
