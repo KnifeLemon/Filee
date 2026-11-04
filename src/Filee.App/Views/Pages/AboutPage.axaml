@@ -38,8 +38,16 @@
                top-aligned logo would sit above the middle of the text. -->
           <Image Source="avares://Filee/Assets/Icons/filee.png" Width="72" Height="72" VerticalAlignment="Center" />
           <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-            <TextBlock Text="Filee" FontSize="24" FontWeight="Bold" />
-            <TextBlock Classes="muted" Text="{Binding Version}" />
+            <StackPanel Orientation="Horizontal" Spacing="10">
+              <TextBlock Text="Filee" FontSize="24" FontWeight="Bold" VerticalAlignment="Center" />
+              <!-- The version as a small pill, tinted with the accent (it follows the accent the user picked). The text colour
+                   is set in the code-behind: the accent itself on dark, the deeper accent on light. -->
+              <Border Classes="badge" Padding="10,3" Background="{DynamicResource AccentSoftBrush}" VerticalAlignment="Center"
+                      AutomationProperties.Name="{Binding Version}">
+                <TextBlock x:Name="VersionText" Text="{Binding VersionBadge}" FontSize="12" FontWeight="Bold"
+                           Foreground="{DynamicResource AccentBrush}" />
+              </Border>
+            </StackPanel>
             <TextBlock Classes="muted" Text="{DynamicResource about.license}" TextWrapping="Wrap" />
             <Button Classes="ghost" Padding="0" Click="OnOpenRepository" Margin="0,4,0,0">
               <StackPanel Orientation="Horizontal" Spacing="6">
