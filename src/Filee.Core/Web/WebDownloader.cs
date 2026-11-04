@@ -8,6 +8,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Sockets;
 using Filee.Core.Conversion;
+using Filee.Core.Platform;
 
 namespace Filee.Core.Web;
 
@@ -114,19 +115,22 @@ public sealed class WebDownloader : IDisposable
                    ?? WebFileNames.FromUrl(finalUrl)
                    ?? "download";
         await using var body = await response.Content.ReadAsStreamAsync(cancellationToken);
-        return await SaveAsync(body, folder, name, mime, headers.ContentLength, progress, cancellationToken, refusePages: true);
+        return await SaveAsync(body, folder, name, mime, headers.ContentLength, progress, cancellationToken, refusePages: true,
+            hostUrl: finalUrl);
     }
 
     /// <summary>
     /// Writes <paramref name="source"/> into <paramref name="folder"/> as <paramref name="name"/> (sanitized, renamed to
     /// what the first bytes are, numbered when taken) and returns the path. A file cut short by an error is deleted.
+    /// The saved file carries the Mark of the Web, as a browser's download would.
     /// </summary>
     /// <param name="refusePages">
     /// A download: an HTML page where a file was expected is a sign-in or error page, not the file.
     /// </param>
+    /// <param name="hostUrl">The address the file was downloaded from, for its mark; null for bytes a drag brought.</param>
     /// <exception cref="ConversionRefusedException">A program, a web page or a file over <see cref="MaxBytes"/>.</exception>
     public async Task<string> SaveAsync(Stream source, string folder, string name, string? mime, long? length,
-        IProgress<TransferProgress>? progress, CancellationToken cancellationToken, bool refusePages = false)
+        IProgress<TransferProgress>? progress, CancellationToken cancellationToken, bool refusePages = false, Uri? hostUrl = null)
     {
         // Every chunk would flood the UI: a report at most every ReportInterval, and the last one always.
         TimeSpan? lastReport = null;
@@ -172,6 +176,7 @@ public sealed class WebDownloader : IDisposable
                 }
                 Report(total, final: true);
             }
+            MarkOfTheWeb.TryWrite(path, MarkOfTheWeb.Internet(hostUrl));
             return path;
         }
         catch

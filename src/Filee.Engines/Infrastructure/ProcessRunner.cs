@@ -134,6 +134,68 @@ public static class ProcessRunner
     }
 
     /// <summary>
+    /// Starts <paramref name="executable"/> like <see cref="RunAsync"/>, but hands its standard output to
+    /// <paramref name="readOutput"/> as bytes while it runs instead of collecting text (7-Zip's <c>-so</c>). When
+    /// <paramref name="readOutput"/> throws (it has read more than it takes), the program is killed and the exception
+    /// passed on. The result's standard output is empty.
+    /// </summary>
+    /// <exception cref="TimeoutException">The program did not exit within <paramref name="timeout"/>; it was killed.</exception>
+    public static async Task<ProcessResult> RunWithOutputAsync(
+        string executable,
+        IEnumerable<string> arguments,
+        Action<Stream, CancellationToken> readOutput,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var psi = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardErrorEncoding = Encoding.UTF8,
+            WorkingDirectory = Path.GetDirectoryName(executable) ?? "",
+        };
+        foreach (var arg in arguments)
+            psi.ArgumentList.Add(arg);
+
+        using var process = new Process { StartInfo = psi };
+        var stderr = new StringBuilder();
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (stderr) stderr.AppendLine(e.Data); };
+        if (!process.Start())
+            throw new InvalidOperationException($"Could not start {executable}.");
+        Lower(process);
+        process.StandardInput.Close();
+        process.BeginErrorReadLine();
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        // A read waiting for output doesn't see the token; ending the program ends the read.
+        using var stop = timeoutCts.Token.Register(() => TryKill(process, null));
+        try
+        {
+            await Task.Run(() => readOutput(process.StandardOutput.BaseStream, timeoutCts.Token), CancellationToken.None);
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process, null);
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
+        }
+        catch
+        {
+            TryKill(process, null);
+            throw;
+        }
+
+        AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
+        lock (stderr)
+            return new ProcessResult(process.ExitCode, "", stderr.ToString());
+    }
+
+    /// <summary>
     /// True once <paramref name="ready"/> has held on 4 polls in a row (2 s); false when the program exits or the wait is
     /// cancelled first.
     /// </summary>

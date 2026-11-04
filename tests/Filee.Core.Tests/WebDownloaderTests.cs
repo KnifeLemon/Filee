@@ -4,6 +4,7 @@
 using System.Net;
 using System.Net.Sockets;
 using Filee.Core.Conversion;
+using Filee.Core.Platform;
 using Filee.Core.Web;
 
 namespace Filee.Core.Tests;
@@ -137,6 +138,34 @@ public sealed class WebDownloaderTests : IDisposable
         var refused = await Assert.ThrowsAsync<ConversionRefusedException>(() =>
             downloader.DownloadAsync(Url("/loop0"), _dir.Path, null, null, TestContext.Current.CancellationToken));
         Assert.Equal("error.web_download_failed", refused.ErrorKey);
+    }
+
+    [Fact]
+    public async Task Saved_files_carry_the_mark_of_the_web_with_the_address_they_came_from()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(_dir.File("probe.txt"), MarkOfTheWeb.Internet()), "The temp drive holds no NTFS streams.");
+        Serve("/real/notes.txt", "plain notes"u8.ToArray(), "text/plain");
+        Redirect("/get", "/real/notes.txt");
+        using var downloader = Downloader();
+
+        var downloaded = await downloader.DownloadAsync(Url("/get"), _dir.Path, null, null, TestContext.Current.CancellationToken);
+        var dropped = await downloader.SaveAsync(new MemoryStream(Png), _dir.Path, "photo.png", "image/png", Png.Length, null,
+            TestContext.Current.CancellationToken);
+
+        var mark = MarkOfTheWeb.Read(downloaded);
+        Assert.NotNull(mark);
+        Assert.Contains("[ZoneTransfer]", mark);
+        Assert.Contains("ZoneId=3", mark);
+        Assert.Contains("HostUrl=" + _root + "real/notes.txt", mark); // where it really came from, after the redirect
+        Assert.Equal("[ZoneTransfer]\r\nZoneId=3\r\n", MarkOfTheWeb.Read(dropped)); // bytes a drag brought: no address
+    }
+
+    [Fact]
+    public void A_mark_names_only_web_addresses_without_sign_in_or_fragment()
+    {
+        var mark = MarkOfTheWeb.Internet(new Uri("https://user:secret@example.com/a/file.zip?x=1#part"), new Uri("file:///C:/page.html"));
+        Assert.Equal("[ZoneTransfer]\r\nZoneId=3\r\nHostUrl=https://example.com/a/file.zip?x=1\r\n", mark);
     }
 
     [Fact]
