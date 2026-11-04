@@ -2,6 +2,7 @@
 // a new reason.
 
 using Filee.App.Services;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
 
@@ -44,6 +45,24 @@ public class MemoryTrimmerTests
         await Until(() => trimmer.Trims > 0);
         Assert.Equal(1, trimmer.Trims);
         Assert.False(trimmedWhileBusy);
+    }
+
+    [Fact]
+    public void Trimming_decommits_the_managed_heap_that_was_freed()
+    {
+        // A heap grown by a large conversion and its garbage: without decommitting, the regions stay committed.
+        var filled = new List<byte[]>();
+        for (var i = 0; i < 300; i++)
+            filled.Add(new byte[1024 * 1024]);
+        var peak = GC.GetTotalMemory(false);
+        filled.ForEach(block => Array.Fill(block, (byte)1));
+        filled.Clear();
+
+        MemoryTrimmer.Trim(NullLogger.Instance);
+
+        // Other tests may run meanwhile: most of the 300 MB is gone, not all of it.
+        Assert.True(GC.GetGCMemoryInfo().TotalCommittedBytes < peak - 150L * 1024 * 1024,
+            $"{GC.GetGCMemoryInfo().TotalCommittedBytes} bytes stayed committed of {peak}");
     }
 
     [Fact]
