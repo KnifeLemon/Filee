@@ -2,6 +2,7 @@
 
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Hwp.Hwpx.Docx;
+using ImageMagick;
 using static Filee.Engines.Tests.DocxBuilder;
 
 namespace Filee.Engines.Tests;
@@ -66,6 +67,24 @@ public class DocxLineHeightTests(EngineFixture fx) : IClassFixture<EngineFixture
     }
 
     [Fact]
+    public void A_paragraph_of_only_a_picture_or_equation_is_a_multiple_of_its_height()
+    {
+        var docx = new DocxBuilder();
+        using var image = new MagickImage(MagickColors.Blue, 20, 20);
+        var picture = docx.Image(image.ToByteArray(MagickFormat.Png));
+        var paragraphs = Read(docx
+            .Paragraph(P(InlinePicture(picture, 914400, 914400), $"<w:rPr>{Calibri}</w:rPr>"))
+            .Paragraph(P(InlinePicture(picture, 914400, 914400), "<w:spacing w:line=\"360\" w:lineRule=\"auto\"/>"))
+            .Paragraph(P("<m:oMathPara><m:oMath><m:r><m:t>x</m:t></m:r></m:oMath></m:oMathPara>"))
+            .Paragraph(P(InlinePicture(picture, 914400, 914400) + R("beside", Calibri))));
+
+        Assert.Equal(Percent(100), paragraphs[0].Format.LineSpacing);
+        Assert.Equal(Percent(150), paragraphs[1].Format.LineSpacing);
+        Assert.Equal(Percent(100), paragraphs[2].Format.LineSpacing);
+        Assert.Equal(Percent(122), paragraphs[3].Format.LineSpacing); // the text's line: 한글 counts the picture itself
+    }
+
+    [Fact]
     public void Exact_and_at_least_spacing_stay_as_they_are()
     {
         var paragraphs = Read(new DocxBuilder()
@@ -79,8 +98,7 @@ public class DocxLineHeightTests(EngineFixture fx) : IClassFixture<EngineFixture
     [Fact]
     public void The_document_grid_counts_the_height_of_the_font()
     {
-        // 23 pt of Calibri (28 pt high) needs two cells of a 15 pt grid where 130% (29.9 pt) would too, 12 pt of Calibri
-        // at 14.65 pt one cell where 130% (15.6 pt) would need two.
+        // 12 pt of Calibri is 14.65 pt high: one cell of a 15 pt grid, where 130% (15.6 pt) would need two.
         var docx = new DocxBuilder { SectionProperties = DefaultPage + "<w:docGrid w:type=\"lines\" w:linePitch=\"300\"/>" };
         var paragraphs = Read(docx.Paragraph(P(R("fits one cell", Calibri + "<w:sz w:val=\"24\"/>"))));
 

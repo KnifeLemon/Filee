@@ -356,12 +356,15 @@ internal sealed partial class DocxReader
 
     /// <summary>
     /// A paragraph's single line height as a percentage of its largest font size: its tallest text decides, as on a line
-    /// in Word. A paragraph without text has the height of its mark.
+    /// in Word. A paragraph without text has the height of its mark, or of the equation or picture in it: 100%, since
+    /// 한글's percentage of a tall object would leave a third of its height empty above it.
     /// </summary>
     private static double SingleLinePercent(HParagraph paragraph)
     {
-        var (size, height) = (0, 0.0);
+        var (size, height, inlineObject) = (0, 0.0, false);
         Measure(paragraph.Inlines);
+        if (size == 0 && inlineObject)
+            return 100;
         if (size == 0 && paragraph.MarkFormat is var mark)
             Add("", mark);
         return height / size;
@@ -370,7 +373,9 @@ internal sealed partial class DocxReader
         {
             foreach (var inline in inlines)
             {
-                if (inline is HText { Text.Length: > 0 } text)
+                if (inline is HEquation or HImage { Anchor: null })
+                    inlineObject = true;
+                else if (inline is HText { Text.Length: > 0 } text)
                     Add(text.Text, text.Format);
                 else if (inline is HLink link)
                     Measure(link.Content);
