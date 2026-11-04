@@ -299,7 +299,9 @@ in it also builds the package (artifact `windows-arm64-package`).
   mask. Grey and RGB pictures go in through PDFsharp as before.
 - **KRA** (Krita's own file, a ZIP of the layers) is read as the merged picture Krita stores at its top for other
   programs (`mergedimage.png`, `Krita.ReadMerged`, at most 256 MB, in memory), so it looks as it does in Krita. A file
-  without one gives a clear error.
+  without one gives a clear error. Krita's backup of the previous save, `name.kra~`, is the same file and is read the
+  same way; its output is named `name.png`. Watch folders skip it (and any name ending in `~`), as it is written next
+  to the drawing on every save.
 - **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,

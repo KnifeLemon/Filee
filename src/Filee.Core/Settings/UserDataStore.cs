@@ -1008,6 +1008,10 @@ internal static class SettingsMigrations
             presets.InsertRange(annotate < 0 ? presets.Count : annotate + 1, BuiltInData.BackgroundPresets());
             changed = true;
         }
+        // v65: Krita's backups (.kra~, #1077) learn the images donut; custom claims stay put. (Schema 65 may be renumbered
+        //      if another change takes it first.)
+        if (from < 65)
+            changed |= LearnExtensions(profiles, out _, ["kra~"]);
         return changed;
     }
 
