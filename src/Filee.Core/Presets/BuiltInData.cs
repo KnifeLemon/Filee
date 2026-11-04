@@ -60,6 +60,7 @@ public static class BuiltInData
         .. ImageEditPresets(),
         .. HidePresets(),
         .. AnnotatePresets(),
+        .. BackgroundPresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -309,6 +310,22 @@ public static class BuiltInData
         {
             Id = AnnotateId, NameKey = "preset.annotate", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Tool = Preset.AnnotateTool, Output = { FileNamePattern = "{name} Annotated" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Add background" tool (settings schema 64): in the palette, on no donut.</summary>
+    public const string BackgroundId = "tool-background";
+
+    /// <summary>
+    /// "Add background" (settings schema 64): a picture set on a gradient, a colour or a picture of one's own, saved as
+    /// "{name} With Background.png". In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> BackgroundPresets() =>
+    [
+        new()
+        {
+            Id = BackgroundId, NameKey = "preset.background", TargetFormat = BackgroundTool.Target,
+            Kind = PresetKind.Tool, Tool = Preset.BackgroundTool, Output = { FileNamePattern = "{name} With Background" },
         },
     ];
 

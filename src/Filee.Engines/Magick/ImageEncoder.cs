@@ -367,6 +367,11 @@ internal static class ImageEncoder
         if (options.Grayscale)
             image.Grayscale();
 
+        // "Add background": the picture as it now is (turned, sized, its background removed) set on the look. Before
+        // the metadata is dropped and before alpha is flattened, though the canvas has none: it is opaque everywhere.
+        if (options.Backdrop is { } look)
+            BackdropComposer.Apply(image, look);
+
         if (options.Dpi is > 0)
             image.Density = new Density(options.Dpi.Value, options.Dpi.Value, DensityUnit.PixelsPerInch);
 

@@ -171,6 +171,38 @@ numbers on pictures (`ImageOptions.Annotations`): points are parts of the pictur
 - `AnnotateTool.ConversionOf` (Core) turns the tool into a conversion in the picture's own format (as Pixelate / blur),
   run by the job queue; `ReworksPixels` includes the marks.
 
+## Add background tool
+
+"Add background" (`tool-background`, palette only, settings schema 64) sets pictures on a gradient, a colour or a
+picture of one's own, with padding, rounded corners, a shadow and a canvas shape (`BackdropOptions`). Sizes are parts of
+the picture (padding of its longer side, corners of its shorter side), so a look suits any picture.
+
+- `BackgroundTool.ConversionOf` (Core) turns the tool into a PNG conversion with `ImageOptions.Backdrop`, run by the job
+  queue like Pixelate / blur's areas: `ReworksPixels` includes it, so it is applied once, in the first transform step.
+  The tool keeps the last look apart, in `ImageOptions.BackdropLook`; an export or import leaves out the path of a
+  picture of one's own.
+- `Engines/Magick/BackdropComposer` composes it in `ImageEncoder.ApplyOptions`, after resizing, background removal and
+  grayscale and before the density, metadata and alpha steps. The picture is brought to sRGB as it is seen (through its
+  profile, or by formula for CMYK and grey); the canvas grows round it to the shape (never crops) and stays within a
+  pixel limit (`PictureSizeOn`). It is drawn by Skia as the window draws it: a linear gradient shader, a colour, or
+  one's own picture covering (`ReadPictureBehind`: a raster picture of a few kinds, by extension or by its first bytes,
+  its size checked before it is decoded, read as large as covering the canvas takes and cropped to it, in sRGB, white
+  where see-through; one that can't be read refuses the file); the picture with its corners cut round in its own pixels;
+  Skia's drop shadow of what shows of it, blurred at most at a sigma of 100 (a wider one drawn smaller and scaled up,
+  where Skia's blur stays Gaussian). The canvas is drawn in tiles at most 2048 px wide, a band at a time, as RGB: a blur
+  is never larger than a tile and the shadow's reach round it (a wider shadow is blurred once, scaled down until its
+  sigma is 100 or less). The EXIF thumbnail is dropped.
+- `BackgroundViewModel` draws the same composition live with Avalonia: the layout and shadow from the composer's
+  formulas (an Avalonia drop shadow is Skia's), the picture and the one behind read through the composer's functions,
+  the preview never mirrored in a right-to-left UI. A picture behind is read when it is chosen, and again when it is
+  picked again; Save waits for one that can be read, and one whose file changed since it was read (time written or
+  length) is read again and shown before it is saved. The conversion carries that stamp, and the composer refuses the
+  file (`error.background_picture_changed`, which the toast offers no Retry for) when the picture behind changed since,
+  before it is read or after: a change after Save gives no file rather than one with a picture behind the window didn't
+  show. A change that keeps both the time and the length (a copy that keeps the time, of a picture of the same size)
+  isn't told apart, and the picture itself edited meanwhile isn't looked for (as in Pixelate / blur and Annotate). One
+  look for all pictures or one each; failures end on a summary, as in Pixelate / blur.
+
 ## Crop overlay and PDF page editor
 
 The image Crop tool (`tool-crop`) and PDF Crop (`tool-pdf-crop`) open `Views/CropOverlayWindow` instead of running a job:

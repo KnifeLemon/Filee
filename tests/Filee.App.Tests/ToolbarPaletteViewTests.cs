@@ -115,11 +115,11 @@ public class ToolbarPaletteViewTests
     }
 
     /// <summary>
-    /// The library without the Annotate tool: every picture donut offers it in its Edit tab, which a test of the
-    /// picture tools would otherwise always see.
+    /// The library without the Annotate and Add background tools: every picture donut offers them in its Edit tab,
+    /// which a test of the picture tools would otherwise always see.
     /// </summary>
-    private static void WithoutAnnotateTool(PresetAvailabilityTests.Fixture f) =>
-        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool);
+    private static void WithoutPictureEditTools(PresetAvailabilityTests.Fixture f) =>
+        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool);
 
     private static ToolbarProfile Profile(string id, params string[] extensions) => new()
     {
@@ -460,7 +460,7 @@ public class ToolbarPaletteViewTests
     public void Profile_change_resets_tab_but_face_flip_keeps_it()
     {
         using var f = new PresetAvailabilityTests.Fixture();
-        WithoutAnnotateTool(f);
+        WithoutPictureEditTools(f);
         var jpg = Profile("tabs-jpg", "jpg");
         using var vm = f.Page(jpg);
         var png = Profile("tabs-png", "png");

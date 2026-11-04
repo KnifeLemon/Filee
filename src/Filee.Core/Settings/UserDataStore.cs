@@ -252,9 +252,11 @@ public sealed class UserDataStore
     /// <summary>The preset <paramref name="id"/> when it converts (a group or tool doesn't), for every place that runs one.</summary>
     public Preset? FindConversion(string id) => Presets.FirstOrDefault(p => p.Id == id && !p.IsGroup && !p.IsTool);
 
-    /// <summary>Exports presets and profiles to a shareable JSON file, without PDF passwords.</summary>
+    /// <summary>
+    /// Exports presets and profiles to a shareable JSON file, without PDF passwords or paths to one's own pictures.
+    /// </summary>
     public void Export(string path) =>
-        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.WithoutPassword(mark: false))], Profiles = Profiles },
+        Write(path, new PresetBundle { Presets = [.. Presets.Select(p => p.ForSharing())], Profiles = Profiles },
             FileeJsonContext.Default.PresetBundle);
 
     /// <summary>
@@ -269,6 +271,8 @@ public sealed class UserDataStore
 
         foreach (var preset in bundle.Presets)
         {
+            // A path to a picture in someone else's bundle is not one of ours to open (a network share, say).
+            preset.Image.ForgetBackdropPictures();
             Presets.RemoveAll(p => p.Id == preset.Id);
             Presets.Add(preset);
         }
@@ -996,6 +1000,14 @@ internal static class SettingsMigrations
         //      a slot, #806). (Schema 63 may be renumbered if another change takes it first.)
         if (from < 63)
             changed |= AddPdfSheets(presets);
+        // v64: the "Add background" tool, in the palette only, after "Annotate" as in a new library (at the end
+        //      without it). (Schema 64 may be renumbered if another change takes it first.)
+        if (from < 64 && presets.All(p => p.Id != BuiltInData.BackgroundId))
+        {
+            var annotate = presets.FindIndex(p => p.Id == BuiltInData.AnnotateId);
+            presets.InsertRange(annotate < 0 ? presets.Count : annotate + 1, BuiltInData.BackgroundPresets());
+            changed = true;
+        }
         return changed;
     }
 
