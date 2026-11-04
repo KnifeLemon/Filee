@@ -6,8 +6,9 @@
 //   Click mode → the key reaches the focused window (HandleKey), the wheel the donut (OnPointerWheelChanged).
 //   Drag mode  → the window has no keyboard focus during an OS drag: RadialController flips when the global hook
 //                sees the key or the wheel (TriggerService.FlipKeyPressed / FlipWheelTurned). On macOS the donut takes
-//                the keyboard once files are dragged onto it (RadialController.TakeKeyboard), and the key then reaches
-//                the window as in click mode: the hook may not see it while another app holds Secure Input.
+//                key window status without whole-app activation once files are dragged onto it (RadialController.TakeKeyboard),
+//                and the key then reaches the window as in click mode: the hook may not see it while another app holds
+//                Secure Input. On drop or close, key window status is explicitly released (ReleaseKeyWindow / ReturnFocus).
 //
 // The owner swaps Items immediately when FaceSwapping is raised (RadialWindow → RadialViewModel). Old slices are
 // retained for drawing only; hit-testing and drops always use the new face.

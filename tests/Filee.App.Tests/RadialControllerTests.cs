@@ -9,6 +9,7 @@ using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.Services.Triggers;
 using Filee.App.ViewModels;
+using Filee.App.Views;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -73,6 +74,174 @@ public class RadialControllerTests
         }
     }
 
+    [AvaloniaFact]
+    public void Files_entering_the_donut_during_drag_takes_and_releases_key_window()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        TestServices.EnsureInitialized("en");
+        var platform = new WindowPlatform();
+        var radial = Create(platform);
+        try
+        {
+            radial.ShowForDrag(400, 400);
+            var window = radial.Window!;
+            var handle = window.TryGetPlatformHandle()?.Handle ?? 0;
+            Assert.Empty(platform.KeyWindowsTaken);
+            Assert.Empty(platform.KeyWindowsReleased);
+
+            var filesEntered = (Action<IReadOnlyList<string>>?)typeof(RadialWindow)
+                .GetField("FilesEntered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)?
+                .GetValue(window);
+            Assert.NotNull(filesEntered);
+
+            filesEntered([@"/tmp/filee-test-drag.png"]);
+
+            Assert.Equal([handle], platform.KeyWindowsTaken);
+            Assert.Equal(1, platform.RememberFrontAppCalls);
+            Assert.Empty(platform.KeyWindowsReleased);
+
+            radial.Close(animate: false);
+
+            Assert.Equal([handle], platform.KeyWindowsReleased);
+            Assert.Equal(1, platform.ReturnFocusCalls);
+        }
+        finally
+        {
+            radial.Close(animate: false);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Dropping_files_on_the_donut_releases_key_window_while_progress_ring_shows()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        TestServices.EnsureInitialized("en");
+        var platform = new WindowPlatform();
+        var radial = Create(platform);
+        var tempFile = Path.Combine(Path.GetTempPath(), "filee-test-drop.png");
+        File.WriteAllBytes(tempFile, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        try
+        {
+            radial.ShowForDrag(400, 400);
+            var window = radial.Window!;
+            var handle = window.TryGetPlatformHandle()?.Handle ?? 0;
+
+            var filesEntered = (Action<IReadOnlyList<string>>?)typeof(RadialWindow)
+                .GetField("FilesEntered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)?
+                .GetValue(window);
+            Assert.NotNull(filesEntered);
+
+            filesEntered([tempFile]);
+            Assert.Equal([handle], platform.KeyWindowsTaken);
+            Assert.Empty(platform.KeyWindowsReleased);
+
+            var dropped = (Action<DonutHit, DraggedItems>?)typeof(RadialWindow)
+                .GetField("Dropped", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)?
+                .GetValue(window);
+            Assert.NotNull(dropped);
+
+            var model = AppHost.Get<RadialViewModel>();
+            var index = -1;
+            for (var i = 0; i < model.Items.Count; i++)
+            {
+                var preset = model.PresetAt(i, -1);
+                if (preset is not null && !preset.IsTool && !preset.Output.AskEveryTime)
+                {
+                    index = i;
+                    break;
+                }
+            }
+
+            if (index >= 0)
+            {
+                dropped(new DonutHit(DonutHitKind.Segment, index, -1), new DraggedItems([tempFile], null));
+
+                // Key window status is released immediately on drop so typing returns to previous app
+                Assert.Equal([handle], platform.KeyWindowsReleased);
+                Assert.Equal(1, platform.ReturnFocusCalls);
+            }
+        }
+        finally
+        {
+            radial.Close(animate: false);
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Drop_opening_owned_window_keeps_keyboard_for_it()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        TestServices.EnsureInitialized("en");
+        var platform = new WindowPlatform();
+        var radial = Create(platform);
+        var tempFile = Path.Combine(Path.GetTempPath(), "filee-test-tool.png");
+        File.WriteAllBytes(tempFile, [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]);
+        try
+        {
+            radial.ShowForDrag(400, 400);
+            var window = radial.Window!;
+            var handle = window.TryGetPlatformHandle()?.Handle ?? 0;
+
+            var filesEntered = (Action<IReadOnlyList<string>>?)typeof(RadialWindow)
+                .GetField("FilesEntered", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)?
+                .GetValue(window);
+            Assert.NotNull(filesEntered);
+
+            filesEntered([tempFile]);
+            Assert.Equal([handle], platform.KeyWindowsTaken);
+            Assert.Empty(platform.KeyWindowsReleased);
+
+            var dropped = (Action<DonutHit, DraggedItems>?)typeof(RadialWindow)
+                .GetField("Dropped", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public)?
+                .GetValue(window);
+            Assert.NotNull(dropped);
+
+            var model = AppHost.Get<RadialViewModel>();
+            var toolIndex = -1;
+            for (var i = 0; i < model.Items.Count; i++)
+            {
+                var preset = model.PresetAt(i, -1);
+                if (preset is not null && preset.IsTool && !preset.IsCopyToFolder)
+                {
+                    toolIndex = i;
+                    break;
+                }
+            }
+
+            if (toolIndex >= 0)
+            {
+                dropped(new DonutHit(DonutHitKind.Segment, toolIndex, -1), new DraggedItems([tempFile], null));
+
+                // Keyboard stays with Filee for the tool window
+                Assert.Empty(platform.KeyWindowsReleased);
+                Assert.Equal(0, platform.ReturnFocusCalls);
+            }
+        }
+        finally
+        {
+            radial.Close(animate: false);
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
     private static RadialController Create(IPlatformServices platform) =>
         new(AppHost.Get<RadialViewModel>(), AppHost.Get<ConversionService>(), AppHost.Get<WindowService>(),
             AppHost.Get<UserDataStore>(), platform, AppHost.Get<TriggerService>(), NullLogger<RadialController>.Instance);
@@ -80,8 +249,17 @@ public class RadialControllerTests
     private sealed class WindowPlatform : IPlatformServices
     {
         public int Restores { get; private set; }
+        public List<nint> KeyWindowsTaken { get; } = [];
+        public List<nint> KeyWindowsReleased { get; } = [];
+        public int RememberFrontAppCalls { get; private set; }
+        public int ReturnFocusCalls { get; private set; }
+
         public void RestoreWindow(nint windowHandle) => Restores++;
         public void RaiseTopmost(nint windowHandle) { }
+        public void TakeKeyWindow(nint windowHandle) => KeyWindowsTaken.Add(windowHandle);
+        public void ReleaseKeyWindow(nint windowHandle) => KeyWindowsReleased.Add(windowHandle);
+        public void RememberFrontApp() => RememberFrontAppCalls++;
+        public void ReturnFocus() => ReturnFocusCalls++;
         public bool IsFileManagerAt(int x, int y) => false;
         public string? ProcessNameAt(int x, int y) => null;
         public IReadOnlyList<string> GetFileManagerSelection() => [];

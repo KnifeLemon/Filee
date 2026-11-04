@@ -745,12 +745,14 @@ public sealed class RadialController(
     private bool _tookKeyboard;
 
     /// <summary>
-    /// macOS: once files are dragged onto the donut, it takes the keyboard (Filee comes to the front), so the flip key
-    /// reaches its window as a key press like any other. Watched from outside by the global hook it may not: while an
-    /// app holds Secure Input (Terminal with Secure Keyboard Entry, which can keep it from the background) macOS
-    /// gives no keys to anything watching, only to the app in front. The drag carries on; the keyboard goes back to the
-    /// app that had it once the conversion starts or the donut closes (<see cref="ReturnKeyboard"/>), and stays with
-    /// Filee when the drop opens a window of its own: a tool, the merge order, the save dialog (<see cref="KeepKeyboard"/>).
+    /// macOS: once files are dragged onto the donut, it takes the keyboard without activating the entire application
+    /// (by making the non-activating panel the key window), so the flip key reaches its window as a key press while
+    /// leaving macOS "Show Desktop" (Desktop Reveal) mode uninterrupted. Watched from outside by the global hook it
+    /// may not reach: while an app holds Secure Input (Terminal with Secure Keyboard Entry, which can keep it from the
+    /// background) macOS gives no keys to a global hook, only to the key window and app in front. The drag carries on;
+    /// the keyboard goes back to the app that had it once the conversion starts or the donut closes (<see cref="ReturnKeyboard"/>),
+    /// releasing key window status so typing returns to the previous app while the conversion ring finishes, and stays
+    /// with Filee when the drop opens a window of its own: a tool, the merge order, the save dialog (<see cref="KeepKeyboard"/>).
     /// Not on Windows, where a window taking the keyboard during a drag breaks Explorer's drag.
     /// </summary>
     private void TakeKeyboard(RadialWindow window)
@@ -759,7 +761,10 @@ public sealed class RadialController(
             return;
         platform.RememberFrontApp();
         _tookKeyboard = true;
-        window.Activate();
+        var handle = window.TryGetPlatformHandle()?.Handle ?? 0;
+        platform.TakeKeyWindow(handle);
+        if (handle == 0)
+            window.Activate();
     }
 
     /// <summary>The drop opens a window of Filee's own: the keyboard stays with Filee for it, not given back on close.</summary>
@@ -771,6 +776,8 @@ public sealed class RadialController(
         if (!_tookKeyboard)
             return;
         _tookKeyboard = false;
+        var handle = _window?.TryGetPlatformHandle()?.Handle ?? 0;
+        platform.ReleaseKeyWindow(handle);
         platform.ReturnFocus();
     }
 
