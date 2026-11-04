@@ -258,7 +258,9 @@ public class MergeOrderTests
             @"C:\Documents\Another folder\This is a very long document name with spaces.pdf",
             dated,
             @"C:\Documents\旅行の記録とملاحظات\中文-한국어-שלום.pdf"]);
-        var window = new MergeOrderWindow { DataContext = vm, Width = 440, Height = 360 };
+        var window = new MergeOrderWindow { DataContext = vm };
+        window.Width = window.MinWidth;
+        window.Height = window.MinHeight;
         try
         {
             // The longest entries, in the list's own box.
@@ -283,7 +285,9 @@ public class MergeOrderTests
                 Assert.True(cancel.Right <= merge.Left);
             }
             Assert.True(merge.Right <= window.Bounds.Width && merge.Left >= 0);
-            Assert.True(window.FindControl<ListBox>("FileOrder")!.Bounds.Height > 80);
+            // At the smallest size a whole row of cards still shows, whatever the hint's length in the language.
+            var list = window.FindControl<ListBox>("FileOrder")!;
+            Assert.True(list.Bounds.Height >= list.ContainerFromIndex(0)!.Bounds.Height, $"list {list.Bounds.Height}, card {list.ContainerFromIndex(0)!.Bounds.Height}");
             var sort = Box("SortOrder");
             Assert.True(sort.Left >= 0 && sort.Right <= window.Bounds.Width);
             RenderTests.Save(window, $"merge-order-{language}.png");
