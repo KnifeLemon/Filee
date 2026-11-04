@@ -29,6 +29,9 @@ internal sealed class HSection
     /// <summary>Restart page numbering at this number; null continues from the previous section.</summary>
     public int? StartPageNumber { get; set; }
 
+    /// <summary>A header taller than the room above the body moves the body down (Word, unless its top margin is negative).</summary>
+    public bool HeaderMovesBody { get; set; }
+
     public List<HBlock> Blocks { get; } = [];
 }
 
