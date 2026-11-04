@@ -606,6 +606,7 @@
   "update.installing": "Trình cài đặt đang chạy. Filee sẽ khởi động lại khi xong.",
   "update.failed": "Không thể cập nhật tự động. Hãy tải xuống phiên bản mới từ filee.sh.",
   "update.failed_alert": "Không thể tải xuống bản cập nhật.\nNhấn OK để mở filee.sh và tải xuống phiên bản mới tại đó.",
+  "update.unverified_alert": "Không thể xác nhận bản cập nhật đến từ Filee nên bản cập nhật chưa được cài đặt.\nNhấn OK để mở filee.sh và tải xuống phiên bản mới tại đó.",
   "update.rolled_back_alert": "Không thể cài đặt bản cập nhật, nên Filee giữ lại phiên bản bạn đang dùng.\nNhấn OK để mở filee.sh và tải xuống phiên bản mới tại đó.",
   "update.rolled_back_log": "Chi tiết có trong nhật ký: {0}",
   "update.cancelled": "Đã hủy cập nhật. Nhấn Cập nhật lần nữa để cài đặt.",

@@ -606,6 +606,7 @@
   "update.installing": "설치 프로그램이 열렸어요. 설치가 끝나면 Filee가 다시 켜져요.",
   "update.failed": "자동 업데이트가 안 됐어요. filee.sh에서 새 버전을 받아 주세요.",
   "update.failed_alert": "업데이트를 받지 못했어요.\n확인을 누르면 filee.sh를 열어 드릴게요. 거기서 새 버전을 받을 수 있어요.",
+  "update.unverified_alert": "업데이트가 Filee에서 온 것인지 확인하지 못해서 설치하지 않았어요.\n확인을 누르면 filee.sh를 열어 드릴게요. 거기서 새 버전을 받을 수 있어요.",
   "update.rolled_back_alert": "업데이트를 설치하지 못해서 쓰던 버전을 그대로 뒀어요.\n확인을 누르면 filee.sh를 열어 드릴게요. 거기서 새 버전을 받을 수 있어요.",
   "update.rolled_back_log": "자세한 내용은 로그에 있어요: {0}",
   "update.cancelled": "업데이트를 취소했어요. 다시 누르면 설치해요.",

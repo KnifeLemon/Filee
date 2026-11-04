@@ -606,6 +606,7 @@
   "update.installing": "安装程序正在运行，完成后 Filee 会重新启动。",
   "update.failed": "无法自动更新，请从 filee.sh 下载新版本。",
   "update.failed_alert": "无法下载更新。\n点击“确定”后会打开 filee.sh，可以在那里下载新版本。",
+  "update.unverified_alert": "无法确认此更新来自 Filee，因此没有安装。\n点击“确定”后会打开 filee.sh，可以在那里下载新版本。",
   "update.rolled_back_alert": "无法安装更新，Filee 保留了原来的版本。\n点击“确定”后会打开 filee.sh，可以在那里下载新版本。",
   "update.rolled_back_log": "详细信息见日志 {0}",
   "update.cancelled": "已取消更新，再次点击“更新”即可安装。",

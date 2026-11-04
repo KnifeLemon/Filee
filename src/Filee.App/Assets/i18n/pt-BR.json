@@ -606,6 +606,7 @@
   "update.installing": "O instalador está em execução. O Filee inicia de novo quando terminar.",
   "update.failed": "Não foi possível atualizar automaticamente. Baixe a nova versão em filee.sh.",
   "update.failed_alert": "Não foi possível baixar a atualização.\nPressione OK para abrir filee.sh e baixar a nova versão lá.",
+  "update.unverified_alert": "Não foi possível confirmar que a atualização vem do Filee, então ela não foi instalada.\nPressione OK para abrir filee.sh e baixar a nova versão lá.",
   "update.rolled_back_alert": "Não foi possível instalar a atualização, então o Filee manteve a versão que você tinha.\nPressione OK para abrir filee.sh e baixar a nova versão lá.",
   "update.rolled_back_log": "Os detalhes estão no registro: {0}",
   "update.cancelled": "Atualização cancelada. Pressione Atualizar de novo para instalar.",

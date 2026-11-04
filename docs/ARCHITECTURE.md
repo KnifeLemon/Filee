@@ -570,7 +570,8 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   the directory as an authentic managed installation. Running without `--upgrade` refuses to overwrite an existing
   installation.
 - **In-app updates** (`UpdateService`): Checks GitHub releases for matching `<rid>.tar.gz` and `<rid>-SHA256SUMS.txt`
-  assets. The tarball is verified against SHA-256 before extraction. Archive extraction validates that all entries stay
+  assets. The tarball is verified against SHA-256 before extraction; a build that carries the update key
+  (`FileeUpdatePublicKey`) first checks the checksum file's signature (`<rid>-SHA256SUMS.txt.sig`, `UpdateSignature`). Archive extraction validates that all entries stay
   within the target directory, rejecting absolute paths, directory symlinks, and escaping links, and masks permissions to
   standard rwx bits (excluding setuid/setgid/sticky bits).
 - **Transactional upgrade**: `UpdateAsync` stages the payload in a private directory (`~/.local/share/filee/.update-*`),

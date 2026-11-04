@@ -594,6 +594,7 @@
   "update.installing": "Das Installationsprogramm läuft. Filee startet danach erneut.",
   "update.failed": "Automatisches Update fehlgeschlagen. Lade die neue Version von filee.sh herunter.",
   "update.failed_alert": "Das Update konnte nicht heruntergeladen werden.\nKlicke auf OK, um filee.sh zu öffnen und die neue Version dort herunterzuladen.",
+  "update.unverified_alert": "Es ließ sich nicht bestätigen, dass das Update von Filee stammt, daher wurde es nicht installiert.\nKlicke auf OK, um filee.sh zu öffnen und die neue Version dort herunterzuladen.",
   "update.rolled_back_alert": "Das Update konnte nicht installiert werden. Filee hat deshalb die bisherige Version beibehalten.\nKlicke auf OK, um filee.sh zu öffnen und die neue Version dort herunterzuladen.",
   "update.rolled_back_log": "Details stehen im Protokoll: {0}",
   "update.cancelled": "Update abgebrochen. Klicke erneut auf Aktualisieren, um es zu installieren.",

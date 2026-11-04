@@ -606,6 +606,7 @@
   "update.installing": "The installer is running. Filee starts again when it is done.",
   "update.failed": "Couldn't update automatically. Download the new version from filee.sh.",
   "update.failed_alert": "Couldn't download the update.\nPress OK to open filee.sh and download the new version there.",
+  "update.unverified_alert": "Couldn't confirm that the update comes from Filee, so it wasn't installed.\nPress OK to open filee.sh and download the new version there.",
   "update.rolled_back_alert": "Couldn't install the update, so Filee kept the version you had.\nPress OK to open filee.sh and download the new version there.",
   "update.rolled_back_log": "Details are in the log: {0}",
   "update.cancelled": "Update cancelled. Press Update again to install it.",

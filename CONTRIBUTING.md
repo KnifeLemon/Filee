@@ -125,14 +125,25 @@ Then, on a PC signed in to SimplySign Desktop (Certum's cloud certificate; its k
 the Windows files and add them to the draft:
 
 ```
-pwsh build/sign-release.ps1 -Version X.Y.Z -CertificateThumbprint <sha1>
+pwsh build/sign-release.ps1 -Version X.Y.Z -CertificateThumbprint <sha1> -UpdateKey <private key file>
 ```
 
 It signs every unsigned program in the build and the Setup program, packs and signs `Filee-X.Y.Z-win-Setup.exe`, zips
-the portable copy, checks the signed Setup in a sandbox install and uploads the files with their SHA-256 sums. It also
-copies them to the download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once),
-which the Microsoft Store listing points at because GitHub's download links redirect. Look over the draft and publish
-it (or pass `-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
+the portable copy, checks the signed Setup in a sandbox install and uploads the files with their SHA-256 sums. It signs
+every `SHA256SUMS` file of the release (Windows, Linux and macOS) with Filee's update key and uploads the `.sig` files
+next to them (`build/sign-checksums.ps1`; it asks for the key's passphrase). It also copies the Windows files to the
+download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once), which the Microsoft
+Store listing points at because GitHub's download links redirect. Look over the draft and publish it (or pass
+`-Publish`). `build/sign-windows.ps1` signs any folder or file on its own.
+
+The update key is made once with `pwsh build/new-update-key.ps1 -PrivateKeyPath <file outside the repository>`. Its
+public half goes into `FileeUpdatePublicKey` in `Directory.Build.props`; official builds (`-p:FileeRelease=true`)
+then refuse an update whose checksum file isn't signed with it, so `sign-release.ps1` stops without `-UpdateKey` (or
+`FILEE_UPDATE_KEY`) and won't publish a draft with an unsigned checksum file. Keep the private key and a backup off
+the repository: copies that carry the public key can only be updated with releases signed by it.
+`FileeExpectedPublisher` and `FileeExpectedIssuer` name the code signing certificate the Windows installer must be
+signed with; before a renewed certificate comes from another certificate authority, release a build that lists both
+issuers.
 
 ### "What's new" slides for a release
 
