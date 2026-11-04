@@ -62,6 +62,7 @@ public sealed record PaletteChip(string PresetId, string Label, string? Caption,
     public bool IsDimmed => Use != PresetUse.Usable;
     public bool CanAdd => Use != PresetUse.Unusable;
     public object? Tip { get; init; }
+    public bool IsGroup { get; init; }
 }
 
 public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
@@ -699,7 +700,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         DonutItems = used
             .Select(_store.FindPreset)
             .OfType<Preset>()
-            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p) })
+            // A group is marked as one (no children: the editor doesn't fan them out), so the preview draws it as the
+            // donut does.
+            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p), Children = p.IsGroup ? [] : null })
             .ToList();
 
         Palette.Clear();
@@ -746,7 +749,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             if (caption is not null && label.Contains(caption, StringComparison.OrdinalIgnoreCase))
                 caption = null;
             var chip = new PaletteChip(preset.Id, label, caption, reason, use)
-            { Tip = TipFor(preset, use, reason) };
+            { Tip = TipFor(preset, use, reason), IsGroup = preset.IsGroup };
             if (use != PresetUse.Unusable)
                 Palette.Add(chip);
             if ((query.Length == 0 && use != PresetUse.Unusable)
@@ -843,7 +846,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                 && caption?.Contains(query, StringComparison.CurrentCultureIgnoreCase) != true)
                 continue;
             candidates.Add((new PaletteChip(preset.Id, label, caption, judgement.Reason, judgement.Use)
-            { Tip = TipFor(preset, judgement.Use, judgement.Reason) },
+            { Tip = TipFor(preset, judgement.Use, judgement.Reason), IsGroup = preset.IsGroup },
                 preset.IsGroup ? PaletteTab.All : TabOf(preset), preset.IsGroup));
         }
         RefreshVisiblePalette(candidates);

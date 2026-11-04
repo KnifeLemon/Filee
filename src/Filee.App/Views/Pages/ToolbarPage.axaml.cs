@@ -29,8 +29,9 @@ public partial class ToolbarPage : UserControl
 
     private enum Source { Chip, Slice }
 
-    // CanAdd: fixed when the drag starts, so a chip that a search or a tab swaps under the pointer can't change it.
-    private sealed record DragState(Source Source, string? PresetId, int SliceIndex, string Label, Point Start, bool CanAdd = true)
+    // CanAdd, IsGroup: fixed when the drag starts, so a chip that a search or a tab swaps under the pointer, or slices
+    // that another profile replaces, can't change them.
+    private sealed record DragState(Source Source, string? PresetId, int SliceIndex, string Label, Point Start, bool CanAdd = true, bool IsGroup = false)
     {
         public bool Active { get; set; }
     }
@@ -63,7 +64,8 @@ public partial class ToolbarPage : UserControl
             if (Vm is null || e.Index >= Vm.DonutItems.Count)
                 return;
             var p = e.Args.GetPosition(Root);
-            _drag = new DragState(Source.Slice, null, e.Index, Vm.DonutItems[e.Index].Label, p) { Active = true };
+            var item = Vm.DonutItems[e.Index];
+            _drag = new DragState(Source.Slice, null, e.Index, item.Label, p, IsGroup: item.IsGroup) { Active = true };
             Donut.SetDimmedIndex(e.Index);
             ShowGhost(_drag.Label, p);
         };
@@ -246,7 +248,7 @@ public partial class ToolbarPage : UserControl
         if (!point.Properties.IsLeftButtonPressed || !chip.CanAdd)
             return;
 
-        _drag = new DragState(Source.Chip, chip.PresetId, -1, chip.Label, e.GetPosition(Root), chip.CanAdd);
+        _drag = new DragState(Source.Chip, chip.PresetId, -1, chip.Label, e.GetPosition(Root), chip.CanAdd, chip.IsGroup);
         e.Pointer.Capture(border);
         e.Handled = true;
     }
@@ -291,7 +293,7 @@ public partial class ToolbarPage : UserControl
         ShowGhost(_drag.Label, p);
         var (sliceTarget, overPalette) = FindTarget(e);
         var removing = overPalette && _drag.Source == Source.Slice;
-        Donut.SetDropPreview(removing ? -1 : sliceTarget, _drag.Label, _drag.Source == Source.Slice ? _drag.SliceIndex : -1);
+        Donut.SetDropPreview(removing ? -1 : sliceTarget, _drag.Label, _drag.Source == Source.Slice ? _drag.SliceIndex : -1, _drag.IsGroup);
         PaletteBox.Classes.Set("over", removing);
     }
 

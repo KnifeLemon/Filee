@@ -155,7 +155,8 @@ The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits eith
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
 editor offers both kinds, and `UserDataStore.EnsureConsistency` removes missing, duplicate, nested or excess members
-without excluding tools.
+without excluding tools. A group slice is marked with a small chevron by its outer edge, drawn in the slice's transform
+(`DonutMenu.DrawGroupMark`), which also marks a dragged group in the toolbar editor.
 
 ## Annotate tool
 
