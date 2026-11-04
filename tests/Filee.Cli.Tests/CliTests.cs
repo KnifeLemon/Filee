@@ -624,7 +624,7 @@ public sealed class CliTests : IDisposable
         var (code, output, errors) = await Run("convert", lower, upper, lower, "--to", "jpg", "-o", outputFolder, "--json");
 
         Assert.Equal(Cli.Success, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         using var json = JsonDocument.Parse(output);
         Assert.Equal(2, json.RootElement.GetProperty("converted").GetInt32());
         Assert.Equal(2, json.RootElement.GetProperty("files").GetArrayLength());
@@ -644,7 +644,7 @@ public sealed class CliTests : IDisposable
         var (code, output, errors) = await Run("convert", source, "--to", "jpg", "-o", outputFolder, "--json");
 
         Assert.Equal(Cli.Success, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         using var json = JsonDocument.Parse(output);
         Assert.Equal(1, json.RootElement.GetProperty("converted").GetInt32());
         var result = json.RootElement.GetProperty("files")[0].GetProperty("outputs")[0].GetString();
@@ -700,7 +700,7 @@ public sealed class CliTests : IDisposable
 
         var (code, output, errors) = await Run("convert", source, "--to", format, "-o", json, "--json");
         Assert.Equal(Cli.Success, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         Assert.Equal([Path.Combine(json, "Name." + format)], Outputs(output));
         Assert.Equal(["Name." + format], Directory.EnumerateFiles(json).Select(Path.GetFileName));
 
@@ -833,6 +833,116 @@ public sealed class CliTests : IDisposable
 
     private static string[] Strings(JsonElement value) => value.EnumerateArray().Select(e => e.GetString()!).ToArray();
 
+    private static List<JsonElement> Events(string lines) =>
+        lines.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Select(Result).ToList();
+
+    private static void OnlyEvents(string errors) =>
+        Assert.All(Events(errors), e => Assert.Contains(e.GetProperty("event").GetString(), new[] { "progress", "file" }));
+
+    private static (string Name, string Value)[] Fields(IEnumerable<JsonProperty> properties) =>
+        properties.Select(p => (p.Name, JsonSerializer.Serialize(p.Value))).ToArray();
+
+    [Fact]
+    public async Task Convert_json_writes_progress_and_file_events_to_stderr()
+    {
+        var errors = new LineWriter();
+        var converter = new ControlledConverter("built-in", true, [new("md", "html")])
+        {
+            BeforeConvert = async (progress, token) =>
+            {
+                progress?.Report(0.5);
+                for (var i = 0; i < 200 && !errors.Contains("\"event\":\"progress\""); i++)
+                    await Task.Delay(25, token);
+            },
+        };
+        var source = Input("md");
+        var output = new StringWriter();
+
+        var code = await Cli.RunAsync(["convert", source, "--to", "html", "--json"], output, errors,
+            TestContext.Current.CancellationToken, () => ControlledHost(new([converter])));
+
+        Assert.Equal(Cli.Success, code);
+        var file = FileResultOf(output.ToString());
+        var events = Events(errors.ToString());
+        Assert.Contains(events, e => e.GetProperty("event").GetString() == "progress"
+            && e.GetProperty("source").GetString() == source
+            && e.GetProperty("fraction").GetDouble() is > 0 and < 1);
+        var last = events[^1];
+        Assert.Equal("file", last.GetProperty("event").GetString());
+        Assert.Equal(Fields(file.EnumerateObject()), Fields(last.EnumerateObject().Skip(1)));
+        Assert.Single(events, e => e.GetProperty("event").GetString() == "file");
+    }
+
+    [Fact]
+    public async Task Convert_json_with_quiet_writes_no_events()
+    {
+        var (code, output, errors) = await RunWith(new([new ControlledConverter("built-in", true, [new("md", "html")])]),
+            "convert", Input("md"), "--to", "html", "--json", "--quiet");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(1, Result(output).GetProperty("converted").GetInt32());
+    }
+
+    [Fact]
+    public async Task Watch_json_prints_nothing_but_events()
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var output = new LineWriter();
+        var watching = Cli.RunAsync(["watch", _folder, "--to", "jpg", "--settle", "0.2", "--json"], output, TextWriter.Null,
+            stop.Token, () => CliHost.Create(_settings));
+
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        Png("arrived.png");
+        for (var i = 0; i < 100 && !output.Contains("\"event\":\"file\""); i++)
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        stop.Cancel();
+
+        Assert.Equal(Cli.Success, await watching);
+        var events = Events(output.ToString());
+        Assert.Equal("started", events[0].GetProperty("event").GetString());
+        Assert.Equal(Path.GetFullPath(_folder), events[0].GetProperty("folder").GetString());
+        Assert.Equal("jpg", events[0].GetProperty("target").GetString());
+        Assert.Equal(Path.Combine(Path.GetFullPath(_folder), "converted"), events[0].GetProperty("outputFolder").GetString());
+        var file = Assert.Single(events, e => e.GetProperty("event").GetString() == "file");
+        Assert.Equal("done", file.GetProperty("state").GetString());
+        Assert.EndsWith("arrived.png", file.GetProperty("source").GetString());
+        Assert.EndsWith("arrived.jpg", file.GetProperty("outputs")[0].GetString());
+        Assert.Equal("stopped", events[^1].GetProperty("event").GetString());
+        Assert.Equal(3, events.Count);
+    }
+
+    private sealed class LineWriter : StringWriter
+    {
+        private readonly Lock _gate = new();
+
+        public override void Write(char value)
+        {
+            lock (_gate)
+                base.Write(value);
+        }
+
+        public override void Write(string? value)
+        {
+            lock (_gate)
+                base.Write(value);
+        }
+
+        public override void WriteLine(string? value)
+        {
+            lock (_gate)
+                base.WriteLine(value);
+        }
+
+        public bool Contains(string text) => ToString().Contains(text, StringComparison.Ordinal);
+
+        public override string ToString()
+        {
+            lock (_gate)
+                return base.ToString();
+        }
+    }
+
     private static void Hints(JsonElement file, params string[] packages)
     {
         Assert.Equal("failed", file.GetProperty("state").GetString());
@@ -899,7 +1009,7 @@ public sealed class CliTests : IDisposable
         var catalog = new ConverterCatalog([converter]);
         var (code, output, errors) = await RunWith(catalog, "convert", source, "--to", "html", "--json");
         Assert.Equal(0, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         var root = Result(output);
         Assert.Equal(["preset", "target", "converted", "skipped", "failed", "files"], root.EnumerateObject().Select(p => p.Name));
         Assert.Equal("HTML", root.GetProperty("preset").GetString());
@@ -959,7 +1069,7 @@ public sealed class CliTests : IDisposable
         var catalog = new ConverterCatalog([Package("pandoc", false, new ConversionEdge("md", "pptx"))]);
         var (code, output, errors) = await RunWith(catalog, "convert", Input("md"), "--to", "pptx", "--json");
         Assert.Equal(1, code);
-        Assert.Equal("", errors);
+        OnlyEvents(errors);
         Hints(FileResultOf(output), "pandoc");
         (code, output, _) = await RunWith(catalog, "convert", Input("txt"), "--to", "mp3", "--json");
         Assert.Equal(1, code);
@@ -1122,7 +1232,7 @@ public sealed class CliTests : IDisposable
         var root = Result(output.ToString());
         Assert.Equal(1, root.GetProperty("failed").GetInt32());
         Assert.Equal(0, root.GetProperty("converted").GetInt32());
-        Assert.Equal("", errors.ToString());
+        OnlyEvents(errors.ToString());
         var file = root.GetProperty("files")[0];
         Assert.Equal(["source", "state", "outputs", "error"], file.EnumerateObject().Select(p => p.Name));
         Assert.Equal("cancelled", file.GetProperty("state").GetString());
@@ -1242,9 +1352,14 @@ public sealed class CliTests : IDisposable
         public bool NeedsShaping { get; init; }
         public bool ReadsImages { get; set; }
         public Func<ConversionStep, CancellationToken, Task<IReadOnlyList<string>>>? Convert { get; set; }
+        public Func<IProgress<double>?, CancellationToken, Task>? BeforeConvert { get; init; }
         public EngineStatus GetStatus() => Available ? EngineStatus.Available() : EngineStatus.Unavailable(Reason);
-        public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
-            Convert?.Invoke(step, cancellationToken) ?? Write(step);
+        public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
+        {
+            if (BeforeConvert is not null)
+                await BeforeConvert(progress, cancellationToken);
+            return await (Convert?.Invoke(step, cancellationToken) ?? Write(step));
+        }
         public static Task<IReadOnlyList<string>> Write(ConversionStep step)
         {
             if (step.Output.Allocate(step.To) is not { } path)
