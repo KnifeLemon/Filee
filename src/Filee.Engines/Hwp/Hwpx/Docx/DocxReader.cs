@@ -580,6 +580,8 @@ internal sealed partial class DocxReader
         {
             FitLineSpacing(Current, _props);
             _reader.SnapToGrid(Current, _props);
+            if (_output.LastOrDefault() is HParagraph previous)
+                JoinBorders(previous, Current);
             _output.Add(Current);
         }
 

@@ -374,7 +374,8 @@ internal readonly record struct HParaFormat(
     IReadOnlyList<HTabStop>? Tabs = null,
     bool? RightToLeft = null,
     HBorder? LeftBar = null,
-    string? Fill = null)
+    string? Fill = null,
+    HBorders? Borders = null)
 {
     public bool IsEmpty => this == default;
 
@@ -383,10 +384,10 @@ internal readonly record struct HParaFormat(
         Align == other.Align && Left == other.Left && Right == other.Right && FirstLine == other.FirstLine &&
         Before == other.Before && After == other.After && LineSpacing == other.LineSpacing &&
         KeepWithNext == other.KeepWithNext && KeepLines == other.KeepLines && WidowOrphan == other.WidowOrphan &&
-        RightToLeft == other.RightToLeft && LeftBar == other.LeftBar && Fill == other.Fill && (Tabs ?? []).SequenceEqual(other.Tabs ?? []);
+        RightToLeft == other.RightToLeft && LeftBar == other.LeftBar && Fill == other.Fill && Borders == other.Borders && (Tabs ?? []).SequenceEqual(other.Tabs ?? []);
 
     public override int GetHashCode() =>
-        HashCode.Combine(Align, Left, Right, FirstLine, Before, After, LineSpacing, HashCode.Combine(KeepWithNext, KeepLines, WidowOrphan, RightToLeft, LeftBar, Fill, Tabs?.Count ?? 0));
+        HashCode.Combine(Align, Left, Right, FirstLine, Before, After, LineSpacing, HashCode.Combine(KeepWithNext, KeepLines, WidowOrphan, RightToLeft, LeftBar, Fill, Borders, Tabs?.Count ?? 0));
 }
 
 internal enum HTabKind

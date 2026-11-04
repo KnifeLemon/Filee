@@ -314,6 +314,21 @@ internal sealed partial class HwpxWriter
         if (format.Tabs is { Count: > 0 } tabs)
             node.SetAttributeValue("tabPrIDRef", TabPrId(tabs));
 
+        if (format.Borders is { } borders)
+        {
+            // Word's usual distance from the text at the sides; rhwp keeps no room for one above and below.
+            var border = node.Element(Hh + "border");
+            if (border is null)
+                node.Add(border = new XElement(Hh + "border"));
+            border.SetAttributeValue("borderFillIDRef", BorderFillId(borders, null));
+            border.SetAttributeValue("offsetLeft", borders.Left.Style == HBorderStyle.None ? 0 : 400);
+            border.SetAttributeValue("offsetRight", borders.Right.Style == HBorderStyle.None ? 0 : 400);
+            border.SetAttributeValue("offsetTop", 0);
+            border.SetAttributeValue("offsetBottom", 0);
+            border.SetAttributeValue("connect", 0);
+            border.SetAttributeValue("ignoreMargin", 0);
+        }
+
         if (format.LeftBar is not null || format.Fill is not null)
         {
             var border = node.Element(Hh + "border");
