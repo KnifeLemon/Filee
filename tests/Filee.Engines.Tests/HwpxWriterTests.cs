@@ -104,6 +104,20 @@ public class HwpxWriterTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Spaces_are_as_wide_as_the_font_makes_them()
+    {
+        // 한글's default (and rhwp's) is half a character, twice Calibri's space: lines wrapped early (issue #510).
+        var dir = fx.NewFolder();
+        var txt = Path.Combine(dir, "spaces.txt");
+        await File.WriteAllTextAsync(txt, "two words", TestContext.Current.CancellationToken);
+
+        var shapes = Xml(await ConvertAsync(txt), "Contents/header.xml").Descendants(Hh + "charPr").ToList();
+
+        Assert.NotEmpty(shapes);
+        Assert.All(shapes, shape => Assert.Equal("1", (string?)shape.Attribute("useFontSpace")));
+    }
+
+    [Fact]
     public async Task Html_tables_with_merged_cells_keep_a_consistent_grid()
     {
         var dir = fx.NewFolder();
