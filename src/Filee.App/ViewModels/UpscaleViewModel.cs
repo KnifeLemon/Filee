@@ -1,12 +1,11 @@
 // ViewModel for the "Upscale Quality" tool window.
 
 using System.Collections.ObjectModel;
-using System.Diagnostics;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
-using Filee.App.Services;
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -21,8 +20,8 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
     private readonly ILocalizer _loc;
     private readonly UserDataStore _store;
     private readonly Func<string, (int Width, int Height)?> _pictureSize;
+    private readonly Action<IReadOnlyList<string>, Preset> _start;
     private readonly ILogger<UpscaleViewModel>? _log;
-    private readonly UpscalerEngine _engine;
     private CancellationTokenSource? _cts;
 
     public IReadOnlyList<string> Pictures { get; }
@@ -57,9 +56,6 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private bool _isCompleted;
-
-    [ObservableProperty]
-    private string? _lastOutputFile;
 
     [ObservableProperty]
     private string _statusMessage = "";
@@ -102,6 +98,7 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         ILocalizer loc,
         UserDataStore store,
         Func<string, (int Width, int Height)?> pictureSize,
+        Action<IReadOnlyList<string>, Preset> start,
         ILogger<UpscaleViewModel>? log = null)
     {
         Pictures = pictures;
@@ -109,8 +106,8 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         _loc = loc;
         _store = store;
         _pictureSize = pictureSize;
+        _start = start;
         _log = log;
-        _engine = new UpscalerEngine(log as ILogger<UpscalerEngine>);
 
         Heading = pictures.Count == 1
             ? Path.GetFileName(pictures[0])
@@ -122,7 +119,7 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
             _initialDimensions = _pictureSize(pictures[0]);
         }
 
-        Scale = tool.Upscale.Scale > 0 ? Math.Clamp(tool.Upscale.Scale, 1, 4) : 4;
+        Scale = tool.Upscale.Scale >= 2 ? Math.Clamp(tool.Upscale.Scale, 2, 4) : 4;
 
         InitTargets();
         RefreshModels();
@@ -131,8 +128,8 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
     private void InitTargets()
     {
         Targets.Clear();
-        var firstExt = Pictures.Count > 0 ? Path.GetExtension(Pictures[0]).TrimStart('.').ToLowerInvariant() : "png";
-        Targets.Add(new("*", _loc.Format("upscale.format_same", firstExt)));
+        var firstFormatId = Pictures.Count > 0 ? (FormatRegistry.Detect(Pictures[0])?.Id ?? "png") : "png";
+        Targets.Add(new("*", _loc.Format("upscale.format_same", firstFormatId)));
         Targets.Add(new("png", "PNG (.png)"));
         Targets.Add(new("jpg", "JPEG (.jpg)"));
         Targets.Add(new("webp", "WebP (.webp)"));
@@ -185,66 +182,37 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         StatusMessage = "";
         ProgressValue = 0;
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         var token = _cts.Token;
 
         var chosenTarget = Target.Value;
         var model = SelectedModel;
-        var currentScale = Scale;
-        var total = Pictures.Count;
-
-        var workFolder = Path.Combine(JobQueue.DefaultWorkRoot, "upscale-" + Guid.NewGuid().ToString("N")[..8]);
+        var currentScale = Math.Clamp(Scale, 2, 4);
 
         try
         {
             if (!UpscaleModels.IsInstalled(model.Id))
             {
                 ProgressText = _loc["upscale.downloading_model"];
-                await UpscaleModels.EnsureAsync(model.Id, progress: null, token);
-                NotifyModelStatusChanged();
-            }
-
-            Directory.CreateDirectory(workFolder);
-
-            for (var i = 0; i < total; i++)
-            {
-                token.ThrowIfCancellationRequested();
-                var itemIndex = i;
-                var sourcePath = Pictures[i];
-                var sourceExt = Path.GetExtension(sourcePath).TrimStart('.').ToLowerInvariant();
-                var targetExt = chosenTarget == "*" ? sourceExt : chosenTarget;
-
-                var tokens = new OutputPathResolver.Tokens(sourcePath, _tool.NameKey ?? "upscale", itemIndex + 1, DateTime.Now);
-                var resolvedOutput = OutputPathResolver.Resolve(_tool.Output, tokens, targetExt, File.Exists);
-                if (resolvedOutput is null)
-                    continue;
-
-                var progress = new Progress<double>(p =>
+                var progress = new Progress<Filee.Engines.Infrastructure.EngineInstallProgress>(p =>
                 {
                     Dispatcher.UIThread.Post(() =>
                     {
-                        var overall = (itemIndex + p) / total;
-                        ProgressValue = Math.Clamp(overall * 100.0, 0, 100);
-                        var currentPct = (int)Math.Clamp(p * 100.0, 0, 100);
-                        ProgressText = total > 1
-                            ? $"({itemIndex + 1}/{total}) {_loc.Format("upscale.processing", currentPct)}"
-                            : _loc.Format("upscale.processing", currentPct);
+                        var pct = (int)Math.Clamp(p.Fraction * 100.0, 0, 100);
+                        ProgressValue = pct;
+                        ProgressText = $"{_loc["upscale.downloading_model"]} ({pct}%)";
                     });
                 });
+                await UpscaleModels.EnsureAsync(model.Id, progress, token);
+                NotifyModelStatusChanged();
+            }
 
-                await _engine.UpscaleAsync(
-                    sourcePath,
-                    resolvedOutput,
-                    sourceExt,
-                    targetExt,
-                    model.Id,
-                    currentScale,
-                    workFolder,
-                    _tool,
-                    progress,
-                    token);
+            Remember(model.Id, currentScale);
 
-                LastOutputFile = resolvedOutput;
+            foreach (var group in Pictures.GroupBy(path => UpscaleTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? "", chosenTarget)))
+            {
+                _start([.. group], UpscaleTool.ConversionOf(_tool, group.Key, model.Id, currentScale));
             }
 
             ProgressValue = 100;
@@ -264,19 +232,26 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         }
         finally
         {
+            IsProcessing = false;
+        }
+    }
+
+    private void Remember(string modelId, int scale)
+    {
+        _tool.Upscale.Model = modelId;
+        _tool.Upscale.Scale = scale;
+        if (_store.FindPreset(_tool.Id) is { IsUpscaleTool: true } saved)
+        {
+            saved.Upscale.Model = modelId;
+            saved.Upscale.Scale = scale;
             try
             {
-                if (Directory.Exists(workFolder))
-                    Directory.Delete(workFolder, recursive: true);
+                _store.SaveLibrary();
             }
-            catch
+            catch (Exception ex)
             {
-                // Swept by JobQueue.DeleteStaleWorkFolders
+                _log?.LogWarning(ex, "Could not save upscale tool settings");
             }
-
-            IsProcessing = false;
-            _cts?.Dispose();
-            _cts = null;
         }
     }
 
@@ -289,38 +264,10 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         }
     }
 
-    [RelayCommand]
-    public void OpenOutputFolder()
-    {
-        if (string.IsNullOrEmpty(LastOutputFile) || !File.Exists(LastOutputFile))
-            return;
-
-        try
-        {
-            if (OperatingSystem.IsWindows())
-            {
-                Process.Start("explorer.exe", $"/select,\"{LastOutputFile}\"");
-            }
-            else if (OperatingSystem.IsMacOS())
-            {
-                Process.Start("open", $"-R \"{LastOutputFile}\"");
-            }
-            else
-            {
-                var dir = Path.GetDirectoryName(LastOutputFile);
-                if (!string.IsNullOrEmpty(dir))
-                    Process.Start("xdg-open", $"\"{dir}\"");
-            }
-        }
-        catch (Exception ex)
-        {
-            _log?.LogWarning(ex, "Failed to reveal output file");
-        }
-    }
-
     public void Dispose()
     {
         _cts?.Cancel();
         _cts?.Dispose();
+        _cts = null;
     }
 }

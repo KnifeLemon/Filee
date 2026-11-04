@@ -89,8 +89,8 @@ Downloaded from their official release pages when the user chooses to install th
 | whisper.cpp (whisper-cli.exe Windows build) | MIT | https://github.com/ggml-org/whisper.cpp |
 | ggml Whisper base model (`ggml-base.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
 | upscayl-bin (AI super-resolution binary) | AGPL-3.0 | https://github.com/upscayl/upscayl-ncnn |
-| NMKD Siax (`4x_NMKD-Siax_200k`, Philip Hofmann / NMKD) | WTFPL | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-NMKD-Siax-200k |
-| NMKD Superscale (`4x_NMKD-Superscale-SP_178000_G`, Philip Hofmann / NMKD) | WTFPL | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-NMKD-Superscale-SP-178000-G |
+| NMKD Siax (`4x_NMKD-Siax_200k`, nmkd) | WTFPL | https://github.com/upscayl/custom-models |
+| NMKD Superscale (`4x_NMKD-Superscale-SP_178000_G`, nmkd) | WTFPL | https://github.com/upscayl/custom-models |
 | RealESRGAN General (`RealESRGAN_General_x4_v3`, Xintao Wang) | BSD-3-Clause | https://github.com/xinntao/Real-ESRGAN |
 | RealESRGAN General WDN (`RealESRGAN_General_WDN_x4_v3`, Xintao Wang) | BSD-3-Clause | https://github.com/xinntao/Real-ESRGAN |
 | 4xLSDIR (`4xLSDIR`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIR |

@@ -1,5 +1,5 @@
 // "Upscale Quality": the preset in the library (palette only, no donut slot) and how existing libraries get
-// it (settings schema 64).
+// it (settings schema 65).
 
 using Filee.Core.Presets;
 using Filee.Core.Profiles;
@@ -14,12 +14,12 @@ public class UpscaleToolTests
         [.. profiles.Select(p => $"{p.Id}: {string.Join(",", p.PresetIds)} | {string.Join(",", p.BackPresetIds ?? [])}")];
 
     [Fact]
-    public void A_new_library_has_the_tool_after_annotate_and_no_slot()
+    public void A_new_library_has_the_tool_after_background_and_no_slot()
     {
         var presets = BuiltInData.CreatePresets();
-        var annotate = presets.FindIndex(p => p.Id == BuiltInData.AnnotateId);
-        Assert.True(annotate >= 0);
-        Assert.Equal(BuiltInData.UpscaleId, presets[annotate + 1].Id);
+        var background = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
+        Assert.True(background >= 0);
+        Assert.Equal(BuiltInData.UpscaleId, presets[background + 1].Id);
 
         var tool = presets.Single(p => p.Id == BuiltInData.UpscaleId);
         Assert.True(tool.IsTool);

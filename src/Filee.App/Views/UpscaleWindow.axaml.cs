@@ -12,6 +12,13 @@ public partial class UpscaleWindow : Window
     public UpscaleWindow()
     {
         InitializeComponent();
+        Closing += (_, _) =>
+        {
+            if (DataContext is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+        };
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e)
@@ -31,10 +38,17 @@ public partial class UpscaleWindow : Window
         var loc = AppHost.Get<ILocalizer>();
         var windows = AppHost.Get<WindowService>();
         var message = loc.Format("engines.model.delete_confirm", vm.SelectedModel.Name);
-        if (await windows.ConfirmAsync(this, message, destructive: true))
+        try
         {
-            UpscaleModels.Uninstall(vm.SelectedModel.Id);
-            vm.NotifyModelStatusChanged();
+            if (await windows.ConfirmAsync(this, message, destructive: true))
+            {
+                UpscaleModels.Uninstall(vm.SelectedModel.Id);
+                vm.NotifyModelStatusChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            await windows.MessageAsync(this, ex.Message);
         }
     }
 }

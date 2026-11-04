@@ -12,7 +12,7 @@ public sealed class UpscalerConverter : IConverter
 {
     private static readonly string[] SupportedFormats =
     [
-        "png", "jpg", "jpeg", "webp", "avif", "heic", "ico", "bmp", "tiff"
+        "png", "jpg", "webp", "avif", "heic", "ico", "bmp", "tiff"
     ];
 
     private readonly UpscalerEngine _engine;
@@ -31,7 +31,7 @@ public sealed class UpscalerConverter : IConverter
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
         SupportedFormats.SelectMany(from =>
-            SupportedFormats.Select(to => new ConversionEdge(from, to, Cost: 900, DirectOnly: true)))
+            SupportedFormats.Select(to => new ConversionEdge(from, to, Cost: 900, DirectOnly: true, Upscale: true)))
         .ToList();
 
     public static string? LocateExecutable() =>

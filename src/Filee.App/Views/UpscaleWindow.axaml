@@ -9,6 +9,9 @@
         Icon="avares://Filee/Assets/Icons/filee.ico"
         Width="540" SizeToContent="Height" MinWidth="460" CanResize="False"
         WindowStartupLocation="CenterScreen">
+  <Window.Resources>
+    <StreamGeometry x:Key="Icon.Trash">M9,3V4H4V6H5V19A2,2 0 0,0 7,21H17A2,2 0 0,0 19,19V6H20V4H15V3H9M7,6H17V19H7V6M9,8V17H11V8H9M13,8V17H15V8H13Z</StreamGeometry>
+  </Window.Resources>
   <DockPanel>
     <!-- Footer Buttons -->
     <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
@@ -68,14 +71,13 @@
           <TextBlock DockPanel.Dock="Left" Classes="label" Text="{DynamicResource upscale.scale}" />
           <TextBlock DockPanel.Dock="Right" FontWeight="SemiBold" Text="{Binding Scale, StringFormat='{}{0}×'}" />
         </DockPanel>
-        <Slider Minimum="1" Maximum="4" Value="{Binding Scale}"
+        <Slider Minimum="2" Maximum="4" Value="{Binding Scale}"
                 TickFrequency="1" IsSnapToTickEnabled="True"
                 IsEnabled="{Binding !IsProcessing}" />
-        <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto">
-          <TextBlock Grid.Column="0" Classes="caption" Text="1×" />
-          <TextBlock Grid.Column="2" Classes="caption" Text="2×" />
-          <TextBlock Grid.Column="4" Classes="caption" Text="3×" />
-          <TextBlock Grid.Column="6" Classes="caption" Text="4×" />
+        <Grid ColumnDefinitions="Auto,*,Auto,*,Auto">
+          <TextBlock Grid.Column="0" Classes="caption" Text="2×" />
+          <TextBlock Grid.Column="2" Classes="caption" Text="3×" />
+          <TextBlock Grid.Column="4" Classes="caption" Text="4×" />
         </Grid>
       </StackPanel>
 
@@ -87,7 +89,7 @@
       </StackPanel>
 
       <!-- Step D: Resolution Preview -->
-      <Border Background="{DynamicResource CardBackground}" BorderBrush="{DynamicResource BorderBrush}"
+      <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource SubtleBorderBrush}"
               BorderThickness="1" CornerRadius="6" Padding="12,10">
         <StackPanel Spacing="4">
           <TextBlock Classes="caption" Text="{DynamicResource upscale.resolution_label}" />
@@ -102,22 +104,18 @@
       </StackPanel>
 
       <!-- Success Notice -->
-      <Border Background="#2216A34A" BorderBrush="#16A34A" BorderThickness="1" CornerRadius="6" Padding="12,8"
+      <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource SuccessBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8"
               IsVisible="{Binding IsCompleted}">
-        <DockPanel LastChildFill="True">
-          <Button DockPanel.Dock="Right" Classes="subtle" Content="{DynamicResource home.open_folder}"
-                  Command="{Binding OpenOutputFolderCommand}" Margin="8,0,0,0" VerticalAlignment="Center" />
-          <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-            <TextBlock Text="✓" Foreground="#16A34A" FontWeight="Bold" />
-            <TextBlock Text="{DynamicResource upscale.success}" Foreground="#16A34A" FontWeight="SemiBold" VerticalAlignment="Center" />
-          </StackPanel>
-        </DockPanel>
+        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <TextBlock Text="✓" Foreground="{DynamicResource SuccessBrush}" FontWeight="Bold" />
+          <TextBlock Text="{DynamicResource upscale.success}" Foreground="{DynamicResource SuccessBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+        </StackPanel>
       </Border>
 
       <!-- Error Notice -->
-      <Border Background="#33EF4444" BorderBrush="#EF4444" BorderThickness="1" CornerRadius="6" Padding="12,8"
+      <Border Background="{DynamicResource SurfaceAltBrush}" BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" CornerRadius="6" Padding="12,8"
               IsVisible="{Binding HasError}">
-        <TextBlock Text="{Binding StatusMessage}" Foreground="#EF4444" TextWrapping="Wrap" />
+        <TextBlock Text="{Binding StatusMessage}" Foreground="{DynamicResource DangerBrush}" TextWrapping="Wrap" />
       </Border>
     </StackPanel>
   </DockPanel>

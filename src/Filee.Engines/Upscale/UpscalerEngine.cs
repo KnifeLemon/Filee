@@ -57,7 +57,7 @@ public sealed partial class UpscalerEngine
             frames[0].Write(tempInput, MagickFormat.Png);
         }
 
-        var scaleValue = Math.Clamp(scale, 1, 8);
+        var scaleValue = Math.Clamp(scale, 2, 4);
         var arguments = new List<string>
         {
             "-i", tempInput,
@@ -99,14 +99,8 @@ public sealed partial class UpscalerEngine
         if (!string.IsNullOrEmpty(targetDir))
             Directory.CreateDirectory(targetDir);
 
-        if (string.Equals(toFormat, "png", StringComparison.OrdinalIgnoreCase))
-        {
-            File.Move(tempOutput, outputPath, overwrite: true);
-        }
-        else
-        {
-            using var upscaled = new MagickImage(tempOutput);
-            upscaled.Write(outputPath, ImageEncoder.ToMagickFormat(toFormat));
-        }
+        using var upscaled = new MagickImage(tempOutput);
+        ImageEncoder.ApplyOptions(upscaled, preset.Image, toFormat);
+        ImageEncoder.WriteImage(upscaled, outputPath, toFormat);
     }
 }

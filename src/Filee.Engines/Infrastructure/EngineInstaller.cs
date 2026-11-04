@@ -351,7 +351,6 @@ public sealed class EngineInstaller
                     File.Copy(file, Path.Combine(staging, component.Id + ".traineddata"));
                     Replace(component.Id, staging);
                     break;
-                case "model":
                 case "ncnn-param":
                 case "ncnn-bin":
                     var ncnnTarget = FolderOf(component.Id);
@@ -360,6 +359,7 @@ public sealed class EngineInstaller
                     File.Copy(file, Path.Combine(ncnnTarget, ncnnFile), overwrite: true);
                     File.WriteAllText(Path.Combine(ncnnTarget, "." + component.Id), component.Sha256);
                     return;
+                case "model":
                 case "bin":
                     // Standalone AI model file (e.g. Whisper ggml-base.bin): copied directly into its component folder.
                     Directory.CreateDirectory(staging);
@@ -632,10 +632,13 @@ public sealed class EngineInstaller
         if (!package.Components.Contains(runtime) || !Directory.Exists(FolderOf(runtime)))
             return;
         var dlls = Directory.GetFiles(FolderOf(runtime), "*.dll");
-        foreach (var id in package.Components.Where(c => c != runtime && _components[c].Kind == "conda"))
+        foreach (var id in package.Components.Where(c => c != runtime && (_components[c].Kind is "conda" or "zip")))
         {
+            var targetDir = FolderOf(id);
+            if (!Directory.Exists(targetDir))
+                continue;
             foreach (var dll in dlls)
-                File.Copy(dll, Path.Combine(FolderOf(id), Path.GetFileName(dll)), overwrite: true);
+                File.Copy(dll, Path.Combine(targetDir, Path.GetFileName(dll)), overwrite: true);
         }
     }
 

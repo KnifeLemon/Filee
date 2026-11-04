@@ -1888,9 +1888,9 @@ Filee upscales and restores images locally using an offline AI super-resolution 
 - **Offline privacy & local execution**: Like all Filee features, image upscaling processes every pixel locally on your machine via direct Vulkan GPU acceleration or CPU mode. No network connection is used during upscaling.
 - **Models catalog**: Curated selection of high-quality image models for photos, digital art, illustration, and restoration:
   - Compact & fast models (optimized for CPU and integrated GPUs): `4xLSDIRCompactC3`, `RealESRGAN_General_x4_v3`, `RealESRGAN_General_WDN_x4_v3`.
-  - Detailed & high-fidelity models (recommended for dedicated GPUs): `4x_NMKD-Siax_200k`, `4x_NMKD-Superscale-SP_178000_G`, `4xLSDIR`, `4xLSDIRplusC`, `4xNomos8kSC`, `4xHFA2k`, `uniscale_restore`.
+  - Detailed & high-fidelity models (recommended for dedicated GPUs): `4x_NMKD-Siax_200k`, `4x_NMKD-Superscale-SP_178000_G`, `4xLSDIR`, `4xLSDIRplusC`, `4xNomos8kSC`, `4xHFA2k`.
 - **Where it lives**:
-  - **Donut Menu**: When an image is dropped or opened in the donut wheel, the **Upscale** preset opens the interactive Upscale dialog to select models, scale factors (1x to 4x), preview output resolution, and upscale directly.
+  - **Donut Menu**: When an image is dropped or opened in the donut wheel, the **Upscale** preset opens the interactive Upscale dialog to select models, scale factors (2× to 4×), preview output resolution, and upscale directly.
   - **Settings → Presets**: The "Upscale Image" tool preset can be configured with preferred default models and scale factors.
-  - **Settings → Engines**: "Image Quality Models" engine card with a dedicated **Download Models** manager to browse, search, download, and delete local model files.
-- **Supported formats**: PNG, JPG, JPEG, WEBP, ICO, HEIC, AVIF, BMP, and TIFF.
+  - **Settings → Engines**: "Upscayl (AI image upscaler)" engine package provides the local `upscayl-bin` binary, with models downloaded on demand with live progress and uninstall support in the Upscale dialog.
+- **Supported formats**: PNG, JPG, WEBP, ICO, HEIC, AVIF, BMP, and TIFF.

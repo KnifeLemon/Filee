@@ -469,6 +469,40 @@ public sealed class EngineInstallerTests : IDisposable
             Directory.GetFiles(root, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(root, f).Replace('\\', '/')).Order(StringComparer.Ordinal));
     }
 
+    [Fact]
+    public async Task Model_components_are_copied_and_marked_installed()
+    {
+        var modelBytes = "ggml-model-bytes"u8.ToArray();
+        var component = Component("whisper-model", "model", modelBytes);
+        var server = new FakeServer(new() { [component.Url] = modelBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("whisper", ["whisper-model"], modelBytes.Length, ["whisper"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", "whisper-model.model")));
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", ".filee-component")));
+        Assert.True(installer.IsInstalled(package));
+        Assert.True(installer.IsUpToDate(package));
+    }
+
+    [Fact]
+    public async Task Ncnn_components_write_custom_marker_and_are_reported_installed()
+    {
+        var paramBytes = "ncnn-param-bytes"u8.ToArray();
+        var component = Component("model-param", "ncnn-param", paramBytes);
+        var server = new FakeServer(new() { [component.Url] = paramBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("ncnn-test", ["model-param"], paramBytes.Length, ["upscaler"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "model", ".model-param")));
+        Assert.True(installer.IsInstalled(package));
+    }
+
     private sealed class SyncProgress(Action<EngineInstallProgress> report) : IProgress<EngineInstallProgress>
     {
         public void Report(EngineInstallProgress value) => report(value);

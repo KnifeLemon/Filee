@@ -786,13 +786,16 @@ public sealed partial class JobQueue : IAsyncDisposable
         var translate = finalOutput && runWith.Translate.Enabled;
         if (translate && !runWith.TranslatesDocument(source.Id))
             return Fail(file, "error.no_route", $"{source.Id} → {target}", new RouteRequest(source.Id, target, Translate: true));
+        var upscale = finalOutput && runWith.Upscale.Enabled;
+        if (upscale && !UpscaleTool.CanUpscale(source.Id))
+            return Fail(file, "error.no_route", $"{source.Id} → {target}", new RouteRequest(source.Id, target, Upscale: true));
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(source.Id);
-        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate);
+        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, upscale: upscale);
         if (route is null)
             return Fail(file, "error.no_route", $"{source.Id} → {target}",
-                new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate));
+                new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Upscale: upscale));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
@@ -887,7 +890,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                                 file.MissingFonts = file.MissingFonts.Concat(fonts)
                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                                 Notify(job);
-                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate);
+                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate, Upscale: step.Upscale);
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally

@@ -250,17 +250,24 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         var pictures = files.Where(f => FormatRegistry.Detect(f) is { } format && UpscaleTool.CanUpscale(format.Id)).ToList();
         if (pictures.Count == 0)
             return;
+        if (_upscaleWindow is { DataContext: IDisposable oldVm })
+        {
+            oldVm.Dispose();
+        }
         _upscaleWindow?.Close();
         var store = services.GetRequiredService<UserDataStore>();
-
+        var conversions = services.GetRequiredService<ConversionService>();
         var log = services.GetService<ILogger<UpscaleViewModel>>();
-        var vm = new UpscaleViewModel(pictures, preset, loc, store, PictureSize, log);
+        var vm = new UpscaleViewModel(pictures, preset, loc, store, PictureSize,
+            (files, conversion) => conversions.Start(files, conversion), log);
         var win = new UpscaleWindow { DataContext = vm };
         PrepareWindow(win);
         win.Closed += (_, _) =>
         {
             if (_upscaleWindow == win)
                 _upscaleWindow = null;
+            vm.Dispose();
+            trimmer.Request();
         };
         _upscaleWindow = win;
         win.Show();

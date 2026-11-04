@@ -916,9 +916,9 @@ public class ClipWindowTests
         Dispatcher.UIThread.RunJobs();
     }
 
-    internal static void WaitFor(Func<bool> condition)
+    internal static void WaitFor(Func<bool> condition, int iterations = 1500)
     {
-        for (var i = 0; i < 500 && !condition(); i++)
+        for (var i = 0; i < iterations && !condition(); i++)
         {
             Dispatcher.UIThread.RunJobs();
             Thread.Sleep(10);
