@@ -1,9 +1,10 @@
 // XML parts of ZIP packages (DOCX, PPTX, XLSX, HWPX, ODF, EPUB) and XML files of e-books, read with limits. A part a
 // few kilobytes packed can unpack to gigabytes, so its size is checked while it is decompressed (a lying header does
-// not help a zip bomb). Its nesting is checked by a quick pass of the reader before the tree is built: XDocument takes
-// time that grows faster than the square of the depth (60,000 levels, 800 KB of XML, kept it busy for 14 seconds), and
-// the tree's own operations (XElement.Value, copying) recurse once per level. DTDs are refused (DtdProcessing.Ignore
-// where files are known to carry one) and nothing outside the package is ever fetched.
+// not help a zip bomb). Its nesting is checked by the reader the tree is built from, which stops at MaxElementDepth:
+// XDocument takes time that grows faster than the square of the depth (60,000 levels, 800 KB of XML, kept it busy for
+// 14 seconds), and the tree's own operations (XElement.Value, copying) recurse once per level. Both are checked in one
+// pass, straight from the decompressing stream. DTDs are refused (DtdProcessing.Ignore where files are known to carry
+// one) and nothing outside the package is ever fetched.
 
 using System.IO.Compression;
 using System.Xml;
@@ -54,20 +55,21 @@ internal sealed class BoundedXml
         var length = entry.Length; // not available any more once an entry of an archive opened for update is opened
         if (length > _maxPart)
             throw TooLarge(name, "over " + Size(_maxPart));
-        using var stream = entry.Open();
-        using var copy = new MemoryStream((int)Math.Min(length, 1024 * 1024));
-        var buffer = new byte[81920];
-        int count;
-        while ((count = stream.Read(buffer)) > 0)
+        using var stream = new CountingStream(entry.Open(), count =>
         {
-            if (copy.Length + count > _maxPart)
+            if (count > _maxPart)
                 throw TooLarge(name, "over " + Size(_maxPart));
-            _read += count;
-            if (_read > _maxPackage)
+            if (_read + count > _maxPackage)
                 throw TooLarge(name, "the package unpacks to over " + Size(_maxPackage));
-            copy.Write(buffer, 0, count);
+        });
+        try
+        {
+            return Parse(stream, name, options, DtdProcessing.Prohibit);
         }
-        return Parse(copy.GetBuffer(), (int)copy.Length, name, options, DtdProcessing.Prohibit);
+        finally
+        {
+            _read += stream.Count;
+        }
     }
 
     /// <summary>One part on its own (with its own total).</summary>
@@ -80,11 +82,11 @@ internal sealed class BoundedXml
         var name = Path.GetFileName(path);
         if (new FileInfo(path).Length > MaxPartBytes)
             throw TooLarge(name, "over " + Size(MaxPartBytes));
-        var bytes = System.IO.File.ReadAllBytes(path);
-        return Parse(bytes, bytes.Length, name, options, dtd);
+        using var stream = System.IO.File.OpenRead(path);
+        return Parse(stream, name, options, dtd);
     }
 
-    private static XDocument Parse(byte[] bytes, int length, string name, LoadOptions options, DtdProcessing dtd)
+    private static XDocument Parse(Stream stream, string name, LoadOptions options, DtdProcessing dtd)
     {
         var settings = new XmlReaderSettings
         {
@@ -92,17 +94,8 @@ internal sealed class BoundedXml
             XmlResolver = null,
             IgnoreWhitespace = !options.HasFlag(LoadOptions.PreserveWhitespace),
         };
-        // The depth pass reads the elements only; an XmlException it throws is the one XDocument.Load would throw.
-        using (var reader = XmlReader.Create(new MemoryStream(bytes, 0, length, writable: false), settings))
-        {
-            while (reader.Read())
-            {
-                if (reader.NodeType == XmlNodeType.Element && reader.Depth >= MaxElementDepth)
-                    throw TooLarge(name, $"elements nested over {MaxElementDepth} levels");
-            }
-        }
-        using (var reader = XmlReader.Create(new MemoryStream(bytes, 0, length, writable: false), settings))
-            return XDocument.Load(reader, options);
+        using var reader = new DepthLimitedReader(XmlReader.Create(stream, settings), name);
+        return XDocument.Load(reader, options);
     }
 
     /// <summary>A size for a message: "256 MB", or bytes below 1 MB.</summary>
@@ -110,4 +103,89 @@ internal sealed class BoundedXml
 
     private static ConversionRefusedException TooLarge(string part, string reason) =>
         new("error.document_too_large", $"{part}: {reason}");
+
+    /// <summary>A read-only stream that shows the number of bytes read so far to <c>check</c> before handing them on.</summary>
+    private sealed class CountingStream(Stream inner, Action<long> check) : Stream
+    {
+        public long Count { get; private set; }
+
+        public override int Read(byte[] buffer, int offset, int count) => Counted(inner.Read(buffer, offset, count));
+
+        public override int Read(Span<byte> buffer) => Counted(inner.Read(buffer));
+
+        private int Counted(int read)
+        {
+            check(Count + read);
+            Count += read;
+            return read;
+        }
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => Count; set => throw new NotSupportedException(); }
+        public override void Flush() { }
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
+
+    /// <summary>Hands on the nodes of another reader and stops at an element nested <see cref="MaxElementDepth"/> levels deep.</summary>
+    private sealed class DepthLimitedReader(XmlReader inner, string name) : XmlReader
+    {
+        public override bool Read()
+        {
+            if (!inner.Read())
+                return false;
+            if (inner.NodeType == XmlNodeType.Element && inner.Depth >= MaxElementDepth)
+                throw TooLarge(name, $"elements nested over {MaxElementDepth} levels");
+            return true;
+        }
+
+        public override XmlNodeType NodeType => inner.NodeType;
+        public override string LocalName => inner.LocalName;
+        public override string NamespaceURI => inner.NamespaceURI;
+        public override string Prefix => inner.Prefix;
+        public override string Name => inner.Name;
+        public override string Value => inner.Value;
+        public override bool HasValue => inner.HasValue;
+        public override int Depth => inner.Depth;
+        public override string BaseURI => inner.BaseURI;
+        public override bool IsEmptyElement => inner.IsEmptyElement;
+        public override bool IsDefault => inner.IsDefault;
+        public override XmlSpace XmlSpace => inner.XmlSpace;
+        public override string XmlLang => inner.XmlLang;
+        public override int AttributeCount => inner.AttributeCount;
+        public override bool EOF => inner.EOF;
+        public override ReadState ReadState => inner.ReadState;
+        public override XmlNameTable NameTable => inner.NameTable;
+        public override XmlReaderSettings? Settings => inner.Settings;
+        public override string? GetAttribute(string name) => inner.GetAttribute(name);
+        public override string? GetAttribute(string name, string? namespaceURI) => inner.GetAttribute(name, namespaceURI);
+        public override string GetAttribute(int i) => inner.GetAttribute(i);
+        public override bool MoveToAttribute(string name) => inner.MoveToAttribute(name);
+        public override bool MoveToAttribute(string name, string? ns) => inner.MoveToAttribute(name, ns);
+        public override void MoveToAttribute(int i) => inner.MoveToAttribute(i);
+        public override bool MoveToFirstAttribute() => inner.MoveToFirstAttribute();
+        public override bool MoveToNextAttribute() => inner.MoveToNextAttribute();
+        public override bool MoveToElement() => inner.MoveToElement();
+        public override bool ReadAttributeValue() => inner.ReadAttributeValue();
+        public override string? LookupNamespace(string prefix) => inner.LookupNamespace(prefix);
+        public override void ResolveEntity() => inner.ResolveEntity();
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+                inner.Dispose();
+            base.Dispose(disposing);
+        }
+    }
 }
