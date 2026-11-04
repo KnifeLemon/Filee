@@ -413,7 +413,7 @@ internal static partial class ComplexScripts
         {
             "docx" or "docm" or "dotx" or "dotm" => Xml("word/", "document") || Xml("word/", "header") || Xml("word/", "footer")
                                                      || Xml("word/", "footnotes") || Xml("word/", "endnotes"),
-            "pptx" or "pptm" or "potx" or "ppsx" => Xml("ppt/slides/", "slide"),
+            "pptx" or "pptm" or "potx" or "potm" or "ppsx" => Xml("ppt/slides/", "slide"),
             "xlsx" or "xlsm" or "xltx" => Xml("xl/", "sharedStrings") || Xml("xl/worksheets/", "sheet"),
             "hwpx" => Xml("Contents/", "section"),
             "odt" or "ods" or "odp" => name.Equals("content.xml", StringComparison.OrdinalIgnoreCase),
