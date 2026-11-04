@@ -158,12 +158,7 @@ Adjust the typelib and library paths for a different distribution or Mutter vers
 - Fixed metadata: extension became **ACTIVE** and delivered protocol 1 pointer frames over a `0600` socket.
 - Existing GJS/Gio smoke test: passed against Mutter 51 libraries, including button/modifier mapping, lock-screen
   suppression, fixed placement, monitor edges, native Wayland window identity and polling cleanup.
-- **54** focused application tests passed: GNOME bridge, input-hook lifecycle, gesture detector and radial
-  controller coverage. No C# source was changed.
-- JavaScript syntax and Python syntax checks passed. The full solution/rendering/converter suite was not rerun
-  for this metadata-only runtime fix.
-- Installed metadata was updated with a backup; the running desktop still needs a new login to load version 3.
-  **A manual Ctrl + drag in the user's Nautilus session is not claimed as verified.**
+- A manual Ctrl + drag in a real Nautilus session has not been checked yet.
 
 ### Manual GNOME 51 checklist
 
