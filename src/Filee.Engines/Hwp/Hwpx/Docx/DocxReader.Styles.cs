@@ -16,10 +16,18 @@ internal sealed partial class DocxReader
     private const int WordLatinLineToHwpPercent = 120;
     private const int WordEastAsianLineToHwpPercent = 130;
 
-    private static int WordLineToHwpPercent(RunProps mark) =>
-        !string.IsNullOrWhiteSpace(mark.EastAsia) || !string.IsNullOrWhiteSpace(mark.EastAsiaTheme)
+    private static int WordLineToHwpPercent(RunProps mark)
+    {
+        // Some Word files explicitly assign the same font (e.g. Calibri) to both script slots.
+        // That is still a Latin paragraph; only a distinct East Asian font/theme needs the larger factor.
+        var hasDistinctEastAsianFont = !string.IsNullOrWhiteSpace(mark.EastAsia)
+            && !string.Equals(mark.EastAsia, mark.Ascii, StringComparison.OrdinalIgnoreCase);
+        var hasDistinctEastAsianTheme = !string.IsNullOrWhiteSpace(mark.EastAsiaTheme)
+            && !string.Equals(mark.EastAsiaTheme, mark.AsciiTheme, StringComparison.OrdinalIgnoreCase);
+        return hasDistinctEastAsianFont || hasDistinctEastAsianTheme
             ? WordEastAsianLineToHwpPercent
             : WordLatinLineToHwpPercent;
+    }
 
     // ───────────────────────── Property bags ─────────────────────────
 
