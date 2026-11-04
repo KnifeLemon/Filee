@@ -457,7 +457,8 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
   table cells, text boxes, notes and links nested more than 32 deep become plain paragraphs of their text, in the
   DOCX and HWPX readers and again in every writer (whatever reader made the model); an equation deeper than 200
   levels becomes its text, notes inside notes are not followed, and PPTX groups are opened without recursion. The
-  readers run on a thread with a 16 MB stack.
+  readers run on a thread with a 16 MB stack. The scan for text rhwp can't draw (`ComplexScripts.cs`) stops at the
+  same sizes: it runs before any reader, finds nothing in a file over them, and the reader then refuses that file.
 
 Element order and attribute values follow files saved by 한글 where the schema and 한글 disagree, for example:
 
@@ -1513,7 +1514,9 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
   says. A local picture outside the document never ends up in the result, and no share or address is contacted.
   An HTML page's pictures inside its own folder (the rule of `DocumentFiles.cs`) go into the copy as `data:` URIs,
   except SVG, which can link to further files. XML parts are read with the limits of `BoundedXml.cs`. Binary Office
-  files (DOC, XLS, PPT) are left to the profile.
+  files (DOC, XLS, PPT) are left to the profile. Later changes to the copy (`DocxNoteMarks`) start from this copy.
+  Every copy of a package is written by `PackageRepacker`, which refuses one that unpacks to over 2 GB, or to over
+  twice its own size when that is more (`error.document_too_large`).
 - HWP/HWPX import comes from the H2Orestart extension, which is written in Java; Filee points LibreOffice at the
   downloaded JRE (`-env:UNO_JAVA_JFW_JREHOME`).
 - When LibreOffice can't load an Office Open XML or OpenDocument file ("source file could not be loaded"), Filee

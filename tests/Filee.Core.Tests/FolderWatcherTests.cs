@@ -512,6 +512,64 @@ public class FolderWatcherTests
     }
 
     /// <summary>A junction on Windows (no rights needed), a symbolic link elsewhere; skips when neither can be made.</summary>
+    /// <summary>Replaces a file with a symbolic link to <paramref name="target"/>; skips where links can't be made.</summary>
+    private static void SwapForLink(string file, string target)
+    {
+        File.Delete(file);
+        try
+        {
+            File.CreateSymbolicLink(file, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("This machine doesn't let the test make a symbolic link.");
+        }
+    }
+
+    [Fact]
+    public async Task A_file_swapped_for_a_link_while_it_waits_is_not_converted()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var foreign = elsewhere.File("other.jpg");
+        var photo = dir.File("photo.jpg");
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        watcher.Notice(photo);
+        SwapForLink(photo, foreign);
+        time.Advance(3);
+
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        time.Advance(3);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Empty(jobs);
+    }
+
+    [Fact]
+    public async Task A_file_swapped_for_a_link_before_its_second_turn_is_not_converted()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var foreign = elsewhere.File("other.jpg");
+        var photo = dir.File("photo.jpg");
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path }, new FakeConverter("magick", new ConversionEdge("jpg", "png")) { Failure = new InvalidOperationException("no") });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        watcher.Notice(photo);
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(FileState.Failed, Assert.Single(Assert.Single(jobs).Files).State);
+
+        SwapForLink(photo, foreign);
+        time.Advance(30);
+
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Single(jobs);
+    }
+
     private static void LinkFolder(string link, string target)
     {
         if (!OperatingSystem.IsWindows())

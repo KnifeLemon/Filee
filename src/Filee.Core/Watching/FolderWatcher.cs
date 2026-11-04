@@ -172,7 +172,8 @@ public sealed class FolderWatcher : IAsyncDisposable
             foreach (var (path, candidate) in _pending)
             {
                 var current = candidate.Refresh(path, now);
-                if (!current.Exists || _results.Contains(path))
+                // Checked again now: a file can be swapped for a link while it waits, also for its second turn.
+                if (!current.Exists || _results.Contains(path) || IsLinkNow(path))
                 {
                     _pending.TryRemove(path, out _);
                     continue;
@@ -320,6 +321,18 @@ public sealed class FolderWatcher : IAsyncDisposable
         try
         {
             return entry.LinkTarget is not null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    private static bool IsLinkNow(string path)
+    {
+        try
+        {
+            return IsLink(new FileInfo(path));
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
