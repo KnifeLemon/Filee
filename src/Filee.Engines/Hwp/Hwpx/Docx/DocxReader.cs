@@ -336,11 +336,81 @@ internal sealed partial class DocxReader
             return;
         var size = MaxFontSize(paragraph.Inlines) ?? paragraph.MarkFormat.Size ?? 1000;
         var cell = HwpxUnits.FromTwips(pitch);
-        var natural = size * WordLineToHwpPercent / 100.0; // 1/100 pt = HWPUNIT
+        var natural = size * SingleLinePercent(paragraph) / 100.0; // 1/100 pt = HWPUNIT
         var lines = Math.Max(1, Math.Ceiling(natural / cell));
         var multiple = (props.Line ?? 240) / 240.0;
         paragraph.Format = paragraph.Format with { LineSpacing = new HLineSpacing(HLineSpacingKind.AtLeast, (int)Math.Round(lines * cell * multiple)) };
     }
+
+    /// <summary>
+    /// Gives a paragraph with "multiple" line spacing the height its fonts have in Word: 한글's percentage is of the font
+    /// size, and a single Calibri line is 122% of it where one in Times New Roman is 115%.
+    /// </summary>
+    private static void FitLineSpacing(HParagraph paragraph, ParaProps props)
+    {
+        if (props.LineRule is "exact" or "atLeast")
+            return;
+        var percent = (int)Math.Round((props.Line ?? 240) / 240.0 * SingleLinePercent(paragraph));
+        paragraph.Format = paragraph.Format with { LineSpacing = new HLineSpacing(HLineSpacingKind.Percent, percent) };
+    }
+
+    /// <summary>
+    /// A paragraph's single line height as a percentage of its largest font size: its tallest text decides, as on a line
+    /// in Word. A paragraph without text has the height of its mark, or of the equation or picture in it: 100%, since
+    /// 한글's percentage of a tall object would leave a third of its height empty above it.
+    /// </summary>
+    private static double SingleLinePercent(HParagraph paragraph)
+    {
+        var (size, height, inlineObject) = (0, 0.0, false);
+        Measure(paragraph.Inlines);
+        if (size == 0 && inlineObject)
+            return 100;
+        if (size == 0 && paragraph.MarkFormat is var mark)
+            Add("", mark);
+        return height / size;
+
+        void Measure(IEnumerable<HInline> inlines)
+        {
+            foreach (var inline in inlines)
+            {
+                if (inline is HEquation or HImage { Anchor: null })
+                    inlineObject = true;
+                else if (inline is HText { Text.Length: > 0 } text)
+                    Add(text.Text, text.Format);
+                else if (inline is HLink link)
+                    Measure(link.Content);
+            }
+        }
+
+        void Add(string text, HCharFormat format)
+        {
+            var points = format.Size ?? 1000;
+            size = Math.Max(size, points);
+            height = Math.Max(height, points * TextLinePercent(text, format));
+        }
+    }
+
+    /// <summary>The single line height (percent of the font size) of a run: the East Asian font draws its CJK characters, the other font the rest.</summary>
+    private static double TextLinePercent(string text, HCharFormat format)
+    {
+        var (cjk, other) = (false, text.Length == 0);
+        foreach (var c in text)
+        {
+            if (c is >= 'ᄀ' and <= 'ᇿ' or >= '⺀' and <= '퟿' or >= '豈' and <= '﫿' or >= '︰' and <= '﹏' or >= '＀' and <= '￯')
+                cjk = true;
+            else
+                other = true;
+        }
+        var percent = 0.0;
+        if (cjk)
+            percent = FontLinePercent(format.EastAsianFont ?? format.Font);
+        if (other)
+            percent = Math.Max(percent, FontLinePercent(format.Font ?? format.EastAsianFont));
+        return percent;
+    }
+
+    private static double FontLinePercent(string? font) =>
+        font is not null && SingleLineHeights.TryGetValue(font, out var height) ? height : WordLineToHwpPercent;
 
     private static int? MaxFontSize(IEnumerable<HInline> inlines)
     {
@@ -481,6 +551,7 @@ internal sealed partial class DocxReader
 
         private void Emit()
         {
+            FitLineSpacing(Current, _props);
             _reader.SnapToGrid(Current, _props);
             _output.Add(Current);
         }

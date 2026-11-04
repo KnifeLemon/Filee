@@ -14,6 +14,39 @@ internal sealed partial class DocxReader
     /// </summary>
     private const double WordLineToHwpPercent = 130;
 
+    /// <summary>
+    /// Word's single line height (ascent, descent and line gap, percent of the font size) of the common Latin fonts, whose
+    /// lines are lower than 130%: a page of Calibri came out 6% too tall (#510). Their metric-compatible substitutes
+    /// (Carlito, Caladea, Liberation) have the same heights. Other fonts keep <see cref="WordLineToHwpPercent"/>.
+    /// </summary>
+    private static readonly Dictionary<string, double> SingleLineHeights = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Aptos"] = 122.1,
+        ["Aptos Display"] = 122.1,
+        ["Arial"] = 115,
+        ["Book Antiqua"] = 124.3,
+        ["Calibri"] = 122.1,
+        ["Calibri Light"] = 122.1,
+        ["Cambria"] = 117.2,
+        ["Candara"] = 122.1,
+        ["Caladea"] = 117.2,
+        ["Carlito"] = 122.1,
+        ["Century Gothic"] = 122.6,
+        ["Consolas"] = 117.1,
+        ["Constantia"] = 122.1,
+        ["Corbel"] = 122.1,
+        ["Courier New"] = 113.3,
+        ["Garamond"] = 112.5,
+        ["Georgia"] = 113.6,
+        ["Liberation Mono"] = 113.3,
+        ["Liberation Sans"] = 115,
+        ["Liberation Serif"] = 115,
+        ["Tahoma"] = 120.7,
+        ["Times New Roman"] = 115,
+        ["Trebuchet MS"] = 116.1,
+        ["Verdana"] = 121.5,
+    };
+
     // ───────────────────────── Property bags ─────────────────────────
 
     /// <summary>Paragraph properties; later layers (style → numbering → direct) override earlier ones.</summary>
