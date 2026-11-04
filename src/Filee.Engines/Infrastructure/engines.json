@@ -57,6 +57,13 @@
       "size": 682908,
       "kind": "conda"
     },
+    "vcomp14": {
+      "version": "14.44.35208",
+      "url": "https://conda.anaconda.org/conda-forge/win-64/vcomp14-14.44.35208-h818238b_41.conda",
+      "sha256": "FA38E30D6EC5D48D559ACDECE81B0CDEE42B8376AFF270C542A5898BA7C46F49",
+      "size": 114028,
+      "kind": "conda"
+    },
     "ffmpeg": {
       "version": "9.0.2",
       "url": "https://github.com/GyanD/codexffmpeg/releases/download/9.0.2/ffmpeg-9.0.2-full_build-shared.zip",

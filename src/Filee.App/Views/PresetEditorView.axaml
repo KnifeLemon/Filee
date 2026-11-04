@@ -299,7 +299,7 @@
               <TextBlock DockPanel.Dock="Left" Classes="label" Text="{DynamicResource upscale.scale}" />
               <TextBlock DockPanel.Dock="Right" FontWeight="SemiBold" Text="{Binding UpscaleScale, StringFormat='{}{0}×'}" />
             </DockPanel>
-            <Slider Minimum="1" Maximum="4" Value="{Binding UpscaleScale}" TickFrequency="1" IsSnapToTickEnabled="True" />
+            <Slider Minimum="2" Maximum="4" Value="{Binding UpscaleScale}" TickFrequency="1" IsSnapToTickEnabled="True" />
           </StackPanel>
         </Grid>
         <Border Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10,8"

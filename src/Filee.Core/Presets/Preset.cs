@@ -282,7 +282,7 @@ public sealed class Preset
     public const string BackgroundTool = "background";
 
     /// <summary>
-    /// <see cref="Tool"/> of "Upscale" (settings schema 65): enhance image quality and resolution using local AI models.
+    /// <see cref="Tool"/> of "Upscale" (settings schema 69): enhance image quality and resolution using local AI models.
     /// </summary>
     public const string UpscaleTool = "upscale";
 
@@ -1697,7 +1697,6 @@ public sealed class UpscaleOptions
     public bool Enabled { get; set; }
     public string? Model { get; set; }
     public int Scale { get; set; } = 4;
-    public int? GpuId { get; set; }
 
     public UpscaleOptions Clone() => (UpscaleOptions)MemberwiseClone();
 }

@@ -1,5 +1,5 @@
 // "Upscale Quality": the preset in the library (palette only, no donut slot) and how existing libraries get
-// it (settings schema 65).
+// it (settings schema 69).
 
 using Filee.Core.Presets;
 using Filee.Core.Profiles;

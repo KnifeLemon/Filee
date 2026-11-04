@@ -20,7 +20,6 @@ public sealed partial class EngineItemViewModel(IConverter converter, EngineStat
 
     public IConverter Converter { get; } = converter;
     public bool IsTranslator => Converter.Id == "translator";
-
     /// <summary>Localized descriptive name, retaining the engine's technical name for unregistered engines.</summary>
     public string Name
     {

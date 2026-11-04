@@ -19,6 +19,13 @@ public partial class UpscaleWindow : Window
                 disposable.Dispose();
             }
         };
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is UpscaleViewModel vm)
+            {
+                vm.CloseRequested += Close;
+            }
+        };
     }
 
     private void OnCancel(object? sender, RoutedEventArgs e)

@@ -144,7 +144,6 @@ public partial class EnginesPage : UserControl
         _ = catalog.CheckInBackgroundAsync();
     }
 
-
     /// <summary>Picks the program of a copy the user already has (ffmpeg.exe, ebook-convert.exe, …) and uses it.</summary>
     private async void OnUseOwnCopy(object? sender, RoutedEventArgs e)
     {

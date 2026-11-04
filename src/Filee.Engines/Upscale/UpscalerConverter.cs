@@ -1,8 +1,10 @@
 // Offline AI image upscaler converter powered by Real-ESRGAN and NCNN.
 
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
+using Filee.Engines.Magick;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -10,7 +12,7 @@ namespace Filee.Engines.Upscale;
 
 public sealed class UpscalerConverter : IConverter
 {
-    private static readonly string[] SupportedFormats =
+    private static readonly string[] TargetFormats =
     [
         "png", "jpg", "webp", "avif", "heic", "ico", "bmp", "tiff"
     ];
@@ -30,8 +32,10 @@ public sealed class UpscalerConverter : IConverter
     public int MaxParallelism => 1;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        SupportedFormats.SelectMany(from =>
-            SupportedFormats.Select(to => new ConversionEdge(from, to, Cost: 900, DirectOnly: true, Upscale: true)))
+        (from source in ImageEncoder.Sources
+         where FormatRegistry.FindById(source)?.Category == FormatCategory.Image
+         from target in TargetFormats
+         select new ConversionEdge(source, target, Cost: 900, DirectOnly: true, Upscale: true))
         .ToList();
 
     public static string? LocateExecutable() =>

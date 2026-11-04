@@ -7,7 +7,7 @@
       "name": "NMKD Superscale",
       "scale": 4,
       "license": "WTFPL",
-      "author": "Philip Hofmann (NMKD)",
+      "author": "Philip Hofmann",
       "description": "Clean, artifact-free real-world images.",
       "param": {
         "sha256": "519BFFB4912E295155D3CB5D6A29639D217CCCA55F80962D8F677EF777A65B7A",
@@ -22,7 +22,7 @@
       "name": "NMKD Siax",
       "scale": 4,
       "license": "WTFPL",
-      "author": "Philip Hofmann (NMKD)",
+      "author": "Philip Hofmann",
       "description": "Universal upscaler for photos and slightly compressed images.",
       "param": {
         "sha256": "519BFFB4912E295155D3CB5D6A29639D217CCCA55F80962D8F677EF777A65B7A",

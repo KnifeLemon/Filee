@@ -1,5 +1,8 @@
+using System.IO;
 using Filee.Core.Presets;
+using Filee.Engines.Magick;
 using Filee.Engines.Upscale;
+using ImageMagick;
 using Xunit;
 
 namespace Filee.Engines.Tests;
@@ -72,6 +75,76 @@ public class UpscalerTests
     }
 
     [Fact]
+    public void TargetFor_falls_back_to_png_for_unsupported_writable_formats()
+    {
+        // Unsupported writable formats fall back to PNG
+        Assert.Equal("png", UpscaleTool.TargetFor("gif", BuiltInData.SameAsSource));
+        Assert.Equal("png", UpscaleTool.TargetFor("psd", BuiltInData.SameAsSource));
+        Assert.Equal("png", UpscaleTool.TargetFor("jxl", BuiltInData.SameAsSource));
+        Assert.Equal("png", UpscaleTool.TargetFor("tga", BuiltInData.SameAsSource));
+        Assert.Equal("png", UpscaleTool.TargetFor("jp2", BuiltInData.SameAsSource));
+
+        // Supported target formats preserve their format
+        Assert.Equal("png", UpscaleTool.TargetFor("png", BuiltInData.SameAsSource));
+        Assert.Equal("jpg", UpscaleTool.TargetFor("jpg", BuiltInData.SameAsSource));
+        Assert.Equal("webp", UpscaleTool.TargetFor("webp", BuiltInData.SameAsSource));
+        Assert.Equal("avif", UpscaleTool.TargetFor("avif", BuiltInData.SameAsSource));
+        Assert.Equal("heic", UpscaleTool.TargetFor("heic", BuiltInData.SameAsSource));
+        Assert.Equal("bmp", UpscaleTool.TargetFor("bmp", BuiltInData.SameAsSource));
+        Assert.Equal("tiff", UpscaleTool.TargetFor("tiff", BuiltInData.SameAsSource));
+        Assert.Equal("ico", UpscaleTool.TargetFor("ico", BuiltInData.SameAsSource));
+
+        // Explicitly chosen targets are respected
+        Assert.Equal("webp", UpscaleTool.TargetFor("gif", "webp"));
+        Assert.Equal("jpg", UpscaleTool.TargetFor("psd", "jpg"));
+    }
+
+    [Fact]
+    public void AutoOrient_and_profiles_are_applied_correctly_on_portrait_image()
+    {
+        // Stored landscape (200x100), but marked with orientation RightTop (6) to be viewed as portrait
+        var tempPath = Path.Combine(Path.GetTempPath(), $"test-orient-{Guid.NewGuid():N}.jpg");
+        try
+        {
+            using (var img = new MagickImage(MagickColors.Blue, 200, 100))
+            {
+                var exif = new ExifProfile();
+                exif.SetValue(ExifTag.Make, "FileePhone");
+                exif.SetValue(ExifTag.Orientation, (ushort)Orientation.RightTop);
+                img.SetProfile(exif);
+                img.SetProfile(ColorProfiles.SRGB);
+                img.Orientation = Orientation.RightTop;
+                img.Write(tempPath, MagickFormat.Jpeg);
+            }
+
+            var preset = BuiltInData.UpscalePresets().Single();
+            using var images = ImageReader.Read(tempPath, "jpg", preset);
+            var frames = ImageEncoder.SelectFrames(images, "jpg", "png");
+            Assert.NotEmpty(frames);
+
+            var frame = frames[0];
+            Assert.Equal((200u, 100u), (frame.Width, frame.Height));
+            Assert.Equal(Orientation.RightTop, frame.Orientation);
+
+            frame.AutoOrient();
+
+            // After AutoOrient, the pixels are physically upright (100x200) and orientation tag is reset
+            Assert.Equal((100u, 200u), (frame.Width, frame.Height));
+            Assert.True(frame.Orientation is Orientation.TopLeft or Orientation.Undefined);
+
+            var extractedExif = frame.GetExifProfile();
+            var extractedIcc = frame.GetColorProfile();
+            Assert.NotNull(extractedExif);
+            Assert.Equal("FileePhone", extractedExif.GetValue(ExifTag.Make)?.Value);
+            Assert.NotNull(extractedIcc);
+        }
+        finally
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+        }
+    }
+
+    [Fact]
     public void ConversionOf_creates_valid_upscale_preset()
     {
         var tool = BuiltInData.UpscalePresets().Single();
@@ -94,6 +167,15 @@ public class UpscalerTests
         Assert.Equal(1, converter.MaxParallelism);
         Assert.NotEmpty(converter.Edges);
 
+        // Edges exist for common readable formats to all 8 targets
+        foreach (var target in UpscaleTool.Targets)
+        {
+            Assert.Contains(converter.Edges, e => e.From == "png" && e.To == target && e.Upscale);
+            Assert.Contains(converter.Edges, e => e.From == "jpg" && e.To == target && e.Upscale);
+            Assert.Contains(converter.Edges, e => e.From == "gif" && e.To == target && e.Upscale);
+            Assert.Contains(converter.Edges, e => e.From == "psd" && e.To == target && e.Upscale);
+        }
+
         var status = converter.GetStatus();
         Assert.NotNull(status);
     }
@@ -114,7 +196,7 @@ public class UpscalerTests
 
         try
         {
-            using (var img = new ImageMagick.MagickImage(ImageMagick.MagickColors.Red, 64, 64))
+            using (var img = new MagickImage(MagickColors.Red, 64, 64))
             {
                 img.Write(tempIn);
             }
@@ -136,7 +218,7 @@ public class UpscalerTests
                 TestContext.Current.CancellationToken);
 
             Assert.True(File.Exists(tempOut));
-            using var result = new ImageMagick.MagickImage(tempOut);
+            using var result = new MagickImage(tempOut);
             Assert.Equal(128u, result.Width);
             Assert.Equal(128u, result.Height);
             Assert.NotEmpty(progressReports);

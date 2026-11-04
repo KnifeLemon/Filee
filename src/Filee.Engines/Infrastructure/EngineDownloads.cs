@@ -54,7 +54,7 @@ public static class EngineDownloads
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
-        new("upscayl-bin", OperatingSystem.IsWindows() ? ["upscayl-bin", "vcruntime"] : ["upscayl-bin"], 8_500_000, ["upscaler"]),
+        new("upscayl-bin", OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
     ];
 

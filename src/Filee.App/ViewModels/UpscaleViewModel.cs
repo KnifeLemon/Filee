@@ -24,6 +24,8 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
     private readonly ILogger<UpscaleViewModel>? _log;
     private CancellationTokenSource? _cts;
 
+    public event Action? CloseRequested;
+
     public IReadOnlyList<string> Pictures { get; }
 
     public string Heading { get; }
@@ -111,7 +113,7 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
 
         Heading = pictures.Count == 1
             ? Path.GetFileName(pictures[0])
-            : loc.Format("common.files_count", pictures.Count);
+            : loc.Format("home.files", pictures.Count);
         HeadingTip = pictures.Count == 1 ? pictures[0] : string.Join("\n", pictures);
 
         if (pictures.Count > 0)
@@ -215,9 +217,7 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
                 _start([.. group], UpscaleTool.ConversionOf(_tool, group.Key, model.Id, currentScale));
             }
 
-            ProgressValue = 100;
-            ProgressText = _loc["upscale.success"];
-            IsCompleted = true;
+            CloseRequested?.Invoke();
         }
         catch (OperationCanceledException)
         {

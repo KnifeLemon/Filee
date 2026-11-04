@@ -503,6 +503,59 @@ public sealed class EngineInstallerTests : IDisposable
         Assert.True(installer.IsInstalled(package));
     }
 
+    [Fact]
+    public async Task Uninstalling_a_package_leaves_components_shared_with_another_installed_package_intact()
+    {
+        var archiveA = Zip(("toolA.exe", "binaryA"));
+        var compA = Component("toolA", "zip", archiveA);
+        var archiveB = Zip(("toolB.exe", "binaryB"));
+        var compB = Component("toolB", "zip", archiveB);
+        var archiveShared = Zip(("shared.dll", "sharedDll"));
+        var compShared = Component("shared", "zip", archiveShared);
+
+        var server = new FakeServer(new()
+        {
+            [compA.Url] = archiveA,
+            [compB.Url] = archiveB,
+            [compShared.Url] = archiveShared,
+        });
+
+        var packageA = new EnginePackage("pkgA", ["toolA", "shared"], 1000, ["toolA"]);
+        var packageB = new EnginePackage("pkgB", ["toolB", "shared"], 1000, ["toolB"]);
+
+        var installer = new EngineInstaller(new HttpClient(server), _root,
+            new Dictionary<string, EngineComponent>
+            {
+                ["toolA"] = compA,
+                ["toolB"] = compB,
+                ["shared"] = compShared,
+            },
+            packages: [packageA, packageB]);
+
+        await installer.InstallAsync(packageA, null, TestContext.Current.CancellationToken);
+        await installer.InstallAsync(packageB, null, TestContext.Current.CancellationToken);
+
+        Assert.True(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgA: shared component is still used by pkgB, so shared must stay intact.
+        installer.Uninstall(packageA);
+
+        Assert.False(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolA")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgB: now shared is no longer used by any installed package, so it is removed.
+        installer.Uninstall(packageB);
+
+        Assert.False(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "shared")));
+    }
+
     private sealed class SyncProgress(Action<EngineInstallProgress> report) : IProgress<EngineInstallProgress>
     {
         public void Report(EngineInstallProgress value) => report(value);

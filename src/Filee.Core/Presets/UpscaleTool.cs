@@ -26,7 +26,7 @@ public static class UpscaleTool
         if (chosen != BuiltInData.SameAsSource)
             return chosen;
         var detected = FormatRegistry.FindById(sourceFormat) ?? FormatRegistry.FindByExtension(sourceFormat);
-        return detected is { Writable: true } ? detected.Id : FallbackTarget;
+        return detected is not null && Targets.Contains(detected.Id) ? detected.Id : FallbackTarget;
     }
 
     /// <summary>
