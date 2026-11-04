@@ -186,6 +186,7 @@
   "trash.cannot_place": "não foi possível salvar o resultado na pasta do original",
   "trash.changed": "ele foi alterado depois da conversão",
   "notice.empty_spreadsheet_pages_removed": "As páginas vazias da planilha foram removidas",
+  "notice.macros_not_run": "O documento tem macros. Elas não foram executadas",
   "notice.ocr_has_text": "Todas as páginas já têm texto, então foi copiado como está",
   "notice.live_photo_pair": "Salvo como uma foto e um MOV com o mesmo nome. Importe os dois juntos (Fotos do iCloud, AirDrop ou Fotos no Mac) para obter uma Live Photo",
   "notice.geo_datum_assumed": "O datum não é WGS 84; as posições foram convertidas como se fosse, e podem errar em até centenas de metros",

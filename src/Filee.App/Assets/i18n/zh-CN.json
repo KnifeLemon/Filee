@@ -186,6 +186,7 @@
   "trash.cannot_place": "无法将结果保存到原文件所在的文件夹",
   "trash.changed": "转换后它被修改过",
   "notice.empty_spreadsheet_pages_removed": "已移除电子表格中的空白页面",
+  "notice.macros_not_run": "文档包含宏，这些宏没有运行",
   "notice.ocr_has_text": "每页都已有文字，已原样复制",
   "notice.live_photo_pair": "已保存为同名的照片和 MOV。将两者一起导入（iCloud 照片、隔空投送或 Mac 上的“照片”）即可得到实况照片",
   "notice.geo_datum_assumed": "基准面不是 WGS 84，已按相同处理，位置可能偏差数百米",

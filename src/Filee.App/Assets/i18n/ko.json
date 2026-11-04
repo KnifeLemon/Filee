@@ -186,6 +186,7 @@
   "trash.cannot_place": "원본 폴더에 결과를 저장하지 못했어요",
   "trash.changed": "변환한 뒤에 바뀌었어요",
   "notice.empty_spreadsheet_pages_removed": "스프레드시트의 빈 페이지를 제거했어요",
+  "notice.macros_not_run": "문서에 매크로가 있어요. 매크로는 실행하지 않았어요",
   "notice.ocr_has_text": "모든 페이지에 이미 텍스트가 있어서 그대로 복사했어요",
   "notice.live_photo_pair": "같은 이름의 사진과 MOV로 저장했어요. 두 파일을 함께 가져오면(iCloud 사진, AirDrop, Mac의 사진 앱) 라이브 포토가 돼요",
   "notice.geo_datum_assumed": "측지계가 WGS 84가 아니라서 같은 것으로 보고 변환했어요. 위치가 수백 m까지 어긋날 수 있어요",

@@ -1502,6 +1502,16 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently
   fails when two conversions share a profile).
+- Before every start the profile's `user/registrymodifications.xcu` gets Filee's settings (`LibreOfficeProfile`): no
+  macros (`MacroSecurityLevel` 3, `DisableMacrosExecution`, no trusted locations), Word and Excel VBA not executable,
+  links never updated (Writer and Calc), and `BlockUntrustedRefererLinks`, which keeps LibreOffice from loading
+  anything a document links to: linked pictures, files and addresses, in every application. A document with macros
+  converts with the notice that they weren't run (`OfficeMacros`).
+- LibreOffice gets a copy without links to content outside the document (`LinkedContent`): external relationships
+  (not hyperlinks) of Office Open XML, `xlink:href` outside an OpenDocument package, picture and style sheet addresses
+  of HTML other than `data:`, and RTF `INCLUDEPICTURE` fields, whose file the RTF reader loads whatever the profile
+  says. A local picture outside the document never ends up in the result, and no share or address is contacted.
+  Binary Office files (DOC, XLS, PPT) are left to the profile.
 - HWP/HWPX import comes from the H2Orestart extension, which is written in Java; Filee points LibreOffice at the
   downloaded JRE (`-env:UNO_JAVA_JFW_JREHOME`).
 - When LibreOffice can't load an Office Open XML or OpenDocument file ("source file could not be loaded"), Filee

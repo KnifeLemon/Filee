@@ -180,6 +180,7 @@
   "trash.cannot_place": "sonuç özgün dosyanın klasörüne kaydedilemedi",
   "trash.changed": "dönüştürmeden sonra değiştirildi",
   "notice.empty_spreadsheet_pages_removed": "Elektronik tablodaki boş sayfalar kaldırıldı",
+  "notice.macros_not_run": "Belgede makrolar var. Çalıştırılmadılar",
   "notice.ocr_has_text": "Her sayfada zaten metin olduğu için dosya olduğu gibi kopyalandı",
   "notice.live_photo_pair": "Aynı adlı fotoğraf ve MOV dosyası olarak kaydedildi. Live Photo elde etmek için ikisini birlikte içe aktarın (iCloud Fotoğrafları, AirDrop veya Mac'teki Fotoğraflar ile)",
   "notice.geo_datum_assumed": "Datum WGS 84 değil; konumlar WGS 84 varsayılarak dönüştürüldü ve yüzlerce metre sapabilir",

@@ -186,6 +186,7 @@
   "trash.cannot_place": "the result couldn't be saved in the original's folder",
   "trash.changed": "it was changed after the conversion",
   "notice.empty_spreadsheet_pages_removed": "Empty spreadsheet pages were removed",
+  "notice.macros_not_run": "The document has macros. They weren't run",
   "notice.ocr_has_text": "Every page already has text, so it was copied as it is",
   "notice.live_photo_pair": "Saved as a photo and a MOV with the same name. Import both together (iCloud Photos, AirDrop or Photos on a Mac) to get a Live Photo",
   "notice.geo_datum_assumed": "The datum isn't WGS 84; positions were converted as if it were and can be off by up to hundreds of metres",
