@@ -93,6 +93,50 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         return dialog.Result;
     }
 
+    private AskPagesWindow? _askPages;
+
+    internal AskPagesWindow? AskPages => _askPages;
+
+    /// <summary>
+    /// "Choose pages" (#981) for one PDF dropped on <paramref name="preset"/>: its page count (read first; none when the
+    /// file can't be read, then only the form of the range is checked), the range and, for a PDF target, one PDF or one
+    /// file per page. <paramref name="index"/> of <paramref name="total"/> PDFs dropped together. Null when cancelled.
+    /// </summary>
+    public async Task<PageChoice?> AskPagesAsync(string path, Preset preset, int index = 0, int total = 1)
+    {
+        _askPages?.Close();
+        var count = await Task.Run(() => CountPages(path));
+        var vm = new AskPagesViewModel(path, count, preset, loc, index, total);
+        var dialog = new AskPagesWindow { DataContext = vm };
+        dialog.StartPages.Content = loc.DisplayName(preset);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (_askPages == dialog) _askPages = null;
+            closed.TrySetResult();
+        };
+        _askPages = dialog;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        return dialog.Result;
+    }
+
+    /// <summary>The pages of a PDF, or null when it can't be read (damaged, locked with a password, gone).</summary>
+    internal int? CountPages(string path)
+    {
+        try
+        {
+            return Filee.Engines.Pdf.PdfPageTools.PageCount(path);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            services.GetService<ILogger<WindowService>>()?.LogInformation(ex, "Could not count the pages of {File}", Path.GetFileName(path));
+            return null;
+        }
+    }
+
     /// <summary>
     /// "Ask every time" (#521): one save dialog for the batch, starting in the first source's folder. One result is
     /// saved under a name (<see cref="AskedLocation.ForFile"/>), several go into a folder. Null when cancelled.

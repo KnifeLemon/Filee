@@ -16,6 +16,7 @@ internal sealed record CliOptions
     public bool Recursive { get; set; }
     public FileSortOrder? Sort { get; set; }
     public int? Quality { get; set; }
+    public string? Pages { get; set; }
     public ConflictPolicy? Conflict { get; set; }
     public bool Json { get; set; }
     public bool Quiet { get; set; }
@@ -97,6 +98,17 @@ internal sealed record CliOptions
                             options.Quality = q;
                         else
                             options.Error ??= "--quality must be a number from 1 to 100.";
+                    }
+                    break;
+                case "--pages":
+                    var pages = Value();
+                    if (pages is not null)
+                    {
+                        var check = Filee.Core.Conversion.PageRange.Check(pages, null);
+                        if (check.IsValid)
+                            options.Pages = check.Text;
+                        else
+                            options.Error ??= "--pages must be page numbers or ranges from 1, e.g. 13-55 or 1-3,8,12-15.";
                     }
                     break;
                 case "--overwrite":

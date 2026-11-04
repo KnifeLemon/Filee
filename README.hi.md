@@ -84,6 +84,12 @@
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/hi%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+या WinGet से:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: `Filee-<version>-win-Setup.exe` चलाएँ, या `win-Portable.zip` को अनज़िप करके `Filee.exe` चलाएँ।
   - सेटअप Filee का अपना इंस्टॉलर है, Filee की ही भाषाओं में, और PC पर इसके लिए कुछ और नहीं चाहिए।
   - यह Explorer मेनू, साइन इन पर Filee शुरू करना, `filee` कमांड और वैकल्पिक इंजन जोड़ सकता है।

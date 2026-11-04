@@ -389,6 +389,16 @@ public sealed class RadialController(
             return;
         }
 
+        // "Ask every time" for the pages (#981): a small window per PDF first, then the save dialog when that asks too; the
+        // toast shows the jobs, the donut has closed for the window.
+        if (AskedPages.Asks(preset) && sources.Any(AskedPages.IsPdf))
+        {
+            KeepKeyboard(); // for the pages window
+            Close(animate: false);
+            _ = AskPagesThenConvertAsync(sources, preset, web, _toClipboard, _onJob);
+            return;
+        }
+
         // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
         // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
         if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
@@ -469,6 +479,86 @@ public sealed class RadialController(
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log.LogWarning(ex, "Could not remember the layout of merged pictures");
+        }
+    }
+
+    /// <summary>
+    /// "Choose pages" (#981): one window per PDF, in the order dropped, each with its own page count, so two PDFs can
+    /// give two different chapters. Cancelling any of them starts nothing. PDFs given the same pages convert as one
+    /// job; other files dropped with them convert as the preset says. Files from a browser are saved first, as for a
+    /// tool: the window counts the pages of the PDF itself.
+    /// </summary>
+    private async Task AskPagesThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
+        Action<ConversionJob>? onJob)
+    {
+        try
+        {
+            if (web is not null)
+            {
+                var drop = web;
+                web = null; // saving it disposes it
+                files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
+                    log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
+            }
+            var pdfs = files.Where(AskedPages.IsPdf).ToList();
+            var chosen = new List<(string File, PageChoice Choice)>();
+            var asked = preset;
+            for (var i = 0; i < pdfs.Count; i++)
+            {
+                if (await windows.AskPagesAsync(pdfs[i], asked, i, pdfs.Count) is not { } choice)
+                {
+                    log.LogInformation("Choosing the pages for {Preset} was cancelled; nothing converts", preset.Id);
+                    return;
+                }
+                chosen.Add((pdfs[i], choice));
+                // The next PDF's window starts with this one's choice of one PDF or one file per page.
+                asked = AskedPages.Apply(preset, preset.Pdf.PageRange, choice.SplitPages);
+            }
+            if (chosen.Count == 0)
+                return;
+            RememberSplitChoice(preset, chosen[^1].Choice);
+
+            var runs = new List<(IReadOnlyList<string> Files, Preset Preset)>();
+            var others = files.Where(file => !AskedPages.IsPdf(file)).ToList();
+            if (others.Count > 0)
+                runs.Add((others, preset));
+            runs.AddRange(chosen.GroupBy(c => c.Choice).Select(group =>
+                ((IReadOnlyList<string>)[.. group.Select(c => c.File)], AskedPages.Apply(preset, group.Key.Range, group.Key.SplitPages))));
+            log.LogInformation("Converting {Count} PDF(s) with preset {Preset} on the pages chosen", pdfs.Count, preset.Id);
+            foreach (var (runFiles, runPreset) in runs)
+            {
+                if (runPreset.Output.AskEveryTime)
+                    await AskThenConvertAsync(runFiles, runPreset, toClipboard, null, onJob);
+                else if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not convert on the pages chosen");
+        }
+        finally
+        {
+            web?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// "Choose pages": one PDF or one file per page, as chosen last (<paramref name="chosen"/>), goes into the preset as
+    /// saved, so the window starts with it next time (as "Merge images" keeps its layout). The range is not kept.
+    /// </summary>
+    private void RememberSplitChoice(Preset preset, PageChoice chosen)
+    {
+        if (!AskedPages.OffersSplit(preset) || store.FindPreset(preset.Id) is not { } saved || saved.Pdf.SplitPages == chosen.SplitPages)
+            return;
+        saved.Pdf.SplitPages = chosen.SplitPages;
+        try
+        {
+            store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remember one PDF or one file per page");
         }
     }
 
