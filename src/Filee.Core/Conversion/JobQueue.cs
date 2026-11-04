@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -1352,8 +1353,11 @@ public sealed partial class JobQueue : IAsyncDisposable
         }
     }
 
-    /// <summary>Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>.</summary>
-    public static string DefaultWorkRoot => Path.Combine(Path.GetTempPath(), "Filee");
+    /// <summary>
+    /// Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>: a folder only the user
+    /// can open (<see cref="WorkFolders.Root"/>).
+    /// </summary>
+    public static string DefaultWorkRoot => WorkFolders.Root;
 
     /// <summary>
     /// Deletes the work folders of jobs a crash, a forced quit or a power cut kept from removing them: intermediate
@@ -1366,7 +1370,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             var root = new DirectoryInfo(workRoot);
-            // A temp folder everyone can write in (/tmp on Linux) may hold a link to somewhere else: never follow one.
+            // A work root (or a folder in it) may be a link to somewhere else: never follow one.
             if (!root.Exists || root.LinkTarget is not null)
                 return;
             foreach (var folder in root.EnumerateDirectories())

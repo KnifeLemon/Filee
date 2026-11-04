@@ -3,6 +3,7 @@
 // the donut opens at once and a download shows its progress and errors like any conversion.
 
 using Filee.Core.Conversion;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 
 namespace Filee.Core.Web;
@@ -118,8 +119,11 @@ public sealed class WebDrop : IDisposable
         }
     }
 
-    /// <summary>%TEMP%\Filee\web: originals that aren't kept are saved here and deleted after their conversion.</summary>
-    public static string DefaultWorkRoot => Path.Combine(Path.GetTempPath(), "Filee", "web");
+    /// <summary>
+    /// %TEMP%\Filee\web (~/.cache/filee/web on Linux, in <see cref="WorkFolders.Root"/>): originals that aren't kept
+    /// are saved here and deleted after their conversion.
+    /// </summary>
+    public static string DefaultWorkRoot => Path.Combine(WorkFolders.Root, "web");
 
     /// <summary>This drop's own folder inside the work root.</summary>
     public string WorkFolder { get; }
