@@ -64,20 +64,20 @@ public class ImageExtensionAliasTests
     }
 
     [Fact]
-    public void Version_64_libraries_learn_krita_backups_without_taking_custom_claims()
+    public void Version_65_libraries_learn_krita_backups_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var images = profiles.Single(p => p.Id == "images");
         images.Extensions.Remove("kra~");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(64, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(65, presets, profiles));
         Assert.Contains("kra~", images.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(64, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(65, presets, profiles));
 
         images.Extensions.Remove("kra~");
         profiles.Insert(0, new ToolbarProfile { Id = "my-krita", Name = "Krita", Extensions = ["kra", "kra~"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(64, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(65, presets, profiles));
         Assert.DoesNotContain("kra~", images.Extensions); // the user's own donut has it
     }
 
