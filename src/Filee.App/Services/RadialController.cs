@@ -57,6 +57,7 @@ public sealed class RadialController(
     private IDisposable? _handOffTimer;
     private int _dragGeneration;
     private bool _dragReachedDonut;
+    private bool _dragEndedOnDonut;   // the window was told how the drag over it ended: a drop or a leave
     private bool _fileDragsAccepted;
     private readonly ActivationGrace _grace = new();
 
@@ -86,6 +87,10 @@ public sealed class RadialController(
     /// </summary>
     public void ShowForDrag(int x, int y)
     {
+        // A donut with files that nothing was dropped on yet is about to lose them (#784): a line, as it looks like a
+        // drop that did nothing.
+        if (_visible && !_dropped && !viewModel.IsClickMode && viewModel.HasFiles)
+            log.LogInformation("A new drag gesture replaced the donut's files before a drop");
         ReleaseProgressToToast();
         _grace.Cancel();
         ReplaceWeb(null);
@@ -172,8 +177,12 @@ public sealed class RadialController(
         // A drop on the donut arrives around the same time as the button release; give it a moment.
         DispatcherTimer.RunOnce(() =>
         {
-            if (_visible && !_dropped && !viewModel.IsClickMode)
-                Close(animate: true);
+            if (!_visible || _dropped || viewModel.IsClickMode)
+                return;
+            // Neither a drop nor a leave: the system ended the drag without telling the window, or the drop is late (#784).
+            if (_dragReachedDonut && !_dragEndedOnDonut)
+                log.LogInformation("The donut closed 250 ms after the release, with no drop or leave from the system");
+            Close(animate: true);
         }, TimeSpan.FromMilliseconds(250));
     }
 
@@ -257,7 +266,7 @@ public sealed class RadialController(
             };
         }
 
-        window.DragEntered += () => _dragReachedDonut = true;
+        window.DragEntered += () => (_dragReachedDonut, _dragEndedOnDonut) = (true, false);
         // Tells "the drag reached the donut but brought no files" apart, with what it brought (file promises, say).
         window.DragWithoutFiles += formats =>
         {
@@ -291,8 +300,11 @@ public sealed class RadialController(
         // One line per drag, to tell "the drag never reached the donut" from "it did but nothing lit up" when someone
         // reports a donut that doesn't react, and a drop from a drag the system ended without one (#784).
         window.DragSummary += (events, hit, lit, dropped) =>
+        {
+            _dragEndedOnDonut = true;
             log.LogInformation("Drag over the donut: {Events} move event(s), ended on {Kind} {Index}, drawn lit {Lit:0.00}{Drop}",
                 events, hit.Kind, hit.Index, lit, dropped ? "" : ", left without a drop");
+        };
         window.EscapePressed += () => Close();
         // The flip key comes from the window while it has the keyboard, else from the hook (WatchFlipKey): followed by
         // the value, which the Activated event may come before.

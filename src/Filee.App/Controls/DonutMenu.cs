@@ -52,7 +52,7 @@ public sealed partial class DonutMenu : Control
     public static readonly StyledProperty<IReadOnlyList<DonutItem>?> ItemsProperty =
         AvaloniaProperty.Register<DonutMenu, IReadOnlyList<DonutItem>?>(nameof(Items));
     public static readonly StyledProperty<double> OuterRadiusProperty =
-        AvaloniaProperty.Register<DonutMenu, double>(nameof(OuterRadius), 150);
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(OuterRadius), DefaultOuterRadius);
     public static readonly StyledProperty<double> HoleRatioProperty =
         AvaloniaProperty.Register<DonutMenu, double>(nameof(HoleRatio), 0.42);
     public static readonly StyledProperty<double> SliceOpacityProperty =
@@ -125,6 +125,8 @@ public sealed partial class DonutMenu : Control
     private int _previewSlot = -1;
     private int _previewRemoved = -1;
     private string? _previewLabel;
+    private bool _previewGroup;
+    internal bool PreviewIsGroup => _previewGroup;
     private (int Index, Point Start, PointerPressedEventArgs Args)? _press;
 
     static DonutMenu()
@@ -294,11 +296,11 @@ public sealed partial class DonutMenu : Control
     /// <summary>
     /// Edit mode: opens a gap at <paramref name="slot"/> (the position in the list after the drop) and shows a
     /// translucent slice labelled <paramref name="label"/> there. <paramref name="removed"/> is the slice being moved,
-    /// which leaves its place. -1 closes the gap.
+    /// which leaves its place. -1 closes the gap. <paramref name="group"/>: the slice is a group, and marked as one.
     /// </summary>
-    public void SetDropPreview(int slot, string? label = null, int removed = -1)
+    public void SetDropPreview(int slot, string? label = null, int removed = -1, bool group = false)
     {
-        if (_previewSlot == slot && _previewRemoved == removed && _previewLabel == label)
+        if (_previewSlot == slot && _previewRemoved == removed && _previewLabel == label && _previewGroup == group)
             return;
         if (_previewSlot < 0 && slot >= 0)
         {
@@ -309,6 +311,7 @@ public sealed partial class DonutMenu : Control
         _previewSlot = slot;
         _previewRemoved = removed;
         _previewLabel = label;
+        _previewGroup = group;
         StartAnimation();
     }
 
@@ -900,8 +903,7 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
-                DrawLabel(context, item, center, (r1 + r2) / 2, mid, span * (r1 + r2) / 2 - 10,
-                    r2 - r1 - 16, typeface, typefaceRegular, hot);
+                DrawSliceLabel(context, item, center, r1, r2, mid, span, typeface, typefaceRegular, hot);
             }
         }
 
@@ -925,8 +927,7 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (slice.Item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
                     if (slice.Emphasis > 0.01 && slice.Item.IsEnabled)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(slice.Emphasis, 0, 1)), null, wedge);
-                    DrawLabel(context, slice.Item, center, (r1 + r2) / 2, slice.Mid,
-                        slice.Span * (r1 + r2) / 2 - 10, r2 - r1 - 16, typeface, typefaceRegular,
+                    DrawSliceLabel(context, slice.Item, center, r1, r2, slice.Mid, slice.Span, typeface, typefaceRegular,
                         slice.Hot && slice.Item.IsEnabled);
                 }
             }
@@ -1080,6 +1081,54 @@ public sealed partial class DonutMenu : Control
             DrawCentered(context, caption, anchor.X, y + label.Height);
     }
 
+    /// <summary>A slice's name and caption, and a group's mark, the name moved in to leave the mark room.</summary>
+    private void DrawSliceLabel(DrawingContext context, DonutItem item, Point center, double r1, double r2, double mid,
+        double span, Typeface bold, Typeface regular, bool hot)
+    {
+        var room = item.IsGroup ? GroupMarkRoom * GroupMarkScale : 0;
+        DrawLabel(context, item, center, (r1 + r2 - room) / 2, mid, span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot);
+        DrawGroupMark(context, item, center, r2, mid, hot);
+    }
+
+    /// <summary>
+    /// A group slice's mark: a small chevron by its outer edge pointing outward, where its ring fans out, as a
+    /// submenu's ▸ points to where it opens. Drawn inside the slice's transform, it opens, pops out and flips with it.
+    /// </summary>
+    private void DrawGroupMark(DrawingContext context, DonutItem item, Point center, double r2, double mid, bool hot)
+    {
+        if (!item.IsGroup)
+            return;
+        var brush = hot ? OnAccentBrush : SecondaryForeground;
+        if (brush is null)
+            return;
+        var size = GroupMarkScale;
+        var inset = GroupMarkInset * size;
+        var tip = DonutGeometry.PointAt(center, r2 - inset, mid);
+        var back = r2 - inset - GroupMarkDepth * size;
+        // The arms' ends sit GroupMarkHalfWidth to either side of the slice's middle line.
+        var turn = GroupMarkHalfWidth * size / back;
+        var pen = new Pen(brush, GroupMarkStroke * size, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        var mark = new StreamGeometry();
+        using (var g = mark.Open())
+        {
+            g.BeginFigure(DonutGeometry.PointAt(center, back, mid - turn), false);
+            g.LineTo(tip);
+            g.LineTo(DonutGeometry.PointAt(center, back, mid + turn));
+            g.EndFigure(false);
+        }
+        using (context.PushOpacity(item.IsEnabled ? 1 : 0.5))
+            context.DrawGeometry(null, pen, mark);
+    }
+
+    /// <summary>The group mark's size follows the donut's: 1 at the default radius.</summary>
+    private double GroupMarkScale => OuterRadius / DefaultOuterRadius;
+
+    private const double DefaultOuterRadius = 150;
+
+    // The group mark at the default radius: its tip this far in from the outer edge, its arms this far back and this
+    // far to each side, its line this thick, and how far a group's text area gives way for it.
+    private const double GroupMarkInset = 7, GroupMarkDepth = 4.5, GroupMarkHalfWidth = 5, GroupMarkStroke = 1.6, GroupMarkRoom = 6;
+
     /// <summary>
     /// A slice's caption under its name: one line, or two where the slice is deep enough, so a caption wider than the
     /// slice ("Same format" on a small donut) wraps instead of ending in "Same for…".
@@ -1209,8 +1258,8 @@ public sealed partial class DonutMenu : Control
         if (_previewLabel is null || span < 0.25)
             return;
         using (context.PushOpacity(Math.Clamp((span - 0.25) / 0.3, 0, 1) * 0.9))
-            DrawLabel(context, new DonutItem { Id = "", Label = _previewLabel }, center, (r1 + r2) / 2, mid,
-                span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot: false);
+            DrawSliceLabel(context, new DonutItem { Id = "", Label = _previewLabel, Children = _previewGroup ? [] : null }, center,
+                r1, r2, mid, span, bold, regular, hot: false);
     }
 
     /// <summary>
