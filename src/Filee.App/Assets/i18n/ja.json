@@ -1507,7 +1507,7 @@
   "upscale.model_ready": "準備完了",
   "upscale.model_download_size": "{0} MB ダウンロード",
   "upscale.downloading_model": "モデルをダウンロード中...",
-  "engines.model.delete_confirm": "モデル {0} を削除しますか？いつでも再ダウンロードできます。"
+  "engines.model.delete_confirm": "モデル {0} を削除しますか？いつでも再ダウンロードできます。",
   "home.queue_error": "{0} を変換できませんでした。リストのファイルは残ります。",
   "home.queue_selected": "選択中",
   "home.queue_remove_file": "{0} を削除",

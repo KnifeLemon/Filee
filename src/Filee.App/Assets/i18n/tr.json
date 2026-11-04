@@ -1505,7 +1505,7 @@
   "upscale.model_ready": "Hazır",
   "upscale.model_download_size": "{0} MB indirme",
   "upscale.downloading_model": "Model indiriliyor...",
-  "engines.model.delete_confirm": "{0} modeli silinsin mi? İstediğiniz zaman tekrar indirebilirsiniz."
+  "engines.model.delete_confirm": "{0} modeli silinsin mi? İstediğiniz zaman tekrar indirebilirsiniz.",
   "home.queue_error": "{0} dönüştürülemedi. Liste dosyaları tutar.",
   "home.queue_selected": "seçili",
   "home.queue_remove_file": "{0} dosyasını kaldır",

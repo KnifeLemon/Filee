@@ -1527,7 +1527,7 @@
   "upscale.model_ready": "就绪",
   "upscale.model_download_size": "{0} MB 下载",
   "upscale.downloading_model": "正在下载模型...",
-  "engines.model.delete_confirm": "是否删除模型 {0}？您可以随时重新下载。"
+  "engines.model.delete_confirm": "是否删除模型 {0}？您可以随时重新下载。",
   "home.queue_error": "无法转换 {0}。列表保留这些文件。",
   "home.queue_selected": "已选中",
   "home.queue_remove_file": "移除 {0}",

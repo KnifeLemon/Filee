@@ -1507,7 +1507,7 @@
   "upscale.model_ready": "तयार",
   "upscale.model_download_size": "{0} MB डाउनलोड",
   "upscale.downloading_model": "मोडेल डाउनलोड हुँदैछ...",
-  "engines.model.delete_confirm": "मोडेल {0} मेटाउनुहुन्छ? तपाईं यसलाई कुनै पनि समयमा पुन: डाउनलोड गर्न सक्नुहुन्छ।"
+  "engines.model.delete_confirm": "मोडेल {0} मेटाउनुहुन्छ? तपाईं यसलाई कुनै पनि समयमा पुन: डाउनलोड गर्न सक्नुहुन्छ।",
   "home.queue_error": "{0} रूपान्तरण गर्न सकिएन। सूचीमा फाइलहरू रहन्छन्।",
   "home.queue_selected": "चयन गरिएको",
   "home.queue_remove_file": "{0} हटाउनुहोस्",

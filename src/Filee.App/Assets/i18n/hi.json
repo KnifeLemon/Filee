@@ -1507,7 +1507,7 @@
   "upscale.model_ready": "तैयार",
   "upscale.model_download_size": "{0} MB डाउनलोड",
   "upscale.downloading_model": "मॉडल डाउनलोड हो रहा है...",
-  "engines.model.delete_confirm": "क्या मॉडल {0} को हटाएं? आप इसे किसी भी समय फिर से डाउनलोड कर सकते हैं।"
+  "engines.model.delete_confirm": "क्या मॉडल {0} को हटाएं? आप इसे किसी भी समय फिर से डाउनलोड कर सकते हैं।",
   "home.queue_error": "{0} को बदला नहीं जा सका। सूची में फ़ाइलें रहेंगी।",
   "home.queue_selected": "चुना गया",
   "home.queue_remove_file": "{0} हटाएं",

@@ -1506,7 +1506,7 @@
   "upscale.model_ready": "جاهز",
   "upscale.model_download_size": "تنزيل {0} م.ب",
   "upscale.downloading_model": "جارٍ تنزيل النموذج...",
-  "engines.model.delete_confirm": "هل تريد حذف النموذج {0}؟ يمكنك تنزيله مرة أخرى في أي وقت."
+  "engines.model.delete_confirm": "هل تريد حذف النموذج {0}؟ يمكنك تنزيله مرة أخرى في أي وقت.",
   "home.queue_error": "تعذر تحويل {0}. تحتفظ القائمة بالملفات.",
   "home.queue_selected": "محدد",
   "home.queue_remove_file": "إزالة {0}",

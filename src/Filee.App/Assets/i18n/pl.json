@@ -1527,7 +1527,7 @@
   "upscale.model_ready": "Gotowy",
   "upscale.model_download_size": "Pobieranie {0} MB",
   "upscale.downloading_model": "Pobieranie modelu...",
-  "engines.model.delete_confirm": "Usunąć model {0}? Możesz pobrać go ponownie w dowolnym momencie."
+  "engines.model.delete_confirm": "Usunąć model {0}? Możesz pobrać go ponownie w dowolnym momencie.",
   "home.queue_error": "Nie udało się przekonwertować: {0}. Lista zachowuje pliki.",
   "home.queue_selected": "zaznaczony",
   "home.queue_remove_file": "Usuń {0}",

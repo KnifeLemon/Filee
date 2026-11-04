@@ -1507,7 +1507,7 @@
   "upscale.model_ready": "พร้อมใช้งาน",
   "upscale.model_download_size": "ดาวน์โหลด {0} MB",
   "upscale.downloading_model": "กำลังดาวน์โหลดโมเดล...",
-  "engines.model.delete_confirm": "ลบโมเดล {0} หรือไม่ คุณสามารถดาวน์โหลดใหม่ได้ตลอดเวลา"
+  "engines.model.delete_confirm": "ลบโมเดล {0} หรือไม่ คุณสามารถดาวน์โหลดใหม่ได้ตลอดเวลา",
   "home.queue_error": "แปลง {0} ไม่สำเร็จ รายการยังเก็บไฟล์ไว้",
   "home.queue_selected": "เลือกอยู่",
   "home.queue_remove_file": "นำ {0} ออก",

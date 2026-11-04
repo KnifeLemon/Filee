@@ -1527,7 +1527,7 @@
   "upscale.model_ready": "준비됨",
   "upscale.model_download_size": "{0} MB 다운로드",
   "upscale.downloading_model": "모델 내려받는 중...",
-  "engines.model.delete_confirm": "{0} 모델을 삭제할까요? 언제든 다시 내려받을 수 있어요."
+  "engines.model.delete_confirm": "{0} 모델을 삭제할까요? 언제든 다시 내려받을 수 있어요.",
   "home.queue_error": "{0}을(를) 변환하지 못했어요. 목록의 파일은 그대로 남아 있어요.",
   "home.queue_selected": "선택됨",
   "home.queue_remove_file": "{0} 제거",

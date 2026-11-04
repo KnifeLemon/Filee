@@ -1527,7 +1527,7 @@
   "upscale.model_ready": "Sẵn sàng",
   "upscale.model_download_size": "Tải xuống {0} MB",
   "upscale.downloading_model": "Đang tải mô hình...",
-  "engines.model.delete_confirm": "Xóa mô hình {0}? Bạn có thể tải lại bất kỳ lúc nào."
+  "engines.model.delete_confirm": "Xóa mô hình {0}? Bạn có thể tải lại bất kỳ lúc nào.",
   "home.queue_error": "Không thể chuyển đổi {0}. Danh sách vẫn giữ các tệp.",
   "home.queue_selected": "đã chọn",
   "home.queue_remove_file": "Bỏ {0}",

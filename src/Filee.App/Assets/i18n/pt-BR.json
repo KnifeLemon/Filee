@@ -1527,7 +1527,7 @@
   "upscale.model_ready": "Pronto",
   "upscale.model_download_size": "Download de {0} MB",
   "upscale.downloading_model": "Baixando modelo...",
-  "engines.model.delete_confirm": "Excluir o modelo {0}? Você pode baixá-lo novamente a qualquer momento."
+  "engines.model.delete_confirm": "Excluir o modelo {0}? Você pode baixá-lo novamente a qualquer momento.",
   "home.queue_error": "Não foi possível converter {0}. A lista mantém os arquivos.",
   "home.queue_selected": "selecionado",
   "home.queue_remove_file": "Remover {0}",
