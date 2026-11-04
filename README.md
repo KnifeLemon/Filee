@@ -84,6 +84,12 @@ Download from [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+Or with WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: run `Filee-<version>-win-Setup.exe`, or unzip the `win-Portable.zip` and run `Filee.exe`.
   - Setup is Filee's own installer, in Filee's languages, and needs nothing else on the PC.
   - It can add the Explorer menu, start at sign-in, the `filee` command and optional engines.
