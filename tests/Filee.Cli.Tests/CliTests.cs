@@ -912,6 +912,26 @@ public sealed class CliTests : IDisposable
         Assert.Equal(3, events.Count);
     }
 
+    [Fact]
+    public async Task Watch_json_with_quiet_prints_no_events()
+    {
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var output = new LineWriter();
+        var watching = Cli.RunAsync(["watch", _folder, "--to", "jpg", "--settle", "0.2", "--json", "--quiet"], output, TextWriter.Null,
+            stop.Token, () => CliHost.Create(_settings));
+
+        await Task.Delay(500, TestContext.Current.CancellationToken);
+        var converted = Path.Combine(_folder, "converted", "arrived.jpg");
+        Png("arrived.png");
+        for (var i = 0; i < 100 && !File.Exists(converted); i++)
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        stop.Cancel();
+
+        Assert.Equal(Cli.Success, await watching);
+        Assert.True(File.Exists(converted));
+        Assert.Equal("", output.ToString());
+    }
+
     private sealed class LineWriter : StringWriter
     {
         private readonly Lock _gate = new();
@@ -1070,6 +1090,7 @@ public sealed class CliTests : IDisposable
         var (code, output, errors) = await RunWith(catalog, "convert", Input("md"), "--to", "pptx", "--json");
         Assert.Equal(1, code);
         OnlyEvents(errors);
+        Assert.Equal("failed", Assert.Single(Events(errors), e => e.GetProperty("event").GetString() == "file").GetProperty("state").GetString());
         Hints(FileResultOf(output), "pandoc");
         (code, output, _) = await RunWith(catalog, "convert", Input("txt"), "--to", "mp3", "--json");
         Assert.Equal(1, code);
@@ -1233,6 +1254,7 @@ public sealed class CliTests : IDisposable
         Assert.Equal(1, root.GetProperty("failed").GetInt32());
         Assert.Equal(0, root.GetProperty("converted").GetInt32());
         OnlyEvents(errors.ToString());
+        Assert.Equal("failed", Assert.Single(Events(errors.ToString()), e => e.GetProperty("event").GetString() == "file").GetProperty("state").GetString());
         var file = root.GetProperty("files")[0];
         Assert.Equal(["source", "state", "outputs", "error"], file.EnumerateObject().Select(p => p.Name));
         Assert.Equal("cancelled", file.GetProperty("state").GetString());
