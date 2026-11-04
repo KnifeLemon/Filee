@@ -410,7 +410,7 @@ public sealed class EngineInstallerTests : IDisposable
 
         var staging = Path.Combine(_root, "~staging");
         Directory.CreateDirectory(Path.Combine(staging, "Program", "bin"));
-        var dll = Path.Combine(nested, "amatch.dll");
+        var dll = Path.Combine(staging, "Program", "bin", "amatch.dll");
         File.WriteAllText(dll, "MSI payload");
         File.SetAttributes(dll, File.GetAttributes(dll) | FileAttributes.ReadOnly);
 
