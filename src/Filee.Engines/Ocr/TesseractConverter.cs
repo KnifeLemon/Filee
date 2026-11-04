@@ -5,7 +5,9 @@
 // (PdfDocumentReader reads the layer when the preset asks for OCR).
 //
 // A PDF keeps its pages that already have text (born-digital pages are never turned into pictures); only pages
-// without any are rendered at 300 dpi and recognized, page by page, at most four at a time. The language data comes from OcrLanguages,
+// without any are rendered at 300 dpi and recognized, page by page, at most four at a time. A small picture (a
+// screenshot) is read from a copy at twice its size, as its letters are too small for Tesseract (#138); the page still
+// shows the picture itself, with the words in their places on it. The language data comes from OcrLanguages,
 // downloaded the first time a language is used, and is copied into the job's folder so Tesseract reads only it.
 
 using Filee.Core.Conversion;
@@ -13,6 +15,7 @@ using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Pdf;
 using ImageMagick;
+using PdfSharp.Drawing;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 using PDFtoImage;
@@ -111,8 +114,17 @@ public sealed class TesseractConverter : IConverter
             // A copy with a plain name: the picture's own folder and name may not be readable for Tesseract (Run).
             var picture = "picture" + Path.GetExtension(step.InputPath).ToLowerInvariant();
             File.Copy(step.InputPath, Path.Combine(scratch, picture));
-            await ocr.ToPdfAsync(picture, "page", HasResolution(step.InputPath) ? null : Dpi, cancellationToken);
-            File.Move(Path.Combine(scratch, "page.pdf"), output, overwrite: true);
+            if (Enlarge(scratch, picture, step.From) is { } enlarged)
+            {
+                // Only the text comes from Tesseract; the page shows the picture as it was, not the enlarged copy.
+                await ocr.ToPdfAsync(enlarged.Name, "page", enlarged.Declared ? null : Dpi, cancellationToken, textOnly: true);
+                PutTextOnPicture(Path.Combine(scratch, "page.pdf"), enlarged.Original, enlarged.Width, enlarged.Height, output);
+            }
+            else
+            {
+                await ocr.ToPdfAsync(picture, "page", HasResolution(step.InputPath) ? null : Dpi, cancellationToken);
+                File.Move(Path.Combine(scratch, "page.pdf"), output, overwrite: true);
+            }
         }
         progress?.Report(1);
         return [output];
@@ -371,17 +383,131 @@ public sealed class TesseractConverter : IConverter
     }
 
     /// <summary>
+    /// A picture whose short side is under this many pixels is enlarged before recognition. Tesseract reads text best
+    /// when its letters are about 20–30 pixels tall (its guidance: accuracy drops below 10 pt at 300 dpi, rapidly below
+    /// 8 pt). Screenshots and pictures saved from the web are made at screen resolution, where body text is 10–16
+    /// pixels tall (#138: a 658 × 789 screenshot with Chinese characters a dozen pixels high). An A4 or Letter page
+    /// scanned at 150 dpi or more is at least 1240 pixels on its short side, so a picture smaller than this is a
+    /// screenshot, a crop, a small page or a scan below 120 dpi: small text, in nearly every case.
+    /// </summary>
+    internal const int SmallSide = 1000;
+
+    /// <summary>Small pictures are read at twice their size: letters of 10–16 pixels become 20–32.</summary>
+    internal const double EnlargeBy = 2;
+
+    /// <summary>
+    /// The enlarged copy has at most this many pixels: about 100 MB as Tesseract holds it (32 bits a pixel), a little
+    /// more than an A3 page at 300 dpi (17 megapixels). A long, narrow screenshot is enlarged less, or not at all.
+    /// </summary>
+    internal const double MaxEnlargedPixels = 25_000_000;
+
+    /// <summary>Enlarging by less than this changes too little to be worth a copy of the picture.</summary>
+    internal const double LeastEnlargement = 1.25;
+
+    /// <summary>
+    /// How much a picture of <paramref name="width"/> × <paramref name="height"/> pixels is enlarged before Tesseract
+    /// reads it; 1 for not at all. A picture that says it has 300 dpi or more (<paramref name="dpi"/>, null when it
+    /// says none) is a scan at the resolution Tesseract asks for and is read as it is.
+    /// </summary>
+    internal static double EnlargeFactor(uint width, uint height, double? dpi)
+    {
+        if (width == 0 || height == 0 || Math.Min(width, height) >= SmallSide || dpi >= Dpi)
+            return 1;
+        var factor = Math.Min(EnlargeBy, Math.Sqrt(MaxEnlargedPixels / ((double)width * height)));
+        return factor < LeastEnlargement ? 1 : factor;
+    }
+
+    /// <summary>Tesseract takes a resolution under this for a mistake and uses this instead.</summary>
+    private const double LeastCredibleDpi = 70;
+
+    /// <summary>
+    /// The enlarged copy Tesseract reads (<paramref name="Name"/> in the scratch folder), whether the picture says its
+    /// resolution (<paramref name="Declared"/>, which the copy keeps), the picture the page shows
+    /// (<paramref name="Original"/>) and the page's size in points: the picture's at its resolution, as Tesseract
+    /// would have made it.
+    /// </summary>
+    private sealed record Enlarged(string Name, bool Declared, string Original, double Width, double Height);
+
+    /// <summary>
+    /// Writes an enlarged copy of <paramref name="picture"/> (in <paramref name="scratch"/>) when its text is likely too
+    /// small for Tesseract (<see cref="EnlargeFactor"/>), else null. A TIFF of several pages is read as it is.
+    /// </summary>
+    private static Enlarged? Enlarge(string scratch, string picture, string format)
+    {
+        var path = Path.Combine(scratch, picture);
+        try
+        {
+            if (format == "tiff" && MagickImageInfo.ReadCollection(path).Skip(1).Any())
+                return null;
+            using var image = new MagickImage();
+            image.Ping(path);
+            var declared = image.Density.X > 1 ? VisionConverter.Dpi(image) : (double?)null;
+            var factor = EnlargeFactor(image.Width, image.Height, declared);
+            if (factor == 1)
+                return null;
+
+            var dpi = Math.Max(declared ?? Dpi, LeastCredibleDpi);
+            var (width, height) = (image.Width * 72.0 / dpi, image.Height * 72.0 / dpi);
+
+            // The first frame, as Tesseract (Leptonica) reads it: not turned by EXIF, as Tesseract's own pages aren't.
+            image.Read(path, new MagickReadSettings { FrameIndex = 0 });
+            var original = format is "jpg" or "png" ? PdfPictures.Readable(path, scratch) : Path.Combine(scratch, "original.png");
+            if (format is not ("jpg" or "png"))
+                PdfPictures.WritePng(image, original);
+            image.BackgroundColor = MagickColors.White;
+            image.Alpha(AlphaAction.Remove); // see-through parts read as white paper, as Tesseract reads them
+            // Catmull-Rom: sharp letter edges with little ringing for Tesseract's binarization to pick up.
+            image.FilterType = FilterType.Catrom;
+            image.Resize((uint)Math.Round(image.Width * factor), (uint)Math.Round(image.Height * factor));
+            // The copy keeps the picture's resolution (or is read at 300 dpi), not twice it: Tesseract takes letters
+            // of a few points for specks, so the copy told 600 dpi read worse than the picture itself (Tesseract 5.4).
+            image.Write(Path.Combine(scratch, "enlarged.png"), MagickFormat.Png24);
+            return new Enlarged("enlarged.png", declared is not null, original, width, height);
+        }
+        catch (MagickException)
+        {
+            return null; // Tesseract reads the picture as it is and says what is wrong with it
+        }
+    }
+
+    /// <summary>
+    /// Writes a page of <paramref name="width"/> × <paramref name="height"/> points that shows <paramref name="picture"/>
+    /// with the invisible text of Tesseract's text-only page <paramref name="textPdf"/> (read from an enlarged copy, so
+    /// a larger page) over it, shrunk to the same size, so each word lies over the same word of the picture.
+    /// </summary>
+    internal static void PutTextOnPicture(string textPdf, string picture, double width, double height, string output)
+    {
+        using var document = new PdfDocument();
+        var page = document.AddPage();
+        page.Width = XUnit.FromPoint(width);
+        page.Height = XUnit.FromPoint(height);
+        using (var gfx = XGraphics.FromPdfPage(page))
+        using (var image = XImage.FromFile(picture))
+        using (var text = XPdfForm.FromFile(textPdf))
+        {
+            gfx.DrawImage(image, 0, 0, width, height);
+            gfx.DrawImage(text, 0, 0, width, height);
+        }
+        document.Save(output);
+    }
+
+    /// <summary>
     /// One language, one Tesseract, working in <paramref name="Folder"/> (the job's scratch folder, with the language in
     /// its <c>tessdata</c>). Tesseract only ever sees plain relative names there: some Windows builds of Tesseract and
     /// Leptonica open files through the ANSI code page and fail on a user name or folder in Korean or Cyrillic.
     /// </summary>
     private sealed record Run(string Executable, string Folder, string Language)
     {
-        /// <summary>Reads <paramref name="input"/> and writes <c>{outputBase}.pdf</c>, both names in <see cref="Folder"/>.</summary>
-        public async Task ToPdfAsync(string input, string outputBase, int? dpi, CancellationToken cancellationToken)
+        /// <summary>
+        /// Reads <paramref name="input"/> and writes <c>{outputBase}.pdf</c>, both names in <see cref="Folder"/>; with
+        /// <paramref name="textOnly"/> the page has only the invisible text, not the picture (Tesseract 3.05 and later).
+        /// </summary>
+        public async Task ToPdfAsync(string input, string outputBase, int? dpi, CancellationToken cancellationToken, bool textOnly = false)
         {
             // tessedit_create_pdf instead of the "pdf" config file, which lives in Tesseract's own tessdata folder.
             List<string> args = [input, outputBase, "--tessdata-dir", "tessdata", "-l", Language, "-c", "tessedit_create_pdf=1"];
+            if (textOnly)
+                args.AddRange(["-c", "textonly_pdf=1"]);
             if (dpi is { } value)
                 args.AddRange(["--dpi", value.ToString(System.Globalization.CultureInfo.InvariantCulture)]);
             var result = await ProcessRunner.RunAsync(Executable, args, Timeout, cancellationToken, workingDirectory: Folder, environment: Environment);

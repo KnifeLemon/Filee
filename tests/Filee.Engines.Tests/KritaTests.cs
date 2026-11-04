@@ -1,4 +1,5 @@
-// Krita's .kra (issue #903): read as the merged picture it keeps at its top, built here as Krita lays the file out.
+// Krita's .kra (issue #903) and its .kra~ backup (#1077): read as the merged picture it keeps at its top, built here as
+// Krita lays the file out.
 
 using System.IO.Compression;
 using Filee.Core.Conversion;
@@ -14,9 +15,9 @@ public class KritaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     /// A .kra as Krita writes it: the mimetype first, the document, a layer and its small preview, and the merged picture
     /// (left red, right transparent). <paramref name="merged"/> false leaves the merged picture out.
     /// </summary>
-    private string Kra(bool merged = true)
+    private string Kra(bool merged = true, string name = "sketch.kra")
     {
-        var path = Path.Combine(fx.NewFolder(), "sketch.kra");
+        var path = Path.Combine(fx.NewFolder(), name);
         using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
         Add(zip, "mimetype", "application/x-krita"u8.ToArray());
         Add(zip, "maindoc.xml", "<DOC><IMAGE width=\"64\" height=\"32\"/></DOC>"u8.ToArray());
@@ -67,6 +68,21 @@ public class KritaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var job = await fx.ConvertAsync([Kra()], new Preset { TargetFormat = target });
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey}: {f.ErrorDetail}")));
         Assert.EndsWith("." + target, Assert.Single(job.Outputs));
+    }
+
+    [Fact]
+    public async Task A_krita_backup_converts_like_the_kra_and_is_named_after_the_drawing()
+    {
+        // Krita keeps the previous save as "sketch.kra~" (#1077): the same file under another name.
+        var backup = Kra(name: "sketch.kra~");
+        Assert.Equal("kra", FormatRegistry.Detect(backup)!.Id);
+
+        var job = await fx.ConvertAsync([backup], new Preset { TargetFormat = "png" });
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey}: {f.ErrorDetail}")));
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal("sketch.png", Path.GetFileName(output));
+        using var png = new MagickImage(output);
+        Assert.Equal((64u, 32u), (png.Width, png.Height));
     }
 
     [Fact]

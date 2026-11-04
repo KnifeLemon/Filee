@@ -86,6 +86,12 @@
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/ar%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+أو عبر WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: شغّل `Filee-<version>-win-Setup.exe`، أو فكّ ضغط `win-Portable.zip` وشغّل `Filee.exe`.
   - برنامج الإعداد خاص بـ Filee، ويعمل بلغات Filee، ولا يحتاج إلى أي شيء آخر على الكمبيوتر.
   - يمكنه إضافة قائمة مستكشف الملفات، والتشغيل عند تسجيل الدخول، والأمر `filee`، والمحركات الاختيارية.

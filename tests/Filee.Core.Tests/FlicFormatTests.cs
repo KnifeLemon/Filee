@@ -22,7 +22,7 @@ public class FlicFormatTests
     }
 
     [Fact]
-    public void Version_64_libraries_learn_flc_and_fli_once()
+    public void Version_66_libraries_learn_flc_and_fli_once()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
@@ -30,10 +30,10 @@ public class FlicFormatTests
         video.RemoveAll(e => e is "flc" or "fli");
         profiles.Insert(0, new ToolbarProfile { Id = "my-retro", Name = "Retro", Extensions = ["fli"] });
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(64, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(66, presets, profiles));
 
         Assert.Contains("flc", video);
         Assert.DoesNotContain("fli", video); // the user's own donut has it
-        Assert.False(SettingsMigrations.ApplyToLibrary(64, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(66, presets, profiles));
     }
 }

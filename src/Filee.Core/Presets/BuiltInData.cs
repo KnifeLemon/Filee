@@ -115,10 +115,11 @@ public static class BuiltInData
             Id = "pdf-long-image", NameKey = "preset.long_image", TargetFormat = "png",
             Pdf = { CombinePages = true }, Output = { FileNamePattern = "{name}_long" },
         },
+        // Asks for the pages on each drop (#981): in a new install only; an existing library keeps its Split PDF as it is.
         new()
         {
             Id = "pdf-split", NameKey = "preset.split_pdf", TargetFormat = "pdf",
-            Pdf = { SplitPages = true }, Output = { Location = OutputLocation.Subfolder, SubfolderName = "{name}" },
+            Pdf = { SplitPages = true, AskPageRange = true }, Output = { Location = OutputLocation.Subfolder, SubfolderName = "{name}" },
         },
         .. PdfCompressionPresets(),
         .. OcrPresets(),

@@ -356,8 +356,9 @@ internal sealed partial class PdfDocumentReader
         var tables = _textOnly ? [] : RuledTables(page.Paths, words);
         content.Items = words.Count > 0 ? TextItems(words) : [];
         content.Items.AddRange(tables.Select(t => new Item { Table = t }));
+        // A picture in a table cell goes into that cell, the others stay pictures of the page.
         if (!_textOnly)
-            content.Items.AddRange(Pictures(page, content));
+            content.Items.AddRange(PlacePictures(tables, Pictures(page, content)));
         return content;
     }
 
@@ -752,17 +753,33 @@ internal sealed partial class PdfDocumentReader
         return gaps.Count == 0 ? item.Size * 1.2 : Median(gaps);
     }
 
-    private static HParagraph PictureParagraph(Item item, Item? previous)
+    private static HParagraph PictureParagraph(Item item, Item? previous) => PictureParagraph([item], previous, double.MaxValue);
+
+    /// <summary>
+    /// A paragraph with pictures side by side (one on the page, more in a table cell), shrunk together to fit in
+    /// <paramref name="maxWidth"/> points (a cell's inner width).
+    /// </summary>
+    private static HParagraph PictureParagraph(List<Item> pictures, Item? previous, double maxWidth)
     {
-        var bounds = item.PictureBounds!.Value;
+        const double Gap = 4; // points between pictures side by side (the space written between them)
+        var (left, right) = (pictures.Min(p => p.Left), pictures.Max(p => p.Right));
+        var first = pictures[0];
         var paragraph = new HParagraph();
-        var containerCenter = (item.ContainerLeft + item.ContainerRight) / 2;
-        var centered = Math.Abs((bounds.Left + bounds.Right) / 2 - containerCenter) < Math.Max(6, (item.ContainerRight - item.ContainerLeft) * 0.05)
-                       && bounds.Width < (item.ContainerRight - item.ContainerLeft) * 0.9;
-        paragraph.Format = new HParaFormat(Align: centered ? HAlign.Center : HAlign.Left, Before: SpaceBefore(item, previous), After: 0,
+        var containerCenter = (first.ContainerLeft + first.ContainerRight) / 2;
+        var centered = Math.Abs((left + right) / 2 - containerCenter) < Math.Max(6, (first.ContainerRight - first.ContainerLeft) * 0.05)
+                       && right - left < (first.ContainerRight - first.ContainerLeft) * 0.9;
+        paragraph.Format = new HParaFormat(Align: centered ? HAlign.Center : HAlign.Left, Before: SpaceBefore(pictures.MaxBy(p => p.Top)!, previous), After: 0,
             // Word's single line spacing (130 % in the model): a smaller multiple would cut off the top of the picture.
             LineSpacing: new HLineSpacing(HLineSpacingKind.Percent, 130));
-        paragraph.Inlines.Add(new HImage(item.PicturePath!) { Width = Hwp(bounds.Width), Height = Hwp(bounds.Height) });
+        var widths = pictures.Sum(p => p.Width);
+        var scale = Math.Min(1, Math.Max(6, maxWidth - Gap * (pictures.Count - 1)) / widths);
+        foreach (var picture in pictures)
+        {
+            if (paragraph.Inlines.Count > 0)
+                paragraph.Inlines.Add(new HText(" ", default));
+            var bounds = picture.PictureBounds!.Value;
+            paragraph.Inlines.Add(new HImage(picture.PicturePath!) { Width = Hwp(bounds.Width * scale), Height = Hwp(bounds.Height * scale) });
+        }
         return paragraph;
     }
 

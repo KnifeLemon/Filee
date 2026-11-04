@@ -54,8 +54,9 @@ public static class FormatRegistry
         // Read on Windows only, with its own codec (HDR screenshots of Windows are JPEG XR).
         new("jxr", "JPEG XR", FormatCategory.Image, ["jxr", "wdp", "hdp"], Writable: false),
         new("xcf", "XCF", FormatCategory.Image, ["xcf"], Writable: false),
-        // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it.
-        new("kra", "Krita (KRA)", FormatCategory.Image, ["kra"], Writable: false),
+        // Krita's own file (#903): a ZIP whose merged picture (mergedimage.png) is read, as Krita shows it. ".kra~" is the
+        // backup Krita keeps of the previous save, the same file under another name (#1077).
+        new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,
@@ -143,11 +144,12 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source code, proxy scripts, style sheets and settings files are read as plain text, never executed or
-        // compiled (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660, #864, #828, #980, #997).
+        // Text logs, source code, database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
+        // text, never executed, compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660,
+        // #864, #828, #980, #997, #854).
         new("txt", "TXT", FormatCategory.Text,
             ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
-             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql"]),
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.

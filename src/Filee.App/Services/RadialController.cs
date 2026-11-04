@@ -66,6 +66,8 @@ public sealed class RadialController(
     private readonly HashSet<string> _formatRequestsOffered = new(StringComparer.OrdinalIgnoreCase);
     private WebDrop? _web;      // the browser drop the click-mode donut's files stand for, until a conversion takes it
     private bool _toClipboard;  // the click-mode donut's files came from the clipboard: their results go back on it
+    private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
+    private Action<ConversionJob>? _onJob;  // told the conversion the donut starts (the Home page's list follows it)
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -94,6 +96,8 @@ public sealed class RadialController(
         _dropped = false;
         _dragReachedDonut = false;
         _converted = false;
+        _keepOrder = false;
+        _onJob = null;
         viewModel.ResetForDrag();
         window.DonutControl.AllowContextEdit = false;
         PlaceAndShow(window, x, y, activate: false);
@@ -114,8 +118,11 @@ public sealed class RadialController(
     /// of this browser drop (the drop zone, a picture on the clipboard), which the donut now owns.
     /// <paramref name="toClipboard"/>: the files came from the clipboard, and their results go back on it.
     /// </summary>
+    /// <param name="keepOrder">
+    /// The files are merged in the order given (the Home page's queue, which the user sorted), not sorted by name first.
+    /// </param>
     public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
-        bool toClipboard = false)
+        bool toClipboard = false, bool keepOrder = false, Action<ConversionJob>? onJob = null)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -127,6 +134,8 @@ public sealed class RadialController(
         ReleaseProgressToToast();
         ReplaceWeb(web);
         _toClipboard = toClipboard;
+        _keepOrder = keepOrder;
+        _onJob = onJob;
         if (forAnotherProcess && OperatingSystem.IsMacOS())
             _grace.Start();
         else
@@ -376,7 +385,17 @@ public sealed class RadialController(
         {
             KeepKeyboard(); // for the order window
             Close(animate: false);
-            _ = MergeInOrderAsync(sources, preset.Clone(), web, _toClipboard);
+            _ = MergeInOrderAsync(sources, preset.Clone(), web, _toClipboard, _keepOrder);
+            return;
+        }
+
+        // "Ask every time" for the pages (#981): a small window per PDF first, then the save dialog when that asks too; the
+        // toast shows the jobs, the donut has closed for the window.
+        if (AskedPages.Asks(preset) && sources.Any(AskedPages.IsPdf))
+        {
+            KeepKeyboard(); // for the pages window
+            Close(animate: false);
+            _ = AskPagesThenConvertAsync(sources, preset, web, _toClipboard, _onJob);
             return;
         }
 
@@ -386,7 +405,7 @@ public sealed class RadialController(
         {
             KeepKeyboard(); // for the save dialog
             Close(animate: false);
-            _ = AskThenConvertAsync(sources, preset, _toClipboard, web);
+            _ = AskThenConvertAsync(sources, preset, _toClipboard, web, _onJob);
             return;
         }
 
@@ -398,23 +417,32 @@ public sealed class RadialController(
             Close();
             return;
         }
+        _onJob?.Invoke(job.Job);
         _converted = true;
         ShowProgress(job);
         ReturnKeyboard(); // the ring shows the conversion; nothing here needs the keyboard any more
     }
 
-    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard)
+    private async Task MergeInOrderAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard, bool keepOrder)
     {
+        // The donut's job callback, taken now: the window may be waiting a while, and another donut may open meanwhile.
+        var onJob = _onJob;
         try
         {
-            var ordered = await windows.ChooseMergeOrderAsync(files, preset);
+            // The queue's order is the one the user already set on the Home page: the chooser only shows for a merge that
+            // has a layout to pick (merged pictures).
+            var ordered = keepOrder && !preset.JoinsImages
+                ? files
+                : await windows.ChooseMergeOrderAsync(files, preset, keepOrder);
             if (ordered is not null && preset.JoinsImages)
                 RememberMergeLayout(preset);
             if (ordered is not null && preset.Output.AskEveryTime && web is null)
-                await AskThenConvertAsync(ordered, preset, toClipboard);
+                await AskThenConvertAsync(ordered, preset, toClipboard, null, onJob);
             else if (ordered is not null)
             {
-                conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
+                var job = conversions.Start(ordered, preset, web: web, toClipboard: toClipboard);
+                if (job is not null)
+                    onJob?.Invoke(job.Job);
                 web = null; // the conversion owns the browser drop now
             }
         }
@@ -454,12 +482,96 @@ public sealed class RadialController(
         }
     }
 
-    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null)
+    /// <summary>
+    /// "Choose pages" (#981): one window per PDF, in the order dropped, each with its own page count, so two PDFs can
+    /// give two different chapters. Cancelling any of them starts nothing. PDFs given the same pages convert as one
+    /// job; other files dropped with them convert as the preset says. Files from a browser are saved first, as for a
+    /// tool: the window counts the pages of the PDF itself.
+    /// </summary>
+    private async Task AskPagesThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
+        Action<ConversionJob>? onJob)
     {
         try
         {
-            await conversions.AskThenStartAsync(sources, preset, web,
+            if (web is not null)
+            {
+                var drop = web;
+                web = null; // saving it disposes it
+                files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
+                    log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
+            }
+            var pdfs = files.Where(AskedPages.IsPdf).ToList();
+            var chosen = new List<(string File, PageChoice Choice)>();
+            var asked = preset;
+            for (var i = 0; i < pdfs.Count; i++)
+            {
+                if (await windows.AskPagesAsync(pdfs[i], asked, i, pdfs.Count) is not { } choice)
+                {
+                    log.LogInformation("Choosing the pages for {Preset} was cancelled; nothing converts", preset.Id);
+                    return;
+                }
+                chosen.Add((pdfs[i], choice));
+                // The next PDF's window starts with this one's choice of one PDF or one file per page.
+                asked = AskedPages.Apply(preset, preset.Pdf.PageRange, choice.SplitPages);
+            }
+            if (chosen.Count == 0)
+                return;
+            RememberSplitChoice(preset, chosen[^1].Choice);
+
+            var runs = new List<(IReadOnlyList<string> Files, Preset Preset)>();
+            var others = files.Where(file => !AskedPages.IsPdf(file)).ToList();
+            if (others.Count > 0)
+                runs.Add((others, preset));
+            runs.AddRange(chosen.GroupBy(c => c.Choice).Select(group =>
+                ((IReadOnlyList<string>)[.. group.Select(c => c.File)], AskedPages.Apply(preset, group.Key.Range, group.Key.SplitPages))));
+            log.LogInformation("Converting {Count} PDF(s) with preset {Preset} on the pages chosen", pdfs.Count, preset.Id);
+            foreach (var (runFiles, runPreset) in runs)
+            {
+                if (runPreset.Output.AskEveryTime)
+                    await AskThenConvertAsync(runFiles, runPreset, toClipboard, null, onJob);
+                else if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not convert on the pages chosen");
+        }
+        finally
+        {
+            web?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// "Choose pages": one PDF or one file per page, as chosen last (<paramref name="chosen"/>), goes into the preset as
+    /// saved, so the window starts with it next time (as "Merge images" keeps its layout). The range is not kept.
+    /// </summary>
+    private void RememberSplitChoice(Preset preset, PageChoice chosen)
+    {
+        if (!AskedPages.OffersSplit(preset) || store.FindPreset(preset.Id) is not { } saved || saved.Pdf.SplitPages == chosen.SplitPages)
+            return;
+        saved.Pdf.SplitPages = chosen.SplitPages;
+        try
+        {
+            store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remember one PDF or one file per page");
+        }
+    }
+
+    private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null,
+        Action<ConversionJob>? onJob = null)
+    {
+        try
+        {
+            // The job starts only once the user has chosen where to save: the list follows it then, as any other job.
+            var job = await conversions.AskThenStartAsync(sources, preset, web,
                 (running, one) => windows.AskSaveLocationAsync(sources, running, one), toClipboard);
+            if (job is not null)
+                onJob?.Invoke(job.Job);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

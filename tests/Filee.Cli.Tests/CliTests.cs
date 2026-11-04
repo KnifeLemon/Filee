@@ -271,6 +271,35 @@ public sealed class CliTests : IDisposable
         Assert.Contains("scan_compressed_compressed.pdf (Couldn't make it smaller", output);
     }
 
+    /// <summary>
+    /// --pages (#981): the range on the command line, over the preset's; Split PDF, which asks on the donut in a new
+    /// install, takes it here without asking.
+    /// </summary>
+    [Fact]
+    public async Task Pages_takes_the_range_of_a_pdf_over_the_presets()
+    {
+        var source = Path.Combine(_folder, "book.pdf");
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            for (var i = 0; i < 6; i++)
+                document.AddPage();
+            document.Save(source);
+        }
+
+        var (code, output, errors) = await Run("convert", source, "--preset", "pdf-split", "--pages", "2\u20133, 5");
+
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Contains("Converted 1 of 1", output);
+        Assert.Equal(["book_p2.pdf", "book_p3.pdf", "book_p5.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "book"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+
+        (code, _, errors) = await Run("convert", source, "--to", "pdf", "--pages", "4-", "-o", Path.Combine(_folder, "out"));
+        Assert.Equal(Cli.Success, code);
+        using var extract = PdfSharp.Pdf.IO.PdfReader.Open(Path.Combine(_folder, "out", "book.pdf"), PdfSharp.Pdf.IO.PdfDocumentOpenMode.Import);
+        Assert.Equal(3, extract.PageCount);
+    }
+
     [Fact]
     public async Task A_folder_converts_the_files_filee_knows()
     {
@@ -315,6 +344,7 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "a.png", "--preset", "rotate" }, "rotate-left, rotate-right, rotate-180")]
     [InlineData(new[] { "convert", "--to", "jpg" }, "at least one file")]
     [InlineData(new[] { "convert", "a.png", "--to", "jpg", "--quality", "300" }, "--quality")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--pages", "1-x" }, "--pages")]
     [InlineData(new[] { "frobnicate" }, "Unknown command")]
     public async Task Wrong_arguments_explain_themselves_with_exit_code_2(string[] args, string message)
     {

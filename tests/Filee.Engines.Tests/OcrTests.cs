@@ -172,6 +172,39 @@ public class OcrPagesWithTextTests(EngineFixture fx) : IClassFixture<EngineFixtu
     }
 }
 
+/// <summary>Which pictures are read from an enlarged copy, and by how much (#138; no Tesseract needed).</summary>
+public class OcrEnlargeTests
+{
+    [Fact]
+    public void A_screenshot_is_read_at_twice_its_size()
+    {
+        Assert.Equal(2, TesseractConverter.EnlargeFactor(658, 789, null)); // the screenshot of #138
+        Assert.Equal(2, TesseractConverter.EnlargeFactor(999, 400, 96));
+        Assert.Equal(2, TesseractConverter.EnlargeFactor(400, 999, 72)); // a phone's picture of a receipt
+        Assert.Equal(2, TesseractConverter.EnlargeFactor(1, 1, null));
+    }
+
+    [Fact]
+    public void Scans_and_large_pictures_are_read_as_they_are()
+    {
+        Assert.Equal(1, TesseractConverter.EnlargeFactor(1000, 3000, null)); // the short side decides
+        Assert.Equal(1, TesseractConverter.EnlargeFactor(2480, 3508, 300)); // A4 at 300 dpi
+        Assert.Equal(1, TesseractConverter.EnlargeFactor(900, 600, 300)); // a business card scanned at 300 dpi
+        Assert.Equal(1, TesseractConverter.EnlargeFactor(900, 600, 600));
+        Assert.Equal(1, TesseractConverter.EnlargeFactor(0, 600, null));
+    }
+
+    [Fact]
+    public void A_long_screenshot_is_enlarged_only_as_far_as_the_pixel_cap()
+    {
+        Assert.Equal(1.25, TesseractConverter.EnlargeFactor(800, 20000, null), 6); // 16 MP → 25 MP
+        Assert.Equal(1, TesseractConverter.EnlargeFactor(900, 20000, null)); // under 1.25: not worth it
+        var factor = TesseractConverter.EnlargeFactor(990, 15000, null);
+        Assert.InRange(factor, TesseractConverter.LeastEnlargement, TesseractConverter.EnlargeBy);
+        Assert.True(990 * factor * 15000 * factor <= TesseractConverter.MaxEnlargedPixels + 1);
+    }
+}
+
 public class OcrTests(EngineFixture fx) : IClassFixture<EngineFixture>
 {
     /// <summary>On a Mac Apple Vision takes the OCR step (VisionConverter, AppleVisionTests), so these are Tesseract's elsewhere.</summary>
@@ -341,6 +374,76 @@ public class OcrTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("notice.ocr_has_text", job.Files[0].NoticeKey);
         Assert.Equal(await File.ReadAllBytesAsync(searchable, TestContext.Current.CancellationToken),
             await File.ReadAllBytesAsync(job.Outputs.Single(), TestContext.Current.CancellationToken));
+    }
+
+    /// <summary>
+    /// A screenshot of a small table (#138): letters about 8 pixels tall, as on a screen, and no resolution in the
+    /// file. The rows are drawn from <see cref="RowLeft"/>, <see cref="RowTop"/> and <see cref="RowHeight"/> pixels.
+    /// </summary>
+    private static string Screenshot(string folder, string name, params string[] rows)
+    {
+        using var image = new MagickImage(MagickColors.White, 560, (uint)(RowTop + RowHeight * rows.Length));
+        var drawables = new Drawables().FontPointSize(11).FillColor(MagickColors.Black);
+        if (Arial is not null)
+            drawables.Font(Arial);
+        for (var i = 0; i < rows.Length; i++)
+            drawables.Text(RowLeft, RowTop + RowHeight * i, rows[i]);
+        drawables.Draw(image);
+        var path = Path.Combine(folder, name);
+        image.Write(path);
+        return path;
+    }
+
+    private const int RowLeft = 12, RowTop = 22, RowHeight = 17;
+
+    private static readonly string[] Rows =
+    [
+        "Region      Quarter     Revenue     Margin",
+        "Highland    Spring      482,137     12.4%",
+        "Coastal     Autumn      903,551     17.9%",
+        "Valley      Winter      266,808     9.6%",
+    ];
+
+    [Fact]
+    public async Task A_small_screenshot_is_read_from_an_enlarged_copy_and_its_words_lie_over_the_picture()
+    {
+        Assert.SkipUnless(Installed, Skip);
+        var screenshot = Screenshot(fx.NewFolder(), "table.png", Rows);
+
+        var job = await fx.ConvertAsync([screenshot], Ocr("pdf"));
+
+        AssertDone(job);
+        using var document = UglyToad.PdfPig.PdfDocument.Open(job.Outputs.Single());
+        var page = document.GetPage(1);
+        // The page is the picture at 300 dpi, as without enlarging, and shows the picture itself, not the copy.
+        Assert.Equal(560 * 72.0 / TesseractConverter.Dpi, page.Width, 1);
+        var picture = Assert.Single(page.GetImages());
+        Assert.Equal(560, picture.WidthInSamples);
+        var words = page.GetWords().ToList();
+        var text = string.Join(" ", words.Select(w => w.Text));
+        foreach (var word in new[] { "Highland", "Coastal", "Valley", "Revenue", "482,137", "903,551", "266,808", "Autumn" })
+            Assert.Contains(word, text);
+        // "Coastal" starts the third row: where it is drawn on the picture, in points from the top left.
+        var coastal = words.First(w => w.Text == "Coastal").BoundingBox;
+        var points = 72.0 / TesseractConverter.Dpi;
+        Assert.InRange(coastal.Left, (RowLeft - 3) * points, (RowLeft + 3) * points);
+        Assert.InRange(page.Height - coastal.Bottom, (RowTop + 2 * RowHeight - 4) * points, (RowTop + 2 * RowHeight + 4) * points);
+    }
+
+    [Fact]
+    public async Task The_text_of_an_enlarged_screenshot_goes_on_into_a_docx()
+    {
+        Assert.SkipUnless(Installed, Skip);
+        var screenshot = Screenshot(fx.NewFolder(), "table.jpg", Rows);
+
+        var job = await fx.ConvertAsync([screenshot], Ocr("docx"));
+
+        AssertDone(job);
+        using var docx = ZipFile.OpenRead(job.Outputs.Single());
+        using var reader = new StreamReader(docx.GetEntry("word/document.xml")!.Open());
+        var xml = await reader.ReadToEndAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("Coastal", xml);
+        Assert.Contains("903,551", xml);
     }
 
     [Fact]

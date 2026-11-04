@@ -123,7 +123,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 65;
+    public const int CurrentSchemaVersion = 67;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -254,6 +254,11 @@ public sealed class AppSettings
 
     /// <summary>Every conversion keeps the created and modified dates of the original, whatever the preset says.</summary>
     public bool KeepFileDates { get; set; }
+
+    /// <summary>
+    /// Files dropped or picked on the Home page wait in its list (<c>true</c>), instead of opening the donut for each drop.
+    /// </summary>
+    public bool CollectDroppedFiles { get; set; } = false;
 
     /// <summary>Every geospatial conversion is saved as a ZIP, whatever the preset says (see <see cref="OutputRule.ZipResult"/>).</summary>
     public bool ZipGeoResults { get; set; }

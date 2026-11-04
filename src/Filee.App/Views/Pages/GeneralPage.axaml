@@ -57,6 +57,8 @@
         </StackPanel>
         <ToggleSwitch Content="{DynamicResource general.keep_dates}" IsChecked="{Binding KeepFileDates}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.keep_dates_hint}" Margin="0,-6,0,0" />
+        <ToggleSwitch Content="{DynamicResource general.collect_dropped}" IsChecked="{Binding CollectDroppedFiles}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.collect_dropped_hint}" Margin="0,-6,0,0" />
         <ToggleSwitch Content="{DynamicResource general.zip_geo}" IsChecked="{Binding ZipGeoResults}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.zip_geo_hint}" Margin="0,-6,0,0" />
       </StackPanel>
