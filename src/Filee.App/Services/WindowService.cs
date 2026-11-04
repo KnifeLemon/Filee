@@ -278,6 +278,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_imageEdit == win)
                 _imageEdit = null;
+            trimmer.Request();
         };
         _imageEdit = win;
         win.Show();
@@ -408,6 +409,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_cropOverlay == win)
                 _cropOverlay = null;
+            trimmer.Request();
         };
         _cropOverlay = win;
         win.Show();
@@ -429,6 +431,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_pdfPageEditor == win)
                 _pdfPageEditor = null;
+            trimmer.Request();
         };
         if (addPages)
             win.Opened += async (_, _) => await win.PickAndAddAsync();

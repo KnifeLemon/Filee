@@ -20,6 +20,7 @@
 //    document converts the same whatever the installation's defaults are and doesn't reach out to what it links to.
 //    LibreOffice gets a copy without links to pictures, objects or templates outside the document (LinkedContent),
 //    which the profile doesn't stop everywhere. A document with macros gets a notice that they weren't run.
+//  * Its DOCX import moves a footnote's number out of the text around it ("(1)" → "1()", issue #620): DocxNoteMarks.
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -124,6 +125,10 @@ public sealed class LibreOfficeConverter : IConverter
                 _logger.LogInformation("{File}: links to content outside the document were taken out of the copy for LibreOffice", step.InputPath);
                 input = unlinked;
             }
+            // Works on what is left after the links: its copy keeps every other part as it finds it.
+            if (RenderedTargets.Contains(step.To) && DocxNoteMarks.Reads(step.From)
+                && DocxNoteMarks.Prepare(input, step.WorkDirectory) is { } numbered)
+                input = numbered;
             var filter = FilterFor(step.From, step.To, step.Preset.Document.PdfA, FormatRegistry.ExtensionOf(step.InputPath));
             var (produced, result) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, input, progress, cancellationToken);
             if (produced is null && Repack(input, step.WorkDirectory) is { } repacked)

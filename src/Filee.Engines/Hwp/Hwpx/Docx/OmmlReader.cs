@@ -233,6 +233,24 @@ internal static class OmmlReader
         return new MathRow(items);
     }
 
+    /// <summary>
+    /// An equation with its number apart: typing "E#(1)" makes Word keep E and (1) in an equation array of one row, E in
+    /// the middle of the line and the number at the right margin. Without such a number, the equation as it is.
+    /// </summary>
+    public static (MathNode Body, MathNode? Number) SplitNumber(MathNode equation)
+    {
+        var inner = equation;
+        while (inner is MathRow { Items: [var only] })
+            inner = only;
+        if (inner is not MathPile { Rows: [MathRow row] })
+            return (equation, null);
+        var items = row.Items.ToList();
+        var mark = items.FindIndex(i => i is MathQuoted { Text: "#" });
+        return mark <= 0 || mark == items.Count - 1
+            ? (equation, null)
+            : (new MathRow(items[..mark]), new MathRow(items[(mark + 1)..]));
+    }
+
     // ───────────────────────── Containers ─────────────────────────
 
     /// <summary>The children of an argument (m:e, m:num, m:sub ...) side by side; null and empty give an empty row.</summary>

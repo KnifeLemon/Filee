@@ -37,6 +37,15 @@ public sealed class FolderWatcher : IAsyncDisposable
 
     private static readonly HashSet<string> SystemFiles = new(StringComparer.OrdinalIgnoreCase) { "desktop.ini", "thumbs.db" };
 
+    /// <summary>
+    /// How long a file that starts with nothing but zeros may wait for its data (see <see cref="HasDataAtStart"/>). Then
+    /// it goes to the conversion all the same: some formats do start that way, and a damaged file gets its error.
+    /// </summary>
+    private static readonly TimeSpan NoDataLimit = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a file that failed waits for its one retry, for whatever kept it from being read to let go.</summary>
+    private static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(10);
+
     private readonly ConvertFiles _convert;
     private readonly ILogger _log;
     private readonly TimeSpan _settleTime;
@@ -44,6 +53,7 @@ public sealed class FolderWatcher : IAsyncDisposable
     private readonly ConcurrentDictionary<string, Candidate> _pending = new(FileSystemPaths.Comparer);
     private readonly GeneratedWatchOutputs _results;
     private readonly HashSet<string> _handled = new(FileSystemPaths.Comparer);
+    private readonly HashSet<string> _retried = new(FileSystemPaths.Comparer);
     private readonly SemaphoreSlim _busy = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private FileSystemWatcher? _watcher;
@@ -155,9 +165,9 @@ public sealed class FolderWatcher : IAsyncDisposable
     {
         if (!await _busy.WaitAsync(0))
             return 0; // the previous batch is still converting; new files wait for the next tick
+        var ready = new List<string>();
         try
         {
-            var ready = new List<string>();
             var now = _time.GetUtcNow();
             foreach (var (path, candidate) in _pending)
             {
@@ -168,7 +178,8 @@ public sealed class FolderWatcher : IAsyncDisposable
                     continue;
                 }
                 _pending[path] = current;
-                if (now - current.StableSince < _settleTime || !CanOpenExclusively(path) || IsBeingCopiedByFinder(path))
+                if (now - current.StableSince < _settleTime || !CanOpenExclusively(path) || IsBeingCopiedByFinder(path)
+                    || now - current.StableSince < NoDataLimit && !HasDataAtStart(path))
                     continue;
                 _pending.TryRemove(path, out _);
                 // A file that was converted before (same size and time) is not converted again.
@@ -180,7 +191,11 @@ public sealed class FolderWatcher : IAsyncDisposable
 
             ready.Sort(FileSystemPaths.Comparer);
             _log.LogInformation("Watch folder {Folder}: converting {Count} file(s)", Rule.Folder, ready.Count);
+            var count = ready.Count;
             var job = await _convert(ready, _stop.Token);
+            if (job is null)
+                ready.ForEach(RetryOnce);
+            ready.Clear(); // they had their turn; the job says how each of them went
             if (job is not null)
             {
                 // A shared input/output folder cannot be excluded wholesale. Remember exactly what this batch
@@ -210,13 +225,16 @@ public sealed class FolderWatcher : IAsyncDisposable
                 if (Rule.Originals == AfterConversion.MoveToOriginals)
                     foreach (var file in job.Files.Where(f => f.State == FileState.Done))
                         MoveToOriginals(Rule, file.SourcePath, _log);
+                foreach (var file in job.Files.Where(f => f.State == FileState.Failed))
+                    RetryOnce(file.SourcePath);
                 Converted?.Invoke(this, job);
             }
-            return ready.Count;
+            return count;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log.LogError(ex, "Watch folder {Folder} failed", Rule.Folder);
+            ready.ForEach(RetryOnce); // a batch that could not run
             return 0;
         }
         finally
@@ -309,6 +327,21 @@ public sealed class FolderWatcher : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Gives a file that didn't convert one more turn after <see cref="RetryAfter"/>, as nothing else would look at it
+    /// again before it changes, while what kept it from converting may have been there only for a moment (issue #767).
+    /// </summary>
+    private void RetryOnce(string path)
+    {
+        var candidate = Candidate.Of(path, _time.GetUtcNow() + RetryAfter);
+        var key = candidate.Key(path);
+        if (!candidate.Exists || !_retried.Add(key))
+            return;
+        _log.LogInformation("Watch folder {Folder}: {File} didn't convert; trying it once more", Rule.Folder, path);
+        _handled.Remove(key);
+        _pending[path] = candidate;
+    }
+
     private void ScanExisting()
     {
         try
@@ -367,6 +400,25 @@ public sealed class FolderWatcher : IAsyncDisposable
         {
             using var _ = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
             return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// False while a file starts with nothing but zeros. A program can reserve a file's full size and write to it later:
+    /// between its writes the file keeps its size and time and opens without sharing, but holds no data yet.
+    /// </summary>
+    private static bool HasDataAtStart(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> start = stackalloc byte[4096];
+            var read = stream.ReadAtLeast(start, start.Length, throwOnEndOfStream: false);
+            return read == 0 || start[..read].IndexOfAnyExcept((byte)0) >= 0;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

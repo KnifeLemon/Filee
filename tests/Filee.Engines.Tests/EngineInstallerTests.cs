@@ -16,7 +16,7 @@ public sealed class EngineInstallerTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_root, true); } catch (IOException) { }
+        try { EngineInstaller.DeleteFolder(_root); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     [Fact]
@@ -272,6 +272,143 @@ public sealed class EngineInstallerTests : IDisposable
         Assert.False(Directory.Exists(left));
         Assert.True(Directory.Exists(other)); // another package's leftovers wait for that package's lock
         Assert.True(installer.IsInstalled(package));
+    }
+
+    /// <summary>Installs version 1.0 of a package and leaves its files read-only, as the calibre MSI does.</summary>
+    private async Task<(EnginePackage Package, string Folder)> InstallReadOnly(string id)
+    {
+        var archive = Zip(($"{id}-1.0/old.exe", "old"), ($"{id}-1.0/app/bin/amatch.dll", "old"));
+        var component = Component(id, "zip", archive);
+        var package = new EnginePackage(id, [id], 1, [id]);
+        await Installer(new FakeServer(new() { [component.Url] = archive }), component).InstallAsync(package, null, TestContext.Current.CancellationToken);
+        var folder = Path.Combine(_root, id);
+        foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Where(f => Path.GetFileName(f) != ".filee-component"))
+            File.SetAttributes(file, FileAttributes.ReadOnly);
+        return (package, folder);
+    }
+
+    [Fact]
+    public async Task An_update_replaces_a_copy_with_read_only_files()
+    {
+        // #1084, #1092, #1109: every file of the calibre MSI is read-only, so its first update failed on 'amatch.dll' for
+        // good: the delete took the marker first, the card went back to Install and each retry stopped at the same file.
+        var (package, folder) = await InstallReadOnly("tool");
+        var update = Zip(("tool-2.0/new.exe", "new"));
+        var component = Component("tool", "zip", update) with { Version = "2.0" };
+        var installer = Installer(new FakeServer(new() { [component.Url] = update }), component);
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(installer.IsUpToDate(package));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(folder, "new.exe")));
+        Assert.False(File.Exists(Path.Combine(folder, "old.exe")));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+    }
+
+    [Fact]
+    public async Task A_LibreOffice_extension_update_replaces_read_only_files()
+    {
+        var extensions = Path.Combine(_root, "libreoffice", "share", "extensions");
+        var old = Directory.CreateDirectory(Path.Combine(extensions, "H2Orestart")).FullName;
+        var jar = Path.Combine(old, "old.jar");
+        File.WriteAllText(jar, "old");
+        File.SetAttributes(jar, FileAttributes.ReadOnly);
+        var oxt = Zip(("new.jar", "new"));
+        var extension = Component("h2orestart", "oxt", oxt);
+        var installer = Installer(new FakeServer(new() { [extension.Url] = oxt }), extension);
+
+        await installer.InstallAsync(new EnginePackage("filter", ["h2orestart"], 1, []), null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(old, "new.jar")));
+        Assert.False(File.Exists(jar));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+    }
+
+    [Fact]
+    public async Task Removing_a_package_with_read_only_files_leaves_nothing_aside()
+    {
+        var (package, _) = await InstallReadOnly("tool");
+
+        Installer(new FakeServer([])).Uninstall(package);
+
+        Assert.Equal([".downloads"], Directory.GetDirectories(_root).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task An_update_while_the_engine_runs_leaves_the_working_copy_and_its_marker()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows refuses to move a folder with an open file.");
+        var (package, folder) = await InstallReadOnly("tool");
+        var marker = File.ReadAllText(Path.Combine(folder, ".filee-component"));
+        var update = Zip(("tool-2.0/new.exe", "new"));
+        var component = Component("tool", "zip", update) with { Version = "2.0" };
+        var installer = Installer(new FakeServer(new() { [component.Url] = update }), component);
+
+        using (new FileStream(Path.Combine(folder, "old.exe"), FileMode.Open, FileAccess.Read, FileShare.None))
+            await Assert.ThrowsAnyAsync<Exception>(() => installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.Equal(marker, File.ReadAllText(Path.Combine(folder, ".filee-component")));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(folder, "old.exe")));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        Assert.True(installer.IsUpToDate(package));
+    }
+
+    [Fact]
+    public async Task The_error_of_a_failed_unpack_is_not_replaced_by_its_cleanup_and_read_only_files_go()
+    {
+        // #1092: the delete in 'finally' threw on a read-only file and hid what had gone wrong in the try block.
+        var installer = Installer(new FakeServer([]));
+
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => installer.InStagingAsync(staging =>
+        {
+            var bin = Directory.CreateDirectory(Path.Combine(staging, "app", "bin")).FullName;
+            File.WriteAllText(Path.Combine(bin, "amatch.dll"), "unpacked");
+            File.SetAttributes(Path.Combine(bin, "amatch.dll"), FileAttributes.ReadOnly);
+            throw new InvalidDataException("the real error");
+        }));
+
+        Assert.Equal("the real error", error.Message);
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+    }
+
+    [Fact]
+    public async Task The_error_of_a_failed_unpack_is_not_replaced_by_a_file_that_stays_locked()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to delete an open file.");
+        var installer = Installer(new FakeServer([]));
+        FileStream? open = null;
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidDataException>(() => installer.InStagingAsync(staging =>
+            {
+                Directory.CreateDirectory(staging);
+                open = new FileStream(Path.Combine(staging, "held.dll"), FileMode.Create, FileAccess.Write, FileShare.None);
+                throw new InvalidDataException("the real error");
+            }));
+
+            Assert.Equal("the real error", error.Message);
+        }
+        finally
+        {
+            open?.Dispose();
+        }
+    }
+
+    [Fact]
+    public async Task A_file_held_briefly_doesnt_stop_a_folder_being_deleted()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "folder")).FullName;
+        var file = Path.Combine(folder, "scanned.dll");
+        File.WriteAllText(file, "bytes");
+        var held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+        var released = Task.Delay(100, TestContext.Current.CancellationToken).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+
+        EngineInstaller.DeleteFolder(folder);
+        await released;
+
+        Assert.False(Directory.Exists(folder));
     }
 
     [Fact]

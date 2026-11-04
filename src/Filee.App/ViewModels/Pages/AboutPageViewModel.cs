@@ -23,6 +23,7 @@ public sealed partial class AboutPageViewModel : ObservableObject, IDisposable
         _updates = updates;
         _whatsNew = whatsNew;
         Version = loc.Format("about.version", UpdateService.CurrentVersion);
+        VersionBadge = "v" + UpdateService.CurrentVersion;
         if (whatsNew?.Latest is { } deck)
             WhatsNewText = loc.Format("whats_new.about_link", deck.DisplayVersion);
         _checkForUpdates = store.Settings.CheckForUpdates;
@@ -31,6 +32,10 @@ public sealed partial class AboutPageViewModel : ObservableObject, IDisposable
     }
 
     public string Version { get; }
+
+    /// <summary>The version as shown in the pill next to the name ("v2.3.0"); the "v" is not translated.</summary>
+    public string VersionBadge { get; }
+
     public string RepositoryUrl { get; } = UpdateService.RepositoryUrl;
 
     /// <summary>"What's new in Filee 2.0": the slides of the newest version up to this one; null when there are none.</summary>

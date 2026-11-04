@@ -14,6 +14,39 @@ internal sealed partial class DocxReader
     /// </summary>
     private const double WordLineToHwpPercent = 130;
 
+    /// <summary>
+    /// Word's single line height (ascent, descent and line gap, percent of the font size) of the common Latin fonts, whose
+    /// lines are lower than 130%: a page of Calibri came out 6% too tall (#510). Their metric-compatible substitutes
+    /// (Carlito, Caladea, Liberation) have the same heights. Other fonts keep <see cref="WordLineToHwpPercent"/>.
+    /// </summary>
+    private static readonly Dictionary<string, double> SingleLineHeights = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Aptos"] = 122.1,
+        ["Aptos Display"] = 122.1,
+        ["Arial"] = 115,
+        ["Book Antiqua"] = 124.3,
+        ["Calibri"] = 122.1,
+        ["Calibri Light"] = 122.1,
+        ["Cambria"] = 117.2,
+        ["Candara"] = 122.1,
+        ["Caladea"] = 117.2,
+        ["Carlito"] = 122.1,
+        ["Century Gothic"] = 122.6,
+        ["Consolas"] = 117.1,
+        ["Constantia"] = 122.1,
+        ["Corbel"] = 122.1,
+        ["Courier New"] = 113.3,
+        ["Garamond"] = 112.5,
+        ["Georgia"] = 113.6,
+        ["Liberation Mono"] = 113.3,
+        ["Liberation Sans"] = 115,
+        ["Liberation Serif"] = 115,
+        ["Tahoma"] = 120.7,
+        ["Times New Roman"] = 115,
+        ["Trebuchet MS"] = 116.1,
+        ["Verdana"] = 121.5,
+    };
+
     // ───────────────────────── Property bags ─────────────────────────
 
     /// <summary>Paragraph properties; later layers (style → numbering → direct) override earlier ones.</summary>
@@ -34,6 +67,7 @@ internal sealed partial class DocxReader
         public string? NumId;
         public int? Ilvl;
         public List<(int Position, string Kind, string Leader)> Tabs = [];
+        public XElement? BorderLeft, BorderRight, BorderTop, BorderBottom;
 
         public ParaProps Clone()
         {
@@ -85,6 +119,13 @@ internal sealed partial class DocxReader
             KeepLines = Toggle(pPr, "keepLines") ?? KeepLines;
             PageBreakBefore = Toggle(pPr, "pageBreakBefore") ?? PageBreakBefore;
             WidowControl = Toggle(pPr, "widowControl") ?? WidowControl;
+            if (pPr.Element(W + "pBdr") is { } borders)
+            {
+                BorderLeft = borders.Element(W + "left") ?? BorderLeft;
+                BorderRight = borders.Element(W + "right") ?? BorderRight;
+                BorderTop = borders.Element(W + "top") ?? BorderTop;
+                BorderBottom = borders.Element(W + "bottom") ?? BorderBottom;
+            }
             SnapToGrid = Toggle(pPr, "snapToGrid") ?? SnapToGrid;
             if (pPr.Element(W + "outlineLvl") is { } outline && int.TryParse(Val(outline), out var level))
                 OutlineLevel = level;
@@ -352,6 +393,29 @@ internal sealed partial class DocxReader
                int.TryParse(name.AsSpan(8), out var byName) && byName is >= 1 and <= 9 ? byName : 0;
     }
 
+    /// <summary>The lines of a paragraph's w:pBdr, or null when it has none ("nil" turns off a style's).</summary>
+    private static HBorders? ParagraphBorders(ParaProps p)
+    {
+        static HBorder Side(XElement? edge) => edge is null ? HBorder.None : Border(edge);
+        var borders = new HBorders(Side(p.BorderLeft), Side(p.BorderRight), Side(p.BorderTop), Side(p.BorderBottom));
+        return borders is { Left.Style: HBorderStyle.None, Right.Style: HBorderStyle.None, Top.Style: HBorderStyle.None, Bottom.Style: HBorderStyle.None }
+            ? null : borders;
+    }
+
+    /// <summary>
+    /// Paragraphs with the same borders and indents side by side share one box in Word: no line between them. With 한글's
+    /// own way of saying so (connect) rhwp drew no bottom line at all, so the lines inside the box are left out.
+    /// </summary>
+    private static void JoinBorders(HParagraph previous, HParagraph next)
+    {
+        if (previous.Format.Borders is not { } above || next.Format.Borders is not { } below
+            || above.Left != below.Left || above.Right != below.Right || above.Bottom != below.Bottom
+            || previous.Format.Left != next.Format.Left || previous.Format.Right != next.Format.Right)
+            return;
+        previous.Format = previous.Format with { Borders = above with { Bottom = HBorder.None } };
+        next.Format = next.Format with { Borders = below with { Top = HBorder.None } };
+    }
+
     /// <param name="fontSize">Font size of the paragraph (half points): one character of the *Chars indents.</param>
     private HParaFormat ParaFormat(ParaProps p, int? fontSize)
     {
@@ -387,6 +451,7 @@ internal sealed partial class DocxReader
             KeepWithNext: p.KeepNext ?? false,
             KeepLines: p.KeepLines ?? false,
             WidowOrphan: p.WidowControl ?? true,
+            Borders: ParagraphBorders(p),
             Tabs: p.Tabs.Count == 0 ? null : p.Tabs
                 .Where(t => t.Kind is not ("bar" or "num"))
                 .Select(t => new HTabStop(HwpxUnits.FromTwips(t.Position), t.Kind switch

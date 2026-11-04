@@ -40,9 +40,7 @@ internal static class UninstallCleanup
         {
             Clean(() =>
             {
-                var engines = Filee.Engines.Infrastructure.EngineEnvironment.DownloadRoot;
-                if (Directory.Exists(engines))
-                    Directory.Delete(engines, recursive: true);
+                Filee.Engines.Infrastructure.EngineInstaller.DeleteFolder(Filee.Engines.Infrastructure.EngineEnvironment.DownloadRoot);
             });
         }
         return succeeded;

@@ -60,6 +60,9 @@ internal sealed partial class HwpxWriter
         var setup = new StringBuilder();
         setup.Append(Inner(secPr));
         setup.Append("<hp:ctrl>").Append(ColumnDefinition(section.Columns)).Append("</hp:ctrl>");
+        // rhwp goes by this control, not by startNum, for a section that restarts its page numbers.
+        if (section.StartPageNumber is { } startPage)
+            setup.Append($"<hp:ctrl><hp:newNum num=\"{startPage}\" numType=\"PAGE\"/></hp:ctrl>");
 
         _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
         _width = textWidth;

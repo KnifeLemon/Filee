@@ -170,7 +170,8 @@ The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits eith
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
 editor offers both kinds, and `UserDataStore.EnsureConsistency` removes missing, duplicate, nested or excess members
-without excluding tools.
+without excluding tools. A group slice is marked with a small chevron by its outer edge, drawn in the slice's transform
+(`DonutMenu.DrawGroupMark`), which also marks a dragged group in the toolbar editor.
 
 ## Annotate tool
 
@@ -333,6 +334,10 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
+  (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
+  their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.
+  New text on `AccentBrush` takes `OnAccentBrush`, never a fixed colour.
 - Window zoom (`Services/UiZoom`): Theme → *Window size* (− / + and *Reset*), and in any tracked window the
   platform's command key (`HotkeyConfiguration.CommandModifiers`: Ctrl, Cmd on macOS) with the mouse wheel, plus /
   minus (Shift allowed, Alt not: AltGr is Ctrl + Alt) or 0 for 100 %. 70–180 % in 10 % steps, every window at once.
@@ -390,11 +395,12 @@ installed yet; the slides introduce the installed one. The demo animations are r
   and reads the app's presets and engine order. It is published into the app folder, so both share one runtime and
   the bundled engines; its name can't be `filee.exe` next to `Filee.exe` on a case-insensitive file system.
 - `Filee.Core/Watching/FolderWatcher` watches one `WatchRule` with a `FileSystemWatcher` and converts a file once it
-  has kept its size and time for a moment and opens without sharing (downloads and copies in progress are skipped).
-  Temporary files, unknown formats and dedicated output and originals folders are ignored. Links (junctions, mount
-  points, symbolic links to folders or files) are never followed or converted, neither as they arrive nor in the scan
-  of what is already there (`FolderWatcher.FilesInside`); other reparse points, such as OneDrive's online-only files,
-  are converted like any file. A rule may also write
+  has kept its size and time for a moment, opens without sharing and has data at its start (downloads and copies in
+  progress are skipped). A file that didn't convert gets one more turn after 10 seconds. Temporary files, unknown
+  formats and dedicated output and originals folders are ignored. Links (junctions, mount points, symbolic links to
+  folders or files) are never followed or converted, neither as they arrive, nor in the scan of what is already there
+  (`FolderWatcher.FilesInside`), nor when a file gets its second turn; other reparse points, such as OneDrive's
+  online-only files, are converted like any file. A rule may also write
   into the watched folder itself. In that case, generated file versions (path, size and modification time) and
   generated result directories are recorded in `.filee-watch-<rule hash>.json` inside the watched root. The hidden
   state file prevents those results from becoming new inputs, including after an inbox watcher restarts; a changed
@@ -449,16 +455,21 @@ way to draw (`WindowsRendering`): `dcomp` (skip WinUI composition), `redirection
 surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start. On ARM64, Avalonia's
 Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236), and three values try the GPU
 there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver), `vulkan` and `wgl` (OpenGL), the
-last two falling back to software when they can't start.
+last two falling back to software when they can't start. On Linux (X11) only `software` applies: the GPU's driver stays
+in memory for as long as Filee runs, also with no window open, so this is the way to a smaller tray app (issue #957).
 
 ## Explorer integration
 
 Settings → General → "Show “Convert with Filee” in the Explorer context menu" (`AppSettings.ContextMenuEnabled`) is
 applied by `WindowsPlatformServices.SetContextMenu` at start-up and whenever settings change (installed builds only):
 
-- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, one process per file; the running
-  instance collects them through `SingleInstance`) and a **Send To** shortcut. Per user, no admin rights. On Windows 10
-  this is the entry; on Windows 11 it sits under "Show more options".
+- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, `MultiSelectModel` `Player`) and
+  a **Send To** shortcut. Per user, no admin rights. On Windows 10 this is the entry; on Windows 11 it sits under "Show
+  more options". Explorer starts one process per selected file, out of order and over many seconds, and hides the
+  entry above 100 files (Send To has no such limit). The processes reach the running instance through `SingleInstance`;
+  the first asks Explorer for the selection, so the donut has all of it at once (`SelectionLaunches`). When that can't
+  be read (another file manager), they are collected for 350 ms and later ones join the open donut
+  (`RadialController.TryAddFiles`); once a conversion took its files, later ones get a donut of their own.
 - **Windows 11 top-level entry** (optional): an `IExplorerCommand` in `FileeExplorerMenu.dll`
   (`src/Filee.ExplorerMenu`, plain C, no C runtime) declared by the sparse package `FileeExplorerMenu.msix`
   (`ExplorerMenuPackage.CreateManifest`: `desktop4:FileExplorerContextMenus`, `desktop5:ItemType Type="*"`,
@@ -547,8 +558,13 @@ have no semibold) instead of the app's embedded Noto fonts.
   counts as installed when `uninstall.exe` (or 1.x's `unins000.exe`) is next to it (`UpdateService.IsInstalled`).
 - **Uninstall**: `uninstall.exe` is Setup without its payload. Run from the install folder it copies itself to
   `%TEMP%` and waits for the copy, which removes what `uninstall.json` lists (other files in the folder stay), the
-  shortcuts, the PATH entry and the key. Files in use are moved out and deleted at the next restart. A program without
-  a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
+  shortcuts, the PATH entry and the key. `Filee.exe --uninstall-cleanup` runs as the signed-in user (`RunAsSignedInUser`):
+  the startup entry, the classic verb and the engines are theirs, and the pipe of a Filee without administrator rights
+  refuses an elevated client (`CurrentUserOnly` compares the pipe's owner with the token's owner, which is
+  Administrators when elevated), so that Filee would never hear `--quit`. Files in use are moved out and deleted at the
+  next restart. Only programs `uninstall.json` lists are ended. A Filee that can't be ended, or a file that can't be
+  moved or renamed, fails the uninstall and keeps the key, `uninstall.json` and `uninstall.exe`, so it can be run again;
+  `uninstall.json` itself is never scheduled or renamed. A program without a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
   (`SetupStart`); any other name is a Setup.exe whose download didn't finish, and it says so instead (exit code 1).
 - **Command line**: Inno Setup's switches (`SetupOptions`, documented at the top of the file), because Filee 1.x
   updates itself with `/SILENT /NORESTART` and winget passes `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Exit codes as
