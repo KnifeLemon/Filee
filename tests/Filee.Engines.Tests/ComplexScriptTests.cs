@@ -522,4 +522,51 @@ public class ComplexScriptTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     private static string Backwards(string text) => new([.. text.Reverse()]);
+
+    /// <summary>A package of the given parts.</summary>
+    private static string Package(string name, params (string Part, string Xml)[] parts)
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("filee-scan-").FullName, name);
+        using var zip = ZipFile.Open(path, ZipArchiveMode.Create);
+        foreach (var (part, xml) in parts)
+        {
+            using var writer = new StreamWriter(zip.CreateEntry(part).Open());
+            writer.Write(xml);
+        }
+        return path;
+    }
+
+    private static string Nested(int levels, string inner) =>
+        string.Concat(Enumerable.Repeat("<a>", levels)) + inner + string.Concat(Enumerable.Repeat("</a>", levels));
+
+    [Fact]
+    public void The_scan_of_masters_and_number_formats_keeps_the_xml_limits()
+    {
+        const string Box = "<sp><t>تقرير</t></sp>";
+        var levels = BoundedXml.MaxElementDepth + 1;
+
+        // Within the limits the text is found, so the ones below find nothing because of the limits.
+        Assert.Equal("Arabic", ComplexScripts.FindInFile(Package("fine.pptx", ("ppt/slideMasters/slideMaster1.xml", Nested(10, Box))), "pptx"));
+        Assert.Null(ComplexScripts.FindInFile(Package("deep.pptx", ("ppt/slideMasters/slideMaster1.xml", Nested(levels, Box))), "pptx"));
+        Assert.Null(ComplexScripts.FindInFile(Package("deep.potx", ("ppt/slideLayouts/slideLayout1.xml", Nested(levels, Box))), "potx"));
+        Assert.Null(ComplexScripts.FindInFile(Package("dtd.pptx", ("ppt/slideMasters/slideMaster1.xml", "<!DOCTYPE a [<!ENTITY e \"x\">]><a>" + Box + "</a>")), "pptx"));
+        Assert.Null(ComplexScripts.FindInFile(Package("deep.xlsx", ("xl/styles.xml", Nested(levels, "<numFmt formatCode=\"0 &quot;ریال&quot;\"/>"))), "xlsx"));
+    }
+
+    [Fact]
+    public void The_scan_stops_at_the_size_a_reader_would_refuse()
+    {
+        var path = Path.Combine(Directory.CreateTempSubdirectory("filee-scan-").FullName, "bomb.docx");
+        using (var zip = ZipFile.Open(path, ZipArchiveMode.Create))
+        using (var stream = zip.CreateEntry("word/document.xml", CompressionLevel.Fastest).Open())
+        {
+            var spaces = new byte[1024 * 1024];
+            Array.Fill(spaces, (byte)' ');
+            for (var written = 0L; written <= BoundedXml.MaxPartBytes; written += spaces.Length)
+                stream.Write(spaces);
+            stream.Write(Encoding.UTF8.GetBytes("تقرير"));
+        }
+
+        Assert.Null(ComplexScripts.FindInFile(path, "docx"));
+    }
 }
