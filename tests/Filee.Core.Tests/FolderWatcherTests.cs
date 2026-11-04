@@ -220,7 +220,10 @@ public class FolderWatcherTests
         Assert.Equal(0, await watcher.ProcessPendingAsync());
         Assert.Empty(jobs);
 
+        // Later, so with a later time: right after the first write the same size can still read the same time.
+        var reserved = File.GetLastWriteTimeUtc(photo);
         File.WriteAllBytes(photo, [.. new byte[100], .. new byte[] { 0xFF, 0xD8, 0xFF }, .. new byte[8089]]);
+        File.SetLastWriteTimeUtc(photo, reserved.AddSeconds(1));
         time.Advance(3);
         Assert.Equal(0, await watcher.ProcessPendingAsync()); // it changed: the wait starts over
         time.Advance(3);
