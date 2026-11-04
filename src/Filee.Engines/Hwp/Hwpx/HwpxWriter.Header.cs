@@ -238,6 +238,9 @@ internal sealed partial class HwpxWriter
 
     // ───────────────────────── Paragraph shapes ─────────────────────────
 
+    /// <summary>Between a paragraph's text and its bar or the edge of its background: 2 mm.</summary>
+    private const int ParagraphBoxPadding = 567;
+
     /// <summary>Paragraph shape id for <paramref name="baseId"/> with a format and list numbering applied.</summary>
     private string ParaPr(string baseId, HParaFormat format, HListRef? list)
     {
@@ -306,6 +309,20 @@ internal sealed partial class HwpxWriter
 
         if (format.Tabs is { Count: > 0 } tabs)
             node.SetAttributeValue("tabPrIDRef", TabPrId(tabs));
+
+        if (format.LeftBar is not null || format.Fill is not null)
+        {
+            var border = node.Element(Hh + "border");
+            if (border is null)
+                node.Add(border = new XElement(Hh + "border"));
+            border.SetAttributeValue("borderFillIDRef", BorderFillId(HBorders.Empty with { Left = format.LeftBar ?? HBorder.None }, format.Fill));
+            border.SetAttributeValue("offsetLeft", ParagraphBoxPadding);
+            border.SetAttributeValue("offsetRight", ParagraphBoxPadding);
+            border.SetAttributeValue("offsetTop", 0);
+            border.SetAttributeValue("offsetBottom", 0);
+            border.SetAttributeValue("connect", 1);
+            border.SetAttributeValue("ignoreMargin", 0);
+        }
 
         RefList("paraProperties").Add(node);
         _paraPrCache[key] = id;

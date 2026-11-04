@@ -24,6 +24,10 @@ internal sealed class MarkdownReader
     /// <summary>Indent per block quote level (same as PandocAstReader).</summary>
     private const int QuoteIndent = 2000;
 
+    /// <summary>A block quote's bar and background (#1098): the indent alone doesn't read as a quote on a page.</summary>
+    private static readonly HBorder QuoteBar = new(HBorderStyle.Solid, 1, "#B8B8C0");
+    private const string QuoteFill = "#F7F7F9";
+
     /// <summary>GitHub-style Markdown plus the common extensions (tables, footnotes, task lists, math, …).</summary>
     public static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
         .UseAdvancedExtensions()
@@ -69,8 +73,8 @@ internal sealed class MarkdownReader
         return document;
     }
 
-    /// <summary>List nesting and quote indentation of the blocks being read.</summary>
-    private readonly record struct Context(int ListLevel = 0, int Indent = 0);
+    /// <summary>List nesting and indentation of the blocks being read, and whether they are inside a block quote.</summary>
+    private readonly record struct Context(int ListLevel = 0, int Indent = 0, bool Quote = false);
 
     // ───────────────────────── Blocks ─────────────────────────
 
@@ -97,7 +101,7 @@ internal sealed class MarkdownReader
                 List(list, output, context);
                 break;
             case QuoteBlock quote:
-                Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent });
+                Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent, Quote = true });
                 break;
             case MathBlock math:
                 CodeLines(math, output, context, Plain with { Italic = true });
@@ -124,7 +128,12 @@ internal sealed class MarkdownReader
     }
 
     private static HParagraph NewParagraph(Context context) =>
-        new() { Format = context.Indent > 0 ? new HParaFormat(Left: context.Indent) : default };
+        new()
+        {
+            Format = context.Quote ? new HParaFormat(Left: context.Indent, LeftBar: QuoteBar, Fill: QuoteFill)
+                : context.Indent > 0 ? new HParaFormat(Left: context.Indent)
+                : default,
+        };
 
     private HParagraph Paragraph(ContainerInline? inlines, Context context)
     {
