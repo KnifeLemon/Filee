@@ -144,6 +144,7 @@
   "error.web_too_large": "檔案大於 2 GB",
   "error.web_blocked": "不儲存程式、安裝檔和指令碼",
   "error.web_timeout": "伺服器沒有回應",
+  "error.web_local_address": "該連結指向這台電腦或區域網路，Filee 不會從這裡下載，請先在瀏覽器中儲存檔案",
   "error.geo_empty": "檔案中沒有地理特徵",
   "error.geo_unknown_crs": "座標不是經緯度，檔案也沒有說明座標系統（Shapefile 請把 .prj 檔案放在旁邊）",
   "error.geo_unsupported_crs": "暫不支援此座標系統",

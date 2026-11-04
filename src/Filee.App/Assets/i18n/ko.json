@@ -144,6 +144,7 @@
   "error.web_too_large": "2GB보다 큰 파일이에요",
   "error.web_blocked": "프로그램, 설치 파일, 스크립트는 저장하지 않아요",
   "error.web_timeout": "서버가 응답하지 않아요",
+  "error.web_local_address": "링크가 이 컴퓨터나 내부 네트워크를 가리켜서 Filee가 내려받지 않아요. 브라우저에서 먼저 저장해 주세요",
   "error.geo_empty": "파일에 지리 객체가 없어요",
   "error.geo_unknown_crs": "좌표가 경도·위도가 아닌데 좌표계 정보도 없어요 (Shapefile은 .prj 파일을 함께 두세요)",
   "error.geo_unsupported_crs": "아직 지원하지 않는 좌표계예요",

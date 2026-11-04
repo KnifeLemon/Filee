@@ -144,6 +144,7 @@
   "error.web_too_large": "文件大于 2 GB",
   "error.web_blocked": "不保存程序、安装包和脚本",
   "error.web_timeout": "服务器没有响应",
+  "error.web_local_address": "该链接指向本机或局域网，Filee 不会从这里下载，请先在浏览器中保存文件",
   "error.geo_empty": "文件中没有地理要素",
   "error.geo_unknown_crs": "坐标不是经纬度，文件也没有说明坐标系（Shapefile 请把 .prj 文件放在旁边）",
   "error.geo_unsupported_crs": "暂不支持此坐标系",

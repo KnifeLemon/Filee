@@ -117,6 +117,11 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   credentials are sent: a file behind a sign-in comes back as the sign-in page, which is refused as a web page
   ("save it from the browser first"). A browser's own bytes (virtual files, Firefox's copy) don't have that limit.
 - **Names and safety**: Content-Disposition, else the page's name, else the address; then the first bytes decide the
+  Only the public internet is reached (`LocalNetwork`): an address on this computer or the local network (loopback,
+  private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
+  is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
+  `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
+  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
   extension of pictures and PDFs (`.jpg` that is WebP becomes `.webp`). Names are cut to a plain file name (no folders,
   no device names, at most 120 characters) and never replace an existing file (`name (2).ext`). Programs, installers and
   scripts are refused by extension, media type and first bytes; nothing downloaded is ever run, and every file goes

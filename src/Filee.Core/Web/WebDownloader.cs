@@ -1,10 +1,12 @@
 // Saves files from the web: the bytes a browser handed over with a drag, or, when a drag brought only an address, the
 // file downloaded from it. Downloads are plain GET requests without the browser's cookies or sign-in (Filee has
-// neither): only http and https, a few redirects, a size cap and timeouts. Whatever arrives is named by what it
-// really is, never replaces an existing file, and programs or web pages are refused instead of saved.
+// neither): only http and https, a few redirects, a size cap and timeouts, and only to the public internet (never to
+// this computer or the local network, LocalNetwork). Whatever arrives is named by what it really is, never replaces
+// an existing file, and programs or web pages are refused instead of saved.
 
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
 using Filee.Core.Conversion;
 
 namespace Filee.Core.Web;
@@ -16,7 +18,10 @@ public sealed class WebDownloader : IDisposable
 
     private readonly HttpClient _http;
 
-    /// <param name="handler">For tests; by default a handler without cookies, credentials or automatic redirects.</param>
+    /// <param name="handler">
+    /// For tests; by default a handler without cookies, credentials or automatic redirects that connects only to public
+    /// addresses.
+    /// </param>
     /// <param name="userAgent">"Filee/1.13.0"; some servers refuse requests without one.</param>
     public WebDownloader(HttpMessageHandler? handler = null, string? userAgent = null)
     {
@@ -29,6 +34,7 @@ public sealed class WebDownloader : IDisposable
             PreAuthenticate = false,
             AutomaticDecompression = DecompressionMethods.All,
             ConnectTimeout = TimeSpan.FromSeconds(20),
+            ConnectCallback = ConnectAsync,
         };
         _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         if (userAgent is not null)
@@ -47,6 +53,12 @@ public sealed class WebDownloader : IDisposable
 
     /// <summary>How long a download may go without receiving anything.</summary>
     public TimeSpan StallTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
+    /// <summary>For tests, which serve files on this computer: the addresses that are refused.</summary>
+    internal Func<IPAddress, bool> IsRefused { get; init; } = LocalNetwork.IsLocal;
+
+    /// <summary>For tests: looks up the addresses of a name.</summary>
+    internal Func<string, CancellationToken, Task<IPAddress[]>> ResolveAsync { get; init; } = Dns.GetHostAddressesAsync;
 
     /// <summary>
     /// Downloads <paramref name="url"/> into <paramref name="folder"/> and returns the file's path. The name comes from
@@ -154,6 +166,7 @@ public sealed class WebDownloader : IDisposable
     {
         for (var hop = 0; ; hop++)
         {
+            EnsurePublic(url);
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
             HttpResponseMessage response;
@@ -167,6 +180,10 @@ public sealed class WebDownloader : IDisposable
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
                     throw new ConversionRefusedException("error.web_timeout");
+                }
+                catch (HttpRequestException ex) when (ex.InnerException is ConversionRefusedException refused)
+                {
+                    throw refused; // ConnectAsync found only local addresses
                 }
                 catch (HttpRequestException ex)
                 {
@@ -191,6 +208,50 @@ public sealed class WebDownloader : IDisposable
                 continue;
             }
             return response;
+        }
+    }
+
+    /// <summary>
+    /// Refuses an address that names this computer or the local network outright (localhost, 192.168.1.1, a .local
+    /// name). Every hop is checked, so a public page can't redirect there either.
+    /// </summary>
+    private void EnsurePublic(Uri url)
+    {
+        var host = url.IdnHost.Trim('[', ']');
+        if (LocalNetwork.IsLocalName(host) || (IPAddress.TryParse(host, out var address) && IsRefused(address)))
+            throw new ConversionRefusedException("error.web_local_address", url.Host);
+    }
+
+    /// <summary>
+    /// Opens the connection to an address the name resolved to that isn't local. The check is made on the very
+    /// addresses connected to, so a name that resolves to a public address once and a local one the next time (DNS
+    /// rebinding) gets nowhere. A connection to the user's proxy is left alone: the proxy is their own choice.
+    /// </summary>
+    private async ValueTask<Stream> ConnectAsync(SocketsHttpConnectionContext context, CancellationToken cancellationToken)
+    {
+        var endpoint = context.DnsEndPoint;
+        var host = endpoint.Host.Trim('[', ']');
+        var addresses = IPAddress.TryParse(host, out var literal) ? [literal] : await ResolveAsync(host, cancellationToken);
+        var target = context.InitialRequestMessage.RequestUri;
+        var direct = target is null
+                     || (string.Equals(target.IdnHost.Trim('[', ']'), host, StringComparison.OrdinalIgnoreCase) && target.Port == endpoint.Port);
+        if (direct)
+        {
+            addresses = [.. addresses.Where(address => !IsRefused(address))];
+            if (addresses.Length == 0)
+                throw new ConversionRefusedException("error.web_local_address", endpoint.Host);
+        }
+
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            await socket.ConnectAsync(addresses, endpoint.Port, cancellationToken);
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
         }
     }
 

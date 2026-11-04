@@ -1,4 +1,5 @@
 // WebDownloader against a local HTTP server: names, redirects, the size cap, timeouts, cancelling, and what is refused.
+// The server is on this computer, which dragged links may not reach: the tests let 127.0.0.1 through (IsRefused).
 
 using System.Net;
 using System.Net.Sockets;
@@ -90,7 +91,10 @@ public sealed class WebDownloaderTests : IDisposable
 
     private Uri Url(string path) => new(_root + path.TrimStart('/'));
 
-    private static WebDownloader Downloader() => new(userAgent: "Filee-tests/1.0");
+    private static WebDownloader Downloader() => new(userAgent: "Filee-tests/1.0") { IsRefused = AllButTheServer };
+
+    /// <summary>Every local address but the test server's.</summary>
+    private static bool AllButTheServer(IPAddress address) => !address.Equals(IPAddress.Loopback) && LocalNetwork.IsLocal(address);
 
     [Fact]
     public async Task Names_the_file_as_the_server_says_and_by_what_it_is()
@@ -148,13 +152,113 @@ public sealed class WebDownloaderTests : IDisposable
     }
 
     [Fact]
+    public async Task Never_downloads_from_this_computer_or_the_local_network()
+    {
+        // As it ships: the test server on 127.0.0.1 is out of reach too, and is never asked.
+        var asked = 0;
+        _routes["/photo.png"] = async context =>
+        {
+            Interlocked.Increment(ref asked);
+            await context.Response.OutputStream.WriteAsync(Png);
+        };
+        using var downloader = new WebDownloader();
+        var port = new Uri(_root).Port;
+        var ct = TestContext.Current.CancellationToken;
+
+        foreach (var address in new[]
+                 {
+                     _root + "photo.png", $"http://localhost:{port}/photo.png", $"http://[::1]:{port}/photo.png",
+                     $"http://[::ffff:127.0.0.1]:{port}/photo.png", "http://192.168.0.1/photo.png", "http://printer.local/photo.png",
+                     "http://169.254.169.254/latest/photo.png", "http://0x7f000001/photo.png",
+                 })
+        {
+            var refused = await Assert.ThrowsAsync<ConversionRefusedException>(() =>
+                downloader.DownloadAsync(new Uri(address), _dir.Path, null, null, ct));
+            Assert.Equal("error.web_local_address", refused.ErrorKey);
+        }
+        Assert.Equal(0, asked);
+        Assert.Empty(Directory.GetFiles(_dir.Path));
+    }
+
+    [Fact]
+    public async Task Never_follows_a_redirect_into_the_local_network()
+    {
+        var asked = 0;
+        _routes["/photo.png"] = async context =>
+        {
+            Interlocked.Increment(ref asked);
+            await context.Response.OutputStream.WriteAsync(Png);
+        };
+        var port = new Uri(_root).Port;
+        Redirect("/to-loopback", $"http://127.0.0.2:{port}/photo.png");
+        Redirect("/to-localhost", $"http://localhost:{port}/photo.png");
+        Redirect("/to-mapped", $"http://[::ffff:127.0.0.1]:{port}/photo.png");
+        Redirect("/to-router", "http://192.168.1.1/photo.png", 301);
+        Redirect("/to-name", $"http://rebind.test:{port}/photo.png"); // a public-looking name with a local answer
+        Redirect("/hop", "/to-router");
+        using var downloader = new WebDownloader
+        {
+            IsRefused = AllButTheServer,
+            ResolveAsync = (name, _) => Task.FromResult(name == "rebind.test" ? new[] { IPAddress.Parse("10.0.0.7") } : []),
+        };
+        var ct = TestContext.Current.CancellationToken;
+
+        foreach (var path in new[] { "/to-loopback", "/to-localhost", "/to-mapped", "/to-router", "/to-name", "/hop" })
+        {
+            var refused = await Assert.ThrowsAsync<ConversionRefusedException>(() => downloader.DownloadAsync(Url(path), _dir.Path, null, null, ct));
+            Assert.Equal("error.web_local_address", refused.ErrorKey);
+        }
+        Assert.Equal(0, asked);
+        Assert.Empty(Directory.GetFiles(_dir.Path));
+    }
+
+    [Fact]
+    public async Task Connects_only_to_the_checked_addresses_of_a_name()
+    {
+        // The name answers with a local address and one allowed here (the test's own server): the download goes to
+        // the allowed one, the very address that was checked, not to whatever another lookup would say.
+        using var server = new TcpListener(IPAddress.Loopback, 0);
+        server.Start();
+        var port = ((IPEndPoint)server.LocalEndpoint).Port;
+        var ct = TestContext.Current.CancellationToken;
+        var serve = Task.Run(async () =>
+        {
+            using var client = await server.AcceptTcpClientAsync(ct);
+            await using var stream = client.GetStream();
+            var request = new List<byte>();
+            var one = new byte[1];
+            while (!request.TakeLast(4).SequenceEqual("\r\n\r\n"u8.ToArray()) && await stream.ReadAsync(one, ct) == 1)
+                request.Add(one[0]);
+            await stream.WriteAsync("HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 16\r\nConnection: close\r\n\r\n"u8.ToArray(), ct);
+            await stream.WriteAsync(Png, ct);
+            return System.Text.Encoding.ASCII.GetString([.. request]);
+        }, ct);
+        var lookups = 0;
+        using var downloader = new WebDownloader
+        {
+            IsRefused = AllButTheServer,
+            ResolveAsync = (_, _) =>
+            {
+                Interlocked.Increment(ref lookups);
+                return Task.FromResult(new[] { IPAddress.Parse("10.0.0.7"), IPAddress.Loopback });
+            },
+        };
+
+        var path = await downloader.DownloadAsync(new Uri($"http://files.test:{port}/photo.png"), _dir.Path, null, null, ct);
+
+        Assert.Equal("photo.png", Path.GetFileName(path));
+        Assert.Contains($"Host: files.test:{port}", await serve);
+        Assert.Equal(1, lookups);
+    }
+
+    [Fact]
     public async Task Refuses_a_file_over_the_size_cap_said_or_not_and_leaves_nothing_behind()
     {
         var big = new byte[64 * 1024];
         Png.CopyTo(big, 0);
         Serve("/said.png", big, "image/png");
         Serve("/unsaid.png", big, "image/png", chunked: true);
-        using var downloader = new WebDownloader { MaxBytes = 10_000 };
+        using var downloader = new WebDownloader { MaxBytes = 10_000, IsRefused = AllButTheServer };
 
         var said = await Assert.ThrowsAsync<ConversionRefusedException>(() =>
             downloader.DownloadAsync(Url("/said.png"), _dir.Path, null, null, TestContext.Current.CancellationToken));
@@ -207,6 +311,7 @@ public sealed class WebDownloaderTests : IDisposable
         };
         using var downloader = new WebDownloader
         {
+            IsRefused = AllButTheServer,
             ResponseTimeout = TimeSpan.FromMilliseconds(300),
             StallTimeout = TimeSpan.FromMilliseconds(300),
         };
@@ -252,7 +357,7 @@ public sealed class WebDownloaderTests : IDisposable
         Png.CopyTo(body, 0);
         Serve("/sized.png", body, "image/png");
         Serve("/unsized.png", body, "image/png", chunked: true);
-        using var downloader = new WebDownloader { ReportInterval = TimeSpan.Zero };
+        using var downloader = new WebDownloader { ReportInterval = TimeSpan.Zero, IsRefused = AllButTheServer };
         var sized = new List<TransferProgress>();
         var unsized = new List<TransferProgress>();
 
@@ -275,7 +380,7 @@ public sealed class WebDownloaderTests : IDisposable
         var body = new byte[400_000];
         Png.CopyTo(body, 0);
         Serve("/many.png", body, "image/png");
-        using var downloader = new WebDownloader { ReportInterval = TimeSpan.FromHours(1) };
+        using var downloader = new WebDownloader { ReportInterval = TimeSpan.FromHours(1), IsRefused = AllButTheServer };
         var reports = new List<TransferProgress>();
 
         await downloader.DownloadAsync(Url("/many.png"), _dir.Path, null, new SyncProgress(reports), TestContext.Current.CancellationToken);

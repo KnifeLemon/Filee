@@ -144,6 +144,7 @@
   "error.web_too_large": "Tệp lớn hơn 2 GB",
   "error.web_blocked": "Chương trình, trình cài đặt và tập lệnh không được lưu",
   "error.web_timeout": "Máy chủ đã ngừng phản hồi",
+  "error.web_local_address": "Liên kết dẫn đến máy tính này hoặc mạng nội bộ của bạn, nơi Filee không tải xuống: hãy lưu tệp từ trình duyệt trước",
   "error.geo_empty": "Tệp không có đối tượng nào",
   "error.geo_unknown_crs": "Tọa độ không phải kinh độ và vĩ độ, và tệp không ghi rõ hệ tọa độ của nó (với Shapefile, hãy giữ tệp .prj đi kèm)",
   "error.geo_unsupported_crs": "Hệ tọa độ này chưa được hỗ trợ",

@@ -138,6 +138,7 @@
   "error.web_too_large": "ファイルが2 GBを超えています",
   "error.web_blocked": "プログラム、インストーラー、スクリプトは保存しません",
   "error.web_timeout": "サーバーから応答がありません",
+  "error.web_local_address": "リンク先がこのコンピューターかローカルネットワーク内のため、Filee ではダウンロードしません。先にブラウザーで保存してください",
   "error.geo_empty": "ファイルに地物がありません",
   "error.geo_unknown_crs": "座標が経度・緯度ではなく、ファイルに座標系の情報もありません（Shapefileは.prjファイルと一緒に置いてください）",
   "error.geo_unsupported_crs": "この座標系にはまだ対応していません",

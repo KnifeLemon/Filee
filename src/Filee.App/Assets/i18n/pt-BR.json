@@ -144,6 +144,7 @@
   "error.web_too_large": "O arquivo é maior que 2 GB",
   "error.web_blocked": "Programas, instaladores e scripts não são salvos",
   "error.web_timeout": "O servidor parou de responder",
+  "error.web_local_address": "O link leva a este computador ou à sua rede local, de onde o Filee não baixa arquivos: salve o arquivo no navegador primeiro",
   "error.geo_empty": "O arquivo não tem feições",
   "error.geo_unknown_crs": "As coordenadas não são longitude e latitude, e o arquivo não informa o sistema de coordenadas (ao lado de um Shapefile, mantenha o arquivo .prj)",
   "error.geo_unsupported_crs": "Este sistema de coordenadas ainda não é compatível",
