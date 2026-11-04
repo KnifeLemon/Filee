@@ -69,6 +69,7 @@ public sealed class RadialController(
     private bool _toClipboard;  // the click-mode donut's files came from the clipboard: their results go back on it
     private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
     private Action<ConversionJob>? _onJob;  // told the conversion the donut starts (the Home page's list follows it)
+    private bool _forLaunches;  // the click-mode donut's files came from later launches, so more of them can join it
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -141,6 +142,7 @@ public sealed class RadialController(
         _toClipboard = toClipboard;
         _keepOrder = keepOrder;
         _onJob = onJob;
+        _forLaunches = forAnotherProcess;
         if (forAnotherProcess && OperatingSystem.IsMacOS())
             _grace.Start();
         else
@@ -155,6 +157,20 @@ public sealed class RadialController(
         window.DonutControl.PlayOpenAnimation();
         PlaceAndShow(window, x, y, activate: true);
         WatchFlipKey();
+    }
+
+    /// <summary>
+    /// Adds files of later launches to the donut that is open for earlier ones, without opening it again. False when
+    /// there is no such donut (closed, opened for something else, or a conversion took its files): they need their own.
+    /// </summary>
+    public bool TryAddFiles(IReadOnlyList<string> files)
+    {
+        if (!_visible || !_forLaunches || _converted || !viewModel.IsClickMode)
+            return false;
+        var all = viewModel.Files.Union(platform.ResolveShortcuts(files), FileSystemPaths.Comparer).ToList();
+        if (all.Count > viewModel.Files.Count)
+            viewModel.Load(all, clickMode: true, viewModel.IsBackFace);
+        return true;
     }
 
     /// <summary>The mouse button of the drag gesture was released somewhere.</summary>

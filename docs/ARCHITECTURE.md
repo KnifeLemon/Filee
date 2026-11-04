@@ -440,9 +440,13 @@ in memory for as long as Filee runs, also with no window open, so this is the wa
 Settings → General → "Show “Convert with Filee” in the Explorer context menu" (`AppSettings.ContextMenuEnabled`) is
 applied by `WindowsPlatformServices.SetContextMenu` at start-up and whenever settings change (installed builds only):
 
-- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, one process per file; the running
-  instance collects them through `SingleInstance`) and a **Send To** shortcut. Per user, no admin rights. On Windows 10
-  this is the entry; on Windows 11 it sits under "Show more options".
+- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, `MultiSelectModel` `Player`) and
+  a **Send To** shortcut. Per user, no admin rights. On Windows 10 this is the entry; on Windows 11 it sits under "Show
+  more options". Explorer starts one process per selected file, out of order and over many seconds, and hides the
+  entry above 100 files (Send To has no such limit). The processes reach the running instance through `SingleInstance`;
+  the first asks Explorer for the selection, so the donut has all of it at once (`SelectionLaunches`). When that can't
+  be read (another file manager), they are collected for 350 ms and later ones join the open donut
+  (`RadialController.TryAddFiles`); once a conversion took its files, later ones get a donut of their own.
 - **Windows 11 top-level entry** (optional): an `IExplorerCommand` in `FileeExplorerMenu.dll`
   (`src/Filee.ExplorerMenu`, plain C, no C runtime) declared by the sparse package `FileeExplorerMenu.msix`
   (`ExplorerMenuPackage.CreateManifest`: `desktop4:FileExplorerContextMenus`, `desktop5:ItemType Type="*"`,
