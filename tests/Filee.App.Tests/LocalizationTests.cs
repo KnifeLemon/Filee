@@ -42,6 +42,12 @@ public partial class LocalizationTests
         Assert.All(LocalizationService.Languages.Where(l => l.Code != "ar"), l => Assert.False(SoftPalette.IsRightToLeft(l.Code)));
     }
 
+    [Fact]
+    public void Bengali_uses_the_embedded_font()
+    {
+        Assert.Contains("fonts:Filee#Noto Sans Bengali", ThemeService.FontFamilies("bn-BD"));
+    }
+
     [Theory]
     [MemberData(nameof(Languages))]
     public void Catalogs_have_no_duplicate_keys_or_empty_translations(string code)
