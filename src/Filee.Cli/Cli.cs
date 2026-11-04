@@ -107,7 +107,7 @@ internal static class Cli
         preset.Output.KeepFoldersFrom = rule.Folder; // as the app's watch folders: subfolders stay subfolders
 
         var settle = options.SettleSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : (TimeSpan?)null;
-        var events = options.Json ? new JobEvents(output, host.Texts, host.Catalog, progress: false) : null;
+        var events = options.Json && !options.Quiet ? new JobEvents(output, host.Texts, host.Catalog, progress: false) : null;
         await using var watcher = new FolderWatcher(rule,
             async (files, token) => await RunJobAsync(files, preset, host, options.Quiet || options.Json ? null : output, events, token),
             settleTime: settle);
