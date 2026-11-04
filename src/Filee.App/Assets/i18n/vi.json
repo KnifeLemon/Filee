@@ -109,6 +109,7 @@
   "error.p7m_encrypted": "Tệp .p7m này được mã hóa chứ không chỉ được ký: chỉ khóa của người nhận mới mở được",
   "error.p7m_unknown_content": "Tệp bên trong .p7m này thuộc loại Filee không chuyển đổi",
   "error.p7m_too_large": "Tệp đã ký quá lớn để mở",
+  "error.document_too_large": "Tài liệu này giải nén ra quá nhiều dữ liệu hoặc lồng nhau quá sâu nên không thể mở an toàn",
   "format_request.request": "Yêu cầu định dạng này",
   "format_request.notice_title": "Filee chưa thể chuyển đổi tệp {0}",
   "format_request.notice_text": "Hãy cho chúng tôi biết bạn cần định dạng nào.\nCác yêu cầu sẽ quyết định Filee hỗ trợ gì tiếp theo.\nTệp đã mã hóa hoặc có bảo vệ bản quyền (DRM) không thể chuyển đổi, dù ở định dạng nào.",

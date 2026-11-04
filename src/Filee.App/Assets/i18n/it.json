@@ -102,6 +102,7 @@
 "error.p7m_encrypted": "Questo .p7m è cifrato, non solo firmato: solo la chiave del destinatario può aprirlo",
 "error.p7m_unknown_content": "Il file dentro questo .p7m è di un tipo che Filee non converte",
 "error.p7m_too_large": "Il file firmato è troppo grande da aprire",
+"error.document_too_large": "Questo documento si decomprime in troppi dati o è annidato troppo in profondità per essere aperto in sicurezza",
 "format_request.request": "Richiedi questo formato",
 "format_request.notice_title": "Filee non può ancora convertire i file {0}",
 "format_request.notice_text": "Dicci di quale formato hai bisogno.\nLe richieste decidono cosa supporterà Filee in futuro.\nI file cifrati o protetti da copia (DRM) non si possono convertire, qualunque sia il formato.",

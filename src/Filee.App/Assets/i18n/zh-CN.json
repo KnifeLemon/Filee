@@ -109,6 +109,7 @@
   "error.p7m_encrypted": "这个 .p7m 已加密，而不只是签名：只有收件人的密钥才能打开",
   "error.p7m_unknown_content": "这个 .p7m 中的文件是 Filee 不转换的类型",
   "error.p7m_too_large": "已签名的文件太大，无法打开",
+  "error.document_too_large": "此文档解压后数据过多或嵌套过深，无法安全打开",
   "format_request.request": "请求支持此格式",
   "format_request.notice_title": "Filee 暂时无法转换 {0} 文件",
   "format_request.notice_text": "告诉我们你需要的格式。\n我们会根据请求决定接下来支持哪些格式。\n加密或有复制保护 (DRM) 的文件，无论什么格式都无法转换。",

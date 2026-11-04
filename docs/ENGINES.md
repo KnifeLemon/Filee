@@ -451,6 +451,13 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
   own folder and its subfolders (`DocumentFiles.cs`, also for e-books, MHTML and translation): `../`, absolute paths
   and `file:` URLs outside are left out like missing pictures. A path or `file:` URL naming another computer
   (`\\host\share`, `file://host/`, `//host/`) is refused by its text alone, so no network connection is made.
+- **Limits** (`Hwp/Hwpx/Nesting.cs`, `Infrastructure/BoundedXml.cs`): the XML parts of DOCX, PPTX, XLSX, HWPX and
+  ODS packages (and FB2 and OPF files) are read without DTDs, each up to 256 MB unpacked, 1 GB per package, with
+  elements nested at most 1,000 levels; larger or deeper files are refused (`error.document_too_large`). Tables in
+  table cells, text boxes, notes and links nested more than 32 deep become plain paragraphs of their text, in the
+  DOCX and HWPX readers and again in every writer (whatever reader made the model); an equation deeper than 200
+  levels becomes its text, notes inside notes are not followed, and PPTX groups are opened without recursion. The
+  readers run on a thread with a 16 MB stack.
 
 Element order and attribute values follow files saved by 한글 where the schema and 한글 disagree, for example:
 
@@ -1352,7 +1359,8 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
 
 - **EPUB 2 / 3**: container.xml → OPF → spine; each chapter is read by the HTML reader and starts a new page, links
   between chapters become links to bookmarks, pictures come from the package, title / authors / language / cover
-  from the metadata.
+  from the metadata. A book (EPUB, HTMLZ, TXTZ) is unpacked with at most 100,000 entries, 1 GB per entry and 2 GB
+  in all, checked while unpacking; past that it is refused.
 - **EPUB output** is EPUB 3 with an NCX for older readers: `mimetype` first and stored, a navigation document from
   the headings, chapters split at level-1 headings and page breaks, one style sheet, pictures in formats every
   reader shows (others become JPEG / PNG), a cover page for covers the content does not show.

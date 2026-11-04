@@ -109,6 +109,7 @@
   "error.p7m_encrypted": "Ce .p7m est chiffré, pas seulement signé : seule la clé du destinataire peut l'ouvrir",
   "error.p7m_unknown_content": "Le fichier contenu dans ce .p7m est d'un type que Filee ne convertit pas",
   "error.p7m_too_large": "Le fichier signé est trop volumineux pour être ouvert",
+  "error.document_too_large": "Ce document se décompresse en trop de données ou est imbriqué trop profondément pour être ouvert en toute sécurité",
   "format_request.request": "Demander ce format",
   "format_request.notice_title": "Filee ne sait pas encore convertir les fichiers {0}",
   "format_request.notice_text": "Dites-nous de quel format vous avez besoin.\nLes demandes décident de ce que Filee prendra en charge ensuite.\nLes fichiers chiffrés ou protégés contre la copie (DRM) ne peuvent pas être convertis, quel que soit le format.",

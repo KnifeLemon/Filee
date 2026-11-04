@@ -103,6 +103,7 @@
   "error.p7m_encrypted": "Diese .p7m ist verschlüsselt, nicht nur signiert: Nur der Schlüssel des Empfängers öffnet sie",
   "error.p7m_unknown_content": "Die Datei in dieser .p7m hat ein Format, das Filee nicht konvertiert",
   "error.p7m_too_large": "Die signierte Datei ist zu groß zum Öffnen",
+  "error.document_too_large": "Dieses Dokument entpackt sich zu zu vielen Daten oder ist zu tief verschachtelt, um es sicher zu öffnen",
   "format_request.request": "Dieses Format vorschlagen",
   "format_request.notice_title": "Filee kann {0}-Dateien noch nicht konvertieren",
   "format_request.notice_text": "Sag uns, welches Format du brauchst.\nDie Anfragen bestimmen, welche Formate Filee als Nächstes unterstützt.\nVerschlüsselte oder kopiergeschützte Dateien (DRM) lassen sich unabhängig vom Format nicht konvertieren.",

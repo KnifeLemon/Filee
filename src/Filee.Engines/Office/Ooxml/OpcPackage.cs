@@ -2,6 +2,7 @@
 
 using System.IO.Compression;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office.Ooxml;
 
@@ -14,6 +15,7 @@ internal sealed class OpcPackage : IDisposable
     private static readonly XNamespace PackageRelationships = "http://schemas.openxmlformats.org/package/2006/relationships";
 
     private readonly ZipArchive _zip;
+    private readonly BoundedXml _xml = new();
     private readonly Dictionary<string, XDocument?> _parts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, OpcRelationship>> _relationships = new(StringComparer.OrdinalIgnoreCase);
 
@@ -30,10 +32,7 @@ internal sealed class OpcPackage : IDisposable
             return cached;
         XDocument? xml = null;
         if (_zip.GetEntry(path) is { } entry)
-        {
-            using var stream = entry.Open();
-            xml = XDocument.Load(stream, LoadOptions.PreserveWhitespace);
-        }
+            xml = _xml.Load(entry, LoadOptions.PreserveWhitespace);
         _parts[path] = xml;
         return xml;
     }
@@ -48,8 +47,7 @@ internal sealed class OpcPackage : IDisposable
         var result = new Dictionary<string, OpcRelationship>();
         if (_zip.GetEntry(relsPath) is { } entry)
         {
-            using var stream = entry.Open();
-            foreach (var rel in XDocument.Load(stream).Root?.Elements(PackageRelationships + "Relationship") ?? [])
+            foreach (var rel in _xml.Load(entry).Root?.Elements(PackageRelationships + "Relationship") ?? [])
             {
                 var target = (string?)rel.Attribute("Target") ?? "";
                 var external = (string?)rel.Attribute("TargetMode") == "External";

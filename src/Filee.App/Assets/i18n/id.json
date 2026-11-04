@@ -103,6 +103,7 @@
   "error.p7m_encrypted": ".p7m ini dienkripsi, bukan hanya ditandatangani: hanya kunci penerima yang bisa membukanya",
   "error.p7m_unknown_content": "File di dalam .p7m ini berjenis yang tidak dikonversi Filee",
   "error.p7m_too_large": "File bertanda tangan terlalu besar untuk dibuka",
+  "error.document_too_large": "Dokumen ini terurai menjadi data yang terlalu besar atau bersarang terlalu dalam untuk dibuka dengan aman",
   "format_request.request": "Minta format ini",
   "format_request.notice_title": "Filee belum dapat mengonversi file {0}",
   "format_request.notice_text": "Beri tahu kami format apa yang Anda butuhkan.\nPermintaan menentukan format apa yang akan didukung Filee selanjutnya.\nFile yang dienkripsi atau dilindungi DRM tidak dapat dikonversi, apa pun formatnya.",

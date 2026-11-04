@@ -13,6 +13,7 @@ using System.Globalization;
 using System.IO.Compression;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Hwp.Hwpx;
 
@@ -24,6 +25,7 @@ internal sealed partial class HwpxReader
     private const string Paragraph2016Namespace = "http://www.hancom.co.kr/hwpml/2016/paragraph";
 
     private readonly ZipArchive _zip;
+    private readonly BoundedXml _xml = new();
     private readonly string _mediaFolder;
 
     /// <summary>Manifest item id → zip entry of embedded binaries (pictures).</summary>
@@ -47,7 +49,10 @@ internal sealed partial class HwpxReader
     public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, null);
 
     /// <param name="skipped">Receives the elements that were skipped because the model has no equivalent (local name → count).</param>
-    public static HDocument Read(string path, string mediaFolder, IDictionary<string, int>? skipped)
+    public static HDocument Read(string path, string mediaFolder, IDictionary<string, int>? skipped) =>
+        Nesting.OnLargeStack(() => ReadPackage(path, mediaFolder, skipped));
+
+    private static HDocument ReadPackage(string path, string mediaFolder, IDictionary<string, int>? skipped)
     {
         ZipArchive zip;
         try
@@ -185,9 +190,8 @@ internal sealed partial class HwpxReader
         }
         try
         {
-            using var stream = entry.Open();
             // Whitespace matters: <hp:t> </hp:t> is a real space.
-            return XDocument.Load(stream, LoadOptions.PreserveWhitespace);
+            return _xml.Load(entry, LoadOptions.PreserveWhitespace);
         }
         catch (XmlException ex)
         {

@@ -72,6 +72,7 @@ internal sealed partial class DocxWriter
     /// <summary>Writes <paramref name="document"/> as a .docx file (replaced atomically).</summary>
     public static void Write(HDocument document, string outputPath)
     {
+        Nesting.Limit(document); // the writer recurses per table, text box and note level
         var writer = new DocxWriter();
         var body = writer.Body(document);
         writer.WritePackage(document, body, outputPath);
