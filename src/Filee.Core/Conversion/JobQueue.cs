@@ -771,36 +771,57 @@ public sealed partial class JobQueue : IAsyncDisposable
         if (IsEmptyFile(file.SourcePath))
             return Fail(file, "error.empty_file", null);
 
+        // An envelope (a signed .p7m) is converted as the file inside it: the route opens it first, and everything
+        // below that depends on the format (same format, frames, OCR, …) asks about the file inside.
+        var from = source;
+        var opener = _catalog.All.OfType<IEnvelopeOpener>().FirstOrDefault(o => o.Opens(source.Id));
+        if (opener is not null)
+        {
+            try
+            {
+                from = FormatRegistry.Get(opener.InnerFormat(file.SourcePath, source.Id));
+            }
+            catch (ConversionRefusedException ex)
+            {
+                _log.LogInformation("Opening {File} was refused: {Reason}", file.SourcePath, ex.Message);
+                return Fail(file, ex.ErrorKey, ex.Detail);
+            }
+        }
+
         var target = !finalOutput ? intermediate
-            : runWith.TargetFormat == BuiltInData.SameAsSource ? runWith.CropsVideo ? VideoCrop.TargetFor(source.Id) : source.Id
+            : runWith.TargetFormat == BuiltInData.SameAsSource ? runWith.CropsVideo ? VideoCrop.TargetFor(from.Id) : from.Id
             : runWith.TargetFormat;
 
         // "Save every frame": a video becomes a folder of pictures in one step of its own; "Extract Live/Motion Photo
         // video" likewise takes a photo's video, and "Live / Motion Photo" makes one of a video. Never for an
         // intermediate file, and never on the way to another format (video → JPG is otherwise one still frame, photo →
         // MP4 a video of the still picture).
-        var frames = finalOutput && runWith.SavesFramesOf(source.Id);
-        var motionPhoto = finalOutput && runWith.ExtractsMotionOf(source.Id);
-        var livePhoto = finalOutput && runWith.MakesLivePhotoOf(source.Id);
-        var caption = finalOutput && runWith.CaptionsVideo(source.Id);
+        var frames = finalOutput && runWith.SavesFramesOf(from.Id);
+        var motionPhoto = finalOutput && runWith.ExtractsMotionOf(from.Id);
+        var livePhoto = finalOutput && runWith.MakesLivePhotoOf(from.Id);
+        var caption = finalOutput && runWith.CaptionsVideo(from.Id);
         var translate = finalOutput && runWith.Translate.Enabled;
-        if (translate && !runWith.TranslatesDocument(source.Id))
-            return Fail(file, "error.no_route", $"{source.Id} → {target}", new RouteRequest(source.Id, target, Translate: true));
+        if (translate && !runWith.TranslatesDocument(from.Id))
+            return Fail(file, "error.no_route", $"{from.Id} → {target}", new RouteRequest(from.Id, target, Translate: true));
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
-        var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(source.Id);
+        var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(from.Id);
         // "Metadata": only an engine that writes the metadata and nothing else, never a route that re-encodes the file.
+        // An envelope has no such edge: opening it for the file inside would drop the changes without a word.
         var metadata = finalOutput && runWith.EditsMetadata;
-        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate,
-            metadata: metadata);
+        var route = opener is null || metadata
+            ? planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate,
+                metadata: metadata)
+            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate);
         if (route is null)
-            return Fail(file, "error.no_route", $"{source.Id} → {target}",
-                new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Metadata: metadata));
+            return Fail(file, "error.no_route", $"{from.Id} → {target}",
+                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Metadata: metadata));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
-        // scan of the file's text answers this and the widths question below.
-        var scripts = route.Steps.FirstOrDefault(s => s.Unshaped)?.Converter is ITextShapingCheck check
+        // scan of the file's text answers this and the widths question below. Not for an envelope, whose own bytes
+        // aren't the document's.
+        var scripts = opener is null && route.Steps.FirstOrDefault(s => s.Unshaped)?.Converter is ITextShapingCheck check
             ? ScanScripts(check, file.SourcePath, source.Id)
             : null;
         if (scripts?.NeedsShaping is { } script)
@@ -902,8 +923,9 @@ public sealed partial class JobQueue : IAsyncDisposable
             }
 
             // Under "Save as ZIP" the output is still in the work folder: the source copied over it goes into the ZIP.
-            // Never with hidden parts: the source copied over the result would show them again.
-            var copiedSource = finalOutput && runWith.Output.OnlyIfSmaller && !runWith.Image.HidesAreas && inputs.Count == 1
+            // Never with hidden parts: the source copied over the result would show them again. Never for an envelope,
+            // which isn't a file of the result's format.
+            var copiedSource = finalOutput && runWith.Output.OnlyIfSmaller && !runWith.Image.HidesAreas && opener is null && inputs.Count == 1
                 && CopyIfNotSmaller(file.SourcePath, inputs[0]);
             if (copiedSource)
                 file.NoticeKey = "notice.pdf_not_smaller";

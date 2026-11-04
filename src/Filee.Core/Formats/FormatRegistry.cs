@@ -109,6 +109,9 @@ public static class FormatRegistry
         new("pub", "PUB", FormatCategory.Document, ["pub"], Writable: false),
         new("eml", "EML", FormatCategory.Document, ["eml"]),
         new("msg", "MSG", FormatCategory.Document, ["msg"], Writable: false),
+        // A signed envelope (CMS / PKCS #7, CAdES; #1010): Italian e-invoices (invoice.xml.p7m) and signed PDFs. It is
+        // converted as the file inside it (IEnvelopeOpener), and named after it: invoice.pdf.p7m → invoice.pdf.
+        new("p7m", "P7M", FormatCategory.Document, ["p7m"], Writable: false),
 
         // Korean word processor (Hancom)
         new("hwpx", "HWPX", FormatCategory.Hwp, ["hwpx"]),
@@ -406,11 +409,20 @@ public static class FormatRegistry
         return Path.GetExtension(name).TrimStart('.');
     }
 
-    /// <summary>The file name without its (possibly two-part) extension: "backup.tar.gz" → "backup".</summary>
+    /// <summary>
+    /// The file name without its (possibly two-part) extension: "backup.tar.gz" → "backup". An envelope's name loses
+    /// the extension of the file inside too, when it has one Filee knows: "invoice.pdf.p7m" → "invoice".
+    /// </summary>
     public static string NameWithoutExtension(string path)
     {
         var name = Path.GetFileName(path);
         var extension = ExtensionOf(name);
-        return extension.Length == 0 ? name : name[..^(extension.Length + 1)];
+        if (extension.Length == 0)
+            return name;
+        var stem = name[..^(extension.Length + 1)];
+        return Envelopes.Contains(extension) && Detect(stem) is not null ? NameWithoutExtension(stem) : stem;
     }
+
+    /// <summary>Extensions of envelopes, which are named after the file inside (<see cref="NameWithoutExtension"/>).</summary>
+    private static readonly HashSet<string> Envelopes = new(["p7m"], StringComparer.OrdinalIgnoreCase);
 }

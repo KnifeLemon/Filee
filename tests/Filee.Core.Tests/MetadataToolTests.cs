@@ -1,4 +1,4 @@
-// "Metadata": settings schema 68 brings the tool to existing libraries (in the palette only, after Add background), the
+// "Metadata": settings schema 69 brings the tool to existing libraries (in the palette only, after Add background), the
 // conversion it starts carries the edits and writes them through the one engine that writes only metadata (never a
 // re-encode), a route without it is refused, edits are read leniently, History offers no Retry an older Filee would run
 // without the edits, and "Replace the original" is the tool's own output rule.
@@ -33,7 +33,7 @@ public class MetadataToolTests
     }
 
     [Fact]
-    public void Schema_68_adds_the_Metadata_tool_after_Add_background_and_to_no_donut()
+    public void Schema_69_adds_the_Metadata_tool_after_Add_background_and_to_no_donut()
     {
         using var dir = new TempDir();
         Saved(dir);
@@ -43,7 +43,7 @@ public class MetadataToolTests
         File.WriteAllText(path, presets.ToJsonString());
         var settingsPath = Path.Combine(dir.Path, "settings.json");
         var settings = JsonNode.Parse(File.ReadAllText(settingsPath))!.AsObject();
-        settings["schemaVersion"] = 67;
+        settings["schemaVersion"] = 68;
         File.WriteAllText(settingsPath, settings.ToJsonString());
 
         var store = new UserDataStore(dir.Path);
@@ -60,17 +60,17 @@ public class MetadataToolTests
     }
 
     [Fact]
-    public void Schema_68_puts_the_tool_at_the_end_without_Add_background_and_never_twice()
+    public void Schema_69_puts_the_tool_at_the_end_without_Add_background_and_never_twice()
     {
         var presets = BuiltInData.CreatePresets().Where(p => p.Id is not (BuiltInData.MetadataId or BuiltInData.BackgroundId)).ToList();
         var profiles = BuiltInData.CreateProfiles();
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(67, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(68, presets, profiles));
         Assert.Equal(BuiltInData.MetadataId, presets[^1].Id);
 
         // Already there (a library a newer Filee saved): nothing changes.
         var count = presets.Count;
-        Assert.False(SettingsMigrations.ApplyToLibrary(67, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(68, presets, profiles));
         Assert.Equal(count, presets.Count);
         Assert.False(SettingsMigrations.ApplyToLibrary(AppSettings.CurrentSchemaVersion, presets, profiles));
     }
