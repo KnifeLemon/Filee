@@ -1,7 +1,7 @@
 // Drop zone: files dropped on the Home page join the queue below it, and so do the files a double-click picks. The
 // queue's button opens the donut (click mode) at itself for the queued files, in the order shown. Pictures, links and
 // downloads dragged from a browser open the donut at the drop position, as before, or join the queue when Settings asks
-// for it (saved to a temporary folder first). A card dragged to another
+// for it (saved to the download folder first). A card dragged to another
 // place in the queue changes the order the files are converted or merged in. A click selects a card, and the Delete key
 // takes the selected file out of the queue.
 
@@ -132,15 +132,15 @@ public partial class HomePage : UserControl
     }
 
     /// <summary>
-    /// A browser drag joins the list: a list holds paths, so the files are saved first into a temporary folder of this
-    /// drag. Those that can't be saved are left out and logged.
+    /// A browser drag joins the list: a list holds paths, so the files are saved first, into the download folder from
+    /// Settings (as the crop overlay does), and their results go next to them there. Those that can't be saved are left
+    /// out and logged. The list outlives the page, so the files join it even when the page changed meanwhile.
     /// </summary>
-    private async Task AddBrowserFilesAsync(WebDrop web)
+    private static async Task AddBrowserFilesAsync(WebDrop web)
     {
         var saved = await AppHost.Get<ConversionService>().SaveBrowserFilesAsync(web,
-            (placeholder, ex) => AppHost.Get<ILogger<HomePage>>().LogWarning(ex, "A browser file could not be saved for the queue: {Placeholder}", placeholder),
-            Path.Combine(web.WorkFolder, "queue"));
-        ViewModel?.AddToQueue(saved);
+            (placeholder, ex) => AppHost.Get<ILogger<HomePage>>().LogWarning(ex, "A browser file could not be saved for the queue: {Placeholder}", placeholder));
+        AppHost.Get<StagedFiles>().Add(saved);
     }
 
     /// <summary>The queue's button: the donut opens at the button for the queued files, in the order they are in.</summary>

@@ -431,6 +431,8 @@ public class BrowserDropTests
         var store = AppHost.Get<UserDataStore>();
         var collect = store.Settings.CollectDroppedFiles;
         store.Settings.CollectDroppedFiles = true;
+        var downloads = Directory.CreateTempSubdirectory("filee-queue-downloads-").FullName;
+        store.Settings.BrowserDrops.Folder = downloads;
         var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>(), store);
         vm.Navigate("home");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
@@ -458,7 +460,9 @@ public class BrowserDropTests
             var queued = Assert.Single(model.QueuedPaths);
             Assert.Equal("cat.png", Path.GetFileName(queued));
             Assert.True(File.Exists(queued));
-            Assert.StartsWith(WebDrop.DefaultWorkRoot, queued);
+            // Saved into the download folder, as the crop overlay does: the result goes next to it there, not into a
+            // work folder that the next start deletes.
+            Assert.Equal(downloads, Path.GetDirectoryName(queued));
             // The donut was not offered the file.
             Assert.Equal(donutFiles, AppHost.Get<RadialViewModel>().Files);
             Assert.True(file.Disposed);
@@ -470,6 +474,8 @@ public class BrowserDropTests
             // The queue is shared by the whole app: the test's file must not stay in it for the next test.
             AppHost.Get<StagedFiles>().Clear();
             store.Settings.CollectDroppedFiles = collect;
+            store.Settings.BrowserDrops.Folder = "";
+            Directory.Delete(downloads, true);
         }
     }
 
