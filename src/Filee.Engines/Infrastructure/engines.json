@@ -91,6 +91,13 @@
       "sha256": "60ED5BC3DD14EEA856493D334349B405782DDCAF0028D4B5DF4088345FBA2EFE",
       "size": 147951465,
       "kind": "model"
+    },
+    "upscayl-bin": {
+      "version": "20251207",
+      "url": "https://github.com/upscayl/upscayl-ncnn/releases/download/20251207-174704/upscayl-bin-20251207-174704-windows.zip",
+      "sha256": "1F0F65C5D2ADE866555E2AC467D35952C35A47080A4060FE56A1AB028F67258A",
+      "size": 2421760,
+      "kind": "zip"
     }
   },
   "platforms": {
@@ -130,6 +137,13 @@
           "sha256": "953E4512A6482848CD803C88B6D942E6AFCA65DC3B67C7D1353AE048D616DE53",
           "size": 201590724,
           "kind": "tar.xz"
+        },
+        "upscayl-bin": {
+          "version": "20251207",
+          "url": "https://github.com/upscayl/upscayl-ncnn/releases/download/20251207-174704/upscayl-bin-20251207-174704-linux.zip",
+          "sha256": "A9FAB3C770B62F2B7A35D8D6D61EB4E8B3AEF79128B665C919D080B85A2292F2",
+          "size": 3952825,
+          "kind": "zip"
         }
       }
     },
@@ -209,6 +223,13 @@
           "sha256": "135B8A95B8133396D54BF8E726DBC0066145EFA0D785963FC3D4592ACBFCFE5B",
           "size": 308308875,
           "kind": "dmg"
+        },
+        "upscayl-bin": {
+          "version": "20251207",
+          "url": "https://github.com/upscayl/upscayl-ncnn/releases/download/20251207-174704/upscayl-bin-20251207-174704-macos.zip",
+          "sha256": "277419791281A56EAE0C739C70120B974D7267CF7C2DE8E86DC09798D4B314DB",
+          "size": 9338240,
+          "kind": "zip"
         }
       }
     },
@@ -249,6 +270,13 @@
           "sha256": "94BB3248DF074C225490A8A6D1D9DC87C7D6783DBB7A8E9F0D0C3D94348552AF",
           "size": 297798926,
           "kind": "dmg"
+        },
+        "upscayl-bin": {
+          "version": "20251207",
+          "url": "https://github.com/upscayl/upscayl-ncnn/releases/download/20251207-174704/upscayl-bin-20251207-174704-macos.zip",
+          "sha256": "277419791281A56EAE0C739C70120B974D7267CF7C2DE8E86DC09798D4B314DB",
+          "size": 9338240,
+          "kind": "zip"
         }
       }
     }

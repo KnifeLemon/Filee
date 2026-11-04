@@ -88,6 +88,16 @@ Downloaded from their official release pages when the user chooses to install th
 | Tesseract language data (tessdata_fast 4.1.0), downloaded per language when used | Apache-2.0 | https://github.com/tesseract-ocr/tessdata_fast |
 | whisper.cpp (whisper-cli.exe Windows build) | MIT | https://github.com/ggml-org/whisper.cpp |
 | ggml Whisper base model (`ggml-base.bin`) | MIT | https://huggingface.co/ggerganov/whisper.cpp |
+| upscayl-bin (AI super-resolution binary) | AGPL-3.0 | https://github.com/upscayl/upscayl-ncnn |
+| NMKD Siax (`4x_NMKD-Siax_200k`, Philip Hofmann / NMKD) | WTFPL | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-NMKD-Siax-200k |
+| NMKD Superscale (`4x_NMKD-Superscale-SP_178000_G`, Philip Hofmann / NMKD) | WTFPL | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-NMKD-Superscale-SP-178000-G |
+| RealESRGAN General (`RealESRGAN_General_x4_v3`, Xintao Wang) | BSD-3-Clause | https://github.com/xinntao/Real-ESRGAN |
+| RealESRGAN General WDN (`RealESRGAN_General_WDN_x4_v3`, Xintao Wang) | BSD-3-Clause | https://github.com/xinntao/Real-ESRGAN |
+| 4xLSDIR (`4xLSDIR`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIR |
+| 4xLSDIRplusC (`4xLSDIRplusC`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIRplusC |
+| 4xLSDIRCompactC3 (`4xLSDIRCompactC3`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-LSDIRCompactC3 |
+| 4xNomos8kSC (`4xNomos8kSC`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-Nomos8kSC |
+| 4xHFA2k (`4xHFA2k`, Philip Hofmann / Phhofm) | CC-BY-4.0 | https://github.com/upscayl/custom-models, https://openmodeldb.info/models/4x-HFA2k |
 
 These programs run as separate processes. Their source code is available from the linked projects.
 
