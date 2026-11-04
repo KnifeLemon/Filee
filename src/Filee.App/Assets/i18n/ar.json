@@ -421,7 +421,7 @@
   "preset.flip_vertical.short": "عمودي",
   "preset.merge_pdf": "دمج PDF",
   "merge.order_title": "اختيار ترتيب الدمج",
-  "merge.order_hint": "حدّد ملفًا وانقله إلى أعلى أو أسفل. تُدمج الملفات بالترتيب من الأعلى إلى الأسفل. (‎Alt+↑ / Alt+↓‎)",
+  "merge.order_hint": "استخدم الأسهم للتنقل بين البطاقات. لتغيير الترتيب، اسحب بطاقة أو استخدم Alt + ↑ / Alt + ↓. تُدمج الملفات من الأعلى إلى الأسفل. مفتاح Delete يحذف الملف المحدد.",
   "merge.sort_by": "ترتيب حسب",
   "merge.sort_name_asc": "الاسم (أ إلى ي)",
   "merge.sort_name_desc": "الاسم (ي إلى أ)",
@@ -430,7 +430,7 @@
   "merge.sort_created_asc": "تاريخ الإنشاء (الأقدم أولاً)",
   "merge.sort_created_desc": "تاريخ الإنشاء (الأحدث أولاً)",
   "merge.sort_custom": "ترتيب مخصص",
-  "merge.images_hint": "حدّد صورة وانقلها إلى أعلى أو أسفل. تأتي الأولى في الأعلى، أو على اليسار عند وضع الصور جنبًا إلى جنب. (‎Alt+↑ / Alt+↓‎)",
+  "merge.images_hint": "استخدم الأسهم للتنقل بين الصور. لتغيير الترتيب، اسحب صورة أو اضغط Alt + ↑ / Alt + ↓. تأتي الأولى في الأعلى، أو على اليسار عند وضعها جنبًا إلى جنب. يزيل Delete الصورة المحددة.",
   "merge.vertical": "من الأعلى إلى الأسفل",
   "merge.horizontal": "جنبًا إلى جنب",
   "merge.same_width": "العرض نفسه",
@@ -1484,5 +1484,14 @@
   "engines.ollama.connecting": "جارٍ الاتصال...",
   "engines.ollama.complete": "اكتمل!",
   "engines.ollama.failed": "فشل:",
-  "engines.ollama.error": "خطأ:"
+  "engines.ollama.error": "خطأ:",
+  "home.queue_error": "تعذر تحويل {0}. تحتفظ القائمة بالملفات.",
+  "home.queue_selected": "محدد",
+  "home.queue_remove_file": "إزالة {0}",
+  "home.queue_title": "الملفات المراد تحويلها",
+  "home.queue_convert": "اختر إجراءً",
+  "home.queue_clear": "مسح القائمة",
+  "home.queue_remove": "إزالة",
+  "general.collect_dropped": "جمع الملفات المسحوبة في قائمة",
+  "general.collect_dropped_hint": "تبقى الملفات المسحوبة أو المختارة في قائمة الصفحة الرئيسية، ويحوّلها «اختر إجراءً» معًا بالترتيب المعروض. مغلق: كل سحب يفتح القائمة الدائرية كما كان من قبل."
 }

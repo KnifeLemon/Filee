@@ -431,7 +431,7 @@
   "preset.flip_vertical.short": "垂直",
   "preset.merge_pdf": "合并 PDF",
   "merge.order_title": "选择合并顺序",
-  "merge.order_hint": "选择文件并上下移动。文件将按从上到下的顺序合并。（Alt+↑ / Alt+↓）",
+  "merge.order_hint": "使用方向键在卡片之间移动。要更改顺序，请拖动卡片或按 Alt + ↑ / Alt + ↓。文件从上到下合并。按 Delete 移除所选文件。",
   "merge.sort_by": "排序方式",
   "merge.sort_name_asc": "名称 (A 到 Z)",
   "merge.sort_name_desc": "名称 (Z 到 A)",
@@ -440,7 +440,7 @@
   "merge.sort_created_asc": "创建日期 (最早优先)",
   "merge.sort_created_desc": "创建日期 (最新优先)",
   "merge.sort_custom": "自定义顺序",
-  "merge.images_hint": "选择图片并上下移动。第一张放在最上面（左右排列时放在最左边）。（Alt+↑ / Alt+↓）",
+  "merge.images_hint": "用方向键在图片之间移动。要调整顺序，可拖动图片或按 Alt + ↑ / Alt + ↓。第一张放在最上面（左右排列时放在最左边）。Delete 删除所选图片。",
   "merge.vertical": "上下排列",
   "merge.horizontal": "左右排列",
   "merge.same_width": "统一宽度",
@@ -1505,5 +1505,14 @@
   "engines.ollama.connecting": "正在连接...",
   "engines.ollama.complete": "完成！",
   "engines.ollama.failed": "失败：",
-  "engines.ollama.error": "错误："
+  "engines.ollama.error": "错误：",
+  "home.queue_error": "无法转换 {0}。列表保留这些文件。",
+  "home.queue_selected": "已选中",
+  "home.queue_remove_file": "移除 {0}",
+  "home.queue_title": "待转换的文件",
+  "home.queue_convert": "选择操作",
+  "home.queue_clear": "清空列表",
+  "home.queue_remove": "移除",
+  "general.collect_dropped": "将拖放的文件收集到列表中",
+  "general.collect_dropped_hint": "拖放或选择的文件会在首页列表中等待，“选择操作”会按显示顺序一起转换。关闭时，每次拖放都像以前一样打开圆形菜单。"
 }

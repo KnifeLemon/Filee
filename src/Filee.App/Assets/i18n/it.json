@@ -420,7 +420,7 @@
 "preset.flip_vertical.short": "Verticale",
 "preset.merge_pdf": "Unisci PDF",
 "merge.order_title": "Scegli l'ordine di unione",
-"merge.order_hint": "Seleziona un file e spostalo su o giù. I file vengono uniti dall'alto verso il basso. (Alt+↑ / Alt+↓)",
+"merge.order_hint": "Usa le frecce per navigare. Per cambiare l'ordine, trascina oppure usa Alt + ↑ / Alt + ↓. I file vengono uniti dall'alto in basso. Canc rimuove il file selezionato.",
 "merge.sort_by": "Ordina per",
 "merge.sort_name_asc": "Nome (A-Z)",
 "merge.sort_name_desc": "Nome (Z-A)",
@@ -429,7 +429,7 @@
 "merge.sort_created_asc": "Data di creazione (prima i vecchi)",
 "merge.sort_created_desc": "Data di creazione (prima i recenti)",
 "merge.sort_custom": "Ordine personalizzato",
-"merge.images_hint": "Seleziona un'immagine e spostala su o giù. La prima va in alto, o a sinistra nella disposizione affiancata. (Alt+↑ / Alt+↓)",
+"merge.images_hint": "Usa le frecce per spostarti tra le immagini. Per cambiare l'ordine, trascina un'immagine o premi Alt + ↑ / Alt + ↓. La prima va in alto, o a sinistra affiancata. Canc rimuove l'immagine selezionata.",
 "merge.vertical": "Dall'alto verso il basso",
 "merge.horizontal": "Affiancate",
 "merge.same_width": "Stessa larghezza",
@@ -1482,5 +1482,14 @@
 "engines.ollama.connecting": "Connessione in corso...",
 "engines.ollama.complete": "Completato!",
 "engines.ollama.failed": "Non riuscito:",
-"engines.ollama.error": "Errore:"
+"engines.ollama.error": "Errore:",
+"home.queue_error": "Impossibile convertire {0}. L'elenco conserva i file.",
+"home.queue_selected": "selezionato",
+"home.queue_remove_file": "Rimuovi {0}",
+"home.queue_title": "File da convertire",
+"home.queue_convert": "Scegli azione",
+"home.queue_clear": "Svuota elenco",
+"home.queue_remove": "Rimuovi",
+"general.collect_dropped": "Raccogli i file trascinati in un elenco",
+"general.collect_dropped_hint": "I file trascinati o scelti restano in un elenco nella schermata Inizio, e Scegli azione li converte insieme nell'ordine mostrato. Disattivato: ogni trascinamento apre il donut, come prima."
 }

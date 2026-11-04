@@ -431,7 +431,7 @@
   "preset.flip_vertical.short": "Dọc",
   "preset.merge_pdf": "Ghép PDF",
   "merge.order_title": "Chọn thứ tự ghép",
-  "merge.order_hint": "Chọn một tệp và di chuyển lên hoặc xuống. Các tệp được ghép từ trên xuống dưới. (Alt+↑ / Alt+↓)",
+  "merge.order_hint": "Dùng các phím mũi tên để di chuyển giữa các thẻ. Để đổi thứ tự, hãy kéo một thẻ hoặc nhấn Alt + ↑ / Alt + ↓. Các tệp được ghép từ trên xuống dưới. Phím Delete bỏ tệp đang chọn.",
   "merge.sort_by": "Sắp xếp theo",
   "merge.sort_name_asc": "Tên (A đến Z)",
   "merge.sort_name_desc": "Tên (Z đến A)",
@@ -440,7 +440,7 @@
   "merge.sort_created_asc": "Ngày tạo (cũ nhất trước)",
   "merge.sort_created_desc": "Ngày tạo (mới nhất trước)",
   "merge.sort_custom": "Thứ tự tùy chỉnh",
-  "merge.images_hint": "Chọn một ảnh và di chuyển lên hoặc xuống. Ảnh đầu tiên nằm trên cùng, hoặc bên trái khi xếp cạnh nhau. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Dùng các phím mũi tên để di chuyển giữa các ảnh. Để đổi thứ tự, hãy kéo một ảnh hoặc nhấn Alt + ↑ / Alt + ↓. Ảnh đầu tiên nằm trên cùng, hoặc bên trái khi xếp cạnh nhau. Phím Delete bỏ ảnh đang chọn.",
   "merge.vertical": "Từ trên xuống dưới",
   "merge.horizontal": "Cạnh nhau",
   "merge.same_width": "Cùng chiều rộng",
@@ -1505,5 +1505,14 @@
   "engines.ollama.connecting": "Đang kết nối...",
   "engines.ollama.complete": "Hoàn tất!",
   "engines.ollama.failed": "Thất bại:",
-  "engines.ollama.error": "Lỗi:"
+  "engines.ollama.error": "Lỗi:",
+  "home.queue_error": "Không thể chuyển đổi {0}. Danh sách vẫn giữ các tệp.",
+  "home.queue_selected": "đã chọn",
+  "home.queue_remove_file": "Bỏ {0}",
+  "home.queue_title": "Tệp cần chuyển đổi",
+  "home.queue_convert": "Chọn thao tác",
+  "home.queue_clear": "Xóa danh sách",
+  "home.queue_remove": "Bỏ",
+  "general.collect_dropped": "Gom các tệp được thả vào một danh sách",
+  "general.collect_dropped_hint": "Tệp được thả hoặc chọn sẽ chờ trong một danh sách ở Trang chủ, và Chọn thao tác sẽ chuyển đổi chúng cùng lúc theo thứ tự hiển thị. Tắt: mỗi lần thả sẽ mở thanh công cụ vòng tròn như trước."
 }

@@ -431,7 +431,7 @@
   "preset.flip_vertical.short": "Vertical",
   "preset.merge_pdf": "Juntar PDF",
   "merge.order_title": "Escolher a ordem dos ficheiros",
-  "merge.order_hint": "Seleciona um ficheiro e move-o para cima ou para baixo. Os ficheiros são combinados pela ordem da lista, de cima para baixo. (Alt+↑ / Alt+↓)",
+  "merge.order_hint": "Use as setas para navegar. Para mudar a ordem, clique e arraste ou use Alt + ↑ / Alt + ↓. Os ficheiros são unidos de cima para baixo. Delete remove o ficheiro selecionado.",
   "merge.sort_by": "Ordenar por",
   "merge.sort_name_asc": "Nome (A a Z)",
   "merge.sort_name_desc": "Nome (Z a A)",
@@ -440,7 +440,7 @@
   "merge.sort_created_asc": "Data de criação (antigos primeiro)",
   "merge.sort_created_desc": "Data de criação (recentes primeiro)",
   "merge.sort_custom": "Ordem personalizada",
-  "merge.images_hint": "Seleciona uma imagem e move-a para cima ou para baixo. A primeira fica no topo ou, lado a lado, à esquerda. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Usa as setas para navegar entre as imagens. Para mudar a ordem, arrasta uma imagem ou usa Alt + ↑ / Alt + ↓. A primeira fica no topo ou, lado a lado, à esquerda. Delete remove a imagem selecionada.",
   "merge.vertical": "De cima para baixo",
   "merge.horizontal": "Lado a lado",
   "merge.same_width": "Mesma largura",
@@ -1505,5 +1505,14 @@
   "engines.ollama.connecting": "A ligar...",
   "engines.ollama.complete": "Concluído!",
   "engines.ollama.failed": "Falha:",
-  "engines.ollama.error": "Erro:"
+  "engines.ollama.error": "Erro:",
+  "home.queue_error": "Não foi possível converter {0}. A lista mantém os ficheiros.",
+  "home.queue_selected": "selecionado",
+  "home.queue_remove_file": "Remover {0}",
+  "home.queue_title": "Ficheiros a converter",
+  "home.queue_convert": "Escolher ação",
+  "home.queue_clear": "Limpar lista",
+  "home.queue_remove": "Remover",
+  "general.collect_dropped": "Juntar ficheiros largados numa lista",
+  "general.collect_dropped_hint": "Os ficheiros largados ou escolhidos ficam numa lista no ecrã Início, e Escolher ação converte-os todos juntos, pela ordem mostrada. Desligado: cada largada abre o donut, como antes."
 }

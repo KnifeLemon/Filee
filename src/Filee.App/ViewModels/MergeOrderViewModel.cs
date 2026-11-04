@@ -6,8 +6,12 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
 using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Filee.App.Services;
+using Filee.Core.Formats;
+using Filee.Core.Localization;
 using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Core.Web;
@@ -15,37 +19,127 @@ using Filee.Core.Web;
 namespace Filee.App.ViewModels;
 
 /// <summary>
-/// One file of the merge: its name, its date and the folder it is in (no date or folder for a file from a browser, not
-/// saved yet).
+/// One file of the merge: its name, the folder it is in (none for a file from a browser, not saved yet), and its picture
+/// (the first page of a PDF, or the picture itself), drawn in turn with the others so the window opens at once.
 /// </summary>
-public sealed partial class MergeSource(string path) : ObservableObject
+public sealed partial class MergeSource(string path, Action<MergeSource> remove, ILocalizer? loc = null) : ObservableObject, IDisposable
 {
+    private readonly bool _oversized = FilePreviews.IsTooLarge(path, FormatRegistry.Detect(path));
+
     public string Path { get; } = path;
     public string Name => System.IO.Path.GetFileName(Path);
     public string Folder => WebDrop.IsPlaceholder(Path) ? "" : System.IO.Path.GetDirectoryName(Path) ?? "";
 
+    /// <summary>The format, or null when Filee doesn't know it (the file then shows no picture).</summary>
+    public FileFormat? Format { get; } = FormatRegistry.Detect(path);
+
+    /// <summary>The extension ("PDF", "PNG"), shown when the file has no picture.</summary>
+    public string FormatBadge => Format is null ? "" : Format.PrimaryExtension.TrimStart('.').ToUpperInvariant();
+
+    /// <summary>A PDF too large for its picture: the card says so where the picture goes.</summary>
+    public bool Oversized => _oversized;
+
+    /// <summary>Stops the picture still being drawn when the file leaves the merge.</summary>
+    public CancellationTokenSource Cancellation { get; } = new();
+
+    /// <summary>The place in the merge, from 1: the order the files merge in.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
+    private int _position;
+
+    /// <summary>The card the user selected (the list's selection), for the screen reader.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AccessibleName))]
+    private bool _isSelected;
+
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(HasThumbnail))]
+    private Bitmap? _thumbnail;
+
+    public bool HasThumbnail => Thumbnail is not null;
+
+    /// <summary>What a screen reader says for the card: its place, its name, and whether it is selected.</summary>
+    public string AccessibleName =>
+        $"{Position}. {Name}" + (IsSelected ? ", " + (loc?["home.queue_selected"] ?? "selected") : "");
+
+    /// <summary>What the card's X says for a screen reader: which file it takes out.</summary>
+    public string RemoveName => loc is null ? $"Remove {Name}" : loc.Format("home.queue_remove_file", Name);
+
+    /// <summary>The card's X: takes the file out of the merge.</summary>
+    [RelayCommand]
+    private void Remove() => remove(this);
+
+    /// <summary>Draws the picture, in turn with the others; a file that leaves the merge meanwhile gets none.</summary>
+    public async Task LoadPreviewAsync()
+    {
+        if (Oversized)
+            return;
+        try
+        {
+            var bitmap = await FilePreviews.RenderAsync(Path, Format, Cancellation.Token);
+            if (Cancellation.IsCancellationRequested)
+            {
+                if (FilePreviews.Owns(Format))
+                    bitmap?.Dispose();
+                return;
+            }
+            Thumbnail = bitmap;
+        }
+        catch (OperationCanceledException)
+        {
+            // The file left the merge: nothing to show.
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // No picture: the file shows its extension instead.
+        }
+    }
+
+    /// <summary>Cancels a picture still being drawn and disposes the one drawn (a PDF's; images are cached and shared).</summary>
+    public void Dispose()
+    {
+        Cancellation.Cancel();
+        if (FilePreviews.Owns(Format))
+            Thumbnail?.Dispose();
+        Thumbnail = null;
+    }
+
     /// <summary>The dates, read once: the order and the dates shown stay the same while the window is open.</summary>
     public FileStamp Stamp { get; } = WebDrop.IsPlaceholder(path) ? new FileStamp(path) : FileStamp.Read(path);
 
-    /// <summary>The row shows the date created rather than the date modified (while sorted by it).</summary>
+    /// <summary>The card shows the date created rather than the date modified (while sorted by it).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Time))]
+    [NotifyPropertyChangedFor(nameof(Time), nameof(Day), nameof(Tip))]
     private bool _showsCreated;
 
     /// <summary>The date and time shown, in the user's format.</summary>
     public string Time => (ShowsCreated ? Stamp.Created : Stamp.Modified)?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "";
+
+    /// <summary>The date alone, for the card (the time doesn't fit under the picture).</summary>
+    public string Day => (ShowsCreated ? Stamp.Created : Stamp.Modified)?.ToLocalTime().ToString("d", CultureInfo.CurrentCulture) ?? "";
+
+    /// <summary>The card's tooltip: the whole path, then the date and time.</summary>
+    public string Tip => Time.Length == 0 ? Path : $"{Path}\n{Time}";
 }
 
-public sealed partial class MergeOrderViewModel : ObservableObject
+public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
 {
     /// <param name="files">The files to merge.</param>
     /// <param name="images">
     /// "Merge images" (#645): the layout the pictures are merged with last time, which the window also offers to change.
     /// Null for other merges.
     /// </param>
-    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null)
+    /// <param name="keepOrder">The files are already in the order to merge them in (the Home page's queue): not sorted by name.</param>
+    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null, bool keepOrder = false, ILocalizer? loc = null)
     {
-        Files = new(FileSorter.Sort(files.Select(file => new MergeSource(file)), file => file.Stamp, FileSortOrder.NameAscending));
+        var sources = files.Select(file => new MergeSource(file, RemoveFile, loc));
+        // The Home page's queue keeps the order it was given; otherwise the files start by name.
+        Files = new(keepOrder ? sources : FileSorter.Sort(sources, file => file.Stamp, FileSortOrder.NameAscending));
+        if (keepOrder)
+            _sortIndex = CustomSortIndex;
+        Files.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanMerge));
+        Renumber();
+        foreach (var source in Files)
+            _ = source.LoadPreviewAsync();
         SelectedFile = Files.FirstOrDefault();
         if (images is null)
             return;
@@ -59,6 +153,15 @@ public sealed partial class MergeOrderViewModel : ObservableObject
     }
 
     public ObservableCollection<MergeSource> Files { get; }
+
+    /// <summary>Merge needs at least two files: the button is off below that.</summary>
+    public bool CanMerge => Files.Count >= 2;
+
+    partial void OnSelectedFileChanged(MergeSource? value)
+    {
+        foreach (var file in Files)
+            file.IsSelected = ReferenceEquals(file, value);
+    }
 
     /// <summary>The list entry after the sort orders: the files were moved by hand.</summary>
     public const int CustomSortIndex = (int)FileSortOrder.CreatedDescending + 1;
@@ -89,6 +192,7 @@ public sealed partial class MergeOrderViewModel : ObservableObject
         SelectedFile = selected;
         MoveUpCommand.NotifyCanExecuteChanged();
         MoveDownCommand.NotifyCanExecuteChanged();
+        Renumber();
     }
 
     /// <summary>The files are pictures that become one image: the window shows the layout too.</summary>
@@ -168,6 +272,79 @@ public sealed partial class MergeOrderViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanMoveDown))]
     private void MoveDown() => Move(1);
 
+    /// <summary>The window closed: the pictures are released.</summary>
+    public void Dispose()
+    {
+        foreach (var file in Files)
+            file.Dispose();
+    }
+
+    /// <summary>A card dragged to another place: the file moves there, and it stays selected (the merge follows the order).</summary>
+    internal void MoveFile(int from, int to)
+    {
+        if (from == to || from < 0 || to < 0 || from >= Files.Count || to >= Files.Count)
+            return;
+        Files.Move(from, to);
+        Renumber();
+        // A card moved by hand is a custom order: the sort list shows that, and a later sort starts from it.
+        SortIndex = CustomSortIndex;
+        SelectedFile = Files[to];
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>The left and right arrows: the selection moves to the neighbour, and stays on a card after a move.</summary>
+    internal void SelectNeighbour(int delta)
+    {
+        if (Files.Count == 0)
+            return;
+        var index = SelectedFile is null ? -1 : Files.IndexOf(SelectedFile);
+        SelectedFile = Files[Math.Clamp(index < 0 ? 0 : index + delta, 0, Files.Count - 1)];
+    }
+
+    /// <summary>The left arrow: the card on its left (on the right, in a right-to-left language).</summary>
+    [RelayCommand]
+    private void SelectLeft() => SelectNeighbour(CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? 1 : -1);
+
+    /// <summary>The right arrow: the card on its right (on the left, in a right-to-left language).</summary>
+    [RelayCommand]
+    private void SelectRight() => SelectNeighbour(CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft ? -1 : 1);
+
+    /// <summary>The Delete key: the selected file leaves the merge.</summary>
+    [RelayCommand]
+    private void DeleteSelected() => RemoveSelected();
+
+    /// <summary>The Delete command's work: the selected file leaves the merge.</summary>
+    internal void RemoveSelected()
+    {
+        if (SelectedFile is { } selected)
+            RemoveFile(selected);
+    }
+
+    /// <summary>The card's X: the file leaves the merge, and the selection moves to a neighbour.</summary>
+    internal void RemoveFile(MergeSource file)
+    {
+        var index = Files.IndexOf(file);
+        if (index < 0)
+            return;
+        var wasSelected = ReferenceEquals(SelectedFile, file);
+        Files.RemoveAt(index);
+        file.Dispose();
+        // The list box clears its selection while the row goes, which reaches SelectedFile as null: the neighbour is
+        // chosen after the removal, from whether the removed card was the selected one.
+        if (wasSelected)
+            SelectedFile = Files.Count == 0 ? null : Files[Math.Min(index, Files.Count - 1)];
+        Renumber();
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
+
+    private void Renumber()
+    {
+        for (var i = 0; i < Files.Count; i++)
+            Files[i].Position = i + 1;
+    }
+
     private void Move(int direction)
     {
         if (SelectedFile is not { } selected)
@@ -177,6 +354,7 @@ public sealed partial class MergeOrderViewModel : ObservableObject
         if (index < 0 || target < 0 || target >= Files.Count)
             return;
         Files.Move(index, target);
+        Renumber();
         // The list box can drop its selection while it moves the row.
         SelectedFile = selected;
         SortIndex = CustomSortIndex;

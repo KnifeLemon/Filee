@@ -167,9 +167,10 @@ public sealed class ConversionService
     }
 
     /// <summary>
-    /// Saves a browser drop's files for a tool (the crop overlay), which needs them on disk before anything else
-    /// happens: always into the download folder, as the tool shows and keeps working on the original. Files that can't
-    /// be saved are left out (<paramref name="failed"/> hears why). The drop is done afterwards.
+    /// Saves a browser drop's files for a tool (the crop overlay) or the Home page's list, which need them on disk before
+    /// anything else happens: always into the download folder, as the tool shows and keeps working on the original, and
+    /// the list's conversions save next to them. Files that can't be saved are left out (<paramref name="failed"/> hears
+    /// why). The drop is done afterwards.
     /// </summary>
     public async Task<IReadOnlyList<string>> SaveBrowserFilesAsync(WebDrop web, Action<string, Exception> failed)
     {

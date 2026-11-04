@@ -421,7 +421,7 @@
   "preset.flip_vertical.short": "Vertical",
   "preset.merge_pdf": "Combinar PDF",
   "merge.order_title": "Elegir el orden de combinación",
-  "merge.order_hint": "Selecciona un archivo y muévelo arriba o abajo. Los archivos se combinan de arriba abajo. (Alt+↑ / Alt+↓)",
+  "merge.order_hint": "Usa las flechas para navegar. Para cambiar el orden, arrastra o usa Alt + ↑ / Alt + ↓. Los archivos se combinan de arriba abajo. Supr quita el archivo seleccionado.",
   "merge.sort_by": "Ordenar por",
   "merge.sort_name_asc": "Nombre (A a Z)",
   "merge.sort_name_desc": "Nombre (Z a A)",
@@ -430,7 +430,7 @@
   "merge.sort_created_asc": "Creación (antiguos primero)",
   "merge.sort_created_desc": "Creación (recientes primero)",
   "merge.sort_custom": "Orden personalizado",
-  "merge.images_hint": "Selecciona una imagen y muévela arriba o abajo. La primera va arriba, o a la izquierda si van lado a lado. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Usa las flechas para moverte entre las imágenes. Para cambiar el orden, arrastra una imagen o pulsa Alt + ↑ / Alt + ↓. La primera va arriba, o a la izquierda si van lado a lado. Supr quita la imagen seleccionada.",
   "merge.vertical": "De arriba abajo",
   "merge.horizontal": "Lado a lado",
   "merge.same_width": "Mismo ancho",
@@ -1485,5 +1485,14 @@
   "engines.ollama.connecting": "Conectando...",
   "engines.ollama.complete": "¡Completado!",
   "engines.ollama.failed": "Error:",
-  "engines.ollama.error": "Error:"
+  "engines.ollama.error": "Error:",
+  "home.queue_error": "No se pudo convertir {0}. La lista conserva los archivos.",
+  "home.queue_selected": "seleccionado",
+  "home.queue_remove_file": "Quitar {0}",
+  "home.queue_title": "Archivos para convertir",
+  "home.queue_convert": "Elegir acción",
+  "home.queue_clear": "Vaciar lista",
+  "home.queue_remove": "Quitar",
+  "general.collect_dropped": "Reunir los archivos soltados en una lista",
+  "general.collect_dropped_hint": "Los archivos soltados o elegidos esperan en una lista en la pantalla Inicio, y Elegir acción los convierte juntos en el orden mostrado. Desactivado: cada suelta abre el donut, como antes."
 }

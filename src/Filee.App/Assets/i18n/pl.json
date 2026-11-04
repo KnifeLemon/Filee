@@ -431,7 +431,7 @@
   "preset.flip_vertical.short": "Pionowo",
   "preset.merge_pdf": "Połącz PDF",
   "merge.order_title": "Wybierz kolejność scalania",
-  "merge.order_hint": "Wybierz plik i przesuń go w górę lub w dół. Pliki są scalane od góry do dołu. (Alt+↑ / Alt+↓)",
+  "merge.order_hint": "Strzałkami przechodź między kartami. Aby zmienić kolejność, przeciągnij kartę lub użyj Alt + ↑ / Alt + ↓. Pliki są łączone od góry do dołu. Delete usuwa zaznaczony plik.",
   "merge.sort_by": "Sortuj według",
   "merge.sort_name_asc": "Nazwa (A do Z)",
   "merge.sort_name_desc": "Nazwa (Z do A)",
@@ -440,7 +440,7 @@
   "merge.sort_created_asc": "Data utworzenia (najpierw najstarsze)",
   "merge.sort_created_desc": "Data utworzenia (najpierw najnowsze)",
   "merge.sort_custom": "Własna kolejność",
-  "merge.images_hint": "Wybierz obraz i przesuń go w górę lub w dół. Pierwszy trafia na górę, a przy układzie obok siebie na lewo. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Strzałkami przechodź między obrazami. Aby zmienić kolejność, przeciągnij obraz lub naciśnij Alt + ↑ / Alt + ↓. Pierwszy trafia na górę, a przy układzie obok siebie na lewo. Delete usuwa zaznaczony obraz.",
   "merge.vertical": "Jeden pod drugim",
   "merge.horizontal": "Obok siebie",
   "merge.same_width": "Ta sama szerokość",
@@ -1505,5 +1505,14 @@
   "engines.ollama.connecting": "Łączenie...",
   "engines.ollama.complete": "Ukończono!",
   "engines.ollama.failed": "Niepowodzenie:",
-  "engines.ollama.error": "Błąd:"
+  "engines.ollama.error": "Błąd:",
+  "home.queue_error": "Nie udało się przekonwertować: {0}. Lista zachowuje pliki.",
+  "home.queue_selected": "zaznaczony",
+  "home.queue_remove_file": "Usuń {0}",
+  "home.queue_title": "Pliki do konwersji",
+  "home.queue_convert": "Wybierz działanie",
+  "home.queue_clear": "Wyczyść listę",
+  "home.queue_remove": "Usuń",
+  "general.collect_dropped": "Zbieraj upuszczone pliki na liście",
+  "general.collect_dropped_hint": "Upuszczone lub wybrane pliki czekają na liście na ekranie Start, a Wybierz działanie konwertuje je razem w pokazanej kolejności. Wyłączone: każde upuszczenie otwiera pierścień, jak dotąd."
 }

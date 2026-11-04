@@ -431,7 +431,7 @@
   "preset.flip_vertical.short": "상하",
   "preset.merge_pdf": "PDF 병합",
   "merge.order_title": "병합 순서 선택",
-  "merge.order_hint": "파일을 골라 위아래로 옮기세요. 위에서부터 순서대로 병합돼요. (Alt+↑ / Alt+↓)",
+  "merge.order_hint": "화살표로 카드 사이를 옮겨 다녀요. 순서를 바꾸려면 카드를 끌거나 Alt + ↑ / Alt + ↓를 누르세요. 위에서부터 순서대로 병합돼요. Delete로 선택한 파일을 빼요.",
   "merge.sort_by": "정렬 기준",
   "merge.sort_name_asc": "이름 (오름차순)",
   "merge.sort_name_desc": "이름 (내림차순)",
@@ -440,7 +440,7 @@
   "merge.sort_created_asc": "만든 날짜 (오래된 순)",
   "merge.sort_created_desc": "만든 날짜 (최신 순)",
   "merge.sort_custom": "사용자 지정 순서",
-  "merge.images_hint": "사진을 골라 위아래로 옮기세요. 첫 번째 사진이 맨 위에, 나란히 붙일 때는 맨 왼쪽에 와요. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "화살표로 사진 사이를 옮겨 다녀요. 순서를 바꾸려면 사진을 끌거나 Alt + ↑ / Alt + ↓를 누르세요. 첫 번째 사진이 맨 위에, 나란히 붙일 때는 맨 왼쪽에 와요. Delete로 선택한 사진을 빼요.",
   "merge.vertical": "위아래로",
   "merge.horizontal": "나란히",
   "merge.same_width": "너비 맞추기",
@@ -1505,5 +1505,14 @@
   "engines.ollama.connecting": "연결 중...",
   "engines.ollama.complete": "완료!",
   "engines.ollama.failed": "실패:",
-  "engines.ollama.error": "오류:"
+  "engines.ollama.error": "오류:",
+  "home.queue_error": "{0}을(를) 변환하지 못했어요. 목록의 파일은 그대로 남아 있어요.",
+  "home.queue_selected": "선택됨",
+  "home.queue_remove_file": "{0} 제거",
+  "home.queue_title": "변환할 파일",
+  "home.queue_convert": "작업 선택",
+  "home.queue_clear": "목록 지우기",
+  "home.queue_remove": "제거",
+  "general.collect_dropped": "끌어 놓은 파일을 목록에 모으기",
+  "general.collect_dropped_hint": "끌어 놓거나 고른 파일이 홈의 목록에 모이고, 작업 선택을 누르면 보이는 순서대로 함께 변환해요. 끄면 예전처럼 놓을 때마다 도넛이 열려요."
 }

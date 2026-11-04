@@ -421,7 +421,7 @@
   "preset.flip_vertical.short": "Dikey",
   "preset.merge_pdf": "PDF birleştir",
   "merge.order_title": "Birleştirme sırasını seçin",
-  "merge.order_hint": "Bir dosya seçip yukarı veya aşağı taşıyın. Dosyalar yukarıdan aşağıya birleştirilir. (Alt+↑ / Alt+↓)",
+  "merge.order_hint": "Kartlar arasında gezinmek için ok tuşlarını kullanın. Sırayı değiştirmek için bir kartı sürükleyin veya Alt + ↑ / Alt + ↓ kullanın. Dosyalar yukarıdan aşağıya birleştirilir. Delete seçili dosyayı kaldırır.",
   "merge.sort_by": "Sıralama",
   "merge.sort_name_asc": "Ad (A'dan Z'ye)",
   "merge.sort_name_desc": "Ad (Z'den A'ya)",
@@ -430,7 +430,7 @@
   "merge.sort_created_asc": "Oluşturma tarihi (önce en eski)",
   "merge.sort_created_desc": "Oluşturma tarihi (önce en yeni)",
   "merge.sort_custom": "Özel sıralama",
-  "merge.images_hint": "Bir görsel seçip yukarı veya aşağı taşıyın. İlk görsel en üste, yan yana dizilince en sola gelir. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Görseller arasında geçmek için okları kullanın. Sırayı değiştirmek için bir görseli sürükleyin ya da Alt + ↑ / Alt + ↓ tuşlarına basın. İlk görsel en üste, yan yana dizilince en sola gelir. Delete seçili görseli kaldırır.",
   "merge.vertical": "Alt alta",
   "merge.horizontal": "Yan yana",
   "merge.same_width": "Aynı genişlik",
@@ -1483,5 +1483,14 @@
   "engines.ollama.connecting": "Bağlanıyor...",
   "engines.ollama.complete": "Tamamlandı!",
   "engines.ollama.failed": "Başarısız:",
-  "engines.ollama.error": "Hata:"
+  "engines.ollama.error": "Hata:",
+  "home.queue_error": "{0} dönüştürülemedi. Liste dosyaları tutar.",
+  "home.queue_selected": "seçili",
+  "home.queue_remove_file": "{0} dosyasını kaldır",
+  "home.queue_title": "Dönüştürülecek dosyalar",
+  "home.queue_convert": "İşlem seç",
+  "home.queue_clear": "Listeyi temizle",
+  "home.queue_remove": "Kaldır",
+  "general.collect_dropped": "Bırakılan dosyaları listede topla",
+  "general.collect_dropped_hint": "Bırakılan ya da seçilen dosyalar Başlangıç ekranındaki listede bekler; İşlem seç hepsini gösterilen sırayla dönüştürür. Kapalıyken her bırakma donut'u açar, eskisi gibi."
 }

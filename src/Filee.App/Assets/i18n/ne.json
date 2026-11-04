@@ -421,7 +421,7 @@
   "preset.flip_vertical.short": "ठाडो",
   "preset.merge_pdf": "PDF मर्ज गर्नुहोस्",
   "merge.order_title": "मर्ज क्रम मिलाउनुहोस्",
-  "merge.order_hint": "फाइलहरूलाई इच्छित क्रममा मिलाउन तान्नुहोस् र छाड्नुहोस्",
+  "merge.order_hint": "कार्डहरू बीच सार्न तीर कुञ्जी प्रयोग गर्नुहोस्। क्रम बदल्न कार्ड तान्नुहोस् वा Alt + ↑ / Alt + ↓ दबाउनुहोस्। फाइलहरू माथिबाट तलसम्म मर्ज हुन्छन्। Delete ले चयन गरिएको फाइल हटाउँछ।",
   "merge.sort_by": "क्रमबद्ध गर्नुहोस्",
   "merge.sort_name_asc": "नाम (A देखि Z)",
   "merge.sort_name_desc": "नाम (Z देखि A)",
@@ -430,7 +430,7 @@
   "merge.sort_created_asc": "सिर्जना मिति (पुरानो पहिले)",
   "merge.sort_created_desc": "सिर्जना मिति (नयाँ पहिले)",
   "merge.sort_custom": "आफ्नै क्रम",
-  "merge.images_hint": "तस्बिर छानेर माथि वा तल सार्नुहोस्। पहिलो तस्बिर सबैभन्दा माथि, वा छेउछेउमा राख्दा सबैभन्दा बायाँ आउँछ। (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "तीर चलाएर तस्बिरहरूबीच सर्नुहोस्। क्रम बदल्न तस्बिर तान्नुहोस् वा Alt + ↑ / Alt + ↓ थिच्नुहोस्। पहिलो तस्बिर सबैभन्दा माथि, वा छेउछेउमा राख्दा सबैभन्दा बायाँ आउँछ। Delete ले छानिएको तस्बिर हटाउँछ।",
   "merge.vertical": "माथिदेखि तल",
   "merge.horizontal": "छेउछेउमा",
   "merge.same_width": "उही चौडाइ",
@@ -1485,5 +1485,14 @@
   "engines.ollama.connecting": "जडान हुँदैछ...",
   "engines.ollama.complete": "सम्पन्न भयो!",
   "engines.ollama.failed": "विफल भयो:",
-  "engines.ollama.error": "त्रुटि:"
+  "engines.ollama.error": "त्रुटि:",
+  "home.queue_error": "{0} रूपान्तरण गर्न सकिएन। सूचीमा फाइलहरू रहन्छन्।",
+  "home.queue_selected": "चयन गरिएको",
+  "home.queue_remove_file": "{0} हटाउनुहोस्",
+  "home.queue_title": "रूपान्तरण गर्नु पर्ने फाइलहरू",
+  "home.queue_convert": "कार्य छान्नुहोस्",
+  "home.queue_clear": "सूची खाली गर्नुहोस्",
+  "home.queue_remove": "हटाउनुहोस्",
+  "general.collect_dropped": "तानिएका फाइलहरू सूचीमा जम्मा गर्नुहोस्",
+  "general.collect_dropped_hint": "तानिएका वा चयन गरिएका फाइलहरू होमको सूचीमा बस्छन्, र \"कार्य छान्नुहोस्\" ले देखाइएको क्रममा सबै एकसाथ रूपान्तरण गर्छ। बन्द: हरेक ड्रप पहिलेजस्तै डोनट खोल्छ।"
 }

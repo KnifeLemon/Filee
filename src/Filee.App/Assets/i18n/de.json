@@ -421,7 +421,7 @@
   "preset.flip_vertical.short": "Vertikal",
   "preset.merge_pdf": "PDF zusammenführen",
   "merge.order_title": "Reihenfolge festlegen",
-  "merge.order_hint": "Wähle eine Datei und verschiebe sie nach oben oder unten. Dateien werden von oben nach unten zusammengeführt. (Alt+↑ / Alt+↓)",
+  "merge.order_hint": "Mit den Pfeiltasten navigieren. Zum Ändern der Reihenfolge ziehen oder Alt + ↑ / Alt + ↓ verwenden. Dateien werden von oben nach unten zusammengeführt. Entf entfernt die ausgewählte Datei.",
   "merge.sort_by": "Sortieren nach",
   "merge.sort_name_asc": "Name (A bis Z)",
   "merge.sort_name_desc": "Name (Z bis A)",
@@ -430,7 +430,7 @@
   "merge.sort_created_asc": "Erstelldatum (älteste zuerst)",
   "merge.sort_created_desc": "Erstelldatum (neueste zuerst)",
   "merge.sort_custom": "Eigene Reihenfolge",
-  "merge.images_hint": "Wähle ein Bild und verschiebe es nach oben oder unten. Das erste kommt nach oben, nebeneinander nach links. (Alt+↑ / Alt+↓)",
+  "merge.images_hint": "Mit den Pfeiltasten wählst du ein Bild aus. Zum Ändern der Reihenfolge ziehst du ein Bild oder drückst Alt + ↑ / Alt + ↓. Das erste kommt nach oben, nebeneinander nach links. Entf entfernt das ausgewählte Bild.",
   "merge.vertical": "Untereinander",
   "merge.horizontal": "Nebeneinander",
   "merge.same_width": "Gleiche Breite",
@@ -1483,5 +1483,14 @@
   "engines.ollama.connecting": "Verbindung wird hergestellt...",
   "engines.ollama.complete": "Abgeschlossen!",
   "engines.ollama.failed": "Fehlgeschlagen:",
-  "engines.ollama.error": "Fehler:"
+  "engines.ollama.error": "Fehler:",
+  "home.queue_error": "{0} konnte nicht konvertiert werden. Die Liste behält die Dateien.",
+  "home.queue_selected": "ausgewählt",
+  "home.queue_remove_file": "{0} entfernen",
+  "home.queue_title": "Zu konvertierende Dateien",
+  "home.queue_convert": "Aktion wählen",
+  "home.queue_clear": "Liste leeren",
+  "home.queue_remove": "Entfernen",
+  "general.collect_dropped": "Abgelegte Dateien in einer Liste sammeln",
+  "general.collect_dropped_hint": "Abgelegte oder ausgewählte Dateien warten auf der Startseite in einer Liste, und Aktion wählen konvertiert sie gemeinsam in der angezeigten Reihenfolge. Aus: jedes Ablegen öffnet das Rad, wie bisher."
 }
