@@ -7,9 +7,12 @@
 //  3. Start Avalonia. The app lives in the tray, so it only exits via the tray "Quit" command (or --quit).
 
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
+using Avalonia.Media.Fonts;
 using Filee.App.Services;
 using Filee.Core.Platform;
 using Filee.Core.Settings;
@@ -302,8 +305,55 @@ internal static class Program
     }
 }
 
-/// <summary>Embedded Noto fonts: <c>fonts:Filee#Noto Sans</c>, <c>#Noto Sans JP</c>, <c>#Noto Sans KR</c>,
-/// <c>#Noto Sans SC</c>, <c>#Noto Sans Devanagari</c>, <c>#Noto Sans Arabic</c>, <c>#Noto Sans Thai</c>.</summary>
-internal sealed class FileeFontCollection() : Avalonia.Media.Fonts.EmbeddedFontCollection(
-    new Uri("fonts:Filee", UriKind.Absolute),
-    new Uri("avares://Filee/Assets/Fonts", UriKind.Absolute));
+/// <summary>
+/// Embedded Noto fonts: <c>fonts:Filee#Noto Sans</c>, <c>#Noto Sans JP</c>, <c>#Noto Sans KR</c>,
+/// <c>#Noto Sans SC</c>, <c>#Noto Sans Devanagari</c>, <c>#Noto Sans Arabic</c>, <c>#Noto Sans Thai</c>.
+/// <para>
+/// A letter is only matched in the family asked for, so the order of SoftPalette's font chain decides (#1095). Avalonia's
+/// own collection, asked for Noto Sans about a Han character, answers with the first family of its own that has it,
+/// Noto Sans JP, before the font manager reaches the chain's next family: every language drew Han in Japanese shapes,
+/// up to the first character that font lacks. Text has no culture to go by either, as TextBlock passes none. It takes
+/// this wrapper rather than a subclass: the font manager skips the virtual method on Avalonia's collections.
+/// </para>
+/// </summary>
+internal sealed class FileeFontCollection : IFontCollection
+{
+    private readonly EmbeddedFontCollection _fonts = new(
+        new Uri("fonts:Filee", UriKind.Absolute),
+        new Uri("avares://Filee/Assets/Fonts", UriKind.Absolute));
+
+    public Uri Key => _fonts.Key;
+    public int Count => _fonts.Count;
+    public FontFamily this[int index] => _fonts[index];
+
+    public bool TryMatchCharacter(int codepoint, FontStyle fontStyle, FontWeight fontWeight, FontStretch fontStretch,
+        string? familyName, CultureInfo? culture, out Typeface typeface)
+    {
+        typeface = default;
+        // No culture from here on: the family is settled, and one would send it looking elsewhere again.
+        return familyName is not null
+            && _fonts.TryGetGlyphTypeface(familyName, fontStyle, fontWeight, fontStretch, out var face)
+            && face.CharacterToGlyphMap.TryGetGlyph(codepoint, out _)
+            && _fonts.TryMatchCharacter(codepoint, fontStyle, fontWeight, fontStretch, familyName, null, out typeface);
+    }
+
+    public bool TryGetGlyphTypeface(string familyName, FontStyle style, FontWeight weight, FontStretch stretch,
+        [NotNullWhen(true)] out GlyphTypeface? glyphTypeface) =>
+        _fonts.TryGetGlyphTypeface(familyName, style, weight, stretch, out glyphTypeface);
+
+    public bool TryGetFamilyTypefaces(string familyName,
+        [NotNullWhen(true)] out IReadOnlyList<Typeface>? familyTypefaces) =>
+        _fonts.TryGetFamilyTypefaces(familyName, out familyTypefaces);
+
+    public bool TryCreateSyntheticGlyphTypeface(GlyphTypeface glyphTypeface, FontStyle style, FontWeight weight, FontStretch stretch,
+        [NotNullWhen(true)] out GlyphTypeface? syntheticGlyphTypeface) =>
+        _fonts.TryCreateSyntheticGlyphTypeface(glyphTypeface, style, weight, stretch, out syntheticGlyphTypeface);
+
+    public bool TryGetNearestMatch(string familyName, FontStyle style, FontWeight weight, FontStretch stretch,
+        [NotNullWhen(true)] out GlyphTypeface? glyphTypeface) =>
+        _fonts.TryGetNearestMatch(familyName, style, weight, stretch, out glyphTypeface);
+
+    public IEnumerator<FontFamily> GetEnumerator() => _fonts.GetEnumerator();
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
+    public void Dispose() => ((IDisposable)_fonts).Dispose();
+}
