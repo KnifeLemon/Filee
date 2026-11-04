@@ -48,6 +48,12 @@ public interface ISetupSystem
 
     IReadOnlyList<RunningProgram> ProgramsIn(string folder);
 
+    /// <summary>
+    /// A program of this name (without .exe) runs whose path can't be read, so <see cref="ProgramsIn"/> can't tell where
+    /// from: another account's, when this one may not look.
+    /// </summary>
+    bool RunsOutOfSight(string programName);
+
     void Kill(int processId);
 
     /// <summary>
@@ -58,8 +64,12 @@ public interface ISetupSystem
 }
 
 /// <summary>The real thing.</summary>
+/// <param name="seeOtherAccounts">
+/// The uninstaller, elevated: it also sees and ends programs of other accounts (a standard user's Filee, when an
+/// administrator's account answered the prompt), which Windows otherwise hides from it.
+/// </param>
 [SupportedOSPlatform("windows")]
-public class WindowsSetupSystem(SetupLog log) : ISetupSystem
+public class WindowsSetupSystem(SetupLog log, bool seeOtherAccounts = false) : ISetupSystem
 {
     protected SetupLog Log { get; } = log;
 
@@ -175,33 +185,53 @@ public class WindowsSetupSystem(SetupLog log) : ISetupSystem
             Log.Warn($"Not running {executable}: it is not a Windows program");
             return -1;
         }
-        var started = NativeMethods.RunAsShellUser(executable, arguments, Path.GetDirectoryName(executable) ?? "", timeout, out var exitCode, out var error);
+        var started = false;
+        var exitCode = -1;
+        string? error = null;
+        // What starts runs with Explorer's token, so it doesn't inherit the debug privilege.
+        SeeingOtherAccounts(() => started = NativeMethods.RunAsShellUser(executable, arguments, Path.GetDirectoryName(executable) ?? "", timeout, out exitCode, out error));
         if (error is not null)
             Log.Warn($"{Path.GetFileName(executable)} {arguments} as the signed-in user: {error}");
         if (started)
             return exitCode;
         // Only the rights differ when this is the signed-in user's account: same registry, same folders. Another
         // account would clean up its own and report that nothing is left.
-        return string.Equals(NativeMethods.SignedInUserName(), Environment.UserName, StringComparison.OrdinalIgnoreCase)
-            ? RunAndWait(executable, arguments, timeout)
-            : -1;
+        return NativeMethods.IsShellUser() ? RunAndWait(executable, arguments, timeout) : -1;
     }
 
     /// <summary>
-    /// Lets this elevated uninstaller see and end programs of other accounts (a standard user's Filee, when an
-    /// administrator's account answered the prompt), which Windows otherwise hides from it.
+    /// Runs <paramref name="action"/> with the debug privilege when asked for (see the class). Only meanwhile: programs
+    /// started later (Filee, PowerShell, cmd) would inherit it.
     /// </summary>
-    public static void SeeOtherAccounts(SetupLog log)
+    private void SeeingOtherAccounts(Action action)
     {
-        if (!NativeMethods.IsElevated())
+        if (!seeOtherAccounts || !NativeMethods.IsElevated())
+        {
+            action();
             return;
+        }
         try
         {
             Process.EnterDebugMode();
         }
         catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
         {
-            log.Warn($"Programs of other accounts stay out of sight: {ex.Message}");
+            Log.Warn($"Programs of other accounts stay out of sight: {ex.Message}");
+        }
+        try
+        {
+            action();
+        }
+        finally
+        {
+            try
+            {
+                Process.LeaveDebugMode();
+            }
+            catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
+            {
+                Log.Warn($"Could not give up the debug privilege: {ex.Message}");
+            }
         }
     }
 
@@ -231,21 +261,38 @@ public class WindowsSetupSystem(SetupLog log) : ISetupSystem
     {
         var prefix = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
         var found = new List<RunningProgram>();
-        foreach (var process in Process.GetProcesses())
+        SeeingOtherAccounts(() =>
         {
-            using (process)
+            foreach (var process in Process.GetProcesses())
             {
-                if (process.Id == Environment.ProcessId)
-                    continue;
-                var path = NativeMethods.ImagePathOf(process.Id);
-                if (path is not null && path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                    found.Add(new RunningProgram(process.Id, path));
+                using (process)
+                {
+                    if (process.Id == Environment.ProcessId)
+                        continue;
+                    var path = NativeMethods.ImagePathOf(process.Id);
+                    if (path is not null && path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                        found.Add(new RunningProgram(process.Id, path));
+                }
             }
-        }
+        });
         return found;
     }
 
-    public virtual void Kill(int processId)
+    public virtual bool RunsOutOfSight(string programName)
+    {
+        var unreadable = false;
+        SeeingOtherAccounts(() =>
+        {
+            foreach (var process in Process.GetProcessesByName(programName))
+            {
+                using (process)
+                    unreadable |= process.Id != Environment.ProcessId && NativeMethods.ImagePathOf(process.Id) is null;
+            }
+        });
+        return unreadable;
+    }
+
+    public virtual void Kill(int processId) => SeeingOtherAccounts(() =>
     {
         try
         {
@@ -257,7 +304,7 @@ public class WindowsSetupSystem(SetupLog log) : ISetupSystem
         {
             // Ended meanwhile, or not ours to end: the file swap copes with files in use.
         }
-    }
+    });
 
     public virtual bool DeleteAtRestart(string path)
     {
@@ -311,6 +358,8 @@ public sealed class SandboxSetupSystem(SetupLog log, string dataFolder) : Window
 
     // Keeps FILEE_DATA_DIR, which the signed-in user's own start of a program wouldn't have.
     public override int RunAsSignedInUser(string executable, string arguments, TimeSpan timeout) => RunAndWait(executable, arguments, timeout);
+
+    public override bool RunsOutOfSight(string programName) => false;
 
     protected override ProcessStartInfo CreateStartInfo(string executable, string arguments)
     {

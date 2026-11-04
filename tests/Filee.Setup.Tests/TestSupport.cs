@@ -68,7 +68,10 @@ public sealed class FakeSystem : ISetupSystem
     /// <summary>Programs stay in <see cref="Running"/> when killed (not ours to end).</summary>
     public bool CantBeEnded { get; set; }
 
-    /// <summary>Windows refuses to schedule deletions for the next restart.</summary>
+    /// <summary>A Filee runs whose path can't be read.</summary>
+    public bool OutOfSight { get; set; }
+
+    /// <summary>Windows refuses to schedule deletions for the next restart (always without administrator rights).</summary>
     public bool RestartListRefuses { get; set; }
 
     public bool IsExplorerMenuRegistered() => MenuRegistered;
@@ -113,6 +116,8 @@ public sealed class FakeSystem : ISetupSystem
 
     public IReadOnlyList<RunningProgram> ProgramsIn(string folder) =>
         Running.Where(p => p.Path.StartsWith(folder, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    public bool RunsOutOfSight(string programName) => OutOfSight;
 
     public void Kill(int processId)
     {

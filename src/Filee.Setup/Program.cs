@@ -204,7 +204,7 @@ internal static class Program
             Tell(options, texts.Format("installer.uninstall.not_installed", folder), NativeMethods.MB_ICONERROR);
             return ExitInitFailed;
         }
-        var context = CreateContext(sandbox, paths, log);
+        var context = CreateContext(sandbox, paths, log, seeOtherAccounts: true);
         var hive = PreviousInstall.HiveOf(record.Scope);
         if (options.Language is null && context.Registry.Get(hive, SetupNames.UninstallKey, SetupNames.LanguageValue)?.Text is { } language)
             texts.SetLanguage(language);
@@ -232,8 +232,6 @@ internal static class Program
             return RunElevated(exe, args, log, launchFile: null);
 
         // Phase 2: from a copy in %TEMP%.
-        if (sandbox is null)
-            WindowsSetupSystem.SeeOtherAccounts(log);
         var fromTemp = Path.GetFileName(exeFolder).StartsWith("Filee-Uninstall-", StringComparison.OrdinalIgnoreCase);
         var trash = fromTemp ? Path.Combine(exeFolder, "trash") : Path.Combine(paths.Temp, $"Filee-Uninstall-{Guid.NewGuid():N}");
         var runner = new SetupRunner(context, null, null, folder, record, trash)
@@ -295,10 +293,10 @@ internal static class Program
         }
     }
 
-    private static SetupContext CreateContext(string? sandbox, SetupPaths paths, SetupLog log)
+    private static SetupContext CreateContext(string? sandbox, SetupPaths paths, SetupLog log, bool seeOtherAccounts = false)
     {
         if (sandbox is null)
-            return new SetupContext(new WindowsRegistry(), new WindowsSetupSystem(log), paths, log);
+            return new SetupContext(new WindowsRegistry(), new WindowsSetupSystem(log, seeOtherAccounts), paths, log);
         // The sandbox's registry is a JSON file; Filee runs with its data in the sandbox.
         return new SetupContext(new MemoryRegistry(Path.Combine(sandbox, "registry.json")),
             new SandboxSetupSystem(log, paths.SettingsFolder), paths, log, Sandbox: true);
@@ -498,7 +496,7 @@ internal sealed class SetupRunner(SetupContext context, SetupPayload? payload, P
         {
             var uninstaller = new Uninstaller(context);
             var later = uninstaller.Run(folder!, record!, deleteSettings, trash!, progress, ReleaseFirstPhase);
-            return new UninstallResult(DeletedAtRestart: later.Count, CleanupFailed: uninstaller.CleanupFailed);
+            return new UninstallResult(DeletedAtRestart: later.Count, CleanupFailed: uninstaller.CleanupFailed, FilesLeftIn: uninstaller.FilesLeftIn);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

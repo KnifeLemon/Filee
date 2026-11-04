@@ -41,6 +41,7 @@ public class SetupWindowTests
         public TaskCompletionSource? Hold { get; set; }
         public int DeletedAtRestart { get; set; }
         public bool CleanupFailed { get; set; }
+        public string? FilesLeftIn { get; set; }
         public Exception? UninstallError { get; set; }
 
         public InstallResult Install(InstallChoices choices, IProgress<SetupProgress> progress)
@@ -54,7 +55,7 @@ public class SetupWindowTests
         public UninstallResult Uninstall(bool deleteSettings, IProgress<SetupProgress> progress)
         {
             DeletedSettings = deleteSettings;
-            return new UninstallResult(UninstallError, DeletedAtRestart, CleanupFailed);
+            return new UninstallResult(UninstallError, DeletedAtRestart, CleanupFailed, FilesLeftIn);
         }
     }
 
@@ -243,6 +244,20 @@ public class SetupWindowTests
         var (plain, _, _) = Model("en", uninstall: true);
         await plain.UninstallAsync();
         Assert.DoesNotContain(texts["installer.uninstall.cleanup_failed"], plain.UninstalledText);
+    }
+
+    [AvaloniaFact]
+    public async Task Uninstall_says_where_renamed_files_stay()
+    {
+        var (model, texts, runner) = Model("en", uninstall: true);
+        runner.FilesLeftIn = @"D:\Apps\Filee";
+        await model.UninstallAsync();
+        Assert.True(model.IsUninstalled);
+        Assert.Contains(texts.Format("installer.uninstall.files_kept", @"D:\Apps\Filee"), model.UninstalledText);
+
+        var (plain, _, _) = Model("en", uninstall: true);
+        await plain.UninstallAsync();
+        Assert.DoesNotContain(".old", plain.UninstalledText);
     }
 
     [AvaloniaFact]

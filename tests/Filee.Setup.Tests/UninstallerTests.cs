@@ -189,34 +189,88 @@ public class UninstallerTests
     }
 
     [Fact]
-    public void A_running_filee_out_of_sight_stops_the_uninstall_too()
+    public void A_filee_out_of_sight_stops_a_machine_wide_uninstall_too()
     {
         var (bench, record) = Installed();
         using var _ = bench;
-        // A real program running from Filee.exe that the uninstaller doesn't list and can't end: another account's Filee
-        // when the rights to look at it are missing. It would run on from the trash folder (#1079).
+        // Another account's Filee when the rights to look at it are missing. It would run on from the trash folder (#1079).
+        bench.System.OutOfSight = true;
+
+        var error = Assert.Throws<SetupException>(() =>
+            new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash")));
+
+        Assert.Equal("installer.uninstall.still_running", error.TextKey);
+        Assert.True(File.Exists(Path.Combine(bench.InstallFolder, "Filee.exe")));
+        Assert.True(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
+    }
+
+    [Fact]
+    public void Another_accounts_filee_does_not_stop_a_per_user_uninstall()
+    {
+        var (bench, record) = Installed();
+        using var _ = bench;
+        // Without administrator rights every other account's Filee is out of sight, and none runs from this user's folder.
+        bench.System.OutOfSight = true;
+
+        new Uninstaller(bench.Context).Run(bench.InstallFolder, record with { Scope = InstallScope.User }, deleteSettings: false, bench.Temp.Sub("trash"));
+
+        Assert.False(Directory.Exists(bench.InstallFolder));
+    }
+
+    [Fact]
+    public void A_filee_exe_something_merely_reads_is_not_a_running_filee()
+    {
+        var (bench, record) = Installed();
+        using var _ = bench;
+        // Explorer showing its icon, or Apps in Settings: mapped as an image, which refuses opening it for writing as a
+        // running program does. Nothing runs it, and it can be moved away.
         var exe = Path.Combine(bench.InstallFolder, "Filee.exe");
-        File.Copy(Path.Combine(Environment.SystemDirectory, "ping.exe"), exe, overwrite: true);
-        using var running = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(exe, "-n 60 127.0.0.1")
-        {
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-            UseShellExecute = false,
-        })!;
+        File.Copy(Path.Combine(Environment.SystemDirectory, "msimg32.dll"), exe, overwrite: true);
+        var library = NativeLibrary.Load(exe);
         try
         {
-            var error = Assert.Throws<SetupException>(() =>
-                new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash")));
+            var later = new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash"));
 
-            Assert.Equal("installer.uninstall.still_running", error.TextKey);
-            Assert.True(File.Exists(exe));
-            Assert.True(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
+            Assert.Single(later);
+            Assert.False(Directory.Exists(bench.InstallFolder));
+            Assert.False(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
         }
         finally
         {
-            running.Kill();
-            running.WaitForExit();
+            NativeLibrary.Free(library);
         }
+    }
+
+    [Fact]
+    public void Only_programs_filee_installed_are_ended()
+    {
+        var (bench, record) = Installed();
+        using var _ = bench;
+        // A folder the user chose (/DIR=D:\Apps) may run a service or another account's program, which the elevated
+        // uninstaller could end. Its own programs are also found below the folder, whatever the case of the path.
+        bench.System.Running.Add(new RunningProgram(11, Path.Combine(bench.InstallFolder, "engines", "rhwp", "RHWP.EXE")));
+        bench.System.Running.Add(new RunningProgram(21, Path.Combine(bench.InstallFolder, "other-app.exe")));
+        bench.System.Running.Add(new RunningProgram(22, Path.Combine(bench.InstallFolder, "engines", "someone-elses.exe")));
+        File.WriteAllText(Path.Combine(bench.InstallFolder, "other-app.exe"), "theirs");
+
+        new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash"));
+
+        Assert.Equal(["kill 11"], bench.System.Calls.Where(c => c.StartsWith("kill", StringComparison.Ordinal)));
+        Assert.True(File.Exists(Path.Combine(bench.InstallFolder, "other-app.exe")));
+    }
+
+    [Fact]
+    public void A_program_that_is_not_filees_never_stops_the_uninstall()
+    {
+        var (bench, record) = Installed();
+        using var _ = bench;
+        bench.System.Running.Add(new RunningProgram(21, Path.Combine(bench.InstallFolder, "other-app.exe")));
+        bench.System.CantBeEnded = true;
+
+        new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash"));
+
+        Assert.DoesNotContain("kill 21", bench.System.Calls);
+        Assert.False(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
     }
 
     [Fact]
@@ -243,8 +297,41 @@ public class UninstallerTests
         Assert.True(File.Exists(uninstaller));
         Assert.NotNull(InstallRecord.Read(bench.InstallFolder));
 
-        Assert.Empty(new Uninstaller(bench.Context).Run(bench.InstallFolder, InstallRecord.Read(bench.InstallFolder)!,
-            deleteSettings: false, bench.Temp.Sub("trash")));
+        // The first try took Filee.exe, and ran the cleanup: not having it now is no failure to warn about. A startup
+        // entry that still points here goes all the same.
+        Assert.False(File.Exists(Path.Combine(bench.InstallFolder, "Filee.exe")));
+        var command = $"\"{Path.Combine(bench.InstallFolder, "Filee.exe")}\" --background";
+        bench.Registry.SetString(Hive.CurrentUser, SetupNames.RunKey, "Filee", command);
+        var second = new Uninstaller(bench.Context);
+        Assert.Empty(second.Run(bench.InstallFolder, InstallRecord.Read(bench.InstallFolder)!, deleteSettings: false, bench.Temp.Sub("trash")));
+        Assert.False(second.CleanupFailed);
+        Assert.Null(bench.Registry.Get(Hive.CurrentUser, SetupNames.RunKey, "Filee"));
+        Assert.Single(bench.System.Calls, c => c.Contains("--uninstall-cleanup", StringComparison.Ordinal));
+        Assert.False(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
+        Assert.False(Directory.Exists(bench.InstallFolder));
+    }
+
+    [Fact]
+    public void The_list_of_files_is_never_scheduled_or_renamed_so_a_later_try_can_read_it()
+    {
+        var (bench, record) = Installed();
+        using var _ = bench;
+        var list = InstallRecord.PathIn(bench.InstallFolder);
+
+        using (new FileStream(list, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var error = Assert.Throws<SetupException>(() =>
+                new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash")));
+            Assert.Equal("installer.uninstall.files_left", error.TextKey);
+        }
+
+        // Had it gone at the restart we ask for, uninstalling again would say Filee isn't installed, with its entry left.
+        Assert.DoesNotContain(bench.System.Calls, c => c.Contains("delete-at-restart", StringComparison.Ordinal));
+        Assert.True(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
+        var again = InstallRecord.Read(bench.InstallFolder);
+        Assert.NotNull(again);
+
+        new Uninstaller(bench.Context).Run(bench.InstallFolder, again, deleteSettings: false, bench.Temp.Sub("trash"));
         Assert.False(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
         Assert.False(Directory.Exists(bench.InstallFolder));
     }
@@ -280,19 +367,22 @@ public class UninstallerTests
     }
 
     [Fact]
-    public void A_file_left_in_the_folder_that_windows_will_not_delete_later_keeps_the_entry()
+    public void A_renamed_file_windows_will_not_delete_later_stays_and_the_user_is_told()
     {
         var (bench, record) = Installed();
         using var _ = bench;
+        // A per-user install on another volume than %TEMP%: scheduling takes administrator rights, so Windows refuses.
         var (trash, library) = LoadedDllAndNoTrash(bench);
         bench.System.RestartListRefuses = true;
         try
         {
-            var error = Assert.Throws<SetupException>(() =>
-                new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, trash));
+            var uninstaller = new Uninstaller(bench.Context);
+            var later = uninstaller.Run(bench.InstallFolder, record with { Scope = InstallScope.User }, deleteSettings: false, trash);
 
-            Assert.Equal("installer.uninstall.files_left", error.TextKey);
-            Assert.True(bench.Registry.KeyExists(Hive.LocalMachine, SetupNames.UninstallKey));
+            Assert.Empty(later);
+            Assert.Equal(bench.InstallFolder, uninstaller.FilesLeftIn);
+            Assert.EndsWith(".old", Assert.Single(Directory.GetFiles(bench.InstallFolder, "*", SearchOption.AllDirectories)), StringComparison.Ordinal);
+            Assert.False(bench.Registry.KeyExists(Hive.CurrentUser, SetupNames.UninstallKey));
         }
         finally
         {

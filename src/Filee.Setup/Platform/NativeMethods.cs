@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Security.Principal;
 
 namespace Filee.Setup.Platform;
 
@@ -18,8 +19,6 @@ internal static partial class NativeMethods
     private const int TokenElevation = 20;
     private const int SecurityImpersonation = 2;
     private const int TokenPrimary = 1;
-    private const uint WTS_CURRENT_SESSION = uint.MaxValue;
-    private const int WTSUserName = 5;
     private const uint WAIT_OBJECT_0 = 0;
     private const int HWND_BROADCAST = 0xFFFF;
     private const uint WM_SETTINGCHANGE = 0x001A;
@@ -87,13 +86,6 @@ internal static partial class NativeMethods
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool TerminateProcess(nint process, uint exitCode);
-
-    [LibraryImport("wtsapi32.dll", EntryPoint = "WTSQuerySessionInformationW", SetLastError = true)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool WTSQuerySessionInformation(nint server, uint session, int infoClass, out nint buffer, out uint bytes);
-
-    [LibraryImport("wtsapi32.dll")]
-    private static partial void WTSFreeMemory(nint memory);
 
     [LibraryImport("user32.dll")]
     private static partial nint GetShellWindow();
@@ -212,37 +204,58 @@ internal static partial class NativeMethods
         }
     }
 
-    /// <summary>The account signed in to this Windows session (not the one an elevated program runs as); null when there is none.</summary>
-    public static string? SignedInUserName()
+    /// <summary>
+    /// Whether this program runs as the account of the desktop's process, whatever its rights; false when that can't be
+    /// told. Compares the accounts' SIDs: names can be the same in a domain and on this PC.
+    /// </summary>
+    public static bool IsShellUser()
     {
-        if (!WTSQuerySessionInformation(0, WTS_CURRENT_SESSION, WTSUserName, out var buffer, out _))
-            return null;
+        var shell = OpenShellProcess(out _);
+        if (shell == 0)
+            return false;
+        nint token = 0;
         try
         {
-            return Marshal.PtrToStringUni(buffer);
+            if (!OpenProcessToken(shell, TOKEN_QUERY, out token))
+                return false;
+            using var theirs = new WindowsIdentity(token);
+            using var mine = WindowsIdentity.GetCurrent();
+            return theirs.User == mine.User;
+        }
+        catch (Exception ex) when (ex is ArgumentException or System.Security.SecurityException)
+        {
+            return false;
         }
         finally
         {
-            WTSFreeMemory(buffer);
+            if (token != 0)
+                CloseHandle(token);
+            CloseHandle(shell);
         }
     }
 
-    private static unsafe bool CreateAsShellUser(string executable, string arguments, string workingFolder, out nint process, out string? error)
+    /// <summary>The process of the Explorer desktop, or 0 with the reason.</summary>
+    private static nint OpenShellProcess(out string? error)
     {
-        process = 0;
         error = null;
         var desktop = GetShellWindow();
         if (desktop == 0 || GetWindowThreadProcessId(desktop, out var shellId) == 0 || shellId == 0)
         {
             error = "There is no Explorer desktop.";
-            return false;
+            return 0;
         }
         var shell = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, shellId);
         if (shell == 0)
-        {
             error = $"OpenProcess: {Marshal.GetLastPInvokeError()}";
+        return shell;
+    }
+
+    private static unsafe bool CreateAsShellUser(string executable, string arguments, string workingFolder, out nint process, out string? error)
+    {
+        process = 0;
+        var shell = OpenShellProcess(out error);
+        if (shell == 0)
             return false;
-        }
         nint shellToken = 0, token = 0;
         try
         {

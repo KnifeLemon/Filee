@@ -1302,6 +1302,7 @@
   "installer.uninstall.still_running": "Filee is still running and could not be closed, so its files were left in place. Quit Filee from its tray icon, in every account that is signed in, and uninstall it again.",
   "installer.uninstall.files_left": "Some files in {0} could not be removed, so Filee stays in the list of installed apps. Security software may be blocking them. Restart the computer and uninstall Filee again.",
   "installer.uninstall.cleanup_failed": "Filee could not remove everything it registered for your account. A startup entry or File Explorer menu entry may stay behind, but it no longer does anything. You can turn off the startup entry in Settings > Apps > Startup.",
+  "installer.uninstall.files_kept": "A few files that were in use stay in {0}, with names ending in .old. They no longer do anything, and you can delete them.",
   "installer.options.hide": "Hide",
   "installer.minimize": "Minimize",
   "installer.error.copy": "Copy details",

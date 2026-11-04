@@ -1302,6 +1302,7 @@
   "installer.uninstall.still_running": "O Filee ainda está em execução e não foi possível fechá-lo, por isso os ficheiros continuam no lugar. Saia do Filee pelo ícone da área de notificação em cada conta com sessão iniciada e desinstale-o novamente.",
   "installer.uninstall.files_left": "Não foi possível remover alguns ficheiros em {0}, por isso o Filee continua na lista de aplicações instaladas. Um programa de segurança pode estar a bloqueá-los. Reinicie o computador e desinstale o Filee novamente.",
   "installer.uninstall.cleanup_failed": "O Filee não conseguiu remover tudo o que registou para a sua conta. Pode ficar uma entrada de arranque ou do menu do Explorador de Ficheiros, mas já não faz nada. Pode desativar a entrada de arranque em Definições > Aplicações > Arranque.",
+  "installer.uninstall.files_kept": "Alguns ficheiros que estavam em utilização continuam em {0}, com nomes terminados em .old. Já não fazem nada e pode eliminá-los.",
   "installer.options.hide": "Ocultar",
   "installer.minimize": "Minimizar",
   "installer.error.copy": "Copiar detalhes",
