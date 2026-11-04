@@ -21,6 +21,29 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private const int AnchorTop = Step;
     private const int UnderTable = AnchorTop + Offset + Margin + Rows * RowHeight + Margin; // where 한글 stores the line
 
+    [Fact]
+    public void A_picture_alone_in_a_header_paragraph_gets_a_space_beside_it()
+    {
+        // rhwp left out a logo that was all its header paragraph held (issue #280).
+        var section = XDocument.Parse($$"""
+            <hs:sec xmlns:hs="{{Hs.NamespaceName}}" xmlns:hp="{{Hp.NamespaceName}}">
+              <hp:p><hp:run><hp:ctrl><hp:header><hp:subList>
+                <hp:p><hp:run><hp:pic/><hp:t/></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic/></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic/><hp:t>beside</hp:t></hp:run></hp:p>
+              </hp:subList></hp:header></hp:ctrl></hp:run></hp:p>
+              <hp:p><hp:run><hp:pic/><hp:t/></hp:run></hp:p>
+            </hs:sec>
+            """);
+
+        Assert.True(RhwpInput.ShowHeaderPictures(section));
+
+        var header = section.Descendants(Hp + "header").Single().Descendants(Hp + "p").ToList();
+        Assert.Equal([" ", " ", "beside"], header.Select(p => p.Descendants(Hp + "t").Single().Value));
+        Assert.Equal("", section.Root!.Elements(Hp + "p").Last().Descendants(Hp + "t").Single().Value); // the body draws it
+        Assert.False(RhwpInput.ShowHeaderPictures(section)); // nothing left to do
+    }
+
     [Theory]
     [InlineData("f ^{2} = f CIRCf", "f ^{2} = f CIRC f")]
     [InlineData("n(A SMALLINTERB)", "n(A SMALLINTER B)")]

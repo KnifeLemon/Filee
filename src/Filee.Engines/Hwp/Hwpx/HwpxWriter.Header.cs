@@ -99,6 +99,10 @@ internal sealed partial class HwpxWriter
         Count("numberings", "numbering");
         Count("borderFills", "borderFill");
         Count("tabProperties", "tabPr");
+        // Spaces as wide as the font makes them, as in Word and in a browser. 한글's default is half a character, about
+        // twice Calibri's or Times New Roman's: lines wrapped early and the text after tabs went past the margin (#510).
+        foreach (var shape in _head.Descendants(Hh + "charPr"))
+            shape.SetAttributeValue("useFontSpace", 1);
         _head.SetAttributeValue("secCnt", sectionCount);
         return "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" + _head.ToString(SaveOptions.DisableFormatting);
     }
@@ -238,6 +242,9 @@ internal sealed partial class HwpxWriter
 
     // ───────────────────────── Paragraph shapes ─────────────────────────
 
+    /// <summary>Between a paragraph's text and its bar or the edge of its background: 2 mm.</summary>
+    private const int ParagraphBoxPadding = 567;
+
     /// <summary>Paragraph shape id for <paramref name="baseId"/> with a format and list numbering applied.</summary>
     private string ParaPr(string baseId, HParaFormat format, HListRef? list)
     {
@@ -319,6 +326,20 @@ internal sealed partial class HwpxWriter
             border.SetAttributeValue("offsetTop", 0);
             border.SetAttributeValue("offsetBottom", 0);
             border.SetAttributeValue("connect", 0);
+            border.SetAttributeValue("ignoreMargin", 0);
+        }
+
+        if (format.LeftBar is not null || format.Fill is not null)
+        {
+            var border = node.Element(Hh + "border");
+            if (border is null)
+                node.Add(border = new XElement(Hh + "border"));
+            border.SetAttributeValue("borderFillIDRef", BorderFillId(HBorders.Empty with { Left = format.LeftBar ?? HBorder.None }, format.Fill));
+            border.SetAttributeValue("offsetLeft", ParagraphBoxPadding);
+            border.SetAttributeValue("offsetRight", ParagraphBoxPadding);
+            border.SetAttributeValue("offsetTop", 0);
+            border.SetAttributeValue("offsetBottom", 0);
+            border.SetAttributeValue("connect", 1);
             border.SetAttributeValue("ignoreMargin", 0);
         }
 
