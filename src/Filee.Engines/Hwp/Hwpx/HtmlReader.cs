@@ -128,7 +128,9 @@ internal sealed partial class HtmlReader
         var blocks = new List<HBlock>();
         var sink = new Sink(blocks);
         if (document.Body is { } body)
-            OnLargeStack(() => reader.Children(body, sink, new Context(default, null, 0, 0, null, 0, false, null)));
+            // The walk recurses per element level, and deeply nested pages (up to MaxDepth levels) would exhaust a
+            // thread-pool thread's stack.
+            Nesting.OnLargeStack(() => reader.Children(body, sink, new Context(default, null, 0, 0, null, 0, false, null)));
         reader.Flush(sink);
         if (sink.PendingBookmarks.Count > 0 && blocks.OfType<HParagraph>().LastOrDefault() is { } last)
             last.Inlines.AddRange(sink.PendingBookmarks);
@@ -138,31 +140,6 @@ internal sealed partial class HtmlReader
         var title = document.Title?.Trim();
         var language = document.DocumentElement?.GetAttribute("lang") ?? document.DocumentElement?.GetAttribute("xml:lang");
         return new HtmlContent(blocks, string.IsNullOrWhiteSpace(title) ? null : title, string.IsNullOrWhiteSpace(language) ? null : language);
-    }
-
-    /// <summary>
-    /// Runs the tree walk on a thread with a 16 MB stack: the walk recurses per element level, and deeply nested
-    /// pages (up to <see cref="MaxDepth"/> levels) would exhaust the 1 MB of a thread-pool thread. A stack overflow
-    /// cannot be caught; it would end the whole app.
-    /// </summary>
-    private static void OnLargeStack(Action work)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                work();
-            }
-            catch (Exception ex)
-            {
-                error = ex;
-            }
-        }, 16 * 1024 * 1024);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
     }
 
     /// <summary>Removes bookmarks that no link points to (every element id becomes one while reading).</summary>

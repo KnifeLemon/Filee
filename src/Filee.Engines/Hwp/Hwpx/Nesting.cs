@@ -47,6 +47,13 @@ internal static class Nesting
         return result;
     }
 
+    /// <inheritdoc cref="OnLargeStack{T}"/>
+    public static void OnLargeStack(Action work) => OnLargeStack(() =>
+    {
+        work();
+        return true;
+    });
+
     // ───────────────────────── XML ─────────────────────────
 
     /// <summary>True when elements inside <paramref name="root"/> nest more than <paramref name="levels"/> deep (found without recursion).</summary>
