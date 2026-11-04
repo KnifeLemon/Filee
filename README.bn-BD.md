@@ -41,7 +41,6 @@
   <a href="README.zh-TW.md">繁體中文</a> ·
   <a href="README.pl.md">Polski</a> ·
   <a href="README.hi.md">हिन्दी</a> ·
-  <b>বাংলা</b> ·
   <a href="README.ru.md">Русский</a> ·
   <a href="README.ar.md">العربية</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
@@ -50,8 +49,8 @@
   <a href="README.th.md">ไทย</a> ·
   <a href="README.tr.md">Türkçe</a> ·
   <a href="README.id.md">Bahasa Indonesia</a> ·
-  <a href="README.it.md">Italiano</a>
-  <a href="README.bn-BD.md">বাংলা</a> ·
+  <a href="README.it.md">Italiano</a> ·
+  <b>বাংলা</b>
 </p>
 
 <table>
