@@ -178,6 +178,7 @@
   "trash.cannot_place": "das Ergebnis konnte nicht im Ordner des Originals gespeichert werden",
   "trash.changed": "die Datei wurde nach der Umwandlung geändert",
   "notice.empty_spreadsheet_pages_removed": "Leere Tabellenseiten wurden entfernt",
+  "notice.macros_not_run": "Das Dokument enthält Makros. Sie wurden nicht ausgeführt",
   "notice.ocr_has_text": "Alle Seiten enthalten bereits Text. Die Datei wurde unverändert kopiert",
   "notice.live_photo_pair": "Als Foto und MOV-Datei mit gleichem Namen gespeichert. Importiere beide zusammen (über iCloud-Fotos, AirDrop oder Fotos auf einem Mac), um ein Live Photo zu erhalten",
   "notice.geo_datum_assumed": "Das geodätische Datum ist nicht WGS 84. Die Positionen wurden dennoch wie WGS 84 umgerechnet und können um mehrere Hundert Meter abweichen",

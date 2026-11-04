@@ -184,6 +184,7 @@
   "trash.cannot_place": "não foi possível guardar o resultado na pasta do original",
   "trash.changed": "foi alterado depois da conversão",
   "notice.empty_spreadsheet_pages_removed": "Foram removidas as páginas vazias das folhas de cálculo",
+  "notice.macros_not_run": "O documento tem macros. Não foram executadas",
   "notice.ocr_has_text": "Todas as páginas já têm texto, pelo que o ficheiro foi copiado sem alterações",
   "notice.live_photo_pair": "Foi guardada uma fotografia e um MOV com o mesmo nome. Importa ambos em conjunto (Fotografias em iCloud, AirDrop ou Fotografias num Mac) para obteres uma Live Photo",
   "notice.geo_datum_assumed": "O datum não é WGS 84. As posições foram convertidas como se fosse e podem apresentar desvios de centenas de metros",

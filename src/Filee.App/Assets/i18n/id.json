@@ -178,6 +178,7 @@
   "trash.cannot_place": "hasil konversi tidak dapat disimpan di folder file asli",
   "trash.changed": "file diubah setelah konversi",
   "notice.empty_spreadsheet_pages_removed": "Halaman spreadsheet yang kosong telah dihapus",
+  "notice.macros_not_run": "Dokumen ini berisi makro. Makro tidak dijalankan",
   "notice.ocr_has_text": "Setiap halaman sudah memiliki teks, sehingga disalin apa adanya",
   "notice.live_photo_pair": "Disimpan sebagai foto dan MOV dengan nama yang sama. Impor keduanya bersamaan (iCloud Photos, AirDrop, atau Photos di Mac) untuk mendapatkan Live Photo",
   "notice.geo_datum_assumed": "Datum bukan WGS 84; posisi dikonversi seolah-olah WGS 84 dan dapat meleset hingga ratusan meter",

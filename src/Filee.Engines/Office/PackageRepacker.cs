@@ -33,7 +33,8 @@ internal static class PackageRepacker
     /// everything else deflated, without directory entries, data descriptors or extra fields. A name that appears
     /// twice keeps its first part.
     /// </summary>
-    public static void Repack(string input, string output)
+    /// <param name="replaced">Parts written with other content (<see cref="LinkedContent"/>), by name.</param>
+    public static void Repack(string input, string output, IReadOnlyDictionary<string, byte[]>? replaced = null)
     {
         using var source = ZipFile.OpenRead(input);
         var parts = source.Entries.Where(e => !e.FullName.EndsWith('/') && !e.FullName.EndsWith('\\'))
@@ -52,8 +53,13 @@ internal static class PackageRepacker
             var copy = zip.CreateEntry(part.FullName, level);
             if (part.LastWriteTime.Year is >= 1980 and <= 2107)
                 copy.LastWriteTime = part.LastWriteTime;
-            using var from = part.Open();
             using var to = copy.Open();
+            if (replaced is not null && replaced.TryGetValue(part.FullName, out var content))
+            {
+                to.Write(content);
+                continue;
+            }
+            using var from = part.Open();
             from.CopyTo(to);
         }
     }

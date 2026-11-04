@@ -184,6 +184,7 @@
   "trash.cannot_place": "nie udało się zapisać wyniku w folderze oryginału",
   "trash.changed": "zmieniono go po konwersji",
   "notice.empty_spreadsheet_pages_removed": "Usunięto puste strony arkusza kalkulacyjnego",
+  "notice.macros_not_run": "Dokument zawiera makra. Nie zostały uruchomione",
   "notice.ocr_has_text": "Każda strona ma już tekst, więc skopiowano bez zmian",
   "notice.live_photo_pair": "Zapisano jako zdjęcie i plik MOV o tej samej nazwie. Zaimportuj je razem (Zdjęcia iCloud, AirDrop lub Zdjęcia na Macu), aby otrzymać Live Photo",
   "notice.geo_datum_assumed": "Datum nie jest WGS 84; pozycje przeliczono tak, jakby było, więc mogą się różnić nawet o setki metrów",

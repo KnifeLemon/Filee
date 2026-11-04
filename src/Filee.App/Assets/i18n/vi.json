@@ -184,6 +184,7 @@
   "trash.cannot_place": "không thể lưu kết quả vào thư mục của bản gốc",
   "trash.changed": "tệp đã bị thay đổi sau khi chuyển đổi",
   "notice.empty_spreadsheet_pages_removed": "Đã gỡ bỏ các trang bảng tính trống",
+  "notice.macros_not_run": "Tài liệu có macro. Các macro không được chạy",
   "notice.ocr_has_text": "Mọi trang đều đã có văn bản nên đã sao chép nguyên trạng",
   "notice.live_photo_pair": "Đã lưu thành một ảnh và một tệp MOV cùng tên. Hãy nhập cả hai cùng lúc (Ảnh iCloud, AirDrop hoặc Ảnh trên máy Mac) để có Live Photo",
   "notice.geo_datum_assumed": "Hệ quy chiếu không phải WGS 84; vị trí được chuyển đổi như thể là WGS 84 và có thể lệch tới hàng trăm mét",

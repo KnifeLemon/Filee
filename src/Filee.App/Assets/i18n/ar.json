@@ -178,6 +178,7 @@
   "trash.cannot_place": "تعذّر حفظ النتيجة في مجلد الأصل",
   "trash.changed": "تغيّر بعد التحويل",
   "notice.empty_spreadsheet_pages_removed": "تمت إزالة صفحات جدول البيانات الفارغة",
+  "notice.macros_not_run": "يحتوي المستند على وحدات ماكرو، ولم يتم تشغيلها",
   "notice.ocr_has_text": "كل الصفحات تحتوي على نص بالفعل، لذا نُسخ الملف كما هو",
   "notice.live_photo_pair": "حُفظ كصورة وملف MOV بالاسم نفسه. استوردهما معًا (صور iCloud أو AirDrop أو تطبيق الصور على Mac) لتحصل على Live Photo",
   "notice.geo_datum_assumed": "المرجع الجيوديسي ليس WGS 84؛ حُوّلت المواقع على افتراض أنه كذلك، وقد تنحرف بمقدار يصل إلى مئات الأمتار",
