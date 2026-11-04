@@ -78,6 +78,8 @@
         </StackPanel>
         <CheckBox Content="{DynamicResource general.browser_drops_only_converted}" IsChecked="{Binding SaveOnlyConverted}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.browser_drops_only_converted_hint}" Margin="0,-6,0,0" />
+        <CheckBox Content="{DynamicResource general.browser_drops_local_network}" IsChecked="{Binding AllowLocalNetwork}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.browser_drops_local_network_hint}" Margin="0,-6,0,0" />
       </StackPanel>
     </Border>
 

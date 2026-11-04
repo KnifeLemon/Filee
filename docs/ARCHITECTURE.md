@@ -122,6 +122,9 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
   `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
   nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
+  off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
+  of their own, so a pooled connection to a local address never serves a drop that may not go there.
 - **Names and safety**: Content-Disposition, else the page's name, else the address; then the first bytes decide the
   extension of pictures and PDFs (`.jpg` that is WebP becomes `.webp`). Names are cut to a plain file name (no folders,
   no device names, at most 120 characters) and never replace an existing file (`name (2).ext`). Programs, installers and

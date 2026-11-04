@@ -1,7 +1,7 @@
 // Saves files from the web: the bytes a browser handed over with a drag, or, when a drag brought only an address, the
 // file downloaded from it. Downloads are plain GET requests without the browser's cookies or sign-in (Filee has
 // neither): only http and https, a few redirects, a size cap and timeouts, and only to the public internet (never to
-// this computer or the local network, LocalNetwork). Whatever arrives is named by what it really is, never replaces
+// this computer or the local network, LocalNetwork, unless Settings → General allows it). Whatever arrives is named by what it really is, never replaces
 // an existing file, and programs or web pages are refused instead of saved.
 
 using System.Net;
@@ -16,7 +16,14 @@ public sealed class WebDownloader : IDisposable
     /// <summary>Largest file Filee saves from the web.</summary>
     public const long DefaultMaxBytes = 2L * 1024 * 1024 * 1024;
 
+    /// <summary>Connects only to public addresses.</summary>
     private readonly HttpClient _http;
+
+    /// <summary>
+    /// Also to this computer and the local network, when Settings allows it. A client of its own: a connection it opened
+    /// to a local address must never be reused for a link that may not go there.
+    /// </summary>
+    private readonly HttpClient _localHttp;
 
     /// <param name="handler">
     /// For tests; by default a handler without cookies, credentials or automatic redirects that connects only to public
@@ -25,20 +32,28 @@ public sealed class WebDownloader : IDisposable
     /// <param name="userAgent">"Filee/1.13.0"; some servers refuse requests without one.</param>
     public WebDownloader(HttpMessageHandler? handler = null, string? userAgent = null)
     {
-        handler ??= new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            UseProxy = true,
-            Credentials = null,
-            PreAuthenticate = false,
-            AutomaticDecompression = DecompressionMethods.All,
-            ConnectTimeout = TimeSpan.FromSeconds(20),
-            ConnectCallback = ConnectAsync,
-        };
-        _http = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
+        _http = Client(handler ?? Handler(publicOnly: true), userAgent);
+        _localHttp = handler is null ? Client(Handler(publicOnly: false), userAgent) : _http;
+    }
+
+    private SocketsHttpHandler Handler(bool publicOnly) => new()
+    {
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        UseProxy = true,
+        Credentials = null,
+        PreAuthenticate = false,
+        AutomaticDecompression = DecompressionMethods.All,
+        ConnectTimeout = TimeSpan.FromSeconds(20),
+        ConnectCallback = publicOnly ? ConnectAsync : null,
+    };
+
+    private static HttpClient Client(HttpMessageHandler handler, string? userAgent)
+    {
+        var client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         if (userAgent is not null)
-            _http.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(userAgent);
+        return client;
     }
 
     public long MaxBytes { get; init; } = DefaultMaxBytes;
@@ -66,13 +81,21 @@ public sealed class WebDownloader : IDisposable
     /// from the first bytes when they say what the file is.
     /// </summary>
     /// <exception cref="ConversionRefusedException">With the reason to show (<c>error.web_*</c>).</exception>
-    public async Task<string> DownloadAsync(Uri url, string folder, string? suggestedName, IProgress<TransferProgress>? progress,
-        CancellationToken cancellationToken)
+    public Task<string> DownloadAsync(Uri url, string folder, string? suggestedName, IProgress<TransferProgress>? progress,
+        CancellationToken cancellationToken) =>
+        DownloadAsync(url, folder, suggestedName, allowLocalNetwork: false, progress, cancellationToken);
+
+    /// <inheritdoc cref="DownloadAsync(Uri, string, string?, IProgress{TransferProgress}?, CancellationToken)"/>
+    /// <param name="allowLocalNetwork">
+    /// The link may also lead to this computer and the local network (Settings → General, for an intranet or a NAS).
+    /// </param>
+    public async Task<string> DownloadAsync(Uri url, string folder, string? suggestedName, bool allowLocalNetwork,
+        IProgress<TransferProgress>? progress, CancellationToken cancellationToken)
     {
         if (!IsWebAddress(url))
             throw new ConversionRefusedException("error.web_download_failed", url.Scheme);
 
-        using var response = await GetFollowingRedirectsAsync(url, cancellationToken);
+        using var response = await GetFollowingRedirectsAsync(url, allowLocalNetwork, cancellationToken);
         if (!response.IsSuccessStatusCode)
             throw new ConversionRefusedException("error.web_download_failed", $"HTTP {(int)response.StatusCode}");
 
@@ -162,11 +185,13 @@ public sealed class WebDownloader : IDisposable
     public static bool IsWebAddress(Uri url) =>
         url.IsAbsoluteUri && (url.Scheme == Uri.UriSchemeHttps || url.Scheme == Uri.UriSchemeHttp);
 
-    private async Task<HttpResponseMessage> GetFollowingRedirectsAsync(Uri url, CancellationToken cancellationToken)
+    private async Task<HttpResponseMessage> GetFollowingRedirectsAsync(Uri url, bool allowLocalNetwork, CancellationToken cancellationToken)
     {
+        var http = allowLocalNetwork ? _localHttp : _http;
         for (var hop = 0; ; hop++)
         {
-            EnsurePublic(url);
+            if (!allowLocalNetwork)
+                EnsurePublic(url);
             using var request = new HttpRequestMessage(HttpMethod.Get, url);
             request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("*/*"));
             HttpResponseMessage response;
@@ -175,7 +200,7 @@ public sealed class WebDownloader : IDisposable
                 timeout.CancelAfter(ResponseTimeout);
                 try
                 {
-                    response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
+                    response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, timeout.Token);
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
@@ -298,5 +323,10 @@ public sealed class WebDownloader : IDisposable
         catch (UnauthorizedAccessException) { }
     }
 
-    public void Dispose() => _http.Dispose();
+    public void Dispose()
+    {
+        _http.Dispose();
+        if (_localHttp != _http)
+            _localHttp.Dispose();
+    }
 }

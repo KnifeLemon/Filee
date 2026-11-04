@@ -20,8 +20,14 @@ public abstract class WebDropItem : IDisposable
     public string Name { get; }
 
     /// <summary>Writes the file into <paramref name="folder"/> and returns its path.</summary>
-    public abstract Task<string> SaveAsync(string folder, WebDownloader downloader, IProgress<TransferProgress>? progress,
-        CancellationToken cancellationToken);
+    public Task<string> SaveAsync(string folder, WebDownloader downloader, IProgress<TransferProgress>? progress,
+        CancellationToken cancellationToken) =>
+        SaveAsync(folder, downloader, allowLocalNetwork: false, progress, cancellationToken);
+
+    /// <inheritdoc cref="SaveAsync(string, WebDownloader, IProgress{TransferProgress}?, CancellationToken)"/>
+    /// <param name="allowLocalNetwork">An address may lead to this computer and the local network (Settings → General).</param>
+    public abstract Task<string> SaveAsync(string folder, WebDownloader downloader, bool allowLocalNetwork,
+        IProgress<TransferProgress>? progress, CancellationToken cancellationToken);
 
     public virtual void Dispose() => GC.SuppressFinalize(this);
 
@@ -69,8 +75,8 @@ public abstract class WebDropItem : IDisposable
     private sealed class StreamItem(string name, Func<CancellationToken, Task<Stream>> open, long? size, string? mime, IDisposable? owner)
         : WebDropItem(name)
     {
-        public override async Task<string> SaveAsync(string folder, WebDownloader downloader, IProgress<TransferProgress>? progress,
-            CancellationToken cancellationToken)
+        public override async Task<string> SaveAsync(string folder, WebDownloader downloader, bool allowLocalNetwork,
+            IProgress<TransferProgress>? progress, CancellationToken cancellationToken)
         {
             await using var stream = await open(cancellationToken);
             return await downloader.SaveAsync(stream, folder, Name, mime, size, progress, cancellationToken);
@@ -87,11 +93,11 @@ public abstract class WebDropItem : IDisposable
     {
         public Uri Url { get; } = url;
 
-        public override Task<string> SaveAsync(string folder, WebDownloader downloader, IProgress<TransferProgress>? progress,
-            CancellationToken cancellationToken) =>
+        public override Task<string> SaveAsync(string folder, WebDownloader downloader, bool allowLocalNetwork,
+            IProgress<TransferProgress>? progress, CancellationToken cancellationToken) =>
             // A name the server sends wins; a guessed extension (".jpg" for a picture address without one) is
             // corrected from the bytes.
-            downloader.DownloadAsync(Url, folder, Name, progress, cancellationToken);
+            downloader.DownloadAsync(Url, folder, Name, allowLocalNetwork, progress, cancellationToken);
     }
 }
 
@@ -216,7 +222,8 @@ public sealed class WebDrop : IDisposable
 /// <summary>Where files dragged from a browser are saved (Settings → General).</summary>
 /// <param name="Folder">The download folder; "next to the source" means this folder for these files.</param>
 /// <param name="SaveOnlyConverted">The original goes into the work folder and is deleted after the conversion.</param>
-public sealed record WebDropOptions(string Folder, bool SaveOnlyConverted);
+/// <param name="AllowLocalNetwork">Links may lead to this computer and the local network (an intranet, a NAS).</param>
+public sealed record WebDropOptions(string Folder, bool SaveOnlyConverted, bool AllowLocalNetwork = false);
 
 /// <summary>Saves a <see cref="WebDrop"/>'s files for the job that converts them, and cleans up after it.</summary>
 public sealed class WebDropFetcher(WebDrop drop, WebDropOptions options, WebDownloader downloader) : ISourceFetcher
@@ -240,7 +247,7 @@ public sealed class WebDropFetcher(WebDrop drop, WebDropOptions options, WebDown
     public bool Fetches(string path) => drop.Holds(path);
 
     public Task<string> FetchAsync(string placeholder, IProgress<TransferProgress> progress, CancellationToken cancellationToken) =>
-        drop.ItemFor(placeholder).SaveAsync(SaveFolder, downloader, progress, cancellationToken);
+        drop.ItemFor(placeholder).SaveAsync(SaveFolder, downloader, options.AllowLocalNetwork, progress, cancellationToken);
 
     public void Release(ConversionJob job)
     {

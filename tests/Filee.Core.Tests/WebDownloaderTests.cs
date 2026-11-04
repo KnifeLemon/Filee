@@ -213,6 +213,33 @@ public sealed class WebDownloaderTests : IDisposable
     }
 
     [Fact]
+    public async Task With_the_local_network_allowed_a_link_to_it_is_downloaded()
+    {
+        // Settings → General: the shipped downloader, no test hook. The drop's fetcher passes the setting on.
+        Serve("/nas/photo.png", Png, "image/png");
+        using var downloader = new WebDownloader();
+        using var work = new TempDir();
+        var ct = TestContext.Current.CancellationToken;
+        WebDrop Drop() => new([WebDropItem.FromAddress("photo.png", Url("/nas/photo.png"))], work.Path);
+
+        using (var allowed = Drop())
+        {
+            var path = await allowed.CreateFetcher(new WebDropOptions(_dir.Path, false, AllowLocalNetwork: true), downloader)
+                .FetchAsync(allowed.Placeholders[0], new Progress<TransferProgress>(), ct);
+            Assert.Equal(Path.Combine(_dir.Path, "photo.png"), path);
+            Assert.Equal(Png, await File.ReadAllBytesAsync(path, ct));
+        }
+
+        // Off again for the next drop: refused, also with a connection to the server still open from the last one.
+        using var refused = Drop();
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() =>
+            refused.CreateFetcher(new WebDropOptions(_dir.Path, false), downloader)
+                .FetchAsync(refused.Placeholders[0], new Progress<TransferProgress>(), ct));
+        Assert.Equal("error.web_local_address", error.ErrorKey);
+        Assert.Single(Directory.GetFiles(_dir.Path));
+    }
+
+    [Fact]
     public async Task Connects_only_to_the_checked_addresses_of_a_name()
     {
         // The name answers with a local address and one allowed here (the test's own server): the download goes to
