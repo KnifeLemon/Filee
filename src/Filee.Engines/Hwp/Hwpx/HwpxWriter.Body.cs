@@ -67,10 +67,18 @@ internal sealed partial class HwpxWriter
         _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
         _width = textWidth;
         var controlId = 1;
+        var later = new Dictionary<HBlock, string>();
+        void Add(HHeaderFooter item, string control)
+        {
+            if (item.StartsAt is { } paragraph)
+                later[paragraph] = later.GetValueOrDefault(paragraph) + control;
+            else
+                setup.Append(control);
+        }
         foreach (var header in section.Headers)
-            setup.Append(HeaderFooter("header", header, controlId++, textWidth, Margin("header", 4250), "TOP"));
+            Add(header, HeaderFooter("header", header, controlId++, textWidth, Margin("header", 4250), "TOP"));
         foreach (var footer in section.Footers)
-            setup.Append(HeaderFooter("footer", footer, controlId++, textWidth, Margin("footer", 2240), "BOTTOM"));
+            Add(footer, HeaderFooter("footer", footer, controlId++, textWidth, Margin("footer", 2240), "BOTTOM"));
 
         _width = ColumnWidth(textWidth, section.Columns);
         var body = new StringBuilder(SectionOpenTag());
@@ -81,7 +89,8 @@ internal sealed partial class HwpxWriter
         {
             if (blocks[i] is HParagraph { ColumnsChange: { } columns })
                 _width = ColumnWidth(textWidth, columns);
-            body.Append(Block(blocks[i], i == 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{setup}</hp:run>" : null));
+            var controls = (i == 0 ? setup.ToString() : "") + later.GetValueOrDefault(blocks[i]);
+            body.Append(Block(blocks[i], controls.Length > 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{controls}</hp:run>" : null));
         }
         return body.Append("</hs:sec>").ToString();
     }
