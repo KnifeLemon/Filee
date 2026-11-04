@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using Filee.Engines.Infrastructure;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx;
@@ -27,7 +28,10 @@ internal sealed class HtmlReadOptions
     /// <summary>Folder that receives images embedded as data: URIs (created on demand).</summary>
     public required string MediaFolder { get; init; }
 
-    /// <summary>When set, local images and style sheets must be inside this folder (e.g. an unpacked e-book).</summary>
+    /// <summary>
+    /// Folder that local images and style sheets must be inside (e.g. an unpacked e-book); default: <see cref="BaseFolder"/>,
+    /// so a page reads only the files in its own folder and below (<see cref="DocumentFiles"/>).
+    /// </summary>
     public string? ResourceRoot { get; init; }
 
     /// <summary>Maps an href to the link target to write, or null to keep only the link text. Default: unchanged.</summary>
@@ -78,7 +82,6 @@ internal sealed partial class HtmlReader
 
     private readonly HtmlReadOptions _options;
     private readonly CssStyleSheet _sheet = new();
-    private int _embedded;
 
     private HtmlReader(HtmlReadOptions options) => _options = options;
 
@@ -1054,49 +1057,25 @@ internal sealed partial class HtmlReader
         if (string.IsNullOrWhiteSpace(source))
             return null;
         source = source.Trim();
-        if (source.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            return SaveDataUri(source);
-        return LocalFile(source) is { } path ? UsableImage(path, _options.MediaFolder) : null;
+        var path = source.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? SaveDataUri(source, _options.MediaFolder) : LocalFile(source);
+        return path is null ? null : UsableImage(path, _options.MediaFolder);
     }
 
-    /// <summary>A local file referenced from the document, or null for remote and missing files.</summary>
+    /// <summary>
+    /// A local file referenced from the document, or null for remote and missing files and files outside
+    /// <see cref="HtmlReadOptions.ResourceRoot"/>.
+    /// </summary>
     private string? LocalFile(string? reference)
     {
         if (string.IsNullOrWhiteSpace(reference))
             return null;
-        try
-        {
-            if (reference.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                return new Uri(reference).LocalPath is var local && InsideFolder(local, _options.ResourceRoot) && File.Exists(local) ? local : null;
-            if (reference.Contains("://", StringComparison.Ordinal) || reference.StartsWith("//", StringComparison.Ordinal)
-                || reference.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase))
-                return null;
-            var cut = reference.IndexOfAny(['?', '#']);
-            var relative = Uri.UnescapeDataString(cut >= 0 ? reference[..cut] : reference);
-            if (relative.Length == 0)
-                return null;
-            var candidate = Path.GetFullPath(Path.Combine(_options.BaseFolder, relative));
-            return InsideFolder(candidate, _options.ResourceRoot) && File.Exists(candidate) ? candidate : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or UriFormatException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
+        // A query or fragment is no part of the file name (a file: URL drops them itself).
+        var cut = reference.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ? -1 : reference.IndexOfAny(['?', '#']);
+        return DocumentFiles.Find(cut >= 0 ? reference[..cut] : reference, _options.BaseFolder, _options.ResourceRoot ?? _options.BaseFolder);
     }
 
-    /// <summary>Packaged books may only refer to files in their own unpacked folder: true when there is no
-    /// <paramref name="root"/> or <paramref name="path"/> is inside it.</summary>
-    internal static bool InsideFolder(string path, string? root)
-    {
-        if (root is null)
-            return true;
-        root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) + Path.DirectorySeparatorChar;
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return Path.GetFullPath(path).StartsWith(root, comparison);
-    }
-
-    /// <summary>Writes the image of a data: URI to the media folder.</summary>
-    private string? SaveDataUri(string uri)
+    /// <summary>Writes the image of a data: URI into <paramref name="folder"/>; null when it is not a picture.</summary>
+    internal static string? SaveDataUri(string uri, string folder)
     {
         var comma = uri.IndexOf(',');
         if (comma < 0)
@@ -1126,10 +1105,10 @@ internal sealed partial class HtmlReader
         {
             return null;
         }
-        Directory.CreateDirectory(_options.MediaFolder);
-        var path = Path.Combine(_options.MediaFolder, $"embedded-{Guid.NewGuid():N}-{++_embedded}.{extension}");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, $"embedded-{Guid.NewGuid():N}.{extension}");
         File.WriteAllBytes(path, data);
-        return UsableImage(path, _options.MediaFolder);
+        return path;
     }
 
     /// <summary>

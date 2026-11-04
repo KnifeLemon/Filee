@@ -444,8 +444,13 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
 - **MHTML** (`.mhtml`, `.mht`) is turned into its standalone page first (see *E-mail* below) and that page read like
   HTML; it refers to nothing but data: URIs, so no file outside the job's scratch folder is looked at.
 - **ODT, RTF** are parsed by Pandoc into its JSON AST (`PandocAstReader.cs`, following
-  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)).
+  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)), in Pandoc's `--sandbox`: Pandoc reads nothing but the
+  file, so include directives stay unread and pictures the document links to are found by Filee.
 - Markdown, HTML and Pandoc keep structure only, so page setup comes from the built-in template (A4).
+- Pictures (and HTML style sheets) a Markdown, HTML or Pandoc document links to are read only from the document's
+  own folder and its subfolders (`DocumentFiles.cs`, also for e-books, MHTML and translation): `../`, absolute paths
+  and `file:` URLs outside are left out like missing pictures. A path or `file:` URL naming another computer
+  (`\\host\share`, `file://host/`, `//host/`) is refused by its text alone, so no network connection is made.
 
 Element order and attribute values follow files saved by 한글 where the schema and 한글 disagree, for example:
 
@@ -1527,10 +1532,13 @@ DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`)
 - DocBook, man pages, OPML, Typst, HTML and LaTeX are written with `--standalone` (a root element, a `.TH` header,
   a preamble), the text formats extract pictures into `<name>_files` next to the result (Markdown with *Leave out
   pictures* gets none: a Lua filter drops them).
-- Pictures are linked relative to the result (`<name>_files/media/…`; Pandoc runs in the result's folder, with
-  `--resource-path` pointing at the source's for pictures the source links to), so both can be moved together.
-  EMF and WMF pictures, common in Word documents, become PNG (ImageMagick draws metafiles on Windows only; elsewhere
-  they stay).
+- Pictures are linked relative to the result (`<name>_files/media/…`; Pandoc runs in the result's folder), so both can
+  be moved together. EMF and WMF pictures, common in Word documents, become PNG (ImageMagick draws metafiles on
+  Windows only; elsewhere they stay).
+- Pandoc runs twice, both times in its `--sandbox` (it reads nothing but the file it is given, so `\input` and
+  `.. include::` stay unread): the source → JSON AST, whose pictures Filee checks (only from the source's folder,
+  see *HWPX writer*), then the AST → the result, with those pictures handed over by a Lua filter. Pictures on the
+  web aren't fetched.
 - Markdown is GitHub-flavoured and kept free of HTML, which many Markdown editors show as code (#391). A Lua filter
   lays every table out as a pipe table: a merged cell keeps its text in its first position and leaves the cells it
   covered empty, the paragraphs and list items of a cell are joined with `<br>`, and a table without a header row
