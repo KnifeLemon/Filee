@@ -803,15 +803,18 @@ public sealed partial class JobQueue : IAsyncDisposable
         var translate = finalOutput && runWith.Translate.Enabled;
         if (translate && !runWith.TranslatesDocument(from.Id))
             return Fail(file, "error.no_route", $"{from.Id} → {target}", new RouteRequest(from.Id, target, Translate: true));
+        var upscale = finalOutput && runWith.Upscale.Enabled;
+        if (upscale && !UpscaleTool.CanUpscale(from.Id))
+            return Fail(file, "error.no_route", $"{from.Id} → {target}", new RouteRequest(from.Id, target, Upscale: true));
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(from.Id);
         var route = opener is null
-            ? planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate)
-            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate);
+            ? planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, upscale: upscale)
+            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, upscale: upscale);
         if (route is null)
             return Fail(file, "error.no_route", $"{from.Id} → {target}",
-                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate));
+                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Upscale: upscale));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
@@ -907,7 +910,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                                 file.MissingFonts = file.MissingFonts.Concat(fonts)
                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                                 Notify(job);
-                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate);
+                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate, Upscale: step.Upscale);
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally

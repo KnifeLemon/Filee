@@ -40,12 +40,14 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private AnnotateWindow? _annotateWindow;
     private BackgroundWindow? _backgroundWindow;
     private ImageEditWindow? _imageEdit;
+    private UpscaleWindow? _upscaleWindow;
 
     internal ClipWindow? ClipWindow => _clipWindow;
     internal HideWindow? HideWindow => _hideWindow;
     internal AnnotateWindow? AnnotateWindow => _annotateWindow;
     internal BackgroundWindow? BackgroundWindow => _backgroundWindow;
     internal ImageEditWindow? ImageEdit => _imageEdit;
+    internal UpscaleWindow? UpscaleWindow => _upscaleWindow;
     private readonly HashSet<SpreadsheetPrintStudioWindow> _spreadsheetStudios = [];
 
     internal IReadOnlyCollection<SpreadsheetPrintStudioWindow> SpreadsheetStudios => _spreadsheetStudios;
@@ -208,6 +210,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             ShowBackgroundWindow(files, preset);
         else if (preset.IsImageEditTool)
             ShowImageEditWindow(files, preset);
+        else if (preset.IsUpscaleTool)
+            ShowUpscaleWindow(files, preset, near);
         // Before the crop: the print studio and the PDF page tools have no Tool of their own, which reads as a crop
         // ("Crop PDF" is one and opens the crop overlay).
         else if (preset.Id == "tool-sheet-studio")
@@ -280,6 +284,38 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                 _imageEdit = null;
         };
         _imageEdit = win;
+        win.Show();
+        win.Activate();
+    }
+
+    /// <summary>
+    /// Opens the "Upscale Quality" window on the pictures among the files.
+    /// </summary>
+    public void ShowUpscaleWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null)
+    {
+        var pictures = files.Where(f => FormatRegistry.Detect(f) is { } format && UpscaleTool.CanUpscale(format.Id)).ToList();
+        if (pictures.Count == 0)
+            return;
+        if (_upscaleWindow is { DataContext: IDisposable oldVm })
+        {
+            oldVm.Dispose();
+        }
+        _upscaleWindow?.Close();
+        var store = services.GetRequiredService<UserDataStore>();
+        var conversions = services.GetRequiredService<ConversionService>();
+        var log = services.GetService<ILogger<UpscaleViewModel>>();
+        var vm = new UpscaleViewModel(pictures, preset, loc, store, PictureSize,
+            (files, conversion) => conversions.Start(files, conversion), log);
+        var win = new UpscaleWindow { DataContext = vm };
+        PrepareWindow(win);
+        win.Closed += (_, _) =>
+        {
+            if (_upscaleWindow == win)
+                _upscaleWindow = null;
+            vm.Dispose();
+            trimmer.Request();
+        };
+        _upscaleWindow = win;
         win.Show();
         win.Activate();
     }

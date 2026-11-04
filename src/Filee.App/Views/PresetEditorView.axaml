@@ -5,6 +5,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels"
+             xmlns:upscale="using:Filee.Engines.Upscale"
              x:Class="Filee.App.Views.PresetEditorView"
              x:DataType="vm:PresetEditorViewModel">
   <UserControl.Styles>
@@ -269,6 +270,46 @@
             <TextBlock Text="✓" Foreground="#10b981" FontWeight="Bold" IsVisible="{Binding !TestTranslationHasError}" />
             <TextBlock Text="⚠" Foreground="#f59e0b" FontWeight="Bold" IsVisible="{Binding TestTranslationHasError}" />
             <TextBlock Text="{Binding TestTranslationResult}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
+    <!-- Upscale options -->
+    <Border x:Name="UpscaleCard" Classes="card" IsVisible="{Binding ShowUpscale}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource preset.upscale}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource engines.package.upscayl-bin.description}" />
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel Grid.Column="0" Spacing="4">
+            <TextBlock Classes="label" Text="{DynamicResource upscale.model}" />
+            <ComboBox ItemsSource="{Binding UpscaleModels}" SelectedItem="{Binding SelectedUpscaleModel}" HorizontalAlignment="Stretch">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="upscale:UpscaleModel">
+                  <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock FontWeight="SemiBold" Text="{Binding Name}" />
+                    <TextBlock Classes="caption" Text="{Binding License, StringFormat='({0})'}" />
+                  </StackPanel>
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
+          </StackPanel>
+          <StackPanel Grid.Column="2" Spacing="4">
+            <DockPanel LastChildFill="False">
+              <TextBlock DockPanel.Dock="Left" Classes="label" Text="{DynamicResource upscale.scale}" />
+              <TextBlock DockPanel.Dock="Right" FontWeight="SemiBold" Text="{Binding UpscaleScale, StringFormat='{}{0}×'}" />
+            </DockPanel>
+            <Slider Minimum="2" Maximum="4" Value="{Binding UpscaleScale}" TickFrequency="1" IsSnapToTickEnabled="True" />
+          </StackPanel>
+        </Grid>
+        <Border Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10,8"
+                IsVisible="{Binding SelectedUpscaleModel, Converter={x:Static ObjectConverters.IsNotNull}}">
+          <StackPanel Spacing="4">
+            <DockPanel LastChildFill="False">
+              <TextBlock DockPanel.Dock="Left" FontWeight="SemiBold" Text="{Binding SelectedUpscaleModel.Name}" />
+              <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding SelectedUpscaleModel.Author}" />
+            </DockPanel>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding SelectedUpscaleModel.Description}" />
           </StackPanel>
         </Border>
       </StackPanel>

@@ -606,6 +606,93 @@ public sealed class EngineInstallerTests : IDisposable
             Directory.GetFiles(root, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(root, f).Replace('\\', '/')).Order(StringComparer.Ordinal));
     }
 
+    [Fact]
+    public async Task Model_components_are_copied_and_marked_installed()
+    {
+        var modelBytes = "ggml-model-bytes"u8.ToArray();
+        var component = Component("whisper-model", "model", modelBytes);
+        var server = new FakeServer(new() { [component.Url] = modelBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("whisper", ["whisper-model"], modelBytes.Length, ["whisper"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", "whisper-model.model")));
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", ".filee-component")));
+        Assert.True(installer.IsInstalled(package));
+        Assert.True(installer.IsUpToDate(package));
+    }
+
+    [Fact]
+    public async Task Ncnn_components_write_custom_marker_and_are_reported_installed()
+    {
+        var paramBytes = "ncnn-param-bytes"u8.ToArray();
+        var component = Component("model-param", "ncnn-param", paramBytes);
+        var server = new FakeServer(new() { [component.Url] = paramBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("ncnn-test", ["model-param"], paramBytes.Length, ["upscaler"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "model", ".model-param")));
+        Assert.True(installer.IsInstalled(package));
+    }
+
+    [Fact]
+    public async Task Uninstalling_a_package_leaves_components_shared_with_another_installed_package_intact()
+    {
+        var archiveA = Zip(("toolA.exe", "binaryA"));
+        var compA = Component("toolA", "zip", archiveA);
+        var archiveB = Zip(("toolB.exe", "binaryB"));
+        var compB = Component("toolB", "zip", archiveB);
+        var archiveShared = Zip(("shared.dll", "sharedDll"));
+        var compShared = Component("shared", "zip", archiveShared);
+
+        var server = new FakeServer(new()
+        {
+            [compA.Url] = archiveA,
+            [compB.Url] = archiveB,
+            [compShared.Url] = archiveShared,
+        });
+
+        var packageA = new EnginePackage("pkgA", ["toolA", "shared"], 1000, ["toolA"]);
+        var packageB = new EnginePackage("pkgB", ["toolB", "shared"], 1000, ["toolB"]);
+
+        var installer = new EngineInstaller(new HttpClient(server), _root,
+            new Dictionary<string, EngineComponent>
+            {
+                ["toolA"] = compA,
+                ["toolB"] = compB,
+                ["shared"] = compShared,
+            },
+            packages: [packageA, packageB]);
+
+        await installer.InstallAsync(packageA, null, TestContext.Current.CancellationToken);
+        await installer.InstallAsync(packageB, null, TestContext.Current.CancellationToken);
+
+        Assert.True(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgA: shared component is still used by pkgB, so shared must stay intact.
+        installer.Uninstall(packageA);
+
+        Assert.False(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolA")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgB: now shared is no longer used by any installed package, so it is removed.
+        installer.Uninstall(packageB);
+
+        Assert.False(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "shared")));
+    }
+
     private sealed class SyncProgress(Action<EngineInstallProgress> report) : IProgress<EngineInstallProgress>
     {
         public void Report(EngineInstallProgress value) => report(value);

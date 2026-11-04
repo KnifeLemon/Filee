@@ -61,7 +61,7 @@ namespace Filee.Core.Conversion;
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
     bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false,
-    bool Ocr = false, bool Caption = false, bool Translate = false);
+    bool Ocr = false, bool Caption = false, bool Translate = false, bool Upscale = false);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's
@@ -146,7 +146,8 @@ public sealed record ConversionStep(
     Action<IReadOnlyList<string>>? MissingFonts = null,
     string? OriginalSourcePath = null,
     bool Caption = false,
-    bool Translate = false);
+    bool Translate = false,
+    bool Upscale = false);
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).

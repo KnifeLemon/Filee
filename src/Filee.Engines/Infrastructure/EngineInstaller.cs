@@ -78,15 +78,18 @@ public sealed class EngineInstaller
     private readonly HttpClient _http;
     private readonly IReadOnlyDictionary<string, EngineComponent> _components;
     private readonly ILogger _logger;
+    private readonly IReadOnlyList<EnginePackage> _packages;
 
     /// <param name="root">Folder that receives one sub folder per engine (default: EngineEnvironment.DownloadRoot).</param>
     /// <param name="components">Download list; engines.json when null (tests pass their own).</param>
-    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null)
+    /// <param name="packages">Known packages (tests pass their own); EngineDownloads.Packages when null.</param>
+    public EngineInstaller(HttpClient http, string? root = null, IReadOnlyDictionary<string, EngineComponent>? components = null, ILogger? logger = null, IReadOnlyList<EnginePackage>? packages = null)
     {
         _http = http;
         _root = root ?? EngineEnvironment.DownloadRoot;
         _components = components ?? EngineDownloads.Components;
         _logger = logger ?? NullLogger.Instance;
+        _packages = packages ?? EngineDownloads.Packages;
     }
 
     /// <summary>
@@ -137,7 +140,7 @@ public sealed class EngineInstaller
             throw new PlatformNotSupportedException(EngineDownloads.UnavailableReason(package)
                 ?? $"The {package.Id} package is unavailable on this platform.");
         using var packageLock = LockPackage(package);
-        ClearAside(package);
+        ClearAside(package.Components);
         var pending = package.Components
             .Where(c => !string.Equals(Marker(c), _components[c].Sha256, StringComparison.OrdinalIgnoreCase))
             .Select(c => _components[c])
@@ -179,16 +182,23 @@ public sealed class EngineInstaller
     public void Uninstall(EnginePackage package)
     {
         using var packageLock = LockPackage(package);
-        ClearAside(package);
+        var shared = _packages
+            .Where(p => p.Id != package.Id && IsInstalled(p))
+            .SelectMany(p => p.Components)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var componentsToRemove = package.Components.Where(c => !shared.Contains(c)).ToList();
+
+        ClearAside(componentsToRemove);
         var aside = new List<(string Folder, string Moved)>();
         try
         {
-            foreach (var id in package.Components)
+            foreach (var folder in componentsToRemove.Select(FolderOf).Distinct())
             {
-                var folder = FolderOf(id);
+                var folderName = Path.GetFileName(folder);
                 if (!Directory.Exists(folder))
                     continue;
-                var moved = AsideFolder(id);
+                var moved = AsideFolder(folderName);
                 Directory.Move(folder, moved);
                 aside.Add((folder, moved));
             }
@@ -210,13 +220,16 @@ public sealed class EngineInstaller
     private string AsideFolder(string id) => Path.Combine(_root, $"{AsidePrefix}{id}-{Guid.NewGuid().ToString("N")[..8]}");
 
     /// <summary>Deletes what an earlier removal or update of the package left aside (under the package's lock).</summary>
-    private void ClearAside(EnginePackage package)
+    private void ClearAside(EnginePackage package) => ClearAside(package.Components);
+
+    /// <summary>Deletes what an earlier removal of components left aside (under the package's lock).</summary>
+    private void ClearAside(IEnumerable<string> components)
     {
         if (!Directory.Exists(_root))
             return;
-        foreach (var id in package.Components)
-            foreach (var folder in Directory.EnumerateDirectories(_root, $"{AsidePrefix}{id}-*"))
-                TryDeleteFolder(folder);
+        foreach (var folder in components.Select(FolderOf).Distinct())
+            foreach (var asideFolder in Directory.EnumerateDirectories(_root, $"{AsidePrefix}{Path.GetFileName(folder)}-*"))
+                TryDeleteFolder(asideFolder);
     }
 
     /// <summary>Deletes a folder that is only in the way: a failure is logged and never replaces another error (#1092).</summary>
@@ -415,6 +428,14 @@ public sealed class EngineInstaller
                     File.Copy(file, Path.Combine(staging, component.Id + ".traineddata"));
                     Replace(component.Id, staging);
                     break;
+                case "ncnn-param":
+                case "ncnn-bin":
+                    var ncnnTarget = FolderOf(component.Id);
+                    Directory.CreateDirectory(ncnnTarget);
+                    var ncnnFile = Path.GetFileName(new Uri(component.Url).LocalPath);
+                    File.Copy(file, Path.Combine(ncnnTarget, ncnnFile), overwrite: true);
+                    File.WriteAllText(Path.Combine(ncnnTarget, "." + component.Id), component.Sha256);
+                    return;
                 case "model":
                 case "bin":
                     // Standalone AI model file (e.g. Whisper ggml-base.bin): copied directly into its component folder.
@@ -669,20 +690,30 @@ public sealed class EngineInstaller
     }
 
     /// <summary>
-    /// App-local Microsoft C++ runtime: when a package includes the "vcruntime" component, its DLLs are copied next
-    /// to the programs of the package's other conda components. Windows looks for DLLs in a program's folder before
-    /// System32, so the runtime a program was built for is used even when the PC has none or an older one.
+    /// App-local Microsoft C++ runtime: when a package includes runtime components ("vcruntime", "vcomp14"), their DLLs
+    /// are copied next to the programs of the package's other conda or zip components. Windows looks for DLLs in a
+    /// program's folder before System32, so the runtime a program was built for is used even when the PC has none or an older one.
     /// </summary>
+    private static readonly string[] RuntimeComponents = ["vcruntime", "vcomp14"];
+
     private void CopyRuntime(EnginePackage package)
     {
-        const string runtime = "vcruntime";
-        if (!package.Components.Contains(runtime) || !Directory.Exists(FolderOf(runtime)))
+        var runtimeDirs = RuntimeComponents
+            .Where(r => package.Components.Contains(r))
+            .Select(FolderOf)
+            .Where(Directory.Exists)
+            .ToList();
+        if (runtimeDirs.Count == 0)
             return;
-        var dlls = Directory.GetFiles(FolderOf(runtime), "*.dll");
-        foreach (var id in package.Components.Where(c => c != runtime && _components[c].Kind == "conda"))
+
+        var dlls = runtimeDirs.SelectMany(dir => Directory.GetFiles(dir, "*.dll")).ToList();
+        foreach (var id in package.Components.Where(c => !RuntimeComponents.Contains(c) && (_components[c].Kind is "conda" or "zip")))
         {
+            var targetDir = FolderOf(id);
+            if (!Directory.Exists(targetDir))
+                continue;
             foreach (var dll in dlls)
-                File.Copy(dll, Path.Combine(FolderOf(id), Path.GetFileName(dll)), overwrite: true);
+                File.Copy(dll, Path.Combine(targetDir, Path.GetFileName(dll)), overwrite: true);
         }
     }
 
@@ -724,7 +755,14 @@ public sealed class EngineInstaller
     /// <summary>Folder of a component; the LibreOffice extension lives inside LibreOffice.</summary>
     private string FolderOf(string id) => _components.TryGetValue(id, out var component) && component.Kind == "oxt"
         ? Path.Combine(_root, "libreoffice", "share", "extensions", ExtensionFolder(id))
-        : Path.Combine(_root, id);
+        : _components.TryGetValue(id, out var c) && c.Kind is "ncnn-param" or "ncnn-bin"
+            ? Path.Combine(_root, NcnnModelFolder(id))
+            : Path.Combine(_root, id);
+
+    private static string NcnnModelFolder(string id) =>
+        id.EndsWith("-param", StringComparison.Ordinal) ? id[..^6]
+        : id.EndsWith("-bin", StringComparison.Ordinal) ? id[..^4]
+        : id;
 
     private static string ExtensionFolder(string id) => id switch
     {
@@ -735,6 +773,11 @@ public sealed class EngineInstaller
     /// <summary>Hash of the installed version, or null when not installed.</summary>
     private string? Marker(string id)
     {
+        if (_components.TryGetValue(id, out var component) && component.Kind is "ncnn-param" or "ncnn-bin")
+        {
+            var componentMarker = Path.Combine(FolderOf(id), "." + id);
+            return File.Exists(componentMarker) ? File.ReadAllText(componentMarker).Trim() : null;
+        }
         var marker = Path.Combine(FolderOf(id), MarkerName);
         return File.Exists(marker) ? File.ReadAllText(marker).Trim() : null;
     }

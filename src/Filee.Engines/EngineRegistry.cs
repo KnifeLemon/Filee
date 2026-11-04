@@ -65,6 +65,7 @@ public static class EngineRegistry
         new SubtitleConverter(),
         new WicImageConverter(),
         new WhisperConverter(loggers?.CreateLogger<WhisperConverter>()),
+        new Upscale.UpscalerConverter(loggers?.CreateLogger<Upscale.UpscalerConverter>()),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
         new ModelConverter(),

@@ -54,6 +54,7 @@ public static class EngineDownloads
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
+        new("upscayl-bin", OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
     ];
 
@@ -66,6 +67,8 @@ public static class EngineDownloads
     {
         if (CanDownload(package))
             return null;
+        if (package.Id == "upscayl-bin")
+            return $"Upscale is not available on this PC ({RuntimeIdentifier}).";
         if (OperatingSystem.IsMacOS())
             return package.Id switch
             {
@@ -96,7 +99,7 @@ public static class EngineDownloads
     /// only needed for EPS / PostScript and for scans.
     /// </summary>
     public static bool IsSuggested(EnginePackage package) =>
-        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract");
+        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin");
 
     /// <param name="macOSVersion">The running macOS; downloads whose minimumMacOS is newer are left out. Null keeps all.</param>
     public static IReadOnlyDictionary<string, EngineComponent> ComponentsForRuntime(string runtimeIdentifier, Version? macOSVersion = null)

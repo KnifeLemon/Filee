@@ -119,7 +119,7 @@ public class ToolbarPaletteViewTests
     /// which a test of the picture tools would otherwise always see.
     /// </summary>
     private static void WithoutPictureEditTools(PresetAvailabilityTests.Fixture f) =>
-        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool);
+        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool || p.IsUpscaleTool);
 
     private static ToolbarProfile Profile(string id, params string[] extensions) => new()
     {

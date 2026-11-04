@@ -1,0 +1,142 @@
+{
+  "_comment": "Curated image super-resolution models from upscayl/custom-models, downloaded on demand: pinned URL + SHA-256 per file. Each model consists of a .param and a .bin file.",
+  "commit": "4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef",
+  "url": "https://raw.githubusercontent.com/upscayl/custom-models/4b6d2cfa59c7442af115dfc6e50fd8d7d40b96ef/models/{0}",
+  "models": {
+    "4x_NMKD-Superscale-SP_178000_G": {
+      "name": "NMKD Superscale",
+      "scale": 4,
+      "license": "WTFPL",
+      "author": "Philip Hofmann",
+      "description": "Clean, artifact-free real-world images.",
+      "param": {
+        "sha256": "519BFFB4912E295155D3CB5D6A29639D217CCCA55F80962D8F677EF777A65B7A",
+        "size": 108037
+      },
+      "bin": {
+        "sha256": "6EA113A9C9066B296BA147FA0939F704462BAC000B42E6A79E8FB3B7526D67A4",
+        "size": 66793352
+      }
+    },
+    "4x_NMKD-Siax_200k": {
+      "name": "NMKD Siax",
+      "scale": 4,
+      "license": "WTFPL",
+      "author": "Philip Hofmann",
+      "description": "Universal upscaler for photos and slightly compressed images.",
+      "param": {
+        "sha256": "519BFFB4912E295155D3CB5D6A29639D217CCCA55F80962D8F677EF777A65B7A",
+        "size": 108037
+      },
+      "bin": {
+        "sha256": "B2ABDFFA30FB15BE752AC681E0C0EDF8B543745C33A989AADC9D7D3394DD3110",
+        "size": 66793352
+      }
+    },
+    "RealESRGAN_General_x4_v3": {
+      "name": "RealESRGAN General x4 v3",
+      "scale": 4,
+      "license": "BSD-3-Clause",
+      "author": "Xintao Wang",
+      "description": "Compact and fast general-purpose photo restoration model.",
+      "param": {
+        "sha256": "22174924330297357434AD21ED0AF7F4B820008D2A502B492754D130D4142714",
+        "size": 5019
+      },
+      "bin": {
+        "sha256": "85EE266B632A765A725425BA6A5620C088C8AA2939A03063B2D83B3462724CC1",
+        "size": 2435272
+      }
+    },
+    "RealESRGAN_General_WDN_x4_v3": {
+      "name": "RealESRGAN General WDN x4 v3",
+      "scale": 4,
+      "license": "BSD-3-Clause",
+      "author": "Xintao Wang",
+      "description": "Wide and deep network model with balanced denoising.",
+      "param": {
+        "sha256": "22174924330297357434AD21ED0AF7F4B820008D2A502B492754D130D4142714",
+        "size": 5019
+      },
+      "bin": {
+        "sha256": "74EAE91A6230CBE5B931BE6C49141FAAFF0034976933D4DA9ACCB77C329C8A78",
+        "size": 2435272
+      }
+    },
+    "4xLSDIR": {
+      "name": "4x LSDIR",
+      "scale": 4,
+      "license": "CC-BY-4.0",
+      "author": "Philip Hofmann (Phhofm)",
+      "description": "High-fidelity real-world image restoration.",
+      "param": {
+        "sha256": "4576ED5C2FC5FA250D3C3D585EF02248F26ABDFC1867088078F501FE71E5D61E",
+        "size": 108039
+      },
+      "bin": {
+        "sha256": "0622F182F0A940B395E4FC70E2707B285E016FA4B014E855205EB40EFDDFB853",
+        "size": 33424520
+      }
+    },
+    "4xLSDIRplusC": {
+      "name": "4x LSDIR+ C",
+      "scale": 4,
+      "license": "CC-BY-4.0",
+      "author": "Philip Hofmann (Phhofm)",
+      "description": "Trained on large-scale diverse image restoration with extra detail.",
+      "param": {
+        "sha256": "4576ED5C2FC5FA250D3C3D585EF02248F26ABDFC1867088078F501FE71E5D61E",
+        "size": 108039
+      },
+      "bin": {
+        "sha256": "6DF18C714BB7D4AC63CA8A1FB1F1B2712FE3EF5A4B36F09BFA9B827DA167AE81",
+        "size": 33424520
+      }
+    },
+    "4xLSDIRCompactC3": {
+      "name": "4x LSDIR Compact C3",
+      "scale": 4,
+      "license": "CC-BY-4.0",
+      "author": "Philip Hofmann (Phhofm)",
+      "description": "SRVGGNet compact model for significantly faster inference.",
+      "param": {
+        "sha256": "6E3795FB5B6C68B2C39822E78BF83B575C918F96E9DB6C36934A79E7D491D5E1",
+        "size": 2767
+      },
+      "bin": {
+        "sha256": "692AA5E70C86522CE2D72B94F372751339A2FEE65F515D06DA5D496D8CF93667",
+        "size": 1247368
+      }
+    },
+    "4xNomos8kSC": {
+      "name": "4x Nomos8k SC",
+      "scale": 4,
+      "license": "CC-BY-4.0",
+      "author": "Philip Hofmann (Phhofm)",
+      "description": "High-resolution texture and geometry super-resolution.",
+      "param": {
+        "sha256": "4576ED5C2FC5FA250D3C3D585EF02248F26ABDFC1867088078F501FE71E5D61E",
+        "size": 108039
+      },
+      "bin": {
+        "sha256": "DA16E3880D87B177B7C6B659BBD880F8A101B868EB9EBC08D69EAA6D3EDC4517",
+        "size": 33424520
+      }
+    },
+    "4xHFA2k": {
+      "name": "4x HFA2k",
+      "scale": 4,
+      "license": "CC-BY-4.0",
+      "author": "Philip Hofmann (Phhofm)",
+      "description": "Illustration and digital art enhancement model.",
+      "param": {
+        "sha256": "4576ED5C2FC5FA250D3C3D585EF02248F26ABDFC1867088078F501FE71E5D61E",
+        "size": 108039
+      },
+      "bin": {
+        "sha256": "8A135402B4F39286121B76ABB47601A6B7B7E8D4F3E999A5AAA45ED277824FB4",
+        "size": 33424520
+      }
+    }
+  }
+}
