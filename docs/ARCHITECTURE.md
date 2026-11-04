@@ -319,6 +319,10 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
+  (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
+  their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.
+  New text on `AccentBrush` takes `OnAccentBrush`, never a fixed colour.
 - Window zoom (`Services/UiZoom`): Theme → *Window size* (− / + and *Reset*), and in any tracked window the
   platform's command key (`HotkeyConfiguration.CommandModifiers`: Ctrl, Cmd on macOS) with the mouse wheel, plus /
   minus (Shift allowed, Alt not: AltGr is Ctrl + Alt) or 0 for 100 %. 70–180 % in 10 % steps, every window at once.
