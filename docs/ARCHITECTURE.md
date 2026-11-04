@@ -121,6 +121,12 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   no device names, at most 120 characters) and never replace an existing file (`name (2).ext`). Programs, installers and
   scripts are refused by extension, media type and first bytes; nothing downloaded is ever run, and every file goes
   through the same converters as any other.
+- **Mark of the Web** (`Platform/MarkOfTheWeb`, Windows): every saved file gets a `Zone.Identifier` stream as a
+  browser's download would (`ZoneId=3`, and `HostUrl` with the address a download came from, without sign-in or
+  fragment), so SmartScreen, Office's block on macros from the internet and Protected View still apply. `JobQueue`
+  copies a source's mark onto the files converted from it (also for "Save only the converted file"); a folder result
+  is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
+  that never fails a conversion.
 
 ## Donut control
 
@@ -376,7 +382,8 @@ installed yet; the slides introduce the installed one. The demo animations are r
   the bundled engines; its name can't be `filee.exe` next to `Filee.exe` on a case-insensitive file system.
 - `Filee.Core/Watching/FolderWatcher` watches one `WatchRule` with a `FileSystemWatcher` and converts a file once it
   has kept its size and time for a moment and opens without sharing (downloads and copies in progress are skipped).
-  Temporary files, unknown formats and dedicated output and originals folders are ignored. A rule may also write
+  Temporary files, unknown formats and dedicated output and originals folders are ignored. Links and junctions in the
+  folder are not followed, neither in an arriving folder nor in the scan of what is already there. A rule may also write
   into the watched folder itself. In that case, generated file versions (path, size and modification time) and
   generated result directories are recorded in `.filee-watch-<rule hash>.json` inside the watched root. The hidden
   state file prevents those results from becoming new inputs, including after an inbox watcher restarts; a changed

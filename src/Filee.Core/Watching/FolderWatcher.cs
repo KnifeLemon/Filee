@@ -264,8 +264,10 @@ public sealed class FolderWatcher : IAsyncDisposable
     {
         try
         {
-            var option = Rule.IncludeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            foreach (var file in Directory.EnumerateFiles(Rule.Folder, "*", option))
+            // Like Notice: links and junctions are not followed, so nothing outside the folder is converted (or moved
+            // to the originals folder).
+            foreach (var file in Directory.EnumerateFiles(Rule.Folder, "*", new EnumerationOptions
+            { RecurseSubdirectories = Rule.IncludeSubfolders, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true }))
                 Notice(file);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

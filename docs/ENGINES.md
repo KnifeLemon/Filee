@@ -1441,7 +1441,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
 | TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
 | TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
-| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, CRC and size checked | — |
+| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, stopped at the size its trailer states, CRC checked | — |
 | GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
 | LZMA, Z | 7-Zip | — |
 | RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
@@ -1452,7 +1452,8 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
   with `photos/…` gives `photos/…`, not `photos/photos/…`). Name conflicts follow the preset: `name (2)`, overwrite
-  (files are merged into the existing folder) or skip.
+  (files are merged into the existing folder; refused before anything moves when that folder, or any folder in it that
+  would receive files, is a link or junction) or skip.
 - **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
   maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
 - **Game packs** (#824, #898, the Games field): Minecraft and Modrinth read a marker file at the top of the ZIP
@@ -1466,8 +1467,16 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 - **Safety**: every archive is listed first. Encrypted entries or archives stop with "password-protected"; entries
   (or hard links) with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is
   written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
-  1,000,000 entries or more data than the drive has free are refused; Filee's own readers also stop when data unpacks
-  to more than the entry declares, and check CRCs.
+  1,000,000 entries or more data than the drive has free are refused (a listing without sizes still needs the 64 MB
+  reserve); Filee's own readers also stop when data unpacks to more than the entry declares, and check CRCs.
+- **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z) state
+  no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: 7-Zip writes them
+  to its standard output (`x -so`) and Filee writes the file, stopping 7-Zip and deleting what was written once it
+  passes the room on the drive less a tenth of the free space ("unpacks to more than …, but only … is free").
+- **Mark of the Web** (Windows): unpacked files get the archive's `Zone.Identifier` stream, so a ZIP a browser saved
+  still gives SmartScreen prompts and Office's macro block once unpacked. 7-Zip copies it (`-snz`); for files Filee
+  writes itself (ALZ, EGG, lzip, single streams) it is copied after unpacking (`Core/Platform/MarkOfTheWeb`). A drive
+  without NTFS streams (FAT32, exFAT) gets none, and that never fails the job.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG.
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the

@@ -1,4 +1,5 @@
 using Filee.Core.Conversion;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 
 namespace Filee.Core.Tests;
@@ -26,6 +27,24 @@ public class JobQueueTests
         Assert.True(File.Exists(Path.Combine(dir.Path, "a.png")));
         Assert.True(File.Exists(Path.Combine(dir.Path, "b.png")));
         Assert.Equal(1, job.Progress);
+    }
+
+    [Fact]
+    public async Task An_output_converted_from_a_file_from_the_internet_keeps_its_mark_of_the_web()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        using var dir = new TempDir();
+        var marked = dir.File("a.jpg");
+        var plain = dir.File("b.jpg");
+        var mark = MarkOfTheWeb.Internet(new Uri("https://example.com/a.jpg"));
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(marked, mark), "The temp drive holds no NTFS streams.");
+        await using var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("jpg", "png"))]));
+
+        var job = await Run(queue, [marked, plain], new Preset { TargetFormat = "png" });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.Equal(mark, MarkOfTheWeb.Read(Path.Combine(dir.Path, "a.png")));
+        Assert.Null(MarkOfTheWeb.Read(Path.Combine(dir.Path, "b.png")));
     }
 
     [Fact]
