@@ -1131,6 +1131,15 @@ public sealed class PdfOptions
     /// <summary>Pages to process, e.g. <c>"1-3,5"</c>. Empty means all pages.</summary>
     public string PageRange { get; set; } = "";
 
+    /// <summary>
+    /// "Ask every time" for the pages (#981): a PDF dropped on the donut opens a small window that shows its page
+    /// count and takes the range, and for a PDF target whether it becomes one PDF or one file per page
+    /// (<see cref="AskedPages"/>). <see cref="PageRange"/> is what the window starts with, and what applies where
+    /// nothing can ask (watch folders, the command line). Off by default, so a preset saved before it reads unchanged
+    /// and a Filee from before it ignores it; on for "Split PDF" in a new install.
+    /// </summary>
+    public bool AskPageRange { get; set; }
+
     /// <summary>For PDF → PDF: write every page as its own file.</summary>
     public bool SplitPages { get; set; }
 
