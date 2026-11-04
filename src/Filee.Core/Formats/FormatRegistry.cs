@@ -239,6 +239,9 @@ public static class FormatRegistry
         new("dav", "DAV", FormatCategory.Video, ["dav"], Writable: false),
         // Bink Video, the game cutscene format of RAD Game Tools (#751): FFmpeg's bink demuxer reads it. Never a target.
         new("bik", "BIK", FormatCategory.Video, ["bik"], Writable: false),
+        // FLIC, the animations of Autodesk Animator (.fli) and Animator Pro (.flc), also in DOS games and pixel-art tools
+        // (#940): FFmpeg's flic demuxer reads them. FFmpeg has no FLIC encoder, so never a target.
+        new("flc", "FLIC", FormatCategory.Video, ["flc", "fli"], Writable: false),
         // Raw H.265 / H.264 streams with no container, as security cameras and VMS software export them (issue #301).
         new("h265", "H.265", FormatCategory.Video, ["h265", "265", "hevc"], Writable: false),
         new("h264", "H.264", FormatCategory.Video, ["h264", "264"], Writable: false),

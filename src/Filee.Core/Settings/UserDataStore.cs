@@ -1008,6 +1008,10 @@ internal static class SettingsMigrations
             presets.InsertRange(annotate < 0 ? presets.Count : annotate + 1, BuiltInData.BackgroundPresets());
             changed = true;
         }
+        // v65: FLIC animations (.flc, .fli, #940) learn the video donut; custom claims stay put. (Schema 65 may be
+        //      renumbered if another change takes it first.)
+        if (from < 65)
+            changed |= LearnExtensions(profiles, out _, ["flc", "fli"]);
         return changed;
     }
 
