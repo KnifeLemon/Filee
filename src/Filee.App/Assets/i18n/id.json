@@ -590,6 +590,7 @@
   "update.installing": "Penginstal sedang berjalan. Filee akan terbuka kembali setelah selesai.",
   "update.failed": "Tidak dapat memperbarui otomatis. Unduh versi baru dari filee.sh.",
   "update.failed_alert": "Tidak dapat mengunduh pembaruan.\nTekan OK untuk membuka filee.sh dan mengunduh versi baru di sana.",
+  "update.unverified_alert": "Tidak dapat memastikan bahwa pembaruan berasal dari Filee, jadi pembaruan tidak dipasang.\nTekan OK untuk membuka filee.sh dan mengunduh versi baru di sana.",
   "update.rolled_back_alert": "Tidak dapat memasang pembaruan, sehingga Filee mempertahankan versi sebelumnya.\nTekan OK untuk membuka filee.sh dan mengunduh versi baru di sana.",
   "update.rolled_back_log": "Rincian ada di log: {0}",
   "update.cancelled": "Pembaruan dibatalkan. Tekan Perbarui lagi untuk memasangnya.",

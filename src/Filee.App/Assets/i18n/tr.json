@@ -590,6 +590,7 @@
   "update.installing": "Kurulum çalışıyor. Tamamlanınca Filee yeniden açılır.",
   "update.failed": "Otomatik güncelleme yapılamadı. Yeni sürümü filee.sh adresinden indirin.",
   "update.failed_alert": "Güncelleme indirilemedi.\nTamam'a basarak filee.sh adresini açıp yeni sürümü oradan indirin.",
+  "update.unverified_alert": "Güncellemenin Filee'den geldiği doğrulanamadı, bu yüzden yüklenmedi.\nTamam'a basarak filee.sh adresini açıp yeni sürümü oradan indirin.",
   "update.rolled_back_alert": "Güncelleme kurulamadı; Filee önceki sürümü korudu.\nTamam'a basarak filee.sh adresini açıp yeni sürümü oradan indirin.",
   "update.rolled_back_log": "Ayrıntılar günlükte: {0}",
   "update.cancelled": "Güncelleme iptal edildi. Kurmak için tekrar Güncelle'ye basın.",

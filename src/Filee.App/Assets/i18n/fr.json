@@ -602,6 +602,7 @@
   "update.installing": "Le programme d'installation est en cours. Filee redémarre une fois terminé.",
   "update.failed": "Impossible de mettre à jour automatiquement. Téléchargez la nouvelle version sur filee.sh.",
   "update.failed_alert": "Impossible de télécharger la mise à jour.\nAppuyez sur OK pour ouvrir filee.sh et y télécharger la nouvelle version.",
+  "update.unverified_alert": "Impossible de confirmer que la mise à jour provient de Filee, elle n'a donc pas été installée.\nAppuyez sur OK pour ouvrir filee.sh et y télécharger la nouvelle version.",
   "update.rolled_back_alert": "Impossible d'installer la mise à jour : Filee a gardé la version que vous aviez.\nAppuyez sur OK pour ouvrir filee.sh et y télécharger la nouvelle version.",
   "update.rolled_back_log": "Les détails figurent dans le journal : {0}",
   "update.cancelled": "Mise à jour annulée. Appuyez à nouveau sur Mettre à jour pour l'installer.",

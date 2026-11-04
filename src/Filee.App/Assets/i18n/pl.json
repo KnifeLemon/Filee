@@ -602,6 +602,7 @@
   "update.installing": "Instalator działa. Filee uruchomi się ponownie po zakończeniu.",
   "update.failed": "Nie udało się zaktualizować automatycznie. Pobierz nową wersję z filee.sh.",
   "update.failed_alert": "Nie udało się pobrać aktualizacji.\nNaciśnij OK, aby otworzyć filee.sh i pobrać tam nową wersję.",
+  "update.unverified_alert": "Nie udało się potwierdzić, że aktualizacja pochodzi od Filee, więc nie została zainstalowana.\nNaciśnij OK, aby otworzyć filee.sh i pobrać tam nową wersję.",
   "update.rolled_back_alert": "Nie udało się zainstalować aktualizacji, więc Filee zachował dotychczasową wersję.\nNaciśnij OK, aby otworzyć filee.sh i pobrać tam nową wersję.",
   "update.rolled_back_log": "Szczegóły są w dzienniku: {0}",
   "update.cancelled": "Aktualizacja anulowana. Naciśnij Aktualizuj ponownie, aby ją zainstalować.",
