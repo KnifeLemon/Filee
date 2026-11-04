@@ -54,6 +54,12 @@ internal sealed partial class HwpxWriter
         var paperHeight = (int?)pagePr?.Attribute("height") ?? 84190;
         var landscape = (string?)pagePr?.Attribute("landscape") == "NARROWLY";
         var textWidth = Math.Max(2000, (landscape ? paperHeight : paperWidth) - Margin("left", 7200) - Margin("right", 7200) - Margin("gutter", 0));
+        _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
+
+        // The header area is as tall as the header, as in Word. rhwp also stops at the end of the area, which left out a
+        // table after an empty paragraph in a header with little room above the body (issue #1152).
+        if (section.HeaderMovesBody && section.Headers.Count > 0)
+            margin?.SetAttributeValue("header", Math.Max(Margin("header", 4250), section.Headers.Max(h => EstimateHeight(h.Blocks, textWidth))));
         _pageLeft = Margin("left", 7200) + Margin("gutter", 0);
         _pageTop = Margin("top", 4255) + Margin("header", 4250);
 
@@ -64,7 +70,6 @@ internal sealed partial class HwpxWriter
         if (section.StartPageNumber is { } startPage)
             setup.Append($"<hp:ctrl><hp:newNum num=\"{startPage}\" numType=\"PAGE\"/></hp:ctrl>");
 
-        _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
         _width = textWidth;
         var controlId = 1;
         foreach (var header in section.Headers)
