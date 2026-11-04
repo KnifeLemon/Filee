@@ -44,7 +44,7 @@ internal sealed partial class HwpxWriter
         }
         if (secPr.Element(Hp + "visibility") is { } visibility)
         {
-            visibility.SetAttributeValue("hideFirstHeader", section.HideFirstHeader ? 1 : 0);
+            visibility.SetAttributeValue("hideFirstHeader", section.HideFirstHeader || section.FirstPageHeader is not null ? 1 : 0);
             visibility.SetAttributeValue("hideFirstFooter", section.HideFirstFooter ? 1 : 0);
         }
         secPr.Element(Hp + "startNum")?.SetAttributeValue("page", section.StartPageNumber ?? 0);
@@ -73,6 +73,23 @@ internal sealed partial class HwpxWriter
             setup.Append(HeaderFooter("footer", footer, controlId++, textWidth, Margin("footer", 2240), "BOTTOM"));
 
         _width = ColumnWidth(textWidth, section.Columns);
+
+        // 한글 has no header for the first page only: it is a text box at the header's place, anchored in the section's
+        // first paragraph, and the other header is hidden there. The text below goes around it, as Word moves the body.
+        if (section.FirstPageHeader is { } firstPageHeader)
+        {
+            var box = new HTextBox
+            {
+                Width = textWidth,
+                Height = EstimateHeight(firstPageHeader, textWidth),
+                Anchor = new HAnchor("PAPER", "LEFT", _pageLeft, "PAPER", "TOP", Margin("top", 4255), "TOP_AND_BOTTOM", true),
+                Line = HBorder.None,
+                Padding = new HInsets(0, 0, 0, 0),
+            };
+            box.Blocks.AddRange(firstPageHeader);
+            setup.Append(TextBox(box));
+        }
+
         var body = new StringBuilder(SectionOpenTag());
         var blocks = section.Blocks.Count == 0 || section.Blocks[0] is not HParagraph
             ? section.Blocks.Prepend(new HParagraph()).ToList()

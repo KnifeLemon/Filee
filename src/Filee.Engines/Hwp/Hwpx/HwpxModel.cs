@@ -26,6 +26,9 @@ internal sealed class HSection
     public bool HideFirstHeader { get; set; }
     public bool HideFirstFooter { get; set; }
 
+    /// <summary>Header of the first page only, instead of <see cref="Headers"/> there (DOCX "different first page").</summary>
+    public List<HBlock>? FirstPageHeader { get; set; }
+
     /// <summary>Restart page numbering at this number; null continues from the previous section.</summary>
     public int? StartPageNumber { get; set; }
 
