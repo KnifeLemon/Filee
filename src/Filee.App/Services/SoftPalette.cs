@@ -33,9 +33,10 @@ internal static class SoftPalette
 
     /// <summary>
     /// Traditional Chinese has no embedded font (two more Noto CJK files would add 11 MB): Windows and macOS always carry
-    /// these. Listed before the embedded Noto Sans SC, whose Han shapes differ, so zh-TW text takes Traditional shapes.
+    /// their two, Linux often has the Noto one. Listed before the embedded Noto Sans SC, whose Han shapes differ, so zh-TW
+    /// text takes Traditional shapes.
     /// </summary>
-    private const string TraditionalChineseSystem = "Microsoft JhengHei UI, Microsoft JhengHei, PingFang TC";
+    private const string TraditionalChineseSystem = "Microsoft JhengHei UI, Microsoft JhengHei, PingFang TC, Noto Sans CJK TC";
 
     /// <summary>All resource keys written by ApplyAccent that must be cleared from top level when per-variant dictionaries are used.</summary>
     public static readonly string[] AccentResourceKeys =
