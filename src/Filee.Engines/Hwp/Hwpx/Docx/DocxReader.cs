@@ -329,14 +329,14 @@ internal sealed partial class DocxReader
     /// with an 18 pt grid is 18 pt high. 한글 has no such grid for body text, so the paragraph gets an "at least"
     /// line spacing of the snapped height (larger content such as pictures can still grow the line).
     /// </summary>
-    private void SnapToGrid(HParagraph paragraph, ParaProps props)
+    private void SnapToGrid(HParagraph paragraph, ParaProps props, RunProps mark)
     {
         var pitch = _textBoxDepth > 0 || _sectionIndex >= _linePitches.Count ? 0 : _linePitches[_sectionIndex];
         if (pitch <= 0 || props.SnapToGrid == false || props.LineRule is "exact" or "atLeast")
             return;
         var size = MaxFontSize(paragraph.Inlines) ?? paragraph.MarkFormat.Size ?? 1000;
         var cell = HwpxUnits.FromTwips(pitch);
-        var natural = size * WordLineToHwpPercent / 100.0; // 1/100 pt = HWPUNIT
+        var natural = size * WordLineToHwpPercent(mark) / 100.0; // 1/100 pt = HWPUNIT
         var lines = Math.Max(1, Math.Ceiling(natural / cell));
         var multiple = (props.Line ?? 240) / 240.0;
         paragraph.Format = paragraph.Format with { LineSpacing = new HLineSpacing(HLineSpacingKind.AtLeast, (int)Math.Round(lines * cell * multiple)) };
@@ -423,14 +423,16 @@ internal sealed partial class DocxReader
         private readonly int _heading;
         private readonly HListRef? _list;
         private readonly ParaProps _props;
+        private readonly RunProps _markProps;
         private readonly Stack<List<HInline>> _sinks = new();
 
         public ParagraphBuilder(DocxReader reader, List<HBlock> output, ParaProps props, RunProps mark, XElement? pPr)
         {
             _reader = reader;
             _props = props;
+            _markProps = mark;
             _output = output;
-            _format = reader.ParaFormat(props, mark.Size);
+            _format = reader.ParaFormat(props, mark);
             _mark = reader.CharFormat(mark);
             _heading = reader.HeadingLevel(props, pPr);
             _list = reader.Numbering(props.NumId) is { } numbering ? new HListRef(numbering, Math.Clamp(props.Ilvl ?? 0, 0, 8), Numbered: true) : null;
@@ -481,7 +483,7 @@ internal sealed partial class DocxReader
 
         private void Emit()
         {
-            _reader.SnapToGrid(Current, _props);
+            _reader.SnapToGrid(Current, _props, _markProps);
             _output.Add(Current);
         }
 
