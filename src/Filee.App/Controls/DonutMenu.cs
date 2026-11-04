@@ -127,7 +127,7 @@ public sealed partial class DonutMenu : Control
     private string? _previewLabel;
     private bool _previewGroup;
     internal bool PreviewIsGroup => _previewGroup;
-    private (int Index, Point Start, PointerPressedEventArgs Args)? _press;
+    private (int Index, string? Id, Point Start, PointerPressedEventArgs Args)? _press;
 
     static DonutMenu()
     {
@@ -431,6 +431,10 @@ public sealed partial class DonutMenu : Control
         // The window is reused: a keyboard hold from the last time it was open must not swallow the first moves now.
         _keyboardHold = _ringFromKeys = false;
         _keyAnchor = _lastPointer = null;
+        // The editor's slice under a press is gone: moving on must not drag what took its place. New items with the
+        // same slice keep it, and the live donut reads its click from the release.
+        if (IsEditMode && _press is { Index: >= 0 } press && Items?.ElementAtOrDefault(press.Index)?.Id != press.Id)
+            _press = null;
         InvalidateMeasure();
         InvalidateVisual();
     }
@@ -503,7 +507,7 @@ public sealed partial class DonutMenu : Control
         {
             if (point.Properties.IsLeftButtonPressed)
             {
-                _press = (-1, point.Position, e);
+                _press = (-1, null, point.Position, e);
                 e.Handled = true;
             }
             return;
@@ -526,7 +530,8 @@ public sealed partial class DonutMenu : Control
 
         if (point.Properties.IsLeftButtonPressed)
         {
-            _press = (hit.Kind == DonutHitKind.Segment ? hit.Index : -1, point.Position, e);
+            var pressed = hit.Kind == DonutHitKind.Segment ? hit.Index : -1;
+            _press = (pressed, pressed >= 0 ? Items![pressed].Id : null, point.Position, e);
             e.Handled = true;
         }
     }
