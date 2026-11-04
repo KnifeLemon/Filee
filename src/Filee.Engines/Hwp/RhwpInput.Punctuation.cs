@@ -29,7 +29,7 @@ internal static partial class RhwpInput
             ['‘'] = ("HANGUL", 0.3),
             ['’'] = ("HANGUL", 0.3),
         };
-        foreach (var c in "“”—―–‥…•※‰′")
+        foreach (var c in "“”—―–‥…•※‰′℃")
             guesses[c] = ("HANGUL", 0.5);
         foreach (var c in "、。〃々〇〈〉《》「」『』【】〔〕〖〗〝〞")
             guesses[c] = ("SYMBOL", 0.5);
