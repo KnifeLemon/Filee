@@ -180,11 +180,11 @@
         </ListBox.Styles>
         <ListBox.ItemTemplate>
           <!-- A card, as on the Home page's queue: the picture (or the extension, for a format without one), its place in
-               the merge top left, an X top right that takes the file out, and the name under the picture. The selection
-               outlines the whole card, as there. -->
+               the merge top left, an X top right that takes the file out, and the name and date under the picture (the path and
+               the time in its tooltip). The selection outlines the whole card, as there. -->
           <DataTemplate x:DataType="vm:MergeSource">
             <Border Classes="merge-card" Width="128" Padding="6" CornerRadius="14" Background="{DynamicResource SurfaceBrush}"
-                    ToolTip.Tip="{Binding Path}" AutomationProperties.Name="{Binding AccessibleName}">
+                    ToolTip.Tip="{Binding Tip}" AutomationProperties.Name="{Binding AccessibleName}">
               <StackPanel Spacing="6">
                 <Panel Height="130">
                   <Border CornerRadius="10" ClipToBounds="True" Background="{DynamicResource SurfaceAltBrush}">
@@ -207,6 +207,9 @@
                   </Button>
                 </Panel>
                 <TextBlock Classes="caption" Text="{Binding Name}" TextTrimming="CharacterEllipsis" TextAlignment="Center" />
+                <!-- The date the sort box orders by (modified, or created while sorted by it). -->
+                <TextBlock Classes="caption" Text="{Binding Day}" TextTrimming="CharacterEllipsis" TextAlignment="Center" Margin="0,-4,0,0"
+                           IsVisible="{Binding Day, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
               </StackPanel>
             </Border>
           </DataTemplate>

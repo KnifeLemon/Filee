@@ -106,13 +106,19 @@ public sealed partial class MergeSource(string path, Action<MergeSource> remove,
     /// <summary>The dates, read once: the order and the dates shown stay the same while the window is open.</summary>
     public FileStamp Stamp { get; } = WebDrop.IsPlaceholder(path) ? new FileStamp(path) : FileStamp.Read(path);
 
-    /// <summary>The row shows the date created rather than the date modified (while sorted by it).</summary>
+    /// <summary>The card shows the date created rather than the date modified (while sorted by it).</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Time))]
+    [NotifyPropertyChangedFor(nameof(Time), nameof(Day), nameof(Tip))]
     private bool _showsCreated;
 
     /// <summary>The date and time shown, in the user's format.</summary>
     public string Time => (ShowsCreated ? Stamp.Created : Stamp.Modified)?.ToLocalTime().ToString("g", CultureInfo.CurrentCulture) ?? "";
+
+    /// <summary>The date alone, for the card (the time doesn't fit under the picture).</summary>
+    public string Day => (ShowsCreated ? Stamp.Created : Stamp.Modified)?.ToLocalTime().ToString("d", CultureInfo.CurrentCulture) ?? "";
+
+    /// <summary>The card's tooltip: the whole path, then the date and time.</summary>
+    public string Tip => Time.Length == 0 ? Path : $"{Path}\n{Time}";
 }
 
 public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
