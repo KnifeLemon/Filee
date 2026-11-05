@@ -44,7 +44,10 @@ internal static class PackageRepacker
     /// <param name="replaced">Parts written with other content (<see cref="LinkedContent"/>), by name.</param>
     /// <exception cref="ConversionRefusedException">The parts unpack to more than a document of this size can hold.</exception>
     public static void Repack(string input, string output, IReadOnlyDictionary<string, byte[]>? replaced = null) =>
-        Repack(input, output, replaced, Math.Max(MaxUnpackedBytes, 2 * new FileInfo(input).Length));
+        Repack(input, output, replaced, MaxUnpacked(input));
+
+    /// <summary>What the package at <paramref name="path"/> may unpack to.</summary>
+    internal static long MaxUnpacked(string path) => Math.Max(MaxUnpackedBytes, 2 * new FileInfo(path).Length);
 
     /// <inheritdoc cref="Repack(string, string, IReadOnlyDictionary{string, byte[]}?)"/>
     /// <param name="maxBytes">The limit (for tests).</param>

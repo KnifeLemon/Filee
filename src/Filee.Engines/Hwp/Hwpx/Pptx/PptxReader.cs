@@ -8,6 +8,7 @@
 
 using System.Globalization;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Ooxml;
 
 namespace Filee.Engines.Hwp.Hwpx.Pptx;
@@ -32,9 +33,12 @@ internal sealed partial class PptxReader
     }
 
     /// <summary>Reads <paramref name="path"/>; pictures are extracted into <paramref name="mediaFolder"/>.</summary>
-    public static HDocument Read(string path, string mediaFolder) => Nesting.OnLargeStack(() =>
+    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, UnpackLimit.For(path));
+
+    /// <summary><see cref="Read(string, string)"/> with another limit (for tests).</summary>
+    internal static HDocument Read(string path, string mediaFolder, UnpackLimit unpack) => Nesting.OnLargeStack(() =>
     {
-        using var package = new OpcPackage(path);
+        using var package = new OpcPackage(path, unpack);
         return new PptxReader(package, mediaFolder).ReadPresentation();
     });
 

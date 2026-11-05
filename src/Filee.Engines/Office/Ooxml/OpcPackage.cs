@@ -19,7 +19,18 @@ internal sealed class OpcPackage : IDisposable
     private readonly Dictionary<string, XDocument?> _parts = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Dictionary<string, OpcRelationship>> _relationships = new(StringComparer.OrdinalIgnoreCase);
 
-    public OpcPackage(string path) => _zip = ZipFile.OpenRead(path);
+    private readonly UnpackLimit _unpack;
+
+    public OpcPackage(string path) : this(path, UnpackLimit.For(path))
+    {
+    }
+
+    /// <summary>A package with another limit on what <see cref="Extract"/> unpacks (for tests).</summary>
+    internal OpcPackage(string path, UnpackLimit unpack)
+    {
+        _zip = ZipFile.OpenRead(path);
+        _unpack = unpack;
+    }
 
     /// <summary>The main part (target of the package's officeDocument relationship), e.g. xl/workbook.xml.</summary>
     public string? MainPartPath =>
@@ -74,7 +85,7 @@ internal sealed class OpcPackage : IDisposable
             return null;
         Directory.CreateDirectory(folder);
         var file = Path.Combine(folder, $"{Guid.NewGuid():N}{Path.GetExtension(partPath)}");
-        entry.ExtractToFile(file);
+        _unpack.Extract(entry, file);
         return file;
     }
 

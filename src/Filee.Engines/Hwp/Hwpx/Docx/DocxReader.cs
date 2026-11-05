@@ -32,6 +32,7 @@ internal sealed partial class DocxReader
     private readonly ZipArchive _zip;
     private readonly BoundedXml _xml = new();
     private readonly string _mediaFolder;
+    private readonly UnpackLimit _unpack;
     private readonly Dictionary<string, Part?> _parts = [];
     private readonly Dictionary<string, string> _media = [];
     private readonly Dictionary<string, XElement> _footnotes = [];
@@ -61,20 +62,24 @@ internal sealed partial class DocxReader
     /// <summary>The part being read; relationship ids (images, links) are resolved against it.</summary>
     private Part _part;
 
-    private DocxReader(ZipArchive zip, string mediaFolder)
+    private DocxReader(ZipArchive zip, string mediaFolder, UnpackLimit unpack)
     {
         _zip = zip;
         _mediaFolder = mediaFolder;
+        _unpack = unpack;
         var mainPath = RelationshipsOf("")
             .FirstOrDefault(r => r.Value.Type.EndsWith("/officeDocument", StringComparison.Ordinal)).Value.Target ?? "word/document.xml";
         _part = LoadPart(mainPath) ?? throw new InvalidDataException("The file is not a Word document (no word/document.xml).");
     }
 
     /// <summary>Reads <paramref name="path"/>; embedded pictures are extracted into <paramref name="mediaFolder"/>.</summary>
-    public static HDocument Read(string path, string mediaFolder) => Nesting.OnLargeStack(() =>
+    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, UnpackLimit.For(path));
+
+    /// <summary><see cref="Read(string, string)"/> with another limit (for tests).</summary>
+    internal static HDocument Read(string path, string mediaFolder, UnpackLimit unpack) => Nesting.OnLargeStack(() =>
     {
         using var zip = ZipFile.OpenRead(path);
-        return new DocxReader(zip, mediaFolder).ReadDocument();
+        return new DocxReader(zip, mediaFolder, unpack).ReadDocument();
     });
 
     // ───────────────────────── Package ─────────────────────────

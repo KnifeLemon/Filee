@@ -27,6 +27,7 @@ internal sealed partial class HwpxReader
     private readonly ZipArchive _zip;
     private readonly BoundedXml _xml = new();
     private readonly string _mediaFolder;
+    private readonly UnpackLimit _unpack;
 
     /// <summary>Manifest item id → zip entry of embedded binaries (pictures).</summary>
     private readonly Dictionary<string, string> _binaryItems = new(StringComparer.Ordinal);
@@ -37,22 +38,27 @@ internal sealed partial class HwpxReader
     /// <summary>Elements the model cannot hold, by local name, with the number of times they were skipped.</summary>
     private readonly Dictionary<string, int> _skipped = new(StringComparer.Ordinal);
 
-    private HwpxReader(ZipArchive zip, string mediaFolder)
+    private HwpxReader(ZipArchive zip, string mediaFolder, UnpackLimit unpack)
     {
         _zip = zip;
         _mediaFolder = mediaFolder;
+        _unpack = unpack;
     }
 
     // ───────────────────────── Entry points ─────────────────────────
 
     /// <summary>Reads <paramref name="path"/>; embedded pictures are extracted into <paramref name="mediaFolder"/>.</summary>
-    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, null);
+    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, (IDictionary<string, int>?)null);
 
     /// <param name="skipped">Receives the elements that were skipped because the model has no equivalent (local name → count).</param>
     public static HDocument Read(string path, string mediaFolder, IDictionary<string, int>? skipped) =>
-        Nesting.OnLargeStack(() => ReadPackage(path, mediaFolder, skipped));
+        Nesting.OnLargeStack(() => ReadPackage(path, mediaFolder, skipped, UnpackLimit.For(path)));
 
-    private static HDocument ReadPackage(string path, string mediaFolder, IDictionary<string, int>? skipped)
+    /// <summary><see cref="Read(string, string)"/> with another limit (for tests).</summary>
+    internal static HDocument Read(string path, string mediaFolder, UnpackLimit unpack) =>
+        Nesting.OnLargeStack(() => ReadPackage(path, mediaFolder, null, unpack));
+
+    private static HDocument ReadPackage(string path, string mediaFolder, IDictionary<string, int>? skipped, UnpackLimit unpack)
     {
         ZipArchive zip;
         try
@@ -66,7 +72,7 @@ internal sealed partial class HwpxReader
 
         using (zip)
         {
-            var reader = new HwpxReader(zip, mediaFolder);
+            var reader = new HwpxReader(zip, mediaFolder, unpack);
             var document = reader.ReadDocument();
             if (skipped is not null)
             {
@@ -217,9 +223,7 @@ internal sealed partial class HwpxReader
         {
             Directory.CreateDirectory(_mediaFolder);
             path = Path.Combine(_mediaFolder, $"hwpx-media-{_media.Count + 1}{Path.GetExtension(entry.Name).ToLowerInvariant()}");
-            using var source = entry.Open();
-            using var target = File.Create(path);
-            source.CopyTo(target);
+            _unpack.Extract(entry, path);
         }
         _media[itemId] = path;
         return path;
