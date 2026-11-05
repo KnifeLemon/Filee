@@ -31,6 +31,40 @@ public class SingleInstanceTests
     }
 
     [Fact]
+    public async Task Burst_diagnostic()
+    {
+        const int Rounds = 200;
+        var late = new List<string>();
+        var lost = new List<string>();
+        for (var round = 0; round < Rounds; round++)
+        {
+            var name = "Filee-test-" + Guid.NewGuid().ToString("N")[..8];
+            using var first = SingleInstance.Acquire(name);
+            var received = new System.Collections.Concurrent.ConcurrentBag<string>();
+            first.ArgumentsReceived += args => received.Add(args[^1]);
+            first.StartListening();
+
+            var results = await Task.WhenAll(Enumerable.Range(0, 200).Select(i => Task.Factory.StartNew(() =>
+            {
+                using var later = SingleInstance.Acquire(name);
+                return later.Forward(["--convert", $"{i}.png"], TimeSpan.FromSeconds(30));
+            }, TestContext.Current.CancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
+            var undelivered = results.Count(r => r != ForwardResult.Delivered);
+
+            var immediately = received.Distinct().Count();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            while (received.Count < 200 && clock.Elapsed < TimeSpan.FromSeconds(10))
+                await Task.Delay(1, TestContext.Current.CancellationToken);
+            var final = received.Distinct().Count();
+            if (immediately < 200 && final == 200)
+                late.Add($"{immediately}+{clock.ElapsedMilliseconds}ms");
+            if (final < 200 || undelivered > 0)
+                lost.Add($"round {round}: got {final}, undelivered {undelivered}");
+        }
+        Assert.Fail($"BURST rounds={Rounds} late={late.Count} [{string.Join(' ', late.Take(40))}] lost={lost.Count} [{string.Join("; ", lost.Take(20))}]");
+    }
+
+    [Fact]
     public async Task A_burst_of_later_launches_loses_nothing()
     {
         // Explorer starts one Filee per selected file (issue #767): they all queue for the one pipe at the same time.
