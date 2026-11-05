@@ -6,6 +6,7 @@ using System.IO.Compression;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Office.Ooxml;
 
 namespace Filee.Engines.Office.Sheets;
@@ -564,11 +565,7 @@ public static partial class SpreadsheetPrintPackage
         }
     }
 
-    private static XDocument Load(ZipArchiveEntry entry)
-    {
-        using var stream = entry.Open();
-        return XDocument.Load(stream, LoadOptions.PreserveWhitespace);
-    }
+    private static XDocument Load(ZipArchiveEntry entry) => BoundedXml.Part(entry, LoadOptions.PreserveWhitespace);
 
     private static XElement Ensure(XElement root, string localName)
     {

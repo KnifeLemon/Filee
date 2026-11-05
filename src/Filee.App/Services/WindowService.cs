@@ -851,13 +851,18 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// <summary>A message with only an OK button. Without a visible owner it shows on its own, centred on the screen.</summary>
     public Task MessageAsync(Window? owner, string message) => ShowMessageAsync(owner, message, destructive: false, withCancel: false);
 
-    /// <summary>The in-app update failed: say so, then open the website to download the new version there.</summary>
+    /// <summary>
+    /// The in-app update failed: say so (that it wasn't Filee's, when the check refused it), then open the website to
+    /// download the new version there.
+    /// </summary>
     public async Task ShowUpdateFailedAsync()
     {
         _updateNotice?.Close();
         _updateProgress?.Close();
-        await MessageAsync(_main is { IsVisible: true } main ? main : null, loc["update.failed_alert"]);
-        services.GetRequiredService<UpdateService>().OpenDownloadPage();
+        var updates = services.GetRequiredService<UpdateService>();
+        var message = updates.LastError is UpdateVerificationException ? "update.unverified_alert" : "update.failed_alert";
+        await MessageAsync(_main is { IsVisible: true } main ? main : null, loc[message]);
+        updates.OpenDownloadPage();
     }
 
     /// <summary>

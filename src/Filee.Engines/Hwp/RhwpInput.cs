@@ -29,6 +29,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Hwp;
 
@@ -79,10 +80,11 @@ internal static partial class RhwpInput
             {
                 if (zip.GetEntry("Contents/header.xml") is not { } entry)
                     return null;
-                header = Load(entry);
+                var parts = new BoundedXml();
+                header = Load(parts, entry);
                 fromHwp = zip.GetEntry(Hwp5OriginMarker) is not null;
                 foreach (var section in zip.Entries.Where(e => e.FullName.StartsWith("Contents/section", StringComparison.Ordinal) && e.FullName.EndsWith(".xml", StringComparison.Ordinal)))
-                    sections.Add((section.FullName, Load(section)));
+                    sections.Add((section.FullName, Load(parts, section)));
             }
 
             var text = new StringBuilder();
@@ -160,11 +162,8 @@ internal static partial class RhwpInput
         }
     }
 
-    private static XDocument Load(ZipArchiveEntry entry)
-    {
-        using var stream = entry.Open();
-        return XDocument.Load(stream, LoadOptions.PreserveWhitespace); // spaces in hp:t are text
-    }
+    private static XDocument Load(BoundedXml parts, ZipArchiveEntry entry) =>
+        parts.Load(entry, LoadOptions.PreserveWhitespace); // spaces in hp:t are text
 
     private static bool ApplyFonts(XDocument header, string text, Func<string, InstalledFont?> lookup)
     {
@@ -239,8 +238,11 @@ internal static partial class RhwpInput
     internal static bool GroupFloatingHeaderPictures(XDocument section)
     {
         var changed = false;
-        foreach (var paragraph in section.Descendants().Where(e => e.Name.LocalName is "header" or "footer").Elements()
-                     .Where(e => e.Name.LocalName == "subList").Elements().Where(e => e.Name.LocalName == "p" && Child(e, "linesegarray") is null))
+        // Listed first: a group holds copies of its picture, and a walk going on into them would find a header nested in
+        // the picture twice over, at every level (a few kilobytes would come to more than any memory holds).
+        var paragraphs = section.Descendants().Where(e => e.Name.LocalName is "header" or "footer").Elements()
+            .Where(e => e.Name.LocalName == "subList").Elements().Where(e => e.Name.LocalName == "p" && Child(e, "linesegarray") is null).ToList();
+        foreach (var paragraph in paragraphs)
         {
             var runs = paragraph.Elements().Where(e => e.Name.LocalName == "run").ToList();
             var floating = runs.Elements().Where(e => e.Name.LocalName == "pic" && (string?)Child(e, "pos")?.Attribute("treatAsChar") == "0").ToList();

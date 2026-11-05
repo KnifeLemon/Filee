@@ -47,6 +47,10 @@ public class SingleInstanceTests
         }, TestContext.Current.CancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
 
         Assert.All(results, result => Assert.Equal(ForwardResult.Delivered, result));
+        // Delivered means written: the first instance reads the last ones a moment later. One that never comes fails here.
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (received.Count < 200 && waited.Elapsed < TimeSpan.FromSeconds(10))
+            await Task.Delay(10, TestContext.Current.CancellationToken);
         Assert.Equal(200, received.Distinct().Count());
     }
 

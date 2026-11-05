@@ -217,8 +217,21 @@ internal static class OmmlReader
         ['\u20E1'] = "dyad",
     };
 
+    /// <summary>
+    /// Element levels of an equation read as its tree. Deeper equations (none that Word makes: a fraction in a fraction
+    /// takes three levels) become their text in a row, as the tree and its users recurse per level.
+    /// </summary>
+    private const int MaxDepth = 200;
+
     /// <summary>The equation tree of one m:oMath.</summary>
-    public static MathNode Read(XElement oMath) => Content(oMath, roman: false);
+    public static MathNode Read(XElement oMath)
+    {
+        if (!Nesting.Deeper(oMath, MaxDepth))
+            return Content(oMath, roman: false);
+        var items = new List<MathNode>();
+        Text(string.Concat(oMath.Descendants().Where(e => e.Name == M + "t" || e.Name == W + "t").Select(t => t.Value)), items, Style.Italic);
+        return new MathRow(items);
+    }
 
     /// <summary>
     /// An equation with its number apart: typing "E#(1)" makes Word keep E and (1) in an equation array of one row, E in

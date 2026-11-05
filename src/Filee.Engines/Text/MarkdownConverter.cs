@@ -53,10 +53,16 @@ public sealed class MarkdownConverter : IConverter
         var inputFolder = Path.GetDirectoryName(inputPath)!;
         if (!string.Equals(inputFolder, Path.GetDirectoryName(Path.GetFullPath(outputPath)), StringComparison.OrdinalIgnoreCase))
         {
-            // Relative image paths would break away from the Markdown file: point them at the original files.
+            // Relative image paths would break away from the Markdown file: point them at the original files. Local
+            // pictures from outside its folder are left out, as the document readers leave them out (the page may be a
+            // step towards LibreOffice, which would embed them).
             foreach (var image in document.Descendants<LinkInline>().Where(l => l.IsImage))
+            {
                 if (MarkdownReader.ResolveImage(image.Url, inputFolder) is { } path)
                     image.Url = new Uri(path).AbsoluteUri;
+                else if (!Uri.TryCreate(image.Url, UriKind.Absolute, out var uri) || uri.IsFile)
+                    image.Url = "";
+            }
         }
 
         using var writer = new StringWriter();

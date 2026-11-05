@@ -202,7 +202,8 @@ public class TranslatePresetMigrationTests
         using var dir = new TempDir();
         var store = Saved(dir);
         var settings = JsonNode.Parse(File.ReadAllText(Path.Combine(dir.Path, "settings.json")))!;
-        Assert.Equal(AppSettings.CurrentSchemaVersion, settings["schemaVersion"]!.GetValue<int>());
+        settings["schemaVersion"] = 69;
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), settings.ToJsonString());
 
         store.Presets.RemoveAll(p => p.Id == Id);
         store.SaveLibrary();

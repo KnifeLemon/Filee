@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -945,8 +946,10 @@ public sealed partial class JobQueue : IAsyncDisposable
             else if (finalOutput && inputs.Count == 1 && final is { Handed: 1 })
                 inputs = [NextToSource(job, file, index, inputs[0], final)];
 
-            // The source's dates are read now: "Replace the original" may send it to the Trash below.
+            // The source's dates and Mark of the Web are read now: "Replace the original" may send it to the Trash below.
             var dates = finalOutput && runWith.Output.KeepDates ? DatesOf(file.SourcePath) : null;
+            // A file converted from one that came from the internet still did (Office's macro block, SmartScreen).
+            var mark = finalOutput ? Platform.MarkOfTheWeb.Read(file.SourcePath) : null;
             if (finalOutput && !zipResult && inputs.Count == 1)
                 inputs = [ReplaceOriginal(job, file, source.Id, inputs[0], copiedSource)];
 
@@ -957,6 +960,9 @@ public sealed partial class JobQueue : IAsyncDisposable
                 file.Outputs.AddRange(inputs);
                 if (dates is { } kept)
                     CopyDates(kept, inputs);
+                if (mark is not null)
+                    foreach (var output in inputs.Where(File.Exists))
+                        Platform.MarkOfTheWeb.TryWrite(output, mark, _log);
             }
             file.State = inputs.Count == 0 && finalOutput ? FileState.Skipped : FileState.Done;
             file.Progress = ceiling;
@@ -1356,8 +1362,11 @@ public sealed partial class JobQueue : IAsyncDisposable
         }
     }
 
-    /// <summary>Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>.</summary>
-    public static string DefaultWorkRoot => Path.Combine(Path.GetTempPath(), "Filee");
+    /// <summary>
+    /// Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>: a folder only the user
+    /// can open (<see cref="WorkFolders.Root"/>).
+    /// </summary>
+    public static string DefaultWorkRoot => WorkFolders.Root;
 
     /// <summary>
     /// Deletes the work folders of jobs a crash, a forced quit or a power cut kept from removing them: intermediate
@@ -1370,7 +1379,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             var root = new DirectoryInfo(workRoot);
-            // A temp folder everyone can write in (/tmp on Linux) may hold a link to somewhere else: never follow one.
+            // A work root (or a folder in it) may be a link to somewhere else: never follow one.
             if (!root.Exists || root.LinkTarget is not null)
                 return;
             foreach (var folder in root.EnumerateDirectories())

@@ -290,7 +290,7 @@ public sealed class Preset
     public const string BackgroundTool = "background";
 
     /// <summary>
-    /// <see cref="Tool"/> of "Metadata" (settings schema 70): every metadata field of a file shown, edited or removed
+    /// <see cref="Tool"/> of "Metadata" (settings schema 71): every metadata field of a file shown, edited or removed
     /// with ExifTool, the picture or document itself untouched.
     /// </summary>
     public const string MetadataTool = "metadata";
