@@ -113,6 +113,9 @@ public sealed class PresetAvailability
     {
         if (preset.IsCopyToFolder)
             return new(PresetUse.Usable, null);
+        // Single-file compressors also implement combining, but cannot hold a directory tree.
+        if (formats.Count > 0 && formats.All(f => f.Id == FormatRegistry.Folder) && !BuiltInData.AcceptsFolders(preset))
+            return new(PresetUse.Unusable, _loc["error.no_route"]);
 
         if (preset.IsClipTool)
         {

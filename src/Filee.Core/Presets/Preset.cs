@@ -120,6 +120,9 @@ public sealed class Preset
     /// <summary>Options used for archives (ZIP, 7Z, TAR ...).</summary>
     public ArchiveOptions Archive { get; set; } = new();
 
+    /// <summary>Filesystem options for folder ISO creation.</summary>
+    public IsoOptions Iso { get; set; } = new();
+
     /// <summary>Options used when a raster image is traced into vector shapes (PNG → SVG, DXF ...).</summary>
     public TracingOptions Trace { get; set; } = new();
 
@@ -161,7 +164,7 @@ public sealed class Preset
     public bool PacksIntoOneArchive =>
         Archive.CombineIntoOne
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
-        && archive.Id != Formats.FormatRegistry.Folder;
+        && archive.Id != Formats.FormatRegistry.Folder && archive.Id != "iso";
 
     /// <summary>Formats the translator can directly read from (documents, e-books, text and SRT / WebVTT subtitles).</summary>
     public static readonly string[] TranslatorSourceFormats =
@@ -363,6 +366,7 @@ public sealed class Preset
         Document = Document.Clone(),
         Media = Media.Clone(),
         Archive = Archive.Clone(),
+        Iso = Iso.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
         Translate = Translate.Clone(),

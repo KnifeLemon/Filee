@@ -1531,5 +1531,11 @@
   "home.queue_clear": "Clear list",
   "home.queue_remove": "Remove",
   "general.collect_dropped": "Collect dropped files in a list",
-  "general.collect_dropped_hint": "Dropped and picked files wait in a list on the Home page, and Choose action converts them together in the order shown. Off: each drop opens the donut, as before."
+  "general.collect_dropped_hint": "Dropped and picked files wait in a list on the Home page, and Choose action converts them together in the order shown. Off: each drop opens the donut, as before.",
+  "engine.iso.name": "ISO",
+  "engine.iso.description": "Creates ISO images from folders or archive contents, preserving Unicode names and empty folders.",
+  "preset.iso_image": "ISO image",
+  "profile.folders": "Folders",
+  "presets.iso_standard": "ISO standard",
+  "presets.iso_standard_hint": "Joliet preserves Unicode names. Plain ISO 9660 uses legacy uppercase ASCII names; names may be shortened."
 }

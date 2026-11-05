@@ -20,6 +20,7 @@ Each component remains under its own license.
 | Svg.Skia (incl. Svg, ShimSkiaSharp, ExCSS; text shaping in `Filee.Engines/Vector/OutlinedTextPlayback.cs` adapted from it) | MIT | https://github.com/wieslawsoltes/Svg.Skia |
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
 | SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
+| DiscUtils.Iso9660 (including DiscUtils.Core and DiscUtils.Streams; ISO creation) | MIT | https://github.com/DiscUtils/DiscUtils |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |

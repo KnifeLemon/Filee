@@ -1,5 +1,31 @@
 # Conversion engines
 
+## Folder-to-ISO creation (issue #632)
+
+A folder selection opens its **Folders** donut, offering **ISO image**, **ZIP**, **7Z**, **TAR**, **TAR.GZ**,
+**TAR.BZ2** and **TAR.XZ**. Archive actions reuse the existing archive writers and pack selected folders, including
+their nested contents, into one archive. Raw GZ/BZ2/XZ and read-only formats such as RAR are not folder archive
+targets. Archive options requiring 7-Zip are disabled when it is unavailable. Each selected folder creates a separate ISO,
+with its contents at the disc root. The ISO preset is also available in the preset library, but is not added to
+the Archives donut by default. Settings > Toolbar > Archives offers it under Available presets for users to add
+manually. Supported archives can also be converted to ISO: Filee safely extracts them into its temporary work folder,
+then writes their contents into the image. Password-protected archives fail with a clear message.
+CLI: `filee convert "path/to/folder" --to iso` or `filee convert "backup.zip" --to iso`; ordinary folder expansion for other
+targets stays unchanged. Folder classification occurs in input handling, not generic format detection.
+
+DiscUtils.Iso9660 writes ISO 9660 + Joliet (the default) or plain ISO 9660 in-process, selected in the ISO preset's
+**ISO standard** control. Plain ISO uses legacy uppercase ASCII names and may shorten names; entries that map to
+the same name are rejected before writing the output. Both standards create `.iso` files and preserve empty
+directories. ISO writing needs no additional external program; archive reading uses the existing extraction engine.
+UDF is not included.
+Joliet preserves Unicode BMP names. Individual Joliet names must fit
+64 UTF-16 characters and relative disc paths 240; control characters, semicolons, backslashes and supplementary
+Unicode characters are rejected clearly. Individual files must be smaller than 4 GiB. Symbolic links/junctions
+are rejected rather than followed. File contents are streamed, progress reports bytes written, and cancellation
+is checked during enumeration and streaming. A previous destination inside the source is excluded from the image.
+The new image is written to a temporary sibling and replaces its destination only after successful completion;
+failures and cancellation leave any previous image intact. Images are data discs, not bootable clones.
+
 Filee chooses engines automatically. Settings → *Engines* shows their status, lets you change the priority
 (higher wins when two engines can do the same conversion), and install or remove the optional engines.
 

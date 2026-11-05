@@ -1,0 +1,106 @@
+// Creates data ISO images in-process; folder contents become the disc root without an external program.
+
+using DiscUtils.Iso9660;
+using Filee.Core.Conversion;
+using Filee.Core.Formats;
+using Filee.Core.Platform;
+using Filee.Core.Presets;
+
+namespace Filee.Engines.Archives;
+
+/// <summary>Writes ISO 9660, optionally with Joliet names, from explicitly identified folder inputs.</summary>
+public sealed class FolderIsoConverter : IConverter
+{
+    /// <inheritdoc />
+    public string Id => "iso";
+    /// <inheritdoc />
+    public string DisplayName => "ISO images";
+    /// <inheritdoc />
+    public int MaxParallelism => 2;
+    /// <inheritdoc />
+    public IReadOnlyList<ConversionEdge> Edges { get; } = [new(FormatRegistry.Folder, "iso", DirectOnly: true)];
+    /// <inheritdoc />
+    public EngineStatus GetStatus() => EngineStatus.Available(version: "DiscUtils 0.16.13");
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken ct) =>
+        Task.Run<IReadOnlyList<string>>(() =>
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Report(0);
+            var root = new DirectoryInfo(Path.GetFullPath(Path.TrimEndingDirectorySeparator(step.InputPath)));
+            if (!root.Exists) throw new DirectoryNotFoundException(root.FullName);
+            if (root.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                throw new NotSupportedException("Select an original folder, not a symbolic link or junction.");
+            var output = step.Output.Allocate("iso");
+            if (output is null) return [];
+            output = Path.GetFullPath(output);
+            var standard = step.Preset.Iso.Standard;
+            if (!Enum.IsDefined(standard)) throw new NotSupportedException("Unsupported ISO standard.");
+            var joliet = standard == IsoStandard.Iso9660Joliet;
+            var builder = new CDBuilder { UseJoliet = joliet, VolumeIdentifier = "FILEE" };
+            void Add(DirectoryInfo directory, string prefix)
+            {
+                var shortNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var entry in directory.EnumerateFileSystemInfos())
+                {
+                    ct.ThrowIfCancellationRequested();
+                    if (FileSystemPaths.Comparer.Equals(entry.FullName, output)) continue;
+                    if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+                        throw new NotSupportedException($"ISO creation does not follow symbolic links or junctions: '{entry.Name}'.");
+                    var name = prefix + entry.Name;
+                    if (!joliet && entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\'))
+                        throw new NotSupportedException($"ISO creation cannot represent the name '{name}'. Rename it before creating the image.");
+                    if (joliet && (entry.Name.Length > 64 || entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\') || name.Length > 240))
+                        throw new NotSupportedException($"Joliet cannot preserve '{name}': names must be at most 64 BMP Unicode characters without control characters, semicolons or backslashes; paths must be at most 240 characters.");
+                    BuildDirectoryMember member;
+                    if (entry is DirectoryInfo child)
+                    {
+                        member = builder.AddDirectory(name);
+                        Add(child, name + "\\");
+                    }
+                    else
+                    {
+                        if (((FileInfo)entry).Length > uint.MaxValue)
+                            throw new NotSupportedException($"ISO creation requires individual files smaller than 4 GiB: '{name}'.");
+                        member = builder.AddFile(name, entry.FullName);
+                    }
+                    member.CreationTime = entry.LastWriteTimeUtc;
+                    if (!joliet && !shortNames.Add(member.ShortName))
+                        throw new NotSupportedException($"ISO 9660 maps multiple entries to '{member.ShortName}' in '{directory.FullName}'. Rename them or select Joliet.");
+                }
+            }
+            // Build the manifest before opening the temporary output, including when the destination is in the source.
+            Add(root, "");
+            ct.ThrowIfCancellationRequested();
+            var temporary = Path.Combine(Path.GetDirectoryName(output)!, ".filee-iso-" + Guid.NewGuid().ToString("N") + ".tmp");
+            try
+            {
+                using (var image = builder.Build())
+                using (var destination = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    var buffer = new byte[65536];
+                    long copied = 0;
+                    long lastReport = 0;
+                    int count;
+                    while ((count = image.Read(buffer, 0, buffer.Length)) != 0)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        destination.Write(buffer, 0, count);
+                        copied += count;
+                        var now = System.Diagnostics.Stopwatch.GetTimestamp();
+                        if (copied == image.Length || System.Diagnostics.Stopwatch.GetElapsedTime(lastReport, now).TotalMilliseconds >= 100)
+                        {
+                            lastReport = now;
+                            progress?.Report(Math.Min(0.99, copied / (double)image.Length));
+                        }
+                    }
+                }
+                ct.ThrowIfCancellationRequested();
+                File.Move(temporary, output, overwrite: true);
+                progress?.Report(1);
+                return [output];
+            }
+            finally { if (File.Exists(temporary)) File.Delete(temporary); }
+        }, ct);
+}

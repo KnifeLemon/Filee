@@ -1029,6 +1029,44 @@ internal static class SettingsMigrations
         //      if another change takes it first.)
         if (from < 69 && presets.All(p => p.Id != "translate"))
             changed |= AddTranslatePreset(presets);
+        // v70: folder inputs have their own small ISO donut; existing archive donuts remain untouched.
+        if (from < 70)
+        {
+            var hadIsoPreset = presets.Any(p => p.Id == "to-iso");
+            if (presets.All(p => p.Id != "to-iso"))
+            {
+                presets.Add(BuiltInData.CreatePresets().Single(p => p.Id == "to-iso"));
+                changed = true;
+            }
+            // A library already containing our ISO preset may have deliberately removed its Folders donut.
+            if (!hadIsoPreset && profiles.All(p => p.Id != "folders"))
+            {
+                var at = profiles.FindIndex(p => p.Id == "archives");
+                if (at >= 0) at++;
+                else { at = profiles.FindIndex(p => p.IsFallback); if (at < 0) at = profiles.Count; }
+                profiles.Insert(at, BuiltInData.CreateProfiles().Single(p => p.Id == "folders"));
+                changed = true;
+            }
+        }
+        // v71: name the folder profile for its inputs and offer all existing folder-capable archive writers.
+        if (from < 71)
+        {
+            foreach (var preset in BuiltInData.FolderArchivePresets())
+                if (presets.All(p => p.Id != preset.Id))
+                {
+                    presets.Add(preset);
+                    changed = true;
+                }
+            if (profiles.FirstOrDefault(p => p.Id == "folders") is { } folder
+                && string.IsNullOrEmpty(folder.Name) && folder.NameKey == "preset.iso_image")
+            {
+                folder.NameKey = "profile.folders";
+                // Upgrade the previous test build's untouched layout; preserve user-edited slices and back faces.
+                if (folder.PresetIds.SequenceEqual(new[] { "to-iso" }) && folder.BackPresetIds is not { Count: > 0 })
+                    folder.PresetIds = BuiltInData.CreateProfiles().Single(p => p.Id == "folders").PresetIds;
+                changed = true;
+            }
+        }
         return changed;
     }
 

@@ -1511,5 +1511,11 @@
   "home.queue_clear": "リストをクリア",
   "home.queue_remove": "削除",
   "general.collect_dropped": "ドロップしたファイルをリストにまとめる",
-  "general.collect_dropped_hint": "ドロップまたは選択したファイルはホームのリストで待ち、「操作を選択」で表示順にまとめて変換します。オフ：ドロップごとに従来どおりドーナツが開きます。"
+  "general.collect_dropped_hint": "ドロップまたは選択したファイルはホームのリストで待ち、「操作を選択」で表示順にまとめて変換します。オフ：ドロップごとに従来どおりドーナツが開きます。",
+  "engine.iso.name": "ISO",
+  "engine.iso.description": "フォルダーまたはアーカイブの内容から ISO イメージを作成し、Unicode 名と空のフォルダーを保持します。",
+  "preset.iso_image": "ISOイメージ",
+  "profile.folders": "フォルダー",
+  "presets.iso_standard": "ISO規格",
+  "presets.iso_standard_hint": "JolietはUnicode名を保持します。標準のISO 9660は従来の大文字ASCII名を使用し、名前が短縮される場合があります。"
 }

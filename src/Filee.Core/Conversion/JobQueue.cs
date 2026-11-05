@@ -67,9 +67,10 @@ public sealed partial class JobQueue : IAsyncDisposable
 
     /// <summary>Adds a job to the queue and returns it immediately.</summary>
     /// <param name="fetcher">Saves sources that aren't files yet (files from a browser) when the job runs.</param>
-    public ConversionJob Enqueue(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null)
+    public ConversionJob Enqueue(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null,
+        IReadOnlySet<string>? folderSources = null)
     {
-        var job = new ConversionJob(sources, preset, presetDisplayName, fetcher);
+        var job = new ConversionJob(sources, preset, presetDisplayName, fetcher, folderSources);
         Interlocked.Increment(ref _busy); // until the worker is done with it
         _channel.Writer.TryWrite(job);
         JobUpdated?.Invoke(this, job);
@@ -764,7 +765,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         var runWith = options ?? job.Preset;
         if (Stopped(file))
             return [];
-        var source = FormatRegistry.Detect(file.SourcePath);
+        var source = file.IsFolder ? FormatRegistry.FindById(FormatRegistry.Folder) : FormatRegistry.Detect(file.SourcePath);
         if (source is null)
             return Fail(file, "error.unsupported_source", "." + FormatRegistry.ExtensionOf(file.SourcePath));
         // A file just made with "New" in the file manager stays 0 bytes until its app saves it: no engine can read it,
@@ -868,7 +869,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                 var isLast = s == route.Steps.Count - 1;
                 IOutputAllocator allocator = isLast && finalOutput && !zipResult
                     ? final = CreateFinalAllocator(job, file.SourcePath, index)
-                    : new TempAllocator(workDir, FormatRegistry.NameWithoutExtension(file.SourcePath));
+                    : new TempAllocator(workDir, file.IsFolder ? Path.GetFileName(Path.TrimEndingDirectorySeparator(file.SourcePath)) : FormatRegistry.NameWithoutExtension(file.SourcePath));
 
                 var outputs = new List<string>();
                 foreach (var input in inputs)
@@ -1101,7 +1102,8 @@ public sealed partial class JobQueue : IAsyncDisposable
     /// <param name="oneFile">The output is one file whatever happens (a merged PDF, a multi-page TIFF, an archive).</param>
     private FinalAllocator CreateFinalAllocator(ConversionJob job, string sourcePath, int index, bool oneFile = false) =>
         new(this, oneFile ? ForOneFile(job.Preset.Output) : job.Preset.Output,
-            new OutputPathResolver.Tokens(sourcePath, job.PresetDisplayName, index, job.CreatedAt));
+            new OutputPathResolver.Tokens(sourcePath, job.PresetDisplayName, index, job.CreatedAt,
+                job.Files.Any(f => f.IsFolder && FileSystemPaths.Comparer.Equals(f.SourcePath, sourcePath))));
 
     /// <summary>
     /// The rule for a single output file: with <see cref="OutputRule.SubfolderOnlyForSeveralFiles"/> it is saved next to
@@ -1135,7 +1137,7 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         lock (_reservedOutputs)
         {
-            var tokens = new OutputPathResolver.Tokens(file.SourcePath, job.PresetDisplayName, index, job.CreatedAt);
+            var tokens = new OutputPathResolver.Tokens(file.SourcePath, job.PresetDisplayName, index, job.CreatedAt, file.IsFolder);
             var target = OutputPathResolver.Resolve(rule, tokens, Path.GetExtension(output),
                 p => !PathsEqual(p, output) && (File.Exists(p) || Directory.Exists(p) || _reservedOutputs.ContainsKey(p)));
             if (target is null || PathsEqual(target, output))

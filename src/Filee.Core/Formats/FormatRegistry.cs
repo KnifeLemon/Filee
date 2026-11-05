@@ -7,7 +7,7 @@ namespace Filee.Core.Formats;
 /// <summary>Lookup table of every format Filee knows about.</summary>
 public static class FormatRegistry
 {
-    /// <summary>Pseudo format of the "Extract" preset: the output is a folder with the archive's files.</summary>
+    /// <summary>Pseudo format for archive extraction outputs and folders explicitly classified at input handling.</summary>
     public const string Folder = "folder";
 
     /// <summary>All known formats. Order is the order shown in format pickers.</summary>
@@ -317,7 +317,7 @@ public static class FormatRegistry
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),
         new("rpm", "RPM", FormatCategory.Archive, ["rpm"], Writable: false),
         new("dmg", "DMG", FormatCategory.Archive, ["dmg"], Writable: false),
-        new("iso", "ISO", FormatCategory.Archive, ["iso"], Writable: false),
+        new("iso", "ISO", FormatCategory.Archive, ["iso"]),
         new("img", "IMG", FormatCategory.Archive, ["img"], Writable: false),
         new("lha", "LHA", FormatCategory.Archive, ["lha", "lzh"], Writable: false),
         new("arj", "ARJ", FormatCategory.Archive, ["arj"], Writable: false),

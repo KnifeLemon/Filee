@@ -759,10 +759,15 @@ public class PresetAvailabilityTests
         Assert.Equal(f.Availability.Check(f.Preset("test-mp4"), [Fixture.Format("png")]),
             vm.Palette.Single(c => c.PresetId == "test-mp4").Reason);
         Assert.DoesNotContain(vm.Palette, c => c.PresetId == "test-wav");
-        var warning = Assert.Single(log.Warnings);
-        Assert.Equal(LogLevel.Warning, warning.Level);
-        Assert.IsType<InvalidOperationException>(warning.Exception);
-        Assert.Contains("test-pack", warning.Message);
+        // The default folder-packing presets also exercise this failing combiner.
+        var expectedWarnings = new[] { "test-pack" }.Concat(BuiltInData.FolderArchivePresets().Select(p => p.Id)).ToArray();
+        Assert.Equal(expectedWarnings.Length, log.Warnings.Count);
+        foreach (var id in expectedWarnings)
+        {
+            var warning = Assert.Single(log.Warnings, w => w.Message.Contains(id, StringComparison.Ordinal));
+            Assert.Equal(LogLevel.Warning, warning.Level);
+            Assert.IsType<InvalidOperationException>(warning.Exception);
+        }
         Assert.DoesNotContain(vm.Palette, c => c.PresetId == "zip-all");
     }
 
