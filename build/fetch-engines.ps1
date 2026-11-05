@@ -146,7 +146,7 @@ function Get-Engine([string]$name, [switch]$X64) {
         return $file
     }
     Write-Host "get  $name  $($info.Url)"
-    Invoke-WebRequest -Uri $info.Url -OutFile $file -UseBasicParsing
+    Invoke-WebRequest -Uri $info.Url -OutFile $file -UseBasicParsing -UserAgent 'Filee-build'
     $hash = (Get-FileHash $file -Algorithm SHA256).Hash
     if ($hash -ne $info.Sha256) {
         Remove-Item $file

@@ -230,6 +230,125 @@ public sealed class MetadataWindowTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void A_place_in_the_maker_notes_is_named_as_staying_and_the_notice_follows_the_language()
+    {
+        var engines = new MetadataEngines
+        {
+            Locate = () => "/fake/exiftool",
+            Read = (_, _) => Task.FromResult<IReadOnlyList<MetadataField>>(
+                [new("EXIF", "GPS", "GPSLatitude", "45", true), new("MakerNotes", "Panasonic", "City", "Venice", false), new("MakerNotes", "Sony", "FocusLocation", "1", false)]),
+        };
+        var vm = new MetadataViewModel(Files("trip.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        var loc = AppHost.Get<ILocalizer>();
+
+        Assert.Equal(loc.Format("metadata.location_kept", "City"), vm.LocationNotice);
+        var window = new MetadataWindow { DataContext = vm };
+        window.Show();
+        RenderTests.Pump();
+        Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible && text.Text == vm.LocationNotice);
+
+        var languages = AppHost.Get<LocalizationService>();
+        languages.SetLanguage("ko");
+        try
+        {
+            Assert.Equal(loc.Format("metadata.location_kept", "City"), vm.LocationNotice);
+            Assert.Contains("위치 지우기", vm.LocationNotice, StringComparison.Ordinal);
+            RenderTests.Pump();
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible && text.Text == vm.LocationNotice);
+        }
+        finally
+        {
+            languages.SetLanguage("en");
+            window.Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("ride.mp4", true)]
+    [InlineData("ride.mov", true)]
+    [InlineData("photo.jpg", false)]
+    [InlineData("still.heic", false)]
+    public void A_video_says_its_tracks_can_hold_location_that_isnt_shown(string name, bool video)
+    {
+        var engines = new MetadataEngines
+        {
+            Locate = () => "/fake/exiftool",
+            Read = (_, _) => Task.FromResult<IReadOnlyList<MetadataField>>([new("EXIF", "IFD0", "Make", "Acme", true)]),
+        };
+        var vm = new MetadataViewModel(Files(name), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+
+        Assert.Equal(video ? AppHost.Get<ILocalizer>()["metadata.location_tracks"] : "", vm.LocationNotice);
+    }
+
+    [AvaloniaFact]
+    public void What_cant_be_saved_here_has_no_location_notice()
+    {
+        var harness = new FakeExifTool { Installed = false };
+        var vm = new MetadataViewModel(Files("ride.mp4"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), harness.Engines, (_, _) => { });
+        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+
+        Assert.False(vm.CanEdit);
+        Assert.Equal("", vm.LocationNotice);
+    }
+
+    [AvaloniaFact]
+    public void ExifTool_without_Perl_shows_the_fields_read_only_and_says_what_is_missing()
+    {
+        var harness = new FakeExifTool();
+        var engines = new MetadataEngines { Locate = harness.Engines.Locate, Read = harness.Engines.Read, ReadWithout = harness.Engines.ReadWithout, NeedsPerl = _ => true };
+        var vm = new MetadataViewModel(Files("photo.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+
+        Assert.False(vm.CanEdit);
+        Assert.False(vm.CanInstall);
+        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_perl"], vm.ReadOnlyNotice);
+    }
+
+    [AvaloniaFact]
+    public void A_kind_of_file_ExifTool_doesnt_write_says_so_without_Perl_too()
+    {
+        var harness = new FakeExifTool();
+        var engines = new MetadataEngines { Locate = harness.Engines.Locate, Read = harness.Engines.Read, ReadWithout = harness.Engines.ReadWithout, NeedsPerl = _ => true };
+        var vm = new MetadataViewModel(Files("song.mp3"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+
+        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.unwritable"], vm.ReadOnlyNotice);
+    }
+
+    [AvaloniaFact]
+    public async Task ExifTool_installed_on_a_computer_without_Perl_changes_the_notice_once()
+    {
+        var harness = new FakeExifTool { Installed = false };
+        var reads = 0;
+        var engines = new MetadataEngines
+        {
+            Locate = harness.Engines.Locate,
+            Read = harness.Engines.Read,
+            ReadWithout = path =>
+            {
+                reads++;
+                return harness.Engines.ReadWithout(path);
+            },
+            NeedsPerl = _ => true,
+        };
+        var vm = new MetadataViewModel(Files("photo.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        Assert.True(vm.CanInstall);
+
+        harness.Installed = true;
+        await vm.RecheckEngineAsync();
+        Wait(() => !vm.IsBusy && vm.LacksPerl);
+
+        Assert.False(vm.CanInstall);
+        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_perl"], vm.ReadOnlyNotice);
+        var after = reads;
+        await vm.RecheckEngineAsync();
+        Assert.Equal(after, reads);
+    }
+
+    [AvaloniaFact]
     public void A_file_holding_more_than_its_picture_says_so_and_doesnt_offer_Remove_everything()
     {
         var engines = new MetadataEngines

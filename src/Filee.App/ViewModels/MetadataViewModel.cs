@@ -27,6 +27,9 @@ public sealed class MetadataEngines
     /// </summary>
     public Func<string?> Locate { get; init; } = ExifTool.Locate;
 
+    /// <summary>The ExifTool found can't run: it is a Perl script, on a computer without Perl.</summary>
+    public Func<string, bool> NeedsPerl { get; init; } = ExifTool.NeedsPerl;
+
     public Func<string, string, Task<IReadOnlyList<MetadataField>>> Read { get; init; } = (exifTool, path) => ExifTool.ReadAsync(exifTool, path);
 
     /// <summary>The fields without ExifTool, read-only.</summary>
@@ -123,6 +126,15 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ReadOnlyNotice), nameof(CanInstall), nameof(IsEmpty))]
     private bool _needsExifTool;
 
+    /// <summary>ExifTool is there as a Perl script, and no Perl to run it: installing it again wouldn't help.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ReadOnlyNotice), nameof(CanInstall))]
+    private bool _lacksPerl;
+
+    /// <summary>Location that Remove location leaves in the file; empty when none is known of.</summary>
+    [ObservableProperty]
+    private string _locationNotice = "";
+
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RemoveLocationCommand), nameof(RemoveAllCommand))]
     private bool _isBusy;
@@ -170,10 +182,10 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Why the fields can't be changed, while they can't: no ExifTool, or a kind of file it doesn't write.
     /// </summary>
-    public string ReadOnlyNotice => CanEdit ? "" : _loc[NeedsExifTool ? "metadata.needs_exiftool" : IsUnwritable ? "metadata.unwritable" : "metadata.read_only_banner"];
+    public string ReadOnlyNotice => CanEdit ? "" : _loc[LacksPerl && (NeedsExifTool || !IsUnwritable) ? "metadata.needs_perl" : NeedsExifTool ? "metadata.needs_exiftool" : IsUnwritable ? "metadata.unwritable" : "metadata.read_only_banner"];
 
     /// <summary>Install ExifTool is offered: it would make the fields editable.</summary>
-    public bool CanInstall => !CanEdit && (NeedsExifTool || !IsUnwritable);
+    public bool CanInstall => !CanEdit && !LacksPerl && (NeedsExifTool || !IsUnwritable);
 
     public string SaveText => _loc[ReplaceOriginal ? "metadata.save" : CurrentIndex < _files.Count - 1 ? "metadata.save_next" : "metadata.save_copy"];
 
@@ -184,6 +196,8 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     public bool RemovesAll => _removeAllAsked && !_rows.Any(r => r.CanEdit && !r.IsAdded && !ExifTool.KeptByRemoveAll(r.Field) && !r.IsRemoved);
 
     private bool _holdsMore;
+    private IReadOnlyList<string> _outOfReach = [];
+    private bool _isVideo;
     private bool _removeLocationAsked;
     private bool _removeAllAsked;
 
@@ -226,6 +240,9 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         Thumbnail = HistoryThumbnails.CanShow(path) ? await Task.Run(() => HistoryThumbnails.Load(path)) : null;
 
         var exifTool = _engines.Locate();
+        var lacksPerl = exifTool is not null && _engines.NeedsPerl(exifTool);
+        if (lacksPerl)
+            exifTool = null;
         IReadOnlyList<MetadataField> fields;
         var unwritable = !ExifTool.WritesFile(path);
         var needsExifTool = false;
@@ -256,9 +273,13 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
             return;
         IsUnwritable = unwritable;
         NeedsExifTool = needsExifTool;
+        LacksPerl = lacksPerl;
         _holdsMore = ExifTool.HoldsMore(fields);
         EmbeddedNotice = _holdsMore ? _loc.Format("metadata.embedded", _loc["preset.remove_metadata"]) : "";
         CanEdit = exifTool is not null && !unwritable;
+        _outOfReach = CanEdit ? ExifTool.LocationOutOfReach(fields) : [];
+        _isVideo = CanEdit && FormatRegistry.Detect(path)?.Category == FormatCategory.Video;
+        ShowLocationNotice();
         _rows = [.. fields.Where(f => !ExifTool.NotInTheFile.Contains(f.Group)).Select(f => NewRow(f, CanEdit && f.Editable, CanEdit && !f.Editable))];
         ShowDetails();
         Arrange();
@@ -267,6 +288,13 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         RemoveAllCommand.NotifyCanExecuteChanged();
         IsBusy = false;
     }
+
+    /// <summary>What saving won't take away: a "successful" Remove location must not read as a clean file.</summary>
+    private void ShowLocationNotice() => LocationNotice = string.Join("\n", new[]
+    {
+        _outOfReach.Count > 0 ? _loc.Format("metadata.location_kept", string.Join(", ", _outOfReach.Select(LabelOf))) : "",
+        _isVideo ? _loc["metadata.location_tracks"] : "",
+    }.Where(line => line.Length > 0));
 
     private async Task<IReadOnlyList<MetadataField>> ReadWithoutAsync(string path)
     {
@@ -516,7 +544,8 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     /// </summary>
     public async Task RecheckEngineAsync()
     {
-        if (!CanEdit && !IsUnwritable && !IsBusy && !IsFinished && _engines.Locate() is not null)
+        // Without Perl it is read again once, to say so; what it said already, it doesn't say again each time.
+        if (!CanEdit && !IsUnwritable && !IsBusy && !IsFinished && _engines.Locate() is { } exifTool && !(LacksPerl && _engines.NeedsPerl(exifTool)))
             await LoadFileAsync(CurrentIndex);
     }
 
@@ -592,6 +621,7 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(ReadOnlyNotice));
         if (_holdsMore)
             EmbeddedNotice = _loc.Format("metadata.embedded", _loc["preset.remove_metadata"]);
+        ShowLocationNotice();
         if (IsFinished)
         {
             Summary = _loc.Format("toast.done_errors", FailedCount, _files.Count);

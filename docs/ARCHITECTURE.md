@@ -220,6 +220,9 @@ without touching the file's content.
 - Only an engine that writes metadata and nothing else takes such a conversion: `ConversionEdge.Metadata`, never part
   of an ordinary route, and with `RoutePlanner.Plan(metadata: true)` the whole route or none. Without one the file
   fails (`error.no_route`, with the route asked for, so `filee` can name the package), never re-encoded instead.
+- Remove location takes what ExifTool can write. What it can't reach is said, not hidden: a place kept whole with a
+  block (a camera's maker notes, a C2PA manifest; `ExifTool.LocationOutOfReach`) is named in the window, and a video
+  always says its tracks can hold location (an action camera's or a drone's route), which ExifTool can't remove.
 - `Engines/Metadata/ExifToolConverter` is that engine (`exiftool` package: Windows build renamed from
   `exiftool(-k).exe`, the Perl version elsewhere, or one on the PATH). Its edges are the formats `exiftool -listwf`
   names; a file of an extension it doesn't write shows read-only, saying so. `ExifTool` reads with `-j -G0:1` (lists as

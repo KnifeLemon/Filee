@@ -23,6 +23,7 @@ public sealed class ExifToolConverter : IConverter
     {
         _executable = ExifTool.Locate();
         return _executable is null ? EngineStatus.Unavailable("engine.reason.not_installed")
+            : ExifTool.NeedsPerl(_executable) ? EngineStatus.Unavailable("engine.reason.needs_perl")
             : EngineStatus.Available(_executable, EngineEnvironment.UsesFileesCopy("exiftool") ? EngineVersions.Component("exiftool") : null);
     }
 

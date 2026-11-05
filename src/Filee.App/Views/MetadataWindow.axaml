@@ -76,6 +76,8 @@
           </TextBlock>
           <TextBlock Classes="caption warning" Text="{Binding EmbeddedNotice}" TextWrapping="Wrap"
                      IsVisible="{Binding EmbeddedNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="caption warning" Text="{Binding LocationNotice}" TextWrapping="Wrap"
+                     IsVisible="{Binding LocationNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           <!-- Two rows, so translated names never push a button out: what to clear (and where it goes), then save or
                leave. -->
           <DockPanel IsVisible="{Binding CanEdit}">

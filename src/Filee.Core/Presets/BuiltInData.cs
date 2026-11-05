@@ -331,11 +331,11 @@ public static class BuiltInData
         },
     ];
 
-    /// <summary>Id of the built-in "Metadata" tool (settings schema 68): in the palette, on no donut.</summary>
+    /// <summary>Id of the built-in "Metadata" tool (settings schema 69): in the palette, on no donut.</summary>
     public const string MetadataId = "tool-metadata";
 
     /// <summary>
-    /// "Metadata" (settings schema 68): every field of a picture, PDF, video or sound file, edited or removed with
+    /// "Metadata" (settings schema 69): every field of a picture, PDF, video or sound file, edited or removed with
     /// ExifTool, the file's content untouched. In the palette only: the donuts it suits are full.
     /// </summary>
     public static List<Preset> MetadataPresets() =>

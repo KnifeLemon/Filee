@@ -20,8 +20,9 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     private static string? FindExifTool()
     {
-        if (Environment.GetEnvironmentVariable("FILEE_TEST_EXIFTOOL") is { Length: > 0 } chosen && File.Exists(chosen))
-            return chosen;
+        // Set and not there is a broken setup, as in CI: failing, not skipping, so the writer can't go untested unseen.
+        if (Environment.GetEnvironmentVariable("FILEE_TEST_EXIFTOOL") is { Length: > 0 } chosen)
+            return File.Exists(chosen) ? chosen : throw new FileNotFoundException("FILEE_TEST_EXIFTOOL is set, but no such file.", chosen);
         var name = OperatingSystem.IsWindows() ? "exiftool.exe" : "exiftool";
         return (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator)
             .Concat(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"])
@@ -225,6 +226,92 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
         await ExifTool.WriteAsync(exifTool, target, emptied, Setting(("XMP-dc:Creator", [])), Token);
         Assert.Null(ValueOf(await ExifTool.ReadAsync(exifTool, emptied, Token), "XMP-dc:Creator"));
     }
+
+    [Fact]
+    public async Task Remove_everything_with_new_IPTC_text_outside_Latin_1_writes_its_character_set_again()
+    {
+        var (path, exifTool) = await PhotoAsync();
+        var utf8 = Target(path, "utf8");
+        await ExifTool.WriteAsync(exifTool, path, utf8, Setting(("IPTC:ObjectName", ["Порт"])), Token);
+        var target = Target(path, "clean");
+        var edits = Setting(("IPTC:ObjectName", ["李"]));
+        edits.RemoveAll = true;
+
+        await ExifTool.WriteAsync(exifTool, utf8, target, edits, Token);
+
+        var copy = await ExifTool.ReadAsync(exifTool, target, Token);
+        Assert.Equal("李", ValueOf(copy, "IPTC:ObjectName"));
+        Assert.Contains("UTF8", ValueOf(copy, "IPTC:CodedCharacterSet"), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Location_out_of_reach_is_a_place_kept_whole_and_not_a_cameras_focus_point()
+    {
+        MetadataField Field(string family, string group, string tag, bool editable = false) => new(family, group, tag, "x", editable);
+
+        Assert.Equal(["City", "Country", "City2", "LocalLocationName", "Location", "ExifGPSLatitude", "LocationCity", "ContentLocation", "GPSLatitude", "SigningLocation", "Altitude", "GeoTiffDirectory"],
+            ExifTool.LocationOutOfReach(
+        [
+            Field("MakerNotes", "Panasonic", "City"), Field("MakerNotes", "Panasonic", "Country"), Field("MakerNotes", "Panasonic", "City2"),
+            Field("MakerNotes", "Samsung", "LocalLocationName"), Field("JUMBF", "JSON", "Location"), Field("JUMBF", "JSON", "ExifGPSLatitude"),
+            Field("JUMBF", "JSON", "LocationCity"), Field("JUMBF", "JSON", "ContentLocation"), Field("MakerNotes", "Sony", "GPSLatitude"),
+            Field("MakerNotes", "Canon", "City"), Field("PDF", "PDF", "SigningLocation"), Field("PNG", "PNG", "Location"),
+            Field("MakerNotes", "Nikon", "Altitude"), Field("GeoTiff", "GeoTiff", "GeogCitation"), Field("GeoTiff", "GeoTiff", "Projection"),
+        ]));
+        Assert.Empty(ExifTool.LocationOutOfReach(
+        [
+            // What Remove location takes, whether the window edits it or not.
+            Field("EXIF", "GPS", "GPSLatitude", editable: true), Field("EXIF", "GPS", "GPSProcessingMethod"), Field("XMP", "XMP-photoshop", "City", editable: true),
+            Field("QuickTime", "Keys", "GPSCoordinates", editable: true),
+            // Worked out from the file.
+            Field("Composite", "Composite", "GPSPosition"),
+            // No place.
+            Field("MakerNotes", "Sony", "FocusLocation"), Field("MakerNotes", "Pentax", "WorldTimeLocation"), Field("Photoshop", "Photoshop", "GlobalAltitude"),
+            Field("MakerNotes", "Pentax", "HometownCity"), Field("EXIF", "ExifIFD", "SubjectLocation"),
+            Field("XML", "XML-xsi", "ImageCreationSchemaLocation"), Field("MakerNotes", "Nikon", "LocationInfoVersion"), Field("MakerNotes", "Sony", "MemoryAllocation"),
+            Field("MakerNotes", "Canon", "BorderLocation"), Field("MakerNotes", "Canon", "BlockLocation"), Field("MakerNotes", "Canon", "XYLocation"),
+            Field("MakerNotes", "Nikon", "SetClockFromLocationData"), Field("MakerNotes", "Canon", "ExtraTickLocations"),
+            // A place not set: blank, or Panasonic's "---".
+            new("MakerNotes", "Panasonic", "State", "", false), new("MakerNotes", "Panasonic", "Landmark", "  ", false), new("MakerNotes", "Panasonic", "Country", "---", false),
+        ]));
+    }
+
+    [Theory]
+    [InlineData("#!/bin/sh", false)]
+    [InlineData("#!/usr/bin/env sh", false)]
+    [InlineData("#!/usr/bin/env -S sh -e", false)]
+    [InlineData("#!/no/such/perl -w", true)]
+    [InlineData("#!/usr/bin/env perl-not-here", true)]
+    [InlineData("#!/usr/bin/env PERL5LIB=/x perl-not-here", true)]
+    [InlineData("#!/usr/bin/env -u NAME sh", false)]
+    [InlineData("#!/usr/bin/env PERL5LIB=/usr/share/perl5 sh", false)]
+    [InlineData("#!/usr/bin/env -C /opt/perl5 sh", false)]
+    [InlineData("#!/usr/bin/env PERL5LIB=/usr/share/perl5 perl-not-here", true)]
+    [InlineData("not a script", false)]
+    public void A_script_with_nothing_to_run_it_needs_Perl_and_a_program_does_not(string firstLine, bool needsPerl)
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "ExifTool is a program on Windows.");
+        var script = Path.Combine(fx.NewFolder(), "exiftool");
+        File.WriteAllText(script, firstLine + "\nprint 1;\n");
+
+        Assert.Equal(needsPerl, ExifTool.NeedsPerl(script));
+    }
+
+    [Fact]
+    public void A_perl_in_a_folder_with_an_accented_name_is_found()
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "ExifTool is a program on Windows.");
+        var folder = Directory.CreateDirectory(Path.Combine(fx.NewFolder(), "jörg")).FullName;
+        var perl = Path.Combine(folder, "perl");
+        File.WriteAllText(perl, "");
+        var script = Path.Combine(folder, "exiftool");
+        File.WriteAllText(script, $"#!{perl}\nprint 1;\n");
+
+        Assert.False(ExifTool.NeedsPerl(script));
+    }
+
+    [Fact]
+    public void No_file_at_all_is_not_a_missing_Perl() => Assert.False(ExifTool.NeedsPerl("/no/such/exiftool"));
 
     [Fact]
     public async Task IPTC_text_outside_Latin_1_is_written_in_UTF_8_and_the_files_Latin_1_text_stays_readable()

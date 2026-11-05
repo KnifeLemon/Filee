@@ -9,13 +9,14 @@
 
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Metadata;
 
-public static class ExifTool
+public static partial class ExifTool
 {
     /// <summary>The longest a read may take.</summary>
     private static readonly TimeSpan ReadLimit = TimeSpan.FromMinutes(2);
@@ -107,6 +108,27 @@ public static class ExifTool
         || field.Tag is "City" or "State" or "Country" or "CountryCode" or "Sub-location" or "Province-State";
 
     /// <summary>
+    /// The place fields out of reach of Remove location, each once: a camera's maker notes (Panasonic's City), another
+    /// block kept whole (a C2PA manifest's ExifGPSLatitude), a PNG's or a PDF's own field, a GeoTIFF's map position,
+    /// named once for the directory that holds it. ExifTool can't take them one by one, and they stay in plain sight.
+    /// An empty one, or Panasonic's "---", says no place.
+    /// </summary>
+    public static IReadOnlyList<string> LocationOutOfReach(IEnumerable<MetadataField> fields) =>
+    [
+        .. fields.Where(f => !NotInTheFile.Contains(f.Group) && f.Value.Trim() is not ("" or "---")
+                             && (f.Family == "GeoTiff" || ((!EditableFamilies.Contains(f.Family) || f is { Editable: false, Family: "PNG" or "PDF" })
+                                                           && SaysAPlace().IsMatch(f.Tag) && !NoPlace().IsMatch(f.Tag))))
+            .Select(f => f.Family == "GeoTiff" ? "GeoTiffDirectory" : f.Tag).Distinct(),
+    ];
+
+    [GeneratedRegex("GPS|Location|^(Altitude|City[0-9]?|State|Country|CountryCode|Landmark|Province-State)$", RegexOptions.IgnoreCase)]
+    private static partial Regex SaysAPlace();
+
+    /// <summary>A "location" in a camera or a file: where it focused, its time zone, a spot in the picture.</summary>
+    [GeneratedRegex("(Focus|AF|Subject|WorldTime|Face|Point|Area|Thumbnail|Preview|Offset|Schema|Border|Block|XY|Tick|Data|Profile)[A-Za-z]*Location|LocationOffset|LocationInfoVersion|FromLocation|(?-i:Allocation)", RegexOptions.IgnoreCase)]
+    private static partial Regex NoPlace();
+
+    /// <summary>
     /// The extensions of the files ExifTool writes (<c>exiftool -listwf</c>): only these get the Metadata tool's
     /// editing, every other file is shown read-only.
     /// </summary>
@@ -176,6 +198,47 @@ public static class ExifTool
     public static string? Locate() =>
         EngineEnvironment.OwnProgram("exiftool", "exiftool.exe") ?? EngineEnvironment.BundledProgram("exiftool", "exiftool.exe")
         ?? EngineEnvironment.SystemProgram("exiftool", "exiftool.exe");
+
+    /// <summary>
+    /// True when <paramref name="exifTool"/> is the Perl script and nothing is there to run it: macOS and Linux, on a
+    /// computer without Perl. It would be found and fail on every file.
+    /// </summary>
+    public static bool NeedsPerl(string exifTool)
+    {
+        if (OperatingSystem.IsWindows())
+            return false;
+        try
+        {
+            using var file = File.OpenRead(exifTool);
+            var start = new byte[256];
+            var first = Encoding.UTF8.GetString(start, 0, file.ReadAtLeast(start, start.Length, throwOnEndOfStream: false)).Split('\n')[0];
+            if (!first.StartsWith("#!", StringComparison.Ordinal))
+                return false;
+            var words = first[2..].Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length == 0)
+                return false;
+            if (Path.GetFileName(words[0]) != "env")
+                return !File.Exists(words[0]);
+            // Through env: the first word that is not an option, its value or a NAME=VALUE setting is what runs. Only
+            // Perl by name counts; anything else is left to run.
+            for (var i = 1; i < words.Length; i++)
+            {
+                if (words[i] is "-C" or "-P" or "-a" or "-u" or "--argv0" or "--chdir" or "--unset")
+                    i++;
+                else if (!words[i].StartsWith('-') && !words[i].Contains('='))
+                    return Path.GetFileName(words[i]).StartsWith("perl", StringComparison.Ordinal) && !OnPath(words[i]);
+            }
+            return false;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool OnPath(string program) =>
+        (Environment.GetEnvironmentVariable("PATH") ?? "").Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)
+        .Any(folder => File.Exists(Path.Combine(folder, program)));
 
     /// <summary>
     /// Every field of <paramref name="path"/>, in the file's order. Throws when ExifTool can't read it.
@@ -401,7 +464,8 @@ public static class ExifTool
     /// </summary>
     private static IEnumerable<KeyValuePair<string, List<string>>> IptcToUtf8(IReadOnlyList<MetadataField> fields, MetadataEdits edits)
     {
-        if (fields.Any(f => f is { Group: "IPTC", Tag: "CodedCharacterSet" } && f.Value.Contains("UTF8", StringComparison.OrdinalIgnoreCase)))
+        // Remove everything takes the character set too: it is written again, whatever the file had.
+        if (!edits.RemoveAll && fields.Any(f => f is { Group: "IPTC", Tag: "CodedCharacterSet" } && f.Value.Contains("UTF8", StringComparison.OrdinalIgnoreCase)))
             return [];
         var again = edits.RemoveAll ? [] : fields
             .Where(f => f.Family == "IPTC" && f.Editable && !edits.Set.ContainsKey(f.Key) && !edits.Remove.Contains(f.Key)
