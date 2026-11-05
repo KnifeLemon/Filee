@@ -29,8 +29,8 @@ public partial class ToolbarPage : UserControl
 
     private enum Source { Chip, Slice }
 
-    // CanAdd, IsGroup: fixed when the drag starts, so a chip that a search or a tab swaps under the pointer, or slices
-    // that another profile replaces, can't change them.
+    // CanAdd, IsGroup: fixed when the drag starts, so a chip that a search or a tab swaps under the pointer can't
+    // change them.
     private sealed record DragState(Source Source, string? PresetId, int SliceIndex, string Label, Point Start, bool CanAdd = true, bool IsGroup = false)
     {
         public bool Active { get; set; }
@@ -65,7 +65,7 @@ public partial class ToolbarPage : UserControl
                 return;
             var p = e.Args.GetPosition(Root);
             var item = Vm.DonutItems[e.Index];
-            _drag = new DragState(Source.Slice, null, e.Index, item.Label, p, IsGroup: item.IsGroup) { Active = true };
+            _drag = new DragState(Source.Slice, item.Id, e.Index, item.Label, p, IsGroup: item.IsGroup) { Active = true };
             Donut.SetDimmedIndex(e.Index);
             ShowGhost(_drag.Label, p);
         };
@@ -84,13 +84,23 @@ public partial class ToolbarPage : UserControl
         };
     }
 
-    /// <summary>The switch showed the other face (its slices are in already): the donut turns in to it.</summary>
+    /// <summary>
+    /// A drag belongs to the face and profile it started on, so another one ends it, as does a rebuild that moves the
+    /// dragged slice. The switch showed the other face (its slices are in already): the donut turns in to it.
+    /// </summary>
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ToolbarPageViewModel.EditingBack))
+        switch (e.PropertyName)
         {
-            EndDrag();
-            Donut.PlayFlipIn();
+            case nameof(ToolbarPageViewModel.EditingBack):
+                EndDrag();
+                Donut.PlayFlipIn();
+                break;
+            case nameof(ToolbarPageViewModel.SelectedProfile):
+            case nameof(ToolbarPageViewModel.DonutItems)
+                when _drag is { Source: Source.Slice } drag && Vm?.DonutItems.ElementAtOrDefault(drag.SliceIndex)?.Id != drag.PresetId:
+                EndDrag();
+                break;
         }
     }
 
