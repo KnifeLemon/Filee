@@ -44,6 +44,37 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.False(RhwpInput.ShowHeaderPictures(section)); // nothing left to do
     }
 
+    [Fact]
+    public void A_floating_picture_in_a_header_becomes_a_group_of_one()
+    {
+        // rhwp left out what came after a floating picture in a header, and the text beside it (issue #1152).
+        const string Floating = """<hp:pic id="7"><hp:offset x="0" y="0"/><hp:orgSz width="900" height="300"/><hp:img/><hp:sz width="900" height="300"/><hp:pos treatAsChar="0" vertRelTo="PAPER" vertOffset="500"/><hp:outMargin/></hp:pic>""";
+        var section = XDocument.Parse($$"""
+            <hs:sec xmlns:hs="{{Hs.NamespaceName}}" xmlns:hp="{{Hp.NamespaceName}}">
+              <hp:p><hp:run><hp:ctrl><hp:header><hp:subList>
+                <hp:p><hp:run>{{Floating}}<hp:t/></hp:run></hp:p>
+                <hp:p><hp:run>{{Floating}}<hp:t>beside</hp:t></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic id="8"><hp:pos treatAsChar="1"/></hp:pic><hp:t>inline</hp:t></hp:run></hp:p>
+                <hp:p><hp:run>{{Floating}}</hp:run><hp:linesegarray/></hp:p>
+              </hp:subList></hp:header></hp:ctrl></hp:run></hp:p>
+              <hp:p><hp:run>{{Floating}}</hp:run></hp:p>
+            </hs:sec>
+            """);
+
+        Assert.True(RhwpInput.GroupFloatingHeaderPictures(section));
+
+        var header = section.Descendants(Hp + "header").Single().Descendants(Hp + "subList").Single().Elements(Hp + "p").ToList();
+        Assert.Equal([1, 1, 0, 0], header.Select(p => p.Descendants(Hp + "container").Count()));
+        var group = header[0].Descendants(Hp + "container").Single();
+        Assert.Equal("7", (string)group.Attribute("id")!);
+        Assert.Equal("7", (string)group.Element(Hp + "pic")!.Attribute("id")!);
+        Assert.Equal("500", (string)group.Element(Hp + "pos")!.Attribute("vertOffset")!);
+        Assert.Equal("900", (string)group.Element(Hp + "sz")!.Attribute("width")!);
+        Assert.Equal([" ", "beside"], header.Take(2).Select(p => p.Descendants(Hp + "t").Single().Value)); // an empty paragraph keeps its line
+        Assert.Empty(section.Root!.Elements(Hp + "p").Last().Descendants(Hp + "container")); // the body draws it
+        Assert.False(RhwpInput.GroupFloatingHeaderPictures(section)); // nothing left to do
+    }
+
     [Theory]
     [InlineData("f ^{2} = f CIRCf", "f ^{2} = f CIRC f")]
     [InlineData("n(A SMALLINTERB)", "n(A SMALLINTER B)")]
