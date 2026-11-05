@@ -2,6 +2,7 @@
 // a table floating in a table cell of an HWP file).
 
 using System.IO.Compression;
+using System.Text;
 using System.Xml.Linq;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -20,6 +21,60 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private const int Step = 2800, Offset = 500, RowHeight = 2000, Rows = 3, Margin = 141, OuterHeight = 30_000;
     private const int AnchorTop = Step;
     private const int UnderTable = AnchorTop + Offset + Margin + Rows * RowHeight + Margin; // where 한글 stores the line
+
+    [Fact]
+    public void A_picture_alone_in_a_header_paragraph_gets_a_space_beside_it()
+    {
+        // rhwp left out a logo that was all its header paragraph held (issue #280).
+        var section = XDocument.Parse($$"""
+            <hs:sec xmlns:hs="{{Hs.NamespaceName}}" xmlns:hp="{{Hp.NamespaceName}}">
+              <hp:p><hp:run><hp:ctrl><hp:header><hp:subList>
+                <hp:p><hp:run><hp:pic/><hp:t/></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic/></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic/><hp:t>beside</hp:t></hp:run></hp:p>
+              </hp:subList></hp:header></hp:ctrl></hp:run></hp:p>
+              <hp:p><hp:run><hp:pic/><hp:t/></hp:run></hp:p>
+            </hs:sec>
+            """);
+
+        Assert.True(RhwpInput.ShowHeaderPictures(section));
+
+        var header = section.Descendants(Hp + "header").Single().Descendants(Hp + "p").ToList();
+        Assert.Equal([" ", " ", "beside"], header.Select(p => p.Descendants(Hp + "t").Single().Value));
+        Assert.Equal("", section.Root!.Elements(Hp + "p").Last().Descendants(Hp + "t").Single().Value); // the body draws it
+        Assert.False(RhwpInput.ShowHeaderPictures(section)); // nothing left to do
+    }
+
+    [Fact]
+    public void A_floating_picture_in_a_header_becomes_a_group_of_one()
+    {
+        // rhwp left out what came after a floating picture in a header, and the text beside it (issue #1152).
+        const string Floating = """<hp:pic id="7"><hp:offset x="0" y="0"/><hp:orgSz width="900" height="300"/><hp:img/><hp:sz width="900" height="300"/><hp:pos treatAsChar="0" vertRelTo="PAPER" vertOffset="500"/><hp:outMargin/></hp:pic>""";
+        var section = XDocument.Parse($$"""
+            <hs:sec xmlns:hs="{{Hs.NamespaceName}}" xmlns:hp="{{Hp.NamespaceName}}">
+              <hp:p><hp:run><hp:ctrl><hp:header><hp:subList>
+                <hp:p><hp:run>{{Floating}}<hp:t/></hp:run></hp:p>
+                <hp:p><hp:run>{{Floating}}<hp:t>beside</hp:t></hp:run></hp:p>
+                <hp:p><hp:run><hp:pic id="8"><hp:pos treatAsChar="1"/></hp:pic><hp:t>inline</hp:t></hp:run></hp:p>
+                <hp:p><hp:run>{{Floating}}</hp:run><hp:linesegarray/></hp:p>
+              </hp:subList></hp:header></hp:ctrl></hp:run></hp:p>
+              <hp:p><hp:run>{{Floating}}</hp:run></hp:p>
+            </hs:sec>
+            """);
+
+        Assert.True(RhwpInput.GroupFloatingHeaderPictures(section));
+
+        var header = section.Descendants(Hp + "header").Single().Descendants(Hp + "subList").Single().Elements(Hp + "p").ToList();
+        Assert.Equal([1, 1, 0, 0], header.Select(p => p.Descendants(Hp + "container").Count()));
+        var group = header[0].Descendants(Hp + "container").Single();
+        Assert.Equal("7", (string)group.Attribute("id")!);
+        Assert.Equal("7", (string)group.Element(Hp + "pic")!.Attribute("id")!);
+        Assert.Equal("500", (string)group.Element(Hp + "pos")!.Attribute("vertOffset")!);
+        Assert.Equal("900", (string)group.Element(Hp + "sz")!.Attribute("width")!);
+        Assert.Equal([" ", "beside"], header.Take(2).Select(p => p.Descendants(Hp + "t").Single().Value)); // an empty paragraph keeps its line
+        Assert.Empty(section.Root!.Elements(Hp + "p").Last().Descendants(Hp + "container")); // the body draws it
+        Assert.False(RhwpInput.GroupFloatingHeaderPictures(section)); // nothing left to do
+    }
 
     [Theory]
     [InlineData("f ^{2} = f CIRCf", "f ^{2} = f CIRC f")]
@@ -258,5 +313,25 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var zip = ZipFile.OpenRead(hwpx);
         using var stream = zip.GetEntry("Contents/section0.xml")!.Open();
         return XDocument.Load(stream);
+    }
+
+    [Fact]
+    public void Floating_pictures_nested_in_their_own_layout_do_not_double_at_every_level()
+    {
+        // A picture keeps a copy of itself and of its layout elements in its group, so walking on into those copies
+        // would double a header inside one at every level: 170 levels fit the XML limits, in a file of some kilobytes.
+        const int Levels = 20;
+        var hp = "http://www.hancom.co.kr/hwpml/2011/paragraph";
+        var level = new StringBuilder();
+        for (var i = 0; i < Levels; i++)
+            level.Append("<hp:header><hp:subList><hp:p><hp:run><hp:pic><hp:pos treatAsChar=\"0\"/><hp:offset>");
+        for (var i = 0; i < Levels; i++)
+            level.Append("</hp:offset></hp:pic></hp:run></hp:p></hp:subList></hp:header>");
+        var section = XDocument.Parse($"<hs:sec xmlns:hs=\"urn:s\" xmlns:hp=\"{hp}\">{level}</hs:sec>");
+
+        Assert.True(RhwpInput.GroupFloatingHeaderPictures(section));
+
+        Assert.True(section.Descendants().Count() < 100_000, $"{section.Descendants().Count()} elements");
+        Assert.NotNull(section.Root!.Descendants(XName.Get("container", hp)).FirstOrDefault());
     }
 }

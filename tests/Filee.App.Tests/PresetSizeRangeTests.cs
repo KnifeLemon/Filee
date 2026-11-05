@@ -231,4 +231,60 @@ public class PresetSizeRangeTests
         Assert.True(job.HasNotices);
         Assert.Equal($"photo.jpg — {loc["notice.under_min_size"]}", job.Notices);
     }
+
+    [AvaloniaTheory]
+    [InlineData(25)]
+    [InlineData(500)]
+    public void Video_size_unit_switch_keeps_each_value_separately(int initialMb)
+    {
+        TestServices.EnsureInitialized("en");
+        var preset = new Preset { Name = "Video Preset", TargetFormat = "mp4", Media = { MaxSizeMb = initialMb } };
+        InEditor(preset, (editor, window) =>
+        {
+            Assert.Equal(VideoSizeUnit.MB, editor.VideoSizeUnitChoice.Value);
+            Assert.Equal((decimal)initialMb, editor.VideoMaxSize);
+
+            // Switch to percent: value should not turn into 99% or initial MB, but be null or previous percent
+            editor.VideoSizeUnitChoice = editor.VideoSizeUnits.Single(u => u.Value == VideoSizeUnit.Percent);
+            Pump();
+            Assert.Null(editor.VideoMaxSize);
+            Assert.Equal(99m, editor.VideoSizeMaximum);
+
+            // Set percent
+            editor.VideoMaxSize = 50;
+            Pump();
+            Assert.Equal(50m, editor.VideoMaxSize);
+
+            // Switch back to MB: original MB value is preserved
+            editor.VideoSizeUnitChoice = editor.VideoSizeUnits.Single(u => u.Value == VideoSizeUnit.MB);
+            Pump();
+            Assert.Equal((decimal)initialMb, editor.VideoMaxSize);
+            Assert.Equal(4096m, editor.VideoSizeMaximum);
+
+            // Switch back to percent: percent value is preserved
+            editor.VideoSizeUnitChoice = editor.VideoSizeUnits.Single(u => u.Value == VideoSizeUnit.Percent);
+            Pump();
+            Assert.Equal(50m, editor.VideoMaxSize);
+
+            // Apply: percent is saved, MB is zero
+            Assert.True(editor.Apply());
+            Assert.Equal(50, preset.Media.MaxSizePercent);
+            Assert.Equal(0, preset.Media.MaxSizeMb);
+        });
+    }
+
+    [AvaloniaFact]
+    public void Video_percentage_limit_applies_correctly()
+    {
+        TestServices.EnsureInitialized("en");
+        var preset = new Preset { Name = "Video Preset", TargetFormat = "mp4" };
+        InEditor(preset, (editor, window) =>
+        {
+            editor.VideoSizeUnitChoice = editor.VideoSizeUnits.Single(u => u.Value == VideoSizeUnit.Percent);
+            editor.VideoMaxSize = 75;
+            Assert.True(editor.Apply());
+            Assert.Equal(75, preset.Media.MaxSizePercent);
+            Assert.Equal(0, preset.Media.MaxSizeMb);
+        });
+    }
 }

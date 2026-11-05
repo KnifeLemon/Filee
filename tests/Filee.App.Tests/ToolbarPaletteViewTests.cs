@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Filee.App.Controls;
 using Filee.App.Services;
 using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
@@ -45,6 +46,7 @@ public class ToolbarPaletteViewTests
         public TextBox Search => Page.FindControl<TextBox>("PaletteSearchBox")!;
         public Border Box => Page.FindControl<Border>("PaletteBox")!;
         public Border Ghost => Page.FindControl<Border>("Ghost")!;
+        public DonutMenu Donut => Page.FindControl<DonutMenu>("Donut")!;
 
         /// <summary>The chips shown in the palette box, in their order on screen.</summary>
         public List<Border> ChipBorders => Box.GetVisualDescendants().OfType<Border>()
@@ -93,12 +95,11 @@ public class ToolbarPaletteViewTests
         /// <summary>Presses on the chip, moves into the donut's hole (a drop there appends) and lets go.</summary>
         public bool DragToDonut(Border chip)
         {
-            var donut = Page.FindControl<Filee.App.Controls.DonutMenu>("Donut")!;
             // Below the window's bottom edge (how far down depends on the font): scrolled to, as a user would.
             chip.BringIntoView();
             RenderTests.Pump();
             var from = Center(chip);
-            var to = Center(donut);
+            var to = Center(Donut);
             var hit = Window.InputHitTest(from) as Visual;
             Assert.True(hit is not null && (hit == chip || chip.IsVisualAncestorOf(hit)),
                 $"press at {from} hits {hit?.GetType().Name}");
@@ -111,8 +112,33 @@ public class ToolbarPaletteViewTests
             return dragging;
         }
 
+        /// <summary>Presses the left button on the donut, which is what the point must hit.</summary>
+        public void Press(Point at)
+        {
+            var hit = Window.InputHitTest(at) as Visual;
+            Assert.True(hit is not null && (hit == Donut || Donut.IsVisualAncestorOf(hit)), $"press at {at} hits {hit?.GetType().Name}");
+            Window.MouseDown(at, MouseButton.Left);
+            RenderTests.Pump();
+        }
+
+        /// <summary>The middle of a slice of the donut shown now, in the window.</summary>
+        public Point Slice(int index)
+        {
+            var center = new Point(Donut.Bounds.Width / 2, Donut.Bounds.Height / 2);
+            var at = DonutGeometry.PointAt(center, Donut.OuterRadius * 0.7, DonutGeometry.MidAngle(index, Donut.Items!.Count));
+            Assert.Equal(index, Donut.HitTest(at).Index);
+            return Donut.TranslatePoint(at, Window)!.Value;
+        }
+
         public void Dispose() => Window.Close();
     }
+
+    /// <summary>
+    /// The library without the Annotate and Add background tools: every picture donut offers them in its Edit tab,
+    /// which a test of the picture tools would otherwise always see.
+    /// </summary>
+    private static void WithoutPictureEditTools(PresetAvailabilityTests.Fixture f) =>
+        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool);
 
     private static ToolbarProfile Profile(string id, params string[] extensions) => new()
     {
@@ -191,7 +217,7 @@ public class ToolbarPaletteViewTests
         Dispatcher.UIThread.RunJobs();
         using var view = new View(vm);
         Assert.False(view.Tabs.IsVisible);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group"], view.Chips);
 
         // PDF: one kind (Documents) that would only repeat All. Two tabs, but the row stays hidden.
         // (Without the PDF page tools, which would add the Edit kind.)
@@ -204,7 +230,7 @@ public class ToolbarPaletteViewTests
         Assert.Equal([PaletteTab.All, PaletteTab.Document], view.TabIds);
         Assert.False(view.Tabs.IsVisible);
         Assert.Equal(PaletteTab.All, view.Selected);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "merge-pdf", "test-merge"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "merge-pdf", "test-merge"], view.Chips);
 
         // PNG: several kinds, so the row shows.
         f.Store.Profiles.Add(Profile("tabs-png", "png"));
@@ -453,6 +479,7 @@ public class ToolbarPaletteViewTests
     public void Profile_change_resets_tab_but_face_flip_keeps_it()
     {
         using var f = new PresetAvailabilityTests.Fixture();
+        WithoutPictureEditTools(f);
         var jpg = Profile("tabs-jpg", "jpg");
         using var vm = f.Page(jpg);
         var png = Profile("tabs-png", "png");
@@ -474,7 +501,7 @@ public class ToolbarPaletteViewTests
         view.Click(faces[1]);
         Assert.True(vm.EditingBack);
         Assert.Equal(PaletteTab.Media, view.Selected);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "extract-motion", "test-motion"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "extract-motion", "test-motion"], view.Chips);
         view.Click(faces[0]);
         Assert.False(vm.EditingBack);
         Assert.Equal(PaletteTab.Media, view.Selected);
@@ -491,7 +518,7 @@ public class ToolbarPaletteViewTests
         RenderTests.Pump();
         Assert.Equal(PaletteTab.All, view.Selected);
         view.ClickTab(PaletteTab.Edit);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "tool-crop", "tool-image-edit", "tool-hide"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "tool-crop", "tool-image-edit", "tool-hide"], view.Chips);
         DoubleTap(view.Chip("tool-crop"));
         RenderTests.Pump();
         Assert.Equal(["tool-crop"], jpg.PresetIds);
@@ -503,7 +530,7 @@ public class ToolbarPaletteViewTests
         Assert.Equal(["tool-crop", "tool-image-edit", "tool-hide"], jpg.PresetIds);
         Assert.DoesNotContain(PaletteTab.Edit, view.TabIds);
         Assert.Equal(PaletteTab.All, view.Selected);
-        Assert.Equal(["pdf-edit", "rotate", "flip", "test-group", "extract-motion", "test-motion"], view.Chips);
+        Assert.Equal(["pdf-edit", "pdf-nup", "rotate", "flip", "crop-video", "test-group", "extract-motion", "test-motion"], view.Chips);
     }
 
     [AvaloniaFact]
@@ -644,5 +671,196 @@ public class ToolbarPaletteViewTests
             Assert.DoesNotContain("test-jpg", view.Chips);
         }
         finally { CloseMain(windows); }
+    }
+
+    /// <summary>A page on a donut of three slices, with another donut of three to switch to during a hold.</summary>
+    private static (ToolbarPageViewModel Vm, ToolbarProfile Shown, ToolbarProfile Other) TwoDonuts(PresetAvailabilityTests.Fixture f)
+    {
+        var shown = Profile("test-shown", "png");
+        shown.PresetIds = ["test-mp4", "test-wav", "test-pack"];
+        var other = Profile("test-other", "jpg");
+        other.PresetIds = ["test-merge", "test-motion", "test-rotate-png"];
+        f.Store.Profiles.Add(other);
+        return (f.Page(shown), shown, other);
+    }
+
+    private static void SwitchTo(ToolbarPageViewModel vm, ToolbarProfile profile)
+    {
+        vm.SelectedProfile = vm.Profiles.Single(p => ReferenceEquals(p.Profile, profile));
+        RenderTests.Pump();
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true, false)]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    public void Another_profile_ends_a_slice_drag_so_the_drop_leaves_its_donut_alone(bool onPalette, bool sameSlice)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var (page, shown, other) = TwoDonuts(f);
+        if (sameSlice)
+            other.PresetIds[1] = shown.PresetIds[1];
+        using var vm = page;
+        Dispatcher.UIThread.RunJobs();
+        using var view = new View(vm);
+        var (shownBefore, otherBefore) = (shown.PresetIds.ToList(), other.PresetIds.ToList());
+
+        view.Press(view.Slice(1));
+        view.Window.MouseMove(view.Slice(2));
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+
+        SwitchTo(vm, other);
+        var ghostAfterSwitch = view.Ghost.IsVisible;
+
+        var drop = onPalette ? view.Center(view.Box) : view.Slice(0);
+        view.Window.MouseMove(drop);
+        RenderTests.Pump();
+        var ghostAtDrop = view.Ghost.IsVisible;
+        var removing = view.Box.Classes.Contains("over");
+        view.Window.MouseUp(drop, MouseButton.Left);
+        RenderTests.Pump();
+
+        Assert.Equal(otherBefore, other.PresetIds);
+        Assert.Equal(shownBefore, shown.PresetIds);
+        Assert.False(ghostAfterSwitch);
+        Assert.False(ghostAtDrop);
+        Assert.False(removing);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Other_slices_let_go_of_a_slice_pressed_but_not_yet_dragged(bool otherFace)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var (page, shown, other) = TwoDonuts(f);
+        shown.BackPresetIds = ["test-merge", "test-motion", "test-rotate-png"];
+        using var vm = page;
+        Dispatcher.UIThread.RunJobs();
+        using var view = new View(vm);
+        var (shownBefore, backBefore, otherBefore) = (shown.PresetIds.ToList(), shown.BackPresetIds.ToList(), other.PresetIds.ToList());
+
+        view.Press(view.Slice(1));
+
+        if (otherFace)
+        {
+            vm.EditingBack = true;
+            RenderTests.Pump();
+        }
+        else
+            SwitchTo(vm, other);
+
+        var drop = view.Center(view.Box);
+        view.Window.MouseMove(drop);
+        RenderTests.Pump();
+        var ghostAtDrop = view.Ghost.IsVisible;
+        view.Window.MouseUp(drop, MouseButton.Left);
+        RenderTests.Pump();
+
+        Assert.Equal(otherBefore, other.PresetIds);
+        Assert.Equal(shownBefore, shown.PresetIds);
+        Assert.Equal(backBefore, shown.BackPresetIds);
+        Assert.False(ghostAtDrop);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Resetting_the_donut_lets_go_of_a_slice_that_moved(bool dragging)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = f.PageWithPalette("png");
+        var images = vm.Profiles.Single(p => p.Profile.Id == "images");
+        var defaults = images.Profile.PresetIds.ToList();
+        // Every slice on another position than its default one, so the reset moves the pressed one.
+        images.Profile.PresetIds = [.. defaults.Skip(1), defaults[0]];
+        vm.SelectedProfile = images;
+        Dispatcher.UIThread.RunJobs();
+        using var view = new View(vm);
+
+        view.Press(view.Slice(1));
+        if (dragging)
+        {
+            view.Window.MouseMove(view.Slice(2));
+            RenderTests.Pump();
+            Assert.True(view.Ghost.IsVisible);
+        }
+
+        vm.Reset(images);
+        RenderTests.Pump();
+
+        var drop = view.Center(view.Box);
+        view.Window.MouseMove(drop);
+        RenderTests.Pump();
+        var ghostAtDrop = view.Ghost.IsVisible;
+        view.Window.MouseUp(drop, MouseButton.Left);
+        RenderTests.Pump();
+
+        Assert.Equal(defaults, images.Profile.PresetIds);
+        Assert.False(ghostAtDrop);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_rebuild_with_the_same_slices_keeps_the_slice_in_hand(bool dragging)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var (page, shown, _) = TwoDonuts(f);
+        using var vm = page;
+        Dispatcher.UIThread.RunJobs();
+        using var view = new View(vm);
+
+        view.Press(view.Slice(1));
+        if (dragging)
+        {
+            view.Window.MouseMove(view.Slice(2));
+            RenderTests.Pump();
+        }
+
+        var slices = vm.DonutItems;
+        f.Catalog.Refresh();
+        RenderTests.Pump();
+        Assert.NotSame(slices, vm.DonutItems);
+
+        var drop = view.Center(view.Box);
+        view.Window.MouseMove(drop);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+        view.Window.MouseUp(drop, MouseButton.Left);
+        RenderTests.Pump();
+
+        Assert.Equal(["test-mp4", "test-pack"], shown.PresetIds);
+    }
+
+    [AvaloniaFact]
+    public void Another_profile_ends_a_chip_drag_so_the_drop_adds_nothing()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var (page, _, other) = TwoDonuts(f);
+        using var vm = page;
+        Dispatcher.UIThread.RunJobs();
+        using var view = new View(vm);
+        var otherBefore = other.PresetIds.ToList();
+
+        var chip = view.Chip("test-jpg");
+        chip.BringIntoView();
+        RenderTests.Pump();
+        var drop = view.Center(view.Donut);
+        view.Window.MouseDown(view.Center(chip), MouseButton.Left);
+        view.Window.MouseMove(drop);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+
+        SwitchTo(vm, other);
+        var ghostAfterSwitch = view.Ghost.IsVisible;
+
+        view.Window.MouseUp(drop, MouseButton.Left);
+        RenderTests.Pump();
+
+        Assert.Equal(otherBefore, other.PresetIds);
+        Assert.False(ghostAfterSwitch);
     }
 }

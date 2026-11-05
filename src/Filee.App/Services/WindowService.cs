@@ -37,10 +37,14 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private CropOverlayWindow? _cropOverlay;
     private ClipWindow? _clipWindow;
     private HideWindow? _hideWindow;
+    private AnnotateWindow? _annotateWindow;
+    private BackgroundWindow? _backgroundWindow;
     private ImageEditWindow? _imageEdit;
 
     internal ClipWindow? ClipWindow => _clipWindow;
     internal HideWindow? HideWindow => _hideWindow;
+    internal AnnotateWindow? AnnotateWindow => _annotateWindow;
+    internal BackgroundWindow? BackgroundWindow => _backgroundWindow;
     internal ImageEditWindow? ImageEdit => _imageEdit;
     private readonly HashSet<SpreadsheetPrintStudioWindow> _spreadsheetStudios = [];
 
@@ -56,20 +60,21 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// <summary>
     /// Reviews the order of a merge (<paramref name="preset"/>, when given, names the button). For "Merge images" the
     /// layout is chosen too and written into <paramref name="preset"/>. Closing or cancelling starts no conversion.
+    /// <paramref name="keepOrder"/>: the files start in the order given (see <see cref="MergeOrderViewModel"/>).
     /// </summary>
-    public async Task<IReadOnlyList<string>?> ChooseMergeOrderAsync(IReadOnlyList<string> files, Preset? preset = null)
+    public async Task<IReadOnlyList<string>?> ChooseMergeOrderAsync(IReadOnlyList<string> files, Preset? preset = null, bool keepOrder = false)
     {
         _mergeOrder?.Close();
         var images = preset is { JoinsImages: true };
-        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null);
+        var vm = new MergeOrderViewModel(files, images ? preset!.Image : null, keepOrder, loc);
         var dialog = new MergeOrderWindow { DataContext = vm };
         if (preset is not null)
             dialog.StartMerge.Content = loc.DisplayName(preset);
         if (images)
         {
             // Room for the layout below the list.
-            dialog.Height = 640;
-            dialog.MinHeight = 540;
+            dialog.Height = 690;
+            dialog.MinHeight = 590;
         }
         PrepareWindow(dialog);
         var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -84,7 +89,52 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         await closed.Task;
         if (dialog.Result is not null && images)
             vm.ApplyTo(preset!.Image);
+        vm.Dispose();
         return dialog.Result;
+    }
+
+    private AskPagesWindow? _askPages;
+
+    internal AskPagesWindow? AskPages => _askPages;
+
+    /// <summary>
+    /// "Choose pages" (#981) for one PDF dropped on <paramref name="preset"/>: its page count (read first; none when the
+    /// file can't be read, then only the form of the range is checked), the range and, for a PDF target, one PDF or one
+    /// file per page. <paramref name="index"/> of <paramref name="total"/> PDFs dropped together. Null when cancelled.
+    /// </summary>
+    public async Task<PageChoice?> AskPagesAsync(string path, Preset preset, int index = 0, int total = 1)
+    {
+        _askPages?.Close();
+        var count = await Task.Run(() => CountPages(path));
+        var vm = new AskPagesViewModel(path, count, preset, loc, index, total);
+        var dialog = new AskPagesWindow { DataContext = vm };
+        dialog.StartPages.Content = loc.DisplayName(preset);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (_askPages == dialog) _askPages = null;
+            closed.TrySetResult();
+        };
+        _askPages = dialog;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        return dialog.Result;
+    }
+
+    /// <summary>The pages of a PDF, or null when it can't be read (damaged, locked with a password, gone).</summary>
+    internal int? CountPages(string path)
+    {
+        try
+        {
+            return Filee.Engines.Pdf.PdfPageTools.PageCount(path);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            services.GetService<ILogger<WindowService>>()?.LogInformation(ex, "Could not count the pages of {File}", Path.GetFileName(path));
+            return null;
+        }
     }
 
     /// <summary>
@@ -152,6 +202,10 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             ShowClipWindow(files, preset, near);
         else if (preset.IsHideTool)
             ShowHideWindow(files, preset, near);
+        else if (preset.IsAnnotateTool)
+            ShowAnnotateWindow(files, preset);
+        else if (preset.IsBackgroundTool)
+            ShowBackgroundWindow(files, preset);
         else if (preset.IsImageEditTool)
             ShowImageEditWindow(files, preset);
         // Before the crop: the print studio and the PDF page tools have no Tool of their own, which reads as a crop
@@ -224,6 +278,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_imageEdit == win)
                 _imageEdit = null;
+            trimmer.Request();
         };
         _imageEdit = win;
         win.Show();
@@ -263,6 +318,60 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     }
 
     /// <summary>
+    /// Opens the "Annotate" window on the pictures among the files. Each picture is written by an ordinary conversion,
+    /// shown in the toast.
+    /// </summary>
+    public void ShowAnnotateWindow(IReadOnlyList<string> files, Preset preset)
+    {
+        var pictures = files.Where(f => FormatRegistry.Detect(f) is { } format && HideService.CanOpen(format.Id)).ToList();
+        if (pictures.Count == 0)
+            return;
+        _annotateWindow?.Close();
+        var conversions = services.GetRequiredService<ConversionService>();
+        var planner = services.GetRequiredService<ConverterCatalog>().CreatePlanner();
+        var vm = new AnnotateViewModel(pictures, preset, loc, services.GetRequiredService<UserDataStore>(),
+            path => AnnotateTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? "", planner),
+            (path, conversion) => conversions.Start([path], conversion), services.GetService<ILogger<AnnotateViewModel>>());
+        var win = new AnnotateWindow { DataContext = vm };
+        PrepareWindow(win);
+        win.Closed += (_, _) =>
+        {
+            if (_annotateWindow == win)
+                _annotateWindow = null;
+            trimmer.Request();
+        };
+        _annotateWindow = win;
+        win.Show();
+        win.Activate();
+    }
+
+    /// <summary>
+    /// Opens the "Add background" window on the pictures among the files. Each picture is written by an ordinary
+    /// conversion, shown in the toast.
+    /// </summary>
+    public void ShowBackgroundWindow(IReadOnlyList<string> files, Preset preset)
+    {
+        var pictures = files.Where(f => FormatRegistry.Detect(f) is { } format && HideService.CanOpen(format.Id)).ToList();
+        if (pictures.Count == 0)
+            return;
+        _backgroundWindow?.Close();
+        var conversions = services.GetRequiredService<ConversionService>();
+        var vm = new BackgroundViewModel(pictures, preset, loc, services.GetRequiredService<UserDataStore>(),
+            (path, conversion) => conversions.Start([path], conversion), services.GetService<ILogger<BackgroundViewModel>>());
+        var win = new BackgroundWindow { DataContext = vm };
+        PrepareWindow(win);
+        win.Closed += (_, _) =>
+        {
+            if (_backgroundWindow == win)
+                _backgroundWindow = null;
+            trimmer.Request();
+        };
+        _backgroundWindow = win;
+        win.Show();
+        win.Activate();
+    }
+
+    /// <summary>
     /// The pixel size of a picture as it is seen, read from its headers: turned as its EXIF orientation says, and the
     /// largest of an icon's sizes (the one converted). Null when ImageMagick can't read it.
     /// </summary>
@@ -273,8 +382,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             var info = ImageMagick.MagickImageInfo.ReadCollection(path).MaxBy(frame => (long)frame.Width * frame.Height);
             if (info is null)
                 return null;
-            return info.Orientation is ImageMagick.OrientationType.LeftTop or ImageMagick.OrientationType.RightTop
-                or ImageMagick.OrientationType.RightBottom or ImageMagick.OrientationType.LeftBottom
+            return info.Orientation is ImageMagick.Orientation.LeftTop or ImageMagick.Orientation.RightTop
+                or ImageMagick.Orientation.RightBottom or ImageMagick.Orientation.LeftBottom
                 ? ((int)info.Height, (int)info.Width)
                 : ((int)info.Width, (int)info.Height);
         }
@@ -300,6 +409,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_cropOverlay == win)
                 _cropOverlay = null;
+            trimmer.Request();
         };
         _cropOverlay = win;
         win.Show();
@@ -321,6 +431,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_pdfPageEditor == win)
                 _pdfPageEditor = null;
+            trimmer.Request();
         };
         if (addPages)
             win.Opened += async (_, _) => await win.PickAndAddAsync();
@@ -653,7 +764,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             return await EditGroupAsync(preset, owner);
         var dialog = new PresetEditorWindow
         {
-            DataContext = new PresetEditorViewModel(preset, loc),
+            DataContext = new PresetEditorViewModel(preset, loc, services.GetRequiredService<UserDataStore>().Settings.TurnedOffFieldSet()),
             Topmost = owner?.Topmost ?? false,
         };
         PrepareWindow(dialog);
@@ -705,13 +816,18 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// <summary>A message with only an OK button. Without a visible owner it shows on its own, centred on the screen.</summary>
     public Task MessageAsync(Window? owner, string message) => ShowMessageAsync(owner, message, destructive: false, withCancel: false);
 
-    /// <summary>The in-app update failed: say so, then open the website to download the new version there.</summary>
+    /// <summary>
+    /// The in-app update failed: say so (that it wasn't Filee's, when the check refused it), then open the website to
+    /// download the new version there.
+    /// </summary>
     public async Task ShowUpdateFailedAsync()
     {
         _updateNotice?.Close();
         _updateProgress?.Close();
-        await MessageAsync(_main is { IsVisible: true } main ? main : null, loc["update.failed_alert"]);
-        services.GetRequiredService<UpdateService>().OpenDownloadPage();
+        var updates = services.GetRequiredService<UpdateService>();
+        var message = updates.LastError is UpdateVerificationException ? "update.unverified_alert" : "update.failed_alert";
+        await MessageAsync(_main is { IsVisible: true } main ? main : null, loc[message]);
+        updates.OpenDownloadPage();
     }
 
     /// <summary>

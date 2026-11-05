@@ -65,6 +65,15 @@ public sealed class FakeSystem : ISetupSystem
     public Func<string, string, int> Run { get; set; } = (_, _) => 0;
     public Action<string>? OnCreateShortcut { get; set; }
 
+    /// <summary>Programs stay in <see cref="Running"/> when killed (not ours to end).</summary>
+    public bool CantBeEnded { get; set; }
+
+    /// <summary>A Filee runs whose path can't be read.</summary>
+    public bool OutOfSight { get; set; }
+
+    /// <summary>Windows refuses to schedule deletions for the next restart (always without administrator rights).</summary>
+    public bool RestartListRefuses { get; set; }
+
     public bool IsExplorerMenuRegistered() => MenuRegistered;
 
     public bool IsExplorerMenuCurrent(string installFolder) => MenuRegistered && MenuCurrent;
@@ -99,16 +108,29 @@ public sealed class FakeSystem : ISetupSystem
         return Run(executable, arguments);
     }
 
+    public int RunAsSignedInUser(string executable, string arguments, TimeSpan timeout)
+    {
+        Calls.Add($"run-as-user {System.IO.Path.GetFileName(executable)} {arguments}");
+        return Run(executable, arguments);
+    }
+
     public IReadOnlyList<RunningProgram> ProgramsIn(string folder) =>
         Running.Where(p => p.Path.StartsWith(folder, StringComparison.OrdinalIgnoreCase)).ToList();
+
+    public bool RunsOutOfSight(string programName) => OutOfSight;
 
     public void Kill(int processId)
     {
         Calls.Add($"kill {processId}");
-        Running.RemoveAll(p => p.Id == processId);
+        if (!CantBeEnded)
+            Running.RemoveAll(p => p.Id == processId);
     }
 
-    public void DeleteAtRestart(string path) => Calls.Add($"delete-at-restart {path}");
+    public bool DeleteAtRestart(string path)
+    {
+        Calls.Add($"delete-at-restart {path}");
+        return !RestartListRefuses;
+    }
 }
 
 /// <summary>A Setup.exe with a payload, a registry and a PC of its own, all in a scratch folder.</summary>

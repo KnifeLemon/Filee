@@ -6,6 +6,7 @@
 // The YAML front matter's "title" becomes the document title. Raw HTML is skipped, except <br>. A code block is one
 // shaded box in a monospace font: a borderless one-column table with a row per line, so it can break across pages.
 
+using Filee.Engines.Infrastructure;
 using Markdig;
 using Markdig.Extensions.DefinitionLists;
 using Markdig.Extensions.Footnotes;
@@ -23,6 +24,10 @@ internal sealed class MarkdownReader
 {
     /// <summary>Indent per block quote level (same as PandocAstReader).</summary>
     private const int QuoteIndent = 2000;
+
+    /// <summary>A block quote's bar and background (#1098): the indent alone doesn't read as a quote on a page.</summary>
+    private static readonly HBorder QuoteBar = new(HBorderStyle.Solid, 1, "#B8B8C0");
+    private const string QuoteFill = "#F7F7F9";
 
     /// <summary>GitHub-style Markdown plus the common extensions (tables, footnotes, task lists, math, …).</summary>
     public static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
@@ -57,7 +62,7 @@ internal sealed class MarkdownReader
     /// <summary>Parses Markdown text.</summary>
     /// <param name="markdown">The document text.</param>
     /// <param name="baseFolder">Folder of the Markdown file: relative image paths are resolved against it.</param>
-    /// <param name="resourceRoot">When set, images must be inside this folder (e.g. an unpacked TXTZ book).</param>
+    /// <param name="resourceRoot">Folder images must be inside (e.g. an unpacked TXTZ book); default: <paramref name="baseFolder"/>.</param>
     public static HDocument Read(string markdown, string baseFolder, string? resourceRoot = null)
     {
         var parsed = Markdown.Parse(markdown, Pipeline);
@@ -69,8 +74,8 @@ internal sealed class MarkdownReader
         return document;
     }
 
-    /// <summary>List nesting and quote indentation of the blocks being read.</summary>
-    private readonly record struct Context(int ListLevel = 0, int Indent = 0);
+    /// <summary>List nesting and indentation of the blocks being read, and whether they are inside a block quote.</summary>
+    private readonly record struct Context(int ListLevel = 0, int Indent = 0, bool Quote = false);
 
     // ───────────────────────── Blocks ─────────────────────────
 
@@ -97,7 +102,7 @@ internal sealed class MarkdownReader
                 List(list, output, context);
                 break;
             case QuoteBlock quote:
-                Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent });
+                Blocks(quote, output, context with { Indent = context.Indent + QuoteIndent, Quote = true });
                 break;
             case MathBlock math:
                 CodeLines(math, output, context, Plain with { Italic = true });
@@ -124,7 +129,12 @@ internal sealed class MarkdownReader
     }
 
     private static HParagraph NewParagraph(Context context) =>
-        new() { Format = context.Indent > 0 ? new HParaFormat(Left: context.Indent) : default };
+        new()
+        {
+            Format = context.Quote ? new HParaFormat(Left: context.Indent, LeftBar: QuoteBar, Fill: QuoteFill)
+                : context.Indent > 0 ? new HParaFormat(Left: context.Indent)
+                : default,
+        };
 
     private HParagraph Paragraph(ContainerInline? inlines, Context context)
     {
@@ -416,24 +426,12 @@ internal sealed class MarkdownReader
         };
     }
 
-    /// <summary>Local image path of a Markdown image target, or null for remote / missing images.</summary>
-    internal static string? ResolveImage(string? target, string baseFolder, string? resourceRoot = null)
-    {
-        if (string.IsNullOrWhiteSpace(target) || target.Contains("://", StringComparison.Ordinal) && !target.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-            return null;
-        try
-        {
-            var path = target.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
-                ? new Uri(target).LocalPath
-                : Uri.UnescapeDataString(target);
-            var candidate = Path.IsPathRooted(path) ? path : Path.Combine(baseFolder, path);
-            return HtmlReader.InsideFolder(candidate, resourceRoot) && File.Exists(candidate) ? Path.GetFullPath(candidate) : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or UriFormatException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
-    }
+    /// <summary>
+    /// Local image path of a Markdown image target, or null for remote / missing images and images outside
+    /// <paramref name="resourceRoot"/> (default: <paramref name="baseFolder"/>, see <see cref="DocumentFiles"/>).
+    /// </summary>
+    internal static string? ResolveImage(string? target, string baseFolder, string? resourceRoot = null) =>
+        DocumentFiles.Find(target, baseFolder, resourceRoot ?? baseFolder);
 
     // ───────────────────────── Helpers ─────────────────────────
 

@@ -3,6 +3,7 @@
 
 using System.Globalization;
 using System.Xml.Linq;
+using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx.Docx;
 
@@ -111,6 +112,8 @@ internal sealed partial class DocxReader
     {
         var blip = pic.Descendants(A + "blip").FirstOrDefault();
         var path = ExtractImage(Attr(blip, "embed", R));
+        if (path is not null && pic.Descendants(A + "srcRect").FirstOrDefault() is { } crop)
+            path = CroppedImage(path, crop);
         return path is null ? null : new HImage(path) { Width = width > 0 ? width : null, Height = height > 0 ? height : null, Anchor = anchor };
     }
 
@@ -193,7 +196,7 @@ internal sealed partial class DocxReader
         _textBoxDepth++;
         try
         {
-            ReadBlocks(content.Elements(), output);
+            ReadNestedBlocks(content, output);
         }
         finally
         {
@@ -364,11 +367,43 @@ internal sealed partial class DocxReader
             return null;
         Directory.CreateDirectory(_mediaFolder);
         var path = Path.Combine(_mediaFolder, $"docx-media-{_media.Count + 1}{Path.GetExtension(rel.Target)}");
-        using (var source = entry.Open())
-        using (var target = File.Create(path))
-            source.CopyTo(target);
+        _unpack.Extract(entry, path);
         _media[rel.Target] = path;
         return path;
+    }
+
+    /// <summary>
+    /// A copy of a picture with a:srcRect's edges cut off (each in 1/1000 percent of the picture), or the picture itself
+    /// when nothing is cut or it can't be read (EMF). Word keeps the whole picture in the file and shows the rest; a
+    /// negative edge adds space around it, which is not done here.
+    /// </summary>
+    private string CroppedImage(string path, XElement crop)
+    {
+        static double Edge(XElement rect, string name) =>
+            int.TryParse((string?)rect.Attribute(name), out var value) ? Math.Clamp(value, 0, 100_000) / 100_000.0 : 0;
+        var (left, top, right, bottom) = (Edge(crop, "l"), Edge(crop, "t"), Edge(crop, "r"), Edge(crop, "b"));
+        if (left + top + right + bottom == 0 || left + right >= 1 || top + bottom >= 1)
+            return path;
+        var key = $"{path}|{left}|{top}|{right}|{bottom}";
+        if (_media.TryGetValue(key, out var existing))
+            return existing;
+        try
+        {
+            using var image = new MagickImage(path);
+            var (width, height) = ((double)image.Width, (double)image.Height);
+            image.Crop(new MagickGeometry(
+                (int)Math.Round(width * left), (int)Math.Round(height * top),
+                (uint)Math.Max(1, Math.Round(width * (1 - left - right))), (uint)Math.Max(1, Math.Round(height * (1 - top - bottom)))));
+            image.ResetPage();
+            var cropped = Path.Combine(_mediaFolder, $"docx-media-{_media.Count + 1}{Path.GetExtension(path)}");
+            image.Write(cropped);
+            _media[key] = cropped;
+            return cropped;
+        }
+        catch (MagickException)
+        {
+            return path;
+        }
     }
 
     // ───────────────────────── VML (legacy) ─────────────────────────

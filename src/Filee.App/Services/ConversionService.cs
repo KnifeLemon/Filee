@@ -84,6 +84,11 @@ public sealed class ConversionService
         }
         // A preset on "Default" saves where Settings > General says (read now, so a changed default applies at once).
         preset = _store.Settings.WithDefaultOutput(preset);
+        if (preset.Translate.Enabled && string.IsNullOrWhiteSpace(preset.Translate.Model) && !string.IsNullOrWhiteSpace(_store.Settings.PreferredOllamaModel))
+        {
+            preset = preset.Clone();
+            preset.Translate.Model = _store.Settings.PreferredOllamaModel;
+        }
         WebDropFetcher? fetcher = null;
         if (web is not null)
         {
@@ -162,9 +167,10 @@ public sealed class ConversionService
     }
 
     /// <summary>
-    /// Saves a browser drop's files for a tool (the crop overlay), which needs them on disk before anything else
-    /// happens: always into the download folder, as the tool shows and keeps working on the original. Files that can't
-    /// be saved are left out (<paramref name="failed"/> hears why). The drop is done afterwards.
+    /// Saves a browser drop's files for a tool (the crop overlay) or the Home page's list, which need them on disk before
+    /// anything else happens: always into the download folder, as the tool shows and keeps working on the original, and
+    /// the list's conversions save next to them. Files that can't be saved are left out (<paramref name="failed"/> hears
+    /// why). The drop is done afterwards.
     /// </summary>
     public async Task<IReadOnlyList<string>> SaveBrowserFilesAsync(WebDrop web, Action<string, Exception> failed)
     {
@@ -196,7 +202,7 @@ public sealed class ConversionService
     {
         var settings = _store.Settings.BrowserDrops;
         var folder = string.IsNullOrWhiteSpace(settings.Folder) ? _platform.DownloadsFolder : settings.Folder.Trim();
-        return new WebDropOptions(folder, settings.SaveOnlyConverted);
+        return new WebDropOptions(folder, settings.SaveOnlyConverted, settings.AllowLocalNetwork);
     }
 
     /// <summary>True when a source file (or folder) is still where it was.</summary>

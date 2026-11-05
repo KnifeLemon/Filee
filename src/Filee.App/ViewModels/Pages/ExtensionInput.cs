@@ -18,15 +18,17 @@ public static class ExtensionInput
     /// <remarks>
     /// Two-part extensions are only accepted when Filee knows them (tar.gz, tar.xz ...): files are matched with
     /// <see cref="FormatRegistry.ExtensionOf"/>, which only sees the last part of any other name ("x.foo.bar" → "bar").
+    /// An extension Filee knows is taken as it is, so every suggestion can be added (Krita's backup "kra~").
     /// </remarks>
     public static string? Normalize(string? text)
     {
         var value = (text ?? "").Trim().TrimStart('*', '.').TrimEnd('.').ToLowerInvariant();
         if (value.Length is 0 or > MaxLength || value.Contains("..", StringComparison.Ordinal))
             return null;
-        if (!value.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '+' or '.'))
+        var known = FormatRegistry.FindByExtension(value) is not null;
+        if (!known && !value.All(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '+' or '.'))
             return null;
-        if (value.Contains('.') && FormatRegistry.FindByExtension(value) is null)
+        if (value.Contains('.') && !known)
             return null;
         return value;
     }

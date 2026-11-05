@@ -48,7 +48,7 @@
         </Button>
         <Button Margin="0,0,6,6" Command="{Binding RotateLeftCommand}" Content="{DynamicResource preset.rotate_left.short}" />
         <Button Margin="0,0,6,6" Command="{Binding RotateRightCommand}" Content="{DynamicResource preset.rotate_right.short}" />
-        <Button Margin="0,0,6,6" Command="{Binding DeleteCommand}">
+        <Button Classes="danger" Margin="0,0,6,6" Command="{Binding DeleteCommand}">
           <StackPanel Orientation="Horizontal" Spacing="5">
             <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Delete}" />
             <TextBlock Text="{DynamicResource pdf_editor.delete}" />

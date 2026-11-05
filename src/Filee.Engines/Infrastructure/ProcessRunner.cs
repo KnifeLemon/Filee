@@ -2,8 +2,10 @@
 // report their progress while they work (calibre) can be stopped when they go silent instead (see StallWatch).
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using Filee.Core.Conversion;
+using Microsoft.Win32.SafeHandles;
 
 namespace Filee.Engines.Infrastructure;
 
@@ -31,6 +33,11 @@ public static class ProcessRunner
     /// When set, the program is also killed once it has written nothing (no line on either stream) for this long: for
     /// engines that keep reporting progress, so a long run that does goes on and a hung one stops early.
     /// </param>
+    /// <param name="outputReady">
+    /// Polled while the program runs (not together with <paramref name="stallTimeout"/>); once it has returned true on
+    /// several polls in a row the program is killed and treated as finished (exit code 0). On Windows, a Job Object also
+    /// ends the programs it started, even after it exited itself.
+    /// </param>
     public static async Task<ProcessResult> RunAsync(
         string executable,
         IEnumerable<string> arguments,
@@ -39,12 +46,16 @@ public static class ProcessRunner
         string? workingDirectory = null,
         IDictionary<string, string>? environment = null,
         Action<string>? onOutput = null,
-        TimeSpan? stallTimeout = null)
+        TimeSpan? stallTimeout = null,
+        Func<bool>? outputReady = null)
     {
         var psi = new ProcessStartInfo(executable)
         {
             UseShellExecute = false,
             CreateNoWindow = true,
+            // Closed right after the start: a program that asks a question (7-Zip's password prompt) reads end of
+            // input instead of waiting on the console or pipe Filee itself was started with.
+            RedirectStandardInput = true,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardOutputEncoding = Encoding.UTF8,
@@ -58,6 +69,7 @@ public static class ProcessRunner
                 psi.Environment[key] = value;
 
         using var process = new Process { StartInfo = psi };
+        using var job = outputReady is not null && OperatingSystem.IsWindows() ? ProcessJob.TryCreate() : null;
         var stdout = new StringBuilder();
         var stderr = new StringBuilder();
         var watch = stallTimeout is { } limit ? new StallWatch(limit) : null;
@@ -66,39 +78,190 @@ public static class ProcessRunner
 
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");
+        // Joined right after the start, so the job holds the programs it starts later. One it started in that first
+        // instant would escape the job (very unlikely with soffice, which loads for a while before it starts
+        // soffice.bin). Without a job, TryKill still ends the process tree.
+        if (job is not null && !job.TryAssign(process))
+            job.Dispose();
         Lower(process);
+        process.StandardInput.Close();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
+        var finishedEarly = false;
         try
         {
-            var exited = process.WaitForExitAsync(timeoutCts.Token);
-            if (watch is null)
+            var exited = WaitForExitOnlyAsync(process, timeoutCts.Token);
+            if (watch is null && outputReady is not null && await WatchOutputAsync(outputReady, exited, timeoutCts.Token))
+            {
+                TryKill(process, job);
+                finishedEarly = true;
+            }
+            else if (watch is null)
                 await exited;
             else if (!await watch.WaitAsync(exited, timeoutCts.Token))
             {
-                TryKill(process);
+                TryKill(process, job);
                 throw new ConversionRefusedException(StalledErrorKey, $"{Path.GetFileName(executable)}, {Describe(watch.Limit)}");
             }
         }
         catch (OperationCanceledException)
         {
-            TryKill(process);
+            TryKill(process, job);
             cancellationToken.ThrowIfCancellationRequested();
             throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
         }
 
+        if (finishedEarly)
+        {
+            // Not waiting for the end of the output: a child the job could not end may still hold the inherited pipes.
+            process.WaitForExit(3000);
+            lock (stdout)
+                lock (stderr)
+                    return new ProcessResult(0, stdout.ToString(), stderr.ToString());
+        }
+
+        // The program exited; the ones it started that still run (and may hold the output) end with the job.
+        job?.Terminate();
         // Make sure the async output readers have drained.
-        process.WaitForExit();
+        await DrainAsync(process, executable, stderr, cancellationToken);
         AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
-        return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+        lock (stdout)
+            lock (stderr)
+                return new ProcessResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+    }
+
+    /// <summary>
+    /// Starts <paramref name="executable"/> like <see cref="RunAsync"/>, but hands its standard output to
+    /// <paramref name="readOutput"/> as bytes while it runs instead of collecting text (7-Zip's <c>-so</c>). When
+    /// <paramref name="readOutput"/> throws (it has read more than it takes), the program is killed and the exception
+    /// passed on. The result's standard output is empty.
+    /// </summary>
+    /// <exception cref="TimeoutException">The program did not exit within <paramref name="timeout"/>; it was killed.</exception>
+    public static async Task<ProcessResult> RunWithOutputAsync(
+        string executable,
+        IEnumerable<string> arguments,
+        Action<Stream, CancellationToken> readOutput,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        var psi = new ProcessStartInfo(executable)
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            StandardErrorEncoding = Encoding.UTF8,
+            WorkingDirectory = Path.GetDirectoryName(executable) ?? "",
+        };
+        foreach (var arg in arguments)
+            psi.ArgumentList.Add(arg);
+
+        using var process = new Process { StartInfo = psi };
+        var stderr = new StringBuilder();
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (stderr) stderr.AppendLine(e.Data); };
+        if (!process.Start())
+            throw new InvalidOperationException($"Could not start {executable}.");
+        Lower(process);
+        process.StandardInput.Close();
+        process.BeginErrorReadLine();
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(timeout);
+        // A read waiting for output doesn't see the token; ending the program ends the read.
+        using var stop = timeoutCts.Token.Register(() => TryKill(process, null));
+        try
+        {
+            await Task.Run(() => readOutput(process.StandardOutput.BaseStream, timeoutCts.Token), CancellationToken.None);
+            await process.WaitForExitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            TryKill(process, null);
+            cancellationToken.ThrowIfCancellationRequested();
+            throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
+        }
+        catch
+        {
+            TryKill(process, null);
+            throw;
+        }
+
+        AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
+        lock (stderr)
+            return new ProcessResult(process.ExitCode, "", stderr.ToString());
+    }
+
+    /// <summary>
+    /// True once <paramref name="ready"/> has held on 4 polls in a row (2 s); false when the program exits or the wait is
+    /// cancelled first.
+    /// </summary>
+    private static async Task<bool> WatchOutputAsync(Func<bool> ready, Task exited, CancellationToken cancellationToken)
+    {
+        var streak = 0;
+        while (streak < 4)
+        {
+            await Task.WhenAny(exited, Task.Delay(500, cancellationToken));
+            if (exited.IsCompleted || cancellationToken.IsCancellationRequested)
+                return false;
+
+            bool ok;
+            try
+            {
+                ok = ready();
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                ok = false;
+            }
+            streak = ok ? streak + 1 : 0;
+        }
+        return true;
     }
 
     /// <summary>"10 min", or "30 s" below a minute.</summary>
     internal static string Describe(TimeSpan limit) =>
         limit >= TimeSpan.FromMinutes(1) ? $"{limit.TotalMinutes:0} min" : $"{limit.TotalSeconds:0} s";
+
+    /// <summary>How long the rest of the output may take once the program has exited.</summary>
+    private static readonly TimeSpan DrainTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>
+    /// Waits for the program itself to exit. <see cref="Process.WaitForExitAsync"/> also waits for the end of its
+    /// output, which a program it started can hold open long after (soffice.bin after soffice.exe): see
+    /// <see cref="DrainAsync"/>.
+    /// </summary>
+    private static async Task WaitForExitOnlyAsync(Process process, CancellationToken cancellationToken)
+    {
+        var exited = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        process.EnableRaisingEvents = true;
+        process.Exited += (_, _) => exited.TrySetResult();
+        if (process.HasExited)
+            exited.TrySetResult();
+        await exited.Task.WaitAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Waits for the rest of the output after the program exited, for <see cref="DrainTimeout"/> at most, rather than
+    /// block the conversion until its time limit: only the rest of the output is lost, with a note in standard error.
+    /// </summary>
+    private static async Task DrainAsync(Process process, string executable, StringBuilder stderr, CancellationToken cancellationToken)
+    {
+        using var drain = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        drain.CancelAfter(DrainTimeout);
+        try
+        {
+            await process.WaitForExitAsync(drain.Token);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            lock (stderr)
+                stderr.AppendLine($"(output not complete: a program {Path.GetFileName(executable)} started still holds it)");
+        }
+    }
 
     /// <summary>
     /// Below normal priority, so a long conversion on every core leaves room for the desktop and Filee's own input
@@ -116,8 +279,10 @@ public static class ProcessRunner
         }
     }
 
-    private static void TryKill(Process process)
+    private static void TryKill(Process process, ProcessJob? job)
     {
+        // The job first: the program may already have exited while a child it started still runs.
+        job?.Terminate();
         try
         {
             if (!process.HasExited)
@@ -125,5 +290,157 @@ public static class ProcessRunner
         }
         catch (InvalidOperationException) { }
         catch (System.ComponentModel.Win32Exception) { }
+    }
+
+    /// <summary>
+    /// Tracks a process and its children on Windows. Closing the Job Object kills all processes
+    /// still associated with it.
+    /// </summary>
+    private sealed class ProcessJob : IDisposable
+    {
+        private const uint JobObjectLimitKillOnJobClose = 0x2000;
+        private const int JobObjectExtendedLimitInformationClass = 9;
+
+        private readonly SafeJobHandle _handle;
+
+        private ProcessJob(SafeJobHandle handle)
+        {
+            _handle = handle;
+        }
+
+        public static ProcessJob? TryCreate()
+        {
+            var handle = CreateJobObject(IntPtr.Zero, null);
+
+            if (handle.IsInvalid)
+            {
+                handle.Dispose();
+                return null;
+            }
+
+            var info = new JobObjectExtendedLimitInformation
+            {
+                BasicLimitInformation = new JobObjectBasicLimitInformation
+                {
+                    LimitFlags = JobObjectLimitKillOnJobClose
+                }
+            };
+
+            if (!SetInformationJobObject(
+                handle,
+                JobObjectExtendedLimitInformationClass,
+                ref info,
+                (uint)Marshal.SizeOf<JobObjectExtendedLimitInformation>()))
+            {
+                handle.Dispose();
+                return null;
+            }
+
+            return new ProcessJob(handle);
+        }
+
+        public bool TryAssign(Process process)
+        {
+            if (_handle.IsClosed || _handle.IsInvalid)
+                return false;
+
+            try
+            {
+                return AssignProcessToJobObject(_handle, process.SafeHandle);
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+        }
+
+        public void Terminate()
+        {
+            if (_handle.IsClosed || _handle.IsInvalid)
+                return;
+
+            try
+            {
+                TerminateJobObject(_handle, 1);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+        }
+
+        public void Dispose()
+        {
+            _handle.Dispose();
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeJobHandle CreateJobObject(IntPtr jobAttributes, string? name);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetInformationJobObject(
+            SafeJobHandle job,
+            int informationClass,
+            ref JobObjectExtendedLimitInformation information,
+            uint informationLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AssignProcessToJobObject(
+            SafeJobHandle job,
+            SafeProcessHandle process);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool TerminateJobObject(SafeJobHandle job, uint exitCode);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JobObjectBasicLimitInformation
+        {
+            public long PerProcessUserTimeLimit;
+            public long PerJobUserTimeLimit;
+            public uint LimitFlags;
+            public UIntPtr MinimumWorkingSetSize;
+            public UIntPtr MaximumWorkingSetSize;
+            public uint ActiveProcessLimit;
+            public UIntPtr Affinity;
+            public uint PriorityClass;
+            public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct IoCounters
+        {
+            public ulong ReadOperationCount;
+            public ulong WriteOperationCount;
+            public ulong OtherOperationCount;
+            public ulong ReadTransferCount;
+            public ulong WriteTransferCount;
+            public ulong OtherTransferCount;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JobObjectExtendedLimitInformation
+        {
+            public JobObjectBasicLimitInformation BasicLimitInformation;
+            public IoCounters IoInfo;
+            public UIntPtr ProcessMemoryLimit;
+            public UIntPtr JobMemoryLimit;
+            public UIntPtr PeakProcessMemoryUsed;
+            public UIntPtr PeakJobMemoryUsed;
+        }
+
+        private sealed class SafeJobHandle : SafeHandleZeroOrMinusOneIsInvalid
+        {
+            public SafeJobHandle() : base(true)
+            {
+            }
+
+            protected override bool ReleaseHandle() => CloseHandle(handle);
+
+            [DllImport("kernel32.dll", SetLastError = true)]
+            [return: MarshalAs(UnmanagedType.Bool)]
+            private static extern bool CloseHandle(IntPtr handle);
+        }
     }
 }

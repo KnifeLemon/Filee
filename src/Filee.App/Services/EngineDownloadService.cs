@@ -188,10 +188,7 @@ public sealed class EngineDownloadService
         _catalog = catalog;
         _logger = logger;
         _loc = loc;
-        // Redirects are followed by the installer (mirrors may use plain HTTP; files are verified by SHA-256).
-        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false }) { Timeout = Timeout.InfiniteTimeSpan };
-        http.DefaultRequestHeaders.UserAgent.ParseAdd($"Filee/{typeof(EngineDownloadService).Assembly.GetName().Version}");
-        _installer = new EngineInstaller(http, logger: logger);
+        _installer = new EngineInstaller(EngineInstaller.CreateHttpClient(Timeout.InfiniteTimeSpan), logger: logger);
         InstallPackage = _installer.InstallAsync;
         Packages = EngineDownloads.Packages.Select(p => new EnginePackageState(p, loc)).ToList();
         if (loc is LocalizationService localization)
@@ -212,23 +209,24 @@ public sealed class EngineDownloadService
     }
 
     /// <summary>
-    /// In the order the engines look: the user's own copy, Filee's download, a copy on the PC. A copy Filee didn't
-    /// download gets its version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
+    /// The copy the engines use (<see cref="EngineInstaller.StatusOf"/>). A copy Filee didn't download gets its
+    /// version checked in the background (<see cref="EnginePackageState.UpdateNote"/>).
     /// </summary>
     private EnginePackageStatus StatusOf(EnginePackageState state)
     {
-        var id = state.Package.Id;
-        var own = EngineEnvironment.OwnCopyFolder(id);
-        var system = own is null && !_installer.IsInstalled(state.Package) ? EngineEnvironment.SystemCopyFolder(id) : null;
-        state.OwnCopyFolder = own ?? system;
-        state.FromSystem = system is not null;
+        var copy = _installer.StatusOf(state.Package);
+        state.OwnCopyFolder = copy.Folder;
+        state.FromSystem = copy.FromSystem;
         state.UpdateNote = null;
-        state.IsOutdated = state.OwnCopyFolder is null && _installer.IsInstalled(state.Package) && !_installer.IsUpToDate(state.Package);
-        if (state.OwnCopyFolder is { } folder)
+        state.IsOutdated = copy.Outdated;
+        if (copy.Folder is { } folder)
             _ = CheckVersionAsync(state, folder);
-        return state.OwnCopyFolder is not null ? EnginePackageStatus.OwnCopy
-            : _installer.IsInstalled(state.Package) ? EnginePackageStatus.Installed
-            : EnginePackageStatus.NotInstalled;
+        return copy.Status switch
+        {
+            EngineCopyStatus.OwnCopy => EnginePackageStatus.OwnCopy,
+            EngineCopyStatus.Installed => EnginePackageStatus.Installed,
+            _ => EnginePackageStatus.NotInstalled,
+        };
     }
 
     /// <summary>Runs the copy's version check off the UI thread (it starts the program once) and notes an old one.</summary>
@@ -310,9 +308,13 @@ public sealed class EngineDownloadService
         }
     }
 
-    /// <summary>The reason on the Engines card: an installer's error.* reason in the user's language (#527).</summary>
+    /// <summary>
+    /// The reason on the Engines card: an installer's error.* reason in the user's language (#527), also when another
+    /// Filee holds the package (#963).
+    /// </summary>
     internal static string ErrorText(ILocalizer loc, Exception ex) =>
         ex is HttpRequestException ? ex.Message
+        : ex.GetBaseException() is EngineBusyException ? loc["error.engine_busy"]
         : ex.GetBaseException() is ConversionRefusedException refused ? FailureText.Reason(loc, refused.ErrorKey, refused.Detail)
         : ex.GetBaseException().Message;
 
@@ -350,23 +352,31 @@ public sealed class EngineDownloadService
         });
     }
 
-    /// <summary>Removes a package. Returns false when its files are in use (a conversion is running).</summary>
-    public bool Uninstall(EnginePackageState state)
+    /// <summary>
+    /// Removes a package. Returns null when it's gone, else the key of the reason: its files are in use (a conversion
+    /// is running), or another Filee is installing or removing it (#963).
+    /// </summary>
+    public string? Uninstall(EnginePackageState state)
     {
         if (state.IsBusy)
-            return false;
+            return "engines.remove_failed";
         try
         {
             _installer.Uninstall(state.Package);
             state.Status = EnginePackageStatus.NotInstalled;
             _catalog.Refresh();
-            return true;
+            return null;
+        }
+        catch (EngineBusyException ex)
+        {
+            _logger.LogWarning(ex, "Removing engine package {Package} failed", state.Package.Id);
+            return "error.engine_busy";
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _logger.LogWarning(ex, "Removing engine package {Package} failed", state.Package.Id);
             RefreshStatus();
-            return false;
+            return "engines.remove_failed";
         }
     }
 }

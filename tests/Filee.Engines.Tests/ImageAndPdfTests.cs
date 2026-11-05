@@ -52,6 +52,43 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(320u, result.Width);
     }
 
+    /// <summary>
+    /// An orange CMYK JPEG, as print work comes (#1055), with the U.S. Web Coated (SWOP) profile, or none (the formula).
+    /// </summary>
+    public static string MakeCmykJpeg(string folder, string name = "print.jpg", bool profile = true)
+    {
+        using var image = new MagickImage(MagickColors.Orange, 120, 80);
+        image.SetProfile(ColorProfiles.SRGB);
+        image.TransformColorSpace(ColorProfiles.SRGB, ColorProfiles.USWebCoatedSWOP);
+        if (!profile)
+            image.RemoveProfile("icc");
+        var path = Path.Combine(folder, name);
+        image.Write(path, MagickFormat.Jpeg);
+        using (var check = new MagickImage(path))
+            Assert.Equal(ColorSpace.CMYK, check.ColorSpace);
+        return path;
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task A_cmyk_jpeg_becomes_a_pdf_in_its_colours(bool profile)
+    {
+        // #1055: PDFsharp refuses CMYK JPEGs ("Unsupported image format").
+        var dir = fx.NewFolder();
+        var jpeg = MakeCmykJpeg(dir, profile: profile);
+
+        var job = await fx.ConvertAsync([jpeg], new Preset { TargetFormat = "pdf" });
+
+        AssertDone(job);
+        var page = await fx.ConvertAsync([job.Outputs.Single()], new Preset { TargetFormat = "png", Output = { FileNamePattern = "{name}_page" } });
+        AssertDone(page);
+        using var rendered = new MagickImage(page.Outputs.Single());
+        var colour = rendered.GetPixels().GetPixel((int)rendered.Width / 2, (int)rendered.Height / 2)!.ToColor()!;
+        // Orange is R 255, G 165, B 0; through a print profile it comes back a little duller, never another hue.
+        Assert.True(colour.R > 200 && colour.G is > 100 and < 200 && colour.B < 90, $"centre is {colour}");
+    }
+
     /// <summary>A 3-frame animated GIF (red, green, blue; 20, 30 and 40 hundredths of a second, looping).</summary>
     private static string MakeAnimatedGif(string folder)
     {
@@ -84,6 +121,40 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
 
         var back = await fx.ConvertAsync([webp], new Preset { TargetFormat = "gif", Output = { FileNamePattern = "{name}_back" } });
+
+        AssertDone(back);
+        using var again = new MagickImageCollection(back.Outputs.Single());
+        Assert.Equal(3, again.Count);
+        Assert.Equal([20u, 30u, 40u], again.Select(f => f.AnimationDelay));
+    }
+
+    [Theory]
+    [InlineData("gif")]
+    [InlineData("webp")]
+    public async Task An_animation_becomes_an_animated_jxl_and_back(string from)
+    {
+        // #988: animated GIF and WebP → JPEG XL kept only the first frame.
+        var dir = fx.NewFolder();
+        var source = MakeAnimatedGif(dir);
+        if (from == "webp")
+        {
+            var webp = await fx.ConvertAsync([source], new Preset { TargetFormat = "webp" });
+            AssertDone(webp);
+            source = webp.Outputs.Single();
+        }
+
+        var toJxl = await fx.ConvertAsync([source], new Preset { TargetFormat = "jxl" });
+
+        AssertDone(toJxl);
+        var jxl = toJxl.Outputs.Single();
+        using (var frames = new MagickImageCollection(jxl))
+        {
+            Assert.Equal(3, frames.Count);
+            Assert.Equal([20u, 30u, 40u], frames.Select(f => f.AnimationDelay));
+            Assert.True(frames[2].GetPixels().GetPixel(32, 24).ToColor()!.B > 200, "third frame should be blue");
+        }
+
+        var back = await fx.ConvertAsync([jxl], new Preset { TargetFormat = "gif", Output = { FileNamePattern = "{name}_back" } });
 
         AssertDone(back);
         using var again = new MagickImageCollection(back.Outputs.Single());

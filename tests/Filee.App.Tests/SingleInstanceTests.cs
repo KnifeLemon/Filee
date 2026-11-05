@@ -31,6 +31,30 @@ public class SingleInstanceTests
     }
 
     [Fact]
+    public async Task A_burst_of_later_launches_loses_nothing()
+    {
+        // Explorer starts one Filee per selected file (issue #767): they all queue for the one pipe at the same time.
+        var name = "Filee-test-" + Guid.NewGuid().ToString("N")[..8];
+        using var first = SingleInstance.Acquire(name);
+        var received = new System.Collections.Concurrent.ConcurrentBag<string>();
+        first.ArgumentsReceived += args => received.Add(args[^1]);
+        first.StartListening();
+
+        var results = await Task.WhenAll(Enumerable.Range(0, 200).Select(i => Task.Factory.StartNew(() =>
+        {
+            using var later = SingleInstance.Acquire(name);
+            return later.Forward(["--convert", $"{i}.png"], TimeSpan.FromSeconds(30));
+        }, TestContext.Current.CancellationToken, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
+
+        Assert.All(results, result => Assert.Equal(ForwardResult.Delivered, result));
+        // Delivered means written: the first instance reads the last ones a moment later. One that never comes fails here.
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (received.Count < 200 && waited.Elapsed < TimeSpan.FromSeconds(10))
+            await Task.Delay(10, TestContext.Current.CancellationToken);
+        Assert.Equal(200, received.Distinct().Count());
+    }
+
+    [Fact]
     public void A_copy_with_its_own_data_folder_never_reaches_the_users_filee()
     {
         // The name without a data folder must stay the same: a new version forwards to an older one that runs.

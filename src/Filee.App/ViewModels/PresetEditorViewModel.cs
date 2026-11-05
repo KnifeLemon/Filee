@@ -4,10 +4,14 @@
 // Works on a clone; Apply() copies the edits back into the original preset (Cancel = just drop the VM).
 
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Filee.App.Services;
 using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 using Filee.Engines.Ocr;
+using Filee.Engines.Translation;
 
 namespace Filee.App.ViewModels;
 
@@ -27,6 +31,13 @@ public enum FileSizeUnit
     KB,
     /// <summary>1,000,000 bytes.</summary>
     MB,
+}
+
+/// <summary>The unit of a video's size limit in the preset editor (#680); the preset itself keeps megabytes or a percentage.</summary>
+public enum VideoSizeUnit
+{
+    MB,
+    Percent,
 }
 
 /// <summary>A value with a localized label for combo boxes.</summary>
@@ -68,7 +79,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private readonly Preset _edit;
     private readonly ILocalizer _loc;
 
-    public PresetEditorViewModel(Preset preset, ILocalizer loc)
+    public PresetEditorViewModel(Preset preset, ILocalizer loc, IReadOnlySet<string>? turnedOff = null)
     {
         _original = preset;
         _edit = preset.Clone();
@@ -80,7 +91,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         [
             new Choice<string>(BuiltInData.SameAsSource, loc["presets.same_as_source"]),
             .. FormatRegistry.Known
-                .Where(f => f.Writable)
+                .Where(f => f.Writable && (turnedOff is null || FormatFields.IsShown(f.Id, turnedOff)))
                 .Select(f => new Choice<string>(
                     f.Id,
                     f.Id == FormatRegistry.Folder ? loc["presets.target_folder"] : f.DisplayName,
@@ -117,6 +128,16 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         FitsTiffModes = Enum.GetValues<FitsTiffMode>().Select(v => new Choice<FitsTiffMode>(v, loc[$"presets.fits_tiff.{v}"])).ToList();
         MediaQualities = Enum.GetValues<MediaQuality>().Select(v => new Choice<MediaQuality>(v, loc[$"presets.media_quality.{v}"])).ToList();
         MaxHeights = Steps(MaxHeightSteps, _edit.Media.MaxHeight, h => h == 0 ? loc["presets.max_height.original"] : $"{h}p");
+        // A ratio set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
+        // "Pages per sheet" (#737): a number set outside the editor (a hand-edited preset file) is offered too.
+        SheetLayouts = [.. PdfOptions.SheetLayouts.Append(_edit.Pdf.PagesPerSheet).Where(n => n is > 1 and <= 16).Distinct().Order()
+            .Select(n => new Choice<int>(n, $"{n}"))];
+        SheetPapers = Enum.GetValues<PdfSheetPaper>().Select(v => new Choice<PdfSheetPaper>(v, loc[$"presets.sheet_paper.{v}"])).ToList();
+        SheetOrientations = Enum.GetValues<PdfSheetOrientation>().Select(v => new Choice<PdfSheetOrientation>(v, loc[$"presets.sheet_orientation.{v}"])).ToList();
+        SheetOrders = Enum.GetValues<PdfSheetOrder>().Select(v => new Choice<PdfSheetOrder>(v, loc[$"presets.sheet_order.{v}"])).ToList();
+        CropFrames = [new(VideoCrop.Auto, loc["presets.crop_frame.auto"]),
+            .. VideoCrop.Ratios.Append(_edit.Media.CropFrame).Where(r => VideoCrop.TryParseRatio(r, out _, out _)).Distinct()
+                .Select(r => new Choice<string>(r, r))];
         AudioBitrates = Steps(BitrateSteps, _edit.Media.AudioBitrateKbps, k => k == 0 ? loc["presets.audio_bitrate.auto"] : $"{k} kbps");
         AudioChannelChoices = new[] { 0, 1, 2 }.Select(c => new Choice<int>(c, loc[$"presets.audio_channels.{c}"])).ToList();
         SampleRates = Steps(SampleRateSteps, _edit.Media.AudioSampleRate,
@@ -140,7 +161,15 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         ];
 
         _name = string.IsNullOrWhiteSpace(_edit.Name) ? loc.DisplayName(_edit) : _edit.Name;
-        _target = Targets.FirstOrDefault(t => t.Value == _edit.TargetFormat) ?? Targets[1];
+        if (FormatRegistry.FindById(_edit.TargetFormat) is { Writable: true } hidden
+            && turnedOff is not null && !FormatFields.IsShown(hidden.Id, turnedOff))
+        {
+            _target = new Choice<string>(hidden.Id, hidden.DisplayName, FormatLabels.Category(loc, hidden.Category));
+            _hiddenTarget = hidden.DisplayName;
+            _hiddenTargetNote = loc.Format("presets.target_hidden", hidden.DisplayName);
+        }
+        else
+            _target = Targets.FirstOrDefault(t => t.Value == _edit.TargetFormat) ?? Targets[1];
         _resize = ResizeModes.First(r => r.Value == (_edit.Image.CustomSize is not null ? ResizeMode.Custom
             : _edit.Image.ClampedMinShortEdge is not null ? ResizeMode.MinShortEdge
             : _edit.Image.Resize));
@@ -161,6 +190,14 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _fitsDebayer = _edit.Image.FitsDebayer;
         _mediaQuality = MediaQualities.First(q => q.Value == _edit.Media.Quality);
         _maxHeight = MaxHeights.First(h => h.Value == _edit.Media.MaxHeight);
+        _cropFrame = CropFrames.FirstOrDefault(c => c.Value == _edit.Media.CropFrame) ?? CropFrames[0];
+        _pagesPerSheet = SheetLayouts.FirstOrDefault(c => c.Value == _edit.Pdf.PagesPerSheet) ?? SheetLayouts.First(c => c.Value == 4);
+        _sheetPaper = SheetPapers.FirstOrDefault(c => c.Value == _edit.Pdf.SheetPaper) ?? SheetPapers[0];
+        _sheetOrientation = SheetOrientations.FirstOrDefault(c => c.Value == _edit.Pdf.SheetOrientation) ?? SheetOrientations[0];
+        _sheetOrder = SheetOrders.FirstOrDefault(c => c.Value == _edit.Pdf.SheetOrder) ?? SheetOrders[0];
+        _sheetMarginMm = _edit.Pdf.SheetMarginMm;
+        _sheetGapMm = _edit.Pdf.SheetGapMm;
+        _sheetBorders = _edit.Pdf.SheetBorders;
         _audioBitrate = AudioBitrates.First(b => b.Value == _edit.Media.AudioBitrateKbps);
         _removeAudio = _edit.Media.RemoveAudio;
         _audioChannels = AudioChannelChoices.FirstOrDefault(c => c.Value == _edit.Media.AudioChannels) ?? AudioChannelChoices[0];
@@ -172,6 +209,29 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _caption = _edit.Media.Caption;
         _spokenLanguage = SpokenLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Media.SpokenLanguage, StringComparison.OrdinalIgnoreCase))
             ?? SpokenLanguageChoices[0];
+        TranslationLanguageChoices =
+        [
+            new Choice<string>("en", "English"),
+            new Choice<string>("es", "Español"),
+            new Choice<string>("fr", "Français"),
+            new Choice<string>("de", "Deutsch"),
+            new Choice<string>("zh", "中文"),
+            new Choice<string>("hi", "हिन्दी"),
+            new Choice<string>("ja", "日本語"),
+            new Choice<string>("ko", "한국어"),
+            new Choice<string>("ru", "Русский"),
+            new Choice<string>("pt", "Português"),
+            new Choice<string>("ar", "العربية"),
+            new Choice<string>("it", "Italiano"),
+            new Choice<string>("nl", "Nederlands"),
+            new Choice<string>("pl", "Polski"),
+            new Choice<string>("tr", "Türkçe"),
+            new Choice<string>("ne", "नेपाली"),
+            new Choice<string>("th", "ไทย"),
+            new Choice<string>("id", "Bahasa Indonesia")
+        ];
+        _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
+            ?? TranslationLanguageChoices[0];
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -197,7 +257,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var perMegabyte = _imageSizeUnit.Value == FileSizeUnit.KB ? 1000m : 1m;
         _imageMaxSize = (decimal)_edit.Image.MaxSizeMb * perMegabyte;
         _imageMinSize = (decimal)_edit.Image.MinSizeMb * perMegabyte;
-        _videoMaxSizeMb = (decimal)_edit.Media.MaxSizeMb;
+        _videoSizeUnitChoice = _edit.Media.MaxSizePercent > 0 ? VideoSizeUnits[1] : VideoSizeUnits[0];
+        _videoMaxSizeMb = _edit.Media.MaxSizeMb > 0 ? (decimal)_edit.Media.MaxSizeMb : null;
+        _videoMaxSizePercent = _edit.Media.MaxSizePercent > 0 ? _edit.Media.MaxSizePercent : null;
         _resizePercent = _edit.Image.ResizePercent;
         _longEdge = _edit.Image.LongEdge;
         _width = _edit.Image.Width;
@@ -221,6 +283,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _marginMm = _edit.Pdf.MarginMm;
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
+        _askPageRange = _edit.Pdf.AskPageRange;
         _splitPages = _edit.Pdf.SplitPages;
         _combinePages = _edit.Pdf.CombinePages;
         _trimPageMargins = _edit.Pdf.TrimPageMargins;
@@ -234,6 +297,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _keepDates = _edit.Output.KeepDates;
         _zipResult = _edit.Output.ZipResult;
         _replaceOriginal = _edit.Output.ReplaceOriginal;
+        _moveInsteadOfCopy = _edit.Output.MoveInsteadOfCopy;
     }
 
     public string PresetId => _original.Id;
@@ -258,6 +322,48 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
     public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
 
+    public IReadOnlyList<Choice<string>> TranslationLanguageChoices { get; }
+
+    [ObservableProperty] private Choice<string> _targetLanguage;
+
+    public bool ShowTranslate => _original.Id == "translate" || _edit.Translate.Enabled;
+
+    [ObservableProperty] private string _testTranslationResult = "";
+    [ObservableProperty] private bool _isTestingTranslation;
+    [ObservableProperty] private bool _testTranslationHasError;
+
+    [RelayCommand]
+    public async Task TestTranslationAsync()
+    {
+        if (IsTestingTranslation) return;
+        IsTestingTranslation = true;
+        TestTranslationHasError = false;
+        TestTranslationResult = _loc["engines.ollama.connecting"];
+
+        try
+        {
+            var targetLang = TargetLanguage?.Value ?? "es";
+            var preferred = AppHost.Get<UserDataStore>()?.Settings.PreferredOllamaModel;
+            var model = !string.IsNullOrWhiteSpace(_edit.Translate.Model) ? _edit.Translate.Model
+                : !string.IsNullOrWhiteSpace(preferred) ? preferred
+                : await TranslationService.GetPreferredLocalOllamaModelAsync();
+            var service = new TranslationService(new TranslateOptions { TargetLanguage = targetLang, Model = model });
+            var sample = "Hello, world!";
+            var translated = await service.TranslateTextAsync(sample, targetLang);
+            TestTranslationResult = $"\"{sample}\" → \"{translated}\"  ({model ?? "local model"})";
+            TestTranslationHasError = false;
+        }
+        catch (Exception ex)
+        {
+            TestTranslationResult = $"{_loc["engines.ollama.error"]} {ex.Message}";
+            TestTranslationHasError = true;
+        }
+        finally
+        {
+            IsTestingTranslation = false;
+        }
+    }
+
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
 
@@ -271,6 +377,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<FitsTiffMode>> FitsTiffModes { get; }
     public IReadOnlyList<Choice<MediaQuality>> MediaQualities { get; }
     public IReadOnlyList<Choice<int>> MaxHeights { get; }
+    /// <summary>"Crop video": the picture inside the black bars, or a ratio.</summary>
+    public IReadOnlyList<Choice<string>> CropFrames { get; }
+    public IReadOnlyList<Choice<int>> SheetLayouts { get; }
+    public IReadOnlyList<Choice<PdfSheetPaper>> SheetPapers { get; }
+    public IReadOnlyList<Choice<PdfSheetOrientation>> SheetOrientations { get; }
+    public IReadOnlyList<Choice<PdfSheetOrder>> SheetOrders { get; }
     public IReadOnlyList<Choice<int>> AudioBitrates { get; }
     public IReadOnlyList<Choice<int>> AudioChannelChoices { get; }
     public IReadOnlyList<Choice<int>> SampleRates { get; }
@@ -294,7 +406,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
         nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPdfCombine),
-        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
+        nameof(ShowAskPages), nameof(ShowAskPagesHint),
+        nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
@@ -303,6 +416,29 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
         nameof(ShowImageSize), nameof(SizeRangeError), nameof(IsValid))]
     private Choice<string> _target;
+
+    // A target whose fields are all turned off isn't added to Targets (the list follows the switches), but it stays the
+    // target: the box shows its name as a placeholder with a note, and Apply saves it unless another one is picked.
+    [ObservableProperty] private string? _hiddenTarget;
+    [ObservableProperty] private string? _hiddenTargetNote;
+
+    /// <summary>The target box has no selection while the current target is hidden by its field switch.</summary>
+    public Choice<string>? TargetSelection
+    {
+        get => HiddenTarget is null ? Target : null;
+        set
+        {
+            if (value is null)
+            {
+                if (HiddenTarget is null)
+                    OnPropertyChanged(nameof(TargetSelection));
+                return;
+            }
+            HiddenTarget = null;
+            HiddenTargetNote = null;
+            Target = value;
+        }
+    }
 
     private LivePhotoKind _livePhotoValue;
 
@@ -463,8 +599,36 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>A minimum over the maximum, while the boxes are shown; a maximum of 0 is no maximum.</summary>
     public string? SizeRangeError => ShowImageSize && ImageMaxSize > 0 && ImageMinSize > ImageMaxSize ? _loc["presets.size_range_invalid"] : null;
 
-    /// <summary>"Size limit (MB)" for a video (0 = none, #553).</summary>
-    [ObservableProperty] private decimal? _videoMaxSizeMb;
+    /// <summary>The unit of the video size limit: MB or % of original (#680).</summary>
+    public IReadOnlyList<Choice<VideoSizeUnit>> VideoSizeUnits { get; } =
+        [new(VideoSizeUnit.MB, "MB"), new(VideoSizeUnit.Percent, "%")];
+
+    [ObservableProperty] private Choice<VideoSizeUnit> _videoSizeUnitChoice;
+
+    /// <summary>Video size limit in MB (0 or empty = none, #553).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(VideoMaxSize))] private decimal? _videoMaxSizeMb;
+
+    /// <summary>Video size limit as percentage of original (1–99, 0 or empty = none, #680).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(VideoMaxSize))] private decimal? _videoMaxSizePercent;
+
+    /// <summary>The value bound to the video size NumericUpDown.</summary>
+    public decimal? VideoMaxSize
+    {
+        get => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? VideoMaxSizePercent : VideoMaxSizeMb;
+        set
+        {
+            if (VideoSizeUnitChoice.Value == VideoSizeUnit.Percent)
+                VideoMaxSizePercent = value;
+            else
+                VideoMaxSizeMb = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>Maximum value for the video size NumericUpDown: 99 for %, 4096 for MB.</summary>
+    public decimal VideoSizeMaximum => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? 99 : 4096;
+    public decimal VideoSizeIncrement => 1;
+    public string VideoSizeFormat => VideoSizeUnitChoice.Value == VideoSizeUnit.Percent ? "0" : "0.#";
     [ObservableProperty] private int _resizePercent;
     [ObservableProperty] private int _longEdge;
     [ObservableProperty] private int _width;
@@ -506,10 +670,15 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _webpLossless;
     [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
-    [ObservableProperty] private bool _merge;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint))]
+    private bool _merge;
     [ObservableProperty] private double _marginMm;
     [ObservableProperty] private int _renderDpi;
     [ObservableProperty] private string _pageRange;
+
+    /// <summary>"Ask every time" for the pages (PdfOptions.AskPageRange, #981).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPagesHint))]
+    private bool _askPageRange;
     [ObservableProperty] private bool _splitPages;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowPdfCompressionOptions))]
@@ -566,8 +735,38 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _zipResult;
     /// <summary>The result takes the original's place, which goes to the Recycle Bin / Trash (OutputRule.ReplaceOriginal).</summary>
     [ObservableProperty] private bool _replaceOriginal;
+    /// <summary>Copy to folder: the files are moved instead of copied (OutputRule.MoveInsteadOfCopy, #856).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CopyHint), nameof(CopyAction))]
+    private bool _moveInsteadOfCopy;
+
+    /// <summary>Copy to folder's Action: copy (the default) or move.</summary>
+    public IReadOnlyList<Choice<bool>> CopyActions =>
+        [new(false, _loc["presets.copy_to_folder"]), new(true, _loc["presets.move_to_folder"])];
+
+    public Choice<bool> CopyAction
+    {
+        get => CopyActions[MoveInsteadOfCopy ? 1 : 0];
+        set
+        {
+            if (value is not null)
+                MoveInsteadOfCopy = value.Value;
+        }
+    }
+
+    /// <summary>What Copy to folder does with the originals, as the box below it is set.</summary>
+    public string CopyHint => _loc[MoveInsteadOfCopy ? "presets.move_hint" : "presets.copy_hint"];
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
+    [ObservableProperty] private Choice<string> _cropFrame;
+
+    /// <summary>"Pages per sheet" (#737), for the presets that make sheets (<see cref="ShowSheets"/>).</summary>
+    [ObservableProperty] private Choice<int> _pagesPerSheet;
+    [ObservableProperty] private Choice<PdfSheetPaper> _sheetPaper;
+    [ObservableProperty] private Choice<PdfSheetOrientation> _sheetOrientation;
+    [ObservableProperty] private Choice<PdfSheetOrder> _sheetOrder;
+    [ObservableProperty] private double _sheetMarginMm;
+    [ObservableProperty] private double _sheetGapMm;
+    [ObservableProperty] private bool _sheetBorders;
     [ObservableProperty] private Choice<int> _audioBitrate;
     [ObservableProperty] private Choice<int> _audioChannels;
     [ObservableProperty] private Choice<int> _sampleRate;
@@ -607,7 +806,25 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<double> _animationSpeed;
 
     // A combo box that loses its selection sets null: every choice keeps its value (see Choices.Restore).
-    partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => Target = v);
+    partial void OnTargetChanged(Choice<string>? oldValue, Choice<string> newValue)
+    {
+        Choices.Restore(oldValue, newValue, v => Target = v);
+        OnPropertyChanged(nameof(TargetSelection));
+    }
+
+    partial void OnVideoSizeUnitChoiceChanged(Choice<VideoSizeUnit>? oldValue, Choice<VideoSizeUnit> newValue)
+    {
+        if (Choices.Restore(oldValue, newValue, v => VideoSizeUnitChoice = v) || oldValue is null || oldValue.Value == newValue.Value)
+            return;
+        var toPercent = newValue.Value == VideoSizeUnit.Percent;
+        if (!toPercent)
+            OnPropertyChanged(nameof(VideoSizeMaximum));
+        OnPropertyChanged(nameof(VideoSizeIncrement));
+        OnPropertyChanged(nameof(VideoSizeFormat));
+        OnPropertyChanged(nameof(VideoMaxSize));
+        if (toPercent)
+            OnPropertyChanged(nameof(VideoSizeMaximum));
+    }
 
     /// <summary>
     /// Both ends keep their size in the other unit: 500 KB becomes 0.5 MB. The boxes' maximum is raised before the
@@ -638,6 +855,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         Choices.Restore(oldValue, newValue, v => FitsTiffMode = v);
     partial void OnMediaQualityChanged(Choice<MediaQuality>? oldValue, Choice<MediaQuality> newValue) => Choices.Restore(oldValue, newValue, v => MediaQuality = v);
     partial void OnMaxHeightChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => MaxHeight = v);
+    partial void OnCropFrameChanged(Choice<string>? oldValue, Choice<string> newValue) => Choices.Restore(oldValue, newValue, v => CropFrame = v);
+    partial void OnPagesPerSheetChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => PagesPerSheet = v);
+    partial void OnSheetPaperChanged(Choice<PdfSheetPaper>? oldValue, Choice<PdfSheetPaper> newValue) => Choices.Restore(oldValue, newValue, v => SheetPaper = v);
+    partial void OnSheetOrientationChanged(Choice<PdfSheetOrientation>? oldValue, Choice<PdfSheetOrientation> newValue) =>
+        Choices.Restore(oldValue, newValue, v => SheetOrientation = v);
+    partial void OnSheetOrderChanged(Choice<PdfSheetOrder>? oldValue, Choice<PdfSheetOrder> newValue) => Choices.Restore(oldValue, newValue, v => SheetOrder = v);
     partial void OnAudioBitrateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioBitrate = v);
     partial void OnAudioChannelsChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => AudioChannels = v);
     partial void OnSampleRateChanged(Choice<int>? oldValue, Choice<int> newValue) => Choices.Restore(oldValue, newValue, v => SampleRate = v);
@@ -693,6 +916,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowPageSize => ShowPdfBuild && !Recognizes;
     public bool ShowPdfSplit => TargetId == "pdf" && !Recognizes;
 
+    /// <summary>
+    /// "Ask every time" under Pages: wherever the pages are, except a merge, where one range would go for every file
+    /// (AskedPages.Asks).
+    /// </summary>
+    public bool ShowAskPages => ShowPdf && !(TargetId == "pdf" && Merge);
+    public bool ShowAskPagesHint => ShowAskPages && AskPageRange;
+
     /// <summary>Compression is for PDF → PDF; Ghostscript and metadata only matter while it is on.</summary>
     public bool ShowPdfCompression => TargetId == "pdf" && !Recognizes;
 
@@ -709,7 +939,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowDocument => TargetId == "pdf";
     /// <summary>Markdown can't hold pictures: they go into a folder next to it, or are left out.</summary>
     public bool ShowLeaveOutPictures => TargetId == "md";
-    public bool ShowMedia => ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption;
+    public bool ShowMedia => ShowCropFrame || ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption;
     /// <summary>Mono / stereo for every audio target but AMR, which is mono by definition.</summary>
     public bool ShowAudioChannels => TargetIsAudio && TargetId != "amr";
     /// <summary>Sample rate and sample format: the PCM of WAV and W64 takes any.</summary>
@@ -724,6 +954,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowAudioCodec => AudioCodecs.Count > 1;
     public bool ShowMediaQuality => TargetIsLossyMedia;
     public bool ShowMaxHeight => TargetIsVideo;
+    /// <summary>"Crop video" presets (#830), which keep the video's own format.</summary>
+    public bool ShowCropFrame => _original.CropsVideo;
+
+    /// <summary>"Pages per sheet": shown for the presets that put several PDF pages on a sheet, while they write a PDF.</summary>
+    public bool ShowSheets => ShowPdfBuild && _original.Pdf.MakesSheets;
     /// <summary>A size limit for a converted video; a clip is cut, not fitted.</summary>
     public bool ShowVideoMaxSize => TargetCategory == FormatCategory.Video && !_original.IsClipTool
         // Not where nothing fits it: a join or slideshow, or VOB and DV, which have a fixed bitrate.
@@ -744,7 +979,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// Playback speed: for the formats an animation stays animated in (an animated GIF, WebP, APNG or MNG, or a video
     /// made into a GIF or APNG). Other targets get one frame.
     /// </summary>
-    public bool ShowAnimationSpeed => TargetId is "gif" or "webp" or "apng" or "mng" or BuiltInData.SameAsSource;
+    public bool ShowAnimationSpeed => TargetId is "gif" or "webp" or "apng" or "mng" or "jxl" or BuiltInData.SameAsSource;
     /// <summary>
     /// Tracing options: raster images reach SVG (and DXF / DWG through it) only by tracing. For other sources (a
     /// drawing, a CAD file) the options are ignored.
@@ -849,12 +1084,23 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         pdf.MarginMm = Math.Clamp(MarginMm, 0, 100);
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);
         pdf.PageRange = PageRange.Trim();
+        pdf.AskPageRange = ShowAskPages && AskPageRange;
         pdf.SplitPages = SplitPages;
         pdf.CombinePages = CombinePages;
         pdf.TrimPageMargins = TrimPageMargins;
         pdf.SplitTallImage = SplitTallImage;
         pdf.Compression = CompressionLevel.Value;
         pdf.CompressWithGhostscript = CompressWithGhostscript;
+        if (ShowSheets)
+        {
+            pdf.PagesPerSheet = PagesPerSheet.Value;
+            pdf.SheetPaper = SheetPaper.Value;
+            pdf.SheetOrientation = SheetOrientation.Value;
+            pdf.SheetOrder = SheetOrder.Value;
+            pdf.SheetMarginMm = Math.Clamp(SheetMarginMm, 0, 50);
+            pdf.SheetGapMm = Math.Clamp(SheetGapMm, 0, 50);
+            pdf.SheetBorders = SheetBorders;
+        }
         // Only for a PDF target, where they are shown: a password left behind by it must not lock nothing.
         pdf.Watermark = ShowPdfBuild ? Watermark.Trim() : "";
         pdf.PageNumbers = ShowPdfBuild && PageNumbers;
@@ -880,7 +1126,26 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         var media = _original.Media;
         media.Quality = MediaQuality.Value;
         media.MaxHeight = MaxHeight.Value;
-        media.MaxSizeMb = ShowVideoMaxSize ? SizeLimit(VideoMaxSizeMb) : 0;
+        if (ShowCropFrame)
+            media.CropFrame = CropFrame.Value;
+        if (ShowVideoMaxSize)
+        {
+            if (VideoSizeUnitChoice.Value == VideoSizeUnit.Percent)
+            {
+                media.MaxSizeMb = 0;
+                media.MaxSizePercent = VideoMaxSizePercent is > 0 and < 100 ? (int)Math.Clamp(VideoMaxSizePercent.Value, 1, 99) : 0;
+            }
+            else
+            {
+                media.MaxSizePercent = 0;
+                media.MaxSizeMb = SizeLimit(VideoMaxSizeMb);
+            }
+        }
+        else
+        {
+            media.MaxSizeMb = 0;
+            media.MaxSizePercent = 0;
+        }
         media.AudioBitrateKbps = AudioBitrate.Value;
         media.RemoveAudio = RemoveAudio;
         media.AudioChannels = AudioChannels.Value;
@@ -918,6 +1183,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // black and white chosen for PDF and left behind by a DWG target.
         _original.Cad.Version = ShowCad ? CadVersion.Value : default;
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
+        _original.Translate.TargetLanguage = TargetLanguage.Value;
+        _original.Translate.Enabled = ShowTranslate;
 
         var output = _original.Output;
         // Asking keeps the location it had: a Filee that can't ask (or one from before it) saves there.
@@ -934,6 +1201,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Only for geospatial targets, where it is offered: a box ticked for Shapefile must not zip a later PNG.
         output.ZipResult = ShowZipResult && ZipResult;
         output.ReplaceOriginal = !IsCopyToFolder && ReplaceOriginal;
+        output.MoveInsteadOfCopy = IsCopyToFolder && MoveInsteadOfCopy;
         return true;
     }
 

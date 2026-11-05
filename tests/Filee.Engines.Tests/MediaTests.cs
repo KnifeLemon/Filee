@@ -158,6 +158,119 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Flic_animations_are_read_but_never_written()
+    {
+        // #940: Autodesk Animator's FLIC, read by FFmpeg's flic demuxer; FFmpeg has no FLIC encoder, so never a target.
+        var route = Planner().Plan("flc", "gif");
+        Assert.NotNull(route);
+        Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        Assert.Null(Planner().Plan("mp4", "flc"));
+    }
+
+    [Theory]
+    [InlineData("intro.flc", "gif")]
+    [InlineData("intro.flc", "mp4")]
+    [InlineData("intro.fli", "gif")]
+    public async Task A_flic_animation_converts_whole(string name, string target)
+    {
+        // FFmpeg has no FLIC encoder, so the animation is put together here the way Autodesk Animator writes it: ten
+        // frames at 10 per second.
+        SkipUnlessInstalled();
+        var flic = await MakeFlicAsync(name);
+
+        var probed = await ProbeAsync(await ConvertAsync(flic, target));
+
+        Assert.Equal((64, 48), (probed.Video!.Width, probed.Video.Height));
+        Assert.True(probed.Video.Frames >= 10, $"{probed.Video.Frames} frames");
+        Assert.InRange(probed.Duration, 0.9, 1.2);
+    }
+
+    [Fact]
+    public async Task A_fli_palette_of_six_bits_keeps_its_colours()
+    {
+        // Animator's FLI keeps its palette in 6 bits (0-63): full red and blue must stay full, not come out dark.
+        SkipUnlessInstalled();
+        var still = await ConvertAsync(await MakeFlicAsync("intro.fli"), "png");
+
+        using var png = new ImageMagick.MagickImage(still);
+        using var pixels = png.GetPixels();
+        Assert.Equal(ImageMagick.MagickColors.Red, pixels.GetPixel(0, 24)!.ToColor());
+        Assert.Equal(ImageMagick.MagickColors.Blue, pixels.GetPixel(63, 24)!.ToColor());
+    }
+
+    private async Task<string> MakeFlicAsync(string name)
+    {
+        var path = Path.Combine(fx.NewFolder(), name);
+        await File.WriteAllBytesAsync(path, Flic.Animation(name.EndsWith(".fli", StringComparison.Ordinal), 64, 48, frames: 10),
+            TestContext.Current.CancellationToken);
+        return path;
+    }
+
+    /// <summary>Autodesk Animator's FLIC, as far as FFmpeg's flic demuxer and decoder read it.</summary>
+    private static class Flic
+    {
+        /// <summary>
+        /// The 128-byte header, then one frame chunk per picture: the first holds the palette (1 red, 2 blue), each one
+        /// its pixels uncompressed (a red bar growing from the left over blue). FLI (Animator) keeps the palette in 6 bits
+        /// and the speed in 1/70 s, FLC (Animator Pro) in 8 bits and milliseconds; both play at 10 frames a second here.
+        /// </summary>
+        public static byte[] Animation(bool fli, int width, int height, int frames)
+        {
+            var body = new MemoryStream();
+            for (var n = 0; n < frames; n++)
+            {
+                var chunks = new MemoryStream();
+                var count = 1;
+                if (n == 0)
+                {
+                    var full = fli ? (byte)63 : (byte)255;
+                    // One packet: skip no colours, change 256 (written as 0); three bytes per colour.
+                    var palette = new byte[4 + 256 * 3];
+                    BinaryPrimitives.WriteUInt16LittleEndian(palette, 1);
+                    palette[4 + 3] = full;
+                    palette[4 + 6 + 2] = full;
+                    Chunk(chunks, fli ? (ushort)11 : (ushort)4, palette); // COLOR_64 / COLOR_256
+                    count++;
+                }
+                var pixels = new byte[width * height];
+                for (var y = 0; y < height; y++)
+                    for (var x = 0; x < width; x++)
+                        pixels[y * width + x] = x < (n + 1) * width / (frames + 1) ? (byte)1 : (byte)2;
+                Chunk(chunks, 16, pixels); // COPY
+
+                var frame = new byte[16];
+                BinaryPrimitives.WriteUInt32LittleEndian(frame, (uint)(16 + chunks.Length));
+                BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(4), 0xF1FA);
+                BinaryPrimitives.WriteUInt16LittleEndian(frame.AsSpan(6), (ushort)count);
+                body.Write(frame);
+                chunks.WriteTo(body);
+            }
+
+            var header = new byte[128];
+            BinaryPrimitives.WriteUInt32LittleEndian(header, (uint)(header.Length + body.Length));
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(4), fli ? (ushort)0xAF11 : (ushort)0xAF12);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(6), (ushort)frames);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(8), (ushort)width);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(10), (ushort)height);
+            BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(12), 8); // bits per pixel
+            if (fli)
+                BinaryPrimitives.WriteUInt16LittleEndian(header.AsSpan(16), 7);
+            else
+                BinaryPrimitives.WriteUInt32LittleEndian(header.AsSpan(16), 100);
+            return [.. header, .. body.ToArray()];
+        }
+
+        private static void Chunk(MemoryStream output, ushort type, byte[] data)
+        {
+            Span<byte> head = stackalloc byte[6];
+            BinaryPrimitives.WriteUInt32LittleEndian(head, (uint)(6 + data.Length));
+            BinaryPrimitives.WriteUInt16LittleEndian(head[4..], type);
+            output.Write(head);
+            output.Write(data);
+        }
+    }
+
+    [Fact]
     public async Task A_self_contained_m4s_converts_and_a_bare_dash_segment_is_refused()
     {
         SkipUnlessInstalled();
@@ -604,6 +717,115 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static string After(IReadOnlyList<string> args, string option) => args[args.ToList().IndexOf(option) + 1];
 
     [Fact]
+    public void Crop_video_encodes_the_frame_cut_first_and_copies_the_sound()
+    {
+        // #830: the box before the scale filter; the video can't be copied then.
+        var crop = MediaEncoding.CropFilter(Hd, new CropBox(1920, 800, 0, 140));
+        Assert.Equal("crop=1920:800:0:140,", crop);
+        var info = new MediaInfo(TimeSpan.FromSeconds(10), Hd with { Codec = "h264", PixelFormat = "yuv420p" }, new AudioStreamInfo(2, 48000, "aac"), null);
+        var copied = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work").Single().Arguments;
+        Assert.Equal("copy", After(copied, "-c:v"));
+        var cropped = MediaEncoding.Plan("in.mp4", "out.mp4", "mp4", new MediaOptions(), info, "work", crop: crop).Single().Arguments;
+        Assert.Equal("libx264", After(cropped, "-c:v"));
+        Assert.StartsWith(crop + "scale=", After(cropped, "-vf"));
+        Assert.Equal("copy", After(cropped, "-c:a"));
+        Assert.DoesNotContain("0:s?", cropped);
+
+        // An MKV keeps its subtitles and fonts.
+        var mkv = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), info, "work", crop: crop).Single().Arguments;
+        Assert.Contains("0:s?", mkv);
+        Assert.Contains("0:t?", mkv);
+        Assert.Equal(("copy", "copy"), (After(mkv, "-c:s"), After(mkv, "-c:t")));
+
+        // Anamorphic pixels are made square first, as cropdetect saw them.
+        var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
+        Assert.StartsWith(MediaEncoding.SquarePixels(dv) + "crop=", MediaEncoding.CropFilter(dv, new CropBox(640, 360, 0, 60)));
+    }
+
+    [Fact]
+    public void A_ratio_is_the_largest_centred_box_that_fits()
+    {
+        Assert.Equal(new CropBox(1080, 1080, 420, 0), MediaEncoding.RatioBox(Hd, 1, 1));
+        Assert.Equal(new CropBox(606, 1080, 656, 0), MediaEncoding.RatioBox(Hd, 9, 16));
+        Assert.Equal(new CropBox(1920, 822, 0, 128), MediaEncoding.RatioBox(Hd, 21, 9));
+        // Already 16:9: nothing to crop.
+        Assert.True(MediaEncoding.IsWholeFrame(MediaEncoding.RatioBox(Hd, 16, 9), Hd));
+        // Upright and with square pixels: a portrait phone video, an anamorphic DV one (shown 640 × 480).
+        Assert.Equal(new CropBox(1080, 1080, 0, 420), MediaEncoding.RatioBox(Hd with { Rotation = 90 }, 1, 1));
+        var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
+        Assert.True(MediaEncoding.IsWholeFrame(MediaEncoding.RatioBox(dv, 4, 3), dv));
+    }
+
+    [Fact]
+    public void Cropdetect_ends_each_stretch_with_its_largest_box_and_the_largest_stretch_wins()
+    {
+        string Line(string crop) => $"[Parsed_cropdetect_1 @ 0000] x1:0 x2:1919 y1:140 y2:939 w:1920 h:800 x:0 y:140 pts:1 t:0.04 limit:0.09 crop={crop}";
+        string[] lines =
+        [
+            "Input #0, mov,mp4,m4a,3gp,3g2,mj2, from 'in.mp4':",
+            Line("1280:540:320:270"), Line("1921:801:1:141"),
+            // A black frame: no size.
+            Line("-1904:-1072:1912:1080"),
+            "[out#0/null @ 0000] video:1kB audio:0kB",
+        ];
+        Assert.Equal(new CropBox(1920, 800, 0, 140), MediaEncoding.FinalCrop(lines));
+        Assert.Null(MediaEncoding.FinalCrop(["no crop here", Line("-16:-16:8:8")]));
+        Assert.True(MediaEncoding.HasCropLine(["no crop here", Line("-16:-16:8:8")]));
+        Assert.False(MediaEncoding.HasCropLine(["no crop here"]));
+
+        // A dark stretch finds a smaller box: the largest one is the picture.
+        Assert.Equal(new CropBox(1920, 800, 0, 140),
+            MediaEncoding.LargestCrop([new CropBox(1280, 540, 320, 270), null, new CropBox(1920, 800, 0, 140), new CropBox(1600, 700, 160, 190)]));
+        Assert.Null(MediaEncoding.LargestCrop([null, null]));
+        // A video dark all through: a box too small to be the picture.
+        Assert.True(MediaEncoding.IsTooSmall(new CropBox(400, 800, 760, 140), Hd));
+        Assert.False(MediaEncoding.IsTooSmall(new CropBox(1440, 800, 240, 140), Hd));
+    }
+
+    [Fact]
+    public void A_crop_keeps_an_hevc_or_av1_source_in_its_codec_where_it_can()
+    {
+        var hevc = Hd with { Codec = "hevc" };
+        HashSet<string> all = ["libx264", "libx265", "libsvtav1"];
+        Assert.Equal(VideoCodec.Hevc, MediaEncoding.CropOptions("mp4", new MediaOptions(), hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Av1, MediaEncoding.CropOptions("mkv", new MediaOptions(), Hd with { Codec = "av1" }, all).VideoCodec);
+        // WebM holds no HEVC; an FFmpeg without x265; a codec the preset chose; an H.264 source.
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("webm", new MediaOptions(), hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("mp4", new MediaOptions(), hevc, new HashSet<string> { "libx264" }).VideoCodec);
+        Assert.Equal(VideoCodec.Av1, MediaEncoding.CropOptions("mp4", new MediaOptions { VideoCodec = VideoCodec.Av1 }, hevc, all).VideoCodec);
+        Assert.Equal(VideoCodec.Default, MediaEncoding.CropOptions("mp4", new MediaOptions(), Hd with { Codec = "h264" }, all).VideoCodec);
+        // The preset itself is left as it is.
+        var options = new MediaOptions();
+        MediaEncoding.CropOptions("mp4", options, hevc, all);
+        Assert.Equal(VideoCodec.Default, options.VideoCodec);
+    }
+
+    [Fact]
+    public void Cropdetect_reads_a_few_stretches_of_a_long_video_and_the_start_of_a_short_one()
+    {
+        Assert.Equal([(6.0, 1.0), (18.0, 1.0), (30.0, 1.0), (42.0, 1.0), (54.0, 1.0)], MediaEncoding.CropDetectStretches(60).ToList());
+        Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(4).ToList());
+        Assert.Equal([(0.0, 5.0)], MediaEncoding.CropDetectStretches(null).ToList());
+        var args = MediaEncoding.CropDetect("in.mp4", 6, 1, Hd);
+        Assert.Equal(("info", "6.000", "1.000"), (After(args, "-v"), After(args, "-ss"), After(args, "-t")));
+        // A part of the range, not 24 of 255: the same black at 10 bits (#830 review).
+        Assert.Contains("cropdetect=limit=0.094:", After(args, "-vf"));
+    }
+
+    [Fact]
+    public void A_box_as_large_as_the_picture_is_no_black_bars()
+    {
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1920, 1080, 0, 0), Hd));
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1918, 1080, 0, 0), Hd));
+        Assert.False(MediaEncoding.IsWholeFrame(new CropBox(1920, 800, 0, 140), Hd));
+        // A portrait phone video: upright, the width and height change places.
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(1080, 1920, 0, 0), Hd with { Rotation = 90 }));
+        Assert.False(MediaEncoding.IsWholeFrame(new CropBox(1080, 1920, 0, 0), Hd));
+        // Anamorphic DV: 720 × 480 shown 4:3, as 640 × 480 with square pixels.
+        Assert.True(MediaEncoding.IsWholeFrame(new CropBox(640, 480, 0, 0), new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97)));
+    }
+
+    [Fact]
     public void Audio_targets_map_the_track_the_probe_chose()
     {
         var info = new MediaInfo(TimeSpan.FromSeconds(1), null, new AudioStreamInfo(1, 44100, "aac", 1), null);
@@ -964,6 +1186,77 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     // ───────────────────────── Real conversions ─────────────────────────
 
+    /// <summary>A 2-second video of one colour with a tone, <paramref name="pad"/> (a pad filter) adding black bars.</summary>
+    private static async Task<string> MakeBarsAsync(string folder, string name, string size, string? pad,
+        string encoder = "libx264", string pixelFormat = "yuv420p")
+    {
+        var path = Path.Combine(folder, name);
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", $"color=c=0x3366cc:size={size}:rate=25:duration=2" + (pad is null ? "" : "," + pad) + $",format={pixelFormat}",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=44100:duration=2",
+            "-c:v", encoder, "-pix_fmt", pixelFormat, "-c:a", "aac", "-shortest", path]);
+        return path;
+    }
+
+    private async Task<ConversionJob> CropAsync(string input, string frame) =>
+        await fx.ConvertAsync([input], new Preset { TargetFormat = BuiltInData.SameAsSource, Media = { CropFrame = frame } });
+
+    [Fact]
+    public async Task Crop_video_auto_removes_the_black_bars_and_keeps_the_sound()
+    {
+        SkipUnlessInstalled();
+        // #830: a 4:3 picture letterboxed into a 3:4 frame.
+        var video = await MakeBarsAsync(fx.NewFolder(), "boxed.mp4", "240x180", "pad=240:320:0:70:black");
+        var job = await CropAsync(video, VideoCrop.Auto);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal(".mp4", Path.GetExtension(output));
+        var probed = await ProbeAsync(output);
+        Assert.Equal((240, 180), (probed.Video!.Width, probed.Video.Height));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Fact]
+    public async Task Crop_video_to_a_ratio_keeps_the_middle_as_large_as_fits()
+    {
+        SkipUnlessInstalled();
+        var video = await MakeBarsAsync(fx.NewFolder(), "wide.mp4", "320x240", null);
+        var square = await ProbeAsync(Assert.Single((await CropAsync(video, "1:1")).Outputs));
+        Assert.Equal((240, 240), (square.Video!.Width, square.Video.Height));
+        var portrait = await ProbeAsync(Assert.Single((await CropAsync(video, "9:16")).Outputs));
+        Assert.Equal((134, 240), (portrait.Video!.Width, portrait.Video.Height));
+
+        // Already 4:3: refused, rather than encoded again as it was.
+        var same = Assert.Single((await CropAsync(video, "4:3")).Files);
+        Assert.Equal((FileState.Failed, "error.crop_same_frame"), (same.State, same.ErrorKey));
+    }
+
+    [Fact]
+    public async Task Crop_video_auto_finds_the_bars_of_a_10_bit_hevc_video_and_keeps_its_codec()
+    {
+        SkipUnlessInstalled();
+        // #830 review: cropdetect's limit at 10 bits, and the crop stays HEVC with its 10 bits.
+        var video = await MakeBarsAsync(fx.NewFolder(), "deep.mkv", "240x180", "pad=240:320:0:70:black", "libx265", "yuv420p10le");
+        var job = await CropAsync(video, VideoCrop.Auto);
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var probed = await ProbeAsync(Assert.Single(job.Outputs));
+        Assert.Equal((240, 180), (probed.Video!.Width, probed.Video.Height));
+        Assert.Equal(("hevc", "yuv420p10le"), (probed.Video.Codec, probed.Video.PixelFormat));
+    }
+
+    [Fact]
+    public async Task Crop_video_auto_refuses_a_video_without_black_bars()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var video = await MakeBarsAsync(folder, "plain.mp4", "320x240", null);
+        var job = await CropAsync(video, VideoCrop.Auto);
+        var file = Assert.Single(job.Files);
+        Assert.Equal((FileState.Failed, "error.no_black_bars"), (file.State, file.ErrorKey));
+        Assert.Equal(["plain.mp4"], Directory.GetFiles(folder).Select(Path.GetFileName));
+    }
+
     /// <summary>Writes a test clip with FFmpeg: moving test pattern (+ a 440 Hz tone unless <paramref name="audio"/> is false).</summary>
     private static async Task<string> MakeClipAsync(string folder, string name, double seconds = 2, string size = "320x240", int fps = 25,
         bool audio = true, int channels = 2, params string[] extra)
@@ -1005,7 +1298,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         public Track? Audio => Streams.FirstOrDefault(s => s.Type == "audio");
     }
 
-    private sealed record Track(string Type, string Codec, int Width, int Height, int Channels, int SampleRate, long BitRate, bool Cover, int Frames);
+    private sealed record Track(string Type, string Codec, int Width, int Height, int Channels, int SampleRate, long BitRate, bool Cover, int Frames, string PixelFormat = "");
 
     private static async Task<Probed> ProbeAsync(string path)
     {
@@ -1020,7 +1313,7 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
             S(s, "codec_type"), S(s, "codec_name"), (int)N(s, "width"), (int)N(s, "height"), (int)N(s, "channels"),
             (int)N(s, "sample_rate"), N(s, "bit_rate"),
             s.TryGetProperty("disposition", out var d) && d.TryGetProperty("attached_pic", out var a) && a.GetInt32() == 1,
-            (int)N(s, "nb_read_frames"))).ToList();
+            (int)N(s, "nb_read_frames"), S(s, "pix_fmt"))).ToList();
         var duration = double.TryParse(S(json.RootElement.GetProperty("format"), "duration"), NumberStyles.Float, CultureInfo.InvariantCulture, out var d2) ? d2 : 0;
         return new Probed(duration, streams);
     }

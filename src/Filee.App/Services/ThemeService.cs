@@ -96,6 +96,8 @@ public sealed class ThemeService(IPlatformServices platform)
         // Radii, fonts, flow direction
         SoftPalette.ApplyCornerRadius(res, theme.CornerRadius);
         res["AppFontFamily"] = SoftPalette.FontFamilyFor(language);
+        // Annotate draws its labels in the same fonts (read when a label is first drawn).
+        AnnotationFonts.Use(language);
         SoftPalette.ApplyFlowDirection(res, language);
 
         if (theme.Style == ThemeStyle.MaterialYou)

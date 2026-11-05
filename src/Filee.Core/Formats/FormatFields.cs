@@ -66,7 +66,7 @@ public static class FormatFields
         [
             "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "svg", "svgz", "emf", "vsd", "odg",
             "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "abw", "pages", "pub", "eml", "msg",
-            "xlsm", "xltx", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
+            "p7m", "xlsm", "xltx", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
             "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
             "azw3", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "m4v", "mkv", "webm", "avi", "wmv", "mpg", "ts",
             "m2ts", "ogv", "m4b", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
@@ -75,11 +75,12 @@ public static class FormatFields
         (FormatGrade.Specialist,
         [
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
-            "exr", "hdr", "fits", "xcf", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg", "fodt",
+            "exr", "hdr", "fits", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg", "fodt",
             "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
             "jsonl", "yaml", "toml", "har", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
-            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "cab",
+            "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "mcpack", "mcaddon",
+            "mcworld", "mctemplate", "mrpack", "cab",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
             "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit"
         ]),
@@ -87,7 +88,7 @@ public static class FormatFields
         [
             "mng", "pcx", "wbmp", "sgi", "ras", "pcd", "wmf", "dot", "wpd", "lwp", "sdw", "cwk", "mcw", "602", "psw",
             "xlt", "sdc", "sda", "mobi", "azw", "azw4", "prc", "lit", "lrf", "pdb", "pml", "rb", "snb", "tcr", "oeb",
-            "flv", "3gp", "3g2", "vob", "mod", "rm", "swf", "wtv", "amr", "au", "voc", "mpc", "spx", "tz", "z",
+            "flv", "3gp", "3g2", "vob", "mod", "rm", "swf", "wtv", "flc", "amr", "au", "voc", "mpc", "spx", "tz", "z",
             "lha", "arj", "eot", "fon", "sub"
         ]),
     ]);
@@ -96,9 +97,9 @@ public static class FormatFields
     private static readonly Dictionary<string, FormatField[]> Overlaps = BuildOverlaps(
     [
         // Layout, print, photo post-production, signs and embroidery.
-        (["psd", "psb", "exr", "hdr", "xcf", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
-        // Game textures and cutscenes.
-        (["dds", "usm", "bik"], ["game"]),
+        (["psd", "psb", "exr", "hdr", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "plt", "dst"], ["design"]),
+        // Game textures and cutscenes, Minecraft packs and modpacks.
+        (["dds", "usm", "bik", "mcpack", "mcaddon", "mcworld", "mctemplate", "mrpack"], ["game"]),
         // Medical imaging and astronomy.
         (["dcm", "fits"], ["science"]),
         // Software work: raw image formats of graphics tools, app icons and cursors, config and data files, flat XML
@@ -136,6 +137,8 @@ public static class FormatFields
         ], ["legacy"]),
         // Kodak Photo CD.
         (["pcd"], ["legacy", "design"]),
+        // FLIC: Autodesk Animator's animations, also the cutscenes of DOS games.
+        (["flc"], ["legacy", "game"]),
         // Musepack.
         (["mpc"], ["legacy", "audio-pro"]),
         // EOT gave way to WOFF, FON to TrueType.
