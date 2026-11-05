@@ -239,7 +239,7 @@ internal sealed partial class DocxReader
             return;
         }
 
-        var section = new HSection { Page = page, Columns = columns };
+        var section = new HSection { Page = page, Columns = columns, HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0 };
         section.Blocks.AddRange(blocks);
 
         // Sections without their own header or footer reference inherit the previous section's.
