@@ -224,6 +224,14 @@ internal sealed partial class DocxReader
         var columns = Columns(sectPr);
         var previous = document.Sections.LastOrDefault();
 
+        // Sections without their own header or footer reference inherit the previous section's.
+        var headerReferences = sectPr?.Elements(W + "headerReference").ToList() ?? [];
+        var footerReferences = sectPr?.Elements(W + "footerReference").ToList() ?? [];
+        foreach (var reference in headerReferences)
+            headers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
+        foreach (var reference in footerReferences)
+            footers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
+
         // Word uses continuous section breaks to change the number of columns mid-page. 한글 does that with a
         // column definition inside the section, so keep one section when the paper does not change.
         if (previous is not null && Val(sectPr?.Element(W + "type")) == "continuous" && previous.Page == page)
@@ -232,30 +240,30 @@ internal sealed partial class DocxReader
                 blocks.Insert(0, first = new HParagraph());
             first.ColumnsChange = columns;
             previous.Blocks.AddRange(blocks);
+
+            // Its header or footer starts on the next page in Word, on the page of this paragraph in 한글.
+            if (headerReferences.Count > 0)
+                Add(headers, previous.Headers, first);
+            if (footerReferences.Count > 0)
+                Add(footers, previous.Footers, first);
             return;
         }
 
         var section = new HSection { Page = page, Columns = columns, HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0 };
         section.Blocks.AddRange(blocks);
 
-        // Sections without their own header or footer reference inherit the previous section's.
-        foreach (var reference in sectPr?.Elements(W + "headerReference") ?? [])
-            headers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
-        foreach (var reference in sectPr?.Elements(W + "footerReference") ?? [])
-            footers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
-
-        void Add(Dictionary<string, List<HBlock>> source, List<HHeaderFooter> target)
+        void Add(Dictionary<string, List<HBlock>> source, List<HHeaderFooter> target, HParagraph? startsAt = null)
         {
             if (_evenAndOddHeaders)
             {
                 if (source.GetValueOrDefault("default") is { } odd)
-                    AddHeaderFooter(target, HPageType.Odd, odd);
+                    AddHeaderFooter(target, HPageType.Odd, odd, startsAt);
                 if (source.GetValueOrDefault("even") is { } even)
-                    AddHeaderFooter(target, HPageType.Even, even);
+                    AddHeaderFooter(target, HPageType.Even, even, startsAt);
             }
             else if (source.GetValueOrDefault("default") is { } both)
             {
-                AddHeaderFooter(target, HPageType.Both, both);
+                AddHeaderFooter(target, HPageType.Both, both, startsAt);
             }
         }
         Add(headers, section.Headers);
@@ -276,9 +284,9 @@ internal sealed partial class DocxReader
         document.Sections.Add(section);
     }
 
-    private static void AddHeaderFooter(List<HHeaderFooter> target, HPageType pages, List<HBlock> blocks)
+    private static void AddHeaderFooter(List<HHeaderFooter> target, HPageType pages, List<HBlock> blocks, HParagraph? startsAt)
     {
-        var item = new HHeaderFooter(pages);
+        var item = new HHeaderFooter(pages) { StartsAt = startsAt };
         item.Blocks.AddRange(blocks);
         target.Add(item);
     }

@@ -69,6 +69,9 @@ internal sealed class HHeaderFooter(HPageType pages)
 {
     public HPageType Pages { get; } = pages;
     public List<HBlock> Blocks { get; } = [];
+
+    /// <summary>Starts on the page of this paragraph of the section (DOCX continuous section break); null = its first page.</summary>
+    public HParagraph? StartsAt { get; set; }
 }
 
 // ───────────────────────── Blocks ─────────────────────────
