@@ -2,6 +2,7 @@
 // a table floating in a table cell of an HWP file).
 
 using System.IO.Compression;
+using System.Text;
 using System.Xml.Linq;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -312,5 +313,25 @@ public class RhwpInputTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var zip = ZipFile.OpenRead(hwpx);
         using var stream = zip.GetEntry("Contents/section0.xml")!.Open();
         return XDocument.Load(stream);
+    }
+
+    [Fact]
+    public void Floating_pictures_nested_in_their_own_layout_do_not_double_at_every_level()
+    {
+        // A picture keeps a copy of itself and of its layout elements in its group, so walking on into those copies
+        // would double a header inside one at every level: 170 levels fit the XML limits, in a file of some kilobytes.
+        const int Levels = 20;
+        var hp = "http://www.hancom.co.kr/hwpml/2011/paragraph";
+        var level = new StringBuilder();
+        for (var i = 0; i < Levels; i++)
+            level.Append("<hp:header><hp:subList><hp:p><hp:run><hp:pic><hp:pos treatAsChar=\"0\"/><hp:offset>");
+        for (var i = 0; i < Levels; i++)
+            level.Append("</hp:offset></hp:pic></hp:run></hp:p></hp:subList></hp:header>");
+        var section = XDocument.Parse($"<hs:sec xmlns:hs=\"urn:s\" xmlns:hp=\"{hp}\">{level}</hs:sec>");
+
+        Assert.True(RhwpInput.GroupFloatingHeaderPictures(section));
+
+        Assert.True(section.Descendants().Count() < 100_000, $"{section.Descendants().Count()} elements");
+        Assert.NotNull(section.Root!.Descendants(XName.Get("container", hp)).FirstOrDefault());
     }
 }

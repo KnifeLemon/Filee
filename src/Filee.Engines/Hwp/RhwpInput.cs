@@ -238,8 +238,11 @@ internal static partial class RhwpInput
     internal static bool GroupFloatingHeaderPictures(XDocument section)
     {
         var changed = false;
-        foreach (var paragraph in section.Descendants().Where(e => e.Name.LocalName is "header" or "footer").Elements()
-                     .Where(e => e.Name.LocalName == "subList").Elements().Where(e => e.Name.LocalName == "p" && Child(e, "linesegarray") is null))
+        // Listed first: a group holds copies of its picture, and a walk going on into them would find a header nested in
+        // the picture twice over, at every level (a few kilobytes would come to more than any memory holds).
+        var paragraphs = section.Descendants().Where(e => e.Name.LocalName is "header" or "footer").Elements()
+            .Where(e => e.Name.LocalName == "subList").Elements().Where(e => e.Name.LocalName == "p" && Child(e, "linesegarray") is null).ToList();
+        foreach (var paragraph in paragraphs)
         {
             var runs = paragraph.Elements().Where(e => e.Name.LocalName == "run").ToList();
             var floating = runs.Elements().Where(e => e.Name.LocalName == "pic" && (string?)Child(e, "pos")?.Attribute("treatAsChar") == "0").ToList();
