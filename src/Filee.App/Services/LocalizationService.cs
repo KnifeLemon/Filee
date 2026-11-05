@@ -140,6 +140,9 @@ public sealed class LocalizationService : ILocalizer
         // "ar" and every region ("ar-SA", "ar-EG", …), but not other codes starting with "ar".
         if (ui.Equals("ar", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("ar-", StringComparison.OrdinalIgnoreCase))
             return "ar";
+        // "fa" and every region ("fa-IR", "fa-AF", …), but not Fang "fan".
+        if (ui.Equals("fa", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("fa-", StringComparison.OrdinalIgnoreCase))
+            return "fa";
         // "fr" and every region ("fr-FR", "fr-CA", …), but not North Frisian "frr".
         if (ui.Equals("fr", StringComparison.OrdinalIgnoreCase) || ui.StartsWith("fr-", StringComparison.OrdinalIgnoreCase))
             return "fr";
