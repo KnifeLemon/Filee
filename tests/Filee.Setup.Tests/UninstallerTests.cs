@@ -311,24 +311,38 @@ public class UninstallerTests
         Assert.False(Directory.Exists(bench.InstallFolder));
     }
 
-    /// <summary>Holds a file with no sharing at all, as a security scan can, and lets go after a moment.</summary>
-    private static Task LockFor(string path, TimeSpan time)
+    /// <summary>
+    /// Holds a file with no sharing at all, as a security scan can, and lets go once the uninstall has found it locked.
+    /// The letting go has its own thread, because under load the pool can get to it only as the retries give up. It
+    /// follows the log, not a clock: let go between a failed delete and the rename after it, a file is left for the
+    /// restart. The log line comes a full wait before the next try.
+    /// </summary>
+    private static Thread LockUntilFound(SetupBench bench, string path)
     {
         var locked = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
-        return Task.Delay(time).ContinueWith(_ => locked.Dispose(), TaskScheduler.Default);
+        var release = new Thread(() =>
+        {
+            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(30);
+            while (DateTime.UtcNow < deadline && !bench.Log.Lines.Any(l => l.Contains($"Locked: {path}", StringComparison.Ordinal)))
+                Thread.Sleep(5);
+            locked.Dispose();
+        })
+        { IsBackground = true };
+        release.Start();
+        return release;
     }
 
     [Theory]
     [InlineData("Filee.dll")]
     [InlineData("uninstall.json")]
-    public async Task A_file_a_scan_holds_for_a_moment_does_not_fail_the_uninstall(string file)
+    public void A_file_a_scan_holds_for_a_moment_does_not_fail_the_uninstall(string file)
     {
         var (bench, record) = Installed();
         using var _ = bench;
-        var scan = LockFor(Path.Combine(bench.InstallFolder, file), TimeSpan.FromMilliseconds(700));
+        var scan = LockUntilFound(bench, Path.Combine(bench.InstallFolder, file));
 
         var later = new Uninstaller(bench.Context).Run(bench.InstallFolder, record, deleteSettings: false, bench.Temp.Sub("trash"));
-        await scan;
+        scan.Join();
 
         Assert.Empty(later);
         Assert.DoesNotContain(bench.System.Calls, c => c.Contains("delete-at-restart", StringComparison.Ordinal));
