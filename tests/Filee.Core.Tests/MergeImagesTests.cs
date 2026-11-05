@@ -201,7 +201,7 @@ public class MergeImagesTests
         Assert.Equal("png", joiner.Format);
         Assert.Equal(2, joiner.Inputs.Count);
         Assert.Equal("png", joiner.Inputs[0].Format);
-        Assert.StartsWith(Path.Combine(Path.GetTempPath(), "Filee"), joiner.Inputs[0].Path); // in the job's work folder
+        Assert.StartsWith(JobQueue.DefaultWorkRoot, joiner.Inputs[0].Path); // in the job's work folder
         Assert.Equal((photo, "jpg"), joiner.Inputs[1]);
         var step = Assert.Single(engine.Presets);
         Assert.Equal((ResizeMode.None, ImageRotation.None, false), (step.Image.Resize, step.Image.Rotation, step.Image.JoinIntoOne));
