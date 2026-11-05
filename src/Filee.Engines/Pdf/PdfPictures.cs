@@ -2,6 +2,8 @@
 // RGBA) and 4- or 8-bit palettes; a black-and-white scan saved as a 1-bit PNG, a grey one with 2 or 4 bits, or any
 // 16-bit PNG fails with "Unsupported image format" (#605). ImageMagick writes those on its own for such pictures,
 // so Filee writes its PNGs for PDFsharp here, and re-encodes a PNG it is handed when the decoder would refuse it.
+// Its JPEG import takes grey and RGB only: a CMYK JPEG (print work) fails the same way, so CMYK pictures become RGB
+// first, through their own profile when they have one.
 
 using ImageMagick;
 
@@ -20,18 +22,57 @@ internal static class PdfPictures
     public static void WritePng(IMagickImage<byte> image, string path) => image.Write(path, Prepare(image));
 
     /// <summary>
-    /// <paramref name="png"/> itself when PDFsharp reads it, else a copy in <paramref name="folder"/> written by
-    /// <see cref="WritePng(IMagickImage{byte}, string)"/>. Files that aren't PNGs are returned as they are.
+    /// <paramref name="picture"/> itself when PDFsharp reads it, else a copy in <paramref name="folder"/>: a PNG written
+    /// by <see cref="WritePng(IMagickImage{byte}, string)"/>, or a CMYK JPEG as an RGB one. Other files are returned as
+    /// they are.
     /// </summary>
-    public static string Readable(string png, string folder)
+    public static string Readable(string picture, string folder)
     {
-        if (!NeedsReencoding(png))
-            return png;
-        using var image = new MagickImage(png);
+        if (IsCmykJpeg(picture))
+        {
+            using var jpeg = new MagickImage(picture);
+            ToRgb(jpeg);
+            jpeg.Quality = Math.Max(jpeg.Quality, 92u);
+            Directory.CreateDirectory(folder);
+            var rgb = Path.Combine(folder, $"{Guid.NewGuid():N}.jpg");
+            jpeg.Write(rgb, MagickFormat.Jpeg);
+            return rgb;
+        }
+        if (!NeedsReencoding(picture))
+            return picture;
+        using var image = new MagickImage(picture);
         Directory.CreateDirectory(folder);
         var copy = Path.Combine(folder, $"{Guid.NewGuid():N}.png");
         WritePng(image, copy);
         return copy;
+    }
+
+    /// <summary>
+    /// Makes a CMYK picture RGB, through its own CMYK profile when it has one (else by formula), so PDFsharp takes it.
+    /// Other pictures are left as they are.
+    /// </summary>
+    public static void ToRgb(IMagickImage<byte> image)
+    {
+        if (image.ColorSpace != ColorSpace.CMYK)
+            return;
+        if (image.GetColorProfile() is { ColorSpace: ColorSpace.CMYK })
+            image.TransformColorSpace(ColorProfiles.SRGB);
+        else
+            image.ColorSpace = ColorSpace.sRGB;
+    }
+
+    /// <summary>True for a JPEG whose frame has four components (CMYK or YCCK), which PDFsharp refuses.</summary>
+    internal static bool IsCmykJpeg(string path)
+    {
+        try
+        {
+            var info = new MagickImageInfo(path);
+            return info.Format is MagickFormat.Jpeg or MagickFormat.Jpg && info.ColorSpace == ColorSpace.CMYK;
+        }
+        catch (MagickException)
+        {
+            return false;
+        }
     }
 
     /// <summary>True for a PNG whose header PDFsharp's decoder refuses: a bit depth other than 8, or a palette.</summary>

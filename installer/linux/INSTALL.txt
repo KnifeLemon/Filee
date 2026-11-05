@@ -42,7 +42,7 @@ X11 supports the global gesture toolbar; it needs libXtst and libXt (libxtst6,
 libxt6). A native Wayland session has additional input restrictions; use the
 drop window and file-manager actions, or the experimental setup below.
 
-GNOME Wayland gestures (experimental, GNOME Shell 45–50): the Linux package
+GNOME Wayland gestures (experimental, GNOME Shell 45–51): the Linux package
 includes the “Filee donut at the cursor” Shell extension. install.sh installs
 it for the current user on GNOME and requests activation. Open Extensions and
 enable it. If it is missing or still running an older version, sign out and

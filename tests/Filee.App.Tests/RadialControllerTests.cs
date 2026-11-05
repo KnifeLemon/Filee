@@ -164,6 +164,55 @@ public class RadialControllerTests
         }
     }
 
+    [AvaloniaFact]
+    public void A_later_launch_joins_the_donut_open_for_earlier_ones()
+    {
+        // Issue #767: launches more than the debounce apart each replaced the donut's files, so one picture was converted.
+        TestServices.EnsureInitialized("en");
+        var radial = AppHost.Get<RadialController>();
+        var model = AppHost.Get<RadialViewModel>();
+        try
+        {
+            radial.ShowForFiles(400, 400, [@"C:\photos\a.jpg"], forAnotherProcess: true);
+
+            Assert.True(radial.TryAddFiles([@"C:\photos\b.jpg"]));
+            Assert.True(radial.TryAddFiles([@"C:\photos\a.jpg", @"C:\photos\c.jpg"]));
+
+            Assert.Equal([@"C:\photos\a.jpg", @"C:\photos\b.jpg", @"C:\photos\c.jpg"], model.Files);
+            Assert.True(radial.IsVisible);
+        }
+        finally
+        {
+            radial.Close(animate: false);
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_later_launch_does_not_join_a_donut_that_is_closed_or_open_for_something_else()
+    {
+        TestServices.EnsureInitialized("en");
+        var radial = AppHost.Get<RadialController>();
+        var model = AppHost.Get<RadialViewModel>();
+        try
+        {
+            radial.ShowForFiles(400, 400, [@"C:\photos\a.jpg"]);
+            Assert.False(radial.TryAddFiles([@"C:\photos\b.jpg"]));
+            Assert.Equal([@"C:\photos\a.jpg"], model.Files);
+
+            radial.ShowForFiles(400, 400, [@"C:\photos\a.jpg"], forAnotherProcess: true);
+            radial.Close(animate: false);
+            Assert.False(radial.TryAddFiles([@"C:\photos\b.jpg"]));
+            Assert.Equal([@"C:\photos\a.jpg"], model.Files);
+
+            radial.ShowForDrag(400, 400);
+            Assert.False(radial.TryAddFiles([@"C:\photos\b.jpg"]));
+        }
+        finally
+        {
+            radial.Close(animate: false);
+        }
+    }
+
     [Fact]
     public void Folders_only_go_into_one_archive()
     {

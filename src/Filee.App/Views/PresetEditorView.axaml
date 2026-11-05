@@ -36,8 +36,11 @@
       <StackPanel Grid.Column="2">
         <TextBlock Classes="label" Text="{DynamicResource presets.target}" IsVisible="{Binding ShowConversionOutput}" />
         <TextBlock Classes="label" Text="{DynamicResource presets.copy_action}" IsVisible="{Binding IsCopyToFolder}" />
-        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding Target}"
-                  IsEnabled="{Binding CanChangeTarget}"
+        <ComboBox x:Name="CopyActionBox" ItemsSource="{Binding CopyActions}" SelectedItem="{Binding CopyAction}" IsVisible="{Binding IsCopyToFolder}"
+                  HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.copy_action}" />
+        <ComboBox x:Name="TargetBox" Classes="targets" ItemsSource="{Binding Targets}" SelectedItem="{Binding TargetSelection}"
+                  PlaceholderText="{Binding HiddenTarget}"
+                  IsEnabled="{Binding CanChangeTarget}" IsVisible="{Binding !IsCopyToFolder}"
                   HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.target}">
           <ComboBox.ItemTemplate>
             <DataTemplate x:DataType="vm:IChoice">
@@ -48,6 +51,7 @@
             </DataTemplate>
           </ComboBox.ItemTemplate>
         </ComboBox>
+        <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
 
@@ -240,6 +244,36 @@
       </StackPanel>
     </Border>
 
+    <!-- Translation options -->
+    <Border x:Name="TranslateCard" Classes="card" IsVisible="{Binding ShowTranslate}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.translate}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.translate_hint}" />
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel Grid.Column="0">
+            <TextBlock Classes="label" Text="{DynamicResource presets.target_language}" />
+            <ComboBox ItemsSource="{Binding TranslationLanguageChoices}" SelectedItem="{Binding TargetLanguage}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.target_language}" />
+          </StackPanel>
+          <StackPanel Grid.Column="2" VerticalAlignment="Bottom">
+            <Button Classes="secondary" Command="{Binding TestTranslationCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" IsEnabled="{Binding !IsTestingTranslation}">
+              <StackPanel Orientation="Horizontal" Spacing="6">
+                <TextBlock Text="⚡" />
+                <TextBlock Text="{DynamicResource presets.test_connection}" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Grid>
+        <Border IsVisible="{Binding TestTranslationResult, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                Background="{DynamicResource CardBackground}" CornerRadius="6" Padding="10,8">
+          <StackPanel Orientation="Horizontal" Spacing="8">
+            <TextBlock Text="✓" Foreground="#10b981" FontWeight="Bold" IsVisible="{Binding !TestTranslationHasError}" />
+            <TextBlock Text="⚠" Foreground="#f59e0b" FontWeight="Bold" IsVisible="{Binding TestTranslationHasError}" />
+            <TextBlock Text="{Binding TestTranslationResult}" TextWrapping="Wrap" VerticalAlignment="Center" FontSize="12" />
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </Border>
+
     <!-- Video & audio options -->
     <Border x:Name="MediaCard" Classes="card" IsVisible="{Binding ShowMedia}" Padding="14">
       <StackPanel Spacing="10">
@@ -253,6 +287,10 @@
           </Grid>
           <CheckBox Content="{DynamicResource presets.crossfade}" IsChecked="{Binding Crossfade}"
                     ToolTip.Tip="{DynamicResource presets.crossfade_hint}" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding ShowCropFrame}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.crop_frame}" />
+          <ComboBox ItemsSource="{Binding CropFrames}" SelectedItem="{Binding CropFrame}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.crop_frame}" />
         </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
@@ -268,9 +306,13 @@
         <!-- Two per row, whichever apply to the target: hidden ones leave no gap. -->
         <UniformGrid Columns="2" ColumnSpacing="12" RowSpacing="10">
           <StackPanel IsVisible="{Binding ShowVideoMaxSize}">
-            <TextBlock Classes="label" Text="{DynamicResource presets.max_size}" />
-            <NumericUpDown Value="{Binding VideoMaxSizeMb}" Minimum="0" Maximum="4096" Increment="1" FormatString="0.#"
-                           ToolTip.Tip="{DynamicResource presets.max_size_hint_video}" AutomationProperties.Name="{DynamicResource presets.max_size}" />
+            <TextBlock Classes="label" Text="{DynamicResource presets.size_limit}" />
+            <Grid ColumnDefinitions="*,8,Auto">
+              <NumericUpDown Value="{Binding VideoMaxSize}" Minimum="0" Maximum="{Binding VideoSizeMaximum}" Increment="{Binding VideoSizeIncrement}" FormatString="{Binding VideoSizeFormat}"
+                             ToolTip.Tip="{DynamicResource presets.max_size_hint_video}" AutomationProperties.Name="{DynamicResource presets.size_limit}" />
+              <ComboBox Grid.Column="2" ItemsSource="{Binding VideoSizeUnits}" SelectedItem="{Binding VideoSizeUnitChoice}"
+                        AutomationProperties.Name="{DynamicResource presets.size_unit}" />
+            </Grid>
           </StackPanel>
           <StackPanel IsVisible="{Binding ShowVideoCodec}">
             <TextBlock Classes="label" Text="{DynamicResource presets.video_codec}" />
@@ -400,6 +442,40 @@
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
         <CheckBox Content="{DynamicResource presets.split}" IsChecked="{Binding SplitPages}" IsVisible="{Binding ShowPdfSplit}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <!-- "Pages per sheet" (#737): several pages on each sheet -->
+        <StackPanel Spacing="10" IsVisible="{Binding ShowSheets}">
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.pages_per_sheet}" />
+              <ComboBox ItemsSource="{Binding SheetLayouts}" SelectedItem="{Binding PagesPerSheet}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.pages_per_sheet}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_paper}" />
+              <ComboBox ItemsSource="{Binding SheetPapers}" SelectedItem="{Binding SheetPaper}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_paper}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_orientation}" />
+              <ComboBox ItemsSource="{Binding SheetOrientations}" SelectedItem="{Binding SheetOrientation}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_orientation}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_order}" />
+              <ComboBox ItemsSource="{Binding SheetOrders}" SelectedItem="{Binding SheetOrder}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.sheet_order}" />
+            </StackPanel>
+          </Grid>
+          <Grid ColumnDefinitions="*,12,*">
+            <StackPanel>
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_margin}" />
+              <NumericUpDown Value="{Binding SheetMarginMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_margin}" />
+            </StackPanel>
+            <StackPanel Grid.Column="2">
+              <TextBlock Classes="label" Text="{DynamicResource presets.sheet_gap}" />
+              <NumericUpDown Value="{Binding SheetGapMm}" Minimum="0" Maximum="50" Increment="1" FormatString="0" AutomationProperties.Name="{DynamicResource presets.sheet_gap}" />
+            </StackPanel>
+          </Grid>
+          <CheckBox Content="{DynamicResource presets.sheet_borders}" IsChecked="{Binding SheetBorders}" />
+        </StackPanel>
         <!-- PDF → PDF: make the file smaller -->
         <StackPanel Spacing="2" IsVisible="{Binding ShowPdfCompression}">
           <Grid ColumnDefinitions="*,12,*">
@@ -473,9 +549,14 @@
           </StackPanel>
           <StackPanel Grid.Column="2">
             <TextBlock Classes="label" Text="{DynamicResource presets.page_range}" />
-            <TextBox Text="{Binding PageRange}" PlaceholderText="{DynamicResource presets.page_range_hint}" />
+            <TextBox Text="{Binding PageRange}" PlaceholderText="{DynamicResource presets.page_range_hint}"
+                     AutomationProperties.Name="{DynamicResource presets.page_range}" />
+            <!-- #981: a small window asks for the pages of each PDF dropped on the donut. -->
+            <CheckBox x:Name="AskPages" Margin="0,6,0,0" Content="{DynamicResource presets.ask_pages}" IsChecked="{Binding AskPageRange}"
+                      IsVisible="{Binding ShowAskPages}" />
           </StackPanel>
         </Grid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ask_pages_hint}" IsVisible="{Binding ShowAskPagesHint}" />
         <CheckBox Content="{DynamicResource presets.pdfa}" IsChecked="{Binding PdfA}" IsVisible="{Binding ShowDocument}" />
         <!-- Finishing of every PDF the preset writes: watermark, page numbers, password -->
         <StackPanel Spacing="10" IsVisible="{Binding ShowPdfBuild}">
@@ -511,7 +592,7 @@
       </StackPanel>
     </Border>
 
-    <TextBlock Text="{DynamicResource presets.copy_hint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
+    <TextBlock Text="{Binding CopyHint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
 
     <!-- Output -->
     <Border Classes="card" Padding="14">

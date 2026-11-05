@@ -1,6 +1,7 @@
 // Renders real windows headlessly (Skia) to catch XAML / binding errors and to produce screenshots
 // in bin/.../screenshots for visual review.
 
+using System.Globalization;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
@@ -25,6 +26,8 @@ public class RenderTests
 {
     public static TheoryData<string, string> Pages => new()
     {
+        { "home", "vi" }, { "general", "vi" }, { "triggers", "vi" }, { "toolbar", "vi" },
+        { "presets", "vi" }, { "theme", "vi" }, { "engines", "vi" }, { "about", "vi" }, { "watch", "vi" },
         { "home", "id" }, { "general", "id" }, { "triggers", "id" }, { "toolbar", "id" },
         { "presets", "id" }, { "theme", "id" }, { "engines", "id" }, { "about", "id" }, { "watch", "id" },
         { "home", "it" }, { "general", "it" }, { "triggers", "it" }, { "toolbar", "it" },
@@ -875,7 +878,7 @@ public class RenderTests
             var vm = AppHost.Get<RadialViewModel>();
             vm.Load([@"C:\gis\roads.shp", @"C:\gis\parcels.shp"], clickMode: true);
             vm.FitToThisDonut();
-            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx", "to-kmz"], vm.Presets.Select(p => p.Id));
+            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], vm.Presets.Select(p => p.Id));
             Assert.All(vm.Items, item => Assert.True(item.IsEnabled));
             var window = new RadialWindow { DataContext = vm };
             window.Show();
@@ -922,7 +925,7 @@ public class RenderTests
         window.DonutControl.SetExternalHighlight(1);
         Pump();
 
-        Assert.Equal(12, vm.Items.Count); // with "Trace to SVG", "Line art to SVG", "Edit pictures" and "Pixelate / blur"
+        Assert.Equal(6, vm.Items.Count); // conversions only; GIF follows WEBP
         Assert.Equal(title, vm.CenterTitle);
         Save(window, $"donut-images-{language}.png");
         window.Close();
@@ -1608,6 +1611,7 @@ public class RenderTests
     public void Preset_editor_saves_every_frame_only_for_png_and_jpg()
     {
         TestServices.EnsureInitialized("en");
+        using var culture = new CultureScope("en-US"); // "100,000": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
 
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "jpg" };
@@ -1635,6 +1639,7 @@ public class RenderTests
     public void Preset_editor_shows_playback_speed_only_for_targets_that_keep_animations()
     {
         TestServices.EnsureInitialized("ko");
+        using var culture = new CultureScope("ko-KR"); // "0.25×": numbers follow the regional format
         var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
         var preset = new Filee.Core.Presets.Preset { TargetFormat = "gif", Name = "Slow GIF" };
         var vm = new PresetEditorViewModel(preset, loc);
@@ -2352,7 +2357,7 @@ public class RenderTests
         Assert.Equal("Subtitle", vm.Target.Detail);
     }
 
-    /// <summary>The geospatial donut in the toolbar editor: GeoJSON, Shapefile, KML, CSV, GPX and KMZ for geo files.</summary>
+    /// <summary>The geospatial donut in the toolbar editor: GeoJSON, Shapefile, KML, CSV and GPX for geo files.</summary>
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("ko")]
@@ -2362,7 +2367,7 @@ public class RenderTests
         {
             vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "geo");
             Pump();
-            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx", "to-kmz"], vm.SelectedProfile.Profile.PresetIds);
+            Assert.Equal(["to-geojson", "to-shp", "to-kml", "to-csv", "to-gpx"], vm.SelectedProfile.Profile.PresetIds);
             Assert.Contains("shp", vm.ExtensionTags!.Tags.Select(t => t.Text.TrimStart('.')));
             Save(window, $"toolbar-geospatial-{language}.png");
         });
@@ -2786,6 +2791,16 @@ public class RenderTests
             Dispatcher.UIThread.RunJobs();
             AvaloniaHeadlessPlatform.ForceRenderTimerTick();
         }
+    }
+
+    /// <summary>The regional format until disposed: numbers in labels follow it, not the UI language.</summary>
+    private sealed class CultureScope : IDisposable
+    {
+        private readonly CultureInfo _before = CultureInfo.CurrentCulture;
+
+        public CultureScope(string name) => CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(name);
+
+        public void Dispose() => CultureInfo.CurrentCulture = _before;
     }
 
     internal static void Save(TopLevel window, string name)

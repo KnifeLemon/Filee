@@ -231,6 +231,10 @@ internal sealed partial class DocxWriter
             sb.Append("<w:widowControl w:val=\"0\"/>");
         if (paragraph.List is { Numbered: true } list)
             sb.Append($"<w:numPr><w:ilvl w:val=\"{Number(Math.Clamp(list.Level, 0, 8))}\"/><w:numId w:val=\"{Number(NumberingId(list.Numbering))}\"/></w:numPr>");
+        if (format.LeftBar is { } bar)
+            sb.Append("<w:pBdr>").Append(Border("left", bar, space: 6)).Append("</w:pBdr>");
+        if (Hex(format.Fill) is { } paragraphFill)
+            sb.Append($"<w:shd w:val=\"clear\" w:color=\"auto\" w:fill=\"{paragraphFill}\"/>");
 
         if (format.Tabs is { Count: > 0 } tabs)
         {
@@ -608,8 +612,8 @@ internal sealed partial class DocxWriter
         return sb.Append("</w:tc>").ToString();
     }
 
-    /// <summary>A border edge: style, width in eighths of a point (2..96), colour.</summary>
-    private static string Border(string edge, HBorder border)
+    /// <summary>A border edge: style, width in eighths of a point (2..96), colour, and its distance from the text in points.</summary>
+    private static string Border(string edge, HBorder border, int space = 0)
     {
         if (border.Style == HBorderStyle.None)
             return $"<w:{edge} w:val=\"nil\"/>";
@@ -622,6 +626,6 @@ internal sealed partial class DocxWriter
             _ => "single",
         };
         var eighths = Math.Clamp((int)Math.Round(border.WidthMm / 25.4 * 72 * 8), 2, 96);
-        return $"<w:{edge} w:val=\"{style}\" w:sz=\"{Number(eighths)}\" w:space=\"0\" w:color=\"{Hex(border.Color) ?? "auto"}\"/>";
+        return $"<w:{edge} w:val=\"{style}\" w:sz=\"{Number(eighths)}\" w:space=\"{Number(space)}\" w:color=\"{Hex(border.Color) ?? "auto"}\"/>";
     }
 }

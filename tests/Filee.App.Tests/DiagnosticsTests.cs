@@ -300,7 +300,7 @@ public class ElevationServiceTests
         TestServices.EnsureInitialized();
         var elevation = Create(relaunchError: "Explorer did not answer.");
         using var page = new ViewModels.Pages.HomePageViewModel(AppHost.Get<Filee.Core.Settings.UserDataStore>(),
-            AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<IPlatformServices>(), elevation: elevation);
+            AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<IPlatformServices>(), AppHost.Get<Filee.App.Services.StagedFiles>(), elevation: elevation);
         var changed = new List<string?>();
         page.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
         Assert.True(page.IsElevated);
@@ -319,7 +319,7 @@ public class ElevationServiceTests
         TestServices.EnsureInitialized();
         using var page = new ViewModels.Pages.HomePageViewModel(AppHost.Get<Filee.Core.Settings.UserDataStore>(),
             AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<IPlatformServices>(),
-            elevation: AppHost.Get<ElevationService>()); // tests never run Program: the state stays unknown
+            AppHost.Get<Filee.App.Services.StagedFiles>(), elevation: AppHost.Get<ElevationService>()); // tests never run Program: the state stays unknown
         Assert.False(page.IsElevated);
     }
 }

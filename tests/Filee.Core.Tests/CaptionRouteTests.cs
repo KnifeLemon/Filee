@@ -83,7 +83,7 @@ public class CaptionRouteTests
     public void Schema_56_library_gets_caption_preset_on_both_video_and_audio_donuts()
     {
         var presets = BuiltInData.CreatePresets().Where(p => p.Id != "caption-video").ToList();
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
         var video = profiles.Single(p => p.Id == "video");
         video.PresetIds.Remove("caption-video");
         var audio = profiles.Single(p => p.Id == "audio");
@@ -103,7 +103,7 @@ public class CaptionRouteTests
         var presets = BuiltInData.CreatePresets().ToList();
         var caption = presets.First(p => p.Id == "caption-video");
         caption.Media.Caption = false;
-        var profiles = BuiltInData.CreateProfiles();
+        var profiles = BuiltInData.ProfilesSchema58();
 
         Assert.True(SettingsMigrations.ApplyToLibrary(56, presets, profiles));
         Assert.True(caption.Media.Caption);

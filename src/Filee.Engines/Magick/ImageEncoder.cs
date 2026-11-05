@@ -43,9 +43,9 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Formats whose frames are an animation. Between these, all frames are kept with their timing (an animated GIF
-    /// becomes an animated WebP and the other way round); any other target gets the first frame.
+    /// becomes an animated WebP or JPEG XL and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng"];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl"];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
@@ -84,8 +84,11 @@ internal static class ImageEncoder
     /// <summary>Formats holding one picture in several sizes (icons) or mipmaps: the largest is converted.</summary>
     private static readonly HashSet<string> SizeVariants = ["ico", "cur", "dds"];
 
-    /// <summary>Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP.</summary>
-    public static readonly string[] Packages = ["livp"];
+    /// <summary>
+    /// Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP, a Krita
+    /// KRA.
+    /// </summary>
+    public static readonly string[] Packages = ["livp", "kra"];
 
     /// <summary>
     /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on
@@ -154,7 +157,7 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG): every frame for an animated or TIFF
+    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL): every frame for an animated or TIFF
     /// target, else the first frame.
     /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
@@ -290,12 +293,14 @@ internal static class ImageEncoder
     /// <summary>Applies resize / colour / metadata options to one frame.</summary>
     public static void ApplyOptions(IMagickImage<byte> image, ImageOptions options, string targetFormat)
     {
-        var turned = options.TurnsOrMirrors || image.Orientation is not (OrientationType.TopLeft or OrientationType.Undefined);
+        var turned = options.TurnsOrMirrors || image.Orientation is not (Orientation.TopLeft or Orientation.Undefined);
         image.AutoOrient();
 
         // "Pixelate / blur": the parts were drawn on the picture as it is seen, before it is turned or resized. It also
         // drops the small previews of the uncovered picture a file can carry.
         AreaHider.Apply(image, options);
+        // "Annotate": the marks were drawn on the picture as it is seen too, after any parts were hidden.
+        Annotations.Annotator.Apply(image, options);
 
         // After AutoOrient, so a phone photo turns the way it looks, not the way its pixels are stored.
         Turn(image, options);
@@ -362,6 +367,11 @@ internal static class ImageEncoder
         if (options.Grayscale)
             image.Grayscale();
 
+        // "Add background": the picture as it now is (turned, sized, its background removed) set on the look. Before
+        // the metadata is dropped and before alpha is flattened, though the canvas has none: it is opaque everywhere.
+        if (options.Backdrop is { } look)
+            BackdropComposer.Apply(image, look);
+
         if (options.Dpi is > 0)
             image.Density = new Density(options.Dpi.Value, options.Dpi.Value, DensityUnit.PixelsPerInch);
 
@@ -376,7 +386,7 @@ internal static class ImageEncoder
         if (NoAlpha.Contains(targetFormat) && image.HasAlpha)
         {
             image.BackgroundColor = ParseColor(options.Background);
-            image.Alpha(AlphaOption.Remove);
+            image.Alpha(AlphaAction.Remove);
         }
 
         var quality = (uint)Math.Clamp(options.Quality, 1, 100);

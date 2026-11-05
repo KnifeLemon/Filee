@@ -41,6 +41,9 @@ internal static class TestServices
         {
             AppHost.Build(DataDirectory);
             AppHost.Get<UserDataStore>().Load();
+            // Existing app tests expect every format, like an existing user's settings.
+            // Field-switch tests set their own switches and restore them afterwards.
+            AppHost.Get<UserDataStore>().Settings.TurnedOffFields.Clear();
             AppHost.Get<LocalizationService>().Attach(app);
             _initializedFor = app;
         }

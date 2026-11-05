@@ -84,6 +84,12 @@ Descárgalo desde [Releases](https://github.com/KnifeLemon/Filee/releases/latest
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/es%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+O con WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: ejecuta `Filee-<version>-win-Setup.exe`, o descomprime `win-Portable.zip` y ejecuta `Filee.exe`.
   - El instalador es el propio de Filee, está en los idiomas de Filee y no necesita nada más en el equipo.
   - Puede añadir el menú del Explorador, el inicio al iniciar sesión, el comando `filee` y motores opcionales.
@@ -134,7 +140,7 @@ Para deshacerlo, quita esas entradas en Seguridad de Windows → Control de apli
 - **Carpetas supervisadas** que convierten cada archivo que llega a ellas.
 - **Conversiones recientes** en Inicio, cada una con su miniatura: abre el resultado o ábrelo con otra aplicación.
 - **Otras formas de usarlo**: el menú contextual, un atajo de teclado, la zona de suelta y el [comando `filee`](#línea-de-comandos).
-- Temas claro y oscuro con tu propio color de acento y la opacidad del menú circular, en English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (de derecha a izquierda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano y Bahasa Indonesia.
+- Temas claro y oscuro con tu propio color de acento y la opacidad del menú circular, en English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (de derecha a izquierda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia y Tiếng Việt.
 
 ## Capturas de pantalla
 

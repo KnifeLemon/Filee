@@ -58,40 +58,71 @@ public sealed class SingleInstance : IDisposable
             return;
         _ = Task.Run(async () =>
         {
-            while (!_cts.IsCancellationRequested)
+            NamedPipeServerStream? next = null;
+            try
             {
-                try
+                while (!_cts.IsCancellationRequested)
                 {
-                    await using var server = new NamedPipeServerStream(_name, PipeDirection.In, 1,
-                        PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
-                    await server.WaitForConnectionAsync(_cts.Token);
-                    var args = await JsonSerializer.DeserializeAsync(server, AppJsonContext.Default.StringArray, _cts.Token);
-                    if (args is not null)
-                        ArgumentsReceived?.Invoke(args);
-                }
-                catch (OperationCanceledException)
-                {
-                    return;
-                }
-                catch (Exception ex) when (ex is IOException or JsonException)
-                {
-                    // A client disconnected half-way; keep serving.
-                }
-                catch (UnauthorizedAccessException)
-                {
-                    // The pipe name is still held by a Filee with other rights (one that just restarted this one
-                    // without administrator rights and is closing): try again once it is gone.
                     try
                     {
-                        await Task.Delay(500, _cts.Token);
+                        var waiting = next ?? CreateServer();
+                        next = null;
+                        await using var server = waiting;
+                        await server.WaitForConnectionAsync(_cts.Token);
+                        next = TryCreateServer();
+                        var args = await JsonSerializer.DeserializeAsync(server, AppJsonContext.Default.StringArray, _cts.Token);
+                        if (args is not null)
+                            ArgumentsReceived?.Invoke(args);
                     }
                     catch (OperationCanceledException)
                     {
                         return;
                     }
+                    catch (Exception ex) when (ex is IOException or JsonException)
+                    {
+                        // A client disconnected half-way; keep serving.
+                    }
+                    catch (UnauthorizedAccessException)
+                    {
+                        // The pipe name is still held by a Filee with other rights (one that just restarted this one
+                        // without administrator rights and is closing): try again once it is gone.
+                        try
+                        {
+                            await Task.Delay(500, _cts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            return;
+                        }
+                    }
                 }
             }
+            finally
+            {
+                next?.Dispose();
+            }
         });
+    }
+
+    /// <summary>Two at a time: the one reading a launch's arguments and the next one, see <see cref="TryCreateServer"/>.</summary>
+    private NamedPipeServerStream CreateServer() => new(_name, PipeDirection.In, 2,
+        PipeTransmissionMode.Byte, PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+
+    /// <summary>
+    /// The next pipe, made before the connected one is closed. On macOS and Linux all of them share one listening
+    /// socket, which closes with the last: the launches queued on it, whose sends had already succeeded, were lost
+    /// without any of them knowing. Null when it can't be made: the launch that did connect still gets served.
+    /// </summary>
+    private NamedPipeServerStream? TryCreateServer()
+    {
+        try
+        {
+            return CreateServer();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

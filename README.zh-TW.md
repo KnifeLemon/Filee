@@ -84,6 +84,12 @@
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/zh-tw%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+或使用 WinGet：
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11** 執行 `Filee-<version>-win-Setup.exe`，或解壓縮 `win-Portable.zip` 後執行 `Filee.exe`。
   - 安裝程式是 Filee 自己的，使用與 Filee 相同的語言，電腦上無需另外安裝任何元件。
   - 安裝時可以新增檔案總管選單、登入時啟動、`filee` 命令和可選引擎。
@@ -134,7 +140,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **監視資料夾**，放入的檔案自動轉換。
 - **最近的轉換**顯示在首頁上，每項都有縮圖，可以直接「開啟檔案」，也可以用「開啟方式」換個應用程式開啟。
 - **其他方式** 右鍵選單、鍵盤快速鍵、拖放區域和 [`filee` 命令](#命令列)。
-- 淺色和深色主題，可自選強調色和環形工具列不透明度，支援 English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（從右到左）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italiano、Bahasa Indonesia。
+- 淺色和深色主題，可自選強調色和環形工具列不透明度，支援 English、Español、日本語、한국어、简体中文、繁體中文、Polski、हिन्दी、Русский、العربية（從右到左）、Português (Brasil)、Français、नेपाली、ไทย、Türkçe、Português (Portugal)、Deutsch、Italiano、Bahasa Indonesia、Tiếng Việt。
 
 ## 截圖
 

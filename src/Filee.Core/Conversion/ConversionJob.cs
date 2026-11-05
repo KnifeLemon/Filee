@@ -87,7 +87,7 @@ public sealed class FileResult
 
 /// <summary>The source, target and constraints of a route planning request.</summary>
 public sealed record RouteRequest(string Source, string Target, bool Frames = false, bool Shaping = false,
-    bool MotionPhoto = false, bool LivePhoto = false, bool Ocr = false);
+    bool MotionPhoto = false, bool LivePhoto = false, bool Ocr = false, bool Translate = false);
 
 /// <summary>A batch of files converted with one preset.</summary>
 public sealed class ConversionJob

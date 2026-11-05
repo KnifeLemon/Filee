@@ -84,6 +84,12 @@
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/th%20dark.svg" alt="Microsoft Store" width="200"></a>
 
+หรือใช้ WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
+
 - **Windows 10/11**: รัน `Filee-<version>-win-Setup.exe` หรือแตกไฟล์ `win-Portable.zip` แล้วเปิด `Filee.exe`
   - ตัวติดตั้ง Setup เป็นของ Filee เอง มีเมนูภาษาไทย และไม่ต้องติดตั้งโปรแกรมเสริมใดๆ
   - สามารถเพิ่มลงในเมนูคลิกขวาของ Explorer, ตั้งให้เปิดพร้อมระบบ, เพิ่มคำสั่ง `filee` และดาวน์โหลดเครื่องมือแปลงไฟล์เพิ่มเติมได้
@@ -134,7 +140,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **ประวัติการแปลงล่าสุด**: แสดงในหน้าแรกพร้อมรูปตัวอย่าง เปิดดูผลลัพธ์หรือเปิดด้วยแอปอื่นได้ทันที
 - **ช่องทางอื่นในการแปลง**: เมนูคลิกขวา, ปุ่มลัดแป้นพิมพ์, พื้นที่วางไฟล์ในหน้าแรก และคำสั่ง [`filee`](#การใช้งานผ่านบรรทัดคำสั่ง-command-line)
 - รองรับธีมสว่างและมืด ปรับสีเน้น (accent colour) และความโปร่งใสของโดนัทได้ตามใจ
-  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano และ Bahasa Indonesia
+  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia และ Tiếng Việt
 
 ## ภาพหน้าจอ
 

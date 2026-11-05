@@ -52,7 +52,7 @@ public sealed partial class DonutMenu : Control
     public static readonly StyledProperty<IReadOnlyList<DonutItem>?> ItemsProperty =
         AvaloniaProperty.Register<DonutMenu, IReadOnlyList<DonutItem>?>(nameof(Items));
     public static readonly StyledProperty<double> OuterRadiusProperty =
-        AvaloniaProperty.Register<DonutMenu, double>(nameof(OuterRadius), 150);
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(OuterRadius), DefaultOuterRadius);
     public static readonly StyledProperty<double> HoleRatioProperty =
         AvaloniaProperty.Register<DonutMenu, double>(nameof(HoleRatio), 0.42);
     public static readonly StyledProperty<double> SliceOpacityProperty =
@@ -125,7 +125,9 @@ public sealed partial class DonutMenu : Control
     private int _previewSlot = -1;
     private int _previewRemoved = -1;
     private string? _previewLabel;
-    private (int Index, Point Start, PointerPressedEventArgs Args)? _press;
+    private bool _previewGroup;
+    internal bool PreviewIsGroup => _previewGroup;
+    private (int Index, string? Id, Point Start, PointerPressedEventArgs Args)? _press;
 
     static DonutMenu()
     {
@@ -294,11 +296,11 @@ public sealed partial class DonutMenu : Control
     /// <summary>
     /// Edit mode: opens a gap at <paramref name="slot"/> (the position in the list after the drop) and shows a
     /// translucent slice labelled <paramref name="label"/> there. <paramref name="removed"/> is the slice being moved,
-    /// which leaves its place. -1 closes the gap.
+    /// which leaves its place. -1 closes the gap. <paramref name="group"/>: the slice is a group, and marked as one.
     /// </summary>
-    public void SetDropPreview(int slot, string? label = null, int removed = -1)
+    public void SetDropPreview(int slot, string? label = null, int removed = -1, bool group = false)
     {
-        if (_previewSlot == slot && _previewRemoved == removed && _previewLabel == label)
+        if (_previewSlot == slot && _previewRemoved == removed && _previewLabel == label && _previewGroup == group)
             return;
         if (_previewSlot < 0 && slot >= 0)
         {
@@ -309,6 +311,7 @@ public sealed partial class DonutMenu : Control
         _previewSlot = slot;
         _previewRemoved = removed;
         _previewLabel = label;
+        _previewGroup = group;
         StartAnimation();
     }
 
@@ -428,6 +431,10 @@ public sealed partial class DonutMenu : Control
         // The window is reused: a keyboard hold from the last time it was open must not swallow the first moves now.
         _keyboardHold = _ringFromKeys = false;
         _keyAnchor = _lastPointer = null;
+        // The editor's slice under a press is gone: moving on must not drag what took its place. New items with the
+        // same slice keep it, and the live donut reads its click from the release.
+        if (IsEditMode && _press is { Index: >= 0 } press && Items?.ElementAtOrDefault(press.Index)?.Id != press.Id)
+            _press = null;
         InvalidateMeasure();
         InvalidateVisual();
     }
@@ -444,7 +451,7 @@ public sealed partial class DonutMenu : Control
             return;
         }
 
-        if (_press is { } press && IsEditMode && Distance(p, press.Start) > DragStartDistance && press.Index >= 0)
+        if (_press is { } press && IsEditMode && press.Args.Pointer == e.Pointer && Distance(p, press.Start) > DragStartDistance && press.Index >= 0)
         {
             _press = null;
             SegmentDragStarted?.Invoke(this, (press.Index, e));
@@ -483,12 +490,15 @@ public sealed partial class DonutMenu : Control
             OnProgressPointerMoved(new Point(double.MaxValue / 4, 0));
             return;
         }
-        if (_press is null && !LeftThroughSeam(e.GetPosition(this)))
+        if ((_press is null || PressHeldByAnother(e.Pointer)) && !LeftThroughSeam(e.GetPosition(this)))
         {
             CollapseGroup();
             SetHover(-1);
         }
     }
+
+    /// <summary>In the editor a pressed slice is its pointer's: no other finger or mouse can move or end it.</summary>
+    private bool PressHeldByAnother(IPointer pointer) => IsEditMode && _press is { Index: >= 0 } press && press.Args.Pointer != pointer;
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -500,7 +510,7 @@ public sealed partial class DonutMenu : Control
         {
             if (point.Properties.IsLeftButtonPressed)
             {
-                _press = (-1, point.Position, e);
+                _press = (-1, null, point.Position, e);
                 e.Handled = true;
             }
             return;
@@ -521,17 +531,26 @@ public sealed partial class DonutMenu : Control
             return;
         }
 
-        if (point.Properties.IsLeftButtonPressed)
+        if (point.Properties.IsLeftButtonPressed && !PressHeldByAnother(e.Pointer))
         {
-            _press = (hit.Kind == DonutHitKind.Segment ? hit.Index : -1, point.Position, e);
+            var pressed = hit.Kind == DonutHitKind.Segment ? hit.Index : -1;
+            _press = (pressed, pressed >= 0 ? Items![pressed].Id : null, point.Position, e);
             e.Handled = true;
         }
+    }
+
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        // The editor's press can't become a drag without the capture. The live donut reads its click from the release.
+        if (IsEditMode && !PressHeldByAnother(e.Pointer))
+            _press = null;
     }
 
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (_press is null)
+        if (_press is null || PressHeldByAnother(e.Pointer))
             return;
         _press = null;
 
@@ -900,8 +919,7 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
-                DrawLabel(context, item, center, (r1 + r2) / 2, mid, span * (r1 + r2) / 2 - 10,
-                    r2 - r1 - 16, typeface, typefaceRegular, hot);
+                DrawSliceLabel(context, item, center, r1, r2, mid, span, typeface, typefaceRegular, hot);
             }
         }
 
@@ -925,8 +943,7 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (slice.Item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
                     if (slice.Emphasis > 0.01 && slice.Item.IsEnabled)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(slice.Emphasis, 0, 1)), null, wedge);
-                    DrawLabel(context, slice.Item, center, (r1 + r2) / 2, slice.Mid,
-                        slice.Span * (r1 + r2) / 2 - 10, r2 - r1 - 16, typeface, typefaceRegular,
+                    DrawSliceLabel(context, slice.Item, center, r1, r2, slice.Mid, slice.Span, typeface, typefaceRegular,
                         slice.Hot && slice.Item.IsEnabled);
                 }
             }
@@ -1007,37 +1024,46 @@ public sealed partial class DonutMenu : Control
 
     // The hub hint's icons: the flip arrow, the mouse (wheel only) and the room between them and before the text. The
     // arrow's head reaches a little past its circle towards the mouse, so that gap is wider.
-    private const double FlipArrowSize = 9, MouseWidth = 7, IconGap = 4, MouseGap = 6;
+    private const double FlipArrowSize = 10, MouseWidth = 7, IconGap = 4, MouseGap = 6;
 
     /// <summary>
-    /// A small arrow turning clockwise round <paramref name="center"/>, the "flip" in the hub hint: most of a circle with
-    /// its head at the end.
+    /// A small arrow turning clockwise round <paramref name="center"/>, the "flip" in the hub hint: three quarters of a
+    /// circle with a solid head at its end.
     /// </summary>
     internal static void DrawFlipArrow(DrawingContext context, Point center, double radius, IBrush? brush)
     {
         var pen = new Pen(brush, 1.2, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
-        // Angles in radians from 3 o'clock, growing clockwise on screen (y points down). From 1 o'clock almost round to
-        // 11 o'clock, leaving a gap at the top where the head points into.
-        const double start = -Math.PI / 3, sweep = Math.PI * 5 / 3;
+        // Angles in radians from 3 o'clock, growing clockwise on screen (y points down). From half past one round to half
+        // past ten, leaving a quarter of the circle open at the top for the head to point into. A narrower gap let the
+        // head run into the start of the arc.
+        const double start = -Math.PI / 4, sweep = Math.PI * 3 / 2;
         Point At(double angle) => new(center.X + radius * Math.Cos(angle), center.Y + radius * Math.Sin(angle));
-        var end = start + sweep;
+        var endAngle = start + sweep;
         var arc = new StreamGeometry();
         using (var g = arc.Open())
         {
             g.BeginFigure(At(start), false);
-            g.ArcTo(At(end), new Size(radius, radius), 0, sweep > Math.PI, SweepDirection.Clockwise);
+            g.ArcTo(At(endAngle), new Size(radius, radius), 0, sweep > Math.PI, SweepDirection.Clockwise);
             g.EndFigure(false);
         }
         context.DrawGeometry(null, pen, arc);
 
-        // The head: two strokes back from the end, along the circle's tangent there and either side of it.
-        var tip = At(end);
-        var along = new Vector(-Math.Sin(end), Math.Cos(end)); // clockwise
-        var outward = new Vector(Math.Cos(end), Math.Sin(end));
-        var head = radius * 0.75;
-        var back = tip - along * head;
-        context.DrawLine(pen, back + outward * head * 0.6, tip);
-        context.DrawLine(pen, back - outward * head * 0.6, tip);
+        // The head: a small solid triangle. Its base crosses the end of the arc and its point goes on along the circle's
+        // tangent there, into the gap. Two thin strokes ran almost parallel to the ring at this size and blurred into it.
+        var end = At(endAngle);
+        var along = new Vector(-Math.Sin(endAngle), Math.Cos(endAngle)); // clockwise
+        var outward = new Vector(Math.Cos(endAngle), Math.Sin(endAngle));
+        var length = radius * 0.72;
+        var halfWidth = radius * 0.5;
+        var head = new StreamGeometry();
+        using (var g = head.Open())
+        {
+            g.BeginFigure(end + along * length, true);
+            g.LineTo(end + outward * halfWidth);
+            g.LineTo(end - outward * halfWidth);
+            g.EndFigure(true);
+        }
+        context.DrawGeometry(brush, new Pen(brush, 0.7, lineJoin: PenLineJoin.Round), head);
     }
 
     /// <summary>An outline of a mouse with its wheel, filling <paramref name="box"/>.</summary>
@@ -1070,6 +1096,70 @@ public sealed partial class DonutMenu : Control
         if (caption is not null)
             DrawCentered(context, caption, anchor.X, y + label.Height);
     }
+
+    /// <summary>A slice's name and caption, and a group's mark, the name moved in to leave the mark room.</summary>
+    private void DrawSliceLabel(DrawingContext context, DonutItem item, Point center, double r1, double r2, double mid,
+        double span, Typeface bold, Typeface regular, bool hot)
+    {
+        var room = item.IsGroup ? GroupMarkRoom * GroupMarkScale : 0;
+        DrawLabel(context, item, center, (r1 + r2 - room) / 2, mid, span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot);
+        DrawGroupMark(context, item, center, r2, mid, hot);
+    }
+
+    /// <summary>
+    /// A group slice's mark: a small chevron by its outer edge pointing outward, where its ring fans out, as a
+    /// submenu's ▸ points to where it opens. Drawn inside the slice's transform, it opens, pops out and flips with it.
+    /// </summary>
+    private void DrawGroupMark(DrawingContext context, DonutItem item, Point center, double r2, double mid, bool hot)
+    {
+        if (!item.IsGroup)
+            return;
+        var brush = hot ? OnAccentBrush : SecondaryForeground;
+        if (brush is null)
+            return;
+        var size = GroupMarkScale;
+        var pen = new Pen(brush, GroupMarkStroke * size, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        using (context.PushOpacity(item.IsEnabled ? 1 : 0.5))
+            context.DrawGeometry(null, pen, CreateGroupMark(center, r2, mid, size));
+    }
+
+    // The marks are drawn every frame with their slices and kept the same way as the slices' shapes (see _wedges).
+    private readonly Dictionary<(Point C, double R2, double Mid, double Size), StreamGeometry> _groupMarks = new();
+
+    private StreamGeometry CreateGroupMark(Point c, double r2, double mid, double size)
+    {
+        var key = (c, r2, mid, size);
+        if (_groupMarks.TryGetValue(key, out var cached))
+            return cached;
+        if (_groupMarks.Count >= MaxCachedWedges)
+            _groupMarks.Clear();
+        return _groupMarks[key] = BuildGroupMark(c, r2, mid, size);
+    }
+
+    private static StreamGeometry BuildGroupMark(Point c, double r2, double mid, double size)
+    {
+        var inset = GroupMarkInset * size;
+        var tip = DonutGeometry.PointAt(c, r2 - inset, mid);
+        var back = r2 - inset - GroupMarkDepth * size;
+        // The arms' ends sit GroupMarkHalfWidth to either side of the slice's middle line.
+        var turn = GroupMarkHalfWidth * size / back;
+        var mark = new StreamGeometry();
+        using var g = mark.Open();
+        g.BeginFigure(DonutGeometry.PointAt(c, back, mid - turn), false);
+        g.LineTo(tip);
+        g.LineTo(DonutGeometry.PointAt(c, back, mid + turn));
+        g.EndFigure(false);
+        return mark;
+    }
+
+    /// <summary>The group mark's size follows the donut's: 1 at the default radius.</summary>
+    private double GroupMarkScale => OuterRadius / DefaultOuterRadius;
+
+    private const double DefaultOuterRadius = 150;
+
+    // The group mark at the default radius: its tip this far in from the outer edge, its arms this far back and this
+    // far to each side, its line this thick, and how far a group's text area gives way for it.
+    private const double GroupMarkInset = 7, GroupMarkDepth = 4.5, GroupMarkHalfWidth = 5, GroupMarkStroke = 1.6, GroupMarkRoom = 6;
 
     /// <summary>
     /// A slice's caption under its name: one line, or two where the slice is deep enough, so a caption wider than the
@@ -1200,8 +1290,8 @@ public sealed partial class DonutMenu : Control
         if (_previewLabel is null || span < 0.25)
             return;
         using (context.PushOpacity(Math.Clamp((span - 0.25) / 0.3, 0, 1) * 0.9))
-            DrawLabel(context, new DonutItem { Id = "", Label = _previewLabel }, center, (r1 + r2) / 2, mid,
-                span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot: false);
+            DrawSliceLabel(context, new DonutItem { Id = "", Label = _previewLabel, Children = _previewGroup ? [] : null }, center,
+                r1, r2, mid, span, bold, regular, hot: false);
     }
 
     /// <summary>

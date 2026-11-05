@@ -290,6 +290,10 @@ internal static class Program
                 WindowsRendering.Normalize(Environment.GetEnvironmentVariable(WindowsRendering.Variable)),
                 adapters => Log.LogInformation("Graphics adapters: {Adapters}", adapters)));
 
+        // The GPU's driver stays in memory for as long as Filee runs, also with no window open (#957).
+        if (LinuxDrawsInSoftware)
+            builder = builder.With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] });
+
         builder = builder
             .ConfigureFonts(fonts => fonts.AddFontCollection(new FileeFontCollection()))
 #if DEBUG
@@ -300,10 +304,8 @@ internal static class Program
         AvaloniaLogForwarder.Install(Log);
         return builder;
     }
-}
 
-/// <summary>Embedded Noto fonts: <c>fonts:Filee#Noto Sans</c>, <c>#Noto Sans JP</c>, <c>#Noto Sans KR</c>,
-/// <c>#Noto Sans SC</c>, <c>#Noto Sans Devanagari</c>, <c>#Noto Sans Arabic</c>, <c>#Noto Sans Thai</c>.</summary>
-internal sealed class FileeFontCollection() : Avalonia.Media.Fonts.EmbeddedFontCollection(
-    new Uri("fonts:Filee", UriKind.Absolute),
-    new Uri("avares://Filee/Assets/Fonts", UriKind.Absolute));
+    /// <summary><c>FILEE_RENDERING=software</c> on Linux.</summary>
+    internal static bool LinuxDrawsInSoftware => OperatingSystem.IsLinux()
+        && WindowsRendering.Normalize(Environment.GetEnvironmentVariable(WindowsRendering.Variable)) == "software";
+}
