@@ -25,6 +25,11 @@ $arabic = "$noto/NotoSansArabic/hinted/ttf"
 $thai = "$noto/NotoSansThai/hinted/ttf"
 $cjk = 'https://raw.githubusercontent.com/notofonts/noto-cjk/Sans2.004/Sans/SubsetOTF'
 
+# The same files on Filee's download mirror (R2 bucket filee-downloads), kept under their SHA-256 so that a new version
+# never replaces one an older branch pins. Copy a new or bumped file there too:
+#   npx wrangler r2 object put filee-downloads/fonts/<SHA-256>/<name> --file <file> --remote
+$mirror = 'https://dl.filee.sh/fonts'
+
 # File name => (URL, SHA-256). Update both together when bumping a version.
 $fonts = [ordered]@{
     'NotoSansArabic-Regular.ttf'    = @("$arabic/NotoSansArabic-Regular.ttf", 'C270782EE478C685F95509E724125729E1284C82EBFBE414CC67926F29449E1D')
@@ -62,11 +67,25 @@ foreach ($name in $fonts.Keys) {
     }
 
     Write-Host "get  $name"
-    Invoke-WebRequest -Uri $url -OutFile $target -UseBasicParsing
-    $actual = (Get-FileHash $target -Algorithm SHA256).Hash
+    # A source can fail for a moment (a 503 has stopped whole CI jobs): once more, then the mirror. The checksum decides.
+    $actual = $null
+    foreach ($source in $url, $url, "$mirror/$expected/$name") {
+        try {
+            Invoke-WebRequest -Uri $source -OutFile $target -UseBasicParsing
+            $actual = (Get-FileHash $target -Algorithm SHA256).Hash
+            if ($actual -eq $expected) {
+                break
+            }
+            Write-Warning "$name from $source has the checksum $actual."
+        }
+        catch {
+            Write-Warning "$name from ${source}: $($_.Exception.Message)"
+        }
+        Start-Sleep -Seconds 2
+    }
     if ($actual -ne $expected) {
-        Remove-Item $target
-        throw "Checksum mismatch for $name. Expected $expected, got $actual."
+        Remove-Item $target -ErrorAction SilentlyContinue
+        throw "No source gave $name with the checksum $expected."
     }
 }
 
