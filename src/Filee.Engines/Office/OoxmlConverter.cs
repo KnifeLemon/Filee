@@ -168,9 +168,7 @@ public sealed class OoxmlConverter : IConverter
         var entry = zip.GetEntry(workbookPath);
         if (entry is null)
             return;
-        XDocument workbook;
-        using (var stream = entry.Open())
-            workbook = XDocument.Load(stream);
+        var workbook = BoundedXml.Part(entry);
         var sheets = workbook.Root?.Element(SpreadsheetNs + "sheets")?.Elements(SpreadsheetNs + "sheet").ToList() ?? [];
         var kept = new List<int>();
         for (var i = 0; i < sheets.Count; i++)
@@ -254,8 +252,7 @@ public sealed class OoxmlConverter : IConverter
     {
         if (zip.GetEntry(name) is not { } entry)
             return null;
-        using var stream = entry.Open();
-        return XDocument.Load(stream);
+        return BoundedXml.Part(entry);
     }
 
     private static void Save(ZipArchive zip, string name, XDocument xml)

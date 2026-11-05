@@ -9,6 +9,7 @@
 using System.IO.Compression;
 using System.Text;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Hwp.Hwpx.Docx;
 
@@ -29,7 +30,9 @@ internal sealed partial class DocxReader
     private static readonly XNamespace Dc = "http://purl.org/dc/elements/1.1/";
 
     private readonly ZipArchive _zip;
+    private readonly BoundedXml _xml = new();
     private readonly string _mediaFolder;
+    private readonly UnpackLimit _unpack;
     private readonly Dictionary<string, Part?> _parts = [];
     private readonly Dictionary<string, string> _media = [];
     private readonly Dictionary<string, XElement> _footnotes = [];
@@ -51,24 +54,37 @@ internal sealed partial class DocxReader
     /// <summary>Reading the header for the first page only, which becomes a text box (see <see cref="HSection.FirstPageHeader"/>).</summary>
     private bool _inFirstPageHeader;
 
+    /// <summary>Table cells, text boxes and notes around the blocks being read (see <see cref="ReadNestedBlocks"/>).</summary>
+    private int _depth;
+
+    /// <summary>Inside a note: references to notes there are not followed (Word has no notes in notes).</summary>
+    private bool _inNote;
+
+    /// <summary>Complex fields begun while <see cref="Nesting.MaxDepth"/> others were open, which are not tracked.</summary>
+    private int _untrackedFields;
+
     /// <summary>The part being read; relationship ids (images, links) are resolved against it.</summary>
     private Part _part;
 
-    private DocxReader(ZipArchive zip, string mediaFolder)
+    private DocxReader(ZipArchive zip, string mediaFolder, UnpackLimit unpack)
     {
         _zip = zip;
         _mediaFolder = mediaFolder;
+        _unpack = unpack;
         var mainPath = RelationshipsOf("")
             .FirstOrDefault(r => r.Value.Type.EndsWith("/officeDocument", StringComparison.Ordinal)).Value.Target ?? "word/document.xml";
         _part = LoadPart(mainPath) ?? throw new InvalidDataException("The file is not a Word document (no word/document.xml).");
     }
 
     /// <summary>Reads <paramref name="path"/>; embedded pictures are extracted into <paramref name="mediaFolder"/>.</summary>
-    public static HDocument Read(string path, string mediaFolder)
+    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, UnpackLimit.For(path));
+
+    /// <summary><see cref="Read(string, string)"/> with another limit (for tests).</summary>
+    internal static HDocument Read(string path, string mediaFolder, UnpackLimit unpack) => Nesting.OnLargeStack(() =>
     {
         using var zip = ZipFile.OpenRead(path);
-        return new DocxReader(zip, mediaFolder).ReadDocument();
-    }
+        return new DocxReader(zip, mediaFolder, unpack).ReadDocument();
+    });
 
     // ───────────────────────── Package ─────────────────────────
 
@@ -88,9 +104,8 @@ internal sealed partial class DocxReader
         Part? part = null;
         if (_zip.GetEntry(path) is { } entry)
         {
-            using var stream = entry.Open();
             // Whitespace matters: <w:t xml:space="preserve"> </w:t> is a real space.
-            part = new Part(path, XDocument.Load(stream, LoadOptions.PreserveWhitespace), RelationshipsOf(path));
+            part = new Part(path, _xml.Load(entry, LoadOptions.PreserveWhitespace), RelationshipsOf(path));
         }
         _parts[path] = part;
         return part;
@@ -104,8 +119,7 @@ internal sealed partial class DocxReader
         var result = new Dictionary<string, Relationship>();
         if (_zip.GetEntry(relsPath) is not { } entry)
             return result;
-        using var stream = entry.Open();
-        foreach (var rel in XDocument.Load(stream).Root?.Elements(PackageRelationships + "Relationship") ?? [])
+        foreach (var rel in _xml.Load(entry).Root?.Elements(PackageRelationships + "Relationship") ?? [])
         {
             var id = (string?)rel.Attribute("Id") ?? "";
             var target = (string?)rel.Attribute("Target") ?? "";
@@ -213,8 +227,7 @@ internal sealed partial class DocxReader
         var core = _zip.GetEntry("docProps/core.xml");
         if (core is null)
             return null;
-        using var stream = core.Open();
-        return NullIfEmpty(XDocument.Load(stream).Descendants(Dc + "title").FirstOrDefault()?.Value);
+        return NullIfEmpty(_xml.Load(core).Descendants(Dc + "title").FirstOrDefault()?.Value);
     }
 
     private void AddSection(HDocument document, List<HBlock> blocks, XElement? sectPr,
@@ -502,6 +515,28 @@ internal sealed partial class DocxReader
             ReadBlock(element, output);
     }
 
+    /// <summary>
+    /// The blocks of a table cell, text box or note, one level deeper. Beyond <see cref="Nesting.MaxDepth"/> levels
+    /// only their text is read, as plain paragraphs: a crafted file may nest tables thousands of levels deep.
+    /// </summary>
+    private void ReadNestedBlocks(XElement container, List<HBlock> output)
+    {
+        if (_depth >= Nesting.MaxDepth)
+        {
+            output.AddRange(Nesting.PlainParagraphs(container, "p", "t"));
+            return;
+        }
+        _depth++;
+        try
+        {
+            ReadBlocks(container.Elements(), output);
+        }
+        finally
+        {
+            _depth--;
+        }
+    }
+
     private void ReadBlock(XElement element, List<HBlock> output)
     {
         if (element.Name == W + "p")
@@ -556,6 +591,12 @@ internal sealed partial class DocxReader
 
         public void OpenLink(string target)
         {
+            // Links in links (fields can open any number) beyond the limit keep their text in the link around them.
+            if (_sinks.Count >= Nesting.MaxDepth)
+            {
+                _sinks.Push(Sink);
+                return;
+            }
             var link = new HLink(target);
             Sink.Add(link);
             _sinks.Push(link.Content);
@@ -877,14 +918,23 @@ internal sealed partial class DocxReader
 
     private HNote? Note(XElement reference, Dictionary<string, XElement> notes, Part? part, bool endnote)
     {
-        if (part is null || !notes.TryGetValue(Attr(reference, "id") ?? "", out var element))
+        // A note referring to itself (or two notes to each other) would be read again and again.
+        if (_inNote || part is null || !notes.TryGetValue(Attr(reference, "id") ?? "", out var element))
             return null;
         var note = new HNote(endnote);
-        WithPart(part, () =>
+        _inNote = true;
+        try
         {
-            ReadBlocks(element.Elements(), note.Blocks);
-            return 0;
-        });
+            WithPart(part, () =>
+            {
+                ReadNestedBlocks(element, note.Blocks);
+                return 0;
+            });
+        }
+        finally
+        {
+            _inNote = false;
+        }
         // Word notes start with the reference mark and a space; 한글 writes its own number.
         if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FirstOrDefault() is HText { Text: var text } leading)
         {
@@ -920,13 +970,22 @@ internal sealed partial class DocxReader
         switch (Attr(fldChar, "fldCharType"))
         {
             case "begin":
-                _fields.Add(new FieldState());
+                // Every run looks at all open fields, so fields begun without an end must not pile up.
+                if (_fields.Count >= Nesting.MaxDepth)
+                    _untrackedFields++;
+                else
+                    _fields.Add(new FieldState());
                 break;
             case "separate":
-                if (_fields.LastOrDefault() is { Result: false } field)
+                if (_untrackedFields == 0 && _fields.LastOrDefault() is { Result: false } field)
                     StartFieldResult(field, builder, format);
                 break;
             case "end":
+                if (_untrackedFields > 0)
+                {
+                    _untrackedFields--;
+                    break;
+                }
                 if (_fields.LastOrDefault() is { Result: false } withoutResult)
                     StartFieldResult(withoutResult, builder, format);
                 EndField(builder);

@@ -140,8 +140,9 @@ public sealed class FolderWatcher : IAsyncDisposable
         {
             try
             {
-                foreach (var file in Directory.EnumerateFiles(path, "*", new EnumerationOptions
-                { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true }))
+                if (IsLink(new DirectoryInfo(path)))
+                    return;
+                foreach (var file in FilesInside(path, recurse: true))
                     Notice(file);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -171,7 +172,8 @@ public sealed class FolderWatcher : IAsyncDisposable
             foreach (var (path, candidate) in _pending)
             {
                 var current = candidate.Refresh(path, now);
-                if (!current.Exists || _results.Contains(path))
+                // Checked again now: a file can be swapped for a link while it waits, also for its second turn.
+                if (!current.Exists || _results.Contains(path) || IsLinkNow(path))
                 {
                     _pending.TryRemove(path, out _);
                     continue;
@@ -269,12 +271,72 @@ public sealed class FolderWatcher : IAsyncDisposable
             return true;
         try
         {
-            var attributes = File.GetAttributes(path);
-            return (attributes & (FileAttributes.Directory | FileAttributes.Hidden | FileAttributes.System)) != 0;
+            var info = new FileInfo(path);
+            return (info.Attributes & (FileAttributes.Directory | FileAttributes.Hidden | FileAttributes.System)) != 0
+                   || IsLink(info);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return true; // gone already, or not ours to read
+        }
+    }
+
+    /// <summary>
+    /// The files in <paramref name="folder"/> (and with <paramref name="recurse"/> its subfolders), never through a
+    /// link: a junction, a folder or file symbolic link or a mount point could lead outside the watched folder, and
+    /// "Move to originals" would then move files from there. Other reparse points, such as OneDrive's online-only files
+    /// and deduplicated files, are ordinary files here. Folders that can't be read are skipped.
+    /// </summary>
+    internal static IEnumerable<string> FilesInside(string folder, bool recurse)
+    {
+        var options = new EnumerationOptions { RecurseSubdirectories = false, IgnoreInaccessible = true, AttributesToSkip = 0 };
+        var pending = new Stack<DirectoryInfo>([new DirectoryInfo(folder)]);
+        while (pending.TryPop(out var directory))
+        {
+            foreach (var entry in directory.EnumerateFileSystemInfos("*", options))
+            {
+                if (IsLink(entry))
+                    continue;
+                if (entry is DirectoryInfo subfolder)
+                {
+                    if (recurse)
+                        pending.Push(subfolder);
+                }
+                else
+                {
+                    yield return entry.FullName;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// True for a link (junction, mount point, symbolic link to a folder or file), whose target can be anywhere; false
+    /// for other reparse points (cloud placeholders, deduplicated files). One whose kind can't be read counts as a link.
+    /// </summary>
+    private static bool IsLink(FileSystemInfo entry)
+    {
+        if (!entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            return false;
+        try
+        {
+            return entry.LinkTarget is not null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    private static bool IsLinkNow(string path)
+    {
+        try
+        {
+            return IsLink(new FileInfo(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
         }
     }
 
@@ -297,8 +359,7 @@ public sealed class FolderWatcher : IAsyncDisposable
     {
         try
         {
-            var option = Rule.IncludeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            foreach (var file in Directory.EnumerateFiles(Rule.Folder, "*", option))
+            foreach (var file in FilesInside(Rule.Folder, Rule.IncludeSubfolders))
                 Notice(file);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)

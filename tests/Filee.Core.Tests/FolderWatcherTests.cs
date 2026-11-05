@@ -418,6 +418,183 @@ public class FolderWatcherTests
     }
 
     [Fact]
+    public async Task The_scan_of_what_is_already_there_does_not_follow_links_out_of_the_folder()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var mine = dir.File("photo.jpg");
+        var foreign = elsewhere.File("other.jpg");
+        var link = Path.Combine(dir.Path, "linked");
+        LinkFolder(link, elsewhere.Path);
+        try
+        {
+            var rule = new WatchRule { Folder = dir.Path, IncludeSubfolders = true, Originals = AfterConversion.MoveToOriginals };
+            var (watcher, time, jobs, queue) = Create(rule);
+            await using var __ = queue;
+            await using var ___ = watcher;
+
+            Assert.True(watcher.Start());
+            time.Advance(3);
+            Assert.Equal(1, await watcher.ProcessPendingAsync());
+
+            Assert.Equal([mine], Assert.Single(jobs).Files.Select(f => f.SourcePath));
+            Assert.True(File.Exists(foreign)); // neither converted nor moved to the originals folder
+        }
+        finally
+        {
+            Directory.Delete(link); // the link only
+        }
+    }
+
+    [Fact]
+    public async Task An_arriving_folder_is_read_without_following_links_and_a_link_itself_is_not_read()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var incoming = Directory.CreateDirectory(Path.Combine(dir.Path, "incoming")).FullName;
+        var mine = Path.Combine(Directory.CreateDirectory(Path.Combine(incoming, "sub")).FullName, "photo.jpg");
+        File.WriteAllText(mine, "bytes");
+        elsewhere.File("other.jpg");
+        var inner = Path.Combine(incoming, "linked");
+        var outer = Path.Combine(dir.Path, "linked");
+        LinkFolder(inner, elsewhere.Path);
+        LinkFolder(outer, elsewhere.Path);
+        try
+        {
+            var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path, IncludeSubfolders = true });
+            await using var __ = queue;
+            await using var ___ = watcher;
+
+            watcher.Notice(incoming); // a folder moved in at once, with a link inside it
+            watcher.Notice(outer);    // a link that appeared in the folder
+            time.Advance(3);
+            Assert.Equal(1, await watcher.ProcessPendingAsync());
+
+            Assert.Equal([mine], Assert.Single(jobs).Files.Select(f => f.SourcePath));
+        }
+        finally
+        {
+            Directory.Delete(inner);
+            Directory.Delete(outer);
+        }
+    }
+
+    [Fact]
+    public async Task A_symbolic_link_to_a_file_is_not_converted_but_the_files_beside_it_are()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var mine = dir.File("photo.jpg");
+        var foreign = elsewhere.File("other.jpg");
+        var link = Path.Combine(dir.Path, "link.jpg");
+        try
+        {
+            File.CreateSymbolicLink(link, foreign);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("This machine doesn't let the test make a symbolic link.");
+        }
+        var rule = new WatchRule { Folder = dir.Path, Originals = AfterConversion.MoveToOriginals };
+        Assert.Equal([mine], FolderWatcher.FilesInside(dir.Path, recurse: true));
+        Assert.True(FolderWatcher.ShouldIgnore(link, rule));
+        var (watcher, time, jobs, queue) = Create(rule);
+        await using var __ = queue;
+        await using var ___ = watcher;
+
+        Assert.True(watcher.Start()); // the scan of what is there
+        watcher.Notice(link);         // and the change event for it
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+
+        Assert.Equal([mine], Assert.Single(jobs).Files.Select(f => f.SourcePath));
+        Assert.True(File.Exists(foreign));
+    }
+
+    /// <summary>A junction on Windows (no rights needed), a symbolic link elsewhere; skips when neither can be made.</summary>
+    /// <summary>Replaces a file with a symbolic link to <paramref name="target"/>; skips where links can't be made.</summary>
+    private static void SwapForLink(string file, string target)
+    {
+        File.Delete(file);
+        try
+        {
+            File.CreateSymbolicLink(file, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("This machine doesn't let the test make a symbolic link.");
+        }
+    }
+
+    [Fact]
+    public async Task A_file_swapped_for_a_link_while_it_waits_is_not_converted()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var foreign = elsewhere.File("other.jpg");
+        var photo = dir.File("photo.jpg");
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        watcher.Notice(photo);
+        SwapForLink(photo, foreign);
+        time.Advance(3);
+
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        time.Advance(3);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Empty(jobs);
+    }
+
+    [Fact]
+    public async Task A_file_swapped_for_a_link_before_its_second_turn_is_not_converted()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var foreign = elsewhere.File("other.jpg");
+        var photo = dir.File("photo.jpg");
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path }, new FakeConverter("magick", new ConversionEdge("jpg", "png")) { Failure = new InvalidOperationException("no") });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        watcher.Notice(photo);
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(FileState.Failed, Assert.Single(Assert.Single(jobs).Files).State);
+
+        SwapForLink(photo, foreign);
+        time.Advance(30);
+
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Single(jobs);
+    }
+
+    private static void LinkFolder(string link, string target)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("This machine doesn't let the test make a symbolic link.");
+            }
+            return;
+        }
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        mklink.WaitForExit();
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
+    }
+
+    [Fact]
     public async Task A_missing_folder_is_reported_instead_of_watched()
     {
         var (watcher, _, _, queue) = Create(new WatchRule { Folder = Path.Combine(Path.GetTempPath(), "filee-missing-" + Guid.NewGuid().ToString("N")) });
