@@ -151,12 +151,19 @@ public sealed class MacOSWindowTests
         }
 
         var isKey = false;
+        var isVisible = false;
         var makeKeyCalls = 0;
+        var orderOutCalls = 0;
+        var orderFrontCalls = 0;
         var resignKeyCalls = 0;
-        SendActionWithArg makeKey = (_, _, _) => { isKey = true; makeKeyCalls++; };
-        SendAction resignKey = (_, _) => { isKey = false; resignKeyCalls++; };
+
+        SendActionWithArg makeKey = (_, _, _) => { isKey = true; isVisible = true; makeKeyCalls++; };
+        SendActionWithArg orderOut = (_, _, _) => { isKey = false; isVisible = false; orderOutCalls++; };
+        SendAction orderFront = (_, _) => { isVisible = true; orderFrontCalls++; };
+        SendAction resignKey = (_, _) => resignKeyCalls++;
         GetBool isKeyWindow = (_, _) => isKey;
-        Delegate[] callbacks = [makeKey, resignKey, isKeyWindow];
+        GetBool getIsVisible = (_, _) => isVisible;
+        Delegate[] callbacks = [makeKey, orderOut, orderFront, resignKey, isKeyWindow, getIsVisible];
 
         var testClass = AllocateClass(GetClass("NSObject"), "FileeKeyWindowTestWindow", 0);
         Assert.NotEqual(0, testClass);
@@ -164,8 +171,11 @@ public sealed class MacOSWindowTests
         try
         {
             AddMethod(testClass, "makeKeyAndOrderFront:", makeKey, "v@:@");
+            AddMethod(testClass, "orderOut:", orderOut, "v@:@");
+            AddMethod(testClass, "orderFrontRegardless", orderFront, "v@:");
             AddMethod(testClass, "resignKeyWindow", resignKey, "v@:");
             AddMethod(testClass, "isKeyWindow", isKeyWindow, "B@:");
+            AddMethod(testClass, "isVisible", getIsVisible, "B@:");
             RegisterClass(testClass);
 
             window = Send(Send(testClass, Selector("alloc")), Selector("init"));
@@ -178,16 +188,21 @@ public sealed class MacOSWindowTests
             // 1. TakeKeyWindow sends makeKeyAndOrderFront:
             platform.TakeKeyWindow(window);
             Assert.True(isKey);
+            Assert.True(isVisible);
             Assert.True(NativeMethods.IsKeyWindow(window));
             Assert.Equal(1, makeKeyCalls);
+            Assert.Equal(0, orderOutCalls);
             Assert.Equal(0, resignKeyCalls);
 
-            // 2. ReleaseKeyWindow sends resignKeyWindow
+            // 2. ReleaseKeyWindow ends key status via orderOut: and restores visibility via orderFrontRegardless
             platform.ReleaseKeyWindow(window);
             Assert.False(isKey);
+            Assert.True(isVisible);
             Assert.False(NativeMethods.IsKeyWindow(window));
             Assert.Equal(1, makeKeyCalls);
-            Assert.Equal(1, resignKeyCalls);
+            Assert.Equal(1, orderOutCalls);
+            Assert.Equal(1, orderFrontCalls);
+            Assert.Equal(0, resignKeyCalls); // resignKeyWindow is never invoked directly per Apple guidelines
 
             // 3. ReturnFocus releases key window if TakeKeyWindow was called
             platform.TakeKeyWindow(window);
@@ -197,8 +212,11 @@ public sealed class MacOSWindowTests
 
             platform.ReturnFocus();
             Assert.False(isKey);
+            Assert.True(isVisible);
             Assert.False(NativeMethods.IsKeyWindow(window));
-            Assert.Equal(2, resignKeyCalls);
+            Assert.Equal(2, orderOutCalls);
+            Assert.Equal(2, orderFrontCalls);
+            Assert.Equal(0, resignKeyCalls);
 
             // 4. RestoreWindow releases key window if still tracked
             platform.TakeKeyWindow(window);
@@ -209,7 +227,8 @@ public sealed class MacOSWindowTests
             platform.RestoreWindow(window);
             Assert.False(isKey);
             Assert.False(NativeMethods.IsKeyWindow(window));
-            Assert.Equal(3, resignKeyCalls);
+            Assert.Equal(3, orderOutCalls);
+            Assert.Equal(0, resignKeyCalls);
 
             // 5. Handles zero safely
             platform.TakeKeyWindow(0);
@@ -281,4 +300,7 @@ public sealed class MacOSWindowTests
 
     [DllImport(ObjC, EntryPoint = "objc_msgSend")]
     private static extern nint Send(nint receiver, nint selector);
+
+    [DllImport(ObjC, EntryPoint = "objc_msgSend")]
+    private static extern nint Send(nint receiver, nint selector, nint arg);
 }

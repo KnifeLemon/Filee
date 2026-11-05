@@ -519,9 +519,23 @@ internal static class NativeMethods
 
     internal static void ReleaseKeyWindow(nint window)
     {
-        var selector = sel_registerName("resignKeyWindow");
-        if (SendBool(window, sel_registerName("respondsToSelector:"), selector))
-            SendVoid(window, selector);
+        if (!IsKeyWindow(window))
+            return;
+
+        var isVisibleSelector = sel_registerName("isVisible");
+        var wasVisible = SendBool(window, sel_registerName("respondsToSelector:"), isVisibleSelector)
+            && SendBool(window, isVisibleSelector);
+
+        var orderOutSelector = sel_registerName("orderOut:");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), orderOutSelector))
+            SendVoid(window, orderOutSelector, 0);
+
+        if (wasVisible)
+        {
+            var orderFrontSelector = sel_registerName("orderFrontRegardless");
+            if (SendBool(window, sel_registerName("respondsToSelector:"), orderFrontSelector))
+                SendVoid(window, orderFrontSelector);
+        }
     }
 
     internal static bool IsKeyWindow(nint window)
