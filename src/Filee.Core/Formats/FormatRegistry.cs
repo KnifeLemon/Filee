@@ -15,7 +15,7 @@ public static class FormatRegistry
     [
         // Raster images
         new("png", "PNG", FormatCategory.Image, ["png", "png_large"]),
-        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jpg_large"]),
+        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jif", "jpg_large"]),
         new("webp", "WEBP", FormatCategory.Image, ["webp"]),
         new("tiff", "TIFF", FormatCategory.Image, ["tiff", "tif"]),
         new("bmp", "BMP", FormatCategory.Image, ["bmp", "dib"]),

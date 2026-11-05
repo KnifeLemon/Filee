@@ -1029,6 +1029,9 @@ internal static class SettingsMigrations
         //      if another change takes it first.)
         if (from < 69 && presets.All(p => p.Id != "translate"))
             changed |= AddTranslatePreset(presets);
+        // v70: JPEG .jif files (#1184) learn the images donut without taking custom claims.
+        if (from < 70)
+            changed |= LearnExtensions(profiles, out _, ["jif"]);
         return changed;
     }
 
