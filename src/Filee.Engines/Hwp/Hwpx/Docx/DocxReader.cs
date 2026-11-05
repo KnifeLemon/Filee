@@ -49,6 +49,10 @@ internal sealed partial class DocxReader
     private readonly List<int> _linePitches = [];
     private int _sectionIndex;
     private int _textBoxDepth;
+    private int _tableDepth;
+
+    /// <summary>Reading the header for the first page only, which becomes a text box (see <see cref="HSection.FirstPageHeader"/>).</summary>
+    private bool _inFirstPageHeader;
 
     /// <summary>Table cells, text boxes and notes around the blocks being read (see <see cref="ReadNestedBlocks"/>).</summary>
     private int _depth;
@@ -233,6 +237,14 @@ internal sealed partial class DocxReader
         var columns = Columns(sectPr);
         var previous = document.Sections.LastOrDefault();
 
+        // Sections without their own header or footer reference inherit the previous section's.
+        var headerReferences = sectPr?.Elements(W + "headerReference").ToList() ?? [];
+        var footerReferences = sectPr?.Elements(W + "footerReference").ToList() ?? [];
+        foreach (var reference in headerReferences)
+            headers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
+        foreach (var reference in footerReferences)
+            footers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
+
         // Word uses continuous section breaks to change the number of columns mid-page. 한글 does that with a
         // column definition inside the section, so keep one section when the paper does not change.
         if (previous is not null && Val(sectPr?.Element(W + "type")) == "continuous" && previous.Page == page)
@@ -241,41 +253,43 @@ internal sealed partial class DocxReader
                 blocks.Insert(0, first = new HParagraph());
             first.ColumnsChange = columns;
             previous.Blocks.AddRange(blocks);
+
+            // Its header or footer starts on the next page in Word, on the page of this paragraph in 한글.
+            if (headerReferences.Count > 0)
+                Add(headers, previous.Headers, first);
+            if (footerReferences.Count > 0)
+                Add(footers, previous.Footers, first);
             return;
         }
 
         var section = new HSection { Page = page, Columns = columns, HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0 };
         section.Blocks.AddRange(blocks);
 
-        // Sections without their own header or footer reference inherit the previous section's.
-        foreach (var reference in sectPr?.Elements(W + "headerReference") ?? [])
-            headers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
-        foreach (var reference in sectPr?.Elements(W + "footerReference") ?? [])
-            footers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
-
-        void Add(Dictionary<string, List<HBlock>> source, List<HHeaderFooter> target)
+        void Add(Dictionary<string, List<HBlock>> source, List<HHeaderFooter> target, HParagraph? startsAt = null)
         {
             if (_evenAndOddHeaders)
             {
                 if (source.GetValueOrDefault("default") is { } odd)
-                    AddHeaderFooter(target, HPageType.Odd, odd);
+                    AddHeaderFooter(target, HPageType.Odd, odd, startsAt);
                 if (source.GetValueOrDefault("even") is { } even)
-                    AddHeaderFooter(target, HPageType.Even, even);
+                    AddHeaderFooter(target, HPageType.Even, even, startsAt);
             }
             else if (source.GetValueOrDefault("default") is { } both)
             {
-                AddHeaderFooter(target, HPageType.Both, both);
+                AddHeaderFooter(target, HPageType.Both, both, startsAt);
             }
         }
         Add(headers, section.Headers);
         Add(footers, section.Footers);
 
         // "Different first page": 한글 can only hide the header/footer on the first page, which is what an empty
-        // (or missing) first-page header means in Word.
+        // (or missing) first-page header means in Word. A header with content is kept for the first page.
         if (sectPr?.Element(W + "titlePg") is { } titlePg && Val(titlePg) is not ("0" or "false"))
         {
             section.HideFirstHeader = IsBlank(headers.GetValueOrDefault("first"));
             section.HideFirstFooter = IsBlank(footers.GetValueOrDefault("first"));
+            if (!section.HideFirstHeader)
+                section.FirstPageHeader = headers["first"];
         }
         if (int.TryParse(Attr(sectPr?.Element(W + "pgNumType"), "start"), out var start))
             section.StartPageNumber = start;
@@ -283,9 +297,9 @@ internal sealed partial class DocxReader
         document.Sections.Add(section);
     }
 
-    private static void AddHeaderFooter(List<HHeaderFooter> target, HPageType pages, List<HBlock> blocks)
+    private static void AddHeaderFooter(List<HHeaderFooter> target, HPageType pages, List<HBlock> blocks, HParagraph? startsAt)
     {
-        var item = new HHeaderFooter(pages);
+        var item = new HHeaderFooter(pages) { StartsAt = startsAt };
         item.Blocks.AddRange(blocks);
         target.Add(item);
     }
@@ -295,12 +309,14 @@ internal sealed partial class DocxReader
         var blocks = new List<HBlock>();
         if (Attr(reference, "id", R) is { } id && _part.Relationships.TryGetValue(id, out var rel) && LoadPart(rel.Target) is { } part)
         {
+            _inFirstPageHeader = reference.Name == W + "headerReference" && Attr(reference, "type") == "first";
             WithPart(part, () =>
             {
                 foreach (var element in Flatten(part.Xml.Root?.Elements() ?? []))
                     ReadBlock(element, blocks);
                 return 0;
             });
+            _inFirstPageHeader = false;
         }
         return blocks;
     }
@@ -526,7 +542,11 @@ internal sealed partial class DocxReader
         if (element.Name == W + "p")
             ReadParagraph(element, output);
         else if (element.Name == W + "tbl")
+        {
+            _tableDepth++;
             output.Add(ReadTable(element));
+            _tableDepth--;
+        }
     }
 
     // ───────────────────────── Paragraphs ─────────────────────────
@@ -979,6 +999,9 @@ internal sealed partial class DocxReader
         var words = SplitInstruction(field.Instruction.ToString());
         switch (words.FirstOrDefault()?.ToUpperInvariant())
         {
+            case "PAGE" or "NUMPAGES" or "SECTIONPAGES" when _inFirstPageHeader && _tableDepth > 0:
+                // rhwp leaves a page number in a table in a text box blank: Word's result, which comes next, stays.
+                break;
             case "HYPERLINK":
                 {
                     // HYPERLINK "url" [\l "bookmark"] or HYPERLINK \l "bookmark"

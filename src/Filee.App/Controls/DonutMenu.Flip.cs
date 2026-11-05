@@ -126,6 +126,7 @@ public sealed partial class DonutMenu
     internal bool HasOldFace => _oldFace is not null;
     internal bool HasOldGroupRing => _oldGroup is not null;
     internal int CachedWedgeCount => _wedges.Count;
+    internal int CachedGroupMarkCount => _groupMarks.Count;
 
     private double Progress(bool oldFace, int index)
     {
