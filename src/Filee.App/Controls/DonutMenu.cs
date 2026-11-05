@@ -1102,22 +1102,38 @@ public sealed partial class DonutMenu : Control
         if (brush is null)
             return;
         var size = GroupMarkScale;
+        var pen = new Pen(brush, GroupMarkStroke * size, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
+        using (context.PushOpacity(item.IsEnabled ? 1 : 0.5))
+            context.DrawGeometry(null, pen, CreateGroupMark(center, r2, mid, size));
+    }
+
+    // The marks are drawn every frame with their slices and kept the same way as the slices' shapes (see _wedges).
+    private readonly Dictionary<(Point C, double R2, double Mid, double Size), StreamGeometry> _groupMarks = new();
+
+    private StreamGeometry CreateGroupMark(Point c, double r2, double mid, double size)
+    {
+        var key = (c, r2, mid, size);
+        if (_groupMarks.TryGetValue(key, out var cached))
+            return cached;
+        if (_groupMarks.Count >= MaxCachedWedges)
+            _groupMarks.Clear();
+        return _groupMarks[key] = BuildGroupMark(c, r2, mid, size);
+    }
+
+    private static StreamGeometry BuildGroupMark(Point c, double r2, double mid, double size)
+    {
         var inset = GroupMarkInset * size;
-        var tip = DonutGeometry.PointAt(center, r2 - inset, mid);
+        var tip = DonutGeometry.PointAt(c, r2 - inset, mid);
         var back = r2 - inset - GroupMarkDepth * size;
         // The arms' ends sit GroupMarkHalfWidth to either side of the slice's middle line.
         var turn = GroupMarkHalfWidth * size / back;
-        var pen = new Pen(brush, GroupMarkStroke * size, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         var mark = new StreamGeometry();
-        using (var g = mark.Open())
-        {
-            g.BeginFigure(DonutGeometry.PointAt(center, back, mid - turn), false);
-            g.LineTo(tip);
-            g.LineTo(DonutGeometry.PointAt(center, back, mid + turn));
-            g.EndFigure(false);
-        }
-        using (context.PushOpacity(item.IsEnabled ? 1 : 0.5))
-            context.DrawGeometry(null, pen, mark);
+        using var g = mark.Open();
+        g.BeginFigure(DonutGeometry.PointAt(c, back, mid - turn), false);
+        g.LineTo(tip);
+        g.LineTo(DonutGeometry.PointAt(c, back, mid + turn));
+        g.EndFigure(false);
+        return mark;
     }
 
     /// <summary>The group mark's size follows the donut's: 1 at the default radius.</summary>
