@@ -11,7 +11,7 @@
    `<code>-*` only (`"fr"` and `"fr-CA"`, not North Frisian `"frr"`), and add rows for both to
    `LocalizationTests.Auto_follows_the_language_the_user_reads_the_os_in`.
 4. `LocalizationTests.Languages` automatically checks every registered language for key and placeholder parity.
-5. If the script needs another font, add a static Noto font to `build/fetch-fonts.ps1` (pinned with its SHA-256),
+5. If the script needs another font, add a static Noto font to `build/fetch-fonts.ps1` (pinned with its SHA-256, and copied to the mirror as that script says),
    to the font list in `SoftPalette.FontFamilies` and to the Noto line in `THIRD-PARTY-NOTICES.md` (variable fonts
    are not supported by Avalonia). Add the script's system UI fonts too, Windows' to `SoftPalette.FontFamilies` and
    `SoftPalette.SystemFontFamilies` (Setup draws with Windows' fonts only) and macOS' to `FontFamilies`, e.g.
