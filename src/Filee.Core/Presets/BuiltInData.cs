@@ -11,6 +11,27 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>Archive containers that can pack a directory tree.</summary>
+    public static IReadOnlyList<string> FolderArchiveTargets { get; } = Array.AsReadOnly(new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz" });
+
+    /// <summary>Whether a target can create an image or archive from folders.</summary>
+    public static bool SupportsFolderTarget(string target) => target == "iso" || FolderArchiveTargets.Contains(target);
+
+    /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
+    public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
+        && (preset.IsCopyToFolder || SupportsFolderTarget(preset.TargetFormat))
+        && (preset.IsCopyToFolder || preset.TargetFormat == "iso" || preset.Archive.CombineIntoOne);
+
+    /// <summary>Existing archive writers exposed as folder-packing actions; raw GZ/BZ2/XZ cannot hold folders.</summary>
+    public static List<Preset> FolderArchivePresets() =>
+        FolderArchiveTargets.Select(format => new Preset
+        {
+            Id = "folder-" + format,
+            Name = FormatRegistry.Get(format).DisplayName,
+            TargetFormat = format,
+            Archive = { CombineIntoOne = true },
+        }).ToList();
+
     /// <summary>Creates the default preset list.</summary>
     public static List<Preset> CreatePresets() =>
     [
@@ -141,6 +162,7 @@ public static class BuiltInData
         new() { Id = "to-html", Name = "HTML", TargetFormat = "html" },
         .. SpreadsheetPresets(),
         .. CatalogPresets(),
+        .. FolderArchivePresets(),
         .. DataPresets(),
         .. CodecAndSubtitlePresets(),
         .. ModelPresets(),
@@ -594,6 +616,7 @@ public static class BuiltInData
         new() { Id = "to-aac", Name = "AAC", TargetFormat = "aac" },
 
         // Archives
+        new() { Id = "to-iso", NameKey = "preset.iso_image", TargetFormat = "iso" },
         new() { Id = "to-zip", Name = "ZIP", TargetFormat = "zip" },
         new() { Id = "to-7z", Name = "7Z", TargetFormat = "7z" },
         new() { Id = "to-tgz", Name = "TAR.GZ", TargetFormat = "tgz" },
@@ -722,6 +745,15 @@ public static class BuiltInData
             };
             (profile.PresetIds, profile.BackPresetIds) = layout;
         }
+        var folders = new ToolbarProfile
+        {
+            Id = "folders",
+            NameKey = "profile.folders",
+            Extensions = [],
+            PresetIds = ["to-iso", .. FolderArchivePresets().Select(p => p.Id)],
+            BackPresetIds = [],
+        };
+        profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);
         return profiles;
     }
 

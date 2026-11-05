@@ -1531,5 +1531,11 @@
   "home.queue_clear": "Xóa danh sách",
   "home.queue_remove": "Bỏ",
   "general.collect_dropped": "Gom các tệp được thả vào một danh sách",
-  "general.collect_dropped_hint": "Tệp được thả hoặc chọn sẽ chờ trong một danh sách ở Trang chủ, và Chọn thao tác sẽ chuyển đổi chúng cùng lúc theo thứ tự hiển thị. Tắt: mỗi lần thả sẽ mở thanh công cụ vòng tròn như trước."
+  "general.collect_dropped_hint": "Tệp được thả hoặc chọn sẽ chờ trong một danh sách ở Trang chủ, và Chọn thao tác sẽ chuyển đổi chúng cùng lúc theo thứ tự hiển thị. Tắt: mỗi lần thả sẽ mở thanh công cụ vòng tròn như trước.",
+  "engine.iso.name": "ISO",
+  "engine.iso.description": "Tạo ảnh ISO từ thư mục hoặc nội dung tệp nén, giữ nguyên tên Unicode và thư mục trống.",
+  "preset.iso_image": "Ảnh ISO",
+  "profile.folders": "Thư mục",
+  "presets.iso_standard": "Tiêu chuẩn ISO",
+  "presets.iso_standard_hint": "Joliet giữ nguyên tên Unicode. ISO 9660 thuần dùng tên ASCII viết hoa; tên có thể bị rút ngắn."
 }

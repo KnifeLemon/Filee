@@ -1531,5 +1531,11 @@
   "home.queue_clear": "Wyczyść listę",
   "home.queue_remove": "Usuń",
   "general.collect_dropped": "Zbieraj upuszczone pliki na liście",
-  "general.collect_dropped_hint": "Upuszczone lub wybrane pliki czekają na liście na ekranie Start, a Wybierz działanie konwertuje je razem w pokazanej kolejności. Wyłączone: każde upuszczenie otwiera pierścień, jak dotąd."
+  "general.collect_dropped_hint": "Upuszczone lub wybrane pliki czekają na liście na ekranie Start, a Wybierz działanie konwertuje je razem w pokazanej kolejności. Wyłączone: każde upuszczenie otwiera pierścień, jak dotąd.",
+  "engine.iso.name": "ISO",
+  "engine.iso.description": "Tworzy obrazy ISO z folderów lub zawartości archiwów, zachowując nazwy Unicode i puste foldery.",
+  "preset.iso_image": "Obraz ISO",
+  "profile.folders": "Foldery",
+  "presets.iso_standard": "Standard ISO",
+  "presets.iso_standard_hint": "Joliet zachowuje nazwy Unicode. Zwykły ISO 9660 używa starszych nazw ASCII wielkimi literami; nazwy mogą zostać skrócone."
 }

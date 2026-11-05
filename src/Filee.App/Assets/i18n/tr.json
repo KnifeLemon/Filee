@@ -1509,5 +1509,11 @@
   "home.queue_clear": "Listeyi temizle",
   "home.queue_remove": "Kaldır",
   "general.collect_dropped": "Bırakılan dosyaları listede topla",
-  "general.collect_dropped_hint": "Bırakılan ya da seçilen dosyalar Başlangıç ekranındaki listede bekler; İşlem seç hepsini gösterilen sırayla dönüştürür. Kapalıyken her bırakma donut'u açar, eskisi gibi."
+  "general.collect_dropped_hint": "Bırakılan ya da seçilen dosyalar Başlangıç ekranındaki listede bekler; İşlem seç hepsini gösterilen sırayla dönüştürür. Kapalıyken her bırakma donut'u açar, eskisi gibi.",
+  "engine.iso.name": "ISO",
+  "engine.iso.description": "Klasörlerden veya arşiv içeriğinden ISO kalıpları oluşturur, Unicode adları ve boş klasörleri korur.",
+  "preset.iso_image": "ISO görüntüsü",
+  "profile.folders": "Klasörler",
+  "presets.iso_standard": "ISO standardı",
+  "presets.iso_standard_hint": "Joliet, Unicode adlarını korur. Düz ISO 9660 eski büyük harfli ASCII adlarını kullanır; adlar kısaltılabilir."
 }

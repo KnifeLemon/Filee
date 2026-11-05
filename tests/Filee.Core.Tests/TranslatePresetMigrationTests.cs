@@ -142,7 +142,7 @@ public class TranslatePresetMigrationTests
         var profiles = Profiles();
         var before = Json(profiles);
         Assert.True(SettingsMigrations.ApplyToLibrary(68, presets, profiles));
-        Assert.Equal(["trim-transparent", Id, "to-png"], presets.Select(p => p.Id));
+        Assert.Equal(["trim-transparent", Id, "to-png"], presets.Where(p => p.Id != "to-iso" && !p.Id.StartsWith("folder-", StringComparison.Ordinal)).Select(p => p.Id));
         Assert.Equal(before, Json(profiles));
 
         // No built-in preset before it: at the start.
@@ -150,7 +150,7 @@ public class TranslatePresetMigrationTests
         profiles = Profiles();
         before = Json(profiles);
         Assert.True(SettingsMigrations.ApplyToLibrary(68, presets, profiles));
-        Assert.Equal([Id, "tool-crop"], presets.Select(p => p.Id));
+        Assert.Equal([Id, "tool-crop"], presets.Where(p => p.Id != "to-iso" && !p.Id.StartsWith("folder-", StringComparison.Ordinal)).Select(p => p.Id));
         Assert.Equal(before, Json(profiles));
     }
 
@@ -200,7 +200,7 @@ public class TranslatePresetMigrationTests
         using var dir = new TempDir();
         var store = Saved(dir);
         var settings = JsonNode.Parse(File.ReadAllText(Path.Combine(dir.Path, "settings.json")))!;
-        Assert.Equal(69, settings["schemaVersion"]!.GetValue<int>());
+        Assert.Equal(AppSettings.CurrentSchemaVersion, settings["schemaVersion"]!.GetValue<int>());
 
         store.Presets.RemoveAll(p => p.Id == Id);
         store.SaveLibrary();

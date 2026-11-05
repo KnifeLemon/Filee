@@ -101,7 +101,8 @@ public sealed class ConversionService
             // "Next to the source" is the download folder, also when the original is only kept until converted.
             preset = fetcher.Apply(preset);
         }
-        var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher);
+        var folders = files.Where(Directory.Exists).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
+        var job = _queue.Enqueue(files, preset, _loc.DisplayName(preset), fetcher, folders);
         if (toClipboard)
         {
             _clipboardJobs[job.Id] = 0;

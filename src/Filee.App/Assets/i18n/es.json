@@ -1511,5 +1511,11 @@
   "home.queue_clear": "Vaciar lista",
   "home.queue_remove": "Quitar",
   "general.collect_dropped": "Reunir los archivos soltados en una lista",
-  "general.collect_dropped_hint": "Los archivos soltados o elegidos esperan en una lista en la pantalla Inicio, y Elegir acción los convierte juntos en el orden mostrado. Desactivado: cada suelta abre el donut, como antes."
+  "general.collect_dropped_hint": "Los archivos soltados o elegidos esperan en una lista en la pantalla Inicio, y Elegir acción los convierte juntos en el orden mostrado. Desactivado: cada suelta abre el donut, como antes.",
+  "engine.iso.name": "ISO",
+  "engine.iso.description": "Crea imágenes ISO a partir de carpetas o del contenido de archivos comprimidos, conservando los nombres Unicode y las carpetas vacías.",
+  "preset.iso_image": "Imagen ISO",
+  "profile.folders": "Carpetas",
+  "presets.iso_standard": "Estándar ISO",
+  "presets.iso_standard_hint": "Joliet conserva los nombres Unicode. ISO 9660 sin extensiones usa nombres ASCII antiguos en mayúsculas; pueden acortarse."
 }

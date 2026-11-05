@@ -1508,5 +1508,11 @@
 "home.queue_clear": "Svuota elenco",
 "home.queue_remove": "Rimuovi",
 "general.collect_dropped": "Raccogli i file trascinati in un elenco",
-"general.collect_dropped_hint": "I file trascinati o scelti restano in un elenco nella schermata Inizio, e Scegli azione li converte insieme nell'ordine mostrato. Disattivato: ogni trascinamento apre il donut, come prima."
+"general.collect_dropped_hint": "I file trascinati o scelti restano in un elenco nella schermata Inizio, e Scegli azione li converte insieme nell'ordine mostrato. Disattivato: ogni trascinamento apre il donut, come prima.",
+  "engine.iso.name": "ISO",
+  "engine.iso.description": "Crea immagini ISO da cartelle o dal contenuto degli archivi, mantenendo i nomi Unicode e le cartelle vuote.",
+  "preset.iso_image": "Immagine ISO",
+  "profile.folders": "Cartelle",
+  "presets.iso_standard": "Standard ISO",
+  "presets.iso_standard_hint": "Joliet mantiene i nomi Unicode. ISO 9660 semplice usa nomi ASCII maiuscoli; i nomi possono essere abbreviati."
 }

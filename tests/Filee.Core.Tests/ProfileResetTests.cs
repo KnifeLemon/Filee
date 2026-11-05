@@ -16,6 +16,7 @@ public class ProfileResetTests
         AssertSlotLayout(store);
         store.Profiles.Clear();
         store.Profiles.AddRange(BuiltInData.ProfilesSchema58());
+        store.Profiles.Insert(store.Profiles.FindIndex(p => p.Id == "archives") + 1, BuiltIn("folders"));
         store.SaveLibrary();
 
         store.ResetLibrary();
@@ -31,6 +32,7 @@ public class ProfileResetTests
         var store = NewStore(dir);
         store.Profiles.Clear();
         store.Profiles.AddRange(BuiltInData.ProfilesSchema58());
+        store.Profiles.Insert(store.Profiles.FindIndex(p => p.Id == "archives") + 1, BuiltIn("folders"));
         store.SaveLibrary();
 
         foreach (var profile in store.Profiles.ToList())

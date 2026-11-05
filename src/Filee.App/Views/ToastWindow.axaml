@@ -116,8 +116,11 @@
               </StackPanel>
               <TextBlock Classes="caption" Text="{Binding Status}" VerticalAlignment="Center" />
             </DockPanel>
-            <TextBlock Classes="caption danger" Text="{Binding ErrorDetails}" TextWrapping="Wrap" MaxLines="4"
-                       IsVisible="{Binding HasErrors}" />
+            <ScrollViewer x:Name="ErrorScroller" MaxHeight="180" IsVisible="{Binding HasErrors}"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+              <SelectableTextBlock FontSize="12" Foreground="{DynamicResource DangerBrush}"
+                                   Text="{Binding ErrorDetails}" TextWrapping="Wrap" />
+            </ScrollViewer>
             <TextBlock Classes="caption" Text="{Binding Notices}" TextWrapping="Wrap" MaxLines="4"
                        IsVisible="{Binding HasNotices}" />
             <DockPanel IsVisible="{Binding HasMissingFonts}">

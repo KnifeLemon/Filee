@@ -36,6 +36,7 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
         .. from source in SingleFileSources
            from target in ArchivePacker.SingleFileFormats
            select new ConversionEdge(source, target),
+        .. ArchiveExtractor.ReadableFormats.Select(source => new ConversionEdge(source, "iso", DirectOnly: true)),
     ];
 
     public EngineStatus GetStatus()
@@ -59,6 +60,13 @@ public sealed class ArchiveConverter : IConverter, IFileCombiner
             string unpacked;
             using (ProgressEstimate.Start(progress, TypicalDuration(step.InputPath), 0.02, 0.45))
                 unpacked = await extractor.ExtractAsync(step.InputPath, step.From, scratch, cancellationToken);
+            if (step.To == "iso")
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return await new FolderIsoConverter().ConvertAsync(
+                    step with { InputPath = unpacked, From = FormatRegistry.Folder },
+                    Scaled(progress, 0.5, 1), cancellationToken);
+            }
             if (GamePacks.Formats.Contains(step.To))
                 unpacked = GamePacks.Root(unpacked, step.To);
             var items = Directory.EnumerateFileSystemEntries(unpacked)
