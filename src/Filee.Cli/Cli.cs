@@ -1,6 +1,7 @@
 // The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
-// --json, one JSON document for other programs. Exit codes: 0 nothing failed (skipped files included), 1 some
-// failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
+// --json, one JSON document for other programs; while it runs, convert --json writes events to stderr and watch --json
+// to stdout, one JSON object per line. Exit codes: 0 nothing failed (skipped files included), 1 some failed or were
+// cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
 
 using System.Text.Json;
 using Filee.Core.Conversion;
@@ -75,7 +76,8 @@ internal static class Cli
             ? FileSorter.Sort(files.Select(FileStamp.Read).ToList(), file => file, sort, foldersTogether: true).Select(file => file.FilePath).ToList()
             : files;
 
-        var job = await RunJobAsync(ordered, preset, host, options.Json || options.Quiet ? null : output, cancellationToken);
+        var events = options.Json && !options.Quiet ? new JobEvents(errors, host.Texts, host.Catalog, progress: true) : null;
+        var job = await RunJobAsync(ordered, preset, host, options.Json || options.Quiet ? null : output, events, cancellationToken);
         var done = job.Files.Count(f => f.State == FileState.Done);
         var failed = job.Files.Count(f => f.State is FileState.Failed or FileState.Cancelled);
         if (options.Json)
@@ -105,15 +107,18 @@ internal static class Cli
         preset.Output.KeepFoldersFrom = rule.Folder; // as the app's watch folders: subfolders stay subfolders
 
         var settle = options.SettleSeconds is { } seconds ? TimeSpan.FromSeconds(seconds) : (TimeSpan?)null;
+        var events = options.Json && !options.Quiet ? new JobEvents(output, host.Texts, host.Catalog, progress: false) : null;
         await using var watcher = new FolderWatcher(rule,
-            async (files, token) => await RunJobAsync(files, preset, host, options.Quiet ? null : output, token),
+            async (files, token) => await RunJobAsync(files, preset, host, options.Quiet || options.Json ? null : output, events, token),
             settleTime: settle);
         if (!watcher.Start())
         {
             errors.WriteLine($"filee: {watcher.Error}");
             return UsageError;
         }
-        if (!options.Quiet)
+        if (events is not null)
+            events.Started(rule.Folder, host.Texts.DisplayName(preset), preset.TargetFormat, rule.ResolvedOutputFolder);
+        else if (!options.Quiet)
             output.WriteLine($"Watching {rule.Folder} → {host.Texts.DisplayName(preset)}, saving to {rule.ResolvedOutputFolder}. Press Ctrl+C to stop.");
         try
         {
@@ -122,18 +127,26 @@ internal static class Cli
         catch (OperationCanceledException)
         {
         }
+        if (events is not null)
+        {
+            await watcher.DisposeAsync(); // a running batch ends first, so its "file" events come before "stopped"
+            events.Stopped();
+        }
         return Success;
     }
 
-    /// <summary>Runs one job and prints each file's result as soon as it is final (when <paramref name="output"/> is given).</summary>
+    /// <summary>
+    /// Runs one job and prints each file's result as soon as it is final: a line to <paramref name="output"/>, a "file"
+    /// event to <paramref name="events"/> (each when given), with "progress" events while files run.
+    /// </summary>
     private static async Task<ConversionJob> RunJobAsync(IReadOnlyList<string> files, Preset preset, CliHost host, TextWriter? output,
-        CancellationToken cancellationToken)
+        JobEvents? events, CancellationToken cancellationToken)
     {
         var job = new ConversionJob(files, preset, host.Texts.DisplayName(preset));
         var printed = new HashSet<FileResult>();
         void Print(object? sender, ConversionJob updated)
         {
-            if (output is null || updated != job)
+            if ((output is null && events is null) || updated != job)
                 return;
             lock (printed)
             {
@@ -142,7 +155,12 @@ internal static class Cli
                 // always raises the event as itself; only the last call below, after the job, has no sender.
                 foreach (var file in job.Files.Where(f => f.State is not (FileState.Pending or FileState.Running)
                              && (sender is null || f.State != FileState.Done || f.Outputs.Count > 0) && printed.Add(f)))
-                    output.WriteLine(Describe(file, host.Texts));
+                {
+                    output?.WriteLine(Describe(file, host.Texts));
+                    events?.File(file);
+                }
+                if (sender is not null)
+                    events?.Progress(job);
             }
         }
 
@@ -205,34 +223,40 @@ internal static class Cli
             foreach (var file in job.Files)
             {
                 json.WriteStartObject();
-                json.WriteString("source", file.SourcePath);
-                json.WriteString("state", file.State.ToString().ToLowerInvariant());
-                json.WriteStartArray("outputs");
-                foreach (var path in file.Outputs)
-                    json.WriteStringValue(path);
-                json.WriteEndArray();
-                if (file.State is FileState.Failed or FileState.Cancelled)
-                    json.WriteString("error", Error(file, texts));
-                else if (file.HasNotice)
-                    json.WriteString("notice", Notice(file, texts));
-                if (file.MissingFonts.Count > 0)
-                {
-                    json.WriteStartArray("missingFonts");
-                    foreach (var font in file.MissingFonts)
-                        json.WriteStringValue(font);
-                    json.WriteEndArray();
-                }
-                if (file.State is FileState.Failed or FileState.Cancelled && file.ErrorKey is not null)
-                    json.WriteString("errorKey", file.ErrorKey);
-                if (file.State == FileState.Failed && file.ErrorKey == "error.no_route"
-                    && file.FailedRoute is { } request && optional.MissingPackages(request) is { Count: > 0 } packages)
-                    WriteStrings(json, "needsEngines", packages);
+                WriteFileFields(json, file, texts, optional);
                 json.WriteEndObject();
             }
             json.WriteEndArray();
             json.WriteEndObject();
         }
         output.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+    }
+
+    /// <summary>A file's fields in the final document of 'convert --json', also those of its "file" event.</summary>
+    private static void WriteFileFields(Utf8JsonWriter json, FileResult file, ILocalizer texts, OptionalEngineRoutes optional)
+    {
+        json.WriteString("source", file.SourcePath);
+        json.WriteString("state", file.State.ToString().ToLowerInvariant());
+        json.WriteStartArray("outputs");
+        foreach (var path in file.Outputs)
+            json.WriteStringValue(path);
+        json.WriteEndArray();
+        if (file.State is FileState.Failed or FileState.Cancelled)
+            json.WriteString("error", Error(file, texts));
+        else if (file.HasNotice)
+            json.WriteString("notice", Notice(file, texts));
+        if (file.MissingFonts.Count > 0)
+        {
+            json.WriteStartArray("missingFonts");
+            foreach (var font in file.MissingFonts)
+                json.WriteStringValue(font);
+            json.WriteEndArray();
+        }
+        if (file.State is FileState.Failed or FileState.Cancelled && file.ErrorKey is not null)
+            json.WriteString("errorKey", file.ErrorKey);
+        if (file.State == FileState.Failed && file.ErrorKey == "error.no_route"
+            && file.FailedRoute is { } request && optional.MissingPackages(request) is { Count: > 0 } packages)
+            WriteStrings(json, "needsEngines", packages);
     }
 
     /// <summary>The preset from --to or --preset, with --quality and --overwrite/--skip applied (a copy).</summary>
@@ -459,6 +483,83 @@ internal static class Cli
         output.WriteLine();
         output.WriteLine("Use one with: filee convert <files> --preset <id or name>");
         return Success;
+    }
+
+    /// <summary>
+    /// The events of 'convert --json' (to stderr) and 'watch --json' (to stdout), one JSON object per line. A "file" event
+    /// has the fields of the file's entry in the final document. "progress" (convert only) comes when a running file's
+    /// fraction moves past 0 or changes, at most about every 150 ms per file, like the progress of 'engines install'.
+    /// </summary>
+    private sealed class JobEvents(TextWriter writer, ILocalizer texts, ConverterCatalog catalog, bool progress)
+    {
+        private const long ProgressIntervalMs = 150;
+        private readonly Lock _gate = new();
+        private readonly OptionalEngineRoutes _optional = new(catalog);
+        private readonly Dictionary<FileResult, (double Fraction, long At)> _reported = [];
+
+        public void Started(string folder, string preset, string target, string outputFolder)
+        {
+            lock (_gate)
+                WriteLine("started", json =>
+                {
+                    json.WriteString("folder", folder);
+                    json.WriteString("preset", preset);
+                    json.WriteString("target", target);
+                    json.WriteString("outputFolder", outputFolder);
+                });
+        }
+
+        public void File(FileResult file)
+        {
+            lock (_gate)
+            {
+                _reported.Remove(file);
+                WriteLine("file", json => WriteFileFields(json, file, texts, _optional));
+            }
+        }
+
+        public void Progress(ConversionJob job)
+        {
+            if (!progress)
+                return;
+            var now = Environment.TickCount64;
+            lock (_gate)
+            {
+                foreach (var file in job.Files.Where(f => f.State == FileState.Running))
+                {
+                    var fraction = Math.Round(Math.Clamp(file.Progress, 0, 1), 4);
+                    var (lastFraction, lastAt) = _reported.GetValueOrDefault(file, (0.0, now - ProgressIntervalMs));
+                    if (fraction == lastFraction || now - lastAt < ProgressIntervalMs)
+                        continue;
+                    _reported[file] = (fraction, now);
+                    WriteLine("progress", json =>
+                    {
+                        json.WriteString("source", file.SourcePath);
+                        json.WriteNumber("fraction", fraction);
+                    });
+                }
+            }
+        }
+
+        public void Stopped()
+        {
+            lock (_gate)
+                WriteLine("stopped", _ => { });
+        }
+
+        private void WriteLine(string name, Action<Utf8JsonWriter> write)
+        {
+            using var stream = new MemoryStream();
+            using (var json = new Utf8JsonWriter(stream))
+            {
+                json.WriteStartObject();
+                json.WriteString("event", name);
+                write(json);
+                json.WriteEndObject();
+            }
+            writer.WriteLine(System.Text.Encoding.UTF8.GetString(stream.ToArray()));
+            writer.Flush();
+        }
     }
 
     private sealed class OptionalEngineRoutes

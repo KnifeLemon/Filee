@@ -777,4 +777,21 @@ public class DonutGroupTests
         var position = RadialController.WindowPosition(new PixelPoint(960, 540), new PixelRect(0, 0, 1920, 1080), side);
         Assert.Equal(new PixelPoint(960 - side / 2, 540 - side / 2), position);
     }
+
+    [AvaloniaFact]
+    public void New_items_during_a_click_on_the_live_donut_keep_the_click()
+    {
+        var (donut, window) = Open(Item("PNG"), Item("JPG"), Item("WEBP"));
+        var invoked = new List<int>();
+        donut.SegmentInvoked += (_, index) => invoked.Add(index);
+        var slice = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(1, 3));
+
+        window.MouseDown(slice, MouseButton.Left);
+        donut.Items = [Item("PDF"), Item("TIFF"), Item("BMP")];
+        Dispatcher.UIThread.RunJobs();
+        window.MouseUp(slice, MouseButton.Left);
+
+        Assert.Equal([1], invoked);
+        window.Close();
+    }
 }

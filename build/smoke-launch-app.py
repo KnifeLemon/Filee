@@ -72,7 +72,9 @@ with log_path.open('w') as log:
             time.sleep(0.05)
         if quitter.returncode != 0:
             raise RuntimeError(f'filee --quit exited with {quitter.returncode}.')
-        if process.wait(timeout=15) != 0:
+        # --quit came back, so Filee has ended. On Linux this waits for xvfb-run to take Xvfb down too, which now and
+        # then takes longer than 15 s on the arm64 runners.
+        if process.wait(timeout=60) != 0:
             raise RuntimeError('The desktop app did not exit cleanly.')
         if is_linux:
             check_input_hook()

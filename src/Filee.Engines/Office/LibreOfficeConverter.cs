@@ -16,6 +16,7 @@
 //  * soffice reports no progress: ProgressEstimate keeps the progress ring moving while it runs.
 //  * Its ZIP reader refuses some containers other readers open (Tencent Docs exports, issue #141), saying only "source
 //    file could not be loaded": an Office Open XML / OpenDocument file is tried once more as a repacked copy.
+//  * Its DOCX import moves a footnote's number out of the text around it ("(1)" → "1()", issue #620): DocxNoteMarks.
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -114,7 +115,9 @@ public sealed class LibreOfficeConverter : IConverter
         try
         {
             progress?.Report(0.1);
-            var input = step.From == "pdf" && step.To == "svg" ? FirstPage(step) : step.InputPath;
+            var input = step.From == "pdf" && step.To == "svg" ? FirstPage(step)
+                : RenderedTargets.Contains(step.To) && DocxNoteMarks.Reads(step.From) ? DocxNoteMarks.Prepare(step.InputPath, step.WorkDirectory) ?? step.InputPath
+                : step.InputPath;
             var filter = FilterFor(step.From, step.To, step.Preset.Document.PdfA, FormatRegistry.ExtensionOf(step.InputPath));
             var (produced, result) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, input, progress, cancellationToken);
             if (produced is null && Repack(step.InputPath, step.WorkDirectory) is { } repacked)

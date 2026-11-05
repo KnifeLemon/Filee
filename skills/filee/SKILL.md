@@ -34,11 +34,13 @@ If the target is in neither list, Filee can't do this conversion. Say so instead
 
 ## 3. Convert
 
-Always pass `--json` and `-o <folder>`:
+Always pass `--json --quiet` and `-o <folder>`:
 
 ```sh
-filee convert <files or folders...> --to <format> -o <folder> --json
+filee convert <files or folders...> --to <format> -o <folder> --json --quiet
 ```
+
+Why `--quiet`: without it `--json` also writes progress events to stderr, one object per line, which get in the way when a shell merges stderr into stdout. The JSON result on stdout stays the same.
 
 Why `-o`: results land in one folder you chose instead of wherever the app's output settings put them (usually next to the originals), so you can find them.
 
@@ -74,7 +76,7 @@ A file is converted only when its `state` is `done` and `outputs` isn't empty.
 ### Convert one file
 
 ```sh
-filee convert photo.png --to jpg -o converted --json
+filee convert photo.png --to jpg -o converted --json --quiet
 ```
 
 Output, trimmed to the fields that matter here:
@@ -90,7 +92,7 @@ Exit code 0, `state` is `done`, and the new file is the path in `outputs`.
 ### A conversion that needs an engine
 
 ```sh
-filee convert notes.md --to pptx -o converted --json
+filee convert notes.md --to pptx -o converted --json --quiet
 ```
 
 Output, trimmed:

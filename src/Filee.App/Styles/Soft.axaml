@@ -27,7 +27,7 @@
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
           <SolidColorBrush x:Key="AccentFaintBrush" Color="#177F77DD" />
           <SolidColorBrush x:Key="AccentStrongBrush" Color="#5F59A6" />
-          <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="OnAccentBrush" Color="#16141A" />
           <!-- Plain buttons: the surface with a thin border, so only a disabled control is a flat grey (#524).
                ThemeService gives them a theme's own surface (Material You, theme.json). -->
 
@@ -54,7 +54,7 @@
           <SolidColorBrush x:Key="AccentSoftBrush" Color="#2E7F77DD" />
           <SolidColorBrush x:Key="AccentFaintBrush" Color="#177F77DD" />
           <SolidColorBrush x:Key="AccentStrongBrush" Color="#5F59A6" />
-          <SolidColorBrush x:Key="OnAccentBrush" Color="#FFFFFF" />
+          <SolidColorBrush x:Key="OnAccentBrush" Color="#16141A" />
           <SolidColorBrush x:Key="ButtonBackground" Color="#262624" />
           <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#31312E" />
           <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#3A3A36" />
@@ -209,6 +209,13 @@
 
   <Style Selector="TextBox, ComboBox, NumericUpDown">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+  </Style>
+  <!-- The selection is filled with the accent: selected text takes the label that reads on it, not the text's own colour. -->
+  <Style Selector="TextBox">
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource OnAccentBrush}" />
+  </Style>
+  <Style Selector="SelectableTextBlock">
+    <Setter Property="SelectionForegroundBrush" Value="{DynamicResource OnAccentBrush}" />
   </Style>
 
   <!-- ───────── Navigation list ───────── -->

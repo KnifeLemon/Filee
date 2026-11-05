@@ -403,6 +403,8 @@ public sealed partial class SetupViewModel : ObservableObject
             // by hand (#519).
             UninstalledText = _texts["installer.uninstall.done"]
                               + (result.DeletedAtRestart > 0 ? Environment.NewLine + Environment.NewLine + _texts["installer.uninstall.restart"] : "")
+                              + (result.FilesLeftIn is { } left ? Environment.NewLine + Environment.NewLine + _texts.Format("installer.uninstall.files_kept", left) : "")
+                              + (result.CleanupFailed ? Environment.NewLine + Environment.NewLine + _texts["installer.uninstall.cleanup_failed"] : "")
                               + (deleteSettings ? "" : Environment.NewLine + Environment.NewLine + _texts["installer.uninstall.settings_kept"]);
             Page = SetupPage.Uninstalled;
         }
