@@ -9,6 +9,7 @@
 using System.IO.Compression;
 using System.Text;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Hwp.Hwpx.Docx;
 
@@ -29,7 +30,9 @@ internal sealed partial class DocxReader
     private static readonly XNamespace Dc = "http://purl.org/dc/elements/1.1/";
 
     private readonly ZipArchive _zip;
+    private readonly BoundedXml _xml = new();
     private readonly string _mediaFolder;
+    private readonly UnpackLimit _unpack;
     private readonly Dictionary<string, Part?> _parts = [];
     private readonly Dictionary<string, string> _media = [];
     private readonly Dictionary<string, XElement> _footnotes = [];
@@ -39,29 +42,49 @@ internal sealed partial class DocxReader
     private Part? _endnotesPart;
     private bool _evenAndOddHeaders;
 
+    /// <summary>Width of each section's text column (HWPUNIT), for equations that don't fit a line.</summary>
+    private readonly List<int> _columnWidths = [];
+
     /// <summary>Line pitch (twips) of each section's document grid, 0 = none; see <see cref="SnapToGrid"/>.</summary>
     private readonly List<int> _linePitches = [];
     private int _sectionIndex;
     private int _textBoxDepth;
+    private int _tableDepth;
+
+    /// <summary>Reading the header for the first page only, which becomes a text box (see <see cref="HSection.FirstPageHeader"/>).</summary>
+    private bool _inFirstPageHeader;
+
+    /// <summary>Table cells, text boxes and notes around the blocks being read (see <see cref="ReadNestedBlocks"/>).</summary>
+    private int _depth;
+
+    /// <summary>Inside a note: references to notes there are not followed (Word has no notes in notes).</summary>
+    private bool _inNote;
+
+    /// <summary>Complex fields begun while <see cref="Nesting.MaxDepth"/> others were open, which are not tracked.</summary>
+    private int _untrackedFields;
 
     /// <summary>The part being read; relationship ids (images, links) are resolved against it.</summary>
     private Part _part;
 
-    private DocxReader(ZipArchive zip, string mediaFolder)
+    private DocxReader(ZipArchive zip, string mediaFolder, UnpackLimit unpack)
     {
         _zip = zip;
         _mediaFolder = mediaFolder;
+        _unpack = unpack;
         var mainPath = RelationshipsOf("")
             .FirstOrDefault(r => r.Value.Type.EndsWith("/officeDocument", StringComparison.Ordinal)).Value.Target ?? "word/document.xml";
         _part = LoadPart(mainPath) ?? throw new InvalidDataException("The file is not a Word document (no word/document.xml).");
     }
 
     /// <summary>Reads <paramref name="path"/>; embedded pictures are extracted into <paramref name="mediaFolder"/>.</summary>
-    public static HDocument Read(string path, string mediaFolder)
+    public static HDocument Read(string path, string mediaFolder) => Read(path, mediaFolder, UnpackLimit.For(path));
+
+    /// <summary><see cref="Read(string, string)"/> with another limit (for tests).</summary>
+    internal static HDocument Read(string path, string mediaFolder, UnpackLimit unpack) => Nesting.OnLargeStack(() =>
     {
         using var zip = ZipFile.OpenRead(path);
-        return new DocxReader(zip, mediaFolder).ReadDocument();
-    }
+        return new DocxReader(zip, mediaFolder, unpack).ReadDocument();
+    });
 
     // ───────────────────────── Package ─────────────────────────
 
@@ -81,9 +104,8 @@ internal sealed partial class DocxReader
         Part? part = null;
         if (_zip.GetEntry(path) is { } entry)
         {
-            using var stream = entry.Open();
             // Whitespace matters: <w:t xml:space="preserve"> </w:t> is a real space.
-            part = new Part(path, XDocument.Load(stream, LoadOptions.PreserveWhitespace), RelationshipsOf(path));
+            part = new Part(path, _xml.Load(entry, LoadOptions.PreserveWhitespace), RelationshipsOf(path));
         }
         _parts[path] = part;
         return part;
@@ -97,8 +119,7 @@ internal sealed partial class DocxReader
         var result = new Dictionary<string, Relationship>();
         if (_zip.GetEntry(relsPath) is not { } entry)
             return result;
-        using var stream = entry.Open();
-        foreach (var rel in XDocument.Load(stream).Root?.Elements(PackageRelationships + "Relationship") ?? [])
+        foreach (var rel in _xml.Load(entry).Root?.Elements(PackageRelationships + "Relationship") ?? [])
         {
             var id = (string?)rel.Attribute("Id") ?? "";
             var target = (string?)rel.Attribute("Target") ?? "";
@@ -174,9 +195,13 @@ internal sealed partial class DocxReader
         foreach (var element in Flatten(body.Elements()))
         {
             if (element.Name == W + "p" && element.Element(W + "pPr")?.Element(W + "sectPr") is { } sectionEnd)
+            {
                 _linePitches.Add(LinePitch(sectionEnd));
+                _columnWidths.Add(ColumnWidth(sectionEnd));
+            }
         }
         _linePitches.Add(LinePitch(body.Element(W + "sectPr")));
+        _columnWidths.Add(ColumnWidth(body.Element(W + "sectPr")));
 
         var blocks = new List<HBlock>();
         var headers = new Dictionary<string, List<HBlock>>();
@@ -202,8 +227,7 @@ internal sealed partial class DocxReader
         var core = _zip.GetEntry("docProps/core.xml");
         if (core is null)
             return null;
-        using var stream = core.Open();
-        return NullIfEmpty(XDocument.Load(stream).Descendants(Dc + "title").FirstOrDefault()?.Value);
+        return NullIfEmpty(_xml.Load(core).Descendants(Dc + "title").FirstOrDefault()?.Value);
     }
 
     private void AddSection(HDocument document, List<HBlock> blocks, XElement? sectPr,
@@ -213,6 +237,14 @@ internal sealed partial class DocxReader
         var columns = Columns(sectPr);
         var previous = document.Sections.LastOrDefault();
 
+        // Sections without their own header or footer reference inherit the previous section's.
+        var headerReferences = sectPr?.Elements(W + "headerReference").ToList() ?? [];
+        var footerReferences = sectPr?.Elements(W + "footerReference").ToList() ?? [];
+        foreach (var reference in headerReferences)
+            headers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
+        foreach (var reference in footerReferences)
+            footers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
+
         // Word uses continuous section breaks to change the number of columns mid-page. 한글 does that with a
         // column definition inside the section, so keep one section when the paper does not change.
         if (previous is not null && Val(sectPr?.Element(W + "type")) == "continuous" && previous.Page == page)
@@ -221,41 +253,43 @@ internal sealed partial class DocxReader
                 blocks.Insert(0, first = new HParagraph());
             first.ColumnsChange = columns;
             previous.Blocks.AddRange(blocks);
+
+            // Its header or footer starts on the next page in Word, on the page of this paragraph in 한글.
+            if (headerReferences.Count > 0)
+                Add(headers, previous.Headers, first);
+            if (footerReferences.Count > 0)
+                Add(footers, previous.Footers, first);
             return;
         }
 
-        var section = new HSection { Page = page, Columns = columns };
+        var section = new HSection { Page = page, Columns = columns, HeaderMovesBody = Twips(sectPr?.Element(W + "pgMar"), "top") is not < 0 };
         section.Blocks.AddRange(blocks);
 
-        // Sections without their own header or footer reference inherit the previous section's.
-        foreach (var reference in sectPr?.Elements(W + "headerReference") ?? [])
-            headers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
-        foreach (var reference in sectPr?.Elements(W + "footerReference") ?? [])
-            footers[Attr(reference, "type") ?? "default"] = HeaderFooterBlocks(reference);
-
-        void Add(Dictionary<string, List<HBlock>> source, List<HHeaderFooter> target)
+        void Add(Dictionary<string, List<HBlock>> source, List<HHeaderFooter> target, HParagraph? startsAt = null)
         {
             if (_evenAndOddHeaders)
             {
                 if (source.GetValueOrDefault("default") is { } odd)
-                    AddHeaderFooter(target, HPageType.Odd, odd);
+                    AddHeaderFooter(target, HPageType.Odd, odd, startsAt);
                 if (source.GetValueOrDefault("even") is { } even)
-                    AddHeaderFooter(target, HPageType.Even, even);
+                    AddHeaderFooter(target, HPageType.Even, even, startsAt);
             }
             else if (source.GetValueOrDefault("default") is { } both)
             {
-                AddHeaderFooter(target, HPageType.Both, both);
+                AddHeaderFooter(target, HPageType.Both, both, startsAt);
             }
         }
         Add(headers, section.Headers);
         Add(footers, section.Footers);
 
         // "Different first page": 한글 can only hide the header/footer on the first page, which is what an empty
-        // (or missing) first-page header means in Word.
+        // (or missing) first-page header means in Word. A header with content is kept for the first page.
         if (sectPr?.Element(W + "titlePg") is { } titlePg && Val(titlePg) is not ("0" or "false"))
         {
             section.HideFirstHeader = IsBlank(headers.GetValueOrDefault("first"));
             section.HideFirstFooter = IsBlank(footers.GetValueOrDefault("first"));
+            if (!section.HideFirstHeader)
+                section.FirstPageHeader = headers["first"];
         }
         if (int.TryParse(Attr(sectPr?.Element(W + "pgNumType"), "start"), out var start))
             section.StartPageNumber = start;
@@ -263,9 +297,9 @@ internal sealed partial class DocxReader
         document.Sections.Add(section);
     }
 
-    private static void AddHeaderFooter(List<HHeaderFooter> target, HPageType pages, List<HBlock> blocks)
+    private static void AddHeaderFooter(List<HHeaderFooter> target, HPageType pages, List<HBlock> blocks, HParagraph? startsAt)
     {
-        var item = new HHeaderFooter(pages);
+        var item = new HHeaderFooter(pages) { StartsAt = startsAt };
         item.Blocks.AddRange(blocks);
         target.Add(item);
     }
@@ -275,12 +309,14 @@ internal sealed partial class DocxReader
         var blocks = new List<HBlock>();
         if (Attr(reference, "id", R) is { } id && _part.Relationships.TryGetValue(id, out var rel) && LoadPart(rel.Target) is { } part)
         {
+            _inFirstPageHeader = reference.Name == W + "headerReference" && Attr(reference, "type") == "first";
             WithPart(part, () =>
             {
                 foreach (var element in Flatten(part.Xml.Root?.Elements() ?? []))
                     ReadBlock(element, blocks);
                 return 0;
             });
+            _inFirstPageHeader = false;
         }
         return blocks;
     }
@@ -317,6 +353,15 @@ internal sealed partial class DocxReader
             Gutter: HwpxUnits.FromTwips(Get(margin, "gutter", 0)));
     }
 
+    /// <summary>Width of a section's text column (HWPUNIT).</summary>
+    private static int ColumnWidth(XElement? sectPr)
+    {
+        var page = Page(sectPr);
+        var columns = Columns(sectPr);
+        var text = page.Width - page.Left - page.Right - page.Gutter;
+        return columns.Count <= 1 ? text : (text - columns.Gap * (columns.Count - 1)) / columns.Count;
+    }
+
     /// <summary>Line pitch of a "lines" document grid (twips), or 0.</summary>
     private static int LinePitch(XElement? sectPr)
     {
@@ -336,11 +381,103 @@ internal sealed partial class DocxReader
             return;
         var size = MaxFontSize(paragraph.Inlines) ?? paragraph.MarkFormat.Size ?? 1000;
         var cell = HwpxUnits.FromTwips(pitch);
-        var natural = size * WordLineToHwpPercent / 100.0; // 1/100 pt = HWPUNIT
+        var natural = size * SingleLinePercent(paragraph) / 100.0; // 1/100 pt = HWPUNIT
         var lines = Math.Max(1, Math.Ceiling(natural / cell));
         var multiple = (props.Line ?? 240) / 240.0;
         paragraph.Format = paragraph.Format with { LineSpacing = new HLineSpacing(HLineSpacingKind.AtLeast, (int)Math.Round(lines * cell * multiple)) };
     }
+
+    /// <summary>Style and contextual-spacing flag of the paragraphs read so far, to compare a paragraph with the one before it.</summary>
+    private readonly Dictionary<HParagraph, (string? StyleId, bool Contextual)> _paragraphStyles = [];
+
+    private void RememberParagraphStyle(HParagraph paragraph, ParaProps props) =>
+        _paragraphStyles[paragraph] = (props.StyleId, props.ContextualSpacing == true);
+
+    /// <summary>
+    /// Word's "Don't add space between paragraphs of the same style" (w:contextualSpacing, set by the List Bullet and
+    /// List Number styles): a paragraph with it loses the space above when the paragraph before has its style, and the
+    /// space below when the next one does. Without this every list item kept its 10 pt gap and the pages ran long (#1194).
+    /// </summary>
+    private void ApplyContextualSpacing(HParagraph previous, HParagraph current, ParaProps props)
+    {
+        if (current.PageBreakBefore || current.ColumnBreakBefore
+            || !_paragraphStyles.TryGetValue(previous, out var before) || before.StyleId != props.StyleId)
+            return;
+        if (before.Contextual)
+            previous.Format = previous.Format with { After = 0 };
+        if (props.ContextualSpacing == true)
+            current.Format = current.Format with { Before = 0 };
+    }
+
+    /// <summary>
+    /// Gives a paragraph with "multiple" line spacing the height its fonts have in Word: 한글's percentage is of the font
+    /// size, and a single Calibri line is 122% of it where one in Times New Roman is 115%.
+    /// </summary>
+    private static void FitLineSpacing(HParagraph paragraph, ParaProps props)
+    {
+        if (props.LineRule is "exact" or "atLeast")
+            return;
+        var percent = (int)Math.Round((props.Line ?? 240) / 240.0 * SingleLinePercent(paragraph));
+        paragraph.Format = paragraph.Format with { LineSpacing = new HLineSpacing(HLineSpacingKind.Percent, percent) };
+    }
+
+    /// <summary>
+    /// A paragraph's single line height as a percentage of its largest font size: its tallest text decides, as on a line
+    /// in Word. A paragraph without text has the height of its mark, or of the equation or picture in it: 100%, since
+    /// 한글's percentage of a tall object would leave a third of its height empty above it.
+    /// </summary>
+    private static double SingleLinePercent(HParagraph paragraph)
+    {
+        var (size, height, inlineObject) = (0, 0.0, false);
+        Measure(paragraph.Inlines);
+        if (size == 0 && inlineObject)
+            return 100;
+        if (size == 0 && paragraph.MarkFormat is var mark)
+            Add("", mark);
+        return height / size;
+
+        void Measure(IEnumerable<HInline> inlines)
+        {
+            foreach (var inline in inlines)
+            {
+                if (inline is HEquation or HImage { Anchor: null })
+                    inlineObject = true;
+                else if (inline is HText { Text.Length: > 0 } text)
+                    Add(text.Text, text.Format);
+                else if (inline is HLink link)
+                    Measure(link.Content);
+            }
+        }
+
+        void Add(string text, HCharFormat format)
+        {
+            var points = format.Size ?? 1000;
+            size = Math.Max(size, points);
+            height = Math.Max(height, points * TextLinePercent(text, format));
+        }
+    }
+
+    /// <summary>The single line height (percent of the font size) of a run: the East Asian font draws its CJK characters, the other font the rest.</summary>
+    private static double TextLinePercent(string text, HCharFormat format)
+    {
+        var (cjk, other) = (false, text.Length == 0);
+        foreach (var c in text)
+        {
+            if (c is >= 'ᄀ' and <= 'ᇿ' or >= '⺀' and <= '퟿' or >= '豈' and <= '﫿' or >= '︰' and <= '﹏' or >= '＀' and <= '￯')
+                cjk = true;
+            else
+                other = true;
+        }
+        var percent = 0.0;
+        if (cjk)
+            percent = FontLinePercent(format.EastAsianFont ?? format.Font);
+        if (other)
+            percent = Math.Max(percent, FontLinePercent(format.Font ?? format.EastAsianFont));
+        return percent;
+    }
+
+    private static double FontLinePercent(string? font) =>
+        font is not null && SingleLineHeights.TryGetValue(font, out var height) ? height : WordLineToHwpPercent;
 
     private static int? MaxFontSize(IEnumerable<HInline> inlines)
     {
@@ -400,12 +537,38 @@ internal sealed partial class DocxReader
             ReadBlock(element, output);
     }
 
+    /// <summary>
+    /// The blocks of a table cell, text box or note, one level deeper. Beyond <see cref="Nesting.MaxDepth"/> levels
+    /// only their text is read, as plain paragraphs: a crafted file may nest tables thousands of levels deep.
+    /// </summary>
+    private void ReadNestedBlocks(XElement container, List<HBlock> output)
+    {
+        if (_depth >= Nesting.MaxDepth)
+        {
+            output.AddRange(Nesting.PlainParagraphs(container, "p", "t"));
+            return;
+        }
+        _depth++;
+        try
+        {
+            ReadBlocks(container.Elements(), output);
+        }
+        finally
+        {
+            _depth--;
+        }
+    }
+
     private void ReadBlock(XElement element, List<HBlock> output)
     {
         if (element.Name == W + "p")
             ReadParagraph(element, output);
         else if (element.Name == W + "tbl")
+        {
+            _tableDepth++;
             output.Add(ReadTable(element));
+            _tableDepth--;
+        }
     }
 
     // ───────────────────────── Paragraphs ─────────────────────────
@@ -450,6 +613,12 @@ internal sealed partial class DocxReader
 
         public void OpenLink(string target)
         {
+            // Links in links (fields can open any number) beyond the limit keep their text in the link around them.
+            if (_sinks.Count >= Nesting.MaxDepth)
+            {
+                _sinks.Push(Sink);
+                return;
+            }
             var link = new HLink(target);
             Sink.Add(link);
             _sinks.Push(link.Content);
@@ -477,11 +646,29 @@ internal sealed partial class DocxReader
                 Current.ColumnBreakBefore = true;
         }
 
+        /// <summary>Continues in a new paragraph right under this one (the next line of a long equation).</summary>
+        public void NextRow()
+        {
+            var format = Current.Format;
+            Current.Format = format with { After = 0 };
+            Emit();
+            Current = NewParagraph(_list is null ? null : _list with { Numbered = false });
+            Current.Format = format with { Before = 0 };
+            _sinks.Clear();
+        }
+
         public void Finish() => Emit();
 
         private void Emit()
         {
+            FitLineSpacing(Current, _props);
             _reader.SnapToGrid(Current, _props);
+            if (_output.LastOrDefault() is HParagraph previous)
+            {
+                JoinBorders(previous, Current);
+                _reader.ApplyContextualSpacing(previous, Current, _props);
+            }
+            _reader.RememberParagraphStyle(Current, _props);
             _output.Add(Current);
         }
 
@@ -686,6 +873,10 @@ internal sealed partial class DocxReader
             builder.Current.Format = builder.Current.Format with { Align = align };
         }
 
+        // Width of the line in the body; in a cell or a text box the width isn't known here.
+        var inBody = _textBoxDepth == 0 && !math.Ancestors(W + "tc").Any() && _sectionIndex < _columnWidths.Count;
+        var width = inBody ? _columnWidths[_sectionIndex] - (builder.Current.Format.Left ?? 0) - (builder.Current.Format.Right ?? 0) : 0;
+
         var first = true;
         foreach (var line in lines)
         {
@@ -694,21 +885,82 @@ internal sealed partial class DocxReader
                 continue;
             if (!first)
                 builder.Add(new HLineBreak(format));
-            builder.Add(new HEquation(equation, format));
             first = false;
+
+            var (body, number) = OmmlReader.SplitNumber(equation);
+            if (number is not null)
+            {
+                var text = new HText(EquationScript.Linear(number), format with { Italic = false });
+                var numbered = new HEquation(body, format);
+                if (width > 0)
+                {
+                    builder.Add(NumberBox(numbered, text, width));
+                    builder.Add(numbered);
+                }
+                else
+                {
+                    builder.Add(numbered);
+                    builder.Add(new HText(" ", format));
+                    builder.Add(text);
+                }
+                continue;
+            }
+
+            var rows = EquationScript.BreakLines(body, width, format.Size ?? 1000);
+            for (var i = 0; i < rows.Count; i++)
+            {
+                // Paragraphs of their own: rhwp draws the first equation of a paragraph split by a page again on the next page.
+                if (i > 0)
+                    builder.NextRow();
+                builder.Add(new HEquation(rows[i], format));
+            }
         }
+    }
+
+    /// <summary>
+    /// The number of a centred equation as a box at the right margin, level with the middle of the equation: rhwp's tabs
+    /// don't count an equation's width, and it clips a tall equation in a table cell.
+    /// </summary>
+    private static HTextBox NumberBox(HEquation equation, HText number, int width)
+    {
+        var size = number.Format.Size ?? 1000;
+        var boxWidth = Math.Min(width, (int)HwpxWriter.TextWidth(number.Text, size) + 400);
+        var boxHeight = size * 3 / 2;
+        // rhwp starts the paragraph a third of a tall equation's height above the equation.
+        var middle = (int)EquationScript.Measure(equation.Math, equation.Format.Size ?? size).Height * 5 / 6;
+        var box = new HTextBox
+        {
+            Width = boxWidth,
+            Height = boxHeight,
+            Line = HBorder.None,
+            Padding = new HInsets(0, 0, 0, 0),
+            Anchor = new HAnchor("COLUMN", "LEFT", width - boxWidth, "PARA", "TOP", Math.Max(0, middle - boxHeight / 2), "IN_FRONT_OF_TEXT", true),
+        };
+        var paragraph = new HParagraph { Format = new HParaFormat(Align: HAlign.Right, Before: 0, After: 0) };
+        paragraph.Inlines.Add(number);
+        box.Blocks.Add(paragraph);
+        return box;
     }
 
     private HNote? Note(XElement reference, Dictionary<string, XElement> notes, Part? part, bool endnote)
     {
-        if (part is null || !notes.TryGetValue(Attr(reference, "id") ?? "", out var element))
+        // A note referring to itself (or two notes to each other) would be read again and again.
+        if (_inNote || part is null || !notes.TryGetValue(Attr(reference, "id") ?? "", out var element))
             return null;
         var note = new HNote(endnote);
-        WithPart(part, () =>
+        _inNote = true;
+        try
         {
-            ReadBlocks(element.Elements(), note.Blocks);
-            return 0;
-        });
+            WithPart(part, () =>
+            {
+                ReadNestedBlocks(element, note.Blocks);
+                return 0;
+            });
+        }
+        finally
+        {
+            _inNote = false;
+        }
         // Word notes start with the reference mark and a space; 한글 writes its own number.
         if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FirstOrDefault() is HText { Text: var text } leading)
         {
@@ -744,13 +996,22 @@ internal sealed partial class DocxReader
         switch (Attr(fldChar, "fldCharType"))
         {
             case "begin":
-                _fields.Add(new FieldState());
+                // Every run looks at all open fields, so fields begun without an end must not pile up.
+                if (_fields.Count >= Nesting.MaxDepth)
+                    _untrackedFields++;
+                else
+                    _fields.Add(new FieldState());
                 break;
             case "separate":
-                if (_fields.LastOrDefault() is { Result: false } field)
+                if (_untrackedFields == 0 && _fields.LastOrDefault() is { Result: false } field)
                     StartFieldResult(field, builder, format);
                 break;
             case "end":
+                if (_untrackedFields > 0)
+                {
+                    _untrackedFields--;
+                    break;
+                }
                 if (_fields.LastOrDefault() is { Result: false } withoutResult)
                     StartFieldResult(withoutResult, builder, format);
                 EndField(builder);
@@ -764,6 +1025,9 @@ internal sealed partial class DocxReader
         var words = SplitInstruction(field.Instruction.ToString());
         switch (words.FirstOrDefault()?.ToUpperInvariant())
         {
+            case "PAGE" or "NUMPAGES" or "SECTIONPAGES" when _inFirstPageHeader && _tableDepth > 0:
+                // rhwp leaves a page number in a table in a text box blank: Word's result, which comes next, stays.
+                break;
             case "HYPERLINK":
                 {
                     // HYPERLINK "url" [\l "bookmark"] or HYPERLINK \l "bookmark"
