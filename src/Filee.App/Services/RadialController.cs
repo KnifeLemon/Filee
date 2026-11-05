@@ -1,4 +1,4 @@
-// Opens, fills and closes the live donut toolbar.
+﻿// Opens, fills and closes the live donut toolbar.
 //
 // Drag mode  (modifier + drag in Explorer):
 //   gesture detected → an invisible window waits at the cursor (not activated) → DragEnter brings the file list →
@@ -18,6 +18,7 @@
 
 using System.ComponentModel;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Threading;
 using Filee.App.Controls;
 using Filee.App.Services.Triggers;
@@ -380,16 +381,6 @@ public sealed class RadialController(
             return;
         }
 
-        // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
-        // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
-        if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
-        {
-            KeepKeyboard(); // for the save dialog
-            Close(animate: false);
-            _ = AskThenConvertAsync(sources, preset, _toClipboard, web);
-            return;
-        }
-
         // "Run a program" not confirmed on this computer (imported, or its command edited since): the full command is
         // shown once for approval before anything runs (ConversionService refuses unconfirmed presets as a backstop).
         if (preset.IsRunProgram && !conversions.ProgramConfirmed(preset))
@@ -400,9 +391,21 @@ public sealed class RadialController(
             return;
         }
 
+        // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
+        // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
+        if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
+        {
+            KeepKeyboard(); // for the save dialog
+            Close(animate: false);
+            _ = AskThenConvertAsync(sources, preset, _toClipboard, web);
+            return;
+        }
+
         log.LogInformation("Converting {Count} file(s) with preset {Preset}{Web}{Clipboard}", sources.Count, preset.Id,
             web is null ? "" : " (from a browser)", _toClipboard ? " (from the clipboard)" : "");
         var job = conversions.Start(sources, preset, showInToast: false, web, _toClipboard);
+        if (job is null)
+            _ = RefuseIfTold(_window);
         if (job is null || _window is null)
         {
             Close();
@@ -426,7 +429,11 @@ public sealed class RadialController(
             if (!approved)
                 return;
             conversions.ConfirmProgram(preset);
-            conversions.Start(sources, preset, web: web, toClipboard: toClipboard);
+            // Approved: the usual way on, the save dialog included when the preset asks every time.
+            if (preset.Output.AskEveryTime && web is null)
+                await AskThenConvertAsync(sources, preset, toClipboard);
+            else if (conversions.Start(sources, preset, web: web, toClipboard: toClipboard) is null)
+                await RefuseIfTold(null);
             web = null; // the conversion owns the browser drop now
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -490,12 +497,22 @@ public sealed class RadialController(
         }
     }
 
+    /// <summary>Says why a preset ran nothing, when the service has something the user should hear (#966).</summary>
+    private Task RefuseIfTold(Window? owner)
+    {
+        if (conversions.LastRefusalText is not { } text)
+            return Task.CompletedTask;
+        var target = owner ?? (_window is { IsVisible: true } visible ? visible : null);
+        return target is null ? Task.CompletedTask : windows.MessageAsync(target, text);
+    }
+
     private async Task AskThenConvertAsync(IReadOnlyList<string> sources, Preset preset, bool toClipboard, WebDrop? web = null)
     {
         try
         {
             await conversions.AskThenStartAsync(sources, preset, web,
                 (running, one) => windows.AskSaveLocationAsync(sources, running, one), toClipboard);
+            await RefuseIfTold(null);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {

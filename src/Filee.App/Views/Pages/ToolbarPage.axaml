@@ -477,7 +477,7 @@
                     ToolTip.Tip="{DynamicResource presets.copy_hint}" />
             <Button x:Name="NewRunProgramButton" Margin="0,0,0,6" Padding="6,6"
                     Command="{Binding NewRunProgramCommand}" Content="{DynamicResource preset.run_program}"
-                    ToolTip.Tip="{DynamicResource presets.program_path_hint}" />
+                    ToolTip.Tip="{DynamicResource presets.run_program_hint}" />
           </WrapPanel>
           <TextBox x:Name="PaletteSearchBox" Classes="search clearButton" Text="{Binding PaletteSearch}" Watermark="{DynamicResource common.search}">
             <TextBox.InnerLeftContent>

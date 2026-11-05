@@ -1,4 +1,4 @@
-// UI-facing wrapper around JobQueue: starts jobs, keeps bindable lists for the toast window and records history.
+﻿// UI-facing wrapper around JobQueue: starts jobs, keeps bindable lists for the toast window and records history.
 // Jobs started from the donut are first shown by its progress ring and only appear in the toast when the ring
 // hands them over (long job, failure, or a new drag).
 
@@ -64,6 +64,12 @@ public sealed class ConversionService
     /// </summary>
     public event EventHandler? FeedbackDue;
 
+    /// <summary>
+    /// Why the last <see cref="Start"/> ran nothing, when the user should be told: a program preset that is not
+    /// confirmed on this computer would otherwise close the donut in silence (#966).
+    /// </summary>
+    public string? LastRefusalText { get; private set; }
+
     /// <summary>Starts converting files with a preset.</summary>
     /// <param name="files">Source files.</param>
     /// <param name="preset">Preset to apply.</param>
@@ -77,6 +83,7 @@ public sealed class ConversionService
     public JobViewModel? Start(IReadOnlyList<string> files, Preset preset, bool showInToast = true, WebDrop? web = null,
         bool toClipboard = false)
     {
+        LastRefusalText = null;
         if (files.Count == 0 || preset.IsGroup || preset.IsTool && !preset.IsCopyToFolder || preset.IsCopyToFolder && preset.Output.AskEveryTime)
         {
             web?.Dispose();
@@ -87,6 +94,7 @@ public sealed class ConversionService
         if (preset.IsRunProgram && !ProgramConfirmed(preset))
         {
             _log?.LogInformation("Run a program preset {Preset} is not confirmed on this computer; it does not run", preset.Id);
+            LastRefusalText = _loc["error.program_not_confirmed"];
             web?.Dispose();
             return null;
         }
@@ -223,25 +231,33 @@ public sealed class ConversionService
     {
         var executable = preset.Program.Executable.Trim();
         var parts = new[] { executable.Contains(' ') ? $"\"{executable}\"" : executable }
-            .Concat(ProgramTool.BuildArguments(preset.Program.Arguments, files, null)
-                .Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
+            .Concat(ArgumentsOrPlain(preset, files).Select(a => a.Contains(' ') ? $"\"{a}\"" : a));
         return string.Join(" ", parts);
     }
 
-    /// <summary>The confirmation dialog's text: what will run, for the files being dropped.</summary>
-    public string ProgramConfirmText(Preset preset, IReadOnlyList<string> files) =>
-        _loc.Format("confirm.program_text", ProgramCommand(preset, files));
+    /// <summary>The arguments as they would be passed, or the raw template when it can't be expanded (it is refused).</summary>
+    private static IReadOnlyList<string> ArgumentsOrPlain(Preset preset, IReadOnlyList<string> files) =>
+        ProgramTool.InputsAlone(preset.Program.Arguments)
+            ? ProgramTool.BuildArguments(preset.Program.Arguments, files, null)
+            : [preset.Program.Arguments];
 
-    /// <summary>True when this preset's exact program and command line were approved on this computer.</summary>
-    public bool ProgramConfirmed(Preset preset) =>
-        _store.Settings.ConfirmedPrograms.TryGetValue(preset.Id, out var hash)
-        && hash == ProgramTool.CommandHash(preset.Program.Executable, preset.Program.Arguments);
+    /// <summary>The confirmation dialog's text: what will run, for the files being dropped. A big run's file list is
+    /// cut to the first five paths, with a line counting the rest, so the dialog stays readable (issue #966).</summary>
+    public string ProgramConfirmText(Preset preset, IReadOnlyList<string> files)
+    {
+        var command = ProgramCommand(preset, files);
+        if (files.Count > 5)
+            command = ProgramCommand(preset, [.. files.Take(5)]) + "\n" + _loc.Format("confirm.program_more", files.Count - 5);
+        return _loc.Format("confirm.program_text", command);
+    }
+
+    /// <summary>True when this preset's exact program, template and mode were approved on this computer.</summary>
+    public bool ProgramConfirmed(Preset preset) => ProgramTool.IsConfirmed(_store.Settings, preset);
 
     /// <summary>Records that the user approved this preset's current command (after the confirmation dialog).</summary>
     public void ConfirmProgram(Preset preset)
     {
-        _store.Settings.ConfirmedPrograms[preset.Id] =
-            ProgramTool.CommandHash(preset.Program.Executable, preset.Program.Arguments);
+        ProgramTool.MarkConfirmed(_store.Settings, preset);
         _store.SaveSettings();
     }
 

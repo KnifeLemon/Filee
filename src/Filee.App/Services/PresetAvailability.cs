@@ -114,9 +114,16 @@ public sealed class PresetAvailability
         if (preset.IsCopyToFolder)
             return new(PresetUse.Usable, null);
 
-        // "Run a program" takes any file (even of an unknown type) and folders: the program decides what it can read.
+        // "Run a program" takes any file (even of an unknown type) unless the preset names the formats it takes
+        // (ProgramOptions.Accepts, "folder" among them for a dropped folder): the program decides what it can read.
         if (preset.IsRunProgram)
-            return new(PresetUse.Usable, null);
+        {
+            if (preset.Program.AcceptsEverything)
+                return new(PresetUse.Usable, null);
+            return formats.Any(f => preset.Program.Accepts.Contains(f.Id, StringComparer.OrdinalIgnoreCase))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.unsupported_source"]);
+        }
 
         if (preset.IsClipTool)
         {

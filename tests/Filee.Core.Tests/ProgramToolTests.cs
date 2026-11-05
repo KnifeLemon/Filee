@@ -1,7 +1,8 @@
-// "Run a program": the command line of a preset — the argument template with its placeholders expanded,
+﻿// "Run a program": the command line of a preset — the argument template with its placeholders expanded,
 // what asks for the output path, and the hash the confirmation step of an imported preset goes by.
 
 using Filee.Core.Presets;
+using Filee.Core.Settings;
 
 namespace Filee.Core.Tests;
 
@@ -83,6 +84,37 @@ public class ProgramToolTests
         Assert.Equal(["C:\\d\\photo.jpg"], ProgramTool.BuildArguments("{Inputs}", ["C:\\d\\photo.jpg"], null));
     }
 
+    [Fact]
+    public void The_expansion_runs_in_one_pass_so_a_path_bearing_a_placeholder_stays_as_typed()
+    {
+        // A file literally named "{name}.jpg" is never expanded again: one pass over the token, not a loop.
+        var args = ProgramTool.BuildArguments("{name} -o {name}.png", ["C:\\d\\{name}.jpg"], null);
+        Assert.Equal(["{name}", "-o", "{name}.png"], args);
+        Assert.Equal(["--in=C:\\d\\{input}.jpg"], ProgramTool.BuildArguments("--in={input}", ["C:\\d\\{input}.jpg"], null));
+    }
+
+    // ───────────────────────── InputsAlone ─────────────────────────
+
+    [Fact]
+    public void InputsAlone_only_accepts_inputs_standing_as_its_own_argument()
+    {
+        Assert.True(ProgramTool.InputsAlone(null));
+        Assert.True(ProgramTool.InputsAlone(""));
+        Assert.True(ProgramTool.InputsAlone("{inputs}"));
+        Assert.True(ProgramTool.InputsAlone("--in {inputs} --out x.zip"));
+        Assert.True(ProgramTool.InputsAlone("\"{inputs}\"")); // the quotes only group the argument, they fall away
+        Assert.False(ProgramTool.InputsAlone("--files={inputs}"));
+        Assert.False(ProgramTool.InputsAlone("{inputs},")); // no separator suits every program: refuse, don't guess
+    }
+
+    [Fact]
+    public void BuildArguments_refuses_inputs_inside_a_longer_argument()
+    {
+        Assert.Throws<ArgumentException>(() => ProgramTool.BuildArguments("--files={inputs}", ["C:\\a.jpg"], null));
+        // The plain cases still work.
+        Assert.Equal(["C:\\a.jpg", "C:\\b.jpg"], ProgramTool.BuildArguments("\"{inputs}\"", ["C:\\a.jpg", "C:\\b.jpg"], null));
+    }
+
     // ───────────────────────── ReferencesOutput ─────────────────────────
 
     [Fact]
@@ -101,9 +133,9 @@ public class ProgramToolTests
     [Fact]
     public void CommandHash_differs_for_a_different_program_or_command()
     {
-        var a = ProgramTool.CommandHash("C:\\Tools\\convert.exe", "{input}");
-        var b = ProgramTool.CommandHash("C:\\Tools\\other.exe", "{input}");
-        var c = ProgramTool.CommandHash("C:\\Tools\\convert.exe", "{input} --fast");
+        var a = ProgramTool.CommandHash("C:\\Tools\\convert.exe", "{input}", allFiles: false);
+        var b = ProgramTool.CommandHash("C:\\Tools\\other.exe", "{input}", allFiles: false);
+        var c = ProgramTool.CommandHash("C:\\Tools\\convert.exe", "{input} --fast", allFiles: false);
         Assert.NotEqual(a, b);
         Assert.NotEqual(a, c);
         Assert.NotEqual(b, c);
@@ -112,10 +144,52 @@ public class ProgramToolTests
     [Fact]
     public void CommandHash_is_stable_and_ignores_case_of_the_program_path_and_surrounding_spaces()
     {
-        var a = ProgramTool.CommandHash("C:\\Tools\\Convert.EXE", " {input} ");
-        var b = ProgramTool.CommandHash("c:\\tools\\convert.exe", "{input}");
+        var a = ProgramTool.CommandHash("C:\\Tools\\Convert.EXE", " {input} ", allFiles: false);
+        var b = ProgramTool.CommandHash("c:\\tools\\convert.exe", "{input}", allFiles: false);
         Assert.Equal(a, b);
         Assert.Equal(64, a.Length); // SHA-256 as hex
-        Assert.Equal(a, ProgramTool.CommandHash("C:\\Tools\\Convert.EXE", " {input} "));
+        Assert.Equal(a, ProgramTool.CommandHash("C:\\Tools\\Convert.EXE", " {input} ", allFiles: false));
+    }
+
+    [Fact]
+    public void CommandHash_differs_when_the_mode_differs()
+    {
+        Assert.NotEqual(ProgramTool.CommandHash("C:\\Tools\\convert.exe", "{inputs}", allFiles: true),
+                        ProgramTool.CommandHash("C:\\Tools\\convert.exe", "{inputs}", allFiles: false));
+    }
+
+    [Fact]
+    public void CommandHash_is_empty_for_an_empty_or_relative_program()
+    {
+        Assert.Equal("", ProgramTool.CommandHash("", "{input}", allFiles: false));
+        Assert.Equal("", ProgramTool.CommandHash("   ", "{input}", allFiles: false));
+        Assert.Equal("", ProgramTool.CommandHash("tools\\convert.exe", "{input}", allFiles: false));
+        Assert.Equal("", ProgramTool.CommandHash(null, "{input}", allFiles: false));
+    }
+
+    // ───────────────────────── IsConfirmed / MarkConfirmed ─────────────────────────
+
+    [Fact]
+    public void An_empty_program_is_never_confirmed_and_marking_it_does_not_throw()
+    {
+        var settings = new AppSettings();
+        var preset = new Preset { Id = "run-x", Program = new ProgramOptions { Executable = "", Arguments = "{input}" } };
+        Assert.False(ProgramTool.IsConfirmed(settings, preset));
+        ProgramTool.MarkConfirmed(settings, preset); // stores "", which never counts as approved
+        Assert.False(ProgramTool.IsConfirmed(settings, preset));
+    }
+
+    // ───────────────────────── CommandLineLength ─────────────────────────
+
+    [Fact]
+    public void CommandLineLength_grows_with_the_arguments()
+    {
+        var none = ProgramTool.CommandLineLength("C:\\Tools\\convert.exe", []);
+        var one = ProgramTool.CommandLineLength("C:\\Tools\\convert.exe", ["a b"]);
+        var three = ProgramTool.CommandLineLength("C:\\Tools\\convert.exe", ["a b", "c", "dddddddddd"]);
+        Assert.True(one > none);
+        Assert.True(three > one);
+        // Arguments with spaces are counted quoted: "a b" adds the space between plus five quoted characters.
+        Assert.Equal(none + 1 + 5, one);
     }
 }

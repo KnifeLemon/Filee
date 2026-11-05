@@ -303,6 +303,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _programAllFiles = _edit.Program.AllFiles;
         _programTimeout = _edit.Program.TimeoutSeconds;
         _programOutputExt = _edit.TargetFormat;
+        _programAccepts = string.Join(", ", _edit.Program.Accepts);
     }
 
     public string PresetId => _original.Id;
@@ -313,6 +314,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     public bool IsTool => _original.IsTool;
     public bool CanChangeTarget => !IsTool;
+
+    /// <summary>
+    /// The output file's dates and the "replace the original" switch mean nothing for a "Run a program" preset:
+    /// the program decides what it writes, so both are hidden there (<see cref="ShowKeepDates"/>, <see cref="ShowReplaceOriginal"/>).
+    /// </summary>
+    public bool ShowKeepDates => ShowConversionOutput && !IsRunProgram;
+    public bool ShowReplaceOriginal => ShowConversionOutput && !IsRunProgram;
 
     public IReadOnlyList<Choice<string>> Targets { get; }
     public IReadOnlyList<Choice<ResizeMode>> ResizeModes { get; }
@@ -760,15 +768,17 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool IsRunProgram => _original.IsRunProgram;
     /// <summary>The program card, instead of the conversion options: nothing else applies.</summary>
     public bool ShowProgram => IsRunProgram;
+    /// <summary>The formats the program takes: a "Run a program" field of its own.</summary>
+    public bool ShowProgramAccepts => IsRunProgram;
     /// <summary>The target box is a format picker, which a "Run a program" preset replaces with an extension field.</summary>
     public bool ShowTarget => !IsCopyToFolder && !IsRunProgram;
 
     /// <summary>The program to start, as an absolute path.</summary>
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProgramCommandPreview))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProgramCommandPreview), nameof(ProgramExecutableError), nameof(IsValid))]
     private string _programExecutable = "";
 
     /// <summary>The command line with the placeholders (<see cref="ProgramTool"/>), as the user typed it.</summary>
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProgramCommandPreview))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProgramCommandPreview), nameof(ProgramArgumentsError), nameof(IsValid))]
     private string _programArguments = "";
 
     /// <summary>Run once with all dropped files (<c>{inputs}</c>) instead of once per file (<c>{input}</c>).</summary>
@@ -778,7 +788,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private int _programTimeout;
 
     /// <summary>The extension the file handed over as <c>{output}</c> gets; empty keeps the source's.</summary>
-    [ObservableProperty] private string _programOutputExt = "";
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ProgramOutputExtError), nameof(IsValid))]
+    private string _programOutputExt = "";
+
+    /// <summary>The formats the program takes, as a comma separated list of ids; empty for all files.</summary>
+    [ObservableProperty] private string _programAccepts = "";
 
     /// <summary>The command the preset will run, placeholders left visible for the always-on preview.</summary>
     public string ProgramCommandPreview
@@ -802,6 +816,17 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             return ext.Length == 0 ? BuiltInData.SameAsSource : ext;
         }
     }
+
+    /// <summary>Inline errors of the program card (the name field's pattern): null while the input is fine.</summary>
+    public string? ProgramExecutableError => !IsRunProgram ? null
+        : string.IsNullOrWhiteSpace(ProgramExecutable) ? _loc["presets.program_need_program"]
+        : !Path.IsPathRooted(ProgramExecutable.Trim()) ? _loc["presets.program_need_absolute"]
+        : null;
+    public string? ProgramArgumentsError => IsRunProgram && !ProgramTool.InputsAlone(ProgramArguments)
+        ? _loc["presets.program_inputs_alone"] : null;
+    public string? ProgramOutputExtError => IsRunProgram
+        && ProgramOutputExt.Trim().TrimStart('.') is { Length: > 0 } ext
+        && ext.Any(c => !char.IsLetterOrDigit(c)) ? _loc["presets.program_bad_ext"] : null;
 
     [ObservableProperty] private Choice<MediaQuality> _mediaQuality;
     [ObservableProperty] private Choice<int> _maxHeight;
@@ -1046,7 +1071,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private static double SizeLimit(decimal? megabytes) => (double)Math.Clamp(megabytes ?? 0, 0, 4096);
 
     public string? NameError => string.IsNullOrWhiteSpace(Name) ? _loc["presets.name_required"] : null;
-    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null;
+    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null
+        && ProgramExecutableError is null && ProgramArgumentsError is null && ProgramOutputExtError is null;
 
     /// <summary>A size from the range's boxes in megabytes.</summary>
     private decimal? Megabytes(decimal? size) => ImageSizeUnit.Value == FileSizeUnit.KB ? size / 1000 : size;
@@ -1235,6 +1261,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             program.Arguments = ProgramArguments;
             program.AllFiles = ProgramAllFiles;
             program.TimeoutSeconds = Math.Clamp(ProgramTimeout, 0, 86_400);
+            // "xlsx, docx" → ["xlsx", "docx"]; "folder" makes a dropped folder pass as its path. Empty takes every file.
+            program.Accepts = ProgramAccepts
+                .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(a => a.ToLowerInvariant())
+                .Distinct()
+                .ToList();
         }
 
         var output = _original.Output;

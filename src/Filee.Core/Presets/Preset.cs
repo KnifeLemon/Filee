@@ -1546,5 +1546,27 @@ public sealed class ProgramOptions
     /// <summary>How long the program may run before it is killed; 0 for the default of ten minutes.</summary>
     public int TimeoutSeconds { get; set; }
 
-    public ProgramOptions Clone() => (ProgramOptions)MemberwiseClone();
+    /// <summary>
+    /// Format ids the preset takes (<see cref="Formats.FormatRegistry"/>), e.g. <c>xlsx</c>; empty for all of them.
+    /// <see cref="Formats.FormatRegistry.Folder"/> makes a dropped folder pass as its own path instead of being
+    /// expanded into its files — the program then walks it (issue #966).
+    /// </summary>
+    public List<string> Accepts { get; set; } = [];
+
+    /// <summary>True if a dropped folder is passed as its path (its formats include <see cref="Formats.FormatRegistry.Folder"/>).</summary>
+    [JsonIgnore]
+    public bool AcceptsFolders => Accepts.Any(a => string.Equals(a, Formats.FormatRegistry.Folder, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>True if the preset takes any format at all (no list: every file, no folder).</summary>
+    [JsonIgnore]
+    public bool AcceptsEverything => Accepts.Count == 0;
+
+    public ProgramOptions Clone() => new()
+    {
+        Executable = Executable,
+        Arguments = Arguments,
+        AllFiles = AllFiles,
+        TimeoutSeconds = TimeoutSeconds,
+        Accepts = [.. Accepts],
+    };
 }

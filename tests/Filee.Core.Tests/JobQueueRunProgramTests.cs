@@ -208,6 +208,50 @@ public class JobQueueRunProgramTests
         Assert.Equal("error.program_not_set", file.ErrorKey);
     }
 
+    [Fact]
+    public async Task Inputs_glued_into_a_longer_argument_refuses_the_job()
+    {
+        using var dir = new TempDir();
+        var runner = new FakeProgramRunner();
+        await using var queue = Queue(runner);
+
+        var job = await Run(queue, [dir.File("a.jpg"), dir.File("b.jpg")],
+            ProgramPreset(arguments: "--files={inputs}", allFiles: true));
+
+        Assert.All(job.Files, f =>
+        {
+            Assert.Equal(FileState.Failed, f.State);
+            Assert.Equal(ProgramTool.InputsAloneErrorKey, f.ErrorKey);
+        });
+        Assert.Empty(runner.Runs); // nothing started: the template is wrong for every program
+    }
+
+    [Fact]
+    public async Task A_command_line_longer_than_windows_allows_refuses_the_job()
+    {
+        using var dir = new TempDir();
+        // Long file names stack up past Windows' 32,767-character command line in all-files mode.
+        var sources = new List<string>();
+        for (var i = 0; i < 300; i++)
+        {
+            var name = new string('x', 150) + i + ".jpg";
+            var path = Path.Combine(dir.Path, name);
+            File.WriteAllText(path, "x");
+            sources.Add(path);
+        }
+        var runner = new FakeProgramRunner();
+        await using var queue = Queue(runner);
+
+        var job = await Run(queue, sources, ProgramPreset(arguments: "{inputs}", allFiles: true));
+
+        Assert.All(job.Files, f =>
+        {
+            Assert.Equal(FileState.Failed, f.State);
+            Assert.Equal("error.program_too_long", f.ErrorKey);
+        });
+        Assert.Empty(runner.Runs); // never even asked to run
+    }
+
     // ───────────────────────── The preset on disk ─────────────────────────
 
     [Fact]

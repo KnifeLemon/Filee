@@ -43,6 +43,18 @@ public sealed partial class JobQueue
             Notify(job);
             return;
         }
+        // {inputs} inside a longer argument has no separator that suits every program: refuse the template rather
+        // than quietly pass the first path (issue #966).
+        if (!ProgramTool.InputsAlone(job.Preset.Program.Arguments))
+        {
+            foreach (var f in files)
+            {
+                f.State = FileState.Failed;
+                f.ErrorKey = ProgramTool.InputsAloneErrorKey;
+            }
+            Notify(job);
+            return;
+        }
 
         if (job.Preset.Program.AllFiles && files.Count > 1)
             await RunProgramInvocationAsync(job, OrderForInputs(files));
@@ -94,6 +106,13 @@ public sealed partial class JobQueue
         {
             var arguments = ProgramTool.BuildArguments(preset.Program.Arguments,
                 files.Select(f => f.SourcePath).ToList(), output);
+            // Windows refuses a longer command line outright, with no message worth reading: stop here instead.
+            if (ProgramTool.CommandLineLength(preset.Program.Executable, arguments) > ProgramTool.MaxCommandLineLength)
+            {
+                Fail(job, files, allocator, "error.program_too_long", $"{arguments.Count} arguments");
+                Notify(job);
+                return;
+            }
             var timeout = preset.Program.TimeoutSeconds > 0
                 ? TimeSpan.FromSeconds(preset.Program.TimeoutSeconds)
                 : DefaultProgramTimeout;

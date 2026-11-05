@@ -1,4 +1,4 @@
-// The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
+﻿// The "filee" commands: convert, watch, formats, presets, engines. Writes results for people (one line per file) or, with
 // --json, one JSON document for other programs. Exit codes: 0 nothing failed (skipped files included), 1 some
 // failed or were cancelled, 2 wrong arguments or a missing input, 3 nothing to convert.
 
@@ -54,13 +54,14 @@ internal static class Cli
 
     private static async Task<int> ConvertAsync(CliOptions options, CliHost host, TextWriter output, TextWriter errors, CancellationToken cancellationToken)
     {
-        if (ResolvePreset(options, host, errors) is not { } preset)
+        if (ResolvePreset(options, host, errors, forWatch: false) is not { } preset)
             return UsageError;
         if (options.Output is not null)
             UseFolder(preset, options.Output);
 
         var missing = new List<string>();
-        var files = ExpandInputs(options.Inputs, options.Recursive, missing);
+        // A "Run a program" preset that takes folders gets the folder path itself: the program walks it (#966).
+        var files = ExpandInputs(options.Inputs, options.Recursive, missing, preset.Program.AcceptsFolders);
         foreach (var path in missing)
             errors.WriteLine($"filee: not found: {path}");
         if (missing.Count > 0)
@@ -89,7 +90,7 @@ internal static class Cli
 
     private static async Task<int> WatchAsync(CliOptions options, CliHost host, TextWriter output, TextWriter errors, CancellationToken cancellationToken)
     {
-        if (ResolvePreset(options, host, errors) is not { } preset)
+        if (ResolvePreset(options, host, errors, forWatch: true) is not { } preset)
             return UsageError;
         var rule = new WatchRule
         {
@@ -236,7 +237,7 @@ internal static class Cli
     }
 
     /// <summary>The preset from --to or --preset, with --quality and --overwrite/--skip applied (a copy).</summary>
-    private static Preset? ResolvePreset(CliOptions options, CliHost host, TextWriter errors)
+    private static Preset? ResolvePreset(CliOptions options, CliHost host, TextWriter errors, bool forWatch)
     {
         Preset preset;
         if (options.To is not null)
@@ -281,6 +282,19 @@ internal static class Cli
                 errors.WriteLine($"filee: '{wanted}' is an interactive tool, not a conversion.");
                 return null;
             }
+            // Watch folders never run a program: it would run without anyone watching (the v1 boundary of #966).
+            if (found.IsRunProgram && forWatch)
+            {
+                errors.WriteLine($"filee: '{wanted}' runs a program, which 'filee watch' does not run. Use 'filee convert' instead.");
+                return null;
+            }
+            // An imported bundle replaces presets by id, so a program preset runs only after its command was approved
+            // in the app once, on this computer (#966). The queue cannot ask.
+            if (found.IsRunProgram && !ProgramTool.IsConfirmed(host.Store.Settings, found))
+            {
+                errors.WriteLine($"filee: '{wanted}' runs a program that has not been confirmed on this computer. Run it once from Filee's toolbar to see and approve its command.");
+                return null;
+            }
             preset = found.Clone();
         }
         preset = host.Store.Settings.WithDefaultOutput(preset);
@@ -314,7 +328,7 @@ internal static class Cli
     /// Files from the arguments: files as given, wildcards ("*.heic", which cmd.exe and PowerShell pass on unexpanded)
     /// and folders (their files in formats Filee knows; with --recursive also in sub folders).
     /// </summary>
-    internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing)
+    internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing, bool keepFolders = false)
     {
         var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var files = new List<string>();
@@ -331,7 +345,12 @@ internal static class Cli
                 files.AddRange(matches);
             }
             else if (Directory.Exists(input))
-                files.AddRange(Directory.EnumerateFiles(input, "*", option).Where(f => FormatRegistry.Detect(f) is not null));
+            {
+                if (keepFolders)
+                    files.Add(input);
+                else
+                    files.AddRange(Directory.EnumerateFiles(input, "*", option).Where(f => FormatRegistry.Detect(f) is not null));
+            }
             else if (File.Exists(input))
                 files.Add(input);
             else

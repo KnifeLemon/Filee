@@ -67,17 +67,28 @@
             <TextBox Text="{Binding ProgramExecutable}" AutomationProperties.Name="{DynamicResource presets.program_path}" />
           </DockPanel>
           <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.program_path_hint}" Margin="2,4,0,0" />
+          <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding ProgramExecutableError}"
+                     IsVisible="{Binding ProgramExecutableError, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
         </StackPanel>
         <StackPanel>
           <TextBlock Classes="label" Text="{DynamicResource presets.program_args}" />
           <TextBox Text="{Binding ProgramArguments}" TextWrapping="Wrap" AcceptsReturn="False"
                    AutomationProperties.Name="{DynamicResource presets.program_args}" />
           <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.program_args_hint}" Margin="2,4,0,0" />
+          <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding ProgramArgumentsError}"
+                     IsVisible="{Binding ProgramArgumentsError, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
+        </StackPanel>
+        <StackPanel IsVisible="{Binding ShowProgramAccepts}">
+          <TextBlock Classes="label" Text="{DynamicResource presets.program_accepts}" />
+          <TextBox Text="{Binding ProgramAccepts}" PlaceholderText="xlsx, docx" AutomationProperties.Name="{DynamicResource presets.program_accepts}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.program_accepts_hint}" Margin="2,4,0,0" />
         </StackPanel>
         <Grid ColumnDefinitions="*,12,*">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.program_output_ext}" />
             <TextBox Text="{Binding ProgramOutputExt}" PlaceholderText="txt" AutomationProperties.Name="{DynamicResource presets.program_output_ext}" />
+            <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding ProgramOutputExtError}"
+                       IsVisible="{Binding ProgramOutputExtError, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
           </StackPanel>
           <StackPanel Grid.Column="2">
             <TextBlock Classes="label" Text="{DynamicResource presets.program_timeout}" />
@@ -670,11 +681,11 @@
           <TextBox Text="{Binding Pattern}" PlaceholderText="{}{name}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.pattern_hint}" Margin="2,4,0,0" />
         </StackPanel>
-        <CheckBox IsVisible="{Binding ShowConversionOutput}" Content="{DynamicResource presets.keep_dates}" IsChecked="{Binding KeepDates}"
+        <CheckBox IsVisible="{Binding ShowKeepDates}" Content="{DynamicResource presets.keep_dates}" IsChecked="{Binding KeepDates}"
                   ToolTip.Tip="{DynamicResource presets.keep_dates_hint}" />
         <CheckBox Content="{DynamicResource presets.zip_result}" IsChecked="{Binding ZipResult}" IsVisible="{Binding ShowZipResult}"
                   ToolTip.Tip="{DynamicResource presets.zip_result_hint}" />
-        <StackPanel IsVisible="{Binding ShowConversionOutput}">
+        <StackPanel IsVisible="{Binding ShowReplaceOriginal}">
           <CheckBox Content="{DynamicResource presets.replace_original}" IsChecked="{Binding ReplaceOriginal}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.replace_original_hint}" TextWrapping="Wrap"
                      IsVisible="{Binding ReplaceOriginal}" Margin="28,2,0,0" />
