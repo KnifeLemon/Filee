@@ -220,6 +220,130 @@ public class DonutGroupMarkTests
         Assert.NotEmpty(Changed(Dragging(true), Dragging(false)));
     }
 
+    /// <summary>One frame of the donut, recorded: each chevron's shape and the transforms it is drawn inside.</summary>
+    private static List<(object Shape, Matrix Transform)> Chevrons(DonutMenu donut)
+    {
+        var frame = new DrawingGroup();
+        using (var context = frame.Open())
+            donut.Render(context);
+        var chevrons = new List<(object, Matrix)>();
+        void Walk(Drawing drawing, Matrix around)
+        {
+            if (drawing is DrawingGroup group)
+            {
+                var within = (group.Transform?.Value ?? Matrix.Identity) * around;
+                foreach (var child in group.Children)
+                    Walk(child, within);
+            }
+            else if (drawing is GeometryDrawing { Pen.Brush: var brush } line && ReferenceEquals(brush, ChevronBrush))
+                chevrons.Add((PlatformShape.GetValue(line.Geometry)!, around));
+        }
+        Walk(frame, Matrix.Identity);
+        return chevrons;
+    }
+
+    // What a drawing keeps of the geometry it was given: the shape itself, so the same one can be told from a copy.
+    private static readonly System.Reflection.PropertyInfo PlatformShape = typeof(Geometry).GetProperty("PlatformImpl",
+        System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)
+        ?? throw new MissingMemberException(nameof(Geometry), "PlatformImpl");
+
+    // Only the chevrons are stroked with it here, lit or not: the slices' names and captions are text.
+    private static readonly IBrush ChevronBrush = Brushes.Lime;
+
+    [AvaloniaTheory]
+    [InlineData("pop out")]
+    [InlineData("flip")]
+    public void An_animation_moves_the_same_chevron_shape_and_makes_no_new_one(string animation)
+    {
+        Render(true, donut =>
+        {
+            donut.SecondaryForeground = ChevronBrush;
+            donut.OnAccentBrush = ChevronBrush;
+        }, after: donut =>
+        {
+            var back = donut.Items!.Select(i => new DonutItem { Id = i.Id + "-back", Label = i.Label, Children = i.Children }).ToList();
+            donut.CanFlip = true;
+            donut.FaceSwapping += (_, _) => donut.Items = back;
+            var first = Assert.Single(Chevrons(donut));
+            if (animation == "pop out")
+                donut.SetExternalHighlight(0);
+            else
+                Assert.True(donut.Flip());
+
+            var frames = new List<(object Shape, Matrix Transform)>();
+            for (var i = 0; i < 30; i++)
+            {
+                donut.Advance(1 / 60.0);
+                frames.AddRange(Chevrons(donut));
+            }
+
+            Assert.NotEmpty(frames);
+            Assert.All(frames, chevron => Assert.Same(first.Shape, chevron.Shape));
+            // The same shape, moved by its slice's transform.
+            // An arm's end: the flip turns the slice about its middle line, which stays where it is.
+            var arm = new Point(330, 180);
+            Assert.Contains(frames, chevron => Point.Distance(arm.Transform(chevron.Transform), arm.Transform(first.Transform)) > 1);
+        });
+    }
+
+    [AvaloniaTheory]
+    [InlineData("radius")]
+    [InlineData("hole")]
+    [InlineData("slice count")]
+    [InlineData("slice angle")]
+    [InlineData("centre")]
+    public void A_change_to_the_donut_draws_the_chevron_as_a_new_donut_would(string change)
+    {
+        void Changed(DonutMenu donut)
+        {
+            switch (change)
+            {
+                case "radius": donut.OuterRadius = 170; break;
+                case "hole": donut.HoleRatio = 0.65; break;
+                case "slice count": donut.Items = [.. donut.Items!.SkipLast(1)]; break;
+                case "slice angle": donut.Items = [donut.Items![^1], .. donut.Items!.SkipLast(1)]; break;
+                case "centre": donut.Width = 600; break;
+            }
+        }
+        // Off the first slice, whose angle stays the same whatever the number of slices.
+        static void Placed(DonutMenu donut)
+        {
+            donut.Items = [.. donut.Items!.Skip(4), .. donut.Items!.Take(4)];
+            donut.HorizontalAlignment = Avalonia.Layout.HorizontalAlignment.Left;
+            donut.Width = 640;
+            donut.SecondaryForeground = ChevronBrush;
+        }
+
+        var kept = Render(true, Placed, after: donut =>
+        {
+            Assert.Single(Chevrons(donut));
+            Changed(donut);
+            RenderTests.Pump();
+            for (var i = 0; i < 60; i++)
+                donut.Advance(1 / 60.0);
+        });
+
+        Assert.Equal(Render(true, donut =>
+        {
+            Placed(donut);
+            Changed(donut);
+        }), kept);
+    }
+
+    [AvaloniaFact]
+    public void Kept_chevron_shapes_are_bounded_on_a_donut_that_keeps_changing()
+    {
+        Render(true, donut => donut.SecondaryForeground = ChevronBrush, after: donut =>
+        {
+            for (var radius = 100.0; radius < 500; radius++)
+            {
+                donut.OuterRadius = radius;
+                Assert.Single(Chevrons(donut));
+                Assert.InRange(donut.CachedGroupMarkCount, 1, 256);
+            }
+        });
+    }
+
     /// <summary>The Donut toolbar page on the PDF donut's front or back, and where to point at its slices.</summary>
     private static (MainWindow Window, ToolbarPageViewModel Page, DonutMenu Donut, Func<double, int, Point> On) Editor(MainWindowViewModel main, bool back)
     {
@@ -296,6 +420,43 @@ public class DonutGroupMarkTests
 
             window.MouseMove(new Point(5, 5));
             window.MouseUp(new Point(5, 5), MouseButton.Left);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Dragging_a_chip_shows_it_marked_as_it_is_on_the_donut(bool group)
+    {
+        TestServices.EnsureInitialized();
+        Motion.Configure(false, () => false);
+        using var main = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
+        var (window, page, donut, on) = Editor(main, back: true);
+        try
+        {
+            page.SelectedTab = page.Tabs.First();
+            RenderTests.Pump();
+            var chip = window.GetVisualDescendants().OfType<Border>()
+                .First(b => b.Classes.Contains("chip") && b.DataContext is PaletteChip { CanAdd: true } c && c.IsGroup == group);
+            chip.BringIntoView();
+            RenderTests.Pump();
+            var before = string.Join(",", page.DonutItems.Select(i => i.Id));
+
+            var over = on(donut.OuterRadius - 40, 0);
+            window.MouseDown(chip.TranslatePoint(new Point(chip.Bounds.Width / 2, chip.Bounds.Height / 2), window)!.Value, MouseButton.Left);
+            window.MouseMove(over);
+
+            Assert.True(Dragging(window));
+            Assert.InRange(donut.SlotAt(window.TranslatePoint(over, donut)!.Value, page.SliceCount + 1), 0, page.SliceCount);
+            Assert.Equal(group, donut.PreviewIsGroup);
+
+            window.MouseMove(new Point(5, 5));
+            window.MouseUp(new Point(5, 5), MouseButton.Left);
+            Assert.Equal(before, string.Join(",", page.DonutItems.Select(i => i.Id)));
         }
         finally
         {
