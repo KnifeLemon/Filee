@@ -38,6 +38,7 @@ public class ToolbarPaletteViewTests
             Window = new Window { Width = 1080, Height = 820, Content = new ScrollViewer { Content = Page } };
             Window.Show();
             RenderTests.Pump();
+            Page.AddHandler(InputElement.PointerPressedEvent, (_, e) => Pressed = e.Pointer, RoutingStrategies.Tunnel, handledEventsToo: true);
         }
 
         public ToolbarPage Page { get; }
@@ -47,6 +48,9 @@ public class ToolbarPaletteViewTests
         public Border Box => Page.FindControl<Border>("PaletteBox")!;
         public Border Ghost => Page.FindControl<Border>("Ghost")!;
         public DonutMenu Donut => Page.FindControl<DonutMenu>("Donut")!;
+
+        /// <summary>The pointer of the last press on the page.</summary>
+        public IPointer? Pressed { get; private set; }
 
         /// <summary>The chips shown in the palette box, in their order on screen.</summary>
         public List<Border> ChipBorders => Box.GetVisualDescendants().OfType<Border>()
@@ -128,6 +132,24 @@ public class ToolbarPaletteViewTests
             var at = DonutGeometry.PointAt(center, Donut.OuterRadius * 0.7, DonutGeometry.MidAngle(index, Donut.Items!.Count));
             Assert.Equal(index, Donut.HitTest(at).Index);
             return Donut.TranslatePoint(at, Window)!.Value;
+        }
+
+        /// <summary>Holds the left button on a slice and takes it to a point.</summary>
+        public void DragSlice(int index, Point to)
+        {
+            Press(Slice(index));
+            Window.MouseMove(to, RawInputModifiers.LeftMouseButton);
+            RenderTests.Pump();
+            Assert.True(Ghost.IsVisible);
+        }
+
+        /// <summary>Holds the left button on a chip and takes it to the donut's hole.</summary>
+        public void DragChip(Border chip)
+        {
+            Window.MouseDown(Center(chip), MouseButton.Left);
+            Window.MouseMove(Center(Donut), RawInputModifiers.LeftMouseButton);
+            RenderTests.Pump();
+            Assert.True(Ghost.IsVisible);
         }
 
         public void Dispose() => Window.Close();
@@ -585,6 +607,483 @@ public class ToolbarPaletteViewTests
         Assert.Equal(["test-mp4", "to-mp4"], Slices());
     }
 
+    /// <summary>A page on a donut of three slices, tall enough to show the whole palette beside the donut.</summary>
+    private static ToolbarPageViewModel ThreeSlices(PresetAvailabilityTests.Fixture f, out ToolbarProfile profile)
+    {
+        profile = Profile("test-shown", "png");
+        profile.PresetIds = ["test-mp4", "test-wav", "test-pack"];
+        var vm = f.Page(profile);
+        Dispatcher.UIThread.RunJobs();
+        return vm;
+    }
+
+    private static View TallView(ToolbarPageViewModel vm)
+    {
+        var view = new View(vm);
+        view.Window.Height = 1600;
+        RenderTests.Pump();
+        return view;
+    }
+
+    private static void Release(View view, Point at, MouseButton button = MouseButton.Left)
+    {
+        view.Window.MouseUp(at, button);
+        RenderTests.Pump();
+    }
+
+    // A real mouse reports the buttons it holds in the modifiers. Avalonia then sends a second button's press and
+    // release as moves, and only the last release of all as a release, whichever button that is.
+    [AvaloniaTheory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Another_button_during_a_drag_leaves_the_drop_to_the_last_release(bool leftFirst)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var before = shown.PresetIds.ToList();
+        var palette = view.Center(view.Box);
+
+        view.DragSlice(1, palette);
+        view.Window.MouseDown(palette, MouseButton.Right, RawInputModifiers.LeftMouseButton);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+        if (leftFirst)
+            view.Window.MouseUp(palette, MouseButton.Left, RawInputModifiers.RightMouseButton);
+        else
+            view.Window.MouseUp(palette, MouseButton.Right, RawInputModifiers.LeftMouseButton);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+        Assert.Equal(before, shown.PresetIds);
+
+        Release(view, palette, leftFirst ? MouseButton.Right : MouseButton.Left);
+
+        Assert.False(view.Ghost.IsVisible);
+        Assert.Equal(["test-mp4", "test-pack"], shown.PresetIds);
+    }
+
+    // A press that reaches the page as a press means no other button is down: the drag's release never came.
+    [AvaloniaTheory]
+    [InlineData(MouseButton.Right, true)]
+    [InlineData(MouseButton.Right, false)]
+    [InlineData(MouseButton.Left, true)]
+    [InlineData(MouseButton.Left, false)]
+    public void A_press_after_a_lost_release_only_ends_a_slice_drag(MouseButton button, bool onSlice)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var windows = OpenMain();
+        try
+        {
+            using var vm = ThreeSlices(f, out var shown);
+            using var view = TallView(vm);
+            var before = shown.PresetIds.ToList();
+            var at = onSlice ? view.Slice(2) : view.Center(view.Box);
+
+            view.DragSlice(1, at);
+            view.Window.MouseDown(at, button);
+            RenderTests.Pump();
+            var ghostAfterPress = view.Ghost.IsVisible;
+            Release(view, at, button);
+
+            Assert.Equal(before, shown.PresetIds);
+            Assert.False(ghostAfterPress);
+            Assert.False(view.Ghost.IsVisible);
+            Assert.DoesNotContain("over", view.Box.Classes);
+            Assert.Empty(windows.Main!.OwnedWindows.OfType<PresetEditorWindow>());
+        }
+        finally { CloseMain(windows); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(MouseButton.Right)]
+    [InlineData(MouseButton.Left)]
+    public void A_press_after_a_lost_release_only_ends_a_chip_drag(MouseButton button)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var windows = OpenMain();
+        try
+        {
+            using var vm = f.PageWithPalette("png");
+            Dispatcher.UIThread.RunJobs();
+            using var view = TallView(vm);
+            var hole = view.Center(view.Donut);
+
+            view.DragChip(view.Chip("test-jpg"));
+            view.Window.MouseDown(hole, button);
+            RenderTests.Pump();
+            var ghostAfterPress = view.Ghost.IsVisible;
+            Release(view, hole, button);
+
+            Assert.Empty(vm.DonutItems);
+            Assert.False(ghostAfterPress);
+            Assert.False(view.Ghost.IsVisible);
+            Assert.Empty(windows.Main!.OwnedWindows.OfType<PresetEditorWindow>());
+        }
+        finally { CloseMain(windows); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Losing_the_capture_ends_a_drag_and_the_next_one_works(bool chip)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var before = shown.PresetIds.ToList();
+        var palette = view.Center(view.Box);
+        var hole = view.Center(view.Donut);
+
+        if (chip)
+            view.DragChip(view.Chip("test-jpg"));
+        else
+            view.DragSlice(1, palette);
+        view.Pressed!.Capture(null);
+        RenderTests.Pump();
+        var ghostAfterLoss = view.Ghost.IsVisible;
+        var removing = view.Box.Classes.Contains("over");
+        view.Window.MouseMove(chip ? hole : palette);
+        RenderTests.Pump();
+        var ghostAfterMove = view.Ghost.IsVisible;
+        Release(view, chip ? hole : palette);
+
+        Assert.Equal(before, shown.PresetIds);
+        Assert.False(ghostAfterLoss);
+        Assert.False(ghostAfterMove);
+        Assert.False(removing);
+
+        view.DragSlice(1, palette);
+        Release(view, palette);
+        Assert.Equal(["test-mp4", "test-pack"], shown.PresetIds);
+    }
+
+    [AvaloniaFact]
+    public void Losing_the_capture_lets_go_of_a_slice_pressed_but_not_yet_dragged()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var before = shown.PresetIds.ToList();
+        var next = view.Slice(2);
+
+        view.Press(view.Slice(1));
+        view.Pressed!.Capture(null);
+        view.Window.MouseMove(next);
+        RenderTests.Pump();
+        var ghost = view.Ghost.IsVisible;
+        Release(view, next);
+
+        Assert.False(ghost);
+        Assert.Equal(before, shown.PresetIds);
+    }
+
+    // The rebuild takes the pressed chip out of the tree and its panel gets the capture; Root is never told.
+    [AvaloniaFact]
+    public void A_chip_drag_goes_on_when_the_palette_is_rebuilt_under_it()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = f.PageWithPalette("png");
+        Dispatcher.UIThread.RunJobs();
+        using var view = TallView(vm);
+        var chip = view.Chip("test-jpg");
+        var hole = view.Center(view.Donut);
+
+        view.DragChip(chip);
+        f.Catalog.Refresh();
+        RenderTests.Pump();
+
+        Assert.DoesNotContain(chip, view.ChipBorders);
+        Assert.True(view.Ghost.IsVisible);
+        view.Window.MouseMove(hole + new Point(2, 2), RawInputModifiers.LeftMouseButton);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+        Release(view, hole + new Point(2, 2));
+
+        Assert.False(view.Ghost.IsVisible);
+        Assert.Equal("test-jpg", Assert.Single(vm.DonutItems).Id);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_finger_on_the_screen_leaves_a_mouse_drag_alone(bool onChip)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var before = shown.PresetIds.ToList();
+        var palette = view.Center(view.Box);
+        var from = onChip ? view.Center(view.Chip("test-jpg")) : view.Slice(2);
+        var to = onChip ? palette + new Point(40, 0) : view.Slice(0);
+
+        view.DragSlice(1, palette);
+        var ghostAt = Canvas.GetLeft(view.Ghost);
+        var finger = view.Window.TouchBegin(from);
+        RenderTests.Pump();
+        view.Window.TouchMove(finger, to);
+        RenderTests.Pump();
+        view.Window.TouchEnd(finger, to);
+        RenderTests.Pump();
+
+        Assert.Equal(before, shown.PresetIds);
+        Assert.True(view.Ghost.IsVisible);
+        Assert.Equal(ghostAt, Canvas.GetLeft(view.Ghost));
+        Release(view, palette);
+        Assert.Equal(["test-mp4", "test-pack"], shown.PresetIds);
+    }
+
+    [AvaloniaFact]
+    public void A_mouse_passing_over_the_donut_leaves_a_finger_on_a_slice_alone()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var before = shown.PresetIds.ToList();
+
+        var finger = view.Window.TouchBegin(view.Slice(1));
+        RenderTests.Pump();
+        view.Window.MouseMove(view.Slice(1));
+        view.Window.MouseMove(view.Slice(2));
+        RenderTests.Pump();
+        var ghostFromMouse = view.Ghost.IsVisible;
+        view.Window.TouchEnd(finger, view.Slice(1));
+        RenderTests.Pump();
+
+        Assert.False(ghostFromMouse);
+        Assert.False(view.Ghost.IsVisible);
+        Assert.Equal(before, shown.PresetIds);
+    }
+
+    [AvaloniaFact]
+    public void A_finger_on_another_slice_leaves_a_pressed_slice_to_the_mouse()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var palette = view.Center(view.Box);
+
+        view.Press(view.Slice(1));
+        var finger = view.Window.TouchBegin(view.Slice(2));
+        RenderTests.Pump();
+        view.Window.TouchEnd(finger, view.Slice(2));
+        RenderTests.Pump();
+        view.Window.MouseMove(palette, RawInputModifiers.LeftMouseButton);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+        Release(view, palette);
+
+        Assert.Equal(["test-mp4", "test-pack"], shown.PresetIds);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void The_mouse_opens_no_editor_during_a_finger_drag(bool onChip)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var windows = OpenMain();
+        try
+        {
+            using var vm = ThreeSlices(f, out _);
+            using var view = TallView(vm);
+            var at = onChip ? view.Center(view.Chip("test-jpg")) : view.Slice(2);
+
+            var finger = view.Window.TouchBegin(view.Slice(1));
+            RenderTests.Pump();
+            view.Window.TouchMove(finger, view.Slice(0));
+            RenderTests.Pump();
+            Assert.True(view.Ghost.IsVisible);
+            view.Window.MouseDown(at, MouseButton.Right);
+            view.Window.MouseUp(at, MouseButton.Right);
+            RenderTests.Pump();
+
+            Assert.Empty(windows.Main!.OwnedWindows.OfType<PresetEditorWindow>());
+            view.Window.TouchEnd(finger, view.Slice(0));
+            RenderTests.Pump();
+        }
+        finally { CloseMain(windows); }
+    }
+
+    [AvaloniaTheory]
+    [InlineData(Key.Enter, RawInputModifiers.None)]
+    [InlineData(Key.F10, RawInputModifiers.Shift)]
+    [InlineData(Key.Apps, RawInputModifiers.None)]
+    public void A_chip_ignores_its_keys_during_a_drag(Key key, RawInputModifiers modifiers)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var windows = OpenMain();
+        try
+        {
+            using var vm = f.PageWithPalette("png");
+            Dispatcher.UIThread.RunJobs();
+            using var view = TallView(vm);
+            var chip = view.Chip("test-jpg");
+
+            view.DragChip(chip);
+            Assert.True(chip.Focus());
+            view.Window.KeyPress(key, modifiers, PhysicalKey.None, null);
+            RenderTests.Pump();
+
+            Assert.Empty(vm.DonutItems);
+            Assert.Empty(windows.Main!.OwnedWindows.OfType<PresetEditorWindow>());
+            Release(view, view.Center(view.Box));
+        }
+        finally { CloseMain(windows); }
+    }
+
+    [AvaloniaFact]
+    public void A_double_tap_on_a_chip_adds_nothing_during_a_drag()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var before = shown.PresetIds.ToList();
+        var chip = view.Center(view.Chip("test-jpg"));
+
+        view.DragSlice(1, view.Center(view.Box));
+        for (var tap = 0; tap < 2; tap++)
+        {
+            var finger = view.Window.TouchBegin(chip);
+            view.Window.TouchEnd(finger, chip);
+            RenderTests.Pump();
+        }
+
+        Assert.Equal(before, shown.PresetIds);
+        Assert.True(view.Ghost.IsVisible);
+        Release(view, view.Center(view.Box));
+    }
+
+    [AvaloniaFact]
+    public void A_double_click_on_a_chip_still_adds_it()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var chip = view.Chip("test-jpg");
+        var at = view.Center(chip);
+
+        // The second press raises the gesture, with a drag pending that hasn't started.
+        view.Window.MouseDown(at, MouseButton.Left);
+        DoubleTap(chip);
+        view.Window.MouseUp(at, MouseButton.Left);
+        RenderTests.Pump();
+
+        Assert.Equal(["test-mp4", "test-wav", "test-pack", "test-jpg"], shown.PresetIds);
+        Assert.False(view.Ghost.IsVisible);
+    }
+
+    [AvaloniaFact]
+    public void A_finger_in_the_hole_leaves_the_slices_to_the_mouse()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var palette = view.Center(view.Box);
+
+        var finger = view.Window.TouchBegin(view.Center(view.Donut));
+        RenderTests.Pump();
+        view.DragSlice(1, palette);
+        Release(view, palette);
+        view.Window.TouchEnd(finger, view.Center(view.Donut));
+        RenderTests.Pump();
+
+        Assert.Equal(["test-mp4", "test-pack"], shown.PresetIds);
+    }
+
+    [AvaloniaFact]
+    public void The_mouse_leaving_the_donut_drops_its_hover_while_a_finger_holds_a_slice()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out _);
+        using var view = TallView(vm);
+
+        var finger = view.Window.TouchBegin(view.Slice(1));
+        RenderTests.Pump();
+        view.Window.MouseMove(view.Slice(2));
+        RenderTests.Pump();
+        Assert.Equal(2, view.Donut.ActiveIndex);
+        view.Window.MouseMove(view.Center(view.Box));
+        RenderTests.Pump();
+
+        Assert.Equal(-1, view.Donut.ActiveIndex);
+        view.Window.TouchEnd(finger, view.Slice(1));
+        RenderTests.Pump();
+    }
+
+    [AvaloniaFact]
+    public void Leaving_the_page_ends_a_drag()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var before = shown.PresetIds.ToList();
+        var palette = view.Center(view.Box);
+        var scroller = (ScrollViewer)view.Window.Content!;
+
+        view.DragSlice(1, palette);
+        scroller.Content = null;
+        RenderTests.Pump();
+        Release(view, palette);
+        scroller.Content = view.Page;
+        RenderTests.Pump();
+
+        Assert.False(view.Ghost.IsVisible);
+        Assert.Equal(before, shown.PresetIds);
+    }
+
+    // On a page that can scroll, a finger's drag can turn into scrolling the page, which takes the capture.
+    [AvaloniaFact]
+    public void A_finger_that_scrolls_the_page_ends_its_drag()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = new View(vm);
+        view.Window.Height = 500;
+        RenderTests.Pump();
+        var before = shown.PresetIds.ToList();
+        var from = view.Slice(0);
+        var hit = view.Window.InputHitTest(from) as Visual;
+        Assert.True(hit == view.Donut || view.Donut.IsVisualAncestorOf(hit), $"press at {from} hits {hit?.GetType().Name}");
+
+        var finger = view.Window.TouchBegin(from);
+        RenderTests.Pump();
+        view.Window.TouchMove(finger, from - new Point(0, 12));
+        RenderTests.Pump();
+        view.Window.TouchMove(finger, from - new Point(0, 60));
+        RenderTests.Pump();
+        var ghost = view.Ghost.IsVisible;
+        var scrolled = ((ScrollViewer)view.Window.Content!).Offset.Y;
+        view.Window.TouchEnd(finger, from - new Point(0, 60));
+        RenderTests.Pump();
+
+        Assert.True(scrolled > 0);
+        Assert.False(ghost);
+        Assert.False(view.Ghost.IsVisible);
+        Assert.Equal(before, shown.PresetIds);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_finger_drags_as_the_mouse_does_on_a_page_that_fits(bool chip)
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        using var vm = ThreeSlices(f, out var shown);
+        using var view = TallView(vm);
+        var to = chip ? view.Center(view.Donut) : view.Center(view.Box);
+
+        var finger = view.Window.TouchBegin(chip ? view.Center(view.Chip("test-jpg")) : view.Slice(1));
+        RenderTests.Pump();
+        view.Window.TouchMove(finger, to);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+        view.Window.TouchEnd(finger, to);
+        RenderTests.Pump();
+
+        Assert.False(view.Ghost.IsVisible);
+        Assert.Equal(chip ? ["test-mp4", "test-wav", "test-pack", "test-jpg"] : ["test-mp4", "test-pack"], shown.PresetIds);
+    }
+
     [AvaloniaFact]
     public async Task New_group_and_unplaced_preset_select_visible_tab()
     {
@@ -862,5 +1361,56 @@ public class ToolbarPaletteViewTests
 
         Assert.Equal(otherBefore, other.PresetIds);
         Assert.False(ghostAfterSwitch);
+    }
+
+    [AvaloniaFact]
+    public void A_finger_dragging_a_slice_ends_when_the_mouse_picks_another_donut()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var (page, shown, other) = TwoDonuts(f);
+        using var vm = page;
+        Dispatcher.UIThread.RunJobs();
+        using var view = new View(vm);
+        view.Window.Height = 1600;
+        RenderTests.Pump();
+        var (shownBefore, otherBefore) = (shown.PresetIds.ToList(), other.PresetIds.ToList());
+        var palette = view.Center(view.Box);
+
+        var finger = view.Window.TouchBegin(view.Slice(1));
+        RenderTests.Pump();
+        view.Window.TouchMove(finger, palette);
+        RenderTests.Pump();
+        Assert.True(view.Ghost.IsVisible);
+        SwitchTo(vm, other);
+        view.Window.TouchEnd(finger, palette);
+        RenderTests.Pump();
+
+        Assert.False(view.Ghost.IsVisible);
+        Assert.Equal(otherBefore, other.PresetIds);
+        Assert.Equal(shownBefore, shown.PresetIds);
+    }
+
+    [AvaloniaFact]
+    public void A_finger_holding_a_slice_lets_go_when_the_slices_shift_under_it()
+    {
+        using var f = new PresetAvailabilityTests.Fixture();
+        var (page, shown, _) = TwoDonuts(f);
+        using var vm = page;
+        Dispatcher.UIThread.RunJobs();
+        using var view = new View(vm);
+        view.Window.Height = 1600;
+        RenderTests.Pump();
+        var palette = view.Center(view.Box);
+
+        var finger = view.Window.TouchBegin(view.Slice(2));
+        RenderTests.Pump();
+        vm.Insert("test-jpg", 0);
+        RenderTests.Pump();
+        view.Window.TouchMove(finger, palette);
+        RenderTests.Pump();
+        view.Window.TouchEnd(finger, palette);
+        RenderTests.Pump();
+
+        Assert.Equal(["test-jpg", "test-mp4", "test-wav", "test-pack"], shown.PresetIds);
     }
 }
