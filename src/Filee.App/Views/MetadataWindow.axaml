@@ -1,0 +1,261 @@
+<!-- "Metadata": every field of a file, grouped by where it lives, searchable. With ExifTool, for a kind of file it
+     writes, a value is edited by choosing it (click, or Enter on it), removed with × and put back with the arrow; Remove
+     location and Remove everything clear many at once. Otherwise a notice says why the fields are read-only (and offers
+     ExifTool when it would help). After the last file, a summary when one could not be opened or saved. -->
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        xmlns:c="using:Filee.App.Controls"
+        x:Class="Filee.App.Views.MetadataWindow"
+        x:DataType="vm:MetadataViewModel"
+        Title="{DynamicResource preset.metadata}"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="760" Height="820" MinWidth="520" MinHeight="420">
+  <Window.Resources>
+    <StreamGeometry x:Key="Meta.Lock">M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z</StreamGeometry>
+    <StreamGeometry x:Key="Meta.Undo">M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z</StreamGeometry>
+    <StreamGeometry x:Key="Meta.Plus">M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z</StreamGeometry>
+    <StreamGeometry x:Key="Meta.Search">M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z</StreamGeometry>
+  </Window.Resources>
+  <Window.Styles>
+    <Style Selector="TextBlock.caption.warning">
+      <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+    </Style>
+    <Style Selector="Grid.row">
+      <Setter Property="MinHeight" Value="34" />
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <Style Selector="Grid.row:pointerover">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+    </Style>
+    <!-- × only on the row under the pointer or reached with the keyboard, so the list stays calm. -->
+    <Style Selector="Grid.row Button.remove">
+      <Setter Property="Opacity" Value="0" />
+    </Style>
+    <Style Selector="Grid.row:pointerover Button.remove, Grid.row Button.remove:focus-visible">
+      <Setter Property="Opacity" Value="1" />
+    </Style>
+    <Style Selector="Grid.row.removed">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Grid.row.removed TextBlock">
+      <Setter Property="TextDecorations" Value="Strikethrough" />
+    </Style>
+    <!-- A value that can be edited: a plain text until hovered or reached, a button all the same. -->
+    <Style Selector="Button.value">
+      <Setter Property="Background" Value="Transparent" />
+      <Setter Property="BorderThickness" Value="0" />
+      <Setter Property="Padding" Value="6,4" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Left" />
+      <Setter Property="Cursor" Value="Ibeam" />
+    </Style>
+    <Style Selector="Button.value.changed">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="3,0,0,0" />
+    </Style>
+    <Style Selector="Button.value.changed TextBlock">
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </Window.Styles>
+
+  <Panel>
+    <DockPanel IsVisible="{Binding IsEditing}">
+      <Border DockPanel.Dock="Bottom" Padding="20,12" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}"
+              Background="{DynamicResource SurfaceBrush}">
+        <StackPanel Spacing="8">
+          <TextBlock Classes="caption danger" Text="{Binding StatusNotice}" TextWrapping="Wrap" AutomationProperties.LiveSetting="Polite"
+                     IsVisible="{Binding StatusNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="caption" Text="{DynamicResource metadata.pdf_note}" TextWrapping="Wrap">
+            <TextBlock.IsVisible>
+              <MultiBinding Converter="{x:Static BoolConverters.And}">
+                <Binding Path="IsPdf" />
+                <Binding Path="CanEdit" />
+              </MultiBinding>
+            </TextBlock.IsVisible>
+          </TextBlock>
+          <TextBlock Classes="caption warning" Text="{Binding EmbeddedNotice}" TextWrapping="Wrap"
+                     IsVisible="{Binding EmbeddedNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <TextBlock Classes="caption warning" Text="{Binding LocationNotice}" TextWrapping="Wrap"
+                     IsVisible="{Binding LocationNotice, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+          <!-- Two rows, so translated names never push a button out: what to clear (and where it goes), then save or
+               leave. -->
+          <DockPanel IsVisible="{Binding CanEdit}">
+            <CheckBox x:Name="ReplaceBox" DockPanel.Dock="Right" Content="{DynamicResource metadata.replace}" IsChecked="{Binding ReplaceOriginal}"
+                      ToolTip.Tip="{DynamicResource metadata.replace_hint}" VerticalAlignment="Center" Margin="12,0,0,0" />
+            <WrapPanel>
+              <Button Content="{DynamicResource metadata.remove_location}" Command="{Binding RemoveLocationCommand}" Margin="0,0,8,0" />
+              <Button Content="{DynamicResource metadata.remove_all}" Command="{Binding RemoveAllCommand}"
+                      ToolTip.Tip="{DynamicResource metadata.remove_all_hint}" />
+            </WrapPanel>
+          </DockPanel>
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8">
+              <Button Content="{DynamicResource crop.skip}" Command="{Binding SkipCommand}" IsVisible="{Binding HasMultipleFiles}" />
+              <Button x:Name="CloseButton" Content="{DynamicResource common.close}" Command="{Binding CloseCommand}" />
+              <Button x:Name="SaveButton" Classes="accent" Content="{Binding SaveText}" Command="{Binding SaveCommand}"
+                      IsVisible="{Binding CanEdit}" />
+            </StackPanel>
+            <Border Background="{DynamicResource AccentSoftBrush}" CornerRadius="999" Padding="10,3" VerticalAlignment="Center"
+                    HorizontalAlignment="Left" IsVisible="{Binding HasChanges}">
+              <TextBlock Text="{Binding ChangesText}" FontSize="12" AutomationProperties.LiveSetting="Polite" />
+            </Border>
+          </DockPanel>
+          <TextBlock Classes="caption" Text="{DynamicResource metadata.keys}" TextWrapping="Wrap" IsVisible="{Binding CanEdit}" />
+        </StackPanel>
+      </Border>
+
+      <DockPanel Margin="20,18,20,8">
+        <DockPanel DockPanel.Dock="Top" Margin="0,0,0,12">
+          <Border DockPanel.Dock="Left" Width="88" Height="66" CornerRadius="8" Margin="0,0,14,0" ClipToBounds="True"
+                  Background="{DynamicResource SurfaceAltBrush}">
+            <Panel>
+              <Image Source="{Binding Thumbnail}" Stretch="UniformToFill" />
+              <PathIcon Width="24" Height="24" Data="{StaticResource Icon.File}" Foreground="{DynamicResource TextSecondaryBrush}"
+                        IsVisible="{Binding Thumbnail, Converter={x:Static ObjectConverters.IsNull}}" />
+            </Panel>
+          </Border>
+          <StackPanel VerticalAlignment="Center" Spacing="4">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <TextBlock Classes="h2" Text="{Binding CurrentFileName}" TextTrimming="CharacterEllipsis" MaxWidth="460" />
+              <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="999" Padding="8,2" VerticalAlignment="Center"
+                      IsVisible="{Binding HasMultipleFiles}">
+                <TextBlock Classes="caption" Text="{Binding CounterText}" />
+              </Border>
+            </StackPanel>
+            <TextBlock Classes="caption" Text="{Binding Details}" />
+          </StackPanel>
+        </DockPanel>
+
+        <!-- Read-only: why, and ExifTool when it would make the fields editable. -->
+        <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceAltBrush}" CornerRadius="10" Padding="12,8" Margin="0,0,0,12"
+                IsVisible="{Binding IsReadOnly}">
+          <DockPanel>
+            <Button DockPanel.Dock="Right" Classes="accent" Content="{DynamicResource metadata.install}" Padding="12,4"
+                    Command="{Binding InstallCommand}" Margin="12,0,0,0" IsVisible="{Binding CanInstall}" />
+            <TextBlock TextWrapping="Wrap" VerticalAlignment="Center" Text="{Binding ReadOnlyNotice}" AutomationProperties.LiveSetting="Polite" />
+          </DockPanel>
+        </Border>
+
+        <Panel DockPanel.Dock="Top" Margin="0,0,0,12">
+          <TextBox x:Name="Search" Text="{Binding SearchText}" PlaceholderText="{DynamicResource metadata.search}" Padding="32,6,8,6"
+                   AutomationProperties.Name="{DynamicResource metadata.search}" />
+          <PathIcon Width="14" Height="14" Data="{StaticResource Meta.Search}" HorizontalAlignment="Left" Margin="11,0,0,0"
+                    Foreground="{DynamicResource TextSecondaryBrush}" IsHitTestVisible="False" />
+        </Panel>
+
+        <Panel>
+          <TextBlock Classes="caption" Text="{DynamicResource metadata.empty}" HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsVisible="{Binding IsEmpty}" />
+          <ScrollViewer x:Name="Fields">
+            <ItemsControl ItemsSource="{Binding Groups}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:MetadataGroupViewModel">
+                  <StackPanel Spacing="2" Margin="0,0,0,12">
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,0,0,4">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" />
+                      <TextBlock Classes="caption" Text="{Binding Origin}" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <TextBlock Classes="caption warning" Text="{Binding Warning}" TextWrapping="Wrap"
+                               IsVisible="{Binding HasWarning}" />
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:MetadataRowViewModel">
+                          <Grid Classes="row" Classes.removed="{Binding IsRemoved}" ColumnDefinitions="170,*,60">
+                            <TextBlock Grid.Column="0" Classes="caption" Text="{Binding Label}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" Margin="0,0,12,0" ToolTip.Tip="{Binding Field.Key}" />
+                            <!-- Editable: a button that opens the box (click, Enter or Space). -->
+                            <Button Grid.Column="1" Classes="value" Classes.changed="{Binding IsChanged}" Margin="3,2"
+                                    Command="{Binding EditCommand}" AutomationProperties.Name="{Binding SpokenValue}">
+                              <Button.IsVisible>
+                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                  <Binding Path="CanEdit" />
+                                  <Binding Path="ShowsValue" />
+                                </MultiBinding>
+                              </Button.IsVisible>
+                              <TextBlock Text="{Binding ShownValue}" TextWrapping="Wrap" MaxLines="6" />
+                            </Button>
+                            <!-- Read-only: a text that can still be selected and copied. -->
+                            <SelectableTextBlock Grid.Column="1" Text="{Binding ShownValue}" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="6"
+                                                 Margin="9,4" IsVisible="{Binding !CanEdit}" AutomationProperties.Name="{Binding SpokenValue}" />
+                            <StackPanel Grid.Column="1" Spacing="2" Margin="3,2" IsVisible="{Binding IsEditing}" PropertyChanged="OnEditorPropertyChanged"
+                                        AttachedToVisualTree="OnEditorAttached">
+                              <TextBox Text="{Binding Value}" MinHeight="30" Padding="8,4" BorderBrush="{DynamicResource AccentBrush}"
+                                       AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="160" LostFocus="OnEditorLostFocus"
+                                       AutomationProperties.Name="{Binding Label}" />
+                              <TextBlock Classes="caption" Text="{DynamicResource metadata.one_per_line}" IsVisible="{Binding IsList}" />
+                            </StackPanel>
+                            <!-- Side by side: a value changed has both the arrow and ×. -->
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Spacing="2">
+                              <PathIcon Width="11" Height="11" Data="{StaticResource Meta.Lock}" Foreground="{DynamicResource TextSecondaryBrush}"
+                                        IsVisible="{Binding ShowsLock}" ToolTip.Tip="{DynamicResource metadata.read_only}" HorizontalAlignment="Center" />
+                              <Button Classes="icon remove" Padding="6" HorizontalAlignment="Center" Command="{Binding RemoveCommand}"
+                                      IsVisible="{Binding CanRemove}" ToolTip.Tip="{DynamicResource metadata.remove_field}"
+                                      AutomationProperties.Name="{Binding RemoveName}" Click="OnRemoveClick">
+                                <PathIcon Width="10" Height="10" Data="{StaticResource Icon.Close}" />
+                              </Button>
+                              <Button Classes="icon" Padding="6" HorizontalAlignment="Center" Command="{Binding UndoCommand}"
+                                      IsVisible="{Binding CanUndo}" ToolTip.Tip="{DynamicResource metadata.undo}"
+                                      AutomationProperties.Name="{Binding UndoName}" Click="OnUndoClick">
+                                <PathIcon Width="12" Height="12" Data="{StaticResource Meta.Undo}" />
+                              </Button>
+                            </StackPanel>
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <Button Classes="ghost" Padding="6,3" HorizontalAlignment="Left" Margin="164,2,0,0" IsVisible="{Binding CanAdd}"
+                            AutomationProperties.Name="{DynamicResource metadata.add_field}">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Width="11" Height="11" Data="{StaticResource Meta.Plus}" />
+                        <TextBlock Text="{DynamicResource metadata.add_field}" FontSize="12" />
+                      </StackPanel>
+                      <Button.Flyout>
+                        <MenuFlyout ItemsSource="{Binding Addable}">
+                          <MenuFlyout.ItemContainerTheme>
+                            <ControlTheme TargetType="MenuItem" BasedOn="{StaticResource {x:Type MenuItem}}" x:DataType="x:String">
+                              <Setter Property="Header" Value="{Binding Converter={x:Static vm:MetadataConverters.Label}}" />
+                              <Setter Property="Command" Value="{Binding $parent[Button].((vm:MetadataGroupViewModel)DataContext).AddCommand}" />
+                              <Setter Property="CommandParameter" Value="{Binding}" />
+                            </ControlTheme>
+                          </MenuFlyout.ItemContainerTheme>
+                        </MenuFlyout>
+                      </Button.Flyout>
+                    </Button>
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Panel>
+      </DockPanel>
+    </DockPanel>
+
+    <!-- After the last file, when a file could not be opened or saved (as in Pixelate / blur) -->
+    <Border Classes="card" IsVisible="{Binding IsFinished}" HorizontalAlignment="Center" VerticalAlignment="Center"
+            MaxWidth="540" Margin="24" Padding="26,24">
+      <StackPanel Spacing="14">
+        <c:CropSummaryRing Width="112" Height="112" HorizontalAlignment="Center"
+                           Done="{Binding DoneCount}" Skipped="{Binding SkippedCount}" Failed="{Binding FailedCount}"
+                           AccentBrush="{DynamicResource AccentBrush}" MutedBrush="{DynamicResource TextSecondaryBrush}"
+                           DangerBrush="{DynamicResource DangerBrush}" HubBrush="{DynamicResource SurfaceBrush}"
+                           Foreground="{DynamicResource TextPrimaryBrush}" />
+        <TextBlock Text="{Binding Summary}" FontWeight="SemiBold" FontSize="16" TextAlignment="Center" TextWrapping="Wrap"
+                   Foreground="{DynamicResource TextPrimaryBrush}" />
+        <Border Background="{DynamicResource SurfaceAltBrush}" CornerRadius="{DynamicResource SoftRadiusSmall}" Padding="14,10">
+          <ScrollViewer MaxHeight="220">
+            <ItemsControl ItemsSource="{Binding Problems}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <TextBlock Text="{Binding}" FontSize="12" Margin="0,2" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </ScrollViewer>
+        </Border>
+        <Button x:Name="CloseSummaryButton" Classes="accent primary" HorizontalAlignment="Center" MinWidth="120"
+                HorizontalContentAlignment="Center" Content="{DynamicResource common.close}" Command="{Binding CloseCommand}" />
+      </StackPanel>
+    </Border>
+  </Panel>
+</Window>

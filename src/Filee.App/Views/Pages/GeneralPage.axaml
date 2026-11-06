@@ -148,8 +148,10 @@
       <DockPanel>
         <Button DockPanel.Dock="Right" Content="{DynamicResource general.open_data_folder}" Command="{Binding OpenDataFolderCommand}" />
         <StackPanel VerticalAlignment="Center">
-          <TextBlock Classes="label" Text="{DynamicResource general.data_folder}" />
+          <TextBlock Classes="h2" Margin="0,0,0,6" Text="{DynamicResource general.data_folder}" />
           <TextBlock Text="{Binding DataFolder}" TextTrimming="CharacterEllipsis" />
+          <!-- What is in this folder and what to open it for. -->
+          <TextBlock Classes="muted" TextWrapping="Wrap" Margin="0,4,0,0" Text="{DynamicResource general.data_folder_hint}" />
         </StackPanel>
       </DockPanel>
     </Border>
