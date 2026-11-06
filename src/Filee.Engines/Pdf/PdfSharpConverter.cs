@@ -51,12 +51,28 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         Task.Run(() =>
         {
             using var output = new PdfDocument();
+            // The same file listed twice (a path that reached the list twice, e.g. with different spelling) is merged
+            // once: its pages must not follow themselves in the result (#1115).
+            var merged = new HashSet<string>(Filee.Core.Platform.FileSystemPaths.Comparer);
             foreach (var input in inputPaths)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+                string key;
+                try { key = Path.GetFullPath(input); }
+                catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { key = input; }
+                if (!merged.Add(key))
+                    continue;
                 using var source = Open(input, PdfDocumentOpenMode.Import);
-                foreach (var page in source.Pages)
+                // A page object a source's page tree reaches twice is taken once, so no page of a file repeats (#1115).
+                var taken = new HashSet<int>();
+                for (var i = 0; i < source.PageCount; i++)
+                {
+                    var page = source.Pages[i];
+                    var id = page.Reference?.ObjectNumber ?? 0;
+                    if (id != 0 && !taken.Add(id))
+                        continue;
                     output.AddPage(page);
+                }
             }
             output.Save(outputPath);
         }, cancellationToken);

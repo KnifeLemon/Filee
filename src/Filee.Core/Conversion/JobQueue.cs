@@ -286,7 +286,18 @@ public sealed partial class JobQueue : IAsyncDisposable
                 parts[i] = produced.FirstOrDefault();
             });
 
-        var inputs = parts.OfType<string>().ToList();
+        // A file that reached the job twice (the same path, or a source that two entries stand for) gives its pages once:
+        // merged twice, a 16-page result would hold its pages again as 17-32 (#1115).
+        var inputs = new List<string>();
+        var seen = new HashSet<string>(Platform.FileSystemPaths.Comparer);
+        foreach (var part in parts.OfType<string>())
+        {
+            string key;
+            try { key = Path.GetFullPath(part); }
+            catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException) { key = part; }
+            if (seen.Add(key))
+                inputs.Add(part);
+        }
         if (inputs.Count == 0 || job.CancellationToken.IsCancellationRequested)
             return;
 
