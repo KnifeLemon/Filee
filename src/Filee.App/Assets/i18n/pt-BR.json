@@ -622,6 +622,7 @@
   "update.more_changes": "… e mais {0}",
   "general.data_folder": "Pasta de configurações",
   "general.open_data_folder": "Abrir",
+  "general.data_folder_hint": "O Filee guarda aqui as configurações, as predefinições, os menus, o histórico de conversões e os arquivos de log. Abra a pasta para fazer um backup ou consultar um log.",
   "general.library": "Predefinições e menus",
   "general.export": "Exportar…",
   "general.import": "Importar…",
