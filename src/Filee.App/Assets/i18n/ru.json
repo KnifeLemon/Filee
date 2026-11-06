@@ -720,6 +720,7 @@
   "toolbar.size": "Размер",
   "toolbar.hole": "Отверстие",
   "toolbar.opacity": "Непрозрачность",
+  "toolbar.captions": "Показывать формат результата",
   "toolbar.new_preset": "Новый пресет",
   "toolbar.new_group": "Новая группа",
   "toolbar.face_front": "Лицевая",
