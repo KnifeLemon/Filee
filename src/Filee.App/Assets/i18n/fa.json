@@ -1,6 +1,7 @@
 {
   "app.name": "Filee",
   "app.tagline": "بکشید، رها کنید، تبدیل شد.",
+
   "fields.title": "حوزه‌ها",
   "fields.description": "حوزه‌هایی که در آن‌ها فعالیت ندارید را خاموش کنید. فرمتی که فقط به حوزه‌های خاموش تعلق دارد، از بخش‌های دونات، «پیش‌تنظیم‌های موجود» در تنظیمات ← نوار ابزار دونات، لیست تنظیمات ← پیش‌تنظیم‌ها و لیست «تبدیل به» در ویرایشگر پیش‌تنظیم کنار گذاشته می‌شود. Filee همچنان فایل‌های آن را شناسایی کرده و خط فرمان نیز به آن تبدیل می‌کند، و فایلی که رها می‌کنید همچنان فرمت‌های حوزه‌های خود را ارائه می‌دهد.",
   "fields.formats": "فرمت‌ها: {0}",
@@ -17,6 +18,7 @@
   "fields.name.video-pro": "تولید ویدیو و پخش",
   "fields.name.audio-pro": "صدای حرفه‌ای",
   "fields.name.legacy": "فرمت‌های قدیمی",
+
   "nav.home": "خانه",
   "nav.general": "عمومی",
   "nav.triggers": "میانبرها",
@@ -29,6 +31,7 @@
   "nav.about": "درباره",
   "nav.collapse": "جمع کردن نوار کناری",
   "nav.expand": "باز کردن نوار کناری",
+
   "tray.open": "باز کردن Filee",
   "tray.pause": "توقف موقت میانبرها",
   "tray.resume": "ادامه میانبرها",
@@ -40,6 +43,7 @@
   "close.tray": "ماندن در سینی سیستم",
   "close.quit": "خروج",
   "close.dont_ask": "دیگر پرسیده نشود",
+
   "home.title": "خانه",
   "home.drop_title": "فایل‌ها را اینجا رها کنید",
   "home.drop_select": "برای انتخاب فایل‌ها دوبار کلیک کنید",
@@ -68,6 +72,7 @@
   "home.undone": "واگرد شد: نتایج در سطل زباله هستند",
   "home.undone_original": "واگرد شد: نتایج در سطل زباله هستند و فایل‌های اصلی جایگزین‌شده نیز همین‌طور",
   "home.undo_failed": "امکان انتقال {0} به سطل زباله نبود: {1}",
+
   "donut.center_drag": "فایل‌ها را به اینجا بیاورید",
   "donut.files_same": "{0} × {1}",
   "donut.files_mixed": "{0} فایل",
@@ -83,6 +88,7 @@
   "donut.group_caption": "گروه {0}",
   "donut.flip_to_back": "{0} پشت",
   "donut.flip_to_front": "{0} جلو",
+
   "toast.converting": "{0} ← {1}",
   "toast.done": "انجام شد",
   "toast.done_errors": "{0} از {1} ناموفق بود",
@@ -95,6 +101,7 @@
   "toast.get_fonts": "دریافت فونت‌ها",
   "download.badge": "{0}/ثانیه · {1}",
   "download.badge_files": "{0} · {1} از {2} فایل",
+
   "error.unsupported_source": "این نوع فایل پشتیبانی نمی‌شود",
   "error.empty_file": "فایل خالی است (۰ بایت). فایلی که با گزینه «جدید» در منوی راست‌کلیک ساخته شده تا زمانی که در برنامه مربوطه باز و ذخیره نشود خالی می‌ماند",
   "error.p7m_unreadable": "این فایل .p7m امضاشده‌ای نیست که Filee بتواند باز کند، یا فایل آسیب دیده است",
@@ -190,6 +197,7 @@
   "notice.geo_field_names": "نام فیلدهای Shapefile حداکثر ۱۰ کاراکتر است: برخی نام‌ها کوتاه شدند",
   "notice.geo_shapefile_split": "یک فایل Shapefile تنها یک نوع شکل هندسی را نگه می‌دارد، بنابراین نقاط، خطوط و چندضلعی‌ها در فایل‌های جداگانه ذخیره شدند",
   "notice.geo_heights_dropped": "برخی نقاط ارتفاع ندارند و در Shapefile نمی‌توان ارتفاع را خالی گذاشت، بنابراین تمام مقادیر ارتفاع حذف شدند",
+
   "engine.reason.not_installed": "نصب نشده است",
   "engine.reason.error": "خطا در بررسی",
   "engine.reason.unsupported_platform": "روی این پلتفرم در دسترس نیست",
@@ -252,6 +260,7 @@
   "engine.calibre.description": "کتاب‌های الکترونیکی را تبدیل و ایجاد می‌کند، جلد و فراداده را تنظیم می‌کند و با فرمت‌های MOBI و AZW3 کار می‌نماید.",
   "engine.libreoffice.description": "اسناد Word، Excel، PowerPoint، Visio، OpenDocument، WordPerfect و HWP را با استفاده از LibreOffice رندر و تبدیل می‌کند.",
   "engine.translator.description": "اسناد، کتاب‌های الکترونیکی و زیرنویس‌ها را به زبان‌های دیگر ترجمه می‌کند. کاملاً آفلاین و روی رایانه شما اجرا می‌شود.",
+
   "profile.images": "تصاویر",
   "profile.pdf": "PDF",
   "profile.office": "اسناد اداری",
@@ -271,6 +280,7 @@
   "profile.models": "مدل‌های سه‌بعدی",
   "profile.geo": "داده‌های مکانی",
   "profile.mixed": "فایل‌های ترکیبی",
+
   "preset.crop": "برش",
   "crop.save": "برش و ذخیره",
   "crop.reset": "بازنشانی",
@@ -397,6 +407,7 @@
   "clip.silence_removed": "سکوت حذف شد: {0}",
   "clip.no_silence": "هیچ سکوتی پیدا نشد",
   "clip.cannot_play": "کلیپ قابل پخش نیست",
+
   "preset.half_size": "نصف اندازه",
   "preset.half_size.donut": "نصف اندازه",
   "preset.image_edit": "ویرایش تصاویر",
@@ -511,6 +522,7 @@
   "preset.merge_audio": "ادغام صداها",
   "preset.merge_images": "ادغام تصاویر",
   "preset.remove_metadata": "حذف متادیتا",
+
   "format.folder": "پوشه",
   "format.category.Image": "تصویر",
   "format.category.Pdf": "PDF",
@@ -530,6 +542,7 @@
   "format.category.Data": "داده",
   "format.category.Model3D": "مدل سه‌بعدی",
   "format.category.Geo": "داده‌های مکانی",
+
   "general.title": "عمومی",
   "general.language": "زبان",
   "general.language_auto": "پیش‌فرض سیستم",
@@ -613,8 +626,13 @@
   "general.export": "برون‌بری…",
   "general.import": "درون‌ریزی…",
   "general.reset_library": "بازنشانی به حالت پیش‌فرض",
+  "general.export_hint": "پیش‌تنظیم‌ها و نوار ابزارهای خود را برای پشتیبان‌گیری یا اشتراک‌گذاری در یک فایل ذخیره کنید.",
+  "general.import_hint": "پیش‌تنظیم‌ها و نوار ابزارها را از یک فایل اضافه کنید. نسخه‌هایی که از قبل دارید جایگزین می‌شوند.",
+  "general.reset_hint": "همه پیش‌تنظیم‌ها و نوار ابزارهای خود را با نسخه‌های داخلی جایگزین کنید.",
+  "general.library_note": "سایر تنظیمات شما تغییر نمی‌کنند.",
   "general.reset_confirm": "همه پیش‌تنظیم‌ها و نمایه‌های نوار ابزار با مقادیر پیش‌فرض جایگزین شوند؟",
   "general.imported": "{0} مورد درون‌ریزی شد",
+
   "triggers.title": "میانبرها",
   "triggers.description": "نحوه باز شدن نوار ابزار دونات را انتخاب کنید. می‌توانید هر تعداد ژست که می‌خواهید اضافه نمایید.",
   "triggers.macos_permissions": "به Filee در تنظیمات سیستم > حریم خصوصی و امنیت > قابلیت دسترسی (Accessibility) اجازه دهید.\nاگر Filee از قبل روشن است اما ژست‌ها شروع نمی‌شوند، آن را با − حذف کرده و دوباره با + اضافه کنید.\nFinder همچنین اولین باری که از میانبر انتخاب استفاده می‌کنید مجوز اتوماسیون درخواست می‌کند.",
@@ -672,6 +690,7 @@
   "triggers.excluded_none_running": "هیچ برنامه دیگری پنجره باز ندارد.",
   "triggers.excluded_note": "در حالی که اشاره‌گر روی این برنامه‌ها است، ژست‌ها و میانبرها هیچ کاری انجام نمی‌دهند.",
   "triggers.paused": "میانبرها موقتاً متوقف شده‌اند",
+
   "toolbar.title": "نوار ابزار دونات",
   "toolbar.step_profile": "۱. انتخاب نمایه",
   "toolbar.step_arrange": "۲. چیدمان پیش‌تنظیم‌ها",
@@ -739,17 +758,18 @@
   "toolbar.mixed_covered": "«{0}» در رتبه اول است و تمام پسوندهای علامت‌خورده در اینجا را شامل می‌شود، بنابراین این نمایه هرگز استفاده نخواهد شد.",
   "toolbar.mixed_others": "سایر ترکیب‌های فایلی «{0}» را باز می‌کنند.",
   "toolbar.mixed_others_self": "هیچ نمایه ترکیبی بدون علامت باقی نمانده است، بنابراین این نمایه برای هر ترکیب دیگری نیز استفاده می‌شود.",
-  "toolbar.chip_tip.makes": "← {0} · {1}",
-  "toolbar.chip_tip.makes_same": "← همان فرمت",
-  "toolbar.chip_tip.makes_name": "← {0}",
-  "toolbar.chip_tip.works_with": "فرمت‌های پذیرفته‌شده: {0}",
-  "toolbar.chip_tip.kind": "{0} ({1})",
-  "toolbar.chip_tip.name_separator": "، ",
-  "toolbar.chip_tip.names_more": "{0} +{1}",
-  "toolbar.chip_tip.more_shift": "+{0} مورد دیگر · Shift برای نمایش همه",
-  "toolbar.chip_tip.shift_all": "Shift برای نمایش همه",
-  "toolbar.chip_tip.any_file": "هر فایلی",
-  "tags.remove": "حذف",
+   "toolbar.chip_tip.makes": "← {0} · {1}",
+   "toolbar.chip_tip.makes_same": "← همان فرمت",
+   "toolbar.chip_tip.makes_name": "← {0}",
+   "toolbar.chip_tip.works_with": "فرمت‌های پذیرفته‌شده: {0}",
+   "toolbar.chip_tip.kind": "{0} ({1})",
+   "toolbar.chip_tip.name_separator": "، ",
+   "toolbar.chip_tip.names_more": "{0} +{1}",
+   "toolbar.chip_tip.more_shift": "+{0} مورد دیگر · Shift برای نمایش همه",
+   "toolbar.chip_tip.shift_all": "Shift برای نمایش همه",
+   "toolbar.chip_tip.any_file": "هر فایلی",
+   "tags.remove": "حذف",
+
   "presets.title": "پیش‌تنظیم‌ها",
   "presets.add": "جدید",
   "presets.add_empty": "پیش‌تنظیم خالی",
@@ -1073,6 +1093,7 @@
   "presets.delete_confirm": "پیش‌تنظیم «{0}» حذف شود؟ این پیش‌تنظیم همچنین از تمام نوارهای ابزار و گروه‌ها حذف خواهد شد.",
   "presets.name_required": "یک نام وارد کنید",
   "presets.select": "برای ویرایش یک پیش‌تنظیم، آن را انتخاب کنید",
+
   "theme.title": "پوسته",
   "theme.style": "سبک پوسته",
   "theme.style.Soft": "Filee Soft",
@@ -1109,6 +1130,7 @@
   "theme.preview": "پیش‌نمایش",
   "theme.preview_toggle": "کلید نمونه (فقط پیش‌نمایش، تنظیم نیست)",
   "theme.preview_toggle_hint": "نحوه نمایش کلیدها را در این پوسته نشان می‌دهد. هیچ تنظیمی را تغییر نمی‌دهد.",
+
   "engines.title": "موتورها",
   "engines.description": "Filee بهترین موتور موجود را برای هر تبدیل انتخاب می‌کند.\nهنگامی که چند موتور بتوانند یک کار را انجام دهند، موتوری که در ردیف بالاتری قرار دارد اولویت دارد.",
   "engines.available": "آماده",
@@ -1185,6 +1207,7 @@
   "engines.state.unpacking": "در حال نصب…",
   "engines.state.installed": "نصب شد",
   "engines.state.failed": "ناموفق: {0}",
+
   "about.title": "درباره",
   "about.updates": "به‌روزرسانی‌ها",
   "common.search": "جستجو",
@@ -1209,6 +1232,7 @@
   "feedback.notice_text": "ثبت ستاره در گیت‌هاب به دیگران کمک می‌کند Filee را پیدا کنند.\nمشکلات و ایده‌ها نیز با استقبال پذیرفته می‌شوند.",
   "feedback.star": "ستاره در گیت‌هاب",
   "feedback.issue": "گزارش مشکل یا ایده",
+
   "common.ok": "تأیید",
   "common.cancel": "لغو",
   "common.save": "ذخیره",
@@ -1218,6 +1242,7 @@
   "common.no": "خیر",
   "common.on": "روشن",
   "common.off": "خاموش",
+
   "setup.title": "انتخاب موتورهای تبدیل",
   "setup.description": "تصاویر، PDF، اسناد اداری، HWP، کتاب‌های الکترونیکی، آرشیوها، فونت‌ها، فایل‌های CAD و مدل‌های سه‌بعدی هم‌اکنون تبدیل می‌شوند.\nموتورها را فقط برای ویدیو، صدا یا فرمت‌های نادر دانلود کنید.",
   "setup.note": "می‌توانید موتورها را هر زمان در تنظیمات ← موتورها نصب یا حذف کنید.",
@@ -1384,6 +1409,7 @@
   "watch.status_starting": "در حال شروع…",
   "watch.status_error": "امکان نظارت بر این پوشه وجود ندارد: {0}",
   "watch.cli_hint": "همچنین از طریق خط فرمان: filee watch <folder> --to <format>",
+
   "preset.sheet_studio": "PDF + ویرایش",
   "sheet_studio.title": "استودیوی چاپ صفحه‌گسترده",
   "sheet_studio.sheets": "برگه‌ها و ترتیب خروجی",
@@ -1423,6 +1449,7 @@
   "sheet_studio.apply_fix": "اعمال چیدمان پیشنهادی",
   "sheet_studio.add_region": "+ افزودن ناحیه دیگر",
   "sheet_studio.region_name": "{0} · ناحیه {1}",
+
   "whats_new.title": "چه چیزهایی در Filee {0} جدید است",
   "whats_new.previous": "قبلی",
   "whats_new.next": "بعدی",
