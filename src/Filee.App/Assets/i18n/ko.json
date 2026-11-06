@@ -622,6 +622,7 @@
   "update.more_changes": "… 외 {0}개",
   "general.data_folder": "설정 폴더",
   "general.open_data_folder": "열기",
+  "general.data_folder_hint": "설정, 프리셋, 툴바, 변환 기록, 로그 파일이 여기에 저장돼요. 백업하거나 로그를 확인할 때 여세요.",
   "general.library": "프리셋과 툴바",
   "general.export": "내보내기…",
   "general.import": "가져오기…",
