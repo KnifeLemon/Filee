@@ -81,8 +81,9 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // FITS → TIFF keeps the file's depth (16 or 32 bits), which the Q8 build can't: Filee writes it.
             if (step.From == "fits" && step.To == "tiff")
                 return FitsRendering.WriteTiff(step, progress, cancellationToken);
-            // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP.
-            var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : step.From;
+            // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
+            // animation only when it is an image sequence.
+            var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);
             using var images = ImageReader.Read(step.InputPath, from, step.Preset);
             return Write(images, from, step, progress, cancellationToken);
         }, cancellationToken);

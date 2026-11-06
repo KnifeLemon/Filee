@@ -42,10 +42,11 @@ internal static class ImageEncoder
     private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng"];
 
     /// <summary>
-    /// Formats whose frames are an animation. Between these, all frames are kept with their timing (an animated GIF
-    /// becomes an animated WebP or JPEG XL and the other way round); any other target gets the first frame.
+    /// Formats whose frames are an animation; an AVIF only when it is an image sequence (<see cref="AvifSequence"/>).
+    /// Between these, all frames are kept with their timing (an animated GIF becomes an animated WebP, JPEG XL or AVIF
+    /// and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl"];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", AvifSequence.Format];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
@@ -61,7 +62,7 @@ internal static class ImageEncoder
 
     /// <summary>True when frames of <paramref name="sourceFormat"/> are written as one animation in <paramref name="targetFormat"/>.</summary>
     public static bool KeepsAnimation(string sourceFormat, string targetFormat) =>
-        Animated.Contains(sourceFormat) && Animated.Contains(targetFormat);
+        Animated.Contains(sourceFormat) && (targetFormat == "avif" || Animated.Contains(targetFormat));
 
     /// <summary>
     /// Formats written without an alpha channel: transparent pixels are flattened onto the background colour. HEIC
@@ -157,8 +158,8 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL): every frame for an animated or TIFF
-    /// target, else the first frame.
+    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF): every frame for an animated or
+    /// TIFF target, else the first frame.
     /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
     public static List<IMagickImage<byte>> SelectFrames(MagickImageCollection images, string sourceFormat, string targetFormat)
@@ -450,7 +451,10 @@ internal static class ImageEncoder
     /// </summary>
     /// <param name="options">Options of the preset (the Netpbm sub-format depends on them).</param>
     /// <param name="sourcePath">Input file of the step, see <see cref="OutputFormat"/>.</param>
-    /// <param name="animation">The frames are an animation: write them into one file even for a WebP target.</param>
+    /// <param name="animation">
+    /// The frames are an animation: write them into one file even for a WebP or AVIF target (ImageMagick writes several
+    /// frames as an AVIF image sequence, whose first frame is also the still picture for viewers that don't play it).
+    /// </param>
     public static List<string> Write(IReadOnlyList<IMagickImage<byte>> frames, string targetFormat, IOutputAllocator output,
         ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {
@@ -476,6 +480,8 @@ internal static class ImageEncoder
             using var collection = new MagickImageCollection();
             foreach (var frame in frames)
                 collection.Add(frame.Clone());
+            if (targetFormat == "avif")
+                MatchAlpha(collection);
             collection.Write(path, format);
             written.Add(path);
             return written;
@@ -493,6 +499,19 @@ internal static class ImageEncoder
             written.Add(path);
         }
         return written;
+    }
+
+    /// <summary>
+    /// Gives the frames of an AVIF sequence one kind of alpha. The sequence has one alpha track, and ImageMagick stores a
+    /// frame without an alpha channel as fully transparent in it: an opaque first frame of a GIF that turns transparent
+    /// later would vanish. So every frame gets the channel when any of them is transparent, and none when all are opaque
+    /// (an APNG's frames all have one), which saves the track.
+    /// </summary>
+    private static void MatchAlpha(IEnumerable<IMagickImage<byte>> frames)
+    {
+        var action = frames.All(frame => frame.IsOpaque) ? AlphaAction.Off : AlphaAction.Set;
+        foreach (var frame in frames)
+            frame.Alpha(action);
     }
 
     /// <summary>A fitted picture is never made smaller than this long edge (nor than its own): below it, it's a thumbnail.</summary>

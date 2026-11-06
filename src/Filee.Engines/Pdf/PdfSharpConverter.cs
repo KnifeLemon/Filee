@@ -67,7 +67,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         var options = step.Preset.Image;
         var pdfOptions = step.Preset.Pdf;
         using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
-        var frames = ImageEncoder.SelectFrames(images, step.From, "pdf");
+        var frames = ImageEncoder.SelectFrames(images, AvifSequence.SourceFormat(step.From, step.InputPath), "pdf");
 
         using var document = new PdfDocument();
         for (var i = 0; i < frames.Count; i++)
