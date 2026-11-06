@@ -622,6 +622,7 @@
   "update.more_changes": "… 另外 {0} 項",
   "general.data_folder": "設定資料夾",
   "general.open_data_folder": "開啟",
+  "general.data_folder_hint": "Filee 把設定、預設、工具列、轉換記錄和記錄檔存放在這裡。可開啟來備份或查看記錄。",
   "general.library": "預設與工具列",
   "general.export": "匯出…",
   "general.import": "匯入…",
