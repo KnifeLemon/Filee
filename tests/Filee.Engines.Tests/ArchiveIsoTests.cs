@@ -4,6 +4,7 @@ using System.IO.Compression;
 using DiscUtils.Iso9660;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
 using static Filee.Engines.Tests.ArchiveBuilders;
@@ -16,6 +17,30 @@ public sealed class ArchiveIsoTests : IDisposable
     public void Dispose() => Directory.Delete(_root, true);
 
     public static IEnumerable<object[]> ReadableFormats() => ArchiveExtractor.ReadableFormats.Select(f => new object[] { f });
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Archive_to_iso_keeps_the_source_archives_mark_of_the_web(bool marked)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
+        var input = Path.Combine(_root, "download.zip");
+        using (var zip = ZipFile.Open(input, ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(zip.CreateEntry("nested/setup.exe").Open()))
+            writer.Write("downloaded contents");
+        var mark = MarkOfTheWeb.Internet(new Uri("https://example.com/download.zip"));
+        var probe = Path.Combine(_root, "probe.txt");
+        File.WriteAllText(probe, "probe");
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(probe, mark), "The temp drive holds no NTFS streams.");
+        if (marked) Assert.True(MarkOfTheWeb.TryWrite(input, mark));
+
+        var job = await Run(input);
+
+        Assert.True(job.State == JobState.Completed, job.Files[0].ErrorDetail);
+        Assert.Equal(marked ? mark : null, MarkOfTheWeb.Read(Assert.Single(job.Outputs)));
+        Assert.Equal(marked ? mark : null, MarkOfTheWeb.Read(input));
+    }
 
     [Theory]
     [MemberData(nameof(ReadableFormats))]

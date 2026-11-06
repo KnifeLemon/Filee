@@ -161,7 +161,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         var mainFiles = CompanionFiles.WithoutCompanions(files.Where(p => !folders.Contains(p)).ToList()).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
         var counted = files.Where(p => folders.Contains(p) || mainFiles.Contains(p)).ToList();
         var foldersOnly = counted.Count > 0 && counted.All(folders.Contains);
-        var profile = foldersOnly ? store.Profiles.FirstOrDefault(p => p.Id == "folders") : ProfileSelector.Select(store.Profiles, counted);
+        var profile = (foldersOnly ? store.Profiles.FirstOrDefault(p => p.Id == "folders") : null)
+            ?? ProfileSelector.Select(store.Profiles, counted);
         var formats = ProfileSelector.DetectFormats(counted.Where(p => !folders.Contains(p))).ToList();
         if (folders.Count > 0)
             formats.Add(FormatRegistry.FindById(FormatRegistry.Folder)!);

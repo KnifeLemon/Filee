@@ -41,6 +41,28 @@ public sealed class CliTests : IDisposable
         Assert.True(File.Exists(Path.Combine(folder, "input.txt")));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Drive_root_to_iso_is_refused_clearly_without_writing_an_image(bool json)
+    {
+        var output = Path.Combine(_folder, "root-output");
+        var args = new List<string> { "convert", Path.GetPathRoot(_folder)!, "--to", "iso", "--output", output };
+        if (json) args.AddRange(["--json", "--quiet"]);
+
+        var result = await Run(args.ToArray());
+
+        Assert.Equal(1, result.Code);
+        Assert.Contains("Select a folder inside", result.Output + result.Errors);
+        Assert.False(Directory.Exists(output));
+        if (json)
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            Assert.Equal(1, document.RootElement.GetProperty("failed").GetInt32());
+            Assert.Equal(0, document.RootElement.GetProperty("converted").GetInt32());
+        }
+    }
+
     [Fact]
     public async Task Zip_to_iso_converts_archive_contents_without_manual_extraction()
     {

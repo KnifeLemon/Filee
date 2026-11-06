@@ -20,6 +20,43 @@ namespace Filee.App.Tests;
 
 public class FolderIso632Tests
 {
+    [AvaloniaTheory]
+    [InlineData("documents", false)]
+    [InlineData("documents", true)]
+    [InlineData("photos.jpg", false)]
+    [InlineData("photos.jpg", true)]
+    public void A_deleted_folders_profile_falls_back_to_normal_profile_selection(string folderName, bool clickMode)
+    {
+        TestServices.EnsureInitialized("en");
+        var root = Directory.CreateTempSubdirectory("filee-deleted-folder-profile-").FullName;
+        try
+        {
+            var folder = Directory.CreateDirectory(Path.Combine(root, folderName)).FullName;
+            var store = new UserDataStore(Path.Combine(root, "settings"));
+            store.Load();
+            store.Settings.TurnedOffFields.Clear();
+            store.Profiles.Remove(store.Profiles.Single(p => p.Id == "folders"));
+            store.Profiles.Single(p => p.Id == "mixed").PresetIds = ["to-iso", "zip-all"];
+            store.Profiles.Single(p => p.Id == "images").PresetIds = ["to-jpg", "to-iso"];
+            store.SaveLibrary();
+            var reloaded = new UserDataStore(Path.Combine(root, "settings"));
+            reloaded.Load();
+            Assert.DoesNotContain(reloaded.Profiles, p => p.Id == "folders");
+            var expected = Filee.Core.Profiles.ProfileSelector.Select(reloaded.Profiles, [folder]);
+            Assert.NotNull(expected);
+            var vm = new RadialViewModel(reloaded, AppHost.Get<ILocalizer>(), AppHost.Get<PresetAvailability>());
+
+            vm.Load([folder], clickMode);
+
+            Assert.NotEmpty(vm.Items);
+            Assert.Equal(expected.PresetIds, vm.Items.Select(i => i.Id));
+            Assert.True(Assert.Single(vm.Items, i => i.Id == "to-iso").IsEnabled);
+            Assert.Equal(clickMode, vm.IsClickMode);
+            Assert.Equal([folder], vm.Files);
+        }
+        finally { Directory.Delete(root, true); }
+    }
+
     [AvaloniaFact]
     public void Archives_offers_usable_iso_for_manual_placement_without_changing_the_default_donut()
     {

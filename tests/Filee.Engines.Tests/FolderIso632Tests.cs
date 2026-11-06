@@ -3,6 +3,7 @@
 using DiscUtils.Iso9660;
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Filee.Engines.Archives;
 
@@ -22,6 +23,42 @@ public sealed class FolderIso632Tests : IDisposable
         var job = new ConversionJob([source], preset, "ISO", folderSources: new HashSet<string> { source });
         await queue.RunAsync(job);
         return job;
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_drive_root_is_refused_before_output_allocation_or_enumeration(bool relativeSegment)
+    {
+        var root = Path.GetPathRoot(_root)!;
+        var input = relativeSegment ? Path.Combine(root, ".") : root;
+        var output = new UnexpectedAllocation();
+        var step = new ConversionStep(input, FormatRegistry.Folder, "iso", new Preset { TargetFormat = "iso" }, output, _root);
+
+        var error = await Assert.ThrowsAsync<NotSupportedException>(() => new FolderIsoConverter().ConvertAsync(step, null, TestContext.Current.CancellationToken));
+
+        Assert.Contains("Select a folder inside", error.Message);
+        Assert.False(output.Called);
+        Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
+    }
+
+    [Theory]
+    [InlineData(OutputLocation.SameFolder, false)]
+    [InlineData(OutputLocation.CustomFolder, false)]
+    [InlineData(OutputLocation.SameFolder, true)]
+    [InlineData(OutputLocation.CustomFolder, true)]
+    public async Task A_drive_root_fails_clearly_through_the_queue_without_writing_output(OutputLocation location, bool zipResult)
+    {
+        var root = Path.GetPathRoot(_root)!;
+        var destination = Path.Combine(_root, "output");
+        var job = await Run(root, new OutputRule { Location = location, CustomFolder = destination, ZipResult = zipResult });
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Equal(FileState.Failed, Assert.Single(job.Files).State);
+        Assert.Contains("Select a folder inside", job.Files[0].ErrorDetail);
+        Assert.Empty(job.Outputs);
+        Assert.False(Directory.Exists(destination));
+        Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
     }
 
     [Theory]
@@ -133,6 +170,72 @@ public sealed class FolderIso632Tests : IDisposable
         Assert.InRange(Math.Abs((iso.GetLastWriteTimeUtc(name) - modified).TotalSeconds), 0, 2);
     }
 
+    [Theory]
+    [InlineData("root")]
+    [InlineData("nested")]
+    [InlineData("none")]
+    [InlineData("excluded-output")]
+    public async Task Iso_is_marked_only_when_an_included_file_has_the_mark_of_the_web(string markedEntry)
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        var probe = Path.Combine(_root, "probe.txt");
+        File.WriteAllText(probe, "probe");
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(probe, MarkOfTheWeb.Internet()), "The temp drive holds no NTFS streams.");
+        var folder = Folder();
+        var rootFile = Path.Combine(folder, "plain.txt");
+        var nested = Directory.CreateDirectory(Path.Combine(folder, "nested", "downloads")).FullName;
+        var nestedFile = Path.Combine(nested, "setup.exe");
+        File.WriteAllText(rootFile, "local contents");
+        File.WriteAllText(nestedFile, "downloaded contents");
+        var output = Path.Combine(folder, Path.GetFileName(folder) + ".iso");
+        File.WriteAllText(output, "previous image");
+        var source = markedEntry switch { "root" => rootFile, "nested" => nestedFile, "excluded-output" => output, _ => null };
+        if (source is not null) Assert.True(MarkOfTheWeb.TryWrite(source, MarkOfTheWeb.Internet()));
+
+        var job = await Run(folder, new OutputRule { Location = OutputLocation.CustomFolder, CustomFolder = folder, Conflict = ConflictPolicy.Overwrite });
+
+        Assert.True(job.State == JobState.Completed, job.Files[0].ErrorDetail);
+        Assert.Equal(output, Assert.Single(job.Outputs));
+        Assert.Equal(markedEntry is "root" or "nested" ? MarkOfTheWeb.Internet() : null, MarkOfTheWeb.Read(output));
+        using var stream = File.OpenRead(output);
+        using var iso = new CDReader(stream, true);
+        Assert.True(iso.FileExists("nested\\downloads\\setup.exe"));
+        Assert.False(iso.FileExists(Path.GetFileName(output)));
+        if (source is not null && source != output) Assert.Equal(MarkOfTheWeb.Internet(), MarkOfTheWeb.Read(source));
+    }
+
+    [Theory]
+    [InlineData("1800-06-15T12:34:56Z", "1900-01-01T00:00:00Z")]
+    [InlineData("1900-01-01T00:00:00Z", "1900-01-01T00:00:00Z")]
+    [InlineData("2020-06-15T12:34:56Z", "2020-06-15T12:34:56Z")]
+    [InlineData("2155-12-31T23:59:59Z", "2155-12-31T23:59:59Z")]
+    [InlineData("2156-01-01T00:00:00Z", "2155-12-31T23:59:59Z")]
+    [InlineData("2200-06-15T12:34:56Z", "2155-12-31T23:59:59Z")]
+    public async Task File_and_directory_dates_are_clamped_to_the_iso_range(string sourceDate, string imageDate)
+    {
+        var modified = DateTime.Parse(sourceDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
+        var expected = DateTime.Parse(imageDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
+        var folder = Folder();
+        var source = Path.Combine(folder, "file.txt");
+        var directory = Path.Combine(folder, "empty");
+        File.WriteAllText(source, "date boundary");
+        Directory.CreateDirectory(directory);
+        File.SetLastWriteTimeUtc(source, modified);
+        Directory.SetLastWriteTimeUtc(directory, modified);
+
+        var job = await Run(folder);
+
+        Assert.True(job.State == JobState.Completed, job.Files[0].ErrorDetail);
+        using var stream = File.OpenRead(Assert.Single(job.Outputs));
+        using var iso = new CDReader(stream, true);
+        Assert.Equal(expected, iso.GetLastWriteTimeUtc("file.txt"));
+        Assert.Equal(expected, iso.GetLastWriteTimeUtc("empty"));
+        using var reader = new StreamReader(iso.OpenFile("file.txt", FileMode.Open));
+        Assert.Equal("date boundary", reader.ReadToEnd());
+        Assert.Equal(modified, File.GetLastWriteTimeUtc(source));
+        Assert.Equal(modified, Directory.GetLastWriteTimeUtc(directory));
+    }
+
     [Fact]
     public async Task Generated_image_is_readable_by_the_independent_7zip_engine()
     {
@@ -213,6 +316,33 @@ public sealed class FolderIso632Tests : IDisposable
         Assert.False(File.Exists(folder + ".iso"));
     }
 
+    [Theory]
+    [InlineData(true, 0)]
+    [InlineData(false, 0)]
+    [InlineData(true, 1024 * 1024)]
+    [InlineData(false, 1024 * 1024)]
+    public async Task A_source_shrinking_during_writing_fails_without_publishing_an_incomplete_image(bool existingDestination, int remainingBytes)
+    {
+        var folder = Folder();
+        File.WriteAllBytes(Path.Combine(folder, "a.bin"), new byte[2 * 1024 * 1024]);
+        var changing = Path.Combine(folder, "z.bin");
+        File.WriteAllBytes(changing, new byte[2 * 1024 * 1024]);
+        var output = folder + ".iso";
+        if (existingDestination) File.WriteAllText(output, "previous image");
+        var step = new ConversionStep(folder, FormatRegistry.Folder, "iso", new Preset { TargetFormat = "iso" }, new FixedOutput(output), _root);
+        var progress = new ShrinkProgress(changing, remainingBytes);
+
+        var error = await Assert.ThrowsAsync<IOException>(() => new FolderIsoConverter().ConvertAsync(step, progress, TestContext.Current.CancellationToken));
+
+        Assert.Contains("source file may have changed", error.Message);
+        Assert.True(progress.Shrank);
+        Assert.Equal(remainingBytes, new FileInfo(changing).Length);
+        Assert.DoesNotContain(1d, progress.Values);
+        if (existingDestination) Assert.Equal("previous image", File.ReadAllText(output));
+        else Assert.False(File.Exists(output));
+        Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
+    }
+
     [Fact]
     public async Task Cancellation_during_streaming_keeps_the_original_destination()
     {
@@ -255,8 +385,30 @@ public sealed class FolderIso632Tests : IDisposable
     {
         public string? Allocate(string extension, string? suffix = null) => path;
     }
+    private sealed class UnexpectedAllocation : IOutputAllocator
+    {
+        public bool Called { get; private set; }
+        public string? Allocate(string extension, string? suffix = null)
+        {
+            Called = true;
+            throw new InvalidOperationException("A drive root must be refused before allocating output.");
+        }
+    }
     private sealed class CancelProgress(CancellationTokenSource cancel) : IProgress<double>
     {
         public void Report(double value) { if (value > 0) cancel.Cancel(); }
+    }
+    private sealed class ShrinkProgress(string path, int remainingBytes) : IProgress<double>
+    {
+        public bool Shrank { get; private set; }
+        public List<double> Values { get; } = [];
+        public void Report(double value)
+        {
+            Values.Add(value);
+            if (value <= 0 || Shrank) return;
+            using var file = new FileStream(path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite);
+            file.SetLength(remainingBytes);
+            Shrank = true;
+        }
     }
 }

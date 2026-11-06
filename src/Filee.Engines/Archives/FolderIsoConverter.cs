@@ -11,6 +11,9 @@ namespace Filee.Engines.Archives;
 /// <summary>Writes ISO 9660, optionally with Joliet names, from explicitly identified folder inputs.</summary>
 public sealed class FolderIsoConverter : IConverter
 {
+    private static readonly DateTime MinimumTimestamp = new(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime MaximumTimestamp = new(2155, 12, 31, 23, 59, 59, DateTimeKind.Utc);
+
     /// <inheritdoc />
     public string Id => "iso";
     /// <inheritdoc />
@@ -30,6 +33,8 @@ public sealed class FolderIsoConverter : IConverter
             progress?.Report(0);
             var root = new DirectoryInfo(Path.GetFullPath(Path.TrimEndingDirectorySeparator(step.InputPath)));
             if (!root.Exists) throw new DirectoryNotFoundException(root.FullName);
+            if (root.Parent is null)
+                throw new NotSupportedException("ISO creation does not support drive or filesystem roots. Select a folder inside the drive instead.");
             if (root.Attributes.HasFlag(FileAttributes.ReparsePoint))
                 throw new NotSupportedException("Select an original folder, not a symbolic link or junction.");
             var output = step.Output.Allocate("iso");
@@ -39,6 +44,7 @@ public sealed class FolderIsoConverter : IConverter
             if (!Enum.IsDefined(standard)) throw new NotSupportedException("Unsupported ISO standard.");
             var joliet = standard == IsoStandard.Iso9660Joliet;
             var builder = new CDBuilder { UseJoliet = joliet, VolumeIdentifier = "FILEE" };
+            string? mark = null;
             void Add(DirectoryInfo directory, string prefix)
             {
                 var shortNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -64,8 +70,10 @@ public sealed class FolderIsoConverter : IConverter
                         if (((FileInfo)entry).Length > uint.MaxValue)
                             throw new NotSupportedException($"ISO creation requires individual files smaller than 4 GiB: '{name}'.");
                         member = builder.AddFile(name, entry.FullName);
+                        mark ??= MarkOfTheWeb.Read(entry.FullName);
                     }
-                    member.CreationTime = entry.LastWriteTimeUtc;
+                    member.CreationTime = new DateTime(
+                        Math.Clamp(entry.LastWriteTimeUtc.Ticks, MinimumTimestamp.Ticks, MaximumTimestamp.Ticks), DateTimeKind.Utc);
                     if (!joliet && !shortNames.Add(member.ShortName))
                         throw new NotSupportedException($"ISO 9660 maps multiple entries to '{member.ShortName}' in '{directory.FullName}'. Rename them or select Joliet.");
                 }
@@ -95,8 +103,12 @@ public sealed class FolderIsoConverter : IConverter
                             progress?.Report(Math.Min(0.99, copied / (double)image.Length));
                         }
                     }
+                    if (copied != image.Length)
+                        throw new IOException("ISO creation stopped before all data was written. A source file may have changed during conversion.");
                 }
                 ct.ThrowIfCancellationRequested();
+                if (mark is not null)
+                    MarkOfTheWeb.TryWrite(temporary, mark);
                 File.Move(temporary, output, overwrite: true);
                 progress?.Report(1);
                 return [output];
