@@ -1,4 +1,4 @@
-// Which languages of the preset (PdfOptions.OcrLanguage, a Tesseract code from OcrLanguages) Apple Vision reads, as
+// Which languages of the preset (PdfOptions.OcrLanguage, Tesseract codes from OcrLanguages) Apple Vision reads, as
 // the language identifiers Vision takes. Vision says at run time which it reads (more with each macOS version); a
 // language it doesn't is read by Tesseract instead (VisionConverter).
 
@@ -40,20 +40,40 @@ internal static class VisionLanguages
     internal static readonly IReadOnlyList<string> Fallback =
         ["en-US", "fr-FR", "it-IT", "de-DE", "es-ES", "pt-BR", "zh-Hans", "zh-Hant", "ko-KR", "ja-JP", "ru-RU", "uk-UA"];
 
+    /// <summary>The languages to ask Vision for when the text is in <paramref name="code"/>; see the other overload.</summary>
+    public static IReadOnlyList<string>? For(string code, IReadOnlyCollection<string> supported) => For([code], supported);
+
     /// <summary>
-    /// The languages to ask Vision for when the text is in <paramref name="code"/>: that language, then English
-    /// (scans in other languages often have English words in them), or null when Vision doesn't read it.
+    /// The languages to ask Vision for when the text is in <paramref name="codes"/>: those languages in their order, the
+    /// main one first, and English last unless it is the main one (scans in other languages often have English words in
+    /// them, so it is there even when not chosen), or null when Vision doesn't read one of them. Chinese, Japanese and
+    /// Korean go ahead of the others whatever the order: with English first, Vision drops a Korean line altogether, while
+    /// the other way around it reads both.
     /// </summary>
     /// <param name="supported">What this Mac's Vision reads (<see cref="ITextRecognizer.Languages"/>).</param>
-    public static IReadOnlyList<string>? For(string code, IReadOnlyCollection<string> supported)
+    public static IReadOnlyList<string>? For(IReadOnlyList<string> codes, IReadOnlyCollection<string> supported)
     {
-        if (!ByCode.TryGetValue(code, out var candidates))
-            return null;
-        var match = candidates.Select(c => supported.FirstOrDefault(s => string.Equals(s, c, StringComparison.OrdinalIgnoreCase)))
-            .FirstOrDefault(s => s is not null);
-        if (match is null)
-            return null;
-        var english = supported.FirstOrDefault(s => string.Equals(s, "en-US", StringComparison.OrdinalIgnoreCase));
-        return english is null || english == match ? [match] : [match, english];
+        var languages = new List<string>();
+        foreach (var code in codes)
+        {
+            if (!ByCode.TryGetValue(code, out var candidates))
+                return null;
+            var match = candidates.Select(c => supported.FirstOrDefault(s => string.Equals(s, c, StringComparison.OrdinalIgnoreCase)))
+                .FirstOrDefault(s => s is not null);
+            if (match is null)
+                return null;
+            languages.Add(match);
+        }
+        if (supported.FirstOrDefault(s => string.Equals(s, "en-US", StringComparison.OrdinalIgnoreCase)) is { } english && languages.FirstOrDefault() != english)
+        {
+            languages.Remove(english);
+            languages.Add(english);
+        }
+        return [.. languages.OrderBy(l => IsCjk(l) ? 0 : 1)]; // a stable sort, so each group keeps its order
     }
+
+    private static bool IsCjk(string language) =>
+        language.StartsWith("zh-", StringComparison.OrdinalIgnoreCase)
+        || language.StartsWith("ja-", StringComparison.OrdinalIgnoreCase)
+        || language.StartsWith("ko-", StringComparison.OrdinalIgnoreCase);
 }

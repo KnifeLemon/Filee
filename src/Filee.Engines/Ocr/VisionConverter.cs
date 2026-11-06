@@ -2,7 +2,8 @@
 // pictures → searchable PDF, read on into DOCX, TXT, Markdown and HWPX), with macOS's own recognizer, so a Mac needs no
 // download for the languages Vision reads. It has the same OCR edges as Tesseract and is registered before it, so on
 // a Mac it is the one the route planner takes; a language Vision doesn't read (VisionLanguages) goes to Tesseract when
-// that is installed, and is refused with a hint to install it otherwise. On Windows and Linux it is unavailable.
+// that is installed, and is refused with a hint to install it otherwise. With several languages in a preset, one that
+// Vision doesn't read sends them all there: one recognizer reads the page. On Windows and Linux it is unavailable.
 //
 // PDFs go page by page like Tesseract's (TesseractConverter.RecognizePdfAsync: pages with text are copied, scans are
 // rendered at 300 dpi); each recognized page is the picture with the words as an invisible text layer (OcrPdfWriter).
@@ -65,12 +66,13 @@ public sealed class VisionConverter : IConverter
     {
         var recognizer = _recognizer is { IsAvailable: true } available ? available
             : throw new PlatformNotSupportedException("Apple Vision text recognition runs on macOS only.");
-        var language = OcrLanguages.Find(step.Preset.Pdf.OcrLanguage) ?? OcrLanguages.Find(OcrLanguages.Default)!;
-        if (VisionLanguages.For(language.Code, recognizer.Languages) is not { } languages)
+        var chosen = OcrLanguages.Parse(step.Preset.Pdf.OcrLanguage);
+        if (VisionLanguages.For([.. chosen.Select(l => l.Code)], recognizer.Languages) is not { } languages)
         {
             if (_tesseract.GetStatus().IsAvailable)
                 return await _tesseract.ConvertAsync(step, progress, cancellationToken);
-            throw new ConversionRefusedException("error.ocr_needs_tesseract", language.NativeName);
+            throw new ConversionRefusedException("error.ocr_needs_tesseract",
+                string.Join(", ", chosen.Where(l => VisionLanguages.For(l.Code, recognizer.Languages) is null).Select(l => l.NativeName)));
         }
 
         var scratch = Path.Combine(step.WorkDirectory, "vision-" + Guid.NewGuid().ToString("N")[..8]);
@@ -110,20 +112,24 @@ public sealed class VisionConverter : IConverter
     }
 
     /// <summary>
-    /// Reads one picture. When Vision fails with a second language (English) next to the one asked for, it reads again
-    /// with that one alone.
+    /// Reads one picture. When Vision fails on a combination of languages it reads again without the last one (usually
+    /// the English that VisionLanguages adds), down to the first language, the main one, alone.
     /// </summary>
     internal static IReadOnlyList<OcrLine> Recognize(ITextRecognizer recognizer, string picture, IReadOnlyList<string> languages,
         CancellationToken cancellationToken)
     {
-        try
+        for (var count = languages.Count; count > 1; count--)
         {
-            return recognizer.Recognize(picture, languages, cancellationToken);
+            try
+            {
+                return recognizer.Recognize(picture, [.. languages.Take(count)], cancellationToken);
+            }
+            catch (InvalidOperationException) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Next: one language fewer.
+            }
         }
-        catch (InvalidOperationException) when (languages.Count > 1 && !cancellationToken.IsCancellationRequested)
-        {
-            return recognizer.Recognize(picture, [languages[0]], cancellationToken);
-        }
+        return recognizer.Recognize(picture, [languages[0]], cancellationToken);
     }
 
     /// <summary>A picture's pages: where each is, its size in pixels and its resolution.</summary>
