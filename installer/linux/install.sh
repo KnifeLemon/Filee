@@ -135,6 +135,8 @@ if [ "$upgrade" -eq 0 ]; then
 
     mkdir -p "$data_dir/filee" "$bin_dir" "$data_dir/applications"
     cp -R "$source_dir" "$install_dir"
+    # The archive is portable; an installed copy uses the ordinary user profile.
+    rm -f "$install_dir/filee.portable"
     printf '%s\n' 'com.filee.app' > "$install_dir/.filee-package"
     rm -f "$install_dir/.filee-upgrade-token"
     ln -s "$install_dir/filee-cli" "$bin_dir/filee"
@@ -186,6 +188,7 @@ else
 
     # Copy incoming payload into staging (preserves source_dir without moving/deleting it).
     cp -R "$source_dir/." "$staging_dir/"
+    rm -f "$staging_dir/filee.portable"
     printf '%s\n' 'com.filee.app' > "$staging_dir/.filee-package"
     printf '%s\n' "$upgrade_token" > "$staging_dir/.filee-upgrade-token"
     chmod +x "$staging_dir/Filee" "$staging_dir/filee-cli"

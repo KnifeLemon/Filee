@@ -547,6 +547,8 @@
   "format.category.Model3D": "Modèle 3D",
   "format.category.Geo": "Géospatial",
 
+  "startup.portable_unwritable": "Filee ne peut pas écrire dans son dossier de données portable :\n{0}\n\nDéplacez Filee vers un dossier accessible en écriture ou autorisez l’écriture dans ce dossier, puis réessayez.",
+  "general.portable_mode": "Mode portable : les paramètres, moteurs téléchargés et journaux restent dans le dossier de données portable. Le démarrage automatique et l’intégration au gestionnaire de fichiers sont désactivés.",
   "general.title": "Général",
   "general.language": "Langue",
   "general.language_auto": "Langue du système",

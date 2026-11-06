@@ -547,6 +547,8 @@
   "format.category.Model3D": "Mô hình 3D",
   "format.category.Geo": "Không gian địa lý",
 
+  "startup.portable_unwritable": "Filee không thể ghi vào thư mục dữ liệu di động:\n{0}\n\nHãy chuyển Filee sang thư mục có thể ghi hoặc cấp quyền ghi cho thư mục này rồi thử lại.",
+  "general.portable_mode": "Chế độ di động: cài đặt, bộ máy đã tải và nhật ký nằm trong thư mục dữ liệu di động. Tự khởi động và tích hợp trình quản lý tệp bị tắt.",
   "general.title": "Chung",
   "general.language": "Ngôn ngữ",
   "general.language_auto": "Mặc định của hệ thống",

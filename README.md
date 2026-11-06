@@ -101,6 +101,24 @@ winget install KnifeLemon.Filee
   - Drag gestures need X11.
     On Wayland, use the drop zone and the file manager's right-click menu.
 
+### True portable mode
+
+Portable release archives include an empty `filee.portable` beside `Filee.exe` (or the `Filee` executable on Linux).
+For other copies, create this marker before starting Filee to enable portable mode.
+On macOS, put the marker beside `Filee.app`, outside the bundle. Settings, downloaded engines and logs then live
+in a `data` folder beside the marker. Both the app and CLI use it. Login startup and file-manager integration
+are disabled, leaving an installed copy's entries untouched. The data folder must be writable; Filee reports
+an error instead of falling back to the user profile.
+
+Conversion work folders, temporary files and engine caches keep their existing behavior and locations.
+An explicit `FILEE_DATA_DIR` still takes precedence.
+Installer packages keep using the normal user profile. Existing profile data is not imported automatically.
+Update a marked copy by replacing its application files while keeping `filee.portable` and `data`.
+
+To bring existing data along, close Filee first, copy the existing settings/library files into the new `data`
+folder, and copy downloaded engines into `data/engines`. The original copies are left alone. Custom engine
+paths remain external; downloaded copies travel with the portable folder.
+
 Filee shows new releases in its menu and updates itself, keeping your settings and engines.
 After an update, a few slides show what's new.
 

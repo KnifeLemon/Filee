@@ -1,4 +1,7 @@
 Run ./Filee to test the extracted app, or ./filee-cli help for the command line.
+The included filee.portable marker keeps settings, downloaded engines and logs
+in data beside the executable. Existing profile data is not imported automatically.
+Installing with install.sh uses the normal user profile instead.
 
 Run ./install.sh to install for the current user. It requires Python 3, creates
 an application launcher and ~/.local/bin/filee, and does not require root.

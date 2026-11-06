@@ -535,6 +535,8 @@
   "format.category.Data": "डेटा",
   "format.category.Model3D": "3D मॉडल",
   "format.category.Geo": "भू-स्थानिक",
+  "startup.portable_unwritable": "Filee अपने पोर्टेबल डेटा फ़ोल्डर में नहीं लिख सकता:\n{0}\n\nFilee को लिखने योग्य फ़ोल्डर में ले जाएँ या इस फ़ोल्डर में लिखने की अनुमति दें, फिर कोशिश करें।",
+  "general.portable_mode": "पोर्टेबल मोड: सेटिंग, डाउनलोड किए गए इंजन और लॉग पोर्टेबल डेटा फ़ोल्डर में रहते हैं। अपने आप शुरू होना और फ़ाइल प्रबंधक एकीकरण बंद हैं।",
   "general.title": "सामान्य",
   "general.language": "भाषा",
   "general.language_auto": "सिस्टम डिफ़ॉल्ट",

@@ -535,6 +535,8 @@
   "format.category.Data": "Daten",
   "format.category.Model3D": "3D-Modell",
   "format.category.Geo": "Geodaten",
+  "startup.portable_unwritable": "Filee kann nicht in seinen portablen Datenordner schreiben:\n{0}\n\nVerschieben Sie Filee in einen beschreibbaren Ordner oder erlauben Sie das Schreiben in diesen Ordner und versuchen Sie es erneut.",
+  "general.portable_mode": "Portabler Modus: Einstellungen, heruntergeladene Engines und Protokolle bleiben im portablen Datenordner. Autostart und Dateimanager-Integration sind deaktiviert.",
   "general.title": "Allgemein",
   "general.language": "Sprache",
   "general.language_auto": "Systemstandard",

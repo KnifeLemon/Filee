@@ -535,6 +535,8 @@
   "format.category.Data": "Datos",
   "format.category.Model3D": "Modelo 3D",
   "format.category.Geo": "Geoespacial",
+  "startup.portable_unwritable": "Filee no puede escribir en su carpeta de datos portátil:\n{0}\n\nMueve Filee a una carpeta con permiso de escritura o habilita la escritura en esta carpeta y vuelve a intentarlo.",
+  "general.portable_mode": "Modo portátil: los ajustes, motores descargados y registros permanecen en la carpeta de datos portátil. El inicio automático y la integración con el gestor de archivos están desactivados.",
   "general.title": "General",
   "general.language": "Idioma",
   "general.language_auto": "Predeterminado del sistema",

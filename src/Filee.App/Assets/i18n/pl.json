@@ -547,6 +547,8 @@
   "format.category.Model3D": "Model 3D",
   "format.category.Geo": "Geoprzestrzenne",
 
+  "startup.portable_unwritable": "Filee nie może zapisywać w przenośnym folderze danych:\n{0}\n\nPrzenieś Filee do folderu z prawem zapisu lub zezwól na zapis w tym folderze i spróbuj ponownie.",
+  "general.portable_mode": "Tryb przenośny: ustawienia, pobrane silniki i dzienniki pozostają w przenośnym folderze danych. Autostart i integracja z menedżerem plików są wyłączone.",
   "general.title": "Ogólne",
   "general.language": "Język",
   "general.language_auto": "Domyślny systemu",
