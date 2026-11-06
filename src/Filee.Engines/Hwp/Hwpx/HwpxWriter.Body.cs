@@ -44,7 +44,7 @@ internal sealed partial class HwpxWriter
         }
         if (secPr.Element(Hp + "visibility") is { } visibility)
         {
-            visibility.SetAttributeValue("hideFirstHeader", section.HideFirstHeader ? 1 : 0);
+            visibility.SetAttributeValue("hideFirstHeader", section.HideFirstHeader || section.FirstPageHeader is not null ? 1 : 0);
             visibility.SetAttributeValue("hideFirstFooter", section.HideFirstFooter ? 1 : 0);
         }
         secPr.Element(Hp + "startNum")?.SetAttributeValue("page", section.StartPageNumber ?? 0);
@@ -54,6 +54,12 @@ internal sealed partial class HwpxWriter
         var paperHeight = (int?)pagePr?.Attribute("height") ?? 84190;
         var landscape = (string?)pagePr?.Attribute("landscape") == "NARROWLY";
         var textWidth = Math.Max(2000, (landscape ? paperHeight : paperWidth) - Margin("left", 7200) - Margin("right", 7200) - Margin("gutter", 0));
+        _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
+
+        // The header area is as tall as the header, as in Word. rhwp also stops at the end of the area, which left out a
+        // table after an empty paragraph in a header with little room above the body (issue #1152).
+        if (section.HeaderMovesBody && section.Headers.Count > 0)
+            margin?.SetAttributeValue("header", Math.Max(Margin("header", 4250), section.Headers.Max(h => EstimateHeight(h.Blocks, textWidth))));
         _pageLeft = Margin("left", 7200) + Margin("gutter", 0);
         _pageTop = Margin("top", 4255) + Margin("header", 4250);
 
@@ -64,15 +70,39 @@ internal sealed partial class HwpxWriter
         if (section.StartPageNumber is { } startPage)
             setup.Append($"<hp:ctrl><hp:newNum num=\"{startPage}\" numType=\"PAGE\"/></hp:ctrl>");
 
-        _base = (_normalStyleId, _normalParaPrId, _normalCharPrId);
         _width = textWidth;
         var controlId = 1;
+        var later = new Dictionary<HBlock, string>();
+        void Add(HHeaderFooter item, string control)
+        {
+            if (item.StartsAt is { } paragraph)
+                later[paragraph] = later.GetValueOrDefault(paragraph) + control;
+            else
+                setup.Append(control);
+        }
         foreach (var header in section.Headers)
-            setup.Append(HeaderFooter("header", header, controlId++, textWidth, Margin("header", 4250), "TOP"));
+            Add(header, HeaderFooter("header", header, controlId++, textWidth, Margin("header", 4250), "TOP"));
         foreach (var footer in section.Footers)
-            setup.Append(HeaderFooter("footer", footer, controlId++, textWidth, Margin("footer", 2240), "BOTTOM"));
+            Add(footer, HeaderFooter("footer", footer, controlId++, textWidth, Margin("footer", 2240), "BOTTOM"));
 
         _width = ColumnWidth(textWidth, section.Columns);
+
+        // 한글 has no header for the first page only: it is a text box at the header's place, anchored in the section's
+        // first paragraph, and the other header is hidden there. The text below goes around it, as Word moves the body.
+        if (section.FirstPageHeader is { } firstPageHeader)
+        {
+            var box = new HTextBox
+            {
+                Width = textWidth,
+                Height = EstimateHeight(firstPageHeader, textWidth),
+                Anchor = new HAnchor("PAPER", "LEFT", _pageLeft, "PAPER", "TOP", Margin("top", 4255), "TOP_AND_BOTTOM", true),
+                Line = HBorder.None,
+                Padding = new HInsets(0, 0, 0, 0),
+            };
+            box.Blocks.AddRange(firstPageHeader);
+            setup.Append(TextBox(box));
+        }
+
         var body = new StringBuilder(SectionOpenTag());
         var blocks = section.Blocks.Count == 0 || section.Blocks[0] is not HParagraph
             ? section.Blocks.Prepend(new HParagraph()).ToList()
@@ -81,7 +111,8 @@ internal sealed partial class HwpxWriter
         {
             if (blocks[i] is HParagraph { ColumnsChange: { } columns })
                 _width = ColumnWidth(textWidth, columns);
-            body.Append(Block(blocks[i], i == 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{setup}</hp:run>" : null));
+            var controls = (i == 0 ? setup.ToString() : "") + later.GetValueOrDefault(blocks[i]);
+            body.Append(Block(blocks[i], controls.Length > 0 ? $"<hp:run charPrIDRef=\"{_normalCharPrId}\">{controls}</hp:run>" : null));
         }
         return body.Append("</hs:sec>").ToString();
     }

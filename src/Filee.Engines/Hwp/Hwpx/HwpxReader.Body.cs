@@ -12,6 +12,12 @@ internal sealed partial class HwpxReader
     /// <summary>Fields (fieldBegin … fieldEnd) open in the current paragraph list; hyperlinks may span paragraphs.</summary>
     private List<OpenField> _fields = [];
 
+    /// <summary>Fields begun while <see cref="Nesting.MaxDepth"/> others were open, which are not tracked.</summary>
+    private int _untrackedFields;
+
+    /// <summary>Paragraph lists (cells, notes, text boxes ...) around the one being read.</summary>
+    private int _depth;
+
     /// <summary>Highlighter colour between hp:markpenBegin and hp:markpenEnd.</summary>
     private string? _markpen;
 
@@ -23,15 +29,21 @@ internal sealed partial class HwpxReader
 
     private sealed record OpenField(string? Id, string? Target);
 
-    /// <summary>Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption).</summary>
+    /// <summary>
+    /// Paragraphs and tables of a paragraph list (cell, header, footer, note, text box, caption). Lists nested deeper
+    /// than <see cref="Nesting.MaxDepth"/> give their text only, as plain paragraphs.
+    /// </summary>
     private List<HBlock> ReadSubList(XElement? subList)
     {
         var blocks = new List<HBlock>();
         if (subList is null)
             return blocks;
+        if (_depth >= Nesting.MaxDepth)
+            return Nesting.PlainParagraphs(subList, "p", "t");
         // Fields, highlighting and tracked deletions do not reach into or out of a nested paragraph list.
-        var (fields, markpen, deleted) = (_fields, _markpen, _deleted);
-        (_fields, _markpen, _deleted) = ([], null, false);
+        var (fields, untracked, markpen, deleted) = (_fields, _untrackedFields, _markpen, _deleted);
+        (_fields, _untrackedFields, _markpen, _deleted) = ([], 0, null, false);
+        _depth++;
         try
         {
             foreach (var element in Elements(subList))
@@ -44,7 +56,8 @@ internal sealed partial class HwpxReader
         }
         finally
         {
-            (_fields, _markpen, _deleted) = (fields, markpen, deleted);
+            (_fields, _untrackedFields, _markpen, _deleted) = (fields, untracked, markpen, deleted);
+            _depth--;
         }
         return blocks;
     }
@@ -98,6 +111,12 @@ internal sealed partial class HwpxReader
 
         public void OpenLink(string target)
         {
+            // Links in links beyond the limit keep their text in the link around them.
+            if (_sinks.Count >= Nesting.MaxDepth)
+            {
+                _sinks.Push(Sink);
+                return;
+            }
             var link = new HLink(target);
             Sink.Add(link);
             _sinks.Push(link.Content);
@@ -414,6 +433,12 @@ internal sealed partial class HwpxReader
                     builder.Add(new HBookmark(name));
                 break;
         }
+        // Every paragraph opens the links of all open fields again, so fields begun without an end must not pile up.
+        if (_fields.Count >= Nesting.MaxDepth)
+        {
+            _untrackedFields++;
+            return;
+        }
         // Other fields (click-here, date, file name, ...) keep their result text, which follows until fieldEnd.
         _fields.Add(new OpenField(Attr(control, "id"), target));
         if (target is not null)
@@ -423,7 +448,12 @@ internal sealed partial class HwpxReader
     private void FieldEnd(XElement control, ParagraphBuilder builder)
     {
         var id = Attr(control, "beginIDRef");
-        var index = _fields.FindLastIndex(f => id is null || f.Id == id);
+        var index = id is null && _untrackedFields > 0 ? -1 : _fields.FindLastIndex(f => id is null || f.Id == id);
+        if (index < 0 && _untrackedFields > 0)
+        {
+            _untrackedFields--;
+            return;
+        }
         if (index < 0)
             index = _fields.Count - 1;
         if (index < 0)

@@ -29,6 +29,27 @@ public partial class UserDataStoreTests
     }
 
     [Fact]
+    public void Links_to_the_local_network_stay_refused_until_allowed_and_the_choice_is_kept()
+    {
+        using var dir = new TempDir();
+        var path = Path.Combine(dir.Path, "settings.json");
+        // Settings saved by a Filee before the option: off.
+        File.WriteAllText(path, """{"schemaVersion":68,"browserDrops":{"folder":"","saveOnlyConverted":true}}""");
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        Assert.True(store.Settings.BrowserDrops.SaveOnlyConverted);
+        Assert.False(store.Settings.BrowserDrops.AllowLocalNetwork);
+        Assert.False(new AppSettings().BrowserDrops.AllowLocalNetwork);
+
+        store.Settings.BrowserDrops.AllowLocalNetwork = true;
+        store.SaveSettings();
+        var again = new UserDataStore(dir.Path);
+        again.Load();
+        Assert.True(again.Settings.BrowserDrops.AllowLocalNetwork);
+        Assert.True(again.Settings.BrowserDrops.SaveOnlyConverted);
+    }
+
+    [Fact]
     public void Settings_without_turned_off_fields_start_with_every_field_on_and_keep_the_library()
     {
         using var dir = new TempDir();

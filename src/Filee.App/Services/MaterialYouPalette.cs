@@ -49,7 +49,6 @@ public sealed class MaterialYouPalette
             ["AccentSoftBrush"] = new SolidColorBrush(AccentSoft),
             ["AccentFaintBrush"] = new SolidColorBrush(AccentFaint),
             ["AccentStrongBrush"] = new SolidColorBrush(AccentStrong),
-            ["OnAccentBrush"] = new SolidColorBrush(OnAccent),
             ["SystemAccentColor"] = Accent,
             ["SystemAccentColorLight1"] = SoftPalette.Shade(Accent, 0.15),
             ["SystemAccentColorLight2"] = SoftPalette.Shade(Accent, 0.30),
@@ -58,14 +57,8 @@ public sealed class MaterialYouPalette
             ["SystemAccentColorDark2"] = SoftPalette.Shade(Accent, -0.30),
             ["SystemAccentColorDark3"] = SoftPalette.Shade(Accent, -0.45),
 
-            // Fluent's own templates read these keys for filled buttons, sliders, checkboxes and focused text boxes.
-            // Pointing them at the Material You accent keeps those controls on the chosen colour, in every state.
-            ["AccentButtonBackground"] = new SolidColorBrush(Accent),
-            ["AccentButtonBackgroundPointerOver"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.08)),
-            ["AccentButtonBackgroundPressed"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.16)),
-            ["AccentButtonForeground"] = new SolidColorBrush(OnAccent),
-            ["AccentButtonForegroundPointerOver"] = new SolidColorBrush(OnAccent),
-            ["AccentButtonForegroundPressed"] = new SolidColorBrush(OnAccent),
+            // Fluent's own templates read these keys for sliders and focused text boxes (filled buttons, checkboxes and the
+            // like: ApplyAccentStates below). Pointing them at the Material You accent keeps those controls on the chosen colour.
             // The slider thumb is a slightly darker shade of the accent so it stays visible against the accent-filled track.
             ["AccentThumbBrush"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.2)),
             ["SliderThumbBackground"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.2)),
@@ -74,15 +67,6 @@ public sealed class MaterialYouPalette
             ["SliderTrackValueFill"] = new SolidColorBrush(Accent),
             ["SliderTrackValueFillPointerOver"] = new SolidColorBrush(Accent),
             ["SliderTrackValueFillPressed"] = new SolidColorBrush(Accent),
-            ["CheckBoxCheckBackgroundFillChecked"] = new SolidColorBrush(Accent),
-            ["CheckBoxCheckBackgroundFillCheckedPointerOver"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.08)),
-            ["CheckBoxCheckBackgroundFillCheckedPressed"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.16)),
-            ["CheckBoxCheckBackgroundStrokeChecked"] = new SolidColorBrush(Accent),
-            ["CheckBoxCheckBackgroundStrokeCheckedPointerOver"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.08)),
-            ["CheckBoxCheckBackgroundStrokeCheckedPressed"] = new SolidColorBrush(SoftPalette.Shade(Accent, -0.16)),
-            ["CheckBoxCheckGlyphForegroundChecked"] = new SolidColorBrush(OnAccent),
-            ["CheckBoxCheckGlyphForegroundCheckedPointerOver"] = new SolidColorBrush(OnAccent),
-            ["CheckBoxCheckGlyphForegroundCheckedPressed"] = new SolidColorBrush(OnAccent),
             ["TextControlBorderBrushFocused"] = new SolidColorBrush(Accent),
 
             // The cross in search boxes turns the accent colour on hover and press, with no background behind it.
@@ -93,6 +77,8 @@ public sealed class MaterialYouPalette
             ["TextControlButtonForegroundPointerOver"] = new SolidColorBrush(Accent),
             ["TextControlButtonForegroundPressed"] = new SolidColorBrush(Accent),
         };
+
+        SoftPalette.ApplyAccentStates(resources, Accent, OnAccent, hover: -0.08, pressed: -0.16);
 
         // Dark mode: Fluent's hover and focus fills for inputs and dropdowns are near-black, a sudden dark box. Keep them a
         // faint step lighter than the resting fill (SurfaceAlt, which the Material You styles already give inputs and
@@ -124,46 +110,15 @@ public sealed class MaterialYouPalette
     public static double Luminance(Color c) => (0.2126 * c.R + 0.7152 * c.G + 0.0722 * c.B) / 255.0;
 
     /// <summary>WCAG 2.x relative luminance (gamma-corrected), used for contrast ratios.</summary>
-    public static double RelativeLuminance(Color c)
-    {
-        static double Channel(byte v)
-        {
-            var x = v / 255.0;
-            return x <= 0.03928 ? x / 12.92 : Math.Pow((x + 0.055) / 1.055, 2.4);
-        }
-
-        return 0.2126 * Channel(c.R) + 0.7152 * Channel(c.G) + 0.0722 * Channel(c.B);
-    }
+    public static double RelativeLuminance(Color c) => SoftPalette.RelativeLuminance(c);
 
     /// <summary>WCAG 2.x contrast ratio between two colours (1 to 21).</summary>
-    public static double ContrastRatio(Color a, Color b)
-    {
-        var la = RelativeLuminance(a);
-        var lb = RelativeLuminance(b);
-        return (Math.Max(la, lb) + 0.05) / (Math.Min(la, lb) + 0.05);
-    }
+    public static double ContrastRatio(Color a, Color b) => SoftPalette.ContrastRatio(a, b);
 
     /// <summary>Minimum contrast between filled accent controls (buttons, checkboxes) and the text or glyph on them.</summary>
-    public const double MinAccentContrast = 4.5;
+    public const double MinAccentContrast = SoftPalette.MinAccentContrast;
 
     private static readonly Color DarkOnAccent = Color.Parse("#1F1E1D");
-
-    private static readonly Color DarkModeDarkLabel = Color.Parse("#16141A");
-
-    /// <summary>
-    /// The label colour on a dark-mode accent fill, held to the same <see cref="MinAccentContrast"/> (4.5:1, normal-size
-    /// text) as in light mode. White is used when it reaches that; otherwise the dark label, which has more contrast on
-    /// mid-tone fills such as Lavender (#7F77DD: 3.76:1 with white, 4.86:1 with the dark label). The few fills where
-    /// neither reaches 4.5:1 get whichever of the two is higher.
-    /// </summary>
-    internal static Color DarkModeOnAccent(Color fill)
-    {
-        var white = ContrastRatio(fill, Colors.White);
-        if (white >= MinAccentContrast)
-            return Colors.White;
-
-        return ContrastRatio(fill, DarkModeDarkLabel) >= white ? DarkModeDarkLabel : Colors.White;
-    }
 
     /// <summary>
     /// Picks the light-mode accent fill and the colour used on top of it. The fill stays as close to the chosen accent
@@ -234,7 +189,7 @@ public sealed class MaterialYouPalette
         else
         {
             var darkPrimary = l < 0.65 ? HslToRgb(h, Math.Min(sat * 0.75, 0.65), 0.75) : seed;
-            var onPrimary = DarkModeOnAccent(darkPrimary);
+            var onPrimary = SoftPalette.OnAccent(darkPrimary);
             var primaryContainer = HslToRgb(h, Math.Min(sat * 0.5, 0.38), 0.26);
             var onPrimaryContainer = HslToRgb(h, Math.Min(sat * 0.7, 0.55), 0.88);
 

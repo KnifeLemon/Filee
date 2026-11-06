@@ -14,6 +14,84 @@ change, a language may repeat; a language without lines shows the English ones):
 - `recommended`: bug fixes. The card shows once per version.
 - `optional`: new features only. No card, the sidebar button only.
 
+## 2.4.0
+
+<!-- update
+level: required
+ko: 보안 수정: 업데이트 서명 확인, 문서가 PC·네트워크의 파일을 읽는 문제, 크기를 부풀린 파일 등을 막았어요
+ko: Calibre 엔진 설치·업데이트가 실패하던 문제를 고쳤어요
+ko: 업그레이드한 사용자에게 번역 프리셋이 보이지 않던 문제를 고쳤어요
+ko: 배경 넣기: 사진에 그라데이션, 색, 그림 배경과 여백, 둥근 모서리, 그림자를 더해요
+ko: 홈 화면에서 파일을 목록으로 모아 순서를 정한 뒤 변환해요
+ko: PDF 나누기: 끌어다 놓을 때마다 페이지 범위를 물어요
+ko: Word → PDF·HWPX: 머리글, 그림 자르기, 줄 간격, 각주 번호, 수식 번호 등 레이아웃을 많이 고쳤어요
+ko: 새 형식: 서명된 .p7m, FLIC 애니메이션, DBML, Krita 백업(.kra~)
+en: Security fixes: update signatures are checked, documents can't read other files on the PC or network, and inflated files are refused
+en: Installing or updating the Calibre engine no longer fails
+en: The Translate preset now reaches libraries upgraded from 2.2 or earlier
+en: Add background: gradient, colour or picture backgrounds with padding, rounded corners and a shadow
+en: Home page: collect files in a list and set their order before converting
+en: Split PDF asks for the pages each time you drop a file
+en: Word to PDF and HWPX: many layout fixes for headers, cropped pictures, line spacing, footnote and equation numbers
+en: New formats: signed .p7m, FLIC animations, DBML, Krita backups (.kra~)
+zh: 安全修复：校验更新签名，文档不能再读取电脑或网络上的其他文件，并拒绝解压后过大的文件
+zh: 修复了 Calibre 引擎安装或更新失败的问题
+zh: 修复了升级用户看不到翻译预设的问题
+zh: 添加背景：为图片添加渐变、纯色或图片背景，以及边距、圆角和阴影
+zh: 主页：先把文件收集到列表并排好顺序，再开始转换
+zh: 拆分 PDF：每次拖入文件时询问页码范围
+zh: Word 转 PDF、HWPX：大量版面修复，包括页眉、裁剪图片、行距、脚注和公式编号
+zh: 新格式：签名的 .p7m、FLIC 动画、DBML、Krita 备份（.kra~）
+-->
+
+### Security
+
+Fixes for two advisories, [GHSA-gw2f-hq9g-3jc2](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-gw2f-hq9g-3jc2) (reported by @indhuchocky-bit) and [GHSA-hfq7-46jj-38qw](https://github.com/KnifeLemon/Filee/security/advisories/GHSA-hfq7-46jj-38qw) (reported by @jojofox0815 and @indhuchocky-bit). Thank you both. Please update.
+
+- **Updates:** from this version on, the updater checks a signature over the release's checksums with a key kept in Filee, and checks the publisher of the installer it downloaded.
+- **Pictures and links in documents:** HTML, Markdown and Pandoc documents only take pictures and style sheets from their own folder, and network shares are refused. LibreOffice gets a copy without outside links, and its macro and link settings are fixed for each conversion. If a document has macros, you get a notice that they weren't run.
+- **Links dropped from a browser:** downloads refuse this computer and the local network on every redirect. A new setting, *Allow links to this computer and the local network*, lifts this if you need it.
+- **Downloaded files:** Mark of the Web now stays on downloads, unpacked files and converted results.
+- **Files built to do damage:** documents, e-books and archives that unpack to far too much, or are nested far too deep, are refused with a clear message instead of filling the disk or memory or ending Filee.
+- **Links on disk:** watch folders don't follow or convert symbolic links and junctions, and folder deletes and merges don't write through them.
+
+### New tools and features
+
+- **Add background** (pictures, palette; by @lightscape-jm): set pictures on a gradient, a colour or a picture of your own, with padding, rounded corners, a soft shadow and a canvas shape.
+- **File list on the Home page** (by @arielsrossi): files dropped on the Home page collect in a list with previews. Drag them or use the keyboard to set their order, then choose an action. A merge started from the list keeps its order.
+- **Split PDF asks for the pages:** drop a PDF and type a range like `1-3, 8, 12-`, then choose one PDF or one file per page. Other PDF presets can turn on "Ask every time" too, and the command line has `--pages`.
+- **Group slices have a mark** (by @lightscape-jm): a small chevron at the outer edge shows which slices open up to more actions.
+- **New formats:** signed `.p7m` files are read as the file inside them, FLIC animations (`.flc`, `.fli`) as video, and DBML database schemas as text. Krita's `.kra~` backups open like `.kra`.
+- **Command line** (by @yavuzmeteafsar): `convert --json` streams progress and file events to stderr, and `watch` has `--json`. A wrapper that reads stdout to the end before stderr can stall on a long conversion; `--quiet` avoids that.
+- **About page** (by @adnan-bhaldar): the version is now an accent-coloured pill.
+
+### Word, HWPX and PDF
+
+- **Word to PDF:** a header taller than the room above the body is no longer left out, and a floating picture in a header doesn't take the rest of the header with it.
+- **Word to HWPX:** the header of a continuous section and a first-page-only header are kept. Cropped pictures stay cropped, and lines around paragraphs and line spacing follow the document.
+- **Equations:** numbers sit at the right margin, and long equations break over several lines.
+- **Word to PDF through LibreOffice:** a footnote's number stays inside its brackets.
+- **HWPX:** spaces are as wide as the font makes them, and a section that restarts its page numbers restarts them in the PDF.
+- **Spreadsheet PDFs:** pages are redrawn when characters would have been left out.
+- **HWP and HWPX to PDF:** a picture alone in a header or footer paragraph is drawn, and the degree sign gets its full width in Chinese fonts.
+- **PDF reading:** right-to-left text keeps its brackets and letter forms. Pictures inside a table stay in their cell when converting to HWPX or DOCX.
+- **Markdown:** block quotes have a bar and a background.
+- **OCR:** small pictures such as screenshots are read from an enlarged copy, so small text comes through.
+
+### Fixes
+
+- **Calibre:** installing or updating the engine no longer fails on its read-only files. Folders left behind by failed 2.3.0 installs (`~` and six characters, about 660 MB each, in the engines folder) can be deleted by hand.
+- **Translate** (by @SeoJCalive): the preset now reaches libraries upgraded from 2.2 or earlier, in *Settings → Presets* and in the Donut toolbar's Available presets. No donut gets a slot.
+- **Cut a clip** (by @SeoJCalive): a clip with music plays its preview again.
+- **Accent colours:** text on an accent fill now takes the colour with the better contrast, in every control and state. The default lavender and most accents now have dark text on buttons and checks.
+- **Donut toolbar** (by @lightscape-jm): changing profile or resetting while holding a slice can no longer remove or move the wrong preset.
+- **Selecting many files in Explorer:** the launches of one selection make one donut, and none of them are lost, also on macOS and Linux.
+- **Watch folders:** a file is converted once its data has arrived, and a file that failed gets one more try.
+- **Uninstaller:** it reaches the signed-in user's Filee and never reports success with Filee left behind.
+- **Fonts:** Han text is drawn in the font of the interface language, and Filee uses less memory while it waits in the tray, because fonts now load when needed.
+- **macOS:** a move after the release no longer starts a second drag.
+- **Linux:** Fedora 45 and GNOME 51 are supported (by @yanscholze).
+
 ## 2.3.0
 
 <!-- update

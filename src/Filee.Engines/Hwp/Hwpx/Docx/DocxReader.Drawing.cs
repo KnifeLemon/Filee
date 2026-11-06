@@ -196,7 +196,7 @@ internal sealed partial class DocxReader
         _textBoxDepth++;
         try
         {
-            ReadBlocks(content.Elements(), output);
+            ReadNestedBlocks(content, output);
         }
         finally
         {
@@ -367,9 +367,7 @@ internal sealed partial class DocxReader
             return null;
         Directory.CreateDirectory(_mediaFolder);
         var path = Path.Combine(_mediaFolder, $"docx-media-{_media.Count + 1}{Path.GetExtension(rel.Target)}");
-        using (var source = entry.Open())
-        using (var target = File.Create(path))
-            source.CopyTo(target);
+        _unpack.Extract(entry, path);
         _media[rel.Target] = path;
         return path;
     }

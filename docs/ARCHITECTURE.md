@@ -45,8 +45,9 @@
    own (`DirectOnly`), never a step of a longer one. An envelope (a signed `.p7m`) is planned from the file inside
    it: its engine (`IEnvelopeOpener`) names that file's format, and the route opens it first, then goes on from there
    (`RoutePlanner.PlanThrough`: P7M → PDF → PNG).
-5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a temp folder;
-   final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
+5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a work folder only
+   the user can open (`WorkFolders.Root`: `%TEMP%\Filee` on Windows; `~/.cache/filee` on Linux and
+   `~/Library/Caches/Filee` on macOS, mode 700, because `/tmp` is shared by every user); final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
    Each name stays reserved while a conversion holds it. A conversion that fails or is cancelled deletes what it began
    writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
    same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
@@ -97,7 +98,7 @@ ends in an extension Filee converts and isn't a web page (`.html`, `.php`, none)
 picture. Plain text is never read. `data:` addresses are decoded.
 
 Until the conversion runs, the files stand as **placeholders** (`WebDrop`): paths in `%TEMP%\Filee\web\<drop>\drop\<n>\`
-named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
+(`web/` in the work root on Linux and macOS) named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
 is made: a picture without an extension stands as `.jpg` and a link without one isn't offered. `ConversionService.Start`
 gives the job a `WebDropFetcher` (`ISourceFetcher`): `JobQueue` saves every source first (half of its progress), then
 converts. Failures are per file (`error.web_*`), cancelling stops a download, and the job toast/ring shows both phases.
@@ -116,11 +117,25 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   2 GB cap whether or not the server says the size, 30 s to answer and 30 s without data at most. No cookies or
   credentials are sent: a file behind a sign-in comes back as the sign-in page, which is refused as a web page
   ("save it from the browser first"). A browser's own bytes (virtual files, Firefox's copy) don't have that limit.
+  Only the public internet is reached (`LocalNetwork`): an address on this computer or the local network (loopback,
+  private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
+  is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
+  `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
+  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
+  off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
+  of their own, so a pooled connection to a local address never serves a drop that may not go there.
 - **Names and safety**: Content-Disposition, else the page's name, else the address; then the first bytes decide the
   extension of pictures and PDFs (`.jpg` that is WebP becomes `.webp`). Names are cut to a plain file name (no folders,
   no device names, at most 120 characters) and never replace an existing file (`name (2).ext`). Programs, installers and
   scripts are refused by extension, media type and first bytes; nothing downloaded is ever run, and every file goes
   through the same converters as any other.
+- **Mark of the Web** (`Platform/MarkOfTheWeb`, Windows): every saved file gets a `Zone.Identifier` stream as a
+  browser's download would (`ZoneId=3`, and `HostUrl` with the address a download came from, without sign-in or
+  fragment), so SmartScreen, Office's block on macros from the internet and Protected View still apply. `JobQueue`
+  copies a source's mark onto the files converted from it (also for "Save only the converted file"); a folder result
+  is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
+  that never fails a conversion.
 
 ## Donut control
 
@@ -320,6 +335,10 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
+  (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
+  their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.
+  New text on `AccentBrush` takes `OnAccentBrush`, never a fixed colour.
 - Window zoom (`Services/UiZoom`): Theme → *Window size* (− / + and *Reset*), and in any tracked window the
   platform's command key (`HotkeyConfiguration.CommandModifiers`: Ctrl, Cmd on macOS) with the mouse wheel, plus /
   minus (Shift allowed, Alt not: AltGr is Ctrl + Alt) or 0 for 100 %. 70–180 % in 10 % steps, every window at once.
@@ -378,7 +397,11 @@ installed yet; the slides introduce the installed one. The demo animations are r
   the bundled engines; its name can't be `filee.exe` next to `Filee.exe` on a case-insensitive file system.
 - `Filee.Core/Watching/FolderWatcher` watches one `WatchRule` with a `FileSystemWatcher` and converts a file once it
   has kept its size and time for a moment, opens without sharing and has data at its start (downloads and copies in
-  progress are skipped). A file that didn't convert gets one more turn after 10 seconds. Temporary files, unknown formats and dedicated output and originals folders are ignored. A rule may also write
+  progress are skipped). A file that didn't convert gets one more turn after 10 seconds. Temporary files, unknown
+  formats and dedicated output and originals folders are ignored. Links (junctions, mount points, symbolic links to
+  folders or files) are never followed or converted, neither as they arrive, nor in the scan of what is already there
+  (`FolderWatcher.FilesInside`), nor when a file gets its second turn; other reparse points, such as OneDrive's
+  online-only files, are converted like any file. A rule may also write
   into the watched folder itself. In that case, generated file versions (path, size and modification time) and
   generated result directories are recorded in `.filee-watch-<rule hash>.json` inside the watched root. The hidden
   state file prevents those results from becoming new inputs, including after an inbox watcher restarts; a changed
@@ -564,7 +587,8 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   the directory as an authentic managed installation. Running without `--upgrade` refuses to overwrite an existing
   installation.
 - **In-app updates** (`UpdateService`): Checks GitHub releases for matching `<rid>.tar.gz` and `<rid>-SHA256SUMS.txt`
-  assets. The tarball is verified against SHA-256 before extraction. Archive extraction validates that all entries stay
+  assets. The tarball is verified against SHA-256 before extraction; a build that carries the update key
+  (`FileeUpdatePublicKey`) first checks the checksum file's signature (`<rid>-SHA256SUMS.txt.sig`, `UpdateSignature`). Archive extraction validates that all entries stay
   within the target directory, rejecting absolute paths, directory symlinks, and escaping links, and masks permissions to
   standard rwx bits (excluding setuid/setgid/sticky bits).
 - **Transactional upgrade**: `UpdateAsync` stages the payload in a private directory (`~/.local/share/filee/.update-*`),

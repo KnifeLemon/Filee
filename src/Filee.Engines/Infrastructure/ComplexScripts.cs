@@ -15,6 +15,9 @@
 // punctuation, math, the CJK forms and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish,
 // Vietnamese, Greek, Cyrillic, ... — or a combining mark is laid out at a fixed half-em. Such a document takes
 // a route without unshaped edges when one exists and keeps rhwp otherwise (it is never refused for this).
+//
+// The scan runs on any file before a reader has looked at it, so it keeps the readers' limits (BoundedXml). A file over
+// them finds nothing here, and the reader then refuses it.
 
 using System.Globalization;
 using System.IO.Compression;
@@ -22,6 +25,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Core.Conversion;
 using Filee.Engines.Hwp.Hwpx;
 using Filee.Engines.Office.Sheets;
 
@@ -357,7 +361,8 @@ internal static partial class ComplexScripts
                 ? FindInText(path, classifier, skipBelow)
                 : null; // binary formats (HWP, DOC, MOBI, ...): left to the engines
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException or XmlException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or FormatException or XmlException
+                                       or ConversionRefusedException)
         {
             return null;
         }
@@ -447,14 +452,21 @@ internal static partial class ComplexScripts
     {
         using var zip = ZipFile.OpenRead(path);
         var buffer = new char[64 * 1024];
+        var packageLeft = BoundedXml.MaxPackageBytes;
         foreach (var entry in zip.Entries)
         {
             if (!IsContentPart(entry.FullName, format))
                 continue;
             using var reader = new StreamReader(entry.Open(), Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var partLeft = BoundedXml.MaxPartBytes;
             int read;
             while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
             {
+                // A few kilobytes can unpack to terabytes, and this runs before anything can cancel it.
+                partLeft -= read;
+                packageLeft -= read;
+                if (partLeft < 0 || packageLeft < 0)
+                    return null;
                 // A surrogate pair or a reference cut at the end of the buffer only hides that one letter.
                 if (Find(buffer.AsSpan(0, read), classifier, skipBelow) is { } script)
                     return script;
@@ -477,21 +489,20 @@ internal static partial class ComplexScripts
     {
         if (zip.GetEntry("xl/styles.xml") is not { } styles)
             return false;
-        using var stream = styles.Open();
-        return XDocument.Load(stream).Descendants().Attributes("formatCode")
+        return BoundedXml.Part(styles).Descendants().Attributes("formatCode")
             .Any(code => Find(code.Value, (codePoint, _, _) => ScriptOf(codePoint) ?? UnmeasuredScriptOf(codePoint), 0x0100) is not null);
     }
 
     /// <summary>The first answer of <paramref name="classifier"/> in the text boxes of a presentation's masters and layouts.</summary>
     private static string? FindInDecorations(ZipArchive zip, Classifier classifier, int skipBelow)
     {
+        var parts = new BoundedXml();
         foreach (var entry in zip.Entries)
         {
             if (!(entry.FullName.StartsWith("ppt/slideMasters/", StringComparison.OrdinalIgnoreCase) || entry.FullName.StartsWith("ppt/slideLayouts/", StringComparison.OrdinalIgnoreCase))
                 || !entry.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
                 continue;
-            using var stream = entry.Open();
-            var boxes = XDocument.Load(stream).Descendants().Where(e => e.Name.LocalName == "sp")
+            var boxes = parts.Load(entry).Descendants().Where(e => e.Name.LocalName == "sp")
                 .Where(shape => !shape.Descendants().Any(e => e.Name.LocalName == "ph"));
             foreach (var text in boxes.SelectMany(shape => shape.Descendants()).Where(e => e.Name.LocalName == "t"))
             {
