@@ -626,6 +626,10 @@
   "general.export": "Exporter…",
   "general.import": "Importer…",
   "general.reset_library": "Rétablir les valeurs par défaut",
+  "general.export_hint": "Enregistre les préréglages et les menus circulaires dans un fichier, pour une sauvegarde ou pour les partager.",
+  "general.import_hint": "Ajoute des préréglages et des menus circulaires depuis un fichier. Les copies existantes sont remplacées.",
+  "general.reset_hint": "Remplace tous les préréglages et menus circulaires par ceux d'origine.",
+  "general.library_note": "Vos autres réglages ne changent pas.",
   "general.reset_confirm": "Remplacer tous les préréglages et profils de menu circulaire par ceux par défaut ?",
   "general.imported": "{0} éléments importés",
 

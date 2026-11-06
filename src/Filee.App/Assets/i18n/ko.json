@@ -626,6 +626,10 @@
   "general.export": "내보내기…",
   "general.import": "가져오기…",
   "general.reset_library": "기본값으로 초기화",
+  "general.export_hint": "프리셋과 툴바를 파일로 저장해요. 백업하거나 공유할 때 쓰세요.",
+  "general.import_hint": "파일에서 프리셋과 툴바를 추가해요. 이미 있는 항목은 대체돼요.",
+  "general.reset_hint": "모든 프리셋과 툴바를 기본으로 제공되는 것으로 바꿔요.",
+  "general.library_note": "다른 설정은 바뀌지 않아요.",
   "general.reset_confirm": "모든 프리셋과 툴바 프로필을 기본값으로 바꿀까요?",
   "general.imported": "{0}개 항목을 가져왔어요",
 
