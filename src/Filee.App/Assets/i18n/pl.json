@@ -622,6 +622,7 @@
   "update.more_changes": "… i jeszcze {0}",
   "general.data_folder": "Folder ustawień",
   "general.open_data_folder": "Otwórz",
+  "general.data_folder_hint": "Filee przechowuje tu ustawienia, ustawienia wstępne, paski, historię konwersji i pliki dziennika. Otwórz folder, aby zrobić kopię zapasową lub zajrzeć do dziennika.",
   "general.library": "Ustawienia wstępne i paski",
   "general.export": "Eksportuj…",
   "general.import": "Importuj…",
