@@ -46,6 +46,16 @@ public class PdfRepairTests
 
     private static string Latin1(byte[] bytes) => Encoding.Latin1.GetString(bytes);
 
+    /// <summary>Writes a real password-protected PDF (PDFsharp's own encryption) to <paramref name="path"/>.</summary>
+    private static void WritePasswordProtectedPdf(string path)
+    {
+        using var document = new PdfDocument();
+        document.AddPage();
+        document.SecuritySettings.UserPassword = "user-secret";
+        document.SecuritySettings.OwnerPassword = "owner-secret";
+        document.Save(path);
+    }
+
     private static string TempPdf() => Path.Combine(Path.GetTempPath(), $"filee-test-{Guid.NewGuid():N}.pdf");
 
     [Fact]
@@ -173,13 +183,7 @@ public class PdfRepairTests
         var path = TempPdf();
         try
         {
-            using (var document = new PdfDocument())
-            {
-                document.AddPage();
-                document.SecuritySettings.UserPassword = "user-secret";
-                document.SecuritySettings.OwnerPassword = "owner-secret";
-                document.Save(path);
-            }
+            WritePasswordProtectedPdf(path);
 
             Assert.Null(PdfRepair.Repair(File.ReadAllBytes(path)));
             Assert.Throws<InvalidOperationException>(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import));
@@ -187,6 +191,95 @@ public class PdfRepairTests
         finally
         {
             File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void Pages_per_sheet_reports_a_password_protected_pdf_as_the_other_pdf_tools_do()
+    {
+        var path = TempPdf();
+        var output = TempPdf();
+        try
+        {
+            WritePasswordProtectedPdf(path);
+
+            var error = Assert.Throws<InvalidOperationException>(() =>
+                PdfSheets.Write(path, output, new PdfOptions { PagesPerSheet = 2 }, null, TestContext.Current.CancellationToken));
+
+            Assert.Equal(PdfDocumentReader.PasswordProtected().Message, error.Message);
+            Assert.False(File.Exists(output));
+        }
+        finally
+        {
+            File.Delete(path);
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public void Repair_mends_a_damaged_bookmark_whose_title_has_the_word_stream_in_it()
+    {
+        // "stream" inside a string is not a stream keyword: the object has no stream, so its surplus ">>" is mended
+        const string bookmark = "5 0 obj\n<< /Title (Upstream plan) /Parent 2 0 R >>\n>>\nendobj\n";
+        var damaged = Pdf(Catalog, bookmark);
+
+        var repaired = PdfRepair.Repair(damaged);
+
+        Assert.NotNull(repaired);
+        Assert.Equal(damaged.Length, repaired.Length);
+        var text = Latin1(repaired);
+        Assert.Contains("(Upstream plan)", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(">>\n>>\nendobj", text, StringComparison.Ordinal);
+        using var document = PdfReader.Open(new MemoryStream(repaired), PdfDocumentOpenMode.Import);
+        Assert.Equal(1, document.PageCount);
+    }
+
+    [Fact]
+    public void Repair_leaves_an_object_with_a_stream_alone()
+    {
+        // a real "stream" keyword: the object is not judged, even though its dictionary has a ">>" too many
+        const string data = "abc";
+        var withStream = $"5 0 obj\n<< /Length {data.Length} >>\n>>\nstream\n{data}\nendstream\nendobj\n";
+
+        Assert.Null(PdfRepair.Repair(Pdf(Catalog, withStream)));
+    }
+
+    [Fact]
+    public void Repair_can_be_cancelled_on_a_file_with_many_objects()
+    {
+        // 20,000 listed objects that never end: the repair gives up on them, and a cancelled token stops it
+        var objects = Enumerable.Range(5, 20_000).Select(n => $"{n} 0 obj\n<< /A 1 >>\n").ToArray();
+        var pdf = Pdf(Catalog, objects);
+
+        Assert.Null(PdfRepair.Repair(pdf));
+        Assert.Throws<OperationCanceledException>(() => PdfRepair.Repair(pdf, new CancellationToken(canceled: true)));
+    }
+
+    [Fact]
+    public void Open_hands_back_the_mended_bytes_only_for_a_file_PDFsharp_refused()
+    {
+        var damaged = TempPdf();
+        var healthy = TempPdf();
+        try
+        {
+            File.WriteAllBytes(damaged, DamagedPdf());
+            File.WriteAllBytes(healthy, Pdf(Catalog));
+
+            using (var document = PdfSharpConverter.Open(damaged, PdfDocumentOpenMode.Import, out var mended))
+            {
+                Assert.NotNull(mended);
+                Assert.Equal(1, document.PageCount);
+            }
+            using (var document = PdfSharpConverter.Open(healthy, PdfDocumentOpenMode.Import, out var mended))
+            {
+                Assert.Null(mended);
+                Assert.Equal(1, document.PageCount);
+            }
+        }
+        finally
+        {
+            File.Delete(damaged);
+            File.Delete(healthy);
         }
     }
 }
