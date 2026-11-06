@@ -100,8 +100,11 @@ internal static class PdfSheets
     /// </summary>
     internal static void Write(string input, string output, PdfOptions options, IProgress<double>? progress, CancellationToken cancellationToken)
     {
+        // A PDF PDFsharp refuses (issue #1175) comes back mended in memory; XPdfForm then reads those bytes, not the file.
+        // A password-protected one fails here, with the message the other PDF tools give.
         List<(int Index, ShownPage Shown)> pages;
-        using (var source = PdfSharpConverter.Open(input, PdfDocumentOpenMode.Import))
+        byte[]? mended;
+        using (var source = PdfSharpConverter.Open(input, PdfDocumentOpenMode.Import, out mended, cancellationToken))
             pages = [.. PageRange.Parse(options.PageRange, source.PageCount).Select(i => (i, Shown(source.Pages[i])))];
         if (pages.Count == 0)
             throw new InvalidOperationException("The PDF has no pages in the chosen range.");
@@ -109,7 +112,7 @@ internal static class PdfSheets
         var perSheet = Math.Clamp(options.PagesPerSheet, 2, 16);
         var sheet = SheetSize(options, perSheet, pages[0].Shown);
         var cells = Cells(sheet, options, perSheet);
-        using var form = XPdfForm.FromFile(input);
+        using var form = mended is null ? XPdfForm.FromFile(input) : XPdfForm.FromStream(new MemoryStream(mended));
         using var document = new PdfDocument();
         for (var first = 0; first < pages.Count; first += perSheet)
         {
