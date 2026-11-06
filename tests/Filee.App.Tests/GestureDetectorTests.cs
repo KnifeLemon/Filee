@@ -61,6 +61,41 @@ public class GestureDetectorTests
     }
 
     [Fact]
+    public void A_move_after_the_release_that_still_reports_the_button_starts_nothing()
+    {
+        // macOS (#784): the hook reads each event's mask from the session's state, so a move right after the release can
+        // still say the button is held. A gesture starting then wiped the donut before the drop reached it.
+        var detector = Create(CtrlDrag);
+        var started = 0;
+        var ended = 0;
+        detector.DragStarted += (_, _, _) => started++;
+        detector.DragEnded += (_, _) => ended++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.Ctrl);
+        detector.MouseMove(60, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+        detector.MouseUp(TriggerMouseButton.Left, 60, 0);
+        detector.MouseMove(61, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+
+        Assert.Equal((1, 1), (started, ended));
+    }
+
+    [Fact]
+    public void A_modifier_pressed_after_the_button_still_fires_on_the_next_press()
+    {
+        var detector = Create(CtrlDrag);
+        var started = 0;
+        detector.DragStarted += (_, _, _) => started++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.Ctrl);
+        detector.MouseMove(60, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+        detector.MouseUp(TriggerMouseButton.Left, 60, 0);
+        detector.MouseDown(TriggerMouseButton.Left, 0, 0, ModifierKeys.None);
+        detector.MouseMove(30, 0, ModifierKeys.Ctrl, TriggerMouseButton.Left);
+
+        Assert.Equal(2, started);
+    }
+
+    [Fact]
     public void Drag_end_is_reported_only_after_a_drag_started()
     {
         var detector = Create(CtrlDrag);

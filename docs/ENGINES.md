@@ -12,7 +12,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -22,6 +22,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
+| Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
 | **E-books** | built in | **EPUB, MOBI/AZW/AZW3/PRC, FB2, HTMLZ, TXTZ → EPUB, HWPX (→ PDF), TXT, HTML, Markdown, FB2, HTMLZ, TXTZ**; HTML, Markdown, TXT, DOCX → EPUB/FB2/HTMLZ/TXTZ; HTML → TXT; comics CBZ/CBR/CB7/CBT/CBC → PDF, EPUB, CBZ; PDF → CBZ; AZW4 → PDF; **EPUB ↔ KEPUB** (Kobo) |
 | CAD (ACadSharp + built-in renderer) | built in (library) | **DWG ↔ DXF**; DWG/DXF → **PDF** (vector), **SVG**, PNG, JPG, WEBP, TIFF, BMP, GIF, ICO, AVIF |
@@ -443,8 +444,21 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
 - **MHTML** (`.mhtml`, `.mht`) is turned into its standalone page first (see *E-mail* below) and that page read like
   HTML; it refers to nothing but data: URIs, so no file outside the job's scratch folder is looked at.
 - **ODT, RTF** are parsed by Pandoc into its JSON AST (`PandocAstReader.cs`, following
-  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)).
+  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)), in Pandoc's `--sandbox`: Pandoc reads nothing but the
+  file, so include directives stay unread and pictures the document links to are found by Filee.
 - Markdown, HTML and Pandoc keep structure only, so page setup comes from the built-in template (A4).
+- Pictures (and HTML style sheets) a Markdown, HTML or Pandoc document links to are read only from the document's
+  own folder and its subfolders (`DocumentFiles.cs`, also for e-books, MHTML and translation): `../`, absolute paths
+  and `file:` URLs outside are left out like missing pictures. A path or `file:` URL naming another computer
+  (`\\host\share`, `file://host/`, `//host/`) is refused by its text alone, so no network connection is made.
+- **Limits** (`Hwp/Hwpx/Nesting.cs`, `Infrastructure/BoundedXml.cs`): the XML parts of DOCX, PPTX, XLSX, HWPX and
+  ODS packages (and FB2 and OPF files) are read without DTDs, each up to 256 MB unpacked, 1 GB per package, with
+  elements nested at most 1,000 levels; larger or deeper files are refused (`error.document_too_large`). Tables in
+  table cells, text boxes, notes and links nested more than 32 deep become plain paragraphs of their text, in the
+  DOCX and HWPX readers and again in every writer (whatever reader made the model); an equation deeper than 200
+  levels becomes its text, notes inside notes are not followed, and PPTX groups are opened without recursion. The
+  readers run on a thread with a 16 MB stack. The scan for text rhwp can't draw (`ComplexScripts.cs`) stops at the
+  same sizes: it runs before any reader, finds nothing in a file over them, and the reader then refuses that file.
 
 Element order and attribute values follow files saved by 한글 where the schema and 한글 disagree, for example:
 
@@ -963,6 +977,31 @@ saved as octet-stream, and scripts, frames, remote pictures, fonts and style she
 (windows-1252, `file:///C:/` locations, VML fallbacks), a `cid:`-only page in EUC-KR, a picture on disk named by a
 `file:` URI that must not be read, and the routes to HTML, TXT, DOCX, HWPX and PDF.
 
+## Signed files (.p7m)
+
+A `.p7m` (#1010) is a CMS / PKCS #7 SignedData envelope (RFC 5652; CAdES as Italian e-invoices and signed PDFs are
+made): the signed file with its signature around it. `Signed/P7mConverter.cs` takes the file out with .NET's
+`SignedCms` (System.Security.Cryptography.Pkcs): DER or BER, or the same saved as Base64 or PEM text. An envelope
+signed again is opened again, up to 8 deep. Envelopes over 512 MB are refused.
+
+- **The signature is not checked**, and nothing in it is trusted: no certificate chain, no revocation list, no
+  time-stamp server, no network. The result is the plain file without the proof the signature gives; the `.p7m` is
+  left as it was.
+- **The format inside** comes from the envelope's name (`invoice.xml.p7m` → XML), else from the first bytes: PDF and
+  pictures (as for files from a browser), XML, HTML, RTF, a MIME message (a signed e-mail, `smime.p7m`), ZIP and the
+  Word, Excel, PowerPoint, OpenDocument and EPUB files in one, plain UTF-8 text. Anything else is refused
+  (`error.p7m_unknown_content`).
+- **The route** goes on from that format. The converter is an `IEnvelopeOpener`: `JobQueue` asks it for the format
+  inside before planning, and `RoutePlanner.PlanThrough` puts the step to it first (P7M → PDF → PNG); "same format",
+  OCR and the other options apply to the file inside. The converter has an edge from P7M to every format, so the donut
+  offers what any file inside could become, and a file inside that can't become the target fails with its own
+  format's "no route" (`xml → mp4`).
+- **Names**: outputs are named after the file inside (`FormatRegistry.NameWithoutExtension`: `invoice.pdf.p7m` →
+  `invoice.pdf`, `invoice.png`).
+- **Refused**: a detached signature (`error.p7m_detached`: the signed file is kept elsewhere), an encrypted S/MIME
+  envelope (`error.p7m_encrypted`: EnvelopedData, only the recipient's key opens it) and anything that isn't a
+  SignedData (`error.p7m_unreadable`).
+
 ## Data (JSON, YAML, TOML, XML, CSV, vCard, iCalendar)
 
 `Data/DataConverter.cs` (engine id `data`) reads every format into one tree (`Data/DataTree.cs`: objects with their
@@ -1321,7 +1360,8 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
 
 - **EPUB 2 / 3**: container.xml → OPF → spine; each chapter is read by the HTML reader and starts a new page, links
   between chapters become links to bookmarks, pictures come from the package, title / authors / language / cover
-  from the metadata.
+  from the metadata. A book (EPUB, HTMLZ, TXTZ) is unpacked with at most 100,000 entries, 1 GB per entry and 2 GB
+  in all, checked while unpacking; past that it is refused.
 - **EPUB output** is EPUB 3 with an NCX for older readers: `mimetype` first and stored, a navigation document from
   the headings, chapters split at level-1 headings and page breaks, one style sheet, pictures in formats every
   reader shows (others become JPEG / PNG), a cover page for covers the content does not show.
@@ -1415,7 +1455,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
 | TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
 | TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
-| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, CRC and size checked | — |
+| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, stopped at the size its trailer states, CRC checked | — |
 | GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
 | LZMA, Z | 7-Zip | — |
 | RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
@@ -1426,7 +1466,8 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
   with `photos/…` gives `photos/…`, not `photos/photos/…`). Name conflicts follow the preset: `name (2)`, overwrite
-  (files are merged into the existing folder) or skip.
+  (files are merged into the existing folder; refused before anything moves when that folder, or any folder in it that
+  would receive files, is a link or junction) or skip.
 - **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
   maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
 - **Game packs** (#824, #898, the Games field): Minecraft and Modrinth read a marker file at the top of the ZIP
@@ -1440,8 +1481,16 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 - **Safety**: every archive is listed first. Encrypted entries or archives stop with "password-protected"; entries
   (or hard links) with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is
   written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
-  1,000,000 entries or more data than the drive has free are refused; Filee's own readers also stop when data unpacks
-  to more than the entry declares, and check CRCs.
+  1,000,000 entries or more data than the drive has free are refused (a listing without sizes still needs the 64 MB
+  reserve); Filee's own readers also stop when data unpacks to more than the entry declares, and check CRCs.
+- **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z) state
+  no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: 7-Zip writes them
+  to its standard output (`x -so`) and Filee writes the file, stopping 7-Zip and deleting what was written once it
+  passes the room on the drive less a tenth of the free space ("unpacks to more than …, but only … is free").
+- **Mark of the Web** (Windows): unpacked files get the archive's `Zone.Identifier` stream, so a ZIP a browser saved
+  still gives SmartScreen prompts and Office's macro block once unpacked. 7-Zip copies it (`-snz`); for files Filee
+  writes itself (ALZ, EGG, lzip, single streams) it is copied after unpacking (`Core/Platform/MarkOfTheWeb`). A drive
+  without NTFS streams (FAT32, exFAT) gets none, and that never fails the job.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG.
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
@@ -1454,6 +1503,20 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently
   fails when two conversions share a profile).
+- Before every start the profile's `user/registrymodifications.xcu` gets Filee's settings (`LibreOfficeProfile`): no
+  macros (`MacroSecurityLevel` 3, `DisableMacrosExecution`, no trusted locations), Word and Excel VBA not executable,
+  links never updated (Writer and Calc), and `BlockUntrustedRefererLinks`, which keeps LibreOffice from loading
+  anything a document links to: linked pictures, files and addresses, in every application. A document with macros
+  converts with the notice that they weren't run (`OfficeMacros`).
+- LibreOffice gets a copy without links to content outside the document (`LinkedContent`): external relationships
+  (not hyperlinks) of Office Open XML, `xlink:href` outside an OpenDocument package, picture and style sheet addresses
+  of HTML other than `data:`, and RTF `INCLUDEPICTURE` fields, whose file the RTF reader loads whatever the profile
+  says. A local picture outside the document never ends up in the result, and no share or address is contacted.
+  An HTML page's pictures inside its own folder (the rule of `DocumentFiles.cs`) go into the copy as `data:` URIs,
+  except SVG, which can link to further files. XML parts are read with the limits of `BoundedXml.cs`. Binary Office
+  files (DOC, XLS, PPT) are left to the profile. Later changes to the copy (`DocxNoteMarks`) start from this copy.
+  Every copy of a package is written by `PackageRepacker`, which refuses one that unpacks to over 2 GB, or to over
+  twice its own size when that is more (`error.document_too_large`).
 - HWP/HWPX import comes from the H2Orestart extension, which is written in Java; Filee points LibreOffice at the
   downloaded JRE (`-env:UNO_JAVA_JFW_JREHOME`).
 - When LibreOffice can't load an Office Open XML or OpenDocument file ("source file could not be loaded"), Filee
@@ -1501,10 +1564,13 @@ DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`)
 - DocBook, man pages, OPML, Typst, HTML and LaTeX are written with `--standalone` (a root element, a `.TH` header,
   a preamble), the text formats extract pictures into `<name>_files` next to the result (Markdown with *Leave out
   pictures* gets none: a Lua filter drops them).
-- Pictures are linked relative to the result (`<name>_files/media/…`; Pandoc runs in the result's folder, with
-  `--resource-path` pointing at the source's for pictures the source links to), so both can be moved together.
-  EMF and WMF pictures, common in Word documents, become PNG (ImageMagick draws metafiles on Windows only; elsewhere
-  they stay).
+- Pictures are linked relative to the result (`<name>_files/media/…`; Pandoc runs in the result's folder), so both can
+  be moved together. EMF and WMF pictures, common in Word documents, become PNG (ImageMagick draws metafiles on
+  Windows only; elsewhere they stay).
+- Pandoc runs twice, both times in its `--sandbox` (it reads nothing but the file it is given, so `\input` and
+  `.. include::` stay unread): the source → JSON AST, whose pictures Filee checks (only from the source's folder,
+  see *HWPX writer*), then the AST → the result, with those pictures handed over by a Lua filter. Pictures on the
+  web aren't fetched.
 - Markdown is GitHub-flavoured and kept free of HTML, which many Markdown editors show as code (#391). A Lua filter
   lays every table out as a pipe table: a merged cell keeps its text in its first position and leaves the cells it
   covered empty, the paragraphs and list items of a cell are joined with `<br>`, and a table without a header row

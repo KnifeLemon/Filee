@@ -16,6 +16,11 @@
 //  * soffice reports no progress: ProgressEstimate keeps the progress ring moving while it runs.
 //  * Its ZIP reader refuses some containers other readers open (Tencent Docs exports, issue #141), saying only "source
 //    file could not be loaded": an Office Open XML / OpenDocument file is tried once more as a repacked copy.
+//  * Every worker profile runs no macros and updates no links (LibreOfficeProfile, applied before each start), so a
+//    document converts the same whatever the installation's defaults are and doesn't reach out to what it links to.
+//    LibreOffice gets a copy without links to pictures, objects or templates outside the document (LinkedContent),
+//    which the profile doesn't stop everywhere. A document with macros gets a notice that they weren't run.
+//  * Its DOCX import moves a footnote's number out of the text around it ("(1)" → "1()", issue #620): DocxNoteMarks.
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -115,9 +120,18 @@ public sealed class LibreOfficeConverter : IConverter
         {
             progress?.Report(0.1);
             var input = step.From == "pdf" && step.To == "svg" ? FirstPage(step) : step.InputPath;
+            if (LinkedContent.Strip(input, step.From, step.WorkDirectory, step.OriginalSourcePath) is { } unlinked)
+            {
+                _logger.LogInformation("{File}: links to content outside the document were taken out of the copy for LibreOffice", step.InputPath);
+                input = unlinked;
+            }
+            // Works on what is left after the links: its copy keeps every other part as it finds it.
+            if (RenderedTargets.Contains(step.To) && DocxNoteMarks.Reads(step.From)
+                && DocxNoteMarks.Prepare(input, step.WorkDirectory) is { } numbered)
+                input = numbered;
             var filter = FilterFor(step.From, step.To, step.Preset.Document.PdfA, FormatRegistry.ExtensionOf(step.InputPath));
             var (produced, result) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, input, progress, cancellationToken);
-            if (produced is null && Repack(step.InputPath, step.WorkDirectory) is { } repacked)
+            if (produced is null && Repack(input, step.WorkDirectory) is { } repacked)
             {
                 _logger.LogInformation("{File}: LibreOffice could not load it, trying again with the ZIP container repacked", step.InputPath);
                 (produced, _) = await ConvertOnceAsync(soffice, slot, filter, step.WorkDirectory, repacked, progress, cancellationToken);
@@ -144,6 +158,11 @@ public sealed class LibreOfficeConverter : IConverter
             {
                 // Post-processing is an improvement, not a reason to discard LibreOffice's otherwise valid PDF.
                 _logger.LogInformation("{File}: could not check empty spreadsheet PDF pages: {Message}", step.InputPath, e.Message);
+            }
+            if (OfficeMacros.In(step.InputPath))
+            {
+                _logger.LogInformation("{File}: has macros, which LibreOffice did not run", step.InputPath);
+                step.Notice?.Invoke("notice.macros_not_run");
             }
 
             var target = step.Output.Allocate(step.To);
@@ -303,8 +322,11 @@ public sealed class LibreOfficeConverter : IConverter
 
     private string ProfileDirectory(int slot) => Path.Combine(_env.DataDirectory, "libreoffice-profiles", $"worker-{slot}");
 
-    /// <summary>LibreOffice has started with this profile before (it creates the "user" folder).</summary>
-    private bool IsPrepared(int slot) => Directory.Exists(Path.Combine(ProfileDirectory(slot), "user"));
+    /// <summary>
+    /// LibreOffice has started with this profile before: it creates user/config (the user folder itself already
+    /// holds the configuration <see cref="LibreOfficeProfile"/> writes before the first start).
+    /// </summary>
+    private bool IsPrepared(int slot) => Directory.Exists(Path.Combine(ProfileDirectory(slot), "user", "config"));
 
     private async Task<int> TakeProfileAsync(CancellationToken cancellationToken)
     {
@@ -325,6 +347,7 @@ public sealed class LibreOfficeConverter : IConverter
     {
         var profileDir = ProfileDirectory(slot);
         Directory.CreateDirectory(profileDir);
+        LibreOfficeProfile.Apply(profileDir);
         var args = new List<string>
         {
             "--headless", "--norestore", "--nologo", "--nodefault", "--nolockcheck", "--nofirststartwizard",

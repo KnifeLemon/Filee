@@ -11,6 +11,32 @@ namespace Filee.Core.Tests;
 public class ImageExtensionAliasTests
 {
     [Theory]
+    [InlineData("photo.jif")]
+    [InlineData("photo.JIF")]
+    public void Jif_is_a_jpeg_and_uses_the_image_donut(string file)
+    {
+        Assert.Same(FormatRegistry.Get("jpg"), FormatRegistry.Detect(file));
+        Assert.Equal("images", ProfileSelector.Select(BuiltInData.CreateProfiles(), [file])?.Id);
+    }
+
+    [Fact]
+    public void Version_69_libraries_learn_jif_without_taking_custom_claims()
+    {
+        var presets = BuiltInData.CreatePresets();
+        var profiles = BuiltInData.CreateProfiles();
+        var images = profiles.Single(p => p.Id == "images");
+        images.Extensions.Remove("jif");
+        Assert.True(SettingsMigrations.ApplyToLibrary(69, presets, profiles));
+        Assert.Contains("jif", images.Extensions);
+        Assert.False(SettingsMigrations.ApplyToLibrary(69, presets, profiles));
+
+        images.Extensions.Remove("jif");
+        profiles.Insert(0, new ToolbarProfile { Id = "my-photos", Extensions = ["JIF"] });
+        Assert.False(SettingsMigrations.ApplyToLibrary(69, presets, profiles));
+        Assert.DoesNotContain("jif", images.Extensions);
+        Assert.Equal("my-photos", ProfileSelector.Select(profiles, ["photo.jif"])?.Id);
+    }
+    [Theory]
     [InlineData("photo.png_large", "png")]
     [InlineData("photo.jpg_large", "jpg")]
     [InlineData("photo.PnG_LaRgE", "png")]

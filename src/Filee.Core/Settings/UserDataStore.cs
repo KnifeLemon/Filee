@@ -1020,7 +1020,31 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 67)
             changed |= LearnExtensions(profiles, out _, ["flc", "fli"]);
+        // v68: signed files (.p7m, #1010) learn the documents donut; custom claims stay put. (Schema 68 may be
+        //      renumbered if another change takes it first.)
+        if (from < 68)
+            changed |= LearnExtensions(profiles, out _, ["p7m"]);
+        // v69: the Translate preset (#1160), which no step brought to libraries saved before it existed, after the
+        //      built-in preset before it as in a new library; no donut gets a slot (#806). (Schema 69 may be renumbered
+        //      if another change takes it first.)
+        if (from < 69 && presets.All(p => p.Id != "translate"))
+            changed |= AddTranslatePreset(presets);
+        // v70: JPEG .jif files (#1184) learn the images donut without taking custom claims.
+        if (from < 70)
+            changed |= LearnExtensions(profiles, out _, ["jif"]);
+        // v71: Java source files (#1176) learn the text donut; custom claims stay put.
+        if (from < 71)
+            changed |= LearnExtensions(profiles, out _, ["java"]);
         return changed;
+    }
+
+    private static bool AddTranslatePreset(List<Preset> presets)
+    {
+        var defaults = BuiltInData.CreatePresets();
+        var at = defaults.FindIndex(p => p.Id == "translate");
+        var after = defaults.Take(at).Select(p => presets.FindIndex(existing => existing.Id == p.Id)).LastOrDefault(i => i >= 0, -1);
+        presets.Insert(after + 1, defaults[at]);
+        return true;
     }
 
     private static bool AddPdfSheets(List<Preset> presets)

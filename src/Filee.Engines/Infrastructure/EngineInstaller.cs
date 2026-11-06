@@ -62,6 +62,18 @@ public sealed class EngineInstaller
     private const string MarkerName = ".filee-component";
     private static readonly TimeSpan MsiTimeout = TimeSpan.FromMinutes(15);
 
+    /// <summary>Tries before a file held open counts as in use: about 2 seconds, for holds as brief as a virus scan's.</summary>
+    private const int LockAttempts = 5;
+    private static readonly TimeSpan LockWait = TimeSpan.FromMilliseconds(200);
+
+    /// <summary>What <see cref="DeleteFolder"/> makes writable: hidden and system files too, but not through links.</summary>
+    private static readonly EnumerationOptions EveryEntry = new()
+    {
+        RecurseSubdirectories = true,
+        AttributesToSkip = FileAttributes.ReparsePoint,
+        IgnoreInaccessible = true,
+    };
+
     private readonly string _root;
     private readonly HttpClient _http;
     private readonly IReadOnlyDictionary<string, EngineComponent> _components;
@@ -176,7 +188,7 @@ public sealed class EngineInstaller
                 var folder = FolderOf(id);
                 if (!Directory.Exists(folder))
                     continue;
-                var moved = Path.Combine(_root, $"{AsidePrefix}{id}-{Guid.NewGuid().ToString("N")[..8]}");
+                var moved = AsideFolder(id);
                 Directory.Move(folder, moved);
                 aside.Add((folder, moved));
             }
@@ -192,10 +204,12 @@ public sealed class EngineInstaller
             TryDeleteFolder(moved);
     }
 
-    /// <summary>Start of the name of a folder an earlier removal moved aside but couldn't delete.</summary>
+    /// <summary>Start of the name of a folder an earlier removal or update moved aside but couldn't delete.</summary>
     private const string AsidePrefix = "~removed-";
 
-    /// <summary>Deletes what an earlier removal of the package left aside (under the package's lock).</summary>
+    private string AsideFolder(string id) => Path.Combine(_root, $"{AsidePrefix}{id}-{Guid.NewGuid().ToString("N")[..8]}");
+
+    /// <summary>Deletes what an earlier removal or update of the package left aside (under the package's lock).</summary>
     private void ClearAside(EnginePackage package)
     {
         if (!Directory.Exists(_root))
@@ -205,15 +219,58 @@ public sealed class EngineInstaller
                 TryDeleteFolder(folder);
     }
 
-    private static void TryDeleteFolder(string folder)
+    /// <summary>Deletes a folder that is only in the way: a failure is logged and never replaces another error (#1092).</summary>
+    private void TryDeleteFolder(string folder)
     {
         try
         {
-            Directory.Delete(folder, recursive: true);
+            DeleteFolder(folder);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Left for the next install or removal (ClearAside).
+            // A folder moved aside is left for the next install or removal (ClearAside).
+            _logger.LogWarning(ex, "Could not delete {Folder}", folder);
+        }
+    }
+
+    /// <summary>
+    /// Deletes a folder tree, read-only files included: Directory.Delete stops at the first one, and the calibre MSI
+    /// marks every file read-only (#1092). A file held briefly (an antivirus scanning what was just unpacked) is waited out.
+    /// Links are never followed: of a link only the link goes, also when <paramref name="folder"/> itself is one, and what
+    /// it leads to stays as it is.
+    /// </summary>
+    internal static void DeleteFolder(string folder) => WaitingOutLocks(() =>
+    {
+        var root = new DirectoryInfo(folder);
+        if (!root.Exists)
+            return;
+        if (root.LinkTarget is not null)
+        {
+            root.Delete(recursive: false);
+            return;
+        }
+        foreach (var entry in root.EnumerateFileSystemInfos("*", EveryEntry))
+        {
+            if ((entry.Attributes & FileAttributes.ReadOnly) != 0)
+                entry.Attributes &= ~FileAttributes.ReadOnly;
+        }
+        Directory.Delete(folder, recursive: true);
+    });
+
+    /// <summary>Runs an action on files that may be held briefly, trying again until the last attempt's error stands.</summary>
+    private static void WaitingOutLocks(Action action)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                action();
+                return;
+            }
+            catch (Exception ex) when (attempt < LockAttempts && ex is IOException or UnauthorizedAccessException)
+            {
+                Thread.Sleep(LockWait * attempt);
+            }
         }
     }
 
@@ -314,11 +371,26 @@ public sealed class EngineInstaller
 
     // ───────────────────────── Unpack ─────────────────────────
 
-    private async Task UnpackAsync(EngineComponent component, string file, CancellationToken cancellationToken)
+    /// <summary>
+    /// Runs <paramref name="unpack"/> on a new staging folder and removes what is left of it. The error that made
+    /// unpacking fail is the one the user sees: a cleanup that fails too doesn't replace it (#1092).
+    /// </summary>
+    internal async Task InStagingAsync(Func<string, Task> unpack)
     {
         // Short name: LibreOffice's own folder structure is deep, and msiexec fails beyond MAX_PATH (260 chars).
         var staging = Path.Combine(_root, "~" + Guid.NewGuid().ToString("N")[..6]);
         try
+        {
+            await unpack(staging);
+        }
+        finally
+        {
+            TryDeleteFolder(staging);
+        }
+    }
+
+    private Task UnpackAsync(EngineComponent component, string file, CancellationToken cancellationToken) =>
+        InStagingAsync(async staging =>
         {
             switch (component.Kind)
             {
@@ -373,22 +445,13 @@ public sealed class EngineInstaller
                     if (!Directory.Exists(extensions))
                         throw new InvalidOperationException($"{component.Id} needs LibreOffice, which is not installed.");
                     ZipFile.ExtractToDirectory(file, staging);
-                    var target = FolderOf(component.Id);
-                    if (Directory.Exists(target))
-                        Directory.Delete(target, recursive: true);
-                    Directory.Move(staging, target);
+                    Replace(component.Id, staging);
                     break;
                 default:
                     throw new NotSupportedException($"Unknown engine package kind '{component.Kind}'.");
             }
             File.WriteAllText(Path.Combine(FolderOf(component.Id), MarkerName), component.Sha256);
-        }
-        finally
-        {
-            if (Directory.Exists(staging))
-                Directory.Delete(staging, recursive: true);
-        }
-    }
+        });
 
     internal static async Task UnpackTarAsync(string file, string target, string kind, CancellationToken cancellationToken)
     {
@@ -638,14 +701,30 @@ public sealed class EngineInstaller
         return entries.Length == 1 && Directory.Exists(entries[0]) ? entries[0] : folder;
     }
 
-    /// <summary>Makes <paramref name="source"/> the engine folder, replacing a previous version.</summary>
+    /// <summary>
+    /// Makes <paramref name="source"/> the engine folder, replacing a previous version. Like <see cref="Uninstall"/>, it
+    /// moves that version aside first: while an engine runs the move fails and the working copy keeps its marker, where
+    /// a delete in place took the marker first and left a half-deleted engine that looked not installed (#1092).
+    /// </summary>
     private void Replace(string id, string source)
     {
         RequiredProgramFolder(id, source, _components[id].Kind is "msi" or "conda" or "nsis" || OperatingSystem.IsWindows());
         var target = FolderOf(id);
-        if (Directory.Exists(target))
-            Directory.Delete(target, recursive: true);
-        Directory.Move(source, target);
+        var previous = Directory.Exists(target) ? AsideFolder(id) : null;
+        if (previous is not null)
+            WaitingOutLocks(() => Directory.Move(target, previous));
+        try
+        {
+            WaitingOutLocks(() => Directory.Move(source, target));
+        }
+        catch
+        {
+            if (previous is not null)
+                Directory.Move(previous, target);
+            throw;
+        }
+        if (previous is not null)
+            TryDeleteFolder(previous);
     }
 
     // ───────────────────────── Layout ─────────────────────────
@@ -674,7 +753,7 @@ public sealed class EngineInstaller
         {
             File.Delete(file);
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
         }
     }

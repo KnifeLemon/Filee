@@ -15,8 +15,26 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
+    [InlineData("png", MagickFormat.Png)]
+    [InlineData("jpg", MagickFormat.Jpeg)]
+    [InlineData("webp", MagickFormat.WebP)]
+    public async Task Jif_jpeg_converts_to_requested_image_format(string target, MagickFormat format)
+    {
+        var dir = fx.NewFolder();
+        var source = EngineFixture.MakeImage(dir, "photo.jif", MagickFormat.Jpeg, 64, 48);
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = target });
+        AssertDone(job);
+        using var result = new MagickImage(Assert.Single(job.Outputs));
+        Assert.Equal(format, result.Format);
+        Assert.Equal((64u, 48u), (result.Width, result.Height));
+        Assert.True(File.Exists(source));
+    }
+
+    [Theory]
     [InlineData("photo.png_large", MagickFormat.Png)]
     [InlineData("photo.jpg_large", MagickFormat.Jpeg)]
+    [InlineData("photo.jif", MagickFormat.Jpeg)]
+    [InlineData("photo.JIF", MagickFormat.Jpeg)]
     public async Task Large_image_aliases_convert_to_png(string name, MagickFormat format)
     {
         var dir = fx.NewFolder();

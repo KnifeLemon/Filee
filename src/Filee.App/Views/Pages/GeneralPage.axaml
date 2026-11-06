@@ -78,6 +78,8 @@
         </StackPanel>
         <CheckBox Content="{DynamicResource general.browser_drops_only_converted}" IsChecked="{Binding SaveOnlyConverted}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.browser_drops_only_converted_hint}" Margin="0,-6,0,0" />
+        <CheckBox Content="{DynamicResource general.browser_drops_local_network}" IsChecked="{Binding AllowLocalNetwork}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.browser_drops_local_network_hint}" Margin="0,-6,0,0" />
       </StackPanel>
     </Border>
 
@@ -98,14 +100,47 @@
     </Border>
 
     <Border Classes="card">
-      <StackPanel Spacing="12">
+      <StackPanel Spacing="14">
         <TextBlock Classes="h2" Text="{DynamicResource general.library}" />
-        <WrapPanel>
-          <Button Content="{DynamicResource general.export}" Click="OnExport" Margin="0,0,8,8" />
-          <Button Content="{DynamicResource general.import}" Click="OnImport" Margin="0,0,8,8" />
-          <Button Content="{DynamicResource general.reset_library}" Click="OnReset" Margin="0,0,8,8" />
-        </WrapPanel>
-        <TextBlock Classes="muted" Text="{Binding LibraryMessage}" />
+        <!-- Three equal columns, one per action: the button, then what it does. Thin lines between them. The button's
+             label wraps (the icon stays beside it) so a long translation still fits a narrow column. -->
+        <Grid ColumnDefinitions="*,*,*">
+          <StackPanel Grid.Column="0" Spacing="10" Margin="0,0,12,0">
+            <Button HorizontalAlignment="Left" Click="OnExport" AutomationProperties.Name="{DynamicResource general.export}">
+              <DockPanel>
+                <PathIcon DockPanel.Dock="Left" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center" Data="{StaticResource Icon.Upload}" />
+                <TextBlock Text="{DynamicResource general.export}" TextWrapping="Wrap" VerticalAlignment="Center" />
+              </DockPanel>
+            </Button>
+            <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource general.export_hint}" />
+          </StackPanel>
+          <Border Grid.Column="1" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}" Padding="12,0">
+            <StackPanel Spacing="10">
+              <Button HorizontalAlignment="Left" Click="OnImport" AutomationProperties.Name="{DynamicResource general.import}">
+                <DockPanel>
+                  <PathIcon DockPanel.Dock="Left" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center" Data="{StaticResource Icon.Download}" />
+                  <TextBlock Text="{DynamicResource general.import}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                </DockPanel>
+              </Button>
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource general.import_hint}" />
+            </StackPanel>
+          </Border>
+          <Border Grid.Column="2" BorderThickness="1,0,0,0" BorderBrush="{DynamicResource SubtleBorderBrush}" Padding="12,0,0,0">
+            <StackPanel Spacing="10">
+              <!-- "danger" is the app's style for destructive buttons (red on hover and press). -->
+              <Button Classes="danger" HorizontalAlignment="Left" Click="OnReset" AutomationProperties.Name="{DynamicResource general.reset_library}">
+                <DockPanel>
+                  <PathIcon DockPanel.Dock="Left" Width="13" Height="13" Margin="0,0,8,0" VerticalAlignment="Center" Data="{StaticResource Icon.Undo}" />
+                  <TextBlock Text="{DynamicResource general.reset_library}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                </DockPanel>
+              </Button>
+              <TextBlock Classes="muted" TextWrapping="Wrap" Text="{DynamicResource general.reset_hint}" />
+            </StackPanel>
+          </Border>
+        </Grid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.library_note}" />
+        <TextBlock Classes="muted" TextWrapping="Wrap" Text="{Binding LibraryMessage}"
+                   IsVisible="{Binding LibraryMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
       </StackPanel>
     </Border>
 

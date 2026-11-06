@@ -22,7 +22,7 @@
             │ Built in: Magick (images, RAW) · PdfSharp · Pdfium · PdfPig · Svg.Skia · ICNS      │
             │ HwpxWriter + DocxWriter over DocumentReaders (DOCX, XLSX, XLS, ODS, PPTX,          │
             │   PDF, HTML, EPUB, MOBI, FB2, HWPX, Markdown) · Spreadsheets · OOXML variants      │
-            │   · E-mail · Data · E-books · CAD · Fonts · Subtitles · 3D models                  │
+            │   · E-mail · Signed files · Data · E-books · CAD · Fonts · Subtitles · 3D models   │
             │ Bundled: rhwp (HWP→PDF, HWP↔HWPX) · 7-Zip (archives) · Unhwp · Markdig             │
             │ Optional: FFmpeg · LibreOffice + H2Orestart · calibre · Ghostscript · Pandoc       │
             └────────────────────────────────────────────────────────────────────────────────────┘
@@ -42,9 +42,12 @@
 4. **Plan** – for every file, `RoutePlanner` finds the cheapest chain of converter edges from the source format to
    the target (at most 3 hops). Engine priority (Settings → Engines) breaks ties. Some edges are limited: tracing
    only starts from raster images (`ImageSourcesOnly`), and PDF → PPTX picture slides are only ever a route of their
-   own (`DirectOnly`), never a step of a longer one.
-5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a temp folder;
-   final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
+   own (`DirectOnly`), never a step of a longer one. An envelope (a signed `.p7m`) is planned from the file inside
+   it: its engine (`IEnvelopeOpener`) names that file's format, and the route opens it first, then goes on from there
+   (`RoutePlanner.PlanThrough`: P7M → PDF → PNG).
+5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a work folder only
+   the user can open (`WorkFolders.Root`: `%TEMP%\Filee` on Windows; `~/.cache/filee` on Linux and
+   `~/Library/Caches/Filee` on macOS, mode 700, because `/tmp` is shared by every user); final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
    Each name stays reserved while a conversion holds it. A conversion that fails or is cancelled deletes what it began
    writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
    same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
@@ -95,7 +98,7 @@ ends in an extension Filee converts and isn't a web page (`.html`, `.php`, none)
 picture. Plain text is never read. `data:` addresses are decoded.
 
 Until the conversion runs, the files stand as **placeholders** (`WebDrop`): paths in `%TEMP%\Filee\web\<drop>\drop\<n>\`
-named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
+(`web/` in the work root on Linux and macOS) named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
 is made: a picture without an extension stands as `.jpg` and a link without one isn't offered. `ConversionService.Start`
 gives the job a `WebDropFetcher` (`ISourceFetcher`): `JobQueue` saves every source first (half of its progress), then
 converts. Failures are per file (`error.web_*`), cancelling stops a download, and the job toast/ring shows both phases.
@@ -114,11 +117,25 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   2 GB cap whether or not the server says the size, 30 s to answer and 30 s without data at most. No cookies or
   credentials are sent: a file behind a sign-in comes back as the sign-in page, which is refused as a web page
   ("save it from the browser first"). A browser's own bytes (virtual files, Firefox's copy) don't have that limit.
+  Only the public internet is reached (`LocalNetwork`): an address on this computer or the local network (loopback,
+  private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
+  is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
+  `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
+  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
+  off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
+  of their own, so a pooled connection to a local address never serves a drop that may not go there.
 - **Names and safety**: Content-Disposition, else the page's name, else the address; then the first bytes decide the
   extension of pictures and PDFs (`.jpg` that is WebP becomes `.webp`). Names are cut to a plain file name (no folders,
   no device names, at most 120 characters) and never replace an existing file (`name (2).ext`). Programs, installers and
   scripts are refused by extension, media type and first bytes; nothing downloaded is ever run, and every file goes
   through the same converters as any other.
+- **Mark of the Web** (`Platform/MarkOfTheWeb`, Windows): every saved file gets a `Zone.Identifier` stream as a
+  browser's download would (`ZoneId=3`, and `HostUrl` with the address a download came from, without sign-in or
+  fragment), so SmartScreen, Office's block on macros from the internet and Protected View still apply. `JobQueue`
+  copies a source's mark onto the files converted from it (also for "Save only the converted file"); a folder result
+  is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
+  that never fails a conversion.
 
 ## Donut control
 
@@ -153,7 +170,8 @@ The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits eith
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
 editor offers both kinds, and `UserDataStore.EnsureConsistency` removes missing, duplicate, nested or excess members
-without excluding tools.
+without excluding tools. A group slice is marked with a small chevron by its outer edge, drawn in the slice's transform
+(`DonutMenu.DrawGroupMark`), which also marks a dragged group in the toolbar editor.
 
 ## Annotate tool
 
@@ -316,6 +334,10 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
+  (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
+  their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.
+  New text on `AccentBrush` takes `OnAccentBrush`, never a fixed colour.
 - Window zoom (`Services/UiZoom`): Theme → *Window size* (− / + and *Reset*), and in any tracked window the
   platform's command key (`HotkeyConfiguration.CommandModifiers`: Ctrl, Cmd on macOS) with the mouse wheel, plus /
   minus (Shift allowed, Alt not: AltGr is Ctrl + Alt) or 0 for 100 %. 70–180 % in 10 % steps, every window at once.
@@ -373,8 +395,12 @@ installed yet; the slides introduce the installed one. The demo animations are r
   and reads the app's presets and engine order. It is published into the app folder, so both share one runtime and
   the bundled engines; its name can't be `filee.exe` next to `Filee.exe` on a case-insensitive file system.
 - `Filee.Core/Watching/FolderWatcher` watches one `WatchRule` with a `FileSystemWatcher` and converts a file once it
-  has kept its size and time for a moment and opens without sharing (downloads and copies in progress are skipped).
-  Temporary files, unknown formats and dedicated output and originals folders are ignored. A rule may also write
+  has kept its size and time for a moment, opens without sharing and has data at its start (downloads and copies in
+  progress are skipped). A file that didn't convert gets one more turn after 10 seconds. Temporary files, unknown
+  formats and dedicated output and originals folders are ignored. Links (junctions, mount points, symbolic links to
+  folders or files) are never followed or converted, neither as they arrive, nor in the scan of what is already there
+  (`FolderWatcher.FilesInside`), nor when a file gets its second turn; other reparse points, such as OneDrive's
+  online-only files, are converted like any file. A rule may also write
   into the watched folder itself. In that case, generated file versions (path, size and modification time) and
   generated result directories are recorded in `.filee-watch-<rule hash>.json` inside the watched root. The hidden
   state file prevents those results from becoming new inputs, including after an inbox watcher restarts; a changed
@@ -429,16 +455,21 @@ way to draw (`WindowsRendering`): `dcomp` (skip WinUI composition), `redirection
 surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start. On ARM64, Avalonia's
 Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236), and three values try the GPU
 there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver), `vulkan` and `wgl` (OpenGL), the
-last two falling back to software when they can't start.
+last two falling back to software when they can't start. On Linux (X11) only `software` applies: the GPU's driver stays
+in memory for as long as Filee runs, also with no window open, so this is the way to a smaller tray app (issue #957).
 
 ## Explorer integration
 
 Settings → General → "Show “Convert with Filee” in the Explorer context menu" (`AppSettings.ContextMenuEnabled`) is
 applied by `WindowsPlatformServices.SetContextMenu` at start-up and whenever settings change (installed builds only):
 
-- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, one process per file; the running
-  instance collects them through `SingleInstance`) and a **Send To** shortcut. Per user, no admin rights. On Windows 10
-  this is the entry; on Windows 11 it sits under "Show more options".
+- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, `MultiSelectModel` `Player`) and
+  a **Send To** shortcut. Per user, no admin rights. On Windows 10 this is the entry; on Windows 11 it sits under "Show
+  more options". Explorer starts one process per selected file, out of order and over many seconds, and hides the
+  entry above 100 files (Send To has no such limit). The processes reach the running instance through `SingleInstance`;
+  the first asks Explorer for the selection, so the donut has all of it at once (`SelectionLaunches`). When that can't
+  be read (another file manager), they are collected for 350 ms and later ones join the open donut
+  (`RadialController.TryAddFiles`); once a conversion took its files, later ones get a donut of their own.
 - **Windows 11 top-level entry** (optional): an `IExplorerCommand` in `FileeExplorerMenu.dll`
   (`src/Filee.ExplorerMenu`, plain C, no C runtime) declared by the sparse package `FileeExplorerMenu.msix`
   (`ExplorerMenuPackage.CreateManifest`: `desktop4:FileExplorerContextMenus`, `desktop5:ItemType Type="*"`,
@@ -527,8 +558,13 @@ have no semibold) instead of the app's embedded Noto fonts.
   counts as installed when `uninstall.exe` (or 1.x's `unins000.exe`) is next to it (`UpdateService.IsInstalled`).
 - **Uninstall**: `uninstall.exe` is Setup without its payload. Run from the install folder it copies itself to
   `%TEMP%` and waits for the copy, which removes what `uninstall.json` lists (other files in the folder stay), the
-  shortcuts, the PATH entry and the key. Files in use are moved out and deleted at the next restart. A program without
-  a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
+  shortcuts, the PATH entry and the key. `Filee.exe --uninstall-cleanup` runs as the signed-in user (`RunAsSignedInUser`):
+  the startup entry, the classic verb and the engines are theirs, and the pipe of a Filee without administrator rights
+  refuses an elevated client (`CurrentUserOnly` compares the pipe's owner with the token's owner, which is
+  Administrators when elevated), so that Filee would never hear `--quit`. Files in use are moved out and deleted at the
+  next restart. Only programs `uninstall.json` lists are ended. A Filee that can't be ended, or a file that can't be
+  moved or renamed, fails the uninstall and keeps the key, `uninstall.json` and `uninstall.exe`, so it can be run again;
+  `uninstall.json` itself is never scheduled or renamed. A program without a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
   (`SetupStart`); any other name is a Setup.exe whose download didn't finish, and it says so instead (exit code 1).
 - **Command line**: Inno Setup's switches (`SetupOptions`, documented at the top of the file), because Filee 1.x
   updates itself with `/SILENT /NORESTART` and winget passes `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Exit codes as
@@ -550,7 +586,8 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   the directory as an authentic managed installation. Running without `--upgrade` refuses to overwrite an existing
   installation.
 - **In-app updates** (`UpdateService`): Checks GitHub releases for matching `<rid>.tar.gz` and `<rid>-SHA256SUMS.txt`
-  assets. The tarball is verified against SHA-256 before extraction. Archive extraction validates that all entries stay
+  assets. The tarball is verified against SHA-256 before extraction; a build that carries the update key
+  (`FileeUpdatePublicKey`) first checks the checksum file's signature (`<rid>-SHA256SUMS.txt.sig`, `UpdateSignature`). Archive extraction validates that all entries stay
   within the target directory, rejecting absolute paths, directory symlinks, and escaping links, and masks permissions to
   standard rwx bits (excluding setuid/setgid/sticky bits).
 - **Transactional upgrade**: `UpdateAsync` stages the payload in a private directory (`~/.local/share/filee/.update-*`),

@@ -76,4 +76,31 @@
       <_Parameter2>true</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
+
+  <!-- How official builds check updates (Directory.Build.props): the update key and the expected publisher. Running
+       from source and the tests keep to today's checks. -->
+  <ItemGroup Condition="'$(FileeRelease)' == 'true'">
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(FileeUpdatePublicKey)' != ''">
+      <_Parameter1>FileeUpdatePublicKey</_Parameter1>
+      <_Parameter2>$(FileeUpdatePublicKey)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(FileeExpectedPublisher)' != ''">
+      <_Parameter1>FileeExpectedPublisher</_Parameter1>
+      <_Parameter2>$(FileeExpectedPublisher)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(FileeExpectedIssuer)' != ''">
+      <_Parameter1>FileeExpectedIssuer</_Parameter1>
+      <_Parameter2>$(FileeExpectedIssuer)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute" Condition="'$(FileeExpectedSignerKeys)' != ''">
+      <_Parameter1>FileeExpectedSignerKeys</_Parameter1>
+      <_Parameter2>$(FileeExpectedSignerKeys)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <!-- A subject alone is only text: an expected publisher needs the certificate authority that issued it. -->
+  <Target Name="FileeCheckExpectedPublisher" BeforeTargets="CoreCompile"
+          Condition="'$(FileeRelease)' == 'true' And '$(FileeExpectedPublisher)' != '' And '$(FileeExpectedIssuer)' == ''">
+    <Error Text="FileeExpectedPublisher is set without FileeExpectedIssuer (Directory.Build.props)." />
+  </Target>
 </Project>

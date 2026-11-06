@@ -73,7 +73,7 @@ internal sealed partial class DocxReader
                 }
 
                 var cell = new HCell { Column = column, ColSpan = span };
-                ReadBlocks(tc.Elements(), cell.Blocks);
+                ReadNestedBlocks(tc, cell.Blocks);
                 cell.VerticalAlign = Val(tcPr?.Element(W + "vAlign")) switch
                 {
                     "center" => HVerticalAlign.Center,

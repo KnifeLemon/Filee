@@ -202,7 +202,7 @@ public sealed class ConversionService
     {
         var settings = _store.Settings.BrowserDrops;
         var folder = string.IsNullOrWhiteSpace(settings.Folder) ? _platform.DownloadsFolder : settings.Folder.Trim();
-        return new WebDropOptions(folder, settings.SaveOnlyConverted);
+        return new WebDropOptions(folder, settings.SaveOnlyConverted, settings.AllowLocalNetwork);
     }
 
     /// <summary>True when a source file (or folder) is still where it was.</summary>

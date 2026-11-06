@@ -87,12 +87,16 @@ internal static class Help
               --skip             Leave existing output files alone
               --keep-dates       Give converted files the created and modified dates of the originals
               --zip              Save the result of each file as one ZIP (a Shapefile's files together)
-              --json             Print the result as JSON (for scripts and other programs)
+              --json             Print the result as JSON (for scripts and other programs); events go to stderr
               --quiet            Print nothing but errors
+
+        With --json, stdout gets one JSON document when the job is done. While it runs, stderr gets one JSON object per
+        line: {"event":"progress","source":…,"fraction":…} (0 to 1, about every 150 ms while it changes) and
+        {"event":"file",…} as each file is done, with the fields of its entry in "files".
 
         """;
 
-    private static string Watch => FormattableString.Invariant($"""
+    private static string Watch => FormattableString.Invariant($$"""
         Usage: filee watch <folder> (--to <format> | --preset <preset>) [options]
 
         Converts files that land in the folder until Ctrl+C. Files are converted once they are complete (no
@@ -105,10 +109,15 @@ internal static class Help
           -r, --recursive        Also watch sub folders (their files keep the sub folder in the output)
               --move-originals   Move converted sources to <folder>\originals; files already waiting are
                                  converted at start
-              --settle <seconds> How long a file must stay unchanged (default {FolderWatcher.DefaultSettleTime.TotalSeconds})
+              --settle <seconds> How long a file must stay unchanged (default {{FolderWatcher.DefaultSettleTime.TotalSeconds}})
               --keep-dates       Give converted files the created and modified dates of the originals
               --zip              Save the result of each file as one ZIP (a Shapefile's files together)
+              --json             Print events as JSON instead, one object per line (for scripts and other programs)
               --quiet            Print nothing but errors
+
+        With --json, stdout gets nothing but events: {"event":"started",…} with the folder, preset, target and output
+        folder, {"event":"file",…} as each file is done (the fields of 'filee convert --json'), and
+        {"event":"stopped"} on Ctrl+C.
 
         """);
 }

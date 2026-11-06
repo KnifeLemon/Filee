@@ -21,6 +21,7 @@ public partial class App : Application
 {
     private readonly List<string> _pendingConvertFiles = [];
     private IDisposable? _convertDebounce;
+    private SelectionLaunches? _launches;
     private bool _selectionPending;
 
     /// <summary>Forwarded launches and empty selections can come in bursts: a few lines a minute are enough.</summary>
@@ -144,6 +145,8 @@ public partial class App : Application
             log.LogInformation("{Rendering}", WindowsRendering.Describe(Environment.GetEnvironmentVariable(WindowsRendering.Variable)));
             TransparentWindows.Watch(log);
         }
+        else if (Program.LinuxDrawsInSoftware)
+            log.LogInformation("Rendering: software ({Variable})", WindowsRendering.Variable);
         // macOS: ask for Accessibility with the system's own alert when the user opened Filee (not at sign-in) and
         // a drag gesture is on, once ever (see ShouldAskForPermission). The home page keeps a reminder until it is
         // given. Asked once the main window is up: asked earlier, the alert ends up behind it.
@@ -213,6 +216,9 @@ public partial class App : Application
                     });
             };
         WatchForUpdates(store);
+        // Started to the tray (at sign-in): no job or window would ask for a trim, however long Filee waits there (#957).
+        if (AppHost.Get<WindowService>().Main is null)
+            AppHost.Get<MemoryTrimmer>().Request();
         // Filee runs as administrator while Explorer doesn't (an installer started "as administrator" started it):
         // say so once, next to the tray, and on the Home page for as long as it lasts.
         if (AppHost.Get<ElevationService>().ShellCannotReachFilee)
@@ -264,6 +270,11 @@ public partial class App : Application
             if (Throttle.TryEnter("forwarded", out var held))
                 log.LogInformation("A later launch handed over {Count} argument(s){Held}", args.Length, LogThrottle.HeldText(held));
             Dispatcher.UIThread.Post(() => HandleCommandLine(CommandLine.Parse(args), forwarded: true));
+        };
+        instance.ListeningFailed += ex =>
+        {
+            if (Throttle.TryEnter("listening", out var held))
+                log.LogWarning(ex, "A later launch couldn't be taken, trying the next{Held}", LogThrottle.HeldText(held));
         };
         instance.StartListening();
     }
@@ -363,8 +374,13 @@ public partial class App : Application
         options.DeleteListFile();
         if (options.ConvertFiles.Count > 0)
         {
-            // Explorer may start one process per selected file: collect them for a moment, then open once.
-            _pendingConvertFiles.AddRange(options.ConvertFiles);
+            // Explorer may start one process per selected file: the first one brings the selection, or (when it can't
+            // be read) they are collected for a moment and later ones join the donut (see OpenPendingFiles).
+            _launches ??= new SelectionLaunches(ReadSelectionForLaunch);
+            var added = _launches.Arrived(options.ConvertFiles);
+            if (added.Count == 0)
+                return;
+            _pendingConvertFiles.AddRange(added);
             _convertDebounce?.Dispose();
             _convertDebounce = DispatcherTimer.RunOnce(OpenPendingFiles, TimeSpan.FromMilliseconds(350));
             return;
@@ -418,10 +434,34 @@ public partial class App : Application
     {
         var files = _pendingConvertFiles.Distinct(FileSystemPaths.Comparer).ToList();
         _pendingConvertFiles.Clear();
+        var radial = AppHost.Get<RadialController>();
+        // A launch that came after a longer gap belongs with the ones the open donut has: replacing them lost those files.
+        if (radial.TryAddFiles(files))
+            return;
         var (x, y) = AppHost.Get<TriggerService>().LastCursor;
         if (x == 0 && y == 0 && AppHost.Get<WindowService>().Main is { } main)
             (x, y) = (main.Position.X + 200, main.Position.Y + 200);
-        AppHost.Get<RadialController>().ShowForFiles(x, y, files, forAnotherProcess: true);
+        radial.ShowForFiles(x, y, files, forAnotherProcess: true);
+    }
+
+    /// <summary>The selection a launch for one file may be part of. Only Windows' menu entry starts one process per file.</summary>
+    private static IReadOnlyList<string> ReadSelectionForLaunch()
+    {
+        if (!OperatingSystem.IsWindows())
+            return [];
+        var log = AppHost.Get<ILogger<App>>();
+        try
+        {
+            var selection = AppHost.Get<IPlatformServices>().GetFileManagerSelection();
+            log.LogInformation("A launch for one file found {Count} selected file(s) in {Window}", selection.Count,
+                AppHost.Get<IPlatformServices>().DescribeForegroundWindow());
+            return selection;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogWarning(ex, "Could not read the selection for a launch");
+            return [];
+        }
     }
 
 }
