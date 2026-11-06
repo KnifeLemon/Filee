@@ -1,8 +1,7 @@
 // The Metadata tool's engines: ExifTool reads every field grouped by where it lives, lists whole, and writes changes,
 // removals, additions, Remove location and Remove everything into a copy without touching the picture, sound or
 // document; what it would write otherwise than asked fails the copy instead. Its converter is the only engine a
-// conversion with changes takes. MetadataExtractor reads the same fields when ExifTool isn't installed. The ExifTool
-// tests need one on this computer (PATH or FILEE_TEST_EXIFTOOL).
+// conversion with changes takes. The ExifTool tests need one on this computer (PATH or FILEE_TEST_EXIFTOOL).
 
 using Filee.Core.Conversion;
 using Filee.Core.Formats;
@@ -944,21 +943,46 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public async Task MetadataExtractor_reads_the_same_fields_read_only_and_a_list_as_one_field()
+    public async Task XMP_nested_in_itself_doesnt_hold_ExifTool_up()
     {
+        var (_, exifTool) = await PhotoAsync();
+        var xmp = System.Text.Encoding.UTF8.GetBytes(
+            "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description rdf:about='' xmlns:a='a:'>"
+            + string.Concat(Enumerable.Repeat("<a:p rdf:parseType='Resource'>", 40)) + "<a:q>x</a:q>" + string.Concat(Enumerable.Repeat("</a:p>", 40))
+            + "</rdf:Description></rdf:RDF></x:xmpmeta>");
+        byte[] segment = [.. "http://ns.adobe.com/xap/1.0/\0"u8, .. xmp];
+        var length = segment.Length + 2;
+        var path = Path.Combine(fx.NewFolder(), "nested.jpg");
+        await File.WriteAllBytesAsync(path, [0xFF, 0xD8, 0xFF, 0xE1, (byte)(length >> 8), (byte)length, .. segment, 0xFF, 0xD9], Token);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await ExifTool.ReadAsync(exifTool, path, Token);
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), clock.Elapsed.ToString());
+    }
+
+    [Fact]
+    public async Task The_folder_a_copy_is_written_in_is_private_while_ExifTool_runs()
+    {
+        if (OperatingSystem.IsWindows())
+            return; // a shell script stands in for it
         var (path, exifTool) = await PhotoAsync();
-        var listed = Target(path, "listed");
-        await ExifTool.WriteAsync(exifTool, path, listed, Setting(("XMP-dc:Subject", ["harbour, evening", "boats"])), Token);
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite);
+        var folder = fx.NewFolder();
+        var seen = Path.Combine(folder, "seen.txt");
+        var spy = Path.Combine(folder, "exiftool");
+        File.WriteAllText(spy, $$"""
+            #!/bin/sh
+            case " $* " in
+              *" -m "*) ls -ld . > "{{seen}}" ;;
+            esac
+            exec "{{exifTool}}" "$@"
+            """);
+        File.SetUnixFileMode(spy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
 
-        var fields = MetadataReader.Read(listed);
+        await ExifTool.WriteAsync(spy, path, Target(path, "private"), Setting(("IFD0:Model", ["iPhone 16"])), Token);
 
-        Assert.Contains(fields, f => f.Tag == "Make" && f.Value == "Apple" && f.Family == "EXIF");
-        Assert.Contains(fields, f => f.Group == "GPS" && f.Tag.Contains("Latitude", StringComparison.Ordinal));
-        Assert.Contains(fields, f => f.Group == "XMP-dc" && f.Value.Contains("Old Port", StringComparison.Ordinal));
-        var subject = fields.Single(f => f is { Group: "XMP-dc", Tag: "subject" });
-        Assert.True(subject.IsList);
-        Assert.Equal(["harbour, evening", "boats"], subject.Items);
-        Assert.All(fields, f => Assert.False(f.Editable));
+        Assert.StartsWith("drwx------", await File.ReadAllTextAsync(seen, Token), StringComparison.Ordinal);
     }
 
     [Fact]

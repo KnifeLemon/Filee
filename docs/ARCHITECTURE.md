@@ -223,7 +223,7 @@ the picture (padding of its longer side, corners of its shorter side), so a look
 
 ## Metadata tool
 
-"Metadata" (`tool-metadata`, palette only, settings schema 71) shows every metadata field of pictures, PDFs, video and
+"Metadata" (`tool-metadata`, palette only, settings schema 72) shows every metadata field of pictures, PDFs, video and
 sound, grouped by where it lives (ExifTool's family-1 groups: GPS, IFD0, ExifIFD, XMP-dc, IPTC, PDF …), and edits them
 without touching the file's content.
 
@@ -263,8 +263,9 @@ without touching the file's content.
   hint says so. A file that holds more than its picture (`ExifTool.HoldsMore`: a Motion Photo's video, an MPF second
   picture, a gain map, a Samsung trailer) doesn't offer it, and the window says why: it would orphan what's there and
   leave that metadata, which no field shows. Camera RAW and DNG don't offer it either.
-- Without ExifTool, `Engines/Metadata/MetadataReader` (MetadataExtractor) lists the fields read-only, and the window
-  offers Settings → Engines; it reads the file again with ExifTool once it is installed.
+- Without ExifTool the window reads nothing and offers Settings → Engines: a metadata library inside Filee can be made
+  to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under a time limit. It
+  reads the file with ExifTool once it is installed.
 - `MetadataViewModel` keeps one row per field (edited, removed, added; a list one entry per line) and turns them into
   `MetadataEdits`. Add field offers XMP's descriptive fields, IPTC's where the kind of file has IPTC (JPEG, TIFF, PSD),
   a PDF's document info for a PDF. The keys, the summary of files that could not be opened or saved, and texts that

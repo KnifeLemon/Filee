@@ -1,9 +1,13 @@
 // The Metadata window: every field grouped (Location first, File last), searchable, lists one entry per line; with
 // ExifTool, for a kind of file it writes, a value is edited, removed and put back, fields are added, Remove location /
-// Remove everything clear many at once, and Save starts a conversion carrying exactly what changed; without it, or for
-// a kind of file it doesn't write, every field is read-only and the window says why. The keys, the names a screen
-// reader says, the summary of files that failed, the texts in every language. ExifTool is a stand-in here.
+// Remove everything clear many at once, and Save starts a conversion carrying exactly what changed; for a kind of file
+// it doesn't write, every field is read-only and the window says why; without it nothing is read, whatever the file
+// holds, and it is offered. The keys, the names a screen reader says, the summary of files that failed, the texts in
+// every language. ExifTool is a stand-in here.
 
+using System.Buffers.Binary;
+using System.IO.Compression;
+using System.Text;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -55,13 +59,10 @@ public sealed class MetadataWindowTests : IDisposable
     {
         public bool Installed { get; set; } = true;
 
-        /// <summary>ExifTool fails on every file; MetadataExtractor may still read it.</summary>
+        /// <summary>ExifTool fails on every file.</summary>
         public bool Fails { get; set; }
 
-        /// <summary>MetadataExtractor doesn't read this kind of file (a PDF, MKV, FLAC).</summary>
-        public bool NotForTheReader { get; set; }
-
-        /// <summary>Files neither reader can read.</summary>
+        /// <summary>Files ExifTool can't read.</summary>
         public HashSet<string> Unreadable { get; } = [];
 
         public MetadataEngines Engines => new()
@@ -70,8 +71,6 @@ public sealed class MetadataWindowTests : IDisposable
             Read = (_, path) => Fails || Unreadable.Contains(Path.GetFileName(path))
                 ? Task.FromException<IReadOnlyList<MetadataField>>(new IOException("bad file"))
                 : Task.FromResult<IReadOnlyList<MetadataField>>(Photo),
-            ReadWithout = path => NotForTheReader || Unreadable.Contains(Path.GetFileName(path))
-                ? throw new IOException("bad file") : [.. Photo.Select(f => f with { Editable = false })],
         };
     }
 
@@ -98,7 +97,7 @@ public sealed class MetadataWindowTests : IDisposable
         var exported = new List<(string, Preset)>();
         var vm = new MetadataViewModel(Files([.. Enumerable.Range(1, files).Select(i => $"photo{i}.{extension}")]), tool, AppHost.Get<ILocalizer>(),
             AppHost.Get<UserDataStore>(), exifTool.Engines, export ?? ((path, conversion) => exported.Add((path, conversion))));
-        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        Wait(() => !vm.IsBusy && (vm.Groups.Count > 0 || !installed));
         return (vm, exifTool, exported);
     }
 
@@ -287,54 +286,44 @@ public sealed class MetadataWindowTests : IDisposable
     {
         var harness = new FakeExifTool { Installed = false };
         var vm = new MetadataViewModel(Files("ride.mp4"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), harness.Engines, (_, _) => { });
-        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        Wait(() => !vm.IsBusy);
 
         Assert.False(vm.CanEdit);
         Assert.Equal("", vm.LocationNotice);
     }
 
     [AvaloniaFact]
-    public void ExifTool_without_Perl_shows_the_fields_read_only_and_says_what_is_missing()
+    public void ExifTool_without_Perl_shows_nothing_and_says_what_is_missing()
     {
         var harness = new FakeExifTool();
-        var engines = new MetadataEngines { Locate = harness.Engines.Locate, Read = harness.Engines.Read, ReadWithout = harness.Engines.ReadWithout, NeedsPerl = _ => true };
+        var engines = new MetadataEngines { Locate = harness.Engines.Locate, Read = harness.Engines.Read, NeedsPerl = _ => true };
         var vm = new MetadataViewModel(Files("photo.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
-        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        Wait(() => !vm.IsBusy);
 
         Assert.False(vm.CanEdit);
+        Assert.Empty(vm.Groups);
         Assert.False(vm.CanInstall);
         Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_perl"], vm.ReadOnlyNotice);
     }
 
     [AvaloniaFact]
-    public void A_kind_of_file_ExifTool_doesnt_write_says_so_without_Perl_too()
+    public void A_kind_of_file_ExifTool_doesnt_write_needs_Perl_to_be_read_too()
     {
         var harness = new FakeExifTool();
-        var engines = new MetadataEngines { Locate = harness.Engines.Locate, Read = harness.Engines.Read, ReadWithout = harness.Engines.ReadWithout, NeedsPerl = _ => true };
+        var engines = new MetadataEngines { Locate = harness.Engines.Locate, Read = harness.Engines.Read, NeedsPerl = _ => true };
         var vm = new MetadataViewModel(Files("song.mp3"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
-        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        Wait(() => !vm.IsBusy);
 
-        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.unwritable"], vm.ReadOnlyNotice);
+        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_perl"], vm.ReadOnlyNotice);
     }
 
     [AvaloniaFact]
     public async Task ExifTool_installed_on_a_computer_without_Perl_changes_the_notice_once()
     {
         var harness = new FakeExifTool { Installed = false };
-        var reads = 0;
-        var engines = new MetadataEngines
-        {
-            Locate = harness.Engines.Locate,
-            Read = harness.Engines.Read,
-            ReadWithout = path =>
-            {
-                reads++;
-                return harness.Engines.ReadWithout(path);
-            },
-            NeedsPerl = _ => true,
-        };
+        var engines = new MetadataEngines { Locate = harness.Engines.Locate, Read = harness.Engines.Read, NeedsPerl = _ => true };
         var vm = new MetadataViewModel(Files("photo.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
-        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        Wait(() => !vm.IsBusy);
         Assert.True(vm.CanInstall);
 
         harness.Installed = true;
@@ -343,9 +332,10 @@ public sealed class MetadataWindowTests : IDisposable
 
         Assert.False(vm.CanInstall);
         Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_perl"], vm.ReadOnlyNotice);
-        var after = reads;
+        var loads = 0;
+        vm.PropertyChanged += (_, e) => loads += e.PropertyName == nameof(vm.IsBusy) ? 1 : 0;
         await vm.RecheckEngineAsync();
-        Assert.Equal(after, reads);
+        Assert.Equal(0, loads);
     }
 
     [AvaloniaFact]
@@ -609,17 +599,20 @@ public sealed class MetadataWindowTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task Without_ExifTool_everything_is_read_only_until_it_is_installed()
+    public async Task Without_ExifTool_nothing_is_read_and_it_is_offered_until_it_is_installed()
     {
         var (vm, exifTool, _) = Create(installed: false);
         var installs = 0;
         vm.InstallRequested += () => installs++;
 
         Assert.False(vm.CanEdit);
+        Assert.True(vm.NeedsExifTool);
         Assert.True(vm.CanInstall);
-        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.read_only_banner"], vm.ReadOnlyNotice);
-        Assert.All(vm.Groups.SelectMany(g => g.Rows), r => Assert.False(r.CanEdit || r.ShowsLock));
-        Assert.All(vm.Groups, g => Assert.False(g.CanAdd));
+        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_exiftool"], vm.ReadOnlyNotice);
+        Assert.Empty(vm.Groups);
+        Assert.False(vm.IsEmpty);
+        Assert.False(vm.IsFinished);
+        Assert.Empty(vm.Problems);
         Assert.False(vm.RemoveAllCommand.CanExecute(null));
         vm.InstallCommand.Execute(null);
         Assert.Equal(1, installs);
@@ -628,8 +621,110 @@ public sealed class MetadataWindowTests : IDisposable
         await vm.RecheckEngineAsync();
 
         Assert.True(vm.CanEdit);
+        Assert.False(vm.NeedsExifTool);
         Assert.Equal("", vm.ReadOnlyNotice);
         Assert.True(Row(vm, "IFD0:Make").CanEdit);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("pdf", true)]
+    [InlineData("mkv", false)]
+    public async Task Any_kind_of_file_is_read_once_ExifTool_is_installed(string extension, bool writes)
+    {
+        var (vm, exifTool, _) = Create(installed: false, extension: extension);
+        Assert.True(vm.CanInstall);
+        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_exiftool"], vm.ReadOnlyNotice);
+
+        exifTool.Installed = true;
+        await vm.RecheckEngineAsync();
+
+        Assert.NotEmpty(vm.Groups);
+        Assert.Equal(writes, vm.CanEdit);
+        Assert.False(vm.CanInstall);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("nested.jpg")]
+    [InlineData("nested.png")]
+    [InlineData("packed.png")]
+    public void A_file_made_to_hang_a_reader_or_fill_the_memory_costs_nothing_without_ExifTool(string name)
+    {
+        var path = Path.Combine(_folder, name);
+        File.WriteAllBytes(path, name switch
+        {
+            "nested.jpg" => JpegOf(NestedXmp(40)),
+            "nested.png" => PngWith("iTXt", [.. "XML:com.adobe.xmp\0\0\0\0\0"u8, .. NestedXmp(40)]),
+            _ => PngWith("zTXt", [.. "Comment\0\0"u8, .. PackedZeros(1400)]),
+        });
+        var allocated = GC.GetTotalAllocatedBytes(true);
+
+        var vm = new MetadataViewModel([path], Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), new MetadataEngines { Locate = () => null }, (_, _) => { });
+        Wait(() => !vm.IsBusy);
+
+        Assert.True(vm.CanInstall);
+        Assert.Empty(vm.Problems);
+        Assert.Empty(vm.Groups);
+        var used = GC.GetTotalAllocatedBytes(true) - allocated;
+        Assert.True(used < 500L * 1024 * 1024, $"{used} bytes allocated");
+    }
+
+    /// <summary>XMP nested in itself: a reader that walks it takes about twice as long for every level and a half.</summary>
+    private static byte[] NestedXmp(int levels) => Encoding.UTF8.GetBytes(
+        "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description rdf:about='' xmlns:a='a:'>"
+        + string.Concat(Enumerable.Repeat("<a:p rdf:parseType='Resource'>", levels)) + "<a:q>x</a:q>" + string.Concat(Enumerable.Repeat("</a:p>", levels))
+        + "</rdf:Description></rdf:RDF></x:xmpmeta>");
+
+    private static byte[] JpegOf(byte[] xmp)
+    {
+        byte[] segment = [.. "http://ns.adobe.com/xap/1.0/\0"u8, .. xmp];
+        var length = segment.Length + 2;
+        return [0xFF, 0xD8, 0xFF, 0xE1, (byte)(length >> 8), (byte)length, .. segment, 0xFF, 0xD9];
+    }
+
+    /// <summary>One pixel, and the chunk.</summary>
+    private static byte[] PngWith(string type, byte[] chunk)
+    {
+        using var pixels = new MemoryStream();
+        using (var zlib = new ZLibStream(pixels, CompressionLevel.Fastest, leaveOpen: true))
+            zlib.Write([0, 0]);
+        return
+        [
+            0x89, .. "PNG\r\n\u001a\n"u8,
+            .. PngChunk("IHDR", [0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0]),
+            .. PngChunk(type, chunk),
+            .. PngChunk("IDAT", pixels.ToArray()),
+            .. PngChunk("IEND", []),
+        ];
+    }
+
+    private static byte[] PngChunk(string type, byte[] data)
+    {
+        byte[] typed = [.. Encoding.ASCII.GetBytes(type), .. data];
+        var crc = uint.MaxValue;
+        foreach (var value in typed)
+        {
+            crc ^= value;
+            for (var bit = 0; bit < 8; bit++)
+                crc = (crc & 1) != 0 ? crc >> 1 ^ 0xEDB88320 : crc >> 1;
+        }
+        var length = new byte[4];
+        var sum = new byte[4];
+        BinaryPrimitives.WriteInt32BigEndian(length, data.Length);
+        BinaryPrimitives.WriteUInt32BigEndian(sum, ~crc);
+        return [.. length, .. typed, .. sum];
+    }
+
+    /// <summary>Zeros that unpack to <paramref name="megabytes"/> MB from about a thousandth of that.</summary>
+    private static byte[] PackedZeros(int megabytes)
+    {
+        using var packed = new MemoryStream();
+        using (var zlib = new ZLibStream(packed, CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            var zeros = new byte[1024 * 1024];
+            for (var i = 0; i < megabytes; i++)
+                zlib.Write(zeros);
+        }
+        return packed.ToArray();
     }
 
     [AvaloniaFact]
@@ -667,28 +762,7 @@ public sealed class MetadataWindowTests : IDisposable
     }
 
     [AvaloniaFact]
-    public async Task A_file_only_ExifTool_reads_says_so_and_offers_it_instead_of_failing()
-    {
-        var tool = Tool();
-        var exifTool = new FakeExifTool { Installed = false, NotForTheReader = true };
-        var vm = new MetadataViewModel(Files("report.pdf"), tool, AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), exifTool.Engines, (_, _) => { });
-        Wait(() => !vm.IsBusy);
-
-        Assert.True(vm.NeedsExifTool);
-        Assert.True(vm.CanInstall);
-        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.needs_exiftool"], vm.ReadOnlyNotice);
-        Assert.False(vm.IsFinished);
-        Assert.Empty(vm.Problems);
-        Assert.False(vm.IsEmpty);
-
-        exifTool.Installed = true;
-        await vm.RecheckEngineAsync();
-        Assert.False(vm.NeedsExifTool);
-        Assert.True(vm.CanEdit);
-    }
-
-    [AvaloniaFact]
-    public async Task ExifTool_failing_on_a_file_shows_it_read_only_without_offering_ExifTool_or_reading_it_again()
+    public async Task ExifTool_failing_on_a_file_says_so_without_offering_ExifTool_or_reading_it_again()
     {
         var tool = Tool();
         var reads = 0;
@@ -702,13 +776,12 @@ public sealed class MetadataWindowTests : IDisposable
                 reads++;
                 return engines.Read(path, file);
             },
-            ReadWithout = engines.ReadWithout,
         }, (_, _) => { });
-        Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
+        Wait(() => vm.IsFinished);
 
         Assert.False(vm.CanEdit);
         Assert.False(vm.CanInstall);
-        Assert.Equal(AppHost.Get<ILocalizer>()["metadata.unwritable"], vm.ReadOnlyNotice);
+        Assert.Contains(AppHost.Get<ILocalizer>()["metadata.unreadable"], Assert.Single(vm.Problems), StringComparison.Ordinal);
         await vm.RecheckEngineAsync();
         Assert.Equal(1, reads);
     }
@@ -1166,11 +1239,14 @@ public sealed class MetadataWindowTests : IDisposable
             theme.ApplyWindowClass(window);
             window.Show();
             RenderTests.Pump();
-            var warning = window.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == AppHost.Get<ILocalizer>()["metadata.location_warning"]);
-            // The privacy warning stands out from the captions around it.
-            Assert.True(window.TryFindResource("WarningBrush", window.ActualThemeVariant, out var brush));
-            Assert.Equal(brush, warning.Foreground);
-            RenderTests.Save(window, $"metadata-{(installed ? "edit" : "readonly")}-{mode.ToString().ToLowerInvariant()}.png");
+            if (installed)
+            {
+                var warning = window.GetVisualDescendants().OfType<TextBlock>().First(t => t.Text == AppHost.Get<ILocalizer>()["metadata.location_warning"]);
+                // The privacy warning stands out from the captions around it.
+                Assert.True(window.TryFindResource("WarningBrush", window.ActualThemeVariant, out var brush));
+                Assert.Equal(brush, warning.Foreground);
+            }
+            RenderTests.Save(window, $"metadata-{(installed ? "edit" : "needs-exiftool")}-{mode.ToString().ToLowerInvariant()}.png");
             window.Close();
         }
         finally

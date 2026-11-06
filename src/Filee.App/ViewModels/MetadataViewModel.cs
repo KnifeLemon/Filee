@@ -2,7 +2,8 @@
 // XMP-dc, a PDF's document info …), searchable; with ExifTool, for a kind of file it writes, each value can be edited,
 // removed or added and Remove location / Remove everything clear many at once. Saving starts an ordinary conversion
 // (MetadataTool) that writes only the metadata, into a copy or in the original's place, shown in the toast. Without
-// ExifTool every field is shown read-only (MetadataExtractor).
+// ExifTool the window offers it and reads nothing: a file can make a reader inside Filee hang or fill the memory, and
+// ExifTool runs apart, stopped after a time.
 
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
@@ -31,9 +32,6 @@ public sealed class MetadataEngines
     public Func<string, bool> NeedsPerl { get; init; } = ExifTool.NeedsPerl;
 
     public Func<string, string, Task<IReadOnlyList<MetadataField>>> Read { get; init; } = (exifTool, path) => ExifTool.ReadAsync(exifTool, path);
-
-    /// <summary>The fields without ExifTool, read-only.</summary>
-    public Func<string, IReadOnlyList<MetadataField>> ReadWithout { get; init; } = MetadataReader.Read;
 }
 
 public sealed partial class MetadataViewModel : ObservableObject, IDisposable
@@ -107,7 +105,7 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     [ObservableProperty] private string _embeddedNotice = "";
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsReadOnly), nameof(ReadOnlyNotice), nameof(CanInstall))]
+    [NotifyPropertyChangedFor(nameof(IsReadOnly), nameof(ReadOnlyNotice))]
     [NotifyCanExecuteChangedFor(nameof(SaveCommand), nameof(RemoveLocationCommand), nameof(RemoveAllCommand))]
     private bool _canEdit;
 
@@ -115,12 +113,11 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     /// ExifTool is there but doesn't write this kind of file (MP3, MKV, BMP …): shown read-only all the same.
     /// </summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ReadOnlyNotice), nameof(CanInstall))]
+    [NotifyPropertyChangedFor(nameof(ReadOnlyNotice))]
     private bool _isUnwritable;
 
     /// <summary>
-    /// No ExifTool, and MetadataExtractor doesn't read this kind of file (a PDF, MKV, FLAC): nothing to show until it
-    /// is installed.
+    /// No ExifTool, or one that can't run: nothing to show until it is installed.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ReadOnlyNotice), nameof(CanInstall), nameof(IsEmpty))]
@@ -182,10 +179,10 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     /// <summary>
     /// Why the fields can't be changed, while they can't: no ExifTool, or a kind of file it doesn't write.
     /// </summary>
-    public string ReadOnlyNotice => CanEdit ? "" : _loc[LacksPerl && (NeedsExifTool || !IsUnwritable) ? "metadata.needs_perl" : NeedsExifTool ? "metadata.needs_exiftool" : IsUnwritable ? "metadata.unwritable" : "metadata.read_only_banner"];
+    public string ReadOnlyNotice => CanEdit ? "" : _loc[LacksPerl ? "metadata.needs_perl" : NeedsExifTool ? "metadata.needs_exiftool" : "metadata.unwritable"];
 
-    /// <summary>Install ExifTool is offered: it would make the fields editable.</summary>
-    public bool CanInstall => !CanEdit && !LacksPerl && (NeedsExifTool || !IsUnwritable);
+    /// <summary>Install ExifTool is offered: it would show the fields.</summary>
+    public bool CanInstall => NeedsExifTool && !LacksPerl;
 
     public string SaveText => _loc[ReplaceOriginal ? "metadata.save" : CurrentIndex < _files.Count - 1 ? "metadata.save_next" : "metadata.save_copy"];
 
@@ -243,40 +240,30 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         var lacksPerl = exifTool is not null && _engines.NeedsPerl(exifTool);
         if (lacksPerl)
             exifTool = null;
-        IReadOnlyList<MetadataField> fields;
-        var unwritable = !ExifTool.WritesFile(path);
-        var needsExifTool = false;
+        IReadOnlyList<MetadataField> fields = [];
         try
         {
-            fields = exifTool is not null ? await _engines.Read(exifTool, path) : await Task.Run(() => _engines.ReadWithout(path));
+            if (exifTool is not null)
+                fields = await _engines.Read(exifTool, path);
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log?.LogInformation(ex, "Could not read the metadata of {File}", CurrentFileName);
-            // Without ExifTool: it would read it. ExifTool failed on it: MetadataExtractor may still read it,
-            // read-only.
-            needsExifTool = exifTool is null;
-            fields = exifTool is null ? [] : await ReadWithoutAsync(path);
-            unwritable |= exifTool is not null;
-            if (exifTool is not null && fields.Count == 0)
-            {
-                if (_closed)
-                    return;
-                AddProblem(index, "metadata.unreadable");
-                IsBusy = false;
-                await LoadFileAsync(index + 1);
+            if (_closed)
                 return;
-            }
-            exifTool = null;
+            AddProblem(index, "metadata.unreadable");
+            IsBusy = false;
+            await LoadFileAsync(index + 1);
+            return;
         }
         if (_closed)
             return;
-        IsUnwritable = unwritable;
-        NeedsExifTool = needsExifTool;
+        IsUnwritable = !ExifTool.WritesFile(path);
+        NeedsExifTool = exifTool is null;
         LacksPerl = lacksPerl;
         _holdsMore = ExifTool.HoldsMore(fields);
         EmbeddedNotice = _holdsMore ? _loc.Format("metadata.embedded", _loc["preset.remove_metadata"]) : "";
-        CanEdit = exifTool is not null && !unwritable;
+        CanEdit = exifTool is not null && !IsUnwritable;
         _outOfReach = CanEdit ? ExifTool.LocationOutOfReach(fields) : [];
         _isVideo = CanEdit && FormatRegistry.Detect(path)?.Category == FormatCategory.Video;
         ShowLocationNotice();
@@ -295,19 +282,6 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         _outOfReach.Count > 0 ? _loc.Format("metadata.location_kept", string.Join(", ", _outOfReach.Select(LabelOf))) : "",
         _isVideo ? _loc["metadata.location_tracks"] : "",
     }.Where(line => line.Length > 0));
-
-    private async Task<IReadOnlyList<MetadataField>> ReadWithoutAsync(string path)
-    {
-        try
-        {
-            return await Task.Run(() => _engines.ReadWithout(path));
-        }
-        catch (Exception ex) when (ex is not OutOfMemoryException)
-        {
-            _log?.LogInformation(ex, "MetadataExtractor could not read {File} either", CurrentFileName);
-            return [];
-        }
-    }
 
     private MetadataRowViewModel NewRow(MetadataField field, bool canEdit, bool showsLock) =>
         new(field, LabelOf(field.Tag), _loc, canEdit, showsLock, OnRowChanged);
@@ -545,7 +519,7 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     public async Task RecheckEngineAsync()
     {
         // Without Perl it is read again once, to say so; what it said already, it doesn't say again each time.
-        if (!CanEdit && !IsUnwritable && !IsBusy && !IsFinished && _engines.Locate() is { } exifTool && !(LacksPerl && _engines.NeedsPerl(exifTool)))
+        if (NeedsExifTool && !IsBusy && !IsFinished && _engines.Locate() is { } exifTool && !(LacksPerl && _engines.NeedsPerl(exifTool)))
             await LoadFileAsync(CurrentIndex);
     }
 

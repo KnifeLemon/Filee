@@ -18,7 +18,6 @@
     <PackageReference Include="PDFtoImage" />
     <PackageReference Include="Unhwp" />
     <PackageReference Include="Markdig" />
-    <PackageReference Include="MetadataExtractor" />
     <PackageReference Include="ExcelNumberFormat" />
     <PackageReference Include="Svg.Skia" />
     <PackageReference Include="SkiaSharp" />

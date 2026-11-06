@@ -327,7 +327,11 @@ public static partial class ExifTool
         target = Path.GetFullPath(target);
         // Beside the target: on its disk, where a long video has room, and the finished copy is only moved.
         var work = Path.Combine(Path.GetDirectoryName(target)!, FolderCopy.WorkName("exiftool"));
-        Directory.CreateDirectory(work);
+        // Private from the start: the copy in it gets the original's mode only when it is done.
+        if (OperatingSystem.IsWindows())
+            Directory.CreateDirectory(work);
+        else
+            Directory.CreateDirectory(work, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         try
         {
             // What Remove location and Remove everything find, and the IPTC that may have to be written again.
