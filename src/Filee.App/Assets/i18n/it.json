@@ -613,6 +613,7 @@
 "update.more_changes": "… e altre {0}",
 "general.data_folder": "Cartella delle impostazioni",
 "general.open_data_folder": "Apri",
+"general.data_folder_hint": "Filee conserva qui le impostazioni, i preset, le barre, la cronologia delle conversioni e i file di log. Aprila per fare un backup o per consultare un log.",
 "general.library": "Preset e barre",
 "general.export": "Esporta…",
 "general.import": "Importa…",

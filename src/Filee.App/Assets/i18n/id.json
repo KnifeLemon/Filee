@@ -614,6 +614,7 @@
   "update.more_changes": "… dan {0} lainnya",
   "general.data_folder": "Folder pengaturan",
   "general.open_data_folder": "Buka",
+  "general.data_folder_hint": "Filee menyimpan pengaturan, preset, toolbar, riwayat konversi, dan file log di sini. Buka folder ini untuk membuat cadangan atau melihat log.",
   "general.library": "Preset dan toolbar",
   "general.export": "Ekspor…",
   "general.import": "Impor…",

@@ -614,6 +614,7 @@
   "update.more_changes": "… und {0} weitere",
   "general.data_folder": "Einstellungsordner",
   "general.open_data_folder": "Öffnen",
+  "general.data_folder_hint": "Filee speichert hier die Einstellungen, Vorlagen, Werkzeugleisten, den Konvertierungsverlauf und die Protokolldateien. Öffne den Ordner für eine Sicherung oder um ein Protokoll anzusehen.",
   "general.library": "Vorlagen und Werkzeugleisten",
   "general.export": "Exportieren…",
   "general.import": "Importieren…",

@@ -614,6 +614,7 @@
   "update.more_changes": "… y {0} más",
   "general.data_folder": "Carpeta de ajustes",
   "general.open_data_folder": "Abrir",
+  "general.data_folder_hint": "Filee guarda aquí tus ajustes, los ajustes preestablecidos, los menús circulares, el historial de conversiones y los archivos de registro. Abre la carpeta para hacer una copia de seguridad o consultar un registro.",
   "general.library": "Ajustes preestablecidos y menús circulares",
   "general.export": "Exportar…",
   "general.import": "Importar…",

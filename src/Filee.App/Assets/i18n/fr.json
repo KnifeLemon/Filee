@@ -626,6 +626,7 @@
   "update.more_changes": "… et {0} de plus",
   "general.data_folder": "Dossier des paramètres",
   "general.open_data_folder": "Ouvrir",
+  "general.data_folder_hint": "Filee conserve ici les paramètres, les préréglages, les menus circulaires, l'historique des conversions et les fichiers journaux. Ouvrez le dossier pour faire une sauvegarde ou consulter un journal.",
   "general.library": "Préréglages et menus circulaires",
   "general.export": "Exporter…",
   "general.import": "Importer…",

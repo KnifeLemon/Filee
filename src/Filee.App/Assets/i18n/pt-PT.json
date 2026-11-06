@@ -626,6 +626,7 @@
   "update.more_changes": "… e mais {0}",
   "general.data_folder": "Pasta de definições",
   "general.open_data_folder": "Abrir",
+  "general.data_folder_hint": "O Filee guarda aqui as definições, as predefinições, as barras, o histórico de conversões e os ficheiros de registo. Abre a pasta para fazer uma cópia de segurança ou consultar um registo.",
   "general.library": "Predefinições e barras",
   "general.export": "Exportar…",
   "general.import": "Importar…",

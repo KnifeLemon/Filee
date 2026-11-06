@@ -626,6 +626,7 @@
   "update.more_changes": "… 另外 {0} 项",
   "general.data_folder": "设置文件夹",
   "general.open_data_folder": "打开",
+  "general.data_folder_hint": "Filee 把设置、预设、工具栏、转换记录和日志文件保存在这里。可打开它来备份或查看日志。",
   "general.library": "预设与工具栏",
   "general.export": "导出…",
   "general.import": "导入…",

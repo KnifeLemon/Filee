@@ -626,6 +626,7 @@
   "update.more_changes": "… и ещё {0}",
   "general.data_folder": "Папка настроек",
   "general.open_data_folder": "Открыть",
+  "general.data_folder_hint": "Filee хранит здесь настройки, пресеты, круговые меню, историю конвертаций и файлы журнала. Откройте папку, чтобы сделать резервную копию или посмотреть журнал.",
   "general.library": "Пресеты и круговые меню",
   "general.export": "Экспорт…",
   "general.import": "Импорт…",

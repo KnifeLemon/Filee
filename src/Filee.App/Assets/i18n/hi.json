@@ -614,6 +614,7 @@
   "update.more_changes": "… और {0} अन्य",
   "general.data_folder": "सेटिंग्स फ़ोल्डर",
   "general.open_data_folder": "खोलें",
+  "general.data_folder_hint": "Filee यहाँ आपकी सेटिंग्स, प्रीसेट, टूलबार, कन्वर्ज़न इतिहास और लॉग फ़ाइलें रखता है। बैकअप लेने या कोई लॉग देखने के लिए इसे खोलें।",
   "general.library": "प्रीसेट और टूलबार",
   "general.export": "एक्सपोर्ट करें…",
   "general.import": "इम्पोर्ट करें…",

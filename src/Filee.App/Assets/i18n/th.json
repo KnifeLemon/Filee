@@ -614,6 +614,7 @@
   "update.more_changes": "… และอีก {0} รายการ",
   "general.data_folder": "โฟลเดอร์การตั้งค่า",
   "general.open_data_folder": "เปิด",
+  "general.data_folder_hint": "Filee เก็บการตั้งค่า พรีเซ็ต แถบเครื่องมือ ประวัติการแปลงไฟล์ และไฟล์บันทึก (log) ไว้ที่นี่ เปิดเพื่อสำรองข้อมูลหรือดู log",
   "general.library": "พรีเซ็ตและแถบเครื่องมือ",
   "general.export": "ส่งออก…",
   "general.import": "นำเข้า…",

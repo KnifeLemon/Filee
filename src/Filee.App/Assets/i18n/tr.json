@@ -614,6 +614,7 @@
   "update.more_changes": "… ve {0} değişiklik daha",
   "general.data_folder": "Ayarlar klasörü",
   "general.open_data_folder": "Aç",
+  "general.data_folder_hint": "Filee ayarları, ön ayarları, araç çubuklarını, dönüştürme geçmişini ve günlük dosyalarını burada tutar. Yedek almak veya bir günlüğe bakmak için klasörü açın.",
   "general.library": "Ön ayarlar ve araç çubukları",
   "general.export": "Dışa aktar…",
   "general.import": "İçe aktar…",

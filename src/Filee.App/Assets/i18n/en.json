@@ -626,6 +626,7 @@
   "update.more_changes": "… and {0} more",
   "general.data_folder": "Settings folder",
   "general.open_data_folder": "Open",
+  "general.data_folder_hint": "Filee keeps your settings, presets, toolbars, conversion history and log files here. Open it to make a backup or to look at a log.",
   "general.library": "Presets and toolbars",
   "general.export": "Export…",
   "general.import": "Import…",
