@@ -207,9 +207,12 @@ in it also builds the package (artifact `windows-arm64-package`).
   other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
   - **Animated AVIF** (#1200) needs no FFmpeg: the bundled ImageMagick writes several frames as an AVIF image sequence
     (`avis`) through libheif, with the first frame also stored as the still picture for viewers that don't play
-    sequences, and reads such a file back frame by frame, also one FFmpeg wrote. Transparency stays (an alpha track). A
-    still picture takes the same one-picture path as ever. The writer stores no loop count, so an animation that plays a
-    set number of times loops for ever as AVIF. Encoding takes much longer than WebP (about half a second per busy
+    sequences, and reads such a file back frame by frame, also one FFmpeg wrote. Transparency stays (one alpha track, so
+    `ImageEncoder.MatchAlpha` gives every frame an alpha channel when any frame is transparent, and none when all are
+    opaque). An AVIF source is an animation only when it is a sequence (`Magick/AvifSequence.cs`: major brand `avis` and a
+    `moov` box). The items of any other AVIF (a burst, a visible gain map, pictures of their own sizes) stay separate
+    pictures, one `_pN` file each. A still picture takes the same one-picture path as ever. The writer stores no loop
+    count, so an animation that plays a set number of times loops for ever as AVIF. Encoding takes much longer than WebP (about half a second per busy
     480 × 270 frame, and the write can't be interrupted). On the way to video an AVIF counts as a photo
     (`ImageEncoder.Edge`): nearly all of them are, so an animated one becomes a video of its first frame rather than
     every AVIF going through a 256-colour GIF.

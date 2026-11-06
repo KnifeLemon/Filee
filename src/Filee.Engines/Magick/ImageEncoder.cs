@@ -42,27 +42,27 @@ internal static class ImageEncoder
     private static readonly HashSet<string> MultiFrame = ["tiff", "gif", "apng", "mng"];
 
     /// <summary>
-    /// Formats whose frames are an animation. Between these, all frames are kept with their timing (an animated GIF
-    /// becomes an animated WebP, JPEG XL or AVIF and the other way round); any other target gets the first frame.
+    /// Formats whose frames are an animation; an AVIF only when it is an image sequence (<see cref="AvifSequence"/>).
+    /// Between these, all frames are kept with their timing (an animated GIF becomes an animated WebP, JPEG XL or AVIF
+    /// and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", "avif"];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", AvifSequence.Format];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
     /// holds 256 colours, so a still picture costs more there: it reaches video through a full-colour PNG instead
     /// (FFmpeg), while animations and multi-page files still go through GIF and keep their frames. Still picture → APNG
-    /// costs as much, so photos never reach video as a one-frame animation. AVIF counts as a still picture here: nearly
-    /// every AVIF is a photo, and an animated one still keeps its frames as GIF or APNG themselves. FITS → TIFF is the
-    /// data for further processing (linear by default, 16 or 32 bits): it costs a little more, so FITS reaches other
-    /// formats through a stretched PNG or JPG instead.
+    /// costs as much, so photos never reach video as a one-frame animation. FITS → TIFF is the data for further
+    /// processing (linear by default, 16 or 32 bits): it costs a little more, so FITS reaches other formats through a
+    /// stretched PNG or JPG instead.
     /// </summary>
     public static ConversionEdge Edge(string source, string target) =>
-        new(source, target, target is "gif" or "apng" && !MultiFrame.Contains(source) && (source == "avif" || !Animated.Contains(source)) ? 12
+        new(source, target, target is "gif" or "apng" && !MultiFrame.Contains(source) && !Animated.Contains(source) ? 12
             : source == "fits" && target == "tiff" ? 11 : 10);
 
     /// <summary>True when frames of <paramref name="sourceFormat"/> are written as one animation in <paramref name="targetFormat"/>.</summary>
     public static bool KeepsAnimation(string sourceFormat, string targetFormat) =>
-        Animated.Contains(sourceFormat) && Animated.Contains(targetFormat);
+        Animated.Contains(sourceFormat) && (targetFormat == "avif" || Animated.Contains(targetFormat));
 
     /// <summary>
     /// Formats written without an alpha channel: transparent pixels are flattened onto the background colour. HEIC
@@ -480,6 +480,8 @@ internal static class ImageEncoder
             using var collection = new MagickImageCollection();
             foreach (var frame in frames)
                 collection.Add(frame.Clone());
+            if (targetFormat == "avif")
+                MatchAlpha(collection);
             collection.Write(path, format);
             written.Add(path);
             return written;
@@ -497,6 +499,19 @@ internal static class ImageEncoder
             written.Add(path);
         }
         return written;
+    }
+
+    /// <summary>
+    /// Gives the frames of an AVIF sequence one kind of alpha. The sequence has one alpha track, and ImageMagick stores a
+    /// frame without an alpha channel as fully transparent in it: an opaque first frame of a GIF that turns transparent
+    /// later would vanish. So every frame gets the channel when any of them is transparent, and none when all are opaque
+    /// (an APNG's frames all have one), which saves the track.
+    /// </summary>
+    private static void MatchAlpha(IEnumerable<IMagickImage<byte>> frames)
+    {
+        var action = frames.All(frame => frame.IsOpaque) ? AlphaAction.Off : AlphaAction.Set;
+        foreach (var frame in frames)
+            frame.Alpha(action);
     }
 
     /// <summary>A fitted picture is never made smaller than this long edge (nor than its own): below it, it's a thumbnail.</summary>
