@@ -630,6 +630,10 @@
   "general.export": "Exportar…",
   "general.import": "Importar…",
   "general.reset_library": "Repor valores de origem",
+  "general.export_hint": "Guarda as predefinições e as barras num ficheiro, para cópia de segurança ou para partilhar.",
+  "general.import_hint": "Adiciona predefinições e barras a partir de um ficheiro. As cópias que já tens são substituídas.",
+  "general.reset_hint": "Substitui todas as predefinições e barras pelas incluídas de origem.",
+  "general.library_note": "As tuas outras definições não mudam.",
   "general.reset_confirm": "Substituir todas as predefinições e perfis da barra pelos de origem?",
   "general.imported": "Itens importados: {0}",
 

@@ -630,6 +630,10 @@
   "general.export": "Export…",
   "general.import": "Import…",
   "general.reset_library": "Reset to defaults",
+  "general.export_hint": "Save your presets and toolbars to a file, for a backup or to share.",
+  "general.import_hint": "Add presets and toolbars from a file. Copies you already have are replaced.",
+  "general.reset_hint": "Replace all your presets and toolbars with the built-in ones.",
+  "general.library_note": "Your other settings are not changed.",
   "general.reset_confirm": "Replace all presets and toolbar profiles with the defaults?",
   "general.imported": "Imported {0} items",
 

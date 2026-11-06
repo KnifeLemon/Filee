@@ -1032,9 +1032,12 @@ internal static class SettingsMigrations
         // v70: JPEG .jif files (#1184) learn the images donut without taking custom claims.
         if (from < 70)
             changed |= LearnExtensions(profiles, out _, ["jif"]);
-        // v71: the "Metadata" tool, in the palette only, after "Add background" as in a new library (at the end
-        //      without it). (Schema 71 may be renumbered if another change takes it first.)
-        if (from < 71 && presets.All(p => p.Id != BuiltInData.MetadataId))
+        // v71: Java source files (#1176) learn the text donut; custom claims stay put.
+        if (from < 71)
+            changed |= LearnExtensions(profiles, out _, ["java"]);
+        // v72: the "Metadata" tool, in the palette only, after "Add background" as in a new library (at the end
+        //      without it). (Schema 72 may be renumbered if another change takes it first.)
+        if (from < 72 && presets.All(p => p.Id != BuiltInData.MetadataId))
         {
             var background = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
             presets.InsertRange(background < 0 ? presets.Count : background + 1, BuiltInData.MetadataPresets());

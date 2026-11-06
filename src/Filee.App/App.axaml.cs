@@ -271,6 +271,11 @@ public partial class App : Application
                 log.LogInformation("A later launch handed over {Count} argument(s){Held}", args.Length, LogThrottle.HeldText(held));
             Dispatcher.UIThread.Post(() => HandleCommandLine(CommandLine.Parse(args), forwarded: true));
         };
+        instance.ListeningFailed += ex =>
+        {
+            if (Throttle.TryEnter("listening", out var held))
+                log.LogWarning(ex, "A later launch couldn't be taken, trying the next{Held}", LogThrottle.HeldText(held));
+        };
         instance.StartListening();
     }
 
