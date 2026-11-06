@@ -1125,6 +1125,8 @@
   "metadata.pdf_note": "舊值仍可在 PDF 中復原。使用「移除中繼資料」可徹底刪除。",
   "metadata.keys": "Enter 編輯欄位或儲存 · Shift+Enter 換行 · Esc 取消或關閉 · Ctrl+F 搜尋",
   "metadata.empty": "此檔案中沒有中繼資料。",
+  "metadata.too_much": "中繼資料太多，無法在這裡開啟",
+  "metadata.too_long": "太長，無法在這裡編輯。但仍可移除。",
   "metadata.unreadable": "無法讀取其中繼資料",
   "metadata.group.location": "位置",
   "metadata.group.camera": "相機",

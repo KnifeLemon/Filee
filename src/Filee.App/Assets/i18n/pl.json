@@ -1125,6 +1125,8 @@
   "metadata.pdf_note": "Wcześniejsze wartości da się odzyskać z PDF. „Usuń metadane” usuwa je na dobre.",
   "metadata.keys": "Enter edytuje pole lub zapisuje · Shift+Enter zaczyna nowy wiersz · Esc anuluje lub zamyka · Ctrl+F wyszukuje",
   "metadata.empty": "Ten plik nie ma metadanych.",
+  "metadata.too_much": "Zawiera zbyt dużo metadanych, aby otworzyć go tutaj",
+  "metadata.too_long": "Zbyt długie, aby edytować tutaj. Nadal można to usunąć.",
   "metadata.unreadable": "Nie udało się odczytać metadanych",
   "metadata.group.location": "Lokalizacja",
   "metadata.group.camera": "Aparat",

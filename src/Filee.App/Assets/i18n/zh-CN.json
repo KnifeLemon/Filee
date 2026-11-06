@@ -1125,6 +1125,8 @@
   "metadata.pdf_note": "旧值仍可在 PDF 中恢复。使用“移除元数据”可彻底删除。",
   "metadata.keys": "Enter 编辑字段或保存 · Shift+Enter 换行 · Esc 取消或关闭 · Ctrl+F 搜索",
   "metadata.empty": "此文件中没有元数据。",
+  "metadata.too_much": "元数据过多，无法在此打开",
+  "metadata.too_long": "太长，无法在此编辑。但仍可移除。",
   "metadata.unreadable": "无法读取其元数据",
   "metadata.group.location": "位置",
   "metadata.group.camera": "相机",

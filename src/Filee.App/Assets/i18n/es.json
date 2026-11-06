@@ -1110,6 +1110,8 @@
   "metadata.pdf_note": "Los valores anteriores siguen siendo recuperables dentro del PDF. «Quitar metadatos» los elimina del todo.",
   "metadata.keys": "Intro edita un campo o guarda · Mayús+Intro empieza una línea nueva · Esc cancela o cierra · Ctrl+F busca",
   "metadata.empty": "Este archivo no tiene metadatos.",
+  "metadata.too_much": "Contiene demasiados metadatos para abrirlo aquí",
+  "metadata.too_long": "Demasiado largo para editarlo aquí. Aún se puede quitar.",
   "metadata.unreadable": "No se pudieron leer sus metadatos",
   "metadata.group.location": "Ubicación",
   "metadata.group.camera": "Cámara",

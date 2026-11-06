@@ -18,6 +18,59 @@ public sealed class ProcessRunnerOutputTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     [Fact]
+    public async Task A_program_over_its_memory_limit_doesnt_get_to_finish()
+    {
+        // 1.5 GB, a little at a time, as a program that fills its memory does. On Windows it can't allocate the rest,
+        // elsewhere it is killed: either way it never gets to the end.
+        var (program, arguments) = OperatingSystem.IsWindows()
+            ? ("powershell.exe", new[]
+            {
+                "-NoProfile", "-Command",
+                "$ErrorActionPreference = 'Stop'; $held = @(); 1..150 | ForEach-Object { $block = [byte[]]::new(10MB); [Array]::Clear($block, 0, $block.Length); $held += ,$block }; 'reached the end'",
+            })
+            : ("/usr/bin/env", ["perl", "-e", "my @held; push @held, 'a' x 10_000_000 for 1..150; print 'reached the end'; sleep 30"]);
+        var printed = new StringWriter();
+        var clock = Stopwatch.StartNew();
+
+        await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) => printed.Write(new StreamReader(output).ReadToEnd()),
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken, memoryLimit: 500L * 1024 * 1024);
+
+        Assert.DoesNotContain("reached the end", printed.ToString());
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(25), clock.Elapsed.ToString());
+    }
+
+    [Fact]
+    public async Task A_run_cancelled_as_the_program_ends_is_cancelled_not_finished()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell.");
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+
+        // Cancelling once the output has ended, with the program gone: nothing is left to cancel but the result.
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ProcessRunner.RunWithOutputAsync("/bin/sh", ["-c", "exit 0"],
+            (output, _) =>
+            {
+                output.CopyTo(Stream.Null);
+                Thread.Sleep(300);
+                cancel.Cancel();
+            },
+            TimeSpan.FromMinutes(1), cancel.Token));
+    }
+
+    [Fact]
+    public async Task A_program_within_its_memory_limit_runs_as_usual()
+    {
+        var (program, arguments) = OperatingSystem.IsWindows()
+            ? ("powershell.exe", new[] { "-NoProfile", "-Command", "'reached the end'" })
+            : ("/usr/bin/env", ["perl", "-e", "print 'reached the end'"]);
+        var printed = new StringWriter();
+
+        await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) => printed.Write(new StreamReader(output).ReadToEnd()),
+            TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken, memoryLimit: 1024L * 1024 * 1024);
+
+        Assert.Contains("reached the end", printed.ToString());
+    }
+
+    [Fact]
     public async Task A_finished_PDF_ends_a_run_that_goes_on()
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "cmd.exe and a Job Object.");

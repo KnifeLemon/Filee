@@ -1125,6 +1125,8 @@
   "metadata.pdf_note": "예전 값은 PDF 안에 복구할 수 있게 남아요. 메타데이터 제거를 쓰면 완전히 지워져요.",
   "metadata.keys": "Enter: 항목 편집 또는 저장 · Shift+Enter: 줄 바꿈 · Esc: 취소 또는 닫기 · Ctrl+F: 검색",
   "metadata.empty": "이 파일에는 메타데이터가 없어요.",
+  "metadata.too_much": "메타데이터가 너무 많아 여기서 열 수 없어요",
+  "metadata.too_long": "너무 길어서 여기서 편집할 수 없어요. 지우기는 할 수 있어요.",
   "metadata.unreadable": "메타데이터를 읽을 수 없어요",
   "metadata.group.location": "위치",
   "metadata.group.camera": "카메라",

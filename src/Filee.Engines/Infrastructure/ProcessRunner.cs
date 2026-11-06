@@ -140,12 +140,22 @@ public static class ProcessRunner
     /// passed on. The result's standard output is empty.
     /// </summary>
     /// <exception cref="TimeoutException">The program did not exit within <paramref name="timeout"/>; it was killed.</exception>
+    /// <param name="workingDirectory">Where it runs; by default the folder it is in.</param>
+    /// <param name="memoryLimit">
+    /// The most memory the program may use, in bytes, roughly. On Windows, the limit of a Job Object it and the
+    /// programs it starts are in: what goes over fails to allocate. Elsewhere, or without a job, it is killed once its
+    /// resident memory goes over, which is looked at ten times a second, as nothing else limits memory on both Linux
+    /// and macOS: it can get ahead by what it allocates in that time, and that doesn't count memory swapped out or a
+    /// program it started and didn't become.
+    /// </param>
     public static async Task<ProcessResult> RunWithOutputAsync(
         string executable,
         IEnumerable<string> arguments,
         Action<Stream, CancellationToken> readOutput,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? workingDirectory = null,
+        long? memoryLimit = null)
     {
         var psi = new ProcessStartInfo(executable)
         {
@@ -155,41 +165,55 @@ public static class ProcessRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardErrorEncoding = Encoding.UTF8,
-            WorkingDirectory = Path.GetDirectoryName(executable) ?? "",
+            WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(executable) ?? "",
         };
         foreach (var arg in arguments)
             psi.ArgumentList.Add(arg);
 
         using var process = new Process { StartInfo = psi };
+        using var job = memoryLimit is { } jobLimit && OperatingSystem.IsWindows() ? ProcessJob.TryCreate(jobLimit) : null;
         var stderr = new StringBuilder();
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (stderr) stderr.AppendLine(e.Data); };
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");
+        var held = job is not null && job.TryAssign(process);
+        if (job is not null && !held)
+            job.Dispose();
         Lower(process);
         process.StandardInput.Close();
         process.BeginErrorReadLine();
 
+        using var memoryWatch = memoryLimit is { } limit && !held
+            ? new Timer(_ => KillAbove(process, limit), null, TimeSpan.Zero, TimeSpan.FromMilliseconds(100)) : null;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
         // A read waiting for output doesn't see the token; ending the program ends the read.
-        using var stop = timeoutCts.Token.Register(() => TryKill(process, null));
+        using var stop = timeoutCts.Token.Register(() => TryKill(process, job));
         try
         {
-            await Task.Run(() => readOutput(process.StandardOutput.BaseStream, timeoutCts.Token), CancellationToken.None);
+            // Not left to the read to end: a program it started can hold the output after it has gone.
+            await Task.Run(() => readOutput(process.StandardOutput.BaseStream, timeoutCts.Token), CancellationToken.None)
+                .WaitAsync(timeoutCts.Token);
             await process.WaitForExitAsync(timeoutCts.Token);
+            // Stopping it ends its output, and it may have gone by now: that isn't a program that finished.
+            timeoutCts.Token.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException)
         {
-            TryKill(process, null);
+            TryKill(process, job);
+            await WaitUntilGoneAsync(process);
             cancellationToken.ThrowIfCancellationRequested();
             throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
         }
         catch
         {
-            TryKill(process, null);
+            TryKill(process, job);
+            await WaitUntilGoneAsync(process);
             throw;
         }
 
+        // Looking at a process can get in the way of reading how it ended.
+        memoryWatch?.Dispose();
         AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
         lock (stderr)
             return new ProcessResult(process.ExitCode, "", stderr.ToString());
@@ -279,6 +303,29 @@ public static class ProcessRunner
         }
     }
 
+    /// <summary>Killing a program only starts its end, and a caller may be about to delete its folder.</summary>
+    private static async Task WaitUntilGoneAsync(Process process)
+    {
+        using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        try
+        {
+            await process.WaitForExitAsync(wait.Token);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    private static void KillAbove(Process process, long memoryLimit)
+    {
+        try
+        {
+            process.Refresh();
+            if (process.WorkingSet64 > memoryLimit)
+                TryKill(process, null);
+        }
+        // It has exited, the run is over, or another tick is looking too: anything that gets out of a timer ends Filee.
+        catch (Exception ex) when (ex is not OutOfMemoryException) { }
+    }
+
     private static void TryKill(Process process, ProcessJob? job)
     {
         // The job first: the program may already have exited while a child it started still runs.
@@ -290,6 +337,8 @@ public static class ProcessRunner
         }
         catch (InvalidOperationException) { }
         catch (System.ComponentModel.Win32Exception) { }
+        catch (NotSupportedException) { }
+        catch (AggregateException) { } // a part of the process tree that couldn't be killed
     }
 
     /// <summary>
@@ -299,6 +348,7 @@ public static class ProcessRunner
     private sealed class ProcessJob : IDisposable
     {
         private const uint JobObjectLimitKillOnJobClose = 0x2000;
+        private const uint JobObjectLimitJobMemory = 0x200;
         private const int JobObjectExtendedLimitInformationClass = 9;
 
         private readonly SafeJobHandle _handle;
@@ -308,7 +358,8 @@ public static class ProcessRunner
             _handle = handle;
         }
 
-        public static ProcessJob? TryCreate()
+        /// <param name="memoryLimit">The most memory the programs in the job may use together, in bytes.</param>
+        public static ProcessJob? TryCreate(long? memoryLimit = null)
         {
             var handle = CreateJobObject(IntPtr.Zero, null);
 
@@ -322,8 +373,9 @@ public static class ProcessRunner
             {
                 BasicLimitInformation = new JobObjectBasicLimitInformation
                 {
-                    LimitFlags = JobObjectLimitKillOnJobClose
-                }
+                    LimitFlags = JobObjectLimitKillOnJobClose | (memoryLimit is null ? 0 : JobObjectLimitJobMemory)
+                },
+                JobMemoryLimit = (UIntPtr)(ulong)(memoryLimit ?? 0),
             };
 
             if (!SetInformationJobObject(

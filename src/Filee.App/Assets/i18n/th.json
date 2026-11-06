@@ -1110,6 +1110,8 @@
   "metadata.pdf_note": "ค่าเดิมยังกู้คืนได้ภายใน PDF ใช้ «ลบเมทาดาทา» เพื่อลบออกถาวร",
   "metadata.keys": "Enter แก้ไขฟิลด์หรือบันทึก · Shift+Enter ขึ้นบรรทัดใหม่ · Esc ยกเลิกหรือปิด · Ctrl+F ค้นหา",
   "metadata.empty": "ไฟล์นี้ไม่มีเมทาดาทา",
+  "metadata.too_much": "มีเมทาดาตามากเกินกว่าจะเปิดที่นี่ได้",
+  "metadata.too_long": "ยาวเกินกว่าจะแก้ไขที่นี่ได้ แต่ยังลบได้",
   "metadata.unreadable": "อ่านเมทาดาตาของไฟล์นี้ไม่ได้",
   "metadata.group.location": "ตำแหน่ง",
   "metadata.group.camera": "กล้อง",
