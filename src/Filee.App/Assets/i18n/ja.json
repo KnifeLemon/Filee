@@ -610,6 +610,7 @@
   "update.more_changes": "…ほか{0}件",
   "general.data_folder": "設定フォルダー",
   "general.open_data_folder": "開く",
+  "general.data_folder_hint": "設定、プリセット、ドーナツメニュー、変換履歴、ログファイルはここに保存されます。バックアップやログの確認にお使いください。",
   "general.library": "プリセットとドーナツメニュー",
   "general.export": "エクスポート…",
   "general.import": "インポート…",
