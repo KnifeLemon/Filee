@@ -626,6 +626,10 @@
   "general.export": "Eksportuj…",
   "general.import": "Importuj…",
   "general.reset_library": "Przywróć domyślne",
+  "general.export_hint": "Zapisuje ustawienia wstępne i paski w pliku, jako kopię zapasową lub do udostępnienia.",
+  "general.import_hint": "Dodaje ustawienia wstępne i paski z pliku. Istniejące kopie są zastępowane.",
+  "general.reset_hint": "Zastępuje wszystkie ustawienia wstępne i paski wbudowanymi.",
+  "general.library_note": "Pozostałe ustawienia się nie zmieniają.",
   "general.reset_confirm": "Zastąpić wszystkie ustawienia wstępne i profile pasków domyślnymi?",
   "general.imported": "Zaimportowano elementów: {0}",
 

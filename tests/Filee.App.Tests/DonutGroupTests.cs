@@ -6,6 +6,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Threading;
 using Filee.App.Controls;
 using Filee.App.Services;
@@ -792,6 +793,42 @@ public class DonutGroupTests
         window.MouseUp(slice, MouseButton.Left);
 
         Assert.Equal([1], invoked);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void Losing_the_capture_keeps_a_click_on_the_live_donut()
+    {
+        var (donut, window) = Open(Item("PNG"), Item("JPG"), Item("WEBP"));
+        var invoked = new List<int>();
+        donut.SegmentInvoked += (_, index) => invoked.Add(index);
+        IPointer? pressed = null;
+        window.AddHandler(InputElement.PointerPressedEvent, (_, e) => pressed = e.Pointer, RoutingStrategies.Tunnel, handledEventsToo: true);
+        var slice = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(1, 3));
+
+        window.MouseDown(slice, MouseButton.Left);
+        pressed!.Capture(null);
+        window.MouseUp(slice, MouseButton.Left);
+
+        Assert.Equal([1], invoked);
+        window.Close();
+    }
+
+    [AvaloniaFact]
+    public void The_last_press_on_the_live_donut_takes_the_click()
+    {
+        var (donut, window) = Open(Item("PNG"), Item("JPG"), Item("WEBP"));
+        var invoked = new List<int>();
+        donut.SegmentInvoked += (_, index) => invoked.Add(index);
+        var first = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(1, 3));
+        var second = DonutGeometry.PointAt(Center(donut), donut.OuterRadius * 0.7, DonutGeometry.MidAngle(2, 3));
+
+        window.MouseDown(first, MouseButton.Left);
+        var finger = window.TouchBegin(second);
+        window.TouchEnd(finger, second);
+        window.MouseUp(first, MouseButton.Left);
+
+        Assert.Equal([2], invoked);
         window.Close();
     }
 }

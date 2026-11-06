@@ -397,16 +397,23 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
-    public async Task A_file_held_briefly_doesnt_stop_a_folder_being_deleted()
+    public void A_file_held_briefly_doesnt_stop_a_folder_being_deleted()
     {
         var folder = Directory.CreateDirectory(Path.Combine(_root, "folder")).FullName;
         var file = Path.Combine(folder, "scanned.dll");
         File.WriteAllText(file, "bytes");
         var held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
-        var released = Task.Delay(100, TestContext.Current.CancellationToken).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+        // On its own thread: under load the pool can get to a release only as the retries below give up.
+        var release = new Thread(() =>
+        {
+            Thread.Sleep(100);
+            held.Dispose();
+        })
+        { IsBackground = true };
+        release.Start();
 
         EngineInstaller.DeleteFolder(folder);
-        await released;
+        release.Join();
 
         Assert.False(Directory.Exists(folder));
     }

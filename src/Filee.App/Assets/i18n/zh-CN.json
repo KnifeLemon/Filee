@@ -626,6 +626,10 @@
   "general.export": "导出…",
   "general.import": "导入…",
   "general.reset_library": "恢复默认",
+  "general.export_hint": "将预设与工具栏保存到文件，用于备份或分享。",
+  "general.import_hint": "从文件添加预设与工具栏，已有的副本会被替换。",
+  "general.reset_hint": "将所有预设与工具栏替换为内置的。",
+  "general.library_note": "你的其他设置不会改变。",
   "general.reset_confirm": "要将所有预设和工具栏配置恢复为默认吗？",
   "general.imported": "已导入 {0} 项",
 

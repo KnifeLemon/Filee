@@ -210,6 +210,13 @@
   <Style Selector="TextBox, ComboBox, NumericUpDown">
     <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
   </Style>
+  <!-- The up and down chevrons of a number box (ButtonSpinner): Avalonia's template gives their background no corners,
+       so the hover and press square ignored the Softness. It takes the small radius, inset a little so it also sits
+       inside the box's own rounded corners. -->
+  <Style Selector="ButtonSpinner /template/ RepeatButton /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+    <Setter Property="Margin" Value="2" />
+  </Style>
   <!-- The selection is filled with the accent: selected text takes the label that reads on it, not the text's own colour. -->
   <Style Selector="TextBox">
     <Setter Property="SelectionForegroundBrush" Value="{DynamicResource OnAccentBrush}" />
@@ -451,8 +458,9 @@
       </Transitions>
     </Setter>
   </Style>
+  <!-- The track keeps Avalonia's own corners (a full pill, like the outline behind it). It used to take SoftRadiusPill, so
+       with a low Softness the "on" fill turned square inside a round outline. -->
   <Style Selector="Window.material-you ToggleSwitch /template/ Border#SwitchKnobBounds">
-    <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusPill}" />
     <Setter Property="Transitions">
       <Transitions>
         <BrushTransition Property="Background" Duration="0:0:0.18" />
