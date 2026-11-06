@@ -626,6 +626,10 @@
   "general.export": "匯出…",
   "general.import": "匯入…",
   "general.reset_library": "還原為初始設定",
+  "general.export_hint": "將預設與工具列儲存為檔案，用於備份或分享。",
+  "general.import_hint": "從檔案加入預設與工具列，已有的副本會被取代。",
+  "general.reset_hint": "將所有預設與工具列取代為內建的。",
+  "general.library_note": "你的其他設定不會變更。",
   "general.reset_confirm": "要將所有預設和工具列設定檔還原為初始設定嗎？",
   "general.imported": "已匯入 {0} 項",
 
