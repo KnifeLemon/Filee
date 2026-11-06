@@ -100,6 +100,21 @@ internal static class PdfSheets
     /// </summary>
     internal static void Write(string input, string output, PdfOptions options, IProgress<double>? progress, CancellationToken cancellationToken)
     {
+        // XPdfForm reads the file by its path, so a PDF PDFsharp refuses (issue #1175) is read from a mended copy.
+        var mended = PdfSharpConverter.MendedCopy(input);
+        try
+        {
+            WriteFrom(mended ?? input, output, options, progress, cancellationToken);
+        }
+        finally
+        {
+            if (mended is not null)
+                File.Delete(mended);
+        }
+    }
+
+    private static void WriteFrom(string input, string output, PdfOptions options, IProgress<double>? progress, CancellationToken cancellationToken)
+    {
         List<(int Index, ShownPage Shown)> pages;
         using (var source = PdfSharpConverter.Open(input, PdfDocumentOpenMode.Import))
             pages = [.. PageRange.Parse(options.PageRange, source.PageCount).Select(i => (i, Shown(source.Pages[i])))];
