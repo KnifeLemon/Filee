@@ -188,6 +188,13 @@ public class FolderCopyTests
             radial.Load(["picture.png"], clickMode: true, backFace: true);
             Assert.Equal(loc["presets.move_to_folder"], radial.Items.Single(i => i.Id == preset.Id).Caption);
             Assert.Equal(loc["presets.copy_to_folder"], radial.Items.Single(i => i.Id == copy.Id).Caption);
+            Assert.True(radial.Items.Single(i => i.Id == preset.Id).KeepsCaption); // they'd look the same without it
+            using var main = new MainWindowViewModel(AppHost.Services, loc, AppHost.Get<UpdateService>(), store);
+            main.Navigate("toolbar");
+            var page = (ToolbarPageViewModel)main.CurrentPage!;
+            page.SelectedProfile = page.Profiles.Single(p => p.Profile.Id == "images");
+            page.EditingBack = true;
+            Assert.True(page.DonutItems.Single(i => i.Id == preset.Id).KeepsCaption); // and so in the editor's preview
             Motion.Set(false);
             var donut = new DonutMenu { Items = radial.Items, CenterTitle = "picture.png", OuterRadius = 160 };
             donutWindow = new Window { Width = 420, Height = 420, Content = donut };

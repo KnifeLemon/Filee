@@ -720,6 +720,7 @@
   "toolbar.size": "Size",
   "toolbar.hole": "Hole",
   "toolbar.opacity": "Opacity",
+  "toolbar.captions": "Show output format",
   "toolbar.new_preset": "New preset",
   "toolbar.new_group": "New group",
   "toolbar.face_front": "Front",
