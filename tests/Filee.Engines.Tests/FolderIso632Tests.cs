@@ -34,9 +34,10 @@ public sealed class FolderIso632Tests : IDisposable
         var output = new UnexpectedAllocation();
         var step = new ConversionStep(input, FormatRegistry.Folder, "iso", new Preset { TargetFormat = "iso" }, output, _root);
 
-        var error = await Assert.ThrowsAsync<NotSupportedException>(() => new FolderIsoConverter().ConvertAsync(step, null, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => new FolderIsoConverter().ConvertAsync(step, null, TestContext.Current.CancellationToken));
 
-        Assert.Contains("Select a folder inside", error.Message);
+        Assert.Equal("error.iso_root", error.ErrorKey);
+        Assert.Equal(root, error.Detail);
         Assert.False(output.Called);
         Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
     }
@@ -54,7 +55,8 @@ public sealed class FolderIso632Tests : IDisposable
 
         Assert.Equal(JobState.Failed, job.State);
         Assert.Equal(FileState.Failed, Assert.Single(job.Files).State);
-        Assert.Contains("Select a folder inside", job.Files[0].ErrorDetail);
+        Assert.Equal("error.iso_root", job.Files[0].ErrorKey);
+        Assert.Equal(root, job.Files[0].ErrorDetail);
         Assert.Empty(job.Outputs);
         Assert.False(Directory.Exists(destination));
         Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
@@ -205,23 +207,33 @@ public sealed class FolderIso632Tests : IDisposable
         for (var i = 0; i < 5; i++) nested = Directory.CreateDirectory(Path.Combine(nested, new string('a', 49))).FullName;
         var job = await Run(folder);
         Assert.Equal(JobState.Failed, job.State);
-        Assert.Contains("240", job.Files[0].ErrorDetail);
+        Assert.Equal("error.iso_name", job.Files[0].ErrorKey);
+        Assert.Equal(Path.GetRelativePath(folder, nested).Replace(Path.DirectorySeparatorChar, '\\'), job.Files[0].ErrorDetail);
         Assert.False(File.Exists(folder + ".iso"));
     }
 
-    [Fact]
-    public async Task Linked_entries_are_rejected_without_following_them()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Linked_entries_are_rejected_without_following_them(bool linkedSource)
     {
         var folder = Folder();
         var outside = Folder("outside");
         File.WriteAllText(Path.Combine(outside, "private.txt"), "keep");
-        try { Directory.CreateSymbolicLink(Path.Combine(folder, "link"), outside); }
-        catch (UnauthorizedAccessException) { Assert.Skip("Symbolic link creation is not permitted."); }
-        var job = await Run(folder);
-        Assert.Equal(JobState.Failed, job.State);
-        Assert.Contains("symbolic links", job.Files[0].ErrorDetail);
-        Assert.False(File.Exists(folder + ".iso"));
-        Assert.Equal("keep", File.ReadAllText(Path.Combine(outside, "private.txt")));
+        var link = Path.Combine(folder, "link");
+        LinkFolder(link, outside);
+        try
+        {
+            Assert.True(File.GetAttributes(link).HasFlag(FileAttributes.ReparsePoint));
+            var input = linkedSource ? link : folder;
+            var job = await Run(input);
+            Assert.Equal(JobState.Failed, job.State);
+            Assert.Equal("error.iso_link", job.Files[0].ErrorKey);
+            Assert.Contains("link", job.Files[0].ErrorDetail);
+            Assert.False(File.Exists(input + ".iso"));
+            Assert.Equal("keep", File.ReadAllText(Path.Combine(outside, "private.txt")));
+        }
+        finally { Directory.Delete(link); }
     }
 
     [Fact]
@@ -245,7 +257,8 @@ public sealed class FolderIso632Tests : IDisposable
         File.WriteAllText(folder + ".iso", "previous image");
         var job = await Run(folder, new OutputRule { Location = OutputLocation.SameFolder, Conflict = ConflictPolicy.Overwrite });
         Assert.Equal(JobState.Failed, job.State);
-        Assert.Contains("Joliet", job.Files[0].ErrorDetail);
+        Assert.Equal("error.iso_name", job.Files[0].ErrorKey);
+        Assert.Equal(name == "long" ? new string('a', 65) : name, job.Files[0].ErrorDetail);
         Assert.Equal("previous image", File.ReadAllText(folder + ".iso"));
         Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
     }
@@ -257,7 +270,8 @@ public sealed class FolderIso632Tests : IDisposable
         using (var file = File.Create(Path.Combine(folder, "large.bin"))) file.SetLength(1L << 32);
         var job = await Run(folder);
         Assert.Equal(JobState.Failed, job.State);
-        Assert.Contains("4 GiB", job.Files[0].ErrorDetail);
+        Assert.Equal("error.iso_file_size", job.Files[0].ErrorKey);
+        Assert.Equal("large.bin", job.Files[0].ErrorDetail);
         Assert.False(File.Exists(folder + ".iso"));
     }
 
@@ -277,9 +291,9 @@ public sealed class FolderIso632Tests : IDisposable
         var step = new ConversionStep(folder, FormatRegistry.Folder, "iso", new Preset { TargetFormat = "iso" }, new FixedOutput(output), _root);
         var progress = new ShrinkProgress(changing, remainingBytes);
 
-        var error = await Assert.ThrowsAsync<IOException>(() => new FolderIsoConverter().ConvertAsync(step, progress, TestContext.Current.CancellationToken));
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => new FolderIsoConverter().ConvertAsync(step, progress, TestContext.Current.CancellationToken));
 
-        Assert.Contains("source file may have changed", error.Message);
+        Assert.Equal("error.iso_changed", error.ErrorKey);
         Assert.True(progress.Shrank);
         Assert.Equal(remainingBytes, new FileInfo(changing).Length);
         Assert.DoesNotContain(1d, progress.Values);
@@ -324,6 +338,27 @@ public sealed class FolderIso632Tests : IDisposable
         Assert.Equal("archive", Assert.Single(planner.Plan("zip", "iso")!.Steps).Converter.Id);
         Assert.Null(planner.Plan("png", "iso"));
         Assert.NotNull(planner.Plan(FormatRegistry.Folder, "iso"));
+    }
+
+    private static void LinkFolder(string link, string target)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try { Directory.CreateSymbolicLink(link, target); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("This filesystem cannot create symbolic links.");
+            }
+            return;
+        }
+        using var junction = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        junction.WaitForExit();
+        Assert.Equal(0, junction.ExitCode);
     }
 
     private sealed class FixedOutput(string path) : IOutputAllocator

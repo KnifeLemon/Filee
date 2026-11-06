@@ -46,6 +46,7 @@ public sealed class CliTests : IDisposable
             using var document = JsonDocument.Parse(result.Output);
             Assert.Equal(1, document.RootElement.GetProperty("failed").GetInt32());
             Assert.Equal(0, document.RootElement.GetProperty("converted").GetInt32());
+            Assert.Equal("error.iso_root", document.RootElement.GetProperty("files")[0].GetProperty("errorKey").GetString());
         }
     }
 

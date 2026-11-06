@@ -20,6 +20,50 @@ namespace Filee.App.Tests;
 
 public class FolderIso632Tests
 {
+    private static readonly string[] RefusalKeys = ["error.iso_root", "error.iso_link", "error.iso_name", "error.iso_file_size", "error.iso_changed"];
+
+    [AvaloniaFact]
+    public void Every_shipped_language_has_iso_refusal_messages()
+    {
+        TestServices.EnsureInitialized("en");
+        var english = LocalizationService.LoadStrings("en");
+        foreach (var language in LocalizationService.Languages)
+        {
+            var catalog = LocalizationService.LoadStrings(language.Code);
+            foreach (var key in RefusalKeys)
+            {
+                Assert.True(catalog.TryGetValue(key, out var message), $"{language.Code}: {key}");
+                Assert.False(string.IsNullOrWhiteSpace(message));
+                if (language.Code != "en") Assert.NotEqual(english[key], message);
+            }
+        }
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    [InlineData("pt-PT")]
+    [InlineData("pt-BR")]
+    [InlineData("zh-CN")]
+    public void Iso_refusals_show_the_selected_language_with_separate_diagnostic_details(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var loc = AppHost.Get<ILocalizer>();
+        var catalog = LocalizationService.LoadStrings(language);
+        foreach (var key in RefusalKeys)
+        {
+            var job = new ConversionJob(["C:/folder"], new Preset { TargetFormat = "iso" }, "ISO");
+            var file = Assert.Single(job.Files);
+            file.State = FileState.Failed;
+            file.ErrorKey = key;
+            file.ErrorDetail = "nested/setup.exe";
+            var vm = new JobViewModel(job, loc, AppHost.Get<Filee.Core.Platform.IPlatformServices>(), _ => { });
+            Assert.Contains(catalog[key], vm.ErrorDetails);
+            Assert.Contains(file.ErrorDetail, vm.ErrorDetails);
+            Assert.DoesNotContain(loc["error.conversion_failed"], vm.ErrorDetails);
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData("documents", false)]
     [InlineData("documents", true)]

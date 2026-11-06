@@ -34,9 +34,9 @@ public sealed class FolderIsoConverter : IConverter
             var root = new DirectoryInfo(Path.GetFullPath(Path.TrimEndingDirectorySeparator(step.InputPath)));
             if (!root.Exists) throw new DirectoryNotFoundException(root.FullName);
             if (root.Parent is null)
-                throw new NotSupportedException("ISO creation does not support drive or filesystem roots. Select a folder inside the drive instead.");
+                throw new ConversionRefusedException("error.iso_root", root.FullName);
             if (root.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                throw new NotSupportedException("Select an original folder, not a symbolic link or junction.");
+                throw new ConversionRefusedException("error.iso_link", root.FullName);
             var output = step.Output.Allocate("iso");
             if (output is null) return [];
             output = Path.GetFullPath(output);
@@ -49,10 +49,10 @@ public sealed class FolderIsoConverter : IConverter
                     ct.ThrowIfCancellationRequested();
                     if (FileSystemPaths.Comparer.Equals(entry.FullName, output)) continue;
                     if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
-                        throw new NotSupportedException($"ISO creation does not follow symbolic links or junctions: '{entry.Name}'.");
+                        throw new ConversionRefusedException("error.iso_link", entry.Name);
                     var name = prefix + entry.Name;
                     if (entry.Name.Length > 64 || entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\') || name.Length > 240)
-                        throw new NotSupportedException($"Joliet cannot preserve '{name}': names must be at most 64 BMP Unicode characters without control characters, semicolons or backslashes; paths must be at most 240 characters.");
+                        throw new ConversionRefusedException("error.iso_name", name);
                     BuildDirectoryMember member;
                     if (entry is DirectoryInfo child)
                     {
@@ -62,7 +62,7 @@ public sealed class FolderIsoConverter : IConverter
                     else
                     {
                         if (((FileInfo)entry).Length > uint.MaxValue)
-                            throw new NotSupportedException($"ISO creation requires individual files smaller than 4 GiB: '{name}'.");
+                            throw new ConversionRefusedException("error.iso_file_size", name);
                         member = builder.AddFile(name, entry.FullName);
                         mark ??= MarkOfTheWeb.Read(entry.FullName);
                     }
@@ -96,7 +96,7 @@ public sealed class FolderIsoConverter : IConverter
                         }
                     }
                     if (copied != image.Length)
-                        throw new IOException("ISO creation stopped before all data was written. A source file may have changed during conversion.");
+                        throw new ConversionRefusedException("error.iso_changed");
                 }
                 ct.ThrowIfCancellationRequested();
                 if (mark is not null)
