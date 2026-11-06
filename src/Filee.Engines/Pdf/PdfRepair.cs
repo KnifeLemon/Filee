@@ -193,14 +193,15 @@ internal static class PdfRepair
         return closes.Count <= open ? none : closes.GetRange(open, closes.Count - open);
     }
 
-    /// <summary>True when "stream" at <paramref name="at"/> is the keyword: after a ">>" or white space, before the end of the line.</summary>
+    /// <summary>
+    /// True when "stream" at <paramref name="at"/> is the keyword: after a ">>" or white space. What follows it is not
+    /// looked at, because some files don't end the line right after it and the data must still not be counted.
+    /// </summary>
     private static bool IsStreamKeyword(byte[] pdf, int at, int start)
     {
-        if (!pdf.AsSpan(at).StartsWith("stream"u8) || at + 6 >= pdf.Length || at <= start)
+        if (!pdf.AsSpan(at).StartsWith("stream"u8) || at <= start)
             return false;
-        var before = pdf[at - 1];
-        return (before is (byte)'>' or (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n' or (byte)'\f' or 0)
-            && pdf[at + 6] is (byte)'\r' or (byte)'\n';
+        return pdf[at - 1] is (byte)'>' or (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n' or (byte)'\f' or 0;
     }
 
     /// <summary>The index of the ")" that ends the literal string opened at <paramref name="open"/> (parentheses nest, "\" escapes).</summary>

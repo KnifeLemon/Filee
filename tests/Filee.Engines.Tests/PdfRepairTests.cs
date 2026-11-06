@@ -62,7 +62,7 @@ public class PdfRepairTests
     public void Repair_overwrites_the_surplus_close_and_moves_nothing()
     {
         var damaged = DamagedPdf();
-        var repaired = PdfRepair.Repair(damaged);
+        var repaired = PdfRepair.Repair(damaged, TestContext.Current.CancellationToken);
 
         Assert.NotNull(repaired);
         Assert.Equal(damaged.Length, repaired.Length); // same length, so the file's own xref table stays valid
@@ -73,7 +73,7 @@ public class PdfRepairTests
     [Fact]
     public void Repair_leaves_a_file_without_damage_as_it_is()
     {
-        Assert.Null(PdfRepair.Repair(Pdf(Catalog)));
+        Assert.Null(PdfRepair.Repair(Pdf(Catalog), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -81,9 +81,9 @@ public class PdfRepairTests
     {
         const string bookmark = "5 0 obj\n<< /Title (Part A >> Part B) /Parent 2 0 R >>\nendobj\n";
 
-        Assert.Null(PdfRepair.Repair(Pdf(Catalog, bookmark)));
+        Assert.Null(PdfRepair.Repair(Pdf(Catalog, bookmark), TestContext.Current.CancellationToken));
 
-        var repaired = PdfRepair.Repair(Pdf(DamagedCatalog, bookmark));
+        var repaired = PdfRepair.Repair(Pdf(DamagedCatalog, bookmark), TestContext.Current.CancellationToken);
         Assert.NotNull(repaired);
         Assert.Contains("(Part A >> Part B)", Latin1(repaired), StringComparison.Ordinal);
     }
@@ -95,7 +95,7 @@ public class PdfRepairTests
         const string inner = "7 0 obj\n<< /A 1 >>\n>>\nendobj\n";
         var attached = $"5 0 obj\n<< /Length {inner.Length} >>\nstream\n{inner}\nendstream\nendobj\n";
 
-        var repaired = PdfRepair.Repair(Pdf(DamagedCatalog, attached));
+        var repaired = PdfRepair.Repair(Pdf(DamagedCatalog, attached), TestContext.Current.CancellationToken);
 
         Assert.NotNull(repaired);
         Assert.Contains(inner, Latin1(repaired), StringComparison.Ordinal);
@@ -105,7 +105,7 @@ public class PdfRepairTests
     public void Repair_gives_up_on_a_truncated_file()
     {
         var damaged = DamagedPdf();
-        Assert.Null(PdfRepair.Repair(damaged[..(damaged.Length / 2)]));
+        Assert.Null(PdfRepair.Repair(damaged[..(damaged.Length / 2)], TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -167,8 +167,8 @@ public class PdfRepairTests
                 document.Save(path);
             }
 
-            Assert.Null(PdfRepair.Repair(File.ReadAllBytes(path)));
-            using var opened = PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import);
+            Assert.Null(PdfRepair.Repair(File.ReadAllBytes(path), TestContext.Current.CancellationToken));
+            using var opened = PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, TestContext.Current.CancellationToken);
             Assert.Equal(3, opened.PageCount);
         }
         finally
@@ -185,8 +185,8 @@ public class PdfRepairTests
         {
             WritePasswordProtectedPdf(path);
 
-            Assert.Null(PdfRepair.Repair(File.ReadAllBytes(path)));
-            Assert.Throws<InvalidOperationException>(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import));
+            Assert.Null(PdfRepair.Repair(File.ReadAllBytes(path), TestContext.Current.CancellationToken));
+            Assert.Throws<InvalidOperationException>(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -223,7 +223,7 @@ public class PdfRepairTests
         const string bookmark = "5 0 obj\n<< /Title (Upstream plan) /Parent 2 0 R >>\n>>\nendobj\n";
         var damaged = Pdf(Catalog, bookmark);
 
-        var repaired = PdfRepair.Repair(damaged);
+        var repaired = PdfRepair.Repair(damaged, TestContext.Current.CancellationToken);
 
         Assert.NotNull(repaired);
         Assert.Equal(damaged.Length, repaired.Length);
@@ -241,7 +241,18 @@ public class PdfRepairTests
         const string data = "abc";
         var withStream = $"5 0 obj\n<< /Length {data.Length} >>\n>>\nstream\n{data}\nendstream\nendobj\n";
 
-        Assert.Null(PdfRepair.Repair(Pdf(Catalog, withStream)));
+        Assert.Null(PdfRepair.Repair(Pdf(Catalog, withStream), TestContext.Current.CancellationToken));
+    }
+
+    [Theory]
+    [InlineData("stream \nabc>>\nendstream")] // a space before the line end
+    [InlineData("stream abc>>\nendstream")] // no line end at all
+    public void Repair_leaves_a_stream_alone_when_its_keyword_is_written_loosely(string stream)
+    {
+        // what the stream holds must never be counted, or the ">>" in its data is overwritten
+        var withStream = $"5 0 obj\n<< /Length 5 >>\n{stream}\nendobj\n";
+
+        Assert.Null(PdfRepair.Repair(Pdf(Catalog, withStream), TestContext.Current.CancellationToken));
     }
 
     [Fact]
@@ -251,7 +262,7 @@ public class PdfRepairTests
         var objects = Enumerable.Range(5, 20_000).Select(n => $"{n} 0 obj\n<< /A 1 >>\n").ToArray();
         var pdf = Pdf(Catalog, objects);
 
-        Assert.Null(PdfRepair.Repair(pdf));
+        Assert.Null(PdfRepair.Repair(pdf, TestContext.Current.CancellationToken));
         Assert.Throws<OperationCanceledException>(() => PdfRepair.Repair(pdf, new CancellationToken(canceled: true)));
     }
 
@@ -265,12 +276,12 @@ public class PdfRepairTests
             File.WriteAllBytes(damaged, DamagedPdf());
             File.WriteAllBytes(healthy, Pdf(Catalog));
 
-            using (var document = PdfSharpConverter.Open(damaged, PdfDocumentOpenMode.Import, out var mended))
+            using (var document = PdfSharpConverter.Open(damaged, PdfDocumentOpenMode.Import, out var mended, TestContext.Current.CancellationToken))
             {
                 Assert.NotNull(mended);
                 Assert.Equal(1, document.PageCount);
             }
-            using (var document = PdfSharpConverter.Open(healthy, PdfDocumentOpenMode.Import, out var mended))
+            using (var document = PdfSharpConverter.Open(healthy, PdfDocumentOpenMode.Import, out var mended, TestContext.Current.CancellationToken))
             {
                 Assert.Null(mended);
                 Assert.Equal(1, document.PageCount);
