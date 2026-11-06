@@ -396,6 +396,7 @@ public sealed class EngineInstaller
             {
                 case "zip":
                     ZipFile.ExtractToDirectory(file, staging);
+                    RenameExifTool(component.Id, SingleRoot(staging));
                     EnsureExecutablePrograms(component.Id, SingleRoot(staging));
                     Replace(component.Id, SingleRoot(staging));
                     break;
@@ -464,6 +465,17 @@ public sealed class EngineInstaller
             _ => throw new NotSupportedException(kind),
         };
         await TarFile.ExtractToDirectoryAsync(content, target, overwriteFiles: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// ExifTool's Windows build ships as "exiftool(-k).exe", which waits for a key before it exits (for
+    /// double-clicking): renamed "exiftool.exe", it runs and exits as a command line program.
+    /// </summary>
+    internal static void RenameExifTool(string id, string root)
+    {
+        var waiting = Path.Combine(root, "exiftool(-k).exe");
+        if (id == "exiftool" && File.Exists(waiting))
+            File.Move(waiting, Path.Combine(root, "exiftool.exe"), overwrite: true);
     }
 
     internal static void EnsureExecutablePrograms(string id, string root)
