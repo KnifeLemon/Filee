@@ -1924,4 +1924,4 @@ Filee upscales and restores images locally using an offline AI super-resolution 
   - **Palette**: The **Upscale** preset opens the interactive Upscale dialog to select models, scale factors (2× to 4×), preview output resolution, and upscale directly.
   - **Settings → Presets**: The "Upscale Image" tool preset can be configured with preferred default models and scale factors.
   - **Settings → Engines**: "Upscayl (AI image upscaler)" engine package provides the local `upscayl-bin` binary, with models downloaded on demand with live progress and uninstall support in the Upscale dialog.
-- **Supported formats**: PNG, JPG, WEBP, ICO, HEIC, AVIF, BMP, and TIFF.
+- **Supported formats**: PNG, JPG, WEBP, ICO, AVIF, BMP, and TIFF.

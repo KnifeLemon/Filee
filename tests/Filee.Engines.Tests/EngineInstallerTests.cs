@@ -693,6 +693,46 @@ public sealed class EngineInstallerTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(_root, "shared")));
     }
 
+    [Fact]
+    public void An_empty_package_is_neither_installed_nor_up_to_date()
+    {
+        var empty = new EnginePackage("empty", [], 0, []);
+        var installer = Installer(new FakeServer([]));
+
+        Assert.False(installer.IsInstalled(empty));
+        Assert.False(installer.IsUpToDate(empty));
+    }
+
+    [Fact]
+    public async Task CopyRuntime_copies_vcruntime_and_vcomp14_dlls_next_to_zip_component()
+    {
+        var vcConda = Conda(("Library/bin/vcruntime140.dll", "vc"));
+        var vcComp = Conda(("Library/bin/vcomp140.dll", "vcomp"));
+        var zip = Zip(("tool/upscayl-bin.exe", "bin"));
+
+        var compVc = Component("vcruntime", "conda", vcConda);
+        var compVcomp = Component("vcomp14", "conda", vcComp);
+        var compTool = Component("upscayl-bin", "zip", zip);
+
+        var package = new EnginePackage("upscayl-bin", ["upscayl-bin", "vcruntime", "vcomp14"], 1, ["upscaler"]);
+        var server = new FakeServer(new()
+        {
+            [compVc.Url] = vcConda,
+            [compVcomp.Url] = vcComp,
+            [compTool.Url] = zip,
+        });
+
+        var installer = Installer(server, compVc, compVcomp, compTool);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        var toolDir = Path.Combine(_root, "upscayl-bin");
+        Assert.True(File.Exists(Path.Combine(toolDir, "upscayl-bin.exe")));
+        Assert.True(File.Exists(Path.Combine(toolDir, "vcruntime140.dll")));
+        Assert.True(File.Exists(Path.Combine(toolDir, "vcomp140.dll")));
+        Assert.Equal("vc", File.ReadAllText(Path.Combine(toolDir, "vcruntime140.dll")));
+        Assert.Equal("vcomp", File.ReadAllText(Path.Combine(toolDir, "vcomp140.dll")));
+    }
+
     private sealed class SyncProgress(Action<EngineInstallProgress> report) : IProgress<EngineInstallProgress>
     {
         public void Report(EngineInstallProgress value) => report(value);

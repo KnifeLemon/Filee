@@ -126,10 +126,11 @@ public sealed class EngineInstaller
     }
 
     /// <summary>True when every component is installed (any version).</summary>
-    public bool IsInstalled(EnginePackage package) => package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
+    public bool IsInstalled(EnginePackage package) => package.Components.Count > 0 && package.Components.All(c => _components.ContainsKey(c) && Marker(c) is not null);
 
     /// <summary>True when every component is installed in the version engines.json pins.</summary>
     public bool IsUpToDate(EnginePackage package) =>
+        package.Components.Count > 0 &&
         package.Components.All(c => _components.TryGetValue(c, out var component)
             && string.Equals(Marker(c), component.Sha256, StringComparison.OrdinalIgnoreCase));
 
@@ -285,17 +286,41 @@ public sealed class EngineInstaller
     /// is the lock (deleting it on close would let a third process lock a new file while a second still holds the old).
     /// </summary>
     /// <exception cref="EngineBusyException">Another process holds the lock.</exception>
-    private FileStream LockPackage(EnginePackage package)
+    private IDisposable LockPackage(EnginePackage package)
     {
         var locks = Path.Combine(_root, ".downloads", "locks");
         Directory.CreateDirectory(locks);
+        var streams = new List<FileStream>();
         try
         {
-            return new FileStream(Path.Combine(locks, package.Id + ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            var keys = new[] { package.Id }.Concat(package.Components).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(k => k, StringComparer.Ordinal);
+            foreach (var key in keys)
+            {
+                try
+                {
+                    streams.Add(new FileStream(Path.Combine(locks, key + ".lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None));
+                }
+                catch (IOException ex) when (ex is not (FileNotFoundException or DirectoryNotFoundException or PathTooLongException))
+                {
+                    throw new EngineBusyException(package.Id);
+                }
+            }
+            return new CompositeLock(streams);
         }
-        catch (IOException ex) when (ex is not (FileNotFoundException or DirectoryNotFoundException or PathTooLongException))
+        catch
         {
-            throw new EngineBusyException(package.Id);
+            foreach (var s in streams)
+                s.Dispose();
+            throw;
+        }
+    }
+
+    private sealed class CompositeLock(List<FileStream> streams) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var s in streams)
+                s.Dispose();
         }
     }
 

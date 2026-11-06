@@ -12,7 +12,7 @@ public static class UpscaleTool
     public const string FallbackTarget = "png";
 
     /// <summary>The formats the upscale window offers, after "Same format as the source".</summary>
-    public static readonly IReadOnlyList<string> Targets = ["png", "jpg", "webp", "avif", "heic", "ico", "bmp", "tiff"];
+    public static readonly IReadOnlyList<string> Targets = ["png", "jpg", "webp", "avif", "ico", "bmp", "tiff"];
 
     /// <summary>True when a <paramref name="sourceFormat"/> file is an image the tool can upscale.</summary>
     public static bool CanUpscale(string sourceFormat) =>

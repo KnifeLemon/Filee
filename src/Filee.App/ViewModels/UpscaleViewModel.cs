@@ -57,7 +57,6 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
     private string _progressText = "";
 
     [ObservableProperty]
-    private bool _isCompleted;
 
     [ObservableProperty]
     private string _statusMessage = "";
@@ -131,12 +130,12 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
     {
         Targets.Clear();
         var firstFormatId = Pictures.Count > 0 ? (FormatRegistry.Detect(Pictures[0])?.Id ?? "png") : "png";
-        Targets.Add(new("*", _loc.Format("upscale.format_same", firstFormatId)));
+        var effectiveTarget = UpscaleTool.TargetFor(firstFormatId, BuiltInData.SameAsSource);
+        Targets.Add(new(BuiltInData.SameAsSource, _loc.Format("upscale.format_same", effectiveTarget)));
         Targets.Add(new("png", "PNG (.png)"));
         Targets.Add(new("jpg", "JPEG (.jpg)"));
         Targets.Add(new("webp", "WebP (.webp)"));
         Targets.Add(new("avif", "AVIF (.avif)"));
-        Targets.Add(new("heic", "HEIC (.heic)"));
         Targets.Add(new("bmp", "BMP (.bmp)"));
         Targets.Add(new("tiff", "TIFF (.tiff)"));
         Targets.Add(new("ico", "ICO (.ico)"));
@@ -179,7 +178,6 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         }
 
         IsProcessing = true;
-        IsCompleted = false;
         HasError = false;
         StatusMessage = "";
         ProgressValue = 0;

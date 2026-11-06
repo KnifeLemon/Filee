@@ -80,6 +80,7 @@ public class UpscalerTests
         // Unsupported writable formats fall back to PNG
         Assert.Equal("png", UpscaleTool.TargetFor("gif", BuiltInData.SameAsSource));
         Assert.Equal("png", UpscaleTool.TargetFor("psd", BuiltInData.SameAsSource));
+        Assert.Equal("png", UpscaleTool.TargetFor("heic", BuiltInData.SameAsSource));
         Assert.Equal("png", UpscaleTool.TargetFor("jxl", BuiltInData.SameAsSource));
         Assert.Equal("png", UpscaleTool.TargetFor("tga", BuiltInData.SameAsSource));
         Assert.Equal("png", UpscaleTool.TargetFor("jp2", BuiltInData.SameAsSource));
@@ -89,7 +90,6 @@ public class UpscalerTests
         Assert.Equal("jpg", UpscaleTool.TargetFor("jpg", BuiltInData.SameAsSource));
         Assert.Equal("webp", UpscaleTool.TargetFor("webp", BuiltInData.SameAsSource));
         Assert.Equal("avif", UpscaleTool.TargetFor("avif", BuiltInData.SameAsSource));
-        Assert.Equal("heic", UpscaleTool.TargetFor("heic", BuiltInData.SameAsSource));
         Assert.Equal("bmp", UpscaleTool.TargetFor("bmp", BuiltInData.SameAsSource));
         Assert.Equal("tiff", UpscaleTool.TargetFor("tiff", BuiltInData.SameAsSource));
         Assert.Equal("ico", UpscaleTool.TargetFor("ico", BuiltInData.SameAsSource));
@@ -103,7 +103,9 @@ public class UpscalerTests
     public void AutoOrient_and_profiles_are_applied_correctly_on_portrait_image()
     {
         // Stored landscape (200x100), but marked with orientation RightTop (6) to be viewed as portrait
-        var tempPath = Path.Combine(Path.GetTempPath(), $"test-orient-{Guid.NewGuid():N}.jpg");
+        var inputPath = Path.Combine(Path.GetTempPath(), $"test-orient-in-{Guid.NewGuid():N}.jpg");
+        var tempInput = Path.Combine(Path.GetTempPath(), $"test-orient-temp-{Guid.NewGuid():N}.png");
+        var finalOutput = Path.Combine(Path.GetTempPath(), $"test-orient-out-{Guid.NewGuid():N}.png");
         try
         {
             using (var img = new MagickImage(MagickColors.Blue, 200, 100))
@@ -112,36 +114,82 @@ public class UpscalerTests
                 exif.SetValue(ExifTag.Make, "FileePhone");
                 exif.SetValue(ExifTag.Orientation, (ushort)Orientation.RightTop);
                 img.SetProfile(exif);
-                img.SetProfile(ColorProfiles.SRGB);
+                img.SetProfile(ColorProfiles.AdobeRGB1998);
                 img.Orientation = Orientation.RightTop;
-                img.Write(tempPath, MagickFormat.Jpeg);
+                img.Write(inputPath, MagickFormat.Jpeg);
             }
 
             var preset = BuiltInData.UpscalePresets().Single();
-            using var images = ImageReader.Read(tempPath, "jpg", preset);
+            using var images = ImageReader.Read(inputPath, "jpg", preset);
             var frames = ImageEncoder.SelectFrames(images, "jpg", "png");
             Assert.NotEmpty(frames);
 
-            var frame = frames[0];
-            Assert.Equal((200u, 100u), (frame.Width, frame.Height));
-            Assert.Equal(Orientation.RightTop, frame.Orientation);
+            // 1. PrepareFrame must AutoOrient and extract profiles into the temporary PNG
+            var (exifProfile, iccProfile) = UpscalerEngine.PrepareFrame(frames[0], tempInput);
 
-            frame.AutoOrient();
+            using (var prepared = new MagickImage(tempInput))
+            {
+                // After PrepareFrame, the pixels are physically upright (100x200) and orientation tag is reset
+                Assert.Equal((100u, 200u), (prepared.Width, prepared.Height));
+                Assert.True(prepared.Orientation is Orientation.TopLeft or Orientation.Undefined);
+            }
 
-            // After AutoOrient, the pixels are physically upright (100x200) and orientation tag is reset
-            Assert.Equal((100u, 200u), (frame.Width, frame.Height));
-            Assert.True(frame.Orientation is Orientation.TopLeft or Orientation.Undefined);
+            Assert.NotNull(exifProfile);
+            Assert.Equal("FileePhone", exifProfile.GetValue(ExifTag.Make)?.Value);
+            Assert.NotNull(iccProfile);
 
-            var extractedExif = frame.GetExifProfile();
-            var extractedIcc = frame.GetColorProfile();
-            Assert.NotNull(extractedExif);
-            Assert.Equal("FileePhone", extractedExif.GetValue(ExifTag.Make)?.Value);
-            Assert.NotNull(extractedIcc);
+            // 2. FinishImage must write out the finished picture preserving metadata and upright dimensions
+            using (var upscaledSimulated = new MagickImage(tempInput))
+            {
+                UpscalerEngine.FinishImage(upscaledSimulated, preset, "png", exifProfile, iccProfile);
+                ImageEncoder.WriteImage(upscaledSimulated, finalOutput, "png");
+            }
+
+            using (var result = new MagickImage(finalOutput))
+            {
+                Assert.Equal((100u, 200u), (result.Width, result.Height));
+                Assert.True(result.Orientation is Orientation.TopLeft or Orientation.Undefined);
+                var resultExif = result.GetExifProfile();
+                Assert.NotNull(resultExif);
+                Assert.Equal("FileePhone", resultExif.GetValue(ExifTag.Make)?.Value);
+                Assert.NotNull(result.GetColorProfile());
+            }
         }
         finally
         {
-            if (File.Exists(tempPath)) File.Delete(tempPath);
+            if (File.Exists(inputPath)) File.Delete(inputPath);
+            if (File.Exists(tempInput)) File.Delete(tempInput);
+            if (File.Exists(finalOutput)) File.Delete(finalOutput);
         }
+    }
+
+    [Theory]
+    [InlineData(0, "vulkan driver loaded", false)]
+    [InlineData(0, "", false)]
+    [InlineData(-1, "", true)]
+    [InlineData(255, "", true)]
+    [InlineData(1, "Invalid GPU Device", true)]
+    [InlineData(1, "no gpu device found", true)]
+    [InlineData(1, "vkCreateInstance failed", true)]
+    [InlineData(1, "failed to create instance", true)]
+    [InlineData(1, "some random io error", false)]
+    public void IsVulkanRefusal_detects_exit_codes_and_errors(int exitCode, string stderr, bool expected)
+    {
+        Assert.Equal(expected, UpscalerEngine.IsVulkanRefusal(exitCode, stderr));
+    }
+
+    [Fact]
+    public void ColorSpaceMatches_rejects_cmyk_profile_for_srgb()
+    {
+        // CMYK profile must not match sRGB image
+        var cmykProfile = ColorProfiles.USWebCoatedSWOP;
+        Assert.False(UpscalerEngine.ColorSpaceMatches(cmykProfile, ColorSpace.sRGB));
+        Assert.False(UpscalerEngine.ColorSpaceMatches(cmykProfile, ColorSpace.RGB));
+
+        // sRGB profile matches sRGB and RGB
+        var srgbProfile = ColorProfiles.AdobeRGB1998;
+        Assert.True(UpscalerEngine.ColorSpaceMatches(srgbProfile, ColorSpace.sRGB));
+        Assert.True(UpscalerEngine.ColorSpaceMatches(srgbProfile, ColorSpace.RGB));
     }
 
     [Fact]
@@ -177,7 +225,10 @@ public class UpscalerTests
         }
 
         var status = converter.GetStatus();
-        Assert.NotNull(status);
+        if (UpscalerConverter.LocateExecutable() is null)
+            Assert.Equal("engine.reason.not_installed", status.ReasonKey);
+        else
+            Assert.True(status.IsAvailable);
     }
 
     [Fact]

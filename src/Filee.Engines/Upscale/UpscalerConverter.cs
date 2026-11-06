@@ -14,16 +14,14 @@ public sealed class UpscalerConverter : IConverter
 {
     private static readonly string[] TargetFormats =
     [
-        "png", "jpg", "webp", "avif", "heic", "ico", "bmp", "tiff"
+        "png", "jpg", "webp", "avif", "ico", "bmp", "tiff"
     ];
 
     private readonly UpscalerEngine _engine;
-    private readonly ILogger _logger;
     private string? _executable;
 
     public UpscalerConverter(ILogger<UpscalerConverter>? logger = null)
     {
-        _logger = logger ?? NullLogger<UpscalerConverter>.Instance;
         _engine = new UpscalerEngine(logger as ILogger<UpscalerEngine>);
     }
 
