@@ -626,6 +626,10 @@
   "general.export": "Exportar…",
   "general.import": "Importar…",
   "general.reset_library": "Restaurar padrões",
+  "general.export_hint": "Salva as predefinições e os menus em um arquivo, para backup ou para compartilhar.",
+  "general.import_hint": "Adiciona predefinições e menus de um arquivo. As cópias que você já tem são substituídas.",
+  "general.reset_hint": "Substitui todas as predefinições e menus pelos que já vêm com o app.",
+  "general.library_note": "Suas outras configurações não mudam.",
   "general.reset_confirm": "Substituir todas as predefinições e os perfis de menu pelos padrões?",
   "general.imported": "{0} itens importados",
 
