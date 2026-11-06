@@ -91,6 +91,27 @@ public sealed class PortableEngineTests : IDisposable
         Assert.Equal(_root, EngineEnvironment.FolderWithPrograms("ffmpeg", _root, windows: false));
     }
 
+    [Theory]
+    [InlineData("ffmpeg", "mingw64", "ffmpeg.exe", "ffprobe.exe")]
+    [InlineData("tesseract", "clang64", "tesseract.exe", null)]
+    [InlineData("whisper", "ucrt64", "whisper-cli.exe", null)]
+    public void Msys2_native_engines_are_found_only_when_the_required_programs_exist(
+        string id, string environment, string program, string? second)
+    {
+        var bin = Path.Combine(_root, environment, "bin");
+        Directory.CreateDirectory(bin);
+        File.WriteAllText(Path.Combine(bin, program), "binary");
+        var folders = EngineEnvironment.Msys2Folders(id, _root).ToList();
+        if (second is not null)
+        {
+            Assert.Null(folders.Select(path => EngineEnvironment.FolderWithPrograms(id, path, windows: true)).FirstOrDefault(path => path is not null));
+            File.WriteAllText(Path.Combine(bin, second), "binary");
+        }
+        Assert.Equal(bin, folders.Select(path => EngineEnvironment.FolderWithPrograms(id, path, windows: true)).FirstOrDefault(path => path is not null));
+        Assert.DoesNotContain(Path.Combine(_root, "usr", "bin"), folders);
+        Assert.Empty(EngineEnvironment.Msys2Folders("pandoc", _root));
+    }
+
     [Fact]
     public async Task Tar_archives_preserve_program_layout_contents_and_Unix_executable_mode()
     {
