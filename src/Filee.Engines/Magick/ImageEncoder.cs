@@ -43,20 +43,21 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Formats whose frames are an animation. Between these, all frames are kept with their timing (an animated GIF
-    /// becomes an animated WebP or JPEG XL and the other way round); any other target gets the first frame.
+    /// becomes an animated WebP, JPEG XL or AVIF and the other way round); any other target gets the first frame.
     /// </summary>
-    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl"];
+    private static readonly HashSet<string> Animated = ["gif", "webp", "apng", "mng", "jxl", "avif"];
 
     /// <summary>
     /// The edge an image engine offers from a picture in <paramref name="source"/> to <paramref name="target"/>. GIF
     /// holds 256 colours, so a still picture costs more there: it reaches video through a full-colour PNG instead
     /// (FFmpeg), while animations and multi-page files still go through GIF and keep their frames. Still picture → APNG
-    /// costs as much, so photos never reach video as a one-frame animation. FITS → TIFF is the data for further
-    /// processing (linear by default, 16 or 32 bits): it costs a little more, so FITS reaches other formats through a
-    /// stretched PNG or JPG instead.
+    /// costs as much, so photos never reach video as a one-frame animation. AVIF counts as a still picture here: nearly
+    /// every AVIF is a photo, and an animated one still keeps its frames as GIF or APNG themselves. FITS → TIFF is the
+    /// data for further processing (linear by default, 16 or 32 bits): it costs a little more, so FITS reaches other
+    /// formats through a stretched PNG or JPG instead.
     /// </summary>
     public static ConversionEdge Edge(string source, string target) =>
-        new(source, target, target is "gif" or "apng" && !MultiFrame.Contains(source) && !Animated.Contains(source) ? 12
+        new(source, target, target is "gif" or "apng" && !MultiFrame.Contains(source) && (source == "avif" || !Animated.Contains(source)) ? 12
             : source == "fits" && target == "tiff" ? 11 : 10);
 
     /// <summary>True when frames of <paramref name="sourceFormat"/> are written as one animation in <paramref name="targetFormat"/>.</summary>
@@ -157,8 +158,8 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL): every frame for an animated or TIFF
-    /// target, else the first frame.
+    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF): every frame for an animated or
+    /// TIFF target, else the first frame.
     /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
     public static List<IMagickImage<byte>> SelectFrames(MagickImageCollection images, string sourceFormat, string targetFormat)
@@ -450,7 +451,10 @@ internal static class ImageEncoder
     /// </summary>
     /// <param name="options">Options of the preset (the Netpbm sub-format depends on them).</param>
     /// <param name="sourcePath">Input file of the step, see <see cref="OutputFormat"/>.</param>
-    /// <param name="animation">The frames are an animation: write them into one file even for a WebP target.</param>
+    /// <param name="animation">
+    /// The frames are an animation: write them into one file even for a WebP or AVIF target (ImageMagick writes several
+    /// frames as an AVIF image sequence, whose first frame is also the still picture for viewers that don't play it).
+    /// </param>
     public static List<string> Write(IReadOnlyList<IMagickImage<byte>> frames, string targetFormat, IOutputAllocator output,
         ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {

@@ -197,14 +197,22 @@ in it also builds the package (artifact `windows-arm64-package`).
   borders, fully transparent ones and multi-frame animations (each frame alone would shift) come out as they are.
   Formats that can't be transparent (JPG, HEIC, …) have nothing to trim: the preset is greyed out for them, and a
   JPG in a mixed selection fails with that reason instead of being re-encoded.
-- **Animations.** An animated GIF, WebP, APNG, MNG or JPEG XL keeps every frame and its timing when converted to one of
-  these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL, WebP lossy or lossless as the preset says, #988) and
-  becomes a multi-page TIFF;
-  other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP.
+- **Animations.** An animated GIF, WebP, APNG, MNG, JPEG XL or AVIF keeps every frame and its timing when converted to
+  one of these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL ↔ AVIF, WebP lossy or lossless as the preset says,
+  #988) and becomes a multi-page TIFF;
+  other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
+  - **Animated AVIF** (#1200) needs no FFmpeg: the bundled ImageMagick writes several frames as an AVIF image sequence
+    (`avis`) through libheif, with the first frame also stored as the still picture for viewers that don't play
+    sequences, and reads such a file back frame by frame, also one FFmpeg wrote. Transparency stays (an alpha track). A
+    still picture takes the same one-picture path as ever. The writer stores no loop count, so an animation that plays a
+    set number of times loops for ever as AVIF. Encoding takes much longer than WebP (about half a second per busy
+    480 × 270 frame, and the write can't be interrupted). On the way to video an AVIF counts as a photo
+    (`ImageEncoder.Edge`): nearly all of them are, so an animated one becomes a video of its first frame rather than
+    every AVIF going through a 256-colour GIF.
 - **Playback speed** (preset option *Playback speed*, `ImageOptions.AnimationSpeed`: 0.25×, 0.5×, 0.75×, 1×, 1.5×,
-  2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL and "same as source") rewrites the frame delays of an animation that stays
+  2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL, AVIF and "same as source") rewrites the frame delays of an animation that stays
   animated (`Magick/AnimationTiming.cs`). Delays are divided by the speed in the target's own units (hundredths of a
-  second for GIF, MNG and JPEG XL, milliseconds for WebP and APNG) and rounded on the running total, so the whole animation
+  second for GIF, MNG and JPEG XL, milliseconds for WebP, APNG and AVIF) and rounded on the running total, so the whole animation
   keeps its new length. Players show a frame of 10 ms or less for 100 ms, so no delay goes below 20 ms (50 frames a
   second): a frame that would start sooner than that after the one before is dropped and its time goes to that one,
   which leaves frames out evenly. Source delays of 10 ms or less count as the 100 ms players show. Loop count and
