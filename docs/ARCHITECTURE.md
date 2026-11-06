@@ -163,7 +163,7 @@ and the key reaches its window without whole-application activation, keeping mac
 while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it from the background) macOS gives no keys to a hook,
 only to the key window and app in front. The hook's copy of a press is ignored while the window has the keyboard (`HookFlipsKey`, one flip
 per press, following `IsActive`); key window status is explicitly released once a conversion starts or the donut closes
-(`IPlatformServices.ReleaseKeyWindow` / `ReturnFocus`), returning typing to the previous app while the progress ring finishes, and stays
+(`IPlatformServices.ReleaseKeyWindow` / `ReturnFocus`), returning typing to the previous app (unless the user clicked elsewhere meanwhile) while the progress ring finishes, and stays
 with Filee when the drop opens a window of its own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard
 during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.

@@ -169,7 +169,7 @@ public sealed class MacOSPlatformServices : IPlatformServices
 
         var from = _focusFrom;
         _focusFrom = 0;
-        if (from != 0)
+        if (from != 0 && NativeMethods.FrontmostProcessId() == Environment.ProcessId)
             NativeMethods.ActivateProcess(from);
     }
 

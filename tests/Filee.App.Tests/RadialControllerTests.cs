@@ -162,14 +162,12 @@ public class RadialControllerTests
                 }
             }
 
-            if (index >= 0)
-            {
-                dropped(new DonutHit(DonutHitKind.Segment, index, -1), new DraggedItems([tempFile], null));
+            Assert.True(index >= 0);
+            dropped(new DonutHit(DonutHitKind.Segment, index, -1), new DraggedItems([tempFile], null));
 
-                // Key window status is released immediately on drop so typing returns to previous app
-                Assert.Equal([handle], platform.KeyWindowsReleased);
-                Assert.Equal(1, platform.ReturnFocusCalls);
-            }
+            // Key window status is released immediately on drop so typing returns to previous app
+            Assert.Equal([handle], platform.KeyWindowsReleased);
+            Assert.Equal(1, platform.ReturnFocusCalls);
         }
         finally
         {
@@ -189,6 +187,10 @@ public class RadialControllerTests
         }
 
         TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var profile = store.Profiles.First(p => p.Id == "images");
+        var beforePresets = profile.PresetIds;
+        profile.PresetIds = ["tool-crop", ..beforePresets];
         var platform = new WindowPlatform();
         var radial = Create(platform);
         var tempFile = Path.Combine(Path.GetTempPath(), "filee-test-tool.png");
@@ -225,17 +227,16 @@ public class RadialControllerTests
                 }
             }
 
-            if (toolIndex >= 0)
-            {
-                dropped(new DonutHit(DonutHitKind.Segment, toolIndex, -1), new DraggedItems([tempFile], null));
+            Assert.True(toolIndex >= 0);
+            dropped(new DonutHit(DonutHitKind.Segment, toolIndex, -1), new DraggedItems([tempFile], null));
 
-                // Keyboard stays with Filee for the tool window
-                Assert.Empty(platform.KeyWindowsReleased);
-                Assert.Equal(0, platform.ReturnFocusCalls);
-            }
+            // Keyboard stays with Filee for the tool window
+            Assert.Empty(platform.KeyWindowsReleased);
+            Assert.Equal(0, platform.ReturnFocusCalls);
         }
         finally
         {
+            profile.PresetIds = beforePresets;
             radial.Close(animate: false);
             if (File.Exists(tempFile))
                 File.Delete(tempFile);
