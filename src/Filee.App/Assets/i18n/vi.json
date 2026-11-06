@@ -626,6 +626,10 @@
   "general.export": "Xuất…",
   "general.import": "Nhập…",
   "general.reset_library": "Đặt lại mặc định",
+  "general.export_hint": "Lưu cấu hình sẵn và thanh công cụ vào một tệp, để sao lưu hoặc chia sẻ.",
+  "general.import_hint": "Thêm cấu hình sẵn và thanh công cụ từ một tệp. Các bản đã có sẽ bị thay thế.",
+  "general.reset_hint": "Thay toàn bộ cấu hình sẵn và thanh công cụ bằng bản có sẵn của ứng dụng.",
+  "general.library_note": "Các cài đặt khác của bạn không thay đổi.",
   "general.reset_confirm": "Thay thế mọi cấu hình sẵn và hồ sơ thanh công cụ bằng mặc định?",
   "general.imported": "Đã nhập {0} mục",
 
