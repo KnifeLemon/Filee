@@ -1032,6 +1032,9 @@ internal static class SettingsMigrations
         // v70: JPEG .jif files (#1184) learn the images donut without taking custom claims.
         if (from < 70)
             changed |= LearnExtensions(profiles, out _, ["jif"]);
+        // v71: Java source files (#1176) learn the text donut; custom claims stay put.
+        if (from < 71)
+            changed |= LearnExtensions(profiles, out _, ["java"]);
         return changed;
     }
 
