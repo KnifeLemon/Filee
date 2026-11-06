@@ -687,4 +687,42 @@ public sealed class EngineInstallerTests : IDisposable
     {
         public void Report(EngineInstallProgress value) => report(value);
     }
+
+    [Fact]
+    public void ExifTools_Windows_build_is_renamed_so_it_doesnt_wait_for_a_key_and_its_folder_is_found()
+    {
+        var root = Directory.CreateTempSubdirectory("filee-exiftool-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "exiftool(-k).exe"), "");
+            Directory.CreateDirectory(Path.Combine(root, "exiftool_files"));
+
+            EngineInstaller.RenameExifTool("exiftool", root);
+
+            Assert.True(File.Exists(Path.Combine(root, "exiftool.exe")));
+            Assert.False(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
+            Assert.Equal(root, EngineEnvironment.FolderWithPrograms("exiftool", root, windows: true));
+            // Another package's files are left as they are.
+            File.WriteAllText(Path.Combine(root, "exiftool(-k).exe"), "");
+            EngineInstaller.RenameExifTool("pandoc", root);
+            Assert.True(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ExifTool_is_offered_on_every_platform_and_runs_the_Metadata_tools_converter()
+    {
+        var package = Assert.Single(EngineDownloads.Packages, p => p.Id == "exiftool");
+        Assert.Equal(["exiftool"], package.ConverterIds);
+        foreach (var runtime in new[] { "win-x64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64" })
+        {
+            var component = EngineDownloads.ComponentsForRuntime(runtime)["exiftool"];
+            Assert.Equal("13.60", component.Version);
+            Assert.Equal(runtime == "win-x64" ? "zip" : "tar.gz", component.Kind);
+        }
+    }
 }
