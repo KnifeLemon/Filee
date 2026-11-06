@@ -610,6 +610,7 @@
   "update.more_changes": "… و{0} تغييرات أخرى",
   "general.data_folder": "مجلد الإعدادات",
   "general.open_data_folder": "فتح",
+  "general.data_folder_hint": "يحفظ Filee هنا إعداداتك والإعدادات المسبقة وأشرطة الأدوات وسجل التحويلات وملفات السجل. افتحه لعمل نسخة احتياطية أو للاطلاع على سجل.",
   "general.library": "الإعدادات المسبقة وأشرطة الأدوات",
   "general.export": "تصدير…",
   "general.import": "استيراد…",
