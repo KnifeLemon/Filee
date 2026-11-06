@@ -1001,7 +1001,7 @@ internal static class SettingsMigrations
         if (from < 63)
             changed |= AddPdfSheets(presets);
         // v64: the "Add background" tool, in the palette only, after "Annotate" as in a new library (at the end
-        //      without it). (Schema 64 may be renumbered if another change takes it first).
+        //      without it). (Schema 64 may be renumbered if another change takes it first.)
         if (from < 64 && presets.All(p => p.Id != BuiltInData.BackgroundId))
         {
             var annotate = presets.FindIndex(p => p.Id == BuiltInData.AnnotateId);

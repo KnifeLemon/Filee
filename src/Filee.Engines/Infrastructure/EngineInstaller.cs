@@ -220,9 +220,6 @@ public sealed class EngineInstaller
 
     private string AsideFolder(string id) => Path.Combine(_root, $"{AsidePrefix}{id}-{Guid.NewGuid().ToString("N")[..8]}");
 
-    /// <summary>Deletes what an earlier removal or update of the package left aside (under the package's lock).</summary>
-    private void ClearAside(EnginePackage package) => ClearAside(package.Components);
-
     /// <summary>Deletes what an earlier removal of components left aside (under the package's lock).</summary>
     private void ClearAside(IEnumerable<string> components)
     {

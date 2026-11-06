@@ -17,12 +17,10 @@ public sealed class UpscalerConverter : IConverter
         "png", "jpg", "webp", "avif", "ico", "bmp", "tiff"
     ];
 
-    private readonly UpscalerEngine _engine;
-    private string? _executable;
+    private readonly UpscalerEngine _engine = new();
 
-    public UpscalerConverter(ILogger<UpscalerConverter>? logger = null)
+    public UpscalerConverter()
     {
-        _engine = new UpscalerEngine(logger as ILogger<UpscalerEngine>);
     }
 
     public string Id => "upscaler";
@@ -43,28 +41,23 @@ public sealed class UpscalerConverter : IConverter
 
     public EngineStatus GetStatus()
     {
-        _executable = LocateExecutable();
-        if (_executable is null)
+        var executable = LocateExecutable();
+        if (executable is null)
             return EngineStatus.Unavailable("engine.reason.not_installed");
 
-        return EngineStatus.Available(_executable,
+        return EngineStatus.Available(executable,
             EngineEnvironment.UsesFileesCopy("upscayl-bin") ? EngineVersions.Component("upscayl-bin") : null);
     }
 
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
-        var targetFormat = step.To;
-        var outputPath = step.Output.Allocate(targetFormat);
-        if (outputPath is null)
-            return [];
-
         var options = step.Preset.Upscale;
         var modelId = string.IsNullOrWhiteSpace(options.Model) ? UpscaleModels.Default : options.Model;
         var scale = options.Scale > 0 ? options.Scale : 4;
 
-        await _engine.UpscaleAsync(
+        return await _engine.UpscaleAsync(
             step.InputPath,
-            outputPath,
+            step.Output,
             step.From,
             step.To,
             modelId,
@@ -73,7 +66,5 @@ public sealed class UpscalerConverter : IConverter
             step.Preset,
             progress,
             cancellationToken);
-
-        return [outputPath];
     }
 }

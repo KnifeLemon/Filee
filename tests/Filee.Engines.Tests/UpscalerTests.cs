@@ -215,7 +215,7 @@ public class UpscalerTests
         Assert.Equal(1, converter.MaxParallelism);
         Assert.NotEmpty(converter.Edges);
 
-        // Edges exist for common readable formats to all 8 targets
+        // Edges exist for common readable formats to all 7 targets
         foreach (var target in UpscaleTool.Targets)
         {
             Assert.Contains(converter.Edges, e => e.From == "png" && e.To == target && e.Upscale);

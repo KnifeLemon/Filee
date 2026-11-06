@@ -9,6 +9,7 @@ using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Upscale;
 using Microsoft.Extensions.Logging;
 
@@ -55,8 +56,6 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
 
     [ObservableProperty]
     private string _progressText = "";
-
-    [ObservableProperty]
 
     [ObservableProperty]
     private string _statusMessage = "";
@@ -124,6 +123,13 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
 
         InitTargets();
         RefreshModels();
+
+        var upscaylPkg = EngineDownloads.Packages.FirstOrDefault(p => p.Id == "upscayl-bin");
+        if (UpscalerConverter.LocateExecutable() is null && upscaylPkg is not null && !EngineDownloads.CanDownload(upscaylPkg))
+        {
+            HasError = true;
+            StatusMessage = EngineDownloads.UnavailableReason(upscaylPkg) ?? _loc["engine.reason.unsupported_platform"];
+        }
     }
 
     private void InitTargets()
@@ -173,7 +179,10 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         if (UpscalerConverter.LocateExecutable() is null)
         {
             HasError = true;
-            StatusMessage = _loc["error.upscale_needs_engine"];
+            var package = EngineDownloads.Packages.FirstOrDefault(p => p.Id == "upscayl-bin");
+            StatusMessage = package is not null && !EngineDownloads.CanDownload(package)
+                ? EngineDownloads.UnavailableReason(package) ?? _loc["engine.reason.unsupported_platform"]
+                : _loc["error.upscale_needs_engine"];
             return;
         }
 

@@ -7,7 +7,6 @@ using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using ImageMagick;
-using Microsoft.Extensions.Logging;
 
 namespace Filee.Engines.Upscale;
 
@@ -15,16 +14,39 @@ public sealed partial class UpscalerEngine
 {
     private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(5);
 
-    public UpscalerEngine(ILogger<UpscalerEngine>? logger = null)
+    public UpscalerEngine()
     {
     }
 
     [GeneratedRegex(@"^(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled)]
     private static partial Regex PercentageRegex();
 
-    public async Task UpscaleAsync(
+    public async Task<IReadOnlyList<string>> UpscaleAsync(
         string inputPath,
         string outputPath,
+        string fromFormat,
+        string toFormat,
+        string modelId,
+        int scale,
+        string workDirectory,
+        Preset preset,
+        IProgress<double>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        await UpscaleAsync(
+            inputPath,
+            new SingleFileOutput(outputPath),
+            fromFormat,
+            toFormat,
+            modelId,
+            scale,
+            workDirectory,
+            preset,
+            progress,
+            cancellationToken);
+
+    public async Task<IReadOnlyList<string>> UpscaleAsync(
+        string inputPath,
+        IOutputAllocator output,
         string fromFormat,
         string toFormat,
         string modelId,
@@ -44,7 +66,8 @@ public sealed partial class UpscalerEngine
         Directory.CreateDirectory(workDirectory);
 
         using var images = ImageReader.Read(inputPath, fromFormat, preset);
-        var frames = ImageEncoder.SelectFrames(images, fromFormat, "png");
+        var animation = ImageEncoder.KeepsAnimation(fromFormat, toFormat);
+        var frames = ImageEncoder.SelectFrames(images, fromFormat, toFormat);
         if (frames.Count == 0)
             throw new InvalidOperationException("No image frames found to upscale.");
 
@@ -105,6 +128,12 @@ public sealed partial class UpscalerEngine
                     }
 
                     var upscaled = new MagickImage(tempOutput);
+                    if (animation)
+                    {
+                        upscaled.AnimationDelay = frame.AnimationDelay;
+                        upscaled.GifDisposeMethod = frame.GifDisposeMethod;
+                        upscaled.AnimationIterations = frame.AnimationIterations;
+                    }
                     FinishImage(upscaled, preset, toFormat, exif, icc);
                     upscaledFrames.Add(upscaled);
                 }
@@ -117,21 +146,7 @@ public sealed partial class UpscalerEngine
 
             progress?.Report(1.0);
 
-            var targetDir = Path.GetDirectoryName(outputPath);
-            if (!string.IsNullOrEmpty(targetDir))
-                Directory.CreateDirectory(targetDir);
-
-            if (upscaledFrames.Count > 1 && toFormat == "tiff")
-            {
-                using var collection = new MagickImageCollection();
-                foreach (var f in upscaledFrames)
-                    collection.Add(f);
-                collection.Write(outputPath, MagickFormat.Tiff);
-            }
-            else
-            {
-                ImageEncoder.WriteImage(upscaledFrames[0], outputPath, toFormat);
-            }
+            return ImageEncoder.Write(upscaledFrames, toFormat, output, preset.Image, inputPath, animation);
         }
         finally
         {
@@ -200,6 +215,23 @@ public sealed partial class UpscalerEngine
         }
         catch (IOException)
         {
+        }
+    }
+
+    private sealed class SingleFileOutput(string path) : IOutputAllocator
+    {
+        private bool _allocated;
+
+        public string? Allocate(string extension, string? suffix = null)
+        {
+            if (_allocated && suffix is not null)
+            {
+                var dir = Path.GetDirectoryName(path);
+                var name = Path.GetFileNameWithoutExtension(path);
+                return Path.Combine(dir ?? "", $"{name}{suffix}.{extension}");
+            }
+            _allocated = true;
+            return path;
         }
     }
 }
