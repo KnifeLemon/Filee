@@ -1,62 +1,108 @@
 using System.Text;
+using Filee.Core.Presets;
 using Filee.Engines.Pdf;
 using PdfSharp.Pdf;
 using PdfSharp.Pdf.IO;
 
 namespace Filee.Engines.Tests;
 
-/// <summary>Issue #1175: a PDF with a lone CR after "stream" and a bookmark closed by one ">>" too many.</summary>
+/// <summary>Issue #1175: a PDF with an object (the bookmarks in the original file) closed by one ">>" too many.</summary>
 public class PdfRepairTests
 {
-    /// <summary>One A4 page whose content stream follows the keyword with a bare CR, and a catalog with an extra ">>".</summary>
-    private static byte[] DamagedPdf()
+    private const string Catalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n";
+    private const string DamagedCatalog = "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\n>>\nendobj\n";
+
+    /// <summary>A one-page PDF with a classic xref table that lists the objects in <paramref name="extra"/> after the four it has.</summary>
+    private static byte[] Pdf(string catalog, params string[] extra)
     {
-        var text = new StringBuilder("%PDF-1.7\r");
+        const string content = "0 0 100 100 re f";
+        string[] bodies =
+        [
+            catalog,
+            "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+            "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >>\nendobj\n",
+            $"4 0 obj\n<< /Length {content.Length} >>\nstream\n{content}\nendstream\nendobj\n",
+            .. extra,
+        ];
+
+        var text = new StringBuilder("%PDF-1.4\n");
         var offsets = new List<int>();
-        void Add(string body)
+        foreach (var body in bodies)
         {
             offsets.Add(text.Length);
             text.Append(body);
         }
 
-        Add("1 0 obj\r<</Type /Catalog /Pages 2 0 R >>\r>>\rendobj\r");
-        Add("2 0 obj\r<</Type /Pages /Kids [3 0 R] /Count 1 >>\rendobj\r");
-        Add("3 0 obj\r<</Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R >>\rendobj\r");
-        const string content = "0 0 100 100 re f";
-        Add($"4 0 obj\r<< /Length {content.Length} >>\rstream\r{content}\rendstream\rendobj\r");
-
         var xref = text.Length;
-        text.Append("xref\r0 5 \r0000000000 65535 f\r\n");
+        text.Append("xref\n0 ").Append(bodies.Length + 1).Append('\n');
+        text.Append("0000000000 65535 f\r\n");
         foreach (var offset in offsets)
             text.Append($"{offset:D10} 00000 n\r\n");
-        text.Append($"trailer\r<</Size 5 /Root 1 0 R >>\rstartxref\r{xref}\r%%EOF\r");
+        text.Append($"trailer\n<< /Size {bodies.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
         return Encoding.Latin1.GetBytes(text.ToString());
     }
 
-    [Fact]
-    public void Finds_a_lone_carriage_return_after_stream()
-    {
-        Assert.True(PdfRepair.HasLoneCrStream(DamagedPdf()));
-        Assert.False(PdfRepair.HasLoneCrStream("x << /Length 1 >>\nstream\nA\nendstream\r\nendobj"u8));
-        Assert.False(PdfRepair.HasLoneCrStream("x << /Length 1 >>\r\nstream\r\nA\rendstream\rendobj"u8));
-    }
+    private static byte[] DamagedPdf() => Pdf(DamagedCatalog);
+
+    private static string Latin1(byte[] bytes) => Encoding.Latin1.GetString(bytes);
+
+    private static string TempPdf() => Path.Combine(Path.GetTempPath(), $"filee-test-{Guid.NewGuid():N}.pdf");
 
     [Fact]
-    public void Repair_leaves_a_pdf_that_PDFsharp_reads()
+    public void Repair_overwrites_the_surplus_close_and_moves_nothing()
     {
-        var repaired = PdfRepair.Repair(DamagedPdf());
+        var damaged = DamagedPdf();
+        var repaired = PdfRepair.Repair(damaged);
+
         Assert.NotNull(repaired);
-        Assert.False(PdfRepair.HasLoneCrStream(repaired));
-
+        Assert.Equal(damaged.Length, repaired.Length); // same length, so the file's own xref table stays valid
         using var document = PdfReader.Open(new MemoryStream(repaired), PdfDocumentOpenMode.Import);
         Assert.Equal(1, document.PageCount);
     }
 
     [Fact]
+    public void Repair_leaves_a_file_without_damage_as_it_is()
+    {
+        Assert.Null(PdfRepair.Repair(Pdf(Catalog)));
+    }
+
+    [Fact]
+    public void Repair_does_not_count_close_marks_inside_a_string()
+    {
+        const string bookmark = "5 0 obj\n<< /Title (Part A >> Part B) /Parent 2 0 R >>\nendobj\n";
+
+        Assert.Null(PdfRepair.Repair(Pdf(Catalog, bookmark)));
+
+        var repaired = PdfRepair.Repair(Pdf(DamagedCatalog, bookmark));
+        Assert.NotNull(repaired);
+        Assert.Contains("(Part A >> Part B)", Latin1(repaired), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Repair_only_looks_at_objects_the_xref_table_lists()
+    {
+        // an attached file inside a stream holds text that looks like a damaged object, but the xref table does not list it
+        const string inner = "7 0 obj\n<< /A 1 >>\n>>\nendobj\n";
+        var attached = $"5 0 obj\n<< /Length {inner.Length} >>\nstream\n{inner}\nendstream\nendobj\n";
+
+        var repaired = PdfRepair.Repair(Pdf(DamagedCatalog, attached));
+
+        Assert.NotNull(repaired);
+        Assert.Contains(inner, Latin1(repaired), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Repair_gives_up_on_a_truncated_file()
+    {
+        var damaged = DamagedPdf();
+        Assert.Null(PdfRepair.Repair(damaged[..(damaged.Length / 2)]));
+    }
+
+    [Fact]
     public async Task Merge_takes_the_damaged_pdf()
     {
-        var damaged = Path.Combine(Path.GetTempPath(), $"filee-damaged-{Guid.NewGuid():N}.pdf");
-        var output = Path.Combine(Path.GetTempPath(), $"filee-merged-{Guid.NewGuid():N}.pdf");
+        var damaged = TempPdf();
+        var output = TempPdf();
         try
         {
             await File.WriteAllBytesAsync(damaged, DamagedPdf(), TestContext.Current.CancellationToken);
@@ -73,9 +119,74 @@ public class PdfRepairTests
     }
 
     [Fact]
-    public void Repair_gives_up_on_an_encrypted_file()
+    public void Pages_per_sheet_takes_the_damaged_pdf()
     {
-        var text = Encoding.Latin1.GetString(DamagedPdf()).Replace("/Root 1 0 R", "/Root 1 0 R /Encrypt 9 0 R");
-        Assert.Null(PdfRepair.Repair(Encoding.Latin1.GetBytes(text)));
+        var damaged = TempPdf();
+        var output = TempPdf();
+        try
+        {
+            File.WriteAllBytes(damaged, DamagedPdf());
+            PdfSheets.Write(damaged, output, new PdfOptions { PagesPerSheet = 2 }, null, TestContext.Current.CancellationToken);
+
+            using var sheets = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+            Assert.Equal(1, sheets.PageCount);
+        }
+        finally
+        {
+            File.Delete(damaged);
+            File.Delete(output);
+        }
+    }
+
+    [Fact]
+    public void A_healthy_file_stays_as_it_is_even_with_an_attached_pdf_that_has_a_lone_CR()
+    {
+        // an uncompressed attached PDF whose "stream" keyword is followed by a bare CR
+        var attached = Encoding.Latin1.GetBytes("%PDF-1.4\r1 0 obj\r<< /Length 3 >>\rstream\rabc\rendstream\rendobj\r");
+        var path = TempPdf();
+        try
+        {
+            using (var document = new PdfDocument())
+            {
+                for (var i = 0; i < 3; i++)
+                    document.AddPage();
+                var file = new PdfDictionary(document);
+                file.CreateStream(attached);
+                document.Internals.AddObject(file);
+                document.Internals.Catalog.Elements.Add("/Attached", file.Reference!);
+                document.Save(path);
+            }
+
+            Assert.Null(PdfRepair.Repair(File.ReadAllBytes(path)));
+            using var opened = PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import);
+            Assert.Equal(3, opened.PageCount);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public void A_password_protected_pdf_is_reported_and_not_repaired()
+    {
+        var path = TempPdf();
+        try
+        {
+            using (var document = new PdfDocument())
+            {
+                document.AddPage();
+                document.SecuritySettings.UserPassword = "user-secret";
+                document.SecuritySettings.OwnerPassword = "owner-secret";
+                document.Save(path);
+            }
+
+            Assert.Null(PdfRepair.Repair(File.ReadAllBytes(path)));
+            Assert.Throws<InvalidOperationException>(() => PdfSharpConverter.Open(path, PdfDocumentOpenMode.Import));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
     }
 }
