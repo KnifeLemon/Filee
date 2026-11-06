@@ -42,10 +42,19 @@ public class VisionLanguageTests
     public void Several_languages_are_asked_for_in_their_order_with_english_last_unless_it_is_the_main_one()
     {
         Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["chi_sim", "eng"], Ventura));
-        Assert.Equal(["en-US", "zh-Hans"], VisionLanguages.For(["eng", "chi_sim"], Ventura));
+        Assert.Equal(["de-DE", "fr-FR", "en-US"], VisionLanguages.For(["deu", "fra"], Ventura));
+        Assert.Equal(["en-US", "de-DE"], VisionLanguages.For(["eng", "deu"], Ventura));
         Assert.Equal(["zh-Hans", "ko-KR", "en-US"], VisionLanguages.For(["chi_sim", "eng", "kor"], Ventura));
         Assert.Equal(["ko-KR", "ja-JP", "en-US"], VisionLanguages.For(["kor", "jpn"], Ventura));
         Assert.Null(VisionLanguages.For(["chi_sim", "hin"], Ventura)); // one recognizer reads the page: Tesseract, then
+    }
+
+    [Fact]
+    public void Chinese_japanese_and_korean_are_asked_for_ahead_of_the_other_languages()
+    {
+        Assert.Equal(["ko-KR", "en-US"], VisionLanguages.For(["eng", "kor"], Ventura));
+        Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["eng", "chi_sim"], Ventura));
+        Assert.Equal(["ja-JP", "de-DE", "en-US"], VisionLanguages.For(["deu", "jpn"], Ventura));
     }
 
     [Fact]
@@ -505,7 +514,7 @@ public class AppleVisionTests(EngineFixture fx) : IClassFixture<EngineFixture>
 
     [Theory]
     [InlineData("kor+eng")]
-    [InlineData("eng+kor")] // English as the main language goes first: Vision has to read the Korean all the same
+    [InlineData("eng+kor")] // asked for in this order, Vision would drop the Korean line: VisionLanguages turns it around
     public async Task Text_in_two_languages_is_read_with_both(string languages)
     {
         Assert.SkipUnless(OperatingSystem.IsMacOS(), Skip);
