@@ -386,24 +386,19 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     }
 
     /// <summary>
-    /// Opens a PDF, mending the damage some PDF writers leave first (<see cref="PdfRepair"/>, issue #1175). A file that
-    /// reads fine is opened as it is; one with a lone CR after "stream" is mended before PDFsharp sees it, and any other
-    /// file PDFsharp refuses gets one mended try. The file on disk is never changed.
+    /// Opens a PDF. A file PDFsharp reads is opened as it is; one it refuses gets one mended try (<see cref="PdfRepair"/>,
+    /// issue #1175), and when that does not help either the original error is thrown. The file on disk is never changed.
     /// </summary>
     private static PdfDocument OpenTolerant(string path, PdfDocumentOpenMode mode)
     {
-        var bytes = File.ReadAllBytes(path);
-        if (PdfRepair.HasLoneCrStream(bytes) && PdfRepair.Repair(bytes) is { } mended)
-            return PdfReader.Open(new MemoryStream(mended), mode);
-
         try
         {
-            return PdfReader.Open(new MemoryStream(bytes), mode);
+            return PdfReader.Open(path, mode);
         }
         catch (Exception ex) when (ex is not OperationCanceledException
             && !ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase))
         {
-            if (PdfRepair.Repair(bytes) is not { } repaired)
+            if (PdfRepair.RepairFile(path) is not { } repaired)
                 throw;
             try
             {
@@ -414,6 +409,38 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
                 ExceptionDispatchInfo.Capture(ex).Throw(); // the original message is the useful one
                 throw;
             }
+        }
+    }
+
+    /// <summary>
+    /// For code that needs a file path (PDFsharp's XPdfForm): a mended temporary copy of a PDF PDFsharp refuses, which the
+    /// caller deletes, or null when the file reads as it is or cannot be mended.
+    /// </summary>
+    internal static string? MendedCopy(string path)
+    {
+        try
+        {
+            using (PdfReader.Open(path, PdfDocumentOpenMode.Import))
+                return null;
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException
+            && !ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase))
+        {
+            if (PdfRepair.RepairFile(path) is not { } repaired)
+                return null;
+            try
+            {
+                using (PdfReader.Open(new MemoryStream(repaired), PdfDocumentOpenMode.Import))
+                {
+                }
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+            var copy = Path.Combine(Path.GetTempPath(), $"filee-mended-{Guid.NewGuid():N}.pdf");
+            File.WriteAllBytes(copy, repaired);
+            return copy;
         }
     }
 
