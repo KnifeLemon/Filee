@@ -1511,6 +1511,65 @@ public class RenderTests
 
     [AvaloniaTheory]
     [InlineData("en")]
+    [InlineData("zh-CN")]
+    public void Preset_editor_reads_and_saves_several_text_recognition_languages(string language)
+    {
+        TestServices.EnsureInitialized(language);
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "searchable-pdf");
+        preset.Pdf.OcrLanguage = "chi_sim+eng";
+        var vm = new PresetEditorViewModel(preset, loc);
+        Assert.Equal("chi_sim", vm.OcrLanguage.Value);
+        Assert.Equal(["eng"], vm.MoreOcrLanguages.Select(l => l.Value));
+        Assert.True(vm.HasMoreOcrLanguages);
+        Assert.DoesNotContain(vm.OcrLanguagesToAdd, l => l.Value is "chi_sim" or "eng");
+        Assert.False(vm.AddOcrLanguageCommand.CanExecute(null));
+
+        var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+        window.Show();
+        Pump();
+        Save(window, $"preset-ocr-languages-{language}.png");
+        window.Close();
+
+        // Unchanged, it is saved as it was.
+        Assert.True(vm.Apply());
+        Assert.Equal("chi_sim+eng", preset.Pdf.OcrLanguage);
+
+        // Added languages leave the list; one picked without pressing Add counts too.
+        vm.OcrLanguageToAdd = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+        Assert.True(vm.AddOcrLanguageCommand.CanExecute(null));
+        vm.AddOcrLanguageCommand.Execute(null);
+        Assert.Null(vm.OcrLanguageToAdd);
+        Assert.Equal(["eng", "deu"], vm.MoreOcrLanguages.Select(l => l.Value));
+        Assert.DoesNotContain(vm.OcrLanguagesToAdd, l => l.Value == "deu");
+        vm.OcrLanguageToAdd = vm.OcrLanguagesToAdd.Single(l => l.Value == "fra");
+        Assert.True(vm.Apply());
+        Assert.Equal("chi_sim+eng+deu+fra", preset.Pdf.OcrLanguage);
+
+        // Made the main language, an added one isn't listed twice, and the old main one can be added again.
+        vm.OcrLanguage = vm.OcrLanguageChoices.Single(l => l.Value == "deu");
+        Assert.Equal(["eng", "fra"], vm.MoreOcrLanguages.Select(l => l.Value));
+        Assert.Contains(vm.OcrLanguagesToAdd, l => l.Value == "chi_sim");
+
+        // With the others removed, one code is left, as older settings have it.
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
+        Assert.False(vm.HasMoreOcrLanguages);
+        Assert.Contains(vm.OcrLanguagesToAdd, l => l.Value == "eng");
+        Assert.True(vm.Apply());
+        Assert.Equal("deu", preset.Pdf.OcrLanguage);
+
+        vm = new PresetEditorViewModel(preset, loc);
+        Assert.Equal("deu", vm.OcrLanguage.Value);
+        Assert.Empty(vm.MoreOcrLanguages);
+
+        // A code Filee doesn't list, in a preset from elsewhere, is left out.
+        preset.Pdf.OcrLanguage = "klingon";
+        Assert.Equal("eng", new PresetEditorViewModel(preset, loc).OcrLanguage.Value);
+    }
+
+    [AvaloniaTheory]
+    [InlineData("en")]
     [InlineData("ko")]
     [InlineData("pt-PT")]
     [InlineData("pt-BR")]

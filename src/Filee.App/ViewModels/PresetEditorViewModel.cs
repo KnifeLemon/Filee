@@ -3,6 +3,7 @@
 //
 // Works on a clone; Apply() copies the edits back into the original preset (Cancel = just drop the VM).
 
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
@@ -182,7 +183,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _pageNumbers = _edit.Pdf.PageNumbers;
         _pdfPassword = _edit.Pdf.Password;
         _ocr = _edit.Pdf.Ocr;
-        _ocrLanguage = OcrLanguageChoices.FirstOrDefault(l => l.Value == _edit.Pdf.OcrLanguage) ?? OcrLanguageChoices[0];
+        var ocrLanguages = OcrLanguages.Parse(_edit.Pdf.OcrLanguage).Select(l => OcrLanguageChoices.First(c => c.Value == l.Code)).ToList();
+        _ocrLanguage = ocrLanguages[0];
+        MoreOcrLanguages = [.. ocrLanguages.Skip(1)];
+        MoreOcrLanguages.CollectionChanged += (_, _) => RefreshOcrLanguagesToAdd();
+        RefreshOcrLanguagesToAdd();
         _location = _edit.Output.AskEveryTime ? Locations[^1] : Locations.First(l => l.Value == _edit.Output.Location);
         _conflict = Conflicts.First(c => c.Value == _edit.Output.Conflict);
         _tiffCompression = TiffCompressions.First(t => t.Value == _edit.Image.TiffCompression);
@@ -319,6 +324,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>Languages Tesseract reads (PdfOptions.OcrLanguage), English first.</summary>
     public IReadOnlyList<Choice<string>> OcrLanguageChoices { get; }
+
+    /// <summary>Languages read next to <see cref="OcrLanguage"/>, for text that mixes them (#1123); PdfOptions.OcrLanguage holds them all.</summary>
+    public ObservableCollection<Choice<string>> MoreOcrLanguages { get; }
+
+    /// <summary>The languages not chosen yet, for the "add a language" list.</summary>
+    public ObservableCollection<Choice<string>> OcrLanguagesToAdd { get; } = [];
+
     /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
     public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
 
@@ -715,6 +727,43 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private bool Recognizes => ShowOcr && Ocr;
     [ObservableProperty] private Choice<string> _ocrLanguage;
 
+    /// <summary>Picked in the "add a language" list, until <see cref="AddOcrLanguageCommand"/> adds it.</summary>
+    [ObservableProperty]
+    [NotifyCanExecuteChangedFor(nameof(AddOcrLanguageCommand))]
+    private Choice<string>? _ocrLanguageToAdd;
+
+    public bool HasMoreOcrLanguages => MoreOcrLanguages.Count > 0;
+
+    [RelayCommand(CanExecute = nameof(CanAddOcrLanguage))]
+    private void AddOcrLanguage()
+    {
+        if (OcrLanguageToAdd is not { } language)
+            return;
+        OcrLanguageToAdd = null;
+        MoreOcrLanguages.Add(language);
+    }
+
+    private bool CanAddOcrLanguage() => OcrLanguageToAdd is not null;
+
+    [RelayCommand]
+    private void RemoveOcrLanguage(Choice<string> language) => MoreOcrLanguages.Remove(language);
+
+    partial void OnOcrLanguageChanged(Choice<string>? oldValue, Choice<string> newValue)
+    {
+        if (Choices.Restore(oldValue, newValue, v => OcrLanguage = v))
+            return;
+        MoreOcrLanguages.Remove(newValue); // it is the main one now
+        RefreshOcrLanguagesToAdd();
+    }
+
+    private void RefreshOcrLanguagesToAdd()
+    {
+        OcrLanguagesToAdd.Clear();
+        foreach (var language in OcrLanguageChoices.Where(l => l != OcrLanguage && !MoreOcrLanguages.Contains(l)))
+            OcrLanguagesToAdd.Add(language);
+        OnPropertyChanged(nameof(HasMoreOcrLanguages));
+    }
+
     /// <summary>PDF → image: one tall image of all pages.</summary>
     [ObservableProperty] private bool _combinePages;
     [ObservableProperty] private bool _trimPageMargins;
@@ -1109,7 +1158,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         pdf.PasswordLeftOut = false;
         // Only where the option is shown, as with SaveEveryFrame below.
         pdf.Ocr = Recognizes;
-        pdf.OcrLanguage = OcrLanguage.Value;
+        AddOcrLanguage(); // picked in the list without pressing Add: it looks chosen, so it counts
+        pdf.OcrLanguage = OcrLanguages.Join([OcrLanguage.Value, .. MoreOcrLanguages.Select(l => l.Value)]);
         if (pdf.Ocr)
         {
             // Hidden while text is recognized, so nothing is kept behind it that the PDF wouldn't do (Recognizes).

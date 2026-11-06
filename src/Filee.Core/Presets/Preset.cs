@@ -1247,7 +1247,10 @@ public sealed class PdfOptions
     /// </summary>
     public bool Ocr { get; set; }
 
-    /// <summary>With <see cref="Ocr"/>: the language of the text, as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>).</summary>
+    /// <summary>
+    /// With <see cref="Ocr"/>: the language of the text as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>); text
+    /// that mixes languages has several, the main one first, joined with <c>+</c> as Tesseract takes them (<c>chi_sim+eng</c>).
+    /// </summary>
     public string OcrLanguage { get; set; } = "eng";
 
     public PdfOptions Clone() => (PdfOptions)MemberwiseClone();

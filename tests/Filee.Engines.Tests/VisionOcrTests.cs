@@ -39,6 +39,15 @@ public class VisionLanguageTests
     }
 
     [Fact]
+    public void Several_languages_are_asked_for_in_their_order_with_english_always_last()
+    {
+        Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["chi_sim", "eng"], Ventura));
+        Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["eng", "chi_sim"], Ventura));
+        Assert.Equal(["ko-KR", "ja-JP", "en-US"], VisionLanguages.For(["kor", "jpn"], Ventura));
+        Assert.Null(VisionLanguages.For(["chi_sim", "hin"], Ventura)); // one recognizer reads the page: Tesseract, then
+    }
+
+    [Fact]
     public void Every_mapped_language_is_one_filee_offers()
     {
         foreach (var code in new[] { "eng", "deu", "fra", "spa", "por", "ita", "nld", "pol", "ces", "ron", "swe", "dan", "nor", "tur",
@@ -335,6 +344,50 @@ public class VisionConverterTests(EngineFixture fx) : IClassFixture<EngineFixtur
             .ConvertAsync(Step(picture, "png", Path.Combine(folder, "b.pdf"), Ocr("hin")), null, TestContext.Current.CancellationToken));
         Assert.Equal("error.ocr_needs_tesseract", refused.ErrorKey);
         Assert.Equal(OcrLanguages.Find("hin")!.NativeName, refused.Detail);
+    }
+
+    [Fact]
+    public async Task Vision_reads_several_languages_at_once()
+    {
+        var folder = fx.NewFolder();
+        var picture = VisionFakes.Picture(folder, "mixed.png", 300, 200);
+        var recognizer = new VisionFakes.Recognizer();
+
+        await new VisionConverter(recognizer, new VisionFakes.Tesseract(available: false))
+            .ConvertAsync(Step(picture, "png", Path.Combine(folder, "mixed.pdf"), Ocr("chi_sim+eng")), null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["zh-Hans", "en-US"], Assert.Single(recognizer.Calls).Languages);
+    }
+
+    [Fact]
+    public async Task One_language_vision_doesnt_read_sends_them_all_to_tesseract_or_is_named_when_it_is_missing()
+    {
+        var folder = fx.NewFolder();
+        var picture = VisionFakes.Picture(folder, "mixed.png", 300, 200);
+        var recognizer = new VisionFakes.Recognizer();
+        var installed = new VisionFakes.Tesseract(available: true);
+
+        var written = await new VisionConverter(recognizer, installed)
+            .ConvertAsync(Step(picture, "png", Path.Combine(folder, "a.pdf"), Ocr("chi_sim+hin")), null, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["tesseract"], written);
+        Assert.Empty(recognizer.Calls);
+
+        var refused = await Assert.ThrowsAsync<ConversionRefusedException>(() => new VisionConverter(recognizer, new VisionFakes.Tesseract(available: false))
+            .ConvertAsync(Step(picture, "png", Path.Combine(folder, "b.pdf"), Ocr("chi_sim+hin+eng")), null, TestContext.Current.CancellationToken));
+        Assert.Equal("error.ocr_needs_tesseract", refused.ErrorKey);
+        Assert.Equal(OcrLanguages.Find("hin")!.NativeName, refused.Detail);
+    }
+
+    [Fact]
+    public void When_vision_refuses_a_combination_it_reads_with_one_language_fewer_each_time()
+    {
+        var recognizer = new VisionFakes.Recognizer { FailWithSeveralLanguages = true };
+
+        var lines = VisionConverter.Recognize(recognizer, "page.png", ["zh-Hans", "ko-KR", "en-US"], TestContext.Current.CancellationToken);
+
+        Assert.Single(lines);
+        Assert.Equal([["zh-Hans", "ko-KR", "en-US"], ["zh-Hans", "ko-KR"], ["zh-Hans"]], recognizer.Calls.Select(c => c.Languages));
     }
 
     [Fact]
