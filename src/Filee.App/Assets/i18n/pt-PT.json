@@ -547,6 +547,8 @@
   "format.category.Model3D": "Modelo 3D",
   "format.category.Geo": "Dados geoespaciais",
 
+  "startup.portable_unwritable": "O Filee não consegue escrever na pasta de dados portátil:\n{0}\n\nMova o Filee para uma pasta com permissão de escrita ou permita a escrita nesta pasta e tente novamente.",
+  "general.portable_mode": "Modo portátil: as definições, os motores transferidos e os registos ficam na pasta de dados portátil. O arranque automático e a integração com o gestor de ficheiros estão desativados.",
   "general.title": "Geral",
   "general.language": "Idioma",
   "general.language_auto": "Predefinição do sistema",

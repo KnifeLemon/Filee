@@ -155,6 +155,8 @@ exec ""$REAL_MV"" ""$@""
         var installDir = Path.Combine(env.DataDir, "filee", "application");
         Assert.True(File.Exists(Path.Combine(installDir, "Filee")));
         Assert.True(File.Exists(Path.Combine(installDir, "filee-cli")));
+        Assert.False(File.Exists(Path.Combine(installDir, "filee.portable")));
+        Assert.True(File.Exists(Path.Combine(env.SourceDir, "filee.portable")));
         Assert.Equal("v1.0.0", File.ReadAllText(Path.Combine(installDir, "version.txt")).Trim());
 
         var markerPath = Path.Combine(installDir, ".filee-package");
@@ -224,6 +226,8 @@ exec ""$REAL_MV"" ""$@""
 
         // Verify application was updated to v2.0.0
         Assert.Equal("v2.0.0", File.ReadAllText(Path.Combine(installDir, "version.txt")).Trim());
+        Assert.False(File.Exists(Path.Combine(installDir, "filee.portable")));
+        Assert.True(File.Exists(Path.Combine(v2Source, "filee.portable")));
 
         // Verify downloaded engines are STILL PRESERVED!
         Assert.True(File.Exists(mockEngineBinary));
@@ -749,6 +753,7 @@ exec ""$REAL_MV"" ""$@""
         File.WriteAllText(cli, "#!/bin/sh\nexit 0\n");
         File.WriteAllText(icon, "dummy-png");
         File.WriteAllText(ver, version);
+        File.WriteAllText(Path.Combine(dir, "filee.portable"), "");
         File.Copy(_installScriptPath, script, overwrite: true);
 
         File.SetUnixFileMode(filee, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);

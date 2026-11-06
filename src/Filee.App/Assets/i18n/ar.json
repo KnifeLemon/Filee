@@ -535,6 +535,8 @@
   "format.category.Data": "بيانات",
   "format.category.Model3D": "نموذج ثلاثي الأبعاد",
   "format.category.Geo": "بيانات جغرافية",
+  "startup.portable_unwritable": "لا يستطيع Filee الكتابة في مجلد البيانات المحمول:\n{0}\n\nانقل Filee إلى مجلد قابل للكتابة أو اسمح بالكتابة في هذا المجلد، ثم حاول مجددًا.",
+  "general.portable_mode": "الوضع المحمول: تُحفظ الإعدادات والمحركات المنزلة والسجلات في مجلد البيانات المحمول. بدء التشغيل التلقائي وتكامل مدير الملفات معطلان.",
   "general.title": "عام",
   "general.language": "اللغة",
   "general.language_auto": "لغة النظام",

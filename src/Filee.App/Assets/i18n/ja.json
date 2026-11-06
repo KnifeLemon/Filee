@@ -535,6 +535,8 @@
   "format.category.Data": "データ",
   "format.category.Model3D": "3Dモデル",
   "format.category.Geo": "地理空間データ",
+  "startup.portable_unwritable": "Filee のポータブルデータフォルダーに書き込めません:\n{0}\n\nFilee を書き込み可能なフォルダーに移動するか、このフォルダーへの書き込みを許可してから、もう一度お試しください。",
+  "general.portable_mode": "ポータブルモード: 設定、ダウンロードしたエンジン、ログはポータブルデータフォルダーに保存されます。自動起動とファイルマネージャー連携は無効です。",
   "general.title": "一般",
   "general.language": "言語",
   "general.language_auto": "システム設定に合わせる",

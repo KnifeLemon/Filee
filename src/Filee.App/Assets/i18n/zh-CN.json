@@ -547,6 +547,8 @@
   "format.category.Model3D": "3D 模型",
   "format.category.Geo": "地理信息",
 
+  "startup.portable_unwritable": "Filee 无法写入便携数据文件夹：\n{0}\n\n请将 Filee 移到可写文件夹，或允许写入此文件夹后重试。",
+  "general.portable_mode": "便携模式：设置、下载的引擎和日志保存在便携数据文件夹中。自动启动和文件管理器集成已禁用。",
   "general.title": "常规",
   "general.language": "语言",
   "general.language_auto": "跟随系统",

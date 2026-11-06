@@ -547,6 +547,8 @@
   "format.category.Model3D": "Modelo 3D",
   "format.category.Geo": "Geoespacial",
 
+  "startup.portable_unwritable": "O Filee não consegue gravar na pasta de dados portátil:\n{0}\n\nMova o Filee para uma pasta com permissão de gravação ou permita a gravação nesta pasta e tente novamente.",
+  "general.portable_mode": "Modo portátil: configurações, mecanismos baixados e registros ficam na pasta de dados portátil. A inicialização automática e a integração com o gerenciador de arquivos estão desativadas.",
   "general.title": "Geral",
   "general.language": "Idioma",
   "general.language_auto": "Padrão do sistema",

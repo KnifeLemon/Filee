@@ -535,6 +535,8 @@
   "format.category.Data": "Veri",
   "format.category.Model3D": "3B model",
   "format.category.Geo": "Coğrafi veri",
+  "startup.portable_unwritable": "Filee taşınabilir veri klasörüne yazamıyor:\n{0}\n\nFilee’yi yazılabilir bir klasöre taşıyın veya bu klasöre yazma izni verip tekrar deneyin.",
+  "general.portable_mode": "Taşınabilir mod: ayarlar, indirilen motorlar ve günlükler taşınabilir veri klasöründe kalır. Otomatik başlatma ve dosya yöneticisi tümleştirmesi devre dışıdır.",
   "general.title": "Genel",
   "general.language": "Dil",
   "general.language_auto": "Sistem varsayılanı",

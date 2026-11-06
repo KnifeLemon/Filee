@@ -547,6 +547,8 @@
   "format.category.Model3D": "3D model",
   "format.category.Geo": "Geospatial",
 
+  "startup.portable_unwritable": "Filee cannot write to its portable data folder:\n{0}\n\nMove Filee to a writable folder or make this folder writable, then try again.",
+  "general.portable_mode": "Portable mode: settings, downloaded engines and logs stay in the portable data folder. Startup and file-manager integration are disabled.",
   "general.title": "General",
   "general.language": "Language",
   "general.language_auto": "System default",

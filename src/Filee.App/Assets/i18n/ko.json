@@ -547,6 +547,8 @@
   "format.category.Model3D": "3D 모델",
   "format.category.Geo": "지리 정보",
 
+  "startup.portable_unwritable": "Filee가 포터블 데이터 폴더에 쓸 수 없습니다:\n{0}\n\nFilee를 쓰기 가능한 폴더로 옮기거나 이 폴더에 쓰기를 허용한 후 다시 시도하세요.",
+  "general.portable_mode": "포터블 모드: 설정, 다운로드한 엔진과 로그는 포터블 데이터 폴더에 저장됩니다. 자동 시작과 파일 관리자 통합은 비활성화됩니다.",
   "general.title": "일반",
   "general.language": "언어",
   "general.language_auto": "시스템 기본값",

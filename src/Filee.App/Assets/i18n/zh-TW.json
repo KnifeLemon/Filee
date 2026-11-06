@@ -547,6 +547,8 @@
   "format.category.Model3D": "3D 模型",
   "format.category.Geo": "地理資訊",
 
+  "startup.portable_unwritable": "Filee 無法寫入可攜資料夾：\n{0}\n\n請將 Filee 移至可寫入的資料夾，或允許寫入此資料夾後再試。",
+  "general.portable_mode": "可攜模式：設定、下載的引擎與記錄保存在可攜資料夾中。自動啟動及檔案管理員整合已停用。",
   "general.title": "一般",
   "general.language": "語言",
   "general.language_auto": "跟隨系統",

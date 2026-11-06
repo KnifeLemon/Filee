@@ -535,6 +535,8 @@
   "format.category.Data": "Data",
   "format.category.Model3D": "Model 3D",
   "format.category.Geo": "Geospasial",
+  "startup.portable_unwritable": "Filee tidak dapat menulis ke folder data portabelnya:\n{0}\n\nPindahkan Filee ke folder yang dapat ditulis atau izinkan penulisan ke folder ini, lalu coba lagi.",
+  "general.portable_mode": "Mode portabel: pengaturan, mesin unduhan, dan log tetap di folder data portabel. Mulai otomatis dan integrasi pengelola berkas dinonaktifkan.",
   "general.title": "Umum",
   "general.language": "Bahasa",
   "general.language_auto": "Bawaan sistem",

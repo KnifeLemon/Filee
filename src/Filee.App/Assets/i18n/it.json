@@ -534,6 +534,8 @@
 "format.category.Data": "Dati",
 "format.category.Model3D": "Modello 3D",
 "format.category.Geo": "Geospaziale",
+  "startup.portable_unwritable": "Filee non può scrivere nella cartella dati portatile:\n{0}\n\nSposta Filee in una cartella scrivibile o consenti la scrittura in questa cartella, quindi riprova.",
+  "general.portable_mode": "Modalità portatile: impostazioni, motori scaricati e registri rimangono nella cartella dati portatile. Avvio automatico e integrazione con il gestore file sono disattivati.",
 "general.title": "Generali",
 "general.language": "Lingua",
 "general.language_auto": "Predefinita del sistema",
