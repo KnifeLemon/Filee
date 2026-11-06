@@ -94,6 +94,32 @@ public class DocxToHwpxTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task Contextual_spacing_removes_the_gap_between_paragraphs_of_the_same_style()
+    {
+        var docx = new DocxBuilder();
+        docx.Styles = docx.Styles.Replace("</w:docDefaults>",
+            "</w:docDefaults><w:style w:type=\"paragraph\" w:styleId=\"ListBullet\"><w:name w:val=\"List Bullet\"/><w:basedOn w:val=\"Normal\"/>" +
+            "<w:pPr><w:spacing w:before=\"100\" w:after=\"200\"/><w:contextualSpacing/></w:pPr></w:style>");
+        docx.Paragraph(P(R("목록 하나"), "<w:pStyle w:val=\"ListBullet\"/>"))
+            .Paragraph(P(R("목록 둘"), "<w:pStyle w:val=\"ListBullet\"/>"))
+            .Paragraph(P(R("목록 셋"), "<w:pStyle w:val=\"ListBullet\"/>"))
+            .Paragraph(P(R("일반 문단")));
+
+        var hwpx = await ConvertAsync(docx, "contextual-spacing");
+        var section = Xml(hwpx);
+        var head = Xml(hwpx, "Contents/header.xml");
+        XElement ParaPr(XElement paragraph) => head.Descendants(Hh + "paraPr").Single(p => (string?)p.Attribute("id") == (string?)paragraph.Attribute("paraPrIDRef"));
+        (int Before, int After) Gaps(string text) =>
+            ((int)ParaPr(ParagraphWith(section, text)).Descendants(Hp + "case").Single().Descendants(Hc + "prev").Single().Attribute("value")!,
+             (int)ParaPr(ParagraphWith(section, text)).Descendants(Hp + "case").Single().Descendants(Hc + "next").Single().Attribute("value")!);
+
+        // Between two items of the same style there is no gap; the first keeps its space above, the last the space below.
+        Assert.Equal((100 * 5, 0), Gaps("목록 하나"));
+        Assert.Equal((0, 0), Gaps("목록 둘"));
+        Assert.Equal((0, 200 * 5), Gaps("목록 셋"));
+    }
+
+    [Fact]
     public async Task Paragraph_and_character_formatting_lists_and_document_grid()
     {
         var docx = new DocxBuilder

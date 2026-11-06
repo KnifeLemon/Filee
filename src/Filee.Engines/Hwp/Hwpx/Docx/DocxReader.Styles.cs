@@ -63,6 +63,12 @@ internal sealed partial class DocxReader
 
         public string? LineRule;
         public bool? KeepNext, KeepLines, PageBreakBefore, WidowControl, SnapToGrid;
+
+        /// <summary>w:contextualSpacing: no space between neighbouring paragraphs of the same style (Word's list styles).</summary>
+        public bool? ContextualSpacing;
+
+        /// <summary>Style the paragraph uses (set when the paragraph is resolved, not read from w:pPr).</summary>
+        public string? StyleId;
         public int? OutlineLevel;
         public string? NumId;
         public int? Ilvl;
@@ -115,6 +121,7 @@ internal sealed partial class DocxReader
                 if (Twips(spacing, "line") is { } line)
                     (Line, LineRule) = (line, Attr(spacing, "lineRule") ?? "auto");
             }
+            ContextualSpacing = Toggle(pPr, "contextualSpacing") ?? ContextualSpacing;
             KeepNext = Toggle(pPr, "keepNext") ?? KeepNext;
             KeepLines = Toggle(pPr, "keepLines") ?? KeepLines;
             PageBreakBefore = Toggle(pPr, "pageBreakBefore") ?? PageBreakBefore;
@@ -361,6 +368,7 @@ internal sealed partial class DocxReader
         para.Apply(pPr);
         para.NumId = numId;
         para.Ilvl = ilvl;
+        para.StyleId = styleId;
 
         run.Apply(pPr?.Element(W + "rPr"));
         return (para, run);
