@@ -48,6 +48,72 @@ public class JobQueueTests
     }
 
     [Fact]
+    public async Task An_archive_packed_from_a_file_from_the_internet_has_its_mark_of_the_web()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        using var dir = new TempDir();
+        var plain = dir.File("plain.txt");
+        var marked = dir.File("marked.txt");
+        var mark = MarkOfTheWeb.Internet(new Uri("https://example.com/marked.txt"));
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(marked, mark), "The temp drive holds no NTFS streams.");
+        var folder = Directory.CreateDirectory(Path.Combine(dir.Path, "folder", "inner")).Parent!.FullName;
+        Assert.True(MarkOfTheWeb.TryWrite(WriteFile(Path.Combine(folder, "inner", "deep.txt")), mark));
+        await using var queue = new JobQueue(new ConverterCatalog([]), combiner: new FakeCombiner());
+        var preset = new Preset { TargetFormat = "zip", Archive = { CombineIntoOne = true } };
+
+        // The marked file comes second, and the archive is named after the first.
+        var mixed = await Run(queue, [plain, marked], preset);
+        Assert.Equal(JobState.Completed, mixed.State);
+        Assert.Equal(mark, MarkOfTheWeb.Read(mixed.Outputs.Single()));
+
+        var fromFolder = await Run(queue, [folder], preset);
+        Assert.Equal(mark, MarkOfTheWeb.Read(fromFolder.Outputs.Single()));
+
+        var unmarked = await Run(queue, [dir.File("other.txt")], preset);
+        Assert.Null(MarkOfTheWeb.Read(unmarked.Outputs.Single()));
+
+        static string WriteFile(string path)
+        {
+            File.WriteAllText(path, "x");
+            return path;
+        }
+    }
+
+    [Fact]
+    public async Task A_link_in_a_folder_being_packed_gives_the_archive_no_mark_of_the_web()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        using var dir = new TempDir();
+        using var outside = new TempDir();
+        Assert.SkipUnless(MarkOfTheWeb.TryWrite(outside.File("elsewhere.txt"), MarkOfTheWeb.Internet()), "The temp drive holds no NTFS streams.");
+        var folder = Directory.CreateDirectory(Path.Combine(dir.Path, "folder")).FullName;
+        dir.File(Path.Combine("folder", "here.txt"));
+        var link = Path.Combine(folder, "link");
+        // A junction: unlike a symbolic link, it takes no privilege, and the packer leaves both out alike.
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, outside.Path])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        await mklink.WaitForExitAsync(TestContext.Current.CancellationToken);
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
+        try
+        {
+            await using var queue = new JobQueue(new ConverterCatalog([]), combiner: new FakeCombiner());
+
+            var job = await Run(queue, [folder], new Preset { TargetFormat = "zip", Archive = { CombineIntoOne = true } });
+
+            Assert.Equal(JobState.Completed, job.State);
+            Assert.Null(MarkOfTheWeb.Read(job.Outputs.Single()));
+        }
+        finally
+        {
+            Directory.Delete(link); // the link only, before the folders are deleted
+        }
+    }
+
+    [Fact]
     public async Task Missing_fonts_from_every_step_are_combined_without_blocking_conversion()
     {
         using var dir = new TempDir();

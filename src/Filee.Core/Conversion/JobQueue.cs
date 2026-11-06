@@ -663,7 +663,11 @@ public sealed partial class JobQueue : IAsyncDisposable
                         files.Add(file);
                 }
             }
+            // An archive with a file from the internet in it still came from there, whichever file that was.
+            var mark = Platform.MarkOfTheWeb.ReadFirst(files, _log, job.CancellationToken);
             await _combiner!.CombineAsync(files, output, format.Id, job.Preset, workDir, progress, job.CancellationToken);
+            if (mark is not null && File.Exists(output))
+                Platform.MarkOfTheWeb.TryWrite(output, mark, _log);
             inputs[0].Outputs.Add(output);
             foreach (var f in inputs)
             {

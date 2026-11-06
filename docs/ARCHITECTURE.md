@@ -133,8 +133,9 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
 - **Mark of the Web** (`Platform/MarkOfTheWeb`, Windows): every saved file gets a `Zone.Identifier` stream as a
   browser's download would (`ZoneId=3`, and `HostUrl` with the address a download came from, without sign-in or
   fragment), so SmartScreen, Office's block on macros from the internet and Protected View still apply. `JobQueue`
-  copies a source's mark onto the files converted from it (also for "Save only the converted file"); a folder result
-  is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
+  copies a source's mark onto the files converted from it (also for "Save only the converted file"), and onto an
+  archive packed from many files when any of them has one (files inside folders too, links not followed); a folder
+  result is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
   that never fails a conversion.
 
 ## Donut control
