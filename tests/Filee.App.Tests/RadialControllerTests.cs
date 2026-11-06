@@ -190,7 +190,7 @@ public class RadialControllerTests
         var store = AppHost.Get<UserDataStore>();
         var profile = store.Profiles.First(p => p.Id == "images");
         var beforePresets = profile.PresetIds;
-        profile.PresetIds = ["tool-crop", ..beforePresets];
+        profile.PresetIds = ["tool-crop", .. beforePresets];
         var platform = new WindowPlatform();
         var radial = Create(platform);
         var tempFile = Path.Combine(Path.GetTempPath(), "filee-test-tool.png");
