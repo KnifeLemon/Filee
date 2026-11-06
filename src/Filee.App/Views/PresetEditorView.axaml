@@ -367,15 +367,6 @@
     </Border>
 
     <!-- Archive options -->
-    <Border x:Name="IsoCard" Classes="card" IsVisible="{Binding ShowIso}" Padding="14">
-      <StackPanel Spacing="10">
-        <TextBlock Classes="h2" Text="{DynamicResource preset.iso_image}" />
-        <TextBlock Classes="label" Text="{DynamicResource presets.iso_standard}" />
-        <ComboBox x:Name="IsoStandardBox" ItemsSource="{Binding IsoStandards}" SelectedItem="{Binding IsoFilesystem}"
-                  HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.iso_standard}" />
-        <TextBlock Classes="caption" Text="{DynamicResource presets.iso_standard_hint}" TextWrapping="Wrap" />
-      </StackPanel>
-    </Border>
     <Border x:Name="ArchiveCard" Classes="card" IsVisible="{Binding ShowArchive}" Padding="14">
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.archive}" />
@@ -385,7 +376,7 @@
             <ComboBox ItemsSource="{Binding ArchiveLevels}" SelectedItem="{Binding ArchiveLevel}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.archive_level}" />
           </StackPanel>
         </Grid>
-        <CheckBox Content="{DynamicResource presets.combine}" IsChecked="{Binding CombineIntoOne}" IsVisible="{Binding ShowCombineIntoOne}" />
+        <CheckBox Content="{DynamicResource presets.combine}" IsChecked="{Binding CombineIntoOne}" IsVisible="{Binding ShowArchiveOptions}" />
         <TextBlock Classes="caption" Text="{DynamicResource presets.extract_note}" TextWrapping="Wrap" IsVisible="{Binding ShowExtractNote}" />
       </StackPanel>
     </Border>

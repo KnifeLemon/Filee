@@ -1515,7 +1515,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "フォルダーまたはアーカイブの内容から ISO イメージを作成し、Unicode 名と空のフォルダーを保持します。",
   "preset.iso_image": "ISOイメージ",
-  "profile.folders": "フォルダー",
-  "presets.iso_standard": "ISO規格",
-  "presets.iso_standard_hint": "JolietはUnicode名を保持します。標準のISO 9660は従来の大文字ASCII名を使用し、名前が短縮される場合があります。"
+  "profile.folders": "フォルダー"
 }

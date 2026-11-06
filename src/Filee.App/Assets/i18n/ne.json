@@ -1515,7 +1515,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "फोल्डर वा अभिलेखको सामग्रीबाट ISO छवि बनाउँछ र Unicode नाम तथा खाली फोल्डरहरू सुरक्षित राख्छ।",
   "preset.iso_image": "ISO छवि",
-  "profile.folders": "फोल्डरहरू",
-  "presets.iso_standard": "ISO मानक",
-  "presets.iso_standard_hint": "Joliet ले Unicode नाम सुरक्षित राख्छ। सामान्य ISO 9660 ले पुराना ठूला अक्षरका ASCII नाम प्रयोग गर्छ; नाम छोटिन सक्छन्।"
+  "profile.folders": "फोल्डरहरू"
 }

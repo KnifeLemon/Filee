@@ -1512,7 +1512,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Crea immagini ISO da cartelle o dal contenuto degli archivi, mantenendo i nomi Unicode e le cartelle vuote.",
   "preset.iso_image": "Immagine ISO",
-  "profile.folders": "Cartelle",
-  "presets.iso_standard": "Standard ISO",
-  "presets.iso_standard_hint": "Joliet mantiene i nomi Unicode. ISO 9660 semplice usa nomi ASCII maiuscoli; i nomi possono essere abbreviati."
+  "profile.folders": "Cartelle"
 }

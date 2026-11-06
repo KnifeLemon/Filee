@@ -1535,7 +1535,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Crée des images ISO à partir de dossiers ou du contenu des archives, en conservant les noms Unicode et les dossiers vides.",
   "preset.iso_image": "Image ISO",
-  "profile.folders": "Dossiers",
-  "presets.iso_standard": "Norme ISO",
-  "presets.iso_standard_hint": "Joliet conserve les noms Unicode. ISO 9660 seul utilise des noms ASCII anciens en majuscules ; ils peuvent être raccourcis."
+  "profile.folders": "Dossiers"
 }

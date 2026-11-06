@@ -1535,7 +1535,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Cria imagens ISO de pastas ou do conteúdo de arquivos comprimidos, preservando nomes Unicode e pastas vazias.",
   "preset.iso_image": "Imagem ISO",
-  "profile.folders": "Pastas",
-  "presets.iso_standard": "Norma ISO",
-  "presets.iso_standard_hint": "Joliet preserva os nomes Unicode. ISO 9660 simples utiliza nomes ASCII antigos em maiúsculas; os nomes podem ser abreviados."
+  "profile.folders": "Pastas"
 }

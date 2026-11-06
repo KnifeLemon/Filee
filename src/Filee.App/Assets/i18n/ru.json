@@ -1535,7 +1535,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Создаёт образы ISO из папок или содержимого архивов, сохраняя имена Unicode и пустые папки.",
   "preset.iso_image": "Образ ISO",
-  "profile.folders": "Папки",
-  "presets.iso_standard": "Стандарт ISO",
-  "presets.iso_standard_hint": "Joliet сохраняет имена Unicode. Обычный ISO 9660 использует устаревшие имена ASCII в верхнем регистре; имена могут сокращаться."
+  "profile.folders": "Папки"
 }

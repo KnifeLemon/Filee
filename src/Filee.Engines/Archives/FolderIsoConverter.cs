@@ -8,7 +8,7 @@ using Filee.Core.Presets;
 
 namespace Filee.Engines.Archives;
 
-/// <summary>Writes ISO 9660, optionally with Joliet names, from explicitly identified folder inputs.</summary>
+/// <summary>Writes ISO 9660 with Joliet names from explicitly identified folder inputs.</summary>
 public sealed class FolderIsoConverter : IConverter
 {
     private static readonly DateTime MinimumTimestamp = new(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -40,14 +40,10 @@ public sealed class FolderIsoConverter : IConverter
             var output = step.Output.Allocate("iso");
             if (output is null) return [];
             output = Path.GetFullPath(output);
-            var standard = step.Preset.Iso.Standard;
-            if (!Enum.IsDefined(standard)) throw new NotSupportedException("Unsupported ISO standard.");
-            var joliet = standard == IsoStandard.Iso9660Joliet;
-            var builder = new CDBuilder { UseJoliet = joliet, VolumeIdentifier = "FILEE" };
+            var builder = new CDBuilder { UseJoliet = true, VolumeIdentifier = "FILEE" };
             string? mark = null;
             void Add(DirectoryInfo directory, string prefix)
             {
-                var shortNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var entry in directory.EnumerateFileSystemInfos())
                 {
                     ct.ThrowIfCancellationRequested();
@@ -55,9 +51,7 @@ public sealed class FolderIsoConverter : IConverter
                     if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
                         throw new NotSupportedException($"ISO creation does not follow symbolic links or junctions: '{entry.Name}'.");
                     var name = prefix + entry.Name;
-                    if (!joliet && entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\'))
-                        throw new NotSupportedException($"ISO creation cannot represent the name '{name}'. Rename it before creating the image.");
-                    if (joliet && (entry.Name.Length > 64 || entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\') || name.Length > 240))
+                    if (entry.Name.Length > 64 || entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\') || name.Length > 240)
                         throw new NotSupportedException($"Joliet cannot preserve '{name}': names must be at most 64 BMP Unicode characters without control characters, semicolons or backslashes; paths must be at most 240 characters.");
                     BuildDirectoryMember member;
                     if (entry is DirectoryInfo child)
@@ -74,8 +68,6 @@ public sealed class FolderIsoConverter : IConverter
                     }
                     member.CreationTime = new DateTime(
                         Math.Clamp(entry.LastWriteTimeUtc.Ticks, MinimumTimestamp.Ticks, MaximumTimestamp.Ticks), DateTimeKind.Utc);
-                    if (!joliet && !shortNames.Add(member.ShortName))
-                        throw new NotSupportedException($"ISO 9660 maps multiple entries to '{member.ShortName}' in '{directory.FullName}'. Rename them or select Joliet.");
                 }
             }
             // Build the manifest before opening the temporary output, including when the destination is in the source.

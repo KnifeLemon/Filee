@@ -1535,7 +1535,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "폴더 또는 압축 파일의 내용으로 ISO 이미지를 만들고 유니코드 이름과 빈 폴더를 보존합니다.",
   "preset.iso_image": "ISO 이미지",
-  "profile.folders": "폴더",
-  "presets.iso_standard": "ISO 표준",
-  "presets.iso_standard_hint": "Joliet은 유니코드 이름을 유지합니다. 기본 ISO 9660은 기존 대문자 ASCII 이름을 사용하며 이름이 짧아질 수 있습니다."
+  "profile.folders": "폴더"
 }

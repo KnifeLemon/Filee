@@ -1514,7 +1514,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "ينشئ صور ISO من المجلدات أو محتويات الأرشيف، مع الحفاظ على أسماء Unicode والمجلدات الفارغة.",
   "preset.iso_image": "صورة ISO",
-  "profile.folders": "المجلدات",
-  "presets.iso_standard": "معيار ISO",
-  "presets.iso_standard_hint": "يحافظ Joliet على أسماء Unicode. يستخدم ISO 9660 العادي أسماء ASCII قديمة بأحرف كبيرة؛ وقد تُختصر الأسماء."
+  "profile.folders": "المجلدات"
 }

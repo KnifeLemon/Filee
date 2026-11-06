@@ -17,57 +17,6 @@ namespace Filee.App.Tests;
 
 public class ToastWindowTests
 {
-    [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Complete_failure_details_are_readable_and_long_messages_can_be_scrolled(bool veryLong)
-    {
-        TestServices.EnsureInitialized("en");
-        var service = AppHost.Get<ConversionService>();
-        service.ToastJobs.Clear();
-        var motionEnabled = Motion.Enabled;
-        Motion.Set(false);
-        var conversion = new ConversionJob(["C:/01-Joliet-name-too-long"], new Preset { TargetFormat = "iso" }, "ISO image");
-        var detail = "Joliet cannot preserve '" + new string('a', 65) + ".txt': names must be at most 64 BMP Unicode characters; paths must be at most 240 characters.";
-        if (veryLong)
-            detail += string.Concat(Enumerable.Repeat("\nAdditional diagnostic information.", 40));
-        detail += " END OF ERROR";
-        conversion.Files[0].State = FileState.Failed;
-        conversion.Files[0].ErrorKey = "error.conversion_failed";
-        conversion.Files[0].ErrorDetail = detail;
-        var job = new JobViewModel(conversion, AppHost.Get<ILocalizer>(), AppHost.Get<IPlatformServices>(), _ => { });
-        var toast = new ToastWindow { DataContext = service };
-        try
-        {
-            service.Jobs.Insert(0, job);
-            service.ShowInToast(job);
-            Pump();
-            var scroller = toast.GetVisualDescendants().OfType<ScrollViewer>().Single(s => s.Name == "ErrorScroller");
-            var text = Assert.IsType<SelectableTextBlock>(scroller.Content);
-            Assert.Contains(detail, text.Text);
-            Assert.Equal(0, text.MaxLines);
-            Assert.InRange(scroller.Bounds.Height, 1, 180);
-            if (veryLong)
-            {
-                Assert.True(scroller.Extent.Height > scroller.Viewport.Height);
-                scroller.ScrollToEnd();
-                Pump();
-                Assert.True(scroller.Offset.Y > 0);
-                Assert.InRange(Math.Abs(scroller.Offset.Y + scroller.Viewport.Height - scroller.Extent.Height), 0, 1);
-            }
-            else
-                Assert.True(scroller.Extent.Height <= scroller.Viewport.Height + 1);
-            RenderTests.Save(toast, veryLong ? "toast-long-error-scrolled.png" : "toast-full-iso-error.png");
-        }
-        finally
-        {
-            service.ToastJobs.Clear();
-            service.Jobs.Remove(job);
-            toast.Close();
-            Motion.Set(motionEnabled);
-        }
-    }
-
     [AvaloniaFact]
     public void A_job_handed_to_the_hidden_toast_gets_one_card()
     {

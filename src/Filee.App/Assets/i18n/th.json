@@ -1515,7 +1515,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "สร้างอิมเมจ ISO จากโฟลเดอร์หรือเนื้อหาในไฟล์บีบอัด โดยคงชื่อ Unicode และโฟลเดอร์ว่างไว้",
   "preset.iso_image": "อิมเมจ ISO",
-  "profile.folders": "โฟลเดอร์",
-  "presets.iso_standard": "มาตรฐาน ISO",
-  "presets.iso_standard_hint": "Joliet คงชื่อ Unicode ไว้ ส่วน ISO 9660 แบบพื้นฐานใช้ชื่อ ASCII แบบเดิมเป็นตัวพิมพ์ใหญ่ และชื่ออาจถูกย่อให้สั้นลง"
+  "profile.folders": "โฟลเดอร์"
 }

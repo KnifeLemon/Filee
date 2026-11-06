@@ -120,9 +120,6 @@ public sealed class Preset
     /// <summary>Options used for archives (ZIP, 7Z, TAR ...).</summary>
     public ArchiveOptions Archive { get; set; } = new();
 
-    /// <summary>Filesystem options for folder ISO creation.</summary>
-    public IsoOptions Iso { get; set; } = new();
-
     /// <summary>Options used when a raster image is traced into vector shapes (PNG → SVG, DXF ...).</summary>
     public TracingOptions Trace { get; set; } = new();
 
@@ -366,7 +363,6 @@ public sealed class Preset
         Document = Document.Clone(),
         Media = Media.Clone(),
         Archive = Archive.Clone(),
-        Iso = Iso.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
         Translate = Translate.Clone(),

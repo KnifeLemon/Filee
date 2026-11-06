@@ -1513,7 +1513,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Membuat citra ISO dari folder atau isi arsip, mempertahankan nama Unicode dan folder kosong.",
   "preset.iso_image": "Citra ISO",
-  "profile.folders": "Folder",
-  "presets.iso_standard": "Standar ISO",
-  "presets.iso_standard_hint": "Joliet mempertahankan nama Unicode. ISO 9660 biasa menggunakan nama ASCII huruf besar; nama dapat dipersingkat."
+  "profile.folders": "Folder"
 }

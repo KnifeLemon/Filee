@@ -125,23 +125,6 @@ public sealed class ArchiveIsoTests : IDisposable
         Assert.Equal("compressed contents", reader.ReadToEnd());
     }
 
-    [Fact]
-    public async Task Archive_to_plain_iso_respects_the_selected_standard()
-    {
-        Assert.SkipUnless(SevenZip.Locate() is not null, "7-Zip is required.");
-        var input = Path.Combine(_root, "plain.zip");
-        using (var zip = ZipFile.Open(input, ZipArchiveMode.Create))
-        using (var writer = new StreamWriter(zip.CreateEntry("readme.txt").Open())) writer.Write("plain contents");
-        var job = await Run(input, IsoStandard.Iso9660);
-        Assert.True(job.State == JobState.Completed, job.Files[0].ErrorDetail);
-        using var stream = File.OpenRead(Assert.Single(job.Outputs));
-        using var iso = new CDReader(stream, true);
-        var file = Assert.Single(iso.GetFiles("\\"));
-        Assert.Contains("README.TXT", file, StringComparison.Ordinal);
-        using var reader = new StreamReader(iso.OpenFile(file, FileMode.Open));
-        Assert.Equal("plain contents", reader.ReadToEnd());
-    }
-
     [Theory]
     [InlineData("zip", false)]
     [InlineData("7z", false)]
@@ -215,14 +198,13 @@ public sealed class ArchiveIsoTests : IDisposable
         Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*.tmp"));
     }
 
-    private async Task<ConversionJob> Run(string input, IsoStandard standard = IsoStandard.Iso9660Joliet)
+    private async Task<ConversionJob> Run(string input)
     {
         await using var queue = new JobQueue(new ConverterCatalog([new ArchiveConverter(), new FolderIsoConverter()]));
         var job = new ConversionJob([input], new Preset
         {
             TargetFormat = "iso",
             Output = { Location = OutputLocation.SameFolder, Conflict = ConflictPolicy.Overwrite },
-            Iso = { Standard = standard },
         }, "ISO image");
         await queue.RunAsync(job);
         return job;

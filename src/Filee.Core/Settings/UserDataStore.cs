@@ -1048,25 +1048,6 @@ internal static class SettingsMigrations
                 changed = true;
             }
         }
-        // v71: name the folder profile for its inputs and offer all existing folder-capable archive writers.
-        if (from < 71)
-        {
-            foreach (var preset in BuiltInData.FolderArchivePresets())
-                if (presets.All(p => p.Id != preset.Id))
-                {
-                    presets.Add(preset);
-                    changed = true;
-                }
-            if (profiles.FirstOrDefault(p => p.Id == "folders") is { } folder
-                && string.IsNullOrEmpty(folder.Name) && folder.NameKey == "preset.iso_image")
-            {
-                folder.NameKey = "profile.folders";
-                // Upgrade the previous test build's untouched layout; preserve user-edited slices and back faces.
-                if (folder.PresetIds.SequenceEqual(new[] { "to-iso" }) && folder.BackPresetIds is not { Count: > 0 })
-                    folder.PresetIds = BuiltInData.CreateProfiles().Single(p => p.Id == "folders").PresetIds;
-                changed = true;
-            }
-        }
         return changed;
     }
 

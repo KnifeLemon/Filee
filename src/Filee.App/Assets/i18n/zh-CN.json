@@ -1535,7 +1535,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "从文件夹或压缩包内容创建 ISO 映像，保留 Unicode 名称和空文件夹。",
   "preset.iso_image": "ISO 镜像",
-  "profile.folders": "文件夹",
-  "presets.iso_standard": "ISO 标准",
-  "presets.iso_standard_hint": "Joliet 保留 Unicode 名称。纯 ISO 9660 使用传统大写 ASCII 名称，名称可能被缩短。"
+  "profile.folders": "文件夹"
 }

@@ -1513,7 +1513,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Erstellt ISO-Abbilder aus Ordnern oder Archivinhalten und erhält Unicode-Namen und leere Ordner.",
   "preset.iso_image": "ISO-Abbild",
-  "profile.folders": "Ordner",
-  "presets.iso_standard": "ISO-Standard",
-  "presets.iso_standard_hint": "Joliet erhält Unicode-Namen. Reines ISO 9660 verwendet ältere ASCII-Namen in Großbuchstaben; Namen können gekürzt werden."
+  "profile.folders": "Ordner"
 }

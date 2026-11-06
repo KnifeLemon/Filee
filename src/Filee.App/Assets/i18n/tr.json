@@ -1513,7 +1513,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Klasörlerden veya arşiv içeriğinden ISO kalıpları oluşturur, Unicode adları ve boş klasörleri korur.",
   "preset.iso_image": "ISO görüntüsü",
-  "profile.folders": "Klasörler",
-  "presets.iso_standard": "ISO standardı",
-  "presets.iso_standard_hint": "Joliet, Unicode adlarını korur. Düz ISO 9660 eski büyük harfli ASCII adlarını kullanır; adlar kısaltılabilir."
+  "profile.folders": "Klasörler"
 }

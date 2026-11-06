@@ -1535,7 +1535,5 @@
   "engine.iso.name": "ISO",
   "engine.iso.description": "Creates ISO images from folders or archive contents, preserving Unicode names and empty folders.",
   "preset.iso_image": "ISO image",
-  "profile.folders": "Folders",
-  "presets.iso_standard": "ISO standard",
-  "presets.iso_standard_hint": "Joliet preserves Unicode names. Plain ISO 9660 uses legacy uppercase ASCII names; names may be shortened."
+  "profile.folders": "Folders"
 }
