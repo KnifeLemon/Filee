@@ -44,9 +44,9 @@ internal static class VisionLanguages
     public static IReadOnlyList<string>? For(string code, IReadOnlyCollection<string> supported) => For([code], supported);
 
     /// <summary>
-    /// The languages to ask Vision for when the text is in <paramref name="codes"/>: those languages in their order, then
-    /// English, always last (scans in other languages often have English words in them), or null when Vision doesn't
-    /// read one of them.
+    /// The languages to ask Vision for when the text is in <paramref name="codes"/>: those languages in their order, the
+    /// main one first, and English last unless it is the main one (scans in other languages often have English words in
+    /// them, so it is there even when not chosen), or null when Vision doesn't read one of them.
     /// </summary>
     /// <param name="supported">What this Mac's Vision reads (<see cref="ITextRecognizer.Languages"/>).</param>
     public static IReadOnlyList<string>? For(IReadOnlyList<string> codes, IReadOnlyCollection<string> supported)
@@ -62,7 +62,7 @@ internal static class VisionLanguages
                 return null;
             languages.Add(match);
         }
-        if (supported.FirstOrDefault(s => string.Equals(s, "en-US", StringComparison.OrdinalIgnoreCase)) is { } english)
+        if (supported.FirstOrDefault(s => string.Equals(s, "en-US", StringComparison.OrdinalIgnoreCase)) is { } english && languages.FirstOrDefault() != english)
         {
             languages.Remove(english);
             languages.Add(english);

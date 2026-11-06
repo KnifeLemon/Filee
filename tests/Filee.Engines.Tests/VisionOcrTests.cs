@@ -39,10 +39,11 @@ public class VisionLanguageTests
     }
 
     [Fact]
-    public void Several_languages_are_asked_for_in_their_order_with_english_always_last()
+    public void Several_languages_are_asked_for_in_their_order_with_english_last_unless_it_is_the_main_one()
     {
         Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["chi_sim", "eng"], Ventura));
-        Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["eng", "chi_sim"], Ventura));
+        Assert.Equal(["en-US", "zh-Hans"], VisionLanguages.For(["eng", "chi_sim"], Ventura));
+        Assert.Equal(["zh-Hans", "ko-KR", "en-US"], VisionLanguages.For(["chi_sim", "eng", "kor"], Ventura));
         Assert.Equal(["ko-KR", "ja-JP", "en-US"], VisionLanguages.For(["kor", "jpn"], Ventura));
         Assert.Null(VisionLanguages.For(["chi_sim", "hin"], Ventura)); // one recognizer reads the page: Tesseract, then
     }
@@ -360,6 +361,19 @@ public class VisionConverterTests(EngineFixture fx) : IClassFixture<EngineFixtur
     }
 
     [Fact]
+    public async Task With_english_as_the_main_language_a_refused_combination_falls_back_to_english()
+    {
+        var folder = fx.NewFolder();
+        var picture = VisionFakes.Picture(folder, "mixed.png", 300, 200);
+        var recognizer = new VisionFakes.Recognizer { FailWithSeveralLanguages = true };
+
+        await new VisionConverter(recognizer, new VisionFakes.Tesseract(available: false))
+            .ConvertAsync(Step(picture, "png", Path.Combine(folder, "mixed.pdf"), Ocr("eng+chi_sim")), null, TestContext.Current.CancellationToken);
+
+        Assert.Equal([["en-US", "zh-Hans"], ["en-US"]], recognizer.Calls.Select(c => c.Languages));
+    }
+
+    [Fact]
     public async Task One_language_vision_doesnt_read_sends_them_all_to_tesseract_or_is_named_when_it_is_missing()
     {
         var folder = fx.NewFolder();
@@ -487,6 +501,22 @@ public class AppleVisionTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
         var text = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
         Assert.Contains("보고서", text);
+    }
+
+    [Theory]
+    [InlineData("kor+eng")]
+    [InlineData("eng+kor")] // English as the main language goes first: Vision has to read the Korean all the same
+    public async Task Text_in_two_languages_is_read_with_both(string languages)
+    {
+        Assert.SkipUnless(OperatingSystem.IsMacOS(), Skip);
+        var scan = Scan(fx.NewFolder(), "scan.png", Gothic, "분기 보고서가 준비되었습니다", "The quarterly report is ready");
+
+        var job = await fx.ConvertAsync([scan], new Preset { TargetFormat = "txt", Pdf = { Ocr = true, OcrLanguage = languages } });
+
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var text = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
+        Assert.Contains("보고서", text);
+        Assert.Contains("quarterly", text);
     }
 
     private static string Text(string pdf)

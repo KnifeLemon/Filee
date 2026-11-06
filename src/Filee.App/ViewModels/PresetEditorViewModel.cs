@@ -47,6 +47,27 @@ public sealed record Choice<T>(T Value, string Label, string? Detail = null) : I
     public override string ToString() => Label;
 }
 
+/// <summary>
+/// A language in the preset editor's OCR lists. Whether it needs a download depends on the other languages chosen
+/// (<see cref="ShowDownload"/>), so the lists keep one object per language and only its <see cref="Detail"/> changes.
+/// </summary>
+/// <param name="download">The size of its download, or null when its data is there already.</param>
+public sealed partial class OcrLanguageChoice(string value, string label, bool visionReads, string? download) : ObservableObject, IChoice
+{
+    public string Value => value;
+    public string Label => label;
+
+    /// <summary>Apple Vision reads it on this computer.</summary>
+    public bool VisionReads => visionReads;
+
+    [ObservableProperty] private string? _detail;
+
+    /// <param name="tesseractReads">Tesseract reads the chosen languages, not Apple Vision: it needs the data of each.</param>
+    public void ShowDownload(bool tesseractReads) => Detail = tesseractReads || !visionReads ? download : null;
+
+    public override string ToString() => Label;
+}
+
 /// <summary>Selections bound to properties that always hold a value (a choice, the open page).</summary>
 public static class Choices
 {
@@ -81,6 +102,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private readonly ILocalizer _loc;
 
     public PresetEditorViewModel(Preset preset, ILocalizer loc, IReadOnlySet<string>? turnedOff = null)
+        : this(preset, loc, turnedOff, null)
+    {
+    }
+
+    /// <param name="visionReads">Which languages Apple Vision reads, for tests; by default what this computer's does.</param>
+    internal PresetEditorViewModel(Preset preset, ILocalizer loc, IReadOnlySet<string>? turnedOff, Func<string, bool>? visionReads)
     {
         _original = preset;
         _edit = preset.Clone();
@@ -106,14 +133,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         PageSizes = Enum.GetValues<PdfPageSize>().Select(v => new Choice<PdfPageSize>(v, loc[$"presets.page_size.{v}"])).ToList();
         CompressionLevels = Enum.GetValues<PdfCompression>().Select(v => new Choice<PdfCompression>(v, loc[$"presets.pdf_compression.{v}"])).ToList();
         // Each language under its own name; one not downloaded yet shows its size (it downloads with the first file).
-        // On a Mac, Apple Vision reads the common languages without a download.
+        // On a Mac, Apple Vision reads the common languages without a download (ShowOcrDownloads).
         var vision = new VisionConverter();
         OcrHint = loc[vision.GetStatus().IsAvailable ? "presets.ocr_hint_macos" : "presets.ocr_hint"];
         OcrLanguageChoices = [.. OcrLanguages.All
             .OrderBy(l => l.Code != OcrLanguages.Default).ThenBy(l => l.NativeName, StringComparer.CurrentCulture)
-            .Select(l => new Choice<string>(l.Code, l.NativeName,
-                OcrLanguages.IsInstalled(l.Code) || vision.Reads(l.Code) ? null
-                    : loc.Format("presets.ocr_language_size", $"{l.Size / 1_000_000.0:0.#} MB")))];
+            .Select(l => new OcrLanguageChoice(l.Code, l.NativeName, (visionReads ?? vision.Reads)(l.Code),
+                OcrLanguages.IsInstalled(l.Code) ? null : loc.Format("presets.ocr_language_size", $"{l.Size / 1_000_000.0:0.#} MB")))];
         // "Ask every time" (#521) is a bool of its own on the preset (OutputRule.AskEveryTime): its choice has no location.
         Locations = [.. Enum.GetValues<OutputLocation>().Select(v => new Choice<OutputLocation?>(v, loc[$"presets.location.{v}"])),
             new Choice<OutputLocation?>(null, loc["presets.location.Ask"])];
@@ -323,13 +349,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public IReadOnlyList<Choice<PdfPageSize>> PageSizes { get; }
 
     /// <summary>Languages Tesseract reads (PdfOptions.OcrLanguage), English first.</summary>
-    public IReadOnlyList<Choice<string>> OcrLanguageChoices { get; }
+    public IReadOnlyList<OcrLanguageChoice> OcrLanguageChoices { get; }
 
     /// <summary>Languages read next to <see cref="OcrLanguage"/>, for text that mixes them (#1123); PdfOptions.OcrLanguage holds them all.</summary>
-    public ObservableCollection<Choice<string>> MoreOcrLanguages { get; }
+    public ObservableCollection<OcrLanguageChoice> MoreOcrLanguages { get; }
 
     /// <summary>The languages not chosen yet, for the "add a language" list.</summary>
-    public ObservableCollection<Choice<string>> OcrLanguagesToAdd { get; } = [];
+    public ObservableCollection<OcrLanguageChoice> OcrLanguagesToAdd { get; } = [];
 
     /// <summary>The spoken languages Whisper recognizes (MediaOptions.SpokenLanguage), Auto first.</summary>
     public IReadOnlyList<Choice<string>> SpokenLanguageChoices { get; }
@@ -725,12 +751,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// file per page, compression (and with it removing metadata), page size and margin don't apply and are hidden.
     /// </summary>
     private bool Recognizes => ShowOcr && Ocr;
-    [ObservableProperty] private Choice<string> _ocrLanguage;
+    [ObservableProperty] private OcrLanguageChoice _ocrLanguage;
 
     /// <summary>Picked in the "add a language" list, until <see cref="AddOcrLanguageCommand"/> adds it.</summary>
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(AddOcrLanguageCommand))]
-    private Choice<string>? _ocrLanguageToAdd;
+    private OcrLanguageChoice? _ocrLanguageToAdd;
 
     public bool HasMoreOcrLanguages => MoreOcrLanguages.Count > 0;
 
@@ -746,22 +772,50 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private bool CanAddOcrLanguage() => OcrLanguageToAdd is not null;
 
     [RelayCommand]
-    private void RemoveOcrLanguage(Choice<string> language) => MoreOcrLanguages.Remove(language);
+    private void RemoveOcrLanguage(OcrLanguageChoice language) => MoreOcrLanguages.Remove(language);
 
-    partial void OnOcrLanguageChanged(Choice<string>? oldValue, Choice<string> newValue)
+    partial void OnOcrLanguageChanged(OcrLanguageChoice? oldValue, OcrLanguageChoice newValue)
     {
         if (Choices.Restore(oldValue, newValue, v => OcrLanguage = v))
             return;
-        MoreOcrLanguages.Remove(newValue); // it is the main one now
+        // An added language made the main one trades places with it: the text still has the old main language.
+        if (oldValue is not null && MoreOcrLanguages.IndexOf(newValue) is >= 0 and var index)
+            MoreOcrLanguages[index] = oldValue;
         RefreshOcrLanguagesToAdd();
     }
 
+    partial void OnOcrLanguageToAddChanged(OcrLanguageChoice? value) => ShowOcrDownloads();
+
     private void RefreshOcrLanguagesToAdd()
     {
-        OcrLanguagesToAdd.Clear();
-        foreach (var language in OcrLanguageChoices.Where(l => l != OcrLanguage && !MoreOcrLanguages.Contains(l)))
-            OcrLanguagesToAdd.Add(language);
+        // In place, not cleared and filled again: a combo box drops its selection with its items, and a language picked
+        // but not added yet stays picked while it is still in the list.
+        var available = OcrLanguageChoices.Where(l => l != OcrLanguage && !MoreOcrLanguages.Contains(l)).ToList();
+        for (var i = OcrLanguagesToAdd.Count - 1; i >= 0; i--)
+        {
+            if (!available.Contains(OcrLanguagesToAdd[i]))
+                OcrLanguagesToAdd.RemoveAt(i);
+        }
+        for (var i = 0; i < available.Count; i++)
+        {
+            if (i == OcrLanguagesToAdd.Count || OcrLanguagesToAdd[i] != available[i])
+                OcrLanguagesToAdd.Insert(i, available[i]);
+        }
+        if (OcrLanguageToAdd is { } picked && !available.Contains(picked))
+            OcrLanguageToAdd = null;
         OnPropertyChanged(nameof(HasMoreOcrLanguages));
+        ShowOcrDownloads();
+    }
+
+    /// <summary>
+    /// One language Apple Vision doesn't read sends all the chosen ones to Tesseract, which needs the data of each
+    /// (VisionConverter): then the languages Vision reads show their download too. Off a Mac that is always so.
+    /// </summary>
+    private void ShowOcrDownloads()
+    {
+        var tesseractReads = !OcrLanguage.VisionReads || MoreOcrLanguages.Any(l => !l.VisionReads) || OcrLanguageToAdd is { VisionReads: false };
+        foreach (var language in OcrLanguageChoices)
+            language.ShowDownload(tesseractReads);
     }
 
     /// <summary>PDF → image: one tall image of all pages.</summary>

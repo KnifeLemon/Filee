@@ -18,6 +18,7 @@ using Filee.App.Views.Pages;
 using Filee.Core.Localization;
 using Filee.Core.Profiles;
 using Filee.Core.Settings;
+using Filee.Engines.Ocr;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
@@ -1546,12 +1547,15 @@ public class RenderTests
         Assert.True(vm.Apply());
         Assert.Equal("chi_sim+eng+deu+fra", preset.Pdf.OcrLanguage);
 
-        // Made the main language, an added one isn't listed twice, and the old main one can be added again.
+        // An added language made the main one trades places with the old main one, which is not lost.
         vm.OcrLanguage = vm.OcrLanguageChoices.Single(l => l.Value == "deu");
-        Assert.Equal(["eng", "fra"], vm.MoreOcrLanguages.Select(l => l.Value));
-        Assert.Contains(vm.OcrLanguagesToAdd, l => l.Value == "chi_sim");
+        Assert.Equal(["eng", "chi_sim", "fra"], vm.MoreOcrLanguages.Select(l => l.Value));
+        Assert.DoesNotContain(vm.OcrLanguagesToAdd, l => l.Value is "chi_sim" or "deu");
+        Assert.True(vm.Apply());
+        Assert.Equal("deu+eng+chi_sim+fra", preset.Pdf.OcrLanguage);
 
         // With the others removed, one code is left, as older settings have it.
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
         vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
         vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages[0]);
         Assert.False(vm.HasMoreOcrLanguages);
@@ -1566,6 +1570,128 @@ public class RenderTests
         // A code Filee doesn't list, in a preset from elsewhere, is left out.
         preset.Pdf.OcrLanguage = "klingon";
         Assert.Equal("eng", new PresetEditorViewModel(preset, loc).OcrLanguage.Value);
+    }
+
+    [AvaloniaFact]
+    public void Preset_editor_shows_the_download_of_a_language_vision_reads_when_tesseract_would_read_them_all()
+    {
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "searchable-pdf");
+        static bool VisionReads(string code) => code != "hin"; // a Mac, whatever this computer is
+        string? Download(string code) => OcrLanguages.IsInstalled(code) ? null
+            : loc.Format("presets.ocr_language_size", $"{OcrLanguages.Find(code)!.Size / 1_000_000.0:0.#} MB");
+        var afrikaans = Download("afr");
+        Assert.SkipWhen(afrikaans is null, "Afrikaans is downloaded on this computer");
+
+        // Only languages Vision reads: nothing to download for them, and the one it doesn't read shows its own.
+        preset.Pdf.OcrLanguage = "afr+swa";
+        var vm = new PresetEditorViewModel(preset, loc, null, VisionReads);
+        Assert.Null(vm.OcrLanguage.Detail);
+        Assert.Null(vm.MoreOcrLanguages.Single().Detail);
+        Assert.Equal(Download("hin"), vm.OcrLanguagesToAdd.Single(l => l.Value == "hin").Detail);
+
+        var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+        window.Show();
+        Pump();
+        bool Shows(string? text) => window.GetVisualDescendants().OfType<TextBlock>().Any(t => t.IsEffectivelyVisible && t.Text == text);
+        Assert.False(Shows(afrikaans));
+
+        // Picked (it counts on saving) or added, it sends them all to Tesseract: the rows say so, while the window is open.
+        vm.OcrLanguageToAdd = vm.OcrLanguagesToAdd.Single(l => l.Value == "hin");
+        Pump();
+        Assert.Equal(afrikaans, vm.OcrLanguage.Detail);
+        Assert.True(Shows(afrikaans));
+        vm.AddOcrLanguageCommand.Execute(null);
+        Pump();
+        Assert.Equal(afrikaans, vm.OcrLanguage.Detail);
+        Assert.Equal(Download("swa"), vm.MoreOcrLanguages.Single(l => l.Value == "swa").Detail);
+
+        // Removed again, Vision reads them.
+        vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages.Single(l => l.Value == "hin"));
+        Pump();
+        Assert.Null(vm.OcrLanguage.Detail);
+        Assert.False(Shows(afrikaans));
+        window.Close();
+
+        // A preset saved with the mix shows them from the start, and off a Mac nothing changes.
+        preset.Pdf.OcrLanguage = "afr+hin";
+        Assert.Equal(afrikaans, new PresetEditorViewModel(preset, loc, null, VisionReads).OcrLanguage.Detail);
+        preset.Pdf.OcrLanguage = "afr";
+        Assert.Equal(afrikaans, new PresetEditorViewModel(preset, loc, null, _ => false).OcrLanguage.Detail);
+    }
+
+    [AvaloniaFact]
+    public void A_language_picked_but_not_added_stays_picked_while_the_lists_change()
+    {
+        // In a shown window: the combo box is what drops its selection when its items go.
+        TestServices.EnsureInitialized("en");
+        var loc = AppHost.Get<Filee.Core.Localization.ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "searchable-pdf");
+
+        void Shown(Action<PresetEditorViewModel, ComboBox> act)
+        {
+            preset.Pdf.OcrLanguage = "chi_sim+eng";
+            var vm = new PresetEditorViewModel(preset, loc);
+            var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+            window.Show();
+            Pump();
+            act(vm, window.GetVisualDescendants().OfType<ComboBox>().Single(c => ReferenceEquals(c.ItemsSource, vm.OcrLanguagesToAdd)));
+            Pump();
+            Assert.True(vm.Apply());
+            window.Close();
+        }
+
+        // Removing a row, the pick is kept and the removed language can be added again.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            Assert.Equal("deu", vm.OcrLanguageToAdd?.Value);
+            vm.RemoveOcrLanguageCommand.Execute(vm.MoreOcrLanguages.Single());
+            Pump();
+            Assert.Equal("deu", vm.OcrLanguageToAdd?.Value);
+            Assert.Same(vm.OcrLanguageToAdd, box.SelectedItem);
+            Assert.Contains(vm.OcrLanguagesToAdd, l => l.Value == "eng");
+        });
+        Assert.Equal("chi_sim+deu", preset.Pdf.OcrLanguage);
+
+        // Another main language: the same.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            vm.OcrLanguage = vm.OcrLanguageChoices.Single(l => l.Value == "fra");
+            Pump();
+            Assert.Same(vm.OcrLanguageToAdd, box.SelectedItem);
+            Assert.Equal("deu", vm.OcrLanguageToAdd?.Value);
+        });
+        Assert.Equal("fra+eng+deu", preset.Pdf.OcrLanguage);
+
+        // Adding what is picked and then picking on, each one counts once.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            vm.AddOcrLanguageCommand.Execute(null);
+            Pump();
+            Assert.Null(box.SelectedItem);
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "ita");
+            Pump();
+        });
+        Assert.Equal("chi_sim+eng+deu+ita", preset.Pdf.OcrLanguage);
+
+        // The pick made the main language: it left the list, so nothing is picked any more.
+        Shown((vm, box) =>
+        {
+            box.SelectedItem = vm.OcrLanguagesToAdd.Single(l => l.Value == "deu");
+            Pump();
+            vm.OcrLanguage = vm.OcrLanguageChoices.Single(l => l.Value == "deu");
+            Pump();
+            Assert.Null(vm.OcrLanguageToAdd);
+            Assert.Null(box.SelectedItem);
+        });
+        Assert.Equal("deu+eng", preset.Pdf.OcrLanguage);
     }
 
     [AvaloniaTheory]

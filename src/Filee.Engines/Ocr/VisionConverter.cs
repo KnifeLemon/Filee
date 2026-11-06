@@ -112,8 +112,8 @@ public sealed class VisionConverter : IConverter
     }
 
     /// <summary>
-    /// Reads one picture. When Vision fails on a combination of languages it reads again without the last one (English,
-    /// which VisionLanguages adds, goes first), down to the first language alone.
+    /// Reads one picture. When Vision fails on a combination of languages it reads again without the last one (usually
+    /// the English that VisionLanguages adds), down to the first language, the main one, alone.
     /// </summary>
     internal static IReadOnlyList<OcrLine> Recognize(ITextRecognizer recognizer, string picture, IReadOnlyList<string> languages,
         CancellationToken cancellationToken)

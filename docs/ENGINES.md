@@ -1914,12 +1914,13 @@ Tesseract and is registered before it, so the route planner takes it; on Windows
 ("Not available on this platform").
 
 - The preset's languages (Tesseract codes) are mapped to Vision's identifiers (`VisionLanguages`) and asked for in their
-  order with English last, whether it was chosen or not; if Vision refuses the combination it reads with one language
-  fewer, down to the first alone. Which languages Vision reads comes from the Mac itself
-  (`supportedRecognitionLanguagesAndReturnError:`, more with newer macOS versions); a language it doesn't read (Hindi,
-  Nepali, Greek, …) goes to Tesseract when that is installed, together with the preset's other languages, and is refused
-  otherwise with "Apple Vision can't read this language. Install Tesseract …" and its name. The preset editor shows no
-  download size for the languages Vision reads, and its hint names Apple Vision.
+  order. English is added when it wasn't chosen and goes last unless it is the main language; if Vision refuses the
+  combination it reads with one language fewer, down to the main language alone. Which languages Vision reads comes
+  from the Mac itself (`supportedRecognitionLanguagesAndReturnError:`, more with newer macOS versions); a language it
+  doesn't read (Hindi, Nepali, Greek, …) goes to Tesseract when that is installed, together with the preset's other
+  languages, and is refused otherwise with "Apple Vision can't read this language. Install Tesseract …" and its name.
+  The preset editor shows no download size for the languages Vision reads, unless such a language among the chosen ones
+  sends them all to Tesseract, and its hint names Apple Vision.
 - PDFs go page by page exactly like Tesseract's (`TesseractConverter.RecognizePdfAsync`, at most two pages at a time).
   A JPEG picture goes into the PDF as it is, other pictures (and a JPEG that EXIF turns) as an upright PNG; every page
   of a TIFF becomes a page. The page size comes from the picture's resolution, 300 dpi when it has none.
