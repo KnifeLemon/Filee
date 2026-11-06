@@ -610,6 +610,7 @@
   "update.more_changes": "… र अरू {0} परिवर्तनहरू",
   "general.data_folder": "सेटिङ फोल्डर",
   "general.open_data_folder": "खोल्नुहोस्",
+  "general.data_folder_hint": "Filee ले यहाँ सेटिङहरू, प्रिसेटहरू, टुलबारहरू, रूपान्तरण इतिहास र लग फाइलहरू राख्छ। ब्याकअप बनाउन वा लग हेर्न यो खोल्नुहोस्।",
   "general.library": "प्रिसेटहरू र टुलबारहरू",
   "general.export": "निर्यात गर्नुहोस्…",
   "general.import": "आयात गर्नुहोस्…",
