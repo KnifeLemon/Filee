@@ -1110,6 +1110,8 @@
   "metadata.pdf_note": "تبقى القيم السابقة قابلة للاسترجاع داخل ملف PDF. يزيلها «إزالة البيانات الوصفية» نهائيًا.",
   "metadata.keys": "Enter يعدّل حقلًا أو يحفظ · Shift+Enter يبدأ سطرًا جديدًا · Esc يلغي أو يغلق · Ctrl+F يبحث",
   "metadata.empty": "لا توجد بيانات وصفية في هذا الملف.",
+  "metadata.too_much": "يحتوي على بيانات وصفية أكثر مما يمكن فتحه هنا",
+  "metadata.too_long": "أطول من أن يُعدَّل هنا. لا يزال بالإمكان إزالته.",
   "metadata.unreadable": "تعذّرت قراءة بياناته الوصفية",
   "metadata.group.location": "الموقع",
   "metadata.group.camera": "الكاميرا",

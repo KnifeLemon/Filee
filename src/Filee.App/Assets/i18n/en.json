@@ -1125,6 +1125,8 @@
   "metadata.pdf_note": "Earlier values stay recoverable inside the PDF. Remove metadata drops them for good.",
   "metadata.keys": "Enter edits a field or saves · Shift+Enter starts a new line · Esc cancels or closes · Ctrl+F searches",
   "metadata.empty": "No metadata found in this file.",
+  "metadata.too_much": "It holds too much metadata to open here",
+  "metadata.too_long": "Too long to edit here. It can still be removed.",
   "metadata.unreadable": "Its metadata couldn't be read",
   "metadata.group.location": "Location",
   "metadata.group.camera": "Camera",

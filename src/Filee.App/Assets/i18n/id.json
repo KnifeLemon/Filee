@@ -1110,6 +1110,8 @@
   "metadata.pdf_note": "Nilai sebelumnya masih dapat dipulihkan di dalam PDF. Hapus metadata menghapusnya untuk selamanya.",
   "metadata.keys": "Enter mengedit bidang atau menyimpan · Shift+Enter memulai baris baru · Esc membatalkan atau menutup · Ctrl+F mencari",
   "metadata.empty": "Tidak ada metadata di file ini.",
+  "metadata.too_much": "Metadatanya terlalu banyak untuk dibuka di sini",
+  "metadata.too_long": "Terlalu panjang untuk diedit di sini. Masih bisa dihapus.",
   "metadata.unreadable": "Metadatanya tidak dapat dibaca",
   "metadata.group.location": "Lokasi",
   "metadata.group.camera": "Kamera",
