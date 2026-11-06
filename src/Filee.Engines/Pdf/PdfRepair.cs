@@ -1,11 +1,13 @@
-// Fixes two kinds of damage that some PDF writers (a few Chinese OA / ERP "print to PDF" exporters, issue #1175) leave
-// behind and that PDFsharp refuses to read, so merge, split and compress failed on those files:
-//   1. "stream" followed by a lone CR. The spec allows only CRLF or LF there.
-//   2. An object closed with one ">>" too many (the bookmark entries in the file from #1175).
-// The repair works on the bytes in memory and writes a fresh classic xref table, so the file on disk is never touched.
-// Files it cannot judge (encrypted, or using object / xref streams) are returned as null and fail as before.
+// Mends the damage that some PDF writers (a few Chinese OA / ERP "print to PDF" exporters, issue #1175) leave behind and
+// that PDFsharp refuses to read, so merge, split and compress failed on those files: an object closed with one ">>" too
+// many (the bookmark entries in the file from #1175).
+//
+// The repair only runs after PDFsharp has failed on a file. It overwrites each surplus ">>" with two spaces, so every
+// byte keeps its place and the file's own xref table stays valid; nothing is rebuilt. It only looks at objects the xref
+// table lists (never at what a stream holds, such as an attached PDF), skips objects that have a stream, and does not
+// count ">>" inside strings. Files it cannot judge (encrypted, or with an xref stream) are returned as null and fail as
+// before. The file on disk is never touched.
 
-using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -18,102 +20,189 @@ internal static class PdfRepair
 
     private static readonly Encoding Latin1 = Encoding.Latin1;
 
-    private static readonly Regex LoneCrStream = new(@"(?<=>)[ \t\r\n]*stream\r(?!\n)", RegexOptions.CultureInvariant);
-    private static readonly Regex ObjectBody = new(@"((?:^|(?<=[\r\n]))\d+ \d+ obj)(.*?)(endobj)", RegexOptions.Singleline | RegexOptions.CultureInvariant);
-    private static readonly Regex ObjectHeader = new(@"(?:^|(?<=[\r\n]))(\d+) (\d+) obj\b", RegexOptions.CultureInvariant);
-    private static readonly Regex RootRef = new(@"/Root\s+(\d+)\s+(\d+)\s+R", RegexOptions.CultureInvariant);
-    private static readonly Regex InfoRef = new(@"/Info\s+(\d+)\s+(\d+)\s+R", RegexOptions.CultureInvariant);
+    private static readonly Regex PrevRef = new(@"/Prev\s+(\d+)", RegexOptions.CultureInvariant);
 
-    /// <summary>True when a "stream" keyword is followed by a lone CR: cheap to check, so it runs on every file.</summary>
-    public static bool HasLoneCrStream(ReadOnlySpan<byte> pdf)
+    /// <summary>Reads <paramref name="path"/> and repairs it; null when it is too big, unreadable, or out of reach of the repair.</summary>
+    public static byte[]? RepairFile(string path)
     {
-        ReadOnlySpan<byte> keyword = "stream\r"u8;
-        var from = 0;
-        while (from < pdf.Length)
+        try
         {
-            var found = pdf[from..].IndexOf(keyword);
-            if (found < 0)
-                return false;
-            var at = from + found;
-            var next = at + keyword.Length;
-            var isEndstream = at >= 3 && pdf[at - 3] == (byte)'e' && pdf[at - 2] == (byte)'n' && pdf[at - 1] == (byte)'d';
-            if (!isEndstream && (next >= pdf.Length || pdf[next] != (byte)'\n'))
-                return true;
-            from = next;
+            return new FileInfo(path).Length is 0 or > MaxBytes ? null : Repair(File.ReadAllBytes(path));
         }
-        return false;
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
-    /// <returns>The repaired PDF, or null when the file is out of reach of this repair.</returns>
+    /// <returns>A repaired copy of the PDF, or null when there is nothing to mend or the file is out of reach of this repair.</returns>
     public static byte[]? Repair(byte[] pdf)
     {
         if (pdf.Length is 0 or > MaxBytes)
             return null;
 
         var text = Latin1.GetString(pdf); // one char per byte, so a string index is a file offset
-        if (text.Contains("/Encrypt", StringComparison.Ordinal) || text.Contains("/ObjStm", StringComparison.Ordinal)
-            || text.Contains("/XRef", StringComparison.Ordinal))
+        if (text.Contains("/Encrypt", StringComparison.Ordinal))
             return null;
 
-        text = LoneCrStream.Replace(text, match => match.Value + "\n");
-        text = ObjectBody.Replace(text, DropSurplusClose);
-
-        var objects = new SortedDictionary<int, (int Offset, int Generation)>();
-        foreach (Match match in ObjectHeader.Matches(text))
-            objects[int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture)] =
-                (match.Index, int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture)); // the last copy of an object wins
-
-        var root = RootRef.Matches(text).LastOrDefault();
-        if (objects.Count == 0 || root is null)
-            return null;
-        var info = InfoRef.Matches(text).LastOrDefault();
-
-        var size = objects.Keys.Max() + 1;
-        var xrefOffset = text.Length;
-        var table = new StringBuilder();
-        table.Append("\nxref\n0 ").Append(size).Append('\n');
-        table.Append("0000000000 65535 f\r\n");
-        for (var number = 1; number < size; number++)
+        byte[]? repaired = null;
+        foreach (var offset in ListedObjects(text))
         {
-            if (objects.TryGetValue(number, out var entry))
-                table.Append(entry.Offset.ToString("D10", CultureInfo.InvariantCulture)).Append(' ')
-                    .Append(entry.Generation.ToString("D5", CultureInfo.InvariantCulture)).Append(" n\r\n");
-            else
-                table.Append("0000000000 00000 f\r\n");
+            foreach (var at in SurplusClose(text, offset))
+            {
+                repaired ??= (byte[])pdf.Clone();
+                repaired[at] = (byte)' ';
+                repaired[at + 1] = (byte)' ';
+            }
         }
-        xrefOffset += 1; // the leading "\n" of the table
-        table.Append("trailer\n<< /Size ").Append(size)
-            .Append(" /Root ").Append(root.Groups[1].Value).Append(' ').Append(root.Groups[2].Value).Append(" R");
-        if (info is not null)
-            table.Append(" /Info ").Append(info.Groups[1].Value).Append(' ').Append(info.Groups[2].Value).Append(" R");
-        table.Append(" >>\nstartxref\n").Append(xrefOffset.ToString(CultureInfo.InvariantCulture)).Append("\n%%EOF\n");
-
-        return Latin1.GetBytes(text + table);
+        return repaired;
     }
 
-    /// <summary>An object without a stream that has more ">>" than "&lt;&lt;" loses the surplus from its end.</summary>
-    private static string DropSurplusClose(Match match)
+    /// <summary>The offsets of the objects the file's classic xref table(s) list as in use; empty for an xref stream or no table.</summary>
+    private static HashSet<int> ListedObjects(string text)
     {
-        var body = match.Groups[2].Value;
-        if (body.Contains("stream", StringComparison.Ordinal))
-            return match.Value;
-
-        var open = Count(body, "<<");
-        var close = Count(body, ">>");
-        if (close <= open)
-            return match.Value;
-
-        var builder = new StringBuilder(body);
-        for (; close > open; close--)
-            builder.Remove(builder.ToString().LastIndexOf(">>", StringComparison.Ordinal), 2);
-        return match.Groups[1].Value + builder + match.Groups[3].Value;
+        var found = new HashSet<int>();
+        var visited = new HashSet<int>();
+        var at = LastStartXref(text);
+        while (at is { } offset && visited.Add(offset))
+            at = ReadTable(text, offset, found);
+        return found;
     }
 
-    private static int Count(string text, string token)
+    private static int? LastStartXref(string text)
     {
-        var count = 0;
-        for (var at = text.IndexOf(token, StringComparison.Ordinal); at >= 0; at = text.IndexOf(token, at + token.Length, StringComparison.Ordinal))
-            count++;
-        return count;
+        var keyword = text.LastIndexOf("startxref", StringComparison.Ordinal);
+        if (keyword < 0)
+            return null;
+        var pos = keyword + "startxref".Length;
+        return TryNumber(text, ref pos, out var offset) ? offset : null;
+    }
+
+    /// <summary>Adds the listed objects of the table at <paramref name="offset"/> to <paramref name="found"/>; returns the /Prev table, if any.</summary>
+    private static int? ReadTable(string text, int offset, HashSet<int> found)
+    {
+        if (offset < 0 || offset >= text.Length)
+            return null;
+        var pos = offset;
+        SkipWhite(text, ref pos);
+        if (string.CompareOrdinal(text, pos, "xref", 0, 4) != 0)
+            return null; // an xref stream, or not a table at all
+
+        pos += 4;
+        while (true)
+        {
+            SkipWhite(text, ref pos);
+            if (string.CompareOrdinal(text, pos, "trailer", 0, 7) == 0)
+            {
+                pos += 7;
+                break;
+            }
+            if (!TryNumber(text, ref pos, out _) || !TryNumber(text, ref pos, out var count))
+                return null;
+            for (var i = 0; i < count; i++)
+            {
+                if (!TryNumber(text, ref pos, out var entryOffset) || !TryNumber(text, ref pos, out _))
+                    return null;
+                SkipWhite(text, ref pos);
+                if (pos >= text.Length)
+                    return null;
+                if (text[pos++] == 'n' && entryOffset > 0)
+                    found.Add(entryOffset);
+            }
+        }
+
+        var end = text.IndexOf("startxref", pos, StringComparison.Ordinal);
+        var prev = PrevRef.Match(text, pos, (end < 0 ? text.Length : end) - pos);
+        return prev.Success && int.TryParse(prev.Groups[1].Value, out var previous) ? previous : null;
+    }
+
+    /// <summary>
+    /// The offsets of the ">>" an object has more than "&lt;&lt;": the last ones. Objects with a stream are left alone, and
+    /// so are strings, hex strings and comments.
+    /// </summary>
+    private static List<int> SurplusClose(string text, int offset)
+    {
+        var none = new List<int>();
+        var header = text.IndexOf("obj", offset, StringComparison.Ordinal);
+        if (header < 0 || header - offset > 24)
+            return none;
+        for (var i = offset; i < header; i++) // what sits at the offset must be "N G obj"
+            if (!char.IsAsciiDigit(text[i]) && text[i] != ' ')
+                return none;
+
+        var start = header + 3;
+        var end = text.IndexOf("endobj", start, StringComparison.Ordinal);
+        if (end < 0 || text.AsSpan(start, end - start).IndexOf("stream", StringComparison.Ordinal) >= 0)
+            return none;
+
+        var open = 0;
+        var closes = new List<int>();
+        for (var i = start; i < end; i++)
+        {
+            switch (text[i])
+            {
+                case '(':
+                    i = SkipLiteralString(text, i, end);
+                    break;
+                case '%':
+                    while (i + 1 < end && text[i + 1] is not ('\r' or '\n'))
+                        i++;
+                    break;
+                case '<' when i + 1 < end && text[i + 1] == '<':
+                    open++;
+                    i++;
+                    break;
+                case '<': // a hex string
+                    var greater = text.IndexOf('>', i, end - i);
+                    if (greater < 0)
+                        return none;
+                    i = greater;
+                    break;
+                case '>' when i + 1 < end && text[i + 1] == '>':
+                    closes.Add(i);
+                    i++;
+                    break;
+            }
+        }
+        return closes.Count <= open ? none : closes.GetRange(open, closes.Count - open);
+    }
+
+    /// <summary>The index of the ")" that ends the literal string opened at <paramref name="open"/> (parentheses nest, "\" escapes).</summary>
+    private static int SkipLiteralString(string text, int open, int end)
+    {
+        var depth = 1;
+        for (var i = open + 1; i < end; i++)
+        {
+            switch (text[i])
+            {
+                case '\\':
+                    i++;
+                    break;
+                case '(':
+                    depth++;
+                    break;
+                case ')':
+                    if (--depth == 0)
+                        return i;
+                    break;
+            }
+        }
+        return end;
+    }
+
+    private static void SkipWhite(string text, ref int pos)
+    {
+        while (pos < text.Length && text[pos] is ' ' or '\t' or '\r' or '\n' or '\f' or '\0')
+            pos++;
+    }
+
+    private static bool TryNumber(string text, ref int pos, out int value)
+    {
+        SkipWhite(text, ref pos);
+        var from = pos;
+        while (pos < text.Length && char.IsAsciiDigit(text[pos]))
+            pos++;
+        value = 0;
+        return pos > from && pos - from <= 10 && int.TryParse(text.AsSpan(from, pos - from), out value);
     }
 }
