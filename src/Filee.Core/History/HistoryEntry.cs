@@ -67,10 +67,10 @@ public sealed class HistoryEntry
             Outputs = [.. job.Outputs],
             Failures = failures,
             // history.json isn't the place for a PDF password: a retry takes it from the preset again. No Retry for
-            // parts of a picture to hide, marks drawn on it or a background set behind it: a Filee from before them
-            // would write the picture as it is.
+            // parts of a picture to hide, marks drawn on it, a background set behind it or metadata changes: a Filee
+            // from before them would write the file as it is.
             Preset = failures.Count > 0 && !job.Preset.Image.HidesAreas && !job.Preset.Image.HasAnnotations
-                     && !job.Preset.Image.AddsBackdrop
+                     && !job.Preset.Image.AddsBackdrop && !job.Preset.EditsMetadata
                 ? job.Preset.Clone().WithoutPassword(mark: true)
                 : null,
             Undoable = UndoableOutputs(job),

@@ -125,4 +125,21 @@ public class EnvelopeTests
         Assert.Equal("error.no_route", job.Files.Single().ErrorKey);
         Assert.Equal("xml → png", job.Files.Single().ErrorDetail);
     }
+
+    [Fact]
+    public async Task Metadata_changes_to_an_envelope_are_refused_and_never_dropped_by_opening_it()
+    {
+        using var dir = new TempDir();
+        var opener = new FakeOpener("pdf", "pdf");
+        await using var queue = new JobQueue(new ConverterCatalog([opener]));
+        var preset = new Preset { TargetFormat = BuiltInData.SameAsSource, Metadata = new MetadataEdits { RemoveAll = true } };
+
+        var job = new ConversionJob([dir.File("invoice.pdf.p7m")], preset, "Metadata");
+        await queue.RunAsync(job);
+
+        var file = job.Files.Single();
+        Assert.Equal("error.no_route", file.ErrorKey);
+        Assert.Equal(new RouteRequest("pdf", "pdf", Metadata: true), file.FailedRoute);
+        Assert.Empty(job.Outputs);
+    }
 }
