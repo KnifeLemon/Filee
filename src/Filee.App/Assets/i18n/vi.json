@@ -622,6 +622,7 @@
   "update.more_changes": "… và {0} thay đổi khác",
   "general.data_folder": "Thư mục cài đặt",
   "general.open_data_folder": "Mở",
+  "general.data_folder_hint": "Filee lưu cài đặt, cấu hình sẵn, thanh công cụ, lịch sử chuyển đổi và các tệp nhật ký tại đây. Mở thư mục để sao lưu hoặc xem nhật ký.",
   "general.library": "Cấu hình sẵn và thanh công cụ",
   "general.export": "Xuất…",
   "general.import": "Nhập…",
