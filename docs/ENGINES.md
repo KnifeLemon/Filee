@@ -1888,6 +1888,14 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
 scans and pictures with Tesseract (`Ocr/TesseractConverter.cs`), in the language the preset names
 (`PdfOptions.OcrLanguage`, a Tesseract code; English by default). The built-in "Searchable PDF" preset turns it on.
 
+Text that mixes languages (issue #1123) has several codes in that one setting, the main language first, joined with
+`+` as Tesseract's `-l` takes them (`chi_sim+eng`). `OcrLanguages.Parse` is the only reader: a code not in the list is
+left out, repeats count once, and with none left English is read. Settings from before this hold one code and read as
+they always did; an older Filee reads a joined value as a code it doesn't know, so English. Each language is its own
+download and is fetched before the file is read; a download that fails refuses the file and names that language. Every
+language makes Tesseract slower (it tries the others on words the first one reads badly), so the editor's "Other
+languages in the text" says to add only what the text has.
+
 - The route planner puts an OCR edge first (`ConversionEdge.Ocr`, `RoutePlanner.Plan(ocr: true)`): picture or PDF →
   searchable PDF, then the cheapest ordinary route from that PDF. A picture Tesseract can't open (HEIC, PSD, …)
   becomes a PNG first. OCR edges are never part of an ordinary route.
@@ -1916,12 +1924,14 @@ level and the newest revision the Mac has), part of macOS, so nothing is downloa
 Tesseract and is registered before it, so the route planner takes it; on Windows and Linux it is unavailable
 ("Not available on this platform").
 
-- The preset's language (a Tesseract code) is mapped to Vision's identifiers (`VisionLanguages`) and asked for with
-  English next to it; if Vision refuses the pair it reads with the language alone. Which languages Vision reads comes
+- The preset's languages (Tesseract codes) are mapped to Vision's identifiers (`VisionLanguages`) and asked for in their
+  order. English is added when it wasn't chosen and goes last unless it is the main language; if Vision refuses the
+  combination it reads with one language fewer, down to the main language alone. Which languages Vision reads comes
   from the Mac itself (`supportedRecognitionLanguagesAndReturnError:`, more with newer macOS versions); a language it
-  doesn't read (Hindi, Nepali, Greek, …) goes to Tesseract when that is installed, and is refused otherwise with
-  "Apple Vision can't read this language. Install Tesseract …". The preset editor shows no download size for the
-  languages Vision reads, and its hint names Apple Vision.
+  doesn't read (Hindi, Nepali, Greek, …) goes to Tesseract when that is installed, together with the preset's other
+  languages, and is refused otherwise with "Apple Vision can't read this language. Install Tesseract …" and its name.
+  The preset editor shows no download size for the languages Vision reads, unless such a language among the chosen ones
+  sends them all to Tesseract, and its hint names Apple Vision.
 - PDFs go page by page exactly like Tesseract's (`TesseractConverter.RecognizePdfAsync`, at most two pages at a time).
   A JPEG picture goes into the PDF as it is, other pictures (and a JPEG that EXIF turns) as an upright PNG; every page
   of a TIFF becomes a page. The page size comes from the picture's resolution, 300 dpi when it has none.
