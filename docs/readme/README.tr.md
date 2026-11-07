@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: Sürükle. Bırak. Dönüştür." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: Sürükle. Bırak. Dönüştür." width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS önizleme">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT lisansı"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT lisansı"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -74,7 +74,7 @@
 ## Çalışırken görün
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Ctrl basılıyken trip.jpg sürükleniyor: imleçte format halkası açılır, dosya PNG üzerine bırakılır, ilerleme halkası tamamlanır ve trip.png görünür" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Ctrl basılıyken trip.jpg sürükleniyor: imleçte format halkası açılır, dosya PNG üzerine bırakılır, ilerleme halkası tamamlanır ve trip.png görünür" width="820"></a><br>
   <sub>27 saniyelik videoyu izleyin ve <a href="https://filee.sh">filee.sh</a> adresindeki etkileşimli demoyu deneyin</sub>
 </p>
 
@@ -146,8 +146,8 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="Profillere ve ön ayarlara sahip halka araç çubuğu düzenleyicisi"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="Bırakma alanı ve son dönüştürmeleri içeren ana ekran"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="Profillere ve ön ayarlara sahip halka araç çubuğu düzenleyicisi"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="Bırakma alanı ve son dönüştürmeleri içeren ana ekran"></td>
   </tr>
   <tr>
     <td align="center"><sub>Halkayı sürükle-bırak ile düzenleyin, her dosya türü için bir profil</sub></td>
@@ -179,7 +179,7 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 | **Coğrafi Vektörler**: Shapefile, GeoJSON, KML, KMZ, GPX<br>Koordinatlı CSV; Garmin FIT okunabilir | birbirleri arasında ve CSV / XLSX / JSON;<br>projeksiyonlu veriler (UTM, Web Mercator, Lambert, Albers) WGS 84 boylam / enlem olarak çıkar |
 
 İşaretsiz formatlar Office, Hancom Office veya LibreOffice olmadan doğrudan çalışır.
-İşaretliler yalnızca ihtiyaç duyulduğunda indirilen isteğe bağlı bir motora ihtiyaç duyar: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([ayrıntılar](docs/ENGINES.md)).
+İşaretliler yalnızca ihtiyaç duyulduğunda indirilen isteğe bağlı bir motora ihtiyaç duyar: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([ayrıntılar](../../docs/ENGINES.md)).
 
 ## Komut satırı
 
@@ -205,7 +205,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[Mimari](docs/ARCHITECTURE.md) · [Motorlar](docs/ENGINES.md) · [Dönüştürücü ekleme](docs/ADDING-A-CONVERTER.md) · [Dil ekleme](docs/ADDING-A-LANGUAGE.md) · [Katkıda bulunma](CONTRIBUTING.md)
+[Mimari](../../docs/ARCHITECTURE.md) · [Motorlar](../../docs/ENGINES.md) · [Dönüştürücü ekleme](../../docs/ADDING-A-CONVERTER.md) · [Dil ekleme](../../docs/ADDING-A-LANGUAGE.md) · [Katkıda bulunma](../../CONTRIBUTING.md)
 
 Katkılarınızı (Pull Request) memnuniyetle karşılıyoruz.
 Filee size birkaç tıklama kazandırdıysa, bir ⭐ vermek başkalarının da keşfetmesine yardımcı olur.
@@ -229,7 +229,7 @@ Yalnızca şu durumlarda internete bağlanır:
 
 - Başlangıçtan kısa bir süre sonra ve ardından birkaç saatte bir daha yeni bir sürümün olup olmadığını GitHub'a (`api.github.com`) sormak için.
   Bunu Ayarlar → Hakkında bölümünden kapatabilirsiniz ("Güncellemeleri otomatik olarak denetle").
-- Kurmayı seçtiğiniz dönüştürme motorlarını [`engines.json`](src/Filee.Engines/Infrastructure/engines.json) içinde sabitlenmiş resmi konumlardan ve bir ön ayarın kullandığı metin tanıma (OCR) dillerini [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json) içinden indirmek için.
+- Kurmayı seçtiğiniz dönüştürme motorlarını [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json) içinde sabitlenmiş resmi konumlardan ve bir ön ayarın kullandığı metin tanıma (OCR) dillerini [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json) içinden indirmek için.
 - Bir bağlantıya tıkladığınızda web tarayıcınızı açmak için.
 
 ## Destek Olun
@@ -254,7 +254,7 @@ Tek seferlik destekçiler de listelenmeyi talep edebilir.
 ## Lisans
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) ve Filee katkıda bulunanları.
-Paketlenen üçüncü taraf bileşenler, [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) dosyasında listelenen kendi lisanslarını korur.
+Paketlenen üçüncü taraf bileşenler, [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) dosyasında listelenen kendi lisanslarını korur.
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

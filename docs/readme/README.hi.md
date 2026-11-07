@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh/hi/"><img src="docs/media/banner-en.jpg" alt="Filee: खींचें। छोड़ें। कन्वर्ट हो गया।" width="100%"></a>
+  <a href="https://filee.sh/hi/"><img src="../../docs/media/banner-en.jpg" alt="Filee: खींचें। छोड़ें। कन्वर्ट हो गया।" width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS प्रीव्यू">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT लाइसेंस"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT लाइसेंस"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -74,7 +74,7 @@
 ## इसे काम करते देखें
 
 <p align="center">
-  <a href="https://filee.sh/hi/"><img src="docs/media/demo-en.webp" alt="Ctrl दबाकर trip.jpg खींची जाती है: कर्सर पर फ़ॉर्मैट का डोनट खुलता है, फ़ाइल PNG पर छोड़ी जाती है, प्रोग्रेस रिंग पूरी होती है और trip.png बन जाती है" width="820"></a><br>
+  <a href="https://filee.sh/hi/"><img src="../../docs/media/demo-en.webp" alt="Ctrl दबाकर trip.jpg खींची जाती है: कर्सर पर फ़ॉर्मैट का डोनट खुलता है, फ़ाइल PNG पर छोड़ी जाती है, प्रोग्रेस रिंग पूरी होती है और trip.png बन जाती है" width="820"></a><br>
   <sub>27 सेकंड का वीडियो देखें और <a href="https://filee.sh/hi/">filee.sh</a> पर इंटरैक्टिव डेमो आज़माएँ</sub>
 </p>
 
@@ -146,8 +146,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="प्रोफ़ाइल और प्रीसेट के साथ डोनट टूलबार एडिटर"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="ड्रॉप ज़ोन और हाल के कन्वर्ज़न वाली होम स्क्रीन"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="प्रोफ़ाइल और प्रीसेट के साथ डोनट टूलबार एडिटर"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="ड्रॉप ज़ोन और हाल के कन्वर्ज़न वाली होम स्क्रीन"></td>
   </tr>
   <tr>
     <td align="center"><sub>डोनट को ड्रैग एंड ड्रॉप से सजाएँ, हर फ़ाइल प्रकार के लिए एक प्रोफ़ाइल</sub></td>
@@ -179,7 +179,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **भू-स्थानिक वेक्टर**: Shapefile, GeoJSON, KML, KMZ, GPX<br>निर्देशांक वाली CSV;<br>Garmin FIT सिर्फ़ पढ़ने के लिए | आपस में और CSV / XLSX / JSON;<br>प्रोजेक्टेड डेटा (UTM, Web Mercator, Lambert, Albers) WGS 84 देशांतर / अक्षांश में बदलकर आता है |
 
 बिना निशान वाले फ़ॉर्मैट तुरंत काम करते हैं, Office, Hancom Office या LibreOffice की ज़रूरत नहीं।
-निशान वाले फ़ॉर्मैट के लिए एक वैकल्पिक इंजन चाहिए, जो ज़रूरत पड़ने पर ही डाउनलोड होता है: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([विवरण](docs/ENGINES.md))।
+निशान वाले फ़ॉर्मैट के लिए एक वैकल्पिक इंजन चाहिए, जो ज़रूरत पड़ने पर ही डाउनलोड होता है: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([विवरण](../../docs/ENGINES.md))।
 
 ## कमांड लाइन
 
@@ -205,7 +205,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[आर्किटेक्चर](docs/ARCHITECTURE.md) · [इंजन](docs/ENGINES.md) · [कन्वर्टर जोड़ना](docs/ADDING-A-CONVERTER.md) · [भाषा जोड़ना](docs/ADDING-A-LANGUAGE.md) · [योगदान](CONTRIBUTING.md)
+[आर्किटेक्चर](../../docs/ARCHITECTURE.md) · [इंजन](../../docs/ENGINES.md) · [कन्वर्टर जोड़ना](../../docs/ADDING-A-CONVERTER.md) · [भाषा जोड़ना](../../docs/ADDING-A-LANGUAGE.md) · [योगदान](../../CONTRIBUTING.md)
 
 पुल रिक्वेस्ट का स्वागत है।
 अगर Filee से आपके कुछ क्लिक बचते हैं, तो एक ⭐ दूसरों को इसे ढूँढने में मदद करता है।
@@ -217,7 +217,7 @@ Filee को **Myeonggu Kim** ([KnifeLemon](https://github.com/KnifeLemon)) व�
 - Windows रिलीज़ Myeonggu Kim के नाम जारी [Certum](https://www.certum.eu/) ओपन-सोर्स कोड साइनिंग सर्टिफ़िकेट से साइन की जाती हैं।
   - 2.0.0 तक की रिलीज़ साइन नहीं हैं।
 
-पूरी नीति और गोपनीयता नीति [अंग्रेज़ी README](README.md#code-signing-policy) में है।
+पूरी नीति और गोपनीयता नीति [अंग्रेज़ी README](../../README.md#code-signing-policy) में है।
 Filee आपकी फ़ाइलें अपलोड नहीं करता और इस्तेमाल का कोई डेटा नहीं भेजता।
 
 ## स्पॉन्सर करें
@@ -242,7 +242,7 @@ Filee मुफ़्त है और मुफ़्त ही रहेगा
 ## लाइसेंस
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) और Filee योगदानकर्ता।
-साथ में शामिल थर्ड-पार्टी कंपोनेंट अपने-अपने लाइसेंस के तहत आते हैं, जिनकी सूची [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) में है।
+साथ में शामिल थर्ड-पार्टी कंपोनेंट अपने-अपने लाइसेंस के तहत आते हैं, जिनकी सूची [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) में है।
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

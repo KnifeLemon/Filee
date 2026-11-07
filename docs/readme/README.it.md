@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: Drag. Drop. Converted." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: Drag. Drop. Converted." width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS preview">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT license"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT license"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -74,7 +74,7 @@
 ## Guardalo in azione
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Dragging trip.jpg with Ctrl held: a donut of formats opens at the cursor, the file is dropped on PNG, a progress ring completes and trip.png appears" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Dragging trip.jpg with Ctrl held: a donut of formats opens at the cursor, the file is dropped on PNG, a progress ring completes and trip.png appears" width="820"></a><br>
   <sub>Guarda il video di 27 secondi e prova la demo interattiva su <a href="https://filee.sh">filee.sh</a></sub>
 </p>
 
@@ -146,8 +146,8 @@ Per annullare, rimuovi le voci in Sicurezza di Windows → Controllo app e brows
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="Donut toolbar editor with profiles and presets"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="Home screen with the drop zone and recent conversions"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="Donut toolbar editor with profiles and presets"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="Home screen with the drop zone and recent conversions"></td>
   </tr>
   <tr>
     <td align="center"><sub>Organizza la donut trascinando, un profilo per ogni tipo di file</sub></td>
@@ -179,7 +179,7 @@ Per annullare, rimuovi le voci in Sicurezza di Windows → Controllo app e brows
 | **Vettori geospaziali**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV con coordinate; lettura Garmin FIT | ciascuno negli altri e CSV / XLSX / JSON;<br>i dati proiettati (UTM, Web Mercator, Lambert, Albers) escono come longitudine/latitudine WGS 84 |
 
 I formati non contrassegnati funzionano subito, senza Office, Hancom Office o LibreOffice.
-Quelli contrassegnati richiedono un engine opzionale, scaricato solo quando serve: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([dettagli](docs/ENGINES.md)).
+Quelli contrassegnati richiedono un engine opzionale, scaricato solo quando serve: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([dettagli](../../docs/ENGINES.md)).
 
 ## Riga di comando
 
@@ -205,7 +205,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[Architettura](docs/ARCHITECTURE.md) · [Engine](docs/ENGINES.md) · [Aggiungere un convertitore](docs/ADDING-A-CONVERTER.md) · [Aggiungere una lingua](docs/ADDING-A-LANGUAGE.md) · [Contribuire](CONTRIBUTING.md)
+[Architettura](../../docs/ARCHITECTURE.md) · [Engine](../../docs/ENGINES.md) · [Aggiungere un convertitore](../../docs/ADDING-A-CONVERTER.md) · [Aggiungere una lingua](../../docs/ADDING-A-LANGUAGE.md) · [Contribuire](../../CONTRIBUTING.md)
 
 Le pull request sono benvenute.
 Se Filee ti fa risparmiare qualche click, una ⭐ aiuta altre persone a trovarlo.
@@ -229,7 +229,7 @@ Si connette a Internet solo:
 
 - per chiedere a GitHub (`api.github.com`) se esiste una versione più recente, poco dopo l'avvio e poi ogni poche ore.
   Disattivabile in Impostazioni → Informazioni ("Controlla automaticamente gli aggiornamenti").
-- per scaricare gli engine di conversione che scegli di installare, dalle posizioni ufficiali indicate in [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), e le lingue per il riconoscimento del testo (OCR) usate da un preset, indicate in [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json).
+- per scaricare gli engine di conversione che scegli di installare, dalle posizioni ufficiali indicate in [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json), e le lingue per il riconoscimento del testo (OCR) usate da un preset, indicate in [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json).
 - quando clicchi un link, che apre il tuo browser.
 
 ## Sostenitori
@@ -254,7 +254,7 @@ Anche chi fa una donazione una tantum può chiedere di essere elencato.
 ## Licenza
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) e i contributori di Filee.
-I componenti di terze parti inclusi mantengono le proprie licenze, elencate in [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+I componenti di terze parti inclusi mantengono le proprie licenze, elencate in [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

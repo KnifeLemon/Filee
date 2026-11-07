@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: ลาก วาง แปลงไฟล์ทันที" width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: ลาก วาง แปลงไฟล์ทันที" width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS รุ่นพรีวิว">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="สัญญาอนุญาต MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="สัญญาอนุญาต MIT"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -74,7 +74,7 @@
 ## ตัวอย่างการใช้งาน
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="ลากไฟล์ trip.jpg พร้อมกด Ctrl: แถบโดนัทจะเปิดขึ้นตรงเคอร์เซอร์ วางไฟล์ลงบน PNG วงแหวนแสดงความคืบหน้าจะหมุนจนเสร็จ และได้ไฟล์ trip.png ทันที" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="ลากไฟล์ trip.jpg พร้อมกด Ctrl: แถบโดนัทจะเปิดขึ้นตรงเคอร์เซอร์ วางไฟล์ลงบน PNG วงแหวนแสดงความคืบหน้าจะหมุนจนเสร็จ และได้ไฟล์ trip.png ทันที" width="820"></a><br>
   <sub>รับชมวิดีโอสาธิตความยาว 27 วินาที และทดลองเดโมแบบอินเทอร์แอคทีฟได้ที่ <a href="https://filee.sh">filee.sh</a></sub>
 </p>
 
@@ -146,8 +146,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="หน้าแก้ไขแถบโดนัทพร้อมโปรไฟล์และพรีเซ็ต"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="หน้าแรกพร้อมพื้นที่วางไฟล์และประวัติการแปลงล่าสุด"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="หน้าแก้ไขแถบโดนัทพร้อมโปรไฟล์และพรีเซ็ต"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="หน้าแรกพร้อมพื้นที่วางไฟล์และประวัติการแปลงล่าสุด"></td>
   </tr>
   <tr>
     <td align="center"><sub>จัดเรียงโดนัทด้วยการลากวาง แยกโปรไฟล์ตามประเภทไฟล์</sub></td>
@@ -179,7 +179,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **ข้อมูลเวกเตอร์เชิงพื้นที่**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV พร้อมพิกัด;<br>อ่าน Garmin FIT | แปลงสลับกันได้ และเป็น CSV / XLSX / JSON<br>โดยพิกัดโปรเจกชัน (UTM, Web Mercator, Lambert, Albers) จะถูกแปลงเป็น WGS 84 ลองจิจูด/ละติจูด |
 
 ฟอร์แมตที่ไม่มีเครื่องหมายสามารถใช้งานได้ทันทีโดยไม่ต้องติดตั้งซอฟต์แวร์เสริม<br>
-ฟอร์แมตที่มีเครื่องหมายกำกับต้องการเครื่องมือเสริม ซึ่งจะดาวน์โหลดเมื่อจำเป็นเท่านั้น: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg (ดู [รายละเอียด](docs/ENGINES.md))
+ฟอร์แมตที่มีเครื่องหมายกำกับต้องการเครื่องมือเสริม ซึ่งจะดาวน์โหลดเมื่อจำเป็นเท่านั้น: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg (ดู [รายละเอียด](../../docs/ENGINES.md))
 
 ## การใช้งานผ่านบรรทัดคำสั่ง (Command line)
 
@@ -205,7 +205,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-ดูเพิ่มเติม: [สถาปัตยกรรม (Architecture)](docs/ARCHITECTURE.md) · [เครื่องมือแปลงไฟล์ (Engines)](docs/ENGINES.md) · [การเพิ่มตัวแปลงไฟล์ (Adding a converter)](docs/ADDING-A-CONVERTER.md) · [การเพิ่มภาษา (Adding a language)](docs/ADDING-A-LANGUAGE.md) · [การมีส่วนร่วม (Contributing)](CONTRIBUTING.md)
+ดูเพิ่มเติม: [สถาปัตยกรรม (Architecture)](../../docs/ARCHITECTURE.md) · [เครื่องมือแปลงไฟล์ (Engines)](../../docs/ENGINES.md) · [การเพิ่มตัวแปลงไฟล์ (Adding a converter)](../../docs/ADDING-A-CONVERTER.md) · [การเพิ่มภาษา (Adding a language)](../../docs/ADDING-A-LANGUAGE.md) · [การมีส่วนร่วม (Contributing)](../../CONTRIBUTING.md)
 
 ยินดีรับ Pull Request เสมอ!
 หาก Filee ช่วยประหยัดเวลาของคุณ การกด ⭐ ให้กับโครงการจะช่วยให้ผู้อื่นค้นพบได้ง่ายขึ้น
@@ -228,7 +228,7 @@ Filee ทำการแปลงไฟล์ภายในเครื่อ�
 การเชื่อมต่ออินเทอร์เน็ตจะเกิดขึ้นเฉพาะในกรณีต่อไปนี้:
 
 - ตรวจสอบเวอร์ชันใหม่กับ GitHub (`api.github.com`) หลังเปิดโปรแกรมและทุกๆ สองสามชั่วโมง (ปิดได้ที่ การตั้งค่า → เกี่ยวกับ "ตรวจสอบการอัปเดตอัตโนมัติ")
-- ดาวน์โหลดเครื่องมือแปลงไฟล์ที่คุณเลือกติดตั้ง จากแหล่งทางการที่ระบุไว้ใน [`engines.json`](src/Filee.Engines/Infrastructure/engines.json) และภาษาสำหรับการรู้จำข้อความ (OCR) ที่พรีเซ็ตใช้ ซึ่งระบุไว้ใน [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json)
+- ดาวน์โหลดเครื่องมือแปลงไฟล์ที่คุณเลือกติดตั้ง จากแหล่งทางการที่ระบุไว้ใน [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json) และภาษาสำหรับการรู้จำข้อความ (OCR) ที่พรีเซ็ตใช้ ซึ่งระบุไว้ใน [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json)
 - เมื่อคุณคลิกลิงก์ ซึ่งจะเปิดหน้าเว็บในเบราว์เซอร์ของคุณ
 
 ## ผู้สนับสนุน (Sponsor)
@@ -253,7 +253,7 @@ Filee ใช้งานได้ฟรีและจะฟรีตลอด�
 ## สัญญาอนุญาต (License)
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) และผู้มีส่วนร่วมใน Filee
-ส่วนประกอบบุคคลที่สามจะคงสัญญาอนุญาตเดิมตามที่ระบุไว้ใน [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)
+ส่วนประกอบบุคคลที่สามจะคงสัญญาอนุญาตเดิมตามที่ระบุไว้ใน [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="ประวัติจำนวนดาว" width="600"></a>
