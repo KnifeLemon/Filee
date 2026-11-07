@@ -133,8 +133,9 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
 - **Mark of the Web** (`Platform/MarkOfTheWeb`, Windows): every saved file gets a `Zone.Identifier` stream as a
   browser's download would (`ZoneId=3`, and `HostUrl` with the address a download came from, without sign-in or
   fragment), so SmartScreen, Office's block on macros from the internet and Protected View still apply. `JobQueue`
-  copies a source's mark onto the files converted from it (also for "Save only the converted file"); a folder result
-  is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
+  copies a source's mark onto the files converted from it (also for "Save only the converted file"), and onto an
+  archive packed from many files when any of them has one (files inside folders too, links not followed); a folder
+  result is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
   that never fails a conversion.
 
 ## Donut control
@@ -158,13 +159,14 @@ wheel flips). In click mode the focused window gets the key (`DonutMenu.HandleKe
 drag the donut's window has no keyboard focus, so `RadialController` turns on `TriggerService.WatchFlipKey` while
 the drag donut shows files and flips on `FlipKeyPressed` / `FlipWheelTurned`: the global hook only listens (it
 can't hold an event back; Explorer and Finder ignore Tab during a drag) and reports one flip per key press. On
-macOS the drag donut takes the keyboard once files are on it (`RadialController.TakeKeyboard`), and the key reaches
-its window as in click mode: while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it
-from the background) macOS gives no keys to a hook, only to the app in front. The hook's copy of a press is ignored
-while the window has the keyboard (`HookFlipsKey`, one flip per press, following `IsActive`); the keyboard goes back
-to the app that had it once a conversion starts or the donut closes (`IPlatformServices.RememberFrontApp` /
-`ReturnFocus`), unless the user clicked elsewhere meanwhile, and stays with Filee when the drop opens a window of its
-own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard during a drag breaks Explorer's.
+macOS the drag donut takes key window status once files are on it (`RadialController.TakeKeyboard` / `IPlatformServices.TakeKeyWindow`),
+and the key reaches its window without whole-application activation, keeping macOS Show Desktop (Desktop Reveal) and Exposé uninterrupted:
+while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it from the background) macOS gives no keys to a hook,
+only to the key window and app in front. The hook's copy of a press is ignored while the window has the keyboard (`HookFlipsKey`, one flip
+per press, following `IsActive`); key window status is explicitly released once a conversion starts or the donut closes
+(`IPlatformServices.ReleaseKeyWindow` / `ReturnFocus`), returning typing to the previous app (unless the user clicked elsewhere meanwhile) while the progress ring finishes, and stays
+with Filee when the drop opens a window of its own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard
+during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools

@@ -22,6 +22,7 @@ using Filee.Setup.Payload;
 using Filee.Setup.ViewModels;
 using Filee.Setup.Views;
 using CommandLine = app::Filee.App.Services.CommandLine;
+using SoftPalette = Filee.App.Services.SoftPalette;
 
 namespace Filee.Setup.Tests;
 
@@ -93,7 +94,7 @@ public class SetupWindowTests
     {
         var (model, _, runner) = Model(language);
         var window = Show(model);
-        Assert.Equal(language == "ar" ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
+        Assert.Equal(SoftPalette.IsRightToLeft(language) ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
         Check(window, $"setup-1-welcome-{language}.png");
 
         model.ToggleOptionsCommand.Execute(null);
@@ -348,7 +349,7 @@ public class SetupWindowTests
         Pump();
         Assert.Equal(language, texts.Language);
         // Picking Arabic mirrors the card at once.
-        Assert.Equal(language == "ar" ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
+        Assert.Equal(SoftPalette.IsRightToLeft(language) ? FlowDirection.RightToLeft : FlowDirection.LeftToRight, window.FlowDirection);
         Assert.Equal(texts["installer.install"], model.PrimaryText);
         Assert.Contains("2.0.0", model.WelcomeText);
         var choices = model.Choices();

@@ -20,6 +20,7 @@ internal static class AppLanguages
         ("hi", "हिन्दी"),
         ("ru", "Русский"),
         ("ar", "العربية"),
+        ("fa", "فارسی"),
         ("pt-PT", "Português (Portugal)"),
         ("pt-BR", "Português (Brasil)"),
         ("fr", "Français"),

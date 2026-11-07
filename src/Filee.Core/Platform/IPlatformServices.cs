@@ -174,6 +174,17 @@ public interface IPlatformServices
     /// didn't click elsewhere meanwhile) and that app still runs; forgets it either way.
     /// </summary>
     void ReturnFocus() { }
+
+    /// <summary>
+    /// Makes the window key without activating the entire application, so the window can receive key presses
+    /// (such as the flip key during a drag) while leaving macOS Desktop Reveal / Exposé mode uninterrupted.
+    /// </summary>
+    void TakeKeyWindow(nint windowHandle) { }
+
+    /// <summary>
+    /// Resigns key window status on a window previously made key, returning key events to the frontmost application.
+    /// </summary>
+    void ReleaseKeyWindow(nint windowHandle) { }
 }
 
 /// <summary>
