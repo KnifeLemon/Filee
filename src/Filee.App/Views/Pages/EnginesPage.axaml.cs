@@ -34,6 +34,9 @@ public partial class EnginesPage : UserControl
         public Point InScroller { get; set; }
     }
 
+    /// <summary>The pointer over the list while a card is being dragged (the drag handle has the same one).</summary>
+    private static readonly Cursor DragCursor = new(StandardCursorType.Hand);
+
     private readonly DispatcherTimer _scrollTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private EngineDrag? _drag;
 
@@ -71,6 +74,7 @@ public partial class EnginesPage : UserControl
                 return;
             drag.Active = true;
             drag.Item.IsDragging = true;
+            EngineList.Cursor = DragCursor;
             _scrollTimer.Start();
         }
         if (Scroller is { } scroller)
@@ -116,6 +120,7 @@ public partial class EnginesPage : UserControl
         _drag = null;
         _scrollTimer.Stop();
         pointer?.Capture(null);
+        EngineList.Cursor = null;
         if (!drag.Active)
             return;
         drag.Item.IsDragging = false;
