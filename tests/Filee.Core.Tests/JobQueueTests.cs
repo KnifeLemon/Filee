@@ -238,10 +238,10 @@ public class JobQueueTests
     }
 
     [Fact]
-    public async Task Text_the_engine_cannot_measure_takes_another_route_but_is_never_refused()
+    public async Task Text_the_engine_cannot_measure_takes_another_route_or_is_refused()
     {
-        // rhwp#8143: rhwp's width tables don't cover Cyrillic, so its letters overlap — ugly but readable. Such a
-        // file takes a route around the unshaped engine when there is one, and still converts when there isn't.
+        // rhwp#8143: rhwp's width tables don't cover Cyrillic, so its letters overlap. Such a file takes a route
+        // around the unshaped engine when there is one, and is refused rather than written with broken text otherwise.
         using var dir = new TempDir();
         var russian = dir.File("russian.docx");
         var english = dir.File("english.docx");
@@ -267,8 +267,10 @@ public class JobQueueTests
         {
             var job = await Run(queue, [dir.File("russian-2.docx")], preset);
             var file = Assert.Single(job.Files);
-            Assert.Equal(FileState.Done, file.State);
-            Assert.EndsWith("→pdf by rhwp", File.ReadAllText(Path.Combine(dir.Path, "russian-2.pdf")));
+            Assert.Equal(FileState.Failed, file.State);
+            Assert.Equal("error.needs_shaping", file.ErrorKey);
+            Assert.Equal("Cyrillic", file.ErrorDetail);
+            Assert.False(File.Exists(Path.Combine(dir.Path, "russian-2.pdf")));
         }
     }
 

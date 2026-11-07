@@ -203,8 +203,8 @@ public interface IImageTransformer
 /// </param>
 /// <param name="WithoutWidths">
 /// The name of the first script the engine draws but has no widths for (e.g. "Latin Extended" or "Cyrillic"), or
-/// null. Weaker than <paramref name="NeedsShaping"/>: such a file is not refused for it, <see cref="JobQueue"/>
-/// only takes a route without the unshaped edge when one exists.
+/// null. Weaker than <paramref name="NeedsShaping"/>: <see cref="JobQueue"/> takes a route without the unshaped edge
+/// when one exists, or refuses it when no correct route is available.
 /// </param>
 public sealed record TextScripts(string? NeedsShaping, string? WithoutWidths);
 

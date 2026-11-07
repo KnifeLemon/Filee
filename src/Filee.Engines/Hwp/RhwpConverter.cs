@@ -7,7 +7,7 @@
 // or is refused with that reason when LibreOffice is missing. rhwp's width tables cover only ASCII and Latin-1,
 // general punctuation, math, the CJK forms and Hangul, so a letter of any other script — Polish, Turkish, Vietnamese,
 // Greek, Cyrillic, ... — overlaps at a fixed half-em (rhwp#8143): such a document takes a route without rhwp when
-// one exists, and is never refused for it.
+// one exists, or is refused when it does not.
 
 using System.IO.Compression;
 using System.Xml;

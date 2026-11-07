@@ -839,13 +839,14 @@ public sealed partial class JobQueue : IAsyncDisposable
         }
         // Letters the engine has no widths for — anything outside ASCII and Latin-1 but the full-width CJK it
         // estimates at an em (Polish, Turkish, Vietnamese, Greek, Cyrillic, ... — rhwp#8143) — overlap at a fixed
-        // half-em: still readable, so the file is never refused, it only takes a route without the unshaped step
-        // when there is one.
+        // half-em. Take a route without the unshaped step, or refuse to write a PDF with broken text.
         else if (scripts?.WithoutWidths is { } unmeasured)
         {
             _log.LogInformation("{File} has {Script} text, which {Engine} can't measure: planning a route without it",
                 file.SourcePath, unmeasured, route.Steps.First(s => s.Unshaped).Converter.DisplayName);
-            route = planner.Plan(source.Id, target, frames, shaping: true) ?? route;
+            route = planner.Plan(source.Id, target, frames, shaping: true);
+            if (route is null)
+                return Fail(file, "error.needs_shaping", unmeasured);
         }
 
         // Rotate / flip: only an engine that turns images does it. Without one the file would come out unturned

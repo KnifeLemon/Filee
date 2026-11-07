@@ -14,7 +14,7 @@
 // The same scan also finds text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general
 // punctuation, math, the CJK forms and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish,
 // Vietnamese, Greek, Cyrillic, ... — or a combining mark is laid out at a fixed half-em. Such a document takes
-// a route without unshaped edges when one exists and keeps rhwp otherwise (it is never refused for this).
+// a route without unshaped edges when one exists, or is refused when there is no correct route.
 //
 // The scan runs on any file before a reader has looked at it, so it keeps the readers' limits (BoundedXml). A file over
 // them finds nothing here, and the reader then refuses it.
