@@ -1518,6 +1518,7 @@
   "engines.package.upscayl-bin.description": "KI-Bild-Upscaling und Super-Resolution bis zu 4× mit lokalen NCNN-Modellen.\nModelle werden bei der ersten Verwendung heruntergeladen.",
   "error.upscale_needs_engine": "Installiere Upscayl unter Einstellungen → Module, um KI-Upscaling zu nutzen.",
   "error.upscale_needs_vulkan": "Für das Hochskalieren ist eine Vulkan-kompatible Grafikkarte (GPU) erforderlich.",
+  "error.upscale_too_many_frames": "Zu viele Einzelbilder zum Hochskalieren",
   "upscale.model_ready": "Bereit",
   "upscale.model_download_size": "{0} MB Download",
   "upscale.downloading_model": "Modell wird heruntergeladen...",

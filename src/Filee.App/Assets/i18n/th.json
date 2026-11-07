@@ -1520,6 +1520,7 @@
   "engines.package.upscayl-bin.description": "เพิ่มความละเอียดภาพและซูเปอร์เรโซลูชันสูงสุด 4 เท่าด้วยโมเดล NCNN บนเครื่อง\nโมเดลจะดาวน์โหลดเมื่อใช้ครั้งแรก",
   "error.upscale_needs_engine": "ติดตั้ง Upscayl ในการตั้งค่า → เครื่องมือแปลงไฟล์ เพื่อใช้งานการเพิ่มความละเอียดภาพด้วย AI",
   "error.upscale_needs_vulkan": "การเพิ่มความละเอียดต้องใช้การ์ดกราฟิก (GPU) ที่รองรับ Vulkan",
+  "error.upscale_too_many_frames": "มีจำนวนเฟรมมากเกินไปสำหรับการเพิ่มขนาด",
   "upscale.model_ready": "พร้อมใช้งาน",
   "upscale.model_download_size": "ดาวน์โหลด {0} MB",
   "upscale.downloading_model": "กำลังดาวน์โหลดโมเดล...",

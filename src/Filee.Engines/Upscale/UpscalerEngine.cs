@@ -13,10 +13,7 @@ namespace Filee.Engines.Upscale;
 public sealed partial class UpscalerEngine
 {
     private static readonly TimeSpan StallTimeout = TimeSpan.FromMinutes(5);
-
-    public UpscalerEngine()
-    {
-    }
+    internal const int MaxFrames = 300;
 
     [GeneratedRegex(@"^(\d+(?:\.\d+)?)\s*%", RegexOptions.Compiled)]
     private static partial Regex PercentageRegex();
@@ -65,11 +62,19 @@ public sealed partial class UpscalerEngine
 
         Directory.CreateDirectory(workDirectory);
 
-        using var images = ImageReader.Read(inputPath, fromFormat, preset);
-        var animation = ImageEncoder.KeepsAnimation(fromFormat, toFormat);
-        var frames = ImageEncoder.SelectFrames(images, fromFormat, toFormat);
+        var from = fromFormat == "png" && Apng.IsAnimated(inputPath) ? "apng" : fromFormat;
+        using var images = ImageReader.Read(inputPath, from, preset);
+        var animation = ImageEncoder.KeepsAnimation(from, toFormat);
+        var frames = ImageEncoder.SelectFrames(images, from, toFormat);
         if (frames.Count == 0)
             throw new InvalidOperationException("No image frames found to upscale.");
+
+        if (frames.Count > MaxFrames)
+        {
+            throw new ConversionRefusedException(
+                "error.upscale_too_many_frames",
+                string.Create(CultureInfo.InvariantCulture, $"{frames.Count:N0} > {MaxFrames:N0}"));
+        }
 
         var upscaledFrames = new List<IMagickImage<byte>>();
         try
@@ -128,6 +133,7 @@ public sealed partial class UpscalerEngine
                     }
 
                     var upscaled = new MagickImage(tempOutput);
+                    upscaledFrames.Add(upscaled);
                     if (animation)
                     {
                         upscaled.AnimationDelay = frame.AnimationDelay;
@@ -135,7 +141,6 @@ public sealed partial class UpscalerEngine
                         upscaled.AnimationIterations = frame.AnimationIterations;
                     }
                     FinishImage(upscaled, preset, toFormat, exif, icc);
-                    upscaledFrames.Add(upscaled);
                 }
                 finally
                 {

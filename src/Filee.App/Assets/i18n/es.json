@@ -1520,6 +1520,7 @@
   "engines.package.upscayl-bin.description": "Escalado de imágenes y superresolución por IA hasta 4× con modelos NCNN locales.\nLos modelos se descargan la primera vez que se usan.",
   "error.upscale_needs_engine": "Instala Upscayl en Ajustes → Motores para usar el escalado por IA.",
   "error.upscale_needs_vulkan": "El escalado requiere una tarjeta gráfica (GPU) compatible con Vulkan.",
+  "error.upscale_too_many_frames": "Demasiados fotogramas para escalar",
   "upscale.model_ready": "Listo",
   "upscale.model_download_size": "Descarga de {0} MB",
   "upscale.downloading_model": "Descargando modelo...",

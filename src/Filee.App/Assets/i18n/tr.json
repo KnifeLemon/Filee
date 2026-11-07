@@ -1518,6 +1518,7 @@
   "engines.package.upscayl-bin.description": "Yerel NCNN modelleriyle 4 kata kadar yapay zeka görüntü yükseltme ve süper çözünürlük.\nModeller ilk kullanıldıklarında indirilir.",
   "error.upscale_needs_engine": "Yapay zeka yükseltmesini kullanmak için Ayarlar → Dönüştürme motorları bölümünden Upscayl kurun.",
   "error.upscale_needs_vulkan": "Yükseltme için Vulkan uyumlu bir grafik kartı (GPU) gerekir.",
+  "error.upscale_too_many_frames": "Kaliteyi yükseltmek için çok fazla kare var",
   "upscale.model_ready": "Hazır",
   "upscale.model_download_size": "{0} MB indirme",
   "upscale.downloading_model": "Model indiriliyor...",

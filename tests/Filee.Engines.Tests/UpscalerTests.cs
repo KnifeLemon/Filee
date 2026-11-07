@@ -232,6 +232,12 @@ public class UpscalerTests
     }
 
     [Fact]
+    public void MaxFrames_limit_is_300()
+    {
+        Assert.Equal(300, UpscalerEngine.MaxFrames);
+    }
+
+    [Fact]
     public async Task RealUpscale_processes_image_when_binary_available()
     {
         var bin = UpscalerConverter.LocateExecutable();

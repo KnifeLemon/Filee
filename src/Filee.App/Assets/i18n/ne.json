@@ -1520,6 +1520,7 @@
   "engines.package.upscayl-bin.description": "स्थानीय NCNN मोडेलहरूसँग ४ गुणासम्म AI तस्बिर अपस्केलिङ र सुपर-रिजोल्युसन।\nमोडेलहरू पहिलो पटक प्रयोग गर्दा डाउनलोड हुन्छन्।",
   "error.upscale_needs_engine": "AI अपस्केलिङ प्रयोग गर्न सेटिङहरू → इन्जिनहरूमा Upscayl स्थापना गर्नुहोस्।",
   "error.upscale_needs_vulkan": "अपस्केलिङका लागि Vulkan-मिल्दो ग्राफिक्स कार्ड (GPU) आवश्यक पर्छ।",
+  "error.upscale_too_many_frames": "अपस्केल गर्नका लागि धेरै फ्रेमहरू छन्",
   "upscale.model_ready": "तयार",
   "upscale.model_download_size": "{0} MB डाउनलोड",
   "upscale.downloading_model": "मोडेल डाउनलोड हुँदैछ...",

@@ -1520,6 +1520,7 @@
   "engines.package.upscayl-bin.description": "ローカル NCNN モデルで最大 4 倍の AI 画像アップスケールと超解像処理を行います。\nモデルは初めて使うときにダウンロードされます。",
   "error.upscale_needs_engine": "AI アップスケールを使用するには、設定 → エンジンで Upscayl をインストールしてください。",
   "error.upscale_needs_vulkan": "アップスケールにはVulkan対応のグラフィックカード（GPU）が必要です。",
+  "error.upscale_too_many_frames": "アップスケールするフレーム数が多すぎます",
   "upscale.model_ready": "準備完了",
   "upscale.model_download_size": "{0} MB ダウンロード",
   "upscale.downloading_model": "モデルをダウンロード中...",

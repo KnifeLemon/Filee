@@ -1540,6 +1540,7 @@
   "engines.package.upscayl-bin.description": "Nâng độ phân giải ảnh AI lên tới 4× với mô hình NCNN cục bộ.\nMô hình sẽ được tải xuống trong lần đầu tiên sử dụng.",
   "error.upscale_needs_engine": "Cài đặt Upscayl trong Cài đặt → Bộ xử lý để sử dụng nâng cấp hình ảnh AI.",
   "error.upscale_needs_vulkan": "Nâng cấp độ phân giải yêu cầu cạc đồ họa (GPU) tương thích với Vulkan.",
+  "error.upscale_too_many_frames": "Quá nhiều khung hình để nâng cấp",
   "upscale.model_ready": "Sẵn sàng",
   "upscale.model_download_size": "Tải xuống {0} MB",
   "upscale.downloading_model": "Đang tải mô hình...",

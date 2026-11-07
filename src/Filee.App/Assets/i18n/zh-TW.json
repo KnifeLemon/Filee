@@ -1540,6 +1540,7 @@
   "engines.package.upscayl-bin.description": "使用本機 NCNN 模型提供最高 4 倍的 AI 影像放大與超解析度。\n模型在第一次使用時下載。",
   "error.upscale_needs_engine": "請在「設定 → 轉換引擎」中安裝 Upscayl 以使用 AI 放大功能。",
   "error.upscale_needs_vulkan": "放大影像需要支援 Vulkan 的顯示卡 (GPU)。",
+  "error.upscale_too_many_frames": "待放大的影格數太多",
   "upscale.model_ready": "就緒",
   "upscale.model_download_size": "{0} MB 下載",
   "upscale.downloading_model": "正在下載模型...",

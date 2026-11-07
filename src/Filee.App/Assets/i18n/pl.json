@@ -1540,6 +1540,7 @@
   "engines.package.upscayl-bin.description": "Skalowanie obrazu SI i super-rozdzielczość do 4× za pomocą lokalnych modeli NCNN.\nModele są pobierane przy pierwszym użyciu.",
   "error.upscale_needs_engine": "Zainstaluj Upscayl w Ustawienia → Silniki, aby korzystać ze skalowania SI.",
   "error.upscale_needs_vulkan": "Zwiększanie rozdzielczości wymaga karty graficznej (GPU) zgodnej z Vulkan.",
+  "error.upscale_too_many_frames": "Za dużo klatek do zwiększenia rozdzielczości",
   "upscale.model_ready": "Gotowy",
   "upscale.model_download_size": "Pobieranie {0} MB",
   "upscale.downloading_model": "Pobieranie modelu...",

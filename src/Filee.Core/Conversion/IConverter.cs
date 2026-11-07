@@ -146,8 +146,7 @@ public sealed record ConversionStep(
     Action<IReadOnlyList<string>>? MissingFonts = null,
     string? OriginalSourcePath = null,
     bool Caption = false,
-    bool Translate = false,
-    bool Upscale = false);
+    bool Translate = false);
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).

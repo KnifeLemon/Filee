@@ -1540,6 +1540,7 @@
   "engines.package.upscayl-bin.description": "AI image upscaling and super-resolution up to 4× with local NCNN models.\nModels download the first time they are used.",
   "error.upscale_needs_engine": "Install Upscayl in Settings → Engines to use AI upscaling.",
   "error.upscale_needs_vulkan": "Upscaling requires a Vulkan-compatible graphics card (GPU).",
+  "error.upscale_too_many_frames": "Too many frames to upscale",
   "upscale.model_ready": "Ready",
   "upscale.model_download_size": "{0} MB download",
   "upscale.downloading_model": "Downloading model...",

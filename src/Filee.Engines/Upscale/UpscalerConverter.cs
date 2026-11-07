@@ -5,8 +5,6 @@ using Filee.Core.Formats;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.Engines.Upscale;
 
@@ -18,10 +16,6 @@ public sealed class UpscalerConverter : IConverter
     ];
 
     private readonly UpscalerEngine _engine = new();
-
-    public UpscalerConverter()
-    {
-    }
 
     public string Id => "upscaler";
     public string DisplayName => "Upscayl (AI image upscaler)";

@@ -1540,6 +1540,7 @@
   "engines.package.upscayl-bin.description": "Mise à l'échelle et super-résolution d'images par IA jusqu'à 4× avec des modèles NCNN locaux.\nLes modèles sont téléchargés à leur première utilisation.",
   "error.upscale_needs_engine": "Installez Upscayl dans Paramètres → Moteurs pour utiliser la mise à l'échelle par IA.",
   "error.upscale_needs_vulkan": "La mise à l'échelle nécessite une carte graphique (GPU) compatible Vulkan.",
+  "error.upscale_too_many_frames": "Trop d'images à mettre à l'échelle",
   "upscale.model_ready": "Prêt",
   "upscale.model_download_size": "Téléchargement de {0} Mo",
   "upscale.downloading_model": "Téléchargement du modèle...",

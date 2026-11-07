@@ -128,7 +128,7 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
         if (UpscalerConverter.LocateExecutable() is null && upscaylPkg is not null && !EngineDownloads.CanDownload(upscaylPkg))
         {
             HasError = true;
-            StatusMessage = EngineDownloads.UnavailableReason(upscaylPkg) ?? _loc["engine.reason.unsupported_platform"];
+            StatusMessage = _loc["engine.reason.unsupported_platform"];
         }
     }
 
@@ -181,7 +181,7 @@ public sealed partial class UpscaleViewModel : ObservableObject, IDisposable
             HasError = true;
             var package = EngineDownloads.Packages.FirstOrDefault(p => p.Id == "upscayl-bin");
             StatusMessage = package is not null && !EngineDownloads.CanDownload(package)
-                ? EngineDownloads.UnavailableReason(package) ?? _loc["engine.reason.unsupported_platform"]
+                ? _loc["engine.reason.unsupported_platform"]
                 : _loc["error.upscale_needs_engine"];
             return;
         }

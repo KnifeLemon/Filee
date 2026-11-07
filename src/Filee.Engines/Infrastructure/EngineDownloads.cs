@@ -67,8 +67,6 @@ public static class EngineDownloads
     {
         if (CanDownload(package))
             return null;
-        if (package.Id == "upscayl-bin")
-            return $"Upscale is not available on this PC ({RuntimeIdentifier}).";
         if (OperatingSystem.IsMacOS())
             return package.Id switch
             {

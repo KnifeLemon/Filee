@@ -1540,6 +1540,7 @@
   "engines.package.upscayl-bin.description": "로컬 NCNN 모델로 최대 4배 AI 이미지 업스케일 및 초해상도를 지원해요.\n모델은 처음 쓸 때 내려받아요.",
   "error.upscale_needs_engine": "AI 업스케일을 사용하려면 설정 → 엔진에서 Upscayl을 설치해 주세요.",
   "error.upscale_needs_vulkan": "업스케일링에는 Vulkan 호환 그래픽 카드(GPU)가 필요해요.",
+  "error.upscale_too_many_frames": "업스케일할 프레임이 너무 많아요",
   "upscale.model_ready": "준비됨",
   "upscale.model_download_size": "{0} MB 다운로드",
   "upscale.downloading_model": "모델 내려받는 중...",

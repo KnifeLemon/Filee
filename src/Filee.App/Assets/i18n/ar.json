@@ -1519,6 +1519,7 @@
   "engines.package.upscayl-bin.description": "ترقية دقة الصور والدقة الفائقة حتى 4 أضعاف بنماذج NCNN محلية.\nتُنزَّل النماذج عند استخدامها أول مرة.",
   "error.upscale_needs_engine": "ثبّت Upscayl من الإعدادات ← المحركات لاستخدام ترقية الدقة بالذكاء الاصطناعي.",
   "error.upscale_needs_vulkan": "يتطلب رفع دقة الصور بطاقة رسومات (GPU) متوافقة مع Vulkan.",
+  "error.upscale_too_many_frames": "عدد الإطارات كبير جدًا لتكبير الدقة",
   "upscale.model_ready": "جاهز",
   "upscale.model_download_size": "تنزيل {0} م.ب",
   "upscale.downloading_model": "جارٍ تنزيل النموذج...",
