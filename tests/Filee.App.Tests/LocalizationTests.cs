@@ -50,6 +50,12 @@ public partial class LocalizationTests
         Assert.True(SoftPalette.IsRightToLeft("fa"));
     }
 
+    [Fact]
+    public void Bengali_uses_the_embedded_font()
+    {
+        Assert.Contains("fonts:Filee#Noto Sans Bengali", ThemeService.FontFamilies("bn-BD"));
+    }
+
     [Theory]
     [MemberData(nameof(Languages))]
     public void Catalogs_have_no_duplicate_keys_or_empty_translations(string code)

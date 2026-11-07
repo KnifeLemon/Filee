@@ -104,6 +104,8 @@ public partial class SetupTextsTests
     [InlineData("pt_BR", "en-US", "pt-BR")]
     [InlineData("ptbr", "en-US", "pt-BR")]
     [InlineData("ptpt", "en-US", "pt-PT")]
+    [InlineData(null, "bn-BD", "bn-BD")]
+    [InlineData(null, "bn", "bn-BD")]
     public void Languages_resolve_like_the_app_and_like_inno_setup(string? setting, string windows, string expected) =>
         Assert.Equal(expected, SetupTexts.Resolve(setting, () => windows));
 

@@ -50,7 +50,8 @@
   <a href="README.th.md">ไทย</a> ·
   <a href="README.tr.md">Türkçe</a> ·
   <b>Bahasa Indonesia</b> ·
-  <a href="README.it.md">Italiano</a>
+  <a href="README.it.md">Italiano</a> ·
+  <a href="README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
