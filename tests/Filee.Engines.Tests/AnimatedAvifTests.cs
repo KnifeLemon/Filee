@@ -1,10 +1,12 @@
 // Animated GIF, WebP, APNG and MNG ↔ animated AVIF (issue #1200). The animations are generated in the tests and every
-// result is read back for its frames; with FFmpeg installed, its decoder counts them as well.
+// result is read back for its frames; with FFmpeg installed, its decoder counts them as well. With FFmpeg, FFmpeg writes
+// the sequences (Media/AvifSequenceWriter), without it ImageMagick: the tests at the end check both ways.
 
 using System.Globalization;
 using System.Text;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
+using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Media;
 using ImageMagick;
@@ -564,18 +566,19 @@ public class AnimatedAvifTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public async Task Ffmpeg_counts_the_same_frames()
     {
-        var ffmpeg = FfmpegOrSkip();
+        FfmpegOrSkip();
         var dir = fx.NewFolder();
         var job = await fx.ConvertAsync([MakeAnimation(dir, "anim.gif", MagickFormat.Gif, 10, 20, 30, 40)], To("avif"));
         AssertDone(job);
 
-        // The sequence track is the first stream; "-f null" decodes it. Stream 1 is the still picture for other viewers.
-        var result = await FfmpegRunner.RunAsync(ffmpeg,
-            ["-hide_banner", "-nostdin", "-i", job.Outputs.Single(), "-map", "0:v:0", "-f", "null", "-"], null, TestContext.Current.CancellationToken);
+        // ffprobe decodes every stream: the sequence track has all frames, the still picture for other viewers one.
+        var result = await ProcessRunner.RunAsync(FfmpegConverter.Locate()!.Value.Ffprobe,
+            ["-v", "error", "-count_frames", "-select_streams", "v", "-show_entries", "stream=nb_read_frames", "-of", "csv=p=0",
+             job.Outputs.Single()], TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken);
 
         Assert.Equal(0, result.ExitCode);
-        var frames = result.StandardError.Split('\r', '\n').Last(line => line.StartsWith("frame=", StringComparison.Ordinal));
-        Assert.Equal(4, int.Parse(frames["frame=".Length..].Trim().Split(' ')[0], CultureInfo.InvariantCulture));
+        Assert.Equal(4, result.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Max(line => int.Parse(line.Trim().TrimEnd(','), CultureInfo.InvariantCulture)));
     }
 
     [Fact]
@@ -596,5 +599,286 @@ public class AnimatedAvifTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var frames = new MagickImageCollection(job.Outputs.Single());
         AssertColours(frames, 4);
         Assert.Equal([100, 100, 100, 100], DelaysMs(frames));
+    }
+
+    // ───────────────────────── Written by FFmpeg when it is there, by ImageMagick without it ─────────────────────────
+
+    /// <summary>The engines, with ImageMagick finding the FFmpeg for animated AVIF through <paramref name="locate"/>.</summary>
+    private ConverterCatalog CatalogWith(Func<(string Ffmpeg, string Ffprobe)?> locate) =>
+        new(fx.Converters.Select(c => c is MagickImageConverter ? new MagickImageConverter { LocateFfmpeg = locate } : c).ToList())
+        {
+            Priority = new Filee.Core.Settings.AppSettings().EnginePriority,
+        };
+
+    /// <summary>FFmpeg, when it is installed with the encoder the route needs; skips otherwise.</summary>
+    private static async Task<string> FfmpegWithAv1OrSkip()
+    {
+        var ffmpeg = FfmpegOrSkip();
+        Assert.SkipUnless(AvifSequenceWriter.CanWrite(await FfmpegConverter.EncodersOfAsync(ffmpeg)), "This FFmpeg has no libaom-av1");
+        return ffmpeg;
+    }
+
+    /// <summary>Converts with FFmpeg writing the sequence (skips without it), or with ImageMagick alone.</summary>
+    private async Task<ConversionJob> ConvertAsync(string source, Preset preset, bool ffmpeg)
+    {
+        if (ffmpeg)
+            await FfmpegWithAv1OrSkip();
+        return await fx.ConvertAsync([source], preset, CatalogWith(ffmpeg ? FfmpegConverter.Locate : () => null));
+    }
+
+    /// <summary>True when FFmpeg wrote the file: its sample entries name the encoder ("Lavc… libaom-av1").</summary>
+    private static bool WrittenByFfmpeg(string path) =>
+        Encoding.ASCII.GetString(File.ReadAllBytes(path)).Contains("Lavc", StringComparison.Ordinal);
+
+    /// <summary>
+    /// How many times the sequence plays, 0 for ever: the track's length (tkhd) over one play's (the repeated edit, elst).
+    /// FFmpeg writes an endless track as the largest length.
+    /// </summary>
+    private static ulong Plays(string path)
+    {
+        var file = File.ReadAllBytes(path);
+        var moov = file.AsSpan(file.AsSpan().IndexOf("moov"u8));
+        var tkhd = moov[(moov.IndexOf("tkhd"u8) + 4)..];
+        var length = tkhd[0] == 1 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(tkhd[28..])
+            : System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(tkhd[20..]);
+        if (length is long.MaxValue or ulong.MaxValue or uint.MaxValue)
+            return 0;
+        var elst = moov[(moov.IndexOf("elst"u8) + 4)..];
+        var play = elst[0] == 1 ? System.Buffers.Binary.BinaryPrimitives.ReadUInt64BigEndian(elst[8..])
+            : System.Buffers.Binary.BinaryPrimitives.ReadUInt32BigEndian(elst[8..]);
+        return length / play;
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Both_ways_keep_every_frame_its_colour_and_timing(bool ffmpeg)
+    {
+        var dir = fx.NewFolder();
+        // A long last frame, as GIFs that pause at the end have.
+        var gif = MakeAnimation(dir, "anim.gif", MagickFormat.Gif, 10, 20, 30, 150);
+
+        var job = await ConvertAsync(gif, To("avif"), ffmpeg);
+
+        AssertDone(job);
+        var output = job.Outputs.Single();
+        Assert.Equal(ffmpeg, WrittenByFfmpeg(output));
+        Assert.Equal("avis", Brand(output));
+        Assert.True(AvifSequence.IsSequence(output));
+        using var frames = new MagickImageCollection(output);
+        AssertColours(frames, 4);
+        Assert.Equal([100, 200, 300, 1500], DelaysMs(frames));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Both_ways_keep_opaque_frames_before_transparent_ones(bool ffmpeg)
+    {
+        var dir = fx.NewFolder();
+
+        var job = await ConvertAsync(MakeOpaqueThenTransparent(dir, "first.gif", MagickFormat.Gif, 1), To("avif", quality: 90), ffmpeg);
+
+        AssertDone(job);
+        var output = job.Outputs.Single();
+        Assert.Equal(ffmpeg, WrittenByFfmpeg(output));
+        Assert.True(HasAlphaTrack(output));
+        using var frames = new MagickImageCollection(output);
+        AssertOpaqueThenTransparent(frames, 1);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Both_ways_give_an_opaque_animation_no_alpha_track(bool ffmpeg)
+    {
+        var dir = fx.NewFolder();
+
+        var job = await ConvertAsync(MakeAnimation(dir, "anim.webp", MagickFormat.WebP, 10, 10, 10), To("avif"), ffmpeg);
+
+        AssertDone(job);
+        var output = job.Outputs.Single();
+        Assert.Equal(ffmpeg, WrittenByFfmpeg(output));
+        Assert.False(HasAlphaTrack(output));
+        using var frames = new MagickImageCollection(output);
+        AssertColours(frames, 3);
+        Assert.All(frames, frame => Assert.False(frame.HasAlpha));
+    }
+
+    [Fact]
+    public async Task Ffmpeg_keeps_a_moving_square_in_place()
+    {
+        var dir = fx.NewFolder();
+
+        var job = await ConvertAsync(MakeMovingSquare(dir), To("avif", quality: 90), ffmpeg: true);
+
+        AssertDone(job);
+        Assert.True(WrittenByFfmpeg(job.Outputs.Single()));
+        using var frames = new MagickImageCollection(job.Outputs.Single());
+        AssertSquareMoves(frames, 3);
+    }
+
+    [Fact]
+    public async Task Ffmpeg_writes_tiny_pictures_and_delays_of_zero()
+    {
+        var dir = fx.NewFolder();
+        using (var frames = new MagickImageCollection())
+        {
+            for (var i = 0; i < 3; i++)
+                frames.Add(new MagickImage(Colour(i), 3, 1));
+            frames.Write(Path.Combine(dir, "tiny.gif"), MagickFormat.Gif);
+        }
+
+        var job = await ConvertAsync(Path.Combine(dir, "tiny.gif"), To("avif"), ffmpeg: true);
+
+        AssertDone(job);
+        Assert.True(WrittenByFfmpeg(job.Outputs.Single()));
+        using var back = new MagickImageCollection(job.Outputs.Single());
+        Assert.Equal(3, back.Count);
+        Assert.Equal((3u, 1u), (back[0].Width, back[0].Height));
+        Assert.Equal([100, 100, 100], DelaysMs(back));
+    }
+
+    [Theory]
+    [InlineData(3u, 3ul)]
+    [InlineData(0u, 0ul)]
+    public async Task Ffmpeg_keeps_the_loop_count(uint iterations, ulong plays)
+    {
+        var dir = fx.NewFolder();
+        var gif = Path.Combine(dir, "loops.gif");
+        using (var frames = new MagickImageCollection())
+        {
+            for (var i = 0; i < 3; i++)
+                frames.Add(new MagickImage(Colour(i), Width, Height) { AnimationDelay = 10, AnimationIterations = iterations });
+            frames.Write(gif, MagickFormat.Gif);
+        }
+
+        var job = await ConvertAsync(gif, To("avif"), ffmpeg: true);
+
+        AssertDone(job);
+        Assert.True(WrittenByFfmpeg(job.Outputs.Single()));
+        Assert.Equal(plays, Plays(job.Outputs.Single()));
+    }
+
+    [Fact]
+    public async Task Ffmpeg_applies_playback_speed_and_quality()
+    {
+        var dir = fx.NewFolder();
+        using (var noise = new MagickImageCollection())
+        {
+            foreach (var delay in new uint[] { 10, 20, 30, 40 })
+                noise.Add(new MagickImage("plasma:", 160, 120) { AnimationDelay = delay });
+            noise.Write(Path.Combine(dir, "noise.gif"), MagickFormat.Gif);
+        }
+        var gif = Path.Combine(dir, "noise.gif");
+
+        var low = await ConvertAsync(gif, new Preset { TargetFormat = "avif", Image = { Quality = 20, AnimationSpeed = 2 }, Output = { FileNamePattern = "{name}_low" } }, ffmpeg: true);
+        var high = await ConvertAsync(gif, new Preset { TargetFormat = "avif", Image = { Quality = 90 }, Output = { FileNamePattern = "{name}_high" } }, ffmpeg: true);
+
+        AssertDone(low);
+        AssertDone(high);
+        Assert.True(new FileInfo(high.Outputs.Single()).Length > 2 * new FileInfo(low.Outputs.Single()).Length);
+        using var frames = new MagickImageCollection(low.Outputs.Single());
+        Assert.Equal([50, 100, 150, 200], DelaysMs(frames));
+    }
+
+    [Fact]
+    public async Task Cancelling_stops_ffmpeg_and_leaves_no_file()
+    {
+        await FfmpegWithAv1OrSkip();
+        var dir = fx.NewFolder();
+        var gif = Path.Combine(dir, "long.gif");
+        using (var noise = new MagickImageCollection())
+        {
+            // Busy frames, so FFmpeg takes long enough to report its progress before it is done.
+            for (var i = 0; i < 60; i++)
+                noise.Add(new MagickImage($"plasma:fractal", 480, 270) { AnimationDelay = 10 });
+            noise.Write(gif, MagickFormat.Gif);
+        }
+        var output = Path.Combine(dir, "long.avif");
+        var work = Directory.CreateDirectory(Path.Combine(dir, "work")).FullName;
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var cancelledAt = TimeSpan.Zero;
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        // Above 0.7 the reports come from FFmpeg's position: it is encoding.
+        var progress = new SyncProgress(value =>
+        {
+            if (value > 0.7 && !cancellation.IsCancellationRequested)
+            {
+                cancelledAt = clock.Elapsed;
+                cancellation.Cancel();
+            }
+        });
+        var converter = new MagickImageConverter();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => converter.ConvertAsync(
+            new ConversionStep(gif, "gif", "avif", To("avif"), new SinglePath(output), work), progress, cancellation.Token));
+
+        Assert.True(cancellation.IsCancellationRequested, "FFmpeg finished before it reported any progress");
+        Assert.True(clock.Elapsed - cancelledAt < TimeSpan.FromSeconds(10), $"stopped {clock.Elapsed - cancelledAt} after cancelling");
+        Assert.False(File.Exists(output));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(work));
+    }
+
+    [Fact]
+    public async Task Imagemagick_writes_it_when_ffmpeg_is_not_where_it_was_found()
+    {
+        var dir = fx.NewFolder();
+        var missing = Path.Combine(dir, "gone", "ffmpeg.exe");
+
+        var job = await fx.ConvertAsync([MakeAnimation(dir, "anim.gif", MagickFormat.Gif, 10, 20, 30)], To("avif"),
+            CatalogWith(() => (missing, Path.Combine(dir, "gone", "ffprobe.exe"))));
+
+        AssertDone(job);
+        var output = job.Outputs.Single();
+        Assert.False(WrittenByFfmpeg(output));
+        using var frames = new MagickImageCollection(output);
+        AssertColours(frames, 3);
+        Assert.Equal([100, 200, 300], DelaysMs(frames));
+    }
+
+    [Fact]
+    public void Only_libaom_writes_the_sequence()
+    {
+        Assert.True(AvifSequenceWriter.CanWrite(new HashSet<string> { "libaom-av1", "libsvtav1" }));
+        Assert.True(AvifSequenceWriter.CanWrite(new HashSet<string> { "libaom-av1" }));
+        // SVT-AV1 encodes no grey alpha plane and leaves the last frame's length to a guess.
+        Assert.False(AvifSequenceWriter.CanWrite(new HashSet<string> { "libsvtav1", "libx264" }));
+        // An encoder list that can't be read: ImageMagick writes it.
+        Assert.False(AvifSequenceWriter.CanWrite(null));
+    }
+
+    [Theory]
+    [InlineData(60, 25)]
+    [InlineData(90, 6)]
+    [InlineData(100, 0)]
+    [InlineData(1, 62)]
+    [InlineData(0, 62)]
+    public void Quality_becomes_the_quantizer_libheif_would_use(int quality, int crf) =>
+        Assert.Equal(crf, AvifSequenceWriter.Crf(quality));
+
+    [Fact]
+    public void Ffmpeg_gets_the_loop_count_and_an_alpha_track_only_when_needed()
+    {
+        var opaque = AvifSequenceWriter.Arguments("in.apng", "out.avif", alpha: false, quality: 60, loops: 3);
+        var transparent = AvifSequenceWriter.Arguments("in.apng", "out.avif", alpha: true, quality: 60, loops: 0);
+
+        Assert.Equal("3", opaque[opaque.IndexOf("-loop") + 1]);
+        Assert.Equal("0", transparent[transparent.IndexOf("-loop") + 1]);
+        Assert.Single(opaque, "-map");
+        Assert.Equal(2, transparent.Count(a => a == "-map"));
+        Assert.Contains("alphaextract", transparent[transparent.IndexOf("-filter_complex") + 1], StringComparison.Ordinal);
+        Assert.Equal("passthrough", opaque[opaque.IndexOf("-fps_mode") + 1]);
+        Assert.Equal("out.avif", opaque[^1]);
+    }
+
+    private sealed class SinglePath(string path) : IOutputAllocator
+    {
+        public string? Allocate(string extension, string? suffix = null) => path;
+    }
+
+    private sealed class SyncProgress(Action<double> report) : IProgress<double>
+    {
+        public void Report(double value) => report(value);
     }
 }
