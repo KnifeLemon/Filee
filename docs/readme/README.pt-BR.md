@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: Arraste. Solte. Convertido." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: Arraste. Solte. Convertido." width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS prévia">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Licença MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Licença MIT"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -74,7 +74,7 @@
 ## Veja em ação
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Arrastando viagem.jpg com Ctrl pressionado: um menu circular de formatos abre no cursor, o arquivo é solto em PNG, um anel de progresso se completa e viagem.png aparece" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Arrastando viagem.jpg com Ctrl pressionado: um menu circular de formatos abre no cursor, o arquivo é solto em PNG, um anel de progresso se completa e viagem.png aparece" width="820"></a><br>
   <sub>Assista ao vídeo de 27 segundos e experimente a demonstração interativa em <a href="https://filee.sh">filee.sh</a></sub>
 </p>
 
@@ -146,8 +146,8 @@ Para desfazer, remova essas entradas em Segurança do Windows → Controle de ap
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="Editor do menu circular, com perfis e predefinições"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="Tela inicial com a área de soltar e as conversões recentes"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="Editor do menu circular, com perfis e predefinições"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="Tela inicial com a área de soltar e as conversões recentes"></td>
   </tr>
   <tr>
     <td align="center"><sub>Organize o menu arrastando e soltando, um perfil por tipo de arquivo</sub></td>
@@ -179,7 +179,7 @@ Para desfazer, remova essas entradas em Segurança do Windows → Controle de ap
 | **Vetores geoespaciais**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV com coordenadas;<br>leitura de Garmin FIT | entre si e CSV / XLSX / JSON;<br>dados projetados (UTM, Web Mercator, Lambert, Albers) saem como longitude / latitude em WGS 84 |
 
 Formatos sem marca funcionam na hora, sem Office, Hancom Office ou LibreOffice.
-Os marcados precisam de um motor opcional, baixado só quando necessário: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalhes](docs/ENGINES.md)).
+Os marcados precisam de um motor opcional, baixado só quando necessário: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalhes](../../docs/ENGINES.md)).
 
 ## Linha de comando
 
@@ -205,7 +205,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[Arquitetura](docs/ARCHITECTURE.md) · [Motores](docs/ENGINES.md) · [Adicionar um conversor](docs/ADDING-A-CONVERTER.md) · [Adicionar um idioma](docs/ADDING-A-LANGUAGE.md) · [Como contribuir](CONTRIBUTING.md)
+[Arquitetura](../../docs/ARCHITECTURE.md) · [Motores](../../docs/ENGINES.md) · [Adicionar um conversor](../../docs/ADDING-A-CONVERTER.md) · [Adicionar um idioma](../../docs/ADDING-A-LANGUAGE.md) · [Como contribuir](../../CONTRIBUTING.md)
 
 Pull requests são bem-vindos.
 Se o Filee poupar alguns cliques, uma ⭐ ajuda outras pessoas a encontrá-lo.
@@ -229,7 +229,7 @@ Ele se conecta à internet só:
 
 - para perguntar ao GitHub (`api.github.com`) se existe uma versão mais nova, pouco depois de iniciar e depois a cada algumas horas.
   Desligue isso em Configurações → Sobre (“Procurar atualizações automaticamente”).
-- para baixar os motores de conversão que você escolher instalar, dos locais oficiais fixados em [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), e os idiomas de reconhecimento de texto (OCR) que uma predefinição usa, fixados em [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json).
+- para baixar os motores de conversão que você escolher instalar, dos locais oficiais fixados em [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json), e os idiomas de reconhecimento de texto (OCR) que uma predefinição usa, fixados em [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json).
 - quando você clica num link, o que abre o navegador.
 
 ## Patrocínio
@@ -254,7 +254,7 @@ Quem apoia uma única vez também pode pedir para aparecer.
 ## Licença
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) e colaboradores do Filee.
-Componentes de terceiros incluídos mantêm as próprias licenças, listadas em [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Componentes de terceiros incluídos mantêm as próprias licenças, listadas em [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Histórico de estrelas" width="600"></a>

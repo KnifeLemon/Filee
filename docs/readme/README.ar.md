@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: اسحب. أفلت. تم التحويل." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: اسحب. أفلت. تم التحويل." width="100%"></a>
 </p>
 
 <p align="center" dir="rtl">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS (إصدار تجريبي)">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="ترخيص MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="ترخيص MIT"></a>
 </p>
 
 <p align="center" dir="ltr">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center" dir="ltr">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -76,7 +76,7 @@
 ## شاهده وهو يعمل
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="سحب trip.jpg مع الضغط على Ctrl: تظهر عند المؤشر قائمة دائرية بالصيغ، ويُفلَت الملف على PNG، فتكتمل حلقة التقدم ويظهر trip.png" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="سحب trip.jpg مع الضغط على Ctrl: تظهر عند المؤشر قائمة دائرية بالصيغ، ويُفلَت الملف على PNG، فتكتمل حلقة التقدم ويظهر trip.png" width="820"></a><br>
   <sub>شاهد الفيديو (27 ثانية) وجرّب العرض التفاعلي على <a href="https://filee.sh">filee.sh</a></sub>
 </p>
 
@@ -152,8 +152,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="محرر شريط الأدوات الدائري مع ملفات التعريف والإعدادات المسبقة"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="الصفحة الرئيسية مع منطقة الإفلات والتحويلات الأخيرة"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="محرر شريط الأدوات الدائري مع ملفات التعريف والإعدادات المسبقة"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="الصفحة الرئيسية مع منطقة الإفلات والتحويلات الأخيرة"></td>
   </tr>
   <tr>
     <td align="center"><sub>رتّب القائمة الدائرية بالسحب والإفلات، بملف تعريف لكل نوع ملف</sub></td>
@@ -185,7 +185,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **البيانات الجغرافية المتجهية**: Shapefile, GeoJSON, KML, KMZ, GPX<br>ملفات CSV فيها إحداثيات؛<br>وGarmin FIT للقراءة | فيما بينها، وإلى CSV / XLSX / JSON؛<br>وتُحوَّل البيانات المُسقَطة (UTM, Web Mercator, Lambert, Albers) إلى خطوط الطول والعرض في WGS 84 |
 
 الصيغ غير المعلَّمة تعمل مباشرةً، دون Office أو Hancom Office أو LibreOffice.
-أما المعلَّمة فتحتاج إلى محرك اختياري لا يُنزَّل إلا عند الحاجة: ¹ Ghostscript، ² LibreOffice، ³ Pandoc، ⁴ calibre، ⁵ FFmpeg ([التفاصيل](docs/ENGINES.md)).
+أما المعلَّمة فتحتاج إلى محرك اختياري لا يُنزَّل إلا عند الحاجة: ¹ Ghostscript، ² LibreOffice، ³ Pandoc، ⁴ calibre، ⁵ FFmpeg ([التفاصيل](../../docs/ENGINES.md)).
 
 ## سطر الأوامر
 
@@ -219,7 +219,7 @@ dotnet test
 
 <div dir="rtl">
 
-[البنية](docs/ARCHITECTURE.md) · [المحركات](docs/ENGINES.md) · [إضافة محوّل](docs/ADDING-A-CONVERTER.md) · [إضافة لغة](docs/ADDING-A-LANGUAGE.md) · [المساهمة](CONTRIBUTING.md)
+[البنية](../../docs/ARCHITECTURE.md) · [المحركات](../../docs/ENGINES.md) · [إضافة محوّل](../../docs/ADDING-A-CONVERTER.md) · [إضافة لغة](../../docs/ADDING-A-LANGUAGE.md) · [المساهمة](../../CONTRIBUTING.md)
 
 طلبات الدمج (pull requests) مرحّب بها.
 وإذا وفّر عليك Filee بعض النقرات، فنجمة ⭐ تساعد الآخرين على العثور عليه.
@@ -231,7 +231,7 @@ dotnet test
 - تُوقَّع إصدارات Windows بشهادة توقيع شيفرة للمشاريع مفتوحة المصدر من [Certum](https://www.certum.eu/) صادرة باسم Myeonggu Kim.
   - الإصدارات حتى 2.0.0 غير موقَّعة.
 
-السياسة الكاملة وسياسة الخصوصية في [README الإنجليزي](README.md#code-signing-policy).
+السياسة الكاملة وسياسة الخصوصية في [README الإنجليزي](../../README.md#code-signing-policy).
 لا يرفع Filee ملفاتك ولا يرسل أي بيانات استخدام.
 
 ## ادعم المشروع
@@ -260,7 +260,7 @@ Filee مجاني وسيبقى مجانيًا.
 ## الترخيص
 
 MIT، © 2026 Myeonggu Kim (KnifeLemon) والمساهمون في Filee.
-تحتفظ مكونات الجهات الخارجية المضمّنة بتراخيصها الخاصة، وهي مدرجة في [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+تحتفظ مكونات الجهات الخارجية المضمّنة بتراخيصها الخاصة، وهي مدرجة في [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
 </div>
 

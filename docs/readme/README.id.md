@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: Drag. Drop. Converted." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: Drag. Drop. Converted." width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS preview">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Lisensi MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Lisensi MIT"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -72,7 +72,7 @@
 ## Lihat Cara Kerjanya
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Menyeret trip.jpg sambil menahan tombol Ctrl: menu melingkar format terbuka di kursor, file dilepas ke opsi PNG, cincin progres berputar dan trip.png langsung muncul" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Menyeret trip.jpg sambil menahan tombol Ctrl: menu melingkar format terbuka di kursor, file dilepas ke opsi PNG, cincin progres berputar dan trip.png langsung muncul" width="820"></a><br>
   <sub>Tonton video 27 detik dan coba demo interaktifnya langsung di <a href="https://filee.sh">filee.sh</a></sub>
 </p>
 
@@ -139,8 +139,8 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="Editor toolbar donut dengan profil dan preset"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="Tampilan beranda dengan drop zone dan riwayat konversi"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="Editor toolbar donut dengan profil dan preset"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="Tampilan beranda dengan drop zone dan riwayat konversi"></td>
   </tr>
   <tr>
     <td align="center"><sub>Atur menu donut secara drag and drop, satu profil untuk setiap tipe file</sub></td>
@@ -172,7 +172,7 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 | **Vektor Geospasial**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV berkoordinat; Garmin FIT baca | Saling konversi serta ekspor ke CSV / XLSX / JSON;<br>data terproyeksi (UTM, Web Mercator, Lambert, Albers) otomatis dikonversi ke garis bujur/lintang WGS 84 |
 
 Format tanpa tanda bintang langsung berfungsi bawaan (*out of the box*) tanpa membutuhkan Office, Hancom Office, maupun LibreOffice.  
-Format yang diberi tanda angka membutuhkan engine opsional yang hanya diunduh saat dibutuhkan: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([baca rincian selengkapnya](docs/ENGINES.md)).
+Format yang diberi tanda angka membutuhkan engine opsional yang hanya diunduh saat dibutuhkan: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([baca rincian selengkapnya](../../docs/ENGINES.md)).
 
 ## Baris Perintah (CLI)
 
@@ -198,7 +198,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[Arsitektur](docs/ARCHITECTURE.md) · [Engine](docs/ENGINES.md) · [Menambahkan Konverter Baru](docs/ADDING-A-CONVERTER.md) · [Menambahkan Bahasa](docs/ADDING-A-LANGUAGE.md) · [Panduan Kontribusi](CONTRIBUTING.md)
+[Arsitektur](../../docs/ARCHITECTURE.md) · [Engine](../../docs/ENGINES.md) · [Menambahkan Konverter Baru](../../docs/ADDING-A-CONVERTER.md) · [Menambahkan Bahasa](../../docs/ADDING-A-LANGUAGE.md) · [Panduan Kontribusi](../../CONTRIBUTING.md)
 
 Kontribusi melalui *Pull Request* sangat terbuka.  
 Jika Filee mempermudah pekerjaan Anda, pemberian bintang ⭐ di GitHub akan sangat membantu orang lain menemukannya!
@@ -220,7 +220,7 @@ Filee memproses konversi file secara lokal di komputer Anda dan tidak pernah men
 
 - Memeriksa ke GitHub (`api.github.com`) apakah ada rilis terbaru, yang dijalankan sesaat setelah aplikasi dibuka dan diulang setiap beberapa jam.  
   Fitur ini bisa dinonaktifkan di: **Settings → About ("Check for updates automatically")**.
-- Mengunduh engine konversi yang Anda pilih untuk dipasang dari sumber resmi yang terdaftar di [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), serta paket bahasa OCR yang terdaftar di [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json).
+- Mengunduh engine konversi yang Anda pilih untuk dipasang dari sumber resmi yang terdaftar di [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json), serta paket bahasa OCR yang terdaftar di [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json).
 - Membuka peramban web saat Anda mengeklik tautan eksternal.
 
 ## Sponsor
@@ -244,7 +244,7 @@ Donatur bulanan akan dicantumkan namanya di bagian ini, dan sponsor dapat menamp
 ## Lisensi
 
 Didistribusikan di bawah lisensi MIT, © 2026 Myeonggu Kim (KnifeLemon) dan kontributor Filee.  
-Komponen pihak ketiga yang disertakan memiliki lisensinya masing-masing yang dapat dilihat pada [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Komponen pihak ketiga yang disertakan memiliki lisensinya masing-masing yang dapat dilihat pada [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Riwayat bintang GitHub" width="600"></a>
