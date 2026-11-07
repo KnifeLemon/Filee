@@ -42,8 +42,7 @@ public class VisionLanguageTests
     public void Several_languages_are_asked_for_in_their_order_with_english_last_unless_it_is_the_main_one()
     {
         Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["chi_sim", "eng"], Ventura));
-        Assert.Equal(["de-DE", "fr-FR", "en-US"], VisionLanguages.For(["deu", "fra"], Ventura));
-        Assert.Equal(["en-US", "de-DE"], VisionLanguages.For(["eng", "deu"], Ventura));
+        Assert.Equal(["en-US", "zh-Hans"], VisionLanguages.For(["eng", "chi_sim"], Ventura));
         Assert.Equal(["zh-Hans", "ko-KR", "en-US"], VisionLanguages.For(["chi_sim", "eng", "kor"], Ventura));
         Assert.Equal(["ko-KR", "ja-JP", "en-US"], VisionLanguages.For(["kor", "jpn"], Ventura));
         Assert.Null(VisionLanguages.For(["chi_sim", "hin"], Ventura)); // one recognizer reads the page: Tesseract, then
@@ -52,9 +51,10 @@ public class VisionLanguageTests
     [Fact]
     public void Chinese_japanese_and_korean_are_asked_for_ahead_of_the_other_languages()
     {
-        Assert.Equal(["ko-KR", "en-US"], VisionLanguages.For(["eng", "kor"], Ventura));
-        Assert.Equal(["zh-Hans", "en-US"], VisionLanguages.For(["eng", "chi_sim"], Ventura));
-        Assert.Equal(["ja-JP", "de-DE", "en-US"], VisionLanguages.For(["deu", "jpn"], Ventura));
+        Assert.Equal(["ko-KR", "en-US"], VisionLanguages.InVisionOrder(["en-US", "ko-KR"]));
+        Assert.Equal(["ja-JP", "de-DE", "en-US"], VisionLanguages.InVisionOrder(["de-DE", "ja-JP", "en-US"]));
+        Assert.Equal(["zh-Hans", "ko-KR", "en-US"], VisionLanguages.InVisionOrder(["en-US", "zh-Hans", "ko-KR"]));
+        Assert.Equal(["de-DE", "fr-FR", "en-US"], VisionLanguages.InVisionOrder(["de-DE", "fr-FR", "en-US"]));
     }
 
     [Fact]
@@ -379,7 +379,8 @@ public class VisionConverterTests(EngineFixture fx) : IClassFixture<EngineFixtur
         await new VisionConverter(recognizer, new VisionFakes.Tesseract(available: false))
             .ConvertAsync(Step(picture, "png", Path.Combine(folder, "mixed.pdf"), Ocr("eng+chi_sim")), null, TestContext.Current.CancellationToken);
 
-        Assert.Equal([["en-US", "zh-Hans"], ["en-US"]], recognizer.Calls.Select(c => c.Languages));
+        // Vision is asked with Chinese first, but what is left after the refusal is the main language
+        Assert.Equal([["zh-Hans", "en-US"], ["en-US"]], recognizer.Calls.Select(c => c.Languages));
     }
 
     [Fact]

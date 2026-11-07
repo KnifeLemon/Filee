@@ -113,7 +113,8 @@ public sealed class VisionConverter : IConverter
 
     /// <summary>
     /// Reads one picture. When Vision fails on a combination of languages it reads again without the last one (usually
-    /// the English that VisionLanguages adds), down to the first language, the main one, alone.
+    /// the English that VisionLanguages adds), down to the first language, the main one, alone. Each try hands Vision its
+    /// languages in <see cref="VisionLanguages.InVisionOrder"/>.
     /// </summary>
     internal static IReadOnlyList<OcrLine> Recognize(ITextRecognizer recognizer, string picture, IReadOnlyList<string> languages,
         CancellationToken cancellationToken)
@@ -122,7 +123,7 @@ public sealed class VisionConverter : IConverter
         {
             try
             {
-                return recognizer.Recognize(picture, [.. languages.Take(count)], cancellationToken);
+                return recognizer.Recognize(picture, VisionLanguages.InVisionOrder(languages.Take(count)), cancellationToken);
             }
             catch (InvalidOperationException) when (!cancellationToken.IsCancellationRequested)
             {

@@ -46,9 +46,8 @@ internal static class VisionLanguages
     /// <summary>
     /// The languages to ask Vision for when the text is in <paramref name="codes"/>: those languages in their order, the
     /// main one first, and English last unless it is the main one (scans in other languages often have English words in
-    /// them, so it is there even when not chosen), or null when Vision doesn't read one of them. Chinese, Japanese and
-    /// Korean go ahead of the others whatever the order: with English first, Vision drops a Korean line altogether, while
-    /// the other way around it reads both.
+    /// them, so it is there even when not chosen), or null when Vision doesn't read one of them. Vision is handed them in
+    /// another order (<see cref="InVisionOrder"/>).
     /// </summary>
     /// <param name="supported">What this Mac's Vision reads (<see cref="ITextRecognizer.Languages"/>).</param>
     public static IReadOnlyList<string>? For(IReadOnlyList<string> codes, IReadOnlyCollection<string> supported)
@@ -69,8 +68,15 @@ internal static class VisionLanguages
             languages.Remove(english);
             languages.Add(english);
         }
-        return [.. languages.OrderBy(l => IsCjk(l) ? 0 : 1)]; // a stable sort, so each group keeps its order
+        return languages;
     }
+
+    /// <summary>
+    /// The order Vision is asked in: Chinese, Japanese and Korean ahead of the others, each group in its own order. With
+    /// English first, Vision drops a Korean line altogether, while the other way around it reads both.
+    /// </summary>
+    public static IReadOnlyList<string> InVisionOrder(IEnumerable<string> languages) =>
+        [.. languages.OrderBy(l => IsCjk(l) ? 0 : 1)]; // a stable sort
 
     private static bool IsCjk(string language) =>
         language.StartsWith("zh-", StringComparison.OrdinalIgnoreCase)
