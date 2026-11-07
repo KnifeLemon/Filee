@@ -38,7 +38,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
 
     private readonly List<Outline> _outlines = [];
     // Raw byte strings have exactly the same ordinal ordering as their bytes.
-    private readonly SortedDictionary<string, PdfArray> _destinations = new(StringComparer.Ordinal);
+    private readonly SortedDictionary<string, (PdfItem Name, PdfArray Destination)> _destinations = new(StringComparer.Ordinal);
     private readonly PdfArray _fields = new(output);
     private readonly PdfDictionary _resources = new(output);
     private readonly HashSet<string> _fieldNames = new(StringComparer.Ordinal);
@@ -82,6 +82,20 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     private static (PdfObjectID Id, PdfObject? Direct) Identity(PdfObject item) =>
         item.Reference is { } reference ? (reference.ObjectID, null) : (default, item);
 
+    private PdfObject? Imported(PdfObject external)
+    {
+        if (external.Reference is null)
+            return null;
+        try
+        {
+            return output.Internals.MapExternalObject(external);
+        }
+        catch (KeyNotFoundException)
+        {
+            return null;
+        }
+    }
+
     private bool SpendStrings(int count)
     {
         if (count > limits.StringBytes - _stringBytes)
@@ -101,7 +115,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
     // and looked up once. Short strings are cheap and may be shared instances such as string.Empty.
     private const int SharedLength = 256;
     private readonly Dictionary<string, int> _byteCounts = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<string, (string Name, PdfArray Destination)?> _lookups = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<string, (PdfItem Name, PdfArray Destination)?> _lookups = new(ReferenceEqualityComparer.Instance);
     // The next suffix to try for a name already taken, so later sources do not walk the taken ones again.
     private readonly Dictionary<string, int> _destinationSuffixes = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Kind, string Name), int> _resourceSuffixes = new();
@@ -203,8 +217,16 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                 renamed = key + "-" + (suffix++).ToString(CultureInfo.InvariantCulture);
             if (!SpendStrings(renamed.Length))
                 return true;
+            // Direct short names have bounded size; long names must not be written once per link.
+            PdfItem name = Raw(renamed);
+            if (renamed.Length >= SharedLength)
+            {
+                var shared = new PdfStringObject(output, renamed) { Encoding = PdfStringEncoding.RawEncoding };
+                output.Internals.AddObject(shared);
+                name = shared.Reference!;
+            }
             names.Add((legacy, key), renamed);
-            _destinations.Add(renamed, destination);
+            _destinations.Add(renamed, (name, destination));
             if (!ReferenceEquals(renamed, key))
                 _destinationSuffixes[key] = suffix;
             count++;
@@ -269,9 +291,9 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         item = Value(item);
         if (item is PdfArray)
             return MapDestination(item, pages);
-        if (link && item is PdfString textKey && ByteCount(textKey) > limits.StringBytes - _stringBytes)
+        if (item is PdfString textKey && ByteCount(textKey) > limits.StringBytes)
             return null;
-        if (link && item is PdfName nameKey && nameKey.Value.Length - 1 > limits.StringBytes - _stringBytes)
+        if (item is PdfName nameKey && nameKey.Value.Length - 1 > limits.StringBytes)
             return null;
         // A PdfName and a PdfString never share one string instance, so one cache serves both kinds.
         var value = item switch
@@ -285,16 +307,13 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         if (value.Length < SharedLength || !_lookups.TryGetValue(value, out var resolved))
         {
             var key = item is PdfString text ? (false, Bytes(text)) : (true, value[1..]);
-            resolved = names.TryGetValue(key, out var found) ? (found, _destinations[found]) : null;
+            resolved = names.TryGetValue(key, out var found) ? _destinations[found] : null;
             if (value.Length >= SharedLength)
                 _lookups.Add(value, resolved);
         }
         if (resolved is not { } hit)
             return null;
-        var (renamed, destination) = hit;
-        if (!link)
-            return destination;
-        return SpendStrings(renamed.Length) ? Raw(renamed) : null;
+        return link ? hit.Name : hit.Destination;
     }
 
     private void CarryOutlines(PdfDictionary catalog, IReadOnlyDictionary<PdfObjectID, PdfPage> pages,
@@ -360,7 +379,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                 ct.ThrowIfCancellationRequested();
                 if (Dictionary(annotations.Elements[i]) is not { } annotation || Name(annotation.Elements["/Subtype"]) != "/Link")
                     continue;
-                var mapped = annotation.Reference is null ? null : output.Internals.MapExternalObject(annotation) as PdfDictionary;
+                var mapped = Imported(annotation) as PdfDictionary;
                 mapped ??= i < imported.Elements.Count ? Dictionary(imported.Elements[i]) : null;
                 // An /Annots array may list one annotation many times; rewriting it again would copy its action again.
                 if (mapped is null || !_links.Add(mapped))
@@ -430,7 +449,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         foreach (var item in fields.Elements)
         {
             ct.ThrowIfCancellationRequested();
-            if (Dictionary(item) is not { } root)
+            if (item is not PdfReference || Dictionary(item) is not { } root)
                 continue;
             var stack = new Stack<(PdfDictionary Field, PdfDictionary? Parent, int Depth, string? Type)>();
             var nodes = new List<PdfDictionary>();
@@ -462,7 +481,8 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                     for (var i = kids.Elements.Count - 1; i >= 0; i--)
                     {
                         ct.ThrowIfCancellationRequested();
-                        if (Dictionary(kids.Elements[i]) is not { } child || visited.Contains(Identity(child)))
+                        if (kids.Elements[i] is not PdfReference || Dictionary(kids.Elements[i]) is not { } child ||
+                            visited.Contains(Identity(child)))
                         {
                             valid = false;
                             break;
@@ -473,7 +493,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                         break;
                 }
             }
-            if (!valid || signature || output.Internals.MapExternalObject(root) is not PdfDictionary imported)
+            if (!valid || signature || Imported(root) is not PdfDictionary imported)
                 continue;
             foreach (var node in nodes)
                 if (Dictionary(node.Elements["/DR"]) is { } local)
@@ -504,7 +524,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                 if (ReferenceEquals(node, root) && !node.Elements.ContainsKey("/DA"))
                     appearance = Text(form.Elements["/DA"]);
                 if (appearance is null || ByteCount(appearance) > limits.AppearanceLength ||
-                    output.Internals.MapExternalObject(node) is not PdfDictionary mapped)
+                    Imported(node) is not PdfDictionary mapped)
                     continue;
                 var key = (appearance.Value, appearance.Encoding);
                 if (!cache.TryGetValue(key, out var rewritten))
@@ -531,7 +551,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             foreach (var node in nodes)
             {
                 ct.ThrowIfCancellationRequested();
-                if (output.Internals.MapExternalObject(node) is not PdfDictionary field ||
+                if (Imported(node) is not PdfDictionary field ||
                     Dictionary(field.Elements["/DR"]) is not { } local)
                     continue;
                 foreach (var kind in ResourceKinds)
@@ -692,7 +712,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                 }
                 PdfItem Copy(PdfItem item)
                 {
-                    var direct = Value(item)!;
+                    var direct = Value(item) ?? PdfNull.Value;
                     if (direct is PdfObject obj && copied.TryGetValue(obj, out var clone))
                         return item is PdfReference ? clone.Reference! : clone;
                     return direct;
@@ -995,11 +1015,11 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         if (_destinations.Count > 0)
         {
             var pairs = new PdfArray(output);
-            foreach (var (key, destination) in _destinations)
+            foreach (var (key, value) in _destinations)
             {
                 ct.ThrowIfCancellationRequested();
                 pairs.Elements.Add(Raw(key));
-                pairs.Elements.Add(destination);
+                pairs.Elements.Add(value.Destination);
             }
             var tree = new PdfDictionary(output);
             tree.Elements["/Names"] = pairs;

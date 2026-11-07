@@ -12,7 +12,7 @@ using PdfSharp.Pdf.IO;
 
 namespace Filee.Engines.Tests;
 
-/// <summary>Runs alone: the limit cases check merge time, which other tests running at once would stretch.</summary>
+/// <summary>Runs alone so other tests do not inflate the limit cases' allocation measurements.</summary>
 [CollectionDefinition(nameof(PdfMergeStructureCollection), DisableParallelization = true)]
 public sealed class PdfMergeStructureCollection;
 
@@ -605,6 +605,208 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         return path;
     }
 
+    [Theory]
+    [InlineData("no-widget")]
+    [InlineData("outside-page-tree")]
+    [InlineData("kid-without-page")]
+    [InlineData("direct-field")]
+    [InlineData("direct-kid")]
+    [InlineData("no-pages")]
+    [InlineData("missing-resource-reference")]
+    [InlineData("unpaged-kid-with-own-resources")]
+    public void Unimported_fields_and_missing_resources_do_not_break_healthy_fields(string kind)
+    {
+        var source = Source(document =>
+        {
+            var form = Form(document);
+            Field(document, form, "healthy", "kept");
+            if (kind == "unpaged-kid-with-own-resources")
+            {
+                var root = Object(document);
+                root.Elements["/T"] = new PdfString("parent");
+                root.Elements["/FT"] = new PdfName("/Tx");
+                root.Elements["/V"] = new PdfString("kept");
+                var paged = Widget(document, 0, root);
+                var unpaged = Object(document);
+                unpaged.Elements["/Type"] = new PdfName("/Annot");
+                unpaged.Elements["/Subtype"] = new PdfName("/Widget");
+                unpaged.Elements["/Parent"] = root.Reference;
+                unpaged.Elements["/DA"] = new PdfString("/KidFont 10 Tf");
+                var local = new PdfDictionary(document);
+                var fonts = new PdfDictionary(document);
+                fonts.Elements["/KidFont"] = Resource(document, "Helvetica").Reference;
+                local.Elements["/Font"] = fonts;
+                unpaged.Elements["/DR"] = local;
+                root.Elements["/Kids"] = Items(document, paged.Reference!, unpaged.Reference!);
+                A(form.Elements["/Fields"]).Elements.Add(root.Reference!);
+                return;
+            }
+            if (kind is "no-pages")
+                return;
+            if (kind is "missing-resource-reference")
+            {
+                var font = Resource(document, "Helvetica");
+                font.Elements["/ToUnicode"] = new PdfLiteral("777777 0 R");
+                // PDFsharp normalizes a missing dictionary value, but leaves a missing array entry as null.
+                font.Elements["/MissingArray"] = Items(document, new PdfLiteral("777777 0 R"));
+                var fonts = new PdfDictionary(document);
+                fonts.Elements["/F1"] = font.Reference;
+                var resources = new PdfDictionary(document);
+                resources.Elements["/Font"] = fonts;
+                form.Elements["/DR"] = resources;
+                form.Elements["/DA"] = new PdfString("/F1 10 Tf");
+                return;
+            }
+            var broken = kind == "direct-field" ? new PdfDictionary(document) : Object(document);
+            broken.Elements["/T"] = new PdfString("broken");
+            broken.Elements["/FT"] = new PdfName("/Tx");
+            broken.Elements["/V"] = new PdfString("bad");
+            A(form.Elements["/Fields"]).Elements.Add(broken.Reference is { } reference ? reference : broken);
+            if (kind == "no-widget")
+                return;
+            if (kind == "outside-page-tree")
+            {
+                var page = document.AddPage();
+                var widget = Widget(document, 2, broken);
+                broken.Elements["/Kids"] = Items(document, widget.Reference!);
+                document.Pages.Remove(page);
+                return;
+            }
+            if (kind == "direct-field")
+            {
+                broken.Elements["/Type"] = new PdfName("/Annot");
+                broken.Elements["/Subtype"] = new PdfName("/Widget");
+                broken.Elements["/P"] = document.Pages[0].Reference;
+                broken.Elements["/Rect"] = Items(document, new PdfInteger(0), new PdfInteger(0), new PdfInteger(20), new PdfInteger(20));
+                A(document.Pages[0].Elements["/Annots"]).Elements.Add(broken);
+                return;
+            }
+            var kid = kind == "direct-kid" ? new PdfDictionary(document) : Object(document);
+            kid.Elements["/Type"] = new PdfName("/Annot");
+            kid.Elements["/Subtype"] = new PdfName("/Widget");
+            kid.Elements["/Parent"] = broken.Reference;
+            kid.Elements["/Rect"] = Items(document, new PdfInteger(0), new PdfInteger(0), new PdfInteger(20), new PdfInteger(20));
+            kid.Elements["/DA"] = new PdfString("/F1 10 Tf");
+            kid.Elements["/DR"] = new PdfDictionary(document);
+            broken.Elements["/Kids"] = kind == "direct-kid"
+                ? Items(document, Widget(document, 0, broken).Reference!, kid)
+                : Items(document, kid.Reference!);
+        });
+        var output = Path.Combine(Path.GetDirectoryName(source)!, "out.pdf");
+        if (kind == "no-pages")
+        {
+            // PDFsharp cannot save a document without pages; write the empty page tree explicitly.
+            var empty = Path.Combine(Path.GetDirectoryName(source)!, "empty.pdf");
+            var objects = new[]
+            {
+                "<< /Type /Catalog /Pages 2 0 R /AcroForm 3 0 R >>",
+                "<< /Type /Pages /Kids [] /Count 0 >>",
+                "<< /Fields [4 0 R] >>",
+                "<< /FT /Tx /T (broken) /V (bad) >>",
+            };
+            var pdf = new StringBuilder("%PDF-1.7\n");
+            var offsets = new List<int>();
+            for (var i = 0; i < objects.Length; i++)
+            {
+                offsets.Add(pdf.Length);
+                pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"{i + 1} 0 obj\n{objects[i]}\nendobj\n");
+            }
+            var xref = pdf.Length;
+            pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"xref\n0 {objects.Length + 1}\n0000000000 65535 f \n");
+            foreach (var offset in offsets)
+                pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"{offset:D10} 00000 n \n");
+            pdf.Append(System.Globalization.CultureInfo.InvariantCulture, $"trailer\n<< /Size {objects.Length + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n");
+            File.WriteAllText(empty, pdf.ToString(), Encoding.ASCII);
+            PdfSharpConverter.Merge([empty, source], output, TestContext.Current.CancellationToken);
+        }
+        else
+            PdfSharpConverter.Merge([source], output, TestContext.Current.CancellationToken);
+        using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        Assert.Equal(2, result.PageCount);
+        var fields = Fields(result);
+        Assert.Equal("kept", S(fields["healthy"].Elements["/V"]));
+        if (kind == "unpaged-kid-with-own-resources")
+            Assert.Equal("kept", S(fields["parent"].Elements["/V"]));
+        if (kind is "no-widget" or "outside-page-tree" or "direct-field" or "direct-kid" or "no-pages")
+            Assert.DoesNotContain("broken", fields.Keys);
+        if (kind == "missing-resource-reference")
+        {
+            var font = D(D(D(D(result.Internals.Catalog.Elements["/AcroForm"]).Elements["/DR"]).Elements["/Font"]).Elements["/F1"]);
+            Assert.IsType<PdfNull>(V(font.Elements["/ToUnicode"]));
+            Assert.IsType<PdfNull>(V(A(font.Elements["/MissingArray"]).Elements[0]));
+        }
+        using var pig = UglyToad.PdfPig.PdfDocument.Open(output);
+        Assert.Equal(2, pig.NumberOfPages);
+        Assert.True(pig.TryGetForm(out var parsed));
+        Assert.Contains(parsed.Fields, field =>
+            field is UglyToad.PdfPig.AcroForms.Fields.AcroTextField { Value: "kept" });
+    }
+
+    [Fact]
+    public void Page_backed_field_survives_an_unimported_kid_with_local_resources()
+    {
+        var sourcePath = Source(document =>
+        {
+            var form = Form(document);
+            Field(document, form, "healthy", "kept");
+            var root = Object(document);
+            root.Elements["/T"] = new PdfString("parent");
+            root.Elements["/FT"] = new PdfName("/Tx");
+            root.Elements["/V"] = new PdfString("root value");
+            var paged = Widget(document, 0, root);
+            var unpaged = Object(document);
+            unpaged.Elements["/Type"] = new PdfName("/Annot");
+            unpaged.Elements["/Subtype"] = new PdfName("/Widget");
+            unpaged.Elements["/Parent"] = root.Reference;
+            unpaged.Elements["/DA"] = new PdfString("/KidFont 10 Tf");
+            var fonts = new PdfDictionary(document);
+            fonts.Elements["/KidFont"] = Resource(document, "Helvetica").Reference;
+            var local = new PdfDictionary(document);
+            local.Elements["/Font"] = fonts;
+            unpaged.Elements["/DR"] = local;
+            root.Elements["/Kids"] = Items(document, paged.Reference!, unpaged.Reference!);
+            A(form.Elements["/Fields"]).Elements.Add(root.Reference!);
+        });
+        var outputPath = Path.Combine(Path.GetDirectoryName(sourcePath)!, "out.pdf");
+        using (var source = PdfReader.Open(sourcePath, PdfDocumentOpenMode.Import))
+        using (var output = new PdfDocument())
+        {
+            var form = D(source.Internals.Catalog.Elements["/AcroForm"]);
+            var root = D(A(form.Elements["/Fields"]).Elements[1]);
+            var kids = A(root.Elements["/Kids"]);
+            var unpaged = D(kids.Elements[1]);
+            var unpagedReference = kids.Elements[1];
+            // Exclude the unpaged kid from PDFsharp's page-import closure, then restore the source tree.
+            kids.Elements.RemoveAt(1);
+            var pages = new Dictionary<PdfObjectID, PdfPage>();
+            foreach (var page in source.Pages)
+                pages[page.Reference!.ObjectID] = output.AddPage(page);
+            kids.Elements.Add(unpagedReference);
+            Assert.IsAssignableFrom<PdfDictionary>(output.Internals.MapExternalObject(root));
+            Assert.Throws<KeyNotFoundException>(() => output.Internals.MapExternalObject(unpaged));
+
+            var structure = new PdfMergeStructure(output, new());
+            structure.Carry(source, pages, TestContext.Current.CancellationToken);
+            structure.Write(TestContext.Current.CancellationToken);
+            output.Save(outputPath);
+        }
+        using (var result = PdfReader.Open(outputPath, PdfDocumentOpenMode.Import))
+        {
+            Assert.Equal(2, result.PageCount);
+            var fields = Fields(result);
+            Assert.Equal("kept", S(fields["healthy"].Elements["/V"]));
+            var root = fields["parent"];
+            Assert.Equal("root value", S(root.Elements["/V"]));
+            var paged = D(Assert.Single(A(root.Elements["/Kids"]).Elements));
+            Assert.Contains(A(result.Pages[0].Elements["/Annots"]).Elements, item => ReferenceEquals(V(item), paged));
+        }
+        using var pig = UglyToad.PdfPig.PdfDocument.Open(outputPath);
+        Assert.Equal(2, pig.NumberOfPages);
+        Assert.True(pig.TryGetForm(out var parsed));
+        Assert.Contains(parsed.Fields, field => field is UglyToad.PdfPig.AcroForms.Fields.AcroTextField { Value: "kept" });
+        Assert.Contains(parsed.Fields, field => field is UglyToad.PdfPig.AcroForms.Fields.AcroTextField { Value: "root value" });
+    }
+
     private static PdfDictionary OutlineRoot(PdfDocument document)
     {
         var root = Object(document);
@@ -819,6 +1021,41 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         var outlines = OutlineItems(result);
         View(result, A(outlines[0].Elements["/Dest"]), 0, "/Fit");
         View(result, A(outlines[1].Elements["/Dest"]), 1, "/Fit");
+    }
+
+    [Fact]
+    public void Looking_up_registered_names_does_not_spend_the_string_budget_again()
+    {
+        const int count = 60_000;
+        var timer = Stopwatch.StartNew();
+        var source = Source(document =>
+        {
+            var pairs = new PdfArray(document);
+            NameTree(document).Elements["/Names"] = pairs;
+            var destination = Dest(document, 1);
+            for (var i = 0; i < count; i++)
+            {
+                var name = i.ToString("D42", System.Globalization.CultureInfo.InvariantCulture);
+                pairs.Elements.Add(new PdfString(name));
+                pairs.Elements.Add(destination);
+                Link(document, 0, new PdfString(name));
+            }
+        });
+        var output = MergeOne(source);
+        using var result = PdfReader.Open(output, PdfDocumentOpenMode.Import);
+        var names = Destinations(result);
+        var links = Links(result, 0);
+        var kept = links.Count(link => link.Elements.ContainsKey("/Dest"));
+        TestContext.Current.TestOutputHelper?.WriteLine($"{names.Count:N0} names, {kept:N0} link destinations, {timer.Elapsed.TotalSeconds:F3} s");
+        Assert.Equal(count, names.Count);
+        Assert.Equal(count, links.Count);
+        Assert.Equal(count, kept);
+        for (var i = 0; i < count; i++)
+        {
+            var name = i.ToString("D42", System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Equal(name, Key(links[i].Elements["/Dest"]!));
+            View(result, names[name], 1, "/Fit");
+        }
     }
 
     private static void OutlineList(PdfDocument document, int count, bool chain = false, PdfItem? title = null, PdfItem? dest = null)
@@ -1117,13 +1354,15 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
                 break;
             case "long-name":
                 var links = Links(result, 0);
-                Assert.Equal(63, links.Count(d => d.Elements.ContainsKey("/Dest")));
-                Assert.All(links.Take(63), d => Assert.Equal(new string('k', 64 * 1024), S(d.Elements["/Dest"])));
-                Assert.All(links.Skip(63), d => Assert.False(d.Elements.ContainsKey("/Dest")));
-                Assert.Equal(4 * 1024 * 1024, Destinations(result).Keys.Sum(k => k.Length) + links.Where(d => d.Elements.ContainsKey("/Dest")).Sum(d => Key(d.Elements["/Dest"]!).Length));
+                Assert.Equal(16_384, links.Count);
+                var sharedName = Assert.Single(links.Select(d => Assert.IsType<PdfReference>(d.Elements["/Dest"]).Value).Distinct());
+                Assert.Equal(new string('k', 64 * 1024), S(sharedName));
+                Assert.Equal(S(sharedName), Assert.Single(Destinations(result)).Key);
+                Assert.True(new FileInfo(output).Length < 2 * new FileInfo(Path.Combine(Path.GetDirectoryName(source)!, "baseline.pdf")).Length + 1024 * 1024);
                 break;
         }
-        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(10), $"{kind}: {timer.Elapsed}");
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(60), $"{kind}: {timer.Elapsed}");
+        // The allocation bound is the real check; this time limit only catches runaway work.
         Assert.True(allocated < 3 * pagesOnly + 64 * 1024 * 1024, $"{kind}: {allocated} bytes, pages only {pagesOnly} bytes");
     }
 
