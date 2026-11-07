@@ -1079,10 +1079,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>The video of a Live / Motion Photo: MP4 and MOV (<see cref="MediaOptions.MotionPhotoTargets"/>).</summary>
     public bool ShowExtractMotionPhoto => !IsTool && MediaOptions.MotionPhotoTargets.Contains(TargetId);
     /// <summary>
-    /// Playback speed: for the formats an animation stays animated in (an animated GIF, WebP, APNG or MNG, or a video
-    /// made into a GIF or APNG). Other targets get one frame.
+    /// Playback speed: for the formats an animation stays animated in (an animated GIF, WebP, APNG, MNG or AVIF, or a
+    /// video made into a GIF or APNG). Other targets get one frame.
     /// </summary>
-    public bool ShowAnimationSpeed => TargetId is "gif" or "webp" or "apng" or "mng" or "jxl" or BuiltInData.SameAsSource;
+    public bool ShowAnimationSpeed => TargetId is "gif" or "webp" or "apng" or "mng" or "jxl" or "avif" or BuiltInData.SameAsSource;
     /// <summary>
     /// Tracing options: raster images reach SVG (and DXF / DWG through it) only by tracing. For other sources (a
     /// drawing, a CAD file) the options are ignored.

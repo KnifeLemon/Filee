@@ -1838,7 +1838,7 @@ public class RenderTests
         Save(window, "preset-animation-speed-ko.png");
         window.Close();
 
-        foreach (var target in new[] { "webp", "apng", "mng", Filee.Core.Presets.BuiltInData.SameAsSource })
+        foreach (var target in new[] { "webp", "apng", "mng", "avif", Filee.Core.Presets.BuiltInData.SameAsSource })
         {
             vm.Target = vm.Targets.Single(t => t.Value == target);
             Assert.True(vm.ShowAnimationSpeed, target);

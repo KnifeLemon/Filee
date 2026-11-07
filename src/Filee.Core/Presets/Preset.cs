@@ -967,7 +967,7 @@ public sealed class ImageOptions
     public static readonly double[] AnimationSpeeds = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
     /// <summary>
-    /// Plays an animation (GIF, WebP, APNG, MNG; video → GIF or APNG) this many times as fast: 2 halves every frame
+    /// Plays an animation (GIF, WebP, APNG, MNG, AVIF; video → GIF or APNG) this many times as fast: 2 halves every frame
     /// delay, 0.5 doubles it. 1 (the default, also for presets saved before the option) leaves the timing as it is.
     /// </summary>
     public double AnimationSpeed { get; set; } = 1;

@@ -31,6 +31,7 @@ public partial class SetupTextsTests
         Assert.Equal(LocalizationService.Languages.Select(l => (l.Code, l.NativeName)), SetupTexts.Languages);
         Assert.Contains(SetupTexts.Languages, l => l.Code == "ja");
         Assert.Contains(("ar", "العربية"), SetupTexts.Languages);
+        Assert.Contains(("fa", "فارسی"), SetupTexts.Languages);
         Assert.Contains(("tr", "Türkçe"), SetupTexts.Languages);
         Assert.Equal("Kur", new SetupTexts("tr")["installer.install"]);
     }
@@ -45,6 +46,9 @@ public partial class SetupTextsTests
     [InlineData("ar-IQ", "en-US", "ar")]
     [InlineData("AR_sa", "en-US", "ar")]
     [InlineData("auto", "ar-IQ", "ar")]
+    [InlineData("fa-IR", "en-US", "fa")]
+    [InlineData("FA_ir", "en-US", "fa")]
+    [InlineData("auto", "fa-IR", "fa")]
     [InlineData("zhcn", "en-US", "zh-CN")]
     [InlineData("ZH-cn", "en-US", "zh-CN")]
     [InlineData("auto", "ko-KR", "ko")]
@@ -100,6 +104,8 @@ public partial class SetupTextsTests
     [InlineData("pt_BR", "en-US", "pt-BR")]
     [InlineData("ptbr", "en-US", "pt-BR")]
     [InlineData("ptpt", "en-US", "pt-PT")]
+    [InlineData(null, "bn-BD", "bn-BD")]
+    [InlineData(null, "bn", "bn-BD")]
     public void Languages_resolve_like_the_app_and_like_inno_setup(string? setting, string windows, string expected) =>
         Assert.Equal(expected, SetupTexts.Resolve(setting, () => windows));
 
