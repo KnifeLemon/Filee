@@ -1,6 +1,7 @@
 // The small part of CSS the HTML reader understands: inline style="" declarations, simple stylesheet rules (tag,
 // .class, tag.class), colours and lengths. Enough for the formatting e-books and saved web pages rely on (bold and
-// italic classes, centred text, page breaks, first-line indents) without a full CSS engine.
+// italic classes, centred text, page breaks, first-line indents, coloured headings, shaded table headers) without a
+// full CSS engine. Layout (flexbox, positioning, a page background) is outside what the document model can hold.
 
 using System.Globalization;
 using System.Text.RegularExpressions;
@@ -39,13 +40,23 @@ internal sealed class CssDeclarations : Dictionary<string, string>
 /// <summary>Rules of the document's style sheets that the reader can match without a full selector engine.</summary>
 internal sealed partial class CssStyleSheet
 {
-    /// <summary>Properties taken from style sheets. Colours and sizes are not: whole-book rules (body colour, base
-    /// font size) would otherwise be copied onto every run.</summary>
+    /// <summary>Properties taken from every style sheet rule. Sizes are not: whole-book rules (the base font size)
+    /// would otherwise be copied onto every run.</summary>
     private static readonly HashSet<string> SheetProperties = new(StringComparer.OrdinalIgnoreCase)
     {
         "font-weight", "font-style", "text-decoration", "text-decoration-line", "vertical-align", "text-align",
         "display", "page-break-before", "page-break-after", "break-before", "break-after", "white-space",
         "text-indent", "list-style", "list-style-type", "font-variant",
+    };
+
+    /// <summary>
+    /// Colours taken from style sheet rules that name a class or an element (h1, .note, th), as a style="" attribute
+    /// would give them (#1237). Not from rules for the whole page (*, html, body): a page background has no place in
+    /// the document model, so a body colour copied onto every run would leave light text on the white page.
+    /// </summary>
+    private static readonly HashSet<string> AppearanceProperties = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "color", "background-color", "background",
     };
 
     private readonly List<Rule> _rules = [];
@@ -57,7 +68,7 @@ internal sealed partial class CssStyleSheet
 
     public bool IsEmpty => _rules.Count == 0;
 
-    /// <summary>Adds the rules of a style sheet. @media, @font-face and other at-rules are skipped.</summary>
+    /// <summary>Adds the rules of a style sheet. @media, @font-face and other at-rules with a block are skipped.</summary>
     public void Add(string css)
     {
         css = Comment().Replace(css, "");
@@ -67,7 +78,9 @@ internal sealed partial class CssStyleSheet
             var open = css.IndexOf('{', position);
             if (open < 0)
                 break;
-            var selectors = css[position..open].Trim();
+            // @import / @charset / @namespace end with ";" and have no block: without this the rule after them would be
+            // taken for their block's selector and lost.
+            var selectors = WithoutStatementAtRules(css[position..open]).Trim();
             var close = MatchingBrace(css, open);
             var body = css[(open + 1)..Math.Max(open + 1, close)];
             position = close < 0 ? css.Length : close + 1;
@@ -75,16 +88,62 @@ internal sealed partial class CssStyleSheet
                 continue; // at-rules (nested blocks): not applied
 
             var declarations = CssDeclarations.Parse(body);
-            foreach (var key in declarations.Keys.Where(k => !SheetProperties.Contains(k)).ToList())
-                declarations.Remove(key);
-            if (declarations.Count == 0)
-                continue;
             foreach (var selector in selectors.Split(','))
             {
-                if (ParseSelector(selector.Trim()) is { } rule)
-                    _rules.Add(rule with { Order = _rules.Count, Declarations = declarations });
+                if (ParseSelector(selector.Trim()) is not { } rule)
+                    continue;
+                var allowed = new CssDeclarations();
+                foreach (var (name, value) in declarations)
+                    if (SheetProperties.Contains(name) || (AppearanceProperties.Contains(name) && !IsPageWide(rule)))
+                        allowed[name] = value;
+                if (allowed.Count > 0)
+                    _rules.Add(rule with { Order = _rules.Count, Declarations = allowed });
             }
         }
+    }
+
+    /// <summary>A rule for every element or for the page itself: "*", "html", "body" (without a class).</summary>
+    private static bool IsPageWide(Rule rule) => rule.Classes.Length == 0 && (rule.Tag is null or "html" or "body");
+
+    /// <summary>The text without the statement at-rules (@import url(...);) that start it.</summary>
+    private static string WithoutStatementAtRules(string text)
+    {
+        text = text.TrimStart();
+        while (text.StartsWith('@'))
+        {
+            var end = StatementEnd(text);
+            if (end < 0)
+                break;
+            text = text[(end + 1)..].TrimStart();
+        }
+        return text;
+    }
+
+    /// <summary>Index of the ";" that ends the statement, not counting one inside quotes or parentheses; -1 if none.</summary>
+    private static int StatementEnd(string text)
+    {
+        var quote = '\0';
+        var depth = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            var c = text[i];
+            if (quote != '\0')
+            {
+                if (c == '\\')
+                    i++;
+                else if (c == quote)
+                    quote = '\0';
+            }
+            else if (c is '"' or '\'')
+                quote = c;
+            else if (c == '(')
+                depth++;
+            else if (c == ')')
+                depth = Math.Max(0, depth - 1);
+            else if (c == ';' && depth == 0)
+                return i;
+        }
+        return -1;
     }
 
     /// <summary>Declarations that apply to an element, in cascade order (the last one wins).</summary>
