@@ -70,6 +70,42 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Style_sheet_colours_apply_to_classes_and_elements_but_not_to_the_whole_page()
+    {
+        // #1237: a page styled from <style> came out without its colours.
+        var content = Parse("""
+            <html><head><style>
+            @charset "utf-8";
+            @import url("https://fonts.example/a;b.css");
+            .first { font-weight: bold }
+            * { color: #111; background: #eee }
+            html, body { color: red; background: #081b29 }
+            h1 { color: #c00 }
+            .note, p.tip { background-color: #ffe; color: rgb(0, 0, 255) }
+            th { background: #ddd }
+            @media print { .first { color: green } }
+            </style></head><body>
+            <h1>제목</h1><p class="first">첫째</p><p>본문</p><p class="note">참고</p>
+            <table><tr><th>머리</th></tr><tr><td>칸</td></tr></table>
+            </body></html>
+            """);
+
+        Assert.True(Run(content, "첫째").Format.Bold); // the first rule after @import / @charset is kept
+        Assert.Null(Run(content, "첫째").Format.Color); // inside @media: not applied
+        Assert.Equal("#CC0000", Run(content, "제목").Format.Color);
+        var note = Run(content, "참고").Format;
+        Assert.Equal(("#0000FF", "#FFFFEE"), (note.Color, note.Shade));
+        var plain = Run(content, "본문").Format; // * / html / body rules stay out of every run
+        Assert.Null(plain.Color);
+        Assert.Null(plain.Shade);
+        var table = content.Blocks.OfType<HTable>().Single();
+        Assert.Equal("#DDDDDD", table.Rows[0].Cells[0].Fill);
+        Assert.Null(table.Rows[1].Cells[0].Fill);
+        // A style attribute still wins over the style sheet.
+        Assert.Equal("#00FF00", Run(Parse("<style>p{color:#c00}</style><p style=\"color:#0f0\">x</p>"), "x").Format.Color);
+    }
+
+    [Fact]
     public void Whitespace_collapses_and_line_breaks_stay()
     {
         var paragraphs = Paragraphs(Parse("<p>  하나   \n  둘<br>셋<br></p><p><br></p><p></p><div>\n</div><pre>  들여쓴\n\n코드</pre>"));
