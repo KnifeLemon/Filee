@@ -48,18 +48,24 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         Task.Run(() => PdfFinishing.Finish(path, options, cancellationToken), cancellationToken);
 
     public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
-        Task.Run(() =>
+        Task.Run(() => Merge(inputPaths, outputPath, cancellationToken), cancellationToken);
+
+    internal static void Merge(IReadOnlyList<string> inputs, string outputPath, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
+    {
+        using var output = new PdfDocument();
+        var structure = new PdfMergeStructure(output, limits ?? new());
+        foreach (var input in inputs)
         {
-            using var output = new PdfDocument();
-            foreach (var input in inputPaths)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                using var source = Open(input, PdfDocumentOpenMode.Import);
-                foreach (var page in source.Pages)
-                    output.AddPage(page);
-            }
-            output.Save(outputPath);
-        }, cancellationToken);
+            ct.ThrowIfCancellationRequested();
+            using var source = Open(input, PdfDocumentOpenMode.Import);
+            var pages = new Dictionary<PdfObjectID, PdfPage>();
+            foreach (var page in source.Pages)
+                pages[page.Reference!.ObjectID] = output.AddPage(page);
+            structure.Carry(source, pages, ct);
+        }
+        structure.Write(ct);
+        output.Save(outputPath);
+    }
 
     /// <summary>Places every frame of an image (TIFF pages, ...) on its own PDF page.</summary>
     private static IReadOnlyList<string> ImageToPdf(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
