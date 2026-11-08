@@ -831,7 +831,7 @@ public sealed class EngineInstallerTests : IDisposable
             Assert.True(File.Exists(Path.Combine(root, "exiftool.exe")));
             Assert.False(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
             Assert.Equal(root, EngineEnvironment.FolderWithPrograms("exiftool", root, windows: true));
-            // Another package's files are left as they are .
+            // Another package's files are left as they are.
             File.WriteAllText(Path.Combine(root, "exiftool(-k).exe"), "");
             EngineInstaller.RenameExifTool("pandoc", root);
             Assert.True(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
