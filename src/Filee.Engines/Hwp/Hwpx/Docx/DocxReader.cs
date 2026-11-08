@@ -387,6 +387,28 @@ internal sealed partial class DocxReader
         paragraph.Format = paragraph.Format with { LineSpacing = new HLineSpacing(HLineSpacingKind.AtLeast, (int)Math.Round(lines * cell * multiple)) };
     }
 
+    /// <summary>Style and contextual-spacing flag of the paragraphs read so far, to compare a paragraph with the one before it.</summary>
+    private readonly Dictionary<HParagraph, (string? StyleId, bool Contextual)> _paragraphStyles = [];
+
+    private void RememberParagraphStyle(HParagraph paragraph, ParaProps props) =>
+        _paragraphStyles[paragraph] = (props.StyleId, props.ContextualSpacing == true);
+
+    /// <summary>
+    /// Word's "Don't add space between paragraphs of the same style" (w:contextualSpacing, set by the List Bullet and
+    /// List Number styles): a paragraph with it loses the space above when the paragraph before has its style, and the
+    /// space below when the next one does. Without this every list item kept its 10 pt gap and the pages ran long (#1194).
+    /// </summary>
+    private void ApplyContextualSpacing(HParagraph previous, HParagraph current, ParaProps props)
+    {
+        if (current.PageBreakBefore || current.ColumnBreakBefore
+            || !_paragraphStyles.TryGetValue(previous, out var before) || before.StyleId != props.StyleId)
+            return;
+        if (before.Contextual)
+            previous.Format = previous.Format with { After = 0 };
+        if (props.ContextualSpacing == true)
+            current.Format = current.Format with { Before = 0 };
+    }
+
     /// <summary>
     /// Gives a paragraph with "multiple" line spacing the height its fonts have in Word: 한글's percentage is of the font
     /// size, and a single Calibri line is 122% of it where one in Times New Roman is 115%.
@@ -642,7 +664,11 @@ internal sealed partial class DocxReader
             FitLineSpacing(Current, _props);
             _reader.SnapToGrid(Current, _props);
             if (_output.LastOrDefault() is HParagraph previous)
+            {
                 JoinBorders(previous, Current);
+                _reader.ApplyContextualSpacing(previous, Current, _props);
+            }
+            _reader.RememberParagraphStyle(Current, _props);
             _output.Add(Current);
         }
 

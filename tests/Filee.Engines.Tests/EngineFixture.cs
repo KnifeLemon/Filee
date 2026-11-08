@@ -64,9 +64,10 @@ public sealed class EngineFixture : IDisposable
         return path;
     }
 
-    public async Task<ConversionJob> ConvertAsync(IReadOnlyList<string> sources, Preset preset)
+    /// <param name="catalog">Other engines than <see cref="Catalog"/>, e.g. one of them set up differently.</param>
+    public async Task<ConversionJob> ConvertAsync(IReadOnlyList<string> sources, Preset preset, ConverterCatalog? catalog = null)
     {
-        await using var queue = new JobQueue(Catalog, EngineRegistry.FindPdfMerger(Converters),
+        await using var queue = new JobQueue(catalog ?? Catalog, EngineRegistry.FindPdfMerger(Converters),
             combiner: EngineRegistry.FindFileCombiner(Converters), tiffMerger: EngineRegistry.FindTiffMerger(Converters),
             mediaJoiner: EngineRegistry.FindMediaJoiner(Converters));
         var job = new ConversionJob(sources, preset, preset.Name);

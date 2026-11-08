@@ -126,6 +126,8 @@ public class TranslatePresetMigrationTests
     {
         var defaults = BuiltInData.CreatePresets();
         List<Preset> Only(params string[] ids) => ids.Select(id => defaults.Single(p => p.Id == id)).ToList();
+        // Later steps add their own presets; what is checked here is where Translate lands.
+        static IEnumerable<string> Ids(List<Preset> presets) => presets.Select(p => p.Id).Where(id => id != BuiltInData.MetadataId && id != "to-iso");
         List<ToolbarProfile> Profiles()
         {
             var profiles = BuiltInData.CreateProfiles();
@@ -142,7 +144,7 @@ public class TranslatePresetMigrationTests
         var profiles = Profiles();
         var before = Json(profiles);
         Assert.True(SettingsMigrations.ApplyToLibrary(68, presets, profiles));
-        Assert.Equal(["trim-transparent", Id, "to-png"], presets.Where(p => p.Id != "to-iso" && !p.Id.StartsWith("folder-", StringComparison.Ordinal)).Select(p => p.Id));
+        Assert.Equal(["trim-transparent", Id, "to-png"], Ids(presets));
         Assert.Equal(before, Json(profiles));
 
         // No built-in preset before it: at the start.
@@ -150,7 +152,7 @@ public class TranslatePresetMigrationTests
         profiles = Profiles();
         before = Json(profiles);
         Assert.True(SettingsMigrations.ApplyToLibrary(68, presets, profiles));
-        Assert.Equal([Id, "tool-crop"], presets.Where(p => p.Id != "to-iso" && !p.Id.StartsWith("folder-", StringComparison.Ordinal)).Select(p => p.Id));
+        Assert.Equal([Id, "tool-crop"], Ids(presets));
         Assert.Equal(before, Json(profiles));
     }
 
@@ -200,7 +202,8 @@ public class TranslatePresetMigrationTests
         using var dir = new TempDir();
         var store = Saved(dir);
         var settings = JsonNode.Parse(File.ReadAllText(Path.Combine(dir.Path, "settings.json")))!;
-        Assert.Equal(AppSettings.CurrentSchemaVersion, settings["schemaVersion"]!.GetValue<int>());
+        settings["schemaVersion"] = 69;
+        File.WriteAllText(Path.Combine(dir.Path, "settings.json"), settings.ToJsonString());
 
         store.Presets.RemoveAll(p => p.Id == Id);
         store.SaveLibrary();

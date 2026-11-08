@@ -153,10 +153,10 @@ internal static class NativeMethods
 
     internal static void RaiseTopmost(nint window)
     {
-        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1;
+        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1, stationary = 1 << 4;
         const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
         var behavior = Send(window, sel_registerName("collectionBehavior"));
-        behavior = (behavior & ~(moveToActiveSpace | fullScreenPrimary | fullScreenNone)) | canJoinAllSpaces | fullScreenAuxiliary;
+        behavior = (behavior & ~(moveToActiveSpace | fullScreenPrimary | fullScreenNone)) | canJoinAllSpaces | stationary | fullScreenAuxiliary;
         // macOS 13's primary, auxiliary and canJoinAllApplications: with canJoinAllApplications set the donut still
         // stays off a full-screen Finder Space, even as a panel (#251).
         behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
@@ -509,4 +509,38 @@ internal static class NativeMethods
     [DllImport(ObjC, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool SendBoolWithInteger(nint receiver, nint selector, nint value);
+
+    internal static void TakeKeyWindow(nint window)
+    {
+        var selector = sel_registerName("makeKeyAndOrderFront:");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), selector))
+            SendVoid(window, selector, 0);
+    }
+
+    internal static void ReleaseKeyWindow(nint window)
+    {
+        if (!IsKeyWindow(window))
+            return;
+
+        var isVisibleSelector = sel_registerName("isVisible");
+        var wasVisible = SendBool(window, sel_registerName("respondsToSelector:"), isVisibleSelector)
+            && SendBool(window, isVisibleSelector);
+
+        var orderOutSelector = sel_registerName("orderOut:");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), orderOutSelector))
+            SendVoid(window, orderOutSelector, 0);
+
+        if (wasVisible)
+        {
+            var orderFrontSelector = sel_registerName("orderFrontRegardless");
+            if (SendBool(window, sel_registerName("respondsToSelector:"), orderFrontSelector))
+                SendVoid(window, orderFrontSelector);
+        }
+    }
+
+    internal static bool IsKeyWindow(nint window)
+    {
+        var selector = sel_registerName("isKeyWindow");
+        return SendBool(window, sel_registerName("respondsToSelector:"), selector) && SendBool(window, selector);
+    }
 }

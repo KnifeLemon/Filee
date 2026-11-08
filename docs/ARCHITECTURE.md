@@ -133,8 +133,9 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
 - **Mark of the Web** (`Platform/MarkOfTheWeb`, Windows): every saved file gets a `Zone.Identifier` stream as a
   browser's download would (`ZoneId=3`, and `HostUrl` with the address a download came from, without sign-in or
   fragment), so SmartScreen, Office's block on macros from the internet and Protected View still apply. `JobQueue`
-  copies a source's mark onto the files converted from it (also for "Save only the converted file"); a folder result
-  is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
+  copies a source's mark onto the files converted from it (also for "Save only the converted file"), and onto an
+  archive packed from many files when any of them has one (files inside folders too, links not followed); a folder
+  result is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
   that never fails a conversion.
 
 ## Donut control
@@ -158,13 +159,14 @@ wheel flips). In click mode the focused window gets the key (`DonutMenu.HandleKe
 drag the donut's window has no keyboard focus, so `RadialController` turns on `TriggerService.WatchFlipKey` while
 the drag donut shows files and flips on `FlipKeyPressed` / `FlipWheelTurned`: the global hook only listens (it
 can't hold an event back; Explorer and Finder ignore Tab during a drag) and reports one flip per key press. On
-macOS the drag donut takes the keyboard once files are on it (`RadialController.TakeKeyboard`), and the key reaches
-its window as in click mode: while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it
-from the background) macOS gives no keys to a hook, only to the app in front. The hook's copy of a press is ignored
-while the window has the keyboard (`HookFlipsKey`, one flip per press, following `IsActive`); the keyboard goes back
-to the app that had it once a conversion starts or the donut closes (`IPlatformServices.RememberFrontApp` /
-`ReturnFocus`), unless the user clicked elsewhere meanwhile, and stays with Filee when the drop opens a window of its
-own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard during a drag breaks Explorer's.
+macOS the drag donut takes key window status once files are on it (`RadialController.TakeKeyboard` / `IPlatformServices.TakeKeyWindow`),
+and the key reaches its window without whole-application activation, keeping macOS Show Desktop (Desktop Reveal) and Exposé uninterrupted:
+while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it from the background) macOS gives no keys to a hook,
+only to the key window and app in front. The hook's copy of a press is ignored while the window has the keyboard (`HookFlipsKey`, one flip
+per press, following `IsActive`); key window status is explicitly released once a conversion starts or the donut closes
+(`IPlatformServices.ReleaseKeyWindow` / `ReturnFocus`), returning typing to the previous app (unless the user clicked elsewhere meanwhile) while the progress ring finishes, and stays
+with Filee when the drop opens a window of its own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard
+during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
@@ -220,6 +222,58 @@ the picture (padding of its longer side, corners of its shorter side), so a look
   show. A change that keeps both the time and the length (a copy that keeps the time, of a picture of the same size)
   isn't told apart, and the picture itself edited meanwhile isn't looked for (as in Pixelate / blur and Annotate). One
   look for all pictures or one each; failures end on a summary, as in Pixelate / blur.
+
+## Metadata tool
+
+"Metadata" (`tool-metadata`, palette only, settings schema 72) shows every metadata field of pictures, PDFs, video and
+sound, grouped by where it lives (ExifTool's family-1 groups: GPS, IFD0, ExifIFD, XMP-dc, IPTC, PDF …), and edits them
+without touching the file's content.
+
+- Saving is an ordinary conversion, as for Pixelate / blur, Annotate and Add background: `MetadataTool.ConversionOf`
+  makes the tool into a conversion to the file's own format carrying the changes (`Preset.Metadata`,
+  `MetadataEdits`), so the toast, History, cancelling and the output rules (where the copy goes, its name
+  `{name}_metadata`, a name already taken, "Replace the original" sending the original to the Recycle Bin / Trash)
+  work as for any other file. "Replace the original" is the tool's own output rule, kept on disk. History offers no
+  Retry for it: a Filee from before it would re-encode the file without the changes.
+- Only an engine that writes metadata and nothing else takes such a conversion: `ConversionEdge.Metadata`, never part
+  of an ordinary route, and with `RoutePlanner.Plan(metadata: true)` the whole route or none. Without one the file
+  fails (`error.no_route`, with the route asked for, so `filee` can name the package), never re-encoded instead.
+- Remove location takes what ExifTool can write. What it can't reach is said, not hidden: a place kept whole with a
+  block (a camera's maker notes, a C2PA manifest; `ExifTool.LocationOutOfReach`) is named in the window, and a video
+  always says its tracks can hold location (an action camera's or a drone's route), which ExifTool can't remove.
+- `Engines/Metadata/ExifToolConverter` is that engine (`exiftool` package: Windows build renamed from
+  `exiftool(-k).exe`, the Perl version elsewhere, or one on the PATH). Its edges are the formats `exiftool -listwf`
+  names; a file of an extension it doesn't write shows read-only, saying so. `ExifTool` reads with `-j -G0:1` (lists as
+  JSON arrays, so an entry keeps its commas; "Group:Tag" where family and group share a name, as IPTC and PDF do).
+- It writes by editing a copy in a work folder beside the output, on its disk, under a plain name, so nothing in the
+  file's name reaches ExifTool (`%` is expanded in paths it takes, Perl on Windows reads its command line in the ANSI
+  code page, and `-o` refuses WebP). A `-config` of its own makes the `GPS…Ref` fields macOS puts in XMP writable, so
+  they can be removed. Edits go through an argument file, one argument per line taken literally, a value of several
+  lines through `-Tag<=file`, a list one assignment per entry. IPTC text outside Latin-1 switches the file's IPTC to
+  UTF-8 with its other IPTC text written again, so none is garbled.
+- What can be edited is a choice, not what's left over: IFDs, PDFs and PNGs offer only the fields that describe the file
+  (`IfdFields`, `PdfFields`, `PngFields`). The rest says how to read it (a TIFF's layout, a DNG's colour calibration, a
+  PDF's page mode, a PNG's colours), and a video's or HEIC's header and tracks can't be changed. Those show a lock.
+- `-m` lets a file with a small fault of its own be written. The copy is then read back: a warning naming a changed
+  field, a field unknown or not writable, text that doesn't fit its character set, a field set that isn't there, one
+  removed that still is, or an editable field Remove location or Remove everything should have taken refuses the copy
+  (`error.metadata_refused`) and leaves none. Remove location takes GPS and the XMP, IPTC and QuickTime place fields, and
+  every editable field `ExifTool.IsLocation` finds, the one rule the window strikes through by; a locked one (a camera's
+  focus location, in its maker notes) stays, in plain sight. Remove everything is `-all=` keeping the orientation and the
+  colour profile, a TIFF's descriptive IFD fields by name on every page. It may also take locked rows (maker notes, cover
+  art, a JPEG's DPI, a PNG's custom text); others stay, a video's header dates and a TIFF's other tags among them, and the
+  hint says so. A file that holds more than its picture (`ExifTool.HoldsMore`: a Motion Photo's video, an MPF second
+  picture, a gain map, a Samsung trailer) doesn't offer it, and the window says why: it would orphan what's there and
+  leave that metadata, which no field shows. Camera RAW and DNG don't offer it either.
+- Without ExifTool the window reads nothing and offers Settings → Engines: a metadata library inside Filee can be made
+  to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under a time limit. It
+  reads the file with ExifTool once it is installed.
+- `MetadataViewModel` keeps one row per field (edited, removed, added; a list one entry per line) and turns them into
+  `MetadataEdits`. Add field offers XMP's descriptive fields, IPTC's where the kind of file has IPTC (JPEG, TIFF, PSD),
+  a PDF's document info for a PDF. The keys, the summary of files that could not be opened or saved, and texts that
+  follow a language change are as in Add background.
+- PDFs: ExifTool appends its changes as an update, so earlier values stay recoverable inside the file; the window says
+  so.
 
 ## Crop overlay and PDF page editor
 

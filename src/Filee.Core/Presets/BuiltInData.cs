@@ -68,6 +68,7 @@ public static class BuiltInData
         .. HidePresets(),
         .. AnnotatePresets(),
         .. BackgroundPresets(),
+        .. MetadataPresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -334,6 +335,22 @@ public static class BuiltInData
         {
             Id = BackgroundId, NameKey = "preset.background", TargetFormat = BackgroundTool.Target,
             Kind = PresetKind.Tool, Tool = Preset.BackgroundTool, Output = { FileNamePattern = "{name} With Background" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Metadata" tool (settings schema 72): in the palette, on no donut.</summary>
+    public const string MetadataId = "tool-metadata";
+
+    /// <summary>
+    /// "Metadata" (settings schema 72): every field of a picture, PDF, video or sound file, edited or removed with
+    /// ExifTool, the file's content untouched. In the palette only: the donuts it suits are full.
+    /// </summary>
+    public static List<Preset> MetadataPresets() =>
+    [
+        new()
+        {
+            Id = MetadataId, NameKey = "preset.metadata", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.MetadataTool, Output = { FileNamePattern = "{name}_metadata" },
         },
     ];
 

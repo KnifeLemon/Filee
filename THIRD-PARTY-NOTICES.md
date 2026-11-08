@@ -23,6 +23,7 @@ Each component remains under its own license.
 | DiscUtils.Iso9660 (including DiscUtils.Core and DiscUtils.Streams; ISO creation) | MIT | https://github.com/DiscUtils/DiscUtils |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
+| ExifTool (optional engine, downloaded on request: the Metadata tool reads and writes with it) | Perl's licence (Artistic or GPL), separate program | https://exiftool.org |
 | ExcelNumberFormat | MIT | https://github.com/andersnm/ExcelNumberFormat |
 | ExcelDataReader | MIT | https://github.com/ExcelDataReader/ExcelDataReader |
 | PdfPig (PDF text, layout and pictures) | Apache-2.0 | https://github.com/UglyToad/PdfPig |
@@ -113,7 +114,7 @@ app as its payload. Filee 1.x's installer was built with Inno Setup, which is no
 
 | Component | License | Project |
 |---|---|---|
-| Noto Sans, Noto Sans Arabic, Noto Sans JP, Noto Sans KR, Noto Sans SC, Noto Sans Devanagari, Noto Sans Thai | SIL Open Font License 1.1 | https://github.com/notofonts |
+| Noto Sans, Noto Sans Arabic, Noto Sans JP, Noto Sans KR, Noto Sans SC, Noto Sans Devanagari, Noto Sans Thai, Noto Sans Bengali | SIL Open Font License 1.1 | https://github.com/notofonts |
 | Test fonts in `tests/Filee.Engines.Tests/Fonts` (subsets of Noto Sans and Noto Sans KR; not shipped) | SIL Open Font License 1.1 | see `OFL.txt` in that folder |
 | Material Design Icons (Pictogrammers) | Apache-2.0 | https://pictogrammers.com |
 | Simple Icons 16.35.0 (GitHub Sponsors, Patreon, Ko-fi and PayPal logos in the Sponsor window) | CC0-1.0 | https://simpleicons.org |

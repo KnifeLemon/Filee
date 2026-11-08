@@ -451,7 +451,7 @@ public sealed partial class DonutMenu : Control
             return;
         }
 
-        if (_press is { } press && IsEditMode && Distance(p, press.Start) > DragStartDistance && press.Index >= 0)
+        if (_press is { } press && IsEditMode && press.Args.Pointer == e.Pointer && Distance(p, press.Start) > DragStartDistance && press.Index >= 0)
         {
             _press = null;
             SegmentDragStarted?.Invoke(this, (press.Index, e));
@@ -490,12 +490,15 @@ public sealed partial class DonutMenu : Control
             OnProgressPointerMoved(new Point(double.MaxValue / 4, 0));
             return;
         }
-        if (_press is null && !LeftThroughSeam(e.GetPosition(this)))
+        if ((_press is null || PressHeldByAnother(e.Pointer)) && !LeftThroughSeam(e.GetPosition(this)))
         {
             CollapseGroup();
             SetHover(-1);
         }
     }
+
+    /// <summary>In the editor a pressed slice is its pointer's: no other finger or mouse can move or end it.</summary>
+    private bool PressHeldByAnother(IPointer pointer) => IsEditMode && _press is { Index: >= 0 } press && press.Args.Pointer != pointer;
 
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
@@ -528,7 +531,7 @@ public sealed partial class DonutMenu : Control
             return;
         }
 
-        if (point.Properties.IsLeftButtonPressed)
+        if (point.Properties.IsLeftButtonPressed && !PressHeldByAnother(e.Pointer))
         {
             var pressed = hit.Kind == DonutHitKind.Segment ? hit.Index : -1;
             _press = (pressed, pressed >= 0 ? Items![pressed].Id : null, point.Position, e);
@@ -536,10 +539,18 @@ public sealed partial class DonutMenu : Control
         }
     }
 
+    protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
+    {
+        base.OnPointerCaptureLost(e);
+        // The editor's press can't become a drag without the capture. The live donut reads its click from the release.
+        if (IsEditMode && !PressHeldByAnother(e.Pointer))
+            _press = null;
+    }
+
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
-        if (_press is null)
+        if (_press is null || PressHeldByAnother(e.Pointer))
             return;
         _press = null;
 

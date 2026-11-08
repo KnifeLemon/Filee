@@ -129,6 +129,17 @@ public sealed class Preset
     /// <summary>Options used for offline AI translation.</summary>
     public TranslateOptions Translate { get; set; } = new();
 
+    /// <summary>
+    /// "Metadata": the fields its window changes, on the conversion it starts (<see cref="MetadataTool"/>); null for
+    /// every other preset. Only an engine that writes metadata and nothing else applies it
+    /// (<see cref="Conversion.ConversionEdge.Metadata"/>).
+    /// </summary>
+    public MetadataEdits? Metadata { get; set; }
+
+    /// <summary>The conversion changes the file's metadata (<see cref="Metadata"/>).</summary>
+    [JsonIgnore]
+    public bool EditsMetadata => Metadata is { IsEmpty: false };
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
@@ -279,10 +290,16 @@ public sealed class Preset
     public const string BackgroundTool = "background";
 
     /// <summary>
+    /// <see cref="Tool"/> of "Metadata" (settings schema 72): every metadata field of a file shown, edited or removed
+    /// with ExifTool, the picture or document itself untouched.
+    /// </summary>
+    public const string MetadataTool = "metadata";
+
+    /// <summary>
     /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there
     /// were other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/>, <see cref="HideTool"/>,
-    /// <see cref="AnnotateTool"/> or <see cref="BackgroundTool"/>. A tool this version doesn't know (from a newer
-    /// Filee) opens nothing. Ignored for other kinds.
+    /// <see cref="AnnotateTool"/>, <see cref="BackgroundTool"/> or <see cref="MetadataTool"/>. A tool this version
+    /// doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
     /// </summary>
     public string? Tool { get; set; }
 
@@ -308,6 +325,10 @@ public sealed class Preset
     /// <summary>True for "Add background".</summary>
     [JsonIgnore]
     public bool IsBackgroundTool => IsTool && Tool == BackgroundTool;
+
+    /// <summary>True for "Metadata".</summary>
+    [JsonIgnore]
+    public bool IsMetadataTool => IsTool && Tool == MetadataTool;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
@@ -366,6 +387,7 @@ public sealed class Preset
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
         Translate = Translate.Clone(),
+        Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
         Tool = Tool,
@@ -945,7 +967,7 @@ public sealed class ImageOptions
     public static readonly double[] AnimationSpeeds = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
     /// <summary>
-    /// Plays an animation (GIF, WebP, APNG, MNG; video → GIF or APNG) this many times as fast: 2 halves every frame
+    /// Plays an animation (GIF, WebP, APNG, MNG, AVIF; video → GIF or APNG) this many times as fast: 2 halves every frame
     /// delay, 0.5 doubles it. 1 (the default, also for presets saved before the option) leaves the timing as it is.
     /// </summary>
     public double AnimationSpeed { get; set; } = 1;
@@ -1247,7 +1269,10 @@ public sealed class PdfOptions
     /// </summary>
     public bool Ocr { get; set; }
 
-    /// <summary>With <see cref="Ocr"/>: the language of the text, as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>).</summary>
+    /// <summary>
+    /// With <see cref="Ocr"/>: the language of the text as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>); text
+    /// that mixes languages has several, the main one first, joined with <c>+</c> as Tesseract takes them (<c>chi_sim+eng</c>).
+    /// </summary>
     public string OcrLanguage { get; set; } = "eng";
 
     public PdfOptions Clone() => (PdfOptions)MemberwiseClone();

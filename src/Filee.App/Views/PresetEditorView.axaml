@@ -25,6 +25,15 @@
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
     </Style>
   </UserControl.Styles>
+  <UserControl.Resources>
+    <!-- An OCR language: its own name, and the size of its download while it needs one. -->
+    <DataTemplate x:Key="OcrLanguageItem" x:DataType="vm:IChoice">
+      <DockPanel>
+        <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding Detail}" Margin="12,0,0,0" VerticalAlignment="Center" />
+        <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+      </DockPanel>
+    </DataTemplate>
+  </UserControl.Resources>
   <StackPanel Spacing="14">
     <!-- Name + target -->
     <Grid ColumnDefinitions="*,12,*">
@@ -499,18 +508,40 @@
             <StackPanel>
               <TextBlock Classes="label" Text="{DynamicResource presets.ocr_language}" />
               <ComboBox ItemsSource="{Binding OcrLanguageChoices}" SelectedItem="{Binding OcrLanguage}" HorizontalAlignment="Stretch"
-                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.ocr_language}">
-                <ComboBox.ItemTemplate>
-                  <DataTemplate x:DataType="vm:IChoice">
-                    <DockPanel>
-                      <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding Detail}" Margin="12,0,0,0" VerticalAlignment="Center" />
-                      <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
-                    </DockPanel>
-                  </DataTemplate>
-                </ComboBox.ItemTemplate>
-              </ComboBox>
+                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" AutomationProperties.Name="{DynamicResource presets.ocr_language}"
+                        ItemTemplate="{StaticResource OcrLanguageItem}" />
             </StackPanel>
           </Grid>
+          <!-- Text that mixes languages (#1123) -->
+          <StackPanel Spacing="4" Margin="28,6,0,0" IsVisible="{Binding Ocr}">
+            <TextBlock Classes="label" Text="{DynamicResource presets.ocr_more_languages}" />
+            <ItemsControl ItemsSource="{Binding MoreOcrLanguages}" IsVisible="{Binding HasMoreOcrLanguages}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:IChoice">
+                  <DockPanel>
+                    <Button DockPanel.Dock="Right" Classes="icon danger" ToolTip.Tip="{DynamicResource presets.ocr_remove_language}" AutomationProperties.Name="{DynamicResource presets.ocr_remove_language}"
+                            Command="{Binding $parent[ItemsControl].((vm:PresetEditorViewModel)DataContext).RemoveOcrLanguageCommand}" CommandParameter="{Binding}">
+                      <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Close}" />
+                    </Button>
+                    <TextBlock DockPanel.Dock="Right" Classes="caption" Text="{Binding Detail}" Margin="12,0,4,0" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                  </DockPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Grid ColumnDefinitions="*,8,Auto">
+              <ComboBox ItemsSource="{Binding OcrLanguagesToAdd}" SelectedItem="{Binding OcrLanguageToAdd}" HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Stretch" MaxDropDownHeight="420" PlaceholderText="{DynamicResource presets.ocr_add_language}"
+                        AutomationProperties.Name="{DynamicResource presets.ocr_more_languages}" ItemTemplate="{StaticResource OcrLanguageItem}" />
+              <Button Grid.Column="2" Command="{Binding AddOcrLanguageCommand}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <PathIcon Width="12" Height="12" Data="{StaticResource Icon.Plus}" />
+                  <TextBlock Text="{DynamicResource group.add}" />
+                </StackPanel>
+              </Button>
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ocr_languages_hint}" IsVisible="{Binding HasMoreOcrLanguages}" />
+          </StackPanel>
         </StackPanel>
         <StackPanel Spacing="2" IsVisible="{Binding ShowPdfCombine}">
           <CheckBox Content="{DynamicResource presets.combine_pages}" IsChecked="{Binding CombinePages}" />

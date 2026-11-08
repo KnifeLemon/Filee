@@ -50,6 +50,34 @@ public static class MarkOfTheWeb
     }
 
     /// <summary>
+    /// The first mark among the files <paramref name="paths"/> and the files in the folders among them, or null: for a
+    /// result made of all of them. Links inside a folder aren't followed, and a folder that can't be read counts as unmarked.
+    /// </summary>
+    public static string? ReadFirst(IEnumerable<string> paths, ILogger? log = null, CancellationToken cancellationToken = default)
+    {
+        if (!OperatingSystem.IsWindows())
+            return null;
+        var inFolder = new EnumerationOptions { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint };
+        foreach (var path in paths)
+        {
+            try
+            {
+                foreach (var file in Directory.Exists(path) ? Directory.EnumerateFiles(path, "*", inFolder) : [path])
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    if (Read(file) is { } mark)
+                        return mark;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                log?.LogInformation("Could not look for marks in {Folder}: {Reason}", path, ex.Message);
+            }
+        }
+        return null;
+    }
+
+    /// <summary>
     /// Gives <paramref name="path"/> the mark <paramref name="mark"/>. False when the file or its drive can't take it;
     /// the file itself stays as it is.
     /// </summary>
