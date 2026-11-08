@@ -364,6 +364,8 @@ public class BrowserDropTests
     [InlineData("&lt;svg&gt;&lt;/svg&gt;")]
     public void Other_text_does_not_offer_files_to_the_donut(string text)
     {
+        // Reading the local files asks AppHost for the platform services.
+        TestServices.EnsureInitialized("en");
         using var data = new DataTransfer();
         data.Add(DataTransferItem.CreateText(text));
         Assert.False(DraggedFiles.Offered(data));
