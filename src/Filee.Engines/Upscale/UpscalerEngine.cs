@@ -62,7 +62,7 @@ public sealed partial class UpscalerEngine
 
         Directory.CreateDirectory(workDirectory);
 
-        var from = fromFormat == "png" && Apng.IsAnimated(inputPath) ? "apng" : fromFormat;
+        var from = ReadFormat(fromFormat, inputPath);
         using var images = ImageReader.Read(inputPath, from, preset);
         var animation = ImageEncoder.KeepsAnimation(from, toFormat);
         var frames = ImageEncoder.SelectFrames(images, from, toFormat);
@@ -159,6 +159,13 @@ public sealed partial class UpscalerEngine
                 f.Dispose();
         }
     }
+
+    /// <summary>
+    /// The format the frames are read as, as MagickImageConverter reads them: an animated PNG saved as .png is "apng",
+    /// an AVIF image sequence "avis" (<see cref="AvifSequence"/>), so both keep their frames and timing.
+    /// </summary>
+    internal static string ReadFormat(string fromFormat, string inputPath) =>
+        fromFormat == "png" && Apng.IsAnimated(inputPath) ? "apng" : AvifSequence.SourceFormat(fromFormat, inputPath);
 
     internal static (IExifProfile? Exif, IColorProfile? Icc) PrepareFrame(IMagickImage<byte> frame, string tempInputPath)
     {
