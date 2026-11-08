@@ -205,17 +205,25 @@ in it also builds the package (artifact `windows-arm64-package`).
   one of these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL ↔ AVIF, WebP lossy or lossless as the preset says,
   #988) and becomes a multi-page TIFF;
   other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
-  - **Animated AVIF** (#1200) needs no FFmpeg: the bundled ImageMagick writes several frames as an AVIF image sequence
-    (`avis`) through libheif, with the first frame also stored as the still picture for viewers that don't play
-    sequences, and reads such a file back frame by frame, also one FFmpeg wrote. Transparency stays (one alpha track, so
-    `ImageEncoder.MatchAlpha` gives every frame an alpha channel when any frame is transparent, and none when all are
-    opaque). An AVIF source is an animation only when it is a sequence (`Magick/AvifSequence.cs`: major brand `avis` and a
-    `moov` box). The items of any other AVIF (a burst, a visible gain map, pictures of their own sizes) stay separate
-    pictures, one `_pN` file each. A still picture takes the same one-picture path as ever. The writer stores no loop
-    count, so an animation that plays a set number of times loops for ever as AVIF. Encoding takes much longer than WebP (about half a second per busy
-    480 × 270 frame, and the write can't be interrupted). On the way to video an AVIF counts as a photo
-    (`ImageEncoder.Edge`): nearly all of them are, so an animated one becomes a video of its first frame rather than
-    every AVIF going through a 256-colour GIF.
+  - **Animated AVIF** (#1200) needs no FFmpeg, but goes much faster with it. ImageMagick reads the frames and applies
+    the preset either way. With FFmpeg and its libaom-av1 encoder (Filee's FFmpeg download has it),
+    `Media/AvifSequenceWriter.cs` packs the frames into an APNG in the work folder (`Magick/Apng.cs`, exact delays) and
+    FFmpeg's avif muxer writes the image sequence (`avis`): FFmpeg encodes 60 busy 480 × 270 frames in about 3 s, where
+    ImageMagick's writer takes 50 s or more. Cancelling stops it, and the loop count stays (the muxer's `-loop`, the edit list's repeat). Only
+    libaom-av1 is used: the avif muxer takes the alpha track as one grey plane, which SVT-AV1 doesn't encode, and
+    FFmpeg's SVT-AV1 wrapper passes no packet durations, so the last frame's length would be a guess (a GIF's long
+    pause at the end cut short). Colour is full-range BT.709 4:2:0 tagged as sRGB, the preset's quality the quantizer
+    libheif would pick. An FFmpeg without libaom-av1, or one whose run fails (an old avif muxer), leaves the file to
+    ImageMagick, which writes the sequence through libheif. Its writer stores no loop count (an animation that plays a
+    set number of times loops for ever) and can't be interrupted. Both ways, the first frame is also stored as the
+    still picture for viewers that don't play sequences, and ImageMagick reads such a file back frame by frame, also
+    one FFmpeg wrote. Transparency stays (one alpha track, so `ImageEncoder.MatchAlpha` gives every frame an alpha
+    channel when any frame is transparent, and none when all are opaque, which leaves out the alpha track). An AVIF
+    source is an animation only when it is a sequence (`Magick/AvifSequence.cs`: major brand `avis` and a `moov` box).
+    The items of any other AVIF (a burst, a visible gain map, pictures of their own sizes) stay separate pictures, one
+    `_pN` file each. A still picture takes the same one-picture path as ever. On the way to video an AVIF counts as a
+    photo (`ImageEncoder.Edge`): nearly all of them are, so an animated one becomes a video of its first frame rather
+    than every AVIF going through a 256-colour GIF.
 - **Playback speed** (preset option *Playback speed*, `ImageOptions.AnimationSpeed`: 0.25×, 0.5×, 0.75×, 1×, 1.5×,
   2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL, AVIF and "same as source") rewrites the frame delays of an animation that stays
   animated (`Magick/AnimationTiming.cs`). Delays are divided by the speed in the target's own units (hundredths of a

@@ -507,7 +507,7 @@ internal static class ImageEncoder
     /// later would vanish. So every frame gets the channel when any of them is transparent, and none when all are opaque
     /// (an APNG's frames all have one), which saves the track.
     /// </summary>
-    private static void MatchAlpha(IEnumerable<IMagickImage<byte>> frames)
+    internal static void MatchAlpha(IEnumerable<IMagickImage<byte>> frames)
     {
         var action = frames.All(frame => frame.IsOpaque) ? AlphaAction.Off : AlphaAction.Set;
         foreach (var frame in frames)

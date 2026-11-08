@@ -217,7 +217,8 @@ internal static class Apng
     /// "source"), and a frame identical to the one before only lengthens its delay. Every frame is 8-bit RGB, or RGBA
     /// when any frame has transparency, because all frames of an APNG share the header's pixel format.
     /// </summary>
-    public static void Write(IReadOnlyList<IMagickImage<byte>> frames, string path)
+    /// <param name="cancellationToken">Checked before each frame is compared and encoded.</param>
+    public static void Write(IReadOnlyList<IMagickImage<byte>> frames, string path, CancellationToken cancellationToken = default)
     {
         if (frames.Count == 0)
             throw new ArgumentException("No frames to write.", nameof(frames));
@@ -233,6 +234,7 @@ internal static class Apng
         {
             foreach (var frame in frames)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var image = (MagickImage)frame.Clone();
                 image.Page = new MagickGeometry(0, 0, image.Width, image.Height);
                 if (image.Width != width || image.Height != height)
@@ -259,6 +261,7 @@ internal static class Apng
             var sequence = 0u;
             for (var i = 0; i < pictures.Count; i++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var (image, pixels, delayNumerator, delayDenominator) = pictures[i];
                 var region = i == 0 ? (X: 0u, Y: 0u, Width: width, Height: height) : ChangedRegion(pictures[i - 1].Pixels, pixels, width, height);
                 using var part = region.Width == width && region.Height == height
