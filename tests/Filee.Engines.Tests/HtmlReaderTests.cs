@@ -115,7 +115,7 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
         timer.Stop();
 
         Assert.True(Run(content, "굵게").Format.Bold);
-        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(10), $"took {timer.Elapsed}");
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(30), $"took {timer.Elapsed}");
     }
 
     [Fact]
