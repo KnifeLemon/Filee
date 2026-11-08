@@ -303,7 +303,8 @@
           <!-- The donut over a stand-in for the desktop, so its opacity shows. -->
           <Border Background="{Binding PreviewBackdrop}" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="0,10" ClipToBounds="True">
             <c:DonutMenu x:Name="PreviewDonut" Items="{Binding PreviewItems}" OuterRadius="120" CenterTitle="JPG × 3" HorizontalAlignment="Center"
-                         SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}" />
+                         SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
+                         ShowCaptions="{Binding DonutCaptions}" />
           </Border>
           <!-- Sample buttons are decorative; the switch below is an isolated interactive demo. -->
           <StackPanel Spacing="14">
