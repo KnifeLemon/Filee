@@ -688,7 +688,7 @@ internal sealed partial class HtmlReader
             "s" or "strike" or "del" => format with { Strike = true },
             "sub" => format with { Subscript = true, Superscript = null },
             "sup" => format with { Superscript = true, Subscript = null },
-            "code" or "kbd" or "samp" or "tt" => format with { Shade = format.Shade ?? CodeShade }, // inside a <pre> keeps its shade
+            "code" or "kbd" or "samp" or "tt" => format with { Shade = CodeShade },
             "pre" or "listing" or "xmp" or "plaintext" => format with { Shade = CodeShade },
             "mark" => format with { Shade = MarkShade },
             "small" => format with { Size = (int)(size * 0.83) },
