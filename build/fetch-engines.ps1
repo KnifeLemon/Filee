@@ -146,7 +146,8 @@ function Get-Engine([string]$name, [switch]$X64) {
         return $file
     }
     Write-Host "get  $name  $($info.Url)"
-    Invoke-WebRequest -Uri $info.Url -OutFile $file -UseBasicParsing -UserAgent 'Filee-build'
+    # GitHub's release downloads answer 504 for minutes at a time, which stopped whole CI runs: try again a few times.
+    Invoke-WebRequest -Uri $info.Url -OutFile $file -UseBasicParsing -UserAgent 'Filee-build' -MaximumRetryCount 5 -RetryIntervalSec 20
     $hash = (Get-FileHash $file -Algorithm SHA256).Hash
     if ($hash -ne $info.Sha256) {
         Remove-Item $file
