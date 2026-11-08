@@ -268,11 +268,12 @@ without touching the file's content.
 - Without ExifTool the window reads nothing and offers Settings → Engines: a metadata library inside Filee can be made
   to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under limits of time,
   memory and output: a small file can make it hold and print gigabytes of text, and a file over them goes to the summary
-  as unreadable, or as holding too much past the output limit, with more than 3,000 fields, 256 KB of text to show or a
-  field name over 256 characters, as the window lays out every row, and search waits for a pause in the typing above
-  500 rows. A row shows and searches the first 32 KB of a value, and one longer can be removed but not typed in. Closing
-  the window stops the read. ExifTool's write has only its time limit, but the reads around a save have these limits,
-  so a conversion of a file over them is refused. It reads the file with ExifTool once it is installed.
+  as holding too much past the output or memory limit, as unreadable past the time limit, or with more than 3,000
+  fields, 256 KB of text to show or a field name over 256 characters, as the window lays out every row, and search waits
+  for a pause in the typing above 500 rows. A row shows and searches the first 32 KB of a value, and one longer can be
+  removed but not typed in. Closing the window stops the read. ExifTool's write has only its time limit, but the reads
+  around a save have these limits, so a conversion of a file over them is refused. It reads the file with ExifTool once
+  it is installed.
 - `MetadataViewModel` keeps one row per field (edited, removed, added; a list one entry per line) and turns them into
   `MetadataEdits`. Add field offers XMP's descriptive fields, IPTC's where the kind of file has IPTC (JPEG, TIFF, PSD),
   a PDF's document info for a PDF. The keys, the summary of files that could not be opened or saved, and texts that

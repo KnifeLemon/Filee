@@ -32,11 +32,64 @@ public sealed class ProcessRunnerOutputTests : IDisposable
         var printed = new StringWriter();
         var clock = Stopwatch.StartNew();
 
-        await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) => printed.Write(new StreamReader(output).ReadToEnd()),
+        var result = await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) => printed.Write(new StreamReader(output).ReadToEnd()),
             TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken, memoryLimit: 500L * 1024 * 1024);
 
         Assert.DoesNotContain("reached the end", printed.ToString());
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(25), clock.Elapsed.ToString());
+        Assert.True(result.StoppedForMemory); // so a cut output isn't taken for a file it couldn't read
+    }
+
+    [Fact]
+    public async Task A_read_given_up_on_doesnt_fail_where_nobody_looks()
+    {
+        // Cancelled while the read waits: it fails after the run has ended, as a read stopped part way does.
+        var marker = Guid.NewGuid().ToString();
+        var unobserved = new List<Exception>();
+        void Seen(object? sender, UnobservedTaskExceptionEventArgs e)
+        {
+            if (e.Exception.Flatten().InnerExceptions.Any(ex => ex.Message == marker))
+                lock (unobserved)
+                    unobserved.Add(e.Exception);
+        }
+        var failed = new ManualResetEventSlim();
+        TaskScheduler.UnobservedTaskException += Seen;
+        try
+        {
+            await Run();
+            Assert.True(failed.Wait(TimeSpan.FromSeconds(10)));
+            await Task.Delay(200, TestContext.Current.CancellationToken); // the read's task ends just after its throw
+            for (var i = 0; i < 3; i++)
+            {
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+            }
+            lock (unobserved)
+                Assert.Empty(unobserved);
+        }
+        finally
+        {
+            TaskScheduler.UnobservedTaskException -= Seen;
+        }
+
+        // Not inlined: the run's tasks are left to the collector once it returns.
+        async Task Run()
+        {
+            using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            var (program, arguments) = OperatingSystem.IsWindows()
+                ? ("powershell.exe", new[] { "-NoProfile", "-Command", "Start-Sleep 30" })
+                : ("/bin/sh", ["-c", "sleep 30"]);
+            cancel.CancelAfter(TimeSpan.FromMilliseconds(500));
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ProcessRunner.RunWithOutputAsync(program, arguments,
+                (_, token) =>
+                {
+                    token.WaitHandle.WaitOne();
+                    Thread.Sleep(300); // after the run has given up on it
+                    failed.Set();
+                    throw new IOException(marker);
+                },
+                TimeSpan.FromMinutes(1), cancel.Token, memoryLimit: 1024L * 1024 * 1024));
+        }
     }
 
     [Fact]
@@ -64,10 +117,11 @@ public sealed class ProcessRunnerOutputTests : IDisposable
             : ("/usr/bin/env", ["perl", "-e", "print 'reached the end'"]);
         var printed = new StringWriter();
 
-        await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) => printed.Write(new StreamReader(output).ReadToEnd()),
+        var result = await ProcessRunner.RunWithOutputAsync(program, arguments, (output, _) => printed.Write(new StreamReader(output).ReadToEnd()),
             TimeSpan.FromMinutes(1), TestContext.Current.CancellationToken, memoryLimit: 1024L * 1024 * 1024);
 
         Assert.Contains("reached the end", printed.ToString());
+        Assert.False(result.StoppedForMemory);
     }
 
     [Fact]

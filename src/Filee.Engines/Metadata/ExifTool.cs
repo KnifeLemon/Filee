@@ -271,6 +271,9 @@ public static partial class ExifTool
             var result = await ProcessRunner.RunWithOutputAsync(exifTool, await CommandAsync(work, ["-j", "-G0:1", "-a", "-s"], [], path, cancellationToken),
                 (from, token) => ArchiveFiles.CopyLimited(from, output, ReadOutputLimit, token, tooLarge: () => new MetadataTooLargeException("ExifTool printed more than a file's fields.")),
                 ReadLimit, cancellationToken, work, ReadMemoryLimit);
+            // What it printed stops where it was stopped, or is only that it ran out.
+            if (result.StoppedForMemory)
+                throw new MetadataTooLargeException("ExifTool needed more memory than a file's fields take.");
             // Off the caller's thread, which can be the UI's: this can be megabytes of text.
             var fields = await Task.Run(() =>
             {
@@ -283,7 +286,7 @@ public static partial class ExifTool
                 }
                 catch (JsonException ex)
                 {
-                    throw new IOException("ExifTool stopped part way through the file's fields.", ex); // over the memory limit
+                    throw new IOException("ExifTool stopped part way through the file's fields.", ex);
                 }
             }, CancellationToken.None);
             // A file it can't read still gets its JSON, the file's own facts and this.

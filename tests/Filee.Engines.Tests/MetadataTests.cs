@@ -1065,7 +1065,8 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
         await File.WriteAllBytesAsync(path, PngWithComment(1400, '\0'), Token);
         var clock = System.Diagnostics.Stopwatch.StartNew();
 
-        await Assert.ThrowsAsync<IOException>(() => ExifTool.ReadAsync(exifTool, path, Token));
+        // Too much, not unreadable: what it printed before it was stopped is no reason.
+        await Assert.ThrowsAsync<MetadataTooLargeException>(() => ExifTool.ReadAsync(exifTool, path, Token));
 
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(100), clock.Elapsed.ToString());
     }
@@ -1168,7 +1169,7 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
         MakeRunnable(spy);
         var clock = System.Diagnostics.Stopwatch.StartNew();
 
-        await Assert.ThrowsAsync<IOException>(() => ExifTool.ReadAsync(spy, path, Token));
+        await Assert.ThrowsAsync<MetadataTooLargeException>(() => ExifTool.ReadAsync(spy, path, Token));
 
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60), clock.Elapsed.ToString());
     }

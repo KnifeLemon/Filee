@@ -685,6 +685,23 @@ public sealed class MetadataWindowTests : IDisposable
         Assert.Equal("packed.png: " + AppHost.Get<ILocalizer>()["metadata.too_much"], Assert.Single(vm.Problems));
     }
 
+    [AvaloniaFact]
+    public void ExifTool_filling_the_memory_puts_the_file_in_the_summary_as_too_much()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var spy = Path.Combine(_folder, "exiftool");
+        // Half a JSON array first, as ExifTool stopped part way would have printed.
+        File.WriteAllText(spy, "#!/bin/sh\nexec perl -e '$| = 1; print q([{\"SourceFile\": \"x\",); my @held; push @held, q(a) x 10_000_000 for 1..300; sleep 300'\n");
+        File.SetUnixFileMode(spy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var engines = new MetadataEngines { Locate = () => spy, NeedsPerl = _ => false };
+
+        var vm = new MetadataViewModel(Files("packed.png"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => vm.IsFinished, 60);
+
+        Assert.Equal(1, vm.FailedCount);
+        Assert.Equal("packed.png: " + AppHost.Get<ILocalizer>()["metadata.too_much"], Assert.Single(vm.Problems));
+    }
+
     private MetadataViewModel Reading(IReadOnlyList<MetadataField> fields, params string[] files) => new(Files(files), Tool(),
         AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(),
         new MetadataEngines { Locate = () => "/fake/exiftool", Read = (_, _, _) => Task.FromResult(fields) }, (_, _) => { });
