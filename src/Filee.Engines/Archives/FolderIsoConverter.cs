@@ -51,7 +51,8 @@ public sealed class FolderIsoConverter : IConverter
                     if (entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
                         throw new ConversionRefusedException("error.iso_link", entry.Name);
                     var name = prefix + entry.Name;
-                    if (entry.Name.Length > 64 || entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\') || name.Length > 240)
+                    // DiscUtils appends a version suffix (;1), and a dot for extensionless files.
+                    if (entry.Name.Length > 62 || entry.Name.Any(c => char.IsControl(c) || char.IsSurrogate(c) || c is ';' or '\\' or '*' or ':' or '?') || name.Length > 240)
                         throw new ConversionRefusedException("error.iso_name", name);
                     BuildDirectoryMember member;
                     if (entry is DirectoryInfo child)

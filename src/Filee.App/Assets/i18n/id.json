@@ -1568,7 +1568,7 @@
   "general.collect_dropped_hint": "File yang dijatuhkan atau dipilih menunggu dalam daftar di halaman Beranda, dan Pilih tindakan mengonversinya bersama sesuai urutan yang ditampilkan. Mati: setiap jatuhan membuka donat, seperti sebelumnya.",
   "error.iso_root": "Pembuatan ISO tidak mendukung akar drive atau sistem berkas. Pilih folder di dalam drive.",
   "error.iso_link": "Pembuatan ISO tidak mengikuti tautan simbolis atau junction. Pilih folder asli tanpa entri tertaut.",
-  "error.iso_name": "Nama Joliet maksimal 64 karakter Unicode BMP, tanpa karakter kontrol, titik koma, atau garis miring terbalik. Jalur relatif maksimal 240 karakter.",
+  "error.iso_name": "Nama Joliet maksimal 62 karakter Unicode BMP, tanpa karakter kontrol, titik koma, atau garis miring terbalik, *, :, atau ?. Jalur relatif maksimal 240 karakter.",
   "error.iso_file_size": "Untuk membuat ISO, setiap berkas harus lebih kecil dari 4 GiB.",
   "error.iso_changed": "Pembuatan ISO berhenti sebelum semua data ditulis. Berkas sumber mungkin berubah selama konversi.",
   "engine.iso.name": "ISO",

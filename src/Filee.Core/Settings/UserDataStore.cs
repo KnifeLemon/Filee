@@ -1050,7 +1050,8 @@ internal static class SettingsMigrations
             var hadIsoPreset = presets.Any(p => p.Id == "to-iso");
             if (presets.All(p => p.Id != "to-iso"))
             {
-                presets.Add(BuiltInData.CreatePresets().Single(p => p.Id == "to-iso"));
+                var at = presets.FindIndex(p => p.Id == "zip-all");
+                presets.Insert(at >= 0 ? at : presets.Count, BuiltInData.CreatePresets().Single(p => p.Id == "to-iso"));
                 changed = true;
             }
             // A library already containing our ISO preset may have deliberately removed its Folders donut.

@@ -104,7 +104,7 @@ public sealed class FolderIso632Tests : IDisposable
     public async Task A_maximum_length_unicode_name_and_timestamp_round_trip()
     {
         var folder = Folder();
-        var name = new string('한', 60) + ".txt";
+        var name = new string('한', 58) + ".txt";
         var source = Path.Combine(folder, name);
         File.WriteAllText(source, "name boundary");
         var modified = new DateTime(2020, 1, 2, 3, 4, 6, DateTimeKind.Utc);
@@ -152,16 +152,15 @@ public sealed class FolderIso632Tests : IDisposable
     }
 
     [Theory]
-    [InlineData("1800-06-15T12:34:56Z", "1900-01-01T00:00:00Z")]
-    [InlineData("1900-01-01T00:00:00Z", "1900-01-01T00:00:00Z")]
-    [InlineData("2020-06-15T12:34:56Z", "2020-06-15T12:34:56Z")]
-    [InlineData("2155-12-31T23:59:59Z", "2155-12-31T23:59:59Z")]
-    [InlineData("2156-01-01T00:00:00Z", "2155-12-31T23:59:59Z")]
-    [InlineData("2200-06-15T12:34:56Z", "2155-12-31T23:59:59Z")]
-    public async Task File_and_directory_dates_are_clamped_to_the_iso_range(string sourceDate, string imageDate)
+    [InlineData("1800-06-15T12:34:56Z")]
+    [InlineData("1900-01-01T00:00:00Z")]
+    [InlineData("2020-06-15T12:34:56Z")]
+    [InlineData("2155-12-31T23:59:59Z")]
+    [InlineData("2156-01-01T00:00:00Z")]
+    [InlineData("2200-06-15T12:34:56Z")]
+    public async Task File_and_directory_dates_are_clamped_to_the_iso_range(string sourceDate)
     {
         var modified = DateTime.Parse(sourceDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
-        var expected = DateTime.Parse(imageDate, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.AdjustToUniversal);
         var folder = Folder();
         var source = Path.Combine(folder, "file.txt");
         var directory = Path.Combine(folder, "empty");
@@ -169,18 +168,24 @@ public sealed class FolderIso632Tests : IDisposable
         Directory.CreateDirectory(directory);
         File.SetLastWriteTimeUtc(source, modified);
         Directory.SetLastWriteTimeUtc(directory, modified);
+        // Some filesystems clamp source dates themselves (e.g. to the 32-bit Unix-time minimum).
+        var actualFile = File.GetLastWriteTimeUtc(source);
+        var actualDirectory = Directory.GetLastWriteTimeUtc(directory);
+        static DateTime Expected(DateTime actual) => new(Math.Clamp(actual.Ticks,
+            new DateTime(1900, 1, 1, 0, 0, 0, DateTimeKind.Utc).Ticks,
+            new DateTime(2155, 12, 31, 23, 59, 59, DateTimeKind.Utc).Ticks), DateTimeKind.Utc);
 
         var job = await Run(folder);
 
         Assert.True(job.State == JobState.Completed, job.Files[0].ErrorDetail);
         using var stream = File.OpenRead(Assert.Single(job.Outputs));
         using var iso = new CDReader(stream, true);
-        Assert.Equal(expected, iso.GetLastWriteTimeUtc("file.txt"));
-        Assert.Equal(expected, iso.GetLastWriteTimeUtc("empty"));
+        Assert.Equal(Expected(actualFile), iso.GetLastWriteTimeUtc("file.txt"));
+        Assert.Equal(Expected(actualDirectory), iso.GetLastWriteTimeUtc("empty"));
         using var reader = new StreamReader(iso.OpenFile("file.txt", FileMode.Open));
         Assert.Equal("date boundary", reader.ReadToEnd());
-        Assert.Equal(modified, File.GetLastWriteTimeUtc(source));
-        Assert.Equal(modified, Directory.GetLastWriteTimeUtc(directory));
+        Assert.Equal(actualFile, File.GetLastWriteTimeUtc(source));
+        Assert.Equal(actualDirectory, Directory.GetLastWriteTimeUtc(directory));
     }
 
     [Fact]
@@ -247,18 +252,58 @@ public sealed class FolderIso632Tests : IDisposable
     }
 
     [Theory]
+    [InlineData("63")]
+    [InlineData("64")]
     [InlineData("long")]
     [InlineData("semicolon;1.txt")]
     [InlineData("emoji-😀.txt")]
     public async Task Unrepresentable_names_preserve_an_existing_destination(string name)
     {
         var folder = Folder();
-        File.WriteAllText(Path.Combine(folder, name == "long" ? new string('a', 65) : name), "source");
+        var actualName = name == "long" ? new string('a', 65) : int.TryParse(name, out var length) ? new string('a', length) : name;
+        File.WriteAllText(Path.Combine(folder, actualName), "source");
         File.WriteAllText(folder + ".iso", "previous image");
         var job = await Run(folder, new OutputRule { Location = OutputLocation.SameFolder, Conflict = ConflictPolicy.Overwrite });
         Assert.Equal(JobState.Failed, job.State);
         Assert.Equal("error.iso_name", job.Files[0].ErrorKey);
-        Assert.Equal(name == "long" ? new string('a', 65) : name, job.Files[0].ErrorDetail);
+        Assert.Equal(actualName, job.Files[0].ErrorDetail);
+        Assert.Equal("previous image", File.ReadAllText(folder + ".iso"));
+        Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Names_at_the_62_character_boundary_are_preserved(bool withExtension)
+    {
+        var folder = Folder();
+        var name = new string('a', withExtension ? 58 : 62) + (withExtension ? ".txt" : "");
+        var directory = new string('d', 62);
+        File.WriteAllText(Path.Combine(folder, name), "boundary");
+        Directory.CreateDirectory(Path.Combine(folder, directory));
+        var job = await Run(folder);
+        Assert.True(job.State == JobState.Completed, job.Files[0].ErrorDetail);
+        using var stream = File.OpenRead(Assert.Single(job.Outputs));
+        using var iso = new CDReader(stream, true);
+        Assert.True(iso.DirectoryExists(directory));
+        using var reader = new StreamReader(iso.OpenFile(name, FileMode.Open));
+        Assert.Equal("boundary", reader.ReadToEnd());
+    }
+
+    [Theory]
+    [InlineData("bad*name")]
+    [InlineData("bad:name")]
+    [InlineData("bad?name")]
+    public async Task Unix_only_forbidden_names_do_not_replace_an_existing_image(string name)
+    {
+        Assert.SkipWhen(OperatingSystem.IsWindows(), "Windows already refuses these source filenames.");
+        var folder = Folder();
+        File.WriteAllText(Path.Combine(folder, name), "source");
+        File.WriteAllText(folder + ".iso", "previous image");
+        var job = await Run(folder, new OutputRule { Location = OutputLocation.SameFolder, Conflict = ConflictPolicy.Overwrite });
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Equal("error.iso_name", job.Files[0].ErrorKey);
+        Assert.Equal(name, job.Files[0].ErrorDetail);
         Assert.Equal("previous image", File.ReadAllText(folder + ".iso"));
         Assert.Empty(Directory.GetFiles(_root, ".filee-iso-*"));
     }

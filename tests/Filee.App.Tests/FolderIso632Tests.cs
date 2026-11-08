@@ -14,6 +14,7 @@ using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
+using Filee.Engines.Archives;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Filee.App.Tests;
@@ -104,6 +105,7 @@ public class FolderIso632Tests
     [AvaloniaFact]
     public void Archives_offers_usable_iso_for_manual_placement_without_changing_the_default_donut()
     {
+        Assert.SkipUnless(SevenZip.Locate() is not null, "Bundled 7-Zip is required for archive-to-ISO availability.");
         TestServices.EnsureInitialized("en");
         var root = Directory.CreateTempSubdirectory("filee-archives-iso-").FullName;
         try

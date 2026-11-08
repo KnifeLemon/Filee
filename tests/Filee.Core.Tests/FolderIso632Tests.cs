@@ -10,6 +10,19 @@ namespace Filee.Core.Tests;
 public class FolderIso632Tests
 {
     [Fact]
+    public void Migration_appends_iso_when_the_zip_neighbour_was_removed()
+    {
+        var presets = BuiltInData.CreatePresets();
+        presets.RemoveAll(p => p.Id is "to-iso" or "zip-all");
+        var original = presets.Select(p => p.Id).ToArray();
+        var profiles = BuiltInData.CreateProfiles();
+        profiles.RemoveAll(p => p.Id == "folders");
+        Assert.True(SettingsMigrations.ApplyToLibrary(72, presets, profiles));
+        Assert.Equal("to-iso", presets[^1].Id);
+        Assert.Equal(original, presets.Take(presets.Count - 1).Select(p => p.Id));
+    }
+
+    [Fact]
     public void Upgrade_preserves_a_folder_profile_removed_from_a_previous_test_build()
     {
         var presets = BuiltInData.CreatePresets();
@@ -41,6 +54,7 @@ public class FolderIso632Tests
         var archives = profiles.Single(p => p.Id == "archives");
         var original = archives.PresetIds.ToArray();
         Assert.True(SettingsMigrations.ApplyToLibrary(72, presets, profiles));
+        Assert.Equal(presets.FindIndex(p => p.Id == "zip-all") - 1, presets.FindIndex(p => p.Id == "to-iso"));
         Assert.Equal(original, archives.PresetIds);
         Assert.Equal(["to-iso"],
             profiles.Single(p => p.Id == "folders").PresetIds);

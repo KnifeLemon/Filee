@@ -1570,7 +1570,7 @@
   "general.collect_dropped_hint": "Los archivos soltados o elegidos esperan en una lista en la pantalla Inicio, y Elegir acción los convierte juntos en el orden mostrado. Desactivado: cada suelta abre el donut, como antes.",
   "error.iso_root": "No se pueden crear imágenes ISO desde la raíz de una unidad o sistema de archivos. Selecciona una carpeta dentro de la unidad.",
   "error.iso_link": "La creación de ISO no sigue enlaces simbólicos ni uniones de directorios. Selecciona una carpeta original sin entradas enlazadas.",
-  "error.iso_name": "Los nombres Joliet deben tener como máximo 64 caracteres Unicode BMP, sin caracteres de control, puntos y coma ni barras inversas. Las rutas relativas no deben superar los 240 caracteres.",
+  "error.iso_name": "Los nombres Joliet deben tener como máximo 62 caracteres Unicode BMP, sin caracteres de control, puntos y coma ni barras inversas ni *, : o ?. Las rutas relativas no deben superar los 240 caracteres.",
   "error.iso_file_size": "Para crear una ISO, cada archivo debe ocupar menos de 4 GiB.",
   "error.iso_changed": "La creación de ISO se detuvo antes de escribir todos los datos. Es posible que un archivo de origen haya cambiado durante la conversión.",
   "engine.iso.name": "ISO",
