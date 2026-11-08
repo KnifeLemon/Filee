@@ -176,6 +176,33 @@ internal static class NativeMethods
         SendVoid(window, sel_registerName("orderFrontRegardless"));
     }
 
+    internal static void MoveToActiveSpace(nint window)
+    {
+        if (window == 0)
+            return;
+
+        var getBehaviorSelector = sel_registerName("collectionBehavior");
+        var setBehaviorSelector = sel_registerName("setCollectionBehavior:");
+        if (!SendBool(window, sel_registerName("respondsToSelector:"), getBehaviorSelector)
+            || !SendBool(window, sel_registerName("respondsToSelector:"), setBehaviorSelector))
+            return;
+
+        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1, stationary = 1 << 4;
+        const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
+        var behavior = Send(window, getBehaviorSelector);
+        behavior = (behavior & ~(canJoinAllSpaces | stationary | fullScreenPrimary | fullScreenNone)) | moveToActiveSpace | fullScreenAuxiliary;
+        behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
+        SendInteger(window, setBehaviorSelector, behavior);
+
+        var orderFrontSelector = sel_registerName("orderFrontRegardless");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), orderFrontSelector))
+            SendVoid(window, orderFrontSelector);
+
+        var centerSelector = sel_registerName("center");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), centerSelector))
+            SendVoid(window, centerSelector);
+    }
+
     internal static void RestoreWindow(nint window)
     {
         if (window == 0)

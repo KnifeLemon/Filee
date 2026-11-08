@@ -246,6 +246,65 @@ public sealed class MacOSWindowTests
         }
     }
 
+    [Fact]
+    public void MoveToActiveSpace_sets_full_screen_auxiliary_and_move_to_active_space_behavior()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("Requires macOS.");
+            return;
+        }
+
+        nint behavior = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 7) | (1 << 9) | (1 << 16) | (1 << 17) | (1 << 18);
+        var orders = 0;
+        var centers = 0;
+
+        GetInteger getBehavior = (_, _) => behavior;
+        SetInteger setBehavior = (_, _, value) => behavior = value;
+        SendAction orderFront = (_, _) => orders++;
+        SendAction center = (_, _) => centers++;
+        Delegate[] callbacks = [getBehavior, setBehavior, orderFront, center];
+
+        var testClass = AllocateClass(GetClass("NSObject"), "FileeMoveToActiveSpaceTestWindow", 0);
+        Assert.NotEqual(0, testClass);
+        nint window = 0;
+        try
+        {
+            AddMethod(testClass, "collectionBehavior", getBehavior, "q@:");
+            AddMethod(testClass, "setCollectionBehavior:", setBehavior, "v@:q");
+            AddMethod(testClass, "orderFrontRegardless", orderFront, "v@:");
+            AddMethod(testClass, "center", center, "v@:");
+            RegisterClass(testClass);
+
+            window = Send(Send(testClass, Selector("alloc")), Selector("init"));
+            Assert.NotEqual(0, window);
+
+            var platform = new MacOSPlatformServices();
+
+            // 1. Calling with 0 handle is safe
+            platform.MoveToActiveSpace(0);
+            Assert.Equal(0, orders);
+            Assert.Equal(0, centers);
+
+            // 2. Calling with window updates collection behavior and orders front centered
+            platform.MoveToActiveSpace(window);
+            const nint moveToActiveSpace = 1 << 1;
+            const nint fullScreenAuxiliary = 1 << 8;
+            const nint ignoresCycle = 1 << 6;
+            Assert.Equal(moveToActiveSpace | ignoresCycle | fullScreenAuxiliary, behavior);
+            Assert.Equal(1, orders);
+            Assert.Equal(1, centers);
+        }
+        finally
+        {
+            if (window != 0)
+                Send(window, Selector("release"));
+            if (testClass != 0)
+                DisposeClass(testClass);
+            GC.KeepAlive(callbacks);
+        }
+    }
+
     private static nint RegisterSubclass(nint superclass, string name)
     {
         var result = AllocateClass(superclass, name, 0);

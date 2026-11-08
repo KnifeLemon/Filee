@@ -146,6 +146,9 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// <param name="oneResult">The batch makes one file (a single source, or a merge of several).</param>
     public async Task<Preset?> AskSaveLocationAsync(IReadOnlyList<string> sources, Preset preset, bool oneResult)
     {
+        if (sources.Count == 0)
+            return null;
+
         // The donut has closed and the main window may be in the tray: a small window of its own owns the dialog.
         var host = new Window
         {
@@ -153,17 +156,21 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             Height = 1,
             Opacity = 0,
             ShowInTaskbar = false,
+            ShowActivated = false,
             WindowDecorations = WindowDecorations.None,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Title = "Filee",
         };
+        var platform = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>();
+        if (host.TryGetPlatformHandle()?.Handle is { } handle)
+            platform.MoveToActiveSpace(handle);
         host.Show();
         try
         {
             var storage = host.StorageProvider;
-            var startFolder = Path.GetDirectoryName(Path.GetFullPath(sources[0]))!;
-            if (preset.IsCopyToFolder && !Directory.Exists(startFolder))
-                startFolder = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>().DownloadsFolder;
+            var startFolder = Path.GetDirectoryName(Path.GetFullPath(sources[0]));
+            if (string.IsNullOrEmpty(startFolder) || (preset.IsCopyToFolder && !Directory.Exists(startFolder)))
+                startFolder = platform.DownloadsFolder;
             var start = await storage.TryGetFolderFromPathAsync(startFolder);
             if (oneResult)
             {
