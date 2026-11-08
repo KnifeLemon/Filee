@@ -43,6 +43,7 @@ public static class EngineRegistry
     public static IReadOnlyList<IConverter> CreateAll(EngineEnvironment env, ILoggerFactory? loggers = null) =>
     [
         new MagickImageConverter(),
+        new FolderIsoConverter(),
         new PdfSharpConverter(),
         new PdfiumConverter(),
         new RhwpConverter(),

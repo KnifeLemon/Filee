@@ -22,6 +22,7 @@ public partial class BackFaceTests
         ["subtitles"] = (["to-srt", "to-vtt"], ["zip-all"]),
         ["vector"] = (["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp"], ["to-tiff", "to-ico", "to-icns", "to-dxf", "zip-all"]),
         ["archives"] = (["extract", "zip-all", "to-zip", "to-7z"], []),
+        ["folders"] = (["to-iso"], []),
         ["cad"] = (["to-pdf", "to-png", "to-svg", "to-dxf", "to-dwg"], ["to-jpg", "merge-pdf", "zip-all"]),
         ["fonts"] = (["to-woff2", "to-woff", "to-ttf", "to-otf"], ["zip-all"]),
         ["data"] = (["to-json", "to-yaml", "to-xml", "to-csv", "to-xlsx"], ["to-ods", "to-html", "to-md", "zip-all"]),

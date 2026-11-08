@@ -11,6 +11,13 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>Whether a conversion target accepts a folder directly.</summary>
+    public static bool SupportsFolderTarget(string target) => target == "iso";
+
+    /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
+    public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
+        && (preset.IsCopyToFolder || SupportsFolderTarget(preset.TargetFormat));
+
     /// <summary>Creates the default preset list.</summary>
     public static List<Preset> CreatePresets() =>
     [
@@ -628,6 +635,7 @@ public static class BuiltInData
         new() { Id = "to-aac", Name = "AAC", TargetFormat = "aac" },
 
         // Archives
+        new() { Id = "to-iso", NameKey = "preset.iso_image", TargetFormat = "iso" },
         new() { Id = "to-zip", Name = "ZIP", TargetFormat = "zip" },
         new() { Id = "to-7z", Name = "7Z", TargetFormat = "7z" },
         new() { Id = "to-tgz", Name = "TAR.GZ", TargetFormat = "tgz" },
@@ -756,6 +764,15 @@ public static class BuiltInData
             };
             (profile.PresetIds, profile.BackPresetIds) = layout;
         }
+        var folders = new ToolbarProfile
+        {
+            Id = "folders",
+            NameKey = "profile.folders",
+            Extensions = [],
+            PresetIds = ["to-iso"],
+            BackPresetIds = [],
+        };
+        profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);
         return profiles;
     }
 

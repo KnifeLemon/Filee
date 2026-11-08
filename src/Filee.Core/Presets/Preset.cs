@@ -175,7 +175,7 @@ public sealed class Preset
     public bool PacksIntoOneArchive =>
         Archive.CombineIntoOne
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
-        && archive.Id != Formats.FormatRegistry.Folder;
+        && archive.Id != Formats.FormatRegistry.Folder && archive.Id != "iso";
 
     /// <summary>Formats the translator can directly read from (documents, e-books, text and SRT / WebVTT subtitles).</summary>
     public static readonly string[] TranslatorSourceFormats =

@@ -61,7 +61,8 @@ internal static class Cli
             UseFolder(preset, options.Output);
 
         var missing = new List<string>();
-        var files = ExpandInputs(options.Inputs, options.Recursive, missing);
+        var files = ExpandInputs(options.Inputs, options.Recursive, missing,
+            foldersAsInputs: preset.TargetFormat == "iso" || preset.PacksIntoOneArchive);
         foreach (var path in missing)
             errors.WriteLine($"filee: not found: {path}");
         if (missing.Count > 0)
@@ -142,7 +143,8 @@ internal static class Cli
     private static async Task<ConversionJob> RunJobAsync(IReadOnlyList<string> files, Preset preset, CliHost host, TextWriter? output,
         JobEvents? events, CancellationToken cancellationToken)
     {
-        var job = new ConversionJob(files, preset, host.Texts.DisplayName(preset));
+        var job = new ConversionJob(files, preset, host.Texts.DisplayName(preset),
+            folderSources: files.Where(Directory.Exists).ToHashSet(FileSystemPaths.Comparer));
         var printed = new HashSet<FileResult>();
         void Print(object? sender, ConversionJob updated)
         {
@@ -341,7 +343,7 @@ internal static class Cli
     /// Files from the arguments: files as given, wildcards ("*.heic", which cmd.exe and PowerShell pass on unexpanded)
     /// and folders (their files in formats Filee knows; with --recursive also in sub folders).
     /// </summary>
-    internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing)
+    internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing, bool foldersAsInputs = false)
     {
         var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var files = new List<string>();
@@ -358,7 +360,10 @@ internal static class Cli
                 files.AddRange(matches);
             }
             else if (Directory.Exists(input))
-                files.AddRange(Directory.EnumerateFiles(input, "*", option).Where(f => FormatRegistry.Detect(f) is not null));
+            {
+                if (foldersAsInputs) files.Add(Path.TrimEndingDirectorySeparator(input));
+                else files.AddRange(Directory.EnumerateFiles(input, "*", option).Where(f => FormatRegistry.Detect(f) is not null));
+            }
             else if (File.Exists(input))
                 files.Add(input);
             else

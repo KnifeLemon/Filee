@@ -16,6 +16,52 @@ namespace Filee.Cli.Tests;
 [Collection("Cli")] // shares EngineEnvironment state with EnginesCommandTests
 public sealed class CliTests : IDisposable
 {
+    [Fact]
+    public async Task Folder_to_iso_uses_the_folder_itself_and_preserves_a_dotted_name()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(folder, "input.txt"), "ISO contents", TestContext.Current.CancellationToken);
+        var result = await Run("convert", folder, "--to", "iso", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(folder + ".iso"));
+        Assert.True(File.Exists(Path.Combine(folder, "input.txt")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Drive_root_to_iso_is_refused_clearly_without_writing_an_image(bool json)
+    {
+        var output = Path.Combine(_folder, "root-output");
+        var args = new List<string> { "convert", Path.GetPathRoot(_folder)!, "--to", "iso", "--output", output };
+        if (json) args.AddRange(["--json", "--quiet"]);
+
+        var result = await Run(args.ToArray());
+
+        Assert.Equal(1, result.Code);
+        Assert.Contains("Select a folder inside", result.Output + result.Errors);
+        Assert.False(Directory.Exists(output));
+        if (json)
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            Assert.Equal(1, document.RootElement.GetProperty("failed").GetInt32());
+            Assert.Equal(0, document.RootElement.GetProperty("converted").GetInt32());
+            Assert.Equal("error.iso_root", document.RootElement.GetProperty("files")[0].GetProperty("errorKey").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task Zip_to_iso_converts_archive_contents_without_manual_extraction()
+    {
+        var input = Path.Combine(_folder, "backup.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(input, System.IO.Compression.ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(zip.CreateEntry("contents.txt").Open())) writer.Write("archived contents");
+        var result = await Run("convert", input, "--to", "iso", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(Path.Combine(_folder, "backup.iso")));
+        Assert.True(File.Exists(input));
+    }
+
     private readonly string _folder = Directory.CreateTempSubdirectory("filee-cli-").FullName;
     private readonly string _settings = Directory.CreateTempSubdirectory("filee-cli-settings-").FullName;
 

@@ -704,7 +704,7 @@
                   ToolTip.Tip="{DynamicResource presets.keep_dates_hint}" />
         <CheckBox Content="{DynamicResource presets.zip_result}" IsChecked="{Binding ZipResult}" IsVisible="{Binding ShowZipResult}"
                   ToolTip.Tip="{DynamicResource presets.zip_result_hint}" />
-        <StackPanel IsVisible="{Binding ShowConversionOutput}">
+        <StackPanel IsVisible="{Binding ShowReplaceOriginal}">
           <CheckBox Content="{DynamicResource presets.replace_original}" IsChecked="{Binding ReplaceOriginal}" />
           <TextBlock Classes="caption" Text="{DynamicResource presets.replace_original_hint}" TextWrapping="Wrap"
                      IsVisible="{Binding ReplaceOriginal}" Margin="28,2,0,0" />

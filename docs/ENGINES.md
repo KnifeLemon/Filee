@@ -1522,6 +1522,29 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 - Tests (`ArchiveTests.cs`) build ALZ, EGG and lzip files in code (`ArchiveBuilders.cs`, with bzip2 and LZMA streams
   written by 7-Zip) and skip the 7-Zip parts when `engines/7zip` is missing.
 
+## ISO images
+
+A dropped folder opens a small **Folders** donut with **ISO image**. Each selected folder creates a separate ISO,
+with its contents at the disc root. The ISO preset is available in Settings > Toolbar for users to add to the
+Archives donut; it is not on that donut by default. Supported archives can also be converted to ISO: Filee
+safely extracts them into its temporary work folder, then writes their contents into the image.
+Password-protected archives fail with a clear message.
+
+CLI: `filee convert "path/to/folder" --to iso` or `filee convert "backup.zip" --to iso`.
+DiscUtils.Iso9660 writes ISO 9660 with Joliet in-process, preserving Unicode BMP names and empty directories.
+There are no filesystem or compression options. ISO writing needs no external program; archive reading uses
+the existing extraction engine. Images are data discs, not bootable clones. UDF is not included.
+
+Individual names must fit 62 UTF-16 characters, leaving room for DiscUtils' version suffix; relative disc paths
+must fit 240 characters. Control characters, semicolons, backslashes, `*`, `:`, `?` and supplementary Unicode
+characters are rejected clearly. Individual files must be smaller than 4 GiB. Drive roots and symbolic links/junctions
+are refused. Timestamps are clamped to 1900-2155 in the image;
+source timestamps are unchanged. On Windows, a marked input file transfers Mark of the Web to the image.
+
+File contents are streamed, progress reports bytes written, and cancellation is checked during enumeration and
+streaming. A previous destination inside the source is excluded. A new image replaces its destination only after
+all expected bytes have been written; failures and cancellation preserve any previous image.
+
 ## LibreOffice
 
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently

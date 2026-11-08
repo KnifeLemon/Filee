@@ -193,8 +193,10 @@ public class DefaultPlacementTests(ITestOutputHelper output)
         output.WriteLine(report.Diagnostics);
     }
 
+    // The Folders donut has no extensions: what it gets is a folder.
     private static IReadOnlyList<FileFormat> InputsOf(ToolbarProfile donut) =>
-        donut.IsFallback && donut.Extensions.Count == 0
+        donut.Id == "folders" ? [FormatRegistry.FindById(FormatRegistry.Folder)!]
+        : donut.IsFallback && donut.Extensions.Count == 0
             ? FormatRegistry.Known.Where(f => f.Extensions.Count > 0).ToList()
             : donut.Extensions.Select(FormatRegistry.FindByExtension).OfType<FileFormat>().DistinctBy(f => f.Id).ToList();
 

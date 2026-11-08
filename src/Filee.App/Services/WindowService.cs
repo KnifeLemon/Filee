@@ -174,7 +174,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                 {
                     Title = loc["ask.save_title"],
                     SuggestedStartLocation = start,
-                    SuggestedFileName = AskedLocation.SuggestedName(preset, loc.DisplayName(preset), sources[0]),
+                    SuggestedFileName = AskedLocation.SuggestedName(preset, loc.DisplayName(preset), sources[0], Directory.Exists(sources[0])),
                     DefaultExtension = extension.Length == 0 ? null : extension,
                     ShowOverwritePrompt = !preset.IsCopyToFolder,
                 });
@@ -828,14 +828,14 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     }
 
     /// <summary>Opens the preset popup. Returns true when the user saved (the preset object was updated).</summary>
-    public async Task<bool> EditPresetAsync(Preset preset, Window? owner)
+    public async Task<bool> EditPresetAsync(Preset preset, Window? owner, bool folderInput = false)
     {
         // A group converts nothing: it gets its own editor (name and the presets it fans out).
         if (preset.IsGroup)
-            return await EditGroupAsync(preset, owner);
+            return await EditGroupAsync(preset, owner, folderInput: folderInput);
         var dialog = new PresetEditorWindow
         {
-            DataContext = new PresetEditorViewModel(preset, loc, services.GetRequiredService<UserDataStore>().Settings.TurnedOffFieldSet()),
+            DataContext = new PresetEditorViewModel(preset, loc, services.GetRequiredService<UserDataStore>().Settings.TurnedOffFieldSet(), folderInput),
             Topmost = owner?.Topmost ?? false,
         };
         PrepareWindow(dialog);
@@ -857,13 +857,13 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// Opens the group editor. Returns true when the user saved (the group was updated) or deleted it (it was removed
     /// from the presets and every donut). <paramref name="isNew"/>: not in the store yet, so it can't be deleted.
     /// </summary>
-    public async Task<bool> EditGroupAsync(Preset group, Window? owner, bool isNew = false)
+    public async Task<bool> EditGroupAsync(Preset group, Window? owner, bool isNew = false, bool folderInput = false)
     {
         owner ??= _main ?? MainWindowOrNull();
         var visibleOwner = owner is { IsVisible: true } ? owner : null;
         var dialog = new GroupEditorWindow
         {
-            DataContext = new GroupEditorViewModel(group, services.GetRequiredService<UserDataStore>(), loc, isNew),
+            DataContext = new GroupEditorViewModel(group, services.GetRequiredService<UserDataStore>(), loc, isNew, folderInput),
             Topmost = owner?.Topmost ?? false,
             Confirm = (editor, message) => ConfirmAsync(editor, message, destructive: true),
         };

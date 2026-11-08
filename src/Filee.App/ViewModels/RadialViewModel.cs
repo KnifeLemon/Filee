@@ -160,9 +160,15 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
         // A Shapefile selected with its .dbf, .shx, ... picks the donut of the .shp, not the one for unknown files, and
         // counts as one file.
-        var counted = CompanionFiles.WithoutCompanions(files);
-        var profile = ProfileSelector.Select(store.Profiles, counted);
-        var formats = ProfileSelector.DetectFormats(counted);
+        var folders = files.Where(Directory.Exists).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
+        var mainFiles = CompanionFiles.WithoutCompanions(files.Where(p => !folders.Contains(p)).ToList()).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
+        var counted = files.Where(p => folders.Contains(p) || mainFiles.Contains(p)).ToList();
+        var foldersOnly = counted.Count > 0 && counted.All(folders.Contains);
+        var profile = (foldersOnly ? store.Profiles.FirstOrDefault(p => p.Id == "folders") : null)
+            ?? ProfileSelector.Select(store.Profiles, counted);
+        var formats = ProfileSelector.DetectFormats(counted.Where(p => !folders.Contains(p))).ToList();
+        if (folders.Count > 0)
+            formats.Add(FormatRegistry.FindById(FormatRegistry.Folder)!);
         // A turned-off field still shows the formats of the dropped files' own fields (FORMAT-RULES rule 4): a font file
         // offers font conversions with Fonts off. The front takes this local, not _off, which holds the last load's set
         // until the line after it.
