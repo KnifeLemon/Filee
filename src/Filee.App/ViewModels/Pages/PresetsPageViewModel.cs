@@ -25,7 +25,8 @@ public sealed partial class PresetListItem(Preset preset, ILocalizer loc) : Obse
     }
 
     private static string TargetLabel(Preset p, ILocalizer l) =>
-        p.TargetFormat == BuiltInData.SameAsSource ? l["presets.same_as_source"]
+        p.IsUpscaleTool ? l["preset.upscale"]
+        : p.TargetFormat == BuiltInData.SameAsSource ? l["presets.same_as_source"]
         : "→ " + (FormatLabels.NameOf(l, p.TargetFormat) ?? p.TargetFormat);
 }
 
@@ -46,7 +47,7 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
         VisiblePresets = new FilteredList<PresetListItem>(Presets, p => [p.Name, p.Target, p.Preset.TargetFormat]);
         var off = store.Settings.TurnedOffFieldSet();
         // Groups and tools convert nothing: they live on the donut only (Settings → Toolbar).
-        foreach (var preset in store.Presets.Where(p => !p.IsGroup && !p.IsTool && FormatFields.IsShown(p.TargetFormat, off)))
+        foreach (var preset in store.Presets.Where(p => !p.IsGroup && (!p.IsTool || p.IsUpscaleTool) && FormatFields.IsShown(p.TargetFormat, off)))
             Presets.Add(new PresetListItem(preset, loc));
         SelectedPreset = Presets.FirstOrDefault();
         PlacePresets = [.. BuiltInData.PlacePresets().Where(p => FormatFields.IsShown(p.TargetFormat, off))

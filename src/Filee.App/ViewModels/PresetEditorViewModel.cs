@@ -13,6 +13,7 @@ using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Ocr;
 using Filee.Engines.Translation;
+using Filee.Engines.Upscale;
 
 namespace Filee.App.ViewModels;
 
@@ -263,6 +264,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         ];
         _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
             ?? TranslationLanguageChoices[0];
+        _upscaleScale = _edit.Upscale.Scale > 0 ? _edit.Upscale.Scale : 4;
+        _selectedUpscaleModel = UpscaleModels.FirstOrDefault(m => string.Equals(m.Id, _edit.Upscale.Model, StringComparison.OrdinalIgnoreCase))
+            ?? UpscaleModels.FirstOrDefault();
         _archiveLevel = ArchiveLevels.First(l => l.Value == _edit.Archive.Level);
         _combineIntoOne = _edit.Archive.CombineIntoOne;
         _saveEveryFrame = _edit.Media.SaveEveryFrame;
@@ -401,6 +405,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             IsTestingTranslation = false;
         }
     }
+
+    public bool ShowUpscale => _original.IsUpscaleTool || _edit.Upscale.Enabled;
+    public IReadOnlyList<UpscaleModel> UpscaleModels { get; } = Filee.Engines.Upscale.UpscaleModels.All;
+    [ObservableProperty] private UpscaleModel? _selectedUpscaleModel;
+    [ObservableProperty] private int _upscaleScale = 4;
+
 
     /// <summary>What "Recognize text" needs: Tesseract, or on a Mac Apple Vision (Tesseract only for other languages).</summary>
     public string OcrHint { get; }
@@ -1289,6 +1299,12 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
         _original.Translate.TargetLanguage = TargetLanguage.Value;
         _original.Translate.Enabled = ShowTranslate;
+        if (ShowUpscale)
+        {
+            _original.Upscale.Enabled = true;
+            _original.Upscale.Model = SelectedUpscaleModel?.Id;
+            _original.Upscale.Scale = UpscaleScale;
+        }
 
         var output = _original.Output;
         // Asking keeps the location it had: a Filee that can't ask (or one from before it) saves there.

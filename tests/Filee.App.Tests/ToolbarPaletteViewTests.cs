@@ -161,7 +161,7 @@ public class ToolbarPaletteViewTests
     /// see.
     /// </summary>
     private static void WithoutPictureEditTools(PresetAvailabilityTests.Fixture f) =>
-        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool || p.IsMetadataTool);
+        f.Store.Presets.RemoveAll(p => p.IsAnnotateTool || p.IsBackgroundTool || p.IsMetadataTool || p.IsUpscaleTool);
 
     private static ToolbarProfile Profile(string id, params string[] extensions) => new()
     {

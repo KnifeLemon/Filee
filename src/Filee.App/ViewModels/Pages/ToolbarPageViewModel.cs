@@ -124,6 +124,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         OuterRadius = store.Settings.Donut.OuterRadius;
         HoleRatio = store.Settings.Donut.HoleRatio * 100;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1) * 100;
+        ShowCaptions = store.Settings.Donut.ShowCaptions;
         _loading = false;
 
         SelectedProfile = Profiles.FirstOrDefault();
@@ -297,6 +298,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _holeRatio;
     [ObservableProperty] private double _sliceOpacity;
 
+    /// <summary>The output format under the slices' names (Appearance → Show output format).</summary>
+    [ObservableProperty] private bool _showCaptions;
+
     private ToolbarProfile? Profile => SelectedProfile?.Profile;
 
     /// <summary>The preset ids of the face being edited (null without a profile).</summary>
@@ -451,6 +455,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     partial void OnOuterRadiusChanged(double value) => SaveAppearance();
     partial void OnHoleRatioChanged(double value) => SaveAppearance();
     partial void OnSliceOpacityChanged(double value) => SaveAppearance();
+    partial void OnShowCaptionsChanged(bool value) => SaveAppearance();
 
     private void SaveAppearance()
     {
@@ -459,6 +464,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         _store.Settings.Donut.OuterRadius = Math.Round(OuterRadius);
         _store.Settings.Donut.HoleRatio = Math.Round(HoleRatio) / 100;
         _store.Settings.Donut.Opacity = Math.Round(SliceOpacity) / 100;
+        _store.Settings.Donut.ShowCaptions = ShowCaptions;
         _store.SaveSettings();
     }
 
@@ -702,7 +708,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             .OfType<Preset>()
             // A group is marked as one (no children: the editor doesn't fan them out), so the preview draws it as the
             // donut does.
-            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p), Children = p.IsGroup ? [] : null })
+            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p), KeepsCaption = p.IsCopyToFolder, Children = p.IsGroup ? [] : null })
             .ToList();
 
         Palette.Clear();

@@ -58,5 +58,6 @@
     <EmbeddedResource Include="Infrastructure\engines.json" LogicalName="Filee.Engines.engines.json" />
     <!-- Pinned Tesseract language data, downloaded when an OCR preset needs it (Ocr/OcrLanguages.cs). -->
     <EmbeddedResource Include="Infrastructure\ocr-languages.json" LogicalName="Filee.Engines.ocr-languages.json" />
+    <EmbeddedResource Include="Infrastructure\upscale-models.json" LogicalName="Filee.Engines.upscale-models.json" />
   </ItemGroup>
 </Project>

@@ -149,6 +149,10 @@ public sealed class PresetAvailability
             return formats.Any(f => HideService.CanOpen(f.Id))
                 ? new(PresetUse.Usable, null)
                 : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsUpscaleTool)
+            return formats.Any(f => UpscaleTool.CanUpscale(f.Id))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.images_only"]);
 
         if (preset.IsTool)
         {

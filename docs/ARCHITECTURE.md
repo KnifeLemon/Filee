@@ -62,7 +62,8 @@
    (no Recycle Bin on the drive, a file open elsewhere, a read-only file), both stay and the file's notice says why,
    with a translated reason (`trash.*`). A result "Only if smaller" copied from the source leaves the source alone.
    Watch folders and files from a browser never replace.
-   "Merge into one PDF" converts each file to PDF and merges with PDFsharp.
+   "Merge into one PDF" converts each file to PDF and merges with PDFsharp, preserving bookmarks, internal links,
+   named destinations and page-backed AcroForm fields. Fields with colliding names get a file-position prefix.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
    "Merge videos", "Merge audio" and "Video from images" join the files, in the order picked in the merge order
    window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first. Like the
@@ -266,8 +267,14 @@ without touching the file's content.
   picture, a gain map, a Samsung trailer) doesn't offer it, and the window says why: it would orphan what's there and
   leave that metadata, which no field shows. Camera RAW and DNG don't offer it either.
 - Without ExifTool the window reads nothing and offers Settings → Engines: a metadata library inside Filee can be made
-  to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under a time limit. It
-  reads the file with ExifTool once it is installed.
+  to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under limits of time,
+  memory and output: a small file can make it hold and print gigabytes of text, and a file over them goes to the summary
+  as holding too much past the output or memory limit, as unreadable past the time limit, or with more than 3,000
+  fields, 256 KB of text to show or a field name over 256 characters, as the window lays out every row, and search waits
+  for a pause in the typing above 500 rows. A row shows and searches the first 32 KB of a value, and one longer can be
+  removed but not typed in. Closing the window stops the read. ExifTool's write has only its time limit, but the reads
+  around a save have these limits, so a conversion of a file over them is refused. It reads the file with ExifTool once
+  it is installed.
 - `MetadataViewModel` keeps one row per field (edited, removed, added; a list one entry per line) and turns them into
   `MetadataEdits`. Add field offers XMP's descriptive fields, IPTC's where the kind of file has IPTC (JPEG, TIFF, PSD),
   a PDF's document info for a PDF. The keys, the summary of files that could not be opened or saved, and texts that

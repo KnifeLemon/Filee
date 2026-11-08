@@ -25,6 +25,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private double _holeRatio = 0.42;
     [ObservableProperty] private double _sliceOpacity = 0.96;
 
+    /// <summary>The output format under the slices' names (Settings → Donut toolbar → Appearance).</summary>
+    [ObservableProperty] private bool _showCaptions = true;
+
     /// <summary>The other face has a slice for these files: Tab flips to it.</summary>
     [ObservableProperty] private bool _canFlip;
 
@@ -272,6 +275,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                     : p.TargetFormat == BuiltInData.SameAsSource
                         ? string.Join("/", formats.Select(f => f.DisplayName).Take(2))
                         : FormatLabels.NameOf(loc, p.TargetFormat),
+                KeepsCaption = p.IsCopyToFolder,
                 IsEnabled = reason is null,
                 DisabledReason = reason,
             };
@@ -329,6 +333,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         OuterRadius = Math.Clamp(store.Settings.Donut.OuterRadius, 100, 240);
         HoleRatio = store.Settings.Donut.HoleRatio;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1);
+        ShowCaptions = store.Settings.Donut.ShowCaptions;
         FlipKey = store.Settings.Donut.EffectiveFlipKey(store.Settings.Triggers);
         FlipWithWheel = store.Settings.Donut.FlipWithWheel;
     }

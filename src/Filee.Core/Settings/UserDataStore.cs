@@ -1043,6 +1043,16 @@ internal static class SettingsMigrations
             presets.InsertRange(background < 0 ? presets.Count : background + 1, BuiltInData.MetadataPresets());
             changed = true;
         }
+        // v73: the "Upscale" tool, in the palette only, after "Metadata" (or "Add background") as in a new library (at
+        //      the end without either, #806). (Schema 73 may be renumbered if another change takes it first.)
+        if (from < 73 && presets.All(p => p.Id != BuiltInData.UpscaleId))
+        {
+            var after = presets.FindIndex(p => p.Id == BuiltInData.MetadataId);
+            if (after < 0)
+                after = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
+            presets.InsertRange(after < 0 ? presets.Count : after + 1, BuiltInData.UpscalePresets());
+            changed = true;
+        }
         return changed;
     }
 
