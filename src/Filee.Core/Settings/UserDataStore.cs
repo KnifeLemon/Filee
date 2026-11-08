@@ -1043,8 +1043,9 @@ internal static class SettingsMigrations
             presets.InsertRange(background < 0 ? presets.Count : background + 1, BuiltInData.MetadataPresets());
             changed = true;
         }
-        // v70: folder inputs have their own small ISO donut; existing archive donuts remain untouched.
-        if (from < 70)
+        // v73: folder inputs have their own small ISO donut; existing archive donuts remain untouched. (Schema 73 may
+        //      be renumbered if another change takes it first.)
+        if (from < 73)
         {
             var hadIsoPreset = presets.Any(p => p.Id == "to-iso");
             if (presets.All(p => p.Id != "to-iso"))

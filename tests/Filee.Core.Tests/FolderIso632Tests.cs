@@ -40,12 +40,12 @@ public class FolderIso632Tests
         profiles.RemoveAll(p => p.Id == "folders");
         var archives = profiles.Single(p => p.Id == "archives");
         var original = archives.PresetIds.ToArray();
-        Assert.True(SettingsMigrations.ApplyToLibrary(69, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(72, presets, profiles));
         Assert.Equal(original, archives.PresetIds);
         Assert.Equal(["to-iso"],
             profiles.Single(p => p.Id == "folders").PresetIds);
         presets.Single(p => p.Id == "to-iso").Name = "My ISO";
-        Assert.False(SettingsMigrations.ApplyToLibrary(69, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(72, presets, profiles));
         Assert.Equal("My ISO", presets.Single(p => p.Id == "to-iso").Name);
         Assert.False(new Preset { TargetFormat = "iso", Archive = { CombineIntoOne = true } }.PacksIntoOneArchive);
         Assert.DoesNotContain(presets, p => p.Id.StartsWith("folder-", StringComparison.Ordinal));
