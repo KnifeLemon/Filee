@@ -43,13 +43,15 @@
   <a href="docs/readme/README.hi.md">हिन्दी</a> ·
   <a href="docs/readme/README.ru.md">Русский</a> ·
   <a href="docs/readme/README.ar.md">العربية</a> ·
+  <a href="docs/readme/README.fa.md">فارسی</a> ·
   <a href="docs/readme/README.pt-BR.md">Português (Brasil)</a> ·
   <a href="docs/readme/README.pt-PT.md">Português (Portugal)</a> ·
   <a href="docs/readme/README.fr.md">Français</a> ·
   <a href="docs/readme/README.th.md">ไทย</a> ·
   <a href="docs/readme/README.tr.md">Türkçe</a> ·
   <a href="docs/readme/README.id.md">Bahasa Indonesia</a> ·
-  <a href="docs/readme/README.it.md">Italiano</a>
+  <a href="docs/readme/README.it.md">Italiano</a> ·
+  <a href="docs/readme/README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>

@@ -39,7 +39,21 @@ public partial class LocalizationTests
         Assert.Equal("ar", LocalizationService.Resolve("AR"));
         Assert.Contains("fonts:Filee#Noto Sans Arabic", ThemeService.FontFamilies("ar"));
         Assert.True(SoftPalette.IsRightToLeft("ar"));
-        Assert.All(LocalizationService.Languages.Where(l => l.Code != "ar"), l => Assert.False(SoftPalette.IsRightToLeft(l.Code)));
+        Assert.All(LocalizationService.Languages.Where(l => l.Code != "ar" && l.Code != "fa"), l => Assert.False(SoftPalette.IsRightToLeft(l.Code)));
+    }
+
+    [Fact]
+    public void Persian_is_offered_under_its_own_name_and_reads_right_to_left()
+    {
+        Assert.Contains(("fa", "فارسی"), LocalizationService.Languages);
+        Assert.Equal("fa", LocalizationService.Resolve("FA"));
+        Assert.True(SoftPalette.IsRightToLeft("fa"));
+    }
+
+    [Fact]
+    public void Bengali_uses_the_embedded_font()
+    {
+        Assert.Contains("fonts:Filee#Noto Sans Bengali", ThemeService.FontFamilies("bn-BD"));
     }
 
     [Theory]
@@ -182,6 +196,9 @@ public partial class LocalizationTests
     [InlineData("en-US", "en")]
     [InlineData("pl-PL", "pl")]
     [InlineData("ar-EG", "ar")]
+    [InlineData("fa-IR", "fa")]
+    [InlineData("fa", "fa")]
+    [InlineData("fan-GA", "en")]
     [InlineData("pt-BR", "pt-BR")]
     [InlineData("pt-PT", "pt-PT")]
     [InlineData("zh-CN", "zh-CN")]
@@ -228,6 +245,7 @@ public partial class LocalizationTests
     [InlineData("id")]
     [InlineData("vi")]
     [InlineData("ar")]
+    [InlineData("fa")]
     [InlineData("ne")]
     [InlineData("en")]
     [InlineData("pt-PT")]
