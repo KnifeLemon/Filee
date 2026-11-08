@@ -15,6 +15,8 @@
 // document with such text goes through LibreOffice when that is installed; without it, rhwp draws it, and the letters
 // get the same treatment as the punctuation: a run of their own whose letter spacing takes the half-em up (or down)
 // to the font's real advance, in steps of 5 % so that neighbouring letters of about the same width share a run.
+// The font that sets the width is the one rhwp draws the letter with: LATIN for Latin Extended (U+0100–024F,
+// U+1E00–1EFF), HANGUL for every other script — in Chinese and Japanese text, the East Asian font.
 
 using System.Globalization;
 using System.Xml.Linq;
@@ -38,8 +40,13 @@ internal static partial class RhwpInput
     /// <summary>Letter spacing of such a letter is rounded to a multiple of this, in percent.</summary>
     private const int LetterSpacingStep = 5;
 
-    /// <summary>The language slots rhwp may draw such a letter with, in the order their font is asked for the width.</summary>
-    private static readonly string[] LetterSlots = ["LATIN", "OTHER", "HANGUL"];
+    /// <summary>
+    /// The language slots rhwp draws such a letter with, the right one first (measured with a different font in each
+    /// slot, rhwp 0.8.7): Latin Extended letters come from LATIN, Cyrillic, Greek, Armenian, Georgian and the rest
+    /// from HANGUL. OTHER is not used. The second slot only asks when the first one's font gives no width.
+    /// </summary>
+    private static string[] LetterSlots(char c) =>
+        c is >= '\u0100' and <= '\u024F' or >= '\u1E00' and <= '\u1EFF' ? new[] { "LATIN", "HANGUL" } : new[] { "HANGUL", "LATIN" };
 
     private static Dictionary<char, (string, double)> BuildGuesses()
     {
@@ -101,7 +108,7 @@ internal static partial class RhwpInput
         // when the guess is already right (within a step) or no installed font tells.
         int? LetterSpacing(XElement shape, char c)
         {
-            foreach (var slot in LetterSlots)
+            foreach (var slot in LetterSlots(c))
             {
                 var attribute = slot.ToLowerInvariant();
                 var fontId = (string?)Child(shape, "fontRef")?.Attribute(attribute);
