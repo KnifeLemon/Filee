@@ -100,12 +100,19 @@ public class EnginesPageTests
             scroller.Offset = scroller.Offset.WithY(scroller.Offset.Y + top - 150);
             Pump();
 
+            // Only the handle has a cursor of its own: not the card, and not its arrow buttons.
+            var firstCard = list.ContainerFromIndex(0)!;
+            Assert.Null(firstCard.GetVisualDescendants().OfType<Border>().First(b => b.Classes.Contains("engine")).Cursor);
+            Assert.All(firstCard.GetVisualDescendants().OfType<Button>().Where(b => b.Classes.Contains("icon")), b => Assert.Null(b.Cursor));
+            Assert.Null(list.Cursor);
+
             // Grab the first card and move past the middle of the second one: it moves there while dragging.
             var from = Middle(list.ContainerFromIndex(0)!, window);
             var past = Middle(list.ContainerFromIndex(1)!, window) + new Point(0, 12);
             window.MouseDown(from, MouseButton.Left);
             window.MouseMove(from + new Point(0, 8));
             Assert.True(first.IsDragging);
+            Assert.NotNull(list.Cursor); // the move cursor stays for the whole drag, even outside the list
             window.MouseMove(past);
             Pump();
             Assert.Equal([second, first, third], engines.Take(3));
@@ -114,6 +121,7 @@ public class EnginesPageTests
             window.MouseUp(past, MouseButton.Left);
             Pump();
             Assert.False(first.IsDragging);
+            Assert.Null(list.Cursor);
             Assert.Equal(engines.Select(e => e.Converter.Id), store.Settings.EnginePriority);
 
             // A click without moving changes nothing.
