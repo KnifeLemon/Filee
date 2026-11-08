@@ -105,26 +105,34 @@ internal sealed partial class CssStyleSheet
     /// <summary>A rule for every element or for the page itself: "*", "html", "body" (without a class).</summary>
     private static bool IsPageWide(Rule rule) => rule.Classes.Length == 0 && (rule.Tag is null or "html" or "body");
 
-    /// <summary>The text without the statement at-rules (@import url(...);) that start it.</summary>
+    /// <summary>
+    /// The text without the statement at-rules (@import url(...);) that start it. Walks an index instead of cutting the
+    /// text after each one: a style block with tens of thousands of @import lines would otherwise take minutes.
+    /// </summary>
     private static string WithoutStatementAtRules(string text)
     {
-        text = text.TrimStart();
-        while (text.StartsWith('@'))
+        var start = 0;
+        while (true)
         {
-            var end = StatementEnd(text);
+            while (start < text.Length && char.IsWhiteSpace(text[start]))
+                start++;
+            if (start >= text.Length || text[start] != '@')
+                break;
+            var end = StatementEnd(text, start);
             if (end < 0)
                 break;
-            text = text[(end + 1)..].TrimStart();
+            start = end + 1;
         }
-        return text;
+        return text[start..];
     }
 
-    /// <summary>Index of the ";" that ends the statement, not counting one inside quotes or parentheses; -1 if none.</summary>
-    private static int StatementEnd(string text)
+    /// <summary>Index of the ";" that ends the statement starting at <paramref name="start"/>, not counting one inside
+    /// quotes or parentheses; -1 if none.</summary>
+    private static int StatementEnd(string text, int start)
     {
         var quote = '\0';
         var depth = 0;
-        for (var i = 0; i < text.Length; i++)
+        for (var i = start; i < text.Length; i++)
         {
             var c = text[i];
             if (quote != '\0')
@@ -245,7 +253,8 @@ internal static class CssValues
     };
 
     /// <summary>"#RRGGBB" for #rgb, #rrggbb, rgb()/rgba() and common colour names; null for anything else
-    /// (transparent, inherit, gradients, ...).</summary>
+    /// (transparent, inherit, gradients, ...). A colour with an alpha channel (#rgba, #rrggbbaa, rgba(), rgb(... / a)) is
+    /// blended over white, the page it is printed on; one that is fully transparent is no colour.</summary>
     public static string? Color(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -256,11 +265,16 @@ internal static class CssValues
         if (text.StartsWith('#'))
         {
             var hex = text[1..];
-            if (hex.Length is 3 or 4 && hex.All(Uri.IsHexDigit))
-                return "#" + string.Concat(hex.Take(3).Select(c => $"{c}{c}")).ToUpperInvariant();
-            if (hex.Length is 6 or 8 && hex.All(Uri.IsHexDigit))
-                return "#" + hex[..6].ToUpperInvariant();
-            return null;
+            if (hex.Length is not (3 or 4 or 6 or 8) || !hex.All(Uri.IsHexDigit))
+                return null;
+            var step = hex.Length <= 4 ? 1 : 2;
+            var channels = new int[hex.Length / step];
+            for (var i = 0; i < channels.Length; i++)
+            {
+                var digits = hex.Substring(i * step, step);
+                channels[i] = Convert.ToInt32(step == 1 ? digits + digits : digits, 16);
+            }
+            return Blend(channels[0], channels[1], channels[2], channels.Length == 4 ? channels[3] / 255.0 : 1);
         }
         if (text.StartsWith("rgb", StringComparison.OrdinalIgnoreCase) && text.IndexOf('(') is var open and > 0 && text.IndexOf(')') is var close && close > open)
         {
@@ -276,9 +290,49 @@ internal static class CssValues
                     return null;
                 channels[i] = (int)Math.Clamp(Math.Round(percent ? number * 2.55 : number), 0, 255);
             }
-            return $"#{channels[0]:X2}{channels[1]:X2}{channels[2]:X2}";
+            var alpha = 1.0;
+            if (parts.Length >= 4)
+            {
+                var part = parts[3];
+                var percent = part.EndsWith('%');
+                if (!double.TryParse(part.TrimEnd('%'), NumberStyles.Float, CultureInfo.InvariantCulture, out alpha))
+                    return null;
+                alpha = percent ? alpha / 100 : alpha;
+            }
+            return Blend(channels[0], channels[1], channels[2], alpha);
         }
         return null;
+    }
+
+    /// <summary>The colour over a white page; null when <paramref name="alpha"/> is 0 (nothing is drawn).</summary>
+    private static string? Blend(int red, int green, int blue, double alpha)
+    {
+        alpha = Math.Clamp(alpha, 0, 1);
+        if (alpha <= 0)
+            return null;
+        int Over(int channel) => (int)Math.Clamp(Math.Round(channel * alpha + 255 * (1 - alpha), MidpointRounding.AwayFromZero), 0, 255);
+        return $"#{Over(red):X2}{Over(green):X2}{Over(blue):X2}";
+    }
+
+    /// <summary>WCAG relative luminance (0 black .. 1 white) of "#RRGGBB"; 1 for anything else.</summary>
+    public static double Luminance(string color)
+    {
+        if (color is not ['#', ..] || color.Length != 7 || !color[1..].All(Uri.IsHexDigit))
+            return 1;
+        double Linear(int offset)
+        {
+            var channel = Convert.ToInt32(color.Substring(offset, 2), 16) / 255.0;
+            return channel <= 0.03928 ? channel / 12.92 : Math.Pow((channel + 0.055) / 1.055, 2.4);
+        }
+        return 0.2126 * Linear(1) + 0.7152 * Linear(3) + 0.0722 * Linear(5);
+    }
+
+    /// <summary>WCAG contrast ratio of two "#RRGGBB" colours: 1 (the same) to 21 (black on white).</summary>
+    public static double Contrast(string first, string second)
+    {
+        var a = Luminance(first);
+        var b = Luminance(second);
+        return (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
     }
 
     /// <summary>The first colour inside a shorthand such as "background: #eee url(x.png)".</summary>
