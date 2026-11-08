@@ -151,9 +151,9 @@ public static class ProcessRunner
     /// <param name="memoryLimit">
     /// The most memory the program may use, in bytes, roughly. On Windows, the limit of a Job Object it and the
     /// programs it starts are in: what goes over fails to allocate. Elsewhere, or without a job, it is killed once its
-    /// resident memory goes over, which is looked at ten times a second, as nothing else limits memory on both Linux
-    /// and macOS: it can get ahead by what it allocates in that time, and that doesn't count memory swapped out or a
-    /// program it started and didn't become.
+    /// memory goes over (<see cref="MemoryOf"/>), which is looked at ten times a second, as nothing else limits memory
+    /// on both Linux and macOS: it can get ahead by what it allocates in that time, and that doesn't count a program it
+    /// started and didn't become.
     /// </param>
     public static async Task<ProcessResult> RunWithOutputAsync(
         string executable,
@@ -344,8 +344,7 @@ public static class ProcessRunner
     {
         try
         {
-            process.Refresh();
-            if (process.WorkingSet64 <= memoryLimit)
+            if (MemoryOf(process) <= memoryLimit)
                 return false;
             TryKill(process, null);
             return true;
@@ -355,6 +354,66 @@ public static class ProcessRunner
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// The memory <paramref name="process"/> holds, as the system counts it against it: on macOS its footprint, which
+    /// takes in what the system compressed when memory ran short (a program's resident memory leaves that out, so a
+    /// program holding gigabytes of zeros could look small), on Linux its resident memory and what went to swap.
+    /// </summary>
+    internal static long MemoryOf(Process process)
+    {
+        process.Refresh();
+        var resident = process.WorkingSet64;
+        if (OperatingSystem.IsMacOS() && proc_pid_rusage(process.Id, RusageInfoV0, out var usage) == 0)
+            return Math.Max(resident, (long)usage.PhysFootprint);
+        if (OperatingSystem.IsLinux() && LinuxMemoryOf(process.Id) is { } linux)
+            return Math.Max(resident, linux);
+        return resident;
+    }
+
+    /// <summary>VmRSS and VmSwap of /proc/<paramref name="pid"/>/status, in bytes; null when it can't be read.</summary>
+    private static long? LinuxMemoryOf(int pid)
+    {
+        try
+        {
+            long? total = null;
+            foreach (var line in File.ReadLines($"/proc/{pid}/status"))
+            {
+                if (!line.StartsWith("VmRSS:", StringComparison.Ordinal) && !line.StartsWith("VmSwap:", StringComparison.Ordinal))
+                    continue;
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2 && long.TryParse(parts[1], out var kilobytes))
+                    total = (total ?? 0) + kilobytes * 1024;
+            }
+            return total;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null; // it has exited
+        }
+    }
+
+    private const int RusageInfoV0 = 0;
+
+    [DllImport("/usr/lib/libSystem.dylib")]
+    private static extern int proc_pid_rusage(int pid, int flavor, out RusageInfo info);
+
+    /// <summary>rusage_info_v0 of &lt;sys/resource.h&gt;.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RusageInfo
+    {
+        public Guid Uuid;
+        public ulong UserTime;
+        public ulong SystemTime;
+        public ulong PkgIdleWakeups;
+        public ulong InterruptWakeups;
+        public ulong PageIns;
+        public ulong WiredSize;
+        public ulong ResidentSize;
+        public ulong PhysFootprint;
+        public ulong ProcessStartAbsoluteTime;
+        public ulong ProcessExitAbsoluteTime;
     }
 
     private static void TryKill(Process process, ProcessJob? job)

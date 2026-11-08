@@ -41,6 +41,29 @@ public sealed class ProcessRunnerOutputTests : IDisposable
     }
 
     [Fact]
+    public async Task A_programs_memory_is_what_it_holds()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "Windows limits memory with a Job Object.");
+        // Zeros, as a file made to fill the memory holds: what the system can compress when memory runs short.
+        using var program = Process.Start(new ProcessStartInfo("/usr/bin/env", ["perl", "-e", "$| = 1; my $held = qq(\\0) x 400_000_000; print qq(held\\n); sleep 30"])
+        {
+            RedirectStandardOutput = true,
+        })!;
+        try
+        {
+            Assert.Equal("held", await program.StandardOutput.ReadLineAsync(TestContext.Current.CancellationToken));
+
+            var memory = ProcessRunner.MemoryOf(program);
+
+            Assert.True(memory >= 400_000_000L, $"{memory} bytes");
+        }
+        finally
+        {
+            program.Kill();
+        }
+    }
+
+    [Fact]
     public async Task A_read_given_up_on_doesnt_fail_where_nobody_looks()
     {
         // Cancelled while the read waits: it fails after the run has ended, as a read stopped part way does.
