@@ -299,7 +299,7 @@ public sealed class Preset
     public const string MetadataTool = "metadata";
 
     /// <summary>
-    /// <see cref="Tool"/> of "Upscale" (settings schema 69): enhance image quality and resolution using local AI models.
+    /// <see cref="Tool"/> of "Upscale" (settings schema 73): enhance image quality and resolution using local AI models.
     /// </summary>
     public const string UpscaleTool = "upscale";
 

@@ -348,11 +348,11 @@ public static class BuiltInData
         },
     ];
 
-    /// <summary>Id of the built-in "Upscale" tool (settings schema 69): in the palette, on no donut.</summary>
+    /// <summary>Id of the built-in "Upscale" tool (settings schema 73): in the palette, on no donut.</summary>
     public const string UpscaleId = "tool-upscale";
 
     /// <summary>
-    /// "Upscale Quality" (settings schema 69): upscale images using local AI models (Real-ESRGAN / NCNN).
+    /// "Upscale Quality" (settings schema 73): upscale images using local AI models (Real-ESRGAN / NCNN).
     /// In the palette only: the picture donuts are full.
     /// </summary>
     public static List<Preset> UpscalePresets() =>
