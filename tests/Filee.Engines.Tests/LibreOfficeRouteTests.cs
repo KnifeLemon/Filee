@@ -58,6 +58,17 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
         Assert.Equal("libreoffice", Assert.Single(chosen.Plan(from, "pdf")!.Steps).Converter.Id);
     }
 
+    [Fact]
+    public void Rtf_goes_to_txt_through_libreoffice()
+    {
+        // Issue #1204: through Markdown, code copied from an IDE came out full of backticks.
+        var planner = Planner(slides: false, hwpToPdf: false);
+
+        Assert.Equal("libreoffice", Assert.Single(planner.Plan("rtf", "txt")!.Steps).Converter.Id);
+        Assert.Equal("pandoc", Assert.Single(planner.Plan("rtf", "md")!.Steps).Converter.Id);
+        Assert.DoesNotContain(planner.Plan("rtf", "epub")!.Steps, s => s.From == "rtf" && s.To == "txt"); // not a hop
+    }
+
     [Theory]
     [InlineData("docx")]
     [InlineData("txt")]
