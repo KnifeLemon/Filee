@@ -83,12 +83,38 @@ libwayland-client0 on Ubuntu). To turn it on:
    --upgrade instead of --install, then run the reconfigure line again.
    If KWin still runs the old script, turn "Filee donut" off and on again in
    System Settings > Window Management > KWin Scripts, or sign out and back in.
-   For Hyprland: Add the floating and placement window rules in ~/.config/hypr/hyprland.conf (or hyprland.lua):
+   For Hyprland: Add a window rule that floats the donut, centers it on the
+   cursor and turns off its border, shadow and blur. The syntax depends on the
+   Hyprland version (hyprctl version) and the config file it reads. Hyprland
+   0.57 and newer read only ~/.config/hypr/hyprland.lua; 0.55 and 0.56 read
+   hyprland.lua if it exists and hyprland.conf otherwise.
+   In hyprland.lua (Hyprland 0.55 and newer):
+     hl.window_rule({
+         name        = "filee-donut",
+         match       = { title = "^(Filee Donut)$" },
+         float       = true,
+         move        = { "cursor_x-(window_w*0.5)", "cursor_y-(window_h*0.5)" },
+         border_size = 0,
+         no_shadow   = true,
+         no_blur     = true,
+     })
+   In hyprland.conf (Hyprland 0.53 to 0.56):
+     windowrule {
+         name = filee-donut
+         match:title = ^(Filee Donut)$
+         float = on
+         move = (cursor_x-(window_w*0.5)) (cursor_y-(window_h*0.5))
+         border_size = 0
+         no_shadow = on
+         no_blur = on
+     }
+   In hyprland.conf (Hyprland older than 0.53, which still uses windowrulev2):
      windowrulev2 = float, title:^(Filee Donut)$
      windowrulev2 = move cursor -50% -50%, title:^(Filee Donut)$
      windowrulev2 = noborder, title:^(Filee Donut)$
      windowrulev2 = noshadow, title:^(Filee Donut)$
      windowrulev2 = noblur, title:^(Filee Donut)$
+   Hyprland reloads its config when the file changes; hyprctl reload forces it.
 
 Native Wayland Backend (experimental, off by default):
 By default, Filee runs through XWayland on Wayland desktops for maximum compatibility.
@@ -100,8 +126,8 @@ any app opens an invisible donut window. It only shows when files are dragged
 onto it, but it rejects drops that are not files, so Ctrl+drag to copy text in an
 editor or browser can have its drop swallowed near the start point. If that gets
 in the way, change the modifier on the Triggers page, for example to Ctrl+Shift.
-The excluded apps list does not apply on Wayland. Without the KWin script the
-donut opens in the wrong place.
+The excluded apps list does not apply on Wayland. Without the KWin script or
+the Hyprland window rule the donut opens in the wrong place.
 
 Packages are built and smoke-tested on Ubuntu 24.04 and started on Ubuntu 22.04
 by the automated builds.
