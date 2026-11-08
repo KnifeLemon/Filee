@@ -121,15 +121,18 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [Fact]
     public void A_style_background_replaces_the_shade_of_pre_for_dark_code_themes()
     {
-        var content = Parse("""
-            <style>pre { background: #282c34; color: #f8f8f2 } .plain { color: #123456 }</style>
-            <pre>어두운 코드</pre><pre class="plain">기본 코드</pre><pre><code>안쪽 코드</code></pre>
-            """);
-
-        var dark = Run(content, "어두운").Format;
+        var dark = Run(Parse("""
+            <style>pre { background: #282c34; color: #f8f8f2 }</style>
+            <pre>어두운 코드</pre>
+            """), "어두운").Format;
         Assert.Equal(("#282C34", "#F8F8F2"), (dark.Shade, dark.Color));
-        Assert.Equal(HtmlReader.CodeShade, Run(content, "기본").Format.Shade); // no background in the style sheet
-        Assert.Equal("#123456", Run(content, "기본").Format.Color);
+
+        // Without a background in the style sheet, pre keeps the code shade (the Markdown and text writers know code by it).
+        var plain = Run(Parse("""
+            <style>.plain { color: #123456 }</style>
+            <pre class="plain">기본 코드</pre>
+            """), "기본").Format;
+        Assert.Equal((HtmlReader.CodeShade, "#123456"), (plain.Shade, plain.Color));
     }
 
     [Fact]
