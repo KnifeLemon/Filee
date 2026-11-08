@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: بکشید. رها کنید. تبدیل شد." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: بکشید. رها کنید. تبدیل شد." width="100%"></a>
 </p>
 
 <p align="center" dir="rtl">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS پیش‌نمایش">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="مجوز MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="مجوز MIT"></a>
 </p>
 
 <p align="center" dir="ltr">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center" dir="ltr">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -78,7 +78,7 @@
 ## عملکرد برنامه در عمل
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="کشیدن trip.jpg با نگه‌داشتن کلید Ctrl: یک دونات از قالب‌ها کنار مکان‌نما باز می‌شود، فایل روی PNG رها می‌شود، حلقه پیشرفت کامل شده و trip.png ایجاد می‌شود" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="کشیدن trip.jpg با نگه‌داشتن کلید Ctrl: یک دونات از قالب‌ها کنار مکان‌نما باز می‌شود، فایل روی PNG رها می‌شود، حلقه پیشرفت کامل شده و trip.png ایجاد می‌شود" width="820"></a><br>
   <sub>ویدیوی ۲۷ ثانیه‌ای را تماشا کنید و دموی تعاملی را در <a href="https://filee.sh">filee.sh</a> امتحان نمایید</sub>
 </p>
 
@@ -153,8 +153,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="ویرایشگر نوار ابزار دونات با پروفایل‌ها و پیش‌تنظیمات"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="صفحه اصلی با ناحیه رها کردن و تبدیل‌های اخیر"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="ویرایشگر نوار ابزار دونات با پروفایل‌ها و پیش‌تنظیمات"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="صفحه اصلی با ناحیه رها کردن و تبدیل‌های اخیر"></td>
   </tr>
   <tr>
     <td align="center"><sub>چیدمان دونات با کشیدن و رها کردن، یک نمایه برای هر نوع فایل</sub></td>
@@ -186,7 +186,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **وکتورهای مکانی**: Shapefile، GeoJSON، KML، KMZ، GPX<br>CSV با مختصات؛ خواندن Garmin FIT | تبدیل به یکدیگر و CSV / XLSX / JSON؛<br>داده‌های پیش‌افکنده (UTM، Web Mercator، Lambert، Albers) به صورت طول و عرض جغرافیایی WGS 84 تبدیل می‌شوند |
 
 قالب‌های بدون علامت به صورت پیش‌فرض و بدون نیاز به آفیس، Hancom Office یا LibreOffice تبدیل می‌شوند.
-قالب‌های دارای علامت به موتورهای اختیاری نیاز دارند که تنها در صورت تمایل دانلود می‌شوند: ¹ Ghostscript، ² LibreOffice، ³ Pandoc، ⁴ calibre، ⁵ FFmpeg ([اطلاعات بیشتر](docs/ENGINES.md)).
+قالب‌های دارای علامت به موتورهای اختیاری نیاز دارند که تنها در صورت تمایل دانلود می‌شوند: ¹ Ghostscript، ² LibreOffice، ³ Pandoc، ⁴ calibre، ⁵ FFmpeg ([اطلاعات بیشتر](../../docs/ENGINES.md)).
 
 ## خط فرمان
 
@@ -212,7 +212,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[معماری](docs/ARCHITECTURE.md) · [موتورها](docs/ENGINES.md) · [افزودن مبدل](docs/ADDING-A-CONVERTER.md) · [افزودن زبان](docs/ADDING-A-LANGUAGE.md) · [مشارکت](CONTRIBUTING.md)
+[معماری](../../docs/ARCHITECTURE.md) · [موتورها](../../docs/ENGINES.md) · [افزودن مبدل](../../docs/ADDING-A-CONVERTER.md) · [افزودن زبان](../../docs/ADDING-A-LANGUAGE.md) · [مشارکت](../../CONTRIBUTING.md)
 
 از مشارکت و ارسال Pull Request استقبال می‌کنیم.
 اگر Filee در کارهای روزمره به شما کمک می‌کند، دادن یک ⭐ به پیدا شدن آن توسط دیگران کمک می‌کند.
@@ -236,7 +236,7 @@ Filee فایل‌ها را روی رایانه شما تبدیل می‌کند �
 
 - برای بررسی اینکه نسخه جدیدتری در گیت‌هاب (`api.github.com`) موجود است یا خیر؛ کمی پس از اجرا و سپس هر چند ساعت یک‌بار.
   می‌توانید این قابلیت را در تنظیمات → درباره ("بررسی خودکار برای به‌روزرسانی") غیرفعال کنید.
-- برای دانلود موتورهای تبدیلی که خودتان نصب آن‌ها را انتخاب می‌کنید، از آدرس‌های رسمی مشخص‌شده در [`engines.json`](src/Filee.Engines/Infrastructure/engines.json)، و زبان‌های تشخیص متن (OCR) مورد استفاده یک پیش‌تنظیم در [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json).
+- برای دانلود موتورهای تبدیلی که خودتان نصب آن‌ها را انتخاب می‌کنید، از آدرس‌های رسمی مشخص‌شده در [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json)، و زبان‌های تشخیص متن (OCR) مورد استفاده یک پیش‌تنظیم در [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json).
 - هنگام کلیک روی یک پیوند، که مرورگر وب شما را باز می‌کند.
 
 ## حمایت مالی
@@ -261,7 +261,7 @@ Filee رایگان است و رایگان خواهد ماند.
 ## مجوز
 
 مجوز MIT، © 2026 Myeonggu Kim (KnifeLemon) و مشارکت‌کنندگان Filee.
-بخش‌های شخص ثالث همراه دارای مجوزهای مختص خود هستند که در [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) فهرست شده‌اند.
+بخش‌های شخص ثالث همراه دارای مجوزهای مختص خود هستند که در [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md) فهرست شده‌اند.
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

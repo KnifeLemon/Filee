@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: Перетащите. Отпустите. Готово." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: Перетащите. Отпустите. Готово." width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS — предварительная версия">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Лицензия MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Лицензия MIT"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -76,7 +76,7 @@
 ## Как это работает
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Файл trip.jpg перетаскивают с зажатой клавишей Ctrl: у курсора открывается круговое меню форматов, файл отпускают на PNG, кольцо прогресса замыкается и появляется trip.png" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Файл trip.jpg перетаскивают с зажатой клавишей Ctrl: у курсора открывается круговое меню форматов, файл отпускают на PNG, кольцо прогресса замыкается и появляется trip.png" width="820"></a><br>
   <sub>Посмотрите 27-секундное видео и попробуйте интерактивное демо на <a href="https://filee.sh">filee.sh</a></sub>
 </p>
 
@@ -148,8 +148,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="Редактор кругового меню с профилями и пресетами"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="Главный экран с зоной перетаскивания и недавними конвертациями"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="Редактор кругового меню с профилями и пресетами"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="Главный экран с зоной перетаскивания и недавними конвертациями"></td>
   </tr>
   <tr>
     <td align="center"><sub>Настраивайте круговое меню перетаскиванием, по профилю на каждый тип файлов</sub></td>
@@ -181,7 +181,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **Геоданные (векторные)**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV с координатами;<br>Garmin FIT только чтение | друг в друга и CSV / XLSX / JSON;<br>данные в проекциях (UTM, Web Mercator, Ламберта, Альберса) переводятся в долготу / широту WGS 84 |
 
 Форматы без пометки работают сразу, без Office, Hancom Office и LibreOffice.
-Для помеченных нужен дополнительный движок, который скачивается только при необходимости: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([подробнее](docs/ENGINES.md)).
+Для помеченных нужен дополнительный движок, который скачивается только при необходимости: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([подробнее](../../docs/ENGINES.md)).
 
 ## Командная строка
 
@@ -207,7 +207,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[Архитектура](docs/ARCHITECTURE.md) · [Движки](docs/ENGINES.md) · [Как добавить конвертер](docs/ADDING-A-CONVERTER.md) · [Как добавить язык](docs/ADDING-A-LANGUAGE.md) · [Участие в разработке](CONTRIBUTING.md)
+[Архитектура](../../docs/ARCHITECTURE.md) · [Движки](../../docs/ENGINES.md) · [Как добавить конвертер](../../docs/ADDING-A-CONVERTER.md) · [Как добавить язык](../../docs/ADDING-A-LANGUAGE.md) · [Участие в разработке](../../CONTRIBUTING.md)
 
 Пул-реквесты приветствуются.
 Если Filee экономит вам пару кликов, поставьте ⭐: так другие смогут его найти.
@@ -219,7 +219,7 @@ Filee разрабатывает и публикует **Myeonggu Kim** ([KnifeL
 - Выпуски для Windows подписываются сертификатом [Certum](https://www.certum.eu/) для подписи кода open source, выданным на имя Myeonggu Kim.
   - Выпуски до 2.0.0 включительно не подписаны.
 
-Полные правила и политику конфиденциальности смотрите в [английском README](README.md#code-signing-policy).
+Полные правила и политику конфиденциальности смотрите в [английском README](../../README.md#code-signing-policy).
 Filee не отправляет ни ваши файлы, ни данные об использовании.
 
 ## Поддержать проект
@@ -244,7 +244,7 @@ Filee бесплатный и останется бесплатным.
 ## Лицензия
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) и участники проекта Filee.
-Сторонние компоненты в комплекте распространяются под собственными лицензиями, перечисленными в [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Сторонние компоненты в комплекте распространяются под собственными лицензиями, перечисленными в [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

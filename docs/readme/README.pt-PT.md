@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee: Arrasta. Larga. Convertido." width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee: Arrasta. Larga. Convertido." width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS: versão de pré-visualização">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Licença MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Licença MIT"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -76,7 +76,7 @@
 ## Vê como funciona
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Ao arrastar trip.jpg com Ctrl premido, abre-se uma barra circular de formatos junto ao cursor. O ficheiro é largado em PNG, o anel de progresso completa-se e surge trip.png" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Ao arrastar trip.jpg com Ctrl premido, abre-se uma barra circular de formatos junto ao cursor. O ficheiro é largado em PNG, o anel de progresso completa-se e surge trip.png" width="820"></a><br>
   <sub>Vê o vídeo de 27 segundos e experimenta a demonstração interativa em <a href="https://filee.sh">filee.sh</a></sub>
 </p>
 
@@ -101,7 +101,7 @@ winget install KnifeLemon.Filee
   - A aplicação ainda não foi notarizada pela Apple. Autoriza o primeiro arranque em Definições do Sistema → Privacidade e Segurança → **Abrir mesmo assim**.
 - **Linux x64/ARM64** (Ubuntu 22.04+): extrai o pacote e executa `./install.sh` (não precisa de acesso de administrador; requer Python 3).
   - Os gestos de arrastar são suportados em X11.
-    Em Wayland, usa a zona de largada e o menu de contexto do gestor de ficheiros, ou consulta as integrações experimentais para GNOME, KDE Plasma e Hyprland no [guia de instalação para Linux](installer/linux/INSTALL.txt).
+    Em Wayland, usa a zona de largada e o menu de contexto do gestor de ficheiros, ou consulta as integrações experimentais para GNOME, KDE Plasma e Hyprland no [guia de instalação para Linux](../../installer/linux/INSTALL.txt).
 
 O Filee mostra as novas versões no menu e atualiza-se, mantendo as tuas definições e motores.
 Depois de uma atualização, algumas páginas apresentam as novidades.
@@ -148,8 +148,8 @@ Para reverter a alteração, remove as entradas em Segurança do Windows → Con
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="Editor da barra circular com perfis e predefinições, em inglês"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="Página inicial com a zona de largada e as conversões recentes, em inglês"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="Editor da barra circular com perfis e predefinições, em inglês"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="Página inicial com a zona de largada e as conversões recentes, em inglês"></td>
   </tr>
   <tr>
     <td align="center"><sub>Organiza a barra circular por arrastar e largar, com um perfil por tipo de ficheiro</sub></td>
@@ -181,7 +181,7 @@ Para reverter a alteração, remove as entradas em Segurança do Windows → Con
 | **Vetores geoespaciais**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV com coordenadas | conversão entre estes formatos e CSV / XLSX / JSON;<br>os dados projetados (UTM, Web Mercator, Lambert, Albers) são convertidos em longitude / latitude WGS 84 |
 
 Os formatos sem marca funcionam de imediato, sem Office, Hancom Office ou LibreOffice.
-Os formatos marcados precisam de um motor opcional, transferido apenas quando necessário: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalhes](docs/ENGINES.md)).
+Os formatos marcados precisam de um motor opcional, transferido apenas quando necessário: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalhes](../../docs/ENGINES.md)).
 
 ## Linha de comandos
 
@@ -207,7 +207,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[Arquitetura](docs/ARCHITECTURE.md) · [Motores](docs/ENGINES.md) · [Adicionar um conversor](docs/ADDING-A-CONVERTER.md) · [Adicionar um idioma](docs/ADDING-A-LANGUAGE.md) · [Contribuir](CONTRIBUTING.md)
+[Arquitetura](../../docs/ARCHITECTURE.md) · [Motores](../../docs/ENGINES.md) · [Adicionar um conversor](../../docs/ADDING-A-CONVERTER.md) · [Adicionar um idioma](../../docs/ADDING-A-LANGUAGE.md) · [Contribuir](../../CONTRIBUTING.md)
 
 Os pull requests são bem-vindos.
 Se o Filee te poupa alguns cliques, uma ⭐ ajuda outras pessoas a descobri-lo.
@@ -231,7 +231,7 @@ Só se liga à Internet:
 
 - para perguntar ao GitHub (`api.github.com`) se existe uma versão mais recente, pouco depois do arranque e, depois, a cada poucas horas.
   Podes desativar esta opção em Definições → Acerca de ("Procurar atualizações automaticamente").
-- para descarregar os motores de conversão que escolheres instalar, a partir dos endereços oficiais fixados em [`engines.json`](src/Filee.Engines/Infrastructure/engines.json), e os idiomas de reconhecimento de texto (OCR) usados por uma predefinição, fixados em [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json).
+- para descarregar os motores de conversão que escolheres instalar, a partir dos endereços oficiais fixados em [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json), e os idiomas de reconhecimento de texto (OCR) usados por uma predefinição, fixados em [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json).
 - quando clicas numa ligação, que abre o navegador.
 
 ## Apoiar
@@ -256,7 +256,7 @@ Quem faz uma contribuição pontual também pode pedir para ser mencionado.
 ## Licença
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) e colaboradores do Filee.
-Os componentes de terceiros incluídos mantêm as suas licenças, indicadas em [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Os componentes de terceiros incluídos mantêm as suas licenças, indicadas em [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Histórico de estrelas" width="600"></a>

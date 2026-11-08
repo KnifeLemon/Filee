@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh/zh-cn/"><img src="docs/media/banner-zh-CN.jpg" alt="Filee 拖一下，放一下，转好了。" width="100%"></a>
+  <a href="https://filee.sh/zh-cn/"><img src="../../docs/media/banner-zh-CN.jpg" alt="Filee 拖一下，放一下，转好了。" width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS 预览版">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT 许可证"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT 许可证"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -76,7 +76,7 @@
 ## 实际效果
 
 <p align="center">
-  <a href="https://filee.sh/zh-cn/"><img src="docs/media/demo-zh-CN.webp" alt="按住 Ctrl 拖动 旅行.jpg，光标处弹出格式圆环，放到 PNG 上，进度环走完后生成 旅行.png" width="820"></a><br>
+  <a href="https://filee.sh/zh-cn/"><img src="../../docs/media/demo-zh-CN.webp" alt="按住 Ctrl 拖动 旅行.jpg，光标处弹出格式圆环，放到 PNG 上，进度环走完后生成 旅行.png" width="820"></a><br>
   <sub>27 秒视频和可交互演示请访问 <a href="https://filee.sh/zh-cn/">filee.sh</a></sub>
 </p>
 
@@ -148,8 +148,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-zh-CN.png" alt="用配置文件和预设编辑圆环工具栏"></td>
-    <td width="50%"><img src="docs/media/page-home-zh-CN.png" alt="带拖放区和最近转换记录的主页"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-zh-CN.png" alt="用配置文件和预设编辑圆环工具栏"></td>
+    <td width="50%"><img src="../../docs/media/page-home-zh-CN.png" alt="带拖放区和最近转换记录的主页"></td>
   </tr>
   <tr>
     <td align="center"><sub>拖放排列圆环，每种文件类型一个配置</sub></td>
@@ -181,7 +181,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **地理信息（矢量）** Shapefile、GeoJSON、KML、KMZ、GPX<br>带坐标的 CSV，<br>Garmin FIT 仅读取 | 互相转换、CSV / XLSX / JSON，<br>投影坐标系（UTM、Web 墨卡托、兰伯特、阿尔伯斯）会转换为 WGS 84 经纬度 |
 
 未标注的格式装好即用，无需 Office、韩文办公软件或 LibreOffice。
-标注的格式需要可选引擎，只在需要时下载，分别是 ¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg（[详情](docs/ENGINES.md)）。
+标注的格式需要可选引擎，只在需要时下载，分别是 ¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg（[详情](../../docs/ENGINES.md)）。
 
 ## 命令行
 
@@ -207,7 +207,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[架构](docs/ARCHITECTURE.md) · [引擎](docs/ENGINES.md) · [添加转换器](docs/ADDING-A-CONVERTER.md) · [添加语言](docs/ADDING-A-LANGUAGE.md) · [贡献指南](CONTRIBUTING.md)
+[架构](../../docs/ARCHITECTURE.md) · [引擎](../../docs/ENGINES.md) · [添加转换器](../../docs/ADDING-A-CONVERTER.md) · [添加语言](../../docs/ADDING-A-LANGUAGE.md) · [贡献指南](../../CONTRIBUTING.md)
 
 欢迎提交 Pull Request。
 如果 Filee 帮你省了时间，点个 ⭐ 能让更多人发现它。
@@ -219,7 +219,7 @@ Filee 由 **Myeonggu Kim**（[KnifeLemon](https://github.com/KnifeLemon)）开�
 - Windows 版本使用颁发给 Myeonggu Kim 的 [Certum](https://www.certum.eu/) 开源代码签名证书签名。
   - 2.0.0 及更早的版本没有签名。
 
-详细政策和隐私政策见[英文 README](README.md#code-signing-policy)。
+详细政策和隐私政策见[英文 README](../../README.md#code-signing-policy)。
 Filee 不会上传文件，也不会发送任何使用数据。
 
 ## 赞助
@@ -245,7 +245,7 @@ Filee 免费，并将一直免费。
 ## 许可证
 
 MIT，© 2026 Myeonggu Kim (KnifeLemon) 和 Filee 贡献者。
-随附的第三方组件遵循各自的许可证，详见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
+随附的第三方组件遵循各自的许可证，详见 [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)。
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

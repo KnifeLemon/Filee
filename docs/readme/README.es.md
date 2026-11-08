@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh/es/"><img src="docs/media/banner-en.jpg" alt="Filee: Arrastra. Suelta. Convertido." width="100%"></a>
+  <a href="https://filee.sh/es/"><img src="../../docs/media/banner-en.jpg" alt="Filee: Arrastra. Suelta. Convertido." width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS en versión preliminar">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Licencia MIT"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="Licencia MIT"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <b>Español</b> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -76,7 +76,7 @@
 ## Míralo en acción
 
 <p align="center">
-  <a href="https://filee.sh/es/"><img src="docs/media/demo-en.webp" alt="Se arrastra trip.jpg con Ctrl pulsado: junto al cursor se abre un menú circular de formatos, el archivo se suelta sobre PNG, un anillo de progreso se completa y aparece trip.png" width="820"></a><br>
+  <a href="https://filee.sh/es/"><img src="../../docs/media/demo-en.webp" alt="Se arrastra trip.jpg con Ctrl pulsado: junto al cursor se abre un menú circular de formatos, el archivo se suelta sobre PNG, un anillo de progreso se completa y aparece trip.png" width="820"></a><br>
   <sub>Mira el vídeo de 27 segundos y prueba la demo interactiva en <a href="https://filee.sh/es/">filee.sh</a></sub>
 </p>
 
@@ -148,8 +148,8 @@ Para deshacerlo, quita esas entradas en Seguridad de Windows → Control de apli
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="Editor del menú circular con perfiles y ajustes preestablecidos"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="Pantalla de inicio con la zona de suelta y las conversiones recientes"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="Editor del menú circular con perfiles y ajustes preestablecidos"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="Pantalla de inicio con la zona de suelta y las conversiones recientes"></td>
   </tr>
   <tr>
     <td align="center"><sub>Ordena el menú circular arrastrando y soltando, con un perfil por tipo de archivo</sub></td>
@@ -181,7 +181,7 @@ Para deshacerlo, quita esas entradas en Seguridad de Windows → Control de apli
 | **Datos geoespaciales vectoriales**: Shapefile, GeoJSON, KML, KMZ, GPX<br>CSV con coordenadas;<br>Garmin FIT solo lectura | entre sí y a CSV / XLSX / JSON;<br>los datos proyectados (UTM, Web Mercator, Lambert, Albers) salen como longitud / latitud WGS 84 |
 
 Los formatos sin marca funcionan nada más instalar, sin Office, Hancom Office ni LibreOffice.
-Los marcados necesitan un motor opcional, que solo se descarga cuando hace falta: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalles](docs/ENGINES.md)).
+Los marcados necesitan un motor opcional, que solo se descarga cuando hace falta: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([detalles](../../docs/ENGINES.md)).
 
 ## Línea de comandos
 
@@ -207,7 +207,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[Arquitectura](docs/ARCHITECTURE.md) · [Motores](docs/ENGINES.md) · [Añadir un conversor](docs/ADDING-A-CONVERTER.md) · [Añadir un idioma](docs/ADDING-A-LANGUAGE.md) · [Cómo contribuir](CONTRIBUTING.md)
+[Arquitectura](../../docs/ARCHITECTURE.md) · [Motores](../../docs/ENGINES.md) · [Añadir un conversor](../../docs/ADDING-A-CONVERTER.md) · [Añadir un idioma](../../docs/ADDING-A-LANGUAGE.md) · [Cómo contribuir](../../CONTRIBUTING.md)
 
 Las pull requests son bienvenidas.
 Si Filee te ahorra unos cuantos clics, una ⭐ ayuda a que otras personas lo encuentren.
@@ -219,7 +219,7 @@ Filee lo desarrolla y publica **Myeonggu Kim** ([KnifeLemon](https://github.com/
 - Las versiones para Windows se firman con un certificado de firma de código para código abierto de [Certum](https://www.certum.eu/) emitido a nombre de Myeonggu Kim.
   - Las versiones hasta la 2.0.0 no están firmadas.
 
-La política completa y la política de privacidad están en el [README en inglés](README.md#code-signing-policy).
+La política completa y la política de privacidad están en el [README en inglés](../../README.md#code-signing-policy).
 Filee no sube tus archivos ni envía datos de uso.
 
 ## Patrocinar
@@ -244,7 +244,7 @@ Si apoyas con un pago único, también puedes pedir que te incluyamos.
 ## Licencia
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) y colaboradores de Filee.
-Los componentes de terceros incluidos mantienen sus propias licencias, recogidas en [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Los componentes de terceros incluidos mantienen sus propias licencias, recogidas en [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md).
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

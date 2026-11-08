@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="Filee：ドラッグ。ドロップ。変換完了。" width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="Filee：ドラッグ。ドロップ。変換完了。" width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS プレビュー版">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MITライセンス"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MITライセンス"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <b>日本語</b> ·
   <a href="README.ko.md">한국어</a> ·
@@ -76,7 +76,7 @@
 ## 動作の様子
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Ctrlを押しながらtrip.jpgをドラッグすると、カーソル位置に形式のドーナツメニューが開き、PNGにドロップすると進行状況のリングが一周してtrip.pngができあがる" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Ctrlを押しながらtrip.jpgをドラッグすると、カーソル位置に形式のドーナツメニューが開き、PNGにドロップすると進行状況のリングが一周してtrip.pngができあがる" width="820"></a><br>
   <sub>27秒の動画とインタラクティブなデモは<a href="https://filee.sh">filee.sh</a>で</sub>
 </p>
 
@@ -151,8 +151,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="プロファイルとプリセットを使ったドーナツメニューの編集画面"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="ドロップ領域と最近の変換が表示されたホーム画面"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="プロファイルとプリセットを使ったドーナツメニューの編集画面"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="ドロップ領域と最近の変換が表示されたホーム画面"></td>
   </tr>
   <tr>
     <td align="center"><sub>ファイルの種類ごとのプロファイルで、ドーナツメニューをドラッグ＆ドロップで編集</sub></td>
@@ -184,7 +184,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **地理空間ベクターデータ**：Shapefile、GeoJSON、KML、KMZ、GPX<br>座標付きのCSV。<br>Garmin FITは読み込みのみ | 相互変換、CSV/XLSX/JSON。<br>投影座標系（UTM、Webメルカトル、ランベルト、アルベルス）のデータはWGS 84の経度/緯度で出力 |
 
 印のない形式は、Office、Hancom Office、LibreOfficeなしですぐに使えます。
-印のある形式には追加の変換エンジンが必要で、必要なときにだけダウンロードされます：¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg（[詳細](docs/ENGINES.md)）。
+印のある形式には追加の変換エンジンが必要で、必要なときにだけダウンロードされます：¹ Ghostscript、² LibreOffice、³ Pandoc、⁴ calibre、⁵ FFmpeg（[詳細](../../docs/ENGINES.md)）。
 
 ## コマンドライン
 
@@ -210,7 +210,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[アーキテクチャ](docs/ARCHITECTURE.md) · [エンジン](docs/ENGINES.md) · [コンバーターの追加](docs/ADDING-A-CONVERTER.md) · [言語の追加](docs/ADDING-A-LANGUAGE.md) · [コントリビューション](CONTRIBUTING.md)
+[アーキテクチャ](../../docs/ARCHITECTURE.md) · [エンジン](../../docs/ENGINES.md) · [コンバーターの追加](../../docs/ADDING-A-CONVERTER.md) · [言語の追加](../../docs/ADDING-A-LANGUAGE.md) · [コントリビューション](../../CONTRIBUTING.md)
 
 プルリクエスト歓迎です。
 Fileeで手間が省けたら、⭐をつけていただけると、ほかの人がFileeを見つけやすくなります。
@@ -222,7 +222,7 @@ Fileeは**Myeonggu Kim**（[KnifeLemon](https://github.com/KnifeLemon)）が開�
 - Windows版のリリースには、Myeonggu Kim名義で発行された[Certum](https://www.certum.eu/)のオープンソース向けコード署名証明書で署名しています。
   - 2.0.0までのリリースは署名されていません。
 
-ポリシーの詳細とプライバシーポリシーは[英語版README](README.md#code-signing-policy)をご覧ください。
+ポリシーの詳細とプライバシーポリシーは[英語版README](../../README.md#code-signing-policy)をご覧ください。
 Fileeはファイルをアップロードせず、利用データも送信しません。
 
 ## 支援
@@ -248,7 +248,7 @@ Fileeは無料で、これからも無料です。
 
 MIT、© 2026 Myeonggu Kim (KnifeLemon) およびFileeのコントリビューター。
 同梱のサードパーティ製コンポーネントはそれぞれのライセンスに従います。
-一覧は[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)にあります。
+一覧は[THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)にあります。
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

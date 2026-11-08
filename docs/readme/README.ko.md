@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh/ko/"><img src="docs/media/banner-ko.jpg" alt="Filee: 끌어서 놓으면, 변환 끝." width="100%"></a>
+  <a href="https://filee.sh/ko/"><img src="../../docs/media/banner-ko.jpg" alt="Filee: 끌어서 놓으면, 변환 끝." width="100%"></a>
 </p>
 
 <p align="center">
@@ -24,7 +24,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS 미리보기">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT 라이선스"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT 라이선스"></a>
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <b>한국어</b> ·
@@ -77,7 +77,7 @@
 ## 이렇게 동작해요
 
 <p align="center">
-  <a href="https://filee.sh/ko/"><img src="docs/media/demo-ko.webp" alt="Ctrl을 누른 채 여행사진.jpg를 끌면 커서 위치에 형식 도넛이 열리고, PNG에 놓으면 진행률 링이 차오른 뒤 여행사진.png가 생깁니다" width="820"></a><br>
+  <a href="https://filee.sh/ko/"><img src="../../docs/media/demo-ko.webp" alt="Ctrl을 누른 채 여행사진.jpg를 끌면 커서 위치에 형식 도넛이 열리고, PNG에 놓으면 진행률 링이 차오른 뒤 여행사진.png가 생깁니다" width="820"></a><br>
   <sub>27초 영상과 직접 해보는 데모는 <a href="https://filee.sh/ko/">filee.sh</a>에서</sub>
 </p>
 
@@ -149,8 +149,8 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-ko.png" alt="프로필과 프리셋으로 도넛 툴바를 편집하는 화면"></td>
-    <td width="50%"><img src="docs/media/page-home-ko.png" alt="드롭 영역과 최근 변환 기록이 있는 홈 화면"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-ko.png" alt="프로필과 프리셋으로 도넛 툴바를 편집하는 화면"></td>
+    <td width="50%"><img src="../../docs/media/page-home-ko.png" alt="드롭 영역과 최근 변환 기록이 있는 홈 화면"></td>
   </tr>
   <tr>
     <td align="center"><sub>파일 종류마다 도넛을 드래그 앤 드롭으로 배치</sub></td>
@@ -182,7 +182,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 | **지리 정보(벡터)**: Shapefile, GeoJSON, KML, KMZ, GPX<br>좌표가 있는 CSV;<br>Garmin FIT는 읽기 | 서로 변환, CSV·XLSX·JSON;<br>투영 좌표계(UTM, 웹 메르카토르, 람베르트, 알버스)는 WGS 84 경위도로 변환 |
 
 표시가 없는 형식은 오피스·한컴오피스·LibreOffice 없이 바로 변환돼요.
-표시가 있는 형식은 추가 엔진이 필요하고, 필요할 때만 내려받아요: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([자세히](docs/ENGINES.md)).
+표시가 있는 형식은 추가 엔진이 필요하고, 필요할 때만 내려받아요: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([자세히](../../docs/ENGINES.md)).
 
 ## 명령줄
 
@@ -208,7 +208,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[구조](docs/ARCHITECTURE.md) · [엔진](docs/ENGINES.md) · [변환기 추가](docs/ADDING-A-CONVERTER.md) · [언어 추가](docs/ADDING-A-LANGUAGE.md) · [기여 안내](CONTRIBUTING.md)
+[구조](../../docs/ARCHITECTURE.md) · [엔진](../../docs/ENGINES.md) · [변환기 추가](../../docs/ADDING-A-CONVERTER.md) · [언어 추가](../../docs/ADDING-A-LANGUAGE.md) · [기여 안내](../../CONTRIBUTING.md)
 
 PR 환영해요.
 Filee가 쓸만하다면 ⭐ 하나가 다른 사람들이 Filee를 찾는 데 도움이 돼요.
@@ -220,7 +220,7 @@ Filee는 **Myeonggu Kim**([KnifeLemon](https://github.com/KnifeLemon))이 개발
 - Windows 릴리스는 Myeonggu Kim 명의의 [Certum](https://www.certum.eu/) 오픈소스 코드 서명 인증서로 서명해요.
   - 2.0.0까지의 릴리스는 서명되지 않았어요.
 
-자세한 정책과 개인정보 처리 방침은 [영문 README](README.md#code-signing-policy)에 있어요.
+자세한 정책과 개인정보 처리 방침은 [영문 README](../../README.md#code-signing-policy)에 있어요.
 Filee는 파일을 업로드하지 않고, 사용 기록도 보내지 않아요.
 
 ## 후원하기
@@ -246,7 +246,7 @@ Filee는 앞으로도 무료예요.
 ## 라이선스
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon), Filee 기여자.
-포함된 서드파티 구성요소는 각자의 라이선스를 따르고, [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)에 정리되어 있어요.
+포함된 서드파티 구성요소는 각자의 라이선스를 따르고, [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)에 정리되어 있어요.
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>

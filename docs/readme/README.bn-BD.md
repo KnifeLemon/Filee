@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/banner-en.jpg" alt="ফাইলি: টেনে এনে ছেড়ে দিন, রূপান্তর শেষ।" width="100%"></a>
+  <a href="https://filee.sh"><img src="../../docs/media/banner-en.jpg" alt="ফাইলি: টেনে এনে ছেড়ে দিন, রূপান্তর শেষ।" width="100%"></a>
 </p>
 
 <p align="center">
@@ -23,7 +23,7 @@
   <img src="https://img.shields.io/badge/Windows-10%20%7C%2011-3C3489" alt="Windows 10 | 11">
   <img src="https://img.shields.io/badge/Linux-x64%20%7C%20ARM64-3C3489" alt="Linux x64 | ARM64">
   <img src="https://img.shields.io/badge/macOS-preview-534AB7" alt="macOS প্রিভিউ">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT লাইসেন্স"></a>
+  <a href="../../LICENSE"><img src="https://img.shields.io/badge/license-MIT-6A62C9" alt="MIT লাইসেন্স"></a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> ·
+  <a href="../../README.md">English</a> ·
   <a href="README.es.md">Español</a> ·
   <a href="README.ja.md">日本語</a> ·
   <a href="README.ko.md">한국어</a> ·
@@ -76,7 +76,7 @@
 ## কার্যপদ্ধতি দেখুন
 
 <p align="center">
-  <a href="https://filee.sh"><img src="docs/media/demo-en.webp" alt="Ctrl চেপে trip.jpg টেনে আনা হচ্ছে: কার্সারে ফরম্যাটের একটি ডোনাট খোলে, ফাইলটি PNG-র ওপর ছেড়ে দেওয়া হয়, একটি প্রোগ্রেস রিং সম্পন্ন হয় এবং trip.png প্রদর্শিত হয়" width="820"></a><br>
+  <a href="https://filee.sh"><img src="../../docs/media/demo-en.webp" alt="Ctrl চেপে trip.jpg টেনে আনা হচ্ছে: কার্সারে ফরম্যাটের একটি ডোনাট খোলে, ফাইলটি PNG-র ওপর ছেড়ে দেওয়া হয়, একটি প্রোগ্রেস রিং সম্পন্ন হয় এবং trip.png প্রদর্শিত হয়" width="820"></a><br>
   <sub>২৭ সেকেন্ডের ভিডিওটি দেখুন এবং <a href="https://filee.sh">filee.sh</a>-এ ইন্টারঅ্যাক্টিভ ডেমোটি চালিয়ে দেখুন</sub>
 </p>
 
@@ -151,8 +151,8 @@ Setup-এর ফাইলের নামের ক্ষেত্রেও এ�
 
 <table>
   <tr>
-    <td width="50%"><img src="docs/media/page-toolbar-en.png" alt="প্রোফাইল এবং প্রিসেটসহ ডোনাট টুলবার এডিটর"></td>
-    <td width="50%"><img src="docs/media/page-home-en.png" alt="ড্রপ জোন এবং সাম্প্রতিক রূপান্তরসহ হোম স্ক্রিন"></td>
+    <td width="50%"><img src="../../docs/media/page-toolbar-en.png" alt="প্রোফাইল এবং প্রিসেটসহ ডোনাট টুলবার এডিটর"></td>
+    <td width="50%"><img src="../../docs/media/page-home-en.png" alt="ড্রপ জোন এবং সাম্প্রতিক রূপান্তরসহ হোম স্ক্রিন"></td>
   </tr>
   <tr>
     <td align="center"><sub>ড্র্যাগ ও ড্রপ দিয়ে ডোনাট সাজান, প্রতি ফাইল টাইপের জন্য একটি প্রোফাইল</sub></td>
@@ -184,7 +184,7 @@ Setup-এর ফাইলের নামের ক্ষেত্রেও এ�
 | **ভৌগোলিক ভেক্টর**: Shapefile, GeoJSON, KML, KMZ, GPX<br>স্থানাঙ্কসহ CSV; Garmin FIT পাঠযোগ্য | একে অপরে রূপান্তর এবং CSV / XLSX / JSON;<br>প্রজেক্টেড উপাত্ত (UTM, Web Mercator, Lambert, Albers) WGS 84 দ্রাঘিমাংশ / অক্ষাংশ হিসেবে তৈরি হয় |
 
 চিহ্নহীন ফরম্যাটগুলো সরাসরি কোনো Office, Hancom Office বা LibreOffice ছাড়াই কাজ করে।
-চিহ্নযুক্ত ফরম্যাটগুলোর জন্য ঐচ্ছিক ইঞ্জিনের প্রয়োজন হয়, যা কেবল প্রয়োজন হলেই ডাউনলোড করা হয়: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([বিস্তারিত](docs/ENGINES.md))।
+চিহ্নযুক্ত ফরম্যাটগুলোর জন্য ঐচ্ছিক ইঞ্জিনের প্রয়োজন হয়, যা কেবল প্রয়োজন হলেই ডাউনলোড করা হয়: ¹ Ghostscript, ² LibreOffice, ³ Pandoc, ⁴ calibre, ⁵ FFmpeg ([বিস্তারিত](../../docs/ENGINES.md))।
 
 ## কমান্ড লাইন
 
@@ -210,7 +210,7 @@ dotnet run --project src/Filee.App
 dotnet test
 ```
 
-[আর্কিটেকচার](docs/ARCHITECTURE.md) · [ইঞ্জিনসমূহ](docs/ENGINES.md) · [কনভার্টার যোগ করা](docs/ADDING-A-CONVERTER.md) · [ভাষা যোগ করা](docs/ADDING-A-LANGUAGE.md) · [অবদান রাখা](CONTRIBUTING.md)
+[আর্কিটেকচার](../../docs/ARCHITECTURE.md) · [ইঞ্জিনসমূহ](../../docs/ENGINES.md) · [কনভার্টার যোগ করা](../../docs/ADDING-A-CONVERTER.md) · [ভাষা যোগ করা](../../docs/ADDING-A-LANGUAGE.md) · [অবদান রাখা](../../CONTRIBUTING.md)
 
 পুল রিকোয়েস্ট সাদরে গৃহীত।
 Filee যদি আপনার কিছু ক্লিকের সময় বাঁচায়, তবে একটি ⭐ অন্যদের এটি খুঁজে পেতে সাহায্য করবে।
@@ -234,7 +234,7 @@ Filee আপনার নিজস্ব কম্পিউটারে ফা�
 
 - চালুর কিছুক্ষণ পর এবং প্রতি কয়েক ঘণ্টা অন্তর GitHub-কে (`api.github.com`) জিজ্ঞাসা করতে যে কোনো নতুন রিলিজ এসেছে কি না।
   সেটিংস → পরিচিতি ("স্বয়ংক্রিয়ভাবে আপডেটের জন্য পরীক্ষা করুন") থেকে এটি বন্ধ করতে পারেন।
-- [`engines.json`](src/Filee.Engines/Infrastructure/engines.json)-এ নির্দিষ্ট অফিশিয়াল অবস্থান থেকে আপনার ইনস্টল করার জন্য বেছে নেওয়া রূপান্তর ইঞ্জিনগুলো এবং [`ocr-languages.json`](src/Filee.Engines/Infrastructure/ocr-languages.json)-এ নির্দিষ্ট প্রিসেটের প্রয়োজনীয় টেক্সট শনাক্তকরণ (OCR) ভাষাগুলো ডাউনলোড করতে।
+- [`engines.json`](../../src/Filee.Engines/Infrastructure/engines.json)-এ নির্দিষ্ট অফিশিয়াল অবস্থান থেকে আপনার ইনস্টল করার জন্য বেছে নেওয়া রূপান্তর ইঞ্জিনগুলো এবং [`ocr-languages.json`](../../src/Filee.Engines/Infrastructure/ocr-languages.json)-এ নির্দিষ্ট প্রিসেটের প্রয়োজনীয় টেক্সট শনাক্তকরণ (OCR) ভাষাগুলো ডাউনলোড করতে।
 - আপনি যখন কোনো লিঙ্কে ক্লিক করেন, যা আপনার ওয়েব ব্রাউজার খুলে দেয়।
 
 ## স্পনসর
@@ -259,7 +259,7 @@ Filee সম্পূর্ণ ফ্রি এবং সর্বদাই ফ�
 ## লাইসেন্স
 
 MIT, © 2026 Myeonggu Kim (KnifeLemon) এবং Filee অবদানকারীগণ।
-যুক্ত তৃতীয় পক্ষের উপাদানগুলোর নিজস্ব লাইসেন্স বহাল রয়েছে, যা [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)-এ তালিকাভুক্ত।
+যুক্ত তৃতীয় পক্ষের উপাদানগুলোর নিজস্ব লাইসেন্স বহাল রয়েছে, যা [THIRD-PARTY-NOTICES.md](../../THIRD-PARTY-NOTICES.md)-এ তালিকাভুক্ত।
 
 <p align="center">
   <a href="https://star-history.com/#KnifeLemon/Filee&Date"><img src="https://api.star-history.com/svg?repos=KnifeLemon/Filee&type=Date" alt="Star history" width="600"></a>
