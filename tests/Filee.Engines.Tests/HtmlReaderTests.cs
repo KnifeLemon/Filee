@@ -106,6 +106,83 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Thousands_of_statement_at_rules_are_skipped_in_linear_time()
+    {
+        // Cutting the text after every @import made this quadratic: 80,000 lines took minutes.
+        var sheet = string.Concat(Enumerable.Repeat("@import \"a.css\";\n", 80_000)) + ".x{font-weight:bold}";
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var content = Parse($"<style>{sheet}</style><p class=\"x\">굵게</p>");
+        timer.Stop();
+
+        Assert.True(Run(content, "굵게").Format.Bold);
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(10), $"took {timer.Elapsed}");
+    }
+
+    [Fact]
+    public void A_style_background_replaces_the_shade_of_pre_for_dark_code_themes()
+    {
+        var content = Parse("""
+            <style>pre { background: #282c34; color: #f8f8f2 } .plain { color: #123456 }</style>
+            <pre>어두운 코드</pre><pre class="plain">기본 코드</pre><pre><code>안쪽 코드</code></pre>
+            """);
+
+        var dark = Run(content, "어두운").Format;
+        Assert.Equal(("#282C34", "#F8F8F2"), (dark.Shade, dark.Color));
+        Assert.Equal(HtmlReader.CodeShade, Run(content, "기본").Format.Shade); // no background in the style sheet
+        Assert.Equal("#123456", Run(content, "기본").Format.Color);
+    }
+
+    [Fact]
+    public void Text_that_would_vanish_on_its_shade_or_on_the_page_turns_black_or_white()
+    {
+        // The page background of #1237 is not kept, so rules written for it must not leave unreadable text.
+        var content = Parse("""
+            <style>
+            body { color: #fff }
+            .card { background: #111827 }
+            .hero { background: linear-gradient(#081b29, #0ef); color: #fff }
+            .lime { color: #0f0 }
+            .badge { background: #111827; color: #f9fafb }
+            </style>
+            <p class="card">카드</p><p class="hero">히어로</p><p class="lime">라임</p><p class="badge">배지</p>
+            """);
+
+        var card = Run(content, "카드").Format; // black default text on a near-black shade: the shade stays
+        Assert.Equal(("#111827", "#FFFFFF"), (card.Shade, card.Color));
+        var hero = Run(content, "히어로").Format; // white text on the white page
+        Assert.Null(hero.Shade);
+        Assert.Equal("#000000", hero.Color);
+        Assert.Equal("#00FF00", Run(content, "라임").Format.Color); // contrast about 1.37: left as written
+        Assert.Equal("#F9FAFB", Run(content, "배지").Format.Color); // readable pairs are untouched
+    }
+
+    [Fact]
+    public void Colours_with_an_alpha_channel_are_blended_over_white_and_transparent_ones_are_dropped()
+    {
+        var content = Parse("""
+            <style>
+            .glass { background: rgba(0, 0, 0, 0.5) }
+            .reset { background: rgba(0, 0, 0, 0); color: rgba(0, 0, 0, 0) }
+            .short { background: #0000; color: #00000000 }
+            .hex { background: #00000080; color: rgb(255 255 255 / 100%) }
+            .slash { background: rgb(0 0 0 / 50%) }
+            </style>
+            <p class="glass">유리</p><p class="reset">초기화</p><p class="short">짧게</p><p class="hex">헥스</p><p class="slash">슬래시</p>
+            """);
+
+        Assert.Equal("#808080", Run(content, "유리").Format.Shade);
+        var reset = Run(content, "초기화").Format;
+        Assert.Null(reset.Shade);
+        Assert.Null(reset.Color);
+        var tiny = Run(content, "짧게").Format;
+        Assert.Null(tiny.Shade);
+        Assert.Null(tiny.Color);
+        var hex = Run(content, "헥스").Format;
+        Assert.Equal(("#7F7F7F", "#FFFFFF"), (hex.Shade, hex.Color));
+        Assert.Equal("#808080", Run(content, "슬래시").Format.Shade);
+    }
+
+    [Fact]
     public void Whitespace_collapses_and_line_breaks_stay()
     {
         var paragraphs = Paragraphs(Parse("<p>  하나   \n  둘<br>셋<br></p><p><br></p><p></p><div>\n</div><pre>  들여쓴\n\n코드</pre>"));
