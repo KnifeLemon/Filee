@@ -1130,6 +1130,8 @@
   "metadata.pdf_note": "Các giá trị trước đó vẫn có thể khôi phục bên trong PDF. Xóa siêu dữ liệu sẽ loại bỏ chúng vĩnh viễn.",
   "metadata.keys": "Enter để sửa trường hoặc lưu · Shift+Enter để xuống dòng · Esc để hủy hoặc đóng · Ctrl+F để tìm",
   "metadata.empty": "Tệp này không có siêu dữ liệu.",
+  "metadata.too_much": "Có quá nhiều siêu dữ liệu để mở ở đây",
+  "metadata.too_long": "Quá dài để sửa ở đây. Bạn vẫn có thể xóa.",
   "metadata.unreadable": "Không thể đọc siêu dữ liệu của tệp",
   "metadata.group.location": "Vị trí",
   "metadata.group.camera": "Máy ảnh",

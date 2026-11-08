@@ -3,7 +3,7 @@
 // removed or added and Remove location / Remove everything clear many at once. Saving starts an ordinary conversion
 // (MetadataTool) that writes only the metadata, into a copy or in the original's place, shown in the toast. Without
 // ExifTool the window offers it and reads nothing: a file can make a reader inside Filee hang or fill the memory, and
-// ExifTool runs apart, stopped after a time.
+// ExifTool runs apart, under limits, and stops when the window closes.
 
 using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
@@ -31,11 +31,33 @@ public sealed class MetadataEngines
     /// <summary>The ExifTool found can't run: it is a Perl script, on a computer without Perl.</summary>
     public Func<string, bool> NeedsPerl { get; init; } = ExifTool.NeedsPerl;
 
-    public Func<string, string, Task<IReadOnlyList<MetadataField>>> Read { get; init; } = (exifTool, path) => ExifTool.ReadAsync(exifTool, path);
+    public Func<string, string, CancellationToken, Task<IReadOnlyList<MetadataField>>> Read { get; init; } = ExifTool.ReadAsync;
 }
 
 public sealed partial class MetadataViewModel : ObservableObject, IDisposable
 {
+    /// <summary>
+    /// The most fields opened, as every row costs memory and time on the UI thread: 2,000 take about 4 s and most of a
+    /// GB. Six times the richest of ExifTool's own sample files, but a TIFF of about 200 pages is over it, and doesn't
+    /// open: rows laid out as they scroll into view would let this go up.
+    /// </summary>
+    internal const int FieldLimit = 3000;
+
+    /// <summary>
+    /// The most text the rows may show together, as all of it is laid out: mixed scripts take 10 µs a character or so.
+    /// Ten times what the richest of ExifTool's own sample files prints.
+    /// </summary>
+    internal const int ShownTextLimit = 256 * 1024;
+
+    /// <summary>
+    /// The longest "Group:Tag" opened. A file can name a field whatever it likes, the richest of ExifTool's own sample
+    /// files stops at 49 characters, and the place rules take time that grows with the square of it.
+    /// </summary>
+    internal const int LongestName = 256;
+
+    /// <summary>The fields out of reach of Remove location its notice names: a file can have any number.</summary>
+    private const int NamesInNotice = 12;
+
     /// <summary>Groups with a name of their own, in the order shown; any other comes after them, File last.</summary>
     private static readonly (string Group, string Key)[] KnownGroups =
     [
@@ -66,6 +88,12 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     private List<MetadataRowViewModel> _rows = [];
     private string? _formatId;
     private bool _closed;
+    private readonly CancellationTokenSource _closing = new();
+
+    /// <summary>Above this many rows search waits for a pause in the typing: each search lays them all out.</summary>
+    private const int RowsArrangedAtOnce = 500;
+
+    private int _keysTyped;
 
     /// <summary>How each file went: saved, skipped or failed (none yet while it is open).</summary>
     private readonly CropItemState?[] _outcomes;
@@ -204,7 +232,21 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     /// <summary>Opens Settings → Engines (Install ExifTool).</summary>
     public event Action? InstallRequested;
 
-    partial void OnSearchTextChanged(string value) => Arrange();
+    partial void OnSearchTextChanged(string value)
+    {
+        if (_rows.Count <= RowsArrangedAtOnce)
+            Arrange();
+        else
+            _ = ArrangeAfterAPauseAsync();
+    }
+
+    private async Task ArrangeAfterAPauseAsync()
+    {
+        var typed = ++_keysTyped;
+        await Task.Delay(300);
+        if (typed == _keysTyped && !_closed)
+            Arrange();
+    }
 
     partial void OnReplaceOriginalChanged(bool value) => Remember();
 
@@ -235,6 +277,8 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         SearchText = "";
         // HistoryThumbnails' own, shared with Home: never disposed here.
         Thumbnail = HistoryThumbnails.CanShow(path) ? await Task.Run(() => HistoryThumbnails.Load(path)) : null;
+        if (_closed)
+            return;
 
         var exifTool = _engines.Locate();
         var lacksPerl = exifTool is not null && _engines.NeedsPerl(exifTool);
@@ -244,14 +288,17 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         try
         {
             if (exifTool is not null)
-                fields = await _engines.Read(exifTool, path);
+                fields = await _engines.Read(exifTool, path, _closing.Token);
+            if (fields.Count > FieldLimit || fields.Any(f => f.Key.Length > LongestName)
+                || fields.Sum(f => (long)Math.Min(f.Items.Sum(item => item.Length), MetadataRowViewModel.LongestShown)) > ShownTextLimit)
+                throw new MetadataTooLargeException("More than the window opens.");
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
-            _log?.LogInformation(ex, "Could not read the metadata of {File}", CurrentFileName);
             if (_closed)
                 return;
-            AddProblem(index, "metadata.unreadable");
+            _log?.LogInformation(ex, "Could not read the metadata of {File}", CurrentFileName);
+            AddProblem(index, ex is MetadataTooLargeException ? "metadata.too_much" : "metadata.unreadable");
             IsBusy = false;
             await LoadFileAsync(index + 1);
             return;
@@ -267,7 +314,8 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         _outOfReach = CanEdit ? ExifTool.LocationOutOfReach(fields) : [];
         _isVideo = CanEdit && FormatRegistry.Detect(path)?.Category == FormatCategory.Video;
         ShowLocationNotice();
-        _rows = [.. fields.Where(f => !ExifTool.NotInTheFile.Contains(f.Group)).Select(f => NewRow(f, CanEdit && f.Editable, CanEdit && !f.Editable))];
+        _rows = [.. fields.Where(f => !ExifTool.NotInTheFile.Contains(f.Group)).Select(f => new MetadataRowViewModel(f, LabelOf(f.Tag), _loc, CanEdit && f.Editable,
+            CanEdit && !f.Editable, OnRowChanged))];
         ShowDetails();
         Arrange();
         Recount();
@@ -279,12 +327,10 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     /// <summary>What saving won't take away: a "successful" Remove location must not read as a clean file.</summary>
     private void ShowLocationNotice() => LocationNotice = string.Join("\n", new[]
     {
-        _outOfReach.Count > 0 ? _loc.Format("metadata.location_kept", string.Join(", ", _outOfReach.Select(LabelOf))) : "",
+        _outOfReach.Count > 0 ? _loc.Format("metadata.location_kept", string.Join(", ", _outOfReach.Take(NamesInNotice).Select(LabelOf))
+                                                                      + (_outOfReach.Count > NamesInNotice ? ", …" : "")) : "",
         _isVideo ? _loc["metadata.location_tracks"] : "",
     }.Where(line => line.Length > 0));
-
-    private MetadataRowViewModel NewRow(MetadataField field, bool canEdit, bool showsLock) =>
-        new(field, LabelOf(field.Tag), _loc, canEdit, showsLock, OnRowChanged);
 
     private void ShowDetails()
     {
@@ -305,6 +351,7 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
     /// </summary>
     private void Arrange()
     {
+        _keysTyped++;
         // Clearing the groups can take the focus from a box, whose row then asks for this again: done once more after.
         if (_arranging)
         {
@@ -336,7 +383,8 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
         bool Matches(MetadataRowViewModel row) => search.Length == 0
             || row.Label.Contains(search, StringComparison.CurrentCultureIgnoreCase)
             || row.Field.Tag.Contains(search, StringComparison.OrdinalIgnoreCase)
-            || row.Value.Contains(search, StringComparison.CurrentCultureIgnoreCase);
+            || row.Value.AsSpan(0, Math.Min(row.Value.Length, MetadataRowViewModel.LongestEditable))
+                .Contains(search, StringComparison.CurrentCultureIgnoreCase);
         int Order(string group, string family) =>
             Array.FindIndex(KnownGroups, k => k.Group == group) is >= 0 and var known ? known
             : family == "File" ? 1000 : 100;
@@ -611,7 +659,13 @@ public sealed partial class MetadataViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        var wasOpen = !_closed;
         _closed = true;
+        if (wasOpen)
+        {
+            _closing.Cancel();
+            _closing.Dispose();
+        }
         _loc.LanguageChanged -= OnLanguageChanged;
         Thumbnail = null;
     }
@@ -668,6 +722,18 @@ public sealed partial class MetadataRowViewModel : ObservableObject
     /// <summary>A lock beside a value the file's structure decides (only when editing is possible at all).</summary>
     public bool ShowsLock { get; }
 
+    /// <summary>
+    /// Not a value to type in: a text box lays all of it out (32 KB takes most of a second, 1 MB about 16 s). It can
+    /// still be selected and removed.
+    /// </summary>
+    private bool FitsABox => Field.Value.Length <= LongestEditable;
+
+    /// <summary>The value opens in a box when pressed; otherwise it is text to select.</summary>
+    public bool CanType => CanEdit && FitsABox;
+
+    /// <summary>Why a value that could be edited isn't offered for it.</summary>
+    public string? TooLongNote => CanEdit && !FitsABox ? _loc["metadata.too_long"] : null;
+
     /// <summary>A field the user added (not in the file yet).</summary>
     public bool IsAdded { get; init; }
 
@@ -695,7 +761,7 @@ public sealed partial class MetadataRowViewModel : ObservableObject
     {
         get
         {
-            var spoken = $"{Label}: {Value.Replace("\n", ", ", StringComparison.Ordinal)}";
+            var spoken = $"{Label}: {Cut(Value, LongestSpoken).Replace("\n", ", ", StringComparison.Ordinal)}{(TooLongNote is { } note ? $". {note}" : "")}";
             return IsRemoved ? _loc.Format("metadata.spoken_removed", spoken) : spoken;
         }
     }
@@ -703,11 +769,23 @@ public sealed partial class MetadataRowViewModel : ObservableObject
     /// <summary>
     /// The value as the window shows it. In a right-to-left UI each line is set apart by its own first letter, or a
     /// date and "45 deg 30' N" would come out reordered around the digits; left to right there's nothing to add to what
-    /// can be selected and copied.
+    /// can be selected and copied, but for a value too long to lay out, which is cut.
     /// </summary>
     public string ShownValue => System.Globalization.CultureInfo.CurrentUICulture.TextInfo.IsRightToLeft
-        ? string.Join("\n", Value.Split('\n').Select(line => $"\u2068{line}\u2069"))
-        : Value;
+        ? string.Join("\n", Cut(Value, LongestShown).Split('\n').Select(line => $"\u2068{line}\u2069"))
+        : Cut(Value, LongestShown);
+
+    /// <summary>
+    /// Enough for the six lines a row shows: text is laid out whole, and a file can hold megabytes of it.
+    /// </summary>
+    private static string Cut(string value, int length) => value.Length <= length ? value
+        : value[..(char.IsHighSurrogate(value[length - 1]) ? length - 1 : length)] + "…";
+
+    /// <summary>A long AI prompt or workflow stays whole to select and copy; the file's total is limited.</summary>
+    internal const int LongestShown = 32 * 1024;
+
+    internal const int LongestEditable = LongestShown;
+    private const int LongestSpoken = 1000;
 
     /// <summary>What a screen reader says for × ("Remove Title").</summary>
     public string RemoveName => _loc.Format("metadata.remove_named", Label);
@@ -740,7 +818,7 @@ public sealed partial class MetadataRowViewModel : ObservableObject
     [RelayCommand]
     private void Edit()
     {
-        if (CanEdit && !IsRemoved)
+        if (CanType && !IsRemoved)
             IsEditing = true;
     }
 

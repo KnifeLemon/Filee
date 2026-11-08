@@ -1115,6 +1115,8 @@
   "metadata.pdf_note": "Önceki değerler PDF içinde kurtarılabilir kalır. \"Meta verileri kaldır\" onları tamamen siler.",
   "metadata.keys": "Enter bir alanı düzenler veya kaydeder · Shift+Enter yeni satır başlatır · Esc iptal eder veya kapatır · Ctrl+F arar",
   "metadata.empty": "Bu dosyada meta veri yok.",
+  "metadata.too_much": "Burada açılamayacak kadar çok üst verisi var",
+  "metadata.too_long": "Burada düzenlemek için çok uzun. Yine de kaldırılabilir.",
   "metadata.unreadable": "Üst verisi okunamadı",
   "metadata.group.location": "Konum",
   "metadata.group.camera": "Kamera",

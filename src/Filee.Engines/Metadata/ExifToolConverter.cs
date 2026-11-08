@@ -41,7 +41,7 @@ public sealed class ExifToolConverter : IConverter
         {
             await ExifTool.WriteAsync(exifTool, step.InputPath, output, edits, cancellationToken, progress);
         }
-        catch (MetadataRefusedException ex)
+        catch (IOException ex) when (ex is MetadataRefusedException or MetadataTooLargeException)
         {
             throw new ConversionRefusedException("error.metadata_refused", ex.Message);
         }

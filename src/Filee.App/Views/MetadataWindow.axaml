@@ -41,6 +41,9 @@
     <Style Selector="Grid.row.removed TextBlock">
       <Setter Property="TextDecorations" Value="Strikethrough" />
     </Style>
+    <Style Selector="Grid.row.removed SelectableTextBlock">
+      <Setter Property="TextDecorations" Value="Strikethrough" />
+    </Style>
     <!-- A value that can be edited: a plain text until hovered or reached, a button all the same. -->
     <Style Selector="Button.value">
       <Setter Property="Background" Value="Transparent" />
@@ -169,7 +172,7 @@
                                     Command="{Binding EditCommand}" AutomationProperties.Name="{Binding SpokenValue}">
                               <Button.IsVisible>
                                 <MultiBinding Converter="{x:Static BoolConverters.And}">
-                                  <Binding Path="CanEdit" />
+                                  <Binding Path="CanType" />
                                   <Binding Path="ShowsValue" />
                                 </MultiBinding>
                               </Button.IsVisible>
@@ -177,7 +180,8 @@
                             </Button>
                             <!-- Read-only: a text that can still be selected and copied. -->
                             <SelectableTextBlock Grid.Column="1" Text="{Binding ShownValue}" VerticalAlignment="Center" TextWrapping="Wrap" MaxLines="6"
-                                                 Margin="9,4" IsVisible="{Binding !CanEdit}" AutomationProperties.Name="{Binding SpokenValue}" />
+                                                 Margin="9,4" IsVisible="{Binding !CanType}" AutomationProperties.Name="{Binding SpokenValue}"
+                                                 ToolTip.Tip="{Binding TooLongNote}" />
                             <StackPanel Grid.Column="1" Spacing="2" Margin="3,2" IsVisible="{Binding IsEditing}" PropertyChanged="OnEditorPropertyChanged"
                                         AttachedToVisualTree="OnEditorAttached">
                               <TextBox Text="{Binding Value}" MinHeight="30" Padding="8,4" BorderBrush="{DynamicResource AccentBrush}"

@@ -1115,6 +1115,8 @@
   "metadata.pdf_note": "以前の値は PDF 内に復元可能な形で残ります。「メタデータを削除」で完全に消せます。",
   "metadata.keys": "Enter で項目を編集または保存 · Shift+Enter で改行 · Esc で取り消しまたは閉じる · Ctrl+F で検索",
   "metadata.empty": "このファイルにはメタデータがありません。",
+  "metadata.too_much": "メタデータが多すぎるため、ここでは開けません",
+  "metadata.too_long": "長すぎるためここでは編集できません。削除はできます。",
   "metadata.unreadable": "メタデータを読み取れませんでした",
   "metadata.group.location": "位置情報",
   "metadata.group.camera": "カメラ",

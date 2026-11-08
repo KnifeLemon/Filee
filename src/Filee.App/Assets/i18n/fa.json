@@ -1114,6 +1114,8 @@
   "metadata.pdf_note": "مقادیر قبلی در داخل PDF قابل بازیابی می‌مانند. «حذف متادیتا» آن‌ها را برای همیشه پاک می‌کند.",
   "metadata.keys": "Enter فیلد را ویرایش یا ذخیره می‌کند · Shift+Enter خط جدید · Esc لغو یا بستن · Ctrl+F جستجو",
   "metadata.empty": "متادیتایی در این فایل پیدا نشد.",
+  "metadata.too_much": "متادیتای آن بیش از آن است که اینجا باز شود",
+  "metadata.too_long": "برای ویرایش در اینجا بیش از حد طولانی است. همچنان می‌توان آن را حذف کرد.",
   "metadata.unreadable": "متادیتای آن خوانده نشد",
   "metadata.group.location": "موقعیت",
   "metadata.group.camera": "دوربین",

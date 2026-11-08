@@ -1130,6 +1130,8 @@
   "metadata.pdf_note": "Les anciennes valeurs restent récupérables dans le PDF. « Supprimer les métadonnées » les efface pour de bon.",
   "metadata.keys": "Entrée modifie un champ ou enregistre · Maj+Entrée commence une nouvelle ligne · Échap annule ou ferme · Ctrl+F recherche",
   "metadata.empty": "Aucune métadonnée dans ce fichier.",
+  "metadata.too_much": "Il contient trop de métadonnées pour être ouvert ici",
+  "metadata.too_long": "Trop long pour être modifié ici. Il reste possible de le retirer.",
   "metadata.unreadable": "Ses métadonnées n'ont pas pu être lues",
   "metadata.group.location": "Lieu",
   "metadata.group.camera": "Appareil",

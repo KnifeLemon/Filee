@@ -1114,6 +1114,8 @@
 "metadata.pdf_note": "I valori precedenti restano recuperabili all'interno del PDF. Rimuovi metadati li elimina definitivamente.",
 "metadata.keys": "Invio modifica un campo o salva · Maiusc+Invio inizia una nuova riga · Esc annulla o chiude · Ctrl+F cerca",
 "metadata.empty": "Nessun metadato in questo file.",
+"metadata.too_much": "Contiene troppi metadati per essere aperto qui",
+"metadata.too_long": "Troppo lungo per modificarlo qui. Si può comunque rimuovere.",
 "metadata.unreadable": "Non è stato possibile leggere i suoi metadati",
 "metadata.group.location": "Posizione",
 "metadata.group.camera": "Fotocamera",
