@@ -79,8 +79,10 @@ public class RhwpLetterWidthTests(EngineFixture fx) : IClassFixture<EngineFixtur
         var hwpx = TextFile("Привет łódź Ωmega");
         var header = Xml(hwpx, "Contents/header.xml");
         foreach (var fontface in header.Descendants(Hh + "fontface"))
+        {
             foreach (var font in fontface.Elements(Hh + "font"))
                 font.SetAttributeValue("face", (string?)fontface.Attribute("lang") == "LATIN" ? "Latin Font" : "Hangul Font");
+        }
         var edited = Path.Combine(fx.NewFolder(), "edited.hwpx");
         File.Copy(hwpx, edited);
         using (var zip = System.IO.Compression.ZipFile.Open(edited, System.IO.Compression.ZipArchiveMode.Update))
