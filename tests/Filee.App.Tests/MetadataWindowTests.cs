@@ -692,7 +692,8 @@ public sealed class MetadataWindowTests : IDisposable
         var spy = Path.Combine(_folder, "exiftool");
         // Half a JSON array first, as ExifTool stopped part way would have printed.
         File.WriteAllText(spy, "#!/bin/sh\nexec perl -e '$| = 1; print q([{\"SourceFile\": \"x\",); my @held; push @held, q(a) x 10_000_000 for 1..300; sleep 300'\n");
-        File.SetUnixFileMode(spy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(spy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         var engines = new MetadataEngines { Locate = () => spy, NeedsPerl = _ => false };
 
         var vm = new MetadataViewModel(Files("packed.png"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });

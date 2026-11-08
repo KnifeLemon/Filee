@@ -57,7 +57,7 @@ public sealed class ProcessRunnerOutputTests : IDisposable
         try
         {
             await Run();
-            Assert.True(failed.Wait(TimeSpan.FromSeconds(10)));
+            Assert.True(failed.Wait(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken));
             await Task.Delay(200, TestContext.Current.CancellationToken); // the read's task ends just after its throw
             for (var i = 0; i < 3; i++)
             {
