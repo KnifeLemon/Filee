@@ -62,7 +62,8 @@
    (no Recycle Bin on the drive, a file open elsewhere, a read-only file), both stay and the file's notice says why,
    with a translated reason (`trash.*`). A result "Only if smaller" copied from the source leaves the source alone.
    Watch folders and files from a browser never replace.
-   "Merge into one PDF" converts each file to PDF and merges with PDFsharp.
+   "Merge into one PDF" converts each file to PDF and merges with PDFsharp, preserving bookmarks, internal links,
+   named destinations and page-backed AcroForm fields. Fields with colliding names get a file-position prefix.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
    "Merge videos", "Merge audio" and "Video from images" join the files, in the order picked in the merge order
    window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first. Like the
