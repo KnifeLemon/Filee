@@ -372,7 +372,7 @@ public static class ProcessRunner
         return resident;
     }
 
-    /// <summary>VmRSS and VmSwap of /proc/<paramref name="pid"/>/status, in bytes; null when it can't be read.</summary>
+    /// <summary>VmRSS and VmSwap in /proc/<paramref name="pid"/>/status, in bytes; null when unreadable.</summary>
     private static long? LinuxMemoryOf(int pid)
     {
         try
