@@ -218,3 +218,101 @@ public class DonutCaptionTests
         }
     }
 }
+
+// With the switch off, a name another slice also has keeps its caption: among the slices it is drawn with. The
+// outgoing face of a flip is drawn after the incoming one has taken its place, and a group's ring has its own names.
+[Collection("Motion")]
+public class DonutCaptionAmongTests
+{
+    private const int Side = 640;
+
+    /// <summary>The donut open on <paramref name="items"/>, <paramref name="step"/> done, drawn as it is shown then.</summary>
+    private static byte[] Render(DonutItem[] items, bool captions, Action<DonutMenu> step)
+    {
+        TestServices.EnsureInitialized();
+        Motion.Configure(false, () => false);
+        var donut = new DonutMenu { Items = items, ShowCaptions = captions, OuterRadius = 150, ReserveSubRing = true };
+        var window = new Window { Content = donut, Width = Side, Height = Side };
+        window.Show();
+        try
+        {
+            Dispatcher.UIThread.RunJobs();
+            for (var i = 0; i < 60; i++)
+                donut.Advance(1 / 60.0);
+            RenderTests.Pump();
+            // Stepped by hand from here: the dispatcher's own clock would draw each donut a different frame.
+            step(donut);
+            using var image = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize(Side, Side));
+            image.Render(donut);
+            var pixels = new byte[Side * Side * 4];
+            var pin = System.Runtime.InteropServices.GCHandle.Alloc(pixels, System.Runtime.InteropServices.GCHandleType.Pinned);
+            try { image.CopyPixels(new PixelRect(0, 0, Side, Side), pin.AddrOfPinnedObject(), pixels.Length, Side * 4); }
+            finally { pin.Free(); }
+            return pixels;
+        }
+        finally
+        {
+            window.Close();
+            Motion.Configure(true, () => false);
+        }
+    }
+
+    /// <summary>A flip to <paramref name="back"/> a few frames in, while the outgoing face is still turning.</summary>
+    private static Action<DonutMenu> FlippingTo(DonutItem[] back) => donut =>
+    {
+        donut.CanFlip = true;
+        donut.FaceSwapping += (_, _) => donut.Items = back;
+        Assert.True(donut.Flip());
+        for (var i = 0; i < 2; i++)
+            donut.Advance(1 / 60.0);
+        Assert.True(donut.HasOldFace);
+    };
+
+    private static DonutItem Slice(string label, string? caption = null) => new() { Id = label + caption, Label = label, Caption = caption };
+
+    private static DonutItem[] Bare(DonutItem[] items, params string[] labels) =>
+        [.. items.Select(item => labels.Contains(item.Label) ? Slice(item.Label) : item)];
+
+    [AvaloniaFact]
+    public void The_outgoing_face_of_a_flip_keeps_the_captions_its_own_names_need()
+    {
+        // Two slices of one name on the face turning away, and none on the face turning in.
+        DonutItem[] front = [Slice("Rotate left", "PNG"), Slice("Rotate left", "PDF"), Slice("Blur", "JPG"), Slice("Sharpen", "WEBP")];
+        DonutItem[] back = [Slice("Trace"), Slice("Half size"), Slice("Grey"), Slice("Crop")];
+
+        Assert.Equal(Render(Bare(front, "Blur", "Sharpen"), captions: true, FlippingTo(back)),
+            Render(front, captions: false, FlippingTo(back)));
+    }
+
+    [AvaloniaFact]
+    public void The_outgoing_face_of_a_flip_drops_a_caption_only_the_incoming_face_would_need()
+    {
+        // "Blur" on both faces, once on each: neither needs its caption.
+        DonutItem[] front = [Slice("Blur", "JPG"), Slice("Sharpen", "WEBP"), Slice("Trace", "SVG"), Slice("Half size", "JPG")];
+        DonutItem[] back = [Slice("Blur"), Slice("Grey"), Slice("Crop"), Slice("Rotate")];
+
+        Assert.Equal(Render(Bare(front, "Blur", "Sharpen", "Trace", "Half size"), captions: true, FlippingTo(back)),
+            Render(front, captions: false, FlippingTo(back)));
+    }
+
+    [AvaloniaFact]
+    public void A_groups_ring_keeps_the_captions_its_own_names_need()
+    {
+        // In the ring two of one name, and one named like a slice of the donut: only the two keep their captions.
+        static DonutItem[] Donut(params DonutItem[] children) =>
+            [Slice("Blur"), Slice("Sharpen"), new() { Id = "group", Label = "More", Children = children }, Slice("Crop")];
+        static void Opened(DonutMenu donut)
+        {
+            var center = new Point(donut.Bounds.Width / 2, donut.Bounds.Height / 2);
+            var onGroup = DonutGeometry.PointAt(center, donut.OuterRadius * 0.6, DonutGeometry.MidAngle(2, 4));
+            donut.SetExternalHit(donut.HitTest(onGroup), onGroup);
+            donut.ExpandPendingGroup();
+            for (var i = 0; i < 60; i++)
+                donut.Advance(1 / 60.0);
+            Assert.Equal(DonutHitKind.SubSegment, donut.HitTest(donut.SubSliceCenter(2, 1)).Kind);
+        }
+
+        Assert.Equal(Render(Donut(Slice("Rotate left", "PNG"), Slice("Rotate left", "PDF"), Slice("Blur")), captions: true, Opened),
+            Render(Donut(Slice("Rotate left", "PNG"), Slice("Rotate left", "PDF"), Slice("Blur", "JPG")), captions: false, Opened));
+    }
+}

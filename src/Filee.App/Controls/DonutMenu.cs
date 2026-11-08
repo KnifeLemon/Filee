@@ -938,11 +938,14 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
-                DrawSliceLabel(context, item, center, r1, r2, mid, span, typeface, typefaceRegular, hot);
+                DrawSliceLabel(context, item, Items!, center, r1, r2, mid, span, typeface, typefaceRegular, hot);
             }
         }
 
         if (_oldFace is { } old)
+        {
+            // Items holds the incoming face by now: the outgoing slices are compared with their own face.
+            var oldItems = Array.ConvertAll(old, slice => slice.Item);
             for (var i = 0; i < old.Length; i++)
             {
                 var slice = old[i];
@@ -962,10 +965,11 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (slice.Item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
                     if (slice.Emphasis > 0.01 && slice.Item.IsEnabled)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(slice.Emphasis, 0, 1)), null, wedge);
-                    DrawSliceLabel(context, slice.Item, center, r1, r2, slice.Mid, slice.Span, typeface, typefaceRegular,
-                        slice.Hot && slice.Item.IsEnabled);
+                    DrawSliceLabel(context, slice.Item, oldItems, center, r1, r2, slice.Mid, slice.Span, typeface,
+                        typefaceRegular, slice.Hot && slice.Item.IsEnabled);
                 }
             }
+        }
 
         if (IsEditMode && _previewSpan.Value > 0.01)
             DrawPreview(context, center, r1, r2, typeface, typefaceRegular);
@@ -1093,14 +1097,15 @@ public sealed partial class DonutMenu : Control
         context.DrawLine(pen, new Point(box.Center.X, box.Top + 2), new Point(box.Center.X, box.Top + 4.5));
     }
 
-    private void DrawLabel(DrawingContext context, DonutItem item, Point center, double radius, double angle,
-        double maxWidth, double maxHeight, Typeface bold, Typeface regular, bool hot)
+    /// <param name="face">The slices <paramref name="item"/> is shown among: its face, or its group's ring.</param>
+    private void DrawLabel(DrawingContext context, DonutItem item, IReadOnlyList<DonutItem> face, Point center,
+        double radius, double angle, double maxWidth, double maxHeight, Typeface bold, Typeface regular, bool hot)
     {
         var foreground = hot ? OnAccentBrush : item.IsEnabled ? Foreground : SecondaryForeground;
         var width = Math.Clamp(maxWidth, 30, 120);
         var text = KeepKoreanWords(item.Label);
         var label = CachedText(text, bold, LabelSize(text, bold, width), foreground, width, maxLines: 2);
-        var showCaption = (ShowCaptions || item.KeepsCaption || SharesItsName(item)) &&
+        var showCaption = (ShowCaptions || item.KeepsCaption || SharesItsName(item, face)) &&
                           !string.IsNullOrEmpty(item.Caption) &&
                           !string.Equals(item.Caption, item.Label, StringComparison.OrdinalIgnoreCase) &&
                           label.Height + 14 < maxHeight;
@@ -1117,16 +1122,16 @@ public sealed partial class DonutMenu : Control
             DrawCentered(context, caption, anchor.X, y + label.Height);
     }
 
-    /// <summary>Another slice on this face has the name, and only the caption tells them apart.</summary>
-    private bool SharesItsName(DonutItem item) =>
-        Items?.Any(other => !ReferenceEquals(other, item) && string.Equals(other.Label, item.Label, StringComparison.OrdinalIgnoreCase)) == true;
+    /// <summary>Another slice of <paramref name="face"/> has the name, and only the caption tells them apart.</summary>
+    private static bool SharesItsName(DonutItem item, IReadOnlyList<DonutItem> face) =>
+        face.Any(other => !ReferenceEquals(other, item) && string.Equals(other.Label, item.Label, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>A slice's name and caption, and a group's mark, the name moved in to leave the mark room.</summary>
-    private void DrawSliceLabel(DrawingContext context, DonutItem item, Point center, double r1, double r2, double mid,
-        double span, Typeface bold, Typeface regular, bool hot)
+    private void DrawSliceLabel(DrawingContext context, DonutItem item, IReadOnlyList<DonutItem> face, Point center,
+        double r1, double r2, double mid, double span, Typeface bold, Typeface regular, bool hot)
     {
         var room = item.IsGroup ? GroupMarkRoom * GroupMarkScale : 0;
-        DrawLabel(context, item, center, (r1 + r2 - room) / 2, mid, span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot);
+        DrawLabel(context, item, face, center, (r1 + r2 - room) / 2, mid, span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot);
         DrawGroupMark(context, item, center, r2, mid, hot);
     }
 
@@ -1314,7 +1319,7 @@ public sealed partial class DonutMenu : Control
         if (_previewLabel is null || span < 0.25)
             return;
         using (context.PushOpacity(Math.Clamp((span - 0.25) / 0.3, 0, 1) * 0.9))
-            DrawSliceLabel(context, new DonutItem { Id = "", Label = _previewLabel, Children = _previewGroup ? [] : null }, center,
+            DrawSliceLabel(context, new DonutItem { Id = "", Label = _previewLabel, Children = _previewGroup ? [] : null }, [], center,
                 r1, r2, mid, span, bold, regular, hot: false);
     }
 
