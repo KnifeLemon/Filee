@@ -226,7 +226,9 @@ public class DonutCaptionAmongTests
 {
     private const int Side = 640;
 
-    /// <summary>The donut open on <paramref name="items"/>, <paramref name="step"/> done, drawn as it is shown then.</summary>
+    /// <summary>
+    /// The donut open on <paramref name="items"/>, <paramref name="step"/> done, drawn as it is shown then.
+    /// </summary>
     private static byte[] Render(DonutItem[] items, bool captions, Action<DonutMenu> step)
     {
         TestServices.EnsureInitialized();
