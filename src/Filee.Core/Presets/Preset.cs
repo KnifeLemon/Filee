@@ -967,7 +967,7 @@ public sealed class ImageOptions
     public static readonly double[] AnimationSpeeds = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
     /// <summary>
-    /// Plays an animation (GIF, WebP, APNG, MNG; video → GIF or APNG) this many times as fast: 2 halves every frame
+    /// Plays an animation (GIF, WebP, APNG, MNG, AVIF; video → GIF or APNG) this many times as fast: 2 halves every frame
     /// delay, 0.5 doubles it. 1 (the default, also for presets saved before the option) leaves the timing as it is.
     /// </summary>
     public double AnimationSpeed { get; set; } = 1;
@@ -1269,7 +1269,10 @@ public sealed class PdfOptions
     /// </summary>
     public bool Ocr { get; set; }
 
-    /// <summary>With <see cref="Ocr"/>: the language of the text, as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>).</summary>
+    /// <summary>
+    /// With <see cref="Ocr"/>: the language of the text as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>); text
+    /// that mixes languages has several, the main one first, joined with <c>+</c> as Tesseract takes them (<c>chi_sim+eng</c>).
+    /// </summary>
     public string OcrLanguage { get; set; } = "eng";
 
     public PdfOptions Clone() => (PdfOptions)MemberwiseClone();

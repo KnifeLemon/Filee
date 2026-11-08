@@ -34,6 +34,50 @@ public class OcrLanguageListTests
         Assert.Null(OcrLanguages.Find("klingon"));
     }
 
+    private static IEnumerable<string> Codes(string? setting) => OcrLanguages.Parse(setting).Select(l => l.Code);
+
+    [Fact]
+    public void A_preset_names_one_language_or_several_joined_with_a_plus()
+    {
+        Assert.Equal(["deu"], Codes("deu")); // as settings have it from before several languages (#1123)
+        Assert.Equal(["chi_sim", "eng"], Codes("chi_sim+eng"));
+        Assert.Equal(["eng", "chi_sim"], Codes("eng+chi_sim")); // the main one stays first
+        Assert.Equal("chi_sim+eng", OcrLanguages.Join(["chi_sim", "eng", "chi_sim"]));
+        Assert.Equal("deu", OcrLanguages.Join(["deu"]));
+    }
+
+    [Theory]
+    [InlineData("deu+klingon+deu", "deu")]
+    [InlineData("klingon", "eng")]
+    [InlineData("../../evil+eng", "eng")]
+    [InlineData("+", "eng")]
+    [InlineData("", "eng")]
+    [InlineData(null, "eng")]
+    public void Only_listed_languages_count_each_once_and_with_none_english_is_read(string? setting, string read) =>
+        Assert.Equal([read], Codes(setting));
+
+    [Fact]
+    public async Task Each_language_is_fetched_and_a_failed_download_says_which_one()
+    {
+        var languages = OcrLanguages.Parse("chi_sim+deu+eng");
+        var asked = new List<string>();
+
+        var data = await TesseractConverter.LanguageDataAsync(languages, (code, _) =>
+        {
+            asked.Add(code);
+            return Task.FromResult(code + ".traineddata");
+        }, TestContext.Current.CancellationToken);
+
+        Assert.Equal(["chi_sim", "deu", "eng"], asked);
+        Assert.Equal(["chi_sim.traineddata", "deu.traineddata", "eng.traineddata"], data);
+
+        var refused = await Assert.ThrowsAsync<ConversionRefusedException>(() => TesseractConverter.LanguageDataAsync(languages, (code, _) =>
+            code == "deu" ? throw new HttpRequestException("no network") : Task.FromResult(code + ".traineddata"), TestContext.Current.CancellationToken));
+
+        Assert.Equal("error.ocr_language_download", refused.ErrorKey);
+        Assert.Equal("Deutsch: no network", refused.Detail);
+    }
+
     [Fact]
     public void Tesseract_is_offered_but_not_suggested()
     {
@@ -215,13 +259,18 @@ public class OcrTests(EngineFixture fx) : IClassFixture<EngineFixture>
     private static readonly string? Arial = EngineEnvironment.FirstExisting(@"C:\Windows\Fonts\arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/System/Library/Fonts/Supplemental/Arial.ttf");
 
+    private static readonly string? ChineseFont = EngineEnvironment.FirstExisting(@"C:\Windows\Fonts\msyh.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc");
+
     /// <summary>A page as a scanner writes it: black text on white at 300 dpi, no text layer.</summary>
-    private static string Scan(string folder, string name, params string[] lines)
+    private static string Scan(string folder, string name, params string[] lines) => ScanIn(Arial, folder, name, lines);
+
+    private static string ScanIn(string? font, string folder, string name, params string[] lines)
     {
         using var image = new MagickImage(MagickColors.White, 2480, 800) { Density = new Density(300) };
         var drawables = new Drawables().FontPointSize(28).FillColor(MagickColors.Black);
-        if (Arial is not null)
-            drawables.Font(Arial);
+        if (font is not null)
+            drawables.Font(font);
         for (var i = 0; i < lines.Length; i++)
             drawables.Text(150, 220 + i * 180, lines[i]);
         drawables.Draw(image);
@@ -459,5 +508,38 @@ public class OcrTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var text = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
         Assert.Contains("Größe", text);
         Assert.Contains("Straße", text);
+    }
+
+    [Fact]
+    public async Task Text_in_two_scripts_is_read_only_with_both_languages()
+    {
+        Assert.SkipUnless(Installed, Skip);
+        var scan = Scan(fx.NewFolder(), "report.png", "Отчёт за квартал готов", "The quarterly report is ready");
+
+        var english = await fx.ConvertAsync([scan], Ocr("txt"));
+        var both = await fx.ConvertAsync([scan], Ocr("txt", "rus+eng"));
+
+        AssertDone(english);
+        AssertDone(both);
+        Assert.DoesNotContain("квартал", await File.ReadAllTextAsync(english.Outputs.Single(), TestContext.Current.CancellationToken));
+        Assert.True(OcrLanguages.IsInstalled("rus"));
+        var text = await File.ReadAllTextAsync(both.Outputs.Single(), TestContext.Current.CancellationToken);
+        Assert.Contains("квартал", text);
+        Assert.Contains("quarterly", text);
+    }
+
+    [Fact]
+    public async Task Simplified_chinese_and_english_on_one_page_are_both_read()
+    {
+        // The scans of #1123. Linux runs without a Chinese font skip this; rus+eng above runs everywhere.
+        Assert.SkipUnless(Installed && ChineseFont is not null, Skip);
+        var scan = ScanIn(ChineseFont, fx.NewFolder(), "report.png", "季度报告已经准备好", "The quarterly report is ready");
+
+        var job = await fx.ConvertAsync([scan], Ocr("txt", "chi_sim+eng"));
+
+        AssertDone(job);
+        var text = await File.ReadAllTextAsync(job.Outputs.Single(), TestContext.Current.CancellationToken);
+        Assert.Contains("报告", text);
+        Assert.Contains("quarterly", text);
     }
 }

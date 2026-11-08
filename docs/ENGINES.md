@@ -201,14 +201,33 @@ in it also builds the package (artifact `windows-arm64-package`).
   borders, fully transparent ones and multi-frame animations (each frame alone would shift) come out as they are.
   Formats that can't be transparent (JPG, HEIC, …) have nothing to trim: the preset is greyed out for them, and a
   JPG in a mixed selection fails with that reason instead of being re-encoded.
-- **Animations.** An animated GIF, WebP, APNG, MNG or JPEG XL keeps every frame and its timing when converted to one of
-  these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL, WebP lossy or lossless as the preset says, #988) and
-  becomes a multi-page TIFF;
-  other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP.
+- **Animations.** An animated GIF, WebP, APNG, MNG, JPEG XL or AVIF keeps every frame and its timing when converted to
+  one of these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL ↔ AVIF, WebP lossy or lossless as the preset says,
+  #988) and becomes a multi-page TIFF;
+  other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
+  - **Animated AVIF** (#1200) needs no FFmpeg, but goes much faster with it. ImageMagick reads the frames and applies
+    the preset either way. With FFmpeg and its libaom-av1 encoder (Filee's FFmpeg download has it),
+    `Media/AvifSequenceWriter.cs` packs the frames into an APNG in the work folder (`Magick/Apng.cs`, exact delays) and
+    FFmpeg's avif muxer writes the image sequence (`avis`): FFmpeg encodes 60 busy 480 × 270 frames in about 3 s, where
+    ImageMagick's writer takes 50 s or more. Cancelling stops it, and the loop count stays (the muxer's `-loop`, the edit list's repeat). Only
+    libaom-av1 is used: the avif muxer takes the alpha track as one grey plane, which SVT-AV1 doesn't encode, and
+    FFmpeg's SVT-AV1 wrapper passes no packet durations, so the last frame's length would be a guess (a GIF's long
+    pause at the end cut short). Colour is full-range BT.709 4:2:0 tagged as sRGB, the preset's quality the quantizer
+    libheif would pick. An FFmpeg without libaom-av1, or one whose run fails (an old avif muxer), leaves the file to
+    ImageMagick, which writes the sequence through libheif. Its writer stores no loop count (an animation that plays a
+    set number of times loops for ever) and can't be interrupted. Both ways, the first frame is also stored as the
+    still picture for viewers that don't play sequences, and ImageMagick reads such a file back frame by frame, also
+    one FFmpeg wrote. Transparency stays (one alpha track, so `ImageEncoder.MatchAlpha` gives every frame an alpha
+    channel when any frame is transparent, and none when all are opaque, which leaves out the alpha track). An AVIF
+    source is an animation only when it is a sequence (`Magick/AvifSequence.cs`: major brand `avis` and a `moov` box).
+    The items of any other AVIF (a burst, a visible gain map, pictures of their own sizes) stay separate pictures, one
+    `_pN` file each. A still picture takes the same one-picture path as ever. On the way to video an AVIF counts as a
+    photo (`ImageEncoder.Edge`): nearly all of them are, so an animated one becomes a video of its first frame rather
+    than every AVIF going through a 256-colour GIF.
 - **Playback speed** (preset option *Playback speed*, `ImageOptions.AnimationSpeed`: 0.25×, 0.5×, 0.75×, 1×, 1.5×,
-  2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL and "same as source") rewrites the frame delays of an animation that stays
+  2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL, AVIF and "same as source") rewrites the frame delays of an animation that stays
   animated (`Magick/AnimationTiming.cs`). Delays are divided by the speed in the target's own units (hundredths of a
-  second for GIF, MNG and JPEG XL, milliseconds for WebP and APNG) and rounded on the running total, so the whole animation
+  second for GIF, MNG and JPEG XL, milliseconds for WebP, APNG and AVIF) and rounded on the running total, so the whole animation
   keeps its new length. Players show a frame of 10 ms or less for 100 ms, so no delay goes below 20 ms (50 frames a
   second): a frame that would start sooner than that after the one before is dropped and its time goes to that one,
   which leaves frames out evenly. Source delays of 10 ms or less count as the 100 ms players show. Loop count and
@@ -1877,6 +1896,14 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
 scans and pictures with Tesseract (`Ocr/TesseractConverter.cs`), in the language the preset names
 (`PdfOptions.OcrLanguage`, a Tesseract code; English by default). The built-in "Searchable PDF" preset turns it on.
 
+Text that mixes languages (issue #1123) has several codes in that one setting, the main language first, joined with
+`+` as Tesseract's `-l` takes them (`chi_sim+eng`). `OcrLanguages.Parse` is the only reader: a code not in the list is
+left out, repeats count once, and with none left English is read. Settings from before this hold one code and read as
+they always did; an older Filee reads a joined value as a code it doesn't know, so English. Each language is its own
+download and is fetched before the file is read; a download that fails refuses the file and names that language. Every
+language makes Tesseract slower (it tries the others on words the first one reads badly), so the editor's "Other
+languages in the text" says to add only what the text has.
+
 - The route planner puts an OCR edge first (`ConversionEdge.Ocr`, `RoutePlanner.Plan(ocr: true)`): picture or PDF →
   searchable PDF, then the cheapest ordinary route from that PDF. A picture Tesseract can't open (HEIC, PSD, …)
   becomes a PNG first. OCR edges are never part of an ordinary route.
@@ -1905,12 +1932,14 @@ level and the newest revision the Mac has), part of macOS, so nothing is downloa
 Tesseract and is registered before it, so the route planner takes it; on Windows and Linux it is unavailable
 ("Not available on this platform").
 
-- The preset's language (a Tesseract code) is mapped to Vision's identifiers (`VisionLanguages`) and asked for with
-  English next to it; if Vision refuses the pair it reads with the language alone. Which languages Vision reads comes
+- The preset's languages (Tesseract codes) are mapped to Vision's identifiers (`VisionLanguages`) and asked for in their
+  order. English is added when it wasn't chosen and goes last unless it is the main language; if Vision refuses the
+  combination it reads with one language fewer, down to the main language alone. Which languages Vision reads comes
   from the Mac itself (`supportedRecognitionLanguagesAndReturnError:`, more with newer macOS versions); a language it
-  doesn't read (Hindi, Nepali, Greek, …) goes to Tesseract when that is installed, and is refused otherwise with
-  "Apple Vision can't read this language. Install Tesseract …". The preset editor shows no download size for the
-  languages Vision reads, and its hint names Apple Vision.
+  doesn't read (Hindi, Nepali, Greek, …) goes to Tesseract when that is installed, together with the preset's other
+  languages, and is refused otherwise with "Apple Vision can't read this language. Install Tesseract …" and its name.
+  The preset editor shows no download size for the languages Vision reads, unless such a language among the chosen ones
+  sends them all to Tesseract, and its hint names Apple Vision.
 - PDFs go page by page exactly like Tesseract's (`TesseractConverter.RecognizePdfAsync`, at most two pages at a time).
   A JPEG picture goes into the PDF as it is, other pictures (and a JPEG that EXIF turns) as an upright PNG; every page
   of a TIFF becomes a page. The page size comes from the picture's resolution, 300 dpi when it has none.

@@ -74,7 +74,7 @@ internal static class HeicWriter
     {
         using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
         var pictures = new List<Picture>();
-        foreach (var frame in ImageEncoder.SelectFrames(images, step.From, "heic"))
+        foreach (var frame in ImageEncoder.SelectFrames(images, AvifSequence.SourceFormat(step.From, step.InputPath), "heic"))
         {
             cancellationToken.ThrowIfCancellationRequested();
             ImageEncoder.ApplyOptions(frame, step.Preset.Image, "heic");
