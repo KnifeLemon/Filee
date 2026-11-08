@@ -156,12 +156,14 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             Height = 1,
             Opacity = 0,
             ShowInTaskbar = false,
-            ShowActivated = false,
+            // Keep activated on Windows so SetForegroundWindow brings the dialog above Explorer; macOS suppresses it to stay on the active Space.
+            ShowActivated = !OperatingSystem.IsMacOS(),
             WindowDecorations = WindowDecorations.None,
             WindowStartupLocation = WindowStartupLocation.CenterScreen,
             Title = "Filee",
         };
         var platform = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>();
+        // Move to active Space before Show() so collection behavior is set before Avalonia maps the NSWindow onto WindowServer (#596).
         if (host.TryGetPlatformHandle()?.Handle is { } handle)
             platform.MoveToActiveSpace(handle);
         host.Show();

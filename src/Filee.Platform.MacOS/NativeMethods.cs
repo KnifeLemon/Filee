@@ -191,16 +191,9 @@ internal static class NativeMethods
         const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
         var behavior = Send(window, getBehaviorSelector);
         behavior = (behavior & ~(canJoinAllSpaces | stationary | fullScreenPrimary | fullScreenNone)) | moveToActiveSpace | fullScreenAuxiliary;
+        // Clear macOS 13+ Stage Manager grouping bits (Primary, Auxiliary, CanJoinAllApplications; #251) so the window can float freely on the active Space.
         behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
         SendInteger(window, setBehaviorSelector, behavior);
-
-        var orderFrontSelector = sel_registerName("orderFrontRegardless");
-        if (SendBool(window, sel_registerName("respondsToSelector:"), orderFrontSelector))
-            SendVoid(window, orderFrontSelector);
-
-        var centerSelector = sel_registerName("center");
-        if (SendBool(window, sel_registerName("respondsToSelector:"), centerSelector))
-            SendVoid(window, centerSelector);
     }
 
     internal static void RestoreWindow(nint window)

@@ -256,14 +256,10 @@ public sealed class MacOSWindowTests
         }
 
         nint behavior = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 7) | (1 << 9) | (1 << 16) | (1 << 17) | (1 << 18);
-        var orders = 0;
-        var centers = 0;
 
         GetInteger getBehavior = (_, _) => behavior;
         SetInteger setBehavior = (_, _, value) => behavior = value;
-        SendAction orderFront = (_, _) => orders++;
-        SendAction center = (_, _) => centers++;
-        Delegate[] callbacks = [getBehavior, setBehavior, orderFront, center];
+        Delegate[] callbacks = [getBehavior, setBehavior];
 
         var testClass = AllocateClass(GetClass("NSObject"), "FileeMoveToActiveSpaceTestWindow", 0);
         Assert.NotEqual(0, testClass);
@@ -272,8 +268,6 @@ public sealed class MacOSWindowTests
         {
             AddMethod(testClass, "collectionBehavior", getBehavior, "q@:");
             AddMethod(testClass, "setCollectionBehavior:", setBehavior, "v@:q");
-            AddMethod(testClass, "orderFrontRegardless", orderFront, "v@:");
-            AddMethod(testClass, "center", center, "v@:");
             RegisterClass(testClass);
 
             window = Send(Send(testClass, Selector("alloc")), Selector("init"));
@@ -283,17 +277,13 @@ public sealed class MacOSWindowTests
 
             // 1. Calling with 0 handle is safe
             platform.MoveToActiveSpace(0);
-            Assert.Equal(0, orders);
-            Assert.Equal(0, centers);
 
-            // 2. Calling with window updates collection behavior and orders front centered
+            // 2. Calling with window updates collection behavior
             platform.MoveToActiveSpace(window);
             const nint moveToActiveSpace = 1 << 1;
             const nint fullScreenAuxiliary = 1 << 8;
             const nint ignoresCycle = 1 << 6;
             Assert.Equal(moveToActiveSpace | ignoresCycle | fullScreenAuxiliary, behavior);
-            Assert.Equal(1, orders);
-            Assert.Equal(1, centers);
         }
         finally
         {
