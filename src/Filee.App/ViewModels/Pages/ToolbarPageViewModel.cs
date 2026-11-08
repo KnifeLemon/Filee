@@ -62,6 +62,7 @@ public sealed record PaletteChip(string PresetId, string Label, string? Caption,
     public bool IsDimmed => Use != PresetUse.Usable;
     public bool CanAdd => Use != PresetUse.Unusable;
     public object? Tip { get; init; }
+    public bool IsGroup { get; init; }
 }
 
 public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
@@ -123,6 +124,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         OuterRadius = store.Settings.Donut.OuterRadius;
         HoleRatio = store.Settings.Donut.HoleRatio * 100;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1) * 100;
+        ShowCaptions = store.Settings.Donut.ShowCaptions;
         _loading = false;
 
         SelectedProfile = Profiles.FirstOrDefault();
@@ -296,6 +298,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _holeRatio;
     [ObservableProperty] private double _sliceOpacity;
 
+    /// <summary>The output format under the slices' names (Appearance → Show output format).</summary>
+    [ObservableProperty] private bool _showCaptions;
+
     private ToolbarProfile? Profile => SelectedProfile?.Profile;
 
     /// <summary>The preset ids of the face being edited (null without a profile).</summary>
@@ -450,6 +455,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     partial void OnOuterRadiusChanged(double value) => SaveAppearance();
     partial void OnHoleRatioChanged(double value) => SaveAppearance();
     partial void OnSliceOpacityChanged(double value) => SaveAppearance();
+    partial void OnShowCaptionsChanged(bool value) => SaveAppearance();
 
     private void SaveAppearance()
     {
@@ -458,6 +464,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         _store.Settings.Donut.OuterRadius = Math.Round(OuterRadius);
         _store.Settings.Donut.HoleRatio = Math.Round(HoleRatio) / 100;
         _store.Settings.Donut.Opacity = Math.Round(SliceOpacity) / 100;
+        _store.Settings.Donut.ShowCaptions = ShowCaptions;
         _store.SaveSettings();
     }
 
@@ -699,7 +706,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         DonutItems = used
             .Select(_store.FindPreset)
             .OfType<Preset>()
-            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p) })
+            // A group is marked as one (no children: the editor doesn't fan them out), so the preview draws it as the
+            // donut does.
+            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p), KeepsCaption = p.IsCopyToFolder, Children = p.IsGroup ? [] : null })
             .ToList();
 
         Palette.Clear();
@@ -726,7 +735,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         }
         var candidates = new List<(PaletteChip Chip, PaletteTab Tab, bool Group)>();
         // Groups first: few, and otherwise at the very end, below every conversion.
-        foreach (var preset in _store.Presets.Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
+        foreach (var preset in ShownPresets().Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
         {
             string? reason = null;
             var use = PresetUse.Usable;
@@ -746,7 +755,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             if (caption is not null && label.Contains(caption, StringComparison.OrdinalIgnoreCase))
                 caption = null;
             var chip = new PaletteChip(preset.Id, label, caption, reason, use)
-            { Tip = TipFor(preset, use, reason) };
+            { Tip = TipFor(preset, use, reason), IsGroup = preset.IsGroup };
             if (use != PresetUse.Unusable)
                 Palette.Add(chip);
             if ((query.Length == 0 && use != PresetUse.Unusable)
@@ -816,13 +825,19 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         OnPropertyChanged(nameof(BackCount));
     }
 
+    private IEnumerable<Preset> ShownPresets()
+    {
+        var off = _store.Settings.TurnedOffFieldSet();
+        return _store.Presets.Where(p => FormatFields.IsShown(p.TargetFormat, off));
+    }
+
     private void RefreshVisiblePalette()
     {
         var query = PaletteSearch.Trim();
         var placed = Profile is null ? [] : Profile.PresetIds.Concat(Profile.BackPresetIds ?? []).ToHashSet();
         _judgingByProfile.TryGetValue(Profile?.Id ?? "", out var judging);
         var candidates = new List<(PaletteChip Chip, PaletteTab Tab, bool Group)>();
-        foreach (var preset in _store.Presets.Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
+        foreach (var preset in ShownPresets().Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
         {
             var judgement = judging?.Judged.GetValueOrDefault(preset.Id) ?? new(PresetUse.Usable, null);
             if (Profile is { Extensions.Count: > 0 } && !preset.IsGroup && !HasJudgement(Profile.Id, preset.Id))
@@ -837,7 +852,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                 && caption?.Contains(query, StringComparison.CurrentCultureIgnoreCase) != true)
                 continue;
             candidates.Add((new PaletteChip(preset.Id, label, caption, judgement.Reason, judgement.Use)
-            { Tip = TipFor(preset, judgement.Use, judgement.Reason) },
+            { Tip = TipFor(preset, judgement.Use, judgement.Reason), IsGroup = preset.IsGroup },
                 preset.IsGroup ? PaletteTab.All : TabOf(preset), preset.IsGroup));
         }
         RefreshVisiblePalette(candidates);
@@ -860,7 +875,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         if (!_judgingByProfile.TryGetValue(profileId, out var judging))
             _judgingByProfile[profileId] = judging = new PaletteJudging();
         var placed = profile.PresetIds.Concat(profile.BackPresetIds ?? []).ToHashSet();
-        var pending = _store.Presets.Where(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)).ToList();
+        var pending = ShownPresets().Where(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)).ToList();
         if (pending.Count > 0)
         {
             judging.Session ??= _availability.ForPalette(profile.Extensions.Select(FormatRegistry.FindByExtension)
@@ -874,7 +889,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                     break;
             }
         }
-        if (_store.Presets.Any(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)))
+        if (ShownPresets().Any(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)))
             Dispatcher.UIThread.Post(() => JudgeSome(pass, profileId), DispatcherPriority.Background);
         else
         {
@@ -900,6 +915,6 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
 
     private string? Caption(Preset p) =>
         p.IsGroup ? _loc.Format("donut.group_caption", p.SubPresetIds.Count)
-        : p.IsCopyToFolder ? _loc["presets.copy_to_folder"]
+        : p.IsCopyToFolder ? _loc[p.Output.MoveInsteadOfCopy ? "presets.move_to_folder" : "presets.copy_to_folder"]
         : p.TargetFormat == BuiltInData.SameAsSource ? _loc["donut.same_format"] : FormatLabels.NameOf(_loc, p.TargetFormat);
 }

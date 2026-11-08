@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -539,7 +540,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             await write(output, progress);
-            SizeLimit.Check(job.Preset, [output]); // joined media aren't fitted: one over the limit is refused (#553)
+            SizeLimit.Check(job.Preset, [output], joined.Select(f => f.SourcePath)); // joined media aren't fitted: one over the limit is refused (#553)
             if (SizeLimit.IsUnderMinimum(job.Preset, [output]))
                 first.UnderMinimumSize = true;
             first.Outputs.Add(output);
@@ -581,11 +582,23 @@ public sealed partial class JobQueue : IAsyncDisposable
         Notify(job);
     }
 
-    /// <summary>A file that would be used as it is although the preset turns, mirrors or covers parts of it.</summary>
+    /// <summary>
+    /// Why a file the preset turns, mirrors, covers parts of, draws on or sets on a background can't be: no step of its
+    /// route changes images.
+    /// </summary>
+    private static string CannotReworkKey(ImageOptions image) =>
+        image.HidesAreas ? "error.cannot_hide"
+        : image.HasAnnotations || image.AddsBackdrop ? "error.images_only"
+        : "error.cannot_turn";
+
+    /// <summary>
+    /// A file that would be used as it is although the preset turns, mirrors, covers parts of, draws on or sets it on a
+    /// background.
+    /// </summary>
     private void FailUnturned(ConversionJob job, FileResult file, string detail)
     {
         file.State = FileState.Failed;
-        file.ErrorKey = job.Preset.Image.HidesAreas ? "error.cannot_hide" : "error.cannot_turn";
+        file.ErrorKey = CannotReworkKey(job.Preset.Image);
         file.ErrorDetail = detail;
         file.Progress = 1;
         Notify(job);
@@ -650,7 +663,11 @@ public sealed partial class JobQueue : IAsyncDisposable
                         files.Add(file);
                 }
             }
+            // An archive with a file from the internet in it still came from there, whichever file that was.
+            var mark = Platform.MarkOfTheWeb.ReadFirst(files, _log, job.CancellationToken);
             await _combiner!.CombineAsync(files, output, format.Id, job.Preset, workDir, progress, job.CancellationToken);
+            if (mark is not null && File.Exists(output))
+                Platform.MarkOfTheWeb.TryWrite(output, mark, _log);
             inputs[0].Outputs.Add(output);
             foreach (var f in inputs)
             {
@@ -759,30 +776,57 @@ public sealed partial class JobQueue : IAsyncDisposable
         if (IsEmptyFile(file.SourcePath))
             return Fail(file, "error.empty_file", null);
 
+        // An envelope (a signed .p7m) is converted as the file inside it: the route opens it first, and everything
+        // below that depends on the format (same format, frames, OCR, …) asks about the file inside.
+        var from = source;
+        var opener = _catalog.All.OfType<IEnvelopeOpener>().FirstOrDefault(o => o.Opens(source.Id));
+        if (opener is not null)
+        {
+            try
+            {
+                from = FormatRegistry.Get(opener.InnerFormat(file.SourcePath, source.Id));
+            }
+            catch (ConversionRefusedException ex)
+            {
+                _log.LogInformation("Opening {File} was refused: {Reason}", file.SourcePath, ex.Message);
+                return Fail(file, ex.ErrorKey, ex.Detail);
+            }
+        }
+
         var target = !finalOutput ? intermediate
-            : runWith.TargetFormat == BuiltInData.SameAsSource ? source.Id
+            : runWith.TargetFormat == BuiltInData.SameAsSource ? runWith.CropsVideo ? VideoCrop.TargetFor(from.Id) : from.Id
             : runWith.TargetFormat;
 
         // "Save every frame": a video becomes a folder of pictures in one step of its own; "Extract Live/Motion Photo
         // video" likewise takes a photo's video, and "Live / Motion Photo" makes one of a video. Never for an
         // intermediate file, and never on the way to another format (video → JPG is otherwise one still frame, photo →
         // MP4 a video of the still picture).
-        var frames = finalOutput && runWith.SavesFramesOf(source.Id);
-        var motionPhoto = finalOutput && runWith.ExtractsMotionOf(source.Id);
-        var livePhoto = finalOutput && runWith.MakesLivePhotoOf(source.Id);
-        var caption = finalOutput && runWith.CaptionsVideo(source.Id);
+        var frames = finalOutput && runWith.SavesFramesOf(from.Id);
+        var motionPhoto = finalOutput && runWith.ExtractsMotionOf(from.Id);
+        var livePhoto = finalOutput && runWith.MakesLivePhotoOf(from.Id);
+        var caption = finalOutput && runWith.CaptionsVideo(from.Id);
+        var translate = finalOutput && runWith.Translate.Enabled;
+        if (translate && !runWith.TranslatesDocument(from.Id))
+            return Fail(file, "error.no_route", $"{from.Id} → {target}", new RouteRequest(from.Id, target, Translate: true));
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
-        var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(source.Id);
-        var route = planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption);
+        var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(from.Id);
+        // "Metadata": only an engine that writes the metadata and nothing else, never a route that re-encodes the file.
+        // An envelope has no such edge: opening it for the file inside would drop the changes without a word.
+        var metadata = finalOutput && runWith.EditsMetadata;
+        var route = opener is null || metadata
+            ? planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate,
+                metadata: metadata)
+            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate);
         if (route is null)
-            return Fail(file, "error.no_route", $"{source.Id} → {target}",
-                new RouteRequest(source.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr));
+            return Fail(file, "error.no_route", $"{from.Id} → {target}",
+                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Metadata: metadata));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
-        // scan of the file's text answers this and the widths question below.
-        var scripts = route.Steps.FirstOrDefault(s => s.Unshaped)?.Converter is ITextShapingCheck check
+        // scan of the file's text answers this and the widths question below. Not for an envelope, whose own bytes
+        // aren't the document's.
+        var scripts = opener is null && route.Steps.FirstOrDefault(s => s.Unshaped)?.Converter is ITextShapingCheck check
             ? ScanScripts(check, file.SourcePath, source.Id)
             : null;
         if (scripts?.NeedsShaping is { } script)
@@ -809,7 +853,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         // Parts of a picture to hide likewise, once: a route that can't cover them must not write the picture uncovered.
         var turnAt = runWith.Image.ReworksPixels ? route.FirstTransformStep() : -1;
         if (runWith.Image.ReworksPixels && turnAt < 0)
-            return Fail(file, runWith.Image.HidesAreas ? "error.cannot_hide" : "error.cannot_turn", $"{source.Id} → {target}");
+            return Fail(file, CannotReworkKey(runWith.Image), $"{source.Id} → {target}");
         var unturned = turnAt < 0 ? runWith : Unturned(runWith);
 
         file.State = FileState.Running;
@@ -862,7 +906,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                         if (preset.Image.ChangesSpeed && !(isLast && finalOutput))
                             preset = AtOriginalSpeed(preset);
                         // Likewise the size limit: only the result has to fit, not a picture passed to the next engine.
-                        if ((preset.Image.MaxSizeMb > 0 || preset.Image.MinSizeMb > 0 || preset.Media.MaxSizeMb > 0) && !(isLast && finalOutput))
+                        if ((preset.Image.MaxSizeMb > 0 || preset.Image.MinSizeMb > 0 || preset.Media.MaxSizeMb > 0 || preset.Media.MaxSizePercent > 0) && !(isLast && finalOutput))
                             preset = WithoutSizeLimit(preset);
                         var stepInfo = new ConversionStep(input, step.From, step.To, preset, allocator, workDir, step.FrameSequence,
                             key => file.NoticeKey = key, step.MotionPhoto, step.LivePhoto, fonts =>
@@ -872,7 +916,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                                 file.MissingFonts = file.MissingFonts.Concat(fonts)
                                     .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
                                 Notify(job);
-                            }, file.SourcePath, Caption: step.Caption);
+                            }, file.SourcePath, Caption: step.Caption, Translate: step.Translate);
                         outputs.AddRange(await step.Converter.ConvertAsync(stepInfo, progress, ct));
                     }
                     finally
@@ -884,8 +928,9 @@ public sealed partial class JobQueue : IAsyncDisposable
             }
 
             // Under "Save as ZIP" the output is still in the work folder: the source copied over it goes into the ZIP.
-            // Never with hidden parts: the source copied over the result would show them again.
-            var copiedSource = finalOutput && runWith.Output.OnlyIfSmaller && !runWith.Image.HidesAreas && inputs.Count == 1
+            // Never with hidden parts: the source copied over the result would show them again. Never for an envelope,
+            // which isn't a file of the result's format.
+            var copiedSource = finalOutput && runWith.Output.OnlyIfSmaller && !runWith.Image.HidesAreas && opener is null && inputs.Count == 1
                 && CopyIfNotSmaller(file.SourcePath, inputs[0]);
             if (copiedSource)
                 file.NoticeKey = "notice.pdf_not_smaller";
@@ -894,7 +939,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                 await FinishPdfsAsync(runWith, inputs, ct);
             // The size limit (#553): a result the engine couldn't fit (HEIC, a render, an animation) isn't handed over.
             if (finalOutput)
-                SizeLimit.Check(runWith, inputs);
+                SizeLimit.Check(runWith, inputs, file.SourcePath);
             // The minimum (#662), on the pictures themselves: after the source was copied over, before they go into a ZIP.
             if (finalOutput && SizeLimit.IsUnderMinimum(runWith, inputs))
                 file.UnderMinimumSize = true;
@@ -905,8 +950,10 @@ public sealed partial class JobQueue : IAsyncDisposable
             else if (finalOutput && inputs.Count == 1 && final is { Handed: 1 })
                 inputs = [NextToSource(job, file, index, inputs[0], final)];
 
-            // The source's dates are read now: "Replace the original" may send it to the Trash below.
+            // The source's dates and Mark of the Web are read now: "Replace the original" may send it to the Trash below.
             var dates = finalOutput && runWith.Output.KeepDates ? DatesOf(file.SourcePath) : null;
+            // A file converted from one that came from the internet still did (Office's macro block, SmartScreen).
+            var mark = finalOutput ? Platform.MarkOfTheWeb.Read(file.SourcePath) : null;
             if (finalOutput && !zipResult && inputs.Count == 1)
                 inputs = [ReplaceOriginal(job, file, source.Id, inputs[0], copiedSource)];
 
@@ -917,6 +964,9 @@ public sealed partial class JobQueue : IAsyncDisposable
                 file.Outputs.AddRange(inputs);
                 if (dates is { } kept)
                     CopyDates(kept, inputs);
+                if (mark is not null)
+                    foreach (var output in inputs.Where(File.Exists))
+                        Platform.MarkOfTheWeb.TryWrite(output, mark, _log);
             }
             file.State = inputs.Count == 0 && finalOutput ? FileState.Skipped : FileState.Done;
             file.Progress = ceiling;
@@ -949,6 +999,8 @@ public sealed partial class JobQueue : IAsyncDisposable
             copy.Image.Rotation = ImageRotation.None;
             copy.Image.Flip = ImageFlip.None;
             copy.Image.HiddenAreas = null;
+            copy.Image.Annotations = null;
+            copy.Image.Backdrop = null;
             return copy;
         }
 
@@ -965,6 +1017,7 @@ public sealed partial class JobQueue : IAsyncDisposable
             copy.Image.MaxSizeMb = 0;
             copy.Image.MinSizeMb = 0;
             copy.Media.MaxSizeMb = 0;
+            copy.Media.MaxSizePercent = 0;
             return copy;
         }
 
@@ -1313,8 +1366,11 @@ public sealed partial class JobQueue : IAsyncDisposable
         }
     }
 
-    /// <summary>Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>.</summary>
-    public static string DefaultWorkRoot => Path.Combine(Path.GetTempPath(), "Filee");
+    /// <summary>
+    /// Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>: a folder only the user
+    /// can open (<see cref="WorkFolders.Root"/>).
+    /// </summary>
+    public static string DefaultWorkRoot => WorkFolders.Root;
 
     /// <summary>
     /// Deletes the work folders of jobs a crash, a forced quit or a power cut kept from removing them: intermediate
@@ -1327,7 +1383,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             var root = new DirectoryInfo(workRoot);
-            // A temp folder everyone can write in (/tmp on Linux) may hold a link to somewhere else: never follow one.
+            // A work root (or a folder in it) may be a link to somewhere else: never follow one.
             if (!root.Exists || root.LinkTarget is not null)
                 return;
             foreach (var folder in root.EnumerateDirectories())

@@ -23,9 +23,9 @@ public class FolderWatcherTests
     }
 
     /// <summary>A watcher whose conversions run on a JobQueue with a fake jpg → png converter into the rule's output folder.</summary>
-    private static (FolderWatcher Watcher, FakeTime Time, List<ConversionJob> Jobs, JobQueue Queue) Create(WatchRule rule)
+    private static (FolderWatcher Watcher, FakeTime Time, List<ConversionJob> Jobs, JobQueue Queue) Create(WatchRule rule, FakeConverter? converter = null)
     {
-        var queue = new JobQueue(new ConverterCatalog([new FakeConverter("magick", new ConversionEdge("jpg", "png"))]));
+        var queue = new JobQueue(new ConverterCatalog([converter ?? new FakeConverter("magick", new ConversionEdge("jpg", "png"))]));
         var jobs = new List<ConversionJob>();
         var time = new FakeTime();
         var watcher = new FolderWatcher(rule, async (files, _) =>
@@ -203,9 +203,178 @@ public class FolderWatcherTests
         Assert.Single(jobs);
     }
 
+    [Fact]
+    public async Task A_file_that_holds_no_data_yet_waits_for_it()
+    {
+        // A program reserved the file's full size and will write later: it keeps its size and time and opens without
+        // sharing, but the engine would see zeros ("improper image header", issue #767).
+        using var dir = new TempDir();
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        var photo = Path.Combine(dir.Path, "photo.jpg");
+        File.WriteAllBytes(photo, new byte[8192]);
+        watcher.Notice(photo);
+        time.Advance(3);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Empty(jobs);
+
+        // Later, so with a later time: right after the first write the same size can still read the same time.
+        var reserved = File.GetLastWriteTimeUtc(photo);
+        File.WriteAllBytes(photo, [.. new byte[100], .. new byte[] { 0xFF, 0xD8, 0xFF }, .. new byte[8089]]);
+        File.SetLastWriteTimeUtc(photo, reserved.AddSeconds(1));
+        time.Advance(3);
+        Assert.Equal(0, await watcher.ProcessPendingAsync()); // it changed: the wait starts over
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(FileState.Done, Assert.Single(Assert.Single(jobs).Files).State);
+    }
+
+    [Fact]
+    public async Task A_file_of_zeros_is_converted_in_the_end_and_an_empty_one_right_away()
+    {
+        // Neither may wait forever without a word: the conversion says what is wrong with them.
+        using var dir = new TempDir();
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        var empty = Path.Combine(dir.Path, "empty.jpg");
+        File.WriteAllBytes(empty, []);
+        var zeros = Path.Combine(dir.Path, "zeros.jpg");
+        File.WriteAllBytes(zeros, new byte[8192]);
+        watcher.Notice(empty);
+        watcher.Notice(zeros);
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(empty, Assert.Single(Assert.Single(jobs).Files).SourcePath);
+
+        time.Advance(30);
+        await watcher.ProcessPendingAsync();
+        Assert.Contains(zeros, Assert.Single(jobs.Skip(1)).Files.Select(file => file.SourcePath));
+    }
+
+    [Fact]
+    public async Task A_file_that_failed_is_tried_once_more()
+    {
+        // Something kept the file from being read when its turn came, and nothing else looks at it before it changes.
+        using var dir = new TempDir();
+        var rule = new WatchRule { Folder = dir.Path, Originals = AfterConversion.MoveToOriginals };
+        var converter = new FakeConverter("magick", new ConversionEdge("jpg", "png")) { Failure = new InvalidOperationException("improper image header") };
+        var (watcher, time, jobs, queue) = Create(rule, converter);
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        var photo = dir.File("photo.jpg");
+        watcher.Notice(photo);
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(FileState.Failed, Assert.Single(Assert.Single(jobs).Files).State);
+        Assert.True(File.Exists(photo));
+
+        // Not right away: whatever held it needs a moment.
+        time.Advance(3);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+
+        converter.Failure = null;
+        time.Advance(10);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(FileState.Done, Assert.Single(jobs[1].Files).State);
+        Assert.True(File.Exists(Path.Combine(rule.OriginalsFolder, "photo.jpg")));
+    }
+
+    [Fact]
+    public async Task A_file_that_fails_again_is_left_alone_until_it_changes()
+    {
+        using var dir = new TempDir();
+        var converter = new FakeConverter("magick", new ConversionEdge("jpg", "png")) { Failure = new InvalidOperationException("improper image header") };
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path }, converter);
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        var photo = dir.File("photo.jpg");
+        watcher.Notice(photo);
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        time.Advance(13);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        time.Advance(60);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        watcher.Notice(photo);
+        time.Advance(60);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Equal(2, jobs.Count);
+
+        // Saved anew it is new input, with a retry of its own.
+        converter.Failure = null;
+        File.AppendAllText(photo, " saved again");
+        watcher.Notice(photo);
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(FileState.Done, Assert.Single(jobs[2].Files).State);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_batch_that_could_not_run_is_not_forgotten(bool throws)
+    {
+        using var dir = new TempDir();
+        var calls = new List<IReadOnlyList<string>>();
+        var time = new FakeTime();
+        await using var watcher = new FolderWatcher(new WatchRule { Folder = dir.Path }, (files, _) =>
+        {
+            calls.Add(files.ToList());
+            if (calls.Count == 1 && throws)
+                throw new InvalidOperationException("no window yet");
+            return Task.FromResult<ConversionJob?>(null);
+        }, settleTime: TimeSpan.FromSeconds(2), time: time);
+
+        var photo = dir.File("photo.jpg");
+        watcher.Notice(photo);
+        time.Advance(3);
+        await watcher.ProcessPendingAsync();
+        Assert.Single(calls);
+
+        time.Advance(13);
+        await watcher.ProcessPendingAsync();
+        Assert.Equal(2, calls.Count);
+        Assert.Equal(photo, Assert.Single(calls[1]));
+
+        // The retry is the only one: a preset that is gone must not ask every few seconds for ever.
+        time.Advance(60);
+        await watcher.ProcessPendingAsync();
+        Assert.Equal(2, calls.Count);
+    }
+
+    [Fact]
+    public async Task A_burst_converts_every_file_also_when_some_fail_for_a_moment()
+    {
+        using var dir = new TempDir();
+        var rule = new WatchRule { Folder = dir.Path, Originals = AfterConversion.MoveToOriginals };
+        var converter = new FakeConverter("magick", new ConversionEdge("jpg", "png")) { Failure = new InvalidOperationException("improper image header") };
+        var (watcher, time, jobs, queue) = Create(rule, converter);
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        foreach (var name in Enumerable.Range(1, 120).Select(i => $"photo{i:D3}.jpg"))
+            watcher.Notice(dir.File(name));
+        time.Advance(3);
+        Assert.Equal(120, await watcher.ProcessPendingAsync());
+        Assert.All(jobs[0].Files, file => Assert.Equal(FileState.Failed, file.State));
+
+        converter.Failure = null;
+        time.Advance(13);
+        Assert.Equal(120, await watcher.ProcessPendingAsync());
+        Assert.All(jobs[1].Files, file => Assert.Equal(FileState.Done, file.State));
+        Assert.Equal(120, Directory.GetFiles(rule.OriginalsFolder).Length);
+    }
+
     [Theory]
     [InlineData("photo.jpg.crdownload")]
     [InlineData("~$report.docx")]
+    [InlineData("sketch.kra~")] // Krita's backup of the previous save, written next to sketch.kra
     [InlineData(".hidden.jpg")]
     [InlineData("notes.unknownformat")]
     [InlineData("converted/photo.jpg")]
@@ -246,6 +415,183 @@ public class FolderWatcherTests
         Assert.False(File.Exists(photo));
         Assert.True(File.Exists(Path.Combine(dir.Path, "originals", "photo.jpg")));
         Assert.True(File.Exists(Path.Combine(dir.Path, "converted", "photo.png")));
+    }
+
+    [Fact]
+    public async Task The_scan_of_what_is_already_there_does_not_follow_links_out_of_the_folder()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var mine = dir.File("photo.jpg");
+        var foreign = elsewhere.File("other.jpg");
+        var link = Path.Combine(dir.Path, "linked");
+        LinkFolder(link, elsewhere.Path);
+        try
+        {
+            var rule = new WatchRule { Folder = dir.Path, IncludeSubfolders = true, Originals = AfterConversion.MoveToOriginals };
+            var (watcher, time, jobs, queue) = Create(rule);
+            await using var __ = queue;
+            await using var ___ = watcher;
+
+            Assert.True(watcher.Start());
+            time.Advance(3);
+            Assert.Equal(1, await watcher.ProcessPendingAsync());
+
+            Assert.Equal([mine], Assert.Single(jobs).Files.Select(f => f.SourcePath));
+            Assert.True(File.Exists(foreign)); // neither converted nor moved to the originals folder
+        }
+        finally
+        {
+            Directory.Delete(link); // the link only
+        }
+    }
+
+    [Fact]
+    public async Task An_arriving_folder_is_read_without_following_links_and_a_link_itself_is_not_read()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var incoming = Directory.CreateDirectory(Path.Combine(dir.Path, "incoming")).FullName;
+        var mine = Path.Combine(Directory.CreateDirectory(Path.Combine(incoming, "sub")).FullName, "photo.jpg");
+        File.WriteAllText(mine, "bytes");
+        elsewhere.File("other.jpg");
+        var inner = Path.Combine(incoming, "linked");
+        var outer = Path.Combine(dir.Path, "linked");
+        LinkFolder(inner, elsewhere.Path);
+        LinkFolder(outer, elsewhere.Path);
+        try
+        {
+            var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path, IncludeSubfolders = true });
+            await using var __ = queue;
+            await using var ___ = watcher;
+
+            watcher.Notice(incoming); // a folder moved in at once, with a link inside it
+            watcher.Notice(outer);    // a link that appeared in the folder
+            time.Advance(3);
+            Assert.Equal(1, await watcher.ProcessPendingAsync());
+
+            Assert.Equal([mine], Assert.Single(jobs).Files.Select(f => f.SourcePath));
+        }
+        finally
+        {
+            Directory.Delete(inner);
+            Directory.Delete(outer);
+        }
+    }
+
+    [Fact]
+    public async Task A_symbolic_link_to_a_file_is_not_converted_but_the_files_beside_it_are()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var mine = dir.File("photo.jpg");
+        var foreign = elsewhere.File("other.jpg");
+        var link = Path.Combine(dir.Path, "link.jpg");
+        try
+        {
+            File.CreateSymbolicLink(link, foreign);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("This machine doesn't let the test make a symbolic link.");
+        }
+        var rule = new WatchRule { Folder = dir.Path, Originals = AfterConversion.MoveToOriginals };
+        Assert.Equal([mine], FolderWatcher.FilesInside(dir.Path, recurse: true));
+        Assert.True(FolderWatcher.ShouldIgnore(link, rule));
+        var (watcher, time, jobs, queue) = Create(rule);
+        await using var __ = queue;
+        await using var ___ = watcher;
+
+        Assert.True(watcher.Start()); // the scan of what is there
+        watcher.Notice(link);         // and the change event for it
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+
+        Assert.Equal([mine], Assert.Single(jobs).Files.Select(f => f.SourcePath));
+        Assert.True(File.Exists(foreign));
+    }
+
+    /// <summary>A junction on Windows (no rights needed), a symbolic link elsewhere; skips when neither can be made.</summary>
+    /// <summary>Replaces a file with a symbolic link to <paramref name="target"/>; skips where links can't be made.</summary>
+    private static void SwapForLink(string file, string target)
+    {
+        File.Delete(file);
+        try
+        {
+            File.CreateSymbolicLink(file, target);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Assert.Skip("This machine doesn't let the test make a symbolic link.");
+        }
+    }
+
+    [Fact]
+    public async Task A_file_swapped_for_a_link_while_it_waits_is_not_converted()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var foreign = elsewhere.File("other.jpg");
+        var photo = dir.File("photo.jpg");
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        watcher.Notice(photo);
+        SwapForLink(photo, foreign);
+        time.Advance(3);
+
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        time.Advance(3);
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Empty(jobs);
+    }
+
+    [Fact]
+    public async Task A_file_swapped_for_a_link_before_its_second_turn_is_not_converted()
+    {
+        using var dir = new TempDir();
+        using var elsewhere = new TempDir();
+        var foreign = elsewhere.File("other.jpg");
+        var photo = dir.File("photo.jpg");
+        var (watcher, time, jobs, queue) = Create(new WatchRule { Folder = dir.Path }, new FakeConverter("magick", new ConversionEdge("jpg", "png")) { Failure = new InvalidOperationException("no") });
+        await using var _ = queue;
+        await using var __ = watcher;
+
+        watcher.Notice(photo);
+        time.Advance(3);
+        Assert.Equal(1, await watcher.ProcessPendingAsync());
+        Assert.Equal(FileState.Failed, Assert.Single(Assert.Single(jobs).Files).State);
+
+        SwapForLink(photo, foreign);
+        time.Advance(30);
+
+        Assert.Equal(0, await watcher.ProcessPendingAsync());
+        Assert.Single(jobs);
+    }
+
+    private static void LinkFolder(string link, string target)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("This machine doesn't let the test make a symbolic link.");
+            }
+            return;
+        }
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        mklink.WaitForExit();
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
     }
 
     [Fact]

@@ -43,13 +43,15 @@
   <a href="README.hi.md">हिन्दी</a> ·
   <a href="README.ru.md">Русский</a> ·
   <a href="README.ar.md">العربية</a> ·
+  <a href="README.fa.md">فارسی</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <b>ไทย</b> ·
   <a href="README.tr.md">Türkçe</a> ·
   <a href="README.id.md">Bahasa Indonesia</a> ·
-  <a href="README.it.md">Italiano</a>
+  <a href="README.it.md">Italiano</a> ·
+  <a href="README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
@@ -83,6 +85,12 @@
 ดาวน์โหลดจากหน้า [Releases](https://github.com/KnifeLemon/Filee/releases/latest)
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/th%20dark.svg" alt="Microsoft Store" width="200"></a>
+
+หรือใช้ WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
 
 - **Windows 10/11**: รัน `Filee-<version>-win-Setup.exe` หรือแตกไฟล์ `win-Portable.zip` แล้วเปิด `Filee.exe`
   - ตัวติดตั้ง Setup เป็นของ Filee เอง มีเมนูภาษาไทย และไม่ต้องติดตั้งโปรแกรมเสริมใดๆ
@@ -134,7 +142,7 @@ Set-ProcessMitigation -Name filee-cli.exe -Disable UserShadowStack
 - **ประวัติการแปลงล่าสุด**: แสดงในหน้าแรกพร้อมรูปตัวอย่าง เปิดดูผลลัพธ์หรือเปิดด้วยแอปอื่นได้ทันที
 - **ช่องทางอื่นในการแปลง**: เมนูคลิกขวา, ปุ่มลัดแป้นพิมพ์, พื้นที่วางไฟล์ในหน้าแรก และคำสั่ง [`filee`](#การใช้งานผ่านบรรทัดคำสั่ง-command-line)
 - รองรับธีมสว่างและมืด ปรับสีเน้น (accent colour) และความโปร่งใสของโดนัทได้ตามใจ
-  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano และ Bahasa Indonesia
+  รองรับภาษา English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (จากขวาไปซ้าย), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia และ Tiếng Việt
 
 ## ภาพหน้าจอ
 

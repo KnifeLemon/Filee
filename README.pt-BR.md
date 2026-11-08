@@ -43,13 +43,15 @@
   <a href="README.hi.md">हिन्दी</a> ·
   <a href="README.ru.md">Русский</a> ·
   <a href="README.ar.md">العربية</a> ·
+  <a href="README.fa.md">فارسی</a> ·
   <b>Português (Brasil)</b> ·
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
   <a href="README.tr.md">Türkçe</a> ·
   <a href="README.id.md">Bahasa Indonesia</a> ·
-  <a href="README.it.md">Italiano</a>
+  <a href="README.it.md">Italiano</a> ·
+  <a href="README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
@@ -83,6 +85,12 @@
 Baixe em [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/pt-br%20dark.svg" alt="Microsoft Store" width="200"></a>
+
+Ou pelo WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
 
 - **Windows 10/11**: execute `Filee-<version>-win-Setup.exe`, ou descompacte o `win-Portable.zip` e execute `Filee.exe`.
   - A instalação é o instalador do próprio Filee, nos idiomas do Filee, e não precisa de mais nada no PC.
@@ -134,7 +142,7 @@ Para desfazer, remova essas entradas em Segurança do Windows → Controle de ap
 - **Pastas monitoradas** convertem cada arquivo que chega nelas.
 - **Conversões recentes** no Início, cada uma com uma miniatura: abra o resultado, ou abra com outro aplicativo.
 - **Outras entradas**: o menu do botão direito, um atalho de teclado, a área de soltar e o [comando `filee`](#linha-de-comando).
-- Temas claro e escuro, com sua cor de destaque e a opacidade do menu circular, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano e Bahasa Indonesia.
+- Temas claro e escuro, com sua cor de destaque e a opacidade do menu circular, em English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da direita para a esquerda), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia e Tiếng Việt.
 
 ## Capturas de tela
 

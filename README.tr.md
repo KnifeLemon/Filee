@@ -43,13 +43,15 @@
   <a href="README.hi.md">हिन्दी</a> ·
   <a href="README.ru.md">Русский</a> ·
   <a href="README.ar.md">العربية</a> ·
+  <a href="README.fa.md">فارسی</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
   <b>Türkçe</b> ·
   <a href="README.id.md">Bahasa Indonesia</a> ·
-  <a href="README.it.md">Italiano</a>
+  <a href="README.it.md">Italiano</a> ·
+  <a href="README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
@@ -83,6 +85,12 @@
 [Sürümler (Releases)](https://github.com/KnifeLemon/Filee/releases/latest) sayfasından indirin.
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/tr%20dark.svg" alt="Microsoft Store" width="200"></a>
+
+Ya da WinGet ile:
+
+```powershell
+winget install KnifeLemon.Filee
+```
 
 - **Windows 10/11**: `Filee-<sürüm>-win-Setup.exe` dosyasını çalıştırın veya `win-Portable.zip` arşivini açıp `Filee.exe` dosyasını başlatın.
   - Kurulum sihirbazı, Filee'nin kendi dillerini içeren yerel yükleyicisidir ve bilgisayarda başka hiçbir şeye ihtiyaç duymaz.
@@ -134,7 +142,7 @@ Geri almak için Windows Güvenliği → Uygulama ve tarayıcı denetimi → Aç
 - **İzlenen klasörler**: İçine bırakılan her dosyayı otomatik olarak dönüştürür.
 - **Ana sayfada son dönüştürmeler**, her biri küçük resim önizlemesiyle: sonucu açın veya başka bir uygulamayla başlatın.
 - **Diğer erişim yolları**: Sağ tık menüsü, klavye kısayolu, bırakma alanı ve [`filee` komutu](#komut-satırı).
-- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano ve Bahasa Indonesia dillerinde.
+- Kendi vurgu renginiz ve halka opaklığınızla açık ve koyu temalar; English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (sağdan sola), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia ve Tiếng Việt dillerinde.
 
 ## Ekran Görüntüleri
 

@@ -25,6 +25,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private double _holeRatio = 0.42;
     [ObservableProperty] private double _sliceOpacity = 0.96;
 
+    /// <summary>The output format under the slices' names (Settings → Donut toolbar → Appearance).</summary>
+    [ObservableProperty] private bool _showCaptions = true;
+
     /// <summary>The other face has a slice for these files: Tab flips to it.</summary>
     [ObservableProperty] private bool _canFlip;
 
@@ -91,6 +94,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     // missing), so the back is checked after the front is on screen, not before (see Load).
     private IReadOnlyList<string> _backIds = [];
     private IReadOnlyList<FileFormat> _formats = [];
+    // The turned-off fields the last Load hid, already without the dropped files' own fields, so the back face is
+    // filtered with the same set as the front.
+    private IReadOnlySet<string> _off = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
     private Face? _back;
     private int _loads;
 
@@ -132,6 +138,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         ReserveSubRing = store.Profiles.Any(profile => HasGroups(profile.PresetIds.Concat(profile.BackPresetIds ?? [])));
         _loads++;
         (_front, _back, _backIds, _formats) = (Face.Empty, Face.Empty, [], []);
+        _off = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         ShowFace(back: false);
         CenterTitle = loc["donut.center_drag"];
         CenterSubtitle = null;
@@ -156,9 +163,15 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         var counted = CompanionFiles.WithoutCompanions(files);
         var profile = ProfileSelector.Select(store.Profiles, counted);
         var formats = ProfileSelector.DetectFormats(counted);
+        // A turned-off field still shows the formats of the dropped files' own fields (FORMAT-RULES rule 4): a font file
+        // offers font conversions with Fonts off. The front takes this local, not _off, which holds the last load's set
+        // until the line after it.
+        var off = store.Settings.TurnedOffFields
+            .Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         // Both faces follow the same rule: a slice that can't convert these files is greyed out and says why.
-        _front = BuildFace(profile?.PresetIds ?? [], formats);
-        (_back, _backIds, _formats) = (null, [.. profile?.BackPresetIds ?? []], formats);
+        _front = BuildFace(profile?.PresetIds ?? [], formats, off);
+        (_back, _backIds, _formats, _off) = (null, [.. profile?.BackPresetIds ?? []], formats, off);
         var load = ++_loads;
         if (backFace)
         {
@@ -218,21 +231,36 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     }
 
     /// <summary>The back face's slices for the files, checked now if they weren't yet.</summary>
-    private Face BackFace() => _back ??= BuildFace(_backIds, _formats);
+    private Face BackFace() => _back ??= BuildFace(_backIds, _formats, _off);
 
     private bool HasGroups(IEnumerable<string> presetIds) => presetIds.Any(id => store.FindPreset(id)?.IsGroup == true);
 
-    private Face BuildFace(IEnumerable<string> presetIds, IReadOnlyList<FileFormat> formats)
+    private Face BuildFace(IEnumerable<string> presetIds, IReadOnlyList<FileFormat> formats, IReadOnlySet<string> off)
     {
         var presets = presetIds
             .Select(store.FindPreset)
             .OfType<Preset>()
+            .Where(p => FormatFields.IsShown(p.TargetFormat, off))
             .ToList();
 
         var subPresets = presets
             .Select(p => (IReadOnlyList<Preset>)(p.IsGroup ? p.SubPresetIds : [])
                 .Select(store.FindPreset).OfType<Preset>().Where(c => !c.IsGroup).Take(Preset.MaxSubPresets).ToList())
             .ToList();
+
+        // Children are filtered after Take, so a hidden child doesn't let in one the group editor doesn't show. A group
+        // whose children were all hidden leaves the donut like a hidden slice; one that was empty already stays, greyed
+        // out as before. Both lists lose the same index: Items reads a group's children by its position.
+        for (var i = presets.Count - 1; i >= 0; i--)
+        {
+            var children = subPresets[i];
+            subPresets[i] = children.Where(p => FormatFields.IsShown(p.TargetFormat, off)).ToList();
+            if (presets[i].IsGroup && children.Count > 0 && subPresets[i].Count == 0)
+            {
+                presets.RemoveAt(i);
+                subPresets.RemoveAt(i);
+            }
+        }
 
         DonutItem ItemOf(Preset p, bool caption = true)
         {
@@ -243,10 +271,11 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 // On a group's ring the group's name gives the context: "Rotate" → Left / Right / 180°.
                 Label = caption ? loc.DonutName(p) : loc.RingName(p),
                 Caption = !caption ? null
-                    : p.IsCopyToFolder ? loc["presets.copy_to_folder"]
+                    : p.IsCopyToFolder ? loc[p.Output.MoveInsteadOfCopy ? "presets.move_to_folder" : "presets.copy_to_folder"]
                     : p.TargetFormat == BuiltInData.SameAsSource
                         ? string.Join("/", formats.Select(f => f.DisplayName).Take(2))
                         : FormatLabels.NameOf(loc, p.TargetFormat),
+                KeepsCaption = p.IsCopyToFolder,
                 IsEnabled = reason is null,
                 DisabledReason = reason,
             };
@@ -304,6 +333,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         OuterRadius = Math.Clamp(store.Settings.Donut.OuterRadius, 100, 240);
         HoleRatio = store.Settings.Donut.HoleRatio;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1);
+        ShowCaptions = store.Settings.Donut.ShowCaptions;
         FlipKey = store.Settings.Donut.EffectiveFlipKey(store.Settings.Triggers);
         FlipWithWheel = store.Settings.Donut.FlipWithWheel;
     }

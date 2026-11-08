@@ -1,0 +1,45 @@
+{
+  "version": "2.3.0",
+  "slides": [
+    {
+      "id": "annotate",
+      "media": "annotate.webp",
+      "poster": 155,
+      "title": "whats_new.2_3_0.annotate.title",
+      "text": "whats_new.2_3_0.annotate.text"
+    },
+    {
+      "id": "crop_video",
+      "media": "crop_video.webp",
+      "poster": 44,
+      "title": "whats_new.2_3_0.crop_video.title",
+      "text": "whats_new.2_3_0.crop_video.text"
+    },
+    {
+      "id": "sheets",
+      "media": "sheets.webp",
+      "poster": 88,
+      "title": "whats_new.2_3_0.sheets.title",
+      "text": "whats_new.2_3_0.sheets.text"
+    },
+    {
+      "id": "fields",
+      "media": "fields.webp",
+      "poster": 45,
+      "title": "whats_new.2_3_0.fields.title",
+      "text": "whats_new.2_3_0.fields.text"
+    },
+    {
+      "id": "translate",
+      "media": "translate.webp",
+      "title": "whats_new.2_3_0.translate.title",
+      "text": "whats_new.2_3_0.translate.text"
+    },
+    {
+      "id": "more",
+      "media": "more.webp",
+      "title": "whats_new.2_3_0.more.title",
+      "text": "whats_new.2_3_0.more.text"
+    }
+  ]
+}

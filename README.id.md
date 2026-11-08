@@ -43,13 +43,15 @@
   <a href="README.hi.md">हिन्दी</a> ·
   <a href="README.ru.md">Русский</a> ·
   <a href="README.ar.md">العربية</a> ·
+  <a href="README.fa.md">فارسی</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
   <a href="README.tr.md">Türkçe</a> ·
   <b>Bahasa Indonesia</b> ·
-  <a href="README.it.md">Italiano</a>
+  <a href="README.it.md">Italiano</a> ·
+  <a href="README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
@@ -81,6 +83,12 @@
 Unduh melalui halaman [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Microsoft Store" width="200"></a>
+
+Atau dengan WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
 
 - **Windows 10/11**: Jalankan `Filee-<version>-win-Setup.exe`, atau ekstrak `win-Portable.zip` lalu jalankan `Filee.exe`.
   - Installer bawaan Filee mendukung berbagai bahasa dan tidak memerlukan dependensi tambahan di PC.
@@ -127,7 +135,7 @@ Untuk mengembalikannya ke awal, hapus entri tersebut melalui: **Windows Security
 - **Watch Folders**: Pantau folder tertentu untuk mengonversi setiap file yang baru masuk secara otomatis.
 - **Riwayat Konversi Terkini** di halaman Utama, lengkap dengan *thumbnail*: buka file langsung atau jalankan dengan aplikasi lain.
 - **Berbagai Cara Akses**: Menu klik kanan, pintasan keyboard, area *drop zone*, dan [baris perintah `filee`](#baris-perintah-cli).
-- **Tema Terang & Gelap** dengan warna aksen kustom serta pengaturan transparansi menu donut, tersedia dalam bahasa English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (RTL), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, dan Bahasa Indonesia.
+- **Tema Terang & Gelap** dengan warna aksen kustom serta pengaturan transparansi menu donut, tersedia dalam bahasa English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (RTL), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia, dan Tiếng Việt.
 
 ## Tangkapan Layar
 

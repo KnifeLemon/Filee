@@ -19,6 +19,11 @@
       <!-- The Theme page's colour picker shows only the spectrum: no empty tab strip above it. Set here because its
            flyout looks resources up outside the page. -->
       <x:Double x:Key="ColorViewTabStripHeight">0</x:Double>
+      <!-- The picker's own panels draw their background and borders from these: clear, so the card (the
+           FlyoutPresenter.nopadding style below) is the only surface and no stray lines show. -->
+      <SolidColorBrush x:Key="ColorViewContentBackgroundBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="ColorViewContentBorderBrush" Color="Transparent" />
+      <SolidColorBrush x:Key="ColorViewTabBorderBrush" Color="Transparent" />
     </ResourceDictionary>
   </Application.Resources>
 
@@ -35,6 +40,34 @@
     </Style>
     <Style Selector="FlyoutPresenter.nopadding Border#ContentBackgroundBorder">
       <Setter Property="Margin" Value="0" />
+    </Style>
+    <!-- The tab strip is hidden, but its selected tab still drew an accent line along the top of the card. -->
+    <Style Selector="FlyoutPresenter.nopadding TabItem /template/ Border#PART_SelectedPipe">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <Style Selector="FlyoutPresenter.nopadding TabItem:selected /template/ Border#PART_SelectedPipe">
+      <Setter Property="IsVisible" Value="False" />
+    </Style>
+    <!-- The picker's card: the page's surface with the theme's soft corners and a faint outline. -->
+    <Style Selector="FlyoutPresenter.nopadding">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadius}" />
+    </Style>
+    <!-- The spectrum square follows the theme's softness too. -->
+    <Style Selector="FlyoutPresenter.nopadding ColorSpectrum">
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+    </Style>
+    <!-- The swatch button on the pages: soft corners, a quiet outline, and a card colour around the swatch so a white
+         one still shows. -->
+    <Style Selector="ColorPicker">
+      <Setter Property="CornerRadius" Value="{DynamicResource SoftRadiusSmall}" />
+    </Style>
+    <Style Selector="ColorPicker /template/ DropDownButton">
+      <Setter Property="Background" Value="{DynamicResource SurfaceAltBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1.5" />
     </Style>
     <StyleInclude Source="avares://Filee/Styles/Soft.axaml" />
     <StyleInclude Source="avares://Filee/Styles/Controls.axaml" />

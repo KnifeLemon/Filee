@@ -2,6 +2,7 @@
 // compression itself is in PdfCompressor, with Ghostscript as an optional second try) and removes their metadata.
 // It also finishes every PDF a job writes with a watermark, page numbers or a password (PdfFinishing).
 
+using System.Runtime.ExceptionServices;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
@@ -37,6 +38,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
         step.From != "pdf" ? Task.Run(() => ImageToPdf(step, progress, cancellationToken), cancellationToken)
+        : step.Preset.Pdf.MakesSheets ? Task.Run(() => Sheets(step, progress, cancellationToken), cancellationToken)
         : step.Preset.Pdf is { Compression: PdfCompression.None, RemoveMetadata: true, SplitPages: false, PageRange: "" }
             ? Task.Run(() => WithoutMetadata(step, progress, cancellationToken), cancellationToken)
         : step.Preset.Pdf.Compression == PdfCompression.None ? Task.Run(() => SplitOrExtract(step, progress, cancellationToken), cancellationToken)
@@ -47,18 +49,24 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         Task.Run(() => PdfFinishing.Finish(path, options, cancellationToken), cancellationToken);
 
     public Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken) =>
-        Task.Run(() =>
+        Task.Run(() => Merge(inputPaths, outputPath, cancellationToken), cancellationToken);
+
+    internal static void Merge(IReadOnlyList<string> inputs, string outputPath, CancellationToken ct, PdfMergeStructure.Limits? limits = null)
+    {
+        using var output = new PdfDocument();
+        var structure = new PdfMergeStructure(output, limits ?? new());
+        foreach (var input in inputs)
         {
-            using var output = new PdfDocument();
-            foreach (var input in inputPaths)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                using var source = Open(input, PdfDocumentOpenMode.Import);
-                foreach (var page in source.Pages)
-                    output.AddPage(page);
-            }
-            output.Save(outputPath);
-        }, cancellationToken);
+            ct.ThrowIfCancellationRequested();
+            using var source = Open(input, PdfDocumentOpenMode.Import, ct);
+            var pages = new Dictionary<PdfObjectID, PdfPage>();
+            foreach (var page in source.Pages)
+                pages[page.Reference!.ObjectID] = output.AddPage(page);
+            structure.Carry(source, pages, ct);
+        }
+        structure.Write(ct);
+        output.Save(outputPath);
+    }
 
     /// <summary>Places every frame of an image (TIFF pages, ...) on its own PDF page.</summary>
     private static IReadOnlyList<string> ImageToPdf(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
@@ -66,7 +74,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         var options = step.Preset.Image;
         var pdfOptions = step.Preset.Pdf;
         using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
-        var frames = ImageEncoder.SelectFrames(images, step.From, "pdf");
+        var frames = ImageEncoder.SelectFrames(images, AvifSequence.SourceFormat(step.From, step.InputPath), "pdf");
 
         using var document = new PdfDocument();
         for (var i = 0; i < frames.Count; i++)
@@ -79,8 +87,6 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
             // "pdf" as target: resize / grayscale / metadata apply, no format-specific encoding settings.
             ImageEncoder.ApplyOptions(frame, options, "pdf");
-            using var stream = EncodeForPdf(frame, step.From, options);
-            using var ximage = XImage.FromStream(stream);
 
             var imageWidthPt = frame.Width / dpi * PointsPerInch;
             var imageHeightPt = frame.Height / dpi * PointsPerInch;
@@ -99,8 +105,19 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             var drawWidth = imageWidthPt * scale;
             var drawHeight = imageHeightPt * scale;
 
-            using (var gfx = XGraphics.FromPdfPage(page))
-                gfx.DrawImage(ximage, margin + (boxWidth - drawWidth) / 2, margin + (boxHeight - drawHeight) / 2, drawWidth, drawHeight);
+            var box = new XRect(margin + (boxWidth - drawWidth) / 2, margin + (boxHeight - drawHeight) / 2, drawWidth, drawHeight);
+            if (CmykPictures.Keeps(frame))
+            {
+                // Print work keeps its colours: CMYK (and its profile) in the PDF too (#1027).
+                CmykPictures.Place(document, page, frame, asJpeg: step.From == "jpg", JpegQuality(options), box);
+            }
+            else
+            {
+                using var stream = EncodeForPdf(frame, step.From, options);
+                using var ximage = XImage.FromStream(stream);
+                using var gfx = XGraphics.FromPdfPage(page);
+                gfx.DrawImage(ximage, box);
+            }
 
             progress?.Report((i + 1.0) / frames.Count);
         }
@@ -112,13 +129,23 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         return [path];
     }
 
+    /// <summary>"Pages per sheet" (PdfSheets): the pages of the range, several to a sheet, in one new PDF.</summary>
+    private static IReadOnlyList<string> Sheets(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
+    {
+        var output = step.Output.Allocate("pdf");
+        if (output is null)
+            return [];
+        PdfSheets.Write(step.InputPath, output, step.Preset.Pdf, progress, ct);
+        return [output];
+    }
+
     /// <summary>
     /// "Remove metadata": the whole PDF, opened for changes so links, bookmarks and form fields stay, without its
     /// document information (title, author, subject, keywords, creator, dates) and XMP packets.
     /// </summary>
     private static IReadOnlyList<string> WithoutMetadata(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
-        using var document = OpenForChanges(step.InputPath);
+        using var document = OpenForChanges(step.InputPath, ct);
         ct.ThrowIfCancellationRequested();
         StripMetadata(document);
         progress?.Report(0.5);
@@ -151,7 +178,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// <summary>PDF → PDF: split into single pages, extract a range, or rotate the complete document in place.</summary>
     private static IReadOnlyList<string> SplitOrExtract(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
-        using var source = Open(step.InputPath, PdfDocumentOpenMode.Import);
+        using var source = Open(step.InputPath, PdfDocumentOpenMode.Import, ct);
         var pages = PageRange.Parse(step.Preset.Pdf.PageRange, source.PageCount);
         var written = new List<string>();
 
@@ -228,7 +255,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
         // The PDFs to compress: the file itself, or its selected pages copied into new PDFs.
         var parts = new List<(string Plain, string? Suffix)>();
-        using (var source = Open(step.InputPath, PdfDocumentOpenMode.Import))
+        using (var source = Open(step.InputPath, PdfDocumentOpenMode.Import, ct))
         {
             var pages = PageRange.Parse(options.PageRange, source.PageCount);
             if (options.SplitPages)
@@ -294,7 +321,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         var builtIn = Path.Combine(scratch, Guid.NewGuid().ToString("N")[..8] + "-filee.pdf");
         try
         {
-            using var document = OpenForChanges(plain);
+            using var document = OpenForChanges(plain, ct);
             PdfCompressor.Compress(document, level, preset.Image.KeepMetadata, ct);
             document.Save(builtIn);
             candidates.Add(builtIn);
@@ -337,15 +364,15 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// Opens a PDF to change it. One locked only against changes (it opens without a password) has its pages copied
     /// into a new PDF instead, as when pages are split or extracted: bookmarks and form fields stay behind then.
     /// </summary>
-    internal static PdfDocument OpenForChanges(string path)
+    internal static PdfDocument OpenForChanges(string path, CancellationToken cancellationToken = default)
     {
         try
         {
-            return PdfReader.Open(path, PdfDocumentOpenMode.Modify);
+            return OpenTolerant(path, PdfDocumentOpenMode.Modify, cancellationToken, out _);
         }
         catch (PdfReaderException ex) when (ex.Message.Contains("owner password", StringComparison.OrdinalIgnoreCase))
         {
-            using var source = Open(path, PdfDocumentOpenMode.Import);
+            using var source = Open(path, PdfDocumentOpenMode.Import, cancellationToken);
             var copy = new PdfDocument();
             foreach (var page in source.Pages)
                 copy.AddPage(page);
@@ -364,12 +391,48 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         File.SetAttributes(destination, File.GetAttributes(destination) & ~FileAttributes.ReadOnly);
     }
 
-    /// <summary>Opens a PDF; a password-protected one fails with the message the other PDF conversions give.</summary>
-    internal static PdfDocument Open(string path, PdfDocumentOpenMode mode)
+    /// <summary>
+    /// Opens a PDF. A file PDFsharp reads is opened as it is; one it refuses gets one mended try (<see cref="PdfRepair"/>,
+    /// issue #1175), and when that does not help either the original error is thrown. The file on disk is never changed.
+    /// <paramref name="mended"/> is the mended file when that was needed (else null), for code that reads the file a
+    /// second time (PDFsharp's XPdfForm) and must read the mended bytes, not the file.
+    /// </summary>
+    private static PdfDocument OpenTolerant(string path, PdfDocumentOpenMode mode, CancellationToken cancellationToken, out byte[]? mended)
     {
+        mended = null;
         try
         {
             return PdfReader.Open(path, mode);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException
+            && !ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase))
+        {
+            if (PdfRepair.RepairFile(path, cancellationToken) is not { } repaired)
+                throw;
+            try
+            {
+                var document = PdfReader.Open(new MemoryStream(repaired), mode);
+                mended = repaired;
+                return document;
+            }
+            catch (Exception)
+            {
+                ExceptionDispatchInfo.Capture(ex).Throw(); // the original message is the useful one
+                throw;
+            }
+        }
+    }
+
+    /// <summary>Opens a PDF; a password-protected one fails with the message the other PDF conversions give.</summary>
+    internal static PdfDocument Open(string path, PdfDocumentOpenMode mode, CancellationToken cancellationToken = default) =>
+        Open(path, mode, out _, cancellationToken);
+
+    /// <summary>As above; <paramref name="mended"/> is the mended bytes of a file PDFsharp refused as it was, else null.</summary>
+    internal static PdfDocument Open(string path, PdfDocumentOpenMode mode, out byte[]? mended, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return OpenTolerant(path, mode, cancellationToken, out mended);
         }
         catch (PdfReaderException ex) when (ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase))
         {
@@ -383,10 +446,12 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// </summary>
     private static MemoryStream EncodeForPdf(IMagickImage<byte> frame, string sourceFormat, ImageOptions options)
     {
+        // PDFsharp takes grey and RGB pictures; CMYK ones are placed by CmykPictures, this is only a safety net (#1055).
+        PdfPictures.ToRgb(frame);
         var stream = new MemoryStream();
         if (sourceFormat == "jpg" && !frame.HasAlpha)
         {
-            frame.Quality = (uint)Math.Clamp(Math.Max(options.Quality, 85), 1, 100);
+            frame.Quality = JpegQuality(options);
             frame.Write(stream, MagickFormat.Jpeg);
         }
         else
@@ -396,6 +461,9 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         stream.Position = 0;
         return stream;
     }
+
+    /// <summary>A JPEG source goes into the PDF as JPEG again, at the preset's quality but never below 85.</summary>
+    private static uint JpegQuality(ImageOptions options) => (uint)Math.Clamp(Math.Max(options.Quality, 85), 1, 100);
 
     private static (double Width, double Height) PageSize(PdfPageSize size, bool landscape)
     {

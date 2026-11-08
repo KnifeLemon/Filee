@@ -23,6 +23,7 @@ public sealed partial class AboutPageViewModel : ObservableObject, IDisposable
         _updates = updates;
         _whatsNew = whatsNew;
         Version = loc.Format("about.version", UpdateService.CurrentVersion);
+        VersionBadge = "v" + UpdateService.CurrentVersion;
         if (whatsNew?.Latest is { } deck)
             WhatsNewText = loc.Format("whats_new.about_link", deck.DisplayVersion);
         _checkForUpdates = store.Settings.CheckForUpdates;
@@ -31,6 +32,10 @@ public sealed partial class AboutPageViewModel : ObservableObject, IDisposable
     }
 
     public string Version { get; }
+
+    /// <summary>The version as shown in the pill next to the name ("v2.3.0"); the "v" is not translated.</summary>
+    public string VersionBadge { get; }
+
     public string RepositoryUrl { get; } = UpdateService.RepositoryUrl;
 
     /// <summary>"What's new in Filee 2.0": the slides of the newest version up to this one; null when there are none.</summary>
@@ -65,8 +70,18 @@ public sealed partial class AboutPageViewModel : ObservableObject, IDisposable
             ShowUpdateState(_updates.LatestVersion);
     }
 
+    /// <summary>A check can finish in a blink; the arrow on "Check now" keeps turning for at least this long so it reads as checking.</summary>
+    private static readonly TimeSpan MinimumCheckTime = TimeSpan.FromMilliseconds(900);
+
     [RelayCommand]
-    private async Task CheckNow() => ShowUpdateState(await _updates.CheckAsync(), afterCheck: true);
+    private async Task CheckNow()
+    {
+        // With "Reduce animations" on there is no arrow turning, so there is nothing to hold the result back for.
+        var minimumSpin = Task.Delay(Motion.Enabled ? MinimumCheckTime : TimeSpan.Zero);
+        var newer = await _updates.CheckAsync();
+        await minimumSpin;
+        ShowUpdateState(newer, afterCheck: true);
+    }
 
     /// <summary>Downloads and runs the new installer, which updates Filee in place (a portable copy opens the download page).</summary>
     [RelayCommand]

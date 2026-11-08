@@ -20,6 +20,8 @@
                      install: ebook-convert for LIT, LRF, PDB, ... and MOBI / AZW3 output
       tesseract/     Tesseract OCR (Apache-2.0, separate program), UB Mannheim's Windows build unpacked from its
                      installer with 7-Zip (never run); the language data is downloaded by the app when needed
+      exiftool/      ExifTool (Perl's licence, separate program), the Windows build: exiftool(-k).exe renamed
+                     exiftool.exe (the "-k" makes it wait for a key), with its exiftool_files/ beside it
 
   Every download is pinned to a version and verified with SHA-256 (src/Filee.Engines/Infrastructure/engines.json,
   shared with the app). Downloads are cached in build/.cache.
@@ -144,7 +146,8 @@ function Get-Engine([string]$name, [switch]$X64) {
         return $file
     }
     Write-Host "get  $name  $($info.Url)"
-    Invoke-WebRequest -Uri $info.Url -OutFile $file -UseBasicParsing
+    # GitHub's release downloads answer 504 for minutes at a time, which stopped whole CI runs: try again a few times.
+    Invoke-WebRequest -Uri $info.Url -OutFile $file -UseBasicParsing -UserAgent 'Filee-build' -MaximumRetryCount 5 -RetryIntervalSec 20
     $hash = (Get-FileHash $file -Algorithm SHA256).Hash
     if ($hash -ne $info.Sha256) {
         Remove-Item $file
@@ -368,6 +371,14 @@ if ('tesseract' -in $selected) {
     foreach ($folder in '$PLUGINSDIR', 'tessdata') { Remove-Item -LiteralPath (Join-Path $target $folder) -Recurse -Force -ErrorAction SilentlyContinue }
     Get-ChildItem $target -File | Where-Object { $_.Extension -in '.exe', '.html' -and $_.Name -ne 'tesseract.exe' } | Remove-Item -Force
     if (-not (Test-Path (Join-Path $target 'tesseract.exe'))) { throw 'tesseract.exe not found in the installer.' }
+}
+
+if ('exiftool' -in $selected) {
+    # As EngineInstaller does: the one top folder unpacked, the program renamed so it doesn't wait for a key.
+    $target = Join-Path $Destination 'exiftool'
+    Expand-Flat (Get-Engine 'exiftool') $target
+    Move-Item -LiteralPath (Join-Path $target 'exiftool(-k).exe') -Destination (Join-Path $target 'exiftool.exe') -Force
+    if (-not (Test-Path (Join-Path $target 'exiftool.exe'))) { throw 'exiftool.exe not found in the archive.' }
 }
 
 if ('calibre' -in $selected) {

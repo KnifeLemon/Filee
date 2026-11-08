@@ -58,10 +58,15 @@ namespace Filee.Core.Conversion;
 /// <param name="Caption">
 /// The edge transcribes speech to SRT subtitles using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
 /// </param>
+/// <param name="Metadata">
+/// The edge writes a file's metadata changes into a copy of it in its own format, the picture, sound or document itself
+/// left as it is (<see cref="Presets.Preset.Metadata"/>, ExifTool). It is never part of an ordinary route, and with
+/// <see cref="RoutePlanner.Plan"/> asking for it it is the whole route.
+/// </param>
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
     bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false,
-    bool Ocr = false, bool Caption = false);
+    bool Ocr = false, bool Caption = false, bool Translate = false, bool Metadata = false);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's
@@ -145,7 +150,8 @@ public sealed record ConversionStep(
     bool LivePhoto = false,
     Action<IReadOnlyList<string>>? MissingFonts = null,
     string? OriginalSourcePath = null,
-    bool Caption = false);
+    bool Caption = false,
+    bool Translate = false);
 
 /// <summary>
 /// A conversion engine (ImageMagick, LibreOffice, rhwp, ...).
@@ -216,6 +222,24 @@ public interface ITextShapingCheck
     /// </summary>
     /// <param name="sourceFormat">Format id of the file.</param>
     TextScripts ScanScripts(string sourcePath, string sourceFormat);
+}
+
+/// <summary>
+/// An engine that opens envelopes: files that wrap one file of another format, such as a signed .p7m around a PDF or
+/// an XML invoice. Which format is inside is known only from the file, so <see cref="JobQueue"/> asks before planning
+/// and plans the route from that format, with the engine's step to it first (<see cref="RoutePlanner.PlanThrough"/>).
+/// The engine has an edge from the envelope to every format it can find inside.
+/// </summary>
+public interface IEnvelopeOpener
+{
+    /// <summary>True for an envelope format this engine opens.</summary>
+    bool Opens(string format);
+
+    /// <summary>
+    /// The format id of the file inside <paramref name="path"/> (an envelope of <paramref name="format"/>). Throws
+    /// <see cref="ConversionRefusedException"/> when it can't be opened or holds nothing Filee converts.
+    /// </summary>
+    string InnerFormat(string path, string format);
 }
 
 /// <summary>Merges several PDF files into one. Implemented by the PDF engine.</summary>

@@ -3,6 +3,7 @@ using System.Runtime.Versioning;
 using System.Text;
 using System.Text.Json;
 using Filee.Core.Platform;
+using Filee.Core.Settings;
 
 namespace Filee.Platform.MacOS;
 
@@ -40,6 +41,12 @@ public sealed class MacOSPlatformServices : IPlatformServices
         string.Equals(ProcessNameAt(x, y), "Finder", StringComparison.OrdinalIgnoreCase);
 
     public string? ProcessNameAt(int x, int y) => NativeMethods.ProcessNameAt(x, y);
+
+    // SharpHook's libuiohook rebuilds its modifier mask on every event with CGEventSourceKeyState, which answers "up" for
+    // held keys while another app holds Secure Input (Terminal's Secure Keyboard Entry, a password field): every press
+    // then looks modifier-free and no ⌥ / ⌘ gesture matches. The flags state stays right, as it does for AppKit's
+    // NSEvent.modifierFlags. Drop this once SharpHook reads the flags state itself.
+    public ModifierKeys? CurrentModifiers() => NativeMethods.CurrentModifiers();
 
     public IReadOnlyList<string> RunningAppNames() => IPlatformServices.AppNames(NativeMethods.WindowOwnerNames().ToList());
 
@@ -133,7 +140,54 @@ public sealed class MacOSPlatformServices : IPlatformServices
     public void RestoreWindow(nint windowHandle)
     {
         if (windowHandle != 0)
+        {
+            if (_keyWindow == windowHandle)
+            {
+                _keyWindow = 0;
+                NativeMethods.ReleaseKeyWindow(windowHandle);
+            }
             NativeMethods.RestoreWindow(windowHandle);
+        }
+    }
+
+    // The app the donut took the keyboard from (its process id), 0 for none.
+    private int _focusFrom;
+    private nint _keyWindow;
+
+    public void RememberFrontApp()
+    {
+        var front = NativeMethods.FrontmostProcessId();
+        _focusFrom = front != Environment.ProcessId ? front : 0;
+    }
+
+    public void ReturnFocus()
+    {
+        var keyWindow = _keyWindow;
+        _keyWindow = 0;
+        if (keyWindow != 0)
+            NativeMethods.ReleaseKeyWindow(keyWindow);
+
+        var from = _focusFrom;
+        _focusFrom = 0;
+        if (from != 0 && NativeMethods.FrontmostProcessId() == Environment.ProcessId)
+            NativeMethods.ActivateProcess(from);
+    }
+
+    public void TakeKeyWindow(nint windowHandle)
+    {
+        if (windowHandle == 0)
+            return;
+        _keyWindow = windowHandle;
+        NativeMethods.TakeKeyWindow(windowHandle);
+    }
+
+    public void ReleaseKeyWindow(nint windowHandle)
+    {
+        if (windowHandle == 0)
+            return;
+        if (_keyWindow == windowHandle)
+            _keyWindow = 0;
+        NativeMethods.ReleaseKeyWindow(windowHandle);
     }
 
     /// <summary>

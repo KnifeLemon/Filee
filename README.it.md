@@ -43,13 +43,15 @@
   <a href="README.hi.md">हिन्दी</a> ·
   <a href="README.ru.md">Русский</a> ·
   <a href="README.ar.md">العربية</a> ·
+  <a href="README.fa.md">فارسی</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
   <a href="README.tr.md">Türkçe</a> ·
   <a href="README.id.md">Bahasa Indonesia</a> ·
-  <b>Italiano</b>
+  <b>Italiano</b> ·
+  <a href="README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
@@ -83,6 +85,12 @@
 Scarica da [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/en-us%20dark.svg" alt="Microsoft Store" width="200"></a>
+
+Oppure con WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
 
 - **Windows 10/11**: esegui `Filee-<versione>-win-Setup.exe`, oppure decomprimi `win-Portable.zip` ed esegui `Filee.exe`.
   - Setup è l'installer proprio di Filee, nelle lingue di Filee, e non richiede altro sul PC.
@@ -134,7 +142,7 @@ Per annullare, rimuovi le voci in Sicurezza di Windows → Controllo app e brows
 - **Le cartelle monitorate** convertono ogni file che vi arriva.
 - **Conversioni recenti** nella Home, ognuna con anteprima: apri il risultato, oppure aprilo con un'altra app.
 - **Altri modi per avviarla**: il menu contestuale, una scorciatoia da tastiera, la zona di rilascio e il [comando `filee`](#riga-di-comando).
-- Temi chiaro e scuro con colore d'accento e opacità della donut personalizzabili, in inglese, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da destra a sinistra), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano e Bahasa Indonesia.
+- Temi chiaro e scuro con colore d'accento e opacità della donut personalizzabili, in inglese, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (da destra a sinistra), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia e Tiếng Việt.
 
 ## Screenshot
 

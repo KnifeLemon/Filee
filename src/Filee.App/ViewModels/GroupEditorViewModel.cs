@@ -5,6 +5,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
+using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -48,7 +49,10 @@ public sealed partial class GroupEditorViewModel : ObservableObject
     /// <summary>The presets the group fans out, in order.</summary>
     public ObservableCollection<GroupMember> Members { get; } = [];
 
-    /// <summary>Actions that can still be added (not groups, not already in it).</summary>
+    /// <summary>
+    /// Actions that can still be added (not groups, not already in it), without the ones whose target belongs only to
+    /// turned-off fields, like the toolbar editor's palette. Members already in the group stay.
+    /// </summary>
     public ObservableCollection<Choice<string>> Available { get; } = [];
 
     [ObservableProperty]
@@ -139,8 +143,9 @@ public sealed partial class GroupEditorViewModel : ObservableObject
     private void Refresh()
     {
         var taken = Members.Select(m => m.PresetId).ToHashSet();
+        var off = _store.Settings.TurnedOffFieldSet();
         Available.Clear();
-        foreach (var preset in _store.Presets.Where(p => !p.IsGroup && !taken.Contains(p.Id)))
+        foreach (var preset in _store.Presets.Where(p => !p.IsGroup && !taken.Contains(p.Id) && FormatFields.IsShown(p.TargetFormat, off)))
             Available.Add(new Choice<string>(preset.Id, _loc.DisplayName(preset), CaptionOf(preset)));
         OnPropertyChanged(nameof(IsFull));
         OnPropertyChanged(nameof(IsEmpty));

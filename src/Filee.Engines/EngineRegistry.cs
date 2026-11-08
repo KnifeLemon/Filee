@@ -14,10 +14,12 @@ using Filee.Engines.Icns;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Magick;
 using Filee.Engines.Media;
+using Filee.Engines.Metadata;
 using Filee.Engines.Models3D;
 using Filee.Engines.Ocr;
 using Filee.Engines.Office;
 using Filee.Engines.Pdf;
+using Filee.Engines.Signed;
 using Filee.Engines.Subtitles;
 using Filee.Engines.Text;
 using Filee.Engines.Vector;
@@ -49,6 +51,7 @@ public static class EngineRegistry
         new SpreadsheetConverter(),
         new OoxmlConverter(),
         new HwpxConverter(),
+        new Translation.TranslatorConverter(loggers?.CreateLogger<Translation.TranslatorConverter>()),
         new ArchiveConverter(),
         new VectorConverter(),
         new IcnsConverter(),
@@ -58,13 +61,16 @@ public static class EngineRegistry
         new PdfSlidesConverter(),
         new PdfTablesConverter(),
         new EmlConverter(),
+        new P7mConverter(),
         new DataConverter(),
         new SubtitleConverter(),
         new WicImageConverter(),
         new WhisperConverter(loggers?.CreateLogger<WhisperConverter>()),
+        new ExifToolConverter(),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
         new ModelConverter(),
+        new ImageTo3DConverter(),
         new GeoConverter(),
         new EbookConverter(),
         new PandocConverter(),

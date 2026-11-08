@@ -16,6 +16,33 @@ internal sealed partial class PdfDocumentReader
         "^([•◦▪▫●○■□‣⁃∙·\\-–—*]|\\(?\\d{1,3}[.)]|\\(?[a-zA-Z][.)]|[ivxIVX]{1,4}[.)]|[①-⑳]|[가-하][.)])$",
         RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
+    /// <summary>
+    /// A word that holds the dot leader of a table-of-contents entry: "Title.........12" is one word for PdfPig. The
+    /// title before the dots and the page number after them are optional.
+    /// </summary>
+    private static readonly Regex LeaderWord = new(
+        "^(?<title>.*?)(?<dots>[.…·．]{8,})(?<page>\\d{1,4})?$",
+        RegexOptions.CultureInvariant | RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private static readonly Regex PageDigits = new("^\\d{1,4}$", RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    /// <summary>
+    /// Index of the word of <paramref name="words"/> that is the dot leader of a table-of-contents entry (the line
+    /// ends with a page number, in the same word or in the word after the dots), or -1.
+    /// </summary>
+    private static int FindLeader(List<TextWord> words)
+    {
+        for (var i = 0; i < words.Count; i++)
+        {
+            var match = LeaderWord.Match(words[i].Text);
+            if (!match.Success)
+                continue;
+            if (match.Groups["page"].Success || (i == words.Count - 2 && PageDigits.IsMatch(words[^1].Text)))
+                return i;
+        }
+        return -1;
+    }
+
     // ───────────────────────── Lines ─────────────────────────
 
     /// <summary>
@@ -147,6 +174,7 @@ internal sealed partial class PdfDocumentReader
     private static List<Item> Paragraphs(List<TextLine> lines)
     {
         var items = new List<Item>();
+        var pagePitch = DominantPitch(lines);
         foreach (var line in lines)
         {
             Item? best = null;
@@ -156,13 +184,21 @@ internal sealed partial class PdfDocumentReader
                 if (line.Tabs.Count > 0)
                     break; // a tabbed row starts its own paragraph
                 var last = item.Lines[^1];
+                // Table-of-contents entries (title, dot leader, page number) are one paragraph each.
+                if (line.LeaderIndex >= 0 || item.Lines[0].LeaderIndex >= 0)
+                    continue;
                 // A tabbed row continues only with text under its last part (the wrapped text of "1.  Text …").
                 var head = item.Lines[0];
                 if (head.Tabs.Count > 0 && Math.Abs(line.Left - head.Words[head.Tabs[^1]].Left) > 0.5 * line.Size)
                     continue;
                 var distance = last.Baseline - line.Baseline;
                 var size = Math.Max(last.Size, line.Size);
-                if (distance <= 0 || distance > 1.9 * size || Math.Abs(last.Size - line.Size) > 0.2 * size)
+                // A fixed line spacing (23 pt for 12 pt text is 1.92 em) is no paragraph gap: the page's usual pitch stays inside.
+                var spaced = pagePitch > 0 && Math.Abs(distance - pagePitch) <= 0.08 * pagePitch;
+                // Sizes must match closely: a 14 pt heading under 12 pt text is a paragraph of its own. The size of a line is
+                // the one most of its characters have, so a single larger word (12 pt in 10.5 pt text) does not split the paragraph.
+                var mainSize = Math.Max(last.MainSize, line.MainSize);
+                if (distance <= 0 || (distance > 1.9 * size && !spaced) || Math.Abs(last.MainSize - line.MainSize) > Math.Max(1.0, 0.08 * mainSize))
                     continue;
                 if (item.Lines.Count >= 2 && distance > 1.3 * Pitch(item))
                     continue; // more space than between the lines so far: a new paragraph
@@ -185,6 +221,41 @@ internal sealed partial class PdfDocumentReader
             }
         }
         return items;
+    }
+
+    /// <summary>
+    /// The line pitch (baseline to baseline, in points) most lines of the page have to the line right below them
+    /// (same size, overlapping horizontally, between 1 and 2.6 em); 0 when fewer than three pairs agree.
+    /// </summary>
+    private static double DominantPitch(List<TextLine> lines)
+    {
+        var pitches = new List<double>();
+        foreach (var line in lines)
+        {
+            var nearest = double.MaxValue;
+            foreach (var other in lines)
+            {
+                var distance = line.Baseline - other.Baseline;
+                if (distance < 0.8 * line.Size || distance >= nearest || Math.Abs(line.Size - other.Size) > 0.5)
+                    continue;
+                var overlap = Math.Min(line.Right, other.Right) - Math.Max(line.Left, other.Left);
+                if (overlap < 0.3 * Math.Min(line.Right - line.Left, other.Right - other.Left))
+                    continue;
+                nearest = distance;
+            }
+            if (nearest >= line.Size && nearest <= 2.6 * line.Size)
+                pitches.Add(Math.Round(nearest * 2) / 2);
+        }
+
+        var bestPitch = 0.0;
+        var bestCount = 0;
+        foreach (var candidate in pitches.Distinct())
+        {
+            var count = pitches.Count(p => Math.Abs(p - candidate) <= 0.5);
+            if (count > bestCount || (count == bestCount && candidate < bestPitch))
+                (bestPitch, bestCount) = (candidate, count);
+        }
+        return bestCount >= 3 ? bestPitch : 0;
     }
 
     private static bool StartsParagraph(Item item, TextLine line)

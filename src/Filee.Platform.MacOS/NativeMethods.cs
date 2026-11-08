@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using Filee.Core.Settings;
 
 namespace Filee.Platform.MacOS;
 
@@ -21,6 +22,18 @@ internal static class NativeMethods
 
     private static nint CoreFoundationConstant(string name) =>
         Marshal.ReadIntPtr(NativeLibrary.GetExport(NativeLibrary.Load(CoreFoundation), name));
+
+    /// <summary>The modifier keys held now (kCGEventSourceStateCombinedSessionState: every keyboard, including posted keys).</summary>
+    internal static ModifierKeys CurrentModifiers()
+    {
+        var flags = CGEventSourceFlagsState(0);
+        var keys = ModifierKeys.None;
+        if ((flags & 0x20000) != 0) keys |= ModifierKeys.Shift;   // kCGEventFlagMaskShift
+        if ((flags & 0x40000) != 0) keys |= ModifierKeys.Ctrl;    // kCGEventFlagMaskControl
+        if ((flags & 0x80000) != 0) keys |= ModifierKeys.Alt;     // kCGEventFlagMaskAlternate (Option)
+        if ((flags & 0x100000) != 0) keys |= ModifierKeys.Meta;   // kCGEventFlagMaskCommand
+        return keys;
+    }
 
     /// <summary>Process names of the app windows on screen (layer 0), front to back.</summary>
     internal static IEnumerable<string> WindowOwnerNames()
@@ -113,6 +126,24 @@ internal static class NativeMethods
         return Marshal.PtrToStringUTF8(Send(bundle, sel_registerName("UTF8String"))) == "com.apple.finder";
     }
 
+    /// <summary>The process id of the app in front (NSWorkspace.frontmostApplication), 0 if none.</summary>
+    internal static int FrontmostProcessId()
+    {
+        using var pool = new AutoreleasePool();
+        var workspace = Send(objc_getClass("NSWorkspace"), sel_registerName("sharedWorkspace"));
+        var application = Send(workspace, sel_registerName("frontmostApplication"));
+        return application == 0 ? 0 : (int)Send(application, sel_registerName("processIdentifier"));
+    }
+
+    /// <summary>Brings the app with process id <paramref name="pid"/> to the front, if it still runs.</summary>
+    internal static void ActivateProcess(int pid)
+    {
+        using var pool = new AutoreleasePool();
+        var application = Send(objc_getClass("NSRunningApplication"), sel_registerName("runningApplicationWithProcessIdentifier:"), pid);
+        if (application != 0)
+            SendBool(application, sel_registerName("activateWithOptions:"), 0);
+    }
+
     internal static bool PrefersReducedMotion()
     {
         using var pool = new AutoreleasePool();
@@ -122,10 +153,10 @@ internal static class NativeMethods
 
     internal static void RaiseTopmost(nint window)
     {
-        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1;
+        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1, stationary = 1 << 4;
         const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
         var behavior = Send(window, sel_registerName("collectionBehavior"));
-        behavior = (behavior & ~(moveToActiveSpace | fullScreenPrimary | fullScreenNone)) | canJoinAllSpaces | fullScreenAuxiliary;
+        behavior = (behavior & ~(moveToActiveSpace | fullScreenPrimary | fullScreenNone)) | canJoinAllSpaces | stationary | fullScreenAuxiliary;
         // macOS 13's primary, auxiliary and canJoinAllApplications: with canJoinAllApplications set the donut still
         // stays off a full-screen Finder Space, even as a panel (#251).
         behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
@@ -411,6 +442,9 @@ internal static class NativeMethods
     private static extern nint CGWindowListCopyWindowInfo(uint option, uint relativeToWindow);
 
     [DllImport(CoreGraphics)]
+    private static extern ulong CGEventSourceFlagsState(int stateId);
+
+    [DllImport(CoreGraphics)]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool CGRectMakeWithDictionaryRepresentation(nint dictionary, out CGRect rect);
 
@@ -475,4 +509,38 @@ internal static class NativeMethods
     [DllImport(ObjC, EntryPoint = "objc_msgSend")]
     [return: MarshalAs(UnmanagedType.I1)]
     private static extern bool SendBoolWithInteger(nint receiver, nint selector, nint value);
+
+    internal static void TakeKeyWindow(nint window)
+    {
+        var selector = sel_registerName("makeKeyAndOrderFront:");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), selector))
+            SendVoid(window, selector, 0);
+    }
+
+    internal static void ReleaseKeyWindow(nint window)
+    {
+        if (!IsKeyWindow(window))
+            return;
+
+        var isVisibleSelector = sel_registerName("isVisible");
+        var wasVisible = SendBool(window, sel_registerName("respondsToSelector:"), isVisibleSelector)
+            && SendBool(window, isVisibleSelector);
+
+        var orderOutSelector = sel_registerName("orderOut:");
+        if (SendBool(window, sel_registerName("respondsToSelector:"), orderOutSelector))
+            SendVoid(window, orderOutSelector, 0);
+
+        if (wasVisible)
+        {
+            var orderFrontSelector = sel_registerName("orderFrontRegardless");
+            if (SendBool(window, sel_registerName("respondsToSelector:"), orderFrontSelector))
+                SendVoid(window, orderFrontSelector);
+        }
+    }
+
+    internal static bool IsKeyWindow(nint window)
+    {
+        var selector = sel_registerName("isKeyWindow");
+        return SendBool(window, sel_registerName("respondsToSelector:"), selector) && SendBool(window, selector);
+    }
 }

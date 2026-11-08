@@ -72,6 +72,15 @@ public sealed class DonutSettings
     /// <summary>The lowest <see cref="Opacity"/> the Theme and Donut toolbar pages offer.</summary>
     public const double MinOpacity = 0.1;
 
+    /// <summary>
+    /// The small line under a slice's name saying what it makes ("SVG" under Trace, the file's own format under a
+    /// preset that keeps it, "Group of N" under a group). Off, the name stands alone in the middle of its slice; a
+    /// group is still marked by its chevron. A folder slice keeps its "Move" or "Copy", which says what it does, and
+    /// two slices of one name keep theirs, the only thing that tells them apart.
+    /// On as before it existed; a missing value (settings from before it) reads as on, so it needs no schema step.
+    /// </summary>
+    public bool ShowCaptions { get; set; } = true;
+
     /// <summary>The flip key unless the user picks another one (Settings → Shortcuts).</summary>
     public const string DefaultFlipKey = "Tab";
 
@@ -123,7 +132,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 58;
+    public const int CurrentSchemaVersion = 72;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -231,6 +240,9 @@ public sealed class AppSettings
     /// </summary>
     public bool LibreOfficeForSlides { get; set; } = true;
 
+    /// <summary>Active local model for offline translation (e.g. "llama3.2", "qwen2.5").</summary>
+    public string? PreferredOllamaModel { get; set; }
+
     /// <summary>
     /// With LibreOffice and H2Orestart installed, HWP / HWPX → PDF go through it instead of rhwp: a way around a
     /// document rhwp lays out wrong (each engine gets different documents right).
@@ -252,6 +264,11 @@ public sealed class AppSettings
     /// <summary>Every conversion keeps the created and modified dates of the original, whatever the preset says.</summary>
     public bool KeepFileDates { get; set; }
 
+    /// <summary>
+    /// Files dropped or picked on the Home page wait in its list (<c>true</c>), instead of opening the donut for each drop.
+    /// </summary>
+    public bool CollectDroppedFiles { get; set; } = false;
+
     /// <summary>Every geospatial conversion is saved as a ZIP, whatever the preset says (see <see cref="OutputRule.ZipResult"/>).</summary>
     public bool ZipGeoResults { get; set; }
 
@@ -272,6 +289,17 @@ public sealed class AppSettings
     /// once. A Filee from before it skips the property, so it needs no schema step.
     /// </summary>
     public WindowBounds? MainWindow { get; set; }
+
+    /// <summary>
+    /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to
+    /// them is left out of the donut and the preset lists. An empty list and a missing value both mean every field is on, so
+    /// settings from before it read as every field on and need no schema step. A new install gets its defaults from
+    /// <see cref="UserDataStore.Load"/>.
+    /// </summary>
+    public List<string> TurnedOffFields { get; set; } = [];
+
+    /// <summary><see cref="TurnedOffFields"/> as a set that ignores case, for <see cref="Formats.FormatFields.IsShown"/>.</summary>
+    public IReadOnlySet<string> TurnedOffFieldSet() => TurnedOffFields.ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
@@ -350,4 +378,10 @@ public sealed class BrowserDropSettings
 
     /// <summary>Keep only the converted file: the original goes into a work folder and is deleted after the conversion.</summary>
     public bool SaveOnlyConverted { get; set; }
+
+    /// <summary>
+    /// Links may lead to this computer and the local network (an intranet, a NAS). Off: a web page could otherwise make
+    /// Filee send requests to the router or other devices at home or at work.
+    /// </summary>
+    public bool AllowLocalNetwork { get; set; }
 }

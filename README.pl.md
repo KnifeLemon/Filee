@@ -43,13 +43,15 @@
   <a href="README.hi.md">हिन्दी</a> ·
   <a href="README.ru.md">Русский</a> ·
   <a href="README.ar.md">العربية</a> ·
+  <a href="README.fa.md">فارسی</a> ·
   <a href="README.pt-BR.md">Português (Brasil)</a> ·
   <a href="README.pt-PT.md">Português (Portugal)</a> ·
   <a href="README.fr.md">Français</a> ·
   <a href="README.th.md">ไทย</a> ·
   <a href="README.tr.md">Türkçe</a> ·
   <a href="README.id.md">Bahasa Indonesia</a> ·
-  <a href="README.it.md">Italiano</a>
+  <a href="README.it.md">Italiano</a> ·
+  <a href="README.bn-BD.md">বাংলা</a>
 </p>
 
 <table>
@@ -83,6 +85,12 @@
 Pobierz z [Releases](https://github.com/KnifeLemon/Filee/releases/latest).
 
 <a href="https://apps.microsoft.com/detail/XPDCN05L89WS0C?referrer=appbadge&cid=github&mode=full"><img src="https://get.microsoft.com/images/pl%20dark.svg" alt="Microsoft Store" width="200"></a>
+
+Albo przez WinGet:
+
+```powershell
+winget install KnifeLemon.Filee
+```
 
 - **Windows 10/11**: uruchom `Filee-<version>-win-Setup.exe` albo rozpakuj `win-Portable.zip` i uruchom `Filee.exe`.
   - Setup to własny instalator Filee, mówi w językach Filee i nie potrzebuje na komputerze niczego więcej.
@@ -134,7 +142,7 @@ Aby to cofnąć, usuń te wpisy w Zabezpieczenia Windows → Kontrola aplikacji 
 - **Obserwowane foldery** konwertują każdy plik, który do nich trafi.
 - **Ostatnie konwersje** na ekranie Start, każda z miniaturą: otwórz wynik albo otwórz go za pomocą innej aplikacji.
 - **Inne sposoby**: menu kontekstowe, skrót klawiszowy, strefa upuszczania i [polecenie `filee`](#wiersz-poleceń).
-- Jasny i ciemny motyw z własnym kolorem akcentu i kryciem pierścienia, w językach English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (od prawej do lewej), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano i Bahasa Indonesia.
+- Jasny i ciemny motyw z własnym kolorem akcentu i kryciem pierścienia, w językach English, Español, 日本語, 한국어, 简体中文, 繁體中文, Polski, हिन्दी, Русский, العربية (od prawej do lewej), Português (Brasil), Français, नेपाली, ไทย, Türkçe, Português (Portugal), Deutsch, Italiano, Bahasa Indonesia i Tiếng Việt.
 
 ## Zrzuty ekranu
 

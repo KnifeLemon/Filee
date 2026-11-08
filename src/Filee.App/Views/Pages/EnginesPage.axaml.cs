@@ -34,6 +34,9 @@ public partial class EnginesPage : UserControl
         public Point InScroller { get; set; }
     }
 
+    /// <summary>The pointer over the list while a card is being dragged (the drag handle has the same one).</summary>
+    private static readonly Cursor DragCursor = new(StandardCursorType.Hand);
+
     private readonly DispatcherTimer _scrollTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private EngineDrag? _drag;
 
@@ -71,6 +74,7 @@ public partial class EnginesPage : UserControl
                 return;
             drag.Active = true;
             drag.Item.IsDragging = true;
+            EngineList.Cursor = DragCursor;
             _scrollTimer.Start();
         }
         if (Scroller is { } scroller)
@@ -116,6 +120,7 @@ public partial class EnginesPage : UserControl
         _drag = null;
         _scrollTimer.Stop();
         pointer?.Capture(null);
+        EngineList.Cursor = null;
         if (!drag.Active)
             return;
         drag.Item.IsDragging = false;
@@ -125,8 +130,23 @@ public partial class EnginesPage : UserControl
     /// <summary>The LibreOffice switches, in their own window.</summary>
     private async void OnPackageSettings(object? sender, RoutedEventArgs e)
     {
-        if (DataContext is EnginesPageViewModel vm && TopLevel.GetTopLevel(this) is Window window)
+        if (TopLevel.GetTopLevel(this) is not Window window)
+            return;
+
+        if (DataContext is EnginesPageViewModel vm)
             await new LibreOfficeOptionsWindow { DataContext = vm }.ShowDialog(window);
+    }
+
+    private async void OnManageOllama(object? sender, RoutedEventArgs e)
+    {
+        if (TopLevel.GetTopLevel(this) is not Window window)
+            return;
+        var dlg = new OllamaModelManagerWindow();
+        await dlg.ShowDialog(window);
+        await Task.Run(Filee.Engines.Translation.TranslatorConverter.PerformCheck);
+        var catalog = AppHost.Get<Filee.Core.Conversion.ConverterCatalog>();
+        catalog.Refresh();
+        _ = catalog.CheckInBackgroundAsync();
     }
 
     /// <summary>Picks the program of a copy the user already has (ffmpeg.exe, ebook-convert.exe, …) and uses it.</summary>
@@ -177,7 +197,7 @@ public partial class EnginesPage : UserControl
         var loc = AppHost.Get<ILocalizer>();
         if (!await AppHost.Get<WindowService>().ConfirmAsync(window, loc.Format("engines.remove_confirm", package.Name), destructive: true))
             return;
-        if (!vm.Remove(package))
-            await AppHost.Get<WindowService>().MessageAsync(window, loc["engines.remove_failed"]);
+        if (vm.Remove(package) is { } reason)
+            await AppHost.Get<WindowService>().MessageAsync(window, loc[reason]);
     }
 }

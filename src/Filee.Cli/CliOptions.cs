@@ -1,5 +1,6 @@
 // Parses the "filee" command line. Kept dependency-free: a handful of commands and options.
 
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 
 namespace Filee.Cli;
@@ -13,7 +14,9 @@ internal sealed record CliOptions
     public string? Preset { get; set; }
     public string? Output { get; set; }
     public bool Recursive { get; set; }
+    public FileSortOrder? Sort { get; set; }
     public int? Quality { get; set; }
+    public string? Pages { get; set; }
     public ConflictPolicy? Conflict { get; set; }
     public bool Json { get; set; }
     public bool Quiet { get; set; }
@@ -24,7 +27,7 @@ internal sealed record CliOptions
     public double? SettleSeconds { get; set; }
     public string? Error { get; set; }
 
-    public static readonly string[] Commands = ["convert", "watch", "formats", "presets", "help", "version"];
+    public static readonly string[] Commands = ["convert", "watch", "formats", "presets", "engines", "help", "version"];
 
     public static CliOptions Parse(IReadOnlyList<string> args)
     {
@@ -69,6 +72,24 @@ internal sealed record CliOptions
                 case "-r" or "--recursive":
                     options.Recursive = true;
                     break;
+                case "--sort":
+                    var sort = Value();
+                    if (sort is not null)
+                    {
+                        options.Sort = sort.ToLowerInvariant() switch
+                        {
+                            "name" => FileSortOrder.NameAscending,
+                            "name-desc" => FileSortOrder.NameDescending,
+                            "modified" => FileSortOrder.ModifiedAscending,
+                            "modified-desc" => FileSortOrder.ModifiedDescending,
+                            "created" => FileSortOrder.CreatedAscending,
+                            "created-desc" => FileSortOrder.CreatedDescending,
+                            _ => null,
+                        };
+                        if (options.Sort is null)
+                            options.Error ??= "--sort must be name, name-desc, modified, modified-desc, created or created-desc.";
+                    }
+                    break;
                 case "-q" or "--quality":
                     var quality = Value();
                     if (quality is not null)
@@ -77,6 +98,17 @@ internal sealed record CliOptions
                             options.Quality = q;
                         else
                             options.Error ??= "--quality must be a number from 1 to 100.";
+                    }
+                    break;
+                case "--pages":
+                    var pages = Value();
+                    if (pages is not null)
+                    {
+                        var check = Filee.Core.Conversion.PageRange.Check(pages, null);
+                        if (check.IsValid)
+                            options.Pages = check.Text;
+                        else
+                            options.Error ??= "--pages must be page numbers or ranges from 1, e.g. 13-55 or 1-3,8,12-15.";
                     }
                     break;
                 case "--overwrite":
@@ -127,6 +159,11 @@ internal sealed record CliOptions
             "convert" when options.Inputs.Count == 0 => "Give at least one file or folder to convert.",
             "convert" or "watch" when options.To is null == (options.Preset is null) => "Use either --to <format> or --preset <preset>.",
             "watch" when options.Inputs.Count != 1 => "Give exactly one folder to watch.",
+            "watch" when options.Sort is not null => "--sort only works with 'filee convert'.",
+            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove") =>
+                $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>' or 'filee engines remove <id>'.",
+            "engines" when options.Inputs.Count == 1 => $"Give the engine to {options.Inputs[0].ToLowerInvariant()}, e.g. 'filee engines {options.Inputs[0].ToLowerInvariant()} pandoc'.",
+            "engines" when options.Inputs.Count > 2 => "Give one engine at a time.",
             _ => null,
         };
         return options;

@@ -57,6 +57,14 @@ public class LenientEnumJsonConverter<TEnum> : JsonConverter<TEnum> where TEnum 
         writer.WriteStringValue(value.ToString());
 }
 
+/// <summary>
+/// An unknown mark kind (a newer Filee's) is read as <see cref="AnnotationKind.Unknown"/>: never drawn.
+/// </summary>
+public sealed class AnnotationKindJsonConverter : LenientEnumJsonConverter<AnnotationKind>
+{
+    protected override AnnotationKind Unknown => AnnotationKind.Unknown;
+}
+
 /// <summary>An unknown kind is read as a group: never run as a conversion.</summary>
 public sealed class PresetKindJsonConverter : LenientEnumJsonConverter<PresetKind>
 {
@@ -118,6 +126,20 @@ public sealed class Preset
     /// <summary>Options used when a DWG or DXF is written or drawn.</summary>
     public CadOptions Cad { get; set; } = new();
 
+    /// <summary>Options used for offline AI translation.</summary>
+    public TranslateOptions Translate { get; set; } = new();
+
+    /// <summary>
+    /// "Metadata": the fields its window changes, on the conversion it starts (<see cref="MetadataTool"/>); null for
+    /// every other preset. Only an engine that writes metadata and nothing else applies it
+    /// (<see cref="Conversion.ConversionEdge.Metadata"/>).
+    /// </summary>
+    public MetadataEdits? Metadata { get; set; }
+
+    /// <summary>The conversion changes the file's metadata (<see cref="Metadata"/>).</summary>
+    [JsonIgnore]
+    public bool EditsMetadata => Metadata is { IsEmpty: false };
+
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
@@ -151,6 +173,16 @@ public sealed class Preset
         Archive.CombineIntoOne
         && Formats.FormatRegistry.FindById(TargetFormat) is { Category: Formats.FormatCategory.Archive } archive
         && archive.Id != Formats.FormatRegistry.Folder;
+
+    /// <summary>Formats the translator can directly read from (documents, e-books, text and SRT / WebVTT subtitles).</summary>
+    public static readonly string[] TranslatorSourceFormats =
+    [
+        "docx", "hwpx", "epub", "kepub", "mobi", "azw3", "azw", "prc", "fb2", "htmlz", "txtz", "md", "txt", "html", "srt", "vtt"
+    ];
+
+    /// <summary>True if converting a document, e-book, text file or subtitle using local AI translation.</summary>
+    public bool TranslatesDocument(string sourceFormat) =>
+        Translate.Enabled && TranslatorSourceFormats.Contains(sourceFormat.ToLowerInvariant());
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file saves every frame as a picture
@@ -246,8 +278,27 @@ public sealed class Preset
     public const string HideTool = "hide";
 
     /// <summary>
-    /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there were
-    /// other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/> or <see cref="HideTool"/>. A tool this version
+    /// <see cref="Tool"/> of "Annotate" (settings schema 60): pen, arrows, boxes, highlights, text and numbers drawn on
+    /// a picture (<see cref="ImageOptions.Annotations"/>).
+    /// </summary>
+    public const string AnnotateTool = "annotate";
+
+    /// <summary>
+    /// <see cref="Tool"/> of "Add background" (settings schema 64): a picture on a gradient, a colour or a picture of
+    /// one's own, with padding, rounded corners and a shadow (<see cref="ImageOptions.Backdrop"/>).
+    /// </summary>
+    public const string BackgroundTool = "background";
+
+    /// <summary>
+    /// <see cref="Tool"/> of "Metadata" (settings schema 72): every metadata field of a file shown, edited or removed
+    /// with ExifTool, the picture or document itself untouched.
+    /// </summary>
+    public const string MetadataTool = "metadata";
+
+    /// <summary>
+    /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there
+    /// were other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/>, <see cref="HideTool"/>,
+    /// <see cref="AnnotateTool"/>, <see cref="BackgroundTool"/> or <see cref="MetadataTool"/>. A tool this version
     /// doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
     /// </summary>
     public string? Tool { get; set; }
@@ -268,12 +319,27 @@ public sealed class Preset
     [JsonIgnore]
     public bool IsHideTool => IsTool && Tool == HideTool;
 
+    /// <summary>True for "Annotate".</summary>
+    [JsonIgnore]
+    public bool IsAnnotateTool => IsTool && Tool == AnnotateTool;
+    /// <summary>True for "Add background".</summary>
+    [JsonIgnore]
+    public bool IsBackgroundTool => IsTool && Tool == BackgroundTool;
+
+    /// <summary>True for "Metadata".</summary>
+    [JsonIgnore]
+    public bool IsMetadataTool => IsTool && Tool == MetadataTool;
+
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
     /// set by the clip window on the conversion it starts): the file is a video. Other files convert as usual.
     /// </summary>
     public bool CutsClipOf(string sourceFormat) =>
         Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+
+    /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
+    [JsonIgnore]
+    public bool CropsVideo => VideoCrop.Crops(Media.CropFrame);
 
     /// <summary>Creates a new random preset id.</summary>
     public static string NewId() => Guid.NewGuid().ToString("N")[..12];
@@ -293,6 +359,20 @@ public sealed class Preset
         return copy;
     }
 
+    /// <summary>
+    /// A copy fit to leave this computer (an exported bundle): no PDF password and no path to a file of one's own
+    /// (Add background's picture, which would tell where one's files are).
+    /// </summary>
+    public Preset ForSharing()
+    {
+        var copy = WithoutPassword(mark: false);
+        if (copy.Image.Backdrop?.Picture is null && copy.Image.BackdropLook?.Picture is null)
+            return copy;
+        copy = ReferenceEquals(copy, this) ? Clone() : copy;
+        copy.Image.ForgetBackdropPictures();
+        return copy;
+    }
+
     public Preset Clone() => new()
     {
         Id = Id,
@@ -306,6 +386,8 @@ public sealed class Preset
         Archive = Archive.Clone(),
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
+        Translate = Translate.Clone(),
+        Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
         Tool = Tool,
@@ -402,6 +484,10 @@ public enum HideStyle
     Pixelate,
     /// <summary>A strong blur.</summary>
     Blur,
+    /// <summary>
+    /// Solid, opaque black: nothing of what was there is left. An older Filee reads it as <see cref="Pixelate"/>.
+    /// </summary>
+    Box,
 }
 
 /// <summary>
@@ -415,7 +501,193 @@ public sealed class HiddenArea
     public double Width { get; set; }
     public double Height { get; set; }
 
+    /// <summary>How this part is covered; null for the preset's <see cref="ImageOptions.HideStyle"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
+    public HideStyle? Style { get; set; }
+
     public HiddenArea Clone() => (HiddenArea)MemberwiseClone();
+}
+
+/// <summary>What an "Annotate" mark is (<see cref="Annotation.Kind"/>).</summary>
+public enum AnnotationKind
+{
+    /// <summary>A kind from a newer Filee: not drawn, rather than drawn as something it isn't.</summary>
+    Unknown = -1,
+    /// <summary>A freehand line through <see cref="Annotation.Points"/>.</summary>
+    Pen,
+    /// <summary>An arrow from its first point (the tail) to its second (the tip).</summary>
+    Arrow,
+    /// <summary>A frame from one corner to the other.</summary>
+    Box,
+    /// <summary>A see-through marker from one corner to the other.</summary>
+    Highlight,
+    /// <summary><see cref="Annotation.Text"/> on a tag in the colour, at its point.</summary>
+    Text,
+    /// <summary><see cref="Annotation.Number"/> in a circle in the colour, at its point.</summary>
+    Number,
+}
+
+/// <summary>How thick a mark is drawn: lines, text and numbers alike.</summary>
+public enum AnnotationWidth
+{
+    Thin,
+    Medium,
+    Thick,
+}
+
+/// <summary>A point on the picture as it is seen, in parts of it: 0 to 1 from its left and top edges.</summary>
+public sealed class AnnotationPoint
+{
+    public double X { get; set; }
+    public double Y { get; set; }
+
+    public AnnotationPoint Clone() => (AnnotationPoint)MemberwiseClone();
+}
+
+/// <summary>
+/// A mark "Annotate" draws on a picture. Its points are parts of the picture, and its sizes parts of the picture's
+/// shorter side, so a mark looks the same at any size.
+/// </summary>
+public sealed class Annotation
+{
+    [JsonConverter(typeof(AnnotationKindJsonConverter))]
+    public AnnotationKind Kind { get; set; }
+
+    /// <summary>"#RRGGBB".</summary>
+    public string Color { get; set; } = "#E5484D";
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationWidth>))]
+    public AnnotationWidth Width { get; set; } = AnnotationWidth.Medium;
+
+    /// <summary>
+    /// The pen's line; the two corners of a box or highlight; an arrow's tail and tip; a text's or number's place.
+    /// </summary>
+    public List<AnnotationPoint> Points
+    {
+        get => _points;
+        // Read leniently: no list, or empty places in it, are no points.
+        set => _points = value is null ? [] : [.. value.Where(point => point is not null)];
+    }
+
+    private List<AnnotationPoint> _points = [];
+
+    /// <summary>What a <see cref="AnnotationKind.Text"/> says.</summary>
+    public string? Text { get; set; }
+
+    /// <summary>The number a <see cref="AnnotationKind.Number"/> shows.</summary>
+    public int Number { get; set; }
+
+    public Annotation Clone()
+    {
+        var copy = (Annotation)MemberwiseClone();
+        copy.Points = [.. Points.Select(p => p.Clone())];
+        return copy;
+    }
+}
+
+/// <summary>What "Add background" sets a picture on (<see cref="BackdropOptions.Kind"/>).</summary>
+public enum BackdropKind
+{
+    /// <summary>
+    /// A diagonal gradient from <see cref="BackdropOptions.From"/> to <see cref="BackdropOptions.To"/>.
+    /// </summary>
+    Gradient,
+    /// <summary>One colour, <see cref="BackdropOptions.Color"/>.</summary>
+    Color,
+    /// <summary>A picture of one's own (<see cref="BackdropOptions.Picture"/>), covering the canvas.</summary>
+    Picture,
+}
+
+/// <summary>The shape of the canvas "Add background" makes (<see cref="BackdropOptions.Canvas"/>).</summary>
+public enum BackdropCanvas
+{
+    /// <summary>The picture and its padding, nothing more.</summary>
+    Auto,
+    Square,
+    /// <summary>16:9, wider than tall.</summary>
+    Landscape,
+    /// <summary>4:5, taller than wide.</summary>
+    Portrait,
+}
+
+/// <summary>
+/// How "Add background" sets a picture on a background: what is behind it, the space around it, its corners and its
+/// shadow, and the canvas's shape. Sizes are parts of the picture, so a look suits a screenshot and a photo alike.
+/// </summary>
+public sealed class BackdropOptions
+{
+    public const int MaxPadding = 40, MaxCorners = 20, MaxShadow = 100;
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<BackdropKind>))]
+    public BackdropKind Kind { get; set; }
+
+    /// <summary>The gradient's first colour (top left), "#RRGGBB".</summary>
+    public string From { get; set; } = "#8EC5FC";
+
+    /// <summary>The gradient's last colour (bottom right).</summary>
+    public string To { get; set; } = "#E0C3FC";
+
+    public string Color { get; set; } = "#FFFFFF";
+
+    /// <summary>
+    /// The picture behind, for <see cref="BackdropKind.Picture"/>. While it is missing or can't be read, the window
+    /// shows the gradient and won't save, and a conversion is refused.
+    /// </summary>
+    public string? Picture { get; set; }
+
+    /// <summary>
+    /// When <see cref="Picture"/>'s file was last written, as the window showed it (on the conversion it starts only):
+    /// a file changed since (by its time or length, before it is read and after) is refused rather than written with a
+    /// picture behind the window didn't show.
+    /// </summary>
+    public DateTime? PictureWritten { get; set; }
+
+    /// <summary>
+    /// How long <see cref="Picture"/>'s file was, as the window showed it (with <see cref="PictureWritten"/>).
+    /// </summary>
+    public long? PictureLength { get; set; }
+
+    /// <summary>Space round the picture, in percent of its longer side (0–<see cref="MaxPadding"/>).</summary>
+    public int Padding { get; set; } = 12;
+
+    /// <summary>Corner radius, in percent of the picture's shorter side (0–<see cref="MaxCorners"/>).</summary>
+    public int Corners { get; set; } = 3;
+
+    /// <summary>How strong the shadow is, 0 (none) to <see cref="MaxShadow"/>.</summary>
+    public int Shadow { get; set; } = 45;
+
+    [JsonConverter(typeof(LenientEnumJsonConverter<BackdropCanvas>))]
+    public BackdropCanvas Canvas { get; set; }
+
+    public BackdropOptions Clone() => (BackdropOptions)MemberwiseClone();
+
+    /// <summary>
+    /// Every number within its range and every colour "#RRGGBB", the default's where it isn't one (a hand-edited file
+    /// can hold anything, a colour left out included).
+    /// </summary>
+    public BackdropOptions Clamped()
+    {
+        var copy = Clone();
+        var defaults = new BackdropOptions();
+        copy.From = HexOr(From, defaults.From);
+        copy.To = HexOr(To, defaults.To);
+        copy.Color = HexOr(Color, defaults.Color);
+        copy.Padding = Math.Clamp(Padding, 0, MaxPadding);
+        copy.Corners = Math.Clamp(Corners, 0, MaxCorners);
+        copy.Shadow = Math.Clamp(Shadow, 0, MaxShadow);
+        return copy;
+    }
+
+    /// <summary>
+    /// <paramref name="text"/> as "#RRGGBB" when it is a colour that way (or "#RGB"), else <paramref name="fallback"/>.
+    /// </summary>
+    private static string HexOr(string? text, string fallback)
+    {
+        var hex = text?.Trim().TrimStart('#') ?? "";
+        if (hex.Length == 3)
+            hex = string.Concat(hex.Select(c => new string(c, 2)));
+        return hex.Length == 6 && hex.All(Uri.IsHexDigit) ? "#" + hex.ToUpperInvariant() : fallback;
+    }
 }
 
 /// <summary>Raster image encoding options.</summary>
@@ -458,11 +730,62 @@ public sealed class ImageOptions
     public bool TurnsOrMirrors => Rotation != ImageRotation.None || Flip != ImageFlip.None;
 
     /// <summary>
-    /// Turns, mirrors or covers parts of the image (<see cref="HidesAreas"/>): done once, in the first step of a route whose
-    /// engine applies image options (<see cref="Conversion.IImageTransformer"/>); a file is never passed on as it is.
+    /// Turns, mirrors, covers parts of, draws on or sets the image on a background: done once, in the first step of a
+    /// route whose engine applies image options (<see cref="Conversion.IImageTransformer"/>); a file is never passed on
+    /// as it is.
     /// </summary>
     [JsonIgnore]
-    public bool ReworksPixels => TurnsOrMirrors || HidesAreas;
+    public bool ReworksPixels => TurnsOrMirrors || HidesAreas || HasAnnotations || AddsBackdrop;
+
+    /// <summary>"Annotate": the marks drawn on the picture as it is seen; null for every other preset.</summary>
+    public List<Annotation>? Annotations
+    {
+        get => _annotations;
+        // Read leniently: an empty place in the list (a preset edited by hand) is no mark.
+        set => _annotations = value?.Where(mark => mark is not null).ToList();
+    }
+
+    private List<Annotation>? _annotations;
+
+    /// <summary>The picture gets marks drawn on it (<see cref="Annotations"/>).</summary>
+    [JsonIgnore]
+    public bool HasAnnotations => Annotations is { Count: > 0 };
+
+    /// <summary>"Annotate": the colour picked last, "#RRGGBB", kept in the tool for the next time.</summary>
+    public string? AnnotationColor { get; set; }
+
+    /// <summary>"Annotate": the width picked last, kept in the tool for the next time.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<AnnotationWidth>))]
+    public AnnotationWidth AnnotationWidth { get; set; } = AnnotationWidth.Medium;
+
+    /// <summary>
+    /// "Add background": the picture set on a background (<see cref="BackdropOptions"/>), on the conversion the window
+    /// starts; null for every other preset.
+    /// </summary>
+    public BackdropOptions? Backdrop { get; set; }
+
+    /// <summary>The picture is set on a background (<see cref="Backdrop"/>).</summary>
+    [JsonIgnore]
+    public bool AddsBackdrop => Backdrop is not null;
+
+    /// <summary>"Add background": the look used last, kept in the tool for the next time.</summary>
+    public BackdropOptions? BackdropLook { get; set; }
+
+    /// <summary>
+    /// Leaves out the pictures of one's own that <see cref="Backdrop"/> and <see cref="BackdropLook"/> name: their
+    /// paths tell where one's files are, and a path from another computer is not one of ours to open.
+    /// </summary>
+    public void ForgetBackdropPictures()
+    {
+        foreach (var look in new[] { Backdrop, BackdropLook })
+        {
+            if (look is null)
+                continue;
+            look.Picture = null;
+            look.PictureWritten = null;
+            look.PictureLength = null;
+        }
+    }
 
     /// <summary>Whether the preset edits picture content, size, or playback speed.</summary>
     [JsonIgnore]
@@ -616,8 +939,9 @@ public sealed class ImageOptions
     public List<int> IcoSizes { get; set; } = [256, 128, 64, 48, 32, 16];
 
     /// <summary>
-    /// "Pixelate / blur": how <see cref="HiddenAreas"/> are covered. Kept in the tool, so its window opens with the last
-    /// one. A field of its own (not a value added to another option), read leniently: an older Filee skips it.
+    /// "Pixelate / blur": how <see cref="HiddenAreas"/> without a <see cref="HiddenArea.Style"/> of their own are
+    /// covered. Kept in the tool as the last style picked, so its window opens with it. A field of its own (not a value
+    /// added to another option), read leniently: an older Filee skips it.
     /// </summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<HideStyle>))]
     public HideStyle HideStyle { get; set; }
@@ -643,7 +967,7 @@ public sealed class ImageOptions
     public static readonly double[] AnimationSpeeds = [0.25, 0.5, 0.75, 1, 1.5, 2, 4];
 
     /// <summary>
-    /// Plays an animation (GIF, WebP, APNG, MNG; video → GIF or APNG) this many times as fast: 2 halves every frame
+    /// Plays an animation (GIF, WebP, APNG, MNG, AVIF; video → GIF or APNG) this many times as fast: 2 halves every frame
     /// delay, 0.5 doubles it. 1 (the default, also for presets saved before the option) leaves the timing as it is.
     /// </summary>
     public double AnimationSpeed { get; set; } = 1;
@@ -664,6 +988,9 @@ public sealed class ImageOptions
         var copy = (ImageOptions)MemberwiseClone();
         copy.IcoSizes = [.. IcoSizes];
         copy.HiddenAreas = HiddenAreas?.Select(area => area.Clone()).ToList();
+        copy.Annotations = Annotations?.Select(mark => mark.Clone()).ToList();
+        copy.Backdrop = Backdrop?.Clone();
+        copy.BackdropLook = BackdropLook?.Clone();
         copy.CustomSize = CustomSize is { } size
             ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, Unit = size.Unit, Dpi = size.Dpi }
             : null;
@@ -781,6 +1108,34 @@ public enum PdfRotation
     Rotate180,
 }
 
+/// <summary>The paper "Pages per sheet" puts the pages on (<see cref="PdfOptions.PagesPerSheet"/>).</summary>
+public enum PdfSheetPaper
+{
+    A4,
+    Letter,
+    A3,
+    /// <summary>The size of the first page.</summary>
+    SameAsFirstPage,
+}
+
+/// <summary>Which way a sheet of "Pages per sheet" stands.</summary>
+public enum PdfSheetOrientation
+{
+    /// <summary>Whichever fits the first page larger.</summary>
+    Auto,
+    Portrait,
+    Landscape,
+}
+
+/// <summary>The order the pages fill a sheet of "Pages per sheet" in.</summary>
+public enum PdfSheetOrder
+{
+    /// <summary>Left to right, then the next row.</summary>
+    AcrossFirst,
+    /// <summary>Top to bottom, then the next column.</summary>
+    DownFirst,
+}
+
 /// <summary>PDF related options.</summary>
 public sealed class PdfOptions
 {
@@ -798,12 +1153,55 @@ public sealed class PdfOptions
     /// <summary>Pages to process, e.g. <c>"1-3,5"</c>. Empty means all pages.</summary>
     public string PageRange { get; set; } = "";
 
+    /// <summary>
+    /// "Ask every time" for the pages (#981): a PDF dropped on the donut opens a small window that shows its page
+    /// count and takes the range, and for a PDF target whether it becomes one PDF or one file per page
+    /// (<see cref="AskedPages"/>). <see cref="PageRange"/> is what the window starts with, and what applies where
+    /// nothing can ask (watch folders, the command line). Off by default, so a preset saved before it reads unchanged
+    /// and a Filee from before it ignores it; on for "Split PDF" in a new install.
+    /// </summary>
+    public bool AskPageRange { get; set; }
+
     /// <summary>For PDF → PDF: write every page as its own file.</summary>
     public bool SplitPages { get; set; }
 
     /// <summary>For PDF → PDF: rotate every selected page without rendering it.</summary>
     [JsonConverter(typeof(LenientEnumJsonConverter<PdfRotation>))]
     public PdfRotation Rotation { get; set; }
+
+    /// <summary>
+    /// For PDF → PDF: put this many pages on each sheet ("Pages per sheet", N-up, #737), one of
+    /// <see cref="SheetLayouts"/>; 0 keeps one page per sheet.
+    /// </summary>
+    public int PagesPerSheet { get; set; }
+
+    /// <summary>The numbers of pages per sheet offered.</summary>
+    public static readonly IReadOnlyList<int> SheetLayouts = [2, 4, 6, 8, 9];
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the paper.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetPaper>))]
+    public PdfSheetPaper SheetPaper { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: which way the sheet stands.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrientation>))]
+    public PdfSheetOrientation SheetOrientation { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the order the pages fill a sheet in.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<PdfSheetOrder>))]
+    public PdfSheetOrder SheetOrder { get; set; }
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the space around the edge of each sheet, in millimetres.</summary>
+    public double SheetMarginMm { get; set; } = 10;
+
+    /// <summary>With <see cref="PagesPerSheet"/>: the space between the pages, in millimetres.</summary>
+    public double SheetGapMm { get; set; } = 5;
+
+    /// <summary>With <see cref="PagesPerSheet"/>: a thin line around each page.</summary>
+    public bool SheetBorders { get; set; }
+
+    /// <summary>True when PDF pages are put several to a sheet (<see cref="PagesPerSheet"/>).</summary>
+    [JsonIgnore]
+    public bool MakesSheets => PagesPerSheet > 1;
 
     /// <summary>For PDF → image: stack the pages into one tall image instead of one image per page.</summary>
     public bool CombinePages { get; set; }
@@ -871,7 +1269,10 @@ public sealed class PdfOptions
     /// </summary>
     public bool Ocr { get; set; }
 
-    /// <summary>With <see cref="Ocr"/>: the language of the text, as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>).</summary>
+    /// <summary>
+    /// With <see cref="Ocr"/>: the language of the text as a Tesseract code (<c>eng</c>, <c>deu</c>, <c>chi_sim</c>); text
+    /// that mixes languages has several, the main one first, joined with <c>+</c> as Tesseract takes them (<c>chi_sim+eng</c>).
+    /// </summary>
     public string OcrLanguage { get; set; } = "eng";
 
     public PdfOptions Clone() => (PdfOptions)MemberwiseClone();
@@ -916,11 +1317,23 @@ public sealed class MediaOptions
     /// </summary>
     public double MaxSizeMb { get; set; }
 
+    /// <summary>
+    /// Keep each video under this percentage (1–99) of the original file's size (#680); 0 = off. One of
+    /// <see cref="MaxSizeMb"/> and this is in use at a time.
+    /// </summary>
+    public int MaxSizePercent { get; set; }
+
     /// <summary>Audio bitrate in kbit/s for lossy audio; 0 uses a good default for the format.</summary>
     public int AudioBitrateKbps { get; set; }
 
     /// <summary>Drop the audio track of a video.</summary>
     public bool RemoveAudio { get; set; }
+
+    /// <summary>
+    /// "Crop video" (#830): the frame cut to a "width:height" ratio, centred, or to <see cref="VideoCrop.Auto"/> (the
+    /// picture inside black bars); empty keeps the whole frame. The video is encoded again, the sound copied.
+    /// </summary>
+    public string CropFrame { get; set; } = "";
 
     /// <summary>Audio channels of an audio file: 0 keeps the source's, 1 mono, 2 stereo.</summary>
     public int AudioChannels { get; set; }
@@ -1279,3 +1692,13 @@ public sealed class CadOptions
     public CadOptions Clone() => (CadOptions)MemberwiseClone();
 }
 
+/// <summary>Options for offline AI document translation.</summary>
+public sealed class TranslateOptions
+{
+    public bool Enabled { get; set; }
+    public string TargetLanguage { get; set; } = "en";
+    public string SourceLanguage { get; set; } = "auto";
+    public string? Model { get; set; }
+
+    public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+}

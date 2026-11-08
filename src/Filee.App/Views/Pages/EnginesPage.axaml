@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels.Pages"
              xmlns:svc="using:Filee.App.Services"
+             xmlns:c="using:Filee.App.Controls"
              x:Class="Filee.App.Views.Pages.EnginesPage"
              x:DataType="vm:EnginesPageViewModel">
   <UserControl.Styles>
@@ -25,7 +26,9 @@
       <DockPanel>
         <Button DockPanel.Dock="Right" Command="{Binding RecheckCommand}">
           <StackPanel Orientation="Horizontal" Spacing="6">
-            <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Refresh}" />
+            <!-- Turns while the recheck runs (Spin.IsActive follows RecheckCommand.IsRunning; the code is in Controls/Spin.cs). -->
+            <PathIcon c:Spin.IsActive="{Binding RecheckCommand.IsRunning}"
+                      Width="13" Height="13" Data="{StaticResource Icon.Refresh}" />
             <TextBlock Text="{DynamicResource engines.recheck}" />
           </StackPanel>
         </Button>
@@ -67,7 +70,7 @@
                     <Button Content="{DynamicResource engines.use_own}" IsVisible="{Binding CanUseOwnCopy}" Click="OnUseOwnCopy"
                             ToolTip.Tip="{DynamicResource engines.use_own_hint}" />
                     <Button Content="{DynamicResource engines.stop_own}" IsVisible="{Binding UsesOwnCopy}" Click="OnStopOwnCopy" />
-                    <Button Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
+                    <Button Classes="danger" Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
                   </StackPanel>
                   <StackPanel Spacing="4">
                     <StackPanel Orientation="Horizontal" Spacing="10">
@@ -106,11 +109,17 @@
         </ItemsControl.ItemsPanel>
         <ItemsControl.ItemTemplate>
           <DataTemplate x:DataType="vm:EngineItemViewModel">
-            <Border Classes="card engine" Classes.dragging="{Binding IsDragging}" Padding="16,12" Cursor="SizeNorthSouth"
+            <Border Classes="card engine" Classes.dragging="{Binding IsDragging}" Padding="16,12"
                     PointerPressed="OnEnginePressed">
               <StackPanel Spacing="10">
                 <DockPanel>
                   <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="4">
+                    <Button Classes="accent" IsVisible="{Binding IsTranslator}" Click="OnManageOllama" Margin="0,0,6,0" VerticalAlignment="Center">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <PathIcon Width="13" Height="13" Data="{StaticResource Icon.Settings}" />
+                        <TextBlock Text="{DynamicResource engines.ollama.manage}" />
+                      </StackPanel>
+                    </Button>
                     <Button Classes="icon" ToolTip.Tip="{DynamicResource engines.move_up}" AutomationProperties.Name="{DynamicResource engines.move_up}"
                             Command="{Binding $parent[ItemsControl].((vm:EnginesPageViewModel)DataContext).MoveUpCommand}" CommandParameter="{Binding}">
                       <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowUp}" />
@@ -120,8 +129,11 @@
                       <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
                     </Button>
                   </StackPanel>
-                  <PathIcon DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,8,0" Opacity="0.4" VerticalAlignment="Center"
-                            Data="{StaticResource Icon.DragVertical}" />
+                  <!-- The grab handle: only here (not on the rest of the card or its arrows) the pointer is a hand. The
+                       transparent background makes the whole strip around the dots count, not just the dots. -->
+                  <Border DockPanel.Dock="Left" Background="Transparent" Cursor="Hand" Margin="-4,0,0,0" Padding="4,0,8,0">
+                    <PathIcon Width="16" Height="16" Opacity="0.4" VerticalAlignment="Center" Data="{StaticResource Icon.DragVertical}" />
+                  </Border>
                   <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
                           Background="{DynamicResource SuccessBrush}" IsVisible="{Binding IsAvailable}" />
                   <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"
