@@ -785,7 +785,9 @@ public sealed class EngineInstallerTests : IDisposable
     {
         var vcConda = Conda(("Library/bin/vcruntime140.dll", "vc"));
         var vcComp = Conda(("Library/bin/vcomp140.dll", "vcomp"));
-        var zip = Zip(("tool/upscayl-bin.exe", "bin"));
+        // The installer checks for the program under its name on this OS.
+        var program = OperatingSystem.IsWindows() ? "upscayl-bin.exe" : "upscayl-bin";
+        var zip = Zip(($"tool/{program}", "bin"));
 
         var compVc = Component("vcruntime", "conda", vcConda);
         var compVcomp = Component("vcomp14", "conda", vcComp);
@@ -803,7 +805,7 @@ public sealed class EngineInstallerTests : IDisposable
         await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
 
         var toolDir = Path.Combine(_root, "upscayl-bin");
-        Assert.True(File.Exists(Path.Combine(toolDir, "upscayl-bin.exe")));
+        Assert.True(File.Exists(Path.Combine(toolDir, program)));
         Assert.True(File.Exists(Path.Combine(toolDir, "vcruntime140.dll")));
         Assert.True(File.Exists(Path.Combine(toolDir, "vcomp140.dll")));
         Assert.Equal("vc", File.ReadAllText(Path.Combine(toolDir, "vcruntime140.dll")));
