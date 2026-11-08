@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Filee.Core.Formats;
 using Filee.Core.Presets;
+using Filee.Engines.Archives;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Metadata;
@@ -20,6 +21,19 @@ public static partial class ExifTool
 {
     /// <summary>The longest a read may take.</summary>
     private static readonly TimeSpan ReadLimit = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The most a read may print, the file's own text: a TIFF can hold a long description. The richest of ExifTool's
+    /// own sample files prints 26 KB, as large binary values print as a note of their size, but a compressed PNG text
+    /// chunk prints a thousand times the size of the file.
+    /// </summary>
+    private const long ReadOutputLimit = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// The most memory a read may use. ExifTool holds a file's values before it prints any of them, so the output limit
+    /// comes too late: it reached 6 GB on a 1.5 MB PNG.
+    /// </summary>
+    private const long ReadMemoryLimit = 2L * 1024 * 1024 * 1024;
 
     /// <summary>
     /// Families whose fields are written into the file and can be changed. The others describe the file or are
@@ -241,7 +255,9 @@ public static partial class ExifTool
         .Any(folder => File.Exists(Path.Combine(folder, program)));
 
     /// <summary>
-    /// Every field of <paramref name="path"/>, in the file's order. Throws when ExifTool can't read it.
+    /// Every field of <paramref name="path"/>, in the file's order. Throws <see cref="IOException"/> when ExifTool
+    /// can't read it or the file holds far more than a file's fields do, <see cref="TimeoutException"/> after the time
+    /// limit.
     /// </summary>
     public static async Task<IReadOnlyList<MetadataField>> ReadAsync(string exifTool, string path, CancellationToken cancellationToken = default)
     {
@@ -251,10 +267,28 @@ public static partial class ExifTool
         var work = Directory.CreateTempSubdirectory("filee-exiftool-").FullName;
         try
         {
-            var result = await RunAsync(exifTool, work, ["-j", "-G0:1", "-a", "-s"], [], path, ReadLimit, cancellationToken);
-            if (string.IsNullOrWhiteSpace(result.StandardOutput))
-                throw new IOException(ErrorOf(result) ?? "ExifTool could not read the file.");
-            var fields = Parse(result.StandardOutput);
+            using var output = new MemoryStream();
+            var result = await ProcessRunner.RunWithOutputAsync(exifTool, await CommandAsync(work, ["-j", "-G0:1", "-a", "-s"], [], path, cancellationToken),
+                (from, token) => ArchiveFiles.CopyLimited(from, output, ReadOutputLimit, token, tooLarge: () => new MetadataTooLargeException("ExifTool printed more than a file's fields.")),
+                ReadLimit, cancellationToken, work, ReadMemoryLimit);
+            // What it printed stops where it was stopped, or is only that it ran out.
+            if (result.StoppedForMemory)
+                throw new MetadataTooLargeException("ExifTool needed more memory than a file's fields take.");
+            // Off the caller's thread, which can be the UI's: this can be megabytes of text.
+            var fields = await Task.Run(() =>
+            {
+                var json = Encoding.UTF8.GetString(output.GetBuffer(), 0, (int)output.Length);
+                if (string.IsNullOrWhiteSpace(json))
+                    throw new IOException(ErrorOf(result) ?? "ExifTool could not read the file.");
+                try
+                {
+                    return Parse(json);
+                }
+                catch (JsonException ex)
+                {
+                    throw new IOException("ExifTool stopped part way through the file's fields.", ex);
+                }
+            }, CancellationToken.None);
             // A file it can't read still gets its JSON, the file's own facts and this.
             return fields.FirstOrDefault(f => f is { Family: "ExifTool", Tag: "Error" }) is { } error ? throw new IOException(error.Value) : fields;
         }
@@ -550,13 +584,17 @@ public static partial class ExifTool
     /// names in it are.
     /// </summary>
     private static async Task<ProcessResult> RunAsync(string exifTool, string work, IEnumerable<string> options, IEnumerable<string> lines, string path,
-        TimeSpan limit, CancellationToken cancellationToken)
+        TimeSpan limit, CancellationToken cancellationToken) =>
+        await ProcessRunner.RunAsync(exifTool, await CommandAsync(work, options, lines, path, cancellationToken), limit, cancellationToken, workingDirectory: work);
+
+    /// <summary>The command line for a run in <paramref name="work"/>, with its argument file written.</summary>
+    private static async Task<string[]> CommandAsync(string work, IEnumerable<string> options, IEnumerable<string> lines, string path, CancellationToken cancellationToken)
     {
         const string argFile = "args.txt";
         await File.WriteAllTextAsync(Path.Combine(work, argFile), ArgumentFile(PathsInArgumentFile ? [.. lines, path] : lines), new UTF8Encoding(false), cancellationToken);
         // The options first: ExifTool takes "-config" nowhere else.
         string[] command = [.. options, "-charset", "filename=utf8", "-api", "LargeFileSupport=1", "-@", argFile];
-        return await ProcessRunner.RunAsync(exifTool, PathsInArgumentFile ? command : [.. command, path], limit, cancellationToken, workingDirectory: work);
+        return PathsInArgumentFile ? command : [.. command, path];
     }
 
     private static string? ErrorOf(ProcessResult result) =>
@@ -583,3 +621,6 @@ public static partial class ExifTool
 /// A change ExifTool would not write as asked; the message says which (ExifTool's words, in English).
 /// </summary>
 public sealed class MetadataRefusedException(string message) : IOException(message);
+
+/// <summary>A file that holds far more metadata than Filee takes in; it can be fine otherwise.</summary>
+public sealed class MetadataTooLargeException(string message) : IOException(message);

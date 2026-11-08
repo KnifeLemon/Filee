@@ -10,7 +10,14 @@ using Microsoft.Win32.SafeHandles;
 namespace Filee.Engines.Infrastructure;
 
 /// <summary>Result of an external process.</summary>
-public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError);
+public sealed record ProcessResult(int ExitCode, string StandardOutput, string StandardError)
+{
+    /// <summary>
+    /// It went over the memory limit it was given (<see cref="ProcessRunner.RunWithOutputAsync"/>): it was killed, or
+    /// on Windows was refused memory, and what it printed may stop part way.
+    /// </summary>
+    public bool StoppedForMemory { get; init; }
+}
 
 /// <summary>Helper for starting external tools safely.</summary>
 public static class ProcessRunner
@@ -140,12 +147,22 @@ public static class ProcessRunner
     /// passed on. The result's standard output is empty.
     /// </summary>
     /// <exception cref="TimeoutException">The program did not exit within <paramref name="timeout"/>; it was killed.</exception>
+    /// <param name="workingDirectory">Where it runs; by default the folder it is in.</param>
+    /// <param name="memoryLimit">
+    /// The most memory the program may use, in bytes, roughly. On Windows, the limit of a Job Object it and the
+    /// programs it starts are in: what goes over fails to allocate. Elsewhere, or without a job, it is killed once its
+    /// memory goes over (<see cref="MemoryOf"/>), which is looked at ten times a second, as nothing else limits memory
+    /// on both Linux and macOS: it can get ahead by what it allocates in that time, and that doesn't count a program it
+    /// started and didn't become.
+    /// </param>
     public static async Task<ProcessResult> RunWithOutputAsync(
         string executable,
         IEnumerable<string> arguments,
         Action<Stream, CancellationToken> readOutput,
         TimeSpan timeout,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string? workingDirectory = null,
+        long? memoryLimit = null)
     {
         var psi = new ProcessStartInfo(executable)
         {
@@ -155,45 +172,75 @@ public static class ProcessRunner
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             StandardErrorEncoding = Encoding.UTF8,
-            WorkingDirectory = Path.GetDirectoryName(executable) ?? "",
+            WorkingDirectory = workingDirectory ?? Path.GetDirectoryName(executable) ?? "",
         };
         foreach (var arg in arguments)
             psi.ArgumentList.Add(arg);
 
         using var process = new Process { StartInfo = psi };
+        using var job = memoryLimit is { } jobLimit && OperatingSystem.IsWindows() ? ProcessJob.TryCreate(jobLimit) : null;
         var stderr = new StringBuilder();
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) lock (stderr) stderr.AppendLine(e.Data); };
         if (!process.Start())
             throw new InvalidOperationException($"Could not start {executable}.");
+        var held = job is not null && job.TryAssign(process);
+        if (job is not null && !held)
+            job.Dispose();
         Lower(process);
         process.StandardInput.Close();
         process.BeginErrorReadLine();
 
+        var killedForMemory = false;
+        using var memoryWatch = memoryLimit is { } limit && !held
+            ? new Timer(_ =>
+            {
+                if (KillAbove(process, limit))
+                    Volatile.Write(ref killedForMemory, true);
+            }, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(100)) : null;
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(timeout);
         // A read waiting for output doesn't see the token; ending the program ends the read.
-        using var stop = timeoutCts.Token.Register(() => TryKill(process, null));
+        using var stop = timeoutCts.Token.Register(() => TryKill(process, job));
+        var reading = Task.Run(() => readOutput(process.StandardOutput.BaseStream, timeoutCts.Token), CancellationToken.None);
         try
         {
-            await Task.Run(() => readOutput(process.StandardOutput.BaseStream, timeoutCts.Token), CancellationToken.None);
+            // Not left to the read to end: a program it started can hold the output after it has gone.
+            await reading.WaitAsync(timeoutCts.Token);
             await process.WaitForExitAsync(timeoutCts.Token);
+            // Stopping it ends its output, and it may have gone by now: that isn't a program that finished.
+            timeoutCts.Token.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException)
         {
-            TryKill(process, null);
+            TryKill(process, job);
+            await WaitUntilGoneAsync(process);
+            Observe(reading);
             cancellationToken.ThrowIfCancellationRequested();
             throw new TimeoutException($"{Path.GetFileName(executable)} did not finish within {timeout.TotalSeconds:0} s.");
         }
         catch
         {
-            TryKill(process, null);
+            TryKill(process, job);
+            await WaitUntilGoneAsync(process);
+            Observe(reading);
             throw;
         }
 
+        // Looking at a process can get in the way of reading how it ended.
+        memoryWatch?.Dispose();
         AppLocalRuntime.ThrowIfMissing(executable, process.ExitCode);
+        var stoppedForMemory = Volatile.Read(ref killedForMemory) || (held && job!.WentOverMemoryLimit());
         lock (stderr)
-            return new ProcessResult(process.ExitCode, "", stderr.ToString());
+            return new ProcessResult(process.ExitCode, "", stderr.ToString()) { StoppedForMemory = stoppedForMemory };
     }
+
+    /// <summary>
+    /// A read given up on can still fail, once its program is stopped: looked at, so it isn't reported as an error
+    /// nobody saw.
+    /// </summary>
+    private static void Observe(Task reading) =>
+        _ = reading.ContinueWith(t => _ = t.Exception, CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
     /// <summary>
     /// True once <paramref name="ready"/> has held on 4 polls in a row (2 s); false when the program exits or the wait is
@@ -279,6 +326,96 @@ public static class ProcessRunner
         }
     }
 
+    /// <summary>Killing a program only starts its end, and a caller may be about to delete its folder.</summary>
+    private static async Task WaitUntilGoneAsync(Process process)
+    {
+        using var wait = new CancellationTokenSource(TimeSpan.FromSeconds(3));
+        try
+        {
+            await process.WaitForExitAsync(wait.Token);
+        }
+        catch (OperationCanceledException) { }
+    }
+
+    /// <summary>
+    /// Kills <paramref name="process"/> when it holds more than <paramref name="memoryLimit"/>; true when so.
+    /// </summary>
+    private static bool KillAbove(Process process, long memoryLimit)
+    {
+        try
+        {
+            if (MemoryOf(process) <= memoryLimit)
+                return false;
+            TryKill(process, null);
+            return true;
+        }
+        // It has exited, the run is over, or another tick is looking too: anything that gets out of a timer ends Filee.
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// The memory <paramref name="process"/> holds, as the system counts it against it: on macOS its footprint, which
+    /// takes in what the system compressed when memory ran short (a program's resident memory leaves that out, so a
+    /// program holding gigabytes of zeros could look small), on Linux its resident memory and what went to swap.
+    /// </summary>
+    internal static long MemoryOf(Process process)
+    {
+        process.Refresh();
+        var resident = process.WorkingSet64;
+        if (OperatingSystem.IsMacOS() && proc_pid_rusage(process.Id, RusageInfoV0, out var usage) == 0)
+            return Math.Max(resident, (long)usage.PhysFootprint);
+        if (OperatingSystem.IsLinux() && LinuxMemoryOf(process.Id) is { } linux)
+            return Math.Max(resident, linux);
+        return resident;
+    }
+
+    /// <summary>VmRSS and VmSwap in /proc/<paramref name="pid"/>/status, in bytes; null when unreadable.</summary>
+    private static long? LinuxMemoryOf(int pid)
+    {
+        try
+        {
+            long? total = null;
+            foreach (var line in File.ReadLines($"/proc/{pid}/status"))
+            {
+                if (!line.StartsWith("VmRSS:", StringComparison.Ordinal) && !line.StartsWith("VmSwap:", StringComparison.Ordinal))
+                    continue;
+                var parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2 && long.TryParse(parts[1], out var kilobytes))
+                    total = (total ?? 0) + kilobytes * 1024;
+            }
+            return total;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return null; // it has exited
+        }
+    }
+
+    private const int RusageInfoV0 = 0;
+
+    [DllImport("/usr/lib/libSystem.dylib")]
+    private static extern int proc_pid_rusage(int pid, int flavor, out RusageInfo info);
+
+    /// <summary>rusage_info_v0 of &lt;sys/resource.h&gt;.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct RusageInfo
+    {
+        public Guid Uuid;
+        public ulong UserTime;
+        public ulong SystemTime;
+        public ulong PkgIdleWakeups;
+        public ulong InterruptWakeups;
+        public ulong PageIns;
+        public ulong WiredSize;
+        public ulong ResidentSize;
+        public ulong PhysFootprint;
+        public ulong ProcessStartAbsoluteTime;
+        public ulong ProcessExitAbsoluteTime;
+    }
+
     private static void TryKill(Process process, ProcessJob? job)
     {
         // The job first: the program may already have exited while a child it started still runs.
@@ -290,6 +427,8 @@ public static class ProcessRunner
         }
         catch (InvalidOperationException) { }
         catch (System.ComponentModel.Win32Exception) { }
+        catch (NotSupportedException) { }
+        catch (AggregateException) { } // a part of the process tree that couldn't be killed
     }
 
     /// <summary>
@@ -299,16 +438,22 @@ public static class ProcessRunner
     private sealed class ProcessJob : IDisposable
     {
         private const uint JobObjectLimitKillOnJobClose = 0x2000;
+        private const uint JobObjectLimitJobMemory = 0x200;
         private const int JobObjectExtendedLimitInformationClass = 9;
+        private const int JobObjectAssociateCompletionPortInformationClass = 7;
+        private const uint JobObjectMsgJobMemoryLimit = 10;
 
         private readonly SafeJobHandle _handle;
+        private readonly SafeJobHandle? _port;
 
-        private ProcessJob(SafeJobHandle handle)
+        private ProcessJob(SafeJobHandle handle, SafeJobHandle? port)
         {
             _handle = handle;
+            _port = port;
         }
 
-        public static ProcessJob? TryCreate()
+        /// <param name="memoryLimit">The most memory the programs in the job may use together, in bytes.</param>
+        public static ProcessJob? TryCreate(long? memoryLimit = null)
         {
             var handle = CreateJobObject(IntPtr.Zero, null);
 
@@ -322,8 +467,9 @@ public static class ProcessRunner
             {
                 BasicLimitInformation = new JobObjectBasicLimitInformation
                 {
-                    LimitFlags = JobObjectLimitKillOnJobClose
-                }
+                    LimitFlags = JobObjectLimitKillOnJobClose | (memoryLimit is null ? 0 : JobObjectLimitJobMemory)
+                },
+                JobMemoryLimit = (UIntPtr)(ulong)(memoryLimit ?? 0),
             };
 
             if (!SetInformationJobObject(
@@ -336,7 +482,40 @@ public static class ProcessRunner
                 return null;
             }
 
-            return new ProcessJob(handle);
+            // A program refused memory by the job may only print that it ran out: the job says so on its port.
+            SafeJobHandle? port = null;
+            if (memoryLimit is not null)
+            {
+                port = CreateIoCompletionPort(new IntPtr(-1), IntPtr.Zero, UIntPtr.Zero, 1);
+                var association = new JobObjectAssociateCompletionPort { CompletionKey = IntPtr.Zero, CompletionPort = port.DangerousGetHandle() };
+                if (port.IsInvalid || !SetInformationJobObject(handle, JobObjectAssociateCompletionPortInformationClass, ref association,
+                        (uint)Marshal.SizeOf<JobObjectAssociateCompletionPort>()))
+                {
+                    port.Dispose();
+                    handle.Dispose();
+                    return null;
+                }
+            }
+
+            return new ProcessJob(handle, port);
+        }
+
+        /// <summary>A program in the job was refused memory over the job's limit (it may have ended since).</summary>
+        public bool WentOverMemoryLimit()
+        {
+            if (_port is null || _port.IsClosed || _port.IsInvalid)
+                return false;
+            var over = false;
+            try
+            {
+                // The messages that came so far, without waiting for more.
+                while (GetQueuedCompletionStatus(_port, out var message, out _, out _, 0))
+                    over |= message == JobObjectMsgJobMemoryLimit;
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            return over;
         }
 
         public bool TryAssign(Process process)
@@ -371,6 +550,7 @@ public static class ProcessRunner
         public void Dispose()
         {
             _handle.Dispose();
+            _port?.Dispose();
         }
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -383,6 +563,22 @@ public static class ProcessRunner
             int informationClass,
             ref JobObjectExtendedLimitInformation information,
             uint informationLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetInformationJobObject(
+            SafeJobHandle job,
+            int informationClass,
+            ref JobObjectAssociateCompletionPort information,
+            uint informationLength);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern SafeJobHandle CreateIoCompletionPort(IntPtr fileHandle, IntPtr existingPort, UIntPtr key, uint threads);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetQueuedCompletionStatus(SafeJobHandle port, out uint bytes, out UIntPtr key, out IntPtr overlapped,
+            uint milliseconds);
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -406,6 +602,13 @@ public static class ProcessRunner
             public UIntPtr Affinity;
             public uint PriorityClass;
             public uint SchedulingClass;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct JobObjectAssociateCompletionPort
+        {
+            public IntPtr CompletionKey;
+            public IntPtr CompletionPort;
         }
 
         [StructLayout(LayoutKind.Sequential)]

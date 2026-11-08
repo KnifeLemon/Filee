@@ -129,6 +129,9 @@ public sealed class Preset
     /// <summary>Options used for offline AI translation.</summary>
     public TranslateOptions Translate { get; set; } = new();
 
+    /// <summary>Options used for local AI image upscaling.</summary>
+    public UpscaleOptions Upscale { get; set; } = new();
+
     /// <summary>
     /// "Metadata": the fields its window changes, on the conversion it starts (<see cref="MetadataTool"/>); null for
     /// every other preset. Only an engine that writes metadata and nothing else applies it
@@ -296,10 +299,15 @@ public sealed class Preset
     public const string MetadataTool = "metadata";
 
     /// <summary>
+    /// <see cref="Tool"/> of "Upscale" (settings schema 73): enhance image quality and resolution using local AI models.
+    /// </summary>
+    public const string UpscaleTool = "upscale";
+
+    /// <summary>
     /// <see cref="PresetKind.Tool"/>: which window it opens, <see cref="CropTool"/> (or null, as saved before there
     /// were other tools), <see cref="ClipTool"/>, <see cref="ImageEditTool"/>, <see cref="HideTool"/>,
-    /// <see cref="AnnotateTool"/>, <see cref="BackgroundTool"/> or <see cref="MetadataTool"/>. A tool this version
-    /// doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
+    /// <see cref="AnnotateTool"/>, <see cref="BackgroundTool"/>, <see cref="MetadataTool"/> or <see cref="UpscaleTool"/>.
+    /// A tool this version doesn't know (from a newer Filee) opens nothing. Ignored for other kinds.
     /// </summary>
     public string? Tool { get; set; }
 
@@ -329,6 +337,10 @@ public sealed class Preset
     /// <summary>True for "Metadata".</summary>
     [JsonIgnore]
     public bool IsMetadataTool => IsTool && Tool == MetadataTool;
+
+    /// <summary>True for "Upscale".</summary>
+    [JsonIgnore]
+    public bool IsUpscaleTool => IsTool && Tool == UpscaleTool;
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file cuts a clip of it (<see cref="MediaOptions.Clip"/>,
@@ -387,6 +399,7 @@ public sealed class Preset
         Trace = Trace.Clone(),
         Cad = Cad.Clone(),
         Translate = Translate.Clone(),
+        Upscale = Upscale.Clone(),
         Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
         Kind = Kind,
@@ -1701,4 +1714,14 @@ public sealed class TranslateOptions
     public string? Model { get; set; }
 
     public TranslateOptions Clone() => (TranslateOptions)MemberwiseClone();
+}
+
+/// <summary>Options for local AI image upscaling (Real-ESRGAN / NCNN).</summary>
+public sealed class UpscaleOptions
+{
+    public bool Enabled { get; set; }
+    public string? Model { get; set; }
+    public int Scale { get; set; } = 4;
+
+    public UpscaleOptions Clone() => (UpscaleOptions)MemberwiseClone();
 }

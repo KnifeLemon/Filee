@@ -45,6 +45,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
         AccentHex = $"#{Accent.R:X2}{Accent.G:X2}{Accent.B:X2}";
         CornerRadius = theme.CornerRadius;
         DonutOpacity = Math.Round(Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1) * 100);
+        DonutCaptions = store.Settings.Donut.ShowCaptions;
         ReduceMotion = theme.ReduceMotion ?? platform.PrefersReducedMotion;
         PreviewItems =
         [
@@ -64,6 +65,9 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     public IReadOnlyList<Choice<ThemeMode>> Modes { get; }
     public IReadOnlyList<Color> Swatches { get; } = ThemeService.Swatches.Select(Color.Parse).ToList();
     public IReadOnlyList<DonutItem> PreviewItems { get; }
+
+    /// <summary>The output format under the preview's names, as on the donut (see the Donut toolbar page).</summary>
+    public bool DonutCaptions { get; }
 
     public sealed record PresetItem(string Key, string Name, Color Color);
 

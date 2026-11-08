@@ -294,7 +294,7 @@ public sealed partial class DonutMenu
                     if (hot)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.8), null, wedge);
                     // Labels shrink with their slice instead of vanishing when the collapse starts.
-                    DrawSliceLabel(context, Items![i], center, r1, r2, DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n), bold, regular, hot);
+                    DrawSliceLabel(context, Items![i], Items!, center, r1, r2, DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n), bold, regular, hot);
                 }
             }
 

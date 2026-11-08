@@ -72,6 +72,15 @@ public sealed class DonutSettings
     /// <summary>The lowest <see cref="Opacity"/> the Theme and Donut toolbar pages offer.</summary>
     public const double MinOpacity = 0.1;
 
+    /// <summary>
+    /// The small line under a slice's name saying what it makes ("SVG" under Trace, the file's own format under a
+    /// preset that keeps it, "Group of N" under a group). Off, the name stands alone in the middle of its slice; a
+    /// group is still marked by its chevron. A folder slice keeps its "Move" or "Copy", which says what it does, and
+    /// two slices of one name keep theirs, the only thing that tells them apart.
+    /// On as before it existed; a missing value (settings from before it) reads as on, so it needs no schema step.
+    /// </summary>
+    public bool ShowCaptions { get; set; } = true;
+
     /// <summary>The flip key unless the user picks another one (Settings → Shortcuts).</summary>
     public const string DefaultFlipKey = "Tab";
 
@@ -123,7 +132,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 73;
+    public const int CurrentSchemaVersion = 74;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
