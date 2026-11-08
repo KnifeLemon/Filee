@@ -129,9 +129,9 @@
                       <PathIcon Width="14" Height="14" Data="{StaticResource Icon.ArrowDown}" />
                     </Button>
                   </StackPanel>
-                  <!-- The grab handle: only here (not on the rest of the card or its arrows) the pointer is a hand. The
+                  <!-- The grab handle: only here (not on the rest of the card or its arrows) the pointer is the move cursor. The
                        transparent background makes the whole strip around the dots count, not just the dots. -->
-                  <Border DockPanel.Dock="Left" Background="Transparent" Cursor="Hand" Margin="-4,0,0,0" Padding="4,0,8,0">
+                  <Border DockPanel.Dock="Left" Background="Transparent" Cursor="SizeAll" Margin="-4,0,0,0" Padding="4,0,8,0">
                     <PathIcon Width="16" Height="16" Opacity="0.4" VerticalAlignment="Center" Data="{StaticResource Icon.DragVertical}" />
                   </Border>
                   <Border DockPanel.Dock="Left" Width="10" Height="10" CornerRadius="999" Margin="2,0,12,0" VerticalAlignment="Center"

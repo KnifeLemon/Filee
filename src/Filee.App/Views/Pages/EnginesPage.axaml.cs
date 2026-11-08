@@ -35,7 +35,7 @@ public partial class EnginesPage : UserControl
     }
 
     /// <summary>The pointer over the list while a card is being dragged (the drag handle has the same one).</summary>
-    private static readonly Cursor DragCursor = new(StandardCursorType.Hand);
+    private static readonly Cursor DragCursor = new(StandardCursorType.SizeAll);
 
     private readonly DispatcherTimer _scrollTimer = new() { Interval = TimeSpan.FromMilliseconds(16) };
     private EngineDrag? _drag;
