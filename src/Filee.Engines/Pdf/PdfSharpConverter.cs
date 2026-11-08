@@ -2,6 +2,7 @@
 // compression itself is in PdfCompressor, with Ghostscript as an optional second try) and removes their metadata.
 // It also finishes every PDF a job writes with a watermark, page numbers or a password (PdfFinishing).
 
+using System.Runtime.ExceptionServices;
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
 using Filee.Engines.Infrastructure;
@@ -57,7 +58,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         foreach (var input in inputs)
         {
             ct.ThrowIfCancellationRequested();
-            using var source = Open(input, PdfDocumentOpenMode.Import);
+            using var source = Open(input, PdfDocumentOpenMode.Import, ct);
             var pages = new Dictionary<PdfObjectID, PdfPage>();
             foreach (var page in source.Pages)
                 pages[page.Reference!.ObjectID] = output.AddPage(page);
@@ -73,7 +74,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         var options = step.Preset.Image;
         var pdfOptions = step.Preset.Pdf;
         using var images = ImageReader.Read(step.InputPath, step.From, step.Preset);
-        var frames = ImageEncoder.SelectFrames(images, step.From, "pdf");
+        var frames = ImageEncoder.SelectFrames(images, AvifSequence.SourceFormat(step.From, step.InputPath), "pdf");
 
         using var document = new PdfDocument();
         for (var i = 0; i < frames.Count; i++)
@@ -144,7 +145,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// </summary>
     private static IReadOnlyList<string> WithoutMetadata(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
-        using var document = OpenForChanges(step.InputPath);
+        using var document = OpenForChanges(step.InputPath, ct);
         ct.ThrowIfCancellationRequested();
         StripMetadata(document);
         progress?.Report(0.5);
@@ -177,7 +178,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// <summary>PDF → PDF: split into single pages, extract a range, or rotate the complete document in place.</summary>
     private static IReadOnlyList<string> SplitOrExtract(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
-        using var source = Open(step.InputPath, PdfDocumentOpenMode.Import);
+        using var source = Open(step.InputPath, PdfDocumentOpenMode.Import, ct);
         var pages = PageRange.Parse(step.Preset.Pdf.PageRange, source.PageCount);
         var written = new List<string>();
 
@@ -254,7 +255,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
         // The PDFs to compress: the file itself, or its selected pages copied into new PDFs.
         var parts = new List<(string Plain, string? Suffix)>();
-        using (var source = Open(step.InputPath, PdfDocumentOpenMode.Import))
+        using (var source = Open(step.InputPath, PdfDocumentOpenMode.Import, ct))
         {
             var pages = PageRange.Parse(options.PageRange, source.PageCount);
             if (options.SplitPages)
@@ -320,7 +321,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         var builtIn = Path.Combine(scratch, Guid.NewGuid().ToString("N")[..8] + "-filee.pdf");
         try
         {
-            using var document = OpenForChanges(plain);
+            using var document = OpenForChanges(plain, ct);
             PdfCompressor.Compress(document, level, preset.Image.KeepMetadata, ct);
             document.Save(builtIn);
             candidates.Add(builtIn);
@@ -363,15 +364,15 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
     /// Opens a PDF to change it. One locked only against changes (it opens without a password) has its pages copied
     /// into a new PDF instead, as when pages are split or extracted: bookmarks and form fields stay behind then.
     /// </summary>
-    internal static PdfDocument OpenForChanges(string path)
+    internal static PdfDocument OpenForChanges(string path, CancellationToken cancellationToken = default)
     {
         try
         {
-            return PdfReader.Open(path, PdfDocumentOpenMode.Modify);
+            return OpenTolerant(path, PdfDocumentOpenMode.Modify, cancellationToken, out _);
         }
         catch (PdfReaderException ex) when (ex.Message.Contains("owner password", StringComparison.OrdinalIgnoreCase))
         {
-            using var source = Open(path, PdfDocumentOpenMode.Import);
+            using var source = Open(path, PdfDocumentOpenMode.Import, cancellationToken);
             var copy = new PdfDocument();
             foreach (var page in source.Pages)
                 copy.AddPage(page);
@@ -390,12 +391,48 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         File.SetAttributes(destination, File.GetAttributes(destination) & ~FileAttributes.ReadOnly);
     }
 
-    /// <summary>Opens a PDF; a password-protected one fails with the message the other PDF conversions give.</summary>
-    internal static PdfDocument Open(string path, PdfDocumentOpenMode mode)
+    /// <summary>
+    /// Opens a PDF. A file PDFsharp reads is opened as it is; one it refuses gets one mended try (<see cref="PdfRepair"/>,
+    /// issue #1175), and when that does not help either the original error is thrown. The file on disk is never changed.
+    /// <paramref name="mended"/> is the mended file when that was needed (else null), for code that reads the file a
+    /// second time (PDFsharp's XPdfForm) and must read the mended bytes, not the file.
+    /// </summary>
+    private static PdfDocument OpenTolerant(string path, PdfDocumentOpenMode mode, CancellationToken cancellationToken, out byte[]? mended)
     {
+        mended = null;
         try
         {
             return PdfReader.Open(path, mode);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException
+            && !ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase))
+        {
+            if (PdfRepair.RepairFile(path, cancellationToken) is not { } repaired)
+                throw;
+            try
+            {
+                var document = PdfReader.Open(new MemoryStream(repaired), mode);
+                mended = repaired;
+                return document;
+            }
+            catch (Exception)
+            {
+                ExceptionDispatchInfo.Capture(ex).Throw(); // the original message is the useful one
+                throw;
+            }
+        }
+    }
+
+    /// <summary>Opens a PDF; a password-protected one fails with the message the other PDF conversions give.</summary>
+    internal static PdfDocument Open(string path, PdfDocumentOpenMode mode, CancellationToken cancellationToken = default) =>
+        Open(path, mode, out _, cancellationToken);
+
+    /// <summary>As above; <paramref name="mended"/> is the mended bytes of a file PDFsharp refused as it was, else null.</summary>
+    internal static PdfDocument Open(string path, PdfDocumentOpenMode mode, out byte[]? mended, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return OpenTolerant(path, mode, cancellationToken, out mended);
         }
         catch (PdfReaderException ex) when (ex.Message.Contains("password", StringComparison.OrdinalIgnoreCase))
         {
