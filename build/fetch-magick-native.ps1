@@ -39,7 +39,8 @@ $cached = Join-Path $cache "$($pin.sha256).dylib"
 if (-not (Test-Path -LiteralPath $cached)) {
     New-Item -ItemType Directory -Force -Path $cache | Out-Null
     $download = "$cached.$([Guid]::NewGuid().ToString('N')).partial"
-    Invoke-WebRequest -Uri $pin.url -OutFile $download
+    # GitHub's release downloads answer 504 for minutes at a time: try again a few times.
+    Invoke-WebRequest -Uri $pin.url -OutFile $download -MaximumRetryCount 5 -RetryIntervalSec 20
     if ((Get-FileHash -LiteralPath $download -Algorithm SHA256).Hash -ne $pin.sha256) {
         Remove-Item -LiteralPath $download
         throw "Checksum mismatch for Magick.Native ($Runtime)."
