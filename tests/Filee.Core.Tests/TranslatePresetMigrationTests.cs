@@ -127,7 +127,7 @@ public class TranslatePresetMigrationTests
         var defaults = BuiltInData.CreatePresets();
         List<Preset> Only(params string[] ids) => ids.Select(id => defaults.Single(p => p.Id == id)).ToList();
         // Later steps add their own presets; what is checked here is where Translate lands.
-        static IEnumerable<string> Ids(List<Preset> presets) => presets.Select(p => p.Id).Where(id => id != BuiltInData.MetadataId);
+        static IEnumerable<string> Ids(List<Preset> presets) => presets.Select(p => p.Id).Where(id => id is not (BuiltInData.MetadataId or BuiltInData.UpscaleId));
         List<ToolbarProfile> Profiles()
         {
             var profiles = BuiltInData.CreateProfiles();

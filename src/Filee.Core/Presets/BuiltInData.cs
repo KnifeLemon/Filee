@@ -62,6 +62,7 @@ public static class BuiltInData
         .. AnnotatePresets(),
         .. BackgroundPresets(),
         .. MetadataPresets(),
+        .. UpscalePresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -344,6 +345,22 @@ public static class BuiltInData
         {
             Id = MetadataId, NameKey = "preset.metadata", TargetFormat = SameAsSource,
             Kind = PresetKind.Tool, Tool = Preset.MetadataTool, Output = { FileNamePattern = "{name}_metadata" },
+        },
+    ];
+
+    /// <summary>Id of the built-in "Upscale" tool (settings schema 73): in the palette, on no donut.</summary>
+    public const string UpscaleId = "tool-upscale";
+
+    /// <summary>
+    /// "Upscale Quality" (settings schema 73): upscale images using local AI models (Real-ESRGAN / NCNN).
+    /// In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> UpscalePresets() =>
+    [
+        new()
+        {
+            Id = UpscaleId, NameKey = "preset.upscale", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.UpscaleTool, Output = { FileNamePattern = "{name}_upscaled" },
         },
     ];
 
