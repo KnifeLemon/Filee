@@ -364,6 +364,8 @@ public class BrowserDropTests
     [InlineData("&lt;svg&gt;&lt;/svg&gt;")]
     public void Other_text_does_not_offer_files_to_the_donut(string text)
     {
+        // Reading the local files asks AppHost for the platform services.
+        TestServices.EnsureInitialized("en");
         using var data = new DataTransfer();
         data.Add(DataTransferItem.CreateText(text));
         Assert.False(DraggedFiles.Offered(data));
@@ -499,7 +501,11 @@ public class BrowserDropTests
             var title = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == loc["general.browser_drops"]);
             var card = title.FindAncestorOfType<Border>()!;
             var folderBox = card.GetVisualDescendants().OfType<TextBox>().Single();
-            var check = card.GetVisualDescendants().OfType<CheckBox>().Single();
+            var checks = card.GetVisualDescendants().OfType<CheckBox>().ToList();
+            var check = checks.Single(c => Equals(c.Content, loc["general.browser_drops_only_converted"]));
+            var local = checks.Single(c => Equals(c.Content, loc["general.browser_drops_local_network"]));
+            Assert.Equal(2, checks.Count);
+            Assert.False(local.IsChecked); // off unless the user turns it on
 
             // Nothing chosen: the Downloads folder shows as the placeholder.
             Assert.Equal("", folderBox.Text ?? "");
@@ -522,11 +528,17 @@ public class BrowserDropTests
             Assert.Equal(chosen, store.Settings.BrowserDrops.Folder);
             Assert.True(store.Settings.BrowserDrops.SaveOnlyConverted);
             Assert.Equal(new WebDropOptions(chosen, true), AppHost.Get<ConversionService>().BrowserDropOptions());
+
+            local.IsChecked = true;
+            Pump();
+            Assert.True(store.Settings.BrowserDrops.AllowLocalNetwork);
+            Assert.Equal(new WebDropOptions(chosen, true, AllowLocalNetwork: true), AppHost.Get<ConversionService>().BrowserDropOptions());
         }
         finally
         {
             store.Settings.BrowserDrops.Folder = "";
             store.Settings.BrowserDrops.SaveOnlyConverted = false;
+            store.Settings.BrowserDrops.AllowLocalNetwork = false;
             window.Close();
         }
     }

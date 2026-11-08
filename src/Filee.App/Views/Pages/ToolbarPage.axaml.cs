@@ -29,9 +29,9 @@ public partial class ToolbarPage : UserControl
 
     private enum Source { Chip, Slice }
 
-    // CanAdd, IsGroup: fixed when the drag starts, so a chip that a search or a tab swaps under the pointer, or slices
-    // that another profile replaces, can't change them.
-    private sealed record DragState(Source Source, string? PresetId, int SliceIndex, string Label, Point Start, bool CanAdd = true, bool IsGroup = false)
+    // CanAdd, IsGroup: fixed when the drag starts, so a chip that a search or a tab swaps under the pointer can't
+    // change them. Pointer: the one holding the drag; a second finger or a pen on the screen is no part of it.
+    private sealed record DragState(Source Source, string? PresetId, int SliceIndex, string Label, Point Start, IPointer Pointer, bool CanAdd = true, bool IsGroup = false)
     {
         public bool Active { get; set; }
     }
@@ -53,25 +53,29 @@ public partial class ToolbarPage : UserControl
         InitializeComponent();
 
         // See every pointer event on the page, even while a chip / the donut has pointer capture.
+        Root.AddHandler(PointerPressedEvent, OnRootPointerPressed, RoutingStrategies.Tunnel, handledEventsToo: true);
         Root.AddHandler(PointerMovedEvent, OnRootPointerMoved, RoutingStrategies.Tunnel, handledEventsToo: true);
         Root.AddHandler(PointerReleasedEvent, OnRootPointerReleased, RoutingStrategies.Tunnel, handledEventsToo: true);
-        Root.AddHandler(PointerCaptureLostEvent, (_, _) => EndDrag(), RoutingStrategies.Tunnel, handledEventsToo: true);
+        // Direct: Avalonia raises this on the element that had the capture and on each of its ancestors. A palette
+        // rebuild doesn't get here: the pressed chip has left the tree by then and its panel takes the capture, so the
+        // drag goes on.
+        Root.AddHandler(PointerCaptureLostEvent, OnRootCaptureLost, RoutingStrategies.Direct, handledEventsToo: true);
         // Before the list box, which doesn't move between the rows of its wrap panel.
         PaletteTabs.AddHandler(KeyDownEvent, OnTabsKeyDown, RoutingStrategies.Tunnel);
 
         Donut.SegmentDragStarted += (_, e) =>
         {
-            if (Vm is null || e.Index >= Vm.DonutItems.Count)
+            if (Vm is null || e.Index >= Vm.DonutItems.Count || _drag is not null)
                 return;
             var p = e.Args.GetPosition(Root);
             var item = Vm.DonutItems[e.Index];
-            _drag = new DragState(Source.Slice, null, e.Index, item.Label, p, IsGroup: item.IsGroup) { Active = true };
+            _drag = new DragState(Source.Slice, item.Id, e.Index, item.Label, p, e.Args.Pointer, IsGroup: item.IsGroup) { Active = true };
             Donut.SetDimmedIndex(e.Index);
             ShowGhost(_drag.Label, p);
         };
         Donut.SegmentContextRequested += async (_, index) =>
         {
-            if (Vm is not null)
+            if (Vm is not null && _drag is null)
                 await Vm.EditAsync(index);
         };
         DataContextChanged += (_, _) =>
@@ -84,13 +88,23 @@ public partial class ToolbarPage : UserControl
         };
     }
 
-    /// <summary>The switch showed the other face (its slices are in already): the donut turns in to it.</summary>
+    /// <summary>
+    /// A drag belongs to the face and profile it started on, so another one ends it, as does a rebuild that moves the
+    /// dragged slice. The switch showed the other face (its slices are in already): the donut turns in to it.
+    /// </summary>
     private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(ToolbarPageViewModel.EditingBack))
+        switch (e.PropertyName)
         {
-            EndDrag();
-            Donut.PlayFlipIn();
+            case nameof(ToolbarPageViewModel.EditingBack):
+                EndDrag();
+                Donut.PlayFlipIn();
+                break;
+            case nameof(ToolbarPageViewModel.SelectedProfile):
+            case nameof(ToolbarPageViewModel.DonutItems)
+                when _drag is { Source: Source.Slice } drag && Vm?.DonutItems.ElementAtOrDefault(drag.SliceIndex)?.Id != drag.PresetId:
+                EndDrag();
+                break;
         }
     }
 
@@ -235,7 +249,7 @@ public partial class ToolbarPage : UserControl
 
     private void OnChipPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (sender is not Border { DataContext: PaletteChip chip } border)
+        if (sender is not Border { DataContext: PaletteChip chip } border || _drag is not null)
             return;
         var point = e.GetCurrentPoint(border);
         if (point.Properties.IsRightButtonPressed)
@@ -248,22 +262,22 @@ public partial class ToolbarPage : UserControl
         if (!point.Properties.IsLeftButtonPressed || !chip.CanAdd)
             return;
 
-        _drag = new DragState(Source.Chip, chip.PresetId, -1, chip.Label, e.GetPosition(Root), chip.CanAdd, chip.IsGroup);
+        _drag = new DragState(Source.Chip, chip.PresetId, -1, chip.Label, e.GetPosition(Root), e.Pointer, chip.CanAdd, chip.IsGroup);
         e.Pointer.Capture(border);
         e.Handled = true;
     }
 
-    /// <summary>Double-clicking a chip appends it to the donut.</summary>
+    /// <summary>Double-clicking a chip appends it to the donut. Its second press is a drag not started yet.</summary>
     private void OnChipDoubleTapped(object? sender, TappedEventArgs e)
     {
-        if (sender is Border { DataContext: PaletteChip { CanAdd: true } chip } && Vm is { } vm)
+        if (sender is Border { DataContext: PaletteChip { CanAdd: true } chip } && Vm is { } vm && _drag is not { Active: true })
             vm.Insert(chip.PresetId, vm.SliceCount);
     }
 
     /// <summary>The keyboard's double- and right-click on a chip: Enter appends it, Shift+F10 or the menu key edits it.</summary>
     private void OnChipKeyDown(object? sender, KeyEventArgs e)
     {
-        if (sender is not Border { DataContext: PaletteChip chip } || Vm is not { } vm)
+        if (sender is not Border { DataContext: PaletteChip chip } || Vm is not { } vm || _drag is not null)
             return;
         if (e.Key == Key.Enter && e.KeyModifiers == KeyModifiers.None)
         {
@@ -278,9 +292,28 @@ public partial class ToolbarPage : UserControl
         }
     }
 
+    /// <summary>
+    /// Avalonia sends a second mouse button's press as a move, so a press here means the drag's release never came (or,
+    /// from a pen, that its other button went down). It only ends the drag: it would go to what still has the capture,
+    /// not to what it landed on.
+    /// </summary>
+    private void OnRootPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (_drag?.Pointer != e.Pointer)
+            return;
+        EndDrag();
+        e.Handled = true;
+    }
+
+    private void OnRootCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        if (_drag?.Pointer == e.Pointer)
+            EndDrag();
+    }
+
     private void OnRootPointerMoved(object? sender, PointerEventArgs e)
     {
-        if (_drag is null)
+        if (_drag?.Pointer != e.Pointer)
             return;
         var p = e.GetPosition(Root);
         if (!_drag.Active)
@@ -300,7 +333,7 @@ public partial class ToolbarPage : UserControl
     private void OnRootPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
         var drag = _drag;
-        if (drag is null)
+        if (drag?.Pointer != e.Pointer)
             return;
 
         if (drag.Active && Vm is { } vm)

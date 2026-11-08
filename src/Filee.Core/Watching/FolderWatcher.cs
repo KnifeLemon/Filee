@@ -37,6 +37,15 @@ public sealed class FolderWatcher : IAsyncDisposable
 
     private static readonly HashSet<string> SystemFiles = new(StringComparer.OrdinalIgnoreCase) { "desktop.ini", "thumbs.db" };
 
+    /// <summary>
+    /// How long a file that starts with nothing but zeros may wait for its data (see <see cref="HasDataAtStart"/>). Then
+    /// it goes to the conversion all the same: some formats do start that way, and a damaged file gets its error.
+    /// </summary>
+    private static readonly TimeSpan NoDataLimit = TimeSpan.FromSeconds(30);
+
+    /// <summary>How long a file that failed waits for its one retry, for whatever kept it from being read to let go.</summary>
+    private static readonly TimeSpan RetryAfter = TimeSpan.FromSeconds(10);
+
     private readonly ConvertFiles _convert;
     private readonly ILogger _log;
     private readonly TimeSpan _settleTime;
@@ -44,6 +53,7 @@ public sealed class FolderWatcher : IAsyncDisposable
     private readonly ConcurrentDictionary<string, Candidate> _pending = new(FileSystemPaths.Comparer);
     private readonly GeneratedWatchOutputs _results;
     private readonly HashSet<string> _handled = new(FileSystemPaths.Comparer);
+    private readonly HashSet<string> _retried = new(FileSystemPaths.Comparer);
     private readonly SemaphoreSlim _busy = new(1, 1);
     private readonly CancellationTokenSource _stop = new();
     private FileSystemWatcher? _watcher;
@@ -130,8 +140,9 @@ public sealed class FolderWatcher : IAsyncDisposable
         {
             try
             {
-                foreach (var file in Directory.EnumerateFiles(path, "*", new EnumerationOptions
-                { RecurseSubdirectories = true, AttributesToSkip = FileAttributes.ReparsePoint, IgnoreInaccessible = true }))
+                if (IsLink(new DirectoryInfo(path)))
+                    return;
+                foreach (var file in FilesInside(path, recurse: true))
                     Notice(file);
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -154,20 +165,22 @@ public sealed class FolderWatcher : IAsyncDisposable
     {
         if (!await _busy.WaitAsync(0))
             return 0; // the previous batch is still converting; new files wait for the next tick
+        var ready = new List<string>();
         try
         {
-            var ready = new List<string>();
             var now = _time.GetUtcNow();
             foreach (var (path, candidate) in _pending)
             {
                 var current = candidate.Refresh(path, now);
-                if (!current.Exists || _results.Contains(path))
+                // Checked again now: a file can be swapped for a link while it waits, also for its second turn.
+                if (!current.Exists || _results.Contains(path) || IsLinkNow(path))
                 {
                     _pending.TryRemove(path, out _);
                     continue;
                 }
                 _pending[path] = current;
-                if (now - current.StableSince < _settleTime || !CanOpenExclusively(path) || IsBeingCopiedByFinder(path))
+                if (now - current.StableSince < _settleTime || !CanOpenExclusively(path) || IsBeingCopiedByFinder(path)
+                    || now - current.StableSince < NoDataLimit && !HasDataAtStart(path))
                     continue;
                 _pending.TryRemove(path, out _);
                 // A file that was converted before (same size and time) is not converted again.
@@ -179,7 +192,11 @@ public sealed class FolderWatcher : IAsyncDisposable
 
             ready.Sort(FileSystemPaths.Comparer);
             _log.LogInformation("Watch folder {Folder}: converting {Count} file(s)", Rule.Folder, ready.Count);
+            var count = ready.Count;
             var job = await _convert(ready, _stop.Token);
+            if (job is null)
+                ready.ForEach(RetryOnce);
+            ready.Clear(); // they had their turn; the job says how each of them went
             if (job is not null)
             {
                 // A shared input/output folder cannot be excluded wholesale. Remember exactly what this batch
@@ -209,13 +226,16 @@ public sealed class FolderWatcher : IAsyncDisposable
                 if (Rule.Originals == AfterConversion.MoveToOriginals)
                     foreach (var file in job.Files.Where(f => f.State == FileState.Done))
                         MoveToOriginals(Rule, file.SourcePath, _log);
+                foreach (var file in job.Files.Where(f => f.State == FileState.Failed))
+                    RetryOnce(file.SourcePath);
                 Converted?.Invoke(this, job);
             }
-            return ready.Count;
+            return count;
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log.LogError(ex, "Watch folder {Folder} failed", Rule.Folder);
+            ready.ForEach(RetryOnce); // a batch that could not run
             return 0;
         }
         finally
@@ -251,8 +271,9 @@ public sealed class FolderWatcher : IAsyncDisposable
             return true;
         try
         {
-            var attributes = File.GetAttributes(path);
-            return (attributes & (FileAttributes.Directory | FileAttributes.Hidden | FileAttributes.System)) != 0;
+            var info = new FileInfo(path);
+            return (info.Attributes & (FileAttributes.Directory | FileAttributes.Hidden | FileAttributes.System)) != 0
+                   || IsLink(info);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -260,12 +281,85 @@ public sealed class FolderWatcher : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// The files in <paramref name="folder"/> (and with <paramref name="recurse"/> its subfolders), never through a
+    /// link: a junction, a folder or file symbolic link or a mount point could lead outside the watched folder, and
+    /// "Move to originals" would then move files from there. Other reparse points, such as OneDrive's online-only files
+    /// and deduplicated files, are ordinary files here. Folders that can't be read are skipped.
+    /// </summary>
+    internal static IEnumerable<string> FilesInside(string folder, bool recurse)
+    {
+        var options = new EnumerationOptions { RecurseSubdirectories = false, IgnoreInaccessible = true, AttributesToSkip = 0 };
+        var pending = new Stack<DirectoryInfo>([new DirectoryInfo(folder)]);
+        while (pending.TryPop(out var directory))
+        {
+            foreach (var entry in directory.EnumerateFileSystemInfos("*", options))
+            {
+                if (IsLink(entry))
+                    continue;
+                if (entry is DirectoryInfo subfolder)
+                {
+                    if (recurse)
+                        pending.Push(subfolder);
+                }
+                else
+                {
+                    yield return entry.FullName;
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// True for a link (junction, mount point, symbolic link to a folder or file), whose target can be anywhere; false
+    /// for other reparse points (cloud placeholders, deduplicated files). One whose kind can't be read counts as a link.
+    /// </summary>
+    private static bool IsLink(FileSystemInfo entry)
+    {
+        if (!entry.Attributes.HasFlag(FileAttributes.ReparsePoint))
+            return false;
+        try
+        {
+            return entry.LinkTarget is not null;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    private static bool IsLinkNow(string path)
+    {
+        try
+        {
+            return IsLink(new FileInfo(path));
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// Gives a file that didn't convert one more turn after <see cref="RetryAfter"/>, as nothing else would look at it
+    /// again before it changes, while what kept it from converting may have been there only for a moment (issue #767).
+    /// </summary>
+    private void RetryOnce(string path)
+    {
+        var candidate = Candidate.Of(path, _time.GetUtcNow() + RetryAfter);
+        var key = candidate.Key(path);
+        if (!candidate.Exists || !_retried.Add(key))
+            return;
+        _log.LogInformation("Watch folder {Folder}: {File} didn't convert; trying it once more", Rule.Folder, path);
+        _handled.Remove(key);
+        _pending[path] = candidate;
+    }
+
     private void ScanExisting()
     {
         try
         {
-            var option = Rule.IncludeSubfolders ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
-            foreach (var file in Directory.EnumerateFiles(Rule.Folder, "*", option))
+            foreach (var file in FilesInside(Rule.Folder, Rule.IncludeSubfolders))
                 Notice(file);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
@@ -319,6 +413,25 @@ public sealed class FolderWatcher : IAsyncDisposable
         {
             using var _ = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
             return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>
+    /// False while a file starts with nothing but zeros. A program can reserve a file's full size and write to it later:
+    /// between its writes the file keeps its size and time and opens without sharing, but holds no data yet.
+    /// </summary>
+    private static bool HasDataAtStart(string path)
+    {
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            Span<byte> start = stackalloc byte[4096];
+            var read = stream.ReadAtLeast(start, start.Length, throwOnEndOfStream: false);
+            return read == 0 || start[..read].IndexOfAnyExcept((byte)0) >= 0;
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

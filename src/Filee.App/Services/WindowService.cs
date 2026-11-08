@@ -39,6 +39,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     private HideWindow? _hideWindow;
     private AnnotateWindow? _annotateWindow;
     private BackgroundWindow? _backgroundWindow;
+    private MetadataWindow? _metadataWindow;
     private ImageEditWindow? _imageEdit;
     private UpscaleWindow? _upscaleWindow;
 
@@ -46,6 +47,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     internal HideWindow? HideWindow => _hideWindow;
     internal AnnotateWindow? AnnotateWindow => _annotateWindow;
     internal BackgroundWindow? BackgroundWindow => _backgroundWindow;
+    internal MetadataWindow? MetadataWindow => _metadataWindow;
     internal ImageEditWindow? ImageEdit => _imageEdit;
     internal UpscaleWindow? UpscaleWindow => _upscaleWindow;
     private readonly HashSet<SpreadsheetPrintStudioWindow> _spreadsheetStudios = [];
@@ -208,6 +210,8 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             ShowAnnotateWindow(files, preset);
         else if (preset.IsBackgroundTool)
             ShowBackgroundWindow(files, preset);
+        else if (preset.IsMetadataTool)
+            ShowMetadataWindow(files, preset);
         else if (preset.IsImageEditTool)
             ShowImageEditWindow(files, preset);
         else if (preset.IsUpscaleTool)
@@ -282,6 +286,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_imageEdit == win)
                 _imageEdit = null;
+            trimmer.Request();
         };
         _imageEdit = win;
         win.Show();
@@ -407,6 +412,37 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     }
 
     /// <summary>
+    /// Opens the "Metadata" window on the files it reads (pictures, PDFs, video, sound), one after another. Each file
+    /// is written by an ordinary conversion, shown in the toast.
+    /// </summary>
+    public void ShowMetadataWindow(IReadOnlyList<string> files, Preset preset)
+    {
+        var readable = files.Where(f => MetadataReadable(FormatRegistry.Detect(f))).ToList();
+        if (readable.Count == 0)
+            return;
+        _metadataWindow?.Close();
+        var conversions = services.GetRequiredService<ConversionService>();
+        var vm = new MetadataViewModel(readable, preset, loc, services.GetRequiredService<UserDataStore>(), new MetadataEngines(),
+            (path, conversion) => conversions.Start([path], conversion), services.GetService<ILogger<MetadataViewModel>>());
+        var win = new MetadataWindow { DataContext = vm };
+        vm.InstallRequested += () => ShowMain("engines");
+        PrepareWindow(win);
+        win.Closed += (_, _) =>
+        {
+            if (_metadataWindow == win)
+                _metadataWindow = null;
+            trimmer.Request();
+        };
+        _metadataWindow = win;
+        win.Show();
+        win.Activate();
+    }
+
+    /// <summary>The files the Metadata tool opens: pictures, PDFs, video and sound.</summary>
+    internal static bool MetadataReadable(Filee.Core.Formats.FileFormat? format) =>
+        format?.Category is FormatCategory.Image or FormatCategory.Pdf or FormatCategory.Video or FormatCategory.Audio;
+
+    /// <summary>
     /// The pixel size of a picture as it is seen, read from its headers: turned as its EXIF orientation says, and the
     /// largest of an icon's sizes (the one converted). Null when ImageMagick can't read it.
     /// </summary>
@@ -444,6 +480,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_cropOverlay == win)
                 _cropOverlay = null;
+            trimmer.Request();
         };
         _cropOverlay = win;
         win.Show();
@@ -465,6 +502,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         {
             if (_pdfPageEditor == win)
                 _pdfPageEditor = null;
+            trimmer.Request();
         };
         if (addPages)
             win.Opened += async (_, _) => await win.PickAndAddAsync();
@@ -849,13 +887,18 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// <summary>A message with only an OK button. Without a visible owner it shows on its own, centred on the screen.</summary>
     public Task MessageAsync(Window? owner, string message) => ShowMessageAsync(owner, message, destructive: false, withCancel: false);
 
-    /// <summary>The in-app update failed: say so, then open the website to download the new version there.</summary>
+    /// <summary>
+    /// The in-app update failed: say so (that it wasn't Filee's, when the check refused it), then open the website to
+    /// download the new version there.
+    /// </summary>
     public async Task ShowUpdateFailedAsync()
     {
         _updateNotice?.Close();
         _updateProgress?.Close();
-        await MessageAsync(_main is { IsVisible: true } main ? main : null, loc["update.failed_alert"]);
-        services.GetRequiredService<UpdateService>().OpenDownloadPage();
+        var updates = services.GetRequiredService<UpdateService>();
+        var message = updates.LastError is UpdateVerificationException ? "update.unverified_alert" : "update.failed_alert";
+        await MessageAsync(_main is { IsVisible: true } main ? main : null, loc[message]);
+        updates.OpenDownloadPage();
     }
 
     /// <summary>

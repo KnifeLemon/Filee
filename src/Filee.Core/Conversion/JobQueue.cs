@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
 using Filee.Core.Formats;
+using Filee.Core.Platform;
 using Filee.Core.Presets;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -662,7 +663,11 @@ public sealed partial class JobQueue : IAsyncDisposable
                         files.Add(file);
                 }
             }
+            // An archive with a file from the internet in it still came from there, whichever file that was.
+            var mark = Platform.MarkOfTheWeb.ReadFirst(files, _log, job.CancellationToken);
             await _combiner!.CombineAsync(files, output, format.Id, job.Preset, workDir, progress, job.CancellationToken);
+            if (mark is not null && File.Exists(output))
+                Platform.MarkOfTheWeb.TryWrite(output, mark, _log);
             inputs[0].Outputs.Add(output);
             foreach (var f in inputs)
             {
@@ -809,12 +814,18 @@ public sealed partial class JobQueue : IAsyncDisposable
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(from.Id);
-        var route = opener is null
-            ? planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, upscale: upscale)
-            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, upscale: upscale);
+        // "Metadata": only an engine that writes the metadata and nothing else, never a route that re-encodes the file.
+        // An envelope has no such edge: opening it for the file inside would drop the changes without a word.
+        var metadata = finalOutput && runWith.EditsMetadata;
+        var route = opener is null || metadata
+            ? planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate,
+                metadata: metadata, upscale: upscale)
+            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate,
+                upscale: upscale);
         if (route is null)
             return Fail(file, "error.no_route", $"{from.Id} → {target}",
-                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Upscale: upscale));
+                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Metadata: metadata,
+                    Upscale: upscale));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
@@ -944,8 +955,10 @@ public sealed partial class JobQueue : IAsyncDisposable
             else if (finalOutput && inputs.Count == 1 && final is { Handed: 1 })
                 inputs = [NextToSource(job, file, index, inputs[0], final)];
 
-            // The source's dates are read now: "Replace the original" may send it to the Trash below.
+            // The source's dates and Mark of the Web are read now: "Replace the original" may send it to the Trash below.
             var dates = finalOutput && runWith.Output.KeepDates ? DatesOf(file.SourcePath) : null;
+            // A file converted from one that came from the internet still did (Office's macro block, SmartScreen).
+            var mark = finalOutput ? Platform.MarkOfTheWeb.Read(file.SourcePath) : null;
             if (finalOutput && !zipResult && inputs.Count == 1)
                 inputs = [ReplaceOriginal(job, file, source.Id, inputs[0], copiedSource)];
 
@@ -956,6 +969,9 @@ public sealed partial class JobQueue : IAsyncDisposable
                 file.Outputs.AddRange(inputs);
                 if (dates is { } kept)
                     CopyDates(kept, inputs);
+                if (mark is not null)
+                    foreach (var output in inputs.Where(File.Exists))
+                        Platform.MarkOfTheWeb.TryWrite(output, mark, _log);
             }
             file.State = inputs.Count == 0 && finalOutput ? FileState.Skipped : FileState.Done;
             file.Progress = ceiling;
@@ -1355,8 +1371,11 @@ public sealed partial class JobQueue : IAsyncDisposable
         }
     }
 
-    /// <summary>Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>.</summary>
-    public static string DefaultWorkRoot => Path.Combine(Path.GetTempPath(), "Filee");
+    /// <summary>
+    /// Where every job has its work folder, named by the job's <see cref="ConversionJob.Id"/>: a folder only the user
+    /// can open (<see cref="WorkFolders.Root"/>).
+    /// </summary>
+    public static string DefaultWorkRoot => WorkFolders.Root;
 
     /// <summary>
     /// Deletes the work folders of jobs a crash, a forced quit or a power cut kept from removing them: intermediate
@@ -1369,7 +1388,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             var root = new DirectoryInfo(workRoot);
-            // A temp folder everyone can write in (/tmp on Linux) may hold a link to somewhere else: never follow one.
+            // A work root (or a folder in it) may be a link to somewhere else: never follow one.
             if (!root.Exists || root.LinkTarget is not null)
                 return;
             foreach (var folder in root.EnumerateDirectories())

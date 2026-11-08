@@ -12,7 +12,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDFsharp | built in (library) | images → PDF (CMYK pictures stay CMYK), merge, split, page ranges, page organising, lossless rotate and crop-box edits, pages per sheet (N-up), spreadsheet print-studio assembly, **compression** (smaller PDFs, see below), PDFs without their metadata |
 | PDFium | built in (library) | PDF → images (multi-page TIFF/GIF supported); CMYK pages → CMYK JPG/TIFF through Ghostscript when it is installed |
 | Unhwp | built in (library) | HWP/HWPX → TXT, Markdown, HTML (pictures in a `<name>_files` folder next to the Markdown, embedded in the HTML) |
-| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
+| Text & Markdown (Markdig) | built in (library) | **Markdown → HTML, TXT**; **TXT, LOG, PY, PAC, BAT, CMD, COMMAND, LUA, CSS, PS1, SQL, AHK, INI, RSC, C, H, CPP, CC, CXX, HPP, HH, HXX, CS, DART, HQL, DBML, JAVA → UTF-8 TXT**, preserving source text without running scripts (and → PDF / DOCX through the HWPX writer, rhwp or LibreOffice) |
 | Spreadsheets (ExcelDataReader for XLS) | built in (library) | **XLSX, XLS, ODS, CSV, TSV → XLSX, ODS, CSV, TSV** (one CSV / TSV per sheet) |
 | Office Open XML | built in | **DOCM / DOTX / DOTM ↔ DOCX, XLSM / XLTX ↔ XLSX, PPTM / POTX / POTM / PPSX ↔ PPTX** (macros removed for macro-free types) |
 | Fonts | built in | **TTF, OTF, WOFF, WOFF2, EOT ↔ each other**; **FON (NE monochrome FNT v2/v3, supported single-byte charsets) → TTF, OTF, WOFF, WOFF2, EOT only**; CFF (PostScript) outlines become TrueType for TTF and EOT |
@@ -40,6 +40,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | FFmpeg | **optional download** (~100 MB, 272 MB on disk) | **all video and audio**: video ↔ video (H.264, HEVC, AV1), video → animated GIF / APNG, a still frame or every frame, audio and subtitle extraction, audio ↔ audio (also APE, WavPack, TTA, DSD, DTS, ALAC, …), GIF, APNG and photos → MP4/WEBM/MOV, Live / Motion Photos → their video, a clip of a video → an iPhone Live Photo or Android Motion Photo (experimental), images → HEIC, clips or audio files joined into one, pictures → a slideshow MP4, copies without metadata (see "Media tools") |
 | Calibre | **optional download** (~216 MB, 660 MB on disk) | rare e-book formats: LIT, LRF, CHM, PDB, PML, RB, SNB, TCR, OEB → EPUB; EPUB → MOBI, AZW3, LIT, LRF, PDB, PML, RB, SNB, TCR; e-books → PDF (ranked above the HWPX writer, see below) |
 | Whisper | **optional download** (Windows only; ~157 MB with model, ~160 MB on disk) | **Speech-to-text transcription**: video and audio → SRT subtitles in ~100 languages using OpenAI Whisper (whisper.cpp); runs locally and offline; needs FFmpeg |
+| ExifTool | **optional download** (~11 MB on Windows, ~8 MB elsewhere; 30 MB on disk) | **the Metadata tool**: reads every metadata field of pictures, PDFs, video and sound, and writes changes into a copy in the file's own format without re-encoding it (JPG, PNG, TIFF, WEBP, HEIC, AVIF, JPEG XL, GIF, PSD, camera RAW, PDF, MP4, MOV, M4A, 3GP, …; not MP3, FLAC, WAV, MKV, AVI or BMP, which it shows read-only). Without it the Metadata tool shows nothing and offers it |
 
 DOCX, XLSX, XLS, ODS and PPTX → PDF need neither Microsoft Office nor LibreOffice: they are read in-process, written as HWPX
 and rendered by rhwp. Anything the built-in readers understand (including PDF) is written as DOCX by the DOCX writer.
@@ -110,6 +111,9 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   installer files and bundled language data are removed (`TrimTesseract`, ~80 MB). The languages come from
   `tessdata_fast` 4.1.0, pinned like the engines in `Infrastructure/ocr-languages.json` (`traineddata` kind, one
   folder per language under `engines/ocr-languages`), and are downloaded the first time a preset uses one.
+- ExifTool is Phil Harvey's Windows build (a Perl bundled with it), whose `exiftool(-k).exe` is renamed `exiftool.exe`:
+  the "-k" makes it wait for a key before it exits. On macOS and Linux it is the Perl distribution
+  (`Image-ExifTool-*.tar.gz`), run by the Perl both come with.
 
 ### Microsoft C++ runtime (Windows)
 
@@ -197,14 +201,33 @@ in it also builds the package (artifact `windows-arm64-package`).
   borders, fully transparent ones and multi-frame animations (each frame alone would shift) come out as they are.
   Formats that can't be transparent (JPG, HEIC, …) have nothing to trim: the preset is greyed out for them, and a
   JPG in a mixed selection fails with that reason instead of being re-encoded.
-- **Animations.** An animated GIF, WebP, APNG, MNG or JPEG XL keeps every frame and its timing when converted to one of
-  these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL, WebP lossy or lossless as the preset says, #988) and
-  becomes a multi-page TIFF;
-  other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP.
+- **Animations.** An animated GIF, WebP, APNG, MNG, JPEG XL or AVIF keeps every frame and its timing when converted to
+  one of these (animated GIF ↔ animated WebP ↔ APNG ↔ MNG ↔ JPEG XL ↔ AVIF, WebP lossy or lossless as the preset says,
+  #988) and becomes a multi-page TIFF;
+  other targets get the first frame. Multi-page TIFFs and PDFs stay one image per page in WebP and AVIF.
+  - **Animated AVIF** (#1200) needs no FFmpeg, but goes much faster with it. ImageMagick reads the frames and applies
+    the preset either way. With FFmpeg and its libaom-av1 encoder (Filee's FFmpeg download has it),
+    `Media/AvifSequenceWriter.cs` packs the frames into an APNG in the work folder (`Magick/Apng.cs`, exact delays) and
+    FFmpeg's avif muxer writes the image sequence (`avis`): FFmpeg encodes 60 busy 480 × 270 frames in about 3 s, where
+    ImageMagick's writer takes 50 s or more. Cancelling stops it, and the loop count stays (the muxer's `-loop`, the edit list's repeat). Only
+    libaom-av1 is used: the avif muxer takes the alpha track as one grey plane, which SVT-AV1 doesn't encode, and
+    FFmpeg's SVT-AV1 wrapper passes no packet durations, so the last frame's length would be a guess (a GIF's long
+    pause at the end cut short). Colour is full-range BT.709 4:2:0 tagged as sRGB, the preset's quality the quantizer
+    libheif would pick. An FFmpeg without libaom-av1, or one whose run fails (an old avif muxer), leaves the file to
+    ImageMagick, which writes the sequence through libheif. Its writer stores no loop count (an animation that plays a
+    set number of times loops for ever) and can't be interrupted. Both ways, the first frame is also stored as the
+    still picture for viewers that don't play sequences, and ImageMagick reads such a file back frame by frame, also
+    one FFmpeg wrote. Transparency stays (one alpha track, so `ImageEncoder.MatchAlpha` gives every frame an alpha
+    channel when any frame is transparent, and none when all are opaque, which leaves out the alpha track). An AVIF
+    source is an animation only when it is a sequence (`Magick/AvifSequence.cs`: major brand `avis` and a `moov` box).
+    The items of any other AVIF (a burst, a visible gain map, pictures of their own sizes) stay separate pictures, one
+    `_pN` file each. A still picture takes the same one-picture path as ever. On the way to video an AVIF counts as a
+    photo (`ImageEncoder.Edge`): nearly all of them are, so an animated one becomes a video of its first frame rather
+    than every AVIF going through a 256-colour GIF.
 - **Playback speed** (preset option *Playback speed*, `ImageOptions.AnimationSpeed`: 0.25×, 0.5×, 0.75×, 1×, 1.5×,
-  2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL and "same as source") rewrites the frame delays of an animation that stays
+  2×, 4×; shown for GIF, WebP, APNG, MNG, JPEG XL, AVIF and "same as source") rewrites the frame delays of an animation that stays
   animated (`Magick/AnimationTiming.cs`). Delays are divided by the speed in the target's own units (hundredths of a
-  second for GIF, MNG and JPEG XL, milliseconds for WebP and APNG) and rounded on the running total, so the whole animation
+  second for GIF, MNG and JPEG XL, milliseconds for WebP, APNG and AVIF) and rounded on the running total, so the whole animation
   keeps its new length. Players show a frame of 10 ms or less for 100 ms, so no delay goes below 20 ms (50 frames a
   second): a frame that would start sooner than that after the one before is dropped and its time goes to that one,
   which leaves frames out evenly. Source delays of 10 ms or less count as the 100 ms players show. Loop count and
@@ -444,8 +467,21 @@ Readers turn the source into a small document model (`Hwp/Hwpx/HwpxModel.cs`) an
 - **MHTML** (`.mhtml`, `.mht`) is turned into its standalone page first (see *E-mail* below) and that page read like
   HTML; it refers to nothing but data: URIs, so no file outside the job's scratch folder is looked at.
 - **ODT, RTF** are parsed by Pandoc into its JSON AST (`PandocAstReader.cs`, following
-  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)).
+  [pypandoc-hwpx](https://github.com/msjang/pypandoc-hwpx)), in Pandoc's `--sandbox`: Pandoc reads nothing but the
+  file, so include directives stay unread and pictures the document links to are found by Filee.
 - Markdown, HTML and Pandoc keep structure only, so page setup comes from the built-in template (A4).
+- Pictures (and HTML style sheets) a Markdown, HTML or Pandoc document links to are read only from the document's
+  own folder and its subfolders (`DocumentFiles.cs`, also for e-books, MHTML and translation): `../`, absolute paths
+  and `file:` URLs outside are left out like missing pictures. A path or `file:` URL naming another computer
+  (`\\host\share`, `file://host/`, `//host/`) is refused by its text alone, so no network connection is made.
+- **Limits** (`Hwp/Hwpx/Nesting.cs`, `Infrastructure/BoundedXml.cs`): the XML parts of DOCX, PPTX, XLSX, HWPX and
+  ODS packages (and FB2 and OPF files) are read without DTDs, each up to 256 MB unpacked, 1 GB per package, with
+  elements nested at most 1,000 levels; larger or deeper files are refused (`error.document_too_large`). Tables in
+  table cells, text boxes, notes and links nested more than 32 deep become plain paragraphs of their text, in the
+  DOCX and HWPX readers and again in every writer (whatever reader made the model); an equation deeper than 200
+  levels becomes its text, notes inside notes are not followed, and PPTX groups are opened without recursion. The
+  readers run on a thread with a 16 MB stack. The scan for text rhwp can't draw (`ComplexScripts.cs`) stops at the
+  same sizes: it runs before any reader, finds nothing in a file over them, and the reader then refuses that file.
 
 Element order and attribute values follow files saved by 한글 where the schema and 한글 disagree, for example:
 
@@ -1347,7 +1383,8 @@ writer, so every e-book also reaches HWPX, PDF and images. The document model is
 
 - **EPUB 2 / 3**: container.xml → OPF → spine; each chapter is read by the HTML reader and starts a new page, links
   between chapters become links to bookmarks, pictures come from the package, title / authors / language / cover
-  from the metadata.
+  from the metadata. A book (EPUB, HTMLZ, TXTZ) is unpacked with at most 100,000 entries, 1 GB per entry and 2 GB
+  in all, checked while unpacking; past that it is refused.
 - **EPUB output** is EPUB 3 with an NCX for older readers: `mimetype` first and stored, a navigation document from
   the headings, chapters split at level-1 headings and page breaks, one style sheet, pictures in formats every
   reader shows (others become JPEG / PNG), a cover page for covers the content does not show.
@@ -1441,7 +1478,7 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 | TAR.GZ | 7-Zip, in two stages | in-process (PAX TAR + GZipStream) |
 | TAR.BZ2, TAR.XZ | 7-Zip, in two stages | TAR in-process, compressed by 7-Zip |
 | TAR.7Z, TAR.Z | 7-Zip, in two stages | — |
-| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, CRC and size checked | — |
+| LZ, TAR.LZ (lzip) | Filee: each member rewritten as a .lzma file for 7-Zip's LZMA decoder, stopped at the size its trailer states, CRC checked | — |
 | GZ, BZ2, XZ | 7-Zip | 7-Zip; one file only (from another single-file format, or "Compress into one archive" with one file) |
 | LZMA, Z | 7-Zip | — |
 | RAR 4/5, CAB, CPIO, DEB, RPM, DMG, ISO, IMG, LHA/LZH, ARJ | 7-Zip (an RPM's payload is unpacked until the files appear) | — |
@@ -1452,7 +1489,8 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 - **Extract** (target `folder`): the archive is unpacked into a hidden folder next to the result and moved into place
   when complete. When the archive holds exactly one top folder, its content becomes the result folder (`photos.zip`
   with `photos/…` gives `photos/…`, not `photos/photos/…`). Name conflicts follow the preset: `name (2)`, overwrite
-  (files are merged into the existing folder) or skip.
+  (files are merged into the existing folder; refused before anything moves when that folder, or any folder in it that
+  would receive files, is a link or junction) or skip.
 - **Archive → archive** unpacks into the job's temp folder and packs everything into the target. `Preset.Archive.Level`
   maps to Store / Fastest / Optimal / SmallestSize in-process and to 7-Zip's `-mx0/1/5/9`.
 - **Game packs** (#824, #898, the Games field): Minecraft and Modrinth read a marker file at the top of the ZIP
@@ -1466,8 +1504,16 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 - **Safety**: every archive is listed first. Encrypted entries or archives stop with "password-protected"; entries
   (or hard links) with `..`, a drive or a leading slash stop the job ("points outside the target folder", nothing is
   written); symbolic links are never unpacked and any link left afterwards is deleted; archives with more than
-  1,000,000 entries or more data than the drive has free are refused; Filee's own readers also stop when data unpacks
-  to more than the entry declares, and check CRCs.
+  1,000,000 entries or more data than the drive has free are refused (a listing without sizes still needs the 64 MB
+  reserve); Filee's own readers also stop when data unpacks to more than the entry declares, and check CRCs.
+- **Single compressed streams** (GZ, BZ2, XZ, LZMA, Z, and the first stage of TAR.GZ, TAR.BZ2, TAR.XZ, TAR.Z) state
+  no size (bzip2) or one their author chose (gzip, modulo 4 GiB), so the listing can't be trusted: 7-Zip writes them
+  to its standard output (`x -so`) and Filee writes the file, stopping 7-Zip and deleting what was written once it
+  passes the room on the drive less a tenth of the free space ("unpacks to more than …, but only … is free").
+- **Mark of the Web** (Windows): unpacked files get the archive's `Zone.Identifier` stream, so a ZIP a browser saved
+  still gives SmartScreen prompts and Office's macro block once unpacked. 7-Zip copies it (`-snz`); for files Filee
+  writes itself (ALZ, EGG, lzip, single streams) it is copied after unpacking (`Core/Platform/MarkOfTheWeb`). A drive
+  without NTFS streams (FAT32, exFAT) gets none, and that never fails the job.
 - **Not supported**: encrypted archives, split (multi-volume) ALZ and EGG, solid EGG, EGG entries compressed with
   ESTsoft's own AZO method, LZO / TAR.LZO (lzop; 7-Zip has no reader either), and writing RAR, ALZ or EGG.
 - The ALZ and EGG readers are Filee's own code, written from the format descriptions of unalz (zlib licence), the
@@ -1480,6 +1526,20 @@ bundled with the installer), never a 7-Zip installed on the PC. It runs as a sep
 
 - Each parallel worker gets its own profile under `%APPDATA%\Filee\libreoffice-profiles` (LibreOffice silently
   fails when two conversions share a profile).
+- Before every start the profile's `user/registrymodifications.xcu` gets Filee's settings (`LibreOfficeProfile`): no
+  macros (`MacroSecurityLevel` 3, `DisableMacrosExecution`, no trusted locations), Word and Excel VBA not executable,
+  links never updated (Writer and Calc), and `BlockUntrustedRefererLinks`, which keeps LibreOffice from loading
+  anything a document links to: linked pictures, files and addresses, in every application. A document with macros
+  converts with the notice that they weren't run (`OfficeMacros`).
+- LibreOffice gets a copy without links to content outside the document (`LinkedContent`): external relationships
+  (not hyperlinks) of Office Open XML, `xlink:href` outside an OpenDocument package, picture and style sheet addresses
+  of HTML other than `data:`, and RTF `INCLUDEPICTURE` fields, whose file the RTF reader loads whatever the profile
+  says. A local picture outside the document never ends up in the result, and no share or address is contacted.
+  An HTML page's pictures inside its own folder (the rule of `DocumentFiles.cs`) go into the copy as `data:` URIs,
+  except SVG, which can link to further files. XML parts are read with the limits of `BoundedXml.cs`. Binary Office
+  files (DOC, XLS, PPT) are left to the profile. Later changes to the copy (`DocxNoteMarks`) start from this copy.
+  Every copy of a package is written by `PackageRepacker`, which refuses one that unpacks to over 2 GB, or to over
+  twice its own size when that is more (`error.document_too_large`).
 - HWP/HWPX import comes from the H2Orestart extension, which is written in Java; Filee points LibreOffice at the
   downloaded JRE (`-env:UNO_JAVA_JFW_JREHOME`).
 - When LibreOffice can't load an Office Open XML or OpenDocument file ("source file could not be loaded"), Filee
@@ -1527,10 +1587,13 @@ DocBook (`.dbk`, `.docbook`; written as DocBook 5), Jupyter notebooks (`.ipynb`)
 - DocBook, man pages, OPML, Typst, HTML and LaTeX are written with `--standalone` (a root element, a `.TH` header,
   a preamble), the text formats extract pictures into `<name>_files` next to the result (Markdown with *Leave out
   pictures* gets none: a Lua filter drops them).
-- Pictures are linked relative to the result (`<name>_files/media/…`; Pandoc runs in the result's folder, with
-  `--resource-path` pointing at the source's for pictures the source links to), so both can be moved together.
-  EMF and WMF pictures, common in Word documents, become PNG (ImageMagick draws metafiles on Windows only; elsewhere
-  they stay).
+- Pictures are linked relative to the result (`<name>_files/media/…`; Pandoc runs in the result's folder), so both can
+  be moved together. EMF and WMF pictures, common in Word documents, become PNG (ImageMagick draws metafiles on
+  Windows only; elsewhere they stay).
+- Pandoc runs twice, both times in its `--sandbox` (it reads nothing but the file it is given, so `\input` and
+  `.. include::` stay unread): the source → JSON AST, whose pictures Filee checks (only from the source's folder,
+  see *HWPX writer*), then the AST → the result, with those pictures handed over by a Lua filter. Pictures on the
+  web aren't fetched.
 - Markdown is GitHub-flavoured and kept free of HTML, which many Markdown editors show as code (#391). A Lua filter
   lays every table out as a pipe table: a merged cell keeps its text in its first position and leaves the cells it
   covered empty, the paragraphs and list items of a cell are joined with `<br>`, and a table without a header row
@@ -1833,6 +1896,14 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
 scans and pictures with Tesseract (`Ocr/TesseractConverter.cs`), in the language the preset names
 (`PdfOptions.OcrLanguage`, a Tesseract code; English by default). The built-in "Searchable PDF" preset turns it on.
 
+Text that mixes languages (issue #1123) has several codes in that one setting, the main language first, joined with
+`+` as Tesseract's `-l` takes them (`chi_sim+eng`). `OcrLanguages.Parse` is the only reader: a code not in the list is
+left out, repeats count once, and with none left English is read. Settings from before this hold one code and read as
+they always did; an older Filee reads a joined value as a code it doesn't know, so English. Each language is its own
+download and is fetched before the file is read; a download that fails refuses the file and names that language. Every
+language makes Tesseract slower (it tries the others on words the first one reads badly), so the editor's "Other
+languages in the text" says to add only what the text has.
+
 - The route planner puts an OCR edge first (`ConversionEdge.Ocr`, `RoutePlanner.Plan(ocr: true)`): picture or PDF →
   searchable PDF, then the cheapest ordinary route from that PDF. A picture Tesseract can't open (HEIC, PSD, …)
   becomes a PNG first. OCR edges are never part of an ordinary route.
@@ -1861,12 +1932,14 @@ level and the newest revision the Mac has), part of macOS, so nothing is downloa
 Tesseract and is registered before it, so the route planner takes it; on Windows and Linux it is unavailable
 ("Not available on this platform").
 
-- The preset's language (a Tesseract code) is mapped to Vision's identifiers (`VisionLanguages`) and asked for with
-  English next to it; if Vision refuses the pair it reads with the language alone. Which languages Vision reads comes
+- The preset's languages (Tesseract codes) are mapped to Vision's identifiers (`VisionLanguages`) and asked for in their
+  order. English is added when it wasn't chosen and goes last unless it is the main language; if Vision refuses the
+  combination it reads with one language fewer, down to the main language alone. Which languages Vision reads comes
   from the Mac itself (`supportedRecognitionLanguagesAndReturnError:`, more with newer macOS versions); a language it
-  doesn't read (Hindi, Nepali, Greek, …) goes to Tesseract when that is installed, and is refused otherwise with
-  "Apple Vision can't read this language. Install Tesseract …". The preset editor shows no download size for the
-  languages Vision reads, and its hint names Apple Vision.
+  doesn't read (Hindi, Nepali, Greek, …) goes to Tesseract when that is installed, together with the preset's other
+  languages, and is refused otherwise with "Apple Vision can't read this language. Install Tesseract …" and its name.
+  The preset editor shows no download size for the languages Vision reads, unless such a language among the chosen ones
+  sends them all to Tesseract, and its hint names Apple Vision.
 - PDFs go page by page exactly like Tesseract's (`TesseractConverter.RecognizePdfAsync`, at most two pages at a time).
   A JPEG picture goes into the PDF as it is, other pictures (and a JPEG that EXIF turns) as an upright PNG; every page
   of a TIFF becomes a page. The page size comes from the picture's resolution, 300 dpi when it has none.

@@ -45,8 +45,9 @@
    own (`DirectOnly`), never a step of a longer one. An envelope (a signed `.p7m`) is planned from the file inside
    it: its engine (`IEnvelopeOpener`) names that file's format, and the route opens it first, then goes on from there
    (`RoutePlanner.PlanThrough`: P7M → PDF → PNG).
-5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a temp folder;
-   final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
+5. **Run** – `JobQueue` runs steps with per-engine concurrency limits. Intermediate files live in a work folder only
+   the user can open (`WorkFolders.Root`: `%TEMP%\Filee` on Windows; `~/.cache/filee` on Linux and
+   `~/Library/Caches/Filee` on macOS, mode 700, because `/tmp` is shared by every user); final outputs are named by `OutputPathResolver` (pattern, folder, conflict policy; the source is never overwritten).
    Each name stays reserved while a conversion holds it. A conversion that fails or is cancelled deletes what it began
    writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
    same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
@@ -97,7 +98,7 @@ ends in an extension Filee converts and isn't a web page (`.html`, `.php`, none)
 picture. Plain text is never read. `data:` addresses are decoded.
 
 Until the conversion runs, the files stand as **placeholders** (`WebDrop`): paths in `%TEMP%\Filee\web\<drop>\drop\<n>\`
-named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
+(`web/` in the work root on Linux and macOS) named like the file will be, so the donut picks the profile by extension without touching the network. No HEAD request
 is made: a picture without an extension stands as `.jpg` and a link without one isn't offered. `ConversionService.Start`
 gives the job a `WebDropFetcher` (`ISourceFetcher`): `JobQueue` saves every source first (half of its progress), then
 converts. Failures are per file (`error.web_*`), cancelling stops a download, and the job toast/ring shows both phases.
@@ -116,11 +117,26 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   2 GB cap whether or not the server says the size, 30 s to answer and 30 s without data at most. No cookies or
   credentials are sent: a file behind a sign-in comes back as the sign-in page, which is refused as a web page
   ("save it from the browser first"). A browser's own bytes (virtual files, Firefox's copy) don't have that limit.
+  Only the public internet is reached (`LocalNetwork`): an address on this computer or the local network (loopback,
+  private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
+  is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
+  `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
+  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
+  off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
+  of their own, so a pooled connection to a local address never serves a drop that may not go there.
 - **Names and safety**: Content-Disposition, else the page's name, else the address; then the first bytes decide the
   extension of pictures and PDFs (`.jpg` that is WebP becomes `.webp`). Names are cut to a plain file name (no folders,
   no device names, at most 120 characters) and never replace an existing file (`name (2).ext`). Programs, installers and
   scripts are refused by extension, media type and first bytes; nothing downloaded is ever run, and every file goes
   through the same converters as any other.
+- **Mark of the Web** (`Platform/MarkOfTheWeb`, Windows): every saved file gets a `Zone.Identifier` stream as a
+  browser's download would (`ZoneId=3`, and `HostUrl` with the address a download came from, without sign-in or
+  fragment), so SmartScreen, Office's block on macros from the internet and Protected View still apply. `JobQueue`
+  copies a source's mark onto the files converted from it (also for "Save only the converted file"), and onto an
+  archive packed from many files when any of them has one (files inside folders too, links not followed); a folder
+  result is left to its engine (the archive engine marks what it unpacked). A drive without NTFS streams gets no mark, and
+  that never fails a conversion.
 
 ## Donut control
 
@@ -143,13 +159,14 @@ wheel flips). In click mode the focused window gets the key (`DonutMenu.HandleKe
 drag the donut's window has no keyboard focus, so `RadialController` turns on `TriggerService.WatchFlipKey` while
 the drag donut shows files and flips on `FlipKeyPressed` / `FlipWheelTurned`: the global hook only listens (it
 can't hold an event back; Explorer and Finder ignore Tab during a drag) and reports one flip per key press. On
-macOS the drag donut takes the keyboard once files are on it (`RadialController.TakeKeyboard`), and the key reaches
-its window as in click mode: while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it
-from the background) macOS gives no keys to a hook, only to the app in front. The hook's copy of a press is ignored
-while the window has the keyboard (`HookFlipsKey`, one flip per press, following `IsActive`); the keyboard goes back
-to the app that had it once a conversion starts or the donut closes (`IPlatformServices.RememberFrontApp` /
-`ReturnFocus`), unless the user clicked elsewhere meanwhile, and stays with Filee when the drop opens a window of its
-own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard during a drag breaks Explorer's.
+macOS the drag donut takes key window status once files are on it (`RadialController.TakeKeyboard` / `IPlatformServices.TakeKeyWindow`),
+and the key reaches its window without whole-application activation, keeping macOS Show Desktop (Desktop Reveal) and Exposé uninterrupted:
+while another app holds Secure Input (Terminal with Secure Keyboard Entry can keep it from the background) macOS gives no keys to a hook,
+only to the key window and app in front. The hook's copy of a press is ignored while the window has the keyboard (`HookFlipsKey`, one flip
+per press, following `IsActive`); key window status is explicitly released once a conversion starts or the donut closes
+(`IPlatformServices.ReleaseKeyWindow` / `ReturnFocus`), returning typing to the previous app (unless the user clicked elsewhere meanwhile) while the progress ring finishes, and stays
+with Filee when the drop opens a window of its own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard
+during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
@@ -205,6 +222,58 @@ the picture (padding of its longer side, corners of its shorter side), so a look
   show. A change that keeps both the time and the length (a copy that keeps the time, of a picture of the same size)
   isn't told apart, and the picture itself edited meanwhile isn't looked for (as in Pixelate / blur and Annotate). One
   look for all pictures or one each; failures end on a summary, as in Pixelate / blur.
+
+## Metadata tool
+
+"Metadata" (`tool-metadata`, palette only, settings schema 72) shows every metadata field of pictures, PDFs, video and
+sound, grouped by where it lives (ExifTool's family-1 groups: GPS, IFD0, ExifIFD, XMP-dc, IPTC, PDF …), and edits them
+without touching the file's content.
+
+- Saving is an ordinary conversion, as for Pixelate / blur, Annotate and Add background: `MetadataTool.ConversionOf`
+  makes the tool into a conversion to the file's own format carrying the changes (`Preset.Metadata`,
+  `MetadataEdits`), so the toast, History, cancelling and the output rules (where the copy goes, its name
+  `{name}_metadata`, a name already taken, "Replace the original" sending the original to the Recycle Bin / Trash)
+  work as for any other file. "Replace the original" is the tool's own output rule, kept on disk. History offers no
+  Retry for it: a Filee from before it would re-encode the file without the changes.
+- Only an engine that writes metadata and nothing else takes such a conversion: `ConversionEdge.Metadata`, never part
+  of an ordinary route, and with `RoutePlanner.Plan(metadata: true)` the whole route or none. Without one the file
+  fails (`error.no_route`, with the route asked for, so `filee` can name the package), never re-encoded instead.
+- Remove location takes what ExifTool can write. What it can't reach is said, not hidden: a place kept whole with a
+  block (a camera's maker notes, a C2PA manifest; `ExifTool.LocationOutOfReach`) is named in the window, and a video
+  always says its tracks can hold location (an action camera's or a drone's route), which ExifTool can't remove.
+- `Engines/Metadata/ExifToolConverter` is that engine (`exiftool` package: Windows build renamed from
+  `exiftool(-k).exe`, the Perl version elsewhere, or one on the PATH). Its edges are the formats `exiftool -listwf`
+  names; a file of an extension it doesn't write shows read-only, saying so. `ExifTool` reads with `-j -G0:1` (lists as
+  JSON arrays, so an entry keeps its commas; "Group:Tag" where family and group share a name, as IPTC and PDF do).
+- It writes by editing a copy in a work folder beside the output, on its disk, under a plain name, so nothing in the
+  file's name reaches ExifTool (`%` is expanded in paths it takes, Perl on Windows reads its command line in the ANSI
+  code page, and `-o` refuses WebP). A `-config` of its own makes the `GPS…Ref` fields macOS puts in XMP writable, so
+  they can be removed. Edits go through an argument file, one argument per line taken literally, a value of several
+  lines through `-Tag<=file`, a list one assignment per entry. IPTC text outside Latin-1 switches the file's IPTC to
+  UTF-8 with its other IPTC text written again, so none is garbled.
+- What can be edited is a choice, not what's left over: IFDs, PDFs and PNGs offer only the fields that describe the file
+  (`IfdFields`, `PdfFields`, `PngFields`). The rest says how to read it (a TIFF's layout, a DNG's colour calibration, a
+  PDF's page mode, a PNG's colours), and a video's or HEIC's header and tracks can't be changed. Those show a lock.
+- `-m` lets a file with a small fault of its own be written. The copy is then read back: a warning naming a changed
+  field, a field unknown or not writable, text that doesn't fit its character set, a field set that isn't there, one
+  removed that still is, or an editable field Remove location or Remove everything should have taken refuses the copy
+  (`error.metadata_refused`) and leaves none. Remove location takes GPS and the XMP, IPTC and QuickTime place fields, and
+  every editable field `ExifTool.IsLocation` finds, the one rule the window strikes through by; a locked one (a camera's
+  focus location, in its maker notes) stays, in plain sight. Remove everything is `-all=` keeping the orientation and the
+  colour profile, a TIFF's descriptive IFD fields by name on every page. It may also take locked rows (maker notes, cover
+  art, a JPEG's DPI, a PNG's custom text); others stay, a video's header dates and a TIFF's other tags among them, and the
+  hint says so. A file that holds more than its picture (`ExifTool.HoldsMore`: a Motion Photo's video, an MPF second
+  picture, a gain map, a Samsung trailer) doesn't offer it, and the window says why: it would orphan what's there and
+  leave that metadata, which no field shows. Camera RAW and DNG don't offer it either.
+- Without ExifTool the window reads nothing and offers Settings → Engines: a metadata library inside Filee can be made
+  to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under a time limit. It
+  reads the file with ExifTool once it is installed.
+- `MetadataViewModel` keeps one row per field (edited, removed, added; a list one entry per line) and turns them into
+  `MetadataEdits`. Add field offers XMP's descriptive fields, IPTC's where the kind of file has IPTC (JPEG, TIFF, PSD),
+  a PDF's document info for a PDF. The keys, the summary of files that could not be opened or saved, and texts that
+  follow a language change are as in Add background.
+- PDFs: ExifTool appends its changes as an update, so earlier values stay recoverable inside the file; the window says
+  so.
 
 ## Crop overlay and PDF page editor
 
@@ -319,6 +388,10 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
+  (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
+  their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.
+  New text on `AccentBrush` takes `OnAccentBrush`, never a fixed colour.
 - Window zoom (`Services/UiZoom`): Theme → *Window size* (− / + and *Reset*), and in any tracked window the
   platform's command key (`HotkeyConfiguration.CommandModifiers`: Ctrl, Cmd on macOS) with the mouse wheel, plus /
   minus (Shift allowed, Alt not: AltGr is Ctrl + Alt) or 0 for 100 %. 70–180 % in 10 % steps, every window at once.
@@ -376,8 +449,12 @@ installed yet; the slides introduce the installed one. The demo animations are r
   and reads the app's presets and engine order. It is published into the app folder, so both share one runtime and
   the bundled engines; its name can't be `filee.exe` next to `Filee.exe` on a case-insensitive file system.
 - `Filee.Core/Watching/FolderWatcher` watches one `WatchRule` with a `FileSystemWatcher` and converts a file once it
-  has kept its size and time for a moment and opens without sharing (downloads and copies in progress are skipped).
-  Temporary files, unknown formats and dedicated output and originals folders are ignored. A rule may also write
+  has kept its size and time for a moment, opens without sharing and has data at its start (downloads and copies in
+  progress are skipped). A file that didn't convert gets one more turn after 10 seconds. Temporary files, unknown
+  formats and dedicated output and originals folders are ignored. Links (junctions, mount points, symbolic links to
+  folders or files) are never followed or converted, neither as they arrive, nor in the scan of what is already there
+  (`FolderWatcher.FilesInside`), nor when a file gets its second turn; other reparse points, such as OneDrive's
+  online-only files, are converted like any file. A rule may also write
   into the watched folder itself. In that case, generated file versions (path, size and modification time) and
   generated result directories are recorded in `.filee-watch-<rule hash>.json` inside the watched root. The hidden
   state file prevents those results from becoming new inputs, including after an inbox watcher restarts; a changed
@@ -432,16 +509,21 @@ way to draw (`WindowsRendering`): `dcomp` (skip WinUI composition), `redirection
 surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start. On ARM64, Avalonia's
 Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236), and three values try the GPU
 there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver), `vulkan` and `wgl` (OpenGL), the
-last two falling back to software when they can't start.
+last two falling back to software when they can't start. On Linux (X11) only `software` applies: the GPU's driver stays
+in memory for as long as Filee runs, also with no window open, so this is the way to a smaller tray app (issue #957).
 
 ## Explorer integration
 
 Settings → General → "Show “Convert with Filee” in the Explorer context menu" (`AppSettings.ContextMenuEnabled`) is
 applied by `WindowsPlatformServices.SetContextMenu` at start-up and whenever settings change (installed builds only):
 
-- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, one process per file; the running
-  instance collects them through `SingleInstance`) and a **Send To** shortcut. Per user, no admin rights. On Windows 10
-  this is the entry; on Windows 11 it sits under "Show more options".
+- **Classic verb** `HKCU\Software\Classes\*\shell\Filee` (`Filee.exe --convert "%1"`, `MultiSelectModel` `Player`) and
+  a **Send To** shortcut. Per user, no admin rights. On Windows 10 this is the entry; on Windows 11 it sits under "Show
+  more options". Explorer starts one process per selected file, out of order and over many seconds, and hides the
+  entry above 100 files (Send To has no such limit). The processes reach the running instance through `SingleInstance`;
+  the first asks Explorer for the selection, so the donut has all of it at once (`SelectionLaunches`). When that can't
+  be read (another file manager), they are collected for 350 ms and later ones join the open donut
+  (`RadialController.TryAddFiles`); once a conversion took its files, later ones get a donut of their own.
 - **Windows 11 top-level entry** (optional): an `IExplorerCommand` in `FileeExplorerMenu.dll`
   (`src/Filee.ExplorerMenu`, plain C, no C runtime) declared by the sparse package `FileeExplorerMenu.msix`
   (`ExplorerMenuPackage.CreateManifest`: `desktop4:FileExplorerContextMenus`, `desktop5:ItemType Type="*"`,
@@ -530,8 +612,13 @@ have no semibold) instead of the app's embedded Noto fonts.
   counts as installed when `uninstall.exe` (or 1.x's `unins000.exe`) is next to it (`UpdateService.IsInstalled`).
 - **Uninstall**: `uninstall.exe` is Setup without its payload. Run from the install folder it copies itself to
   `%TEMP%` and waits for the copy, which removes what `uninstall.json` lists (other files in the folder stay), the
-  shortcuts, the PATH entry and the key. Files in use are moved out and deleted at the next restart. A program without
-  a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
+  shortcuts, the PATH entry and the key. `Filee.exe --uninstall-cleanup` runs as the signed-in user (`RunAsSignedInUser`):
+  the startup entry, the classic verb and the engines are theirs, and the pipe of a Filee without administrator rights
+  refuses an elevated client (`CurrentUserOnly` compares the pipe's owner with the token's owner, which is
+  Administrators when elevated), so that Filee would never hear `--quit`. Files in use are moved out and deleted at the
+  next restart. Only programs `uninstall.json` lists are ended. A Filee that can't be ended, or a file that can't be
+  moved or renamed, fails the uninstall and keeps the key, `uninstall.json` and `uninstall.exe`, so it can be run again;
+  `uninstall.json` itself is never scheduled or renamed. A program without a payload is the uninstaller only as `uninstall.exe`, as `Filee.Setup.exe` (a development build) or with `/UNINSTALL`
   (`SetupStart`); any other name is a Setup.exe whose download didn't finish, and it says so instead (exit code 1).
 - **Command line**: Inno Setup's switches (`SetupOptions`, documented at the top of the file), because Filee 1.x
   updates itself with `/SILENT /NORESTART` and winget passes `/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`. Exit codes as
@@ -553,7 +640,8 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   the directory as an authentic managed installation. Running without `--upgrade` refuses to overwrite an existing
   installation.
 - **In-app updates** (`UpdateService`): Checks GitHub releases for matching `<rid>.tar.gz` and `<rid>-SHA256SUMS.txt`
-  assets. The tarball is verified against SHA-256 before extraction. Archive extraction validates that all entries stay
+  assets. The tarball is verified against SHA-256 before extraction; a build that carries the update key
+  (`FileeUpdatePublicKey`) first checks the checksum file's signature (`<rid>-SHA256SUMS.txt.sig`, `UpdateSignature`). Archive extraction validates that all entries stay
   within the target directory, rejecting absolute paths, directory symlinks, and escaping links, and masks permissions to
   standard rwx bits (excluding setuid/setgid/sticky bits).
 - **Transactional upgrade**: `UpdateAsync` stages the payload in a private directory (`~/.local/share/filee/.update-*`),

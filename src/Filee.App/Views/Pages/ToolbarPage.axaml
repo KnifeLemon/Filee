@@ -190,7 +190,7 @@
       <Setter Property="Foreground" Value="{DynamicResource OnAccentBrush}" />
     </Style>
     <Style Selector="ToggleButton.extchip:checked:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{DynamicResource AccentStrongBrush}" />
+      <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
     </Style>
   </UserControl.Styles>
 

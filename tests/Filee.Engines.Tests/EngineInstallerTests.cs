@@ -397,18 +397,95 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
-    public async Task A_file_held_briefly_doesnt_stop_a_folder_being_deleted()
+    public void A_file_held_briefly_doesnt_stop_a_folder_being_deleted()
     {
         var folder = Directory.CreateDirectory(Path.Combine(_root, "folder")).FullName;
         var file = Path.Combine(folder, "scanned.dll");
         File.WriteAllText(file, "bytes");
         var held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
-        var released = Task.Delay(100, TestContext.Current.CancellationToken).ContinueWith(_ => held.Dispose(), TaskScheduler.Default);
+        // On its own thread: under load the pool can get to a release only as the retries below give up.
+        var release = new Thread(() =>
+        {
+            Thread.Sleep(100);
+            held.Dispose();
+        })
+        { IsBackground = true };
+        release.Start();
 
         EngineInstaller.DeleteFolder(folder);
-        await released;
+        release.Join();
 
         Assert.False(Directory.Exists(folder));
+    }
+
+    /// <summary>A junction on Windows, a symbolic link elsewhere.</summary>
+    private static void LinkFolder(string link, string target)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("This machine doesn't let the test make a symbolic link.");
+            }
+            return;
+        }
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        mklink.WaitForExit();
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
+    }
+
+    /// <summary>A folder elsewhere with a read-only file, which must stay as it is.</summary>
+    private string ForeignFolder()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "elsewhere")).FullName;
+        File.WriteAllText(Path.Combine(folder, "keep.txt"), "mine");
+        File.SetAttributes(Path.Combine(folder, "keep.txt"), FileAttributes.ReadOnly);
+        return folder;
+    }
+
+    private static void AssertUntouched(string foreign)
+    {
+        var kept = Path.Combine(foreign, "keep.txt");
+        Assert.Equal("mine", File.ReadAllText(kept));
+        Assert.True(File.GetAttributes(kept).HasFlag(FileAttributes.ReadOnly));
+    }
+
+    [Fact]
+    public void Deleting_a_folder_with_a_link_in_it_leaves_what_the_link_leads_to()
+    {
+        var foreign = ForeignFolder();
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "engine")).FullName;
+        File.WriteAllText(Path.Combine(folder, "tool.exe"), "binary");
+        File.SetAttributes(Path.Combine(folder, "tool.exe"), FileAttributes.ReadOnly);
+        LinkFolder(Path.Combine(folder, "link"), foreign);
+
+        EngineInstaller.DeleteFolder(folder);
+
+        Assert.False(Directory.Exists(folder));
+        AssertUntouched(foreign);
+    }
+
+    [Fact]
+    public void Deleting_a_folder_that_is_a_link_removes_only_the_link()
+    {
+        var foreign = ForeignFolder();
+        Directory.CreateDirectory(_root);
+        var link = Path.Combine(_root, "engines");
+        LinkFolder(link, foreign);
+
+        EngineInstaller.DeleteFolder(link);
+
+        Assert.False(Directory.Exists(link));
+        AssertUntouched(foreign);
     }
 
     [Fact]
@@ -736,5 +813,43 @@ public sealed class EngineInstallerTests : IDisposable
     private sealed class SyncProgress(Action<EngineInstallProgress> report) : IProgress<EngineInstallProgress>
     {
         public void Report(EngineInstallProgress value) => report(value);
+    }
+
+    [Fact]
+    public void ExifTools_Windows_build_is_renamed_so_it_doesnt_wait_for_a_key_and_its_folder_is_found()
+    {
+        var root = Directory.CreateTempSubdirectory("filee-exiftool-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "exiftool(-k).exe"), "");
+            Directory.CreateDirectory(Path.Combine(root, "exiftool_files"));
+
+            EngineInstaller.RenameExifTool("exiftool", root);
+
+            Assert.True(File.Exists(Path.Combine(root, "exiftool.exe")));
+            Assert.False(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
+            Assert.Equal(root, EngineEnvironment.FolderWithPrograms("exiftool", root, windows: true));
+            // Another package's files are left as they are.
+            File.WriteAllText(Path.Combine(root, "exiftool(-k).exe"), "");
+            EngineInstaller.RenameExifTool("pandoc", root);
+            Assert.True(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ExifTool_is_offered_on_every_platform_and_runs_the_Metadata_tools_converter()
+    {
+        var package = Assert.Single(EngineDownloads.Packages, p => p.Id == "exiftool");
+        Assert.Equal(["exiftool"], package.ConverterIds);
+        foreach (var runtime in new[] { "win-x64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64" })
+        {
+            var component = EngineDownloads.ComponentsForRuntime(runtime)["exiftool"];
+            Assert.Equal("13.60", component.Version);
+            Assert.Equal(runtime == "win-x64" ? "zip" : "tar.gz", component.Kind);
+        }
     }
 }

@@ -141,6 +141,10 @@ public sealed class PresetAvailability
             return formats.Any(f => HideService.CanOpen(f.Id))
                 ? new(PresetUse.Usable, null)
                 : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsMetadataTool)
+            return formats.Any(WindowService.MetadataReadable)
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.unsupported_source"]);
         if (preset.IsHideTool)
             return formats.Any(f => HideService.CanOpen(f.Id))
                 ? new(PresetUse.Usable, null)

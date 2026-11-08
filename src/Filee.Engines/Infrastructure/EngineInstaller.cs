@@ -247,12 +247,20 @@ public sealed class EngineInstaller
     /// <summary>
     /// Deletes a folder tree, read-only files included: Directory.Delete stops at the first one, and the calibre MSI
     /// marks every file read-only (#1092). A file held briefly (an antivirus scanning what was just unpacked) is waited out.
+    /// Links are never followed: of a link only the link goes, also when <paramref name="folder"/> itself is one, and what
+    /// it leads to stays as it is.
     /// </summary>
     internal static void DeleteFolder(string folder) => WaitingOutLocks(() =>
     {
-        if (!Directory.Exists(folder))
+        var root = new DirectoryInfo(folder);
+        if (!root.Exists)
             return;
-        foreach (var entry in new DirectoryInfo(folder).EnumerateFileSystemInfos("*", EveryEntry))
+        if (root.LinkTarget is not null)
+        {
+            root.Delete(recursive: false);
+            return;
+        }
+        foreach (var entry in root.EnumerateFileSystemInfos("*", EveryEntry))
         {
             if ((entry.Attributes & FileAttributes.ReadOnly) != 0)
                 entry.Attributes &= ~FileAttributes.ReadOnly;
@@ -423,6 +431,7 @@ public sealed class EngineInstaller
             {
                 case "zip":
                     ZipFile.ExtractToDirectory(file, staging);
+                    RenameExifTool(component.Id, SingleRoot(staging));
                     EnsureExecutablePrograms(component.Id, SingleRoot(staging));
                     Replace(component.Id, SingleRoot(staging));
                     break;
@@ -499,6 +508,17 @@ public sealed class EngineInstaller
             _ => throw new NotSupportedException(kind),
         };
         await TarFile.ExtractToDirectoryAsync(content, target, overwriteFiles: false, cancellationToken);
+    }
+
+    /// <summary>
+    /// ExifTool's Windows build ships as "exiftool(-k).exe", which waits for a key before it exits (for
+    /// double-clicking): renamed "exiftool.exe", it runs and exits as a command line program.
+    /// </summary>
+    internal static void RenameExifTool(string id, string root)
+    {
+        var waiting = Path.Combine(root, "exiftool(-k).exe");
+        if (id == "exiftool" && File.Exists(waiting))
+            File.Move(waiting, Path.Combine(root, "exiftool.exe"), overwrite: true);
     }
 
     internal static void EnsureExecutablePrograms(string id, string root)

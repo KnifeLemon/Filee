@@ -14,8 +14,10 @@ namespace Filee.Core.Conversion;
 /// <param name="MotionPhoto">The hop takes the video of a Live / Motion Photo (<see cref="ConversionEdge.MotionPhoto"/>).</param>
 /// <param name="LivePhoto">The hop makes a Live / Motion Photo of a video (<see cref="ConversionEdge.LivePhoto"/>).</param>
 /// <param name="Caption">The hop transcribes speech to SRT subtitles using Whisper (<see cref="ConversionEdge.Caption"/>).</param>
+/// <param name="Metadata">The hop writes metadata changes only (<see cref="ConversionEdge.Metadata"/>).</param>
 public sealed record RouteStep(IConverter Converter, string From, string To, bool FrameSequence = false, bool Unshaped = false,
-    bool MotionPhoto = false, bool LivePhoto = false, bool Caption = false, bool Translate = false, bool Upscale = false);
+    bool MotionPhoto = false, bool LivePhoto = false, bool Caption = false, bool Translate = false, bool Metadata = false,
+    bool Upscale = false);
 
 /// <summary>A planned conversion from one format to another.</summary>
 public sealed record Route(IReadOnlyList<RouteStep> Steps, int Cost)
@@ -81,11 +83,23 @@ public sealed class RoutePlanner
     /// that PDF on. Without it those edges are never taken.
     /// </param>
     /// <param name="caption">Transcribe speech to SRT subtitles using Whisper (<see cref="Presets.Preset.CaptionsVideo"/>).</param>
+    /// <param name="metadata">
+    /// Write metadata changes only (<see cref="Presets.Preset.EditsMetadata"/>): the route is one
+    /// <see cref="ConversionEdge.Metadata"/> edge from the format to itself, or none. Without it those edges are never
+    /// taken.
+    /// </param>
     public Route? Plan(string from, string to, bool frames = false, bool shaping = false, bool motionPhoto = false, bool livePhoto = false,
-        bool ocr = false, bool caption = false, bool translate = false, bool upscale = false)
+        bool ocr = false, bool caption = false, bool translate = false, bool metadata = false, bool upscale = false)
     {
         from = from.ToLowerInvariant();
         to = to.ToLowerInvariant();
+
+        // Nothing else may write the file: any other engine would re-encode it, and no other step may come with it.
+        if (metadata)
+        {
+            var writer = from == to ? EdgesFrom(from).Where(e => e.Edge.To == to && e.Edge.Metadata).OrderBy(e => e.Cost).FirstOrDefault() : default;
+            return writer.Converter is null ? null : new Route([new RouteStep(writer.Converter, from, to, Metadata: true)], writer.Cost);
+        }
 
         if (ocr)
             return PlanWithOcr(from, to, shaping);
@@ -135,7 +149,8 @@ public sealed class RoutePlanner
         if (from == to)
         {
             var best = EdgesFrom(from)
-                .Where(e => e.Edge.To == to && !e.Edge.FrameSequence && !e.Edge.MotionPhoto && !e.Edge.LivePhoto && !e.Edge.Ocr && !e.Edge.Caption && !e.Edge.Translate && !e.Edge.Upscale)
+                .Where(e => e.Edge.To == to && !e.Edge.FrameSequence && !e.Edge.MotionPhoto && !e.Edge.LivePhoto && !e.Edge.Ocr && !e.Edge.Caption && !e.Edge.Translate
+                    && !e.Edge.Metadata && !e.Edge.Upscale)
                 .OrderBy(e => e.Cost)
                 .FirstOrDefault();
             return best.Converter is null
@@ -196,8 +211,10 @@ public sealed class RoutePlanner
     /// <param name="livePhoto">A Live / Motion Photo of a video (see <see cref="Plan"/>).</param>
     /// <param name="ocr">Recognize the text first (see <see cref="Plan"/>).</param>
     /// <param name="caption">Transcribe speech to SRT subtitles using Whisper (see <see cref="Plan"/>).</param>
-    public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false, bool upscale = false) =>
-        Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, upscale: upscale) is not null;
+    /// <param name="metadata">Write metadata changes only (see <see cref="Plan"/>).</param>
+    public bool CanConvert(string from, string to, bool frames = false, bool motionPhoto = false, bool livePhoto = false, bool ocr = false, bool caption = false, bool translate = false,
+        bool metadata = false, bool upscale = false) =>
+        Plan(from, to, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate, metadata: metadata, upscale: upscale) is not null;
 
     /// <summary>
     /// The route for an envelope (<see cref="IEnvelopeOpener"/>): the cheapest edge from <paramref name="from"/> to the
@@ -220,7 +237,7 @@ public sealed class RoutePlanner
         var step = new RouteStep(open.Converter, from, through);
         if (through == to && !(frames || motionPhoto || livePhoto || ocr || caption || translate || upscale))
             return new Route([step], open.Cost);
-        return Plan(through, to, frames, shaping, motionPhoto, livePhoto, ocr, caption, translate, upscale) is { } rest
+        return Plan(through, to, frames, shaping, motionPhoto, livePhoto, ocr, caption, translate, upscale: upscale) is { } rest
             ? new Route([step, .. rest.Steps], open.Cost + rest.Cost)
             : null;
     }
