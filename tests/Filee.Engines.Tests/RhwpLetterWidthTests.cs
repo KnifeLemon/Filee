@@ -3,7 +3,6 @@
 // RhwpInput gives such letters letter spacing up to the advance their font really has.
 
 using System.Text;
-using System.Xml.Linq;
 using Filee.Engines.Hwp;
 using Filee.Engines.Hwp.Hwpx;
 using static Filee.Engines.Tests.HwpxAssert;
@@ -24,18 +23,11 @@ public class RhwpLetterWidthTests(EngineFixture fx) : IClassFixture<EngineFixtur
     private static InstalledFont? Computer(string face) =>
         new(true, _ => true, c => c == 'ш' ? 1.0 : c == 'и' ? 0.4 : 0.5);
 
-    /// <summary>
-    /// The paragraph whose text contains <paramref name="text"/>. Letters of different widths are in runs of their
-    /// own, so a word is no longer inside one hp:t and ParagraphWith (which looks at one hp:t) cannot find it.
-    /// </summary>
-    private static XElement ParagraphOf(XElement root, string text) =>
-        root.Descendants(Hp + "p").Last(p => string.Concat(p.Elements(Hp + "run").Elements(Hp + "t").Select(t => t.Value)).Contains(text, StringComparison.Ordinal));
-
-    /// <summary>The letter spacing each character of the paragraph ended up with.</summary>
+    /// <summary>The letter spacing each character of the first paragraph ended up with.</summary>
     private static Dictionary<char, int> SpacingOf(string hwpx, string text)
     {
         var result = new Dictionary<char, int>();
-        foreach (var run in ParagraphOf(Xml(hwpx), text).Elements(Hp + "run"))
+        foreach (var run in ParagraphWith(Xml(hwpx), text).Elements(Hp + "run"))
         {
             var spacing = HeadItem(hwpx, "charPr", (string)run.Attribute("charPrIDRef")!).Element(Hh + "spacing");
             var value = (int?)spacing?.Attribute("latin") ?? 0;
@@ -54,7 +46,7 @@ public class RhwpLetterWidthTests(EngineFixture fx) : IClassFixture<EngineFixtur
 
         Assert.NotNull(copy);
         ValidPackage(copy);
-        var runs = ParagraphOf(Xml(copy), "Привет").Elements(Hp + "run").Where(r => r.Element(Hp + "t") is not null);
+        var runs = ParagraphWith(Xml(copy), "Привет").Elements(Hp + "run").Where(r => r.Element(Hp + "t") is not null);
         Assert.Equal("Привет, шаг", string.Concat(runs.Select(r => r.Element(Hp + "t")!.Value))); // the text is the same
         var spacing = SpacingOf(copy, "Привет");
         Assert.Equal(100, spacing['ш']); // a full em where rhwp guessed half of one
@@ -78,6 +70,36 @@ public class RhwpLetterWidthTests(EngineFixture fx) : IClassFixture<EngineFixtur
         Assert.Equal(60, spacing['ł']);
         Assert.Equal(0, spacing['m']); // ASCII: rhwp has its width
         Assert.Equal(0, spacing['ó']); // Latin-1: so is this one
+    }
+
+    [Fact]
+    public void Each_script_takes_its_width_from_the_slot_rhwp_draws_it_with()
+    {
+        // rhwp draws Latin Extended from the LATIN slot and Cyrillic and Greek from the HANGUL one (rhwp 0.8.7).
+        var hwpx = TextFile("Привет łódź Ωmega");
+        var header = Xml(hwpx, "Contents/header.xml");
+        foreach (var fontface in header.Descendants(Hh + "fontface"))
+            foreach (var font in fontface.Elements(Hh + "font"))
+                font.SetAttributeValue("face", (string?)fontface.Attribute("lang") == "LATIN" ? "Latin Font" : "Hangul Font");
+        var edited = Path.Combine(fx.NewFolder(), "edited.hwpx");
+        File.Copy(hwpx, edited);
+        using (var zip = System.IO.Compression.ZipFile.Open(edited, System.IO.Compression.ZipArchiveMode.Update))
+        {
+            zip.GetEntry("Contents/header.xml")!.Delete();
+            using var stream = zip.CreateEntry("Contents/header.xml").Open();
+            header.Document!.Save(stream);
+        }
+
+        // The LATIN font draws every letter a full em wide, the HANGUL font half an em.
+        var copy = RhwpInput.Prepare(edited, Path.GetDirectoryName(edited)!,
+            face => new InstalledFont(true, _ => true, _ => face == "Latin Font" ? 1.0 : 0.5));
+
+        Assert.NotNull(copy);
+        var spacing = SpacingOf(copy, "mega");
+        Assert.Equal(100, spacing['ł']); // LATIN font: a full em
+        Assert.Equal(100, spacing['ź']);
+        Assert.Equal(0, spacing['П']); // HANGUL font: half an em, rhwp's guess is right
+        Assert.Equal(0, spacing['Ω']);
     }
 
     [Fact]
