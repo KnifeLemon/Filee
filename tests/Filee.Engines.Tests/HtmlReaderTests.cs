@@ -119,20 +119,83 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
-    public void A_style_background_replaces_the_shade_of_pre_for_dark_code_themes()
+    public void A_style_background_does_not_replace_the_code_shade()
     {
-        var dark = Run(Parse("""
-            <style>pre { background: #282c34; color: #f8f8f2 }</style>
-            <pre>어두운 코드</pre>
-            """), "어두운").Format;
-        Assert.Equal(("#282C34", "#F8F8F2"), (dark.Shade, dark.Color));
+        // The Markdown, text, XHTML and FB2 writers know code only by this shade.
+        var content = Parse("""
+            <style>
+            pre.dark { background: #282c34; color: #f8f8f2 }
+            .hljs { background: #1e1e1e; color: #d4d4d4 }
+            code.gh { background: #f6f8fa }
+            kbd { background: #222 }
+            </style>
+            <pre class="dark">어두운 코드</pre>
+            <pre><code class="hljs">하이라이트</code></pre>
+            <p><code class="gh">깃허브</code> <kbd>키보드</kbd></p>
+            """);
 
-        // Without a background in the style sheet, pre keeps the code shade (the Markdown and text writers know code by it).
+        var dark = Run(content, "어두운").Format;
+        Assert.Equal((HtmlReader.CodeShade, "#000000"), (dark.Shade, dark.Color)); // light text turns dark on the code shade
+        Assert.Equal(HtmlReader.CodeShade, Run(content, "하이라이트").Format.Shade);
+        Assert.Equal(HtmlReader.CodeShade, Run(content, "깃허브").Format.Shade);
+        Assert.Equal(HtmlReader.CodeShade, Run(content, "키보드").Format.Shade);
+
+        // So a dark theme still gives a fenced block in Markdown.
+        var section = new HSection();
+        section.Blocks.AddRange(content.Blocks);
+        var document = new HDocument();
+        document.Sections.Add(section);
+        var markdown = MarkdownWriter.Write(document, _ => null);
+        Assert.Contains("```\n어두운 코드", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_background_in_the_style_sheet_pre_keeps_the_code_shade_and_its_colour()
+    {
         var plain = Run(Parse("""
             <style>.plain { color: #123456 }</style>
             <pre class="plain">기본 코드</pre>
             """), "기본").Format;
         Assert.Equal((HtmlReader.CodeShade, "#123456"), (plain.Shade, plain.Color));
+    }
+
+    [Fact]
+    public void Text_in_a_cell_with_a_fill_is_read_against_the_fill()
+    {
+        // Old e-mail HTML: bgcolor on the cell, white text in a font tag. The fill is not a run shade.
+        var content = Parse("""
+            <table><tr>
+            <td bgcolor="#000000"><font color="#ffffff">white-text</font></td>
+            <td bgcolor="#000000">default-text</td>
+            <td bgcolor="#ffffff"><font color="#000000">black-text</font></td>
+            <td bgcolor="#000000"><table><tr><td>nested-text</td></tr></table></td>
+            </tr></table>
+            """);
+
+        Assert.Equal("#FFFFFF", Run(content, "white-text").Format.Color); // white on its own fill, not on white paper
+        Assert.Equal("#FFFFFF", Run(content, "default-text").Format.Color); // default black text on black turns white
+        Assert.Equal("#000000", Run(content, "black-text").Format.Color);
+        Assert.Equal("#FFFFFF", Run(content, "nested-text").Format.Color); // a cell without a fill shows the one behind it
+    }
+
+    [Fact]
+    public void Default_text_needs_more_contrast_than_text_the_page_coloured()
+    {
+        var content = Parse("""
+            <style>
+            .a { background: #1f2937 } .b { background: #1e293b } .c { background: #374151 }
+            .d { background: #1f2937; color: #6b7280 }
+            .e { background: #808080 }
+            </style>
+            <p class="a">alpha</p><p class="b">beta</p><p class="c">gamma</p><p class="d">delta</p><p class="e">epsilon</p>
+            """);
+
+        // Nobody chose black here (the page colour was dropped), and it shows at 1.5 to 2: the text turns white.
+        Assert.Equal("#FFFFFF", Run(content, "alpha").Format.Color);
+        Assert.Equal("#FFFFFF", Run(content, "beta").Format.Color);
+        Assert.Equal("#FFFFFF", Run(content, "gamma").Format.Color);
+        Assert.Equal("#6B7280", Run(content, "delta").Format.Color); // the page set both colours (ratio about 3): as written
+        Assert.Null(Run(content, "epsilon").Format.Color); // black on grey (5.3) reads
     }
 
     [Fact]
