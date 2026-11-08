@@ -232,6 +232,39 @@ public class UpscalerTests
     }
 
     [Fact]
+    public void An_animated_avif_is_read_as_a_sequence_and_stays_animated()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), $"test-upscale-avis-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var animated = Path.Combine(dir, "anim.avif");
+            using (var collection = new MagickImageCollection())
+            {
+                foreach (var color in new[] { MagickColors.Red, MagickColors.Blue })
+                    collection.Add(new MagickImage(color, 16, 16) { AnimationDelay = 10 });
+                collection.Write(animated, MagickFormat.Avif);
+            }
+            var still = Path.Combine(dir, "still.avif");
+            using (var image = new MagickImage(MagickColors.Green, 16, 16))
+                image.Write(still, MagickFormat.Avif);
+
+            Assert.Equal("avis", UpscalerEngine.ReadFormat("avif", animated));
+            Assert.Equal("avif", UpscalerEngine.ReadFormat("avif", still));
+            Assert.Equal("png", UpscalerEngine.ReadFormat("png", still));
+
+            // Read as "avis", every frame is upscaled and written back as one animation, not as _p1, _p2 stills.
+            using var images = new MagickImageCollection(animated);
+            Assert.True(ImageEncoder.KeepsAnimation("avis", "avif"));
+            Assert.Equal(2, ImageEncoder.SelectFrames(images, "avis", "avif").Count);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void MaxFrames_limit_is_300()
     {
         Assert.Equal(300, UpscalerEngine.MaxFrames);
