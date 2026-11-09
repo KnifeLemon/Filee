@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "하드웨어 가속 사용 (그래픽 칩)",
   "presets.hardware_encoding_hint": "H.264, HEVC, AV1을 그래픽 칩으로 인코딩해요.\n훨씬 빠르고 전력도 덜 써요.\n같은 용량이면 화질이 조금 낮아요.\n쓸 수 있는 칩이 없으면(AV1은 최신 칩이 필요해요) 평소처럼 인코딩해요.",
   "presets.caption_video": "자막 생성 (Whisper)",
-  "presets.caption_video_hint": "Whisper로 비디오와 오디오의 말소리를 SRT 자막 파일로 변환해요.",
+  "presets.caption_video_hint": "Whisper로 비디오와 오디오의 말소리를 SRT 자막 파일로 변환해요. 형식을 TXT로 하면 시간 없이 말한 내용만 적어요.",
   "presets.spoken_language": "음성 언어",
   "presets.spoken_language.auto": "자동",
   "presets.audio_codec": "오디오 코덱",

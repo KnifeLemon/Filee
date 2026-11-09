@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "使用硬體加速（顯示卡）",
   "presets.hardware_encoding_hint": "用顯示卡編碼 H.264、HEVC 和 AV1。\n速度快得多，也更省電。\n相同檔案大小時畫質略低。\n沒有可用的顯示卡時（AV1 需要較新的顯示卡）照常編碼。",
   "presets.caption_video": "產生字幕 (Whisper)",
-  "presets.caption_video_hint": "使用 Whisper 將影片與音訊中的語音轉錄為 SRT 字幕檔。",
+  "presets.caption_video_hint": "使用 Whisper 將影片與音訊中的語音轉錄為 SRT 字幕檔。 格式選 TXT 時，只輸出說話的文字，不含時間戳記。",
   "presets.spoken_language": "語音語言",
   "presets.spoken_language.auto": "自動",
   "presets.audio_codec": "音訊編碼",

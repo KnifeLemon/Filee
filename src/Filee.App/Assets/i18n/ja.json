@@ -969,7 +969,7 @@
   "presets.hardware_encoding": "ハードウェアアクセラレーションを使う（GPU）",
   "presets.hardware_encoding_hint": "GPUでH.264、HEVC、AV1にエンコードします。\n大幅に速くなり、消費電力も抑えられます。\n同じファイルサイズでは、画質がわずかに低くなります。\n利用可能なGPUがない場合（AV1には新しいGPUが必要です）は、通常の方法でエンコードします。",
   "presets.caption_video": "字幕を生成 (Whisper)",
-  "presets.caption_video_hint": "Whisperを使用して動画や音声の音声をSRT字幕ファイルに書き起こします。",
+  "presets.caption_video_hint": "Whisperを使用して動画や音声の音声をSRT字幕ファイルに書き起こします。 形式を TXT にすると、時間なしで話した内容のテキストだけを書き出します。",
   "presets.spoken_language": "音声言語",
   "presets.spoken_language.auto": "自動",
   "presets.audio_codec": "音声コーデック",

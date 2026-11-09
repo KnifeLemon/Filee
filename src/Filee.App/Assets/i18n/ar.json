@@ -969,7 +969,7 @@
   "presets.hardware_encoding": "استخدام تسريع العتاد (معالج الرسوميات)",
   "presets.hardware_encoding_hint": "ترميز H.264 وHEVC وAV1 باستخدام معالج الرسوميات.\nأسرع بكثير وأقل استهلاكًا للطاقة.\nالجودة أقل قليلًا عند حجم الملف نفسه.\nعند عدم توفر معالج مناسب (يتطلب AV1 معالجًا حديثًا)، يُرمَّز الفيديو بالطريقة المعتادة.",
   "presets.caption_video": "إنشاء ترجمات (Whisper)",
-  "presets.caption_video_hint": "تحويل الكلام في الفيديو والصوت إلى ملف ترجمة SRT باستخدام Whisper.",
+  "presets.caption_video_hint": "تحويل الكلام في الفيديو والصوت إلى ملف ترجمة SRT باستخدام Whisper. مع صيغة TXT يُكتب النص المنطوق فقط، دون توقيتات.",
   "presets.spoken_language": "اللغة المنطوقة",
   "presets.spoken_language.auto": "تلقائي",
   "presets.audio_codec": "ترميز الصوت",

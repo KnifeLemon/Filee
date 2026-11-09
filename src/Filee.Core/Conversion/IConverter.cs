@@ -56,7 +56,7 @@ namespace Filee.Core.Conversion;
 /// asking for it the route starts with it.
 /// </param>
 /// <param name="Caption">
-/// The edge transcribes speech to SRT subtitles using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
+/// The edge transcribes speech to SRT subtitles or plain text using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
 /// </param>
 /// <param name="Metadata">
 /// The edge writes a file's metadata changes into a copy of it in its own format, the picture, sound or document itself

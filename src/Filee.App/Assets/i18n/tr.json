@@ -969,7 +969,7 @@
   "presets.hardware_encoding": "Donanım hızlandırması kullan (grafik işlemcisi)",
   "presets.hardware_encoding_hint": "H.264, HEVC ve AV1'i grafik işlemcisinde kodlar.\nÇok daha hızlıdır ve daha az güç tüketir.\nAynı dosya boyutunda kalite biraz daha düşüktür.\nUygun işlemci yoksa (AV1 için yeni bir model gerekir) video normal şekilde kodlanır.",
   "presets.caption_video": "Altyazı oluştur (Whisper)",
-  "presets.caption_video_hint": "Whisper kullanarak video ve sesteki konuşmaları bir SRT altyazı dosyasına dönüştürür.",
+  "presets.caption_video_hint": "Whisper kullanarak video ve sesteki konuşmaları bir SRT altyazı dosyasına dönüştürür. TXT biçiminde yalnızca konuşulan metin, zaman bilgisi olmadan yazılır.",
   "presets.spoken_language": "Konuşulan dil",
   "presets.spoken_language.auto": "Otomatik",
   "presets.audio_codec": "Ses codec'i",

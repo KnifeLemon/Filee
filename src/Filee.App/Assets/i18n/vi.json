@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "Dùng tăng tốc phần cứng (chip đồ họa)",
   "presets.hardware_encoding_hint": "Mã hóa H.264, HEVC và AV1 trên chip đồ họa.\nNhanh hơn nhiều và tốn ít điện hơn.\nChất lượng hơi thấp hơn ở cùng kích thước tệp.\nNếu không có chip dùng được (AV1 cần chip đời mới), video được mã hóa như bình thường.",
   "presets.caption_video": "Tạo phụ đề (Whisper)",
-  "presets.caption_video_hint": "Chuyển lời nói trong video và âm thanh thành tệp phụ đề SRT bằng Whisper.",
+  "presets.caption_video_hint": "Chuyển lời nói trong video và âm thanh thành tệp phụ đề SRT bằng Whisper. Với định dạng TXT, chỉ lời nói được ghi ra, không kèm thời gian.",
   "presets.spoken_language": "Ngôn ngữ nói",
   "presets.spoken_language.auto": "Tự động",
   "presets.audio_codec": "Codec âm thanh",

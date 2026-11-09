@@ -969,7 +969,7 @@
   "presets.hardware_encoding": "Hardwarebeschleunigung nutzen (Grafikchip)",
   "presets.hardware_encoding_hint": "Kodiert H.264, HEVC und AV1 auf dem Grafikchip.\nDeutlich schneller und stromsparender.\nEtwas geringere Qualität bei gleicher Dateigröße.\nOhne geeigneten Chip (AV1 benötigt einen neueren) wird das Video wie gewohnt kodiert.",
   "presets.caption_video": "Untertitel erstellen (Whisper)",
-  "presets.caption_video_hint": "Transkribiert Sprache in Videos und Audio mit Whisper in eine SRT-Untertiteldatei.",
+  "presets.caption_video_hint": "Transkribiert Sprache in Videos und Audio mit Whisper in eine SRT-Untertiteldatei. Mit TXT als Format wird nur der gesprochene Text geschrieben, ohne Zeitangaben.",
   "presets.spoken_language": "Gesprochene Sprache",
   "presets.spoken_language.auto": "Automatisch",
   "presets.audio_codec": "Audio-Codec",

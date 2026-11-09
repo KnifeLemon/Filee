@@ -969,7 +969,7 @@
   "presets.hardware_encoding": "Gunakan akselerasi perangkat keras (kartu grafis)",
   "presets.hardware_encoding_hint": "Mengodekan H.264, HEVC, dan AV1 pada kartu grafis.\nJauh lebih cepat dan hemat daya.\nKualitas sedikit lebih rendah pada ukuran file yang sama.\nTanpa chip yang kompatibel (AV1 memerlukan chip terbaru), video dikodekan secara standar.",
   "presets.caption_video": "Buat subtitle (Whisper)",
-  "presets.caption_video_hint": "Mentranskripsikan ucapan dalam video dan audio menjadi file subtitle SRT dengan Whisper.",
+  "presets.caption_video_hint": "Mentranskripsikan ucapan dalam video dan audio menjadi file subtitle SRT dengan Whisper. Dengan format TXT, hanya teks ucapan yang ditulis, tanpa penanda waktu.",
   "presets.spoken_language": "Bahasa yang diucapkan",
   "presets.spoken_language.auto": "Otomatis",
   "presets.audio_codec": "Kodek audio",

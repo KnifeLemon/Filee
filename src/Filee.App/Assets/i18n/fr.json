@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "Utiliser l'accélération matérielle (puce graphique)",
   "presets.hardware_encoding_hint": "Encode le H.264, le HEVC et l'AV1 sur la puce graphique.\nBeaucoup plus rapide et moins gourmand en énergie.\nQualité légèrement inférieure à taille de fichier égale.\nSans puce compatible (l'AV1 en exige une récente), la vidéo est encodée normalement.",
   "presets.caption_video": "Générer des sous-titres (Whisper)",
-  "presets.caption_video_hint": "Transcrit la parole des vidéos et audios en un fichier de sous-titres SRT à l'aide de Whisper.",
+  "presets.caption_video_hint": "Transcrit la parole des vidéos et audios en un fichier de sous-titres SRT à l'aide de Whisper. Avec le format TXT, seul le texte parlé est écrit, sans minutage.",
   "presets.spoken_language": "Langue parlée",
   "presets.spoken_language.auto": "Automatique",
   "presets.audio_codec": "Codec audio",
