@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "Use hardware acceleration (graphics chip)",
   "presets.hardware_encoding_hint": "Encodes H.264, HEVC and AV1 on the graphics chip.\nMuch faster and uses less power.\nSlightly lower quality at the same file size.\nWithout a usable chip (AV1 needs a recent one), the video is encoded as usual.",
   "presets.caption_video": "Generate subtitles (Whisper)",
-  "presets.caption_video_hint": "Transcribes speech in videos and audio to an SRT subtitle file using Whisper.",
+  "presets.caption_video_hint": "Transcribes speech in videos and audio to an SRT subtitle file using Whisper. Converting to TXT gives only the spoken text, without times.",
   "presets.spoken_language": "Spoken language",
   "presets.spoken_language.auto": "Auto",
   "presets.audio_codec": "Audio codec",

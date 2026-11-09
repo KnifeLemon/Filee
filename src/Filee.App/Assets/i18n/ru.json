@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "Аппаратное ускорение (видеочип)",
   "presets.hardware_encoding_hint": "Кодирует H.264, HEVC и AV1 на видеочипе.\nНамного быстрее и тратит меньше энергии.\nКачество чуть ниже при том же размере файла.\nЕсли подходящего чипа нет (для AV1 нужен современный), видео кодируется как обычно.",
   "presets.caption_video": "Создать субтитры (Whisper)",
-  "presets.caption_video_hint": "Преобразует речь из видео и аудио в файл субтитров SRT с помощью Whisper.",
+  "presets.caption_video_hint": "Преобразует речь из видео и аудио в файл субтитров SRT с помощью Whisper. В формате TXT записывается только произнесённый текст, без меток времени.",
   "presets.spoken_language": "Язык речи",
   "presets.spoken_language.auto": "Авто",
   "presets.audio_codec": "Аудиокодек",

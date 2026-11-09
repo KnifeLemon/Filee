@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "Usar aceleração de hardware (chip gráfico)",
   "presets.hardware_encoding_hint": "Codifica H.264, HEVC e AV1 no chip gráfico.\nBem mais rápido e gasta menos energia.\nQualidade um pouco menor no mesmo tamanho de arquivo.\nSem um chip utilizável (o AV1 precisa de um recente), o vídeo é codificado como de costume.",
   "presets.caption_video": "Gerar legendas (Whisper)",
-  "presets.caption_video_hint": "Transcreve a fala de vídeos e áudios para um arquivo de legendas SRT usando Whisper.",
+  "presets.caption_video_hint": "Transcreve a fala de vídeos e áudios para um arquivo de legendas SRT usando Whisper. Com o formato TXT, só o texto falado é gravado, sem tempos.",
   "presets.spoken_language": "Idioma falado",
   "presets.spoken_language.auto": "Automático",
   "presets.audio_codec": "Codec de áudio",

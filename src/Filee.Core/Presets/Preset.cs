@@ -220,10 +220,12 @@ public sealed class Preset
 
     /// <summary>
     /// True if converting a <paramref name="sourceFormat"/> file transcribes speech into captions
-    /// (<see cref="MediaOptions.Caption"/>): the file is a video or audio.
+    /// (<see cref="MediaOptions.Caption"/>): the file is a video or audio and the target one of
+    /// <see cref="MediaOptions.CaptionTargets"/>.
     /// </summary>
     public bool CaptionsVideo(string sourceFormat) =>
-        Media.Caption && TargetFormat == "srt" && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
+        Media.Caption && MediaOptions.CaptionTargets.Contains(TargetFormat)
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category is Formats.FormatCategory.Video or Formats.FormatCategory.Audio;
 
 
 
@@ -1400,8 +1402,12 @@ public sealed class MediaOptions
     /// </summary>
     public bool ExtractMotionPhoto { get; set; }
 
+    /// <summary>Formats speech can be transcribed into (<see cref="Caption"/>): SRT subtitles, or the text alone (#1274).</summary>
+    public static readonly IReadOnlyList<string> CaptionTargets = ["srt", "txt"];
+
     /// <summary>
-    /// Transcribes speech using Whisper AI to an SRT subtitle file.
+    /// Transcribes speech using Whisper AI to an SRT subtitle file, or to plain text without times for TXT. Only for a
+    /// target in <see cref="CaptionTargets"/> (<see cref="Preset.CaptionsVideo"/>).
     /// </summary>
     public bool Caption { get; set; }
 

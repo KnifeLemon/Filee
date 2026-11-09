@@ -984,7 +984,7 @@
   "presets.hardware_encoding": "Użyj akceleracji sprzętowej (karta graficzna)",
   "presets.hardware_encoding_hint": "Koduje H.264, HEVC i AV1 na karcie graficznej.\nZnacznie szybciej i przy mniejszym zużyciu energii.\nNieco niższa jakość przy tym samym rozmiarze pliku.\nBez obsługiwanej karty (AV1 wymaga nowszej) wideo jest kodowane jak zwykle.",
   "presets.caption_video": "Generuj napisy (Whisper)",
-  "presets.caption_video_hint": "Transkrybuje mowę z filmów i nagrań audio do pliku napisów SRT za pomocą Whisper.",
+  "presets.caption_video_hint": "Transkrybuje mowę z filmów i nagrań audio do pliku napisów SRT za pomocą Whisper. Przy formacie TXT zapisywany jest tylko wypowiedziany tekst, bez czasów.",
   "presets.spoken_language": "Język mówiony",
   "presets.spoken_language.auto": "Automatycznie",
   "presets.audio_codec": "Kodek audio",
