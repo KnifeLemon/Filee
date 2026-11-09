@@ -1,4 +1,6 @@
 using System.Collections.ObjectModel;
+using System.Diagnostics;
+using System.Net.NetworkInformation;
 using Avalonia.Input.Platform;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
@@ -13,6 +15,7 @@ namespace Filee.App.ViewModels;
 public sealed partial class ConnectMessageItemViewModel : ObservableObject
 {
     private readonly Action<string> _copyAction;
+    private readonly ILocalizer _loc;
 
     public string Id { get; }
     public string Text { get; }
@@ -23,18 +26,20 @@ public sealed partial class ConnectMessageItemViewModel : ObservableObject
     public string SenderLabel { get; }
 
     [ObservableProperty] private bool _isCopied;
-    [ObservableProperty] private string _copyButtonText = "Copy";
+    [ObservableProperty] private string _copyButtonText;
 
-    public ConnectMessageItemViewModel(ConnectMessage message, Action<string> copyAction, string? mobileDeviceName)
+    public ConnectMessageItemViewModel(ConnectMessage message, Action<string> copyAction, string? mobileDeviceName, ILocalizer loc)
     {
         _copyAction = copyAction;
+        _loc = loc;
         Id = message.Id;
         Text = message.Text;
         From = message.From;
         Timestamp = message.Timestamp;
         IsFromPc = message.From.Equals("pc", StringComparison.OrdinalIgnoreCase);
-        SenderLabel = IsFromPc ? "This PC" : (mobileDeviceName ?? "Phone");
+        SenderLabel = IsFromPc ? loc["connect.sender_pc"] : (mobileDeviceName ?? loc["connect.sender_phone"]);
         TimeText = DateTimeOffset.FromUnixTimeMilliseconds(message.Timestamp).LocalDateTime.ToString("t");
+        _copyButtonText = loc["connect.copy"];
     }
 
     [RelayCommand]
@@ -42,13 +47,13 @@ public sealed partial class ConnectMessageItemViewModel : ObservableObject
     {
         _copyAction(Text);
         IsCopied = true;
-        CopyButtonText = "Copied!";
+        CopyButtonText = _loc["connect.copied"];
         _ = Task.Delay(2000).ContinueWith(_ =>
         {
             Dispatcher.UIThread.Post(() =>
             {
                 IsCopied = false;
-                CopyButtonText = "Copy";
+                CopyButtonText = _loc["connect.copy"];
             });
         });
     }
@@ -76,7 +81,8 @@ public sealed partial class ConnectFileItemViewModel : ObservableObject
         SharedFileMetadata meta,
         Action<ConnectFileItemViewModel> openFolder,
         Action<ConnectFileItemViewModel> delete,
-        Action<ConnectFileItemViewModel> preview)
+        Action<ConnectFileItemViewModel> preview,
+        ILocalizer loc)
     {
         Id = meta.Id;
         Name = meta.Name;
@@ -84,13 +90,20 @@ public sealed partial class ConnectFileItemViewModel : ObservableObject
         Size = meta.Size;
         SizeText = FormatSize(meta.Size);
         Sender = meta.Sender;
-        SenderText = meta.Sender.Equals("mobile", StringComparison.OrdinalIgnoreCase) ? "Phone" : "PC";
+        SenderText = meta.Sender.Equals("mobile", StringComparison.OrdinalIgnoreCase) ? loc["connect.sender_phone"] : loc["connect.sender_pc"];
         MimeType = meta.MimeType;
         IsFolder = false;
 
-        var ext = Path.GetExtension(meta.Name).ToLowerInvariant();
-        IconText = meta.MimeType.StartsWith("image/") ? "🖼️" : ext == ".pdf" ? "📄" : "📎";
-        CanPreview = meta.MimeType.StartsWith("image/") || meta.MimeType == "application/pdf" || meta.MimeType.StartsWith("text/");
+        IconText = meta.Icon switch
+        {
+            "image" => "🖼️",
+            "pdf" => "📄",
+            "audio" => "🎵",
+            "video" => "🎬",
+            "text" => "📝",
+            _ => "📎"
+        };
+        CanPreview = FileExecutionSafety.IsSafeToOpenDirectly(meta.Name);
 
         OpenOrFolderCommand = new RelayCommand(() => preview(this));
         DeleteCommand = new RelayCommand(() => delete(this));
@@ -102,15 +115,16 @@ public sealed partial class ConnectFileItemViewModel : ObservableObject
         string folderPath,
         int itemCount,
         Action<ConnectFileItemViewModel> openFolder,
-        Action<ConnectFileItemViewModel> delete)
+        Action<ConnectFileItemViewModel> delete,
+        ILocalizer loc)
     {
         Id = folderPath;
         Name = folderName;
         RelativePath = folderPath;
         Size = 0;
-        SizeText = $"{itemCount} item{(itemCount == 1 ? "" : "s")}";
+        SizeText = loc.Format("connect.items_count", itemCount);
         Sender = "";
-        SenderText = "Folder";
+        SenderText = "";
         MimeType = "inode/directory";
         IsFolder = true;
         IconText = "📁";
@@ -138,11 +152,14 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     private IClipboard? _clipboard;
 
     public void SetClipboard(IClipboard? clipboard) => _clipboard = clipboard;
+    public IPlatformServices Platform => _platform;
+    public ILocalizer Localizer => _loc;
 
     public FileeConnectService ConnectService => _connect;
     public Bitmap? QrBitmap => _connect.QrBitmap;
     public string? MobileUrl => _connect.MobileUrl;
     public string? LocalhostUrl => _connect.LocalhostUrl;
+    public string? ManualUrl => _connect.ManualUrl;
     public Avalonia.Media.IBrush StatusColorBrush => IsMobileConnected
         ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#22C55E"))
         : new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#EAB308"));
@@ -150,17 +167,23 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     [ObservableProperty] private string _inputText = "";
     [ObservableProperty] private int _selectedTabIndex;
     [ObservableProperty] private bool _isMobileConnected;
-    [ObservableProperty] private string _connectedDeviceTitle = "Waiting for mobile…";
+    [ObservableProperty] private bool _isQrOverlayVisible;
+    [ObservableProperty] private string _connectedDeviceTitle = "";
     [ObservableProperty] private string _storageUsageText = "0 B / 2 GB";
     [ObservableProperty] private string _itemCountText = "0 items";
     [ObservableProperty] private string _currentPath = "";
     [ObservableProperty] private bool _isInSubfolder;
 
+    [ObservableProperty] private string _pinCodeText = "";
+    [ObservableProperty] private string _pinRefreshHintText = "";
+    [ObservableProperty] private string _wifiLabelText = "";
+    [ObservableProperty] private string _firewallHintText = "";
+
     public ObservableCollection<ConnectMessageItemViewModel> Messages { get; } = [];
     public ObservableCollection<ConnectFileItemViewModel> Files { get; } = [];
+    public ObservableCollection<PairedDevice> PairedDevices { get; } = [];
 
     public event Action? RequestClose;
-    public event Action<string>? RequestFilePreview;
 
     public FileeConnectViewModel(FileeConnectService connect, IPlatformServices platform, ILocalizer loc, IClipboard? clipboard = null)
     {
@@ -174,43 +197,68 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         _connect.MessageReceived += OnMessageReceived;
         _connect.FilesChanged += OnFilesChanged;
         _connect.SessionEnded += OnSessionEnded;
+        _connect.PinRefreshed += UpdatePinDisplay;
+        _connect.PairedDevicesChanged += UpdatePairedDevices;
 
         IsMobileConnected = _connect.IsMobileConnected;
         UpdateDeviceTitle(_connect.ConnectedDeviceName);
+        UpdatePinDisplay();
+        UpdatePairedDevices();
 
-        // Load existing history
+        WifiLabelText = _loc.Format("connect.wifi_label", GetNetworkLabel());
+        FirewallHintText = _loc["connect.firewall_hint"];
+
         foreach (var msg in _connect.MessageHistory)
         {
-            Messages.Add(new ConnectMessageItemViewModel(msg, CopyToClipboard, _connect.ConnectedDeviceName));
+            Messages.Add(new ConnectMessageItemViewModel(msg, CopyToClipboard, _connect.ConnectedDeviceName, _loc));
         }
 
         RefreshFiles();
     }
 
+    private void UpdatePinDisplay()
+    {
+        var pin = _connect.CurrentPin;
+        PinCodeText = pin.Length == 6 ? $"{pin[..3]} {pin[3..]}" : pin;
+        PinRefreshHintText = _loc.Format("connect.pin_refresh_hint", _connect.PinSecondsRemaining);
+    }
+
+    private void UpdatePairedDevices()
+    {
+        PairedDevices.Clear();
+        foreach (var d in _connect.PairedDevices)
+        {
+            PairedDevices.Add(d);
+        }
+    }
+
     private void UpdateDeviceTitle(string? deviceName)
     {
         ConnectedDeviceTitle = IsMobileConnected
-            ? $"{deviceName ?? "Mobile"} Connected"
-            : "Waiting for connection…";
+            ? _loc.Format("connect.connected_badge", deviceName ?? _loc["connect.sender_phone"])
+            : _loc["connect.waiting_device"];
     }
 
     private void OnMobileConnected(string deviceName)
     {
         IsMobileConnected = true;
+        IsQrOverlayVisible = false;
         UpdateDeviceTitle(deviceName);
+        UpdatePairedDevices();
         OnPropertyChanged(nameof(StatusColorBrush));
     }
 
     private void OnMobileDisconnected()
     {
-        IsMobileConnected = false;
-        UpdateDeviceTitle(null);
+        IsMobileConnected = _connect.IsMobileConnected;
+        UpdateDeviceTitle(_connect.ConnectedDeviceName);
+        UpdatePairedDevices();
         OnPropertyChanged(nameof(StatusColorBrush));
     }
 
     private void OnMessageReceived(ConnectMessage msg)
     {
-        Messages.Add(new ConnectMessageItemViewModel(msg, CopyToClipboard, _connect.ConnectedDeviceName));
+        Messages.Add(new ConnectMessageItemViewModel(msg, CopyToClipboard, _connect.ConnectedDeviceName, _loc));
     }
 
     private void OnFilesChanged()
@@ -240,14 +288,10 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         try
         {
             string? text = null;
-            if (_clipboard is not null)
+            var cb = GetClipboard();
+            if (cb is not null)
             {
-                text = await _clipboard.TryGetTextAsync();
-            }
-
-            if (string.IsNullOrEmpty(text))
-            {
-                text = _platform.ReadClipboardText();
+                text = await cb.TryGetTextAsync();
             }
 
             if (!string.IsNullOrEmpty(text))
@@ -262,140 +306,153 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     {
         try
         {
-            if (_clipboard is not null)
+            var cb = GetClipboard();
+            if (cb is not null)
             {
-                _ = _clipboard.SetTextAsync(text);
+                _ = cb.SetTextAsync(text);
             }
-            _platform.SetClipboardText(text);
         }
         catch { }
+    }
+
+    private IClipboard? GetClipboard()
+    {
+        return _clipboard ?? (Avalonia.Application.Current?.ApplicationLifetime as Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime)?.MainWindow?.Clipboard;
     }
 
     [RelayCommand]
     private void RefreshFiles()
     {
         Files.Clear();
-        var all = _connect.FolderManager.GetFiles();
-        var usage = _connect.FolderManager.GetStorageUsage();
-        StorageUsageText = $"{ConnectFileItemViewModel.FormatSize(usage.Used)} / {ConnectFileItemViewModel.FormatSize(usage.Limit)}";
+        var allFiles = _connect.FolderManager.GetFiles();
+        var currentPrefix = string.IsNullOrEmpty(CurrentPath) ? "" : CurrentPath.TrimEnd('/') + "/";
 
-        var prefix = string.IsNullOrEmpty(CurrentPath) ? "" : $"{CurrentPath}/";
-        IsInSubfolder = !string.IsNullOrEmpty(CurrentPath);
+        var folderCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var directFiles = new List<SharedFileMetadata>();
 
-        var dirs = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        var direct = new List<SharedFileMetadata>();
-
-        foreach (var file in all)
+        foreach (var file in allFiles)
         {
-            if (!file.RelativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                continue;
-
-            var remainder = file.RelativePath[prefix.Length..];
-            var slash = remainder.IndexOf('/');
-            if (slash >= 0)
+            var rel = file.RelativePath;
+            if (!string.IsNullOrEmpty(currentPrefix))
             {
-                var dirName = remainder[..slash];
-                dirs[dirName] = dirs.GetValueOrDefault(dirName, 0) + 1;
+                if (!rel.StartsWith(currentPrefix, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                rel = rel[currentPrefix.Length..];
+            }
+
+            var slashIdx = rel.IndexOf('/');
+            if (slashIdx >= 0)
+            {
+                var topFolder = rel[..slashIdx];
+                folderCounts[topFolder] = folderCounts.GetValueOrDefault(topFolder) + 1;
             }
             else
             {
-                direct.Add(file);
+                directFiles.Add(file);
             }
         }
 
-        foreach (var (folderName, count) in dirs.OrderBy(d => d.Key, StringComparer.OrdinalIgnoreCase))
+        foreach (var (folder, count) in folderCounts.OrderBy(k => k.Key))
         {
-            var folderPath = string.IsNullOrEmpty(CurrentPath) ? folderName : $"{CurrentPath}/{folderName}";
-            Files.Add(new ConnectFileItemViewModel(folderName, folderPath, count, OpenFolder, DeleteItem));
+            var folderRelPath = string.IsNullOrEmpty(currentPrefix) ? folder : $"{currentPrefix}{folder}";
+            Files.Add(new ConnectFileItemViewModel(folder, folderRelPath, count, OpenSubfolder, DeleteItem, _loc));
         }
 
-        foreach (var file in direct.OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase))
+        foreach (var file in directFiles.OrderBy(f => f.Name))
         {
-            Files.Add(new ConnectFileItemViewModel(file, OpenFolder, DeleteItem, PreviewFile));
+            Files.Add(new ConnectFileItemViewModel(file, OpenSubfolder, DeleteItem, PreviewFile, _loc));
         }
 
-        var total = Files.Count;
-        ItemCountText = $"{total} item{(total == 1 ? "" : "s")}";
+        var usage = _connect.FolderManager.GetUsage();
+        StorageUsageText = $"{ConnectFileItemViewModel.FormatSize(usage.Used)} / {ConnectFileItemViewModel.FormatSize(usage.Limit)}";
+        ItemCountText = _loc.Format("connect.items_count", Files.Count);
     }
 
-    private void OpenFolder(ConnectFileItemViewModel item)
+    private void OpenSubfolder(ConnectFileItemViewModel item)
     {
         if (item.IsFolder)
         {
             CurrentPath = item.RelativePath;
+            IsInSubfolder = true;
             RefreshFiles();
         }
-    }
-
-    [RelayCommand]
-    private void NavigateUp()
-    {
-        if (string.IsNullOrEmpty(CurrentPath)) return;
-        var lastSlash = CurrentPath.LastIndexOf('/');
-        CurrentPath = lastSlash >= 0 ? CurrentPath[..lastSlash] : "";
-        RefreshFiles();
     }
 
     [RelayCommand]
     private void NavigateRoot()
     {
         CurrentPath = "";
+        IsInSubfolder = false;
+        RefreshFiles();
+    }
+
+    [RelayCommand]
+    private void NavigateUp()
+    {
+        if (string.IsNullOrEmpty(CurrentPath))
+            return;
+
+        var lastSlash = CurrentPath.LastIndexOf('/');
+        if (lastSlash > 0)
+        {
+            CurrentPath = CurrentPath[..lastSlash];
+            IsInSubfolder = true;
+        }
+        else
+        {
+            CurrentPath = "";
+            IsInSubfolder = false;
+        }
         RefreshFiles();
     }
 
     private void DeleteItem(ConnectFileItemViewModel item)
     {
-        if (item.IsFolder)
-        {
-            _connect.FolderManager.DeleteFolder(item.RelativePath);
-        }
-        else
-        {
-            _connect.FolderManager.DeleteFile(item.Id);
-        }
-        RefreshFiles();
+        // Reserved for future deletion if needed
     }
 
     private void PreviewFile(ConnectFileItemViewModel item)
     {
-        var file = _connect.FolderManager.GetFile(item.Id);
-        if (file is not null && File.Exists(file.DiskPath))
+        var fullPath = _connect.FolderManager.GetFullPath(item.Id);
+        if (FileExecutionSafety.IsSafeToOpenDirectly(fullPath))
         {
-            RequestFilePreview?.Invoke(file.DiskPath);
-        }
-    }
-
-    public async Task AddLocalFilesAsync(IReadOnlyList<string> paths)
-    {
-        foreach (var path in paths)
-        {
-            if (File.Exists(path))
+            try
             {
-                var rel = string.IsNullOrEmpty(CurrentPath) ? Path.GetFileName(path) : $"{CurrentPath}/{Path.GetFileName(path)}";
-                await _connect.FolderManager.AddLocalFileAsync(path, rel);
+                Process.Start(new ProcessStartInfo(fullPath) { UseShellExecute = true });
             }
-            else if (Directory.Exists(path))
+            catch
             {
-                var dirName = Path.GetFileName(path);
-                var baseRel = string.IsNullOrEmpty(CurrentPath) ? dirName : $"{CurrentPath}/{dirName}";
-                foreach (var file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
-                {
-                    var fileRel = Path.GetRelativePath(path, file).Replace('\\', '/');
-                    await _connect.FolderManager.AddLocalFileAsync(file, $"{baseRel}/{fileRel}");
-                }
+                _platform.RevealInFileManager(fullPath);
             }
         }
-        RefreshFiles();
+        else
+        {
+            _platform.RevealInFileManager(fullPath);
+        }
     }
 
     [RelayCommand]
-    private void OpenLocalFolder()
+    private void OpenFolder()
     {
-        var path = _connect.FolderManager.StorageDirectory;
-        if (Directory.Exists(path))
-        {
-            _platform.RevealInFileManager(path);
-        }
+        _platform.RevealInFileManager(_connect.FolderManager.StorageDirectory);
+    }
+
+    [RelayCommand]
+    private void ToggleQrOverlay()
+    {
+        IsQrOverlayVisible = !IsQrOverlayVisible;
+    }
+
+    [RelayCommand]
+    private void CloseQrOverlay()
+    {
+        IsQrOverlayVisible = false;
+    }
+
+    [RelayCommand]
+    private async Task DisconnectDeviceAsync(string deviceId)
+    {
+        await _connect.DisconnectDeviceAsync(deviceId);
     }
 
     [RelayCommand]
@@ -403,11 +460,11 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     {
         if (!string.IsNullOrEmpty(MobileUrl))
         {
-            if (_clipboard is not null)
+            var cb = GetClipboard();
+            if (cb is not null)
             {
-                await _clipboard.SetTextAsync(MobileUrl);
+                await cb.SetTextAsync(MobileUrl);
             }
-            _platform.SetClipboardText(MobileUrl);
         }
     }
 
@@ -418,7 +475,7 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         {
             try
             {
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(LocalhostUrl) { UseShellExecute = true });
+                Process.Start(new ProcessStartInfo(LocalhostUrl) { UseShellExecute = true });
             }
             catch { }
         }
@@ -429,11 +486,11 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     {
         if (!string.IsNullOrEmpty(LocalhostUrl))
         {
-            if (_clipboard is not null)
+            var cb = GetClipboard();
+            if (cb is not null)
             {
-                await _clipboard.SetTextAsync(LocalhostUrl);
+                await cb.SetTextAsync(LocalhostUrl);
             }
-            _platform.SetClipboardText(LocalhostUrl);
         }
     }
 
@@ -444,6 +501,18 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         RequestClose?.Invoke();
     }
 
+    private static string GetNetworkLabel()
+    {
+        foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+        {
+            if (nic.OperationalStatus == OperationalStatus.Up && nic.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+            {
+                return nic.Name;
+            }
+        }
+        return "Local Network";
+    }
+
     public void Dispose()
     {
         _connect.MobileConnected -= OnMobileConnected;
@@ -451,5 +520,7 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         _connect.MessageReceived -= OnMessageReceived;
         _connect.FilesChanged -= OnFilesChanged;
         _connect.SessionEnded -= OnSessionEnded;
+        _connect.PinRefreshed -= UpdatePinDisplay;
+        _connect.PairedDevicesChanged -= UpdatePairedDevices;
     }
 }

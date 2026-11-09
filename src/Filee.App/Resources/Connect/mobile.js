@@ -6,7 +6,13 @@
   const input = $('input');
   const send = $('send');
   const pasteBtn = $('pasteClipboard');
-  const token = location.pathname.split('/').filter(Boolean).pop();
+
+  const pairingView = $('pairingView');
+  const appView = $('appView');
+  const pinForm = $('pinForm');
+  const pinInput = $('pinInput');
+  const pinError = $('pinError');
+  const pinSubmit = $('pinSubmit');
 
   let socket;
   let reconnectTimer;
@@ -33,22 +39,35 @@
     }
   }
 
-  tabBtnText.addEventListener('click', () => switchTab('tabText'));
-  tabBtnFiles.addEventListener('click', () => switchTab('tabFiles'));
+  tabBtnText?.addEventListener('click', () => switchTab('tabText'));
+  tabBtnFiles?.addEventListener('click', () => switchTab('tabFiles'));
+
+  function getCookie(name) {
+    const value = `; ${document.cookie}`;
+    const parts = value.split(`; ${name}=`);
+    if (parts.length === 2) return parts.pop().split(';').shift();
+    return null;
+  }
+
+  function getDeviceToken() {
+    return getCookie('filee_token') || sessionStorage.getItem('filee_device_token') || '';
+  }
+  window.getFileeToken = getDeviceToken;
 
   function getDeviceName() {
     const ua = navigator.userAgent || '';
     if (/iPhone/i.test(ua)) return 'iPhone';
     if (/iPad/i.test(ua)) return 'iPad';
     if (/Android/i.test(ua)) {
-      const match = ua.match(/;\s*([^;]+)\s*Build/);
-      if (match && match[1]) return match[1].trim();
+      if (/Samsung/i.test(ua)) return 'Samsung Phone';
+      if (/Pixel/i.test(ua)) return 'Google Pixel';
       return 'Android Device';
     }
     if (/Macintosh/i.test(ua)) return 'Mac';
     if (/Windows/i.test(ua)) return 'Windows PC';
     return 'Mobile Device';
   }
+  window.getDeviceName = getDeviceName;
 
   function setStatus(text, online) {
     if (status) status.textContent = text;
@@ -86,7 +105,6 @@
           copyBtn.classList.remove('copied');
         }, 2000);
       } catch {
-        // Fallback for older webviews
         const ta = document.createElement('textarea');
         ta.value = item.text;
         document.body.appendChild(ta);
@@ -119,10 +137,16 @@
   }
 
   function connect() {
-    if (ended || !token) return;
+    if (ended) return;
+    const token = getDeviceToken();
+    if (!token) {
+      showPairingView();
+      return;
+    }
+
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const deviceName = encodeURIComponent(getDeviceName());
-    socket = new WebSocket(`${scheme}//${location.host}/ws?token=${encodeURIComponent(token)}&role=mobile&deviceName=${deviceName}`);
+    socket = new WebSocket(`${scheme}//${location.host}/ws?token=${encodeURIComponent(token)}&deviceName=${deviceName}`);
 
     socket.onopen = () => {
       setStatus('Connected to PC', true);
@@ -132,24 +156,33 @@
       let data;
       try { data = JSON.parse(raw); } catch { return; }
 
-      if (data.type === 'initial-state') {
+      if (data.type === 'init') {
         messages.replaceChildren();
-        if (!data.history || !data.history.length) {
+        if (!data.messages || !data.messages.length) {
           messages.innerHTML = '<div class="empty-state">No messages in this session yet.</div>';
         } else {
-          data.history.forEach(addMessage);
+          data.messages.forEach(addMessage);
         }
-      } else if (data.type === 'new-message') {
+      } else if (data.type === 'message') {
         addMessage(data.message);
       } else if (data.type === 'files-changed') {
-        window.dispatchEvent(new CustomEvent('filee:files-changed', { detail: data }));
+        if (window.refreshSharedFiles) window.refreshSharedFiles();
+      } else if (data.type === 'device-disconnected') {
+        sessionStorage.removeItem('filee_device_token');
+        document.cookie = 'filee_token=; Max-Age=0; path=/; SameSite=Lax';
+        showPairingView();
       } else if (data.type === 'session-ended') {
         endUI(data.reason || 'Session ended');
       }
     };
 
     socket.onclose = (event) => {
-      if (event.code === 4001) return endUI('Session ended');
+      if (event.code === 4401 || event.code === 4001) {
+        sessionStorage.removeItem('filee_device_token');
+        document.cookie = 'filee_token=; Max-Age=0; path=/; SameSite=Lax';
+        showPairingView();
+        return;
+      }
       if (!ended) {
         setStatus('Reconnecting…', false);
         reconnectTimer = setTimeout(connect, 2000);
@@ -159,16 +192,123 @@
     socket.onerror = () => socket.close();
   }
 
-  function sendMessage() {
-    if (socket?.readyState !== WebSocket.OPEN) {
-      alert('Connection lost. Please wait for reconnection.');
+  function showPairingView() {
+    sessionStorage.removeItem('filee_device_token');
+    document.cookie = 'filee_token=; Max-Age=0; path=/; SameSite=Lax';
+    if (pairingView) pairingView.hidden = false;
+    if (appView) appView.hidden = true;
+    setStatus('Pairing required', false);
+    if (pinInput) {
+      pinInput.value = '';
+      pinInput.focus();
+    }
+  }
+
+  function showAppView() {
+    if (pairingView) pairingView.hidden = true;
+    if (appView) appView.hidden = false;
+    connect();
+    if (window.refreshSharedFiles) window.refreshSharedFiles();
+  }
+
+  async function checkAuthAndStart() {
+    const token = getDeviceToken();
+    if (!token) {
+      showPairingView();
       return;
     }
-    const text = input.value.trim();
+
+    try {
+      const res = await fetch('/api/auth/check', {
+        headers: { 'Authorization': 'Bearer ' + token }
+      });
+      if (res.ok) {
+        showAppView();
+      } else {
+        showPairingView();
+      }
+    } catch {
+      showPairingView();
+    }
+  }
+
+  pinForm?.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    if (pinError) pinError.hidden = true;
+
+    const rawPin = (pinInput?.value || '').replace(/\s+/g, '');
+    if (rawPin.length < 6) {
+      if (pinError) {
+        pinError.textContent = 'Please enter a 6-digit PIN.';
+        pinError.hidden = false;
+      }
+      return;
+    }
+
+    if (pinSubmit) pinSubmit.disabled = true;
+
+    try {
+      const res = await fetch('/api/pair/pin', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pin: rawPin, deviceName: getDeviceName() })
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.token) {
+        sessionStorage.setItem('filee_device_token', data.token);
+        document.cookie = `filee_token=${encodeURIComponent(data.token)}; path=/; max-age=86400; SameSite=Lax`;
+        showAppView();
+      } else if (res.status === 429) {
+        if (pinError) {
+          pinError.textContent = `Too many wrong attempts. Locked out for ${data.remainingSeconds || 120}s.`;
+          pinError.hidden = false;
+        }
+      } else {
+        if (pinError) {
+          pinError.textContent = 'Invalid PIN. Please check your PC screen.';
+          pinError.hidden = false;
+        }
+      }
+    } catch (err) {
+      if (pinError) {
+        pinError.textContent = 'Could not connect to PC. Ensure both devices are on Wi-Fi.';
+        pinError.hidden = false;
+      }
+    } finally {
+      if (pinSubmit) pinSubmit.disabled = false;
+    }
+  });
+
+  function sendMessage() {
+    const text = (input?.value || '').trim();
     if (!text) return;
-    socket.send(JSON.stringify({ type: 'text', text }));
-    input.value = '';
-    input.focus();
+
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: 'text', text }));
+      if (input) {
+        input.value = '';
+        input.focus();
+      }
+    } else {
+      // Fallback HTTP POST
+      const token = getDeviceToken();
+      fetch('/api/send', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + token
+        },
+        body: JSON.stringify({ text })
+      }).then(() => {
+        if (input) {
+          input.value = '';
+          input.focus();
+        }
+      }).catch(() => {
+        alert('Could not send message. Connection lost.');
+      });
+    }
   }
 
   send?.addEventListener('click', sendMessage);
@@ -182,7 +322,7 @@
     try {
       if (navigator.clipboard && navigator.clipboard.readText) {
         const text = await navigator.clipboard.readText();
-        if (text) {
+        if (text && input) {
           input.value = input.value ? input.value + '\n' + text : text;
           input.focus();
           return;
@@ -191,12 +331,12 @@
     } catch (_) { }
 
     const text = prompt('Paste your copied text here:');
-    if (text) {
+    if (text && input) {
       input.value = input.value ? input.value + '\n' + text : text;
+      input.focus();
     }
-    input.focus();
   });
 
-  window.fileeSessionToken = token;
-  connect();
+  // Start auth check
+  checkAuthAndStart();
 })();

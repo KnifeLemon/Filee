@@ -1,5 +1,7 @@
 using System.IO.Compression;
+using System.Net;
 using System.Text;
+using System.Text.Json;
 using Filee.App.Services.Connect;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -130,11 +132,123 @@ public sealed class FileeConnectTests : IDisposable
             var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
             Assert.True(response.IsSuccessStatusCode, $"Failed to fetch {service.MobileUrl}: {response.StatusCode} Body: {body}");
             Assert.Contains("Filee Connect", body);
-            Assert.Contains("/css/app.css", body);
+            Assert.Contains("/app.css", body);
         }
         finally
         {
             await service.StopSessionAsync();
         }
+    }
+
+    [Fact]
+    public async Task Pairing_with_invalid_secret_returns_404()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var invalidUrl = service.MobileUrl!.Replace(service.PairingSecret!, "invalidsecret1234");
+            var response = await http.GetAsync(invalidUrl, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Unauthenticated_api_request_returns_401()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var uri = new Uri(service.MobileUrl!);
+            var apiUrl = $"{uri.Scheme}://{uri.Authority}/api/history";
+            var response = await http.GetAsync(apiUrl, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Pin_pairing_succeeds_and_consumes_pin()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var uri = new Uri(service.MobileUrl!);
+            var pairUrl = $"{uri.Scheme}://{uri.Authority}/api/pair/pin";
+
+            var initialPin = service.CurrentPin;
+            var payload = new { pin = initialPin, deviceName = "TestPhone" };
+            var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+            var response = await http.PostAsync(pairUrl, content, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+            var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+            using var doc = JsonDocument.Parse(body);
+            Assert.True(doc.RootElement.TryGetProperty("token", out var tokenProp));
+            Assert.False(string.IsNullOrWhiteSpace(tokenProp.GetString()));
+
+            // PIN should be consumed and refreshed immediately
+            Assert.NotEqual(initialPin, service.CurrentPin);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Pin_pairing_locks_out_after_5_failed_attempts()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var uri = new Uri(service.MobileUrl!);
+            var pairUrl = $"{uri.Scheme}://{uri.Authority}/api/pair/pin";
+
+            HttpResponseMessage? lastResponse = null;
+            for (var i = 0; i < 5; i++)
+            {
+                var payload = new { pin = "000000", deviceName = "AttackerPhone" };
+                var content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+                lastResponse = await http.PostAsync(pairUrl, content, TestContext.Current.CancellationToken);
+            }
+
+            Assert.NotNull(lastResponse);
+            Assert.Equal(HttpStatusCode.TooManyRequests, lastResponse.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public void FileExecutionSafety_correctly_filters_dangerous_files()
+    {
+        Assert.True(FileExecutionSafety.IsSafeToOpenDirectly("photo.jpg"));
+        Assert.True(FileExecutionSafety.IsSafeToOpenDirectly("document.pdf"));
+        Assert.True(FileExecutionSafety.IsSafeToOpenDirectly("readme.txt"));
+        Assert.True(FileExecutionSafety.IsSafeToOpenDirectly("movie.mp4"));
+
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("virus.exe"));
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("script.bat"));
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("malware.ps1"));
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("payload.sh"));
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("unknown.bin"));
     }
 }

@@ -43,16 +43,6 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     {
         try
         {
-            var connect = services.GetRequiredService<Filee.App.Services.Connect.FileeConnectService>();
-            var platform = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>();
-
-            await connect.StartSessionAsync();
-
-            var topWindow = MainWindowOrNull();
-            var clipboard = topWindow?.Clipboard;
-
-            var vm = new FileeConnectViewModel(connect, platform, loc, clipboard);
-
             if (_connectWindow is not null && _connectWindow.IsVisible)
             {
                 _connectWindow.Activate();
@@ -64,6 +54,19 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
                 _connectQrWindow.Activate();
                 return;
             }
+
+            var connect = services.GetRequiredService<Filee.App.Services.Connect.FileeConnectService>();
+            var platform = services.GetRequiredService<Filee.Core.Platform.IPlatformServices>();
+
+            if (!connect.IsRunning)
+            {
+                await connect.StartSessionAsync();
+            }
+
+            var topWindow = MainWindowOrNull();
+            var clipboard = topWindow?.Clipboard;
+
+            var vm = new FileeConnectViewModel(connect, platform, loc, clipboard);
 
             if (connect.IsMobileConnected)
             {

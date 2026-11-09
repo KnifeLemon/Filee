@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
 using Filee.Core.Platform;
-using Filee.Core.Settings;
 using Microsoft.Win32;
 
 namespace Filee.Platform.Windows;
@@ -52,16 +51,6 @@ public sealed class WindowsPlatformServices : IPlatformServices
     }
 
     public TrashRefusal? MoveToTrash(string path) => RecycleBin.Move(path);
-
-    public ModifierKeys? CurrentModifiers()
-    {
-        var mods = ModifierKeys.None;
-        if ((NativeMethods.GetAsyncKeyState(0x11) & 0x8000) != 0) mods |= ModifierKeys.Ctrl;
-        if ((NativeMethods.GetAsyncKeyState(0x12) & 0x8000) != 0) mods |= ModifierKeys.Alt;
-        if ((NativeMethods.GetAsyncKeyState(0x10) & 0x8000) != 0) mods |= ModifierKeys.Shift;
-        if ((NativeMethods.GetAsyncKeyState(0x5B) & 0x8000) != 0 || (NativeMethods.GetAsyncKeyState(0x5C) & 0x8000) != 0) mods |= ModifierKeys.Meta;
-        return mods;
-    }
 
     public bool IsFileManagerAt(int x, int y)
     {
@@ -479,57 +468,5 @@ public sealed class WindowsPlatformServices : IPlatformServices
         }
         catch (IOException) { }
         catch (UnauthorizedAccessException) { }
-    }
-    public string? ReadClipboardText()
-    {
-        if (!NativeMethods.OpenClipboard(nint.Zero)) return null;
-        try
-        {
-            var handle = NativeMethods.GetClipboardData(13); // CF_UNICODETEXT = 13
-            if (handle == nint.Zero) return null;
-            var ptr = NativeMethods.GlobalLock(handle);
-            if (ptr == nint.Zero) return null;
-            try
-            {
-                return Marshal.PtrToStringUni(ptr);
-            }
-            finally
-            {
-                NativeMethods.GlobalUnlock(handle);
-            }
-        }
-        finally
-        {
-            NativeMethods.CloseClipboard();
-        }
-    }
-
-    public bool SetClipboardText(string text)
-    {
-        if (text is null) return false;
-        if (!NativeMethods.OpenClipboard(nint.Zero)) return false;
-        try
-        {
-            NativeMethods.EmptyClipboard();
-            var bytes = (text.Length + 1) * 2;
-            var hMem = NativeMethods.GlobalAlloc(0x0002, (nuint)bytes); // GMEM_MOVEABLE = 0x0002
-            if (hMem == nint.Zero) return false;
-            var ptr = NativeMethods.GlobalLock(hMem);
-            if (ptr == nint.Zero) return false;
-            try
-            {
-                Marshal.Copy(text.ToCharArray(), 0, ptr, text.Length);
-                Marshal.WriteInt16(ptr, text.Length * 2, 0); // null-terminator
-            }
-            finally
-            {
-                NativeMethods.GlobalUnlock(hMem);
-            }
-            return NativeMethods.SetClipboardData(13, hMem) != nint.Zero;
-        }
-        finally
-        {
-            NativeMethods.CloseClipboard();
-        }
     }
 }

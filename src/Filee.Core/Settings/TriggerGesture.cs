@@ -90,11 +90,14 @@ public sealed class TriggerGesture
     {
         // On macOS Ctrl+click means right-click, and Option already means "copy" in Finder.
         var dragModifier = OperatingSystem.IsMacOS() ? ModifierKeys.Alt : ModifierKeys.Ctrl;
+        var connectModifier = OperatingSystem.IsMacOS()
+            ? ModifierKeys.Alt | ModifierKeys.Shift
+            : ModifierKeys.Ctrl | ModifierKeys.Alt;
         return
         [
             new() { Kind = TriggerKind.Drag, Modifiers = dragModifier, Button = TriggerMouseButton.Left },
             new() { Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.None, Key = "Space" },
-            new() { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere },
+            new() { Kind = TriggerKind.Click, Modifiers = connectModifier, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere },
         ];
     }
 }

@@ -1,18 +1,21 @@
 (() => {
   const $ = (id) => document.getElementById(id);
   const picker = $('filePicker');
+  const chooseBtn = $('chooseFiles');
   const list = $('fileList');
-  const token = location.pathname.split('/').filter(Boolean).pop();
+  const downloadFolderBtn = $('downloadFolder');
+  const refreshBtn = $('refreshFiles');
+
   let allFiles = [];
   let currentPath = '';
-  let busy = false;
-  const MAX_FILE_SIZE = 200 * 1024 * 1024;
 
   function headers() {
-    return {
-      'x-pairing-token': token,
-      'x-device-role': 'mobile',
-    };
+    const tok = window.getFileeToken ? window.getFileeToken() : '';
+    const h = {};
+    if (tok) {
+      h['Authorization'] = 'Bearer ' + tok;
+    }
+    return h;
   }
 
   function formatSize(bytes) {
@@ -42,15 +45,17 @@
   }
 
   async function refresh() {
-    if (!token) return;
+    const tok = window.getFileeToken ? window.getFileeToken() : '';
+    if (!tok) return;
+
     try {
       const response = await request('/api/files');
       const data = await response.json();
       allFiles = data.files || [];
-      const storage = data.storage || { used: 0, limit: 0, files: 0 };
+      const usage = data.usage || { used: 0, limit: 0, files: 0 };
       const storageEl = $('storageUsage');
       if (storageEl) {
-        storageEl.textContent = `${formatSize(storage.used)} / ${formatSize(storage.limit)}`;
+        storageEl.textContent = `${formatSize(usage.used)} / ${formatSize(usage.limit)}`;
       }
       render();
     } catch (error) {
@@ -98,154 +103,134 @@
       if (slash >= 0) {
         dirs.add(remainder.slice(0, slash));
       } else {
-        directFiles.push(file);
+        directFiles.Add ? directFiles.Add(file) : directFiles.push(file);
       }
     }
 
-    const folders = [...dirs].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
-    folders.forEach((name) => {
-      const folderPath = prefix + name;
-      const count = allFiles.filter((file) => file.relativePath.startsWith(`${folderPath}/`)).length;
-      const row = element('div', 'file-row');
-
-      const info = element('div', 'file-info');
-      const icon = element('span', 'file-type-icon', '📁');
-      const nameBtn = element('button', 'file-name-text folder-name', name);
-      nameBtn.type = 'button';
-      nameBtn.onclick = () => { currentPath = folderPath; render(); };
-      info.append(icon, nameBtn);
-
-      const meta = element('span', 'file-meta-sub', `${count} items`);
-      row.append(info, meta);
-      list.appendChild(row);
-    });
-
-    directFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).forEach((file) => {
-      list.appendChild(fileRow(file));
-    });
-
-    if (!folders.length && !directFiles.length) {
-      const empty = element('div', 'empty-state');
-      empty.textContent = currentPath ? 'This folder is empty.' : 'No shared files yet. Tap "Upload files" to start.';
-      list.appendChild(empty);
+    const itemCountEl = $('itemCount');
+    if (itemCountEl) {
+      itemCountEl.textContent = `${dirs.size + directFiles.length} items`;
     }
 
-    const count = folders.length + directFiles.length;
-    const countEl = $('itemCount');
-    if (countEl) countEl.textContent = `${count} item${count === 1 ? '' : 's'}`;
-
-    const dlFolder = $('downloadFolder');
-    if (dlFolder) dlFolder.hidden = !currentPath;
-    const delFolder = $('deleteFolder');
-    if (delFolder) delFolder.hidden = !currentPath;
-  }
-
-  function fileRow(file) {
-    const row = element('div', 'file-row');
-    const info = element('div', 'file-info');
-
-    const ext = (file.name.split('.').pop() || '').toLowerCase();
-    const isImage = file.mimeType?.startsWith('image/');
-    const iconChar = isImage ? '🖼️' : ext === 'pdf' ? '📄' : '📎';
-    const icon = element('span', 'file-type-icon', iconChar);
-
-    const nameWrapper = element('div', '');
-    const name = element('div', 'file-name-text', file.name);
-    const sub = element('div', 'file-meta-sub', `${formatSize(file.size)} • ${file.sender === 'mobile' ? 'You' : 'PC'}`);
-    nameWrapper.append(name, sub);
-    info.append(icon, nameWrapper);
-
-    const actions = element('div', 'file-actions');
-    if (isImage || file.mimeType === 'application/pdf' || file.mimeType?.startsWith('text/')) {
-      const preview = element('button', 'action-button', 'View');
-      preview.type = 'button';
-      preview.onclick = () => previewFile(file);
-      actions.appendChild(preview);
+    if (downloadFolderBtn) {
+      downloadFolderBtn.hidden = allFiles.length === 0;
     }
 
-    const download = element('button', 'action-button', '↓');
-    download.type = 'button';
-    download.title = 'Download';
-    download.onclick = () => downloadFile(file);
-    actions.appendChild(download);
-
-    const remove = element('button', 'action-button action-delete', '×');
-    remove.type = 'button';
-    remove.title = 'Delete';
-    remove.onclick = () => deleteFile(file);
-    actions.appendChild(remove);
-
-    row.append(info, actions);
-    return row;
-  }
-
-  function progress(show, label = '', percent = 0) {
-    const p = $('uploadProgress');
-    if (!p) return;
-    p.hidden = !show;
-    $('progressLabel').textContent = label;
-    $('progressPercent').textContent = `${percent}%`;
-    $('progressFill').style.width = `${percent}%`;
-  }
-
-  async function uploadFiles(files) {
-    if (busy || !files.length) return;
-    const oversized = Array.from(files).find(f => f.size > MAX_FILE_SIZE);
-    if (oversized) {
-      alert(`File "${oversized.name}" exceeds the 200 MB limit.`);
+    if (dirs.size === 0 && directFiles.length === 0) {
+      list.appendChild(element('div', 'empty-state', 'No shared files in this folder yet.'));
       return;
     }
 
-    busy = true;
-    progress(true, 'Preparing upload…', 5);
+    // Folders first
+    Array.from(dirs).sort().forEach((dirName) => {
+      const row = element('div', 'file-row');
+      const info = element('div', 'file-info');
+      const icon = element('span', 'file-icon', '📁');
+      const text = element('div', 'file-meta');
+      const name = element('span', 'file-name', dirName);
+      const sub = element('span', 'file-sub', 'Folder');
 
-    try {
-      const form = new FormData();
-      for (const file of files) {
-        const relativePath = currentPath ? `${currentPath}/${file.name}` : file.name;
-        form.append('files', file);
-        form.append('paths', relativePath);
-      }
+      text.append(name, sub);
+      info.append(icon, text);
+      row.appendChild(info);
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('POST', '/api/files');
-      xhr.setRequestHeader('x-pairing-token', token);
-      xhr.setRequestHeader('x-device-role', 'mobile');
-
-      xhr.upload.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = Math.round((e.loaded / e.total) * 100);
-          progress(true, `Uploading (${percent}%)…`, percent);
-        }
+      row.onclick = () => {
+        currentPath = prefix ? `${prefix}${dirName}` : dirName;
+        render();
       };
 
-      await new Promise((resolve, reject) => {
-        xhr.onload = () => {
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-          } else {
-            let message = 'Upload failed';
-            try { message = JSON.parse(xhr.responseText).error || message; } catch {}
-            reject(new Error(message));
-          }
-        };
-        xhr.onerror = () => reject(new Error('Network error during upload'));
-        xhr.send(form);
-      });
+      list.appendChild(row);
+    });
 
-      progress(true, 'Saved!', 100);
-      setTimeout(() => progress(false), 1000);
-      await refresh();
-    } catch (err) {
-      alert(err.message || 'Upload failed');
-      progress(false);
-    } finally {
-      busy = false;
-      if (picker) picker.value = '';
-    }
+    // Files
+    directFiles.sort((a, b) => a.name.localeCompare(b.name)).forEach((file) => {
+      const row = element('div', 'file-row');
+      const info = element('div', 'file-info');
+
+      let iconGlyph = '📎';
+      if (file.icon === 'image') iconGlyph = '🖼️';
+      else if (file.icon === 'pdf') iconGlyph = '📄';
+      else if (file.icon === 'audio') iconGlyph = '🎵';
+      else if (file.icon === 'video') iconGlyph = '🎬';
+      else if (file.icon === 'text') iconGlyph = '📝';
+
+      const icon = element('span', 'file-icon', iconGlyph);
+      const text = element('div', 'file-meta');
+      const name = element('span', 'file-name', file.name);
+      const sub = element('span', 'file-sub', `${formatSize(file.size)} • ${file.sender === 'mobile' ? 'You' : 'PC'}`);
+
+      text.append(name, sub);
+      info.append(icon, text);
+
+      const actions = element('div', 'file-actions');
+      const tok = window.getFileeToken ? window.getFileeToken() : '';
+
+      // Preview button for images & pdf
+      if (file.icon === 'image' || file.icon === 'pdf' || file.icon === 'text') {
+        const previewBtn = element('button', 'button button-quiet button-sm', 'View');
+        previewBtn.type = 'button';
+        previewBtn.onclick = (e) => {
+          e.stopPropagation();
+          showPreview(file);
+        };
+        actions.appendChild(previewBtn);
+      }
+
+      const downloadLink = element('a', 'button button-secondary button-sm', '↓');
+      downloadLink.href = `/download/${encodeURIComponent(file.id)}?token=${encodeURIComponent(tok)}`;
+      downloadLink.download = file.name;
+      downloadLink.onclick = (e) => e.stopPropagation();
+      actions.appendChild(downloadLink);
+
+      row.append(info, actions);
+      list.appendChild(row);
+    });
   }
 
-  function closePreviewModal() {
+  function showPreview(file) {
+    const modal = $('previewModal');
+    const title = $('previewTitle');
+    const content = $('previewContent');
+    const tok = window.getFileeToken ? window.getFileeToken() : '';
+
+    if (!modal || !content) return;
+
+    if (title) title.textContent = file.name;
+    content.replaceChildren();
+
+    const previewUrl = `/preview/${encodeURIComponent(file.id)}?token=${encodeURIComponent(tok)}`;
+
+    if (file.icon === 'image') {
+      const img = document.createElement('img');
+      img.src = previewUrl;
+      img.alt = file.name;
+      img.style.maxWidth = '100%';
+      img.style.maxHeight = '70vh';
+      img.style.borderRadius = '8px';
+      content.appendChild(img);
+    } else if (file.icon === 'pdf') {
+      const iframe = document.createElement('iframe');
+      iframe.src = previewUrl;
+      iframe.style.width = '100%';
+      iframe.style.height = '70vh';
+      iframe.style.border = 'none';
+      iframe.style.borderRadius = '8px';
+      content.appendChild(iframe);
+    } else {
+      const iframe = document.createElement('iframe');
+      iframe.src = previewUrl;
+      iframe.style.width = '100%';
+      iframe.style.height = '60vh';
+      iframe.style.border = 'none';
+      content.appendChild(iframe);
+    }
+
+    modal.hidden = false;
+    modal.style.display = 'flex';
+  }
+
+  const closePreviewBtn = $('closePreview');
+  closePreviewBtn?.addEventListener('click', () => {
     const modal = $('previewModal');
     if (modal) {
       modal.hidden = true;
@@ -253,104 +238,64 @@
       const content = $('previewContent');
       if (content) content.replaceChildren();
     }
-  }
-
-  $('closePreview')?.addEventListener('click', closePreviewModal);
-
-  $('previewModal')?.addEventListener('click', (e) => {
-    if (e.target === $('previewModal')) {
-      closePreviewModal();
-    }
   });
 
-  async function previewFile(file) {
-    const modal = $('previewModal');
-    const title = $('previewTitle');
-    const content = $('previewContent');
-    if (!modal || !content) return;
+  async function uploadFiles(fileList) {
+    const total = fileList.length;
+    if (!total) return;
 
-    title.textContent = file.name;
-    content.replaceChildren(element('div', 'muted small', 'Loading preview…'));
-    modal.hidden = false;
-    modal.style.display = 'flex';
+    const progressBox = $('uploadProgress');
+    const progressLabel = $('progressLabel');
+    const progressFill = $('progressFill');
+    const progressPercent = $('progressPercent');
 
-    const previewUrl = `/api/files/${encodeURIComponent(file.id)}/preview?token=${encodeURIComponent(token)}`;
+    if (progressBox) progressBox.hidden = false;
 
-    if (file.mimeType?.startsWith('image/')) {
-      const img = document.createElement('img');
-      img.src = previewUrl;
-      content.replaceChildren(img);
-    } else if (file.mimeType?.startsWith('text/')) {
+    for (let i = 0; i < total; i++) {
+      const file = fileList[i];
+      if (progressLabel) progressLabel.textContent = `Uploading ${i + 1} of ${total}: ${file.name}`;
+      const pct = Math.round((i / total) * 100);
+      if (progressFill) progressFill.style.width = pct + '%';
+      if (progressPercent) progressPercent.textContent = pct + '%';
+
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('relativePath', currentPath ? `${currentPath}/${file.name}` : file.name);
+
       try {
-        const res = await request(previewUrl);
-        const text = await res.text();
-        const pre = document.createElement('pre');
-        pre.textContent = text.slice(0, 50000);
-        content.replaceChildren(pre);
+        await request('/api/upload', {
+          method: 'POST',
+          body: formData
+        });
       } catch (err) {
-        content.replaceChildren(element('div', 'muted small', 'Preview unavailable.'));
+        alert(`Failed to upload ${file.name}: ${err.message}`);
       }
-    } else if (file.mimeType === 'application/pdf') {
-      const iframe = document.createElement('iframe');
-      iframe.src = previewUrl;
-      iframe.style.width = '100%';
-      iframe.style.height = '60vh';
-      iframe.style.border = 'none';
-      content.replaceChildren(iframe);
     }
+
+    if (progressFill) progressFill.style.width = '100%';
+    if (progressPercent) progressPercent.textContent = '100%';
+    setTimeout(() => {
+      if (progressBox) progressBox.hidden = true;
+    }, 600);
+
+    await refresh();
   }
 
-  function downloadFile(file) {
-    const a = document.createElement('a');
-    a.href = `/api/files/${encodeURIComponent(file.id)}/download?token=${encodeURIComponent(token)}`;
-    a.download = file.name;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  }
-
-  async function deleteFile(file) {
-    if (!confirm(`Delete "${file.name}"?`)) return;
-    try {
-      await request(`/api/files/${encodeURIComponent(file.id)}`, { method: 'DELETE' });
-      await refresh();
-    } catch (err) {
-      alert(err.message || 'Could not delete file');
-    }
-  }
-
-  $('downloadFolder')?.addEventListener('click', () => {
-    if (!currentPath) return;
-    const a = document.createElement('a');
-    a.href = `/api/folder.zip?path=${encodeURIComponent(currentPath)}&token=${encodeURIComponent(token)}`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+  chooseBtn?.addEventListener('click', () => {
+    if (picker) picker.click();
   });
 
-  $('deleteFolder')?.addEventListener('click', async () => {
-    if (!currentPath || !confirm(`Delete folder "${currentPath}" and all its contents?`)) return;
-    try {
-      await request(`/api/folder?path=${encodeURIComponent(currentPath)}`, { method: 'DELETE' });
-      currentPath = '';
-      await refresh();
-    } catch (err) {
-      alert(err.message || 'Could not delete folder');
-    }
-  });
-
-  $('chooseFiles')?.addEventListener('click', () => picker?.click());
   picker?.addEventListener('change', () => {
     if (picker.files && picker.files.length) {
-      uploadFiles(picker.files);
+      uploadFiles(Array.from(picker.files));
+      picker.value = '';
     }
   });
 
-  $('refreshFiles')?.addEventListener('click', refresh);
-
-  window.addEventListener('filee:files-changed', () => {
-    refresh();
+  downloadFolderBtn?.addEventListener('click', () => {
+    const tok = window.getFileeToken ? window.getFileeToken() : '';
+    location.href = `/api/folder.zip?token=${encodeURIComponent(tok)}`;
   });
 
-  refresh();
+  refreshBtn?.addEventListener('click', refresh);
 })();

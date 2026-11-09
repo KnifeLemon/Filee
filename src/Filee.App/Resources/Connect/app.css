@@ -600,3 +600,67 @@ footer {
   color: var(--text-muted);
   margin-top: 12px;
 }
+
+/* PIN Pairing Screen */
+.pairing-shell {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 65vh;
+  padding: 16px;
+}
+
+.pairing-card {
+  width: 100%;
+  max-width: 380px;
+  text-align: center;
+  padding: 28px 20px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.pin-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 20px;
+}
+
+.pin-input {
+  font-family: Consolas, Menlo, Monaco, monospace;
+  font-size: 2rem;
+  font-weight: 700;
+  text-align: center;
+  letter-spacing: 0.25em;
+  padding: 12px 14px;
+  border: 2px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-secondary);
+  color: var(--text);
+  outline: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.pin-input:focus {
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+.pin-error {
+  color: var(--danger);
+  font-size: 0.85rem;
+  font-weight: 500;
+  background: var(--danger-light);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+}
+
+.pin-button {
+  width: 100%;
+  padding: 12px;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: var(--radius-md);
+}

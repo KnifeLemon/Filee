@@ -285,4 +285,23 @@ public class GestureDetectorTests
         detector.MouseUp(TriggerMouseButton.Left, 100, 100);
         Assert.Equal(0, clicks);
     }
+
+    [Fact]
+    public void Ctrl_alt_drag_with_multiple_moves_never_fires_click()
+    {
+        var click = new TriggerGesture { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere };
+        var detector = Create(click);
+        int clicks = 0;
+        detector.ClickTriggered += (_, _, _) => clicks++;
+
+        detector.MouseDown(TriggerMouseButton.Left, 100, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(110, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(130, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(150, 100, ModifierKeys.Ctrl | ModifierKeys.Alt, TriggerMouseButton.Left);
+        detector.MouseMove(170, 100, ModifierKeys.Ctrl | ModifierKeys.Alt, TriggerMouseButton.Left);
+        detector.MouseMove(200, 100, ModifierKeys.Ctrl | ModifierKeys.Alt, TriggerMouseButton.Left);
+        detector.MouseUp(TriggerMouseButton.Left, 200, 100);
+
+        Assert.Equal(0, clicks);
+    }
 }

@@ -1,13 +1,14 @@
 using System.IO.Compression;
 using System.Text.Json;
+using Filee.Core.Settings;
 using Microsoft.Extensions.Logging;
 
 namespace Filee.App.Services.Connect;
 
 public sealed class SharedFolderManager
 {
-    public const long MaxFileSize = 200L * 1024 * 1024; // 200 MB
-    public const long MaxTotalStorage = 2L * 1024 * 1024 * 1024; // 2 GB
+    public const long MaxFileSize = 500L * 1024 * 1024; // 500 MB per file
+    public const long MaxTotalStorage = 2L * 1024 * 1024 * 1024; // 2 GB total quota
     public const int MaxFiles = 5000;
 
     private readonly ILogger<SharedFolderManager> _log;
@@ -16,22 +17,28 @@ public sealed class SharedFolderManager
     private readonly Dictionary<string, SharedFileItem> _files = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _lock = new();
     private long _totalStorage;
+    private long _reservedBytes;
 
     public string StorageDirectory => _storageDir;
     public long StorageLimitRemaining
     {
         get
         {
-            lock (_lock) { return Math.Max(0, MaxTotalStorage - _totalStorage); }
+            lock (_lock) { return Math.Max(0, MaxTotalStorage - (_totalStorage + _reservedBytes)); }
         }
     }
 
-    public SharedFolderManager(ILogger<SharedFolderManager> log, string? storageDir = null, string? tempDir = null)
+    public SharedFolderManager(ILogger<SharedFolderManager> log, UserDataStore? store = null, string? storageDir = null, string? tempDir = null)
     {
         _log = log;
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        _storageDir = storageDir ?? Path.Combine(appData, "Filee", "SharedFolder");
-        _tempDir = tempDir ?? Path.Combine(appData, "Filee", "SharedFolderTemp");
+        var baseDir = store?.Directory ?? UserDataStore.DefaultDirectory;
+        _storageDir = storageDir ?? Path.Combine(baseDir, "ConnectShared");
+        _tempDir = tempDir ?? Path.Combine(Path.GetTempPath(), "FileeConnect_" + Guid.NewGuid().ToString("N"));
+    }
+
+    public SharedFolderManager(ILogger<SharedFolderManager> log, string? storageDir, string? tempDir)
+        : this(log, null, storageDir, tempDir)
+    {
     }
 
     public void Initialize()
@@ -47,6 +54,7 @@ public sealed class SharedFolderManager
 
             _files.Clear();
             _totalStorage = 0;
+            _reservedBytes = 0;
 
             foreach (var metaFile in Directory.EnumerateFiles(_storageDir, "*.meta.json"))
             {
@@ -88,8 +96,43 @@ public sealed class SharedFolderManager
                     _log.LogWarning(ex, "Could not load shared file metadata: {Path}", metaFile);
                 }
             }
+        }
+    }
 
-            _log.LogInformation("SharedFolderManager initialized: {Count} files, {Size} bytes", _files.Count, _totalStorage);
+    /// <summary>
+    /// Clears all files in the shared folder at session end.
+    /// </summary>
+    public void Clear()
+    {
+        lock (_lock)
+        {
+            _files.Clear();
+            _totalStorage = 0;
+            _reservedBytes = 0;
+
+            if (Directory.Exists(_storageDir))
+            {
+                try
+                {
+                    foreach (var file in Directory.EnumerateFiles(_storageDir))
+                    {
+                        try { File.Delete(file); } catch { }
+                    }
+                    foreach (var dir in Directory.EnumerateDirectories(_storageDir))
+                    {
+                        try { Directory.Delete(dir, recursive: true); } catch { }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _log.LogWarning(ex, "Could not completely clear shared storage directory {Dir}", _storageDir);
+                }
+            }
+
+            if (Directory.Exists(_tempDir))
+            {
+                try { Directory.Delete(_tempDir, recursive: true); } catch { }
+            }
         }
     }
 
@@ -103,80 +146,113 @@ public sealed class SharedFolderManager
         return string.Join('/', parts);
     }
 
-    public async Task<SharedFileItem> SaveStreamAsync(Stream source, string fileName, string relativePath, string sender, string? mimeType)
+    public async Task<SharedFileItem> SaveStreamAsync(Stream source, string fileName, string relativePath, string sender, string? mimeType, long? expectedLength = null)
     {
         var safeRelPath = CleanRelativePath(string.IsNullOrWhiteSpace(relativePath) ? fileName : relativePath);
         var baseName = Path.GetFileName(safeRelPath);
 
-        var id = Guid.NewGuid().ToString("N");
-        var tempFile = Path.Combine(_tempDir, $"{id}.upload");
-
-        long bytesCopied = 0;
-        await using (var fs = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None))
-        {
-            var buffer = new byte[81920];
-            int read;
-            while ((read = await source.ReadAsync(buffer)) > 0)
-            {
-                bytesCopied += read;
-                if (bytesCopied > MaxFileSize)
-                {
-                    fs.Close();
-                    File.Delete(tempFile);
-                    throw new InvalidOperationException($"File exceeds the {MaxFileSize / (1024 * 1024)} MB limit.");
-                }
-                await fs.WriteAsync(buffer.AsMemory(0, read));
-            }
-        }
-
-        if (bytesCopied == 0)
-        {
-            File.Delete(tempFile);
-            throw new InvalidOperationException("Empty files cannot be shared.");
-        }
+        // Reserve quota upfront under the lock if size is known or cap with MaxFileSize
+        var reserveAmount = expectedLength.HasValue && expectedLength.Value > 0
+            ? Math.Min(expectedLength.Value, MaxFileSize)
+            : 1024 * 1024; // 1 MB initial reserve
 
         lock (_lock)
         {
             if (_files.Count >= MaxFiles)
-            {
-                File.Delete(tempFile);
                 throw new InvalidOperationException($"Shared folder limit of {MaxFiles} files reached.");
-            }
-            if (_totalStorage + bytesCopied > MaxTotalStorage)
-            {
-                File.Delete(tempFile);
+
+            if (_totalStorage + _reservedBytes + reserveAmount > MaxTotalStorage)
                 throw new InvalidOperationException("Shared storage limit (2 GB) reached.");
-            }
+
+            _reservedBytes += reserveAmount;
         }
 
-        var ext = Path.GetExtension(baseName);
-        var diskName = $"{id}{ext}";
-        var finalDiskPath = Path.Combine(_storageDir, diskName);
-        var metaPath = Path.Combine(_storageDir, $"{id}.meta.json");
+        var id = Guid.NewGuid().ToString("N");
+        var tempFile = Path.Combine(_tempDir, $"{id}.upload");
+        long bytesCopied = 0;
 
-        File.Move(tempFile, finalDiskPath, overwrite: true);
-
-        var item = new SharedFileItem(
-            id,
-            baseName,
-            safeRelPath,
-            bytesCopied,
-            sender,
-            mimeType ?? GuessMimeType(baseName),
-            DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
-            diskName,
-            finalDiskPath);
-
-        var metaJson = JsonSerializer.Serialize(item.ToMetadata(), new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(metaPath, metaJson);
-
-        lock (_lock)
+        try
         {
-            _files[item.Id] = item;
-            _totalStorage += item.Size;
-        }
+            await using (var fs = new FileStream(tempFile, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                var buffer = new byte[81920];
+                int read;
+                while ((read = await source.ReadAsync(buffer)) > 0)
+                {
+                    bytesCopied += read;
+                    if (bytesCopied > MaxFileSize)
+                    {
+                        throw new InvalidOperationException($"File exceeds the {MaxFileSize / (1024 * 1024)} MB limit.");
+                    }
 
-        return item;
+                    // Dynamically adjust reservation if exceeding initial reserve
+                    lock (_lock)
+                    {
+                        if (bytesCopied > reserveAmount)
+                        {
+                            var diff = bytesCopied - reserveAmount;
+                            if (_totalStorage + _reservedBytes + diff > MaxTotalStorage)
+                                throw new InvalidOperationException("Shared storage limit (2 GB) reached.");
+                            _reservedBytes += diff;
+                            reserveAmount = bytesCopied;
+                        }
+                    }
+
+                    await fs.WriteAsync(buffer.AsMemory(0, read));
+                }
+            }
+
+            if (bytesCopied == 0)
+                throw new InvalidOperationException("Empty files cannot be shared.");
+
+            var ext = Path.GetExtension(baseName);
+            var diskName = $"{id}{ext}";
+            var finalDiskPath = Path.Combine(_storageDir, diskName);
+            var metaPath = Path.Combine(_storageDir, $"{id}.meta.json");
+
+            File.Move(tempFile, finalDiskPath, overwrite: true);
+
+            // Mark received file with Internet zone on Windows / quarantine on macOS
+            if (sender != "pc")
+            {
+                FileExecutionSafety.MarkReceivedFile(finalDiskPath, _log);
+            }
+
+            var item = new SharedFileItem(
+                id,
+                baseName,
+                safeRelPath,
+                bytesCopied,
+                sender,
+                mimeType ?? GuessMimeType(baseName),
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(),
+                diskName,
+                finalDiskPath);
+
+            var metaJson = JsonSerializer.Serialize(item.ToMetadata(), new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(metaPath, metaJson);
+
+            lock (_lock)
+            {
+                _reservedBytes = Math.Max(0, _reservedBytes - reserveAmount);
+                _files[item.Id] = item;
+                _totalStorage += item.Size;
+            }
+
+            return item;
+        }
+        catch
+        {
+            lock (_lock)
+            {
+                _reservedBytes = Math.Max(0, _reservedBytes - reserveAmount);
+            }
+            if (File.Exists(tempFile))
+            {
+                try { File.Delete(tempFile); } catch { }
+            }
+            throw;
+        }
     }
 
     public async Task<SharedFileItem> AddLocalFileAsync(string localPath, string relativePath)
@@ -186,7 +262,7 @@ public sealed class SharedFolderManager
             throw new FileNotFoundException("Local file not found", localPath);
 
         await using var fs = File.OpenRead(localPath);
-        return await SaveStreamAsync(fs, info.Name, relativePath, "pc", GuessMimeType(info.Name));
+        return await SaveStreamAsync(fs, info.Name, relativePath, "pc", GuessMimeType(info.Name), info.Length);
     }
 
     public SharedFileItem? GetFile(string id)
@@ -201,14 +277,11 @@ public sealed class SharedFolderManager
     {
         lock (_lock)
         {
-            return _files.Values
-                .OrderBy(f => f.RelativePath, StringComparer.OrdinalIgnoreCase)
-                .Select(f => f.ToMetadata())
-                .ToList();
+            return _files.Values.OrderByDescending(f => f.CreatedAt).Select(f => f.ToMetadata()).ToList();
         }
     }
 
-    public StorageUsage GetStorageUsage()
+    public StorageUsage GetUsage()
     {
         lock (_lock)
         {
@@ -287,26 +360,40 @@ public sealed class SharedFolderManager
         }
     }
 
+    public string GetFullPath(string fileNameOrId)
+    {
+        lock (_lock)
+        {
+            if (_files.TryGetValue(fileNameOrId, out var item))
+                return item.DiskPath;
+
+            var match = _files.Values.FirstOrDefault(f => string.Equals(f.Name, fileNameOrId, StringComparison.OrdinalIgnoreCase));
+            if (match is not null)
+                return match.DiskPath;
+
+            return Path.Combine(_storageDir, fileNameOrId);
+        }
+    }
+
     public static string GuessMimeType(string fileName)
     {
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         return ext switch
         {
-            ".jpg" or ".jpeg" => "image/jpeg",
             ".png" => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
             ".gif" => "image/gif",
             ".webp" => "image/webp",
-            ".svg" => "image/svg+xml",
             ".bmp" => "image/bmp",
+            ".svg" => "image/svg+xml",
             ".pdf" => "application/pdf",
             ".txt" => "text/plain",
             ".json" => "application/json",
-            ".csv" => "text/csv",
-            ".html" => "text/html",
-            ".zip" => "application/zip",
+            ".xml" => "application/xml",
             ".mp3" => "audio/mpeg",
+            ".wav" => "audio/wav",
             ".mp4" => "video/mp4",
-            ".mov" => "video/quicktime",
+            ".zip" => "application/zip",
             _ => "application/octet-stream"
         };
     }

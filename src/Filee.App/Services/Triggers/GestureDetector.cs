@@ -146,14 +146,6 @@ public sealed class GestureDetector
         if (!_pressed || _dragActive || _lateRejected || Paused || heldButton == TriggerMouseButton.None || modifiers == ModifierKeys.None)
             return null;
 
-        var click = _gestures.FirstOrDefault(g =>
-            g.Kind == TriggerKind.Click && g.Button == heldButton && g.Modifiers == modifiers);
-        if (click is not null && ScopeFilter(click, x, y))
-        {
-            var token = Environment.TickCount64 ^ (x * 7919L) ^ y;
-            _armed = new Armed(null, null, click, x, y, token);
-        }
-
         var late = _gestures.FirstOrDefault(g =>
             g.Kind == TriggerKind.Drag && g.Button == heldButton && g.Modifiers == modifiers);
         if (late is null)

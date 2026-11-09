@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Filee.App.Services.Connect;
 using Filee.App.ViewModels;
 
 namespace Filee.App.Views;
@@ -20,22 +21,7 @@ public partial class FileeConnectWindow : Window
         if (DataContext is FileeConnectViewModel vm)
         {
             vm.RequestClose += () => Close();
-            vm.RequestFilePreview += OnRequestFilePreview;
         }
-    }
-
-    private void OnRequestFilePreview(string filePath)
-    {
-        try
-        {
-            var psi = new ProcessStartInfo
-            {
-                FileName = filePath,
-                UseShellExecute = true
-            };
-            Process.Start(psi);
-        }
-        catch { }
     }
 
     private async void OnEndSessionClick(object? sender, RoutedEventArgs e)
@@ -51,19 +37,24 @@ public partial class FileeConnectWindow : Window
     {
         if (DataContext is not FileeConnectViewModel vm) return;
 
-        var storage = StorageProvider;
-        if (!storage.CanOpen) return;
-
-        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
-            Title = "Select files to share",
+            Title = vm.Localizer["connect.picker_files_title"],
             AllowMultiple = true
         });
 
-        if (files.Count > 0)
+        if (files is null || files.Count == 0) return;
+
+        foreach (var file in files)
         {
-            var paths = files.Select(f => f.Path.LocalPath).ToList();
-            await vm.AddLocalFilesAsync(paths);
+            var localPath = file.TryGetLocalPath();
+            if (!string.IsNullOrEmpty(localPath) && System.IO.File.Exists(localPath))
+            {
+                var targetRel = string.IsNullOrEmpty(vm.CurrentPath)
+                    ? file.Name
+                    : $"{vm.CurrentPath.TrimEnd('/')}/{file.Name}";
+                await vm.ConnectService.AddLocalFileAsync(localPath, targetRel);
+            }
         }
     }
 
@@ -71,19 +62,26 @@ public partial class FileeConnectWindow : Window
     {
         if (DataContext is not FileeConnectViewModel vm) return;
 
-        var storage = StorageProvider;
-        if (!storage.CanOpen) return;
-
-        var folders = await storage.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {
-            Title = "Select folder to share",
-            AllowMultiple = false
+            Title = vm.Localizer["connect.picker_folder_title"]
         });
 
-        if (folders.Count > 0)
+        if (folders is null || folders.Count == 0) return;
+
+        var folderPath = folders[0].TryGetLocalPath();
+        if (string.IsNullOrEmpty(folderPath) || !System.IO.Directory.Exists(folderPath)) return;
+
+        var baseFolder = new System.IO.DirectoryInfo(folderPath);
+        var files = System.IO.Directory.EnumerateFiles(folderPath, "*", System.IO.SearchOption.AllDirectories);
+
+        foreach (var f in files)
         {
-            var paths = folders.Select(f => f.Path.LocalPath).ToList();
-            await vm.AddLocalFilesAsync(paths);
+            var relFromFolder = System.IO.Path.GetRelativePath(baseFolder.FullName, f).Replace('\\', '/');
+            var targetRel = string.IsNullOrEmpty(vm.CurrentPath)
+                ? $"{baseFolder.Name}/{relFromFolder}"
+                : $"{vm.CurrentPath.TrimEnd('/')}/{baseFolder.Name}/{relFromFolder}";
+            await vm.ConnectService.AddLocalFileAsync(f, targetRel);
         }
     }
 
@@ -96,15 +94,6 @@ public partial class FileeConnectWindow : Window
                 vm.SendCommand.Execute(null);
                 e.Handled = true;
             }
-        }
-    }
-
-    protected override async void OnClosing(WindowClosingEventArgs e)
-    {
-        base.OnClosing(e);
-        if (DataContext is FileeConnectViewModel vm)
-        {
-            await vm.ConnectService.StopSessionAsync();
         }
     }
 }

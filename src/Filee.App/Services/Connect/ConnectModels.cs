@@ -19,7 +19,7 @@ public sealed record SharedFileItem(
     string DiskName,
     string DiskPath)
 {
-    public SharedFileMetadata ToMetadata() => new(Id, Name, RelativePath, Size, Sender, MimeType, CreatedAt);
+    public SharedFileMetadata ToMetadata() => new(Id, Name, RelativePath, Size, Sender, MimeType, CreatedAt, FileExecutionSafety.GetSafeIconKind(Name));
 }
 
 public sealed record SharedFileMetadata(
@@ -29,7 +29,8 @@ public sealed record SharedFileMetadata(
     [property: JsonPropertyName("size")] long Size,
     [property: JsonPropertyName("sender")] string Sender,
     [property: JsonPropertyName("mimeType")] string MimeType,
-    [property: JsonPropertyName("createdAt")] long CreatedAt);
+    [property: JsonPropertyName("createdAt")] long CreatedAt,
+    [property: JsonPropertyName("icon")] string Icon);
 
 public sealed record StorageUsage(
     [property: JsonPropertyName("used")] long Used,
@@ -37,10 +38,14 @@ public sealed record StorageUsage(
     [property: JsonPropertyName("files")] int Files,
     [property: JsonPropertyName("maxFiles")] int MaxFiles);
 
-public sealed record ConnectSessionState(
+public sealed record PairedDevice(
+    string Id,
     string Token,
-    string MobileUrl,
-    long ExpiresAt,
-    int PcClients,
-    int MobileClients,
-    string? ConnectedDeviceName);
+    string Name,
+    string UserAgent,
+    DateTime PairedAt,
+    DateTime LastSeen);
+
+public sealed record PinPairRequest(
+    [property: JsonPropertyName("pin")] string Pin,
+    [property: JsonPropertyName("deviceName")] string? DeviceName);

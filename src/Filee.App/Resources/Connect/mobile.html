@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="light">
   <meta name="theme-color" content="#7F77DD">
   <title>Filee Connect</title>
-  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/app.css">
 </head>
 <body data-role="mobile">
   <main class="app-shell">
@@ -40,81 +40,99 @@
       <div class="connection-pill"><span class="dot" id="dot"></span><span id="status">Connecting…</span></div>
     </header>
 
-    <nav class="tabs-nav" aria-label="Sections">
-      <button class="tab-btn active" id="tabBtnText" data-tab="tabText">Text</button>
-      <button class="tab-btn" id="tabBtnFiles" data-tab="tabFiles">Shared Folder</button>
-    </nav>
-
-    <!-- Tab 1: Text (Default Active) -->
-    <section class="tab-pane active" id="tabText">
-      <div class="card">
-        <div class="section-title">
-          <p class="eyebrow">QUICK NOTE</p>
-          <h2>Send text to PC</h2>
-          <p class="muted small">Write or paste text from your phone's clipboard.</p>
+    <!-- PIN Pairing Screen (Visible when device is not paired) -->
+    <section class="pairing-shell" id="pairingView" hidden>
+      <div class="card pairing-card">
+        <div class="section-title text-center">
+          <p class="eyebrow">FILEE CONNECT</p>
+          <h2>Pair with Filee</h2>
+          <p class="muted small">Enter the 6-digit PIN shown on your PC screen</p>
         </div>
-        <div class="message-composer">
-          <textarea id="input" rows="3" placeholder="Type a message or note to send to your PC…"></textarea>
-          <div class="composer-actions">
-            <button class="button button-secondary" id="pasteClipboard" type="button">📋 Paste Clipboard Text</button>
-            <button class="button button-primary" id="send" type="button">Send</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="card">
-        <div class="section-title">
-          <p class="eyebrow">SESSION HISTORY</p>
-          <h3>Messages</h3>
-        </div>
-        <div class="message-list" id="messages">
-          <div class="empty-state">No messages in this session yet.</div>
-        </div>
+        <form class="pin-form" id="pinForm" onsubmit="return false;">
+          <input type="text" id="pinInput" class="pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="7" placeholder="000 000" autocomplete="one-time-code" autofocus>
+          <div class="pin-error" id="pinError" hidden></div>
+          <button class="button button-primary pin-button" id="pinSubmit" type="submit">Connect</button>
+        </form>
       </div>
     </section>
 
-    <!-- Tab 2: Shared Folder -->
-    <section class="tab-pane" id="tabFiles">
-      <div class="card workspace">
-        <div class="workspace-heading">
-          <div>
-            <p class="eyebrow">LOCAL STORAGE</p>
-            <h2>Shared files</h2>
-            <p class="muted small">Available on both PC and phone over Wi-Fi.</p>
+    <!-- Main Connected Workspace -->
+    <div id="appView">
+      <nav class="tabs-nav" aria-label="Sections">
+        <button class="tab-btn active" id="tabBtnText" data-tab="tabText">Text</button>
+        <button class="tab-btn" id="tabBtnFiles" data-tab="tabFiles">Shared Folder</button>
+      </nav>
+
+      <!-- Tab 1: Text (Default Active) -->
+      <section class="tab-pane active" id="tabText">
+        <div class="card">
+          <div class="section-title">
+            <p class="eyebrow">QUICK NOTE</p>
+            <h2>Send text to PC</h2>
+            <p class="muted small">Write or paste text from your phone's clipboard.</p>
           </div>
-          <div class="storage-chip" id="storageUsage">Loading…</div>
-        </div>
-
-        <div class="mobile-upload-panel">
-          <input id="filePicker" type="file" multiple hidden>
-          <button class="button button-primary upload-mobile-button" id="chooseFiles" type="button">＋ Upload files</button>
-          <p class="muted small" style="text-align: center; margin-top: 6px;">Select photos, videos, or documents from your phone.</p>
-        </div>
-
-        <div class="upload-progress" id="uploadProgress" hidden>
-          <div class="progress-label"><span id="progressLabel">Uploading…</span><span id="progressPercent">0%</span></div>
-          <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
-        </div>
-
-        <div class="browser-toolbar">
-          <nav class="breadcrumbs" id="breadcrumbs" aria-label="Folder path"></nav>
-          <div class="toolbar-actions">
-            <button class="button button-quiet" id="refreshFiles" type="button" title="Refresh">↻</button>
-            <button class="button button-secondary" id="downloadFolder" type="button" hidden>↓ ZIP</button>
-            <button class="button button-quiet action-delete" id="deleteFolder" type="button" hidden>Delete</button>
+          <div class="message-composer">
+            <textarea id="input" rows="3" placeholder="Type a message or note to send to your PC…"></textarea>
+            <div class="composer-actions">
+              <button class="button button-secondary" id="pasteClipboard" type="button">📋 Paste Clipboard Text</button>
+              <button class="button button-primary" id="send" type="button">Send</button>
+            </div>
           </div>
         </div>
 
-        <div class="file-list" id="fileList">
-          <div class="empty-state">Loading shared files…</div>
+        <div class="card">
+          <div class="section-title">
+            <p class="eyebrow">SESSION HISTORY</p>
+            <h3>Messages</h3>
+          </div>
+          <div class="message-list" id="messages">
+            <div class="empty-state">No messages in this session yet.</div>
+          </div>
         </div>
+      </section>
 
-        <div class="workspace-footer">
-          <span id="itemCount">0 items</span>
-          <span>Stored on PC</span>
+      <!-- Tab 2: Shared Folder -->
+      <section class="tab-pane" id="tabFiles">
+        <div class="card workspace">
+          <div class="workspace-heading">
+            <div>
+              <p class="eyebrow">LOCAL STORAGE</p>
+              <h2>Shared files</h2>
+              <p class="muted small">Available on both PC and phone over Wi-Fi.</p>
+            </div>
+            <div class="storage-chip" id="storageUsage">Loading…</div>
+          </div>
+
+          <div class="mobile-upload-panel">
+            <input id="filePicker" type="file" multiple hidden>
+            <button class="button button-primary upload-mobile-button" id="chooseFiles" type="button">＋ Upload files</button>
+            <p class="muted small" style="text-align: center; margin-top: 6px;">Select photos, videos, or documents from your phone.</p>
+          </div>
+
+          <div class="upload-progress" id="uploadProgress" hidden>
+            <div class="progress-label"><span id="progressLabel">Uploading…</span><span id="progressPercent">0%</span></div>
+            <div class="progress-track"><div class="progress-fill" id="progressFill"></div></div>
+          </div>
+
+          <div class="browser-toolbar">
+            <nav class="breadcrumbs" id="breadcrumbs" aria-label="Folder path"></nav>
+            <div class="toolbar-actions">
+              <button class="button button-quiet" id="refreshFiles" type="button" title="Refresh">↻</button>
+              <button class="button button-secondary" id="downloadFolder" type="button" hidden>↓ ZIP</button>
+            </div>
+          </div>
+
+          <div class="file-list" id="fileList">
+            <div class="empty-state">Loading shared files…</div>
+          </div>
+
+          <div class="workspace-footer">
+            <span id="itemCount">0 items</span>
+            <span>Stored on PC</span>
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </div>
 
     <footer>Filee Connect • Connected over local Wi-Fi</footer>
   </main>
@@ -129,7 +147,7 @@
     </div>
   </div>
 
-  <script src="/js/mobile.js"></script>
-  <script src="/js/shared-files.js"></script>
+  <script src="/mobile.js"></script>
+  <script src="/shared-files.js"></script>
 </body>
 </html>
