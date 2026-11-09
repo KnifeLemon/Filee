@@ -183,6 +183,8 @@ public static class FormatRegistry
         // A browser's recorded network requests (HTTP Archive): JSON, read as one table row per request (issue #328).
         new("har", "HAR", FormatCategory.Data, ["har"], Writable: false),
         new("ics", "iCalendar", FormatCategory.Data, ["ics", "ical"]),
+        // The settings and data files of macOS and iOS apps, XML or binary, read into the data tree (issue #1256).
+        new("plist", "Property list", FormatCategory.Data, ["plist"], Writable: false),
 
         // E-books
         new("epub", "EPUB", FormatCategory.Ebook, ["epub"]),
