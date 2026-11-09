@@ -749,6 +749,14 @@ internal sealed partial class HtmlReader
     private const double MinDefaultContrast = 4.5;
 
     /// <summary>
+    /// Code always gets the light <see cref="CodeShade"/>, also when a dark highlight theme drew it on a dark background.
+    /// That theme's token colours were picked for the dark background and show at 1.3 to 2.9 on the code shade (Atom One
+    /// Dark, VS Code Dark+), above <see cref="MinContrast"/> but pale. Light themes' tokens (GitHub, Bootstrap's pink
+    /// code) stay above 3 and keep their colours.
+    /// </summary>
+    private const double MinCodeContrast = 3.0;
+
+    /// <summary>
     /// Keeps text readable when a style sheet only half describes a dark or light page: the page background is not
     /// kept (see <see cref="CssStyleSheet"/>), so "color: #fff" can end up on white paper and a dark card ("background:
     /// #111827") under the default black text. When the text colour (black if none) and what is behind it (the shade,
@@ -758,7 +766,7 @@ internal sealed partial class HtmlReader
     private static HCharFormat Readable(HCharFormat format, string? backdrop)
     {
         var background = format.Shade ?? backdrop ?? "#FFFFFF";
-        var needed = format.Color is null ? MinDefaultContrast : MinContrast;
+        var needed = format.Color is null ? MinDefaultContrast : format.Shade == CodeShade ? MinCodeContrast : MinContrast;
         if (CssValues.Contrast(format.Color ?? "#000000", background) >= needed)
             return format;
         return format with { Color = CssValues.Luminance(background) > 0.179 ? "#000000" : "#FFFFFF" };

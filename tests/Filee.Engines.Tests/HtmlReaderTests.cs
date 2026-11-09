@@ -150,6 +150,29 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Dark_theme_token_colours_turn_dark_on_the_code_shade_and_light_theme_ones_stay()
+    {
+        // Token colours of a dark highlight theme sit at 1.8 to 2.3 on the light code shade.
+        var content = Parse("""
+            <style>
+            pre.atom { background: #282c34; color: #abb2bf } .hljs-string { color: #98c379 }
+            pre.vs { background: #1e1e1e } .vs-string { color: #ce9178 }
+            .gh-string { color: #032f62 } .gh-built { color: #e36209 }
+            </style>
+            <pre class="atom"><span class="hljs-string">"아톰"</span></pre>
+            <pre class="vs"><span class="vs-string">"브이에스"</span></pre>
+            <pre><span class="gh-string">"깃허브"</span> <span class="gh-built">내장</span></pre>
+            """);
+
+        var atom = Run(content, "아톰").Format;
+        Assert.Equal((HtmlReader.CodeShade, "#000000"), (atom.Shade, atom.Color));
+        Assert.True(CssValues.Contrast(atom.Color!, atom.Shade!) >= 4.5);
+        Assert.Equal("#000000", Run(content, "브이에스").Format.Color);
+        Assert.Equal("#032F62", Run(content, "깃허브").Format.Color);
+        Assert.Equal("#E36209", Run(content, "내장").Format.Color); // about 3.1: GitHub's palest token keeps its colour
+    }
+
+    [Fact]
     public void Without_a_background_in_the_style_sheet_pre_keeps_the_code_shade_and_its_colour()
     {
         var plain = Run(Parse("""
