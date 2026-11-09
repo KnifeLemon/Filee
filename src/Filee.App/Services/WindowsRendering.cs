@@ -8,7 +8,9 @@
 // Filee keeps the defaults and only changes them when the variable asks.
 //
 // On ARM64, Avalonia's Adreno blocklist moves Qualcomm GPUs to the Microsoft Basic Render Driver, which draws on the CPU
-// (issue #236). "gpu", "vulkan" and "wgl" are for trying the GPU there again, one way each.
+// (issue #236). "gpu", "vulkan" and "wgl" are for trying the GPU there again, one way each. On a Snapdragon X Elite
+// (Adreno X1-85) "gpu" scrolled smoothest and kept transparency, "vulkan" put the donut on black and "wgl" didn't
+// start, so an unset variable on ARM64 means "gpu"; "auto" still asks for Avalonia's own choice.
 
 using System.Runtime.InteropServices;
 using Avalonia;
@@ -20,7 +22,7 @@ internal static class WindowsRendering
 {
     public const string Variable = "FILEE_RENDERING";
 
-    /// <summary>FILEE_RENDERING's values besides "auto" (or unset): Avalonia's defaults.</summary>
+    /// <summary>FILEE_RENDERING's values besides "auto": Avalonia's defaults, as unset is on x64.</summary>
     public static readonly IReadOnlyList<string> Choices = ["dcomp", "redirection", "software", "gpu", "vulkan", "wgl"];
 
     /// <summary>The variable's value in lower case, or null for unset, empty and "auto".</summary>
@@ -29,6 +31,13 @@ internal static class WindowsRendering
         var choice = value?.Trim().ToLowerInvariant();
         return string.IsNullOrEmpty(choice) || choice == "auto" ? null : choice;
     }
+
+    /// <summary>
+    /// The choice for the variable's <paramref name="value"/> on Windows: as <see cref="Normalize"/>, except that an
+    /// unset (or empty) variable on ARM64 means "gpu".
+    /// </summary>
+    public static string? Choose(string? value, Architecture architecture) =>
+        string.IsNullOrWhiteSpace(value) && architecture == Architecture.Arm64 ? "gpu" : Normalize(value);
 
     /// <summary>
     /// Avalonia's Windows options for <paramref name="choice"/> (from <see cref="Normalize"/>): "dcomp" skips WinUI
@@ -90,21 +99,26 @@ internal static class WindowsRendering
     /// <summary>
     /// "Rendering: AngleEgl with WinUIComposition (FILEE_RENDERING not set)", from what Avalonia registered at start.
     /// </summary>
-    public static string Describe(string? variable)
+    public static string Describe(string? variable) => Describe(variable, RuntimeInformation.ProcessArchitecture);
+
+    public static string Describe(string? variable, Architecture architecture)
     {
+        var asked = Asked(variable, architecture);
         var locate = Locator();
         if (locate is null)
-            return $"Rendering: unknown, Avalonia's services can't be read ({Asked(variable)})";
+            return $"Rendering: unknown, Avalonia's services can't be read ({asked})";
         var graphics = locate(typeof(IPlatformGraphics));
         var factoryType = Type.GetType("Avalonia.Win32.IWindowsSurfaceFactory, Avalonia.Win32", throwOnError: false);
         var factory = factoryType is null ? null : locate(factoryType);
         return $"Rendering: {RenderingName(graphics?.GetType().Name)} with " +
-               $"{CompositionName(graphics is null ? null : factory?.GetType().Name, factoryType is not null)} ({Asked(variable)})";
+               $"{CompositionName(graphics is null ? null : factory?.GetType().Name, factoryType is not null)} ({asked})";
     }
 
-    private static string Asked(string? variable) => Normalize(variable) switch
+    private static string Asked(string? variable, Architecture architecture) => Normalize(variable) switch
     {
-        null => $"{Variable} not set",
+        null when string.IsNullOrWhiteSpace(variable) =>
+            $"{Variable} not set{(Choose(variable, architecture) is { } choice ? $", {choice} on ARM64" : "")}",
+        null => $"{Variable}=auto",
         var choice when Choices.Contains(choice) => $"{Variable}={choice}",
         var choice => $"{Variable}={choice} is unknown and ignored",
     };

@@ -513,10 +513,12 @@ transparent area into a blurred rectangle (issue #269). Filee sets neither, so o
 program: each time the window shows, a backdrop is set back to none and the accent (which can't be read back) is
 turned off. For a report that still shows the wrong thing, the `FILEE_RENDERING` environment variable picks another
 way to draw (`WindowsRendering`): `dcomp` (skip WinUI composition), `redirection` (Direct3D into the redirection
-surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start. On ARM64, Avalonia's
-Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236), and three values try the GPU
-there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver), `vulkan` and `wgl` (OpenGL), the
-last two falling back to software when they can't start. On Linux (X11) only `software` applies: the GPU's driver stays
+surface) or `software` (no GPU); `auto` keeps the defaults, and so does unset except on ARM64. Filee reads it at
+start. On ARM64, Avalonia's Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236),
+and three values try the GPU there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver),
+`vulkan` and `wgl` (OpenGL), the last two falling back to software when they can't start. On a Snapdragon X Elite `gpu`
+was smooth and kept transparency, `vulkan` drew the donut on black and `wgl` didn't start, so unset means `gpu` on
+ARM64; `auto` goes back to Avalonia's blocklist. On Linux (X11) only `software` applies: the GPU's driver stays
 in memory for as long as Filee runs, also with no window open, so this is the way to a smaller tray app (issue #957).
 
 ## Explorer integration
