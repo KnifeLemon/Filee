@@ -229,6 +229,16 @@ public class PlistTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("<widget/>", "Unknown property list element <widget>")]
     [InlineData("<integer>twelve</integer>", "is not an <integer>")]
     [InlineData("<real>1.2.3</real>", "is not a <real>")]
+    [InlineData("<date>not a date</date>", "is not a <date>")]
+    [InlineData("<date>2020-01-01T00:00:00Z\nadmin = true\n[evil]\nx = 1</date>", "is not a <date>")]
+    [InlineData("<date>2020-01-01T00:00:00</date>", "is not a <date>")]
+    [InlineData("<date>2020-02-30T00:00:00Z</date>", "is not a <date>")]
+    [InlineData("<date>2020-01-01T24:00:00Z</date>", "is not a <date>")]
+    [InlineData("<date>२०२०-01-01T00:00:00Z</date>", "is not a <date>")]
+    [InlineData("<integer>0x</integer>", "is not an <integer>")]
+    [InlineData("<integer>0x-5</integer>", "is not an <integer>")]
+    [InlineData("<integer>340282366920938463463374607431768211456</integer>", "is not an <integer>")]
+    [InlineData("<integer>-170141183460469231731687303715884105729</integer>", "is not an <integer>")]
     [InlineData("<string>a</string><string>b</string>", "exactly one value")]
     [InlineData("", "exactly one value")]
     public void An_xml_property_list_that_does_not_follow_the_format_is_refused(string body, string message) =>
@@ -256,6 +266,53 @@ public class PlistTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(System.Numerics.BigInteger.Parse("123456789012345678901234567890"), tree[5]);
         Assert.Equal(new DataDate("2001-01-01T00:00:00Z"), tree[6]);
         Assert.Equal("AAECAwQF", tree[7]);
+    }
+
+    [Fact]
+    public void A_date_that_would_carry_other_text_into_toml_is_refused_before_anything_is_written()
+    {
+        // A date is written bare in TOML, so unchecked text after it would become keys and tables of their own.
+        var error = Assert.Throws<InvalidDataException>(() => Xml("<dict><key>a</key><date>2020-01-01T00:00:00Z\nadmin = true\n[evil]\nx = 1</date>"
+            + "<key>b</key><date>not a date</date></dict>"));
+
+        Assert.Contains("is not a <date>", error.Message);
+    }
+
+    [Fact]
+    public void Shortened_dates_are_read_and_written_in_full()
+    {
+        var tree = Assert.IsType<List<object?>>(Xml("<array><date>2020Z</date><date>2020-05Z</date><date>2020-05-17Z</date>"
+            + "<date>2020-05-17T10Z</date><date>2020-05-17T10:30Z</date><date> 2020-05-17T10:30:45Z </date><date>2024-02-29T23:59:59Z</date></array>"));
+
+        Assert.Equal(
+            ["2020-01-01T00:00:00Z", "2020-05-01T00:00:00Z", "2020-05-17T00:00:00Z", "2020-05-17T10:00:00Z", "2020-05-17T10:30:00Z", "2020-05-17T10:30:45Z", "2024-02-29T23:59:59Z"],
+            tree.Select(date => Assert.IsType<DataDate>(date).Text));
+    }
+
+    [Fact]
+    public void Integers_may_be_hexadecimal_and_reach_the_ends_of_128_bits()
+    {
+        var tree = Assert.IsType<List<object?>>(Xml("<array><integer>0x10</integer><integer>0XfF</integer><integer>+7</integer>"
+            + "<integer>340282366920938463463374607431768211455</integer><integer>-170141183460469231731687303715884105728</integer></array>"));
+
+        Assert.Equal(16L, tree[0]);
+        Assert.Equal(255L, tree[1]);
+        Assert.Equal(7L, tree[2]);
+        Assert.Equal((System.Numerics.BigInteger.One << 128) - 1, tree[3]);
+        Assert.Equal(-(System.Numerics.BigInteger.One << 127), tree[4]);
+    }
+
+    [Fact]
+    public void A_huge_run_of_digits_is_refused_without_being_parsed()
+    {
+        var digits = new string('9', 5_000_000);
+
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        var error = Assert.Throws<InvalidDataException>(() => Xml($"<integer>{digits}</integer>"));
+
+        Assert.Contains("is not an <integer>", error.Message);
+        Assert.True(error.Message.Length < 200, "the message holds the whole number");
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), watch.Elapsed.ToString());
     }
 
     [Fact]
@@ -432,6 +489,36 @@ public class PlistTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var error = Assert.Throws<InvalidDataException>(() => PlistData.Read(Crafted(chain, referenceSize: 2)));
 
         Assert.Contains("nested too deeply", error.Message);
+    }
+
+    [Fact]
+    public void A_deep_chain_visited_in_short_pieces_first_is_still_refused()
+    {
+        // Objects 1 to 300 are a chain of arrays ending in a string. The top array names the chain's later pieces first
+        // (300, 200, 100, then 1), so each first visit is shallow, but the path from 1 to the end is 300 levels long.
+        const int length = DataTree.MaxDepth + 44;
+        List<byte[]> objects = [[0xA4, length >> 8, length & 0xFF, 0, 200, 0, 100, 0, 1]];
+        for (var i = 1; i <= length; i++)
+            objects.Add([0xA1, (byte)((i + 1) >> 8), (byte)(i + 1)]);
+        objects.Add(Text("end"));
+
+        var error = Assert.Throws<InvalidDataException>(() => PlistData.Read(Crafted(objects, referenceSize: 2)));
+
+        Assert.Contains("nested too deeply", error.Message);
+    }
+
+    [Fact]
+    public void A_shared_value_used_at_a_shallow_depth_many_times_is_fine()
+    {
+        // A chain of 200 levels, reached from the top both directly and through one more array: 201 levels at most.
+        const int length = 200;
+        List<byte[]> objects = [[0xA2, 0, 1, (byte)((length + 2) >> 8), (byte)(length + 2)]];
+        for (var i = 1; i <= length; i++)
+            objects.Add([0xA1, (byte)((i + 1) >> 8), (byte)(i + 1)]);
+        objects.Add(Text("end"));
+        objects.Add([0xA1, 0, 1]);
+
+        Assert.IsType<List<object?>>(PlistData.Read(Crafted(objects, referenceSize: 2)));
     }
 
     [Fact]

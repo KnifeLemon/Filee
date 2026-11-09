@@ -7,18 +7,20 @@
 // - date → a date as written in RFC 3339 (binary dates count seconds from 2001-01-01 UTC, so they are converted);
 // - data → the bytes as Base64 text; a UID (NSKeyedArchiver files) → {"CF$UID": number}, as plutil writes it.
 // Files are never trusted: every offset, length and reference of a binary plist is checked before it is used, a value
-// that holds itself is refused, and so is a binary file whose shared values would expand to millions of values.
+// that holds itself is refused, and so is a binary file whose shared values would expand to millions of values or nest
+// deeper than the data tree allows through any path.
 
 using System.Buffers.Binary;
 using System.Globalization;
 using System.Numerics;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
 namespace Filee.Engines.Data;
 
-internal static class PlistData
+internal static partial class PlistData
 {
     /// <summary>The key a UID is written under, as <c>plutil -convert json</c> and Python's plistlib do.</summary>
     public const string UidKey = "CF$UID";
@@ -103,7 +105,7 @@ internal static class PlistData
             case "real":
                 return Real(element.Value.Trim());
             case "date":
-                return new DataDate(element.Value.Trim());
+                return Date(element.Value.Trim());
             case "data":
                 // Base64 in lines, with the white space of the file's indentation.
                 return string.Concat(element.Value.Where(c => !char.IsWhiteSpace(c)));
@@ -112,14 +114,49 @@ internal static class PlistData
         }
     }
 
+    // Apple's integers fit in 128 bits (a binary plist's widest is 16 bytes): signed from -2^127, unsigned up to 2^128 - 1.
+    private static readonly BigInteger MinInteger = -(BigInteger.One << 127);
+    private static readonly BigInteger MaxInteger = (BigInteger.One << 128) - 1;
+
     private static object Integer(string text)
     {
-        if (long.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var integer))
-            return integer;
-        if (BigInteger.TryParse(text, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out var big))
+        // Decimal with an optional sign, or hexadecimal after 0x as CoreFoundation and plistlib read it. The length is
+        // checked first, so a huge run of digits is refused without being parsed (2^128 has 39 decimal digits).
+        var hex = text.StartsWith("0x", StringComparison.OrdinalIgnoreCase);
+        var digits = hex ? text[2..] : text;
+        if (digits.Length is > 0 and <= 40
+            && (hex
+                ? digits.All(char.IsAsciiHexDigit) && BigInteger.TryParse("0" + digits, NumberStyles.AllowHexSpecifier, CultureInfo.InvariantCulture, out var big)
+                : BigInteger.TryParse(digits, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out big))
+            && big >= MinInteger && big <= MaxInteger)
+        {
+            if (big >= long.MinValue && big <= long.MaxValue)
+                return (long)big;
             return big;
-        throw new InvalidDataException($"\"{text}\" is not an <integer>.");
+        }
+        throw new InvalidDataException($"\"{Shorten(text)}\" is not an <integer>.");
     }
+
+    // yyyy-MM-ddTHH:mm:ssZ as Apple writes it, and the shortened forms plistlib reads (2020Z, 2020-05Z, 2020-05-17T10Z, ...).
+    // ASCII digits only and \z, not $, so nothing can follow the Z, not even a line break.
+    [GeneratedRegex(@"^([0-9]{4})(?:-([0-9]{2})(?:-([0-9]{2})(?:T([0-9]{2})(?::([0-9]{2})(?::([0-9]{2}))?)?)?)?)?Z\z", RegexOptions.CultureInvariant)]
+    private static partial Regex DatePattern();
+
+    /// <summary>A date checked and written in full, since TOML writes a date bare and anything else would land in the file as is.</summary>
+    private static DataDate Date(string text)
+    {
+        if (DatePattern().Match(text) is { Success: true } match)
+        {
+            string Part(int group, string missing) => match.Groups[group].Success ? match.Groups[group].Value : missing;
+            var full = $"{Part(1, "")}-{Part(2, "01")}-{Part(3, "01")}T{Part(4, "00")}:{Part(5, "00")}:{Part(6, "00")}Z";
+            if (DateTime.TryParseExact(full, "yyyy-MM-dd'T'HH:mm:ss'Z'", CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal | DateTimeStyles.AssumeUniversal, out _))
+                return new DataDate(full);
+        }
+        throw new InvalidDataException($"\"{Shorten(text)}\" is not a <date>.");
+    }
+
+    /// <summary>The start of a value for a message, so a huge one doesn't fill it.</summary>
+    private static string Shorten(string text) => text.Length <= 60 ? text : text[..60] + "…";
 
     private static double Real(string text)
     {
@@ -134,7 +171,7 @@ internal static class PlistData
         }
         if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value))
             return value;
-        throw new InvalidDataException($"\"{text}\" is not a <real>.");
+        throw new InvalidDataException($"\"{Shorten(text)}\" is not a <real>.");
     }
 
     // ───────────────────────── Binary ─────────────────────────
@@ -159,6 +196,7 @@ internal static class PlistData
         // Each object is read once, however often others refer to it; that is also how a loop is found.
         private readonly object?[] _objects;
         private readonly long[] _sizes;
+        private readonly int[] _heights; // levels below an object, so a shared one is checked for depth wherever it is used again
         private readonly byte[] _state; // 0 not read, 1 being read, 2 read
 
         public BinaryPlist(byte[] data)
@@ -189,6 +227,7 @@ internal static class PlistData
             _tableOffset = (int)table;
             _objects = new object?[_objectCount];
             _sizes = new long[_objectCount];
+            _heights = new int[_objectCount];
             _state = new byte[_objectCount];
         }
 
@@ -205,7 +244,11 @@ internal static class PlistData
         private object? Object(int index, int depth)
         {
             if (_state[index] == 2)
+            {
+                if (depth + _heights[index] > DataTree.MaxDepth)
+                    throw new InvalidDataException("The property list is nested too deeply.");
                 return _objects[index];
+            }
             if (_state[index] == 1)
                 throw Damaged("a value contains itself");
             if (depth > DataTree.MaxDepth)
@@ -217,70 +260,74 @@ internal static class PlistData
                 throw Damaged("an object lies outside the object area");
             var position = (int)offset;
             var marker = _data[position++];
-            var (value, size) = Value(marker >> 4, marker & 0xF, ref position, depth);
+            var (value, size, height) = Value(marker >> 4, marker & 0xF, ref position, depth);
             _objects[index] = value;
             _sizes[index] = size;
+            _heights[index] = height;
             _state[index] = 2;
             return value;
         }
 
-        private (object? Value, long Size) Value(int type, int info, ref int position, int depth)
+        private (object? Value, long Size, int Height) Value(int type, int info, ref int position, int depth)
         {
             switch (type)
             {
                 case 0x0:
                     return info switch
                     {
-                        0x0 => (null, 1),
-                        0x8 => (false, 1),
-                        0x9 => (true, 1),
+                        0x0 => (null, 1, 0),
+                        0x8 => (false, 1, 0),
+                        0x9 => (true, 1, 0),
                         _ => throw Damaged($"an object has the unknown marker 0x0{info:X}"),
                     };
                 case 0x1:
                     // 1, 2, 4, 8 or 16 bytes.
                     if (info > 4)
                         throw Damaged("an integer has an invalid size");
-                    return (ReadInteger(1 << info, ref position, signed: true), 1);
+                    return (ReadInteger(1 << info, ref position, signed: true), 1, 0);
                 case 0x2:
                     // 4 or 8 bytes.
                     if (info is not (2 or 3))
                         throw Damaged("a real number has an invalid size");
-                    return (ReadReal(1 << info, ref position), 1);
+                    return (ReadReal(1 << info, ref position), 1, 0);
                 case 0x3:
                     if (info != 3)
                         throw Damaged("a date is not 8 bytes long");
-                    return (ReadDate(Take(8, ref position)), 1);
+                    return (ReadDate(Take(8, ref position)), 1, 0);
                 case 0x4:
-                    return (Convert.ToBase64String(Take(Length(info, ref position), ref position)), 1);
+                    return (Convert.ToBase64String(Take(Length(info, ref position), ref position)), 1, 0);
                 case 0x5:
-                    return (Encoding.Latin1.GetString(Take(Length(info, ref position), ref position)), 1);
+                    return (Encoding.Latin1.GetString(Take(Length(info, ref position), ref position)), 1, 0);
                 case 0x6:
                     var characters = Length(info, ref position);
-                    return (Encoding.BigEndianUnicode.GetString(Take(characters * 2L, ref position)), 1);
+                    return (Encoding.BigEndianUnicode.GetString(Take(characters * 2L, ref position)), 1, 0);
                 case 0x7:
-                    return (Encoding.UTF8.GetString(Take(Length(info, ref position), ref position)), 1);
+                    return (Encoding.UTF8.GetString(Take(Length(info, ref position), ref position)), 1, 0);
                 case 0x8:
                     var uid = new DataMap { [UidKey] = ReadInteger(info + 1, ref position, signed: false) };
-                    return (uid, 2);
+                    return (uid, 2, 1);
                 case 0xA or 0xB or 0xC:
                     var list = new List<object?>();
                     var references = Take(Length(info, ref position) * (long)_referenceSize, ref position);
                     var listSize = 1L;
+                    var listHeight = 0;
                     for (var at = 0; at < references.Length; at += _referenceSize)
                     {
                         var itemIndex = Reference(references.AsSpan(at, _referenceSize));
                         list.Add(Object(itemIndex, depth + 1));
                         listSize += _sizes[itemIndex];
+                        listHeight = Math.Max(listHeight, 1 + _heights[itemIndex]);
                         if (listSize > MaxExpandedValues)
                             throw new InvalidDataException("The property list holds too many values.");
                     }
-                    return (list, listSize);
+                    return (list, listSize, listHeight);
                 case 0xD:
                     var pairs = Length(info, ref position);
                     var keys = Take(pairs * (long)_referenceSize, ref position);
                     var values = Take(pairs * (long)_referenceSize, ref position);
                     var map = new DataMap();
                     var mapSize = 1L;
+                    var mapHeight = 0;
                     for (var i = 0; i < pairs; i++)
                     {
                         var key = Object(Reference(keys.AsSpan(i * _referenceSize, _referenceSize)), depth + 1);
@@ -289,10 +336,11 @@ internal static class PlistData
                         var valueIndex = Reference(values.AsSpan(i * _referenceSize, _referenceSize));
                         map[name] = Object(valueIndex, depth + 1);
                         mapSize += 1 + _sizes[valueIndex];
+                        mapHeight = Math.Max(mapHeight, 1 + _heights[valueIndex]);
                         if (mapSize > MaxExpandedValues)
                             throw new InvalidDataException("The property list holds too many values.");
                     }
-                    return (map, mapSize);
+                    return (map, mapSize, mapHeight);
                 default:
                     throw Damaged($"an object has the unknown type 0x{type:X}");
             }
