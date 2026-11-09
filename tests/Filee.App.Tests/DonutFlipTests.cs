@@ -1429,8 +1429,16 @@ public class DonutFlipTests
             job.CancelCommand.Execute(null);
             Assert.Equal(1, platform.Remembered);
             Assert.Equal(1, platform.Returned);
+            // The job can end before the drop is over (a worker fails the fake photo at once), and then the ring is already
+            // finishing when the donut closes, so the close leaves it to hide the window. Headless, giving the keyboard
+            // back can't make the window resign key as it does on a Mac: it stays active until it hides, and a drag
+            // before that finds it active and doesn't take the keyboard. So wait for the job's end, which sends every run
+            // the same way, then for the window to hide.
+            ClipWindowTests.WaitFor(() => !job.IsRunning);
             radial.Close(animate: false);
             Assert.Equal(1, platform.Returned); // given back once
+            WaitUntilHidden(window);
+            Assert.False(window.IsActive);
 
             // The crop tool on the back face: its window gets the keyboard, so it isn't given back.
             (window, data) = DragOnto(radial, file);
@@ -1458,6 +1466,19 @@ public class DonutFlipTests
             try { folder.Delete(recursive: true); } catch (IOException) { }
         }
     });
+
+    // Runs the dispatcher and the render timer until the window hides: a finished ring holds its badge for a moment first.
+    private static void WaitUntilHidden(Window window)
+    {
+        for (var i = 0; i < 500 && window.IsVisible; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            AvaloniaHeadlessPlatform.ForceRenderTimerTick();
+            Thread.Sleep(10);
+        }
+        Dispatcher.UIThread.RunJobs(); // the deactivation that hiding posts
+        Assert.False(window.IsVisible);
+    }
 
     // A drag of file onto the donut, laid out first so the drag enters where the donut is.
     private static (RadialWindow Window, DataTransfer Data) DragOnto(RadialController radial, string file)
