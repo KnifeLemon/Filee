@@ -13,11 +13,14 @@
         </Transitions>
       </Setter>
     </Style>
-    <!-- The card being dragged: lifted, with the accent outline -->
+    <!-- The card being dragged stays in the list as an empty outlined slot; a smaller copy of it follows the pointer
+         (EnginesPage.axaml.cs). -->
     <Style Selector="Border.card.engine.dragging">
       <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
-      <Setter Property="BoxShadow" Value="0 8 24 0 #33000000" />
-      <Setter Property="ZIndex" Value="1" />
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+    <Style Selector="Border.card.engine.dragging > StackPanel">
+      <Setter Property="Opacity" Value="0" />
     </Style>
   </UserControl.Styles>
   <!-- Keep editor columns usable on narrow windows; the page still scrolls vertically in MainWindow. -->
@@ -101,6 +104,7 @@
       </StackPanel>
 
       <!-- Every engine in priority order: drag a card (or use the arrows) to change it -->
+      <Panel>
       <ItemsControl x:Name="EngineList" ItemsSource="{Binding Engines}">
         <ItemsControl.ItemsPanel>
           <ItemsPanelTemplate>
@@ -157,6 +161,9 @@
           </DataTemplate>
         </ItemsControl.ItemTemplate>
       </ItemsControl>
+      <!-- Holds the copy that follows the pointer while dragging. Not hit-testable. -->
+      <Canvas x:Name="DragLayer" IsHitTestVisible="False" />
+      </Panel>
     </StackPanel>
   </ScrollViewer>
 </UserControl>

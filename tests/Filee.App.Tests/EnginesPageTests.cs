@@ -120,6 +120,12 @@ public class EnginesPageTests
 
             window.MouseUp(past, MouseButton.Left);
             Pump();
+            // The copy of the card settles into its slot first (about 0.2 s), then the card is a card again.
+            for (var i = 0; i < 50 && first.IsDragging; i++)
+            {
+                Thread.Sleep(20);
+                Pump();
+            }
             Assert.False(first.IsDragging);
             Assert.Null(list.Cursor);
             Assert.Equal(engines.Select(e => e.Converter.Id), store.Settings.EnginePriority);
