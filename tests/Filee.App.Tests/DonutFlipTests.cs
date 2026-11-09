@@ -1429,6 +1429,9 @@ public class DonutFlipTests
             job.CancelCommand.Execute(null);
             Assert.Equal(1, platform.Remembered);
             Assert.Equal(1, platform.Returned);
+            // Repro only: the job's end reaches the ring before the close, as when a worker beats the drop's dispatcher run.
+            ClipWindowTests.WaitFor(() => !job.IsRunning);
+            Assert.True(window.DonutControl.IsFinishingProgress);
             radial.Close(animate: false);
             Assert.Equal(1, platform.Returned); // given back once
 
