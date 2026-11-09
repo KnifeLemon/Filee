@@ -139,7 +139,7 @@
     <!-- Recent conversions -->
     <StackPanel Spacing="10">
       <DockPanel>
-        <Button DockPanel.Dock="Right" Classes="ghost" Content="{DynamicResource home.clear_history}" Command="{Binding ClearHistoryCommand}" />
+        <Button DockPanel.Dock="Right" Classes="ghost danger" Content="{DynamicResource home.clear_history}" Command="{Binding ClearHistoryCommand}" />
         <TextBlock Classes="h2" VerticalAlignment="Center" Text="{DynamicResource home.recent}" />
       </DockPanel>
       <TextBox Classes="search clearButton" Text="{Binding Search}" PlaceholderText="{DynamicResource common.search}"
