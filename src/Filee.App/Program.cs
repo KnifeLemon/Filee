@@ -7,6 +7,7 @@
 //  3. Start Avalonia. The app lives in the tray, so it only exits via the tray "Quit" command (or --quit).
 
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
@@ -287,7 +288,7 @@ internal static class Program
             builder = builder.With(new MacOSPlatformOptions { ShowInDock = PreloadedStore?.Settings.ShowInDock ?? true });
         if (OperatingSystem.IsWindows())
             builder = builder.With(WindowsRendering.Options(
-                WindowsRendering.Normalize(Environment.GetEnvironmentVariable(WindowsRendering.Variable)),
+                WindowsRendering.Choose(Environment.GetEnvironmentVariable(WindowsRendering.Variable), RuntimeInformation.ProcessArchitecture),
                 adapters => Log.LogInformation("Graphics adapters: {Adapters}", adapters)));
 
         // The GPU's driver stays in memory for as long as Filee runs, also with no window open (#957).
