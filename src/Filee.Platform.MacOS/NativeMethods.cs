@@ -176,6 +176,26 @@ internal static class NativeMethods
         SendVoid(window, sel_registerName("orderFrontRegardless"));
     }
 
+    internal static void MoveToActiveSpace(nint window)
+    {
+        if (window == 0)
+            return;
+
+        var getBehaviorSelector = sel_registerName("collectionBehavior");
+        var setBehaviorSelector = sel_registerName("setCollectionBehavior:");
+        if (!SendBool(window, sel_registerName("respondsToSelector:"), getBehaviorSelector)
+            || !SendBool(window, sel_registerName("respondsToSelector:"), setBehaviorSelector))
+            return;
+
+        const nint canJoinAllSpaces = 1, moveToActiveSpace = 1 << 1, stationary = 1 << 4;
+        const nint fullScreenPrimary = 1 << 7, fullScreenAuxiliary = 1 << 8, fullScreenNone = 1 << 9;
+        var behavior = Send(window, getBehaviorSelector);
+        behavior = (behavior & ~(canJoinAllSpaces | stationary | fullScreenPrimary | fullScreenNone)) | moveToActiveSpace | fullScreenAuxiliary;
+        // Clear macOS 13+ Stage Manager grouping bits (Primary, Auxiliary, CanJoinAllApplications; #251) so the window can float freely on the active Space.
+        behavior &= ~((1 << 16) | (1 << 17) | (1 << 18));
+        SendInteger(window, setBehaviorSelector, behavior);
+    }
+
     internal static void RestoreWindow(nint window)
     {
         if (window == 0)

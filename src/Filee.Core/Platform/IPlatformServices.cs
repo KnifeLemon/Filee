@@ -185,6 +185,12 @@ public interface IPlatformServices
     /// Resigns key window status on a window previously made key, returning key events to the frontmost application.
     /// </summary>
     void ReleaseKeyWindow(nint windowHandle) { }
+
+    /// <summary>
+    /// Configures a dialog host window on macOS with full-screen auxiliary collection behavior and moves it to the
+    /// active space so that file and folder pickers open on the active full-screen Space without switching Spaces.
+    /// </summary>
+    void MoveToActiveSpace(nint windowHandle) { }
 }
 
 /// <summary>
