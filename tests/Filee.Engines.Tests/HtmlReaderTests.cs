@@ -70,6 +70,185 @@ public class HtmlReaderTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Style_sheet_colours_apply_to_classes_and_elements_but_not_to_the_whole_page()
+    {
+        // #1237: a page styled from <style> came out without its colours.
+        var content = Parse("""
+            <html><head><style>
+            @charset "utf-8";
+            @import url("https://fonts.example/a;b.css");
+            .first { font-weight: bold }
+            * { color: #111; background: #eee }
+            html, body { color: red; background: #081b29 }
+            h1 { color: #c00 }
+            .note, p.tip { background-color: #ffe; color: rgb(0, 0, 255) }
+            th { background: #ddd }
+            @media print { .first { color: green } }
+            </style></head><body>
+            <h1>제목</h1><p class="first">첫째</p><p>본문</p><p class="note">참고</p>
+            <table><tr><th>머리</th></tr><tr><td>칸</td></tr></table>
+            </body></html>
+            """);
+
+        Assert.True(Run(content, "첫째").Format.Bold); // the first rule after @import / @charset is kept
+        Assert.Null(Run(content, "첫째").Format.Color); // inside @media: not applied
+        Assert.Equal("#CC0000", Run(content, "제목").Format.Color);
+        var note = Run(content, "참고").Format;
+        Assert.Equal(("#0000FF", "#FFFFEE"), (note.Color, note.Shade));
+        var plain = Run(content, "본문").Format; // * / html / body rules stay out of every run
+        Assert.Null(plain.Color);
+        Assert.Null(plain.Shade);
+        var table = content.Blocks.OfType<HTable>().Single();
+        Assert.Equal("#DDDDDD", table.Rows[0].Cells[0].Fill);
+        Assert.Null(table.Rows[1].Cells[0].Fill);
+        // A style attribute still wins over the style sheet.
+        Assert.Equal("#00FF00", Run(Parse("<style>p{color:#c00}</style><p style=\"color:#0f0\">x</p>"), "x").Format.Color);
+    }
+
+    [Fact]
+    public void Thousands_of_statement_at_rules_are_skipped_in_linear_time()
+    {
+        // Cutting the text after every @import made this quadratic: 80,000 lines took minutes.
+        var sheet = string.Concat(Enumerable.Repeat("@import \"a.css\";\n", 80_000)) + ".x{font-weight:bold}";
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var content = Parse($"<style>{sheet}</style><p class=\"x\">굵게</p>");
+        timer.Stop();
+
+        Assert.True(Run(content, "굵게").Format.Bold);
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(30), $"took {timer.Elapsed}");
+    }
+
+    [Fact]
+    public void A_style_background_does_not_replace_the_code_shade()
+    {
+        // The Markdown, text, XHTML and FB2 writers know code only by this shade.
+        var content = Parse("""
+            <style>
+            pre.dark { background: #282c34; color: #f8f8f2 }
+            .hljs { background: #1e1e1e; color: #d4d4d4 }
+            code.gh { background: #f6f8fa }
+            kbd { background: #222 }
+            </style>
+            <pre class="dark">어두운 코드</pre>
+            <pre><code class="hljs">하이라이트</code></pre>
+            <p><code class="gh">깃허브</code> <kbd>키보드</kbd></p>
+            """);
+
+        var dark = Run(content, "어두운").Format;
+        Assert.Equal((HtmlReader.CodeShade, "#000000"), (dark.Shade, dark.Color)); // light text turns dark on the code shade
+        Assert.Equal(HtmlReader.CodeShade, Run(content, "하이라이트").Format.Shade);
+        Assert.Equal(HtmlReader.CodeShade, Run(content, "깃허브").Format.Shade);
+        Assert.Equal(HtmlReader.CodeShade, Run(content, "키보드").Format.Shade);
+
+        // So a dark theme still gives a fenced block in Markdown.
+        var section = new HSection();
+        section.Blocks.AddRange(content.Blocks);
+        var document = new HDocument();
+        document.Sections.Add(section);
+        var markdown = MarkdownWriter.Write(document, _ => null);
+        Assert.Contains("```\n어두운 코드", markdown, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Without_a_background_in_the_style_sheet_pre_keeps_the_code_shade_and_its_colour()
+    {
+        var plain = Run(Parse("""
+            <style>.plain { color: #123456 }</style>
+            <pre class="plain">기본 코드</pre>
+            """), "기본").Format;
+        Assert.Equal((HtmlReader.CodeShade, "#123456"), (plain.Shade, plain.Color));
+    }
+
+    [Fact]
+    public void Text_in_a_cell_with_a_fill_is_read_against_the_fill()
+    {
+        // Old e-mail HTML: bgcolor on the cell, white text in a font tag. The fill is not a run shade.
+        var content = Parse("""
+            <table><tr>
+            <td bgcolor="#000000"><font color="#ffffff">white-text</font></td>
+            <td bgcolor="#000000">default-text</td>
+            <td bgcolor="#ffffff"><font color="#000000">black-text</font></td>
+            <td bgcolor="#000000"><table><tr><td>nested-text</td></tr></table></td>
+            </tr></table>
+            """);
+
+        Assert.Equal("#FFFFFF", Run(content, "white-text").Format.Color); // white on its own fill, not on white paper
+        Assert.Equal("#FFFFFF", Run(content, "default-text").Format.Color); // default black text on black turns white
+        Assert.Equal("#000000", Run(content, "black-text").Format.Color);
+        Assert.Equal("#FFFFFF", Run(content, "nested-text").Format.Color); // a cell without a fill shows the one behind it
+    }
+
+    [Fact]
+    public void Default_text_needs_more_contrast_than_text_the_page_coloured()
+    {
+        var content = Parse("""
+            <style>
+            .a { background: #1f2937 } .b { background: #1e293b } .c { background: #374151 }
+            .d { background: #1f2937; color: #6b7280 }
+            .e { background: #808080 }
+            </style>
+            <p class="a">alpha</p><p class="b">beta</p><p class="c">gamma</p><p class="d">delta</p><p class="e">epsilon</p>
+            """);
+
+        // Nobody chose black here (the page colour was dropped), and it shows at 1.5 to 2: the text turns white.
+        Assert.Equal("#FFFFFF", Run(content, "alpha").Format.Color);
+        Assert.Equal("#FFFFFF", Run(content, "beta").Format.Color);
+        Assert.Equal("#FFFFFF", Run(content, "gamma").Format.Color);
+        Assert.Equal("#6B7280", Run(content, "delta").Format.Color); // the page set both colours (ratio about 3): as written
+        Assert.Null(Run(content, "epsilon").Format.Color); // black on grey (5.3) reads
+    }
+
+    [Fact]
+    public void Text_that_would_vanish_on_its_shade_or_on_the_page_turns_black_or_white()
+    {
+        // The page background of #1237 is not kept, so rules written for it must not leave unreadable text.
+        var content = Parse("""
+            <style>
+            body { color: #fff }
+            .card { background: #111827 }
+            .hero { background: linear-gradient(#081b29, #0ef); color: #fff }
+            .lime { color: #0f0 }
+            .badge { background: #111827; color: #f9fafb }
+            </style>
+            <p class="card">카드</p><p class="hero">히어로</p><p class="lime">라임</p><p class="badge">배지</p>
+            """);
+
+        var card = Run(content, "카드").Format; // black default text on a near-black shade: the shade stays
+        Assert.Equal(("#111827", "#FFFFFF"), (card.Shade, card.Color));
+        var hero = Run(content, "히어로").Format; // white text on the white page
+        Assert.Null(hero.Shade);
+        Assert.Equal("#000000", hero.Color);
+        Assert.Equal("#00FF00", Run(content, "라임").Format.Color); // contrast about 1.37: left as written
+        Assert.Equal("#F9FAFB", Run(content, "배지").Format.Color); // readable pairs are untouched
+    }
+
+    [Fact]
+    public void Colours_with_an_alpha_channel_are_blended_over_white_and_transparent_ones_are_dropped()
+    {
+        var content = Parse("""
+            <style>
+            .glass { background: rgba(0, 0, 0, 0.5) }
+            .reset { background: rgba(0, 0, 0, 0); color: rgba(0, 0, 0, 0) }
+            .short { background: #0000; color: #00000000 }
+            .hex { background: #00000080; color: rgb(255 255 255 / 100%) }
+            .slash { background: rgb(0 0 0 / 50%) }
+            </style>
+            <p class="glass">유리</p><p class="reset">초기화</p><p class="short">짧게</p><p class="hex">헥스</p><p class="slash">슬래시</p>
+            """);
+
+        Assert.Equal("#808080", Run(content, "유리").Format.Shade);
+        var reset = Run(content, "초기화").Format;
+        Assert.Null(reset.Shade);
+        Assert.Null(reset.Color);
+        var tiny = Run(content, "짧게").Format;
+        Assert.Null(tiny.Shade);
+        Assert.Null(tiny.Color);
+        var hex = Run(content, "헥스").Format;
+        Assert.Equal(("#7F7F7F", "#FFFFFF"), (hex.Shade, hex.Color));
+        Assert.Equal("#808080", Run(content, "슬래시").Format.Shade);
+    }
+
+    [Fact]
     public void Whitespace_collapses_and_line_breaks_stay()
     {
         var paragraphs = Paragraphs(Parse("<p>  하나   \n  둘<br>셋<br></p><p><br></p><p></p><div>\n</div><pre>  들여쓴\n\n코드</pre>"));

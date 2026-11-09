@@ -255,7 +255,7 @@ internal sealed partial class HtmlReader
     /// <param name="FirstLine">First line indent (CSS text-indent).</param>
     /// <param name="Depth">Element nesting depth, limited so that absurdly deep HTML cannot exhaust the stack.</param>
     private readonly record struct Context(
-        HCharFormat Format, HAlign? Align, int Indent, int ListLevel, ListItem? Item, int Heading, bool Pre, int? FirstLine, int Depth = 0);
+        HCharFormat Format, HAlign? Align, int Indent, int ListLevel, ListItem? Item, int Heading, bool Pre, int? FirstLine, int Depth = 0, string? Backdrop = null);
 
     /// <summary>A list item: its paragraphs share the list, only the first one is numbered.</summary>
     private sealed class ListItem(HNumbering numbering, int level)
@@ -325,7 +325,7 @@ internal sealed partial class HtmlReader
             sink.BreakPending = true;
         }
 
-        var c = context with { Format = CharFormat(name, element, style, context.Format), Depth = context.Depth + 1 };
+        var c = context with { Format = CharFormat(name, element, style, context.Format, context.Backdrop), Depth = context.Depth + 1 };
         if (Align(element.GetAttribute("align") ?? style.Get("text-align")) is { } align)
             c = c with { Align = align };
         if (style.Get("white-space") is { } whiteSpace)
@@ -369,7 +369,7 @@ internal sealed partial class HtmlReader
                 Block(element, sink, c with { Indent = c.Indent + QuoteIndent });
                 break;
             case "pre" or "listing" or "xmp" or "plaintext":
-                Block(element, sink, c with { Pre = true, Format = c.Format with { Shade = CodeShade } });
+                Block(element, sink, c with { Pre = true }); // its shade comes from CharFormat, where a style can replace it
                 break;
             case "figure" or "center":
                 Block(element, sink, c with { Align = c.Align ?? HAlign.Center });
@@ -677,7 +677,7 @@ internal sealed partial class HtmlReader
 
     // ───────────────────────── Formatting ─────────────────────────
 
-    private static HCharFormat CharFormat(string name, IElement element, CssDeclarations style, HCharFormat format)
+    private static HCharFormat CharFormat(string name, IElement element, CssDeclarations style, HCharFormat format, string? backdrop)
     {
         var size = format.Size ?? BaseSize;
         format = name switch
@@ -689,6 +689,7 @@ internal sealed partial class HtmlReader
             "sub" => format with { Subscript = true, Superscript = null },
             "sup" => format with { Superscript = true, Subscript = null },
             "code" or "kbd" or "samp" or "tt" => format with { Shade = CodeShade },
+            "pre" or "listing" or "xmp" or "plaintext" => format with { Shade = CodeShade },
             "mark" => format with { Shade = MarkShade },
             "small" => format with { Size = (int)(size * 0.83) },
             "big" => format with { Size = (int)(size * 1.2) },
@@ -728,11 +729,39 @@ internal sealed partial class HtmlReader
         }
         if (CssValues.Color(style.Get("color")) is { } color)
             format = format with { Color = color };
-        if (CssValues.FirstColor(style.Get("background-color") ?? style.Get("background")) is { } shade && shade != "#FFFFFF")
+        // Code keeps its shade whatever the style sheet says (pre { background: #282c34 }, code { background: #f6f8fa }): the
+        // Markdown, text, XHTML and FB2 writers know code only by CodeShade. Readable() turns light text dark on it.
+        if (CssValues.FirstColor(style.Get("background-color") ?? style.Get("background")) is { } shade && shade != "#FFFFFF" && format.Shade != CodeShade)
             format = format with { Shade = shade };
         if (CssValues.FontSize(style.Get("font-size"), size) is { } fontSize)
             format = format with { Size = fontSize };
-        return format;
+        return Readable(format, backdrop);
+    }
+
+    /// <summary>Text the page coloured and its background this close in brightness (WCAG contrast ratio below this) cannot be read.</summary>
+    private const double MinContrast = 1.25;
+
+    /// <summary>
+    /// Text with no colour of its own is black because nobody chose it (the page colour is not kept), so it needs a
+    /// higher contrast than text the page coloured: black stays on #1f2937 at 1.5 only because the style sheet's white
+    /// body colour was dropped.
+    /// </summary>
+    private const double MinDefaultContrast = 4.5;
+
+    /// <summary>
+    /// Keeps text readable when a style sheet only half describes a dark or light page: the page background is not
+    /// kept (see <see cref="CssStyleSheet"/>), so "color: #fff" can end up on white paper and a dark card ("background:
+    /// #111827") under the default black text. When the text colour (black if none) and what is behind it (the shade,
+    /// else the fill of the table cell, else white paper) are too close, the background stays and the text becomes
+    /// black or white, whichever shows on it.
+    /// </summary>
+    private static HCharFormat Readable(HCharFormat format, string? backdrop)
+    {
+        var background = format.Shade ?? backdrop ?? "#FFFFFF";
+        var needed = format.Color is null ? MinDefaultContrast : MinContrast;
+        if (CssValues.Contrast(format.Color ?? "#000000", background) >= needed)
+            return format;
+        return format with { Color = CssValues.Luminance(background) > 0.179 ? "#000000" : "#FFFFFF" };
     }
 
     /// <summary>&lt;font size="1..7"&gt; (3 is normal), also relative "+1" / "-2".</summary>
@@ -796,7 +825,7 @@ internal sealed partial class HtmlReader
                 : inner with { Item = new ListItem(numbering, level) };
             if (Align(item.GetAttribute("align") ?? itemStyle.Get("text-align")) is { } align)
                 itemContext = itemContext with { Align = align };
-            Children(item, sink, itemContext with { Format = CharFormat("li", item, itemStyle, context.Format) });
+            Children(item, sink, itemContext with { Format = CharFormat("li", item, itemStyle, context.Format, context.Backdrop) });
             Flush(sink);
         }
         Flush(sink);
@@ -924,10 +953,11 @@ internal sealed partial class HtmlReader
             },
         };
         var cellSink = new Sink(hCell.Blocks);
-        var format = CharFormat(cell.LocalName, cell, style, context.Format);
+        var backdrop = hCell.Fill ?? context.Backdrop; // what the text is drawn on: a cell without a fill shows the one behind it
+        var format = CharFormat(cell.LocalName, cell, style, context.Format, backdrop);
         if (header)
             format = format with { Bold = format.Bold ?? true };
-        var cellContext = new Context(format, Align(cell.GetAttribute("align") ?? style.Get("text-align")) ?? (cell.LocalName == "th" ? HAlign.Center : null), 0, 0, null, 0, false, null, context.Depth + 1);
+        var cellContext = new Context(format, Align(cell.GetAttribute("align") ?? style.Get("text-align")) ?? (cell.LocalName == "th" ? HAlign.Center : null), 0, 0, null, 0, false, null, context.Depth + 1, backdrop);
         Bookmark(cell, cellSink);
         Children(cell, cellSink, cellContext);
         Flush(cellSink);
