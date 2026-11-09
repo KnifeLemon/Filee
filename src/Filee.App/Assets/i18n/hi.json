@@ -1641,5 +1641,9 @@
   "connect.connected_badge": "{0} कनेक्टेड",
   "connect.connect_again": "फिर से कनेक्ट करें",
   "connect.manual_url_label": "पता:",
-  "connect.manual_instruction_pin": "या अपने फोन के ब्राउज़र में ऊपर दिया गया पता खोलें और पिन दर्ज करें।"
+  "connect.manual_instruction_pin": "या अपने फोन के ब्राउज़र में ऊपर दिया गया पता खोलें और पिन दर्ज करें।",
+  "connect.picker_files_title": "अपलोड करने के लिए फ़ाइलें चुनें",
+  "connect.picker_folder_title": "अपलोड करने के लिए फ़ोल्डर चुनें",
+  "connect.pin_label": "पिन:",
+  "connect.firewall_hint_generic": "नोट: यदि आपका फ़ोन कनेक्ट नहीं हो पा रहा है, तो सिस्टम फ़ायरवॉल में Filee को अनुमति दें।"
 }

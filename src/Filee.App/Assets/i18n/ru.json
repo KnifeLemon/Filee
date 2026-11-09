@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "{0} Подключено",
   "connect.connect_again": "Подключить снова",
   "connect.manual_url_label": "Адрес:",
-  "connect.manual_instruction_pin": "Либо откройте адрес выше в браузере телефона и введите PIN-код."
+  "connect.manual_instruction_pin": "Либо откройте адрес выше в браузере телефона и введите PIN-код.",
+  "connect.picker_files_title": "Выберите файлы для загрузки",
+  "connect.picker_folder_title": "Выберите папку для загрузки",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "Примечание: если телефон не подключается, разрешите Filee в системном брандмауэре."
 }

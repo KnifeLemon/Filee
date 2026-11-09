@@ -1639,5 +1639,9 @@
   "connect.connected_badge": "{0} Terhubung",
   "connect.connect_again": "Hubungkan Lagi",
   "connect.manual_url_label": "Alamat:",
-  "connect.manual_instruction_pin": "Atau buka alamat di atas di browser ponsel Anda dan masukkan PIN."
+  "connect.manual_instruction_pin": "Atau buka alamat di atas di browser ponsel Anda dan masukkan PIN.",
+  "connect.picker_files_title": "Pilih file untuk diunggah",
+  "connect.picker_folder_title": "Pilih folder untuk diunggah",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "Catatan: Jika ponsel Anda tidak dapat terhubung, izinkan Filee di firewall sistem."
 }

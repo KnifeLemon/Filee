@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "{0} Connecté",
   "connect.connect_again": "Se reconnecter",
   "connect.manual_url_label": "Adresse :",
-  "connect.manual_instruction_pin": "Ou ouvrez l'adresse ci-dessus dans le navigateur de votre téléphone et saisissez le code PIN."
+  "connect.manual_instruction_pin": "Ou ouvrez l'adresse ci-dessus dans le navigateur de votre téléphone et saisissez le code PIN.",
+  "connect.picker_files_title": "Sélectionner les fichiers à envoyer",
+  "connect.picker_folder_title": "Sélectionner le dossier à envoyer",
+  "connect.pin_label": "Code PIN :",
+  "connect.firewall_hint_generic": "Remarque : Si votre téléphone ne peut pas se connecter, autorisez Filee dans le pare-feu du système."
 }

@@ -1640,5 +1640,9 @@
   "connect.connected_badge": "تم اتصال {0}",
   "connect.connect_again": "الاتصال مرة أخرى",
   "connect.manual_url_label": "العنوان:",
-  "connect.manual_instruction_pin": "أو افتح العنوان أعلاه في متصفح هاتفك وأدخل رمز PIN."
+  "connect.manual_instruction_pin": "أو افتح العنوان أعلاه في متصفح هاتفك وأدخل رمز PIN.",
+  "connect.picker_files_title": "تحديد الملفات المراد رفعها",
+  "connect.picker_folder_title": "تحديد المجلد المراد رفعه",
+  "connect.pin_label": "رمز PIN:",
+  "connect.firewall_hint_generic": "ملاحظة: إذا لم يتمكن هاتفك من الاتصال، اسمح لـ Filee في جدار الحماية الخاص بالنظام."
 }

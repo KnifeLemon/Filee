@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "{0} 已連線",
   "connect.connect_again": "重新連線",
   "connect.manual_url_label": "網址:",
-  "connect.manual_instruction_pin": "或在手機瀏覽器中開啟上方網址並輸入 PIN 碼。"
+  "connect.manual_instruction_pin": "或在手機瀏覽器中開啟上方網址並輸入 PIN 碼。",
+  "connect.picker_files_title": "選取要上傳的檔案",
+  "connect.picker_folder_title": "選取要上傳的資料夾",
+  "connect.pin_label": "PIN 碼：",
+  "connect.firewall_hint_generic": "注意：如果您的手機無法連線，請在系統防火牆中允許 Filee。"
 }

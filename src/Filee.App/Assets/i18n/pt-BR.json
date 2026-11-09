@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "{0} Conectado",
   "connect.connect_again": "Conectar novamente",
   "connect.manual_url_label": "Endereço:",
-  "connect.manual_instruction_pin": "Ou abra o endereço acima no navegador do celular e digite o PIN."
+  "connect.manual_instruction_pin": "Ou abra o endereço acima no navegador do celular e digite o PIN.",
+  "connect.picker_files_title": "Selecionar arquivos para enviar",
+  "connect.picker_folder_title": "Selecionar pasta para enviar",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "Observação: se o seu celular não conseguir se conectar, permita o Filee no firewall do sistema."
 }

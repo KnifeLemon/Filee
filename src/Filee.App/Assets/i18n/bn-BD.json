@@ -1637,5 +1637,9 @@
   "connect.connected_badge": "{0} সংযুক্ত",
   "connect.connect_again": "আবার সংযোগ করুন",
   "connect.manual_url_label": "ঠিকানা:",
-  "connect.manual_instruction_pin": "অথবা আপনার ফোনের ব্রাউজারে উপরের ঠিকানাটি খুলুন এবং পিন দিন।"
+  "connect.manual_instruction_pin": "অথবা আপনার ফোনের ব্রাউজারে উপরের ঠিকানাটি খুলুন এবং পিন দিন।",
+  "connect.picker_files_title": "আপলোড করার জন্য ফাইল নির্বাচন করুন",
+  "connect.picker_folder_title": "আপলোড করার জন্য ফোল্ডার নির্বাচন করুন",
+  "connect.pin_label": "পিন:",
+  "connect.firewall_hint_generic": "নোট: আপনার ফোন সংযোগ করতে না পারলে, সিস্টেম ফায়ারওয়ালে Filee অনুমতি দিন।"
 }

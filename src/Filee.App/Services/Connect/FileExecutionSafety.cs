@@ -9,12 +9,12 @@ public static class FileExecutionSafety
 {
     private static readonly HashSet<string> SafeExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        // Pictures
-        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".svg", ".ico", ".tif", ".tiff", ".avif", ".heic", ".heif", ".jxl",
+        // Pictures (SVG removed: opens in browser and can execute script)
+        ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".ico", ".tif", ".tiff", ".avif", ".heic", ".heif", ".jxl",
         // PDF
         ".pdf",
-        // Plain text
-        ".txt", ".csv", ".tsv", ".log", ".md", ".json", ".xml", ".yaml", ".yml",
+        // Plain text (XML removed: dangerous script/entity vectors)
+        ".txt", ".csv", ".tsv", ".log", ".md", ".json", ".yaml", ".yml",
         // Audio
         ".mp3", ".wav", ".ogg", ".m4a", ".flac", ".aac", ".wma", ".opus", ".mid",
         // Video
@@ -32,9 +32,9 @@ public static class FileExecutionSafety
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         return ext switch
         {
-            ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".svg" or ".ico" or ".tif" or ".tiff" or ".avif" => "image",
+            ".png" or ".jpg" or ".jpeg" or ".gif" or ".webp" or ".bmp" or ".ico" or ".tif" or ".tiff" or ".avif" => "image",
             ".pdf" => "pdf",
-            ".txt" or ".csv" or ".tsv" or ".log" or ".md" or ".json" or ".xml" or ".yaml" or ".yml" => "text",
+            ".txt" or ".csv" or ".tsv" or ".log" or ".md" or ".json" or ".yaml" or ".yml" => "text",
             ".mp3" or ".wav" or ".ogg" or ".m4a" or ".flac" or ".aac" or ".wma" or ".opus" => "audio",
             ".mp4" or ".mkv" or ".webm" or ".avi" or ".mov" or ".wmv" or ".flv" or ".m4v" => "video",
             _ => "file"

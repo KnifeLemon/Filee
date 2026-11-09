@@ -33,7 +33,7 @@
               HorizontalAlignment="Center">
         <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
           <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-            <TextBlock Text="PIN:" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+            <TextBlock Text="{DynamicResource connect.pin_label}" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
             <TextBlock Text="{Binding PinCodeText}" FontSize="22" FontWeight="Bold" LetterSpacing="2"
                        Foreground="{DynamicResource AccentBrush}" VerticalAlignment="Center" />
           </StackPanel>

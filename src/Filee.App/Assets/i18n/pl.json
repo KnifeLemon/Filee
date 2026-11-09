@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "Połączono: {0}",
   "connect.connect_again": "Połącz ponownie",
   "connect.manual_url_label": "Adres:",
-  "connect.manual_instruction_pin": "Lub otwórz powyższy adres w przeglądarce telefonu i wpisz PIN."
+  "connect.manual_instruction_pin": "Lub otwórz powyższy adres w przeglądarce telefonu i wpisz PIN.",
+  "connect.picker_files_title": "Wybierz pliki do przesłania",
+  "connect.picker_folder_title": "Wybierz folder do przesłania",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "Uwaga: jeśli telefon nie może się połączyć, zezwól na Filee w zaporze systemowej."
 }

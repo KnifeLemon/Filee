@@ -177,7 +177,7 @@
       }
 
       const downloadLink = element('a', 'button button-secondary button-sm', '↓');
-      downloadLink.href = `/download/${encodeURIComponent(file.id)}?token=${encodeURIComponent(tok)}`;
+      downloadLink.href = `/download/${encodeURIComponent(file.id)}`;
       downloadLink.download = file.name;
       downloadLink.onclick = (e) => e.stopPropagation();
       actions.appendChild(downloadLink);
@@ -191,14 +191,13 @@
     const modal = $('previewModal');
     const title = $('previewTitle');
     const content = $('previewContent');
-    const tok = window.getFileeToken ? window.getFileeToken() : '';
 
     if (!modal || !content) return;
 
     if (title) title.textContent = file.name;
     content.replaceChildren();
 
-    const previewUrl = `/preview/${encodeURIComponent(file.id)}?token=${encodeURIComponent(tok)}`;
+    const previewUrl = `/preview/${encodeURIComponent(file.id)}`;
 
     if (file.icon === 'image') {
       const img = document.createElement('img');
@@ -293,8 +292,7 @@
   });
 
   downloadFolderBtn?.addEventListener('click', () => {
-    const tok = window.getFileeToken ? window.getFileeToken() : '';
-    location.href = `/api/folder.zip?token=${encodeURIComponent(tok)}`;
+    location.href = currentPath ? `/api/folder.zip?path=${encodeURIComponent(currentPath)}` : '/api/folder.zip';
   });
 
   refreshBtn?.addEventListener('click', refresh);

@@ -21,6 +21,7 @@ public sealed class LocalWebServer : IAsyncDisposable
 
     public IPAddress LanIp { get; }
     public int Port { get; }
+    public string ExpectedHost => LanIp.AddressFamily == AddressFamily.InterNetworkV6 ? $"[{LanIp}]:{Port}" : $"{LanIp}:{Port}";
     public bool IsRunning => _isRunning;
 
     public LocalWebServer(IPAddress lanIp, int port, ILogger? log = null)
@@ -84,27 +85,27 @@ public sealed class LocalWebServer : IAsyncDisposable
         builder.WebHost.UseKestrel(kestrel =>
         {
             kestrel.Listen(LanIp, Port);
-            kestrel.Limits.MaxRequestBodySize = 510L * 1024 * 1024; // 510 MB limit
+            kestrel.Limits.MaxRequestBodySize = 64L * 1024; // 64 KB default request body limit
         });
 
         builder.Services.Configure<FormOptions>(form =>
         {
-            form.MultipartBodyLengthLimit = 500L * 1024 * 1024; // 500 MB per file
+            form.MultipartBodyLengthLimit = 500L * 1024 * 1024; // 500 MB per file on upload routes
         });
 
         var app = builder.Build();
 
-        // 1. Origin and Host verification middleware
+        // 1. Host and Origin verification middleware (defeats DNS rebinding)
         app.Use(async (context, next) =>
         {
             var hostHeader = context.Request.Host.Value;
-            if (string.IsNullOrEmpty(hostHeader))
+            if (string.IsNullOrEmpty(hostHeader) || !string.Equals(hostHeader, ExpectedHost, StringComparison.OrdinalIgnoreCase))
             {
                 context.Response.StatusCode = StatusCodes.Status400BadRequest;
                 return;
             }
 
-            // Enforce on WebSocket requests and state-changing HTTP methods (POST, PUT, DELETE, PATCH)
+            // Enforce Origin check on WebSocket requests and state-changing HTTP methods
             var isStateChanging = HttpMethods.IsPost(context.Request.Method) ||
                                   HttpMethods.IsPut(context.Request.Method) ||
                                   HttpMethods.IsDelete(context.Request.Method) ||
@@ -121,7 +122,7 @@ public sealed class LocalWebServer : IAsyncDisposable
                     {
                         if (Uri.TryCreate(origin, UriKind.Absolute, out var originUri))
                         {
-                            if (!string.Equals(originUri.Authority, hostHeader, StringComparison.OrdinalIgnoreCase))
+                            if (!string.Equals(originUri.Authority, ExpectedHost, StringComparison.OrdinalIgnoreCase))
                             {
                                 context.Response.StatusCode = StatusCodes.Status403Forbidden;
                                 return;

@@ -30,23 +30,32 @@ public sealed class FileeConnectService : IAsyncDisposable
     private string? _pairingSecret;
     private string _currentPin = "";
     private DateTime _pinExpiresAtUtc;
-    private int _failedPinAttempts;
-    private DateTime? _pinLockoutUntilUtc;
     private System.Threading.Timer? _pinTimer;
+    private readonly object _pinLock = new();
+    private readonly SemaphoreSlim _startLock = new(1, 1);
+    private readonly SemaphoreSlim _pinPairSemaphore = new(3, 3);
+    private const int MaxPairedDevices = 5;
+
+    private sealed class ClientPinAttemptState
+    {
+        public int FailedAttempts { get; set; }
+        public DateTime? LockoutUntilUtc { get; set; }
+    }
+    private readonly ConcurrentDictionary<IPAddress, ClientPinAttemptState> _pinAttemptsByIp = new();
 
     private string? _mobileUrl;
-    private string? _localhostUrl;
     private IPAddress _lanIp = IPAddress.Loopback;
     private Avalonia.Media.Imaging.Bitmap? _qrBitmap;
     private int _port;
     private bool _isRunning;
+    private Func<string, string>? _stringLocalizer;
 
+    public void SetStringLocalizer(Func<string, string> localizer) => _stringLocalizer = localizer;
     public SharedFolderManager FolderManager => _folderManager;
     public string? PairingSecret => _pairingSecret;
     public string CurrentPin => _currentPin;
     public int PinSecondsRemaining => Math.Max(0, (int)(_pinExpiresAtUtc - DateTime.UtcNow).TotalSeconds);
     public string? MobileUrl => _mobileUrl;
-    public string? LocalhostUrl => _localhostUrl;
     public string ManualUrl => $"http://{_lanIp}:{_port}";
     public Avalonia.Media.Imaging.Bitmap? QrBitmap => _qrBitmap;
     public bool IsMobileConnected
@@ -84,6 +93,7 @@ public sealed class FileeConnectService : IAsyncDisposable
     public event Action? FilesChanged;
     public event Action<string>? SessionEnded;
     public event Action? PinRefreshed;
+    public event Action? PinTicked;
     public event Action? PairedDevicesChanged;
 
     public FileeConnectService(ILogger<FileeConnectService> log, SharedFolderManager folderManager)
@@ -92,44 +102,73 @@ public sealed class FileeConnectService : IAsyncDisposable
         _folderManager = folderManager;
     }
 
-    public async Task StartSessionAsync()
+    public async Task StartSessionAsync(bool allowLoopback = false)
     {
-        if (_isRunning)
-            return;
-
-        _folderManager.Initialize();
-        lock (_history) { _history.Clear(); }
-        lock (_clientsLock) { _clients.Clear(); }
-        _pairedDevices.Clear();
-        _failedPinAttempts = 0;
-        _pinLockoutUntilUtc = null;
-
-        _pairingSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
-        RefreshPin();
-
-        _pinTimer = new System.Threading.Timer(_ =>
+        await _startLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            if (!_isRunning) return;
-            if (DateTime.UtcNow >= _pinExpiresAtUtc)
+            if (_isRunning)
+                return;
+
+            var lanIp = GetLocalLanIp();
+            if (IPAddress.IsLoopback(lanIp) && !allowLoopback)
+            {
+                throw new InvalidOperationException("No active private Wi-Fi or Ethernet network connection found.");
+            }
+
+            _folderManager.Initialize();
+            lock (_history) { _history.Clear(); }
+            lock (_clientsLock) { _clients.Clear(); }
+            _pairedDevices.Clear();
+            _pinAttemptsByIp.Clear();
+
+            _pairingSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+            lock (_pinLock)
             {
                 RefreshPin();
-                Dispatcher.UIThread.Post(() => PinRefreshed?.Invoke());
             }
-        }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
-        _lanIp = GetLocalLanIp();
-        _port = FindFreePort(_lanIp, 3000);
+            _pinTimer = new System.Threading.Timer(_ =>
+            {
+                if (!_isRunning) return;
+                if (DateTime.UtcNow >= _pinExpiresAtUtc)
+                {
+                    lock (_pinLock)
+                    {
+                        RefreshPin();
+                    }
+                    Dispatcher.UIThread.Post(() => PinRefreshed?.Invoke());
+                }
+                else
+                {
+                    Dispatcher.UIThread.Post(() => PinTicked?.Invoke());
+                }
+            }, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
 
+            _lanIp = lanIp;
+            _port = FindFreePort(_lanIp, 3000);
+
+            _mobileUrl = $"http://{_lanIp}:{_port}/mobile/{_pairingSecret}";
+
+            GenerateQrCode(_mobileUrl);
+
+            _server = new LocalWebServer(_lanIp, _port, _log);
+            await _server.StartAsync(ConfigureRoutes);
+
+            _isRunning = true;
+            _log.LogInformation("FileeConnect session started at {Url}", _mobileUrl);
+        }
+        finally
+        {
+            _startLock.Release();
+        }
+    }
+
+    public void GenerateNewPairingSecret()
+    {
+        _pairingSecret = Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
         _mobileUrl = $"http://{_lanIp}:{_port}/mobile/{_pairingSecret}";
-        _localhostUrl = $"http://localhost:{_port}/mobile/{_pairingSecret}";
-
         GenerateQrCode(_mobileUrl);
-
-        _server = new LocalWebServer(_lanIp, _port, _log);
-        await _server.StartAsync(ConfigureRoutes);
-
-        _isRunning = true;
-        _log.LogInformation("FileeConnect session started at {Url}", _mobileUrl);
     }
 
     private void RefreshPin()
@@ -140,43 +179,51 @@ public sealed class FileeConnectService : IAsyncDisposable
 
     public async Task StopSessionAsync()
     {
-        if (!_isRunning)
-            return;
-
-        _isRunning = false;
-
-        _pinTimer?.Dispose();
-        _pinTimer = null;
-
-        if (_server is not null)
+        await _startLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            await _server.StopAsync();
-            await _server.DisposeAsync();
-            _server = null;
-        }
+            if (!_isRunning)
+                return;
 
-        List<ConnectClient> clientsToDispose;
-        lock (_clientsLock)
+            _isRunning = false;
+
+            _pinTimer?.Dispose();
+            _pinTimer = null;
+
+            if (_server is not null)
+            {
+                await _server.StopAsync();
+                await _server.DisposeAsync();
+                _server = null;
+            }
+
+            List<ConnectClient> clientsToDispose;
+            lock (_clientsLock)
+            {
+                clientsToDispose = [.. _clients];
+                _clients.Clear();
+            }
+
+            foreach (var client in clientsToDispose)
+            {
+                await client.DisposeAsync();
+            }
+
+            _pairedDevices.Clear();
+            _folderManager.Clear();
+
+            if (_qrBitmap is not null)
+            {
+                _qrBitmap.Dispose();
+                _qrBitmap = null;
+            }
+
+            SessionEnded?.Invoke("host_stopped");
+        }
+        finally
         {
-            clientsToDispose = [.. _clients];
-            _clients.Clear();
+            _startLock.Release();
         }
-
-        foreach (var client in clientsToDispose)
-        {
-            await client.DisposeAsync();
-        }
-
-        _pairedDevices.Clear();
-        _folderManager.Clear();
-
-        if (_qrBitmap is not null)
-        {
-            _qrBitmap.Dispose();
-            _qrBitmap = null;
-        }
-
-        SessionEnded?.Invoke("host_stopped");
     }
 
     public async Task DisconnectDeviceAsync(string deviceId)
@@ -233,13 +280,20 @@ public sealed class FileeConnectService : IAsyncDisposable
         // QR Pairing Route: /mobile/{secret}
         app.MapGet("/mobile/{secret}", (string secret, HttpContext context) =>
         {
-            var secretBytes = Encoding.UTF8.GetBytes(_pairingSecret ?? "");
+            var activeSecret = _pairingSecret;
+            if (string.IsNullOrEmpty(activeSecret))
+                return Results.NotFound();
+
+            var secretBytes = Encoding.UTF8.GetBytes(activeSecret);
             var inputBytes = Encoding.UTF8.GetBytes(secret ?? "");
 
             if (!CryptographicOperations.FixedTimeEquals(inputBytes, secretBytes))
             {
                 return Results.NotFound();
             }
+
+            // Single-use: consumed upon successful pairing
+            _pairingSecret = null;
 
             var device = PairNewDevice(context.Request.Headers.UserAgent.ToString());
             SetDeviceTokenCookie(context, device.Token);
@@ -255,54 +309,100 @@ public sealed class FileeConnectService : IAsyncDisposable
         app.MapGet("/", (HttpContext context) => Results.Redirect("/mobile"));
         app.MapGet("/connect", (HttpContext context) => Results.Redirect("/mobile"));
 
+        // Localized UI strings for mobile client: GET /api/strings
+        app.MapGet("/api/strings", (HttpContext context) =>
+        {
+            var keys = new[]
+            {
+                "connect.tab_text", "connect.tab_shared_folder", "connect.send",
+                "connect.paste_clipboard", "connect.copy", "connect.copied",
+                "connect.no_messages", "connect.no_files", "connect.upload_files",
+                "connect.upload_folder", "connect.end_session", "connect.waiting_device",
+                "connect.sender_pc", "connect.sender_phone", "connect.view",
+                "connect.stored_locally", "connect.caption"
+            };
+            var dict = new Dictionary<string, string>();
+            foreach (var k in keys)
+            {
+                dict[k] = _stringLocalizer?.Invoke(k) ?? k;
+            }
+            return Results.Json(dict);
+        });
+
         // PIN Pairing API: POST /api/pair/pin
         app.MapPost("/api/pair/pin", async (HttpContext context) =>
         {
-            if (_pinLockoutUntilUtc is { } lockout && DateTime.UtcNow < lockout)
+            if (!await _pinPairSemaphore.WaitAsync(TimeSpan.FromSeconds(2)))
             {
-                var remainingSec = (int)(lockout - DateTime.UtcNow).TotalSeconds;
-                return Results.Json(new { error = "locked_out", remainingSeconds = remainingSec }, statusCode: StatusCodes.Status429TooManyRequests);
+                return Results.StatusCode(StatusCodes.Status429TooManyRequests);
             }
 
-            PinPairRequest? req;
             try
             {
-                req = await JsonSerializer.DeserializeAsync<PinPairRequest>(context.Request.Body);
+                using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
+                var body = await reader.ReadToEndAsync();
+                if (body.Length > 2048)
+                {
+                    return Results.BadRequest(new { error = "payload_too_large" });
+                }
+
+                PinPairRequest? req;
+                try
+                {
+                    req = JsonSerializer.Deserialize<PinPairRequest>(body);
+                }
+                catch
+                {
+                    return Results.BadRequest(new { error = "invalid_json" });
+                }
+
+                if (req is null || string.IsNullOrWhiteSpace(req.Pin))
+                {
+                    return Results.BadRequest(new { error = "missing_pin" });
+                }
+
+                var clientIp = context.Connection.RemoteIpAddress ?? IPAddress.Loopback;
+                var attemptState = _pinAttemptsByIp.GetOrAdd(clientIp, _ => new ClientPinAttemptState());
+
+                lock (_pinLock)
+                {
+                    if (attemptState.LockoutUntilUtc is { } lockout && DateTime.UtcNow < lockout)
+                    {
+                        var remainingSec = (int)(lockout - DateTime.UtcNow).TotalSeconds;
+                        return Results.Json(new { error = "locked_out", remainingSeconds = remainingSec }, statusCode: StatusCodes.Status429TooManyRequests);
+                    }
+
+                    var pinBytes = Encoding.UTF8.GetBytes(req.Pin.Trim());
+                    var currentBytes = Encoding.UTF8.GetBytes(_currentPin);
+
+                    if (DateTime.UtcNow < _pinExpiresAtUtc && CryptographicOperations.FixedTimeEquals(pinBytes, currentBytes))
+                    {
+                        // Consumed OTP immediately!
+                        attemptState.FailedAttempts = 0;
+                        attemptState.LockoutUntilUtc = null;
+                        RefreshPin();
+                        Dispatcher.UIThread.Post(() => PinRefreshed?.Invoke());
+
+                        var device = PairNewDevice(req.DeviceName ?? context.Request.Headers.UserAgent.ToString());
+                        SetDeviceTokenCookie(context, device.Token);
+
+                        return Results.Ok(new { token = device.Token, deviceName = device.Name, deviceId = device.Id });
+                    }
+
+                    attemptState.FailedAttempts++;
+                    if (attemptState.FailedAttempts >= 5)
+                    {
+                        attemptState.LockoutUntilUtc = DateTime.UtcNow.AddMinutes(2);
+                        return Results.Json(new { error = "locked_out", remainingSeconds = 120 }, statusCode: StatusCodes.Status429TooManyRequests);
+                    }
+
+                    return Results.Json(new { error = "invalid_pin", attemptsRemaining = 5 - attemptState.FailedAttempts }, statusCode: StatusCodes.Status401Unauthorized);
+                }
             }
-            catch
+            finally
             {
-                return Results.BadRequest(new { error = "invalid_json" });
+                _pinPairSemaphore.Release();
             }
-
-            if (req is null || string.IsNullOrWhiteSpace(req.Pin))
-            {
-                return Results.BadRequest(new { error = "missing_pin" });
-            }
-
-            var pinBytes = Encoding.UTF8.GetBytes(req.Pin.Trim());
-            var currentBytes = Encoding.UTF8.GetBytes(_currentPin);
-
-            if (DateTime.UtcNow < _pinExpiresAtUtc && CryptographicOperations.FixedTimeEquals(pinBytes, currentBytes))
-            {
-                // Consumed OTP immediately!
-                _failedPinAttempts = 0;
-                RefreshPin();
-                Dispatcher.UIThread.Post(() => PinRefreshed?.Invoke());
-
-                var device = PairNewDevice(req.DeviceName ?? context.Request.Headers.UserAgent.ToString());
-                SetDeviceTokenCookie(context, device.Token);
-
-                return Results.Ok(new { token = device.Token, deviceName = device.Name, deviceId = device.Id });
-            }
-
-            _failedPinAttempts++;
-            if (_failedPinAttempts >= 5)
-            {
-                _pinLockoutUntilUtc = DateTime.UtcNow.AddMinutes(2);
-                return Results.Json(new { error = "locked_out", remainingSeconds = 120 }, statusCode: StatusCodes.Status429TooManyRequests);
-            }
-
-            return Results.Json(new { error = "invalid_pin", attemptsRemaining = 5 - _failedPinAttempts }, statusCode: StatusCodes.Status401Unauthorized);
         });
 
         // Auth Check API: GET /api/auth/check
@@ -333,10 +433,18 @@ public sealed class FileeConnectService : IAsyncDisposable
             if (!TryValidateDeviceToken(context, out var device))
                 return Results.Unauthorized();
 
-            using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
-            var body = await reader.ReadToEndAsync();
-            var json = JsonDocument.Parse(body);
-            var text = json.RootElement.GetProperty("text").GetString();
+            string text;
+            try
+            {
+                using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
+                var body = await reader.ReadToEndAsync();
+                using var json = JsonDocument.Parse(body);
+                text = json.RootElement.GetProperty("text").GetString() ?? "";
+            }
+            catch
+            {
+                return Results.BadRequest(new { error = "Invalid message JSON" });
+            }
 
             if (string.IsNullOrWhiteSpace(text))
                 return Results.BadRequest(new { error = "Text is empty" });
@@ -364,6 +472,12 @@ public sealed class FileeConnectService : IAsyncDisposable
         // Upload Single File: POST /api/upload
         app.MapPost("/api/upload", async (HttpContext context) =>
         {
+            var sizeFeature = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
+            if (sizeFeature is not null && !sizeFeature.IsReadOnly)
+            {
+                sizeFeature.MaxRequestBodySize = 510L * 1024 * 1024;
+            }
+
             if (!TryValidateDeviceToken(context, out var device))
                 return Results.Unauthorized();
 
@@ -442,20 +556,15 @@ public sealed class FileeConnectService : IAsyncDisposable
             context.Response.ContentType = "application/zip";
             context.Response.Headers.ContentDisposition = "attachment; filename=\"shared-folder.zip\"";
 
-            var files = _folderManager.GetFiles();
-            using var zip = new ZipArchive(context.Response.Body, ZipArchiveMode.Create, leaveOpen: true);
-            foreach (var meta in files)
+            if (context.Request.Query.TryGetValue("path", out var pathVal) && !string.IsNullOrWhiteSpace(pathVal))
             {
-                ct.ThrowIfCancellationRequested();
-                var diskPath = _folderManager.GetFullPath(meta.Id);
-                if (File.Exists(diskPath))
-                {
-                    var entry = zip.CreateEntry(meta.Name, CompressionLevel.Fastest);
-                    using var entryStream = entry.Open();
-                    using var fileStream = new FileStream(diskPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-                    await fileStream.CopyToAsync(entryStream, ct).ConfigureAwait(false);
-                }
+                await _folderManager.WriteFolderZipAsync(pathVal.ToString(), context.Response.Body, ct).ConfigureAwait(false);
             }
+            else
+            {
+                await _folderManager.WriteAllZipAsync(context.Response.Body, ct).ConfigureAwait(false);
+            }
+
             return Results.Empty;
         });
 
@@ -483,6 +592,15 @@ public sealed class FileeConnectService : IAsyncDisposable
 
     private PairedDevice PairNewDevice(string userAgent)
     {
+        if (_pairedDevices.Count >= MaxPairedDevices)
+        {
+            var oldest = _pairedDevices.Values.OrderBy(d => d.LastSeen).FirstOrDefault();
+            if (oldest is not null)
+            {
+                _pairedDevices.TryRemove(oldest.Token, out _);
+            }
+        }
+
         var deviceId = Guid.NewGuid().ToString("N");
         var token = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
         var friendlyName = ParseFriendlyDeviceName(userAgent);
@@ -542,11 +660,6 @@ public sealed class FileeConnectService : IAsyncDisposable
             token = cookieToken;
         }
 
-        if (string.IsNullOrEmpty(token) && context.Request.Query.TryGetValue("token", out var queryToken))
-        {
-            token = queryToken.ToString();
-        }
-
         if (string.IsNullOrEmpty(token))
             return false;
 
@@ -556,8 +669,9 @@ public sealed class FileeConnectService : IAsyncDisposable
             var candidateBytes = Encoding.UTF8.GetBytes(pair.Key);
             if (CryptographicOperations.FixedTimeEquals(tokenBytes, candidateBytes))
             {
-                device = pair.Value with { LastSeen = DateTime.UtcNow };
-                _pairedDevices[pair.Key] = device;
+                var updated = pair.Value with { LastSeen = DateTime.UtcNow };
+                _pairedDevices.TryUpdate(pair.Key, updated, pair.Value);
+                device = updated;
                 return true;
             }
         }
@@ -667,7 +781,7 @@ public sealed class FileeConnectService : IAsyncDisposable
         _ = BroadcastAsync(JsonSerializer.Serialize(new { type = "files-changed" }));
     }
 
-    private async Task BroadcastAsync(string payload)
+    public async Task BroadcastAsync(string payload)
     {
         List<ConnectClient> snapshot;
         lock (_clientsLock)
@@ -723,23 +837,42 @@ public sealed class FileeConnectService : IAsyncDisposable
 
     public static IPAddress GetLocalLanIp()
     {
+        var candidates = new List<(IPAddress ip, int score)>();
+
         foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
             if (nic.OperationalStatus != OperationalStatus.Up ||
                 nic.NetworkInterfaceType == NetworkInterfaceType.Loopback)
                 continue;
 
+            var desc = (nic.Description + " " + nic.Name).ToLowerInvariant();
+            var isVirtual = desc.Contains("vethernet") || desc.Contains("wsl") || desc.Contains("virtual") ||
+                            desc.Contains("hyper-v") || desc.Contains("docker") || desc.Contains("vmware") ||
+                            desc.Contains("virtualbox") || desc.Contains("tailscale") || desc.Contains("zerotier");
+
             var props = nic.GetIPProperties();
+            var hasGateway = props.GatewayAddresses.Any(g => g.Address != null &&
+                                                             !IPAddress.Any.Equals(g.Address) &&
+                                                             !IPAddress.None.Equals(g.Address));
+
             foreach (var addr in props.UnicastAddresses)
             {
                 if (addr.Address.AddressFamily == AddressFamily.InterNetwork &&
                     LocalWebServer.IsPrivateIp(addr.Address))
                 {
-                    return addr.Address;
+                    int score = 0;
+                    if (hasGateway) score += 100;
+                    if (nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211) score += 50;
+                    else if (nic.NetworkInterfaceType == NetworkInterfaceType.Ethernet) score += 40;
+                    if (isVirtual) score -= 80;
+
+                    candidates.Add((addr.Address, score));
                 }
             }
         }
-        return IPAddress.Loopback;
+
+        var best = candidates.OrderByDescending(c => c.score).FirstOrDefault();
+        return best.ip ?? IPAddress.Loopback;
     }
 
     private static int FindFreePort(IPAddress ip, int startPort)

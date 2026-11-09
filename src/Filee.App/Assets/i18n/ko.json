@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "{0} 연결됨",
   "connect.connect_again": "다시 연결",
   "connect.manual_url_label": "주소:",
-  "connect.manual_instruction_pin": "또는 휴대폰 브라우저에서 위 주소로 접속하여 PIN을 입력하세요."
+  "connect.manual_instruction_pin": "또는 휴대폰 브라우저에서 위 주소로 접속하여 PIN을 입력하세요.",
+  "connect.picker_files_title": "업로드할 파일 선택",
+  "connect.picker_folder_title": "업로드할 폴더 선택",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "참고: 휴대폰이 연결되지 않으면 시스템 방화벽에서 Filee를 허용하세요."
 }

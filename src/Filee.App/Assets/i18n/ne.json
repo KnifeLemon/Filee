@@ -1641,5 +1641,9 @@
   "connect.connected_badge": "{0} जडान भयो",
   "connect.connect_again": "पुनः जडान गर्नुहोस्",
   "connect.manual_url_label": "ठेगाना:",
-  "connect.manual_instruction_pin": "वा आफ्नो फोनको ब्राउजरमा माथिको ठेगाना खोल्नुहोस् र पिन हाल्नुहोस्।"
+  "connect.manual_instruction_pin": "वा आफ्नो फोनको ब्राउजरमा माथिको ठेगाना खोल्नुहोस् र पिन हाल्नुहोस्।",
+  "connect.picker_files_title": "अपलोड गर्न फाइलहरू चयन गर्नुहोस्",
+  "connect.picker_folder_title": "अपलोड गर्न फोल्डर चयन गर्नुहोस्",
+  "connect.pin_label": "पिन:",
+  "connect.firewall_hint_generic": "नोट: यदि तपाईंको फोन जडान हुन सकेन भने, प्रणाली फायरवालमा Filee लाई अनुमति दिनुहोस्।"
 }

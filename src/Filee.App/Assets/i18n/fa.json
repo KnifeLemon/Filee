@@ -1637,5 +1637,9 @@
   "connect.connected_badge": "{0} متصل شد",
   "connect.connect_again": "اتصال مجدد",
   "connect.manual_url_label": "آدرس:",
-  "connect.manual_instruction_pin": "یا آدرس بالا را در مرورگر گوشی باز کرده و پین را وارد کنید."
+  "connect.manual_instruction_pin": "یا آدرس بالا را در مرورگر گوشی باز کرده و پین را وارد کنید.",
+  "connect.picker_files_title": "انتخاب فایل‌ها برای بارگذاری",
+  "connect.picker_folder_title": "انتخاب پوشه برای بارگذاری",
+  "connect.pin_label": "پین:",
+  "connect.firewall_hint_generic": "توجه: اگر تلفن شما متصل نمی‌شود، به Filee در فایروال سیستم اجازه دسترسی دهید."
 }

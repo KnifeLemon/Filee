@@ -1641,5 +1641,9 @@
   "connect.connected_badge": "{0} 接続済み",
   "connect.connect_again": "再接続",
   "connect.manual_url_label": "アドレス:",
-  "connect.manual_instruction_pin": "またはスマートフォンのブラウザで上記のアドレスを開き、PINを入力してください。"
+  "connect.manual_instruction_pin": "またはスマートフォンのブラウザで上記のアドレスを開き、PINを入力してください。",
+  "connect.picker_files_title": "アップロードするファイルを選択",
+  "connect.picker_folder_title": "アップロードするフォルダーを選択",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "注: スマートフォンが接続できない場合は、システムファイアウォールでFileeを許可してください。"
 }

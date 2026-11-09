@@ -146,7 +146,7 @@
 
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const deviceName = encodeURIComponent(getDeviceName());
-    socket = new WebSocket(`${scheme}//${location.host}/ws?token=${encodeURIComponent(token)}&deviceName=${deviceName}`);
+    socket = new WebSocket(`${scheme}//${location.host}/ws?deviceName=${deviceName}`);
 
     socket.onopen = () => {
       setStatus('Connected to PC', true);
@@ -337,6 +337,31 @@
     }
   });
 
-  // Start auth check
+  // Start auth check and load localized strings
+  loadStrings();
   checkAuthAndStart();
+
+  async function loadStrings() {
+    try {
+      const res = await fetch('/api/strings');
+      if (!res.ok) return;
+      const s = await res.json();
+      if (s['connect.tab_text'] && tabBtnText) tabBtnText.textContent = s['connect.tab_text'];
+      if (s['connect.tab_files'] && tabBtnFiles) tabBtnFiles.textContent = s['connect.tab_files'];
+      if (s['connect.send_placeholder'] && input) input.placeholder = s['connect.send_placeholder'];
+      if (s['connect.btn_paste'] && pasteBtn) pasteBtn.textContent = s['connect.btn_paste'];
+      if (s['connect.btn_send'] && send) send.textContent = s['connect.btn_send'];
+      const uploadBtn = $('chooseFiles');
+      if (s['connect.btn_upload'] && uploadBtn) uploadBtn.textContent = s['connect.btn_upload'];
+      if (s['connect.pair_title'] && pairingView) {
+        const h2 = pairingView.querySelector('h2');
+        if (h2) h2.textContent = s['connect.pair_title'];
+      }
+      if (s['connect.pair_hint'] && pairingView) {
+        const p = pairingView.querySelector('.muted.small');
+        if (p) p.textContent = s['connect.pair_hint'];
+      }
+      if (s['connect.btn_pair'] && pinSubmit) pinSubmit.textContent = s['connect.btn_pair'];
+    } catch (_) { }
+  }
 })();

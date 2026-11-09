@@ -37,24 +37,31 @@ public partial class FileeConnectWindow : Window
     {
         if (DataContext is not FileeConnectViewModel vm) return;
 
-        var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        try
         {
-            Title = vm.Localizer["connect.picker_files_title"],
-            AllowMultiple = true
-        });
-
-        if (files is null || files.Count == 0) return;
-
-        foreach (var file in files)
-        {
-            var localPath = file.TryGetLocalPath();
-            if (!string.IsNullOrEmpty(localPath) && System.IO.File.Exists(localPath))
+            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
-                var targetRel = string.IsNullOrEmpty(vm.CurrentPath)
-                    ? file.Name
-                    : $"{vm.CurrentPath.TrimEnd('/')}/{file.Name}";
-                await vm.ConnectService.AddLocalFileAsync(localPath, targetRel);
+                Title = vm.Localizer["connect.picker_files_title"],
+                AllowMultiple = true
+            });
+
+            if (files is null || files.Count == 0) return;
+
+            foreach (var file in files)
+            {
+                var localPath = file.TryGetLocalPath();
+                if (!string.IsNullOrEmpty(localPath) && System.IO.File.Exists(localPath))
+                {
+                    var targetRel = string.IsNullOrEmpty(vm.CurrentPath)
+                        ? file.Name
+                        : $"{vm.CurrentPath.TrimEnd('/')}/{file.Name}";
+                    await vm.ConnectService.AddLocalFileAsync(localPath, targetRel);
+                }
             }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Upload files failed: {ex.Message}");
         }
     }
 
@@ -62,26 +69,33 @@ public partial class FileeConnectWindow : Window
     {
         if (DataContext is not FileeConnectViewModel vm) return;
 
-        var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        try
         {
-            Title = vm.Localizer["connect.picker_folder_title"]
-        });
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = vm.Localizer["connect.picker_folder_title"]
+            });
 
-        if (folders is null || folders.Count == 0) return;
+            if (folders is null || folders.Count == 0) return;
 
-        var folderPath = folders[0].TryGetLocalPath();
-        if (string.IsNullOrEmpty(folderPath) || !System.IO.Directory.Exists(folderPath)) return;
+            var folderPath = folders[0].TryGetLocalPath();
+            if (string.IsNullOrEmpty(folderPath) || !System.IO.Directory.Exists(folderPath)) return;
 
-        var baseFolder = new System.IO.DirectoryInfo(folderPath);
-        var files = System.IO.Directory.EnumerateFiles(folderPath, "*", System.IO.SearchOption.AllDirectories);
+            var baseFolder = new System.IO.DirectoryInfo(folderPath);
+            var files = System.IO.Directory.EnumerateFiles(folderPath, "*", System.IO.SearchOption.AllDirectories);
 
-        foreach (var f in files)
+            foreach (var f in files)
+            {
+                var relFromFolder = System.IO.Path.GetRelativePath(baseFolder.FullName, f).Replace('\\', '/');
+                var targetRel = string.IsNullOrEmpty(vm.CurrentPath)
+                    ? $"{baseFolder.Name}/{relFromFolder}"
+                    : $"{vm.CurrentPath.TrimEnd('/')}/{baseFolder.Name}/{relFromFolder}";
+                await vm.ConnectService.AddLocalFileAsync(f, targetRel);
+            }
+        }
+        catch (Exception ex)
         {
-            var relFromFolder = System.IO.Path.GetRelativePath(baseFolder.FullName, f).Replace('\\', '/');
-            var targetRel = string.IsNullOrEmpty(vm.CurrentPath)
-                ? $"{baseFolder.Name}/{relFromFolder}"
-                : $"{vm.CurrentPath.TrimEnd('/')}/{baseFolder.Name}/{relFromFolder}";
-            await vm.ConnectService.AddLocalFileAsync(f, targetRel);
+            Debug.WriteLine($"Upload folder failed: {ex.Message}");
         }
     }
 

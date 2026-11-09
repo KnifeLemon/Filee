@@ -1639,5 +1639,9 @@
   "connect.connected_badge": "{0} Bağlandı",
   "connect.connect_again": "Tekrar Bağlan",
   "connect.manual_url_label": "Adres:",
-  "connect.manual_instruction_pin": "Veya yukarıdaki adresi telefonunuzun tarayıcısında açıp PIN kodunu girin."
+  "connect.manual_instruction_pin": "Veya yukarıdaki adresi telefonunuzun tarayıcısında açıp PIN kodunu girin.",
+  "connect.picker_files_title": "Yüklenecek dosyaları seçin",
+  "connect.picker_folder_title": "Yüklenecek klasörü seçin",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "Not: Telefonunuz bağlanamıyorsa, sistem güvenlik duvarında Filee'ye izin verin."
 }

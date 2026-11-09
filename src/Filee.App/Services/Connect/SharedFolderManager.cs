@@ -1,4 +1,5 @@
 using System.IO.Compression;
+using System.Text;
 using System.Text.Json;
 using Filee.Core.Settings;
 using Microsoft.Extensions.Logging;
@@ -45,7 +46,23 @@ public sealed class SharedFolderManager
     {
         lock (_lock)
         {
+            if (Directory.Exists(_storageDir))
+            {
+                try
+                {
+                    foreach (var file in Directory.EnumerateFiles(_storageDir))
+                    {
+                        try { File.Delete(file); } catch { }
+                    }
+                    foreach (var dir in Directory.EnumerateDirectories(_storageDir))
+                    {
+                        try { Directory.Delete(dir, recursive: true); } catch { }
+                    }
+                }
+                catch { }
+            }
             Directory.CreateDirectory(_storageDir);
+
             if (Directory.Exists(_tempDir))
             {
                 try { Directory.Delete(_tempDir, recursive: true); } catch { }
@@ -55,47 +72,6 @@ public sealed class SharedFolderManager
             _files.Clear();
             _totalStorage = 0;
             _reservedBytes = 0;
-
-            foreach (var metaFile in Directory.EnumerateFiles(_storageDir, "*.meta.json"))
-            {
-                try
-                {
-                    var json = File.ReadAllText(metaFile);
-                    var meta = JsonSerializer.Deserialize<SharedFileMetadata>(json);
-                    if (meta is null || string.IsNullOrWhiteSpace(meta.Id))
-                        continue;
-
-                    var diskFiles = Directory.EnumerateFiles(_storageDir, $"{meta.Id}.*")
-                        .Where(f => !f.EndsWith(".meta.json", StringComparison.OrdinalIgnoreCase))
-                        .ToList();
-
-                    if (diskFiles.Count == 0)
-                        continue;
-
-                    var diskPath = diskFiles[0];
-                    var info = new FileInfo(diskPath);
-                    if (!info.Exists || info.Length != meta.Size)
-                        continue;
-
-                    var item = new SharedFileItem(
-                        meta.Id,
-                        meta.Name,
-                        meta.RelativePath,
-                        meta.Size,
-                        meta.Sender,
-                        meta.MimeType,
-                        meta.CreatedAt,
-                        Path.GetFileName(diskPath),
-                        diskPath);
-
-                    _files[item.Id] = item;
-                    _totalStorage += item.Size;
-                }
-                catch (Exception ex)
-                {
-                    _log.LogWarning(ex, "Could not load shared file metadata: {Path}", metaFile);
-                }
-            }
         }
     }
 
@@ -205,8 +181,9 @@ public sealed class SharedFolderManager
             if (bytesCopied == 0)
                 throw new InvalidOperationException("Empty files cannot be shared.");
 
+            var isSafe = FileExecutionSafety.IsSafeToOpenDirectly(baseName);
             var ext = Path.GetExtension(baseName);
-            var diskName = $"{id}{ext}";
+            var diskName = isSafe ? $"{id}{ext}" : $"{id}.bin";
             var finalDiskPath = Path.Combine(_storageDir, diskName);
             var metaPath = Path.Combine(_storageDir, $"{id}.meta.json");
 
@@ -357,6 +334,59 @@ public sealed class SharedFolderManager
             using var entryStream = entry.Open();
             using var fileStream = File.OpenRead(file.DiskPath);
             fileStream.CopyTo(entryStream);
+        }
+    }
+
+    public async Task WriteFolderZipAsync(string folderPath, Stream outputStream, CancellationToken ct = default)
+    {
+        var clean = CleanRelativePath(folderPath);
+        var prefix = clean + "/";
+        List<SharedFileItem> matches;
+
+        lock (_lock)
+        {
+            matches = _files.Values
+                .Where(f => f.RelativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+        }
+
+        await using var archive = await ZipArchive.CreateAsync(outputStream, ZipArchiveMode.Create, leaveOpen: true, Encoding.UTF8, ct).ConfigureAwait(false);
+        foreach (var file in matches)
+        {
+            ct.ThrowIfCancellationRequested();
+            var entryName = file.RelativePath[prefix.Length..];
+            if (string.IsNullOrWhiteSpace(entryName))
+                continue;
+
+            var entry = archive.CreateEntry(entryName, CompressionLevel.Fastest);
+            entry.LastWriteTime = DateTimeOffset.FromUnixTimeMilliseconds(file.CreatedAt);
+            await using var entryStream = await entry.OpenAsync(ct).ConfigureAwait(false);
+            await using var fileStream = new FileStream(file.DiskPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 81920, useAsync: true);
+            await fileStream.CopyToAsync(entryStream, ct).ConfigureAwait(false);
+        }
+    }
+
+    public async Task WriteAllZipAsync(Stream outputStream, CancellationToken ct = default)
+    {
+        List<SharedFileItem> allFiles;
+        lock (_lock)
+        {
+            allFiles = [.. _files.Values];
+        }
+
+        await using var archive = await ZipArchive.CreateAsync(outputStream, ZipArchiveMode.Create, leaveOpen: true, Encoding.UTF8, ct).ConfigureAwait(false);
+        foreach (var file in allFiles)
+        {
+            ct.ThrowIfCancellationRequested();
+            var entryName = file.RelativePath;
+            if (string.IsNullOrWhiteSpace(entryName))
+                continue;
+
+            var entry = archive.CreateEntry(entryName, CompressionLevel.Fastest);
+            entry.LastWriteTime = DateTimeOffset.FromUnixTimeMilliseconds(file.CreatedAt);
+            await using var entryStream = await entry.OpenAsync(ct).ConfigureAwait(false);
+            await using var fileStream = new FileStream(file.DiskPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 81920, useAsync: true);
+            await fileStream.CopyToAsync(entryStream, ct).ConfigureAwait(false);
         }
     }
 

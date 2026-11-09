@@ -10,8 +10,8 @@
 - **Strict Private Binding**: Kestrel binds strictly to the machine's private LAN IP (`options.Listen(lanIp, port)`), refusing to start if the network adapter does not expose a private IP (RFC 1918 / ULA / link-local).
 - **Production Host Hardening**: Built with `WebApplication.CreateSlimBuilder(new WebApplicationOptions { ContentRootPath = AppContext.BaseDirectory, EnvironmentName = "Production" })` to ensure developer exception pages, `ASPNETCORE_*` overrides, and arbitrary directory configs are ignored.
 - **Zero Cloud Footprint**: Data never leaves your local network. No external servers, logins, or tracking.
-- **Origin & Host Verification**: Rejects cross-origin requests by enforcing strict Host and Origin matching on state-changing API endpoints and WebSockets (`/ws`), preventing malicious web pages on the same network or browser from querying the local server.
-- **Ephemeral Storage**: Files are stored in the user data directory (`UserDataStore.Directory`, fully respecting Portable mode) under `ConnectShared`, and all stored files are completely wiped when the session ends.
+- **Origin & Host Verification (DNS Rebinding Protection)**: Defends against DNS rebinding attacks by strictly validating that the `Host` header equals the exact private `{lanIp}:{port}` bound by the server. On cross-origin or state-changing requests, the `Origin` header must match this exact LAN authority.
+- **Ephemeral & Neutral Storage**: Files are stored in the user data directory (`UserDataStore.Directory`, fully respecting Portable mode) under `ConnectShared`. Files outside the safe allowlist are saved with neutral names (`{id}.bin`) on disk to prevent Windows Explorer from evaluating malicious extensions (`.scf`, `.url`, etc.) and leaking NTLM hashes. All stored files and temp data are completely wiped on startup and when the session ends.
 
 ---
 
@@ -20,37 +20,38 @@
 ```
 [Desktop: Start Session]
        │
-       ├─── QR Pairing Secret (Random 16-byte hex) ───► Scanned by Mobile Camera
-       │                                                         │
-       │                                                         ▼
-       │                                               GET /mobile/{secret}
-       │                                            (Fixed-time comparison)
-       │                                                         │
-       └─── 6-Digit OTP PIN (30s auto-refresh)                   ▼
-            (Immediate single-use consumption,       Hands phone its own device token
-             5-attempt rate-limit lockout)           via secure session cookie
+       ├─── Single-Use QR Pairing Secret (Random 16-byte hex) ───► Scanned by Mobile Camera
+       │    (Consumed immediately on first pair)                         │
+       │                                                                 ▼
+       │                                                       GET /mobile/{secret}
+       │                                                    (Fixed-time comparison)
+       │                                                                 │
+       └─── 6-Digit OTP PIN (30s auto-refresh)                           ▼
+            (Immediate single-use consumption,               Hands phone its own device token
+             per-client IP 5-attempt rate-limit lockout)     via HttpOnly session cookie
 ```
 
 ### 1. Dual-Factor Pairing
-- **QR Code Pairing**: The QR code encodes a single-session random secret (`/mobile/{secret}`). Accessing this URL verifies the secret in constant time via `CryptographicOperations.FixedTimeEquals`, creates an authenticated session, issues a unique device token, and redirects to `/mobile`.
-- **6-Digit PIN Pairing**: Users typing the address manually enter a 6-digit one-time PIN. The PIN auto-refreshes every 30 seconds. Upon successful pairing, the PIN is immediately consumed and refreshed. After 5 incorrect attempts, PIN pairing is paused for 2 minutes to prevent brute-force guessing over Wi-Fi.
+- **QR Code Pairing**: The QR code encodes a single-use random secret (`/mobile/{secret}`). Accessing this URL verifies the secret in constant time via `CryptographicOperations.FixedTimeEquals`, creates an authenticated session, issues a unique device token, immediately consumes the secret (`_pairingSecret = null`) so it cannot be reused, and redirects to `/mobile`. When "Connect Again" is clicked, a fresh secret is generated.
+- **6-Digit PIN Pairing**: Users typing the address manually enter a 6-digit one-time PIN. The PIN auto-refreshes every 30 seconds. Upon successful pairing, the PIN is immediately consumed and refreshed. Concurrency is limited with a semaphore, and failed attempts are tracked per client IP. After 5 incorrect attempts from an IP, PIN pairing is paused for that IP for 2 minutes to prevent brute-force guessing over Wi-Fi without locking out legitimate users.
 
 ### 2. Device Token Enforcement
-- Every `/api/*`, `/preview/*`, `/download/*`, `/api/folder.zip`, and `/ws` request requires a valid device token (passed via `X-Device-Token` header or `filee_token` cookie).
+- Every `/api/*`, `/preview/*`, `/download/*`, `/api/folder.zip`, and `/ws` request requires a valid device token (passed via `Authorization: Bearer <token>` header or `filee_token` cookie; query string tokens are strictly rejected to prevent history/Referer leakage).
 - Requests lacking a valid token are rejected with `401 Unauthorized` or closed WebSocket connection.
 - Desktop users can view connected devices and click **Disconnect** at any time to instantly revoke the device token and terminate its connection.
 
-### 3. Received File Execution Safety
+### 3. Received File Execution Safety & Neutral Storage
 - Files received from mobile devices are never blindly opened with `UseShellExecute`.
-- Safe file types (images, PDF, plain text, audio, and video) open directly in their respective default applications, determined strictly by a sanitized file extension on the PC side.
+- Safe file types (images, PDF, plain text, audio, and video) open directly in their respective default applications, determined strictly by a sanitized file extension on the PC side. Risky formats like `.svg` and `.xml` are excluded from direct execution.
 - Executables, scripts (`.exe`, `.bat`, `.cmd`, `.ps1`, `.sh`, `.vbs`, etc.), shortcuts, and unknown file types are revealed and selected in the system file manager (Windows Explorer, macOS Finder, or Linux file manager) rather than executed.
+- Neutral file storage: files not on the safe allowlist are written to disk as `{id}.bin` so Windows Explorer cannot automatically inspect malicious shell shortcuts (`.scf`, `.library-ms`, `.url`) and trigger SMB / NTLM credential leaks. Their original human-readable names are preserved safely in session metadata.
 - Received files are tagged with security attributes:
   - **Windows**: Tagged with Mark of the Web (`Zone.Identifier: [ZoneTransfer] ZoneId=3` - Internet zone).
   - **macOS**: Tagged with `com.apple.quarantine`.
 
 ### 4. Direct Streaming & Quota Protection
-- **Direct ZIP Streaming**: The `/api/folder.zip` endpoint streams compressed entries directly to the HTTP response stream (`ZipArchive(context.Response.Body, ...)`), avoiding buffering gigabytes in memory.
-- **Concurrency & Quota Management**: Shared folder storage limit (2 GB) is reserved under lock before writing, preventing quota overflows from concurrent uploads. Individual uploads are capped at 500 MB per file.
+- **Asynchronous Direct ZIP Streaming**: The `/api/folder.zip` endpoint streams compressed entries asynchronously directly to the HTTP response stream (`await ZipArchive.CreateAsync(context.Response.Body, ...)`), avoiding buffering gigabytes in memory and avoiding synchronous I/O blocks.
+- **Concurrency & Quota Management**: Shared folder storage limit (2 GB) is reserved under lock before writing, preventing quota overflows from concurrent uploads. Individual uploads are capped at 500 MB per file, while default non-upload endpoints enforce a strict 64 KB body size limit.
 - **WebSocket Throttling**: Message sizes are strictly capped at 64 KB, and mobile clients are restricted to valid message types.
 
 ---

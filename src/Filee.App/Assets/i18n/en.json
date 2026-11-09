@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "{0} Connected",
   "connect.connect_again": "Connect Again",
   "connect.manual_url_label": "Address:",
-  "connect.manual_instruction_pin": "Or open the address above in your phone's browser and enter the PIN."
+  "connect.manual_instruction_pin": "Or open the address above in your phone's browser and enter the PIN.",
+  "connect.picker_files_title": "Select files to upload",
+  "connect.picker_folder_title": "Select folder to upload",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "Note: If your phone cannot connect, allow Filee in your system firewall."
 }

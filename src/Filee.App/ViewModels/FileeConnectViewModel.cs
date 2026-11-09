@@ -158,7 +158,6 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     public FileeConnectService ConnectService => _connect;
     public Bitmap? QrBitmap => _connect.QrBitmap;
     public string? MobileUrl => _connect.MobileUrl;
-    public string? LocalhostUrl => _connect.LocalhostUrl;
     public string? ManualUrl => _connect.ManualUrl;
     public Avalonia.Media.IBrush StatusColorBrush => IsMobileConnected
         ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.Parse("#22C55E"))
@@ -198,7 +197,10 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         _connect.FilesChanged += OnFilesChanged;
         _connect.SessionEnded += OnSessionEnded;
         _connect.PinRefreshed += UpdatePinDisplay;
+        _connect.PinTicked += OnPinTicked;
         _connect.PairedDevicesChanged += UpdatePairedDevices;
+
+        _connect.SetStringLocalizer(k => _loc[k]);
 
         IsMobileConnected = _connect.IsMobileConnected;
         UpdateDeviceTitle(_connect.ConnectedDeviceName);
@@ -206,7 +208,9 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         UpdatePairedDevices();
 
         WifiLabelText = _loc.Format("connect.wifi_label", GetNetworkLabel());
-        FirewallHintText = _loc["connect.firewall_hint"];
+        FirewallHintText = OperatingSystem.IsWindows()
+            ? _loc["connect.firewall_hint"]
+            : _loc["connect.firewall_hint_generic"];
 
         foreach (var msg in _connect.MessageHistory)
         {
@@ -214,6 +218,11 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         }
 
         RefreshFiles();
+    }
+
+    private void OnPinTicked()
+    {
+        PinRefreshHintText = _loc.Format("connect.pin_refresh_hint", _connect.PinSecondsRemaining);
     }
 
     private void UpdatePinDisplay()
@@ -408,7 +417,16 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
 
     private void DeleteItem(ConnectFileItemViewModel item)
     {
-        // Reserved for future deletion if needed
+        if (item.IsFolder)
+        {
+            _connect.FolderManager.DeleteFolder(item.RelativePath);
+        }
+        else
+        {
+            _connect.FolderManager.DeleteFile(item.Id);
+        }
+        RefreshFiles();
+        _ = _connect.BroadcastAsync("{\"type\":\"files-changed\"}");
     }
 
     private void PreviewFile(ConnectFileItemViewModel item)
@@ -441,6 +459,12 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     private void ToggleQrOverlay()
     {
         IsQrOverlayVisible = !IsQrOverlayVisible;
+        if (IsQrOverlayVisible)
+        {
+            _connect.GenerateNewPairingSecret();
+            OnPropertyChanged(nameof(QrBitmap));
+            OnPropertyChanged(nameof(MobileUrl));
+        }
     }
 
     [RelayCommand]
@@ -469,39 +493,13 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
     }
 
     [RelayCommand]
-    private void OpenLocalhost()
-    {
-        if (!string.IsNullOrEmpty(LocalhostUrl))
-        {
-            try
-            {
-                Process.Start(new ProcessStartInfo(LocalhostUrl) { UseShellExecute = true });
-            }
-            catch { }
-        }
-    }
-
-    [RelayCommand]
-    private async Task CopyLocalhostUrlAsync()
-    {
-        if (!string.IsNullOrEmpty(LocalhostUrl))
-        {
-            var cb = GetClipboard();
-            if (cb is not null)
-            {
-                await cb.SetTextAsync(LocalhostUrl);
-            }
-        }
-    }
-
-    [RelayCommand]
     private async Task EndSessionAsync()
     {
         await _connect.StopSessionAsync();
         RequestClose?.Invoke();
     }
 
-    private static string GetNetworkLabel()
+    private string GetNetworkLabel()
     {
         foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
         {
@@ -510,7 +508,7 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
                 return nic.Name;
             }
         }
-        return "Local Network";
+        return _loc["connect.caption"];
     }
 
     public void Dispose()
@@ -521,6 +519,7 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         _connect.FilesChanged -= OnFilesChanged;
         _connect.SessionEnded -= OnSessionEnded;
         _connect.PinRefreshed -= UpdatePinDisplay;
+        _connect.PinTicked -= OnPinTicked;
         _connect.PairedDevicesChanged -= UpdatePairedDevices;
     }
 }

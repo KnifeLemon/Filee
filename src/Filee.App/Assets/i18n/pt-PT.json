@@ -1661,5 +1661,9 @@
   "connect.connected_badge": "{0} Ligado",
   "connect.connect_again": "Voltar a ligar",
   "connect.manual_url_label": "Endereço:",
-  "connect.manual_instruction_pin": "Ou abra o endereço acima no navegador do telemóvel e introduza o PIN."
+  "connect.manual_instruction_pin": "Ou abra o endereço acima no navegador do telemóvel e introduza o PIN.",
+  "connect.picker_files_title": "Selecionar ficheiros para enviar",
+  "connect.picker_folder_title": "Selecionar pasta para enviar",
+  "connect.pin_label": "PIN:",
+  "connect.firewall_hint_generic": "Nota: se o seu telemóvel não conseguir ligar-se, permita o Filee na firewall do sistema."
 }
