@@ -83,6 +83,8 @@ public class EnginesPageTests
         TestServices.EnsureInitialized("en");
         var store = AppHost.Get<UserDataStore>();
         var saved = store.Settings.EnginePriority.ToList();
+        var motion = Motion.Enabled;
+        Motion.Set(false); // no animation: the card is a card again as soon as the button is released (the animation runs on a timer)
         var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         vm.Navigate("engines");
         var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
@@ -120,12 +122,6 @@ public class EnginesPageTests
 
             window.MouseUp(past, MouseButton.Left);
             Pump();
-            // The copy of the card settles into its slot first (about 0.2 s), then the card is a card again.
-            for (var i = 0; i < 50 && first.IsDragging; i++)
-            {
-                Thread.Sleep(20);
-                Pump();
-            }
             Assert.False(first.IsDragging);
             Assert.Null(list.Cursor);
             Assert.Equal(engines.Select(e => e.Converter.Id), store.Settings.EnginePriority);
@@ -141,6 +137,7 @@ public class EnginesPageTests
         finally
         {
             window.Close();
+            Motion.Set(motion);
             store.Settings.EnginePriority = saved;
             store.SaveSettings();
         }
