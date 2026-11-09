@@ -78,6 +78,7 @@ public partial class EnginesPage : UserControl
     private Point _settleFrom;
     private Point _settleTo;
     private long _settleStart;
+    private double _settleScale = GhostScale;
 
     // The copy shrinking when it is picked up.
     private long _pickupStart = -1;
@@ -94,6 +95,7 @@ public partial class EnginesPage : UserControl
         {
             _motionTimer.Stop();
             _scrollTimer.Stop();
+            FinishSettle(); // nothing half-done if the page goes away while the copy settles
         };
     }
 
@@ -106,7 +108,10 @@ public partial class EnginesPage : UserControl
     {
         if (sender is not Control { DataContext: EngineItemViewModel item } card || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             return;
-        _drag = new EngineDrag(item, e.GetPosition(EngineList), card, e.GetPosition(card));
+        // The copy is placed in the drag layer (always left to right), so where the pointer took hold of the card is taken there too:
+        // in a right-to-left language the card's own x runs the other way. The cards fill the list, so the layer's x is the card's.
+        var grab = new Point(e.GetPosition(DragLayer).X, e.GetPosition(card).Y);
+        _drag = new EngineDrag(item, e.GetPosition(EngineList), card, grab);
         e.Pointer.Capture(EngineList);
         e.Handled = true;
     }
@@ -129,13 +134,14 @@ public partial class EnginesPage : UserControl
         }
         if (Scroller is { } scroller)
             drag.InScroller = e.GetPosition(scroller);
-        MoveGhost(drag, p);
+        MoveGhost(drag, new Point(e.GetPosition(DragLayer).X, p.Y));
         Follow(p.Y);
     }
 
     /// <summary>A picture of the pressed card, with the accent outline, on the layer above the list. It starts full size and shrinks.</summary>
     private Border? CreateGhost(EngineDrag drag)
     {
+        RenderTargetBitmap? bitmap = null;
         try
         {
             var size = drag.Card.Bounds.Size;
@@ -146,12 +152,17 @@ public partial class EnginesPage : UserControl
                 CornerRadius = (drag.Card as Border)?.CornerRadius ?? default,
                 BorderThickness = new Thickness(1.5),
                 BorderBrush = Resource("AccentBrush"),
-                BoxShadow = BoxShadows.Parse("0 8 24 0 #33000000"),
+                BoxShadow = this.TryFindResource("CardShadow", ActualThemeVariant, out var shadow) && shadow is BoxShadows shadows ? shadows : default,
                 ClipToBounds = true,
                 RenderTransformOrigin = RelativePoint.TopLeft,
                 RenderTransform = new ScaleTransform(1, 1),
             };
-            var bitmap = new RenderTargetBitmap(new PixelSize(Math.Max(1, (int)size.Width), Math.Max(1, (int)size.Height)), new Vector(96, 96));
+
+            // At the screen's scale (125% displays, the app's zoom), or the picture is blurry.
+            var scaling = (TopLevel.GetTopLevel(this)?.RenderScaling ?? 1) * UiZoom.Scale;
+            bitmap = new RenderTargetBitmap(
+                new PixelSize(Math.Max(1, (int)Math.Ceiling(size.Width * scaling)), Math.Max(1, (int)Math.Ceiling(size.Height * scaling))),
+                new Vector(96 * scaling, 96 * scaling));
             bitmap.Render(drag.Card);
             ghost.Child = new Image { Source = bitmap, Stretch = Stretch.Fill };
             DragLayer.Children.Add(ghost);
@@ -166,8 +177,9 @@ public partial class EnginesPage : UserControl
             }
             return ghost;
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is not OutOfMemoryException)
         {
+            bitmap?.Dispose();
             return null; // no copy: the outlined slot alone still shows what is being moved
         }
     }
@@ -247,7 +259,7 @@ public partial class EnginesPage : UserControl
             if (settling.Ghost is { } ghost)
             {
                 var e = Ease(t);
-                SetScale(ghost, GhostScale + (1 - GhostScale) * e);
+                SetScale(ghost, _settleScale + (1 - _settleScale) * e);
                 Canvas.SetLeft(ghost, _settleFrom.X + (_settleTo.X - _settleFrom.X) * e);
                 Canvas.SetTop(ghost, _settleFrom.Y + (_settleTo.Y - _settleFrom.Y) * e);
             }
@@ -327,7 +339,7 @@ public partial class EnginesPage : UserControl
         scroller.Offset = scroller.Offset.WithY(offset);
         if (scroller.TranslatePoint(drag.InScroller, EngineList) is { } inList)
         {
-            MoveGhost(drag, inList);
+            MoveGhost(drag, new Point(drag.Pointer.X, inList.Y)); // x does not change while the page scrolls
             Follow(inList.Y);
         }
     }
@@ -349,23 +361,17 @@ public partial class EnginesPage : UserControl
     /// <summary>The copy flies into the empty slot and grows to full size, then the real card takes over.</summary>
     private void Settle(EngineDrag drag)
     {
-        try
+        var index = Vm?.Engines.IndexOf(drag.Item) ?? -1;
+        if (drag.Ghost is { } ghost && Motion.Enabled && index >= 0 && EngineList.ContainerFromIndex(index) is { } slot)
         {
-            var index = Vm?.Engines.IndexOf(drag.Item) ?? -1;
-            if (drag.Ghost is not null && Motion.Enabled && index >= 0 && EngineList.ContainerFromIndex(index) is { } slot)
-            {
-                _pickupStart = -1;
-                _settling = drag;
-                _settleFrom = drag.GhostAt;
-                _settleTo = new Point(slot.Bounds.X, Top(slot));
-                _settleStart = _clock.ElapsedMilliseconds;
-                _motionTimer.Start();
-                return;
-            }
-        }
-        catch (Exception)
-        {
-            // fall through: finish at once
+            _pickupStart = -1;
+            _settling = drag;
+            _settleFrom = drag.GhostAt;
+            _settleScale = Scale(ghost); // from the size it has now: a quick release during the pickup does not jump
+            _settleTo = new Point(slot.Bounds.X, Top(slot));
+            _settleStart = _clock.ElapsedMilliseconds;
+            _motionTimer.Start();
+            return;
         }
         _settling = drag;
         FinishSettle();
@@ -379,7 +385,11 @@ public partial class EnginesPage : UserControl
         _settling = null;
         drag.Item.IsDragging = false;
         if (drag.Ghost is { } ghost)
+        {
             DragLayer.Children.Remove(ghost);
+            if ((ghost.Child as Image)?.Source is IDisposable bitmap)
+                bitmap.Dispose();
+        }
     }
 
     /// <summary>The LibreOffice switches, in their own window.</summary>
