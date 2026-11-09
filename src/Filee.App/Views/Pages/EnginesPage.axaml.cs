@@ -108,10 +108,7 @@ public partial class EnginesPage : UserControl
     {
         if (sender is not Control { DataContext: EngineItemViewModel item } card || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             return;
-        // The copy is placed in the drag layer (always left to right), so where the pointer took hold of the card is taken there too:
-        // in a right-to-left language the card's own x runs the other way. The cards fill the list, so the layer's x is the card's.
-        var grab = new Point(e.GetPosition(DragLayer).X, e.GetPosition(card).Y);
-        _drag = new EngineDrag(item, e.GetPosition(EngineList), card, grab);
+        _drag = new EngineDrag(item, e.GetPosition(EngineList), card, e.GetPosition(card));
         e.Pointer.Capture(EngineList);
         e.Handled = true;
     }
@@ -134,7 +131,7 @@ public partial class EnginesPage : UserControl
         }
         if (Scroller is { } scroller)
             drag.InScroller = e.GetPosition(scroller);
-        MoveGhost(drag, new Point(e.GetPosition(DragLayer).X, p.Y));
+        MoveGhost(drag, p);
         Follow(p.Y);
     }
 
@@ -208,7 +205,8 @@ public partial class EnginesPage : UserControl
         // The grab point shrinks with the card, so the pointer stays on the same spot of it.
         drag.Pointer = inList;
         var scale = Scale(ghost);
-        drag.GhostAt = new Point(inList.X - drag.Grab.X * scale, inList.Y - drag.Grab.Y * scale);
+        // Only up and down: the copy stays centred over the list and follows the pointer's height.
+        drag.GhostAt = new Point(drag.Card.Bounds.Width * (1 - scale) / 2, inList.Y - drag.Grab.Y * scale);
         Canvas.SetLeft(ghost, drag.GhostAt.X);
         Canvas.SetTop(ghost, drag.GhostAt.Y);
     }
@@ -339,7 +337,7 @@ public partial class EnginesPage : UserControl
         scroller.Offset = scroller.Offset.WithY(offset);
         if (scroller.TranslatePoint(drag.InScroller, EngineList) is { } inList)
         {
-            MoveGhost(drag, new Point(drag.Pointer.X, inList.Y)); // x does not change while the page scrolls
+            MoveGhost(drag, inList);
             Follow(inList.Y);
         }
     }
