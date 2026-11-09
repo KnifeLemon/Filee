@@ -211,6 +211,30 @@ public class StartupDiagnosticsTests
     }
 
     [Fact]
+    public void Logs_are_kept_for_two_weeks()
+    {
+        var folder = Directory.CreateTempSubdirectory("filee-log-retention-").FullName;
+        try
+        {
+            var tenDays = Path.Combine(folder, "filee-20000110.log");
+            var fifteenDays = Path.Combine(folder, "filee-20000105.log");
+            File.WriteAllText(tenDays, "");
+            File.WriteAllText(fifteenDays, "");
+            File.SetLastWriteTime(tenDays, DateTime.Now.AddDays(-10));
+            File.SetLastWriteTime(fifteenDays, DateTime.Now.AddDays(-15));
+
+            using var _ = new FileLoggerProvider(folder);
+
+            Assert.True(File.Exists(tenDays));
+            Assert.False(File.Exists(fifteenDays));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Early_store_load_logs_corrupt_settings_and_keeps_broken_copy()
     {
         var folder = Directory.CreateTempSubdirectory("filee-early-store-").FullName;
