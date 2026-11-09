@@ -14,7 +14,8 @@
 // The same scan also finds text rhwp has no widths for: its width tables cover only ASCII and Latin-1, general
 // punctuation, math, the CJK forms and Hangul (rhwp#8143), so a letter of any other script — Polish, Turkish,
 // Vietnamese, Greek, Cyrillic, ... — or a combining mark is laid out at a fixed half-em. Such a document takes
-// a route without unshaped edges when one exists and keeps rhwp otherwise (it is never refused for this).
+// a route without unshaped edges when one exists and keeps rhwp otherwise (it is never refused for this); then
+// RhwpInput spaces those letters to the width their font really has.
 //
 // The scan runs on any file before a reader has looked at it, so it keeps the readers' limits (BoundedXml). A file over
 // them finds nothing here, and the reader then refuses it.
@@ -200,6 +201,14 @@ internal static partial class ComplexScripts
         }
         return $"U+{codePoint:X4}";
     }
+
+    /// <summary>
+    /// True for a letter rhwp draws but has no width for (Cyrillic, Greek, Latin Extended, Armenian, Georgian, ...),
+    /// which it lays out at a fixed half-em (rhwp#8143). RhwpInput gives such letters letter spacing up to their real
+    /// width, so a document that has to go through rhwp (no LibreOffice installed) no longer comes out with its
+    /// letters on top of each other.
+    /// </summary>
+    public static bool IsUnmeasuredLetter(int codePoint) => UnmeasuredScriptOf(codePoint) is not null;
 
     /// <summary>True when <paramref name="codePoint"/> is inside one of the sorted <paramref name="ranges"/>.</summary>
     private static bool Inside((int Start, int End)[] ranges, int codePoint)
