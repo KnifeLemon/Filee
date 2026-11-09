@@ -986,6 +986,41 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Transparent_sources_keep_their_alpha_in_webm()
+    {
+        MediaInfo Source(string codec, string pixelFormat) =>
+            new(TimeSpan.FromSeconds(10), new VideoStreamInfo(640, 360, 1, 0, 30, codec, pixelFormat), null, null);
+
+        // ProRes 4444, QuickTime Animation, APNG and GIF (#1198): VP9 writes the alpha plane, alt-ref frames off.
+        foreach (var (codec, format) in new[] { ("prores", "yuva444p12le"), ("qtrle", "argb"), ("apng", "rgba"), ("gif", "bgra") })
+        {
+            var webm = Args("webm", info: Source(codec, format));
+            Assert.Equal(("libvpx-vp9", "yuva420p", "0"), (After(webm, "-c:v"), After(webm, "-pix_fmt"), After(webm, "-auto-alt-ref")));
+        }
+
+        // Opaque sources are encoded as before.
+        foreach (var format in new[] { "yuv420p", "yuv444p10le", "rgb24", "bgr0", "pal8" })
+        {
+            var webm = Args("webm", info: Source("h264", format));
+            Assert.Equal("yuv420p", After(webm, "-pix_fmt"));
+            Assert.DoesNotContain("-auto-alt-ref", webm);
+        }
+
+        // Only VP9 is asked to keep it: AV1 in WebM (10 bits for 12-bit ProRes) and H.264 in MP4 stay without alpha.
+        var prores = Source("prores", "yuva444p12le");
+        var av1 = Args("webm", new MediaOptions { VideoCodec = VideoCodec.Av1 }, prores);
+        Assert.Equal(("libsvtav1", "yuv420p10le"), (After(av1, "-c:v"), After(av1, "-pix_fmt")));
+        Assert.DoesNotContain("-auto-alt-ref", av1);
+        Assert.Equal("yuv420p", After(Args("mp4", info: prores), "-pix_fmt"));
+
+        // A still picture is still shown on black.
+        var picture = new MediaInfo(null, new VideoStreamInfo(640, 360, 1, 0, 25, "png", "rgba"), null, null);
+        var still = MediaEncoding.PlanStill("in.png", "out.webm", "webm", new MediaOptions(), picture).Single().Arguments;
+        Assert.Equal("yuv420p", After(still, "-pix_fmt"));
+        Assert.DoesNotContain("-auto-alt-ref", still);
+    }
+
+    [Fact]
     public void Lossless_and_new_audio_targets_get_their_encoders()
     {
         var alac = Args("m4a", new MediaOptions { AudioCodec = AudioCodec.Alac, AudioBitrateKbps = 128 });

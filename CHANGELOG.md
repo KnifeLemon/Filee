@@ -80,6 +80,7 @@ Fixes for two advisories, [GHSA-gw2f-hq9g-3jc2](https://github.com/KnifeLemon/Fi
 
 ### Fixes
 
+- **Transparent video to WebM** (issue #1198): a ProRes 4444 or QuickTime Animation video, an APNG or a GIF with a transparent background keeps its transparency in WebM (VP9). Other videos are encoded as before.
 - **Cyrillic, Greek and Central European text to PDF** (issue #1262): a TXT, Markdown, HTML or DOCX file with Russian, Greek, Polish, Turkish or Vietnamese text no longer comes out with its letters stuck together when LibreOffice isn't installed. Each letter now gets the width its font really gives it.
 - **Calibre:** installing or updating the engine no longer fails on its read-only files. Folders left behind by failed 2.3.0 installs (`~` and six characters, about 660 MB each, in the engines folder) can be deleted by hand.
 - **Translate** (by @SeoJCalive): the preset now reaches libraries upgraded from 2.2 or earlier, in *Settings → Presets* and in the Donut toolbar's Available presets. No donut gets a slot.

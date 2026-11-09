@@ -276,7 +276,9 @@ internal static partial class MediaEncoding
         {
             var pal = IsPal(video.FrameRate);
             args.AddRange(["-vf", crop + (target is "vob" or "dv" ? DvdOrDvFilter(video, pal) : ScaleFilter(options.MaxHeight))]);
-            args.AddRange(VideoCodecArguments(target, VideoEncoder(target, spec.VideoCodec!, options.VideoCodec, encoders), options.Quality, video, pal));
+            // Only this path keeps alpha: a still picture and an edited clip pass through format=yuv420p first (PlanStill, ClipGraphOf).
+            args.AddRange(VideoCodecArguments(target, VideoEncoder(target, spec.VideoCodec!, options.VideoCodec, encoders), options.Quality, video, pal,
+                alpha: video.HasAlpha));
         }
 
         if (tracks.Count == 0)
@@ -540,7 +542,9 @@ internal static partial class MediaEncoding
         return result;
     }
 
-    internal static IEnumerable<string> VideoCodecArguments(string target, string codec, MediaQuality quality, VideoStreamInfo video, bool pal)
+    /// <param name="alpha">Keep the source's transparency where the codec can (VP9 only, #1198).</param>
+    internal static IEnumerable<string> VideoCodecArguments(string target, string codec, MediaQuality quality, VideoStreamInfo video, bool pal,
+        bool alpha = false)
     {
         // Constant quantizer for the MPEG-style codecs: 2 is the best useful value, 4 good, 7 visibly compressed.
         var quantizer = Text(Choose(quality, 2, 4, 7));
@@ -565,9 +569,11 @@ internal static partial class MediaEncoding
                         "-tiles", "2x2", .. HighBitDepthArguments(video)];
             case "libvpx-vp9":
                 // Constant quality mode (-b:v 0 + CRF). Row multithreading and speed 4 keep VP9 usable on a desktop:
-                // the slower speeds gain little size for several times the encoding time.
+                // the slower speeds gain little size for several times the encoding time. A transparent source keeps
+                // its alpha (yuva420p); older libvpx builds refuse alpha with alt-ref frames on.
                 return ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", Text(Choose(quality, 24, 32, 38)), "-row-mt", "1",
-                        "-deadline", "good", "-cpu-used", "4", "-pix_fmt", "yuv420p"];
+                        "-deadline", "good", "-cpu-used", "4", "-pix_fmt", alpha ? "yuva420p" : "yuv420p",
+                        .. alpha ? ["-auto-alt-ref", "0"] : Array.Empty<string>()];
             case "mpeg4":
                 // GOP 250 because the encoder's default of 12 bloats files. The frame rate is fixed because MPEG-4
                 // part 2 cannot store the fine time bases of phone videos.
