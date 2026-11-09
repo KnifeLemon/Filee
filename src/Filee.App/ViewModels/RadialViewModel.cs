@@ -128,11 +128,47 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     public bool IsClickMode { get; private set; }
 
     public bool HasFiles => Files.Count > 0;
+    public bool IsConnectMode { get; private set; }
+
+    public void LoadForConnect()
+    {
+        IsClickMode = true;
+        IsConnectMode = true;
+        Files = [];
+        DonutOpacity = 1;
+        HitBackground = "Transparent";
+        ApplyAppearance();
+
+        var connectPreset = new Preset
+        {
+            Id = "preset.filee_connect",
+            TargetFormat = "connect",
+        };
+
+        var connectItem = new DonutItem
+        {
+            Id = "preset.filee_connect",
+            Label = loc["preset.filee_connect"],
+            Caption = loc["connect.caption"],
+            IsEnabled = true,
+        };
+
+        _front = new Face([connectPreset], [[]], [connectItem]);
+        (_back, _backIds, _formats, _off) = (null, [], [], new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        Presets = _front.Presets;
+        _subPresets = _front.SubPresets;
+        Items = _front.Items;
+        CanFlip = false;
+        FlipHint = null;
+        CenterTitle = loc["preset.filee_connect"];
+        CenterSubtitle = loc["donut.close_hint"];
+    }
 
     /// <summary>Drag mode before any file entered: an empty ring saying "Bring files here".</summary>
     public void ResetForDrag()
     {
         IsClickMode = false;
+        IsConnectMode = false;
         Files = [];
         ApplyAppearance();
         ReserveSubRing = store.Profiles.Any(profile => HasGroups(profile.PresetIds.Concat(profile.BackPresetIds ?? [])));
@@ -153,6 +189,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     public void Load(IReadOnlyList<string> files, bool clickMode, bool backFace = false)
     {
         IsClickMode = clickMode;
+        IsConnectMode = false;
         Files = files;
         DonutOpacity = 1;
         HitBackground = "Transparent";

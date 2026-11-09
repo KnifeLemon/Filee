@@ -119,6 +119,8 @@ public partial class App : Application
                     ? await Task.Run(platform.GetFileManagerSelection) : platform.GetFileManagerSelection();
                 if (files.Count > 0 && !store.Settings.Paused)
                     radial.ShowForFiles(e.X, e.Y, files);
+                else if (files.Count == 0 && !store.Settings.Paused && e.Gesture?.Scope == TriggerScope.Anywhere)
+                    radial.ShowForConnect(e.X, e.Y);
                 else if (files.Count == 0 && Throttle.TryEnter("empty-selection", out var held))
                     log.LogInformation("The selection shortcut found no selected files in {Window}{Elevation}{Held}",
                         platform.DescribeForegroundWindow() is { Length: > 0 } window ? window : "the foreground window",
@@ -135,6 +137,30 @@ public partial class App : Application
             finally
             {
                 _selectionPending = false;
+            }
+        };
+        triggers.ClickTriggered += async (_, e) =>
+        {
+            if (_selectionPending || store.Settings.Paused)
+                return;
+            try
+            {
+                var files = platform.IsFileManagerAt(e.X, e.Y)
+                    ? (OperatingSystem.IsMacOS() ? await Task.Run(platform.GetFileManagerSelection) : platform.GetFileManagerSelection())
+                    : (IReadOnlyList<string>)[];
+                if (files.Count > 0)
+                {
+                    radial.ShowForFiles(e.X, e.Y, files);
+                }
+                else
+                {
+                    radial.ShowForConnect(e.X, e.Y);
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                log.LogWarning(ex, "Could not check file manager selection on click");
+                radial.ShowForConnect(e.X, e.Y);
             }
         };
         triggers.Start();

@@ -67,7 +67,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
 
     [ObservableProperty] private bool _enabled;
 
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(UsesMouse), nameof(UsesKey), nameof(UsesThreshold), nameof(UsesHold), nameof(UsesClipboard), nameof(IsConnectShortcut))]
     private Choice<TriggerKind> _kind = null!;
 
     [ObservableProperty] private bool _ctrl;
@@ -88,6 +88,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     public bool UsesHold => Kind.Value == TriggerKind.Hold;
     /// <summary>A keyboard shortcut where the clipboard can be read: it may convert what is on the clipboard.</summary>
     public bool UsesClipboard => UsesKey && ClipboardAvailable;
+    public bool IsConnectShortcut => Kind?.Value == TriggerKind.Click;
     public string KeyText => IsRecording ? RecordingLabel : string.IsNullOrEmpty(Key) ? "—" : Key;
     public string ThresholdText => DragThreshold == 0 ? SystemLabel : $"{DragThreshold}px";
     public string Summary => GestureText.Describe(_gesture);

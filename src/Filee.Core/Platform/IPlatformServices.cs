@@ -103,6 +103,12 @@ public interface IPlatformServices
     /// </summary>
     bool CopyToClipboard(IReadOnlyList<string> paths) => false;
 
+    /// <summary>Reads raw text from the system clipboard, or null if empty or unavailable.</summary>
+    string? ReadClipboardText() => null;
+
+    /// <summary>Writes raw text to the system clipboard.</summary>
+    bool SetClipboardText(string text) => false;
+
     /// <summary>
     /// For the log when a shortcut found no selected files: the foreground window's class and process
     /// ("CabinetWClass / explorer"). Empty where the platform can't tell.

@@ -242,4 +242,47 @@ public class GestureDetectorTests
 
         Assert.Equal(777, fired?.HoldMilliseconds);
     }
+
+    [Fact]
+    public void Click_fires_on_mouse_up_without_drag()
+    {
+        var click = new TriggerGesture { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere };
+        var detector = Create(click);
+        int clicks = 0;
+        int clickX = 0, clickY = 0;
+        detector.ClickTriggered += (g, x, y) =>
+        {
+            clicks++;
+            clickX = x;
+            clickY = y;
+        };
+
+        detector.MouseDown(TriggerMouseButton.Left, 200, 300, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(201, 301, ModifierKeys.Ctrl | ModifierKeys.Alt); // Within drag threshold
+        detector.MouseUp(TriggerMouseButton.Left, 201, 301);
+
+        Assert.Equal(1, clicks);
+        Assert.Equal(200, clickX);
+        Assert.Equal(300, clickY);
+    }
+
+    [Fact]
+    public void Click_does_not_fire_if_dragged_or_wrong_modifiers()
+    {
+        var click = new TriggerGesture { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere };
+        var detector = Create(click);
+        int clicks = 0;
+        detector.ClickTriggered += (_, _, _) => clicks++;
+
+        // Exceeding drag threshold cancels click
+        detector.MouseDown(TriggerMouseButton.Left, 100, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseMove(150, 100, ModifierKeys.Ctrl | ModifierKeys.Alt);
+        detector.MouseUp(TriggerMouseButton.Left, 150, 100);
+        Assert.Equal(0, clicks);
+
+        // Wrong modifier (Ctrl only instead of Ctrl+Alt)
+        detector.MouseDown(TriggerMouseButton.Left, 100, 100, ModifierKeys.Ctrl);
+        detector.MouseUp(TriggerMouseButton.Left, 100, 100);
+        Assert.Equal(0, clicks);
+    }
 }

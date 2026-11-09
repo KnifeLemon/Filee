@@ -1,0 +1,81 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.FileeConnectQrWindow"
+        x:DataType="vm:FileeConnectViewModel"
+        Title="Filee Connect"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="460"
+        SizeToContent="Height"
+        CanResize="False"
+        WindowStartupLocation="CenterScreen">
+  <Border Background="{DynamicResource WindowBackgroundBrush}">
+    <StackPanel Margin="24,20,24,24" Spacing="16">
+      <!-- Header bar with Title -->
+      <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+        <Image Source="avares://Filee/Assets/Icons/filee.png" Width="24" Height="24" />
+        <TextBlock FontSize="17" FontWeight="Bold" VerticalAlignment="Center">
+          <Run Text="Filee" Foreground="{DynamicResource TextPrimaryBrush}" />
+          <Run Text="Connect" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
+        </TextBlock>
+      </StackPanel>
+
+      <!-- Centered QR Code Card -->
+      <Border Background="White" CornerRadius="12" Padding="12"
+              BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
+              HorizontalAlignment="Center">
+        <Image Source="{Binding QrBitmap}" Width="210" Height="210" />
+      </Border>
+
+      <!-- Wi-Fi URL row with copy button -->
+      <Border Background="{DynamicResource SurfaceBrush}" BorderThickness="1"
+              BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="8" Padding="10,6">
+        <DockPanel LastChildFill="True">
+          <Button DockPanel.Dock="Right" Classes="quiet" Command="{Binding CopyMobileUrlCommand}" Padding="8,3" Margin="8,0,0,0">
+            <TextBlock Text="{DynamicResource connect.copy_link}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentBrush}" />
+          </Button>
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <TextBlock Text="Wi-Fi:" FontSize="11.5" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <TextBlock Text="{Binding MobileUrl}" FontFamily="Consolas,Menlo,Monospace" FontSize="11"
+                       Foreground="{DynamicResource TextSecondaryBrush}" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+          </StackPanel>
+        </DockPanel>
+      </Border>
+
+      <!-- Instructions Section -->
+      <Border Classes="card" Background="{DynamicResource SurfaceBrush}"
+              BorderBrush="{DynamicResource SubtleBorderBrush}" BorderThickness="1"
+              CornerRadius="10" Padding="14">
+        <StackPanel Spacing="10">
+          <!-- Highlighted requirement badge -->
+          <Border Background="{DynamicResource AccentBrush}" CornerRadius="6" Padding="10,6">
+            <TextBlock Text="{DynamicResource connect.qr_instruction_network}"
+                       Foreground="White" FontWeight="Bold" FontSize="12.5"
+                       TextAlignment="Center" TextWrapping="Wrap" />
+          </Border>
+
+          <!-- Instruction 1 -->
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <TextBlock Grid.Column="0" Text="•" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" FontSize="14" />
+            <TextBlock Grid.Column="1" Text="{DynamicResource connect.qr_instruction_scan}"
+                       FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+          </Grid>
+
+          <!-- Instruction 2 -->
+          <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+            <TextBlock Grid.Column="0" Text="•" Foreground="{DynamicResource AccentBrush}" FontWeight="Bold" FontSize="14" />
+            <TextBlock Grid.Column="1" Text="{DynamicResource connect.qr_instruction_http}"
+                       FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Status Footer -->
+      <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,2,0,0">
+        <Ellipse Width="8" Height="8" Fill="{Binding StatusColorBrush}" VerticalAlignment="Center" />
+        <TextBlock Text="{DynamicResource connect.waiting_device}" FontSize="12"
+                   Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</Window>

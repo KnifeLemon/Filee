@@ -49,6 +49,9 @@ internal static partial class NativeMethods
     [LibraryImport("user32.dll")]
     public static partial int GetSystemMetrics(int index);
 
+    [LibraryImport("user32.dll")]
+    public static partial short GetAsyncKeyState(int vKey);
+
     [LibraryImport("kernel32.dll")]
     public static partial nint GetCurrentProcess();
 
@@ -154,4 +157,31 @@ internal static partial class NativeMethods
         var length = GetClassName(hwnd, buffer, buffer.Length);
         return length > 0 ? new string(buffer, 0, length) : "";
     }
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool OpenClipboard(nint hWndNewOwner);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool CloseClipboard();
+
+    [LibraryImport("user32.dll")]
+    public static partial nint GetClipboardData(uint uFormat);
+
+    [LibraryImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool EmptyClipboard();
+
+    [LibraryImport("user32.dll")]
+    public static partial nint SetClipboardData(uint uFormat, nint hMem);
+
+    [LibraryImport("kernel32.dll")]
+    public static partial nint GlobalLock(nint hMem);
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GlobalUnlock(nint hMem);
+
+    [LibraryImport("kernel32.dll", SetLastError = true)]
+    public static partial nint GlobalAlloc(uint uFlags, nuint dwBytes);
 }

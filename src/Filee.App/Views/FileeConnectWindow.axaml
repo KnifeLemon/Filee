@@ -1,0 +1,234 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Filee.App.ViewModels"
+        x:Class="Filee.App.Views.FileeConnectWindow"
+        x:DataType="vm:FileeConnectViewModel"
+        Title="FileeConnect"
+        Icon="avares://Filee/Assets/Icons/filee.ico"
+        Width="760" Height="620" MinWidth="600" MinHeight="500"
+        WindowStartupLocation="CenterScreen">
+  <Window.Styles>
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Padding" Value="16,10" />
+    </Style>
+    <Style Selector="Border.message-bubble">
+      <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="Margin" Value="0,0,0,8" />
+    </Style>
+    <Style Selector="Border.message-bubble-mine">
+      <Setter Property="BorderBrush" Value="{DynamicResource AccentBrush}" />
+      <Setter Property="BorderThickness" Value="2,1,1,1" />
+    </Style>
+    <Style Selector="Border.file-item-row">
+      <Setter Property="Background" Value="{DynamicResource SurfaceBrush}" />
+      <Setter Property="BorderBrush" Value="{DynamicResource SubtleBorderBrush}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="Margin" Value="0,0,0,6" />
+    </Style>
+    <Style Selector="Border.file-item-row:pointerover">
+      <Setter Property="Background" Value="{DynamicResource CardBackgroundBrush}" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel Background="{DynamicResource WindowBackgroundBrush}">
+    <!-- Top Header Bar -->
+    <Border DockPanel.Dock="Top" Background="{DynamicResource SurfaceBrush}"
+            BorderThickness="0,0,0,1" BorderBrush="{DynamicResource SubtleBorderBrush}"
+            Padding="20,12">
+      <DockPanel LastChildFill="False">
+        <!-- Left: FileeConnect Brand -->
+        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+          <Image Source="avares://Filee/Assets/Icons/filee.png" Width="26" Height="26" />
+          <TextBlock FontSize="17" FontWeight="Bold" VerticalAlignment="Center">
+            <Run Text="Filee" Foreground="{DynamicResource TextPrimaryBrush}" />
+            <Run Text="Connect" Foreground="{DynamicResource AccentBrush}" FontWeight="SemiBold" />
+          </TextBlock>
+        </StackPanel>
+
+        <!-- Right: Status indicator + End Session -->
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+          <!-- Connection Status Pill -->
+          <Border Background="{DynamicResource CardBackgroundBrush}" BorderThickness="1"
+                  BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="999" Padding="10,5">
+            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+              <Ellipse Width="9" Height="9" Fill="{Binding StatusColorBrush}"
+                       VerticalAlignment="Center" />
+              <TextBlock Text="{Binding ConnectedDeviceTitle}" FontSize="12.5" FontWeight="SemiBold"
+                         Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+          </Border>
+
+          <!-- End Session Button -->
+          <Button Classes="danger" Content="{DynamicResource connect.end_session}"
+                  Click="OnEndSessionClick" Padding="12,6" FontWeight="SemiBold" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- Main Tabs Area -->
+    <TabControl SelectedIndex="{Binding SelectedTabIndex}" Margin="16,12,16,16">
+      <!-- TAB 1: TEXT (Default Active) -->
+      <TabItem Header="{DynamicResource connect.tab_text}">
+        <Grid RowDefinitions="Auto,*" Margin="0,12,0,0">
+          <!-- Composer Box -->
+          <Border Grid.Row="0" Classes="card" Padding="14" Margin="0,0,0,14">
+            <StackPanel Spacing="10">
+              <TextBox Text="{Binding InputText, Mode=TwoWay}"
+                       AcceptsReturn="True" TextWrapping="Wrap"
+                       MinHeight="90" MaxHeight="180"
+                       PlaceholderText="Type a message or note to send to your phone… (Ctrl+Enter to send)"
+                       KeyDown="OnInputKeyDown" />
+
+              <DockPanel LastChildFill="False">
+                <Button DockPanel.Dock="Left" Command="{Binding PasteClipboardCommand}"
+                        Content="{DynamicResource connect.paste_clipboard}" Padding="12,7" />
+                <Button DockPanel.Dock="Right" Classes="accent" Command="{Binding SendCommand}"
+                        Content="{DynamicResource connect.send}" Padding="20,7" FontWeight="SemiBold" />
+              </DockPanel>
+            </StackPanel>
+          </Border>
+
+          <!-- Message History -->
+          <Border Grid.Row="1" Classes="card" Padding="14">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Text="Session Messages" FontWeight="Bold" FontSize="14" Margin="0,0,0,10" />
+
+              <TextBlock DockPanel.Dock="Top" Text="{DynamicResource connect.no_messages}"
+                         IsVisible="{Binding !Messages.Count}"
+                         Foreground="{DynamicResource TextSecondaryBrush}" FontStyle="Italic"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,40,0,0" />
+
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Messages}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ConnectMessageItemViewModel">
+                      <Border Classes="message-bubble" Classes.message-bubble-mine="{Binding IsFromPc}">
+                        <DockPanel LastChildFill="True">
+                          <!-- Top row: Sender & Time, Copy button -->
+                          <DockPanel DockPanel.Dock="Top" Margin="0,0,0,6" LastChildFill="False">
+                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding SenderLabel}" FontWeight="Bold" FontSize="12"
+                                         Foreground="{DynamicResource TextPrimaryBrush}" />
+                              <TextBlock Text="•" Classes="caption" />
+                              <TextBlock Text="{Binding TimeText}" Classes="caption" FontSize="11.5" />
+                            </StackPanel>
+
+                            <Button DockPanel.Dock="Right" Command="{Binding CopyCommand}"
+                                    Classes="icon" Padding="6,3" FontSize="11" CornerRadius="6"
+                                    Content="{Binding CopyButtonText}" />
+                          </DockPanel>
+
+                          <!-- Message Content -->
+                          <SelectableTextBlock Text="{Binding Text}" TextWrapping="Wrap"
+                                               FontSize="13.5" LineHeight="19"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+
+      <!-- TAB 2: SHARED FOLDER -->
+      <TabItem Header="{DynamicResource connect.tab_shared_folder}">
+        <Grid RowDefinitions="Auto,*,Auto" Margin="0,12,0,0">
+          <!-- Toolbar & Breadcrumbs -->
+          <Border Grid.Row="0" Classes="card" Padding="12,10" Margin="0,0,0,10">
+            <DockPanel LastChildFill="False">
+              <!-- Left: Breadcrumbs -->
+              <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Button Content="Shared folder" Command="{Binding NavigateRootCommand}"
+                        Padding="6,3" FontWeight="SemiBold" Classes="link" />
+                <TextBlock Text="/" Classes="caption" VerticalAlignment="Center" IsVisible="{Binding IsInSubfolder}" />
+                <TextBlock Text="{Binding CurrentPath}" FontWeight="SemiBold" VerticalAlignment="Center"
+                           IsVisible="{Binding IsInSubfolder}" />
+                <Button Content="↑ Up" Command="{Binding NavigateUpCommand}"
+                        Padding="6,3" IsVisible="{Binding IsInSubfolder}" Margin="6,0,0,0" />
+              </StackPanel>
+
+              <!-- Right: Actions & Storage chip -->
+              <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Border Background="{DynamicResource CardBackgroundBrush}" BorderThickness="1"
+                        BorderBrush="{DynamicResource SubtleBorderBrush}" CornerRadius="999" Padding="8,3">
+                  <TextBlock Text="{Binding StorageUsageText}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                </Border>
+
+                <Button Content="{DynamicResource connect.upload_files}" Click="OnUploadFilesClick" Padding="10,5" Classes="accent" />
+                <Button Content="{DynamicResource connect.upload_folder}" Click="OnUploadFolderClick" Padding="10,5" />
+                <Button Content="{DynamicResource connect.refresh}" Command="{Binding RefreshFilesCommand}" Padding="8,5" />
+                <Button Content="{DynamicResource connect.open_folder}" Command="{Binding OpenLocalFolderCommand}" Padding="8,5" />
+              </StackPanel>
+            </DockPanel>
+          </Border>
+
+          <!-- Files List -->
+          <Border Grid.Row="1" Classes="card" Padding="12">
+            <DockPanel>
+              <TextBlock DockPanel.Dock="Top" Text="{DynamicResource connect.no_files}"
+                         IsVisible="{Binding !Files.Count}"
+                         Foreground="{DynamicResource TextSecondaryBrush}" FontStyle="Italic"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,50,0,0" />
+
+              <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ItemsControl ItemsSource="{Binding Files}">
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ConnectFileItemViewModel">
+                      <Border Classes="file-item-row">
+                        <DockPanel LastChildFill="True">
+                          <!-- Action Buttons on Right -->
+                          <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Button Content="View" Command="{Binding PreviewCommand}"
+                                    IsVisible="{Binding CanPreview}" Padding="8,3" FontSize="11.5" />
+                            <Button Classes="danger" Content="×" Command="{Binding DeleteCommand}"
+                                    Padding="8,3" FontSize="12" ToolTip.Tip="{DynamicResource common.delete}" />
+                          </StackPanel>
+
+                          <!-- Main info: Icon + Name + Meta -->
+                          <Button Command="{Binding OpenOrFolderCommand}" Classes="link" Padding="0"
+                                  HorizontalContentAlignment="Left">
+                            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                              <TextBlock Text="{Binding IconText}" FontSize="16" VerticalAlignment="Center" />
+                              <StackPanel VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="13"
+                                           TextTrimming="CharacterEllipsis" MaxWidth="360" />
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                  <TextBlock Text="{Binding SizeText}" Classes="caption" FontSize="11.5" />
+                                  <TextBlock Text="•" Classes="caption" />
+                                  <TextBlock Text="{Binding SenderText}" Classes="caption" FontSize="11.5" />
+                                </StackPanel>
+                              </StackPanel>
+                            </StackPanel>
+                          </Button>
+                        </DockPanel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </ScrollViewer>
+            </DockPanel>
+          </Border>
+
+          <!-- Footer -->
+          <Border Grid.Row="2" Padding="4,8,4,0">
+            <DockPanel LastChildFill="False">
+              <TextBlock DockPanel.Dock="Left" Text="{Binding ItemCountText}" Classes="caption" />
+              <TextBlock DockPanel.Dock="Right" Text="Stored locally on this PC" Classes="caption" />
+            </DockPanel>
+          </Border>
+        </Grid>
+      </TabItem>
+    </TabControl>
+  </DockPanel>
+</Window>

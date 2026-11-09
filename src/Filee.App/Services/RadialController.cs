@@ -159,6 +159,22 @@ public sealed class RadialController(
         WatchFlipKey();
     }
 
+    public void ShowForConnect(int x, int y)
+    {
+        ReleaseProgressToToast();
+        _grace.Cancel();
+        ReplaceWeb(null);
+        _toClipboard = false;
+        var window = EnsureWindow();
+        _dropped = false;
+        _converted = false;
+        viewModel.LoadForConnect();
+        viewModel.FitToThisDonut();
+        window.DonutControl.AllowContextEdit = false;
+        window.DonutControl.PlayOpenAnimation();
+        PlaceAndShow(window, x, y, activate: true);
+    }
+
     /// <summary>
     /// Adds files of later launches to the donut that is open for earlier ones, without opening it again. False when
     /// there is no such donut (closed, opened for something else, or a conversion took its files): they need their own.
@@ -381,6 +397,13 @@ public sealed class RadialController(
     /// </summary>
     private void Convert(int index, int sub, IReadOnlyList<string> files, WebDrop? web = null)
     {
+        if (viewModel.IsConnectMode || viewModel.PresetAt(index, sub)?.Id == "preset.filee_connect")
+        {
+            KeepKeyboard();
+            Close(animate: false);
+            windows.ShowFileeConnect();
+            return;
+        }
         // Placeholders whose drop is gone (the drag listed files it didn't hand over in the end) can't be converted.
         var orphaned = web is null && files.Any(WebDrop.IsPlaceholder);
         if (viewModel.PresetAt(index, sub) is not { } preset || SourcesFor(preset, files) is not { Count: > 0 } sources || orphaned)

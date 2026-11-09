@@ -35,6 +35,8 @@ public enum TriggerKind
     Hold,
     /// <summary>Press the modifiers + <see cref="TriggerGesture.Key"/> (no mouse). Uses the file manager selection.</summary>
     KeyChord,
+    /// <summary>Press and release the modifiers + mouse button without dragging.</summary>
+    Click,
 }
 
 /// <summary>Where the gesture is active.</summary>
@@ -92,6 +94,7 @@ public sealed class TriggerGesture
         [
             new() { Kind = TriggerKind.Drag, Modifiers = dragModifier, Button = TriggerMouseButton.Left },
             new() { Kind = TriggerKind.KeyChord, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.None, Key = "Space" },
+            new() { Kind = TriggerKind.Click, Modifiers = ModifierKeys.Ctrl | ModifierKeys.Alt, Button = TriggerMouseButton.Left, Scope = TriggerScope.Anywhere },
         ];
     }
 }
