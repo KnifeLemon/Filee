@@ -375,10 +375,10 @@ public sealed class TesseractConverter : IConverter
         if (letters.Any(l => l.RenderingMode is TextRenderingMode.Neither or TextRenderingMode.NeitherClip))
             return true;
         var area = page.Width * page.Height;
-        if (area <= 0 || letters.Sum(l => l.GlyphRectangle.Area) >= StampCoverage * area)
+        if (area <= 0 || letters.Sum(l => l.BoundingBox.Area) >= StampCoverage * area)
             return true;
         // A page drawn with little text and no picture under it (a cover, a short note) is not a scan.
-        return !page.GetImages().Any(image => image.Bounds.Area >= area / 2);
+        return !page.GetImages().Any(image => image.BoundingBox.Area >= area / 2);
     }
 
     /// <summary>
