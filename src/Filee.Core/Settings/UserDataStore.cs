@@ -118,6 +118,14 @@ public sealed class UserDataStore
     }
 
     /// <summary>
+    /// Remembers the donut's look (<see cref="AppSettings.Donut"/>: size, hole, opacity, output format, group ring),
+    /// quietly as <see cref="SaveUiScale"/>: a slider sends a change for every pixel it moves, the donut reads its look
+    /// each time it opens, and the theme, triggers and integration that <see cref="SettingsChanged"/> applies again
+    /// haven't changed.
+    /// </summary>
+    public void SaveDonutLook() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+
+    /// <summary>
     /// Remembers where the main window was (<see cref="AppSettings.MainWindow"/>), quietly as <see cref="SaveUiScale"/>:
     /// nothing else depends on it.
     /// </summary>

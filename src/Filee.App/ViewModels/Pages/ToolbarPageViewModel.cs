@@ -554,7 +554,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         _store.Settings.Donut.ShowCaptions = ShowCaptions;
         _store.Settings.Donut.GroupRingSize = DonutSettings.ClampGroupRingSize(GroupRingSize / 100);
         _store.Settings.Donut.GroupRingSpread = DonutSettings.ClampGroupRingSpread(GroupRingSpread / 100);
-        _store.SaveSettings();
+        // Quietly: re-applying every setting for each pixel a slider moved made the sliders stick.
+        _store.SaveDonutLook();
     }
 
     // ───────── Editing operations called by the view's drag & drop ─────────
