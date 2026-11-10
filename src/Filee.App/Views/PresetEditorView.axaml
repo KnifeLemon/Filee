@@ -6,6 +6,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels"
              xmlns:upscale="using:Filee.Engines.Upscale"
+             xmlns:v="using:Filee.App.Views"
              x:Class="Filee.App.Views.PresetEditorView"
              x:DataType="vm:PresetEditorViewModel">
   <UserControl.Styles>
@@ -64,6 +65,9 @@
         <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
+
+    <!-- The slice on the donut: icon, short name, what it shows -->
+    <v:SliceLabelFieldsView DataContext="{Binding Labels}" />
 
     <!-- Live / Motion Photo of a video (JPG, HEIC): the kind on a row of its own, so its names are never cut off -->
     <Border x:Name="LivePhotoCard" Classes="card" IsVisible="{Binding ShowLivePhotoChoice}" Padding="14">

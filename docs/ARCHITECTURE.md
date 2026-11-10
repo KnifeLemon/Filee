@@ -287,6 +287,38 @@ without touching the file's content.
 - PDFs: ExifTool appends its changes as an update, so earlier values stay recoverable inside the file; the window says
   so.
 
+### Slice labels
+
+`Controls/SliceLabelLayout.cs` decides what each slice shows and where, without drawing; `DonutMenu.DrawSliceLabel`
+draws the result. Every label stays inside the slice's *safe zone*: the slice inset by a margin of
+`max(6·s, 0.08·depth)` from all four edges (plus half the 3 px gap on the sides, and clear of a group's chevron),
+checked by sampling each box's outline, since the inner edge curves inward. `s = OuterRadius / 150` is the donut
+scale; names start at `max(10, 13 × LabelScale × s)` px, captions 80 % of that, icons 20·k beside a name or 16–28·k
+alone (k = LabelScale · s).
+
+What a slice shows is its preset's `Show` (`LabelShow`: Auto, IconAndText, TextOnly, IconOnly), else its donut's
+`ToolbarProfile.LabelShow`, else Auto. `PlanRing` lays out a whole ring at once: one style for the slices that have an
+icon, one name size and one icon size. Each style is tried at every size from the starting one down, 0.5 px at a
+time, to `max(10, 11 × s)` (`SizesFor`; the icon beside a name shrinks with it, to 16·k), and taken only if every
+slice fits. Auto: icon above the whole name, else the whole name alone, else icons. Icon & text: icon above the whole
+name, else above a name shortened to no less than 60 % of its letters and never dropping a word (`MinKept`), else
+icons alone; never a stub like "Tri…". Text only: whole names, else shortened to `MinKept`, else as far as it takes.
+An icon stands in for the caption; names alone show their captions on every slice that has one or on none. A slice
+without an icon (a format conversion) shows its name and doesn't decide the others' style. Names wrap at word
+boundaries (CJK by character, Korean by word), one way for the ring: straight on every slice, else along every
+slice (`TextWay`), each through the sizes; beside icons above names, a format's name runs straight. `DonutMenu.LabelPlan` caches each ring's plan by its inputs (items, geometry, scale, settings),
+so labels are laid out once per change, not per frame; the open, pop and flip animations move them with transforms.
+A group's ring doesn't follow the donut's size, so its labels don't either; they follow the Label scale as far as
+its slices (about 30 px wide) have room: `PlanRingToFit` steps the scale down 5 % at a time, not below 100 %, until
+every slice shows its whole name or its icon.
+
+The icons are a curated set of Material Design Icons (`SliceIcons.Data.cs`, generated; Apache-2.0, see
+THIRD-PARTY-NOTICES.md), keyed by their MDI names and grouped for the picker. `Preset.Icon` is a key, `"none"`, or
+unset for the default: a built-in preset's own (by id), else its tool's; plain format conversions have none.
+`Preset.ShortName` replaces the name on the donut and its rings (`DonutName` / `RingName`); the centre hint always
+names the slice in full (`DonutItem.FullName`). The preset and group editors share `SliceLabelFields` (Icon with
+`IconPickerFlyout`, Short name, Show); the Toolbar page sets each donut's Slice labels and Label scale.
+
 ## Crop overlay and PDF page editor
 
 The image Crop tool (`tool-crop`) and PDF Crop (`tool-pdf-crop`) open `Views/CropOverlayWindow` instead of running a job:

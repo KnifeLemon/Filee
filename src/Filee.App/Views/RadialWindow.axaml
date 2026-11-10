@@ -48,6 +48,8 @@
                  HoleRatio="{Binding HoleRatio}"
                  SliceOpacity="{Binding SliceOpacity}"
                  ShowCaptions="{Binding ShowCaptions}"
+                 LabelScale="{Binding LabelScale}"
+                 DefaultShow="{Binding DefaultShow}"
                  ReserveSubRing="{Binding ReserveSubRing}"
                  CanFlip="{Binding CanFlip}"
                  CenterHint="{Binding FlipHint}"

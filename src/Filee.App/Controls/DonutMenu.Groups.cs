@@ -63,6 +63,12 @@ public sealed partial class DonutMenu
     private IReadOnlyList<DonutItem>? ExpandedChildren =>
         !IsEditMode && _expanded >= 0 && _expanded < Count ? Items![_expanded].Children : null;
 
+    /// <summary>
+    /// How large a group's ring is against the default: it doesn't follow the donut's size (yet). Its labels follow the
+    /// Label scale as far as its slices (about 30 px wide) have room (<see cref="SliceLabelLayout.PlanRingToFit"/>).
+    /// </summary>
+    private const double RingScale = 1;
+
     private (double Inner, double Outer) SubRadii => (OuterRadius + PopOut + SubGap, OuterRadius + PopOut + SubGap + SubBand);
 
     /// <summary>How far past an open ring (and the gap before it) the pointer still counts as on its way to it.</summary>
@@ -419,6 +425,10 @@ public sealed partial class DonutMenu
         var transform = Matrix.CreateTranslation(-anchor.X, -anchor.Y) * Matrix.CreateScale(scale, scale) *
                         Matrix.CreateTranslation(anchor.X, anchor.Y) * SliceFlipTransform(oldFace, group);
 
+        // The ring is drawn at one size whatever the donut's (SubBand, SubGap), so its labels are too: they scale with
+        // the shape they sit in.
+        var labels = LabelPlan(children, center, inner, outer,
+            k => (DonutGeometry.SubMidAngle(parentMid, k, children.Count, subSpan), subSpan), RingScale, bold, regular, fitScale: true);
         using (context.PushTransform(transform))
         using (context.PushOpacity(Math.Clamp(t, 0, 1) * opening))
         {
@@ -431,8 +441,7 @@ public sealed partial class DonutMenu
                 var hot = k == subHover && expanded && item.IsEnabled;
                 if (hot)
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82), null, wedge);
-                DrawLabel(context, item, children, center, (inner + outer) / 2, mid, subSpan * (inner + outer) / 2 - 8,
-                    SubBand - 8, bold, regular, hot);
+                DrawSliceLabel(context, labels[k], item.IsEnabled, hot);
             }
         }
     }

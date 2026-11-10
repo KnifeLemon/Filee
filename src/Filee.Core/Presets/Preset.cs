@@ -146,6 +146,22 @@ public sealed class Preset
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
+    /// <summary>
+    /// The icon its donut slice shows: the key of one of the app's slice icons, <see cref="NoIcon"/> for none, or null
+    /// for the default (a built-in preset's own icon; none for plain format conversions and the user's presets).
+    /// </summary>
+    public string? Icon { get; set; }
+
+    /// <summary><see cref="Icon"/> meaning "no icon", even where there would be a default.</summary>
+    public const string NoIcon = "none";
+
+    /// <summary>A shorter name shown on its donut slice instead of the usual one. Null or blank: the usual name.</summary>
+    public string? ShortName { get; set; }
+
+    /// <summary>What its donut slice shows. Null: whatever its donut says (<see cref="Profiles.ToolbarProfile.LabelShow"/>).</summary>
+    [JsonConverter(typeof(LabelShowJsonConverter))]
+    public LabelShow? Show { get; set; }
+
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
     public PresetKind Kind { get; set; } = PresetKind.Convert;
@@ -404,6 +420,9 @@ public sealed class Preset
         Upscale = Upscale.Clone(),
         Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
+        Icon = Icon,
+        ShortName = ShortName,
+        Show = Show,
         Kind = Kind,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],

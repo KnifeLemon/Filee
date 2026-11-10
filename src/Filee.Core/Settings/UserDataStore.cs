@@ -298,6 +298,8 @@ public sealed class UserDataStore
             profile.PresetIds = profile.PresetIds.Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
             // No back face known by now (a donut the user made, read from an older file): it has none.
             profile.BackPresetIds = (profile.BackPresetIds ?? []).Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
+            // A hand-edited or out-of-range label size: back within the slider's range, on one of its steps.
+            profile.LabelScale = ToolbarProfile.ClampLabelScale(profile.LabelScale);
         }
         // A Filee from before groups drops "kind" (and the presets) when it saves a group, which comes back as a
         // conversion to "group": still a group, now an empty one, rather than a conversion that can never run.
