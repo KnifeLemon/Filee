@@ -64,13 +64,13 @@ public static class FormatFields
         ]),
         (FormatGrade.General,
         [
-            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg",
+            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "svg", "svgz", "emf", "vsd", "odg",
             "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "abw", "pages", "pub", "eml", "msg",
             "p7m", "xlsm", "xltx", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
             "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
             "azw3", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "m4v", "mkv", "webm", "avi", "wmv", "mpg", "ts",
-            "m2ts", "ogv", "m4b", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
-            "dmg", "iso", "img", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc"
+            "m2ts", "ogv", "m4b", "m4r", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
+            "dmg", "iso", "img", "udf", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc"
         ]),
         (FormatGrade.Specialist,
         [
@@ -82,7 +82,7 @@ public static class FormatFields
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "mcpack", "mcaddon",
             "mcworld", "mctemplate", "mrpack", "cab",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm"
+            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit"
         ]),
         (FormatGrade.Legacy,
         [

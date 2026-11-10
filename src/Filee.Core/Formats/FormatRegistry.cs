@@ -10,11 +10,6 @@ public static class FormatRegistry
     /// <summary>Pseudo format for archive extraction outputs and folders explicitly classified at input handling.</summary>
     public const string Folder = "folder";
 
-    /// <summary>
-    /// Windows programs and libraries (.exe, .dll), read as the icon Explorer shows for them (#1188). They are never run.
-    /// </summary>
-    public const string Program = "exe";
-
     /// <summary>All known formats. Order is the order shown in format pickers.</summary>
     public static IReadOnlyList<FileFormat> Known { get; } =
     [
@@ -65,8 +60,6 @@ public static class FormatRegistry
         new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
-        // A Windows program or library (#1188), read as its icon: the picture Explorer shows for the file.
-        new(Program, "Windows program icon (EXE, DLL)", FormatCategory.Image, ["exe", "dll"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,
             ["dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "orf", "rw2", "raf", "pef", "dcr", "kdc",
              "erf", "mos", "mrw", "x3f", "3fr", "fff", "iiq", "mef", "rwl", "srw", "raw"], Writable: false),
@@ -155,12 +148,15 @@ public static class FormatRegistry
         new("sda", "SDA", FormatCategory.Presentation, ["sda", "sdd"], Writable: false),
 
         // Plain text / markup
-        // Text logs, source code, database schemas (DBML), proxy scripts, style sheets and settings files are read as plain
-        // text, never executed, compiled or translated (issues #273, #284, #254, #388, #368, #607, #536, #630, #661, #660,
-        // #864, #828, #980, #997, #854, #1176).
+        // Text logs, source code, database schemas (DBML), diagrams written as text (Mermaid), proxy scripts, style sheets
+        // and settings files are read as plain text, never executed, compiled or translated (issues #273, #284, #254, #388,
+        // #368, #607, #536, #630, #661, #660, #864, #828, #980, #997, #854, #1176, #1309). Rust, Go, Kotlin, Swift, Scala,
+        // SCSS, Vue and TSX sources join the other code files; ".js", ".php" and shell scripts stay out (programs and web
+        // pages, see WebFileNames).
         new("txt", "TXT", FormatCategory.Text,
             ["txt", "log", "py", "pac", "bat", "cmd", "command", "lua", "css", "ps1", "sql", "ahk", "ini", "rsc",
-             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java"]),
+             "c", "h", "cpp", "cc", "cxx", "hpp", "hh", "hxx", "cs", "dart", "hql", "dbml", "java",
+             "mermaid", "mmd", "rs", "go", "kt", "swift", "scala", "scss", "vue", "tsx"]),
         new("md", "Markdown", FormatCategory.Text, ["md", "markdown"]),
         new("html", "HTML", FormatCategory.Text, ["html", "htm", "xhtml"]),
         // A web page saved with its pictures in one MIME file (Chrome, Edge, Word); read as the page it holds.
@@ -266,6 +262,8 @@ public static class FormatRegistry
         new("mp3", "MP3", FormatCategory.Audio, ["mp3"]),
         new("m4a", "M4A", FormatCategory.Audio, ["m4a"]),
         new("m4b", "M4B", FormatCategory.Audio, ["m4b"]),
+        // iPhone ringtones (#1291): AAC in the same MP4 container as M4A, under the extension iTunes and iOS look for.
+        new("m4r", "M4R", FormatCategory.Audio, ["m4r"]),
         new("aac", "AAC", FormatCategory.Audio, ["aac"]),
         new("wav", "WAV", FormatCategory.Audio, ["wav", "wave"]),
         new("flac", "FLAC", FormatCategory.Audio, ["flac"]),
@@ -330,6 +328,8 @@ public static class FormatRegistry
         new("dmg", "DMG", FormatCategory.Archive, ["dmg"], Writable: false),
         new("iso", "ISO", FormatCategory.Archive, ["iso"]),
         new("img", "IMG", FormatCategory.Archive, ["img"], Writable: false),
+        // UDF disc images (#1338): DVD, Blu-ray and data discs, unpacked by 7-Zip like ISO files. Never a target.
+        new("udf", "UDF", FormatCategory.Archive, ["udf"], Writable: false),
         new("lha", "LHA", FormatCategory.Archive, ["lha", "lzh"], Writable: false),
         new("arj", "ARJ", FormatCategory.Archive, ["arj"], Writable: false),
         new("alz", "ALZ", FormatCategory.Archive, ["alz"], Writable: false),
@@ -377,8 +377,6 @@ public static class FormatRegistry
         new("shp", "Shapefile", FormatCategory.Geo, ["shp"]),
         // Activity files read by the geo engine (issue #451); .fits/.fts stay FITS.
         new("fit", "Garmin FIT", FormatCategory.Geo, ["fit"], Writable: false),
-        // OpenStreetMap XML exports read by the geo engine (issue #713); the binary .osm.pbf is not read.
-        new("osm", "OpenStreetMap", FormatCategory.Geo, ["osm"], Writable: false),
     ];
 
     private static readonly Dictionary<string, FileFormat> ById =
@@ -405,12 +403,6 @@ public static class FormatRegistry
 
     /// <summary>Detects the format of a file from its extension, or <c>null</c> if it is not supported.</summary>
     public static FileFormat? Detect(string path) => FindByExtension(ExtensionOf(path));
-
-    /// <summary>
-    /// True for a Windows program or library (<see cref="Program"/>). Filee reads its icon when the file is dropped or
-    /// named, but never opens one (it would start the program) and never takes one from a folder by itself.
-    /// </summary>
-    public static bool IsProgram(string path) => Detect(path)?.Id == Program;
 
     /// <summary>
     /// The extension of <paramref name="path"/> without the dot, including known two-part extensions
