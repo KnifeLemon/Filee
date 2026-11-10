@@ -184,6 +184,7 @@
   "notice.ocr_has_text": "Her sayfada zaten metin olduğu için dosya olduğu gibi kopyalandı",
   "notice.live_photo_pair": "Aynı adlı fotoğraf ve MOV dosyası olarak kaydedildi. Live Photo elde etmek için ikisini birlikte içe aktarın (iCloud Fotoğrafları, AirDrop veya Mac'teki Fotoğraflar ile)",
   "notice.picture_subtitles_left_out": "Resim altyazılar (Blu-ray, DVD) bu biçime konamadığı için çıkarıldı. Korumak için MKV'ye dönüştürün",
+  "notice.subtitles_not_kept": "Altyazı parçaları korunamadı, bu yüzden video altyazısız dönüştürüldü",
   "notice.geo_datum_assumed": "Datum WGS 84 değil; konumlar WGS 84 varsayılarak dönüştürüldü ve yüzlerce metre sapabilir",
   "notice.geo_gpx_lossy": "GPX yalnızca birkaç alan içeren noktaları, rotaları ve izleri tutar: diğer öznitelikler çıkarıldı, çokgenler izlere dönüştürüldü",
   "notice.geo_text_cut": "Bazı metinler Shapefile alan sınırını (254 bayt) aştığı için kesildi",

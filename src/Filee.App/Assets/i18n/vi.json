@@ -190,6 +190,7 @@
   "notice.ocr_has_text": "Mọi trang đều đã có văn bản nên đã sao chép nguyên trạng",
   "notice.live_photo_pair": "Đã lưu thành một ảnh và một tệp MOV cùng tên. Hãy nhập cả hai cùng lúc (Ảnh iCloud, AirDrop hoặc Ảnh trên máy Mac) để có Live Photo",
   "notice.picture_subtitles_left_out": "Phụ đề dạng hình (Blu-ray, DVD) không thể đưa vào định dạng này nên đã bị bỏ qua. Hãy chuyển sang MKV để giữ lại",
+  "notice.subtitles_not_kept": "Không thể giữ các rãnh phụ đề, nên video đã được chuyển đổi mà không có chúng",
   "notice.geo_datum_assumed": "Hệ quy chiếu không phải WGS 84; vị trí được chuyển đổi như thể là WGS 84 và có thể lệch tới hàng trăm mét",
   "notice.geo_gpx_lossy": "GPX chỉ chứa điểm, lộ trình và đường đi với một vài trường: các thuộc tính khác đã bị bỏ qua và đa giác đã thành đường đi",
   "notice.geo_text_cut": "Một số văn bản dài hơn mức trường Shapefile cho phép (254 byte) và đã bị cắt",

@@ -190,6 +190,7 @@
   "notice.ocr_has_text": "Todas as páginas já têm texto, então foi copiado como está",
   "notice.live_photo_pair": "Salvo como uma foto e um MOV com o mesmo nome. Importe os dois juntos (Fotos do iCloud, AirDrop ou Fotos no Mac) para obter uma Live Photo",
   "notice.picture_subtitles_left_out": "Legendas em imagem (Blu-ray, DVD) não cabem neste formato e foram deixadas de fora. Converta para MKV para mantê-las",
+  "notice.subtitles_not_kept": "Não foi possível manter as faixas de legenda, então o vídeo foi convertido sem elas",
   "notice.geo_datum_assumed": "O datum não é WGS 84; as posições foram convertidas como se fosse, e podem errar em até centenas de metros",
   "notice.geo_gpx_lossy": "O GPX guarda só pontos, rotas e trilhas com poucos campos: outros atributos ficaram de fora e os polígonos viraram trilhas",
   "notice.geo_text_cut": "Parte do texto era mais longa do que um campo de Shapefile permite (254 bytes) e foi cortada",

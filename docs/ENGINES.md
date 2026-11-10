@@ -1795,7 +1795,9 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   tracks become SRT) and its attachments (the fonts ASS subtitles are drawn with). MP4, M4V and MOV get the text tracks
   as timed text (`mov_text`), WebM as WebVTT. Picture subtitles (PGS, DVD, DVB) can't go into those three: they are
   left out with a notice that MKV keeps them. TTML and CEA-608 tracks are left out, and other targets (AVI, FLV, TS,
-  …) and clips keep no subtitles.
+  …) and clips keep no subtitles. When FFmpeg fails with the subtitle tracks, the video is converted once more without
+  them (and without the fonts), the first error is logged and the result gets a notice; a cancellation, a stall or an
+  output FFmpeg can't write (a full disk, no permission) is not retried.
 - The first video stream (cover pictures excluded) is converted. Video to video keeps every audio track (languages,
   commentary), each copied where the target takes its codec or encoded on its own, with its language tag; FLV and DV
   hold one and keep the first. Video to audio takes the first. Tracks FFmpeg can't decode (no decoder, like the spatial

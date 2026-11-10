@@ -824,6 +824,110 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_retry_without_subtitles_maps_none()
+    {
+        var mapped = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work");
+        Assert.True(MediaEncoding.MapsSubtitles(mapped));
+        var without = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work", subtitles: false);
+        Assert.False(MediaEncoding.MapsSubtitles(without));
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(without.Single().Arguments));
+        Assert.False(MediaEncoding.MapsSubtitles(MediaEncoding.Plan("in.mkv", "out.avi", "avi", new MediaOptions(), Episode, "work")));
+    }
+
+    [Fact]
+    public void Only_ffmpeg_failures_that_may_be_the_subtitles_are_retried_without_them()
+    {
+        var none = CancellationToken.None;
+        Assert.True(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -22): Could not find tag for codec ttf in stream #2"), none));
+        Assert.True(FfmpegConverter.RetriesWithoutSubtitles(new InvalidOperationException("FFmpeg did not write any output."), none));
+
+        // The output can't be written: the same again without subtitles.
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -28): Error writing trailer: No space left on device"), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(
+            new InvalidOperationException("FFmpeg failed (exit code -13): out.mp4: Permission denied"), none));
+        // A stall, a cancellation or a refusal isn't FFmpeg failing over a track.
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new TimeoutException("FFmpeg stopped responding"), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new OperationCanceledException(), none));
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new ConversionRefusedException("error.over_size_limit"), none));
+        using var cancelled = new CancellationTokenSource();
+        cancelled.Cancel();
+        Assert.False(FfmpegConverter.RetriesWithoutSubtitles(new InvalidOperationException("FFmpeg failed"), cancelled.Token));
+    }
+
+    [Fact]
+    public async Task A_conversion_that_fails_with_subtitles_runs_once_more_without_them()
+    {
+        var output = Path.Combine(fx.NewFolder(), "out.mp4");
+        var logger = new HardwareEncodingTests.ListLogger();
+        List<bool> runs = [];
+        Task FailWithSubtitles(bool subtitles)
+        {
+            runs.Add(subtitles);
+            if (!subtitles)
+                return Task.CompletedTask;
+            File.WriteAllText(output, "half-written");
+            throw new InvalidOperationException("FFmpeg failed (exit code -22): Subtitle codec 94213 is not supported");
+        }
+
+        Assert.True(await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, FailWithSubtitles, output, logger, CancellationToken.None));
+        Assert.Equal([true, false], runs);
+        Assert.False(File.Exists(output)); // the partial output is gone before the retry
+        Assert.Contains("Subtitle codec 94213", Assert.Single(logger.Entries).Message);
+
+        // Nothing mapped: one run, its error as it is.
+        runs.Clear();
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(false, FailWithSubtitles, output, logger, CancellationToken.None));
+        Assert.Contains("94213", error.Message);
+        Assert.Equal([true], runs);
+
+        // Success the first time, and a retry that fails too (its error is the one reported).
+        Assert.False(await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, _ => Task.CompletedTask, output, logger, CancellationToken.None));
+        error = await Assert.ThrowsAsync<InvalidOperationException>(() => FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true,
+            subtitles => throw new InvalidOperationException(subtitles ? "with" : "without"), output, logger, CancellationToken.None));
+        Assert.Equal("without", error.Message);
+
+        // A full disk isn't retried.
+        runs.Clear();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, subtitles =>
+        {
+            runs.Add(subtitles);
+            throw new InvalidOperationException("FFmpeg failed (exit code -28): No space left on device");
+        }, output, logger, CancellationToken.None));
+        Assert.Equal([true], runs);
+    }
+
+    [Fact]
+    public async Task A_subtitle_track_ffmpeg_refuses_is_left_out_on_the_retry()
+    {
+        SkipUnlessInstalled();
+        // A track the container can't take, forced: stream 2 of this MKV is a font, planned as if it were an SRT track,
+        // so the MP4 muxer refuses it as a subtitle the way it would refuse a track it has no tag for.
+        var folder = fx.NewFolder();
+        var font = Path.Combine(folder, "Sub Font.ttf");
+        await File.WriteAllBytesAsync(font, Enumerable.Range(0, 2048).Select(i => (byte)i).ToArray(), TestContext.Current.CancellationToken);
+        var source = await MakeClipAsync(folder, "episode.mkv", seconds: 1, size: "160x120", extra:
+            ["-c:v", "libx264", "-c:a", "aac", "-attach", font, "-metadata:s:t", "mimetype=application/x-truetype-font"]);
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, source, CancellationToken.None) with
+        {
+            SubtitleStreams = [new SubtitleStreamInfo(2, "subrip", "kor")],
+        };
+        var output = Path.Combine(folder, "episode.mp4");
+        var logger = new HardwareEncodingTests.ListLogger();
+
+        var left = await FfmpegConverter.RunWithoutSubtitlesOnFailureAsync(true, subtitles => FfmpegConverter.RunPassAsync(Tools!.Value.Ffmpeg,
+            MediaEncoding.Plan(source, output, "mp4", new MediaOptions(), info, folder, subtitles: subtitles).Single(), info.Duration, null, 0,
+            CancellationToken.None), output, logger, CancellationToken.None);
+
+        Assert.True(left);
+        Assert.Single(logger.Entries);
+        var probed = await ProbeAsync(output);
+        Assert.Equal(["video", "audio"], probed.Streams.Select(s => s.Type));
+    }
+
+    [Fact]
     public void A_ratio_is_the_largest_centred_box_that_fits()
     {
         Assert.Equal(new CropBox(1080, 1080, 420, 0), MediaEncoding.RatioBox(Hd, 1, 1));

@@ -178,10 +178,14 @@ internal static partial class MediaEncoding
     /// A video target: the filters that crop the frame first ("Crop video", <see cref="CropFilter"/>); the video is
     /// always encoded then.
     /// </param>
+    /// <param name="subtitles">
+    /// A video target keeps the source's subtitle tracks and fonts (<see cref="SubtitleTracks"/>); false converts without
+    /// them, the retry after FFmpeg failed with them.
+    /// </param>
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
         CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1,
-        ClipRange? clip = null, string? crop = null)
+        ClipRange? clip = null, string? crop = null, bool subtitles = true)
     {
         if (clip is { } part && VideoTargets.TryGetValue(target, out var clipTarget))
             return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part), 1)];
@@ -192,7 +196,7 @@ internal static partial class MediaEncoding
         if (target == "png")
             return [new FfmpegPass(PosterFrame(input, output, info), 1)];
         if (VideoTargets.TryGetValue(target, out var video))
-            return [new FfmpegPass(Video(input, output, target, video, options, info, encoders, hardware, crop: crop), 1)];
+            return [new FfmpegPass(Video(input, output, target, video, options, info, encoders, hardware, crop: crop, keepSubtitles: subtitles), 1)];
         if (AudioTargets.TryGetValue(target, out var audio))
             return [new FfmpegPass(Audio(input, output, target, audio, options, info, cover), 1)];
         if (SubtitleTargets.ContainsKey(target))
@@ -263,7 +267,7 @@ internal static partial class MediaEncoding
             : null;
 
     private static List<string> Video(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,
-        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null)
+        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null, bool keepSubtitles = true)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         // An input without sound is fine: the output simply has no audio track. Every track is kept (languages,
@@ -279,11 +283,11 @@ internal static partial class MediaEncoding
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
         // Subtitle tracks stay switchable (#789), with their language tags (FFmpeg copies stream tags with each stream). A
         // clip keeps none: its input is seeked, and subtitle timing after the seek isn't proven.
-        var subtitles = clip is null ? SubtitleTracks(target, info) : [];
+        var subtitles = clip is null && keepSubtitles ? SubtitleTracks(target, info) : [];
         foreach (var (index, _) in subtitles)
             args.AddRange(["-map", $"0:{index}"]);
         // An MKV's attachments are the fonts its styled (ASS) subtitles are drawn with.
-        var fonts = clip is null && target == "mkv" && info.HasAttachments;
+        var fonts = clip is null && keepSubtitles && target == "mkv" && info.HasAttachments;
         if (fonts)
             args.AddRange(["-map", "0:t"]);
 
@@ -354,6 +358,10 @@ internal static partial class MediaEncoding
         }
         return kept;
     }
+
+    /// <summary>True when the passes map subtitle tracks or attachments (fonts) into the output.</summary>
+    internal static bool MapsSubtitles(IReadOnlyList<FfmpegPass> passes) =>
+        passes.Any(pass => pass.Arguments.Any(arg => arg == "-c:t" || arg.StartsWith("-c:s:", StringComparison.Ordinal)));
 
     /// <summary>
     /// True when converting to <paramref name="target"/> leaves out picture subtitles (Blu-ray PGS, DVD VobSub, DVB) the
