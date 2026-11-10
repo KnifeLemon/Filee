@@ -120,6 +120,15 @@ public sealed partial class EnginesPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void Cancel(EnginePackageState package) => _downloads.Cancel(package);
 
+    /// <summary>Installs a package from files the user downloaded elsewhere (#447); a failure shows on its card.</summary>
+    public Task InstallFromFilesAsync(EnginePackageState package, IReadOnlyList<string> files) => _downloads.InstallAsync(package, files);
+
+    /// <summary>Saves a package's downloads in <paramref name="folder"/> for a computer without internet (#447).</summary>
+    public Task<(bool Saved, string? Error)> SaveFilesAsync(EnginePackageState package, string folder) => _downloads.SaveFilesAsync(package, folder);
+
+    /// <summary>Name, URL and SHA-256 of each of a package's downloads, to fetch them elsewhere (#447).</summary>
+    public static string DownloadLinks(EnginePackageState package) => EngineDownloads.DownloadList(package.Package, EngineDownloads.Components);
+
     /// <summary>Removes a package (after the view asked for confirmation). False when its files are in use.</summary>
     /// <summary>Removes a package: null when it's gone, else the key of the reason (see <see cref="EngineDownloadService.Uninstall"/>).</summary>
     public string? Remove(EnginePackageState package) => _downloads.Uninstall(package);

@@ -66,6 +66,17 @@
                     <Button Content="{DynamicResource engines.use_own}" IsVisible="{Binding CanUseOwnCopy}" Click="OnUseOwnCopy"
                             ToolTip.Tip="{DynamicResource engines.use_own_hint}" />
                     <Button Content="{DynamicResource engines.stop_own}" IsVisible="{Binding UsesOwnCopy}" Click="OnStopOwnCopy" />
+                    <!-- Without internet (#447): the same downloads, brought from another computer and checked as a download is. -->
+                    <Button Content="{DynamicResource engines.offline}" IsVisible="{Binding HasOfflineMenu}"
+                            ToolTip.Tip="{DynamicResource engines.offline_hint}">
+                      <Button.Flyout>
+                        <MenuFlyout Placement="BottomEdgeAlignedRight">
+                          <MenuItem Header="{DynamicResource engines.install_from_files}" IsEnabled="{Binding CanInstallFromFiles}" Click="OnInstallFromFiles" />
+                          <MenuItem Header="{DynamicResource engines.save_files}" Click="OnSaveFiles" />
+                          <MenuItem Header="{DynamicResource engines.copy_links}" Click="OnCopyLinks" />
+                        </MenuFlyout>
+                      </Button.Flyout>
+                    </Button>
                     <Button Classes="danger" Content="{DynamicResource engines.remove}" IsVisible="{Binding CanRemove}" Click="OnRemove" />
                   </StackPanel>
                   <StackPanel Spacing="4">
