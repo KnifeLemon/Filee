@@ -2,6 +2,7 @@
 // FFmpeg when it is installed (Media/AvifSequenceWriter), much faster than ImageMagick's own AVIF sequence writer.
 
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Engines.Infrastructure;
 using Filee.Engines.Media;
 using ImageMagick;
@@ -89,6 +90,9 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // FITS → TIFF keeps the file's depth (16 or 32 bits), which the Q8 build can't: Filee writes it.
             if (step.From == "fits" && step.To == "tiff")
                 return FitsRendering.WriteTiff(step, progress, cancellationToken);
+            // A program's icon as ICO is the icon itself, with the sizes drawn for it, unless the preset changes it.
+            if (step.From == FormatRegistry.Program && step.To == "ico" && ProgramIcon.KeptAsItIs(step.Preset.Image))
+                return ProgramIcon.Save(step, progress);
             // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
             // animation only when it is an image sequence.
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);

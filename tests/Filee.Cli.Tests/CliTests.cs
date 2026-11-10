@@ -376,6 +376,8 @@ public sealed class CliTests : IDisposable
     {
         Png("a.png");
         File.WriteAllText(Path.Combine(_folder, "notes.unknownformat"), "x");
+        // Filee reads a program's icon only when the program is named, not every installer in a folder (#1188).
+        File.WriteAllBytes(Path.Combine(_folder, "setup.exe"), "MZ"u8.ToArray());
 
         var (code, output, _) = await Run("convert", _folder, "--preset", BuiltInData.CreatePresets().First(p => p.TargetFormat == "jpg").Id);
 

@@ -162,6 +162,8 @@
   "error.fon_too_large": "Die .fon-Schrift ist zu groß zum Konvertieren",
   "error.fon_damaged": "Die .fon-Datei ist beschädigt oder unvollständig",
   "error.m4s_needs_init": "Diese .m4s-Datei ist ein Stück eines gestreamten Videos und lässt sich ohne ihr separates Startsegment (init) nicht lesen",
+  "error.exe_unreadable": "Das ist kein Windows-Programm und keine Bibliothek, die Filee lesen kann, oder die Datei ist beschädigt",
+  "error.exe_no_icon": "Diese Datei hat kein eigenes Symbol (Windows zeigt für sie ein Standardsymbol)",
   "notice.pdf_not_smaller": "Die Datei ließ sich nicht verkleinern und wurde unverändert kopiert",
   "notice.under_min_size": "Gespeichert, aber kleiner als die Mindestdateigröße",
   "notice.with_under_min_size": "{0} · {1}",

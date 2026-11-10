@@ -168,6 +168,8 @@
   "error.fon_too_large": "Phông chữ .fon quá lớn để chuyển đổi",
   "error.fon_damaged": "Tệp .fon bị hỏng hoặc bị cắt cụt",
   "error.m4s_needs_init": "Tệp .m4s này là một phần của video phát trực tuyến: không thể đọc nếu thiếu đoạn đầu (init) riêng của nó",
+  "error.exe_unreadable": "Đây không phải chương trình hay thư viện Windows mà Filee đọc được, hoặc tệp bị hỏng",
+  "error.exe_no_icon": "Tệp này không có biểu tượng riêng (Windows hiển thị biểu tượng mặc định cho nó)",
   "notice.pdf_not_smaller": "Không thể làm nhỏ hơn nên đã sao chép nguyên trạng",
   "notice.under_min_size": "Đã lưu, nhưng nhỏ hơn kích thước tệp tối thiểu",
   "notice.with_under_min_size": "{0} · {1}",

@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP and the merged picture of a Krita KRA read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA and the icon of a Windows program or library (EXE, DLL) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -328,6 +328,13 @@ in it also builds the package (artifact `windows-arm64-package`).
   without one gives a clear error. Krita's backup of the previous save, `name.kra~`, is the same file and is read the
   same way; its output is named `name.png`. Watch folders skip it (and any name ending in `~`), as it is written next
   to the drawing on every save.
+- **EXE / DLL** (a Windows program or library, #1188) is read as its icon, the one Explorer shows: the first icon group
+  of its resources, put back together as an `.ico` in memory (`ProgramIcon`, Filee's own reader for 32 and 64-bit PE
+  files; only the headers and the icon are read, at most 64 MB, and the file is never loaded or run). To ICO it is
+  that icon as it is, every size the program has, unless the preset changes the picture or asks for other icon
+  sizes; then, as for every other target, the largest size is converted. A file without an icon of its own, or a
+  16-bit or damaged one, gives a clear error. Programs are converted only when dropped or named: watch folders and
+  folders given to the command line skip them, and Recent conversions never opens one.
 - **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,

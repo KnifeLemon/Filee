@@ -168,6 +168,8 @@
   "error.fon_too_large": ".fon 글꼴이 너무 커서 변환할 수 없어요",
   "error.fon_damaged": ".fon 파일이 손상되었거나 잘렸어요",
   "error.m4s_needs_init": "스트리밍 동영상의 한 조각인 .m4s 파일이에요. 따로 있는 시작(init) 세그먼트 없이는 읽을 수 없어요",
+  "error.exe_unreadable": "Filee가 읽을 수 있는 Windows 프로그램이나 라이브러리가 아니거나 파일이 손상되었어요",
+  "error.exe_no_icon": "이 파일에는 자체 아이콘이 없어요 (Windows가 기본 아이콘을 보여 줘요)",
   "notice.pdf_not_smaller": "더 작게 만들 수 없어서 그대로 복사했어요",
   "notice.under_min_size": "최소 파일 크기보다 작지만 저장했어요",
   "notice.with_under_min_size": "{0} · {1}",

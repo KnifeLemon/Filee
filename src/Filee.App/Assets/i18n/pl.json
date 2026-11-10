@@ -168,6 +168,8 @@
   "error.fon_too_large": "Czcionka .fon jest zbyt duża, aby ją przekonwertować",
   "error.fon_damaged": "Plik .fon jest uszkodzony lub niekompletny",
   "error.m4s_needs_init": "Ten plik .m4s to fragment wideo strumieniowego i nie da się go odczytać bez osobnego segmentu początkowego (init)",
+  "error.exe_unreadable": "To nie jest program ani biblioteka Windows, którą Filee potrafi odczytać, albo plik jest uszkodzony",
+  "error.exe_no_icon": "Ten plik nie ma własnej ikony (Windows pokazuje dla niego ikonę standardową)",
   "notice.pdf_not_smaller": "Nie udało się zmniejszyć pliku, więc skopiowano go bez zmian",
   "notice.under_min_size": "Zapisano, ale plik jest mniejszy niż minimalny rozmiar",
   "notice.with_under_min_size": "{0} · {1}",

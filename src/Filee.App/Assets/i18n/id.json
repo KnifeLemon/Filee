@@ -162,6 +162,8 @@
   "error.fon_too_large": "Font .fon terlalu besar untuk dikonversi",
   "error.fon_damaged": "File .fon rusak atau terpotong",
   "error.m4s_needs_init": "File .m4s ini adalah salah satu pecahan video streaming: tidak dapat dibaca tanpa segmen awal (init) terpisahnya",
+  "error.exe_unreadable": "Ini bukan program atau pustaka Windows yang dapat dibaca Filee, atau file rusak",
+  "error.exe_no_icon": "File ini tidak punya ikon sendiri (Windows menampilkan ikon standar untuknya)",
   "notice.pdf_not_smaller": "Ukuran tidak dapat diperkecil lagi, sehingga disalin apa adanya",
   "notice.under_min_size": "Disimpan, tetapi lebih kecil dari ukuran file minimum",
   "notice.with_under_min_size": "{0} · {1}",

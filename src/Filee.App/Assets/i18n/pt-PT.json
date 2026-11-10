@@ -168,6 +168,8 @@
   "error.fon_too_large": "A fonte .fon é demasiado grande para converter",
   "error.fon_damaged": "O ficheiro .fon está danificado ou incompleto",
   "error.m4s_needs_init": "Este .m4s é um pedaço de um vídeo em streaming e não pode ser lido sem o respetivo segmento inicial (init) separado",
+  "error.exe_unreadable": "Não é um programa ou biblioteca do Windows que o Filee consiga ler, ou o ficheiro está danificado",
+  "error.exe_no_icon": "Este ficheiro não tem ícone próprio (o Windows mostra-lhe um ícone predefinido)",
   "notice.pdf_not_smaller": "Não foi possível reduzir o tamanho, pelo que o ficheiro foi copiado sem alterações",
   "notice.under_min_size": "Guardado, mas mais pequeno do que o tamanho mínimo do ficheiro",
   "notice.with_under_min_size": "{0} · {1}",

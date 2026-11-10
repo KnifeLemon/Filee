@@ -10,6 +10,11 @@ public static class FormatRegistry
     /// <summary>Pseudo format for archive extraction outputs and folders explicitly classified at input handling.</summary>
     public const string Folder = "folder";
 
+    /// <summary>
+    /// Windows programs and libraries (.exe, .dll), read as the icon Explorer shows for them (#1188). They are never run.
+    /// </summary>
+    public const string Program = "exe";
+
     /// <summary>All known formats. Order is the order shown in format pickers.</summary>
     public static IReadOnlyList<FileFormat> Known { get; } =
     [
@@ -60,6 +65,8 @@ public static class FormatRegistry
         new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
+        // A Windows program or library (#1188), read as its icon: the picture Explorer shows for the file.
+        new(Program, "Windows program icon (EXE, DLL)", FormatCategory.Image, ["exe", "dll"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,
             ["dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "orf", "rw2", "raf", "pef", "dcr", "kdc",
              "erf", "mos", "mrw", "x3f", "3fr", "fff", "iiq", "mef", "rwl", "srw", "raw"], Writable: false),
@@ -396,6 +403,12 @@ public static class FormatRegistry
 
     /// <summary>Detects the format of a file from its extension, or <c>null</c> if it is not supported.</summary>
     public static FileFormat? Detect(string path) => FindByExtension(ExtensionOf(path));
+
+    /// <summary>
+    /// True for a Windows program or library (<see cref="Program"/>). Filee reads its icon when the file is dropped or
+    /// named, but never opens one (it would start the program) and never takes one from a folder by itself.
+    /// </summary>
+    public static bool IsProgram(string path) => Detect(path)?.Id == Program;
 
     /// <summary>
     /// The extension of <paramref name="path"/> without the dot, including known two-part extensions
