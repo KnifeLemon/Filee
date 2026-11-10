@@ -31,10 +31,31 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Theory]
+    [InlineData("png", MagickFormat.Png)]
+    [InlineData("jpg", MagickFormat.Jpeg)]
+    [InlineData("webp", MagickFormat.WebP)]
+    public async Task Insp_jpeg_converts_to_requested_image_format(string target, MagickFormat format)
+    {
+        // An Insta360 .insp is a JPEG under another name; ImageMagick knows no "insp" coder and reads the JPEG
+        // signature instead. A side-by-side 2:1 picture stands in for the two fisheye circles.
+        var dir = fx.NewFolder();
+        var source = EngineFixture.MakeImage(dir, "IMG_20240101_120000_00_001.insp", MagickFormat.Jpeg, 96, 48);
+        var job = await fx.ConvertAsync([source], new Preset { TargetFormat = target });
+        AssertDone(job);
+        var output = Assert.Single(job.Outputs);
+        Assert.Equal("." + target, Path.GetExtension(output));
+        using var result = new MagickImage(output);
+        Assert.Equal(format, result.Format);
+        Assert.Equal((96u, 48u), (result.Width, result.Height));
+        Assert.True(File.Exists(source));
+    }
+
+    [Theory]
     [InlineData("photo.png_large", MagickFormat.Png)]
     [InlineData("photo.jpg_large", MagickFormat.Jpeg)]
     [InlineData("photo.jif", MagickFormat.Jpeg)]
     [InlineData("photo.JIF", MagickFormat.Jpeg)]
+    [InlineData("photo.INSP", MagickFormat.Jpeg)]
     public async Task Large_image_aliases_convert_to_png(string name, MagickFormat format)
     {
         var dir = fx.NewFolder();
