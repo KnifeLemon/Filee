@@ -1090,7 +1090,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>Compression is for PDF → PDF; Ghostscript and metadata only matter while it is on.</summary>
     public bool ShowPdfCompression => TargetId == "pdf" && !Recognizes;
 
-    /// <summary>XLSX: what a PDF becomes (its ruled tables, PdfTablesConverter).</summary>
+    /// <summary>XLSX: what a PDF, a Word document or a web page becomes (its tables, PdfTablesConverter and DocumentTablesConverter).</summary>
     public bool ShowPdfTablesNote => TargetId == "xlsx";
     public bool ShowPdfCompressionOptions => ShowPdfCompression && CompressionLevel.Value != PdfCompression.None;
 

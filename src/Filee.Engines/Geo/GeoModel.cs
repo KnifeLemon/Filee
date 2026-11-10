@@ -146,6 +146,9 @@ internal sealed class GeoDataset
     /// <summary>True if some rows of a CSV had no usable location and so have no geometry.</summary>
     public bool RowsWithoutLocation { get; set; }
 
+    /// <summary>True if ways or relations of an OpenStreetMap file were left out because parts of them aren't in it.</summary>
+    public bool PartsMissing { get; set; }
+
     /// <summary>True when a missing height must stay absent rather than be written as zero.</summary>
     public bool SparseHeights { get; set; }
 

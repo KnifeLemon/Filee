@@ -36,11 +36,11 @@ public sealed class WicImageConverter : IConverter, IImageTransformer
     }
 
     public Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken) =>
-        Task.Run(() =>
+        Task.Run(async () =>
         {
             if (!OperatingSystem.IsWindows())
                 throw new PlatformNotSupportedException("JPEG XR is read with the Windows Imaging Component, on Windows only.");
             using var images = new ImageMagick.MagickImageCollection { WicImageReader.Read(step.InputPath) };
-            return MagickImageConverter.Write(images, step.From, step, progress, cancellationToken);
+            return await MagickImageConverter.WriteAsync(images, step.From, step, progress, cancellationToken);
         }, cancellationToken);
 }

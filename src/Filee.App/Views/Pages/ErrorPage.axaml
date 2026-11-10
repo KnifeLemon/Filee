@@ -1,0 +1,19 @@
+<!-- In place of a page that couldn't be built: its title, and a note that the reason is in the log. Plain controls and
+     brushes every theme defines, so the stand-in doesn't lean on whatever the failed page needed. -->
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Filee.App.ViewModels.Pages"
+             x:Class="Filee.App.Views.Pages.ErrorPage"
+             x:DataType="vm:ErrorPageViewModel">
+  <StackPanel Spacing="18">
+    <TextBlock Classes="h1" Text="{Binding Title}" IsVisible="{Binding HasTitle}" />
+    <Border BorderBrush="{DynamicResource DangerBrush}" BorderThickness="1" CornerRadius="{DynamicResource SoftRadius}" Padding="14,10">
+      <DockPanel>
+        <PathIcon DockPanel.Dock="Left" Width="16" Height="16" Margin="0,0,10,0" VerticalAlignment="Center"
+                  Data="{StaticResource Icon.Alert}" Foreground="{DynamicResource DangerBrush}" />
+        <TextBlock x:Name="Message" TextWrapping="Wrap" VerticalAlignment="Center" Text="{DynamicResource nav.page_error}"
+                   AutomationProperties.LiveSetting="Polite" />
+      </DockPanel>
+    </Border>
+  </StackPanel>
+</UserControl>

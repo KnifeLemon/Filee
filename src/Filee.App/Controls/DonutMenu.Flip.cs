@@ -5,7 +5,10 @@
 // The flip key (Tab unless the user records another in Settings → Shortcuts) and the mouse wheel flip it:
 //   Click mode → the key reaches the focused window (HandleKey), the wheel the donut (OnPointerWheelChanged).
 //   Drag mode  → the window has no keyboard focus during an OS drag: RadialController flips when the global hook
-//                sees the key or the wheel (TriggerService.FlipKeyPressed / FlipWheelTurned).
+//                sees the key or the wheel (TriggerService.FlipKeyPressed / FlipWheelTurned). On macOS the donut takes
+//                key window status without whole-app activation once files are dragged onto it (RadialController.TakeKeyboard),
+//                and the key then reaches the window as in click mode: the hook may not see it while another app holds
+//                Secure Input. On drop or close, key window status is explicitly released (ReleaseKeyWindow / ReturnFocus).
 //
 // The owner swaps Items immediately when FaceSwapping is raised (RadialWindow → RadialViewModel). Old slices are
 // retained for drawing only; hit-testing and drops always use the new face.
@@ -85,8 +88,8 @@ public sealed partial class DonutMenu
     public bool FlipWithWheel { get => GetValue(FlipWithWheelProperty); set => SetValue(FlipWithWheelProperty, value); }
 
     /// <summary>
-    /// Drag mode: the global hook flips on the flip key (RadialController), so the window's own key press doesn't flip
-    /// too. macOS can give the donut's window the keyboard during a drag, and one press then flipped twice (#504).
+    /// The global hook flips on the flip key (RadialController: drag mode, while the window doesn't have the keyboard),
+    /// so the window's own key press doesn't flip too; one press flipped twice otherwise (#504).
     /// </summary>
     public bool FlipKeyFromHook { get; set; }
 
@@ -124,6 +127,7 @@ public sealed partial class DonutMenu
     internal bool HasOldFace => _oldFace is not null;
     internal bool HasOldGroupRing => _oldGroup is not null;
     internal int CachedWedgeCount => _wedges.Count;
+    internal int CachedGroupMarkCount => _groupMarks.Count;
 
     private double Progress(bool oldFace, int index)
     {

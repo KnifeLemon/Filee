@@ -13,17 +13,24 @@
      SHA-256 sums;
   3. installs the signed Setup into a sandbox (nothing on the PC is touched) and checks that Filee.exe and
      uninstall.exe come out signed, then uninstalls it;
-  4. uploads Filee-<version>-win-Setup.exe, the portable zip and Filee-<version>-SHA256SUMS.txt to the draft;
-  5. copies the same three files to the download mirror, Cloudflare R2 behind https://dl.filee.sh/<version>/, and
-     checks that each one is served there as is (no redirect, the same size). The Microsoft Store takes Setup.exe
-     from that address, because GitHub's download links redirect;
-  6. with -Publish, publishes the release.
+  4. signs every SHA256SUMS file of the release (Windows, and the Linux and macOS ones from the draft) with Filee's
+     update key (build/sign-checksums.ps1, -UpdateKey), which writes a .sig file next to each;
+  5. uploads Filee-<version>-win-Setup.exe, the portable zip, Filee-<version>-SHA256SUMS.txt and the .sig files to
+     the draft;
+  6. copies the Windows files and their checksum signature to the download mirror, Cloudflare R2 behind
+     https://dl.filee.sh/<version>/, and checks that each one is served there as is (no redirect, the same size). The
+     Microsoft Store takes Setup.exe from that address, because GitHub's download links redirect;
+  7. with -Publish, publishes the release.
+
+  When the tag's Directory.Build.props carries an update key (FileeUpdatePublicKey), its builds refuse an update
+  without signed checksums: the script then stops early without -UpdateKey, checks that the private key belongs to
+  that public key, and doesn't publish while a SHA256SUMS file on the draft has no .sig next to it.
 
   Needs gh (signed in), git, the .NET SDK, and Node.js with Wrangler signed in to Filee's Cloudflare account
   (npx wrangler login, once) unless -NoMirror. Output: build/.cache/release-<version>/out.
 
 .EXAMPLE
-  pwsh build/sign-release.ps1 -Version 2.1.0 -CertificateThumbprint <sha1>
+  pwsh build/sign-release.ps1 -Version 2.1.0 -CertificateThumbprint <sha1> -UpdateKey D:\keys\filee-update.pem
   pwsh build/sign-release.ps1 -Version 2.1.0 -Publish
 #>
 [CmdletBinding()]
@@ -32,6 +39,8 @@ param(
     [string]$Version,
     # Defaults to $env:FILEE_SIGNING_CERT (see sign-windows.ps1).
     [string]$CertificateThumbprint = $env:FILEE_SIGNING_CERT,
+    # The private update key (build/new-update-key.ps1). Defaults to $env:FILEE_UPDATE_KEY (the path, not the key).
+    [string]$UpdateKey = $env:FILEE_UPDATE_KEY,
     [switch]$Publish,
     # Skips the copy to the download mirror (dl.filee.sh).
     [switch]$NoMirror
@@ -56,6 +65,16 @@ $run = gh run list --workflow release.yml --branch $tag --limit 1 --json databas
 if (-not $run) { throw "No release workflow run for $tag." }
 if ($run.status -ne 'completed' -or $run.conclusion -ne 'success') { throw "The release run $($run.databaseId) is $($run.status) ($($run.conclusion))." }
 
+# The update key the tag's builds carry: their updater refuses checksum files that aren't signed with it.
+Invoke-Checked 'git fetch' { git -C $root fetch --quiet origin "refs/tags/${tag}:refs/tags/$tag" }
+$props = [xml](git -C $root show "${tag}:Directory.Build.props" | Out-String)
+$publicKey = @($props.Project.PropertyGroup | ForEach-Object { $_.FileeUpdatePublicKey } | Where-Object { $_ -is [string] -and $_.Trim() }) |
+    Select-Object -First 1
+if ($publicKey -and -not $UpdateKey) {
+    throw "$tag carries an update key (FileeUpdatePublicKey): pass -UpdateKey <private key file> or set FILEE_UPDATE_KEY."
+}
+if ($UpdateKey -and -not (Test-Path -LiteralPath $UpdateKey -PathType Leaf)) { throw "No private update key at $UpdateKey." }
+
 $work = Join-Path $PSScriptRoot ".cache\release-$Version"
 $source = Join-Path $work 'source'
 if (Test-Path $source) { Invoke-Checked 'git worktree remove' { git -C $root worktree remove --force $source } }
@@ -65,7 +84,6 @@ New-Item -ItemType Directory -Force -Path $work | Out-Null
 Write-Host "download the unsigned build of run $($run.databaseId)"
 Invoke-Checked 'gh run download' { gh run download $run.databaseId --name windows-unsigned --dir (Join-Path $work 'unsigned') }
 
-Invoke-Checked 'git fetch' { git -C $root fetch --quiet origin "refs/tags/${tag}:refs/tags/$tag" }
 Invoke-Checked 'git worktree add' { git -C $root worktree add --detach $source $tag }
 try {
     $out = Join-Path $work 'out'
@@ -97,15 +115,28 @@ foreach ($file in 'Filee.exe', 'filee-cli.exe', 'uninstall.exe', 'engines\rhwp\r
 Invoke-Setup (Join-Path $installed 'uninstall.exe')
 Remove-Item $sandbox -Recurse -Force -ErrorAction SilentlyContinue
 
+# Every SHA256SUMS file of the release, signed: the Linux and macOS ones the workflow put on the draft, and the new
+# Windows one.
+$signatures = @()
+if ($UpdateKey) {
+    $sums = Join-Path $work 'sums'
+    New-Item -ItemType Directory -Force -Path $sums | Out-Null
+    Invoke-Checked 'gh release download' { gh release download $tag --pattern '*SHA256SUMS.txt' --dir $sums --clobber }
+    Copy-Item (Join-Path $out "Filee-$Version-SHA256SUMS.txt") $sums -Force
+    $signatures = @(& (Join-Path $PSScriptRoot 'sign-checksums.ps1') -Folder $sums -PrivateKeyPath $UpdateKey -PublicKey $publicKey)
+}
+
 Write-Host "upload to the draft of $tag"
-Invoke-Checked 'gh release upload' { gh release upload $tag @files --clobber }
+Invoke-Checked 'gh release upload' { gh release upload $tag @files @signatures --clobber }
 
 # The download mirror: R2 bucket filee-downloads, served at dl.filee.sh. Wrangler is pinned like the engines.
 if (-not $NoMirror) {
     $bucket = 'filee-downloads'
     $mirror = "https://dl.filee.sh/$Version"
-    $types = @{ '.exe' = 'application/vnd.microsoft.portable-executable'; '.zip' = 'application/zip'; '.txt' = 'text/plain; charset=utf-8' }
-    foreach ($file in $files) {
+    $types = @{ '.exe' = 'application/vnd.microsoft.portable-executable'; '.zip' = 'application/zip'; '.txt' = 'text/plain; charset=utf-8'
+        '.sig' = 'text/plain; charset=utf-8' }
+    $mirrored = $files + @($signatures | Where-Object { (Split-Path $_ -Leaf) -eq "Filee-$Version-SHA256SUMS.txt.sig" })
+    foreach ($file in $mirrored) {
         $name = Split-Path $file -Leaf
         Write-Host "copy $name to $mirror"
         Invoke-Checked 'wrangler r2 object put' {
@@ -119,6 +150,12 @@ if (-not $NoMirror) {
             throw "$mirror/$name answers $($response.StatusCode) with $served bytes, not the $((Get-Item $file).Length) uploaded."
         }
     }
+}
+# A build with an update key installs nothing whose checksum file isn't signed: don't publish one without.
+if ($publicKey) {
+    $assets = @((gh release view $tag --json assets | ConvertFrom-Json).assets.name)
+    $unsigned = @($assets | Where-Object { $_ -like '*SHA256SUMS.txt' -and "$_.sig" -notin $assets })
+    if ($unsigned.Count) { throw "Not signed on the draft of ${tag}: $($unsigned -join ', '). Run again with -UpdateKey." }
 }
 if ($Publish) {
     Invoke-Checked 'gh release edit' { gh release edit $tag --draft=false --latest }

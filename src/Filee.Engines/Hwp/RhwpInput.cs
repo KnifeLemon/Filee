@@ -19,6 +19,9 @@
 // - Equation lines (#143): in paragraphs without stored lines (Word equations written by Filee) rhwp draws a fraction,
 //   matrix or sum partly below its line, over the next line. Those paragraphs get the overhang as space after them.
 //
+// - Floating pictures in headers and footers (#1152): rhwp's way with them left out what comes after them; see
+//   GroupFloatingHeaderPictures.
+//
 // rhwp's equation fonts are Latin Modern Math, STIX Two and Times New Roman; without the first two or Arial Unicode MS
 // (which Office installs) ∪ ∈ ⊂ ∘ ∼ came out empty, so Cambria Math (part of Windows) is asked for then.
 
@@ -26,6 +29,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Hwp;
 
@@ -76,10 +80,11 @@ internal static partial class RhwpInput
             {
                 if (zip.GetEntry("Contents/header.xml") is not { } entry)
                     return null;
-                header = Load(entry);
+                var parts = new BoundedXml();
+                header = Load(parts, entry);
                 fromHwp = zip.GetEntry(Hwp5OriginMarker) is not null;
                 foreach (var section in zip.Entries.Where(e => e.FullName.StartsWith("Contents/section", StringComparison.Ordinal) && e.FullName.EndsWith(".xml", StringComparison.Ordinal)))
-                    sections.Add((section.FullName, Load(section)));
+                    sections.Add((section.FullName, Load(parts, section)));
             }
 
             var text = new StringBuilder();
@@ -99,7 +104,7 @@ internal static partial class RhwpInput
 
             foreach (var (name, xml) in sections)
             {
-                if (FixShapeSizes(xml) | NormaliseEquations(xml) | (fromHwp && AnchorTablesInCells(xml)))
+                if (FixShapeSizes(xml) | NormaliseEquations(xml) | GroupFloatingHeaderPictures(xml) | ShowHeaderPictures(xml) | (fromHwp && AnchorTablesInCells(xml)))
                     changed[name] = xml;
                 if (SpaceEquationLines(xml, header))
                 {
@@ -157,11 +162,8 @@ internal static partial class RhwpInput
         }
     }
 
-    private static XDocument Load(ZipArchiveEntry entry)
-    {
-        using var stream = entry.Open();
-        return XDocument.Load(stream, LoadOptions.PreserveWhitespace); // spaces in hp:t are text
-    }
+    private static XDocument Load(BoundedXml parts, ZipArchiveEntry entry) =>
+        parts.Load(entry, LoadOptions.PreserveWhitespace); // spaces in hp:t are text
 
     private static bool ApplyFonts(XDocument header, string text, Func<string, InstalledFont?> lookup)
     {
@@ -198,6 +200,73 @@ internal static partial class RhwpInput
             size.SetAttributeValue("height", height);
             size.SetAttributeValue("widthRelTo", "ABSOLUTE");
             size.SetAttributeValue("heightRelTo", "ABSOLUTE");
+            changed = true;
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// rhwp leaves out a picture that is all a paragraph of a header or footer holds, such as a logo (issue #280); it
+    /// draws it with a space beside it. True when something changed.
+    /// </summary>
+    internal static bool ShowHeaderPictures(XDocument section)
+    {
+        var changed = false;
+        foreach (var paragraph in section.Descendants().Where(e => e.Name.LocalName is "header" or "footer").SelectMany(e => e.Descendants().Where(p => p.Name.LocalName == "p")))
+        {
+            var runs = paragraph.Elements().Where(e => e.Name.LocalName == "run").ToList();
+            var content = runs.SelectMany(r => r.Elements()).ToList();
+            if (!content.Any(e => e.Name.LocalName == "pic") || content.Any(e => e.Name.LocalName == "t" && e.Value.Length > 0))
+                continue;
+            if (content.FirstOrDefault(e => e.Name.LocalName == "t") is { } text)
+                text.Value = " ";
+            else
+                runs[^1].Add(new XElement(runs[^1].Name.Namespace + "t", " "));
+            changed = true;
+        }
+        return changed;
+    }
+
+    /// <summary>
+    /// rhwp lays out a floating picture in a header or footer as if it took up room: what comes after it moves down, or
+    /// is left out past the end of the area (issue #1152). The text beside it and any shapes are not drawn at all, and a
+    /// position on the paper is taken from the header's corner. As the one object of a group, the picture goes the way
+    /// of a shape, which has none of this. Only paragraphs without stored lines (written by Filee): for a file saved by
+    /// 한글 rhwp's reading of the position stays. A paragraph without text keeps its line with a space. True when
+    /// something changed.
+    /// </summary>
+    internal static bool GroupFloatingHeaderPictures(XDocument section)
+    {
+        var changed = false;
+        // Listed first: a group holds copies of its picture, and a walk going on into them would find a header nested in
+        // the picture twice over, at every level (a few kilobytes would come to more than any memory holds).
+        var paragraphs = section.Descendants().Where(e => e.Name.LocalName is "header" or "footer").Elements()
+            .Where(e => e.Name.LocalName == "subList").Elements().Where(e => e.Name.LocalName == "p" && Child(e, "linesegarray") is null).ToList();
+        foreach (var paragraph in paragraphs)
+        {
+            var runs = paragraph.Elements().Where(e => e.Name.LocalName == "run").ToList();
+            var floating = runs.Elements().Where(e => e.Name.LocalName == "pic" && (string?)Child(e, "pos")?.Attribute("treatAsChar") == "0").ToList();
+            foreach (var picture in floating)
+            {
+                var group = new XElement(picture.Name.Namespace + "container", picture.Attributes());
+                group.Add(Layout("offset", "orgSz", "curSz", "flip", "rotationInfo", "renderingInfo"));
+                group.Add(new XElement(picture));
+                group.Add(Layout("sz", "pos", "outMargin"));
+                picture.ReplaceWith(group);
+
+                IEnumerable<XElement> Layout(params string[] names) =>
+                    names.Select(name => Child(picture, name)).OfType<XElement>().Select(child => new XElement(child));
+            }
+            if (floating.Count == 0)
+                continue;
+            var content = runs.SelectMany(r => r.Elements()).ToList();
+            if (!content.Any(e => e.Name.LocalName == "t" && e.Value.Length > 0))
+            {
+                if (content.FirstOrDefault(e => e.Name.LocalName == "t") is { } text)
+                    text.Value = " ";
+                else
+                    runs[^1].Add(new XElement(runs[^1].Name.Namespace + "t", " "));
+            }
             changed = true;
         }
         return changed;

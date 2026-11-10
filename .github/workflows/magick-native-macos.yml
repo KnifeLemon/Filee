@@ -1,18 +1,25 @@
 name: ImageMagick for macOS 13
 
 # Magick.NET's macOS libraries are built without a deployment target, so they need the macOS of the runner that built
-# them: 14.0 on Apple silicon and 15.0 on Intel for Magick.NET 14.17.2 (#600). Filee supports macOS 13, so this job
-# builds the same Magick.Native release from its pinned source with MACOSX_DEPLOYMENT_TARGET=13.0: ImageMagick's
-# dependencies (ImageMagick/Dependencies, every library at the commit its release pins), ImageMagick at the commit
-# Magick.Native pins, then Magick.Native itself. The steps are upstream's own (Magick.Native and Dependencies
-# .github/workflows/main.yml), without the prebuilt dependency download.
+# them (#600: 14.0 on Apple silicon for Magick.NET 14.17.2), and Magick.NET 15 has none for Intel Macs at all. Filee
+# supports macOS 13 on both, so this job builds the same Magick.Native release from its pinned source with
+# MACOSX_DEPLOYMENT_TARGET=13.0: ImageMagick's dependencies (ImageMagick/Dependencies, every library at the commit its
+# release pins), ImageMagick at the commit Magick.Native pins, then Magick.Native itself. The steps are upstream's own
+# (Magick.Native and Dependencies .github/workflows/main.yml), without the prebuilt dependency download.
 #
 # Run it once per Magick.NET version. The two dylibs are then hosted on dl.filee.sh and pinned by SHA-256 in
-# build/build-portable.ps1, which puts them into the macOS packages. build/check-macho-minos.py fails the package
-# build if a Magick.NET update brings back a library that needs a newer macOS.
+# build/fetch-magick-native.ps1, which puts them into the macOS packages (and next to the Intel test builds).
+# build/check-macho-minos.py fails the package build if a Magick.NET update brings back a library that needs a newer
+# macOS.
 #
-# Pins for Magick.NET 14.17.2 (Directory.Packages.props): its nuspec commit aa58615 reads Magick.Native 2026.927.1314,
-# which pins ImageMagick and downloads Dependencies 2026.09.26.1516.
+# Pins for Magick.NET 15.0.0 (Directory.Packages.props): its nuspec commit 79bb870 reads Magick.Native 2026.1010.1943
+# (src/Magick.Native/Magick.Native.version), which pins ImageMagick 7.1.2-33 (src/ImageMagick/ImageMagick.commit) and
+# downloads Dependencies 2026.10.09.2225 (ImageMagick's .github/build/windows/download-dependencies.sh).
+#
+# Intel: Magick.Native and Dependencies dropped their macOS x64 build scripts after 14.17.2 (Magick.Native bdd85e2,
+# Dependencies d7deb2b) and changed nothing else for macOS. Those scripts come back from the commits just before the
+# removal; Dependencies' Apple silicon scripts are the same as the Intel ones but for the Homebrew packages the Intel
+# image has, and Magick.Native's settings are the same for both.
 
 on:
   workflow_dispatch:
@@ -22,8 +29,11 @@ permissions:
 
 env:
   MACOSX_DEPLOYMENT_TARGET: '13.0'
-  MAGICK_NATIVE_COMMIT: 999720f7ebe03d5a0029536f1586a2cb82b500ae # tag 2026.927.1314
-  DEPENDENCIES_COMMIT: 1c21ff03809da9cc544427fcd04e965d1558d06f # tag 2026.09.26.1516
+  MAGICK_NATIVE_COMMIT: 4dcdad28530c14c8d35687fdeb1ecc8d39b01e30 # tag 2026.1010.1943
+  DEPENDENCIES_COMMIT: f586cbad542b5d7f7927c7ebac376e497c869131 # tag 2026.10.09.2225
+  # The last commits with the macOS x64 build scripts (the parents of their removal).
+  MAGICK_NATIVE_X64_SCRIPTS_COMMIT: 6f191cc4a72c600b795d7a94479a75cf2ee88ffa
+  DEPENDENCIES_X64_SCRIPTS_COMMIT: 1c21ff03809da9cc544427fcd04e965d1558d06f # tag 2026.09.26.1516
   QUANTUM: Q8
 
 jobs:
@@ -58,6 +68,19 @@ jobs:
           fetch dlemstra/Magick.Native native "$MAGICK_NATIVE_COMMIT"
           fetch ImageMagick/Dependencies dependencies "$DEPENDENCIES_COMMIT"
           fetch ImageMagick/ImageMagick native/src/ImageMagick/ImageMagick "$(< native/src/ImageMagick/ImageMagick.commit)"
+
+      - name: Restore the macOS x64 build scripts
+        if: matrix.arch == 'x64'
+        run: |
+          restore() {
+            git -C "$1" fetch -q --depth 1 "https://github.com/$2.git" "$3"
+            git -C "$1" checkout -q FETCH_HEAD -- "$4"
+          }
+          restore native dlemstra/Magick.Native "$MAGICK_NATIVE_X64_SCRIPTS_COMMIT" build/macos-x64
+          restore dependencies ImageMagick/Dependencies "$DEPENDENCIES_X64_SCRIPTS_COMMIT" .github/build/macos-x64
+          # Stops when upstream has changed the Apple silicon build since, which the restored Intel one would miss.
+          diff native/build/macos-arm64/settings.sh native/build/macos-x64/settings.sh
+          diff dependencies/.github/build/macos-arm64/build.sh dependencies/.github/build/macos-x64/build.sh
 
       # Dependencies' install script covers Magick.Native's build tools too; running both fails, as both uninstall
       # the same Homebrew packages.

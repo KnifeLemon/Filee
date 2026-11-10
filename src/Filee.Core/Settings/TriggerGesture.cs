@@ -49,6 +49,14 @@ public enum TriggerScope
     Anywhere,
 }
 
+/// <summary>The face of the donut a gesture opens on.</summary>
+public enum DonutFace
+{
+    Front,
+    /// <summary>The back face (the second set of slices); the front when the back has no slice for the files.</summary>
+    Back,
+}
+
 /// <summary>A user-configurable gesture that opens the donut toolbar.</summary>
 public sealed class TriggerGesture
 {
@@ -80,6 +88,12 @@ public sealed class TriggerGesture
     /// Match Style in most text fields) would also reach the app in front.
     /// </summary>
     public bool Clipboard { get; set; }
+
+    /// <summary>
+    /// The face the donut opens on (#195): two gestures with different modifiers open different sets of slices, Ctrl +
+    /// drag the front and Ctrl + Shift + drag the back, say. The flip key and the wheel still turn it over from there.
+    /// </summary>
+    public DonutFace Face { get; set; } = DonutFace.Front;
 
     public TriggerGesture Clone() => (TriggerGesture)MemberwiseClone();
 

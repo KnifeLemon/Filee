@@ -364,6 +364,8 @@ public class BrowserDropTests
     [InlineData("&lt;svg&gt;&lt;/svg&gt;")]
     public void Other_text_does_not_offer_files_to_the_donut(string text)
     {
+        // Reading the local files asks AppHost for the platform services.
+        TestServices.EnsureInitialized("en");
         using var data = new DataTransfer();
         data.Add(DataTransferItem.CreateText(text));
         Assert.False(DraggedFiles.Offered(data));
@@ -424,6 +426,61 @@ public class BrowserDropTests
         }
     }
 
+    [AvaloniaFact]
+    public void A_picture_dropped_on_the_drop_zone_joins_the_queue_when_the_setting_asks_for_it()
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var collect = store.Settings.CollectDroppedFiles;
+        store.Settings.CollectDroppedFiles = true;
+        var downloads = Directory.CreateTempSubdirectory("filee-queue-downloads-").FullName;
+        store.Settings.BrowserDrops.Folder = downloads;
+        var vm = new MainWindowViewModel(AppHost.Services, AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<UpdateService>(), store);
+        vm.Navigate("home");
+        var window = new MainWindow { DataContext = vm, Width = 1080, Height = 820 };
+        window.Show();
+        Pump();
+        var radial = AppHost.Get<RadialController>();
+        try
+        {
+            var page = window.GetVisualDescendants().OfType<HomePage>().Single();
+            var zone = page.FindControl<Border>("DropZone")!;
+            var file = VirtualFile.Create("cat.png", Png);
+            using var data = ChromePicture(file);
+            // The donut's files as they were: a donut an earlier test left behind must not count as this drop's.
+            var donutFiles = AppHost.Get<RadialViewModel>().Files.ToList();
+
+            zone.RaiseEvent(new DragEventArgs(DragDrop.DropEvent, data, zone, new Point(20, 20), KeyModifiers.None));
+            var model = Assert.IsType<Filee.App.ViewModels.Pages.HomePageViewModel>(vm.CurrentPage);
+            // The file is saved first, on a background thread; the queue takes it once it is on disk.
+            for (var i = 0; i < 500 && model.Queue.Count == 0; i++)
+            {
+                Pump();
+                Thread.Sleep(10);
+            }
+
+            var queued = Assert.Single(model.QueuedPaths);
+            Assert.Equal("cat.png", Path.GetFileName(queued));
+            Assert.True(File.Exists(queued));
+            // Saved into the download folder, as the crop overlay does: the result goes next to it there, not into a
+            // work folder that the next start deletes.
+            Assert.Equal(downloads, Path.GetDirectoryName(queued));
+            // The donut was not offered the file.
+            Assert.Equal(donutFiles, AppHost.Get<RadialViewModel>().Files);
+            Assert.True(file.Disposed);
+        }
+        finally
+        {
+            radial.Close(animate: false);
+            window.Close();
+            // The queue is shared by the whole app: the test's file must not stay in it for the next test.
+            AppHost.Get<StagedFiles>().Clear();
+            store.Settings.CollectDroppedFiles = collect;
+            store.Settings.BrowserDrops.Folder = "";
+            Directory.Delete(downloads, true);
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("ko")]
@@ -444,7 +501,11 @@ public class BrowserDropTests
             var title = window.GetVisualDescendants().OfType<TextBlock>().Single(t => t.Text == loc["general.browser_drops"]);
             var card = title.FindAncestorOfType<Border>()!;
             var folderBox = card.GetVisualDescendants().OfType<TextBox>().Single();
-            var check = card.GetVisualDescendants().OfType<CheckBox>().Single();
+            var checks = card.GetVisualDescendants().OfType<CheckBox>().ToList();
+            var check = checks.Single(c => Equals(c.Content, loc["general.browser_drops_only_converted"]));
+            var local = checks.Single(c => Equals(c.Content, loc["general.browser_drops_local_network"]));
+            Assert.Equal(2, checks.Count);
+            Assert.False(local.IsChecked); // off unless the user turns it on
 
             // Nothing chosen: the Downloads folder shows as the placeholder.
             Assert.Equal("", folderBox.Text ?? "");
@@ -467,11 +528,17 @@ public class BrowserDropTests
             Assert.Equal(chosen, store.Settings.BrowserDrops.Folder);
             Assert.True(store.Settings.BrowserDrops.SaveOnlyConverted);
             Assert.Equal(new WebDropOptions(chosen, true), AppHost.Get<ConversionService>().BrowserDropOptions());
+
+            local.IsChecked = true;
+            Pump();
+            Assert.True(store.Settings.BrowserDrops.AllowLocalNetwork);
+            Assert.Equal(new WebDropOptions(chosen, true, AllowLocalNetwork: true), AppHost.Get<ConversionService>().BrowserDropOptions());
         }
         finally
         {
             store.Settings.BrowserDrops.Folder = "";
             store.Settings.BrowserDrops.SaveOnlyConverted = false;
+            store.Settings.BrowserDrops.AllowLocalNetwork = false;
             window.Close();
         }
     }

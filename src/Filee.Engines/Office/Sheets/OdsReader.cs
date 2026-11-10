@@ -10,6 +10,7 @@ using System.IO.Compression;
 using System.Text;
 using System.Xml;
 using System.Xml.Linq;
+using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Office.Sheets;
 
@@ -72,9 +73,8 @@ internal sealed class OdsReader
     {
         if (zip.GetEntry(name) is not { } entry)
             return null;
-        using var stream = entry.Open();
         // Whitespace is meaningful inside paragraphs (a space between two spans).
-        return XDocument.Load(stream, LoadOptions.PreserveWhitespace);
+        return BoundedXml.Part(entry, LoadOptions.PreserveWhitespace);
     }
 
     /// <summary>Encrypted packages keep a readable manifest that lists how each part is encrypted.</summary>

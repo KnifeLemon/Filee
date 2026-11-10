@@ -3,16 +3,21 @@
 // publisher who signed this copy signed it too (Authenticode), and runs it;
 // Setup closes Filee, updates it in place (settings are kept) and starts it again. A portable copy, a copy run from
 // source, or a failed download opens a download page instead. The check works in every build.
+// An official build also carries the public half of Filee's update key: the SHA256SUMS file must then be signed with
+// it (UpdateSignature), on every platform, and a Windows installer must come from the publisher the build names.
 
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Formats.Tar;
 using System.IO.Compression;
+using System.Net;
 using System.Net.Http.Headers;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using Filee.Core.Settings;
@@ -169,10 +174,24 @@ public sealed partial class UpdateService : ObservableObject
     /// Who signed a program, if Windows trusts the signature (<see cref="Authenticode.TrustedSigner"/>; the flag also
     /// checks revocation). Tests replace it.
     /// </summary>
-    internal Func<string, bool, string?> SignerOf { get; init; } = Authenticode.TrustedSigner;
+    internal Func<string, bool, AuthenticodeSigner?> SignerOf { get; init; } = Authenticode.TrustedSigner;
 
     /// <summary>This copy of Filee, whose publisher must have signed the installer too (tests set it).</summary>
     internal string? OwnProgram { get; init; } = Environment.ProcessPath;
+
+    /// <summary>
+    /// The public key that signs every release's SHA256SUMS files (FileeUpdatePublicKey, see
+    /// <see cref="UpdateSignature"/>), or null in a build without one. With a key, an update whose checksum file has
+    /// no valid signature is refused on every platform. Tests set it.
+    /// </summary>
+    internal string? UpdatePublicKey { get; init; } = BuildValue("FileeUpdatePublicKey");
+
+    /// <summary>
+    /// The publisher an official build takes installers from (FileeExpectedPublisher and its issuer), whether this
+    /// copy is signed or not; null compares with whoever signed this copy. Tests set it.
+    /// </summary>
+    internal PublisherPin? ExpectedPublisher { get; init; } = PublisherPin.From(
+        BuildValue("FileeExpectedPublisher"), BuildValue("FileeExpectedIssuer"), BuildValue("FileeExpectedSignerKeys"));
 
     /// <summary>The newer version found by the last check (e.g. "1.0.2"), or null when up to date / unknown.</summary>
     [ObservableProperty]
@@ -212,6 +231,11 @@ public sealed partial class UpdateService : ObservableObject
     public static bool IsReleaseBuild =>
         typeof(UpdateService).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
             .Any(a => a.Key == "FileeRelease" && a.Value == "true");
+
+    /// <summary>A value the build put into the assembly (AssemblyMetadata, Filee.App.csproj), or null when empty.</summary>
+    private static string? BuildValue(string key) =>
+        typeof(UpdateService).Assembly.GetCustomAttributes<AssemblyMetadataAttribute>()
+            .FirstOrDefault(a => a.Key == key)?.Value is { Length: > 0 } value ? value.Trim() : null;
 
     /// <summary>Checks the latest release now. Returns the newer version, or null when up to date or offline.</summary>
     public async Task<string?> CheckAsync(CancellationToken cancellationToken = default)
@@ -482,8 +506,9 @@ public sealed partial class UpdateService : ObservableObject
 
     /// <summary>
     /// Downloads the installer of the latest release into <paramref name="folder"/> and checks its SHA-256 against
-    /// the release's checksum file. Returns the verified file; throws <see cref="InvalidDataException"/> when it does
-    /// not match.
+    /// the release's checksum file (and, with <see cref="UpdatePublicKey"/>, that file's signature). Returns the
+    /// verified file; throws <see cref="InvalidDataException"/> when it does not match, and
+    /// <see cref="UpdateVerificationException"/> when the checksum file is not signed with the key.
     /// </summary>
     internal async Task<string> DownloadInstallerAsync(string folder, IProgress<int>? progress,
         CancellationToken cancellationToken = default)
@@ -491,8 +516,10 @@ public sealed partial class UpdateService : ObservableObject
         var installer = _installer ?? throw new InvalidOperationException("No installer in the latest release");
         var checksums = _checksums ?? throw new InvalidOperationException("No checksum file in the latest release");
 
-        var sums = await GetTextAsync(checksums.Url, cancellationToken);
-        var expected = ParseChecksum(sums, installer.Name)
+        var sums = await GetBytesAsync(checksums.Url, cancellationToken);
+        if (UpdatePublicKey is { } key)
+            await CheckSignatureAsync(checksums, sums, installer, key, cancellationToken);
+        var expected = ParseChecksum(Encoding.UTF8.GetString(sums).TrimStart('\uFEFF'), installer.Name)
                        ?? throw new InvalidDataException($"{checksums.Name} has no line for {installer.Name}");
 
         Directory.CreateDirectory(folder);
@@ -520,30 +547,95 @@ public sealed partial class UpdateService : ObservableObject
     }
 
     /// <summary>
-    /// Throws <see cref="InvalidDataException"/> (and deletes the installer) unless the publisher that signed this copy
-    /// of Filee signed <paramref name="installer"/> as well. The checksum file sits on the same release as the
-    /// installer, so it can't tell a replaced installer from the real one; the signature can. A copy that is not
-    /// signed itself (built from source) has no publisher to compare with and keeps to the checksum.
+    /// Throws <see cref="UpdateVerificationException"/> unless <paramref name="sums"/> is signed with
+    /// <paramref name="publicKey"/> (the .sig file next to it on the release) and the installer it lists is a newer
+    /// version than this one. Whoever could replace the installer on the release could replace the checksum file too,
+    /// but not sign it; the version keeps an older signed release from being handed out under a new tag.
+    /// </summary>
+    private async Task CheckSignatureAsync(ReleaseFile checksums, byte[] sums, ReleaseFile installer, string publicKey,
+        CancellationToken cancellationToken)
+    {
+        var name = checksums.Name + UpdateSignature.Extension;
+        byte[] signature;
+        try
+        {
+            signature = await GetBytesAsync(checksums.Url + UpdateSignature.Extension, cancellationToken);
+        }
+        catch (HttpRequestException ex) when (ex.StatusCode == HttpStatusCode.NotFound)
+        {
+            throw new UpdateVerificationException($"The release has no {name}");
+        }
+        if (!UpdateSignature.Verify(sums, Encoding.ASCII.GetString(signature), publicKey))
+            throw new UpdateVerificationException($"{name} is not a valid signature of {checksums.Name} by Filee's update key");
+        var version = VersionInName().Match(installer.Name);
+        if (!version.Success || !IsNewer(version.Groups[1].Value, CurrentVersion))
+            throw new UpdateVerificationException($"{installer.Name} is not a newer version than {CurrentVersion}");
+        _log.LogInformation("{Name} is signed with Filee's update key", checksums.Name);
+    }
+
+    /// <summary>"Filee-2.4.0-win-Setup.exe" → 2.4.0.</summary>
+    [GeneratedRegex(@"^Filee-(\d+\.\d+\.\d+)-")]
+    private static partial Regex VersionInName();
+
+    /// <summary>
+    /// Throws <see cref="UpdateVerificationException"/> (and deletes the installer) unless <paramref name="installer"/>
+    /// is signed by the publisher this build names (<see cref="ExpectedPublisher"/>) or, without one, by the publisher
+    /// that signed this copy of Filee. The checksum file sits on the same release as the installer, so it can't tell a
+    /// replaced installer from the real one; the signature can. A subject is only text, so the certificate authority
+    /// that issued the certificate must match too. A copy that is not signed itself and names no publisher (built from
+    /// source) has nothing to compare with and keeps to the checksum.
     /// </summary>
     internal void CheckPublisher(string installer)
     {
-        var publisher = OwnProgram is null ? null : SignerOf(OwnProgram, false);
-        if (publisher is null)
+        Func<AuthenticodeSigner?, bool> accepts;
+        string expected;
+        if (ExpectedPublisher is { } pin)
+        {
+            accepts = signer => signer is not null && pin.Accepts(signer);
+            expected = pin.Subject;
+        }
+        else if ((OwnProgram is null ? null : SignerOf(OwnProgram, false)) is { } own)
+        {
+            accepts = signer => signer is not null && signer.SamePublisher(own);
+            expected = Describe(own);
+        }
+        else
         {
             _log.LogInformation("This copy of Filee is not signed: the installer is checked by its SHA-256 only");
             return;
         }
         var signer = SignerOf(installer, true);
-        if (signer == publisher)
+        if (accepts(signer))
             return;
         // A signature that holds without the revocation check failed only that check: the certificate authority
         // could not be reached (offline, a proxy or a firewall) or the certificate was revoked.
-        var reason = signer is null && SignerOf(installer, false) == publisher
-            ? $"is signed by {publisher}, but the revocation check failed (the certificate authority could not be " +
+        var reason = signer is null && accepts(SignerOf(installer, false))
+            ? $"is signed by {expected}, but the revocation check failed (the certificate authority could not be " +
               "reached, or the certificate was revoked)"
-            : $"is signed by {signer ?? "no publisher Windows trusts"}, not by {publisher}";
+            : $"is signed by {(signer is null ? "no publisher Windows trusts" : Describe(signer))}, not by {expected}";
         TryDelete(installer);
-        throw new InvalidDataException($"{Path.GetFileName(installer)} {reason}");
+        throw new UpdateVerificationException($"{Path.GetFileName(installer)} {reason}");
+    }
+
+    private static string Describe(AuthenticodeSigner signer) => $"{signer.Subject} (issued by {signer.Issuer})";
+
+    /// <summary>
+    /// The publisher an official build accepts: the certificate's subject, the certificate authorities that may have
+    /// issued it ("|" between several, so a build can know the next one before the certificate is renewed), and
+    /// optionally the SHA-256 of the public keys it may have (any key when there are none).
+    /// </summary>
+    internal sealed record PublisherPin(string Subject, IReadOnlyList<string> Issuers, IReadOnlyList<string> Keys)
+    {
+        public bool Accepts(AuthenticodeSigner signer) =>
+            signer.Subject == Subject && Issuers.Contains(signer.Issuer)
+            && (Keys.Count == 0 || Keys.Contains(signer.KeySha256, StringComparer.OrdinalIgnoreCase));
+
+        /// <summary>The pin from the build's values, or null without a subject (Filee.App.csproj requires an issuer with it).</summary>
+        public static PublisherPin? From(string? subject, string? issuers, string? keys) =>
+            subject is null ? null : new PublisherPin(subject, Split(issuers), Split(keys));
+
+        private static string[] Split(string? list) =>
+            list?.Split('|', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) ?? [];
     }
 
     private async Task DownloadAsync(ReleaseFile file, string path, IProgress<int>? progress, CancellationToken cancellationToken)
@@ -575,13 +667,13 @@ public sealed partial class UpdateService : ObservableObject
             throw new IOException($"{file.Name}: got {received} of {file.Size} bytes");
     }
 
-    private async Task<string> GetTextAsync(string url, CancellationToken cancellationToken)
+    private async Task<byte[]> GetBytesAsync(string url, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.Accept.ParseAdd("application/octet-stream");
         using var response = await _http.SendAsync(request, cancellationToken);
         response.EnsureSuccessStatusCode();
-        return await response.Content.ReadAsStringAsync(cancellationToken);
+        return await response.Content.ReadAsByteArrayAsync(cancellationToken);
     }
 
     /// <summary>Opens a download page: the website for installed copies, the release page (portable zip) otherwise.</summary>

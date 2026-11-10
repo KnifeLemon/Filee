@@ -200,10 +200,11 @@ public class UpdateServiceTests
             updates.DownloadInstallerAsync(TempFolder(), null, TestContext.Current.CancellationToken));
     }
 
-    private const string Publisher = "CN=Open Source Developer, Filee";
+    internal const string Issuer = "CN=Certum Code Signing 2021 CA, O=Asseco Data Systems S.A., C=PL";
+    internal static readonly AuthenticodeSigner Publisher = new("CN=Open Source Developer, Filee", Issuer, new string('a', 64));
 
     /// <summary>An update service whose own program is signed by <paramref name="own"/> and the installer by <paramref name="installer"/>.</summary>
-    private static UpdateService Signed(string? own, string? installer) =>
+    private static UpdateService Signed(AuthenticodeSigner? own, AuthenticodeSigner? installer) =>
         new(NullLogger<UpdateService>.Instance, new FakeNetwork("no network"))
         {
             OwnProgram = "Filee.exe",
@@ -221,15 +222,33 @@ public class UpdateServiceTests
         Assert.True(File.Exists(path));
     }
 
-    [Theory]
-    [InlineData("CN=Someone Else")]
-    [InlineData(null)] // not signed, or signed with a certificate Windows does not trust
-    public void Installer_signed_by_anyone_else_is_thrown_away(string? signer)
+    [Fact]
+    public void Installer_signed_with_a_renewed_certificate_of_the_same_publisher_is_kept()
     {
         var path = Path.Combine(TempFolder(), "Filee-9.9.9-win-Setup.exe");
         File.WriteAllText(path, "setup");
 
-        Assert.Throws<InvalidDataException>(() => Signed(Publisher, signer).CheckPublisher(path));
+        Signed(Publisher, Publisher with { KeySha256 = new string('b', 64) }).CheckPublisher(path);
+
+        Assert.True(File.Exists(path));
+    }
+
+    [Theory]
+    [InlineData("someone else")]
+    [InlineData("same name, other issuer")] // a subject is only text: another authority could issue the same one
+    [InlineData(null)] // not signed, or signed with a certificate Windows does not trust
+    public void Installer_signed_by_anyone_else_is_thrown_away(string? who)
+    {
+        var path = Path.Combine(TempFolder(), "Filee-9.9.9-win-Setup.exe");
+        File.WriteAllText(path, "setup");
+        var signer = who switch
+        {
+            "someone else" => Publisher with { Subject = "CN=Someone Else" },
+            "same name, other issuer" => Publisher with { Issuer = "CN=Some Other CA" },
+            _ => null,
+        };
+
+        Assert.Throws<UpdateVerificationException>(() => Signed(Publisher, signer).CheckPublisher(path));
         Assert.False(File.Exists(path));
     }
 
@@ -246,7 +265,7 @@ public class UpdateServiceTests
             SignerOf = (file, revocation) => file == "Filee.exe" || !revocation ? Publisher : null,
         };
 
-        var error = Assert.Throws<InvalidDataException>(() => updates.CheckPublisher(path));
+        var error = Assert.Throws<UpdateVerificationException>(() => updates.CheckPublisher(path));
 
         Assert.Contains("revocation check failed", error.Message);
         Assert.False(File.Exists(path));
@@ -301,7 +320,11 @@ public class UpdateServiceTests
         var dotnet = Path.GetFullPath(Path.Combine(RuntimeEnvironment.GetRuntimeDirectory(), "..", "..", "..", "dotnet.exe"));
         Assert.SkipUnless(File.Exists(dotnet), $"no {dotnet}");
 
-        Assert.Contains("Microsoft", Authenticode.TrustedSigner(dotnet, checkRevocation: false));
+        var signer = Authenticode.TrustedSigner(dotnet, checkRevocation: false);
+
+        Assert.Contains("Microsoft", signer?.Subject);
+        Assert.Contains("Microsoft", signer?.Issuer);
+        Assert.Matches("^[0-9a-f]{64}$", signer?.KeySha256);
     }
 
     [Fact]

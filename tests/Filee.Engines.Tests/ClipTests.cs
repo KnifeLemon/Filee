@@ -693,6 +693,14 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.DoesNotContain("song.mp3", removed);
         // The preview plays the music too, also of a video without sound.
         Assert.Contains("song.mp3", MediaEncoding.ClipPreviewAudio("in.mp4", edit, Hd, hasAudio: false));
+        // Its pictures leave the music out: FFmpeg refuses a graph with a sound output nothing takes.
+        var pictures = MediaEncoding.ClipPreviewVideo("in.mp4", edit, Hd, 360, 25, out _, out _);
+        Assert.DoesNotContain("song.mp3", pictures);
+        var pictureFilter = After(pictures, "-filter_complex");
+        Assert.DoesNotContain("[1:a", pictureFilter);
+        Assert.DoesNotContain("amix", pictureFilter);
+        Assert.DoesNotContain("[a]", pictureFilter);
+        Assert.Equal("[v]", After(pictures, "-map"));
     }
 
     [Fact]
@@ -727,6 +735,40 @@ public class ClipTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(loudness[0] < 0.75, string.Join(", ", loudness)); // the tone only (0-0.5 s)
         Assert.True(loudness[3] > 0.9, string.Join(", ", loudness)); // tone and music (1.5-2 s)
         Assert.True(loudness[6] is > 0.3f and < 0.85f, string.Join(", ", loudness)); // music only (3-3.5 s)
+    }
+
+    [Fact]
+    public async Task The_preview_shows_the_pictures_of_a_clip_with_music()
+    {
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var source = await MakeVideoAsync(folder, "silent.mp4", "-c:v", "libx264", "-g", "25", "-pix_fmt", "yuv420p", "-an");
+        var song = Path.Combine(folder, "song.wav");
+        var made = await ProcessRunner.RunAsync(Tools!.Value.Ffmpeg,
+            ["-hide_banner", "-nostdin", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=8", "-ac", "2", song],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        Assert.True(made.ExitCode == 0, made.StandardError);
+        var edit = new ClipEdit
+        {
+            Parts = [new ClipPart { Start = 2, End = 4 }],
+            Music = new ClipMusic { Path = song, Length = 8, Volume = 1 },
+        };
+        var frames = 0;
+        var volume = ClipPreview.PlayerVolume;
+        ClipPreview.PlayerVolume = 0; // ffplay, when it is there, plays the music silently
+        using var limit = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        try
+        {
+            await ClipPreview.PlayAsync(source, edit, 120, (_, _, _, _) => frames++, limit.Token);
+        }
+        finally
+        {
+            ClipPreview.PlayerVolume = volume;
+        }
+
+        Assert.False(limit.IsCancellationRequested, "The preview did not end within 30 s.");
+        // Pictures arrive (none did when the music made FFmpeg refuse the graph); how many depends on the machine's pace.
+        Assert.True(frames > 0, "No picture of the clip arrived.");
     }
 
     [Fact]

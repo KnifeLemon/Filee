@@ -136,8 +136,12 @@ internal sealed partial class PdfDocumentReader
 
     // ───────────────────────── Model of a page ─────────────────────────
 
-    /// <summary>A word with its box (points, y upwards from the bottom of the visible page) and formatting.</summary>
-    private sealed record TextWord(string Text, double Left, double Right, double Top, double Bottom, double Baseline, double Size, HCharFormat Format, string? Link);
+    /// <summary>
+    /// A word with its box (points, y upwards from the bottom of the visible page) and formatting.
+    /// <paramref name="DrawnForward"/>: its page draws right-to-left text left to right in reading order (PageWord).
+    /// </summary>
+    private sealed record TextWord(string Text, double Left, double Right, double Top, double Bottom, double Baseline, double Size, HCharFormat Format, string? Link,
+        bool DrawnForward = false);
 
     /// <summary>A text line (or the part of it in one column).</summary>
     private sealed class TextLine(List<TextWord> words, int row = 0)
@@ -150,12 +154,27 @@ internal sealed partial class PdfDocumentReader
         /// <summary>Indexes of the words a tab leads to (the start of each part after the first of a tabbed row).</summary>
         public List<int> Tabs { get; } = [];
 
+        private int? _leaderIndex;
+
+        /// <summary>Index of the word holding the dot leader of a table-of-contents entry ("Title.....12"), -1 for other lines.</summary>
+        public int LeaderIndex => _leaderIndex ??= FindLeader(Words);
+
         public double Left => Words[0].Left;
         public double Right => Words[^1].Right;
         public double Top => Words.Max(w => w.Top);
         public double Bottom => Words.Min(w => w.Bottom);
         public double Baseline => Words[0].Baseline;
         public double Size => Words.Max(w => w.Size);
+
+        private double? _mainSize;
+
+        /// <summary>
+        /// Size of most of the line's characters (rounded to half points), like <see cref="Item.Size"/>: one larger word
+        /// (an emphasised word or a name) does not change it, a line that is larger throughout does.
+        /// </summary>
+        public double MainSize => _mainSize ??= Words.GroupBy(w => Math.Round(w.Size * 2) / 2)
+            .OrderByDescending(g => g.Sum(w => w.Text.Length)).ThenByDescending(g => g.Key).Select(g => g.Key).First();
+
         public string Text => string.Join(' ', Words.Select(w => w.Text));
 
         private bool? _rightToLeft;
@@ -324,7 +343,7 @@ internal sealed partial class PdfDocumentReader
             if (invisible)
                 format = format with { Font = null, Bold = false, Italic = false };
             words.Add(new TextWord(CleanText(word.Text), box.Left, box.Right, box.Top, box.Bottom,
-                lead.StartBaseLine.Y, Math.Max(1, size), format, link));
+                lead.StartBaseLine.Y, Math.Max(1, size), format, link, word.DrawnForward));
         }
 
         if (words.Count == 0)
@@ -341,8 +360,9 @@ internal sealed partial class PdfDocumentReader
         var tables = _textOnly ? [] : RuledTables(page.Paths, words);
         content.Items = words.Count > 0 ? TextItems(words) : [];
         content.Items.AddRange(tables.Select(t => new Item { Table = t }));
+        // A picture in a table cell goes into that cell, the others stay pictures of the page.
         if (!_textOnly)
-            content.Items.AddRange(Pictures(page, content));
+            content.Items.AddRange(PlacePictures(tables, Pictures(page, content)));
         return content;
     }
 
@@ -424,16 +444,23 @@ internal sealed partial class PdfDocumentReader
         static int Channel(double value) => (int)Math.Round(Math.Clamp(value, 0, 1) * 255);
     }
 
-    /// <summary>Latin ligatures (ﬁ, ﬂ, ...) as letters, so the text can be searched and edited.</summary>
+    /// <summary>
+    /// Latin ligatures (ﬁ, ﬂ, ...) and the presentation forms of Arabic and Hebrew (a font's positional shapes and
+    /// ligatures such as ﻻ, which some PDFs map their glyphs to) as letters, so the text can be searched and edited.
+    /// </summary>
     private static string CleanText(string text)
     {
-        if (!text.Any(c => c is >= 'ﬀ' and <= 'ﬆ'))
+        if (!text.Any(IsPresentationForm))
             return text;
         var sb = new StringBuilder(text.Length + 4);
         foreach (var ch in text)
-            sb.Append(ch is >= 'ﬀ' and <= 'ﬆ' ? ch.ToString().Normalize(NormalizationForm.FormKC) : ch.ToString());
+            // A spacing form of a vowel sign (ﹰ) comes back with a space in front of the sign.
+            sb.Append(IsPresentationForm(ch) ? ch.ToString().Normalize(NormalizationForm.FormKC).TrimStart(' ') : ch.ToString());
         return sb.ToString();
     }
+
+    /// <summary>The blocks of Alphabetic and Arabic Presentation Forms, without the noncharacters in them.</summary>
+    private static bool IsPresentationForm(char ch) => ch is >= 'ﬀ' and <= 'ﬆ' or >= 'יִ' and <= '﷏' or >= 'ﷰ' and <= '﷿' or >= 'ﹰ' and <= 'ﻼ';
 
     // ───────────────────────── Pictures ─────────────────────────
 
@@ -703,7 +730,8 @@ internal sealed partial class PdfDocumentReader
     }
 
     private static bool IsHeadingCandidate(Item item, double bodySize) =>
-        !item.IsPicture && item.Lines.Count <= 3 && item.Text.Length <= 200 && item.Size >= bodySize * 1.15 && item.Size >= bodySize + 1;
+        !item.IsPicture && item.Lines.Count <= 3 && item.Text.Length <= 200 && item.Size >= bodySize * 1.15 && item.Size >= bodySize + 1
+        && !item.Lines.Any(l => l.LeaderIndex >= 0); // a table-of-contents entry is no heading
 
     /// <summary>Margins shared by the text pages: the smallest distances from the paper edges to any text or picture.</summary>
     private static (double Left, double Right, double Top, double Bottom) Margins(List<PageContent> pages)
@@ -736,17 +764,33 @@ internal sealed partial class PdfDocumentReader
         return gaps.Count == 0 ? item.Size * 1.2 : Median(gaps);
     }
 
-    private static HParagraph PictureParagraph(Item item, Item? previous)
+    private static HParagraph PictureParagraph(Item item, Item? previous) => PictureParagraph([item], previous, double.MaxValue);
+
+    /// <summary>
+    /// A paragraph with pictures side by side (one on the page, more in a table cell), shrunk together to fit in
+    /// <paramref name="maxWidth"/> points (a cell's inner width).
+    /// </summary>
+    private static HParagraph PictureParagraph(List<Item> pictures, Item? previous, double maxWidth)
     {
-        var bounds = item.PictureBounds!.Value;
+        const double Gap = 4; // points between pictures side by side (the space written between them)
+        var (left, right) = (pictures.Min(p => p.Left), pictures.Max(p => p.Right));
+        var first = pictures[0];
         var paragraph = new HParagraph();
-        var containerCenter = (item.ContainerLeft + item.ContainerRight) / 2;
-        var centered = Math.Abs((bounds.Left + bounds.Right) / 2 - containerCenter) < Math.Max(6, (item.ContainerRight - item.ContainerLeft) * 0.05)
-                       && bounds.Width < (item.ContainerRight - item.ContainerLeft) * 0.9;
-        paragraph.Format = new HParaFormat(Align: centered ? HAlign.Center : HAlign.Left, Before: SpaceBefore(item, previous), After: 0,
+        var containerCenter = (first.ContainerLeft + first.ContainerRight) / 2;
+        var centered = Math.Abs((left + right) / 2 - containerCenter) < Math.Max(6, (first.ContainerRight - first.ContainerLeft) * 0.05)
+                       && right - left < (first.ContainerRight - first.ContainerLeft) * 0.9;
+        paragraph.Format = new HParaFormat(Align: centered ? HAlign.Center : HAlign.Left, Before: SpaceBefore(pictures.MaxBy(p => p.Top)!, previous), After: 0,
             // Word's single line spacing (130 % in the model): a smaller multiple would cut off the top of the picture.
             LineSpacing: new HLineSpacing(HLineSpacingKind.Percent, 130));
-        paragraph.Inlines.Add(new HImage(item.PicturePath!) { Width = Hwp(bounds.Width), Height = Hwp(bounds.Height) });
+        var widths = pictures.Sum(p => p.Width);
+        var scale = Math.Min(1, Math.Max(6, maxWidth - Gap * (pictures.Count - 1)) / widths);
+        foreach (var picture in pictures)
+        {
+            if (paragraph.Inlines.Count > 0)
+                paragraph.Inlines.Add(new HText(" ", default));
+            var bounds = picture.PictureBounds!.Value;
+            paragraph.Inlines.Add(new HImage(picture.PicturePath!) { Width = Hwp(bounds.Width * scale), Height = Hwp(bounds.Height * scale) });
+        }
         return paragraph;
     }
 
@@ -754,19 +798,24 @@ internal sealed partial class PdfDocumentReader
     {
         var size = item.Size;
         var paragraph = new HParagraph();
-        if (headingLevels.TryGetValue(Math.Round(size), out var level) && item.Lines.Count <= 3 && item.Text.Length <= 200)
+        var rightToLeft = item.RightToLeft;
+        // A table-of-contents entry: title, dot leader and page number on one line. It becomes a left-aligned paragraph
+        // (indented like the PDF's level) with a right tab with dot leader at the right edge of the text.
+        var entry = !rightToLeft && item.Lines.Count == 1 && item.Lines[0].LeaderIndex >= 0;
+        if (!entry && headingLevels.TryGetValue(Math.Round(size), out var level) && item.Lines.Count <= 3 && item.Text.Length <= 200)
             paragraph.HeadingLevel = level;
 
         // Alignment and indents relative to the column (or text area) the paragraph is in. A right-to-left paragraph
         // starts at the right: its alignment and indents are measured from that side (HParaFormat.RightToLeft).
-        var rightToLeft = item.RightToLeft;
         var containerWidth = Math.Max(1, item.ContainerRight - item.ContainerLeft);
         var lefts = item.Lines.Select(l => l.Left - item.ContainerLeft).ToList();
         var rights = item.Lines.Select(l => item.ContainerRight - l.Right).ToList();
         var (starts, ends) = rightToLeft ? (rights, lefts) : (lefts, rights);
         var tolerance = Math.Max(3, containerWidth * 0.03);
         HAlign align;
-        if (item.Lines.All(l => Math.Abs((l.Left - item.ContainerLeft) - (item.ContainerRight - l.Right)) < tolerance) && lefts.Min() > containerWidth * 0.04)
+        if (entry)
+            align = HAlign.Left;
+        else if (item.Lines.All(l => Math.Abs((l.Left - item.ContainerLeft) - (item.ContainerRight - l.Right)) < tolerance) && lefts.Min() > containerWidth * 0.04)
             align = HAlign.Center;
         else if (ends.All(r => r < 3) && starts.Min() > containerWidth * 0.15)
             align = HAlign.Right;
@@ -789,6 +838,11 @@ internal sealed partial class PdfDocumentReader
         // A tabbed row: a left tab stop where each part starts in the PDF.
         var tabs = rightToLeft ? [] : item.Lines.SelectMany(l => l.Tabs.Select(t => Hwp(l.Words[t].Left - item.ContainerLeft))).Distinct().Order()
             .Select(position => new HTabStop(position, HTabKind.Left, "NONE")).ToList();
+        if (entry)
+        {
+            tabs.Add(new HTabStop(Hwp(item.Right - item.ContainerLeft), HTabKind.Right, "DOT"));
+            tabs = [.. tabs.OrderBy(t => t.Position)];
+        }
 
         var pitch = item.Lines.Count >= 2 ? Pitch(item) : size * lineRatio;
         paragraph.Format = new HParaFormat(
@@ -833,16 +887,35 @@ internal sealed partial class PdfDocumentReader
         for (var l = 0; l < item.Lines.Count; l++)
         {
             var line = item.Lines[l];
-            // Words in reading order: a tabbed row keeps its parts where they are.
-            var words = line.Tabs.Count > 0 ? line.Words : InReadingOrder(line.Words, rightToLeft);
+            // Words in reading order: a tabbed row keeps its parts where they are, from the right in right-to-left text.
+            var (words, lineTabs) = line.Tabs.Count == 0 ? (InReadingOrder(line.Words, rightToLeft), line.Tabs)
+                : rightToLeft ? PartsFromTheRight(line)
+                : (line.Words, line.Tabs);
+            // The dot leader of a table-of-contents entry becomes a tab (the paragraph has a right tab with dot leader).
+            var leaderIndex = !rightToLeft && ReferenceEquals(words, line.Words) ? line.LeaderIndex : -1;
             for (var w = 0; w < words.Count; w++)
             {
                 var word = words[w];
                 var text = word.Text;
+                string? leaderPage = null;
+                if (w == leaderIndex)
+                {
+                    var leader = LeaderWord.Match(text);
+                    text = leader.Groups["title"].Value.TrimEnd();
+                    leaderPage = leader.Groups["page"].Value;
+                }
+                if (text.Length == 0)
+                {
+                    // No title in this word: the tab, then the page number if it is in this word too.
+                    pieces.Add(("\t", word.Format, null));
+                    if (!string.IsNullOrEmpty(leaderPage))
+                        pieces.Add((leaderPage, word.Format, null));
+                    continue;
+                }
                 if (pieces.Count > 0)
                 {
                     var (previousText, previousFormat, previousLink) = pieces[^1];
-                    if (w > 0 && line.Tabs.Contains(w))
+                    if (w > 0 && lineTabs.Contains(w))
                     {
                         pieces.Add(("\t", word.Format, null));
                     }
@@ -850,7 +923,7 @@ internal sealed partial class PdfDocumentReader
                     {
                         // Not between two Chinese or Japanese words: an OCR layer (Tesseract's) puts a space after
                         // every word it found, also inside a sentence of Han characters (#691). Korean keeps them.
-                        if (!(IsCjk(previousText[^1]) && IsCjk(text[0])))
+                        if (previousText != "\t" && !(IsCjk(previousText[^1]) && IsCjk(text[0])))
                             pieces[^1] = (previousText + " ", previousFormat, previousLink);
                     }
                     else if (previousText.EndsWith('-') && previousText.Length > 1 && char.IsLetter(previousText[^2]) && text.Length > 0 && char.IsLower(text[0]))
@@ -867,8 +940,17 @@ internal sealed partial class PdfDocumentReader
                     }
                 }
                 pieces.Add((text, word.Format, word.Link));
+                if (leaderPage is not null)
+                {
+                    pieces.Add(("\t", word.Format, null));
+                    if (leaderPage.Length > 0)
+                        pieces.Add((leaderPage, word.Format, null));
+                }
             }
         }
+
+        if (rightToLeft)
+            TurnMirroredBrackets(pieces);
 
         HLink? link = null;
         foreach (var group in Merge(pieces))
@@ -929,30 +1011,146 @@ internal sealed partial class PdfDocumentReader
     /// <summary>
     /// A line's words (left to right) in reading order: from right to left in a right-to-left paragraph, with numbers
     /// and Latin words in it kept left to right, and Arabic or Hebrew words in a left-to-right line turned around.
+    /// A page that draws its right-to-left text in reading order has them in that order already.
     /// </summary>
     private static List<TextWord> InReadingOrder(List<TextWord> words, bool rightToLeft)
     {
-        if (!rightToLeft && !words.Any(w => ComplexScripts.Direction(w.Text) < 0))
+        if (words[0].DrawnForward || (!rightToLeft && !words.Any(w => ComplexScripts.Direction(w.Text) < 0)))
             return words;
-        var ordered = rightToLeft
-            ? LogicalOrder(Enumerable.Reverse(words).ToList(), w => ComplexScripts.Direction(w.Text), rightToLeft: true)
-            : LogicalOrder(words, w => ComplexScripts.Direction(w.Text), rightToLeft: false);
-        // A full stop or comma after a word of the other direction is drawn on that word's far side ("2024." at the end
-        // of an Arabic sentence shows as ".2024"): it comes first in the word's letters and goes back to the end.
+        var ordered = rightToLeft ? Enumerable.Reverse(words).ToList() : [.. words];
         var other = rightToLeft ? 1 : -1;
         for (var i = 0; i < ordered.Count; i++)
         {
-            var text = ordered[i].Text;
-            var lead = 0;
-            while (lead < text.Length - 1 && SentencePunctuation.Contains(text[lead]))
-                lead++;
-            if (lead > 0 && ComplexScripts.Direction(text) == other)
-                ordered[i] = ordered[i] with { Text = text[lead..] + text[..lead] };
+            if (ComplexScripts.Direction(ordered[i].Text) != other)
+                continue;
+            // A run of the other direction: its words are turned around, also over neutral words between them.
+            var end = i;
+            for (var j = i + 1; j < ordered.Count; j++)
+            {
+                var direction = ComplexScripts.Direction(ordered[j].Text);
+                if (direction == -other || (direction == other && rightToLeft && EndsRun(ordered[end].Text, ordered[j].Text)))
+                    break;
+                if (direction == other)
+                    end = j;
+            }
+            ordered.Reverse(i, end - i + 1);
+            MoveEdgeNeutrals(ordered, i, end);
+            i = end;
         }
         return ordered;
     }
 
-    private const string SentencePunctuation = ".,:;!?،؛؟";
+    /// <summary>
+    /// Whether two neighbouring left-to-right words of a right-to-left line belong to separate runs, <paramref name="right"/>
+    /// being drawn on the right of <paramref name="left"/>. Numbers alone don't make a run (bidi rule N1: 10, 20 are read
+    /// from the right like the text around them), and a bracket that is drawn mirrored belongs to that text, not to the run.
+    /// </summary>
+    private static bool EndsRun(string right, string left) =>
+        (!right.Any(char.IsLetter) && !left.Any(char.IsLetter))
+        || (Mirrored.IndexOf(right[0]) is var closing && closing >= 0 && closing % 2 == 1)
+        || (Mirrored.IndexOf(left[^1]) is var opening && opening >= 0 && opening % 2 == 0);
+
+    /// <summary>
+    /// Punctuation at the edges of a run of the other direction belongs to the text around the run (the bidi algorithm's
+    /// rule for neutrals), so it is drawn on the run's far side: "(1)" in Arabic text is drawn ")1(", "2024." as ".2024".
+    /// What is drawn at one edge of the words <paramref name="first"/> to <paramref name="last"/> goes back to the other,
+    /// nearest to the run first.
+    /// </summary>
+    private static void MoveEdgeNeutrals(List<TextWord> words, int first, int last)
+    {
+        var head = words[first].Text;
+        var lead = 0;
+        while (lead < head.Length && IsEdgeNeutral(head, lead, lead + 1))
+            lead++;
+        var tail = words[last].Text;
+        var trail = 0;
+        while (trail < tail.Length && IsEdgeNeutral(tail, tail.Length - 1 - trail, tail.Length - 2 - trail))
+            trail++;
+        if (lead == 0 && trail == 0)
+            return;
+        var after = new string([.. head[..lead].Reverse()]);
+        var before = new string([.. tail[^trail..].Reverse()]);
+        if (first == last)
+        {
+            words[first] = words[first] with { Text = before + head[lead..^trail] + after };
+            return;
+        }
+        words[first] = words[first] with { Text = before + head[lead..] };
+        words[last] = words[last] with { Text = tail[..^trail] + after };
+    }
+
+    /// <summary>
+    /// Whether the character at <paramref name="index"/> is punctuation that takes the direction of the text around it.
+    /// A sign that belongs to a number (50%, $5, 20°) stays with the digit <paramref name="inner"/> next to it.
+    /// </summary>
+    private static bool IsEdgeNeutral(string text, int index, int inner)
+    {
+        var ch = text[index];
+        if (char.IsLetterOrDigit(ch) || char.IsSurrogate(ch) || IsMark(ch.ToString()))
+            return false;
+        return !(NumberSigns.Contains(ch) && inner >= 0 && inner < text.Length && char.IsDigit(text[inner]));
+    }
+
+    /// <summary>What the bidi algorithm counts as part of a number next to its digits (class ET).</summary>
+    private const string NumberSigns = "#$%°±¢£¤¥€₪٪‰‱";
+
+    /// <summary>The parts of a tabbed right-to-left row from the right, each in reading order, and where each part starts.</summary>
+    private static (List<TextWord> Words, List<int> Tabs) PartsFromTheRight(TextLine line)
+    {
+        var words = new List<TextWord>();
+        var tabs = new List<int>();
+        for (var part = line.Tabs.Count; part >= 0; part--)
+        {
+            var start = part == 0 ? 0 : line.Tabs[part - 1];
+            var end = part == line.Tabs.Count ? line.Words.Count : line.Tabs[part];
+            if (words.Count > 0)
+                tabs.Add(words.Count);
+            words.AddRange(InReadingOrder(line.Words.GetRange(start, end - start), rightToLeft: true));
+        }
+        return (words, tabs);
+    }
+
+    /// <summary>
+    /// Right to left a bracket is drawn mirrored, and a PDF's ToUnicode entry may name the glyph it draws instead of the
+    /// character it stands for: the paragraph then reads ")text(". Brackets that only pair up the other way round are
+    /// turned around; other unpaired ones ("1)") stay.
+    /// </summary>
+    private static void TurnMirroredBrackets(List<(string Text, HCharFormat Format, string? Link)> pieces)
+    {
+        var text = string.Concat(pieces.Select(p => p.Text));
+        if (!text.Any(c => Mirrored.Contains(c)) || BracketsPair(text) || !BracketsPair(Turned(text)))
+            return;
+        for (var i = 0; i < pieces.Count; i++)
+            pieces[i] = pieces[i] with { Text = Turned(pieces[i].Text) };
+
+        static string Turned(string value) => string.Create(value.Length, value, (span, source) =>
+        {
+            for (var i = 0; i < source.Length; i++)
+            {
+                var at = Mirrored.IndexOf(source[i]);
+                span[i] = at < 0 ? source[i] : Mirrored[at ^ 1];
+            }
+        });
+    }
+
+    /// <summary>Opening and closing brackets, two by two.</summary>
+    private const string Mirrored = "()[]{}«»‹›";
+
+    private static bool BracketsPair(string text)
+    {
+        var open = new Stack<char>();
+        foreach (var ch in text)
+        {
+            var at = Mirrored.IndexOf(ch);
+            if (at < 0)
+                continue;
+            if (at % 2 == 0)
+                open.Push(ch);
+            else if (open.Count == 0 || Mirrored.IndexOf(open.Pop()) != at - 1)
+                return false;
+        }
+        return open.Count == 0;
+    }
 
     private static IEnumerable<(string Text, HCharFormat Format, string? Link)> Merge(List<(string Text, HCharFormat Format, string? Link)> pieces)
     {

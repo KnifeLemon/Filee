@@ -54,23 +54,54 @@ internal static class ArchiveSafety
         EnsureRoom(entries.Where(e => !e.IsFolder).Sum(e => e.Size), targetDirectory, archiveName);
     }
 
-    /// <summary>Throws when <paramref name="bytes"/> would not fit on the drive of <paramref name="directory"/>.</summary>
+    /// <summary>
+    /// Throws when <paramref name="bytes"/> would not fit on the drive of <paramref name="directory"/>. Also for 0 bytes,
+    /// which is what a listing says when the archive states no sizes: the reserve must still be free.
+    /// </summary>
     public static void EnsureRoom(long bytes, string directory, string archiveName)
     {
-        var root = Path.GetPathRoot(Path.GetFullPath(directory));
-        if (string.IsNullOrEmpty(root) || bytes <= 0)
-            return;
-        long free;
+        if (FreeSpace(directory) is not (var root, var free))
+            return; // network shares have no DriveInfo; the write itself fails if space runs out
+        if (bytes > free - Reserve)
+            throw new IOException($"{archiveName} unpacks to {FormatSize(bytes)}, but only {FormatSize(free)} is free on {root}.");
+    }
+
+    /// <summary>
+    /// The most a single compressed stream (.gz, .bz2, .xz …) may write into <paramref name="directory"/>. Its header
+    /// states no size (bzip2) or one its author chose (gzip), so the limit is the room on the drive, leaving a tenth of
+    /// the free space (at least the reserve) for everything else. Without a known drive (a network share) there is no
+    /// limit; the write itself fails if space runs out.
+    /// </summary>
+    public static long StreamLimit(string directory) =>
+        FreeSpace(directory) is (_, var free) ? Math.Max(0, free - Math.Max(Reserve, free / 10)) : long.MaxValue;
+
+    /// <summary>The error for a stream that came out larger than <see cref="StreamLimit"/>; nothing of it is kept.</summary>
+    public static Exception TooLarge(string archiveName, long limit, string directory)
+    {
+        var (root, free) = FreeSpace(directory) ?? (directory, 0L);
+        return new IOException($"{archiveName} unpacks to more than {FormatSize(limit)}, but only {FormatSize(free)} is free on {root}.");
+    }
+
+    /// <summary>The drive of <paramref name="directory"/> and its free space, or null when it can't be told.</summary>
+    private static (string Root, long Free)? FreeSpace(string directory)
+    {
+        var full = Path.GetFullPath(directory);
         try
         {
-            free = new DriveInfo(root).AvailableFreeSpace;
+            // On Linux and macOS every path starts at "/": the drive is the deepest mount point above it (/home, /tmp …).
+            var root = OperatingSystem.IsWindows()
+                ? Path.GetPathRoot(full)
+                : DriveInfo.GetDrives().Select(d => d.RootDirectory.FullName)
+                    .Where(r => r == "/" || (full + "/").StartsWith(Path.TrimEndingDirectorySeparator(r) + "/", StringComparison.Ordinal))
+                    .MaxBy(r => r.Length);
+            if (string.IsNullOrEmpty(root))
+                return null;
+            return (root, new DriveInfo(root).AvailableFreeSpace);
         }
         catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException)
         {
-            return; // network shares have no DriveInfo; the write itself fails if space runs out
+            return null;
         }
-        if (bytes > free - Reserve)
-            throw new IOException($"{archiveName} unpacks to {FormatSize(bytes)}, but only {FormatSize(free)} is free on {root}.");
     }
 
     /// <summary>

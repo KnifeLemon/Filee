@@ -120,6 +120,120 @@ public class MergeOrderTests
         }
     }
 
+    /// <summary>The sort list in the real chooser: files of real dates, sorted, then merged in the order it shows.</summary>
+    [AvaloniaFact]
+    public async Task Sort_list_orders_the_merge_by_date_and_name_and_a_move_makes_it_custom()
+    {
+        TestServices.EnsureInitialized();
+        var folder = Directory.CreateTempSubdirectory("filee-merge-sort-").FullName;
+        var store = AppHost.Get<UserDataStore>();
+        var profile = store.Profiles.Single(p => p.Id == "pdf");
+        var previous = profile.PresetIds;
+        var preset = store.FindPreset("merge-pdf")!;
+        var previousOutput = preset.Output;
+        var conversions = AppHost.Get<ConversionService>();
+        var before = conversions.Jobs.Select(j => j.Job.Id).ToHashSet();
+        var radial = AppHost.Get<RadialController>();
+        var windows = AppHost.Get<WindowService>();
+        try
+        {
+            // The name order, the modified order and the created order are all different; the page width tells the file.
+            var day = new DateTime(2024, 3, 1, 9, 0, 0, DateTimeKind.Utc);
+            string Pdf(string name, int width, double modifiedHours, double createdHours)
+            {
+                var path = Path.Combine(folder, name);
+                using (var document = new PdfDocument())
+                {
+                    var page = document.AddPage();
+                    page.Width = PdfSharp.Drawing.XUnit.FromPoint(width);
+                    page.Height = PdfSharp.Drawing.XUnit.FromPoint(500);
+                    document.Save(path);
+                }
+                File.SetCreationTimeUtc(path, day.AddHours(createdHours)); // first: on Linux this sets the date modified instead
+                File.SetLastWriteTimeUtc(path, day.AddHours(modifiedHours));
+                return path;
+            }
+            var a = Pdf("page 2.pdf", 200, modifiedHours: 2, createdHours: 1);
+            var b = Pdf("page 10.pdf", 300, modifiedHours: 1, createdHours: 3);
+            var c = Pdf("page 30.pdf", 400, modifiedHours: 3, createdHours: 2);
+
+            profile.PresetIds = ["merge-pdf"];
+            preset.Output = new() { Location = Filee.Core.Presets.OutputLocation.CustomFolder, CustomFolder = folder };
+            radial.ShowForFiles(450, 400, [c, a, b]);
+            var donut = radial.Window!.DonutControl;
+            Assert.True(donut.HandleKey(Key.Right));
+            Assert.True(donut.HandleKey(Key.Enter));
+            RenderTests.Pump();
+
+            var dialog = Assert.IsType<MergeOrderWindow>(windows.MergeOrder);
+            var vm = Assert.IsType<MergeOrderViewModel>(dialog.DataContext);
+            var sort = dialog.FindControl<ComboBox>("SortOrder")!;
+            void Choose(Filee.Core.Platform.FileSortOrder order)
+            {
+                sort.SelectedIndex = (int)order;
+                RenderTests.Pump();
+            }
+
+            // Opens on name order, with the list saying so.
+            Assert.Equal(0, sort.SelectedIndex);
+            Assert.Equal("Name (A to Z)", sort.SelectionBoxItem);
+            Assert.Equal([a, b, c], vm.OrderedFiles);
+
+            Choose(Filee.Core.Platform.FileSortOrder.NameDescending);
+            Assert.Equal([c, b, a], vm.OrderedFiles);
+            Choose(Filee.Core.Platform.FileSortOrder.ModifiedAscending);
+            Assert.Equal([b, a, c], vm.OrderedFiles);
+            Assert.Equal(day.AddHours(1).ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture), vm.Files[0].Time);
+            if (OperatingSystem.IsWindows()) // Linux can't set a file's creation time
+            {
+                Choose(Filee.Core.Platform.FileSortOrder.CreatedAscending);
+                Assert.Equal([a, c, b], vm.OrderedFiles);
+                // Sorted by date created, the rows show that date, not the one modified.
+                Assert.Equal(day.AddHours(1).ToLocalTime().ToString("g", System.Globalization.CultureInfo.CurrentCulture), vm.Files[0].Time);
+                Choose(Filee.Core.Platform.FileSortOrder.CreatedDescending);
+                Assert.Equal([b, c, a], vm.OrderedFiles);
+            }
+
+            // A move keeps the order it made and the list says it's custom; the selection and the arrows follow the row.
+            Choose(Filee.Core.Platform.FileSortOrder.ModifiedDescending);
+            Assert.Equal([c, a, b], vm.OrderedFiles);
+            vm.SelectedFile = vm.Files[0];
+            RenderTests.Pump();
+            Click(dialog, "MoveDown");
+            Assert.Equal([a, c, b], vm.OrderedFiles);
+            Assert.Equal(MergeOrderViewModel.CustomSortIndex, sort.SelectedIndex);
+            Assert.Equal("Custom order", sort.SelectionBoxItem);
+            Assert.Equal(c, vm.SelectedFile!.Path);
+            // Choosing an order again sorts again, and the selected file stays selected.
+            Choose(Filee.Core.Platform.FileSortOrder.ModifiedDescending);
+            Assert.Equal([c, a, b], vm.OrderedFiles);
+            Assert.Equal(c, vm.SelectedFile!.Path);
+            Assert.False(dialog.FindControl<Button>("MoveUp")!.IsEffectivelyEnabled);
+
+            Click(dialog, "StartMerge");
+            JobViewModel? started = null;
+            for (var i = 0; i < 200; i++)
+            {
+                Dispatcher.UIThread.RunJobs();
+                started = conversions.Jobs.FirstOrDefault(j => !before.Contains(j.Job.Id));
+                if (started?.Job.State is JobState.Completed or JobState.Failed) break;
+                await Task.Delay(20, TestContext.Current.CancellationToken);
+            }
+            Assert.NotNull(started);
+            Assert.Equal(JobState.Completed, started.Job.State);
+            using var merged = PdfReader.Open(Assert.Single(started.Job.Outputs), PdfDocumentOpenMode.Import);
+            Assert.Equal([400d, 200d, 300d], merged.Pages.Cast<PdfPage>().Select(p => p.Width.Point));
+        }
+        finally
+        {
+            windows.MergeOrder?.Close();
+            radial.Close(animate: false);
+            profile.PresetIds = previous;
+            preset.Output = previousOutput;
+            Directory.Delete(folder, true);
+        }
+    }
+
     [AvaloniaTheory]
     [InlineData("en")]
     [InlineData("ar")]
@@ -136,13 +250,21 @@ public class MergeOrderTests
     public void Chooser_fits_long_paths_at_its_minimum_width(string language)
     {
         TestServices.EnsureInitialized(language);
+        // A real file, so that one row shows its date next to a long name.
+        var dated = Path.Combine(Directory.CreateTempSubdirectory("filee-merge-fit-").FullName, "This is a very long document name with spaces.pdf");
+        File.WriteAllBytes(dated, [1]);
         var vm = new MergeOrderViewModel([
             @"C:\Documents\Quarterly reports\2026\This is a very long document name with spaces.pdf",
             @"C:\Documents\Another folder\This is a very long document name with spaces.pdf",
+            dated,
             @"C:\Documents\旅行の記録とملاحظات\中文-한국어-שלום.pdf"]);
-        var window = new MergeOrderWindow { DataContext = vm, Width = 440, Height = 360 };
+        var window = new MergeOrderWindow { DataContext = vm };
+        window.Width = window.MinWidth;
+        window.Height = window.MinHeight;
         try
         {
+            // The longest entries, in the list's own box.
+            vm.SortIndex = (int)Filee.Core.Platform.FileSortOrder.ModifiedDescending;
             window.Show();
             RenderTests.Pump();
             Rect Box(string name)
@@ -163,10 +285,18 @@ public class MergeOrderTests
                 Assert.True(cancel.Right <= merge.Left);
             }
             Assert.True(merge.Right <= window.Bounds.Width && merge.Left >= 0);
-            Assert.True(window.FindControl<ListBox>("FileOrder")!.Bounds.Height > 80);
+            // At the smallest size a whole row of cards still shows, whatever the hint's length in the language.
+            var list = window.FindControl<ListBox>("FileOrder")!;
+            Assert.True(list.Bounds.Height >= list.ContainerFromIndex(0)!.Bounds.Height, $"list {list.Bounds.Height}, card {list.ContainerFromIndex(0)!.Bounds.Height}");
+            var sort = Box("SortOrder");
+            Assert.True(sort.Left >= 0 && sort.Right <= window.Bounds.Width);
             RenderTests.Save(window, $"merge-order-{language}.png");
         }
-        finally { window.Close(); }
+        finally
+        {
+            window.Close();
+            Directory.Delete(Path.GetDirectoryName(dated)!, true);
+        }
     }
 
     private static void ClickControl(Window window, string name)
@@ -323,7 +453,7 @@ public class MergeOrderTests
             @"C:\Users\me\Pictures\Passport front.jpg",
             @"C:\Users\me\Pictures\Passport back.jpg",
             @"C:\Users\me\Downloads\Driving licence, both sides, scanned at 600 dpi.png"], preset.Image);
-        var window = new MergeOrderWindow { DataContext = vm, Width = 440, Height = 540 };
+        var window = new MergeOrderWindow { DataContext = vm, Width = 440, Height = 590 };
         window.StartMerge.Content = AppHost.Get<ILocalizer>().DisplayName(preset);
         try
         {
@@ -413,5 +543,74 @@ public class MergeOrderTests
         Assert.Equal(Path.Combine(root, "a"), vm.Files[1].Folder);
         Assert.False(vm.MoveUpCommand.CanExecute(null));
         Assert.True(vm.MoveDownCommand.CanExecute(null));
+    }
+
+    [AvaloniaFact]
+    public void Arrows_move_the_selection_and_the_focus_stays_on_the_card()
+    {
+        TestServices.EnsureInitialized();
+        var folder = Directory.CreateTempSubdirectory("filee-merge-keys-").FullName;
+        var inputs = new List<string>();
+        for (var i = 1; i <= 6; i++)
+        {
+            var path = Path.Combine(folder, $"page {i}.pdf");
+            using var document = new PdfDocument();
+            document.AddPage();
+            document.Save(path);
+            inputs.Add(path);
+        }
+        var vm = new MergeOrderViewModel(inputs, keepOrder: true);
+        var window = new MergeOrderWindow { DataContext = vm };
+        try
+        {
+            window.Show();
+            RenderTests.Pump();
+            Dispatcher.UIThread.RunJobs();
+            RenderTests.Pump();
+            var list = window.FindControl<ListBox>("FileOrder")!;
+            var focused = () => window.FocusManager!.GetFocusedElement();
+
+            Assert.Same(list.ContainerFromIndex(0), focused());
+            window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[1], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(1), focused());
+
+            // Down moves by a row: as many cards as sit on the first card's line.
+            var first = list.ContainerFromIndex(0)!.TranslatePoint(new Point(), list)!.Value.Y;
+            var columns = Enumerable.Range(0, inputs.Count)
+                .Count(i => Math.Abs(list.ContainerFromIndex(i)!.TranslatePoint(new Point(), list)!.Value.Y - first) < 1);
+            window.KeyPress(Key.Down, RawInputModifiers.None, PhysicalKey.ArrowDown, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[1 + columns], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(1 + columns), focused());
+
+            window.KeyPress(Key.Up, RawInputModifiers.None, PhysicalKey.ArrowUp, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[1], vm.SelectedFile);
+
+            window.KeyPress(Key.Down, RawInputModifiers.Alt, PhysicalKey.ArrowDown, null);
+            RenderTests.Pump();
+            Assert.Equal([inputs[0], inputs[2], inputs[1], inputs[3], inputs[4], inputs[5]], vm.OrderedFiles);
+            Assert.Same(vm.Files[2], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(2), focused());
+
+            window.KeyPress(Key.Right, RawInputModifiers.None, PhysicalKey.ArrowRight, null);
+            RenderTests.Pump();
+            Assert.Same(vm.Files[3], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(3), focused());
+
+            // Delete takes the selected card out; the card that takes its place is selected and keeps the focus.
+            window.KeyPress(Key.Delete, RawInputModifiers.None, PhysicalKey.Delete, null);
+            RenderTests.Pump();
+            Assert.Equal(5, vm.Files.Count);
+            Assert.Same(vm.Files[3], vm.SelectedFile);
+            Assert.Same(list.ContainerFromIndex(3), focused());
+        }
+        finally
+        {
+            window.Close();
+            vm.Dispose();
+        }
     }
 }
