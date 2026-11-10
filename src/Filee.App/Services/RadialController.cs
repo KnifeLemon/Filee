@@ -539,8 +539,8 @@ public sealed class RadialController(
                     return;
                 }
                 chosen.Add((pdfs[i], choice));
-                // The next PDF's window starts with this one's choice of one PDF or one file per page.
-                asked = AskedPages.Apply(preset, preset.Pdf.PageRange, choice.SplitPages);
+                // The next PDF's window starts with this one's choice of one PDF or how it is split.
+                asked = AskedPages.Apply(preset, preset.Pdf.PageRange, choice.SplitPages, choice.SplitEvery, choice.SplitParts);
             }
             if (chosen.Count == 0)
                 return;
@@ -551,7 +551,7 @@ public sealed class RadialController(
             if (others.Count > 0)
                 runs.Add((others, preset));
             runs.AddRange(chosen.GroupBy(c => c.Choice).Select(group =>
-                ((IReadOnlyList<string>)[.. group.Select(c => c.File)], AskedPages.Apply(preset, group.Key.Range, group.Key.SplitPages))));
+                ((IReadOnlyList<string>)[.. group.Select(c => c.File)], AskedPages.Apply(preset, group.Key.Range, group.Key.SplitPages, group.Key.SplitEvery, group.Key.SplitParts))));
             log.LogInformation("Converting {Count} PDF(s) with preset {Preset} on the pages chosen", pdfs.Count, preset.Id);
             foreach (var (runFiles, runPreset) in runs)
             {
@@ -572,21 +572,28 @@ public sealed class RadialController(
     }
 
     /// <summary>
-    /// "Choose pages": one PDF or one file per page, as chosen last (<paramref name="chosen"/>), goes into the preset as
-    /// saved, so the window starts with it next time (as "Merge images" keeps its layout). The range is not kept.
+    /// "Choose pages": one PDF, one file per page or the pages per file or parts, as chosen last
+    /// (<paramref name="chosen"/>), goes into the preset as saved, so the window starts with it next time (as "Merge
+    /// images" keeps its layout). The range is not kept; with one PDF the numbers of the last split stay.
     /// </summary>
     private void RememberSplitChoice(Preset preset, PageChoice chosen)
     {
-        if (!AskedPages.OffersSplit(preset) || store.FindPreset(preset.Id) is not { } saved || saved.Pdf.SplitPages == chosen.SplitPages)
+        if (!AskedPages.OffersSplit(preset) || store.FindPreset(preset.Id) is not { } saved)
             return;
-        saved.Pdf.SplitPages = chosen.SplitPages;
+        var pdf = saved.Pdf;
+        if (pdf.SplitPages == chosen.SplitPages
+            && (!chosen.SplitPages || (pdf.SplitEvery, pdf.SplitParts) == (chosen.SplitEvery, chosen.SplitParts)))
+            return;
+        pdf.SplitPages = chosen.SplitPages;
+        if (chosen.SplitPages)
+            (pdf.SplitEvery, pdf.SplitParts) = (chosen.SplitEvery, chosen.SplitParts);
         try
         {
             store.SaveLibrary();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            log.LogWarning(ex, "Could not remember one PDF or one file per page");
+            log.LogWarning(ex, "Could not remember how the pages were split");
         }
     }
 

@@ -83,6 +83,8 @@ internal static class Help
                                  no creation date (some Linux file systems), created uses its change or modified date
           -q, --quality <1-100>  Image quality for JPG, WebP, AVIF, …
               --pages <range>    The pages of PDFs, e.g. 13-55 or 1-3,8,12-15 (default: the preset's)
+              --split-every <n>  PDF to PDF: a file for every n pages, named _p1-50, _p51-100, … (1: one per page)
+              --split-parts <n>  PDF to PDF: n files of the same length, e.g. 2 for halves, 3 for thirds
               --overwrite        Replace existing output files (default: add a number)
               --skip             Leave existing output files alone
               --keep-dates       Give converted files the created and modified dates of the originals

@@ -162,6 +162,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // "Pages per sheet" (#737): a number set outside the editor (a hand-edited preset file) is offered too.
         SheetLayouts = [.. PdfOptions.SheetLayouts.Append(_edit.Pdf.PagesPerSheet).Where(n => n is > 1 and <= 16).Distinct().Order()
             .Select(n => new Choice<int>(n, $"{n}"))];
+        PageOutputChoices =
+        [
+            new(ViewModels.PageOutput.OnePdf, loc["pages.one_pdf"]),
+            new(ViewModels.PageOutput.EachPage, loc["presets.split"]),
+            new(ViewModels.PageOutput.Groups, loc["pages.groups"]),
+        ];
+        GroupKinds = PageOutputs.Kinds(loc);
         SheetPapers = Enum.GetValues<PdfSheetPaper>().Select(v => new Choice<PdfSheetPaper>(v, loc[$"presets.sheet_paper.{v}"])).ToList();
         SheetOrientations = Enum.GetValues<PdfSheetOrientation>().Select(v => new Choice<PdfSheetOrientation>(v, loc[$"presets.sheet_orientation.{v}"])).ToList();
         SheetOrders = Enum.GetValues<PdfSheetOrder>().Select(v => new Choice<PdfSheetOrder>(v, loc[$"presets.sheet_order.{v}"])).ToList();
@@ -328,7 +335,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
         _askPageRange = _edit.Pdf.AskPageRange;
-        _splitPages = _edit.Pdf.SplitPages;
+        _pageOutput = PageOutputChoices.First(c => c.Value == PageOutputs.Of(_edit.Pdf));
+        _groupKind = GroupKinds.First(k => k.Value == PageOutputs.KindOf(_edit.Pdf));
+        _groupSize = PageOutputs.SizeOf(_edit.Pdf);
         _combinePages = _edit.Pdf.CombinePages;
         _trimPageMargins = _edit.Pdf.TrimPageMargins;
         _splitTallImage = _edit.Pdf.SplitTallImage;
@@ -440,6 +449,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>"Crop video": the picture inside the black bars, or a ratio.</summary>
     public IReadOnlyList<Choice<string>> CropFrames { get; }
     public IReadOnlyList<Choice<int>> SheetLayouts { get; }
+
+    /// <summary>PDF → PDF: one PDF, one file per page, or several pages per file (#1259).</summary>
+    public IReadOnlyList<Choice<PageOutput>> PageOutputChoices { get; }
+    public IReadOnlyList<Choice<PageGroupKind>> GroupKinds { get; }
     public IReadOnlyList<Choice<PdfSheetPaper>> SheetPapers { get; }
     public IReadOnlyList<Choice<PdfSheetOrientation>> SheetOrientations { get; }
     public IReadOnlyList<Choice<PdfSheetOrder>> SheetOrders { get; }
@@ -465,7 +478,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
-        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPdfCombine),
+        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
@@ -749,7 +762,21 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>"Ask every time" for the pages (PdfOptions.AskPageRange, #981).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPagesHint))]
     private bool _askPageRange;
-    [ObservableProperty] private bool _splitPages;
+
+    /// <summary>One PDF, one file per page or several pages per file (PdfOptions.SplitPages, SplitEvery, SplitParts).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowPageGroups))]
+    private Choice<PageOutput> _pageOutput;
+
+    partial void OnPageOutputChanged(Choice<PageOutput>? oldValue, Choice<PageOutput> newValue) =>
+        Choices.Restore(oldValue, newValue, v => PageOutput = v);
+
+    /// <summary>With several pages per file: the number is the pages per file, or the equal parts.</summary>
+    [ObservableProperty] private Choice<PageGroupKind> _groupKind;
+
+    partial void OnGroupKindChanged(Choice<PageGroupKind>? oldValue, Choice<PageGroupKind> newValue) =>
+        Choices.Restore(oldValue, newValue, v => GroupKind = v);
+
+    [ObservableProperty] private int _groupSize;
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowPdfCompressionOptions))]
     private Choice<PdfCompression> _compressionLevel;
@@ -775,7 +802,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>Recognize the text of scans and pictures (PdfOptions.Ocr), in <see cref="OcrLanguage"/>.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(ShowPdfSplit), nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowPageSize))]
+    [NotifyPropertyChangedFor(nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowPageSize))]
     private bool _ocr;
 
     /// <summary>
@@ -1050,6 +1077,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>Page size and margin of a PDF built from pictures; not with text recognition (<see cref="Recognizes"/>).</summary>
     public bool ShowPageSize => ShowPdfBuild && !Recognizes;
     public bool ShowPdfSplit => TargetId == "pdf" && !Recognizes;
+    public bool ShowPageGroups => ShowPdfSplit && PageOutput.Value == ViewModels.PageOutput.Groups;
 
     /// <summary>
     /// "Ask every time" under Pages: wherever the pages are, except a merge, where one range would go for every file
@@ -1235,7 +1263,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);
         pdf.PageRange = PageRange.Trim();
         pdf.AskPageRange = ShowAskPages && AskPageRange;
-        pdf.SplitPages = SplitPages;
+        var (split, every, parts) = PageOutputs.Settings(PageOutput.Value, GroupKind.Value, GroupSize);
+        pdf.SplitPages = split;
+        // One PDF keeps the numbers of a split, as the pages window does, for when it is chosen again.
+        if (split)
+            (pdf.SplitEvery, pdf.SplitParts) = (every, parts);
         pdf.CombinePages = CombinePages;
         pdf.TrimPageMargins = TrimPageMargins;
         pdf.SplitTallImage = SplitTallImage;

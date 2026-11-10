@@ -178,6 +178,68 @@ public class AskPagesTests
     }
 
     /// <summary>
+    /// Several pages per file (#1259): chosen in the window, the PDF is split every so many pages, the files named for
+    /// their pages; the choice is kept for the next time.
+    /// </summary>
+    [AvaloniaFact]
+    public async Task Several_pages_per_file_chosen_in_the_window_splits_every_n_pages()
+    {
+        TestServices.EnsureInitialized();
+        var folder = Directory.CreateTempSubdirectory("filee-ask-pages-groups-").FullName;
+        var store = AppHost.Get<UserDataStore>();
+        var profile = store.Profiles.Single(p => p.Id == "pdf");
+        var previous = profile.PresetIds;
+        var preset = store.FindPreset("pdf-split")!;
+        var (previousOutput, previousPdf) = (preset.Output, preset.Pdf.Clone());
+        var conversions = AppHost.Get<ConversionService>();
+        var before = conversions.Jobs.Select(j => j.Job.Id).ToHashSet();
+        var radial = AppHost.Get<RadialController>();
+        var windows = AppHost.Get<WindowService>();
+        try
+        {
+            var book = Pdf(folder, "book.pdf", 12);
+            profile.PresetIds = ["pdf-split"];
+            preset.Pdf.AskPageRange = true;
+            preset.Pdf.SplitPages = true;
+            preset.Output = new() { Location = OutputLocation.CustomFolder, CustomFolder = folder };
+            radial.ShowForFiles(450, 400, [book]);
+            var donut = radial.Window!.DonutControl;
+            Assert.True(donut.HandleKey(Key.Right));
+            Assert.True(donut.HandleKey(Key.Enter));
+
+            var dialog = await WaitForWindow(windows);
+            var vm = Assert.IsType<AskPagesViewModel>(dialog.DataContext);
+            Assert.False(dialog.FindControl<Control>("GroupRow")!.IsVisible);
+            Click(dialog, "Groups");
+            Assert.True(vm.Groups);
+            Assert.True(dialog.FindControl<Control>("GroupRow")!.IsVisible);
+            vm.GroupSize = 5;
+            RenderTests.Pump();
+            Assert.Equal(5m, dialog.FindControl<NumericUpDown>("GroupSize")!.Value);
+            dialog.FindControl<TextBox>("RangeBox")!.Focus();
+            Press(dialog, Key.Enter);
+
+            var job = Assert.Single(await WaitForJobs(conversions, before, 1));
+            Assert.Equal(JobState.Completed, job.Job.State);
+            Assert.Equal(["book_p1-5.pdf", "book_p6-10.pdf", "book_p11-12.pdf"], job.Job.Outputs.Select(Path.GetFileName));
+            using var last = PdfReader.Open(job.Job.Outputs.Last(), PdfDocumentOpenMode.Import);
+            Assert.Equal([110d, 111d], last.Pages.Cast<PdfPage>().Select(p => p.Width.Point));
+            // The saved preset starts the window with five pages per file next time.
+            Assert.Equal((true, 5, 0), (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts));
+        }
+        finally
+        {
+            windows.AskPages?.Close();
+            radial.Close(animate: false);
+            profile.PresetIds = previous;
+            preset.Output = previousOutput;
+            preset.Pdf = previousPdf;
+            store.SaveLibrary();
+            Directory.Delete(folder, true);
+        }
+    }
+
+    /// <summary>
     /// Two PDFs dropped together: a window for each, in turn, with its own page count, so each gives its own chapter.
     /// </summary>
     [AvaloniaFact]
@@ -275,8 +337,27 @@ public class AskPagesTests
         Assert.True(unknown.IsValid);
         Assert.Equal("", unknown.Status);
 
+        // Several pages per file (#1259): so many pages each, or equal parts.
+        vm.Groups = true;
+        Assert.True(vm.SplitPages);
+        Assert.Equal((2, PageGroupKind.PagesPerFile), (vm.GroupSize, vm.GroupKind.Value));
+        vm.Range = "";
+        vm.GroupSize = 50;
+        Assert.Equal(new PageChoice("", true, 50, 0), vm.Result());
+        vm.GroupKind = vm.GroupKinds.Single(k => k.Value == PageGroupKind.EqualParts);
+        vm.GroupSize = 3;
+        Assert.Equal(new PageChoice("", true, 0, 3), vm.Result());
+        vm.EachPage = true;
+        Assert.Equal(new PageChoice("", true), vm.Result());
+
+        // It starts with the preset's split.
+        var thirds = split.Clone();
+        thirds.Pdf.SplitParts = 3;
+        var again = new AskPagesViewModel("a.pdf", 10, thirds, loc);
+        Assert.Equal((PageOutput.Groups, 3, PageGroupKind.EqualParts), (again.Output, again.GroupSize, again.GroupKind.Value));
+
         // PDF → PNG: no one PDF / one file per page, whatever the preset has.
-        var png = new AskPagesViewModel("a.pdf", 5, new Preset { TargetFormat = "png", Pdf = { SplitPages = true } }, loc);
+        var png = new AskPagesViewModel("a.pdf", 5, new Preset { TargetFormat = "png", Pdf = { SplitPages = true, SplitEvery = 4 } }, loc);
         Assert.False(png.OffersSplit);
         Assert.Equal(new PageChoice("", false), png.Result());
     }
@@ -306,6 +387,7 @@ public class AskPagesTests
     {
         { "en", false }, { "en", true }, { "ko", false }, { "ko", true },
         { "de", false }, { "ar", true }, { "ru", false }, { "hi", true }, { "vi", false }, { "ja", true },
+        { "fa", false }, { "bn-BD", true },
     };
 
     /// <summary>
@@ -324,6 +406,9 @@ public class AskPagesTests
         var vm = new AskPagesViewModel(@"C:\Users\me\Documents\Software Engineering, 10th edition (Sommerville) - full book.pdf",
             812, split, loc, 0, 2)
         { Range = "13-55", OnePdf = true };
+        // In dark, several pages per file, with its number and kind under the switch.
+        if (dark)
+            vm.Groups = true;
         var window = new AskPagesWindow { DataContext = vm };
         window.StartPages.Content = loc.DisplayName(split);
         try
@@ -336,18 +421,26 @@ public class AskPagesTests
                 return new Rect(control.Bounds.Size).TransformToAABB(control.TransformToVisual(window)!.Value);
             }
             var bounds = new Rect(window.Bounds.Size);
-            foreach (var name in new[] { "FileName", "PageCount", "RangeBox", "RangeStatus", "SplitChoice", "OnePdf", "PerPage", "StartPages", "CancelPages" })
+            string[] names = ["FileName", "PageCount", "RangeBox", "RangeStatus", "SplitChoice", "OnePdf", "PerPage", "Groups", "StartPages", "CancelPages"];
+            string[] shown = dark ? [.. names, "GroupSize", "GroupKind"] : names;
+            foreach (var name in shown)
             {
                 var box = Box(name);
                 Assert.True(box.Width > 0 && bounds.Contains(box), $"{name} {box} outside {bounds}");
             }
+            Assert.Equal(dark, window.FindControl<Control>("GroupRow")!.IsVisible);
             Assert.False(Box("OnePdf").Deflate(1).Intersects(Box("PerPage").Deflate(1)));
+            Assert.False(Box("PerPage").Deflate(1).Intersects(Box("Groups").Deflate(1)));
+            // The switch stays one row.
+            Assert.Equal(Box("OnePdf").Top, Box("Groups").Top, 0.5);
             Assert.False(Box("StartPages").Deflate(1).Intersects(Box("CancelPages").Deflate(1)));
-            // Arabic mirrors the switch and the buttons.
-            if (language == "ar")
-                Assert.True(Box("OnePdf").Left > Box("PerPage").Left && Box("StartPages").Left < Box("CancelPages").Left);
+            // Arabic and Persian mirror the switch and the buttons.
+            if (language is "ar" or "fa")
+                Assert.True(Box("OnePdf").Left > Box("PerPage").Left && Box("PerPage").Left > Box("Groups").Left
+                    && Box("StartPages").Left < Box("CancelPages").Left);
             else
-                Assert.True(Box("OnePdf").Right <= Box("PerPage").Left + 0.5 && Box("StartPages").Left >= Box("CancelPages").Right);
+                Assert.True(Box("OnePdf").Right <= Box("PerPage").Left + 0.5 && Box("PerPage").Right <= Box("Groups").Left + 0.5
+                    && Box("StartPages").Left >= Box("CancelPages").Right);
             // The range opens selected; as typed, the caret at its end.
             var range = window.FindControl<TextBox>("RangeBox")!;
             Assert.Equal((0, 5), (range.SelectionStart, range.SelectionEnd));
@@ -416,5 +509,66 @@ public class AskPagesTests
         Assert.False(vm.ShowAskPages);
         Assert.True(vm.Apply());
         Assert.False(preset.Pdf.AskPageRange);
+    }
+
+    /// <summary>
+    /// The preset editor's PDF card (#1259): one PDF, one file per page or several pages per file, the number and its
+    /// kind shown only for the last; saved into the preset and read back.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("en", false)]
+    [InlineData("de", true)]
+    public void The_editor_splits_every_n_pages_or_into_equal_parts(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        var loc = AppHost.Get<ILocalizer>();
+        var split = BuiltInData.CreatePresets().Single(p => p.Id == "pdf-split");
+        var vm = new PresetEditorViewModel(split, loc);
+        Assert.Equal(PageOutput.EachPage, vm.PageOutput.Value);
+        Assert.False(vm.ShowPageGroups);
+        vm.PageOutput = vm.PageOutputChoices.Single(c => c.Value == PageOutput.Groups);
+        Assert.True(vm.ShowPageGroups);
+        vm.GroupKind = vm.GroupKinds.Single(k => k.Value == PageGroupKind.EqualParts);
+        vm.GroupSize = 3;
+        if (dark)
+            theme.Apply(new ThemeSettings { Mode = ThemeMode.Dark }, language);
+        try
+        {
+            var window = new PresetEditorWindow { DataContext = vm, Height = 1400 };
+            window.Show();
+            RenderTests.Pump();
+            var controls = window.GetVisualDescendants().OfType<Control>().ToList();
+            Assert.True(controls.Single(c => c.Name == "PageOutput").IsEffectivelyVisible);
+            Assert.True(controls.Single(c => c.Name == "GroupSize").IsEffectivelyVisible);
+            Assert.True(controls.Single(c => c.Name == "GroupKind").IsEffectivelyVisible);
+            RenderTests.Save(window, $"split-groups-editor-{language}-{(dark ? "dark" : "light")}.png");
+            window.Close();
+        }
+        finally
+        {
+            if (dark)
+                theme.Apply(new ThemeSettings(), language);
+        }
+        Assert.True(vm.Apply());
+        Assert.Equal((true, 0, 3), (split.Pdf.SplitPages, split.Pdf.SplitEvery, split.Pdf.SplitParts));
+
+        vm = new PresetEditorViewModel(split, loc);
+        Assert.Equal((PageOutput.Groups, PageGroupKind.EqualParts, 3), (vm.PageOutput.Value, vm.GroupKind.Value, vm.GroupSize));
+        vm.GroupKind = vm.GroupKinds.Single(k => k.Value == PageGroupKind.PagesPerFile);
+        vm.GroupSize = 50;
+        Assert.True(vm.Apply());
+        Assert.Equal((true, 50, 0), (split.Pdf.SplitPages, split.Pdf.SplitEvery, split.Pdf.SplitParts));
+
+        // One PDF: no split, the number kept for when it is chosen again.
+        vm = new PresetEditorViewModel(split, loc);
+        vm.PageOutput = vm.PageOutputChoices.Single(c => c.Value == PageOutput.OnePdf);
+        Assert.False(vm.ShowPageGroups);
+        Assert.True(vm.Apply());
+        Assert.Equal((false, 50), (split.Pdf.SplitPages, split.Pdf.SplitEvery));
+        vm = new PresetEditorViewModel(split, loc);
+        vm.PageOutput = vm.PageOutputChoices.Single(c => c.Value == PageOutput.EachPage);
+        Assert.True(vm.Apply());
+        Assert.Equal((true, 0, 0), (split.Pdf.SplitPages, split.Pdf.SplitEvery, split.Pdf.SplitParts));
     }
 }
