@@ -1790,6 +1790,12 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   A video without subtitles fails with "The video has no subtitle track."; one with only picture subtitles (Blu-ray
   PGS, DVD, DVB) says they can't be turned into text without OCR. Video → SAMI, LRC, TTML, … goes through SRT and the
   subtitle engine (ASS and WebVTT extraction cost 11 so SRT is the hub).
+- Video to video keeps the subtitle tracks as switchable tracks, with their language tags (#789,
+  `MediaEncoding.SubtitleTracks`). MKV keeps every SRT, ASS, WebVTT, PGS, DVD and DVB track as it is (other text
+  tracks become SRT) and its attachments (the fonts ASS subtitles are drawn with). MP4, M4V and MOV get the text tracks
+  as timed text (`mov_text`), WebM as WebVTT. Picture subtitles (PGS, DVD, DVB) can't go into those three: they are
+  left out with a notice that MKV keeps them. TTML and CEA-608 tracks are left out, and other targets (AVI, FLV, TS,
+  …) and clips keep no subtitles.
 - The first video stream (cover pictures excluded) is converted. Video to video keeps every audio track (languages,
   commentary), each copied where the target takes its codec or encoded on its own, with its language tag; FLV and DV
   hold one and keep the first. Video to audio takes the first. Tracks FFmpeg can't decode (no decoder, like the spatial

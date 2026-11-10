@@ -228,6 +228,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             throw;
         }
 
+        // Blu-ray and DVD subtitles can't go into MP4, MOV or WebM (#789): the user learns that MKV keeps them.
+        if (!still && MediaEncoding.LeavesOutPictureSubtitles(step.To, info))
+            step.Notice?.Invoke("notice.picture_subtitles_left_out");
         progress?.Report(1);
         return [output];
     }

@@ -103,6 +103,30 @@ internal static partial class MediaEncoding
         "jacosub", "mpl2", "pjs", "vplayer", "stl", "eia_608", "ttml",
     ];
 
+    /// <summary>
+    /// Video targets that keep the source's subtitle tracks (#789), and the encoder a text track is converted with when
+    /// the container can't take it as it is: MP4 and MOV hold only timed text (mov_text), WebM only WebVTT. Matroska
+    /// takes nearly everything as it is; the rest of its text tracks become SRT. Other containers keep none.
+    /// </summary>
+    private static readonly Dictionary<string, string> SubtitleEncoders = new()
+    {
+        ["mp4"] = "mov_text",
+        ["m4v"] = "mov_text",
+        ["mov"] = "mov_text",
+        ["webm"] = "webvtt",
+        ["mkv"] = "srt",
+    };
+
+    /// <summary>Subtitle codecs Matroska takes as they are: SRT, ASS with its styles, WebVTT, and Blu-ray, DVD and DVB pictures.</summary>
+    private static readonly HashSet<string> MatroskaSubtitles = ["subrip", "ass", "ssa", "webvtt", "hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle"];
+
+    /// <summary>
+    /// Text subtitles left out of a converted video, as before #789: FFmpeg has no TTML decoder, and CEA-608 captions (a
+    /// broadcast caption feed) have no file to prove their re-encoded timing with. A video that fails over a subtitle
+    /// track would be worse than one without it.
+    /// </summary>
+    private static readonly HashSet<string> UnconvertedSubtitles = ["ttml", "eia_608"];
+
     /// <summary>Formats an animated GIF or a still picture (PNG) can be turned into.</summary>
     public static IReadOnlyList<string> PictureToVideoTargets { get; } = ["mp4", "webm", "mov"];
 
@@ -152,7 +176,7 @@ internal static partial class MediaEncoding
     /// </param>
     /// <param name="crop">
     /// A video target: the filters that crop the frame first ("Crop video", <see cref="CropFilter"/>); the video is
-    /// always encoded then, and an MKV keeps its subtitles and attachments.
+    /// always encoded then.
     /// </param>
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
@@ -253,10 +277,15 @@ internal static partial class MediaEncoding
         List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
-        // A crop to MKV keeps the subtitles and attachments (fonts) as they are; MP4 and MOV can't hold most of them.
-        var extras = crop is not null && target == "mkv";
-        if (extras)
-            args.AddRange(["-map", "0:s?", "-map", "0:t?"]);
+        // Subtitle tracks stay switchable (#789), with their language tags (FFmpeg copies stream tags with each stream). A
+        // clip keeps none: its input is seeked, and subtitle timing after the seek isn't proven.
+        var subtitles = clip is null ? SubtitleTracks(target, info) : [];
+        foreach (var (index, _) in subtitles)
+            args.AddRange(["-map", $"0:{index}"]);
+        // An MKV's attachments are the fonts its styled (ASS) subtitles are drawn with.
+        var fonts = clip is null && target == "mkv" && info.HasAttachments;
+        if (fonts)
+            args.AddRange(["-map", "0:t"]);
 
         if (clip is null && crop is null && !info.RawStream && CanCopyVideo(target, video, options))
         {
@@ -292,8 +321,10 @@ internal static partial class MediaEncoding
                 : AudioCodecArguments(target, spec.AudioCodec, options, tracks[i], inVideo: true);
             args.AddRange(tracks.Count == 1 ? trackArgs : ForAudioTrack(trackArgs, i));
         }
-        if (extras)
-            args.AddRange(["-c:s", "copy", "-c:t", "copy"]);
+        for (var i = 0; i < subtitles.Count; i++)
+            args.AddRange([$"-c:s:{i}", subtitles[i].Codec]);
+        if (fonts)
+            args.AddRange(["-c:t", "copy"]);
 
         args.AddRange(MetadataArguments());
         args.AddRange(ContainerArguments(target));
@@ -301,6 +332,36 @@ internal static partial class MediaEncoding
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
     }
+
+    /// <summary>
+    /// The source's subtitle tracks a video converted to <paramref name="target"/> keeps, in file order: each stream's
+    /// index and its codec in the new file (<c>copy</c> where the container takes it as it is). Picture subtitles go only
+    /// into MKV.
+    /// </summary>
+    internal static List<(int Index, string Codec)> SubtitleTracks(string target, MediaInfo info)
+    {
+        List<(int, string)> kept = [];
+        if (!SubtitleEncoders.TryGetValue(target, out var encoder))
+            return kept;
+        foreach (var track in info.Subtitles)
+        {
+            if (track.Codec is not { } codec)
+                continue;
+            if (target == "mkv" ? MatroskaSubtitles.Contains(codec) : codec == encoder)
+                kept.Add((track.Index, "copy"));
+            else if (TextSubtitleCodecs.Contains(codec) && !UnconvertedSubtitles.Contains(codec))
+                kept.Add((track.Index, encoder));
+        }
+        return kept;
+    }
+
+    /// <summary>
+    /// True when converting to <paramref name="target"/> leaves out picture subtitles (Blu-ray PGS, DVD VobSub, DVB) the
+    /// source has: MP4, MOV and WebM can't hold them, MKV can. Shown as a notice, since the user may not know.
+    /// </summary>
+    internal static bool LeavesOutPictureSubtitles(string target, MediaInfo info) =>
+        target != "mkv" && SubtitleEncoders.ContainsKey(target)
+        && info.Subtitles.Any(s => s.Codec is { } codec && !TextSubtitleCodecs.Contains(codec));
 
     /// <summary>Containers that hold a single audio track: the first one is kept.</summary>
     private static readonly HashSet<string> SingleAudioTargets = ["flv", "dv"];

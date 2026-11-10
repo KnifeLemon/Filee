@@ -189,6 +189,7 @@
   "notice.macros_not_run": "文件包含巨集，這些巨集沒有執行",
   "notice.ocr_has_text": "每頁都已有文字，已原樣複製",
   "notice.live_photo_pair": "已儲存為同名的照片和 MOV。將兩者一起匯入（iCloud 照片、隔空投送或 Mac 上的「照片」）即可得到原況照片",
+  "notice.picture_subtitles_left_out": "圖形字幕（藍光、DVD）無法放進此格式，已省略。要保留它們，請轉換為 MKV",
   "notice.geo_datum_assumed": "基準面不是 WGS 84，已按相同處理，位置可能偏差數百公尺",
   "notice.geo_gpx_lossy": "GPX 只能儲存點、路線和軌跡及少數字段，其他屬性已省略，面變成了軌跡",
   "notice.geo_text_cut": "部分文字超過 Shapefile 欄位長度（254 位元組），已被截斷",

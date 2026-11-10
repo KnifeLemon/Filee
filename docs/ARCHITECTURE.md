@@ -357,8 +357,8 @@ stretch the crop back: `VideoCrop.TargetFor`) and sets `MediaOptions.CropFrame` 
   (`MediaEncoding.FinalCrop`, `LargestCrop`); no black bars, or a box under a quarter of the picture, refuses the file
   (`error.no_black_bars`), and cropdetect failing everywhere is an error with FFmpeg's message.
 - The crop goes before the scale filter, so the video is always encoded: an HEVC or AV1 source stays in its codec where
-  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and an
-  MKV keeps its subtitles and attachments.
+  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and the
+  subtitle tracks stay as in any video conversion (see *FFmpeg* in `docs/ENGINES.md`).
 
 ## Spreadsheet print studio
 

@@ -729,17 +729,98 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal("libx264", After(cropped, "-c:v"));
         Assert.StartsWith(crop + "scale=", After(cropped, "-vf"));
         Assert.Equal("copy", After(cropped, "-c:a"));
-        Assert.DoesNotContain("0:s?", cropped);
 
         // An MKV keeps its subtitles and fonts.
-        var mkv = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), info, "work", crop: crop).Single().Arguments;
-        Assert.Contains("0:s?", mkv);
-        Assert.Contains("0:t?", mkv);
-        Assert.Equal(("copy", "copy"), (After(mkv, "-c:s"), After(mkv, "-c:t")));
+        var episode = info with { SubtitleStreams = [new SubtitleStreamInfo(2, "ass", "kor")], HasAttachments = true };
+        var mkv = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), episode, "work", crop: crop).Single().Arguments;
+        Assert.Contains("0:2", mkv);
+        Assert.Contains("0:t", mkv);
+        Assert.Equal(("copy", "copy"), (After(mkv, "-c:s:0"), After(mkv, "-c:t")));
 
         // Anamorphic pixels are made square first, as cropdetect saw them.
         var dv = new VideoStreamInfo(720, 480, 8 / 9.0, 0, 29.97);
         Assert.StartsWith(MediaEncoding.SquarePixels(dv) + "crop=", MediaEncoding.CropFilter(dv, new CropBox(640, 360, 0, 60)));
+    }
+
+    /// <summary>A Blu-ray rip: Korean SRT, English ASS, a Korean PGS track and the fonts of the ASS track.</summary>
+    private static readonly MediaInfo Episode = new(TimeSpan.FromSeconds(10), Hd with { Codec = "h264", PixelFormat = "yuv420p" },
+        new AudioStreamInfo(2, 48000, "aac"), null,
+        [new SubtitleStreamInfo(2, "subrip", "kor"), new SubtitleStreamInfo(3, "ass", "eng"), new SubtitleStreamInfo(4, "hdmv_pgs_subtitle", "kor")],
+        HasAttachments: true);
+
+    /// <summary>The streams mapped from the input, in order.</summary>
+    private static List<string> Mapped(IReadOnlyList<string> args) =>
+        [.. args.Select((arg, i) => (arg, i)).Where(a => a.arg == "-map").Select(a => args[a.i + 1])];
+
+    [Fact]
+    public void An_mkv_keeps_every_subtitle_track_and_its_fonts()
+    {
+        // #789: for every conversion, not only a crop; the video is copied here.
+        var args = Args("mkv", info: Episode);
+        Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3", "0:4", "0:t"], Mapped(args));
+        Assert.Equal(("copy", "copy", "copy", "copy"), (After(args, "-c:s:0"), After(args, "-c:s:1"), After(args, "-c:s:2"), After(args, "-c:t")));
+        Assert.Equal("copy", After(args, "-c:v"));
+
+        // Timed text from an MP4 isn't a Matroska codec: it becomes SRT. A file without attachments maps none (FFmpeg
+        // refuses a specifier that matches nothing).
+        var phone = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "mov_text", "eng")], HasAttachments = false };
+        var fromMp4 = Args("mkv", info: phone);
+        Assert.Equal("srt", After(fromMp4, "-c:s:0"));
+        Assert.DoesNotContain("0:t", fromMp4);
+    }
+
+    [Fact]
+    public void Mp4_and_mov_keep_the_text_subtitles_as_timed_text()
+    {
+        foreach (var target in new[] { "mp4", "m4v", "mov" })
+        {
+            var args = Args(target, info: Episode);
+            // The PGS track (0:4) and the fonts can't go in.
+            Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3"], Mapped(args));
+            Assert.Equal(("mov_text", "mov_text"), (After(args, "-c:s:0"), After(args, "-c:s:1")));
+            Assert.DoesNotContain("-c:s:2", args);
+            Assert.DoesNotContain("-c:t", args);
+            Assert.True(MediaEncoding.LeavesOutPictureSubtitles(target, Episode));
+        }
+
+        // Timed text already is timed text.
+        var phone = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "mov_text", "eng")] };
+        Assert.Equal("copy", After(Args("mp4", info: phone), "-c:s:0"));
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mp4", phone));
+    }
+
+    [Fact]
+    public void Webm_keeps_the_text_subtitles_as_webvtt()
+    {
+        var args = Args("webm", info: Episode);
+        Assert.Equal(["0:V:0", "0:a:0", "0:2", "0:3"], Mapped(args));
+        Assert.Equal(("webvtt", "webvtt"), (After(args, "-c:s:0"), After(args, "-c:s:1")));
+        Assert.True(MediaEncoding.LeavesOutPictureSubtitles("webm", Episode));
+        var web = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "webvtt", "eng")] };
+        Assert.Equal("copy", After(Args("webm", info: web), "-c:s:0"));
+    }
+
+    [Fact]
+    public void Other_targets_and_clips_keep_no_subtitles()
+    {
+        foreach (var target in new[] { "avi", "flv", "ts", "wmv", "mpg", "ogv" })
+        {
+            var args = Args(target, info: Episode);
+            Assert.Equal(["0:V:0", "0:a:0"], Mapped(args));
+            Assert.DoesNotContain(args, a => a.StartsWith("-c:s", StringComparison.Ordinal));
+            // Nothing to say either: these never kept subtitles.
+            Assert.False(MediaEncoding.LeavesOutPictureSubtitles(target, Episode));
+        }
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mkv", Episode));
+
+        // A clip: the input is seeked, and subtitle timing after the seek isn't proven.
+        var clip = MediaEncoding.Plan("in.mkv", "out.mkv", "mkv", new MediaOptions(), Episode, "work", clip: new ClipRange(2, 5)).Single().Arguments;
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(clip));
+
+        // Captions and TTML are left out as before: no decoder, or no proof of their timing.
+        var captions = Episode with { SubtitleStreams = [new SubtitleStreamInfo(2, "eia_608", null), new SubtitleStreamInfo(3, "ttml", "eng")] };
+        Assert.Equal(["0:V:0", "0:a:0"], Mapped(Args("mp4", info: captions)));
+        Assert.False(MediaEncoding.LeavesOutPictureSubtitles("mp4", captions));
     }
 
     [Fact]
@@ -1393,6 +1474,38 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(Decoded(spec.AudioCodec), probed.Audio?.Codec);
         Assert.Equal((320, 240), (probed.Video!.Width, probed.Video.Height));
         Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Theory]
+    [InlineData("mp4", "mov_text")]
+    [InlineData("mov", "mov_text")]
+    [InlineData("webm", "webvtt")]
+    public async Task An_mkv_with_srt_subtitles_keeps_them_as_a_switchable_track(string target, string codec)
+    {
+        SkipUnlessInstalled();
+        // #789: an MKV with a Korean SRT track, made here.
+        var folder = fx.NewFolder();
+        var srt = Path.Combine(folder, "episode.srt");
+        await File.WriteAllTextAsync(srt, "1\r\n00:00:00,500 --> 00:00:01,500\r\n안녕하세요\r\n\r\n", TestContext.Current.CancellationToken);
+        var source = Path.Combine(folder, "episode.mkv");
+        await RunAsync(Tools!.Value.Ffmpeg, ["-hide_banner", "-nostdin", "-v", "error", "-y",
+            "-f", "lavfi", "-i", "testsrc2=size=160x120:rate=25:duration=2",
+            "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2", "-i", srt,
+            "-map", "0", "-map", "1", "-map", "2", "-c:v", "libx264", "-c:a", "aac", "-c:s", "srt", "-metadata:s:s:0", "language=kor", source]);
+
+        var output = await ConvertAsync(source, target);
+
+        var info = await MediaInfo.ProbeAsync(Tools!.Value.Ffprobe, output, CancellationToken.None);
+        var track = Assert.Single(info.Subtitles);
+        Assert.Equal((codec, "kor"), (track.Codec, track.Language));
+        // The cue still starts half a second in. Timed text fills the gap before it with an empty 2-byte sample.
+        var packets = await ProcessRunner.RunAsync(Tools!.Value.Ffprobe,
+            ["-v", "error", "-select_streams", "s:0", "-show_entries", "packet=pts_time,size", "-of", "csv=p=0", output],
+            TimeSpan.FromMinutes(1), CancellationToken.None);
+        var cue = packets.StandardOutput.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(line => line.Split(','))
+            .First(p => int.Parse(p[1], CultureInfo.InvariantCulture) > 2);
+        Assert.InRange(double.Parse(cue[0], CultureInfo.InvariantCulture), 0.45, 0.55);
     }
 
     [Fact]

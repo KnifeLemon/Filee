@@ -189,6 +189,7 @@
   "notice.macros_not_run": "O documento tem macros. Não foram executadas",
   "notice.ocr_has_text": "Todas as páginas já têm texto, pelo que o ficheiro foi copiado sem alterações",
   "notice.live_photo_pair": "Foi guardada uma fotografia e um MOV com o mesmo nome. Importa ambos em conjunto (Fotografias em iCloud, AirDrop ou Fotografias num Mac) para obteres uma Live Photo",
+  "notice.picture_subtitles_left_out": "As legendas em imagem (Blu-ray, DVD) não cabem neste formato e foram deixadas de fora. Converta para MKV para as manter",
   "notice.geo_datum_assumed": "O datum não é WGS 84. As posições foram convertidas como se fosse e podem apresentar desvios de centenas de metros",
   "notice.geo_gpx_lossy": "O GPX só guarda pontos, rotas e trajetos com alguns campos: os restantes atributos foram omitidos e os polígonos passaram a trajetos",
   "notice.geo_text_cut": "Algum texto excedia o limite de um campo Shapefile (254 bytes) e foi cortado",

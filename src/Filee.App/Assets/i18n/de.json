@@ -183,6 +183,7 @@
   "notice.macros_not_run": "Das Dokument enthält Makros. Sie wurden nicht ausgeführt",
   "notice.ocr_has_text": "Alle Seiten enthalten bereits Text. Die Datei wurde unverändert kopiert",
   "notice.live_photo_pair": "Als Foto und MOV-Datei mit gleichem Namen gespeichert. Importiere beide zusammen (über iCloud-Fotos, AirDrop oder Fotos auf einem Mac), um ein Live Photo zu erhalten",
+  "notice.picture_subtitles_left_out": "Bilduntertitel (Blu-ray, DVD) passen nicht in dieses Format und wurden weggelassen. Wandle in MKV um, um sie zu behalten",
   "notice.geo_datum_assumed": "Das geodätische Datum ist nicht WGS 84. Die Positionen wurden dennoch wie WGS 84 umgerechnet und können um mehrere Hundert Meter abweichen",
   "notice.geo_gpx_lossy": "GPX speichert nur Punkte, Routen und Tracks mit wenigen Feldern. Andere Attribute wurden weggelassen und Polygone in Tracks umgewandelt",
   "notice.geo_text_cut": "Einige Texte überschritten die Feldlänge von Shapefiles (254 Bytes) und wurden gekürzt",
