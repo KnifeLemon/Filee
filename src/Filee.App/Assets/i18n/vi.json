@@ -741,6 +741,8 @@
   "toolbar.captions": "Hiển thị định dạng đầu ra",
   "toolbar.slice_labels": "Nhãn của các phần",
   "toolbar.label_scale": "Cỡ nhãn",
+  "toolbar.ring_size": "Cỡ vòng nhóm",
+  "toolbar.ring_spread": "Độ trải của vòng nhóm",
   "labels.auto": "Tự động",
   "labels.icon_text": "Biểu tượng và chữ",
   "labels.text_only": "Chỉ chữ",

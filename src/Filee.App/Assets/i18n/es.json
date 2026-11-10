@@ -727,6 +727,8 @@
   "toolbar.captions": "Mostrar formato de salida",
   "toolbar.slice_labels": "Etiquetas de las porciones",
   "toolbar.label_scale": "Tamaño de las etiquetas",
+  "toolbar.ring_size": "Tamaño del anillo de grupo",
+  "toolbar.ring_spread": "Amplitud del anillo de grupo",
   "labels.auto": "Automático",
   "labels.icon_text": "Icono y texto",
   "labels.text_only": "Solo texto",

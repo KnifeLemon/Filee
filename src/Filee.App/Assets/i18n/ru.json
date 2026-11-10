@@ -741,6 +741,8 @@
   "toolbar.captions": "Показывать формат результата",
   "toolbar.slice_labels": "Подписи секторов",
   "toolbar.label_scale": "Размер подписей",
+  "toolbar.ring_size": "Размер кольца группы",
+  "toolbar.ring_spread": "Ширина кольца группы",
   "labels.auto": "Авто",
   "labels.icon_text": "Значок и текст",
   "labels.text_only": "Только текст",

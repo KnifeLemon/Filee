@@ -727,6 +727,8 @@
   "toolbar.captions": "Çıktı biçimini göster",
   "toolbar.slice_labels": "Dilim etiketleri",
   "toolbar.label_scale": "Etiket boyutu",
+  "toolbar.ring_size": "Grup halkasının boyutu",
+  "toolbar.ring_spread": "Grup halkasının genişliği",
   "labels.auto": "Otomatik",
   "labels.icon_text": "Simge ve metin",
   "labels.text_only": "Yalnızca metin",

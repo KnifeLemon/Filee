@@ -727,6 +727,8 @@
   "toolbar.captions": "出力形式を表示",
   "toolbar.slice_labels": "項目のラベル",
   "toolbar.label_scale": "ラベルの大きさ",
+  "toolbar.ring_size": "グループリングの大きさ",
+  "toolbar.ring_spread": "グループリングの広がり",
   "labels.auto": "自動",
   "labels.icon_text": "アイコンとテキスト",
   "labels.text_only": "テキストのみ",

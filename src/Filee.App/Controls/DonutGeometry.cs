@@ -73,23 +73,28 @@ public static class DonutGeometry
     /// <summary>How far a group's fan reaches into each neighbouring slice, as a share of a slice.</summary>
     public const double SubOverhang = 0.25;
 
-    /// <summary>Narrowest a slice of a group's ring gets (along its middle), so its label still fits.</summary>
+    /// <summary>
+    /// Narrowest a slice of a group's ring gets (along its middle), so its label still fits; on a ring of the default
+    /// size (it is multiplied by the ring's scale).
+    /// </summary>
     public const double MinSubWidth = 44;
 
     /// <summary>
     /// Width of one slice of a group's outer ring: the fan covers the group's slice and a quarter of each neighbour
     /// (<see cref="SubOverhang"/>), split evenly, so it stays close to the slice it belongs to. On a crowded donut it
-    /// widens to keep each slice <see cref="MinSubWidth"/> wide at <paramref name="midRadius"/>; it never goes round
-    /// more than once (a donut of one slice), where slices would lie on top of each other.
+    /// widens to keep each slice <paramref name="minWidth"/> wide at <paramref name="midRadius"/>. Then
+    /// <paramref name="spread"/> widens it (Group ring spread). It never goes round more than once (a donut of one
+    /// slice), where slices would lie on top of each other.
     /// </summary>
-    public static double SubSpan(double parentSpan, int count, double midRadius = 0)
+    public static double SubSpan(double parentSpan, int count, double midRadius = 0, double spread = 1,
+        double minWidth = MinSubWidth)
     {
         if (count <= 0)
             return 0;
         var span = parentSpan * (1 + 2 * SubOverhang) / count;
         if (midRadius > 0)
-            span = Math.Max(span, MinSubWidth / midRadius);
-        return Math.Min(span, 2 * Math.PI / count);
+            span = Math.Max(span, minWidth / midRadius);
+        return Math.Min(span * spread, 2 * Math.PI / count);
     }
 
     /// <summary>Centre angle of slice <paramref name="sub"/> of a fan of <paramref name="count"/>, centred on <paramref name="parentMid"/>.</summary>

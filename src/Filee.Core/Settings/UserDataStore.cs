@@ -292,6 +292,8 @@ public sealed class UserDataStore
     /// <summary>Removes dangling preset references and guarantees at least one mixed-selection profile.</summary>
     private void EnsureConsistency()
     {
+        Settings.Donut.GroupRingSize = DonutSettings.ClampGroupRingSize(Settings.Donut.GroupRingSize);
+        Settings.Donut.GroupRingSpread = DonutSettings.ClampGroupRingSpread(Settings.Donut.GroupRingSpread);
         var ids = Presets.Select(p => p.Id).ToHashSet();
         foreach (var profile in Profiles)
         {

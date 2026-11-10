@@ -726,6 +726,8 @@
   "toolbar.captions": "আউটপুট ফরম্যাট দেখান",
   "toolbar.slice_labels": "স্লাইসের লেবেল",
   "toolbar.label_scale": "লেবেলের আকার",
+  "toolbar.ring_size": "গ্রুপ রিংয়ের আকার",
+  "toolbar.ring_spread": "গ্রুপ রিংয়ের বিস্তার",
   "labels.auto": "স্বয়ংক্রিয়",
   "labels.icon_text": "আইকন ও টেক্সট",
   "labels.text_only": "কেবল টেক্সট",

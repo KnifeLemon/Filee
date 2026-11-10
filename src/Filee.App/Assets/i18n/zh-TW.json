@@ -741,6 +741,8 @@
   "toolbar.captions": "顯示輸出格式",
   "toolbar.slice_labels": "扇形標籤",
   "toolbar.label_scale": "標籤大小",
+  "toolbar.ring_size": "群組圓環大小",
+  "toolbar.ring_spread": "群組圓環展開寬度",
   "labels.auto": "自動",
   "labels.icon_text": "圖示和文字",
   "labels.text_only": "僅文字",

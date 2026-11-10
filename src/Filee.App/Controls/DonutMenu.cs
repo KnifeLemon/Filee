@@ -93,6 +93,10 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, LabelShow>(nameof(DefaultShow), LabelShow.Auto);
     public static readonly StyledProperty<bool> ShowCaptionsProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(ShowCaptions), true);
+    public static readonly StyledProperty<double> GroupRingSizeProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSize), 1);
+    public static readonly StyledProperty<double> GroupRingSpreadProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSpread), 1);
 
     /// <summary>The theme's softness (Styles/Controls.axaml binds SoftRadius): rounds the corners of the slices.</summary>
     public static readonly StyledProperty<CornerRadius> CornerRadiusProperty =
@@ -157,11 +161,12 @@ public sealed partial class DonutMenu : Control
 
     static DonutMenu()
     {
-        AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty);
+        AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty, GroupRingSizeProperty);
         AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty,
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
-            CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty);
+            CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
+            GroupRingSizeProperty, GroupRingSpreadProperty);
         ItemsProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnItemsChanged());
     }
 
@@ -211,6 +216,12 @@ public sealed partial class DonutMenu : Control
     /// (<see cref="DonutScale"/>).
     /// </summary>
     public double LabelScale { get => GetValue(LabelScaleProperty); set => SetValue(LabelScaleProperty, value); }
+
+    /// <summary>How large a group's ring is, against its size on a donut of this radius (Group ring size, 1 = 100 %).</summary>
+    public double GroupRingSize { get => GetValue(GroupRingSizeProperty); set => SetValue(GroupRingSizeProperty, value); }
+
+    /// <summary>How wide a group's ring spreads, against the default fan (Group ring spread, 1 = 100 %).</summary>
+    public double GroupRingSpread { get => GetValue(GroupRingSpreadProperty); set => SetValue(GroupRingSpreadProperty, value); }
 
     /// <summary>What a slice shows when its item doesn't say (<see cref="DonutItem.Show"/>).</summary>
     public LabelShow DefaultShow { get => GetValue(DefaultShowProperty); set => SetValue(DefaultShowProperty, value); }
@@ -445,7 +456,7 @@ public sealed partial class DonutMenu : Control
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = SideFor(OuterRadius, ReserveSubRing || (!IsEditMode && Items?.Any(i => i.IsGroup) == true));
+        var side = SideFor(OuterRadius, ReserveSubRing || (!IsEditMode && Items?.Any(i => i.IsGroup) == true), GroupRingSize);
         return new Size(side, side);
     }
 
@@ -822,7 +833,7 @@ public sealed partial class DonutMenu : Control
                 active |= i == ActiveIndex ? _hover[i].Step(1, dt) : _hover[i].Step(0, dt, 320, CriticalDamping);
             active |= _centerPulse.Step(0, dt, 260, 12);
             // A soft bounce opening, like the slices popping out; folding away settles without one. The bounce grows the
-            // ring by about a pixel, well inside the room kept for it (SubRingSpace).
+            // ring by about a pixel, well inside the room kept for it (SubRingSpaceFor).
             active |= _expanded >= 0 ? _expand.Step(1, dt, 320, 24) : _expand.Step(0, dt, 320, CriticalDamping);
             if (_expanded < 0 && _expand.Value <= 0.001)
                 _shownExpanded = -1;
@@ -1201,7 +1212,8 @@ public sealed partial class DonutMenu : Control
     {
         var items = Items ?? [];
         var n = items.Count;
-        var center = new Point(OuterRadius + SubRingSpace, OuterRadius + SubRingSpace);
+        var space = SubRingSpaceFor(OuterRadius, GroupRingSize);
+        var center = new Point(OuterRadius + space, OuterRadius + space);
         var face = n == 0 ? [] : LabelPlan(items, center, InnerRadius, OuterRadius,
             i => (DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n)), DonutScale, bold, regular);
         var (inner, outer) = SubRadii;

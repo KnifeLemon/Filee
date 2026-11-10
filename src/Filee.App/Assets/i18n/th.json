@@ -727,6 +727,8 @@
   "toolbar.captions": "แสดงฟอร์แมตผลลัพธ์",
   "toolbar.slice_labels": "ป้ายชิ้นส่วน",
   "toolbar.label_scale": "ขนาดป้าย",
+  "toolbar.ring_size": "ขนาดวงแหวนกลุ่ม",
+  "toolbar.ring_spread": "ความกว้างวงแหวนกลุ่ม",
   "labels.auto": "อัตโนมัติ",
   "labels.icon_text": "ไอคอนและข้อความ",
   "labels.text_only": "ข้อความเท่านั้น",

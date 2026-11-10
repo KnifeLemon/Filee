@@ -727,6 +727,8 @@
   "toolbar.captions": "Ausgabeformat anzeigen",
   "toolbar.slice_labels": "Segmentbeschriftung",
   "toolbar.label_scale": "Beschriftungsgröße",
+  "toolbar.ring_size": "Größe des Gruppenrings",
+  "toolbar.ring_spread": "Breite des Gruppenrings",
   "labels.auto": "Automatisch",
   "labels.icon_text": "Symbol und Text",
   "labels.text_only": "Nur Text",

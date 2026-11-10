@@ -28,6 +28,12 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// <summary>The output format under the slices' names (Settings → Donut toolbar → Appearance).</summary>
     [ObservableProperty] private bool _showCaptions = true;
 
+    /// <summary>How large a group's ring is (Appearance → Group ring size).</summary>
+    [ObservableProperty] private double _groupRingSize = 1;
+
+    /// <summary>How wide a group's ring spreads (Appearance → Group ring spread).</summary>
+    [ObservableProperty] private double _groupRingSpread = 1;
+
     /// <summary>How large the slices' names and icons are (the donut's <see cref="ToolbarProfile.LabelScale"/>).</summary>
     [ObservableProperty] private double _labelScale = 1;
 
@@ -357,6 +363,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         HoleRatio = store.Settings.Donut.HoleRatio;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1);
         ShowCaptions = store.Settings.Donut.ShowCaptions;
+        GroupRingSize = DonutSettings.ClampGroupRingSize(store.Settings.Donut.GroupRingSize);
+        GroupRingSpread = DonutSettings.ClampGroupRingSpread(store.Settings.Donut.GroupRingSpread);
         FlipKey = store.Settings.Donut.EffectiveFlipKey(store.Settings.Triggers);
         FlipWithWheel = store.Settings.Donut.FlipWithWheel;
     }

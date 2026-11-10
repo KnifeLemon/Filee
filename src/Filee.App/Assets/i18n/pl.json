@@ -741,6 +741,8 @@
   "toolbar.captions": "Pokazuj format wyjściowy",
   "toolbar.slice_labels": "Etykiety wycinków",
   "toolbar.label_scale": "Rozmiar etykiet",
+  "toolbar.ring_size": "Rozmiar pierścienia grupy",
+  "toolbar.ring_spread": "Rozpiętość pierścienia grupy",
   "labels.auto": "Automatycznie",
   "labels.icon_text": "Ikona i tekst",
   "labels.text_only": "Tylko tekst",

@@ -467,6 +467,23 @@
                 <TextBlock Classes="label" VerticalAlignment="Center" Text="{DynamicResource toolbar.opacity}" />
                 <Slider Grid.Column="1" Minimum="10" Maximum="100" Value="{Binding SliceOpacity}" AutomationProperties.Name="{DynamicResource toolbar.opacity}" />
               </Grid>
+              <!-- The ring a group fans out: longer labels than the ones above, so each sits over its slider. -->
+              <StackPanel>
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding GroupRingSizeText}" />
+                  <TextBlock Classes="label" Text="{DynamicResource toolbar.ring_size}" TextWrapping="Wrap" />
+                </DockPanel>
+                <Slider x:Name="RingSizeSlider" Minimum="75" Maximum="150" TickFrequency="5" IsSnapToTickEnabled="True" SmallChange="5" LargeChange="10"
+                        Value="{Binding GroupRingSize}" AutomationProperties.Name="{DynamicResource toolbar.ring_size}" />
+              </StackPanel>
+              <StackPanel>
+                <DockPanel>
+                  <TextBlock DockPanel.Dock="Right" Classes="caption" VerticalAlignment="Center" Text="{Binding GroupRingSpreadText}" />
+                  <TextBlock Classes="label" Text="{DynamicResource toolbar.ring_spread}" TextWrapping="Wrap" />
+                </DockPanel>
+                <Slider x:Name="RingSpreadSlider" Minimum="100" Maximum="300" TickFrequency="10" IsSnapToTickEnabled="True" SmallChange="10" LargeChange="50"
+                        Value="{Binding GroupRingSpread}" AutomationProperties.Name="{DynamicResource toolbar.ring_spread}" />
+              </StackPanel>
               <!-- Longer than the labels above in most languages: it wraps next to a bare switch, as the mixed one. -->
               <DockPanel>
                 <ToggleSwitch x:Name="CaptionsToggle" DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0"

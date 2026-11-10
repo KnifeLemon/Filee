@@ -726,6 +726,8 @@
 "toolbar.captions": "Mostra formato di output",
 "toolbar.slice_labels": "Etichette degli spicchi",
 "toolbar.label_scale": "Dimensione etichette",
+"toolbar.ring_size": "Dimensione anello del gruppo",
+"toolbar.ring_spread": "Ampiezza anello del gruppo",
 "labels.auto": "Auto",
 "labels.icon_text": "Icona e testo",
 "labels.text_only": "Solo testo",

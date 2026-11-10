@@ -726,6 +726,8 @@
   "toolbar.captions": "نمایش فرمت خروجی",
   "toolbar.slice_labels": "برچسب بخش‌ها",
   "toolbar.label_scale": "اندازه برچسب‌ها",
+  "toolbar.ring_size": "اندازه حلقه گروه",
+  "toolbar.ring_spread": "گستردگی حلقه گروه",
   "labels.auto": "خودکار",
   "labels.icon_text": "آیکون و متن",
   "labels.text_only": "فقط متن",

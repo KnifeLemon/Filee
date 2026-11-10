@@ -741,6 +741,8 @@
   "toolbar.captions": "Show output format",
   "toolbar.slice_labels": "Slice labels",
   "toolbar.label_scale": "Label scale",
+  "toolbar.ring_size": "Group ring size",
+  "toolbar.ring_spread": "Group ring spread",
   "labels.auto": "Auto",
   "labels.icon_text": "Icon & text",
   "labels.text_only": "Text only",

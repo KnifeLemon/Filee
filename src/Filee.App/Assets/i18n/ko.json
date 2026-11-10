@@ -741,6 +741,8 @@
   "toolbar.captions": "출력 형식 표시",
   "toolbar.slice_labels": "세그먼트 레이블",
   "toolbar.label_scale": "레이블 크기",
+  "toolbar.ring_size": "그룹 링 크기",
+  "toolbar.ring_spread": "그룹 링 펼침 폭",
   "labels.auto": "자동",
   "labels.icon_text": "아이콘과 텍스트",
   "labels.text_only": "텍스트만",

@@ -727,6 +727,8 @@
   "toolbar.captions": "Tampilkan format keluaran",
   "toolbar.slice_labels": "Label irisan",
   "toolbar.label_scale": "Skala label",
+  "toolbar.ring_size": "Ukuran cincin grup",
+  "toolbar.ring_spread": "Sebaran cincin grup",
   "labels.auto": "Otomatis",
   "labels.icon_text": "Ikon & teks",
   "labels.text_only": "Hanya teks",

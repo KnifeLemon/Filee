@@ -287,6 +287,13 @@ without touching the file's content.
 - PDFs: ExifTool appends its changes as an update, so earlier values stay recoverable inside the file; the window says
   so.
 
+A group's ring scales with the donut: its gap, depth and narrowest slice (`DonutMenu.SubGap`, `SubBand`,
+`DonutGeometry.MinSubWidth`) and the window's room for it (`SubRingSpaceFor`) are multiplied by the ring scale,
+radius ÷ 150 × *Group ring size* (`DonutSettings.GroupRingSize`, 75–150 %), never below the default ring of the
+smallest donut (`MinRingScale`). *Group ring spread* (`GroupRingSpread`, 100–300 %) widens each ring slice after the
+narrowest-slice rule, up to one turn round the donut. Pointer tolerances (`BackdropMargin`, `LeaveEdge`) stay in
+pixels. At the defaults and radius 150 the ring is the same as before these settings.
+
 ### Slice labels
 
 `Controls/SliceLabelLayout.cs` decides what each slice shows and where, without drawing; `DonutMenu.DrawSliceLabel`
@@ -308,9 +315,9 @@ without an icon (a format conversion) shows its name and doesn't decide the othe
 boundaries (CJK by character, Korean by word), one way for the ring: straight on every slice, else along every
 slice (`TextWay`), each through the sizes; beside icons above names, a format's name runs straight. `DonutMenu.LabelPlan` caches each ring's plan by its inputs (items, geometry, scale, settings),
 so labels are laid out once per change, not per frame; the open, pop and flip animations move them with transforms.
-A group's ring doesn't follow the donut's size, so its labels don't either; they follow the Label scale as far as
-its slices (about 30 px wide) have room: `PlanRingToFit` steps the scale down 5 % at a time, not below 100 %, until
-every slice shows its whole name or its icon.
+A group's ring labels follow the ring's scale instead of the donut's, and the Label scale as far as the ring's slices
+have room: `PlanRingToFit` steps the Label scale down 5 % at a time, not below 100 %, until every slice shows its
+whole name or its icon.
 
 The icons are a curated set of Material Design Icons (`SliceIcons.Data.cs`, generated; Apache-2.0, see
 THIRD-PARTY-NOTICES.md), keyed by their MDI names and grouped for the picker. `Preset.Icon` is a key, `"none"`, or

@@ -741,6 +741,8 @@
   "toolbar.captions": "Mostrar formato de saída",
   "toolbar.slice_labels": "Rótulos das fatias",
   "toolbar.label_scale": "Tamanho dos rótulos",
+  "toolbar.ring_size": "Tamanho do anel de grupo",
+  "toolbar.ring_spread": "Abertura do anel de grupo",
   "labels.auto": "Automático",
   "labels.icon_text": "Ícone e texto",
   "labels.text_only": "Só texto",

@@ -1,10 +1,11 @@
-// Every built-in donut, front and back and every group's ring, at the smallest, default and largest donut, at Label
-// scale 80 / 100 / 160 %, in the four Show modes and every language: each label stays inside its slice's safe zone, a
-// whole name keeps its words whole (Chinese and Japanese may break between characters), and a ring has one name size
-// and one icon size. And never a stub: with Auto or Icon & text, a ring's slices that have an icon show one style, a
-// name with an icon is shortened (Icon & text only) to 60 % of its letters at most, an icon never comes with a
-// caption, names alone show their captions on all or none, and the face's names are 11 px × the donut's size at least
-// (never under 10 px, or as small as the Label scale asks). Layout only, nothing is drawn.
+// Every built-in donut, front and back and every group's ring (at three ring sizes and spreads), at the smallest,
+// default and largest donut, at Label scale 80 / 100 / 160 %, in the four Show modes and every language: each label
+// stays inside its slice's safe zone, a whole name keeps its words whole (Chinese and Japanese may break between
+// characters), and a ring has one name size and one icon size. And never a stub: with Auto or Icon & text, a ring's
+// slices that have an icon show one style, a name with an icon is shortened (Icon & text only) to 60 % of its letters
+// at most, an icon never comes with a caption, names alone show their captions on all or none, and the face's names
+// are 11 px × the donut's size at least (never under 10 px, or as small as the Label scale asks). Layout only, nothing
+// is drawn.
 
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
@@ -21,6 +22,17 @@ public class SliceLabelFitTests
 {
     private static readonly double[] Radii = [100, 150, 240];
     private static readonly double[] Scales = [0.8, 1, 1.6];
+
+    // Group ring size and spread: the default, the smallest, and the largest spread out widest.
+    private static readonly (double Size, double Spread)[] Rings = [(1, 1), (0.75, 1), (1.5, 3)];
+
+    // Every combination of the above and the four Show modes.
+    private static readonly (double Radius, double Scale, LabelShow Show, (double Size, double Spread) Ring)[] Settings =
+        [.. from radius in Radii
+            from scale in Scales
+            from show in Enum.GetValues<LabelShow>()
+            from ring in Rings
+            select (radius, scale, show, ring)];
 
     [AvaloniaFact]
     public void Every_label_of_every_built_in_donut_fits_its_slice_in_every_language()
@@ -41,23 +53,22 @@ public class SliceLabelFitTests
                     foreach (var (faceName, ids) in new[] { ("front", profile.PresetIds), ("back", profile.BackPresetIds ?? []) })
                     {
                         donut.Items = Items(ids, store, loc);
-                        foreach (var radius in Radii)
-                            foreach (var scale in Scales)
-                                foreach (var show in Enum.GetValues<LabelShow>())
-                                {
-                                    donut.OuterRadius = radius;
-                                    donut.LabelScale = scale;
-                                    donut.DefaultShow = show;
-                                    var (face, rings) = donut.PlanLabels(bold, regular);
-                                    var where = $"{language} {profile.Id} {faceName} r{radius} ×{scale} {show}";
-                                    Check(face, donut.Items, where, problems, show);
-                                    var floor = Math.Min(SliceLabelLayout.NameSizeFor(scale, donut.DonutScale),
-                                        Math.Max(SliceLabelLayout.MinNameSize, SliceLabelLayout.MinStepNameSize * donut.DonutScale));
-                                    if (face.Select(l => l.Text?.Size).OfType<double>().Any(size => size < floor - 1e-9))
-                                        problems.Add($"{where}: names under {floor:0.#} px");
-                                    for (var g = 0; g < rings.Count; g++)
-                                        Check(rings[g], donut.Items[g].Children ?? [], $"{where} ring {donut.Items[g].Id}", problems, show);
-                                }
+                        foreach (var (radius, scale, show, ring) in Settings)
+                        {
+                            donut.OuterRadius = radius;
+                            donut.LabelScale = scale;
+                            donut.DefaultShow = show;
+                            (donut.GroupRingSize, donut.GroupRingSpread) = ring;
+                            var (face, rings) = donut.PlanLabels(bold, regular);
+                            var where = $"{language} {profile.Id} {faceName} r{radius} ×{scale} {show} ring {ring.Size}/{ring.Spread}";
+                            Check(face, donut.Items, where, problems, show);
+                            var floor = Math.Min(SliceLabelLayout.NameSizeFor(scale, donut.DonutScale),
+                                Math.Max(SliceLabelLayout.MinNameSize, SliceLabelLayout.MinStepNameSize * donut.DonutScale));
+                            if (face.Select(l => l.Text?.Size).OfType<double>().Any(size => size < floor - 1e-9))
+                                problems.Add($"{where}: names under {floor:0.#} px");
+                            for (var g = 0; g < rings.Count; g++)
+                                Check(rings[g], donut.Items[g].Children ?? [], $"{where} ring {donut.Items[g].Id}", problems, show);
+                        }
                     }
             }
         }

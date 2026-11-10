@@ -727,6 +727,8 @@
   "toolbar.captions": "आउटपुट फ़ॉर्मैट दिखाएँ",
   "toolbar.slice_labels": "स्लाइस लेबल",
   "toolbar.label_scale": "लेबल का आकार",
+  "toolbar.ring_size": "समूह रिंग का आकार",
+  "toolbar.ring_spread": "समूह रिंग का फैलाव",
   "labels.auto": "अपने आप",
   "labels.icon_text": "आइकन और टेक्स्ट",
   "labels.text_only": "सिर्फ़ टेक्स्ट",

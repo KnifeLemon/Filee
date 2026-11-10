@@ -727,6 +727,8 @@
   "toolbar.captions": "إظهار صيغة الناتج",
   "toolbar.slice_labels": "تسميات القطاعات",
   "toolbar.label_scale": "حجم التسميات",
+  "toolbar.ring_size": "حجم حلقة المجموعة",
+  "toolbar.ring_spread": "اتساع حلقة المجموعة",
   "labels.auto": "تلقائي",
   "labels.icon_text": "أيقونة ونص",
   "labels.text_only": "نص فقط",
