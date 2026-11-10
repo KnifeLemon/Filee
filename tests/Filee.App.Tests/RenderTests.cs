@@ -1283,6 +1283,58 @@ public class RenderTests
     }
 
     [AvaloniaTheory]
+    [InlineData("en")]
+    [InlineData("de")]
+    [InlineData("ko")]
+    public void A_maximum_box_may_leave_a_side_empty_never_enlarge_and_keep_its_pixels_under_a_size_limit(string language)
+    {
+        // #1270: at most 2300 px tall, the width free, smaller pictures as they are, a size limit met by quality alone.
+        TestServices.EnsureInitialized(language);
+        var loc = AppHost.Get<ILocalizer>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "jpg-70");
+        var vm = new PresetEditorViewModel(preset, loc);
+        vm.Resize = vm.ResizeModes.Single(r => r.Value == Filee.Core.Presets.ResizeMode.Custom);
+        vm.LockAspect = true;
+        vm.CustomWidth = null;
+        vm.CustomHeight = 2300;
+        vm.ShrinkOnly = true;
+        Assert.False(vm.HasImageMaxSize);
+        vm.ImageSizeUnit = vm.SizeUnits.Single(u => u.Value == FileSizeUnit.KB);
+        vm.ImageMaxSize = 300;
+        vm.MaxSizeKeepsPixels = true;
+        Assert.True(vm.HasImageMaxSize);
+        Assert.Null(vm.CustomSizeError);
+
+        var window = new PresetEditorWindow { DataContext = vm, Height = 900 };
+        window.Show();
+        Pump();
+        Save(window, $"preset-max-box-{language}.png");
+        // Without the lock both sides are needed: the save waits, with the reason under the boxes.
+        vm.LockAspect = false;
+        Pump();
+        Assert.NotNull(vm.CustomSizeError);
+        Assert.False(vm.IsValid);
+        Save(window, $"preset-max-box-missing-{language}.png");
+        window.Close();
+        Assert.False(vm.Apply());
+
+        vm.LockAspect = true;
+        Assert.True(vm.Apply());
+        var size = preset.Image.CustomSize!;
+        Assert.Equal((Filee.Core.Presets.CustomImageSize.FreeSide, 2300, true, true), (size.Width, size.Height, size.LockAspect, size.ShrinkOnly));
+        Assert.True(preset.Image.MaxSizeKeepsPixels);
+
+        // The empty side reads back empty.
+        var reloaded = new PresetEditorViewModel(preset, loc);
+        Assert.Equal(((int?)null, (int?)2300, true, true), (reloaded.CustomWidth, reloaded.CustomHeight, reloaded.ShrinkOnly, reloaded.MaxSizeKeepsPixels));
+
+        // Keeping the pixels means nothing without a maximum, and is not stored then.
+        reloaded.ImageMaxSize = 0;
+        Assert.True(reloaded.Apply());
+        Assert.False(preset.Image.MaxSizeKeepsPixels);
+    }
+
+    [AvaloniaTheory]
     [InlineData("en", false)]
     [InlineData("en", true)]
     [InlineData("de", false)]

@@ -310,6 +310,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _customWidth = _edit.Image.CustomSize?.Width ?? 1920;
         _customHeight = _edit.Image.CustomSize?.Height ?? 1080;
         _lockAspect = _edit.Image.CustomSize?.LockAspect ?? false;
+        _shrinkOnly = _edit.Image.CustomSize?.ShrinkOnly ?? false;
+        // A side left empty is stored as the largest one (CustomImageSize.FreeSide) and comes back empty.
+        if (_lockAspect && _customWidth >= CustomImageSize.FreeSide)
+            _customWidth = null;
+        if (_lockAspect && _customHeight >= CustomImageSize.FreeSide)
+            _customHeight = null;
+        _maxSizeKeepsPixels = _edit.Image.MaxSizeKeepsPixels;
         _minShortEdge = _edit.Image.ClampedMinShortEdge ?? 1080;
         _setDpi = _edit.Image.Dpi.HasValue;
         _dpi = _edit.Image.Dpi ?? 300;
@@ -480,7 +487,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
         nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
-        nameof(ShowImageSize), nameof(SizeRangeError), nameof(IsValid))]
+        nameof(ShowImageSize), nameof(SizeRangeError), nameof(CustomSizeError), nameof(IsValid))]
     private Choice<string> _target;
 
     // A target whose fields are all turned off isn't added to Targets (the list follows the switches), but it stays the
@@ -530,7 +537,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
                 return;
             _livePhotoValue = value.Value;
             OnPropertyChanged();
-            foreach (var name in (string[])[nameof(IsLivePhoto), nameof(LivePhotoHint), nameof(ShowImage), nameof(ShowPdf), nameof(ShowSaveEveryFrame), nameof(ShowImageSize), nameof(SizeRangeError), nameof(IsValid)])
+            foreach (var name in (string[])[nameof(IsLivePhoto), nameof(LivePhotoHint), nameof(ShowImage), nameof(ShowPdf), nameof(ShowSaveEveryFrame), nameof(ShowImageSize), nameof(SizeRangeError), nameof(CustomSizeError), nameof(IsValid)])
                 OnPropertyChanged(name);
         }
     }
@@ -622,6 +629,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     }
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowPercent), nameof(ShowLongEdge), nameof(ShowWidth), nameof(ShowCustom), nameof(ShowMinShortEdge))]
+    [NotifyPropertyChangedFor(nameof(CustomSizeError), nameof(IsValid))]
     private Choice<ResizeMode> _resize;
 
     [ObservableProperty] private Choice<ImageRotation> _rotation;
@@ -644,7 +652,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>A picture's size range (#553, #662) in <see cref="ImageSizeUnit"/>; 0 or empty = none.</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(SizeRangeError), nameof(IsValid))] private decimal? _imageMinSize;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(SizeRangeError), nameof(IsValid))] private decimal? _imageMaxSize;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(SizeRangeError), nameof(IsValid), nameof(HasImageMaxSize))] private decimal? _imageMaxSize;
+
+    /// <summary>With a maximum: keep the pixels and lower only the quality (ImageOptions.MaxSizeKeepsPixels, #1270).</summary>
+    [ObservableProperty] private bool _maxSizeKeepsPixels;
+
+    /// <summary>A maximum is set, so keeping the pixels has something to do.</summary>
+    public bool HasImageMaxSize => ImageMaxSize > 0;
 
     /// <summary>KB or MB, for both ends of the range; not saved (the preset keeps megabytes).</summary>
     [ObservableProperty, NotifyPropertyChangedFor(nameof(SizeFormat), nameof(SizeIncrement))] private Choice<FileSizeUnit> _imageSizeUnit;
@@ -698,10 +712,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private int _resizePercent;
     [ObservableProperty] private int _longEdge;
     [ObservableProperty] private int _width;
-    [ObservableProperty] private int _customWidth;
-    [ObservableProperty] private int _customHeight;
+    /// <summary>With Custom: the box, in px; one of them may be left empty while the aspect is kept (#1270).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CustomSizeError), nameof(IsValid))] private int? _customWidth;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CustomSizeError), nameof(IsValid))] private int? _customHeight;
     /// <summary>With Custom: keep each file's shape and fit inside, instead of stretching (ImageOptions.LockAspect).</summary>
-    [ObservableProperty] private bool _lockAspect;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(CustomSizeError), nameof(IsValid))] private bool _lockAspect;
+    /// <summary>With Custom and the aspect kept: never enlarge a picture that already fits (CustomImageSize.ShrinkOnly).</summary>
+    [ObservableProperty] private bool _shrinkOnly;
     /// <summary>With MinShortEdge: the shortest the shorter edge may be (ImageOptions.MinShortEdge).</summary>
     [ObservableProperty] private int _minShortEdge;
     [ObservableProperty] private bool _setDpi;
@@ -1152,7 +1169,14 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     private static double SizeLimit(decimal? megabytes) => (double)Math.Clamp(megabytes ?? 0, 0, 4096);
 
     public string? NameError => string.IsNullOrWhiteSpace(Name) ? _loc["presets.name_required"] : null;
-    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null;
+    public bool IsValid => NameError is null && SizeRangeError is null && DestinationError is null && CustomSizeError is null;
+
+    /// <summary>
+    /// The width × height boxes, while shown: a stretch needs both sides, a box that keeps the aspect at least one.
+    /// </summary>
+    public string? CustomSizeError => ShowImage && ShowCustom && (LockAspect ? CustomWidth is null && CustomHeight is null : CustomWidth is null || CustomHeight is null)
+        ? _loc["presets.custom_size_missing"]
+        : null;
 
     /// <summary>A size from the range's boxes in megabytes.</summary>
     private decimal? Megabytes(decimal? size) => ImageSizeUnit.Value == FileSizeUnit.KB ? size / 1000 : size;
@@ -1173,13 +1197,20 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Only where the field is shown, as with SaveEveryFrame below: a limit left behind by a JPG target fits nothing.
         image.MaxSizeMb = ShowQuality ? SizeLimit(Megabytes(ImageMaxSize)) : 0;
         image.MinSizeMb = ShowImageSize ? SizeLimit(Megabytes(ImageMinSize)) : 0;
+        image.MaxSizeKeepsPixels = image.MaxSizeMb > 0 && MaxSizeKeepsPixels;
         if (Resize.Value == ResizeMode.Custom)
         {
             // Custom sizing is stored as CustomSize with Resize None, never as a resize name an older version rejects
             // (it would read presets.json as broken and fall back to the built-in presets, and the next save would
             // write those over the user's own; issue #576).
             image.Resize = ResizeMode.None;
-            image.CustomSize = new CustomImageSize { Width = Math.Clamp(CustomWidth, CustomImageSize.MinSide, CustomImageSize.MaxSide), Height = Math.Clamp(CustomHeight, CustomImageSize.MinSide, CustomImageSize.MaxSide), LockAspect = LockAspect };
+            // An empty side is free with the aspect kept (#1270). The card can be hidden for another target, where a box
+            // nobody can fix falls back to the defaults instead of blocking the save.
+            var (width, height) = (CustomWidth, CustomHeight);
+            if (!LockAspect || width is null && height is null)
+                (width, height) = (width ?? 1920, height ?? 1080);
+            static int Side(int? side) => side is { } px ? Math.Clamp(px, CustomImageSize.MinSide, CustomImageSize.MaxSide) : CustomImageSize.FreeSide;
+            image.CustomSize = new CustomImageSize { Width = Side(width), Height = Side(height), LockAspect = LockAspect, ShrinkOnly = LockAspect && ShrinkOnly };
             image.MinShortEdge = null;
         }
         else if (Resize.Value == ResizeMode.MinShortEdge)

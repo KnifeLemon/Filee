@@ -205,21 +205,28 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
 
         // Video → animated GIF / APNG can play faster or slower (the image options' playback speed).
         var speed = step.To is "gif" or "apng" ? step.Preset.Image.PlaybackSpeed : 1;
-        IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder) => still
+        IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder, bool subtitles) => still
             ? MediaEncoding.PlanStill(input, output, step.To, media, info)
-            : MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, cover, encoders, encoder, speed, crop: crop);
+            : MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, cover, encoders, encoder, speed, crop: crop,
+                subtitles: subtitles);
+        IReadOnlyList<FfmpegPass> Capped(bool subtitles) =>
+            kbps > 0 ? MediaEncoding.WithMaxRate(Plan(hardware, subtitles), kbps) : Plan(hardware, subtitles);
         // Throws for a missing stream before anything is written (an existing file of that name stays untouched).
-        var passes = kbps > 0 ? MediaEncoding.WithMaxRate(Plan(hardware), kbps) : Plan(hardware);
+        var passes = Capped(subtitles: true);
         // FFmpeg reports the position in the output, which a speed change makes longer or shorter.
         var duration = still ? MediaEncoding.StillDuration : info.Duration / speed;
         // With a size limit the first encode takes most of the bar, a second one (if needed) the rest.
         var encoding = limit > 0 && progress is not null ? new Progress<double>(p => progress.Report(p * 0.9)) : progress;
+        var withoutSubtitles = false;
         try
         {
-            await RunWithFallbackAsync(passes, hardware, Plan,
-                planned => RunPassesAsync(ffmpeg, planned, output, duration, encoding, cancellationToken), output, _logger, cancellationToken);
+            withoutSubtitles = await RunWithoutSubtitlesOnFailureAsync(MediaEncoding.MapsSubtitles(passes),
+                subtitles => RunWithFallbackAsync(subtitles ? passes : Capped(subtitles: false), hardware, encoder => Plan(encoder, subtitles),
+                    planned => RunPassesAsync(ffmpeg, planned, output, duration, encoding, cancellationToken), output, _logger, cancellationToken),
+                output, _logger, cancellationToken);
             if (limit > 0)
-                await FitAgainAsync(ffmpeg, step, input, output, media, info, encoders, cover, crop, limit, kbps, progress, cancellationToken);
+                await FitAgainAsync(ffmpeg, step, input, output, media, info, encoders, cover, crop, limit, kbps, !withoutSubtitles, progress,
+                    cancellationToken);
         }
         catch
         {
@@ -228,6 +235,12 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             throw;
         }
 
+        // The user learns that the subtitles are gone (#789); Blu-ray and DVD subtitles can't go into MP4, MOV or WebM,
+        // and MKV keeps them.
+        if (withoutSubtitles)
+            step.Notice?.Invoke("notice.subtitles_not_kept");
+        else if (!still && MediaEncoding.LeavesOutPictureSubtitles(step.To, info))
+            step.Notice?.Invoke("notice.picture_subtitles_left_out");
         progress?.Report(1);
         return [output];
     }
@@ -238,15 +251,16 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     /// when that still doesn't fit (or the length is unknown), rather than hand over a file too large.
     /// </summary>
     private static async Task FitAgainAsync(string ffmpeg, ConversionStep step, string input, string output, MediaOptions fitting,
-        MediaInfo info, IReadOnlySet<string>? encoders, CoverExtras? cover, string? crop, long limit, int kbps, IProgress<double>? progress,
-        CancellationToken cancellationToken)
+        MediaInfo info, IReadOnlySet<string>? encoders, CoverExtras? cover, string? crop, long limit, int kbps, bool subtitles,
+        IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var size = new FileInfo(output).Length;
         if (size > limit && kbps > 0)
         {
             kbps = (int)(kbps * (double)limit / size * 0.95);
             var again = progress is null ? null : new Progress<double>(p => progress.Report(0.9 + p * 0.1));
-            var passes = MediaEncoding.AtBitrate(MediaEncoding.Plan(input, output, step.To, fitting, info, step.WorkDirectory, cover, encoders, null, 1, crop: crop), kbps);
+            var passes = MediaEncoding.AtBitrate(MediaEncoding.Plan(input, output, step.To, fitting, info, step.WorkDirectory, cover, encoders, null, 1, crop: crop,
+                subtitles: subtitles), kbps);
             await RunPassesAsync(ffmpeg, passes, output, info.Duration, again, cancellationToken);
             size = new FileInfo(output).Length;
         }
@@ -549,6 +563,46 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             await run(plan(null));
         }
     }
+
+    /// <summary>
+    /// Runs the conversion with the subtitle tracks (<paramref name="run"/>(true)); when FFmpeg fails with them, once more
+    /// without (#789). A video converted before subtitles were kept must not start failing over a track FFmpeg can't
+    /// convert or mux. Returns true when the subtitles were left out. Cancellation and failures that are about the
+    /// output, not the subtitles (<see cref="RetriesWithoutSubtitles"/>), are not retried.
+    /// </summary>
+    internal static async Task<bool> RunWithoutSubtitlesOnFailureAsync(bool mapsSubtitles, Func<bool, Task> run, string output, ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (!mapsSubtitles)
+        {
+            await run(true);
+            return false;
+        }
+        try
+        {
+            await run(true);
+            return false;
+        }
+        catch (Exception ex) when (RetriesWithoutSubtitles(ex, cancellationToken))
+        {
+            logger.LogWarning("{File}: FFmpeg failed with the subtitle tracks ({Reason}); converting it again without them", output, ex.Message);
+            TryDelete(output);
+            await run(false);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// True when a conversion that failed with subtitle tracks is worth running again without them: FFmpeg itself failed
+    /// (not cancelled, not stalled), and not because the output can't be written (a full disk, no permission), which
+    /// would fail the same way again.
+    /// </summary>
+    internal static bool RetriesWithoutSubtitles(Exception error, CancellationToken cancellationToken) =>
+        error is InvalidOperationException && !cancellationToken.IsCancellationRequested
+        && !OutputErrors.Any(reason => error.Message.Contains(reason, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>FFmpeg's words (its C library's error texts) for an output it can't write.</summary>
+    private static readonly string[] OutputErrors = ["No space left on device", "Permission denied", "File too large", "Disk quota exceeded"];
 
     /// <summary>Runs every pass, then checks that FFmpeg wrote something.</summary>
     private static async Task RunPassesAsync(string ffmpeg, IReadOnlyList<FfmpegPass> passes, string output, TimeSpan? duration,

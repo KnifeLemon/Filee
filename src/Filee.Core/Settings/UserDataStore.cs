@@ -1077,6 +1077,10 @@ internal static class SettingsMigrations
         // v75: property lists (#1256) learn the data donut; custom claims stay put.
         if (from < 75)
             changed |= LearnExtensions(profiles, out _, ["plist"]);
+        // v76: QuickTime movies saved as .quicktime (#1283) learn the video donut and Insta360 .insp photos (#711) the
+        //      images donut; custom claims stay put.
+        if (from < 76)
+            changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
         return changed;
     }
 

@@ -174,6 +174,59 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.False(fields.Single(f => f.Key == "IFD1:ThumbnailImage").Editable);
     }
 
+    [Theory]
+    [InlineData(1000, true)]
+    [InlineData(999, false)]
+    public void A_list_of_structures_ExifTool_stopped_at_1000_entries_is_marked_in_every_field_of_it(int entries, bool cut)
+    {
+        // The software agent of entry 1,200 isn't read: only entry 1's shows, as one value.
+        var ids = string.Join(",", Enumerable.Range(1, entries).Select(i => $"\"xmp.iid:{i}\""));
+        var fields = ExifTool.Parse($$"""
+            [{"SourceFile": "long-history.png",
+              "XMP:XMP-xmpMM:DocumentID": "xmp.did:1",
+              "XMP:XMP-xmpMM:HistoryInstanceID": [{{ids}}],
+              "XMP:XMP-xmpMM:HistorySoftwareAgent": "Camera app 1.0",
+              "XMP:XMP-dc:Title": "Long history"}]
+            """);
+
+        string? list = cut ? "XMP-xmpMM:History" : null;
+        Assert.Equal(list, fields.Single(f => f.Key == "XMP-xmpMM:HistoryInstanceID").CutShortList);
+        Assert.Equal(list, fields.Single(f => f.Key == "XMP-xmpMM:HistorySoftwareAgent").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-xmpMM:DocumentID").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-dc:Title").CutShortList);
+        // Still taken out whole, by Remove location or by hand: ExifTool writes with every entry read.
+        Assert.True(fields.Single(f => f.Key == "XMP-xmpMM:HistorySoftwareAgent").Editable);
+        string[] lists = cut ? ["XMP-xmpMM:History"] : [];
+        Assert.Equal(lists, ExifTool.CutShortLists(fields));
+    }
+
+    [Fact]
+    public void The_warning_ExifTool_gives_marks_a_cut_list_whose_fields_read_fewer_than_1000_entries()
+    {
+        var fields = ExifTool.Parse("""
+            [{"SourceFile": "long-history.png",
+              "XMP:XMP-xmpMM:HistoryInstanceID": ["xmp.iid:1", "xmp.iid:2"],
+              "XMP:XMP-xmpMM:HistorySoftwareAgent": "Camera app 1.0",
+              "XMP:XMP-xmpMM:InstanceID": "xmp.iid:3",
+              "XMP:XMP-iptcExt:LocationShownCity": "Venice",
+              "ExifTool:Warning": "[Minor] Extracted only 1000 xmpMM:History items. Ignore minor errors to extract all"}]
+            """);
+
+        Assert.Equal("XMP-xmpMM:History", fields.Single(f => f.Key == "XMP-xmpMM:HistoryInstanceID").CutShortList);
+        Assert.Equal("XMP-xmpMM:History", fields.Single(f => f.Key == "XMP-xmpMM:HistorySoftwareAgent").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-xmpMM:InstanceID").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-iptcExt:LocationShownCity").CutShortList);
+        Assert.Equal(["XMP-xmpMM:History"], ExifTool.CutShortLists(fields));
+
+        // A tag ID starts in lower case ("subject"); the field's name doesn't.
+        var keywords = ExifTool.Parse("""
+            [{"XMP:XMP-dc:Subject": ["a", "b"], "XMP:XMP-dc:Title": "x",
+              "ExifTool:Warning": "[Minor] Extracted only 1000 dc:subject items. Ignore minor errors to extract all"}]
+            """);
+        Assert.Equal("XMP-dc:Subject", keywords.Single(f => f.Key == "XMP-dc:Subject").CutShortList);
+        Assert.Null(keywords.Single(f => f.Key == "XMP-dc:Title").CutShortList);
+    }
+
     [Fact]
     public async Task Changes_removals_and_additions_go_into_a_copy_and_the_picture_stays_as_it_was()
     {
