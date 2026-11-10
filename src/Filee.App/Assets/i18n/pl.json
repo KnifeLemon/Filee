@@ -229,7 +229,7 @@
   "engine.pdf-slides.description": "Zamienia PDF na slajdy PowerPoint: każda strona staje się obrazem na osobnym slajdzie (wygląda jak PDF, bez edycji), a tekst strony trafia do notatek prelegenta.",
   "engine.pdf-tables.name": "PDF tables (built-in)",
   "engine.pdf-tables.description": "Zamienia tabele narysowane liniami w PDF na skoroszyt Excel, każdą na osobnym arkuszu, z liczbami i datami jako prawdziwymi wartościami.",
-  "engine.document-tables.name": "Tabele z dokumentów (wbudowane)",
+  "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Zamienia tabele z dokumentów Word (DOCX) i stron internetowych (HTML, MHTML) na skoroszyt Excel, każdą na osobnym arkuszu, z liczbami i datami jako prawdziwymi wartościami.",
   "engine.email.name": "E-mail (built-in)",
   "engine.email.description": "E-maile (EML, Outlook MSG) do HTML i tekstu z nadawcą, odbiorcami i datą, razem z obrazami; załączniki do ZIP.\nMSG do EML. Zapisane strony internetowe (MHTML) do jednego pliku HTML razem z obrazami.",

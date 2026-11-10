@@ -222,7 +222,7 @@
   "engine.pdf-slides.description": "PDF लाई PowerPoint स्लाइडमा रूपान्तरण गर्दछ: प्रत्येक पृष्ठ आफ्नै स्लाइडमा तस्बिर बन्छ (PDF जस्तै देखिन्छ, सम्पादन गर्न मिल्दैन), र पृष्ठको पाठ वक्ता नोटमा रहन्छ।",
   "engine.pdf-tables.name": "PDF tables (built-in)",
   "engine.pdf-tables.description": "PDF मा रेखाले बनाइएका तालिकाहरूलाई Excel वर्कबुकमा बदल्छ, हरेक तालिका एउटा शिट, अङ्क र मितिहरू वास्तविक मानका रूपमा।",
-  "engine.document-tables.name": "कागजात तालिका (बिल्ट-इन)",
+  "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Word कागजात (DOCX) र वेब पेज (HTML, MHTML) का तालिकाहरूलाई Excel वर्कबुकमा बदल्छ, हरेक तालिका एउटा शिट, अङ्क र मितिहरू वास्तविक मानका रूपमा।",
   "engine.email.name": "E-mail (built-in)",
   "engine.email.description": "इमेलहरू (EML, Outlook MSG) लाई प्रेषक, प्राप्तकर्ता र मितिसहित HTML र पाठमा रूपान्तरण गर्दछ, तस्बिरहरूसहित; संलग्नकहरू ZIP मा।\nMSG लाई EML मा। सुरक्षित वेब पृष्ठहरू (MHTML) लाई तिनका तस्बिरहरूसहित एउटै HTML फाइलमा।",

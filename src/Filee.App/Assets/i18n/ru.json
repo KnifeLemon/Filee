@@ -229,7 +229,7 @@
   "engine.pdf-slides.description": "Превращает PDF в слайды PowerPoint: каждая страница становится картинкой на своём слайде (выглядит как PDF, но не редактируется), текст страницы — в заметках докладчика.",
   "engine.pdf-tables.name": "PDF tables (built-in)",
   "engine.pdf-tables.description": "Превращает таблицы PDF, нарисованные линиями, в книгу Excel — по листу на таблицу, с числами и датами как настоящими значениями.",
-  "engine.document-tables.name": "Таблицы документов (встроенный)",
+  "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Превращает таблицы документов Word (DOCX) и веб-страниц (HTML, MHTML) в книгу Excel — по листу на таблицу, с числами и датами как настоящими значениями.",
   "engine.email.name": "E-mail (built-in)",
   "engine.email.description": "Письма (EML, Outlook MSG) — в HTML и текст с отправителем, получателями и датой, вместе с картинками; вложения — в ZIP.\nMSG в EML. Сохранённые веб-страницы (MHTML) — в один HTML-файл с картинками.",

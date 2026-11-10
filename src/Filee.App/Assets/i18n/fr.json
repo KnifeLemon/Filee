@@ -229,7 +229,7 @@
   "engine.pdf-slides.description": "Convertit les PDF en diapositives PowerPoint : chaque page devient une image sur sa propre diapositive (fidèle au PDF, non modifiable), avec le texte de la page dans les notes du présentateur.",
   "engine.pdf-tables.name": "PDF tables (built-in)",
   "engine.pdf-tables.description": "Transforme les tableaux tracés avec des lignes d'un PDF en classeur Excel, une feuille par tableau, avec les nombres et les dates en vraies valeurs.",
-  "engine.document-tables.name": "Tableaux de documents (intégré)",
+  "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Transforme les tableaux des documents Word (DOCX) et des pages web (HTML, MHTML) en classeur Excel, une feuille par tableau, avec les nombres et les dates en vraies valeurs.",
   "engine.email.name": "E-mail (built-in)",
   "engine.email.description": "E-mails (EML, MSG Outlook) en HTML et texte avec expéditeur, destinataires et date, images comprises ; pièces jointes dans un ZIP.\nMSG en EML. Pages web enregistrées (MHTML) en un seul fichier HTML avec leurs images.",

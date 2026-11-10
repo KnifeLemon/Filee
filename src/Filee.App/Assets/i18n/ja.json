@@ -222,7 +222,7 @@
   "engine.pdf-slides.description": "PDFをPowerPointのスライドに変換します。各ページを画像にし、1ページずつ別のスライドに配置します（見た目はPDFと同じですが、編集はできません）。ページ内のテキストは発表者ノートに入ります。",
   "engine.pdf-tables.name": "PDF tables (built-in)",
   "engine.pdf-tables.description": "PDF の罫線で描かれた表を Excel ブックに変換します。表ごとに 1 シートで、数値と日付は実際の値になります。",
-  "engine.document-tables.name": "文書の表（組み込み）",
+  "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "Word 文書（DOCX）と Web ページ（HTML、MHTML）の表を Excel ブックに変換します。表ごとに 1 シートで、数値と日付は実際の値になります。",
   "engine.email.name": "E-mail (built-in)",
   "engine.email.description": "メール（EML、Outlook MSG）を、差出人、宛先、日付、画像を含めてHTMLとテキストに変換します。添付ファイルはZIPにまとめます。\nMSGからEMLへの変換にも対応します。画像を含む保存済みのWebページ（MHTML）を、1つのHTMLファイルに変換します。",

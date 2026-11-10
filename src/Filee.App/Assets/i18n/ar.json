@@ -222,7 +222,7 @@
   "engine.pdf-slides.description": "تحويل PDF إلى شرائح PowerPoint: تصبح كل صفحة صورة على شريحة مستقلة (بنفس مظهر PDF وغير قابلة للتحرير)، مع نص الصفحة في ملاحظات المتحدث.",
   "engine.pdf-tables.name": "PDF tables (built-in)",
   "engine.pdf-tables.description": "يحوّل الجداول المرسومة بخطوط في ملف PDF إلى مصنف Excel، لكل جدول ورقة، مع الأرقام والتواريخ كقيم حقيقية.",
-  "engine.document-tables.name": "جداول المستندات (مدمج)",
+  "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "يحوّل جداول مستندات Word (DOCX) وصفحات الويب (HTML وMHTML) إلى مصنف Excel، لكل جدول ورقة، مع الأرقام والتواريخ كقيم حقيقية.",
   "engine.email.name": "E-mail (built-in)",
   "engine.email.description": "تحويل رسائل البريد (EML وOutlook MSG) إلى HTML ونص مع المرسل والمستلمين والتاريخ والصور، وتجميع المرفقات في ZIP.\nتحويل MSG إلى EML، وصفحات الويب المحفوظة (MHTML) إلى ملف HTML واحد مع صورها.",

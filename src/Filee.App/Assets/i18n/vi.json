@@ -229,7 +229,7 @@
   "engine.pdf-slides.description": "Chuyển PDF thành trang chiếu PowerPoint: mỗi trang thành một ảnh trên một trang chiếu riêng (trông giống PDF, không chỉnh sửa được), văn bản của trang được đưa vào ghi chú của người thuyết trình.",
   "engine.pdf-tables.name": "Bảng PDF (tích hợp)",
   "engine.pdf-tables.description": "Chuyển các bảng kẻ bằng đường kẻ trong PDF thành sổ làm việc Excel, mỗi bảng một trang tính, số và ngày là giá trị thực.",
-  "engine.document-tables.name": "Bảng trong tài liệu (tích hợp)",
+  "engine.document-tables.name": "Bảng tài liệu (tích hợp)",
   "engine.document-tables.description": "Chuyển các bảng trong tài liệu Word (DOCX) và trang web (HTML, MHTML) thành sổ làm việc Excel, mỗi bảng một trang tính, số và ngày là giá trị thực.",
   "engine.email.name": "Email (tích hợp)",
   "engine.email.description": "Email (EML, Outlook MSG) sang HTML và văn bản kèm người gửi, người nhận và ngày, có cả ảnh; tệp đính kèm vào một tệp ZIP.\nMSG sang EML. Trang web đã lưu (MHTML) sang một tệp HTML kèm ảnh.",

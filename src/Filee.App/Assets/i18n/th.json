@@ -222,7 +222,7 @@
   "engine.pdf-slides.description": "แปลง PDF เป็นสไลด์ PowerPoint แต่ละหน้าจะกลายเป็นรูปภาพบนสไลด์ของตัวเอง (หน้าตาเหมือน PDF แก้ไขข้อความไม่ได้) โดยมีข้อความของหน้านั้นอยู่ในบันทึกของผู้บรรยาย",
   "engine.pdf-tables.name": "PDF tables (built-in)",
   "engine.pdf-tables.description": "แปลงตารางที่วาดด้วยเส้นใน PDF เป็นสมุดงาน Excel ตารางละหนึ่งชีต โดยตัวเลขและวันที่เป็นค่าจริง",
-  "engine.document-tables.name": "ตารางในเอกสาร (ในตัว)",
+  "engine.document-tables.name": "Document tables (built-in)",
   "engine.document-tables.description": "แปลงตารางในเอกสาร Word (DOCX) และหน้าเว็บ (HTML, MHTML) เป็นสมุดงาน Excel ตารางละหนึ่งชีต โดยตัวเลขและวันที่เป็นค่าจริง",
   "engine.email.name": "E-mail (built-in)",
   "engine.email.description": "อีเมล (EML, Outlook MSG) เป็น HTML และข้อความ พร้อมผู้ส่ง ผู้รับ วันที่ และรูปภาพ แนบไฟล์ลงใน ZIP\nMSG เป็น EML บันทึกหน้าเว็บ (MHTML) เป็นไฟล์ HTML ไฟล์เดียวพร้อมรูปภาพ",
