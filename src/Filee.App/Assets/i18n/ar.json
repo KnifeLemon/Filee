@@ -164,6 +164,8 @@
   "error.fon_too_large": "خط ‎.fon كبير جدًا بحيث لا يمكن تحويله",
   "error.fon_damaged": "ملف ‎.fon تالف أو غير مكتمل",
   "error.m4s_needs_init": "ملف ‎.m4s هذا جزء من فيديو متدفّق، ولا يمكن قراءته دون مقطع البداية (init) المنفصل الخاص به",
+  "error.exe_unreadable": "هذا ليس برنامج Windows أو مكتبة يستطيع Filee قراءتها، أو أن الملف تالف",
+  "error.exe_no_icon": "لا يحتوي هذا الملف على أيقونة خاصة به (يعرض Windows له أيقونة قياسية)",
   "notice.pdf_not_smaller": "تعذّر تقليل الحجم، لذا نُسخ الملف كما هو",
   "notice.under_min_size": "تم الحفظ، لكنه أصغر من الحد الأدنى لحجم الملف",
   "notice.with_under_min_size": "{0} · {1}",

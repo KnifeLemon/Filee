@@ -170,6 +170,8 @@
   "error.fon_too_large": ".fon 字型太大，無法轉換",
   "error.fon_damaged": ".fon 檔案已損壞或不完整",
   "error.m4s_needs_init": "此 .m4s 是串流影片的一個片段，沒有另外的起始（init）區段就無法讀取",
+  "error.exe_unreadable": "這不是 Filee 能讀取的 Windows 程式或程式庫，或檔案已損壞",
+  "error.exe_no_icon": "此檔案沒有自己的圖示（Windows 會為它顯示標準圖示）",
   "notice.pdf_not_smaller": "無法再縮小，已原樣複製",
   "notice.under_min_size": "已儲存，但小於最小檔案大小",
   "notice.with_under_min_size": "{0} · {1}",

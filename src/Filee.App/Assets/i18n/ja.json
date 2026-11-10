@@ -164,6 +164,8 @@
   "error.fon_too_large": ".fonフォントが大きすぎて変換できません",
   "error.fon_damaged": ".fonファイルが破損しているか、途中で切れています",
   "error.m4s_needs_init": "この .m4s はストリーミング動画の一部で、別にある開始（init）セグメントがないと読み込めません",
+  "error.exe_unreadable": "Filee で読み込める Windows のプログラムやライブラリではないか、ファイルが壊れています",
+  "error.exe_no_icon": "このファイルには独自のアイコンがありません（Windows では標準のアイコンが表示されます）",
   "notice.pdf_not_smaller": "サイズを小さくできなかったため、元のままコピーしました",
   "notice.under_min_size": "保存しましたが、最小ファイルサイズより小さいです",
   "notice.with_under_min_size": "{0} · {1}",

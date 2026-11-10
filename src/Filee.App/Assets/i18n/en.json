@@ -170,6 +170,8 @@
   "error.fon_too_large": "The .fon font is too large to convert",
   "error.fon_damaged": "The .fon file is damaged or cut short",
   "error.m4s_needs_init": "This .m4s is one piece of a streamed video: it can't be read without its separate start (init) segment",
+  "error.exe_unreadable": "This isn't a Windows program or library Filee can read, or it is damaged",
+  "error.exe_no_icon": "This file has no icon of its own (Windows shows a standard one for it)",
   "notice.pdf_not_smaller": "Couldn't make it smaller, so it was copied as it is",
   "notice.under_min_size": "Saved, but smaller than the minimum file size",
   "notice.with_under_min_size": "{0} · {1}",
