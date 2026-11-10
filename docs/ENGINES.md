@@ -98,6 +98,14 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   name the oldest macOS it runs on (`minimumMacOS`); an older Mac isn't offered it.
 - `EngineInstaller` verifies the SHA-256 before unpacking and unpacks into a staging folder that replaces the
   engine folder only when complete. Redirects to mirrors (even plain HTTP) are followed, because the hash decides.
+- Without internet (#447) the same downloads can come from a folder: the card's *Offline* menu saves them on a
+  computer with internet (*Save the files for another computer…*, `filee engines download <id> -o <folder>`), copies
+  their links, and installs them (*Install from downloaded files…*, `filee engines install <id> --from <folder>`). A
+  file counts as a component's when it has the exact size engines.json pins (its download's name breaks a tie), and
+  only the top level of a folder is looked at. Every file is copied into `.downloads` and checked against its
+  SHA-256 before the first one is unpacked, so a missing or wrong file leaves the package as it was. Only the
+  downloads are taken, never an installed engine folder: an unpacked and trimmed folder has nothing pinned to check
+  it against. The other computer needs the same Filee version (the same engines.json).
 - Engines go to `%LOCALAPPDATA%\Filee\engines`: outside the app folder, so updates keep them, and inside Filee's
   install root, so uninstalling removes them.
 - LibreOffice and calibre come as MSIs and are unpacked with an administrative install (`msiexec /a`): files only,

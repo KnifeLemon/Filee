@@ -15,6 +15,7 @@ using System.Diagnostics;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
@@ -444,6 +445,53 @@ public partial class EnginesPage : UserControl
             return;
         if (!vm.UseOwnCopy(package, path))
             await AppHost.Get<WindowService>().MessageAsync(window, loc.Format("engines.use_own_missing", string.Join(", ", programs)));
+    }
+
+    /// <summary>Installs from the downloads the user brought from another computer (#447).</summary>
+    private async void OnInstallFromFiles(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: EnginePackageState package } || DataContext is not EnginesPageViewModel vm ||
+            TopLevel.GetTopLevel(this) is not Window window)
+            return;
+        var files = await window.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = AppHost.Get<ILocalizer>().Format("engines.install_from_files_title", package.Name),
+            AllowMultiple = true,
+        });
+        var paths = files.Select(f => f.TryGetLocalPath()).OfType<string>().ToList();
+        if (paths.Count > 0)
+            await vm.InstallFromFilesAsync(package, paths);
+    }
+
+    /// <summary>Saves the package's downloads in a folder, to install them on a computer without internet (#447).</summary>
+    private async void OnSaveFiles(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: EnginePackageState package } || DataContext is not EnginesPageViewModel vm ||
+            TopLevel.GetTopLevel(this) is not Window window)
+            return;
+        var loc = AppHost.Get<ILocalizer>();
+        var folders = await window.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = loc.Format("engines.save_files_title", package.Name),
+            AllowMultiple = false,
+        });
+        if (folders.FirstOrDefault()?.TryGetLocalPath() is not { } folder)
+            return;
+        var (saved, error) = await vm.SaveFilesAsync(package, folder);
+        if (saved)
+            await AppHost.Get<WindowService>().MessageAsync(window, loc.Format("engines.save_files_done", package.Name, folder));
+        else if (error is not null)
+            await AppHost.Get<WindowService>().MessageAsync(window, loc.Format("engines.save_files_failed", error));
+    }
+
+    /// <summary>Puts the name, URL and SHA-256 of each download on the clipboard, to fetch them elsewhere (#447).</summary>
+    private async void OnCopyLinks(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not MenuItem { DataContext: EnginePackageState package } || TopLevel.GetTopLevel(this) is not Window window ||
+            window.Clipboard is not { } clipboard)
+            return;
+        await clipboard.SetTextAsync(EnginesPageViewModel.DownloadLinks(package));
+        await AppHost.Get<WindowService>().MessageAsync(window, AppHost.Get<ILocalizer>()["engines.links_copied"]);
     }
 
     private void OnStopOwnCopy(object? sender, RoutedEventArgs e)
