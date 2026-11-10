@@ -175,7 +175,10 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         }
     }
 
-    /// <summary>PDF → PDF: split into single pages, extract a range, or rotate the complete document in place.</summary>
+    /// <summary>
+    /// PDF → PDF: split into single pages or groups of pages (PageGroups), extract a range, or rotate the complete
+    /// document in place.
+    /// </summary>
     private static IReadOnlyList<string> SplitOrExtract(ConversionStep step, IProgress<double>? progress, CancellationToken ct)
     {
         using var source = Open(step.InputPath, PdfDocumentOpenMode.Import, ct);
@@ -184,17 +187,19 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
 
         if (step.Preset.Pdf.SplitPages)
         {
-            for (var i = 0; i < pages.Count; i++)
+            var groups = PageGroups.Of(pages, step.Preset.Pdf);
+            for (var i = 0; i < groups.Count; i++)
             {
                 ct.ThrowIfCancellationRequested();
-                using var single = new PdfDocument();
-                Rotate(single.AddPage(source.Pages[pages[i]]), step.Preset.Pdf.Rotation);
-                var path = step.Output.Allocate("pdf", $"_p{pages[i] + 1}");
+                using var part = new PdfDocument();
+                foreach (var index in groups[i])
+                    Rotate(part.AddPage(source.Pages[index]), step.Preset.Pdf.Rotation);
+                var path = step.Output.Allocate("pdf", PageGroups.Suffix(groups[i]));
                 if (path is null)
                     continue;
-                single.Save(path);
+                part.Save(path);
                 written.Add(path);
-                progress?.Report((i + 1.0) / pages.Count);
+                progress?.Report((i + 1.0) / groups.Count);
             }
             return written;
         }
@@ -241,7 +246,7 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
         };
 
     /// <summary>
-    /// PDF → a smaller PDF (<see cref="PdfOptions.Compression"/>), also with a page range or one file per page: the whole
+    /// PDF → a smaller PDF (<see cref="PdfOptions.Compression"/>), also with a page range or split into files: the whole
     /// file keeps everything (bookmarks, form fields, links, metadata) and is compressed as it is; selected pages are
     /// copied into new PDFs first, as without compression. Each result is the smallest of the built-in compression and,
     /// when the preset asks for it and it is installed, Ghostscript's; when neither is smaller than the pages as they
@@ -260,13 +265,15 @@ public sealed class PdfSharpConverter : IConverter, IPdfMerger, IPdfFinisher, II
             var pages = PageRange.Parse(options.PageRange, source.PageCount);
             if (options.SplitPages)
             {
-                foreach (var index in pages)
+                var groups = PageGroups.Of(pages, options);
+                for (var i = 0; i < groups.Count; i++)
                 {
-                    using var single = new PdfDocument();
-                    Rotate(single.AddPage(source.Pages[index]), options.Rotation);
-                    var path = Path.Combine(scratch, $"page-{index + 1}.pdf");
-                    single.Save(path);
-                    parts.Add((path, $"_p{index + 1}"));
+                    using var part = new PdfDocument();
+                    foreach (var index in groups[i])
+                        Rotate(part.AddPage(source.Pages[index]), options.Rotation);
+                    var path = Path.Combine(scratch, $"part-{i + 1}.pdf");
+                    part.Save(path);
+                    parts.Add((path, PageGroups.Suffix(groups[i])));
                 }
             }
             else if (pages.SequenceEqual(Enumerable.Range(0, source.PageCount)))

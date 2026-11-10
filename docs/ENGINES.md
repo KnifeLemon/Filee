@@ -835,7 +835,7 @@ Password-protected PDFs fail with the same message as PDF → DOCX.
 
 ## PDF compression
 
-"Compress PDF" (and any PDF → PDF preset with *Compress* set, also with a page range or one file per page) makes a
+"Compress PDF" (and any PDF → PDF preset with *Compress* set, also with a page range or split into files) makes a
 PDF smaller while it stays a PDF, for e-mail attachments and upload limits. `Pdf/PdfCompressor.cs` does it with
 PDFsharp and Magick.NET; nothing has to be installed.
 

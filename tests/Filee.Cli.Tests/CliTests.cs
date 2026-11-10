@@ -346,6 +346,31 @@ public sealed class CliTests : IDisposable
         Assert.Equal(3, extract.PageCount);
     }
 
+    /// <summary>--split-every and --split-parts (#1259): a PDF in files of so many pages, or in equal parts.</summary>
+    [Fact]
+    public async Task Split_every_and_split_parts_cut_a_pdf_into_files()
+    {
+        var source = Path.Combine(_folder, "book.pdf");
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            for (var i = 0; i < 10; i++)
+                document.AddPage();
+            document.Save(source);
+        }
+
+        var (code, _, errors) = await Run("convert", source, "--preset", "pdf-split", "--split-every", "4");
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(["book_p1-4.pdf", "book_p5-8.pdf", "book_p9-10.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "book"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+
+        (code, _, errors) = await Run("convert", source, "--to", "pdf", "--pages", "2-", "--split-parts", "2", "-o", Path.Combine(_folder, "halves"));
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(["book_p2-6.pdf", "book_p7-10.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "halves"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+    }
+
     [Fact]
     public async Task A_folder_converts_the_files_filee_knows()
     {
@@ -391,6 +416,9 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "--to", "jpg" }, "at least one file")]
     [InlineData(new[] { "convert", "a.png", "--to", "jpg", "--quality", "300" }, "--quality")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--pages", "1-x" }, "--pages")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "0" }, "--split-every")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-parts", "1" }, "--split-parts")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "5", "--split-parts", "2" }, "either --split-every or --split-parts")]
     [InlineData(new[] { "frobnicate" }, "Unknown command")]
     public async Task Wrong_arguments_explain_themselves_with_exit_code_2(string[] args, string message)
     {

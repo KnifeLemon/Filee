@@ -317,6 +317,11 @@ internal static class Cli
         // The pages of PDFs; asked for on the donut (AskedPages), given here.
         if (options.Pages is { } pages)
             preset.Pdf.PageRange = pages;
+        // PDF → PDF in files of so many pages, or in equal parts (#1259), over the preset's split.
+        if (options.SplitEvery is { } every)
+            (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, every, 0);
+        if (options.SplitParts is { } parts)
+            (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, 0, parts);
         if (options.Conflict is { } conflict)
             preset.Output.Conflict = conflict;
         if (options.KeepDates)
