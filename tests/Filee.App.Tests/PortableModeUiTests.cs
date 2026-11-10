@@ -76,6 +76,17 @@ public sealed class PortableModeUiTests
             var catalog = LocalizationService.LoadStrings(language.Code);
             Assert.False(string.IsNullOrWhiteSpace(catalog["general.portable_mode"]));
             Assert.Contains("example-data", string.Format(catalog["startup.portable_unwritable"], "example-data"));
+            Assert.Contains("old-profile", string.Format(catalog["portable.import_prompt"], "old-profile", "portable-data"));
+            Assert.Contains("portable-data", string.Format(catalog["portable.import_prompt"], "old-profile", "portable-data"));
+            Assert.False(string.IsNullOrWhiteSpace(catalog["portable.cleanup_prompt"]));
+            Assert.False(string.IsNullOrWhiteSpace(catalog["portable.import_existing"]));
+            Assert.False(string.IsNullOrWhiteSpace(catalog["portable.start_fresh"]));
+            Assert.False(string.IsNullOrWhiteSpace(catalog["portable.choose_settings"]));
+            Assert.False(string.IsNullOrWhiteSpace(catalog["portable.choose_engines"]));
+            foreach (var key in new[] { "portable.choose_presets", "portable.choose_profiles", "portable.choose_history", "portable.profile_dependencies" })
+                Assert.False(string.IsNullOrWhiteSpace(catalog[key]));
+            foreach (var key in new[] { "portable.import_summary", "portable.import_next", "portable.fresh_next" })
+                Assert.False(string.IsNullOrWhiteSpace(catalog[key]));
         }
     }
 }

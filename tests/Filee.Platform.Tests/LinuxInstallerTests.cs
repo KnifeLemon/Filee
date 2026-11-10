@@ -131,7 +131,7 @@ if [ ""${SHIM_FAIL_ROLLBACK_ABSENT:-0}"" = ""1"" ]; then
 fi
 
 exec ""$REAL_MV"" ""$@""
-");
+".ReplaceLineEndings("\n"));
             File.SetUnixFileMode(shimPath,
                 UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
                 UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
@@ -157,6 +157,8 @@ exec ""$REAL_MV"" ""$@""
         Assert.True(File.Exists(Path.Combine(installDir, "filee-cli")));
         Assert.False(File.Exists(Path.Combine(installDir, "filee.portable")));
         Assert.True(File.Exists(Path.Combine(env.SourceDir, "filee.portable")));
+        Assert.False(Directory.Exists(Path.Combine(installDir, "data")));
+        Assert.True(File.Exists(Path.Combine(env.SourceDir, "data", "engines", "keep.txt")));
         Assert.Equal("v1.0.0", File.ReadAllText(Path.Combine(installDir, "version.txt")).Trim());
 
         var markerPath = Path.Combine(installDir, ".filee-package");
@@ -228,6 +230,7 @@ exec ""$REAL_MV"" ""$@""
         Assert.Equal("v2.0.0", File.ReadAllText(Path.Combine(installDir, "version.txt")).Trim());
         Assert.False(File.Exists(Path.Combine(installDir, "filee.portable")));
         Assert.True(File.Exists(Path.Combine(v2Source, "filee.portable")));
+        Assert.False(Directory.Exists(Path.Combine(installDir, "data")));
 
         // Verify downloaded engines are STILL PRESERVED!
         Assert.True(File.Exists(mockEngineBinary));
@@ -754,6 +757,8 @@ exec ""$REAL_MV"" ""$@""
         File.WriteAllText(icon, "dummy-png");
         File.WriteAllText(ver, version);
         File.WriteAllText(Path.Combine(dir, "filee.portable"), "");
+        Directory.CreateDirectory(Path.Combine(dir, "data", "engines"));
+        File.WriteAllText(Path.Combine(dir, "data", "engines", "keep.txt"), "portable engine");
         File.Copy(_installScriptPath, script, overwrite: true);
 
         File.SetUnixFileMode(filee, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);

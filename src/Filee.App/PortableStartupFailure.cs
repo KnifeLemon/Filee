@@ -16,8 +16,18 @@ internal static class PortableStartupFailure
         if (OperatingSystem.IsWindows())
             Filee.Platform.Windows.Elevation.ShowWarning(message);
         else
-            AppBuilder.Configure(() => new FailureApplication(message)).UsePlatformDetect()
-                .StartWithClassicDesktopLifetime([], ShutdownMode.OnMainWindowClose);
+        {
+            try
+            {
+                AppBuilder.Configure(() => new FailureApplication(message)).UsePlatformDetect()
+                    .StartWithClassicDesktopLifetime([], ShutdownMode.OnMainWindowClose);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                // stderr already contains the storage error; an SSH/headless session may have no display.
+                Console.Error.WriteLine(ex.Message);
+            }
+        }
         return 1;
     }
 

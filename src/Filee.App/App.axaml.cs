@@ -33,10 +33,19 @@ public partial class App : Application
         SingleSelectionGuard.Register();
     }
 
-    public override void OnFrameworkInitializationCompleted()
+    public override async void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            try { await PortableFirstStart.RunAsync(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Program.Log.LogError(ex, "Portable first-start preparation failed");
+                desktop.Shutdown(1);
+                return;
+            }
+            // macOS preloads settings to configure its Dock; reload after a possible import.
+            if (PortableMode.IsEnabled) Program.PreloadedStore?.Load();
             AppHost.Build(preloadedStore: Program.PreloadedStore);
             Start(desktop);
         }

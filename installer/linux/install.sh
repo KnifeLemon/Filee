@@ -1,6 +1,25 @@
 #!/bin/sh
 set -eu
 
+# Copy application files only: a package may already have been run in portable mode.
+copy_application() {
+    python3 - "$source_dir" "$1" <<'PY'
+import os, shutil, sys
+source, target = sys.argv[1:]
+os.makedirs(target, exist_ok=True)
+for name in os.listdir(source):
+    if name in ('data', 'filee.portable'):
+        continue
+    src, dst = os.path.join(source, name), os.path.join(target, name)
+    if os.path.islink(src):
+        os.symlink(os.readlink(src), dst)
+    elif os.path.isdir(src):
+        shutil.copytree(src, dst, symlinks=True)
+    else:
+        shutil.copy2(src, dst)
+PY
+}
+
 # Filee Linux standalone installer.
 # Supports first-time installation and in-place upgrade (--upgrade).
 # Preserves downloaded conversion engines (~/.local/share/Filee/engines) and user settings (~/.config/Filee).
@@ -134,7 +153,7 @@ if [ "$upgrade" -eq 0 ]; then
     fi
 
     mkdir -p "$data_dir/filee" "$bin_dir" "$data_dir/applications"
-    cp -R "$source_dir" "$install_dir"
+    copy_application "$install_dir"
     # The archive is portable; an installed copy uses the ordinary user profile.
     rm -f "$install_dir/filee.portable"
     printf '%s\n' 'com.filee.app' > "$install_dir/.filee-package"
@@ -187,7 +206,7 @@ else
     mkdir "$staging_dir"
 
     # Copy incoming payload into staging (preserves source_dir without moving/deleting it).
-    cp -R "$source_dir/." "$staging_dir/"
+    copy_application "$staging_dir"
     rm -f "$staging_dir/filee.portable"
     printf '%s\n' 'com.filee.app' > "$staging_dir/.filee-package"
     printf '%s\n' "$upgrade_token" > "$staging_dir/.filee-upgrade-token"

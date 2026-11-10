@@ -2,7 +2,14 @@ This package requires macOS 13 or later and contains a separate build for
 Apple Silicon or Intel Macs. The .NET runtime is included.
 The tar.gz includes filee.portable beside Filee.app: running there keeps settings,
 downloaded engines and logs in an adjacent data folder. Existing profile data is
-not imported automatically. Installation and the .dmg use the normal user profile.
+offered for import on first start when portable data is unused. Originals are kept.
+Installation and the .dmg use the normal user profile.
+For portable use, move the extracted folder to a writable location. Finder may
+launch a quarantined app from a temporary App Translocation path, hiding the marker.
+After verifying the download's source and checksum, remove quarantine from the
+extracted app in Terminal before launching it:
+    xattr -dr com.apple.quarantine /path/to/Filee.app
+Keep filee.portable beside Filee.app. Do not run portable mode from the read-only .dmg.
 Run ./install.sh to copy Filee.app to ~/Applications and add ~/.local/bin/filee.
 From the .dmg, drag Filee.app onto Applications instead (no filee command then).
 You can also move Filee.app into Applications manually. Keep its location stable
