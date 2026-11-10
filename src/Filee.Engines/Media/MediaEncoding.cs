@@ -60,6 +60,8 @@ internal static partial class MediaEncoding
         // The iPod muxer writes the M4A/M4B brands iTunes and phones expect.
         ["m4a"] = new("ipod", null, "aac"),
         ["m4b"] = new("ipod", null, "aac"),
+        // iPhone ringtones (#1291): AAC in the iPod muxer; the extension is what iTunes and iOS look for.
+        ["m4r"] = new("ipod", null, "aac"),
         ["aac"] = new("adts", null, "aac"),
         ["wav"] = new("wav", null, "pcm_s16le"),
         ["flac"] = new("flac", null, "flac"),
@@ -102,6 +104,30 @@ internal static partial class MediaEncoding
         "subrip", "srt", "ass", "ssa", "webvtt", "mov_text", "text", "microdvd", "sami", "realtext", "subviewer", "subviewer1",
         "jacosub", "mpl2", "pjs", "vplayer", "stl", "eia_608", "ttml",
     ];
+
+    /// <summary>
+    /// Video targets that keep the source's subtitle tracks (#789), and the encoder a text track is converted with when
+    /// the container can't take it as it is: MP4 and MOV hold only timed text (mov_text), WebM only WebVTT. Matroska
+    /// takes nearly everything as it is; the rest of its text tracks become SRT. Other containers keep none.
+    /// </summary>
+    private static readonly Dictionary<string, string> SubtitleEncoders = new()
+    {
+        ["mp4"] = "mov_text",
+        ["m4v"] = "mov_text",
+        ["mov"] = "mov_text",
+        ["webm"] = "webvtt",
+        ["mkv"] = "srt",
+    };
+
+    /// <summary>Subtitle codecs Matroska takes as they are: SRT, ASS with its styles, WebVTT, and Blu-ray, DVD and DVB pictures.</summary>
+    private static readonly HashSet<string> MatroskaSubtitles = ["subrip", "ass", "ssa", "webvtt", "hdmv_pgs_subtitle", "dvd_subtitle", "dvb_subtitle"];
+
+    /// <summary>
+    /// Text subtitles left out of a converted video, as before #789: FFmpeg has no TTML decoder, and CEA-608 captions (a
+    /// broadcast caption feed) have no file to prove their re-encoded timing with. A video that fails over a subtitle
+    /// track would be worse than one without it.
+    /// </summary>
+    private static readonly HashSet<string> UnconvertedSubtitles = ["ttml", "eia_608"];
 
     /// <summary>Formats an animated GIF or a still picture (PNG) can be turned into.</summary>
     public static IReadOnlyList<string> PictureToVideoTargets { get; } = ["mp4", "webm", "mov"];
@@ -150,10 +176,18 @@ internal static partial class MediaEncoding
     /// A video target: only this part of the video, cut exactly (the video is always encoded; <see cref="ClipCopy"/>
     /// copies it instead, cut at key frames).
     /// </param>
+    /// <param name="crop">
+    /// A video target: the filters that crop the frame first ("Crop video", <see cref="CropFilter"/>); the video is
+    /// always encoded then.
+    /// </param>
+    /// <param name="subtitles">
+    /// A video target keeps the source's subtitle tracks and fonts (<see cref="SubtitleTracks"/>); false converts without
+    /// them, the retry after FFmpeg failed with them.
+    /// </param>
     /// <exception cref="InvalidOperationException">The file lacks the stream the target needs (e.g. no audio track).</exception>
     public static IReadOnlyList<FfmpegPass> Plan(string input, string output, string target, MediaOptions options, MediaInfo info, string workDirectory,
         CoverExtras? cover = null, IReadOnlySet<string>? encoders = null, HardwareEncoder? hardware = null, double animationSpeed = 1,
-        ClipRange? clip = null)
+        ClipRange? clip = null, string? crop = null, bool subtitles = true)
     {
         if (clip is { } part && VideoTargets.TryGetValue(target, out var clipTarget))
             return [new FfmpegPass(Video(input, output, target, clipTarget, options, info, encoders, hardware, part), 1)];
@@ -164,7 +198,7 @@ internal static partial class MediaEncoding
         if (target == "png")
             return [new FfmpegPass(PosterFrame(input, output, info), 1)];
         if (VideoTargets.TryGetValue(target, out var video))
-            return [new FfmpegPass(Video(input, output, target, video, options, info, encoders, hardware), 1)];
+            return [new FfmpegPass(Video(input, output, target, video, options, info, encoders, hardware, crop: crop, keepSubtitles: subtitles), 1)];
         if (AudioTargets.TryGetValue(target, out var audio))
             return [new FfmpegPass(Audio(input, output, target, audio, options, info, cover), 1)];
         if (SubtitleTargets.ContainsKey(target))
@@ -235,7 +269,7 @@ internal static partial class MediaEncoding
             : null;
 
     private static List<string> Video(string input, string output, string target, MediaTarget spec, MediaOptions options, MediaInfo info,
-        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null)
+        IReadOnlySet<string>? encoders, HardwareEncoder? hardware, ClipRange? clip = null, string? crop = null, bool keepSubtitles = true)
     {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         // An input without sound is fine: the output simply has no audio track. Every track is kept (languages,
@@ -249,26 +283,37 @@ internal static partial class MediaEncoding
         List<string> args = [.. Common, .. clip is { } part ? ClipInput(part) : [], "-i", input, "-map", "0:V:0"];
         for (var i = 0; i < tracks.Count; i++)
             args.AddRange(["-map", $"0:a:{tracks[i].Ordinal}"]);
+        // Subtitle tracks stay switchable (#789), with their language tags (FFmpeg copies stream tags with each stream). A
+        // clip keeps none: its input is seeked, and subtitle timing after the seek isn't proven.
+        var subtitles = clip is null && keepSubtitles ? SubtitleTracks(target, info) : [];
+        foreach (var (index, _) in subtitles)
+            args.AddRange(["-map", $"0:{index}"]);
+        // An MKV's attachments are the fonts its styled (ASS) subtitles are drawn with.
+        var fonts = clip is null && keepSubtitles && target == "mkv" && info.HasAttachments;
+        if (fonts)
+            args.AddRange(["-map", "0:t"]);
 
-        if (clip is null && !info.RawStream && CanCopyVideo(target, video, options))
+        if (clip is null && crop is null && !info.RawStream && CanCopyVideo(target, video, options))
         {
             args.AddRange(["-c:v", "copy"]);
             // Apple plays HEVC in MP4/MOV only under the "hvc1" tag (FFmpeg keeps "hev1" from some sources).
             if (video.Codec == "hevc" && target is "mp4" or "m4v" or "mov")
                 args.AddRange(["-tag:v", "hvc1"]);
         }
-        else if (hardware is not null && HardwareCodec(target, options, info, encode: clip is not null) == hardware.Codec)
+        else if (hardware is not null && HardwareCodec(target, options, info, encode: clip is not null || crop is not null) == hardware.Codec)
         {
             // VA-API's device is a global option, so it goes before the input.
             args.InsertRange(Common.Length, HardwareVideo.InputArguments(hardware));
-            args.AddRange(["-vf", ScaleFilter(options.MaxHeight) + HardwareVideo.FilterSuffix(hardware, HardwareVideo.TenBit(hardware.Codec, video))]);
+            args.AddRange(["-vf", crop + ScaleFilter(options.MaxHeight) + HardwareVideo.FilterSuffix(hardware, HardwareVideo.TenBit(hardware.Codec, video))]);
             args.AddRange(HardwareVideo.CodecArguments(hardware, target, options.Quality, video, options.MaxHeight));
         }
         else
         {
             var pal = IsPal(video.FrameRate);
-            args.AddRange(["-vf", target is "vob" or "dv" ? DvdOrDvFilter(video, pal) : ScaleFilter(options.MaxHeight)]);
-            args.AddRange(VideoCodecArguments(target, VideoEncoder(target, spec.VideoCodec!, options.VideoCodec, encoders), options.Quality, video, pal));
+            args.AddRange(["-vf", crop + (target is "vob" or "dv" ? DvdOrDvFilter(video, pal) : ScaleFilter(options.MaxHeight))]);
+            // Only this path keeps alpha: a still picture and an edited clip pass through format=yuv420p first (PlanStill, ClipGraphOf).
+            args.AddRange(VideoCodecArguments(target, VideoEncoder(target, spec.VideoCodec!, options.VideoCodec, encoders), options.Quality, video, pal,
+                alpha: video.HasAlpha));
         }
 
         if (tracks.Count == 0)
@@ -282,6 +327,10 @@ internal static partial class MediaEncoding
                 : AudioCodecArguments(target, spec.AudioCodec, options, tracks[i], inVideo: true);
             args.AddRange(tracks.Count == 1 ? trackArgs : ForAudioTrack(trackArgs, i));
         }
+        for (var i = 0; i < subtitles.Count; i++)
+            args.AddRange([$"-c:s:{i}", subtitles[i].Codec]);
+        if (fonts)
+            args.AddRange(["-c:t", "copy"]);
 
         args.AddRange(MetadataArguments());
         args.AddRange(ContainerArguments(target));
@@ -289,6 +338,40 @@ internal static partial class MediaEncoding
         args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
     }
+
+    /// <summary>
+    /// The source's subtitle tracks a video converted to <paramref name="target"/> keeps, in file order: each stream's
+    /// index and its codec in the new file (<c>copy</c> where the container takes it as it is). Picture subtitles go only
+    /// into MKV.
+    /// </summary>
+    internal static List<(int Index, string Codec)> SubtitleTracks(string target, MediaInfo info)
+    {
+        List<(int, string)> kept = [];
+        if (!SubtitleEncoders.TryGetValue(target, out var encoder))
+            return kept;
+        foreach (var track in info.Subtitles)
+        {
+            if (track.Codec is not { } codec)
+                continue;
+            if (target == "mkv" ? MatroskaSubtitles.Contains(codec) : codec == encoder)
+                kept.Add((track.Index, "copy"));
+            else if (TextSubtitleCodecs.Contains(codec) && !UnconvertedSubtitles.Contains(codec))
+                kept.Add((track.Index, encoder));
+        }
+        return kept;
+    }
+
+    /// <summary>True when the passes map subtitle tracks or attachments (fonts) into the output.</summary>
+    internal static bool MapsSubtitles(IReadOnlyList<FfmpegPass> passes) =>
+        passes.Any(pass => pass.Arguments.Any(arg => arg == "-c:t" || arg.StartsWith("-c:s:", StringComparison.Ordinal)));
+
+    /// <summary>
+    /// True when converting to <paramref name="target"/> leaves out picture subtitles (Blu-ray PGS, DVD VobSub, DVB) the
+    /// source has: MP4, MOV and WebM can't hold them, MKV can. Shown as a notice, since the user may not know.
+    /// </summary>
+    internal static bool LeavesOutPictureSubtitles(string target, MediaInfo info) =>
+        target != "mkv" && SubtitleEncoders.ContainsKey(target)
+        && info.Subtitles.Any(s => s.Codec is { } codec && !TextSubtitleCodecs.Contains(codec));
 
     /// <summary>Containers that hold a single audio track: the first one is kept.</summary>
     private static readonly HashSet<string> SingleAudioTargets = ["flv", "dv"];
@@ -383,7 +466,7 @@ internal static partial class MediaEncoding
     internal static bool CanCopyVideo(string target, VideoStreamInfo video, MediaOptions options)
     {
         // A size limit encodes the video, so its bitrate can be capped (ForSizeLimit).
-        if (options.Quality == MediaQuality.Small || options.MaxSizeMb > 0 || options.MaxHeight > 0 && video.DisplayHeight > Math.Max(16, options.MaxHeight)
+        if (options.Quality == MediaQuality.Small || options.MaxSizeMb > 0 || options.MaxSizePercent > 0 || options.MaxHeight > 0 && video.DisplayHeight > Math.Max(16, options.MaxHeight)
             || video.Codec is not { } codec || !Remuxable.TryGetValue(target, out var codecs))
             return false;
         var takes = MediaCodecs.Effective(target, options.VideoCodec) switch
@@ -530,7 +613,9 @@ internal static partial class MediaEncoding
         return result;
     }
 
-    internal static IEnumerable<string> VideoCodecArguments(string target, string codec, MediaQuality quality, VideoStreamInfo video, bool pal)
+    /// <param name="alpha">Keep the source's transparency where the codec can (VP9 only, #1198).</param>
+    internal static IEnumerable<string> VideoCodecArguments(string target, string codec, MediaQuality quality, VideoStreamInfo video, bool pal,
+        bool alpha = false)
     {
         // Constant quantizer for the MPEG-style codecs: 2 is the best useful value, 4 good, 7 visibly compressed.
         var quantizer = Text(Choose(quality, 2, 4, 7));
@@ -555,9 +640,11 @@ internal static partial class MediaEncoding
                         "-tiles", "2x2", .. HighBitDepthArguments(video)];
             case "libvpx-vp9":
                 // Constant quality mode (-b:v 0 + CRF). Row multithreading and speed 4 keep VP9 usable on a desktop:
-                // the slower speeds gain little size for several times the encoding time.
+                // the slower speeds gain little size for several times the encoding time. A transparent source keeps
+                // its alpha (yuva420p); older libvpx builds refuse alpha with alt-ref frames on.
                 return ["-c:v", "libvpx-vp9", "-b:v", "0", "-crf", Text(Choose(quality, 24, 32, 38)), "-row-mt", "1",
-                        "-deadline", "good", "-cpu-used", "4", "-pix_fmt", "yuv420p"];
+                        "-deadline", "good", "-cpu-used", "4", "-pix_fmt", alpha ? "yuva420p" : "yuv420p",
+                        .. alpha ? ["-auto-alt-ref", "0"] : Array.Empty<string>()];
             case "mpeg4":
                 // GOP 250 because the encoder's default of 12 bloats files. The frame rate is fixed because MPEG-4
                 // part 2 cannot store the fine time bases of phone videos.
@@ -645,7 +732,7 @@ internal static partial class MediaEncoding
     internal static IEnumerable<string> ContainerArguments(string target) => target switch
     {
         // Moves the index to the front so playback (and web streaming) can start before the file is loaded.
-        "mp4" or "m4v" or "mov" or "3gp" or "3g2" or "m4a" or "m4b" => ["-movflags", "+faststart"],
+        "mp4" or "m4v" or "mov" or "3gp" or "3g2" or "m4a" or "m4b" or "m4r" => ["-movflags", "+faststart"],
         // Blu-ray / AVCHD transport stream: 192-byte packets with timestamps.
         "m2ts" => ["-mpegts_m2ts_mode", "1"],
         // DVD program stream: 10.08 Mbit/s mux rate and 2 KB sectors.
@@ -706,6 +793,7 @@ internal static partial class MediaEncoding
     {
         ["m4a"] = ["aac", "alac"],
         ["m4b"] = ["aac", "alac"],
+        ["m4r"] = ["aac"],
         ["aac"] = ["aac"],
         ["mp3"] = ["mp3"],
         ["flac"] = ["flac"],
