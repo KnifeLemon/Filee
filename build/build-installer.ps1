@@ -18,7 +18,8 @@
   win-x64 (default) or win-arm64. The ARM64 build (Filee-<version>-win-arm64-Setup.exe and -Portable.zip) has an ARM64
   Setup, Explorer menu DLL, rhwp, 7-Zip and Unhwp library (fetch-engines.ps1 -Runtime win-arm64, which fails while
   the ARM64 rhwp and Unhwp builds are not pinned yet). They link the C runtime statically: no Microsoft C++ runtime
-  DLLs are copied.
+  DLLs are copied. With -PublishDir and -SetupProgram from an ARM64 build it signs and packs on an x64 PC too
+  (build/sign-release.ps1); -CheckOnly runs the ARM64 Setup, so it needs Windows on ARM.
 
 .PARAMETER CertificateThumbprint
   Signs the release (build/sign-windows.ps1): the programs in the publish folder that come unsigned, the Setup
@@ -152,7 +153,7 @@ Write-Host "pack installer $Version"
 $fast = @(if ($CheckOnly) { '--fast' })
 Push-Location $root
 try {
-    Invoke-Checked 'make-setup' { dotnet run --no-cache build/tools/make-setup.cs -- $SetupProgram $PublishDir $Version $setupExe @fast }
+    Invoke-Checked 'make-setup' { dotnet run --no-cache build/tools/make-setup.cs -- $SetupProgram $PublishDir $Version $setupExe "--runtime=$Runtime" @fast }
 }
 finally {
     Pop-Location

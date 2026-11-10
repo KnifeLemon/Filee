@@ -110,6 +110,81 @@ public class UpdateServiceTests
         Assert.Equal("Filee-9.9.9-SHA256SUMS.txt", checksums?.Name);
     }
 
+    // A release as sign-release.ps1 leaves it: x64 and ARM64 Windows files next to the Linux and macOS packages.
+    private static JsonDocument ReleaseWithEveryPlatform() => JsonDocument.Parse($$"""
+        {"tag_name": "v9.9.9", "assets": [
+          {"name": "Filee-9.9.9-linux-arm64-SHA256SUMS.txt", "size": 189, "browser_download_url": "{{Base}}Filee-9.9.9-linux-arm64-SHA256SUMS.txt"},
+          {"name": "Filee-9.9.9-linux-arm64.tar.gz", "size": 4000, "browser_download_url": "{{Base}}Filee-9.9.9-linux-arm64.tar.gz"},
+          {"name": "Filee-9.9.9-linux-x64-SHA256SUMS.txt", "size": 189, "browser_download_url": "{{Base}}Filee-9.9.9-linux-x64-SHA256SUMS.txt"},
+          {"name": "Filee-9.9.9-linux-x64.tar.gz", "size": 4100, "browser_download_url": "{{Base}}Filee-9.9.9-linux-x64.tar.gz"},
+          {"name": "Filee-9.9.9-osx-arm64-SHA256SUMS.txt", "size": 189, "browser_download_url": "{{Base}}Filee-9.9.9-osx-arm64-SHA256SUMS.txt"},
+          {"name": "Filee-9.9.9-osx-x64-SHA256SUMS.txt", "size": 189, "browser_download_url": "{{Base}}Filee-9.9.9-osx-x64-SHA256SUMS.txt"},
+          {"name": "Filee-9.9.9-SHA256SUMS.txt", "size": 189, "browser_download_url": "{{Base}}Filee-9.9.9-SHA256SUMS.txt"},
+          {"name": "Filee-9.9.9-SHA256SUMS.txt.sig", "size": 89, "browser_download_url": "{{Base}}Filee-9.9.9-SHA256SUMS.txt.sig"},
+          {"name": "Filee-9.9.9-win-Portable.zip", "size": 5000, "browser_download_url": "{{Base}}Filee-9.9.9-win-Portable.zip"},
+          {"name": "Filee-9.9.9-win-Setup.exe", "size": 6000, "browser_download_url": "{{Base}}Filee-9.9.9-win-Setup.exe"},
+          {"name": "Filee-9.9.9-win-arm64-Portable.zip", "size": 5100, "browser_download_url": "{{Base}}Filee-9.9.9-win-arm64-Portable.zip"},
+          {"name": "Filee-9.9.9-win-arm64-SHA256SUMS.txt", "size": 199, "browser_download_url": "{{Base}}Filee-9.9.9-win-arm64-SHA256SUMS.txt"},
+          {"name": "Filee-9.9.9-win-arm64-SHA256SUMS.txt.sig", "size": 89, "browser_download_url": "{{Base}}Filee-9.9.9-win-arm64-SHA256SUMS.txt.sig"},
+          {"name": "Filee-9.9.9-win-arm64-Setup.exe", "size": 6100, "browser_download_url": "{{Base}}Filee-9.9.9-win-arm64-Setup.exe"}
+        ]}
+        """);
+
+    [Fact]
+    public void X64_windows_takes_the_x64_files_even_when_arm64_files_are_listed_after_them()
+    {
+        using var release = ReleaseWithEveryPlatform();
+
+        var (installer, checksums) = UpdateService.FindFiles(release.RootElement, "win");
+
+        Assert.Equal(new UpdateService.ReleaseFile("Filee-9.9.9-win-Setup.exe", Base + "Filee-9.9.9-win-Setup.exe", 6000), installer);
+        Assert.Equal("Filee-9.9.9-SHA256SUMS.txt", checksums?.Name);
+    }
+
+    [Fact]
+    public void Arm64_windows_takes_the_arm64_files()
+    {
+        using var release = ReleaseWithEveryPlatform();
+
+        var (installer, checksums) = UpdateService.FindFiles(release.RootElement, "win-arm64");
+
+        Assert.Equal(new UpdateService.ReleaseFile("Filee-9.9.9-win-arm64-Setup.exe", Base + "Filee-9.9.9-win-arm64-Setup.exe", 6100), installer);
+        Assert.Equal(new UpdateService.ReleaseFile("Filee-9.9.9-win-arm64-SHA256SUMS.txt", Base + "Filee-9.9.9-win-arm64-SHA256SUMS.txt", 199), checksums);
+    }
+
+    [Fact]
+    public void Linux_still_takes_its_own_files_next_to_both_windows_builds()
+    {
+        using var release = ReleaseWithEveryPlatform();
+
+        var (installer, checksums) = UpdateService.FindFiles(release.RootElement, "linux-arm64");
+
+        Assert.Equal("Filee-9.9.9-linux-arm64.tar.gz", installer?.Name);
+        Assert.Equal("Filee-9.9.9-linux-arm64-SHA256SUMS.txt", checksums?.Name);
+    }
+
+    [Fact]
+    public void Arm64_windows_does_not_fall_back_to_the_x64_setup_of_an_older_release()
+    {
+        using var release = JsonDocument.Parse($$"""
+            {"tag_name": "v9.9.9", "assets": [
+              {"name": "Filee-9.9.9-linux-x64-SHA256SUMS.txt", "size": 189, "browser_download_url": "{{Base}}Filee-9.9.9-linux-x64-SHA256SUMS.txt"},
+              {"name": "Filee-9.9.9-SHA256SUMS.txt", "size": 189, "browser_download_url": "{{Base}}Filee-9.9.9-SHA256SUMS.txt"},
+              {"name": "Filee-9.9.9-win-Portable.zip", "size": 5000, "browser_download_url": "{{Base}}Filee-9.9.9-win-Portable.zip"},
+              {"name": "Filee-9.9.9-win-Setup.exe", "size": 6000, "browser_download_url": "{{Base}}Filee-9.9.9-win-Setup.exe"}
+            ]}
+            """);
+
+        Assert.Equal((null, null), UpdateService.FindFiles(release.RootElement, "win-arm64"));
+    }
+
+    [Fact]
+    public void The_windows_target_follows_the_process_architecture()
+    {
+        Assert.Equal("win", UpdateService.GetWindowsTarget(Architecture.X64));
+        Assert.Equal("win-arm64", UpdateService.GetWindowsTarget(Architecture.Arm64));
+    }
+
     [Fact]
     public void Release_without_files_or_with_plain_http_links_has_no_installer()
     {

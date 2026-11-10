@@ -179,7 +179,8 @@ app, the command line and Setup for win-arm64, the Explorer menu DLL for ARM64 (
 -Architecture arm64`, packaged as `arm64`), and ARM64 builds of the bundled engines (`fetch-engines.ps1 -Runtime
 win-arm64`). The engines the app downloads stay x64: on Windows 11 on ARM, which runs them under emulation, the app
 offers the win-x64 downloads (`EngineDownloads.DownloadRuntime`); Windows 10 on ARM can't run them and gets none.
-Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so the ARM64 Setup offers the x64 one.
+Setup's engine list is made when it is packed (`build/tools/make-setup.cs --runtime=win-arm64`, also on the x64 PC
+that signs the release): the x64 downloads, without the packages the ARM64 app has none of (the upscaler).
 
 - **7-Zip**: the official ARM64 installer of the version engines.json pins, a 7z self-extracting archive unpacked by
   the x64 7-Zip (Windows' `tar.exe` can't undo its ARM64 executable filter).
@@ -192,7 +193,10 @@ Setup's engine list is made when it is packed (`build/tools/make-setup.cs`), so 
 
 `UnhwpConverter` reports Unhwp as available where its library loads, so a build without it shows the engine as not
 available on this platform. CI's `build (win-arm64)` job builds and tests on Windows 11 ARM64; once both pins are filled
-in it also builds the package (artifact `windows-arm64-package`).
+in it also builds the package (artifact `windows-arm64-package`). Releases ship it next to the x64 files: the release
+workflow's `windows-arm64` job builds and tests it the same way and keeps it unsigned for `build/sign-release.ps1`
+(see [Releasing](../CONTRIBUTING.md#releasing-maintainers)), and the in-app updater of an ARM64 build takes
+`-win-arm64-Setup.exe` and `-win-arm64-SHA256SUMS.txt` (an x64 build keeps to the x64 files, also on Windows on ARM).
 
 ## Images and vector graphics
 

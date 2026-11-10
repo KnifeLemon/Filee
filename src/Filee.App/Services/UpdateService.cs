@@ -131,13 +131,24 @@ public sealed partial class UpdateService : ObservableObject
             var arch => throw new PlatformNotSupportedException($"Unsupported Linux architecture: {arch}"),
         };
 
-    /// <summary>Target platform for release assets ("win", "linux-x64", "linux-arm64"). Tests can override this.</summary>
+    /// <summary>
+    /// The Windows release files for a process of <paramref name="architecture"/>: "win-arm64" for the native ARM64
+    /// build, "win" (the x64 files) otherwise. It is the process, not the PC: the x64 build on Windows on ARM keeps
+    /// updating to the x64 build it is.
+    /// </summary>
+    internal static string GetWindowsTarget(Architecture architecture) => architecture == Architecture.Arm64 ? "win-arm64" : "win";
+
+    private static bool IsWindowsTarget(string target) => target is "win" or "win-arm64";
+
+    /// <summary>
+    /// Target platform for release assets ("win", "win-arm64", "linux-x64", "linux-arm64"). Tests can override this.
+    /// </summary>
     internal string TargetPlatform { get; set; } = DefaultTargetPlatform();
 
     private static string DefaultTargetPlatform()
     {
         if (OperatingSystem.IsWindows())
-            return "win";
+            return GetWindowsTarget(RuntimeInformation.ProcessArchitecture);
         if (OperatingSystem.IsLinux())
         {
             try
@@ -268,6 +279,11 @@ public sealed partial class UpdateService : ObservableObject
             (_installer, _checksums) = TargetPlatform != "unsupported"
                 ? FindFiles(json.RootElement, TargetPlatform)
                 : (null, null);
+            // No other platform's installer instead: on an ARM64 build, a release with only the x64 Setup would install
+            // fine over it, but turn a native install into an emulated one without asking. Update then fails like for
+            // any release without this platform's installer, and the download page is still there.
+            if (newer is not null && _installer is null)
+                _log.LogInformation("Update check: {Tag} has no {Target} installer", tag, TargetPlatform);
             IReadOnlyList<ReleaseNote> notes = [];
             if (newer is not null)
             {
@@ -367,7 +383,7 @@ public sealed partial class UpdateService : ObservableObject
             return;
         }
 
-        if (TargetPlatform == "win")
+        if (IsWindowsTarget(TargetPlatform))
         {
             var folder = Path.Combine(Path.GetTempPath(), "Filee-update");
             string installer;
@@ -774,9 +790,12 @@ public sealed partial class UpdateService : ObservableObject
         if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             return (null, null);
 
+        // The x64 Windows files are the only ones without the platform in full: Filee-<v>-win-Setup.exe and
+        // Filee-<v>-SHA256SUMS.txt (older builds look for these names).
         var isLinux = target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
-        var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : "-win-Setup.exe";
-        var expectedChecksumsSuffix = isLinux ? $"-{target}-SHA256SUMS.txt" : "-SHA256SUMS.txt";
+        var isX64Windows = target == "win";
+        var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : $"-{target}-Setup.exe";
+        var expectedChecksumsSuffix = isX64Windows ? "-SHA256SUMS.txt" : $"-{target}-SHA256SUMS.txt";
 
         foreach (var asset in assets.EnumerateArray())
         {
@@ -792,8 +811,10 @@ public sealed partial class UpdateService : ObservableObject
             }
             else if (name.EndsWith(expectedChecksumsSuffix, StringComparison.OrdinalIgnoreCase))
             {
-                // When targeting Windows, exclude platform-specific checksum files (e.g. -linux-x64-SHA256SUMS.txt, -osx-...)
-                if (!isLinux && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase) || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)))
+                // Every other platform's checksum file ends in -SHA256SUMS.txt too (-linux-x64-, -osx-arm64-, -win-arm64-).
+                if (isX64Windows && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase)
+                                     || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)
+                                     || name.Contains("-win-arm64-", StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 checksums = new ReleaseFile(name, url, size);

@@ -45,7 +45,13 @@ public static class EngineDownloads
     /// <summary>
     /// Packages offered in Settings → Engines and on first run. rhwp and 7-Zip are not listed: they are small and bundled.
     /// </summary>
-    public static IReadOnlyList<EnginePackage> Packages { get; } =
+    public static IReadOnlyList<EnginePackage> Packages { get; } = PackagesFor(RuntimeInformation.ProcessArchitecture);
+
+    /// <summary>
+    /// <see cref="Packages"/> for a build of <paramref name="architecture"/> on this operating system: the ARM64 Setup
+    /// is packed on an x64 PC too (build/sign-release.ps1), and must offer what the ARM64 app can download.
+    /// </summary>
+    public static IReadOnlyList<EnginePackage> PackagesFor(Architecture architecture) =>
     [
         new("libreoffice", OperatingSystem.IsWindows() ? ["libreoffice", "h2orestart", "jre"] : ["libreoffice"], 1_265_000_000, ["libreoffice"]),
         new("pandoc", ["pandoc"], 236_000_000, ["pandoc"]),
@@ -54,7 +60,7 @@ public static class EngineDownloads
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
-        new("upscayl-bin", OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
+        new("upscayl-bin", OperatingSystem.IsWindows() && architecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
         // The Metadata tool reads with it and its conversions write with it (Filee.Engines.Metadata).
         new("exiftool", ["exiftool"], 30_000_000, ["exiftool"]),
