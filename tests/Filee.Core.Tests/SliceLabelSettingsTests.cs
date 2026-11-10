@@ -38,12 +38,34 @@ public class SliceLabelSettingsTests
     }
 
     [Fact]
+    public void A_presets_text_direction_is_saved_and_copied()
+    {
+        var preset = new Preset { Id = "p", Direction = LabelDirection.AlongRing };
+        Assert.Equal(LabelDirection.AlongRing, RoundTrip(preset).Direction);
+        Assert.Equal(LabelDirection.AlongRing, preset.Clone().Direction);
+        Assert.Null(RoundTrip(new Preset { Id = "q" }).Direction);
+    }
+
+    [Theory]
+    [InlineData("\"Spiral\"")] // a newer Filee's choice
+    [InlineData("2")]
+    [InlineData("null")]
+    public void A_direction_this_version_doesnt_know_reads_as_unset(string value)
+    {
+        var json = $$"""[{"id":"p","name":"Mine","targetFormat":"png","direction":{{value}},"shortName":"M"}]""";
+        var read = JsonSerializer.Deserialize(json, FileeJsonContext.Default.ListPreset)!.Single();
+        Assert.Null(read.Direction);
+        Assert.Equal("M", read.ShortName);
+    }
+
+    [Fact]
     public void Unset_values_are_left_out_of_the_file_and_read_back_unset()
     {
         var json = JsonSerializer.Serialize(new List<Preset> { new() { Id = "p" } }, FileeJsonContext.Default.ListPreset);
         Assert.DoesNotContain("\"icon\"", json);
         Assert.DoesNotContain("\"shortName\"", json);
         Assert.DoesNotContain("\"show\"", json);
+        Assert.DoesNotContain("\"direction\"", json);
         var read = JsonSerializer.Deserialize(json, FileeJsonContext.Default.ListPreset)!.Single();
         Assert.Null(read.Icon);
         Assert.Null(read.ShortName);

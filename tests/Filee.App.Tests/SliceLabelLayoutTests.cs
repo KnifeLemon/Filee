@@ -1,6 +1,6 @@
 // How slice labels fit their slices: the safe zone (inset on every side, clear of a group's chevron, the inner edge
 // curving in), names wrapped at word breaks and never split (except Chinese and Japanese), drawn straight or along the
-// slice, icons above names or alone and centred, and one size and one style per ring (Show, Auto).
+// slice's longer side (out from the centre, or level with a group ring), icons above names or alone and centred, and one size and one style per ring (Show, Auto).
 
 using Avalonia;
 using Avalonia.Controls;
@@ -158,6 +158,95 @@ public class SliceLabelLayoutTests
         Assert.Equal(1, Math.Abs(Math.Sin(SliceLabelLayout.Along(Math.PI))), 6);
     }
 
+    [Fact]
+    public void Text_level_with_the_ring_is_never_upside_down_and_crosses_the_slice()
+    {
+        for (var mid = 0.0; mid < 2 * Math.PI; mid += 0.05)
+        {
+            var turn = SliceLabelLayout.Across(mid);
+            Assert.True(Math.Cos(turn) >= -1e-9, $"upside down at {mid:F2}");
+            // At right angles to the slice's middle line (which points at mid): its reading direction is mid ± 90°.
+            Assert.Equal(0, Math.Cos(turn - mid) * Math.Sin(turn - mid), 6);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Text_runs_along_a_slices_longer_side()
+    {
+        var layout = Layout();
+        // The donut's slices are deeper than they are wide: straight or out from the centre, then bent.
+        var deep = SafeZone.Of(Shape(2, 12), 1);
+        Assert.False(SliceLabelLayout.IsWide(deep));
+        Assert.Equal([[0, SliceLabelLayout.Along(deep.Mid)], [SliceLabelLayout.CurvedTurn]],
+            layout.Tries(deep, "Crop", alongToo: true, LabelDirection.Auto));
+        // A group ring's slices are wider than they are deep: bent along the ring first.
+        var wide = SafeZone.Of(RingShape(-0.9), 1);
+        Assert.True(SliceLabelLayout.IsWide(wide));
+        Assert.Equal([[SliceLabelLayout.CurvedTurn, 0], [SliceLabelLayout.Along(wide.Mid)]],
+            layout.Tries(wide, "Crop", alongToo: true, LabelDirection.Auto));
+        // Letters that join can't be bent: level with the ring instead.
+        Assert.Equal([[SliceLabelLayout.Across(wide.Mid), 0], [SliceLabelLayout.Along(wide.Mid)]],
+            layout.Tries(wide, "قص", alongToo: true, LabelDirection.Auto));
+        // A preset's own direction is the only one tried.
+        Assert.Equal([[0.0]], layout.Tries(wide, "Crop", true, LabelDirection.Straight));
+        Assert.Equal([[SliceLabelLayout.Along(wide.Mid)]], layout.Tries(wide, "Crop", true, LabelDirection.OutFromCentre));
+        Assert.Equal([[SliceLabelLayout.CurvedTurn]], layout.Tries(deep, "Crop", true, LabelDirection.AlongRing));
+    }
+
+    // A narrow slice of a group ring round a donut of radius 220 (ring size 115 %), its middle at mid: as wide as the
+    // slices of a group of six were before every group's slices got the same width.
+    private static SliceShape RingShape(double mid, double span = 0.33) => new(Center, 247, 305, mid, span, Gap);
+
+    [AvaloniaTheory]
+    [InlineData(-0.9)]
+    [InlineData(-0.3)]
+    [InlineData(2.6)] // the bottom half, read the other way up
+    public void Names_on_a_group_ring_bend_along_it_and_show_whole(double mid)
+    {
+        var zone = SafeZone.Of(RingShape(mid, 0.5), 1);
+        foreach (var name in new[] { "Open in Terminal", "Copy to…", "Move to…", "AirDrop", "Add to Shelf" })
+        {
+            var block = Layout().FitText(zone, name, null, 18.6, 15, alongToo: true);
+            Assert.True(block is { Whole: true, Curved: true }, $"{name} at {mid}");
+            Assert.True(block!.Inside(zone), $"{name} at {mid}");
+        }
+    }
+
+    [AvaloniaFact]
+    public void Bent_names_keep_more_than_straight_ones_where_the_ring_is_tight()
+    {
+        // The slice that cut "Copy to…" to "Cop…": bent, more of it shows; straight it needs the room the curve takes.
+        var zone = SafeZone.Of(RingShape(-0.9), 1);
+        var layout = Layout();
+        var bent = layout.FitShortened(zone, "Open in Terminal", 18.6, true, LabelDirection.AlongRing)!;
+        var straight = layout.FitShortened(zone, "Open in Terminal", 18.6, true, LabelDirection.Straight)!;
+        Assert.True(bent.Lines[0].Length > straight.Lines[0].Length, $"{bent.Lines[0]} / {straight.Lines[0]}");
+    }
+
+    [AvaloniaTheory]
+    [InlineData(-0.9)]
+    [InlineData(2.6)]
+    public void Bent_letters_run_round_the_ring_upright(double mid)
+    {
+        var zone = SafeZone.Of(RingShape(mid, 0.6), 1);
+        var layout = Layout();
+        var block = layout.FitText(zone, "Copy path", null, 15, 12, alongToo: true, LabelDirection.AlongRing)!;
+        var glyphs = layout.CurvedGlyphs(zone, block).ToList();
+        Assert.Equal("Copy path".Length, glyphs.Count);
+        foreach (var g in glyphs)
+        {
+            // Upright: the letter's top points away from the centre on the top half, towards it on the bottom half.
+            var outward = DonutGeometry.AngleOf(Center, g.At);
+            Assert.Equal(0, Math.Sin(g.Rotation - outward - (SliceLabelLayout.Bottom(mid) ? Math.PI : 0)), 6);
+        }
+        // Each letter follows the last clockwise on the top half, anticlockwise on the bottom half: left to right as read.
+        for (var i = 1; i < glyphs.Count; i++)
+        {
+            var turn = Math.IEEERemainder(DonutGeometry.AngleOf(Center, glyphs[i].At) - DonutGeometry.AngleOf(Center, glyphs[i - 1].At), 2 * Math.PI);
+            Assert.True(SliceLabelLayout.Bottom(mid) ? turn < 0 : turn > 0, $"letter {i} at {mid}");
+        }
+    }
+
     [AvaloniaFact]
     public void Straight_wins_when_both_directions_fit()
     {
@@ -183,7 +272,7 @@ public class SliceLabelLayoutTests
             "Merge images", "Merge PDF", "Compress image", "Remove metadata", "Actions"];
         var plan = Layout().PlanRing(names.Select((n, i) => Slice(n, i, 12)).ToList(), labelScale: 1, scale: 1, showCaptions: true);
         Assert.Single(plan.Where(l => l.Text is not null).Select(l => l.Text!.Size).Distinct());
-        Assert.All(plan, l => Assert.True(l.Text is null || l.Zone.Contains(l.Text.Box)));
+        Assert.All(plan, l => Assert.True(l.Text is null || l.Text.Inside(l.Zone)));
     }
 
     [AvaloniaFact]
@@ -228,12 +317,46 @@ public class SliceLabelLayoutTests
         var zone = alone.Zone;
         Assert.Equal(zone.At((zone.Inner + zone.Outer) / 2), alone.IconCenter);
 
-        var both = layout.PlanRing([Slice("Crop", 2, 6, LabelShow.IconAndText, "crop")], 1, 1, false)[0];
+        // A deep slice (twelve round the donut, at 12 o'clock): the icon above the name, both upright.
+        var both = layout.PlanRing([Slice("Crop", 0, 12, LabelShow.IconAndText, "crop")], 1, 1, false)[0];
         Assert.Equal(SliceLabelKind.IconAndText, both.Kind);
         Assert.Equal(0, both.Text!.Rotation);
         Assert.True(both.IconCenter.Y < both.Text.Anchor.Y);
         Assert.Equal(both.IconCenter.X, both.Text.Anchor.X, 6);
     }
+
+    [AvaloniaTheory]
+    [InlineData(-0.9)]
+    [InlineData(-0.3)]
+    [InlineData(2.6)]
+    public void On_a_wide_slice_the_icon_stands_before_a_name_bent_along_the_ring(double mid)
+    {
+        // Where an icon above its name would only fit on the slices that run up and down: before it, on every slice.
+        var zone = SafeZone.Of(RingShape(mid, 0.5), 1);
+        var layout = Layout();
+        var fit = layout.FitIconAndText(zone, "Copy path", null, 18.6, 15, 20 * 1.4, 1.4, shorten: false)!.Value;
+        Assert.True(fit.Text is { Curved: true, Whole: true });
+        Assert.True(fit.Text.Inside(zone));
+        Assert.True(zone.Contains(fit.Icon, SliceLabel.IconReach(20 * 1.4)));
+        // Before the name as read: earlier round the ring (clockwise on the top half, anticlockwise on the bottom).
+        var turn = Math.IEEERemainder(DonutGeometry.AngleOf(Center, fit.Text.Anchor) - DonutGeometry.AngleOf(Center, fit.Icon), 2 * Math.PI);
+        Assert.True(SliceLabelLayout.Bottom(mid) ? turn < 0 : turn > 0, $"{turn} at {mid}");
+        Assert.Equal(0, Math.Round(Distance(fit.Icon) - Distance(fit.Text.Anchor), 6)); // side by side, on one circle
+    }
+
+    [AvaloniaFact]
+    public void Where_the_name_cant_show_whole_under_its_icon_the_icon_stands_before_it_out_from_the_centre()
+    {
+        // A deep, narrow slice: "Line art" under its icon would be cut; before it, along the slice, it shows whole.
+        var zone = SafeZone.Of(new SliceShape(Center, 67, 160, DonutGeometry.MidAngle(2, 12), DonutGeometry.Span(12), Gap), 160 / 150.0);
+        var layout = Layout();
+        var fit = layout.FitIconAndText(zone, "Pixelate", null, 11.1, 9, 20 * 0.85, 0.85, shorten: true)!.Value;
+        Assert.True(fit.Text.Whole);
+        Assert.Equal(SliceLabelLayout.Along(zone.Mid), fit.Text.Rotation, 9);
+        Assert.True(Distance(fit.Icon) < Distance(fit.Text.Anchor)); // first as read: inward on the right half
+    }
+
+    private static double Distance(Point p) => Math.Sqrt(Math.Pow(p.X - Center.X, 2) + Math.Pow(p.Y - Center.Y, 2));
 
     [AvaloniaFact]
     public void A_group_ring_follows_the_label_scale_as_far_as_its_slices_have_room()

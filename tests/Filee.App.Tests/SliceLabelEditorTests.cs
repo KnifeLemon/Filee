@@ -82,10 +82,12 @@ public class SliceLabelEditorTests
         var loc = Loc();
         var store = AppHost.Get<UserDataStore>();
         var rotate = store.FindPreset("rotate")!;
-        var before = (rotate.Icon, rotate.ShortName, rotate.Show);
+        var before = (rotate.Icon, rotate.ShortName, rotate.Show, rotate.Direction);
         try
         {
             var vm = new GroupEditorViewModel(rotate, store, loc);
+            Assert.Null(vm.Labels.Direction.Value);
+            vm.Labels.Direction = vm.Labels.DirectionChoices.Single(c => c.Value == LabelDirection.AlongRing);
             Assert.Equal("Default", vm.Labels.IconText);
             vm.Labels.IconPicker.PickCommand.Execute(vm.Labels.IconPicker.Sections[0].Icons[0]);
             vm.Labels.ShortName = "Turn";
@@ -99,10 +101,12 @@ public class SliceLabelEditorTests
             Assert.Equal("Rotate", item.FullName);
             Assert.Equal(rotate.Icon, item.IconKey);
             Assert.Equal(LabelShow.TextOnly, item.Show);
+            Assert.Equal(LabelDirection.AlongRing, rotate.Direction);
+            Assert.Equal(LabelDirection.AlongRing, item.Direction);
         }
         finally
         {
-            (rotate.Icon, rotate.ShortName, rotate.Show) = before;
+            (rotate.Icon, rotate.ShortName, rotate.Show, rotate.Direction) = before;
         }
     }
 

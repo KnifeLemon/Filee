@@ -304,18 +304,35 @@ scale; names start at `max(10, 13 × LabelScale × s)` px, captions 80 % of that
 alone (k = LabelScale · s).
 
 What a slice shows is its preset's `Show` (`LabelShow`: Auto, IconAndText, TextOnly, IconOnly), else its donut's
-`ToolbarProfile.LabelShow`, else Auto. `PlanRing` lays out a whole ring at once: one style for the slices that have an
-icon, one name size and one icon size. Each style is tried at every size from the starting one down, 0.5 px at a
+`ToolbarProfile.LabelShow`, else Auto. `PlanRing` lays out a whole ring at once: one style for the slices that have
+an icon, one name size and one icon size. Each style is tried at every size from the starting one down, 0.5 px at a
 time, to `max(10, 11 × s)` (`SizesFor`; the icon beside a name shrinks with it, to 16·k), and taken only if every
 slice fits. Auto: icon above the whole name, else the whole name alone, else icons. Icon & text: icon above the whole
 name, else above a name shortened to no less than 60 % of its letters and never dropping a word (`MinKept`), else
 icons alone; never a stub like "Tri…". Text only: whole names, else shortened to `MinKept`, else as far as it takes.
 An icon stands in for the caption; names alone show their captions on every slice that has one or on none. A slice
-without an icon (a format conversion) shows its name and doesn't decide the others' style. Names wrap at word
-boundaries (CJK by character, Korean by word), one way for the ring: straight on every slice, else along every
-slice (`TextWay`), each through the sizes; beside icons above names, a format's name runs straight. `DonutMenu.LabelPlan` caches each ring's plan by its inputs (items, geometry, scale, settings),
-so labels are laid out once per change, not per frame; the open, pop and flip animations move them with transforms.
-A group's ring labels follow the ring's scale instead of the donut's, and the Label scale as far as the ring's slices
+without an icon (a format conversion) shows its name and doesn't decide the others' style. Icon and name: on a deep
+slice the icon above the name, both upright, else (where that can't show the name whole, or for Out from the centre)
+the icon before a name running out from the centre; on a wide slice the upright icon before a name bent along the
+ring, side by side (a ring is too shallow for one above the other at most sizes), else above it. The icon never
+turns. A ring takes one placement for all its icons and names, the one of its way (`ways` in `PlanRing`): straight
+under an upright icon, out from the centre after the icon, or bent beside it; a format's name beside them runs that
+way too, and a ring bends only if every name of it can (else all run level with it). Names wrap at word boundaries
+(CJK by character, Korean by word) and run one way for the whole ring, each way through the sizes, except a slice
+whose preset says its own (`Preset.Direction`: Straight, OutFromCentre, AlongRing; `SliceLabelLayout.Tries`): on a
+slice deeper than it is wide (the donut's, mostly) straight or out from the centre, then bent; on one wider than deep
+(a group ring's, or the donut's with a big hole; `IsWide`, so the ring's size, its spread and the name size decide)
+bent along the ring, then straight, then out from the centre. A bent name (`LabelText.Curved`) puts each line on its
+own circle and each letter on it, upright, clockwise on the top half and anticlockwise on the bottom
+(`CurvedGlyphs`); it fits when its lines stay between the zone's circles and their ends clear the side edges at their
+inner edge (`CurvedFits`). Scripts whose letters join or reorder (Arabic, Hebrew, the Indic scripts, Thai, Lao,
+Myanmar) aren't bent but drawn level with the ring. A shortened name runs in the direction that keeps the most of it.
+`DonutMenu.LabelPlan` caches each ring's plan by its inputs (items, geometry, scale, settings), so labels are laid
+out once per change, not per frame; the open, pop and flip animations move them with transforms. Every group's ring
+slices are equally wide, whatever the group's size (`DonutGeometry.SubSpan`: a share of the group's slice and a
+quarter of each neighbour, as if three slices shared it, times Group ring spread), so a group of six fans out twice
+as far as a group of three and the spread looks the same on every group; it never goes round more than once. A
+group's ring labels follow the ring's scale instead of the donut's, and the Label scale as far as the ring's slices
 have room: `PlanRingToFit` steps the Label scale down 5 % at a time, not below 100 %, until every slice shows its
 whole name or its icon.
 

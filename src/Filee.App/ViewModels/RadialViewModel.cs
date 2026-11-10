@@ -301,6 +301,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 FullName = loc.DisplayName(p),
                 IconKey = SliceIcons.For(p),
                 Show = p.Show,
+                Direction = p.Direction,
             };
         }
 
@@ -323,6 +324,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 FullName = loc.DisplayName(p),
                 IconKey = SliceIcons.For(p),
                 Show = p.Show,
+                Direction = p.Direction,
             };
         }).ToList();
         return new Face(presets, subPresets, items);

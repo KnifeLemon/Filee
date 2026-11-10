@@ -1,5 +1,5 @@
 // The slice-label fields of the preset and group editors: the slice's icon (picked in the icon picker), a short name
-// for the donut, and what the slice shows. Shared by PresetEditorViewModel and GroupEditorViewModel.
+// for the donut, what the slice shows, and which way its name runs. Shared by PresetEditorViewModel and GroupEditorViewModel.
 
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -27,6 +27,11 @@ public sealed partial class SliceLabelFields : ObservableObject
         ShowChoices = [new Choice<LabelShow?>(null, loc["presets.show_donut"]),
             .. ToolbarPageViewModel.LabelShows.Select(v => new Choice<LabelShow?>(v, loc[ToolbarPageViewModel.LabelShowKey(v)]))];
         _show = ShowChoices.FirstOrDefault(c => c.Value == preset.Show) ?? ShowChoices[0];
+        DirectionChoices = [new Choice<LabelDirection?>(null, loc["labels.auto"]),
+            new Choice<LabelDirection?>(LabelDirection.Straight, loc["labels.dir_straight"]),
+            new Choice<LabelDirection?>(LabelDirection.OutFromCentre, loc["labels.dir_out"]),
+            new Choice<LabelDirection?>(LabelDirection.AlongRing, loc["labels.dir_ring"])];
+        _direction = DirectionChoices.FirstOrDefault(c => c.Value == preset.Direction) ?? DirectionChoices[0];
     }
 
     /// <summary>The slice's own icon: null for its default, <see cref="Preset.NoIcon"/> for none, else a key.</summary>
@@ -69,6 +74,14 @@ public sealed partial class SliceLabelFields : ObservableObject
     partial void OnShowChanged(Choice<LabelShow?>? oldValue, Choice<LabelShow?> newValue) =>
         Choices.Restore(oldValue, newValue, v => Show = v);
 
+    /// <summary>Auto, Straight, Out from the centre, Along the ring.</summary>
+    public IReadOnlyList<Choice<LabelDirection?>> DirectionChoices { get; }
+
+    [ObservableProperty] private Choice<LabelDirection?> _direction;
+
+    partial void OnDirectionChanged(Choice<LabelDirection?>? oldValue, Choice<LabelDirection?> newValue) =>
+        Choices.Restore(oldValue, newValue, v => Direction = v);
+
     /// <summary>The editor's name box changed: the placeholder follows it.</summary>
     public void NameChanged(string name)
     {
@@ -82,5 +95,6 @@ public sealed partial class SliceLabelFields : ObservableObject
         preset.Icon = Icon;
         preset.ShortName = string.IsNullOrWhiteSpace(ShortName) ? null : ShortName.Trim();
         preset.Show = Show.Value;
+        preset.Direction = Direction.Value;
     }
 }

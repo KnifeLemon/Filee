@@ -80,18 +80,25 @@ public static class DonutGeometry
     public const double MinSubWidth = 44;
 
     /// <summary>
-    /// Width of one slice of a group's outer ring: the fan covers the group's slice and a quarter of each neighbour
-    /// (<see cref="SubOverhang"/>), split evenly, so it stays close to the slice it belongs to. On a crowded donut it
-    /// widens to keep each slice <paramref name="minWidth"/> wide at <paramref name="midRadius"/>. Then
-    /// <paramref name="spread"/> widens it (Group ring spread). It never goes round more than once (a donut of one
-    /// slice), where slices would lie on top of each other.
+    /// How many slices share the fan of a group at its narrowest (<see cref="SubSpan"/>): every ring slice is as wide as
+    /// one of this many, so a group of six fans out twice as far as a group of three, and Group ring spread looks the same
+    /// on every group.
+    /// </summary>
+    public const int SubReferenceCount = 3;
+
+    /// <summary>
+    /// Width of one slice of a group's outer ring, the same for every group whatever its size: a share of the group's
+    /// slice and a quarter of each neighbour (<see cref="SubOverhang"/>), as if <see cref="SubReferenceCount"/> slices
+    /// shared it. On a crowded donut it widens to keep each slice <paramref name="minWidth"/> wide at
+    /// <paramref name="midRadius"/>. Then <paramref name="spread"/> widens it (Group ring spread). It never goes round
+    /// more than once (a big group, a wide spread), where slices would lie on top of each other.
     /// </summary>
     public static double SubSpan(double parentSpan, int count, double midRadius = 0, double spread = 1,
         double minWidth = MinSubWidth)
     {
         if (count <= 0)
             return 0;
-        var span = parentSpan * (1 + 2 * SubOverhang) / count;
+        var span = parentSpan * (1 + 2 * SubOverhang) / SubReferenceCount;
         if (midRadius > 0)
             span = Math.Max(span, minWidth / midRadius);
         return Math.Min(span * spread, 2 * Math.PI / count);

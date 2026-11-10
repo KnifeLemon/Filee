@@ -59,6 +59,9 @@ public sealed class DonutItem
     /// <summary>What the slice shows. Null: the donut's <see cref="DonutMenu.DefaultShow"/>.</summary>
     public LabelShow? Show { get; init; }
 
+    /// <summary>Which way its name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).</summary>
+    public LabelDirection? Direction { get; init; }
+
     /// <summary>A group slice (<see cref="Children"/> set), even one left with nothing to fan out.</summary>
     public bool IsGroup => Children is not null;
 
@@ -1193,7 +1196,8 @@ public sealed partial class DonutMenu : Control
         {
             var (mid, span) = slice(i);
             return new SliceLabelInput(item.Label, item.Caption, item.IconKey, item.Show ?? DefaultShow,
-                new SliceShape(center, inner, outer, mid, span, GapPixels, item.IsGroup ? ChevronKeepOut : 0));
+                new SliceShape(center, inner, outer, mid, span, GapPixels, item.IsGroup ? ChevronKeepOut : 0),
+                item.Direction ?? LabelDirection.Auto);
         }).ToList();
         PlansMade++;
         return _labelPlans[key] = fitScale
@@ -1245,6 +1249,20 @@ public sealed partial class DonutMenu : Control
             return;
         var fonts = layout.Fonts;
         var at = text.Anchor;
+        if (text.Curved)
+        {
+            // Bent along the ring: each letter on its line's circle, upright to the reader.
+            foreach (var glyph in layout.CurvedGlyphs(label.Zone, text))
+            {
+                var letter = new FormattedText(KeepKoreanWords(glyph.Text), CultureInfo.CurrentUICulture, fonts.Direction,
+                    fonts.Bold, text.Size, brush);
+                using (context.PushTransform(Matrix.CreateTranslation(-glyph.Advance / 2, -text.LineHeights[glyph.Line] / 2) *
+                                             Matrix.CreateRotation(glyph.Rotation) *
+                                             Matrix.CreateTranslation(glyph.At.X, glyph.At.Y)))
+                    context.DrawText(letter, new Point(0, 0));
+            }
+            return;
+        }
         using (context.PushTransform(Matrix.CreateTranslation(-at.X, -at.Y) * Matrix.CreateRotation(text.Rotation) *
                                      Matrix.CreateTranslation(at.X, at.Y)))
         {

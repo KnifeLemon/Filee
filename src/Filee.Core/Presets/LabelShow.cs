@@ -12,8 +12,8 @@ namespace Filee.Core.Presets;
 public enum LabelShow
 {
     /// <summary>
-    /// Whichever fits, one style for every Auto slice of a ring: icon and name if every name fits whole, else the name
-    /// if every name fits whole, else the icon.
+    /// Whichever fits, one style for every Auto slice of a ring that has an icon: icon and name if every name fits whole,
+    /// else the name if every name fits whole, else the icon. A slice without an icon shows its name.
     /// </summary>
     Auto,
 

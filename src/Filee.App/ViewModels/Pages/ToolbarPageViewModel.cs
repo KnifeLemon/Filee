@@ -818,6 +818,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                 FullName = _loc.DisplayName(p),
                 IconKey = SliceIcons.For(p),
                 Show = p.Show,
+                Direction = p.Direction,
             })
             .ToList();
 

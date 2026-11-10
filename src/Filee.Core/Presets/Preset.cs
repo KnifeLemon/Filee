@@ -162,6 +162,10 @@ public sealed class Preset
     [JsonConverter(typeof(LabelShowJsonConverter))]
     public LabelShow? Show { get; set; }
 
+    /// <summary>Which way its donut slice's name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).</summary>
+    [JsonConverter(typeof(LabelDirectionJsonConverter))]
+    public LabelDirection? Direction { get; set; }
+
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
     public PresetKind Kind { get; set; } = PresetKind.Convert;
@@ -423,6 +427,7 @@ public sealed class Preset
         Icon = Icon,
         ShortName = ShortName,
         Show = Show,
+        Direction = Direction,
         Kind = Kind,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],

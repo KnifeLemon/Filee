@@ -1,5 +1,5 @@
 <!-- The slice-label fields of the preset and group editors: the slice's icon (a flyout with the icon picker), a short
-     name for the donut, and what the slice shows. -->
+     name for the donut, what the slice shows, and which way its name runs. -->
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels"
@@ -31,10 +31,17 @@
                  ToolTip.Tip="{DynamicResource presets.short_name_hint}" />
       </StackPanel>
     </Grid>
-    <StackPanel>
-      <TextBlock Classes="label" Text="{DynamicResource presets.show}" />
-      <ComboBox x:Name="ShowChoice" ItemsSource="{Binding ShowChoices}" SelectedItem="{Binding Show}" HorizontalAlignment="Stretch"
-                AutomationProperties.Name="{DynamicResource presets.show}" />
-    </StackPanel>
+    <Grid ColumnDefinitions="*,12,*">
+      <StackPanel>
+        <TextBlock Classes="label" Text="{DynamicResource presets.show}" />
+        <ComboBox x:Name="ShowChoice" ItemsSource="{Binding ShowChoices}" SelectedItem="{Binding Show}" HorizontalAlignment="Stretch"
+                  AutomationProperties.Name="{DynamicResource presets.show}" />
+      </StackPanel>
+      <StackPanel Grid.Column="2">
+        <TextBlock Classes="label" Text="{DynamicResource presets.direction}" />
+        <ComboBox x:Name="DirectionChoice" ItemsSource="{Binding DirectionChoices}" SelectedItem="{Binding Direction}"
+                  HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.direction}" />
+      </StackPanel>
+    </Grid>
   </StackPanel>
 </UserControl>

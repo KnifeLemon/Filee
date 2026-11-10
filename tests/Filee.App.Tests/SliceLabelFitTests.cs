@@ -80,7 +80,7 @@ public class SliceLabelFitTests
     }
 
     // The slices as the live donut gives them (RadialViewModel.ItemOf), without checking them against files.
-    private static List<DonutItem> Items(IEnumerable<string> ids, UserDataStore store, ILocalizer loc)
+    internal static List<DonutItem> Items(IEnumerable<string> ids, UserDataStore store, ILocalizer loc, LabelDirection? direction = null)
     {
         DonutItem ItemOf(Preset p, bool ring) => new()
         {
@@ -89,6 +89,7 @@ public class SliceLabelFitTests
             Caption = ring ? null : p.TargetFormat == BuiltInData.SameAsSource ? "JPG/PNG" : FormatLabels.NameOf(loc, p.TargetFormat),
             FullName = loc.DisplayName(p),
             IconKey = SliceIcons.For(p),
+            Direction = direction,
         };
         return ids.Select(store.FindPreset).OfType<Preset>().Select(p =>
         {
@@ -104,6 +105,7 @@ public class SliceLabelFitTests
                 FullName = loc.DisplayName(p),
                 IconKey = SliceIcons.For(p),
                 Children = children,
+                Direction = direction,
             };
         }).ToList();
     }
@@ -114,16 +116,23 @@ public class SliceLabelFitTests
         var styles = ring.Where((_, i) => items[i].IconKey is not null && items[i].Label.Length > 0).Select(l => l.Kind).Distinct().ToList();
         if (show is LabelShow.Auto or LabelShow.IconAndText && styles.Count > 1)
             problems.Add($"{where}: mixed styles {string.Join(", ", styles)}");
-        // One direction for the ring's names: straight, or along their slices (at 3 and 9 o'clock the two look alike).
-        var ways = new HashSet<string> { "straight", "along" };
-        foreach (var l in ring.Where(l => l.Text is not null))
+        // One direction for the ring's names: straight, along their slices, bent along the ring or level with it (two
+        // can look alike on some slices). A preset's own direction keeps its slice out of it.
+        var ways = new HashSet<string> { "straight", "along", "bent", "level" };
+        for (var i = 0; i < ring.Count; i++)
         {
-            var t = l.Text!;
+            if (ring[i].Text is not { } t || (items[i].Direction ?? LabelDirection.Auto) != LabelDirection.Auto)
+                continue;
+            bool Is(double turn) => Math.Abs(Math.IEEERemainder(t.Rotation - turn, 2 * Math.PI)) < 1e-6;
             var could = new HashSet<string>();
-            if (Math.Abs(Math.IEEERemainder(t.Rotation, 2 * Math.PI)) < 1e-6)
-                could.Add("straight");
-            if (Math.Abs(Math.IEEERemainder(t.Rotation - SliceLabelLayout.Along(l.Zone.Mid), 2 * Math.PI)) < 1e-6)
-                could.Add("along");
+            if (t.Curved)
+                could.Add("bent");
+            else
+            {
+                if (Is(0)) could.Add("straight");
+                if (Is(SliceLabelLayout.Along(ring[i].Zone.Mid))) could.Add("along");
+                if (Is(SliceLabelLayout.Across(ring[i].Zone.Mid))) could.Add("level");
+            }
             ways.IntersectWith(could);
         }
         if (ways.Count == 0)
@@ -155,7 +164,7 @@ public class SliceLabelFitTests
             }
             if (label.Text is { } text)
             {
-                if (!label.Zone.Contains(text.Box))
+                if (!text.Inside(label.Zone))
                     problems.Add($"{where}: \"{name}\" leaves its zone");
                 var lines = string.Join(" ", text.Lines);
                 if (text.Whole && !name.Any(DonutMenu.IsHanOrKana) && lines != string.Join(" ", name.Split(' ', StringSplitOptions.RemoveEmptyEntries)))
