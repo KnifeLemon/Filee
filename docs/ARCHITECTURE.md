@@ -169,6 +169,11 @@ per press, following `IsActive`); key window status is explicitly released once 
 with Filee when the drop opens a window of its own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard
 during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
+Each gesture says which face the donut opens on (`TriggerGesture.Face`, the front unless set to the back in Settings →
+Shortcuts), so gestures with different modifiers open different sets of slices (#195). `RadialController.ShowForDrag`
+keeps it until files enter, `ShowForFiles` takes it for the selection and clipboard shortcuts, and
+`RadialViewModel.Load` opens the front instead when the back has no slice for the files. The flip key and the wheel
+turn it over from there. Thunar's shortcut on Linux goes through the context-menu action, which always opens the front.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
@@ -313,6 +318,9 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
   pixels, where the size chip goes, where the dial opens) and is unit tested.
 
 `tool-pdf-pages` opens `Views/PdfPageEditorWindow`: it previews, reorders, rotates, deletes, adds and extracts pages.
+Ctrl / Shift + click selects several pages, and every action works on the whole selection: the pages move up or down
+as a block, dragging them moves them to the line drawn between two pages, Insert puts another PDF's pages before or
+after the selection and Replace puts them where the selection was, removing it (#860).
 Each source PDF's bytes and page sizes are cached once after the window has appeared; thumbnails and the large preview
 render off the UI thread. A whole-document edit keeps the original catalogue and changes `/Rotate` in modify mode.
 An actual reorder, deletion, addition or extraction builds a new PDF from selected page objects. A PDF that opens

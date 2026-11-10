@@ -41,7 +41,7 @@ public sealed class SpreadsheetConverter : IConverter
             return outputs;
         }, cancellationToken);
 
-    /// <summary>Writes a workbook as the step's XLSX, ODS, CSV or TSV (also PdfTablesConverter's output).</summary>
+    /// <summary>Writes a workbook as the step's XLSX, ODS, CSV or TSV (also the output of PdfTablesConverter and DocumentTablesConverter).</summary>
     internal static List<string> Write(Workbook book, ConversionStep step)
     {
         var outputs = new List<string>();

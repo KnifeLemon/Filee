@@ -21,6 +21,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | PDF text | built in (PdfPig) | **PDF → TXT, Markdown** (reading order, also two columns; Markdown keeps headings, emphasis, links and the pictures; no OCR) |
 | PDF slides | built in (PDFium, PdfPig) | **PDF → PPTX**: a picture of each page on its own slide (looks like the PDF, not editable), the page's text in the speaker notes |
 | PDF tables | built in (PdfPig) | **PDF → XLSX, ODS, CSV** (#267): each table drawn with lines on its own sheet, numbers and dates as real values, merged cells and column widths kept |
+| Document tables | built in | **DOCX (+ DOCM/DOTX/DOTM), HTML, MHTML → XLSX, ODS, CSV** (#1016): each table on its own sheet, numbers and dates as real values, merged cells, borders and column widths kept |
 | E-mail | built in (MimeKit, MsgReader) | **EML, Outlook MSG → HTML** (headers + body, inline pictures), **TXT**, **ZIP** (the attachments); **MSG → EML**; **MHTML → HTML** (the saved page in one file, pictures inlined; on to PDF, DOCX, HWPX, TXT, Markdown, EPUB from there) |
 | Signed files | built in (System.Security.Cryptography.Pkcs) | **P7M → the signed file inside** (CMS / PKCS #7, CAdES: Italian e-invoices `*.xml.p7m`, signed PDFs `*.pdf.p7m`), then on from its format (P7M → PDF → JPG); the signature isn't checked |
 | Data | built in (System.Text.Json, YamlDotNet, Tomlyn, System.Xml) | **JSON, JSON Lines, YAML, TOML, XML, CSV ↔ each other** (CSV for tables); **vCard, iCalendar ↔ CSV**; **property lists (.plist, XML and binary) → each of them and TXT**; FreeMASTER oscilloscope TXT → CSV; spreadsheets, contacts and events reach JSON / YAML / TOML / XML through CSV |
@@ -29,7 +30,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 | **Subtitles** | built in | **SRT, ASS/SSA, WebVTT, SAMI (SMI), LRC, TTML, MicroDVD, SCC → SRT, ASS, WebVTT, SAMI, LRC, TTML, MicroDVD, TXT**, always UTF-8 (Korean CP949 / EUC-KR files read correctly) |
 | 3D models (SharpGLTF for glTF) | built in (library) | **GLB, glTF, STL, OBJ (+ MTL), 3MF, PLY ↔ each other**; FBX → each of them; → PNG, JPG, … (an isometric preview) |
 | Pictures to 3D relief | built in | **PNG, JPG, WEBP, … (every picture ImageMagick reads) → GLB, glTF, STL, OBJ, 3MF, PLY**: a relief, brighter areas higher |
-| **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities, read only) → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
+| **Geospatial vector data** | built in | **GeoJSON, KML, KMZ, GPX, Shapefile ↔ each other and CSV** (longitude / latitude or WKT); Garmin FIT (activities) and OpenStreetMap XML (`.osm`), both read only, → each of them and CSV; projected Shapefiles (UTM, Web Mercator, Lambert, Albers) are converted to WGS 84; through CSV to XLSX, JSON, … (see below) |
 | rhwp | bundled with the installer (`engines/rhwp`, with the Microsoft C++ runtime, see below) | HWP/HWPX → PDF, **HWP → HWPX, HWPX → HWP** |
 | Archives (7-Zip) | bundled with the installer (`engines/7zip`, ~2.5 MB) + built-in readers | ZIP (including ANSYS Workbench WBPZ), 7Z, RAR, TAR (+ GZ/BZ2/XZ/Z/7Z/LZ), CAB, ISO, DMG, split (.001), Minecraft and Modrinth packs, … **→ folder, ZIP, 7Z, TAR, TAR.GZ/BZ2/XZ, the packs**; ALZ, EGG, lzip read in-process; "Compress into one archive" for any files |
 | LibreOffice + H2Orestart + Java | **optional download** (~420 MB, 1.3 GB on disk) | older and rare formats only: DOC, XLS, PPT, RTF and OpenDocument → PDF and to each other, output as DOCX/ODT/ODS/ODP; HWP/HWPX → DOCX/ODT; read-only formats (see below) → PDF and their kind's editable formats; FODT, OpenDocument templates (OTT, OTS, OTP) and XLT out; SVG → EMF/WMF/ODG, a PDF page → SVG |
@@ -814,6 +815,27 @@ not found.
   workbook. The same tables can be written as ODS, or as CSV (one file per sheet). These edges are direct only: an image
   made into a PDF has no ruled tables, so no picture reaches a spreadsheet through PDF.
 
+## DOCX / HTML → XLSX
+
+`Office/DocumentTablesConverter.cs` puts the tables of a Word document (DOCX and its DOCM / DOTX / DOTM variants), a web
+page (HTML) or a saved web page (MHTML) into a workbook (#1016). The tables are the ones the DOCX and HTML readers give
+the HWPX and DOCX writers, with their merged cells (`gridSpan` / `vMerge`, `colspan` / `rowspan`); text outside the
+tables is left out. The cells are written as in PDF → XLSX (`Office/Sheets/TableSheets.cs`, shared by both).
+
+- **One sheet per table** ("Table 1", "Table 2" …) in reading order, a table inside a cell too (its text isn't repeated
+  in the outer cell). Nothing is joined: a Word table running over a page break is one table already. A table without
+  any text, such as a web page's layout table around the real one, gets no sheet.
+- **Numbers and dates** become real values by the same rules as PDF → XLSX (above).
+- Cells keep their own borders (a Word table style's lines, the HTML grid unless `border="0"`), shading, vertical
+  alignment and bold. Column widths come from the Word grid or the HTML `<col>` / first-row widths (shares of an A4
+  text width); without either, a column is as wide as its longest line, up to 60 characters. Rows fit their text: a
+  Word row height is only a minimum. Leading header rows (Word's "repeat as header row", HTML `<thead>` or rows of
+  `<th>`) are frozen.
+- A file without tables fails with `error.document_no_tables`. The edges are direct only, like PDF → XLSX: a PDF,
+  a picture or an e-book that became a DOCX on the way doesn't reach spreadsheets this way, and a document's tables
+  don't go on to JSON or XML. For the same reason DOC (which LibreOffice reads into a DOCX first) isn't an input: the
+  XLSX preset's note says to convert it to DOCX first.
+
 ## PDF → PPTX
 
 `Pdf/PdfSlidesConverter.cs` turns a PDF into a PowerPoint deck of pictures: every page is rendered (PDFium, as for
@@ -1236,7 +1258,7 @@ materials by polygon, and every cut or flipped byte of a file, which must read o
 tests draw pictures in code and check that the mesh is closed, the sizes and heights above, transparency, the 200-point
 grid and every output format.
 
-## Geospatial data (GeoJSON, KML / KMZ, GPX, Shapefile, CSV, FIT)
+## Geospatial data (GeoJSON, KML / KMZ, GPX, Shapefile, CSV, FIT, OSM)
 
 `Filee.Engines/Geo` converts geospatial **vector** data between GeoJSON, KML, KMZ, GPX, Shapefile and CSV in managed
 code, with no GDAL and no download. Every reader fills one in-memory model (`GeoModel`: features, each with an optional
@@ -1269,6 +1291,7 @@ What each format keeps:
 | Shapefile | Point, MultiPoint, PolyLine, Polygon and their Z types; rings sorted into polygons and holes by direction and containment; `.dbf` text, numbers, true / false, dates; deleted rows skipped; MultiPatch is refused | one Shapefile per kind of geometry present; Z types when any height is present; WGS 84 `.prj`; `.dbf` in UTF-8 with a `.cpg` |
 | CSV | a `wkt` / `geom` / `geometry` / `the_geom` column (WKT or EWKT), or longitude and latitude columns (`lon`, `lng`, `long`, `longitude`, `x`; `lat`, `latitude`, `y`; a decimal comma is fine), and `elevation` / `alt` / `z`; other columns become attributes, typed; rows without a usable location are kept without a geometry | `longitude`, `latitude` (+ `elevation`) when every geometry is a point, else a `wkt` column; then the attributes. A dataset that already has a longitude or latitude attribute gets `wkt` so the file reads back unchanged |
 | FIT | Garmin activity files: the positions of the `record` messages (with their time and height) as one LineString, or a Point when there is only one, with the sport as the feature's type | not written |
+| OSM | OpenStreetMap XML: tagged nodes (Point), tagged ways (LineString, or Polygon when closed and tagged as an area), `multipolygon` and `boundary` relations (Polygon or MultiPolygon with holes); `osm_type`, `osm_id` and the tags as text | not written |
 
 **FIT activities.** A Garmin FIT activity (from a watch or bike computer) is read only. Its recorded positions become
 one track (a single point when only one position was recorded); a time or a height is kept on the points that have one
@@ -1298,6 +1321,28 @@ records.
 
 **Privacy.** The outputs carry positions, times and health values such as heart rate exactly as the watch recorded them.
 Check what you share.
+
+**OpenStreetMap XML.** A `.osm` file (the openstreetmap.org *Export*, JOSM, Overpass, osmium) is read only, by
+`OsmFormat`, which streams the file. Each feature gets `osm_type` (`node`, `way` or `relation`), `osm_id` and every tag
+as a text attribute, so the attribute table is as wide as the tags in the file (a Shapefile keeps the first 255 columns,
+with `notice.geo_columns_dropped`).
+
+- **Points**: nodes with tags. Untagged nodes are only the corners of ways.
+- **Lines and areas**: ways with tags. A closed way is a Polygon when it is tagged `area=yes` or with a key that means an
+  area (`building`, `landuse`, `amenity`, `leisure`, `natural`, `man_made`, …, minus line values such as
+  `natural=coastline` or `man_made=pipeline`), and some values of other keys (`waterway=riverbank`, `power=substation`,
+  `highway=rest_area`, …); `area=no` keeps it a line. Other ways are LineStrings: a closed `highway` is a roundabout.
+- **Relations**: `type=multipolygon` and `type=boundary` relations become a Polygon or a MultiPolygon. Their `outer`
+  and `inner` ways are joined end to end into rings, and each hole goes into the outer ring around it. Other relations
+  (routes, turn restrictions, sites) are left out.
+- **Clipped extracts**: a way or relation whose nodes or member ways aren't in the file is left out with
+  `notice.osm_incomplete`, since part of a road or a lake would draw the wrong shape.
+- Overpass `out geom` files, which carry node positions on the ways' `nd` elements, are read too. Objects JOSM marks as
+  deleted (`action="delete"`) and old versions in history files (`visible="false"`) are skipped. The editing data
+  (user, version, changeset, timestamp) is left out.
+
+Not read: the binary `.osm.pbf` (refused with a message saying so), compressed `.osm.bz2` / `.osm.gz` until they are
+unpacked, and change files (`.osc`). A file may be up to 256 MiB and 8,000,000 tags (`error.osm_too_large`).
 
 **Coordinate systems.** Geographic systems (degrees) and the projections most projected data uses, read from a `.prj`
 (ESRI or OGC WKT 1), a GeoJSON `crs` name or an EPSG code: Transverse Mercator (UTM, Gauss-Krüger, state plane, via
