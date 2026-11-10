@@ -790,12 +790,12 @@ public sealed partial class UpdateService : ObservableObject
         if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             return (null, null);
 
-        // The x64 Windows files are the only ones without the platform in full: Filee-<v>-win-Setup.exe and
-        // Filee-<v>-SHA256SUMS.txt (older builds look for these names).
+        // Windows has one checksum file for x64 and ARM64, Filee-<v>-SHA256SUMS.txt: Filee 2.4.0 and older take the
+        // last file ending in -SHA256SUMS.txt that isn't Linux or macOS, so an ARM64 one next to it would break their
+        // updates. The x64 Setup is Filee-<v>-win-Setup.exe, the ARM64 one Filee-<v>-win-arm64-Setup.exe.
         var isLinux = target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
-        var isX64Windows = target == "win";
         var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : $"-{target}-Setup.exe";
-        var expectedChecksumsSuffix = isX64Windows ? "-SHA256SUMS.txt" : $"-{target}-SHA256SUMS.txt";
+        var expectedChecksumsSuffix = isLinux ? $"-{target}-SHA256SUMS.txt" : "-SHA256SUMS.txt";
 
         foreach (var asset in assets.EnumerateArray())
         {
@@ -811,10 +811,11 @@ public sealed partial class UpdateService : ObservableObject
             }
             else if (name.EndsWith(expectedChecksumsSuffix, StringComparison.OrdinalIgnoreCase))
             {
-                // Every other platform's checksum file ends in -SHA256SUMS.txt too (-linux-x64-, -osx-arm64-, -win-arm64-).
-                if (isX64Windows && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase)
-                                     || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)
-                                     || name.Contains("-win-arm64-", StringComparison.OrdinalIgnoreCase)))
+                // The other platforms' checksum files end in -SHA256SUMS.txt too (-linux-x64-, -osx-arm64-), and so does
+                // the ARM64 build's own one (CI's package), should one ever be attached.
+                if (!isLinux && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase)
+                                 || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)
+                                 || name.Contains("-win-arm64-", StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 checksums = new ReleaseFile(name, url, size);

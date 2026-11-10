@@ -146,7 +146,8 @@ if ($sign) {
     & $sign -Path $PublishDir, $SetupProgram -CertificateThumbprint $CertificateThumbprint
 }
 
-# The x64 names are the ones Filee's updater looks for (-win-Setup.exe, -SHA256SUMS.txt).
+# The x64 names are the ones Filee's updater looks for (-win-Setup.exe, -SHA256SUMS.txt). The ARM64 build writes its own
+# sums file; a release adds those lines to the x64 one instead (sign-release.ps1).
 $prefix = if ($Runtime -eq 'win-x64') { "Filee-$Version-win" } else { "Filee-$Version-$Runtime" }
 $setupExe = Join-Path $OutputDir "$prefix-Setup.exe"
 Write-Host "pack installer $Version"

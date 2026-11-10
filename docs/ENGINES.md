@@ -196,7 +196,9 @@ available on this platform. CI's `build (win-arm64)` job builds and tests on Win
 in it also builds the package (artifact `windows-arm64-package`). Releases ship it next to the x64 files: the release
 workflow's `windows-arm64` job builds and tests it the same way and keeps it unsigned for `build/sign-release.ps1`
 (see [Releasing](../CONTRIBUTING.md#releasing-maintainers)), and the in-app updater of an ARM64 build takes
-`-win-arm64-Setup.exe` and `-win-arm64-SHA256SUMS.txt` (an x64 build keeps to the x64 files, also on Windows on ARM).
+`-win-arm64-Setup.exe` (an x64 build keeps to the x64 Setup, also on Windows on ARM). Both are in the one Windows
+`Filee-<version>-SHA256SUMS.txt`: Filee 2.4.0 and older take the last Windows-looking SHA256SUMS file of a release,
+so a separate ARM64 one would break their updates.
 
 ## Images and vector graphics
 

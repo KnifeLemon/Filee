@@ -2,9 +2,10 @@
 # Trigger: push a tag like v1.0.0  (git tag v1.0.0 && git push origin v1.0.0)
 #
 # Output (build/build-installer.ps1): Filee-<version>-win-Setup.exe (Filee's own installer, src/Filee.Setup),
-# Filee-<version>-win-Portable.zip and Filee-<version>-SHA256SUMS.txt for x64, and the same for Windows on ARM64
-# (#236), built and tested on an ARM64 runner: Filee-<version>-win-arm64-Setup.exe, -win-arm64-Portable.zip and
-# -win-arm64-SHA256SUMS.txt.
+# Filee-<version>-win-Portable.zip and Filee-<version>-SHA256SUMS.txt for x64, and for Windows on ARM64 (#236), built
+# and tested on an ARM64 runner, Filee-<version>-win-arm64-Setup.exe and -win-arm64-Portable.zip. Their hashes go into
+# the same Filee-<version>-SHA256SUMS.txt (sign-release.ps1): Filee 2.4.0 and older take the last Windows-looking
+# SHA256SUMS file of a release, so a separate ARM64 one would break their updates.
 # The release is a draft with the Linux and macOS packages: the Windows files are signed on a PC signed in to Certum's
 # SimplySign cloud (its key needs a phone token), so this run keeps the tested, unsigned builds as the artifacts
 # windows-unsigned and windows-arm64-unsigned, and build/sign-release.ps1 signs them, packs both Setups again, uploads
@@ -225,7 +226,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $version = '${{ steps.version.outputs.value }}'
-          # Linux and macOS only: build/sign-release.ps1 adds the signed Windows files.
+          # Linux and macOS only: build/sign-release.ps1 adds the signed Windows files. The ARM64 build's own sums file
+          # never ships (its hashes go into Filee-<version>-SHA256SUMS.txt).
           $windows = "Filee-$version-win-Setup.exe", "Filee-$version-win-Portable.zip", "Filee-$version-SHA256SUMS.txt",
             "Filee-$version-win-arm64-Setup.exe", "Filee-$version-win-arm64-Portable.zip", "Filee-$version-win-arm64-SHA256SUMS.txt"
           $files = Get-ChildItem Releases -File -Filter "Filee-$version-*" | Where-Object Name -notin $windows | ForEach-Object FullName

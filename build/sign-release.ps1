@@ -11,16 +11,18 @@
   1. downloads those builds, exactly as they were tested;
   2. checks out the tag in a worktree and runs its build-installer.ps1 with -CertificateThumbprint for each, which
      signs the unsigned programs and the Setup program, packs Setup.exe, signs it, zips the portable copy and writes
-     the SHA-256 sums (x64: Filee-<version>-win-Setup.exe, -win-Portable.zip and Filee-<version>-SHA256SUMS.txt;
-     ARM64: Filee-<version>-win-arm64-Setup.exe, -win-arm64-Portable.zip and -win-arm64-SHA256SUMS.txt);
+     the SHA-256 sums (x64: Filee-<version>-win-Setup.exe and -win-Portable.zip; ARM64:
+     Filee-<version>-win-arm64-Setup.exe and -win-arm64-Portable.zip). The ARM64 sums are added to
+     Filee-<version>-SHA256SUMS.txt, the one Windows checksum file: Filee 2.4.0 and older take the last Windows-looking
+     SHA256SUMS file of a release, and a separate ARM64 one would leave them without their Setup's hash;
   3. installs the signed Setup into a sandbox (nothing on the PC is touched) and checks that Filee.exe and
      uninstall.exe come out signed, then uninstalls it. An x64 PC can't run the ARM64 Setup: there it checks the
      signatures of the ARM64 Setup.exe and of the signed files that went into it instead (the release workflow ran
      the ARM64 Setup program in a sandbox on Windows on ARM, around a stub app);
-  4. signs every SHA256SUMS file of the release (both Windows ones, and the Linux and macOS ones from the draft) with
+  4. signs every SHA256SUMS file of the release (the Windows one, and the Linux and macOS ones from the draft) with
      Filee's update key (build/sign-checksums.ps1, -UpdateKey), which writes a .sig file next to each;
   5. uploads the Windows files and the .sig files to the draft;
-  6. copies the Windows files and their checksum signatures to the download mirror, Cloudflare R2 behind
+  6. copies the Windows files and their checksum signature to the download mirror, Cloudflare R2 behind
      https://dl.filee.sh/<version>/, and checks that each one is served there as is (no redirect, the same size). The
      Microsoft Store takes the Setup programs from that address, because GitHub's download links redirect;
   7. with -Publish, publishes the release.
@@ -120,12 +122,20 @@ finally {
 }
 
 $setup = Join-Path $out "Filee-$Version-win-Setup.exe"
-$files = @($setup, (Join-Path $out "Filee-$Version-win-Portable.zip"), (Join-Path $out "Filee-$Version-SHA256SUMS.txt"))
+$windowsSums = Join-Path $out "Filee-$Version-SHA256SUMS.txt"
+$files = @($setup, (Join-Path $out "Filee-$Version-win-Portable.zip"), $windowsSums)
 $setupArm64 = Join-Path $out "Filee-$Version-win-arm64-Setup.exe"
 if ($arm64) {
-    $files += @($setupArm64, (Join-Path $out "Filee-$Version-win-arm64-Portable.zip"), (Join-Path $out "Filee-$Version-win-arm64-SHA256SUMS.txt"))
+    $files += @($setupArm64, (Join-Path $out "Filee-$Version-win-arm64-Portable.zip"))
 }
 foreach ($file in $files) { if (-not (Test-Path $file)) { throw "$file was not written." } }
+if ($arm64) {
+    # One checksum file for both (see the description): the ARM64 lines after the x64 ones, which stay as they were.
+    $arm64Sums = Join-Path $out "Filee-$Version-win-arm64-SHA256SUMS.txt"
+    Add-Content $windowsSums (Get-Content $arm64Sums) -Encoding ascii
+    Remove-Item $arm64Sums
+    Write-Host "added the ARM64 checksums to $(Split-Path $windowsSums -Leaf)"
+}
 
 # The signed Setup still finds its payload, and what it installs is signed, the uninstaller too.
 $sandbox = Join-Path $work 'sandbox'
@@ -163,13 +173,13 @@ elseif ($arm64) {
 }
 
 # Every SHA256SUMS file of the release, signed in one go (one passphrase): the Linux and macOS ones the workflow put
-# on the draft, and the new Windows ones.
+# on the draft, and the new Windows one.
 $signatures = @()
 if ($UpdateKey) {
     $sums = Join-Path $work 'sums'
     New-Item -ItemType Directory -Force -Path $sums | Out-Null
     Invoke-Checked 'gh release download' { gh release download $tag --pattern '*SHA256SUMS.txt' --dir $sums --clobber }
-    Copy-Item @($files | Where-Object { $_ -like '*SHA256SUMS.txt' }) $sums -Force
+    Copy-Item $windowsSums $sums -Force
     $signatures = @(& (Join-Path $PSScriptRoot 'sign-checksums.ps1') -Folder $sums -PrivateKeyPath $UpdateKey -PublicKey $publicKey)
 }
 
@@ -182,8 +192,7 @@ if (-not $NoMirror) {
     $mirror = "https://dl.filee.sh/$Version"
     $types = @{ '.exe' = 'application/vnd.microsoft.portable-executable'; '.zip' = 'application/zip'; '.txt' = 'text/plain; charset=utf-8'
         '.sig' = 'text/plain; charset=utf-8' }
-    $windowsSignatures = @($files | Where-Object { $_ -like '*SHA256SUMS.txt' } | ForEach-Object { "$(Split-Path $_ -Leaf).sig" })
-    $mirrored = $files + @($signatures | Where-Object { (Split-Path $_ -Leaf) -in $windowsSignatures })
+    $mirrored = $files + @($signatures | Where-Object { (Split-Path $_ -Leaf) -eq "Filee-$Version-SHA256SUMS.txt.sig" })
     foreach ($file in $mirrored) {
         $name = Split-Path $file -Leaf
         Write-Host "copy $name to $mirror"
@@ -205,6 +214,10 @@ if ($publicKey) {
     $unsigned = @($assets | Where-Object { $_ -like '*SHA256SUMS.txt' -and "$_.sig" -notin $assets })
     if ($unsigned.Count) { throw "Not signed on the draft of ${tag}: $($unsigned -join ', '). Run again with -UpdateKey." }
 }
+# A Windows checksum file besides Filee-<version>-SHA256SUMS.txt (uploaded by hand) could be the one Filee 2.4.0 and
+# older pick, without the hash of their Setup.
+$extraSums = @((gh release view $tag --json assets | ConvertFrom-Json).assets.name | Where-Object { $_ -like 'Filee-*-win-*SHA256SUMS.txt*' })
+if ($extraSums.Count) { throw "Remove from the draft of ${tag}: $($extraSums -join ', '). The Windows hashes all go in Filee-$Version-SHA256SUMS.txt." }
 if ($Publish) {
     Invoke-Checked 'gh release edit' { gh release edit $tag --draft=false --latest }
     Write-Host "published $tag"

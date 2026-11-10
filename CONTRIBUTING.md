@@ -132,7 +132,8 @@ pwsh build/sign-release.ps1 -Version X.Y.Z -CertificateThumbprint <sha1> -Update
 It signs every unsigned program in both builds and their Setup programs, packs and signs `Filee-X.Y.Z-win-Setup.exe`
 and `Filee-X.Y.Z-win-arm64-Setup.exe`, zips the portable copies, checks the signed x64 Setup in a sandbox install (and
 the ARM64 one too on an ARM64 PC; on an x64 PC it checks the ARM64 signatures without running it) and uploads the
-files with their SHA-256 sums (`Filee-X.Y.Z-SHA256SUMS.txt`, `Filee-X.Y.Z-win-arm64-SHA256SUMS.txt`). It signs
+files with their SHA-256 sums, all in one `Filee-X.Y.Z-SHA256SUMS.txt` (Filee 2.4.0 and older would take a separate
+ARM64 sums file for theirs, and fail to update; the script refuses to publish a draft that has one). It signs
 every `SHA256SUMS` file of the release (Windows, Linux and macOS) with Filee's update key and uploads the `.sig` files
 next to them (`build/sign-checksums.ps1`; it asks for the key's passphrase once). It also copies the Windows files to
 the download mirror `https://dl.filee.sh/X.Y.Z/` (Cloudflare R2; needs `npx wrangler login` once), which the
