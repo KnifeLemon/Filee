@@ -15,7 +15,8 @@ public static class FormatRegistry
     [
         // Raster images
         new("png", "PNG", FormatCategory.Image, ["png", "png_large"]),
-        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jif", "jpg_large"]),
+        // Insta360 .insp photos (#711) are JPEGs of both fisheye circles; stitching them needs Insta360's lens data.
+        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jif", "insp", "jpg_large"]),
         new("webp", "WEBP", FormatCategory.Image, ["webp"]),
         new("tiff", "TIFF", FormatCategory.Image, ["tiff", "tif"]),
         new("bmp", "BMP", FormatCategory.Image, ["bmp", "dib"]),
@@ -215,7 +216,8 @@ public static class FormatRegistry
         // Video
         new("mp4", "MP4", FormatCategory.Video, ["mp4"]),
         new("m4v", "M4V", FormatCategory.Video, ["m4v"]),
-        new("mov", "MOV", FormatCategory.Video, ["mov", "qt"]),
+        // Some downloaders name video/quicktime files ".quicktime" (#1283); MOV stays the extension Filee writes.
+        new("mov", "MOV", FormatCategory.Video, ["mov", "qt", "quicktime"]),
         new("mkv", "MKV", FormatCategory.Video, ["mkv"]),
         new("webm", "WEBM", FormatCategory.Video, ["webm"]),
         new("avi", "AVI", FormatCategory.Video, ["avi", "divx"]),

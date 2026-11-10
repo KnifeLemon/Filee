@@ -335,6 +335,22 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task A_quicktime_named_movie_converts_like_a_mov()
+    {
+        // #1283: FFmpeg probes the content, so the .quicktime name only has to reach the MOV routes; a MOV output is
+        // written as .mov.
+        SkipUnlessInstalled();
+        var movie = await MakeClipAsync(fx.NewFolder(), "clip.quicktime", size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac", "-f", "mov"]);
+
+        foreach (var target in new[] { "mp4", "mov", "mp3" })
+        {
+            var probed = await ProbeAsync(await ConvertAsync(movie, target));
+            Assert.InRange(probed.Duration, 1.7, 2.4);
+            Assert.Equal(target != "mp3", probed.Video is not null);
+        }
+    }
+
+    [Fact]
     public async Task A_qta_with_more_tracks_converts_its_first_audio_track()
     {
         // #646: audio targets take the first sound track (-map 0:a:0), not the second one or a mix of both, and leave
