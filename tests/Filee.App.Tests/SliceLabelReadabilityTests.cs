@@ -40,20 +40,23 @@ public class SliceLabelReadabilityTests
             from ring in new[] { (1.0, 1.0), (1.5, 1.9), (0.75, 3.0) }
             select (radius, hole, scale, show, ring.Item1, ring.Item2)];
 
-    [AvaloniaFact]
-    public void Every_label_is_the_most_readable_that_fits_in_every_script()
+    // One case per script: each runs in well under CI's five-minute hang limit, and a failure names its language.
+    public static TheoryData<string> ScriptLanguages => [.. Languages];
+
+    [AvaloniaTheory]
+    [MemberData(nameof(ScriptLanguages))]
+    public void Every_label_is_the_most_readable_that_fits_in_every_script(string language)
     {
         var problems = new List<string>();
         try
         {
-            foreach (var language in Languages)
-                Sweep(language, null, Settings, problems);
+            Sweep(language, null, Settings, problems);
         }
         finally
         {
             TestServices.EnsureInitialized("en");
         }
-        Report(problems);
+        Report(problems, $"{nameof(Every_label_is_the_most_readable_that_fits_in_every_script)}-{language}");
     }
 
     [AvaloniaFact]

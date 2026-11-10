@@ -34,13 +34,17 @@ public class SliceLabelFitTests
             from ring in Rings
             select (radius, scale, show, ring)];
 
-    [AvaloniaFact]
-    public void Every_label_of_every_built_in_donut_fits_its_slice_in_every_language()
+    // One case per language: each runs in well under CI's five-minute hang limit, and a failure names its language.
+    public static TheoryData<string> AppLanguageCodes => [.. AppLanguages.All.Select(l => l.Code)];
+
+    [AvaloniaTheory]
+    [MemberData(nameof(AppLanguageCodes))]
+    public void Every_label_of_every_built_in_donut_fits_its_slice_in_every_language(string code)
     {
         var problems = new List<string>();
         try
         {
-            foreach (var language in AppLanguages.All.Select(l => l.Code))
+            foreach (var language in new[] { code })
             {
                 TestServices.EnsureInitialized(language);
                 var loc = AppHost.Get<ILocalizer>();
