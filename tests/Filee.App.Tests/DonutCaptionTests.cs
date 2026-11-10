@@ -164,6 +164,9 @@ public class DonutCaptionTests
             RenderTests.Pump();
 
             var page = window.GetVisualDescendants().OfType<ToolbarPage>().Single();
+            // The switch is in the Edit Donut Size panel.
+            page.FindControl<Button>("EditSize")!.Command!.Execute(null);
+            RenderTests.Pump();
             var toggle = page.FindControl<ToggleSwitch>("CaptionsToggle")!;
             var preview = page.FindControl<DonutMenu>("Donut")!;
             Assert.True(toggle.IsChecked);
@@ -177,7 +180,7 @@ public class DonutCaptionTests
             RenderTests.Pump();
             Assert.False(store.Settings.Donut.ShowCaptions);
             Assert.False(preview.ShowCaptions);
-            toggle.BringIntoView(); // the Appearance card is below the preview
+            toggle.BringIntoView();
             RenderTests.Pump();
             RenderTests.Save(window, "page-toolbar-captions-off.png");
 

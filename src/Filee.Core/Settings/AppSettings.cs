@@ -342,6 +342,14 @@ public sealed class AppSettings
     public WindowBounds? MainWindow { get; set; }
 
     /// <summary>
+    /// Where the Donut toolbar page's donut on screen was dragged to: its centre against the main window's top-left
+    /// corner, in screen pixels (<see cref="WindowBounds.X"/>, <see cref="WindowBounds.Y"/>), so it opens there beside
+    /// the window again. Null until it has been dragged. A Filee from before it skips the property, so it needs no
+    /// schema step.
+    /// </summary>
+    public WindowBounds? DonutPreviewPlace { get; set; }
+
+    /// <summary>
     /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to
     /// them is left out of the donut and the preset lists. An empty list and a missing value both mean every field is on, so
     /// settings from before it read as every field on and need no schema step. A new install gets its defaults from

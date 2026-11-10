@@ -179,6 +179,21 @@ keeps it until files enter, `ShowForFiles` takes it for the selection and clipbo
 `RadialViewModel.Load` opens the front instead when the back has no slice for the files. The flip key and the wheel
 turn it over from there. Thunar's shortcut on Linux goes through the context-menu action, which always opens the front.
 
+The editor's donut is laid out at its real size and drawn smaller (a `Viewbox` that only shrinks) when its column is
+narrower, so names wrap and icons show as on the donut itself. Clicking a group slice opens it in the editor
+(`ToolbarPageViewModel.OpenGroup`): the donut then shows and edits the group's members with the same drag and drop,
+the palette offers what the group doesn't hold and no groups (`Placed`, shared with the search and the judging), and
+the ✎ still opens each preset's own editor. *Edit Donut Size* (`IsAdjustingLook`) swaps the editor for the size, look
+and label settings. While either is open, `DonutPreviewWindow` shows the donut on screen beside the main window at its
+real size, filled by a `RadialViewModel` of its own as the donut opens for the profile's files (`LoadPreview`, with the
+turned-off fields left out); it follows every change and converts nothing. It holds the group open in the editor open
+(`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it). Dragging its middle moves it, and it opens
+there again (`AppSettings.DonutPreviewPlace`, against the main window). Otherwise it goes beside the main window, then
+on another screen; with no room, the main window slides over to make room and back when the donut goes. It never
+opens over the main window, and unlike the live donut it isn't Topmost: a click on the main window brings that in
+front of it. The look sliders save with `UserDataStore.SaveDonutLook`, which doesn't raise `SettingsChanged`:
+re-applying the theme for every pixel a slider moved made them stick.
+
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
 editor offers both kinds, and `UserDataStore.EnsureConsistency` removes missing, duplicate, nested or excess members
@@ -365,7 +380,8 @@ THIRD-PARTY-NOTICES.md), keyed by their MDI names and grouped for the picker. `P
 unset for the default: a built-in preset's own (by id), else its tool's; plain format conversions have none.
 `Preset.ShortName` replaces the name on the donut and its rings (`DonutName` / `RingName`); the centre hint always
 names the slice in full (`DonutItem.FullName`). The preset and group editors share `SliceLabelFields` (Icon with
-`IconPickerFlyout`, Short name, Show); the Toolbar page sets each donut's Slice labels and Label scale.
+`IconPickerFlyout`, Short name, Show); the Toolbar page's Edit Donut Size panel sets each donut's Slice labels and
+Label scale.
 
 ## Crop overlay and PDF page editor
 

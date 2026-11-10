@@ -1,6 +1,7 @@
 // Settings → Donut toolbar as an editor (#873): the sliders save the donut's look without applying every setting again;
-// the donut in the page is drawn as it opens, only smaller when its column is narrower; and a group clicked in the
-// editor opens like a folder to edit what it fans out.
+// the donut in the page is drawn as it opens, only smaller when its column is narrower; a group clicked in the editor
+// opens like a folder to edit what it fans out; and Edit Donut Size shows the donut on screen at its real size while
+// it is adjusted or a group is edited, beside the window, never over it.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -15,6 +16,7 @@ using Filee.App.ViewModels;
 using Filee.App.ViewModels.Pages;
 using Filee.App.Views;
 using Filee.App.Views.Pages;
+using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Profiles;
@@ -293,5 +295,261 @@ public class DonutEditorTests
             store.SaveLibrary();
             window.Close();
         }
+    }
+
+    [AvaloniaFact]
+    public void Edit_donut_size_shows_the_donut_on_screen_at_its_real_size_while_it_is_adjusted()
+    {
+        var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var saved = (store.Settings.Donut.OuterRadius, store.Settings.Donut.Opacity);
+        var savedScale = vm.LabelScale;
+        try
+        {
+            Assert.Null(page.Preview);
+            Assert.False(page.FindControl<Border>("LookCard")!.IsVisible);
+            page.FindControl<Button>("EditSize")!.Command!.Execute(null);
+            RenderTests.Pump();
+            Assert.False(page.FindControl<Border>("EditorCard")!.IsVisible);
+            Assert.True(page.FindControl<Border>("LookCard")!.IsEffectivelyVisible);
+            // The look settings and this donut's labels are all in the panel, and nowhere else.
+            foreach (var name in new[] { "SizeSlider", "HoleSlider", "OpacitySlider", "RingSizeSlider", "RingSpreadSlider", "CaptionsToggle", "SliceLabelsChoice", "LabelScaleSlider" })
+            {
+                var control = page.FindControl<Control>(name)!;
+                Assert.True(control.IsEffectivelyVisible, name);
+                Assert.Contains(control.GetVisualAncestors().OfType<Border>(), b => b.Name == "LookCard");
+            }
+            var preview = page.Preview!;
+            Assert.True(preview.IsVisible);
+            // Not pinned above everything, and not taking the keyboard from the sliders.
+            Assert.False(preview.Topmost);
+            Assert.False(preview.ShowActivated);
+            var donut = preview.DonutControl;
+            Assert.False(donut.IsEditMode);
+            Assert.Equal(vm.OuterRadius, donut.OuterRadius);
+            // Filled as the donut opens for this profile's files.
+            Assert.Equal(vm.SelectedProfile!.Profile.PresetIds.Count, donut.Items!.Count);
+            Assert.Equal(AppHost.Get<ILocalizer>().Format("donut.files_same", 1,
+                FormatRegistry.FindByExtension(vm.SelectedProfile.Profile.Extensions[0])!.DisplayName), donut.CenterTitle);
+
+            // It follows every slider, at once.
+            page.FindControl<Slider>("SizeSlider")!.Value = 200;
+            page.FindControl<Slider>("LabelScaleSlider")!.Value = 125;
+            page.FindControl<Slider>("OpacitySlider")!.Value = 60;
+            RenderTests.Pump();
+            Assert.Equal(200, donut.OuterRadius);
+            Assert.Equal(1.25, donut.LabelScale, 3);
+            Assert.Equal(0.6, donut.SliceOpacity, 3);
+            // The window, sized to the donut, rounds up to a whole pixel.
+            var side = DonutMenu.SideFor(200, donut.ReserveSubRing, donut.GroupRingSize);
+            Assert.InRange(preview.Bounds.Width, side - 0.01, side + 1);
+
+            page.FindControl<Button>("LookDone")!.Command!.Execute(null);
+            RenderTests.Pump();
+            Assert.False(preview.IsVisible);
+            Assert.True(page.FindControl<Border>("EditorCard")!.IsVisible);
+
+            // Esc on the donut on screen is Done too.
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.True(preview.IsVisible);
+            preview.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            RenderTests.Pump();
+            Assert.False(vm.IsAdjustingLook);
+            Assert.False(preview.IsVisible);
+
+            // Another page ends it and puts the donut away for good.
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.True(page.Preview!.IsVisible);
+            ((MainWindowViewModel)window.DataContext!).Navigate("general");
+            RenderTests.Pump();
+            Assert.False(preview.IsVisible);
+            Assert.False(vm.IsAdjustingLook);
+        }
+        finally
+        {
+            vm.LabelScale = savedScale;
+            (store.Settings.Donut.OuterRadius, store.Settings.Donut.Opacity) = saved;
+            store.SaveDonutLook();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Every_slider_of_the_panel_shows_its_value()
+    {
+        var (window, page, vm) = Open();
+        var saved = vm.OuterRadius;
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            // The value beside each slider, in its last column: the size in pixels (the donut's radius, as it is
+            // stored), the others in percent.
+            string ValueOf(string slider) => ((Grid)page.FindControl<Slider>(slider)!.Parent!).Children.OfType<TextBlock>()
+                .Single(t => Grid.GetColumn(t) == 2).Text ?? "";
+            page.FindControl<Slider>("SizeSlider")!.Value = 171.4;
+            RenderTests.Pump();
+            Assert.Equal("171 px", ValueOf("SizeSlider"));
+            vm.OuterRadius = 150;
+            vm.HoleRatio = 42;
+            RenderTests.Pump();
+            Assert.Equal("150 px", ValueOf("SizeSlider"));
+            Assert.Equal((0.42).ToString("P0", System.Globalization.CultureInfo.CurrentCulture), ValueOf("HoleSlider"));
+            Assert.All(new[] { "OpacitySlider", "RingSizeSlider", "RingSpreadSlider", "LabelScaleSlider" },
+                name => Assert.EndsWith("%", ValueOf(name)));
+        }
+        finally
+        {
+            vm.OuterRadius = saved;
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_donut_on_screen_leaves_out_the_turned_off_fields_as_the_donut_does()
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var before = store.Settings.TurnedOffFields.ToList();
+        store.Settings.TurnedOffFields = FormatFields.All.Where(f => f.CanTurnOff).Select(f => f.Id).ToList();
+        // The donut's own field stays (FORMAT-RULES rule 4); the others' formats leave its slices, as when it opens.
+        HashSet<string> OffFor(ToolbarProfile p) => store.Settings.TurnedOffFields
+            .Except(FormatFields.Of(FormatRegistry.FindByExtension(p.Extensions[0])!).Select(f => f.Id), StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        bool Shown(ToolbarProfile p, string id) => store.FindPreset(id) is { } preset
+            && (preset.IsGroup || FormatFields.IsShown(preset.TargetFormat, OffFor(p)));
+        var profile = store.Profiles.First(p => !p.IsFallback && p.Extensions.Count > 0
+            && FormatRegistry.FindByExtension(p.Extensions[0]) is not null && p.PresetIds.Any(id => !Shown(p, id)));
+        var (window, page, vm) = Open();
+        try
+        {
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile == profile);
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var expected = profile.PresetIds.Where(id => Shown(profile, id)).ToList();
+            Assert.Equal(expected, page.Preview!.DonutControl.Items!.Select(i => i.Id).Where(expected.Contains));
+            Assert.DoesNotContain(page.Preview.DonutControl.Items!, i => !Shown(profile, i.Id));
+            Assert.True(page.Preview.DonutControl.Items!.Count < profile.PresetIds.Count, profile.Id);
+        }
+        finally
+        {
+            store.Settings.TurnedOffFields = before;
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_group_open_in_the_editor_is_held_open_on_the_donut_on_screen_and_follows_its_edits()
+    {
+        var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var group = store.FindPreset("pdf-edit")!;
+        var members = group.SubPresetIds.ToList();
+        try
+        {
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "pdf");
+            vm.EditingBack = true;
+            var index = vm.SelectedProfile.Profile.BackPresetIds!.IndexOf("pdf-edit");
+            vm.OpenGroupAt(index);
+            RenderTests.Pump();
+            // The donut on screen turns to the group's face and holds its ring open.
+            var preview = page.Preview!;
+            Assert.True(preview.IsVisible);
+            Assert.True(((RadialViewModel)preview.DataContext!).IsBackFace);
+            Assert.Equal("pdf-edit", preview.DonutControl.HeldGroupId);
+            Assert.Equal(index, preview.DonutControl.OpenedGroup);
+            // Edit Donut Size isn't offered while a group is open.
+            Assert.False(page.FindControl<Button>("EditSize")!.IsEffectivelyVisible);
+
+            vm.RemoveAt(members.Count - 1);
+            Assert.True(vm.Insert("compress-pdf", 0));
+            vm.Move(0, 3);
+            RenderTests.Pump();
+            Assert.Equal(group.SubPresetIds, preview.DonutControl.Items![index].Children!.Select(c => c.Id));
+            Assert.Equal(index, preview.DonutControl.OpenedGroup);
+
+            vm.CloseGroupCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.False(preview.IsVisible);
+        }
+        finally
+        {
+            group.SubPresetIds.Clear();
+            group.SubPresetIds.AddRange(members);
+            store.SaveLibrary();
+            window.Close();
+        }
+    }
+
+    private static DonutItem Item(string id, bool group = false) => new()
+    {
+        Id = id,
+        Label = id,
+        Children = group ? [new DonutItem { Id = id + "-a", Label = "A" }, new DonutItem { Id = id + "-b", Label = "B" }] : null,
+    };
+
+    [AvaloniaFact]
+    public void A_held_group_stays_open_and_comes_back_after_another_one_opens_over_it()
+    {
+        TestServices.EnsureInitialized("en");
+        var donut = new DonutMenu { Items = [Item("plain"), Item("one", true), Item("two", true), Item("other")], HeldGroupId = "one" };
+        var host = new Window { Content = donut, SizeToContent = SizeToContent.WidthAndHeight };
+        host.Show();
+        RenderTests.Pump();
+        try
+        {
+            Assert.Equal(1, donut.OpenedGroup);
+            // What folds a ring (the pointer leaving, a drop) leaves it open, and Esc goes on to the window.
+            donut.CollapseGroup();
+            Assert.Equal(1, donut.OpenedGroup);
+            Assert.False(donut.HandleKey(Key.Escape));
+            Assert.Equal(1, donut.OpenedGroup);
+            // Another group opens over it while the pointer is on it, and folding that one brings it back.
+            donut.OpenGroup(2);
+            Assert.Equal(2, donut.OpenedGroup);
+            Assert.True(donut.HandleKey(Key.Escape)); // a ring that isn't held folds on Esc as before
+            Assert.Equal(1, donut.OpenedGroup);
+            // Held by id: it follows its slice when the slices change, and an id not on them holds nothing.
+            donut.Items = [Item("one", true), Item("plain")];
+            Assert.Equal(0, donut.OpenedGroup);
+            donut.HeldGroupId = "elsewhere";
+            Assert.Equal(-1, donut.OpenedGroup);
+            donut.HeldGroupId = "one";
+            Assert.Equal(0, donut.OpenedGroup);
+            donut.HeldGroupId = null;
+            Assert.Equal(-1, donut.OpenedGroup);
+            // The editor never holds one.
+            var editor = new DonutMenu { IsEditMode = true, Items = [Item("one", true)], HeldGroupId = "one" };
+            Assert.Equal(-1, editor.OpenedGroup);
+        }
+        finally
+        {
+            host.Close();
+        }
+    }
+
+    [Fact]
+    public void The_donut_goes_beside_the_window_and_the_window_slides_over_when_there_is_no_room()
+    {
+        var gap = ToolbarPage.PreviewGap;
+        var area = new PixelRect(0, 25, 1728, 1050);
+        const int side = 540;
+        // Room on the right: there, level with the window's middle.
+        Assert.Equal(new PixelPoint(80 + 1080 + gap + side / 2, 150 + 760 / 2), ToolbarPage.Beside(area, new PixelRect(80, 150, 1080, 760), side));
+        // No room on the right, room on the left: the left.
+        Assert.Equal(new PixelPoint(1728 - 1080 - gap - side / 2, 150 + 760 / 2), ToolbarPage.Beside(area, new PixelRect(1728 - 1080, 150, 1080, 760), side));
+        // Low on the screen: still all of it on the screen.
+        Assert.Equal(1075 - side / 2, ToolbarPage.Beside(area, new PixelRect(80, 700, 1080, 760), side)!.Value.Y);
+        // Centred on the screen: no room either side...
+        var centred = new PixelRect((1728 - 1080) / 2, 150, 1080, 760);
+        Assert.Null(ToolbarPage.Beside(area, centred, side));
+        // ...so the window slides the shorter way, just far enough, and the donut fits beside it.
+        var x = ToolbarPage.SlideFor(area, centred, side)!.Value;
+        Assert.Equal(1728 - gap - side - 1080, x);
+        Assert.NotNull(ToolbarPage.Beside(area, centred.WithX(x), side));
+        // A screen too narrow for both: no slide.
+        Assert.Null(ToolbarPage.SlideFor(new PixelRect(0, 0, 1440, 900), centred, side));
     }
 }

@@ -145,6 +145,16 @@ public sealed class UserDataStore
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
     }
 
+    /// <summary>
+    /// Remembers where the donut on screen was dragged (<see cref="AppSettings.DonutPreviewPlace"/>), quietly as
+    /// <see cref="SaveUiScale"/>: only the next showing of it reads it.
+    /// </summary>
+    public void SaveDonutPreviewPlace(int x, int y)
+    {
+        Settings.DonutPreviewPlace = new WindowBounds { X = x, Y = y };
+        Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
+    }
+
     public void SaveLibrary()
     {
         EnsureConsistency();

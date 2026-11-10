@@ -25,13 +25,13 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private double _holeRatio = 0.42;
     [ObservableProperty] private double _sliceOpacity = 0.96;
 
-    /// <summary>The output format under the slices' names (Settings → Donut toolbar → Appearance).</summary>
+    /// <summary>The output format under the slices' names (Settings → Donut toolbar → Edit Donut Size).</summary>
     [ObservableProperty] private bool _showCaptions = true;
 
-    /// <summary>How large a group's ring is (Appearance → Group ring size).</summary>
+    /// <summary>How large a group's ring is (Edit Donut Size → Group ring size).</summary>
     [ObservableProperty] private double _groupRingSize = 1;
 
-    /// <summary>How wide a group's ring spreads (Appearance → Group ring spread).</summary>
+    /// <summary>How wide a group's ring spreads (Edit Donut Size → Group ring spread).</summary>
     [ObservableProperty] private double _groupRingSpread = 1;
 
     /// <summary>
@@ -254,6 +254,45 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             ? loc.Format("donut.files_same", counted.Count, formats[0].DisplayName)
             : loc.Format("donut.files_mixed", counted.Count);
         CenterSubtitle = clickMode ? loc["donut.close_hint"] : null;
+    }
+
+    /// <summary>
+    /// Fills the donut as <paramref name="profile"/> opens for one of its files (two different ones for a mixed
+    /// profile, a folder for Folders), on the front or the back: the Donut toolbar page shows it on screen, at its real
+    /// size, while the donut is adjusted or a group edited. The turned-off fields are left out as <see cref="Load"/>
+    /// leaves them out. Nothing converts from it.
+    /// </summary>
+    public void LoadPreview(ToolbarProfile profile, bool backFace)
+    {
+        IsClickMode = false;
+        IsConnectMode = false;
+        Files = [];
+        DonutOpacity = 1;
+        HitBackground = "Transparent";
+        ApplyLook(profile);
+        var formats = profile.Id == "folders"
+            ? [FormatRegistry.FindById(FormatRegistry.Folder)!]
+            : ProfileSelector.DetectFormats(profile.Extensions.Take(profile.IsFallback ? 2 : 1).Select(e => "preview." + e)).ToList();
+        var off = store.Settings.TurnedOffFields
+            .Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _front = BuildFace(profile.PresetIds, formats, off);
+        (_back, _backIds, _formats, _off) = (null, [.. profile.BackPresetIds ?? []], formats, off);
+        _loads++;
+        ShowFace(backFace && BackFace().IsUsable);
+        ReserveSubRing = _front.Items.Any(item => item.IsGroup) || HasGroups(_backIds);
+        CenterTitle = formats.Count == 1
+            ? loc.Format("donut.files_same", 1, formats[0].DisplayName)
+            : formats.Count > 1 ? loc.Format("donut.files_mixed", formats.Count) : loc.DisplayName(profile);
+        CenterSubtitle = null;
+    }
+
+    /// <summary>The donut's look from the settings and <paramref name="profile"/>'s labels, while it is previewed.</summary>
+    public void ApplyLook(ToolbarProfile profile)
+    {
+        ApplyAppearance();
+        LabelScale = ToolbarProfile.ClampLabelScale(profile.LabelScale);
+        DefaultShow = profile.LabelShow ?? LabelShow.Auto;
     }
 
     /// <summary>

@@ -297,6 +297,25 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// <summary>Where the way back out of a group leads: the donut's name.</summary>
     public string GroupBackText => Profile is { } profile ? _loc.DisplayName(profile) : "";
 
+    /// <summary>
+    /// The donut's size and look are being adjusted (Edit Donut Size): the editor makes way for their settings, and the
+    /// donut shows on screen at its real size.
+    /// </summary>
+    [ObservableProperty] private bool _isAdjustingLook;
+
+    /// <summary>The donut whose labels the panel's lower part adjusts: "This donut: Images".</summary>
+    public string ThisDonutText => _loc.Format("toolbar.look_this", GroupBackText);
+
+    [RelayCommand]
+    private void AdjustLook()
+    {
+        CloseGroup();
+        IsAdjustingLook = true;
+    }
+
+    [RelayCommand]
+    private void DoneAdjustingLook() => IsAdjustingLook = false;
+
     /// <summary>The front face is edited: the other half of the switch.</summary>
     public bool EditingFront
     {
@@ -312,19 +331,36 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
 
     /// <summary>Check list of a mixed-selection profile (null for a normal one).</summary>
     [ObservableProperty] private MixedExtensionsViewModel? _mixedExtensions;
-    [ObservableProperty] private double _outerRadius;
-    [ObservableProperty] private double _holeRatio;
-    [ObservableProperty] private double _sliceOpacity;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(OuterRadiusText))]
+    private double _outerRadius;
 
-    /// <summary>The output format under the slices' names (Appearance → Show output format).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HoleRatioText))]
+    private double _holeRatio;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SliceOpacityText))]
+    private double _sliceOpacity;
+
+    /// <summary>The size as its slider's value shows it: the donut's radius in pixels, as it is stored ("150 px").</summary>
+    public string OuterRadiusText => $"{Math.Round(OuterRadius).ToString(System.Globalization.CultureInfo.CurrentCulture)} px";
+
+    /// <summary>The hole as its slider's value shows it: "42 %".</summary>
+    public string HoleRatioText => Percent(HoleRatio);
+
+    /// <summary>The opacity as its slider's value shows it: "90 %".</summary>
+    public string SliceOpacityText => Percent(SliceOpacity);
+
+    /// <summary>The output format under the slices' names (Edit Donut Size → Show output format).</summary>
     [ObservableProperty] private bool _showCaptions;
 
-    /// <summary>How large a group's ring is, in percent (Appearance → Group ring size).</summary>
+    /// <summary>How large a group's ring is, in percent (Edit Donut Size → Group ring size).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GroupRingSizeText))]
     private double _groupRingSize = 100;
 
-    /// <summary>How wide a group's ring spreads, in percent (Appearance → Group ring spread).</summary>
+    /// <summary>How wide a group's ring spreads, in percent (Edit Donut Size → Group ring spread).</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(GroupRingSpreadText))]
     private double _groupRingSpread = 100;
@@ -422,6 +458,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         Message = null;
         OpenGroup = null;
         OnPropertyChanged(nameof(GroupBackText));
+        OnPropertyChanged(nameof(ThisDonutText));
         // A search typed for the last donut's presets would hide this one's (#427).
         PaletteSearch = "";
         RebuildProfileEditor();
@@ -439,6 +476,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         Profile.Name = value.Trim();
         SelectedProfile!.Refresh(_loc);
         OnPropertyChanged(nameof(GroupBackText));
+        OnPropertyChanged(nameof(ThisDonutText));
         if (OpenGroup is null)
             CenterTitle = value.Trim();
         SaveOwnLibrary();

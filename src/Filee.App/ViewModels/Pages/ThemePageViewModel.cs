@@ -111,8 +111,8 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _useSystemFont;
 
     /// <summary>
-    /// The donut toolbar's opacity in percent: the one setting Donut toolbar → Appearance → Opacity edits too (each
-    /// page reads it when it opens). The preview donut follows it at once, the toolbar the next time it opens.
+    /// The donut toolbar's opacity in percent: the one setting Donut toolbar → Edit Donut Size → Opacity edits too
+    /// (each page reads it when it opens). The preview donut follows it at once, the toolbar the next time it opens.
     /// </summary>
     [ObservableProperty] private double _donutOpacity;
 
