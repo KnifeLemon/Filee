@@ -515,6 +515,7 @@
           </Grid>
         </StackPanel>
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.document_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
         <!-- "Pages per sheet" (#737): several pages on each sheet -->
         <StackPanel Spacing="10" IsVisible="{Binding ShowSheets}">
           <Grid ColumnDefinitions="*,12,*">

@@ -154,7 +154,7 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("50%", 0.5, "0%")]
     public void Numbers_keep_their_shown_format(string text, double value, string format)
     {
-        var number = PdfTablesConverter.Number(text);
+        var number = TableSheets.Number(text);
         Assert.NotNull(number);
         Assert.Equal(value, number.Value.Value, 9);
         Assert.Equal(format, number.Value.Format);
@@ -170,8 +170,8 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("10/23/2026")]
     public void Other_text_stays_text(string text)
     {
-        Assert.Null(PdfTablesConverter.Number(text));
-        Assert.Null(PdfTablesConverter.Date(text));
+        Assert.Null(TableSheets.Number(text));
+        Assert.Null(TableSheets.Date(text));
     }
 
     [Theory]
@@ -180,9 +180,9 @@ public class PdfTablesTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("2026. 10. 23.", "yyyy. mm. dd.")]
     public void Dates_with_the_year_first_become_dates(string text, string format)
     {
-        var date = PdfTablesConverter.Date(text);
+        var date = TableSheets.Date(text);
         Assert.NotNull(date);
         Assert.Equal(format, date.Value.Format);
-        Assert.Null(PdfTablesConverter.Date("2026-02-30")); // not a day
+        Assert.Null(TableSheets.Date("2026-02-30")); // not a day
     }
 }
