@@ -22,7 +22,7 @@ public partial class BackFaceTests
         ["subtitles"] = (["to-srt", "to-vtt"], ["zip-all"]),
         ["vector"] = (["to-png", "to-pdf", "to-svg", "to-jpg", "to-webp"], ["to-tiff", "to-ico", "to-icns", "to-dxf", "zip-all"]),
         ["archives"] = (["extract", "zip-all", "to-zip", "to-7z"], []),
-        ["folders"] = (["to-iso"], []),
+        ["folders"] = (["to-iso", "to-zip", "zip-all"], []),
         ["cad"] = (["to-pdf", "to-png", "to-svg", "to-dxf", "to-dwg"], ["to-jpg", "merge-pdf", "zip-all"]),
         ["fonts"] = (["to-woff2", "to-woff", "to-ttf", "to-otf"], ["zip-all"]),
         ["data"] = (["to-json", "to-yaml", "to-xml", "to-csv", "to-xlsx"], ["to-ods", "to-html", "to-md", "zip-all"]),
@@ -69,7 +69,7 @@ public partial class BackFaceTests
         foreach (var profile in BuiltInData.CreateProfiles())
             foreach (var id in profile.PresetIds)
                 foreach (var work in WorkOf(profile.Id, id, presets))
-                    Assert.True(work == 'V' || work == 'B' && profile.Id is "archives" or "mixed", $"{profile.Id}/front: {id} is {work}");
+                    Assert.True(work == 'V' || work == 'B' && profile.Id is "archives" or "folders" or "mixed", $"{profile.Id}/front: {id} is {work}");
     }
 
     [Fact]

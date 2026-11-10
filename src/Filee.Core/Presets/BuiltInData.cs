@@ -12,7 +12,7 @@ public static class BuiltInData
     public const string SameAsSource = "*";
 
     /// <summary>Whether a conversion target accepts a folder directly.</summary>
-    public static bool SupportsFolderTarget(string target) => target == "iso";
+    public static bool SupportsFolderTarget(string target) => target is "iso" or "zip" or "7z" or "tar" or "tgz" or "tbz2" or "txz";
 
     /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
     public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
@@ -769,7 +769,7 @@ public static class BuiltInData
             Id = "folders",
             NameKey = "profile.folders",
             Extensions = [],
-            PresetIds = ["to-iso"],
+            PresetIds = ["to-iso", "to-zip", "zip-all"],
             BackPresetIds = [],
         };
         profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);

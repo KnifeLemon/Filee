@@ -62,7 +62,7 @@ internal static class Cli
 
         var missing = new List<string>();
         var files = ExpandInputs(options.Inputs, options.Recursive, missing,
-            foldersAsInputs: preset.TargetFormat == "iso" || preset.PacksIntoOneArchive);
+            foldersAsInputs: BuiltInData.AcceptsFolders(preset) || preset.PacksIntoOneArchive);
         foreach (var path in missing)
             errors.WriteLine($"filee: not found: {path}");
         if (missing.Count > 0)

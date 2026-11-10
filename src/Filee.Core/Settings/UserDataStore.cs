@@ -1089,6 +1089,13 @@ internal static class SettingsMigrations
         //      claims stay put. (Schema 78 may be renumbered if another change takes it first.)
         if (from < 78)
             changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
+        // v79: restore folder compression (#1345) on the unchanged ISO-only default, preserving custom layouts.
+        if (from < 79 && profiles.FirstOrDefault(p => p.Id == "folders") is { } folders
+            && folders.PresetIds.SequenceEqual(new[] { "to-iso" }) && (folders.BackPresetIds?.Count ?? 0) == 0)
+        {
+            foreach (var id in new[] { "to-zip", "zip-all" })
+                if (presets.Any(p => p.Id == id)) { folders.PresetIds.Add(id); changed = true; }
+        }
         return changed;
     }
 
