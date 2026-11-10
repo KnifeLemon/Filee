@@ -31,6 +31,7 @@
   "nav.about": "정보",
   "nav.collapse": "사이드바 접기",
   "nav.expand": "사이드바 펼치기",
+  "nav.page_error": "이 페이지를 열 수 없어요. 자세한 내용은 로그에 있어요.",
 
   "tray.open": "Filee 열기",
   "tray.pause": "단축키 일시 중지",

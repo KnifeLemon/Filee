@@ -30,6 +30,7 @@
   "nav.about": "परिचय",
   "nav.collapse": "साइडबार छोटा करें",
   "nav.expand": "साइडबार बड़ा करें",
+  "nav.page_error": "यह पेज नहीं खुल सका। विवरण लॉग में है।",
   "tray.open": "Filee खोलें",
   "tray.pause": "शॉर्टकट रोकें",
   "tray.resume": "शॉर्टकट फिर शुरू करें",

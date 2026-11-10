@@ -31,6 +31,7 @@
   "nav.about": "About",
   "nav.collapse": "Collapse sidebar",
   "nav.expand": "Expand sidebar",
+  "nav.page_error": "This page couldn't open. Details are in the log.",
 
   "tray.open": "Open Filee",
   "tray.pause": "Pause shortcuts",

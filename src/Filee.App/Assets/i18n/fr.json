@@ -31,6 +31,7 @@
   "nav.about": "À propos",
   "nav.collapse": "Réduire la barre latérale",
   "nav.expand": "Développer la barre latérale",
+  "nav.page_error": "Impossible d'ouvrir cette page. Les détails figurent dans le journal.",
 
   "tray.open": "Ouvrir Filee",
   "tray.pause": "Suspendre les raccourcis",

@@ -31,6 +31,7 @@
   "nav.about": "O programie",
   "nav.collapse": "Zwiń pasek boczny",
   "nav.expand": "Rozwiń pasek boczny",
+  "nav.page_error": "Nie udało się otworzyć tej strony. Szczegóły są w dzienniku.",
 
   "tray.open": "Otwórz Filee",
   "tray.pause": "Wstrzymaj skróty",

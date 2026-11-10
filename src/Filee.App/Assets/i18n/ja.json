@@ -30,6 +30,7 @@
   "nav.about": "Fileeについて",
   "nav.collapse": "サイドバーを折りたたむ",
   "nav.expand": "サイドバーを展開",
+  "nav.page_error": "このページを開けませんでした。詳細はログにあります。",
   "tray.open": "Fileeを開く",
   "tray.pause": "ショートカットを一時停止",
   "tray.resume": "ショートカットを再開",

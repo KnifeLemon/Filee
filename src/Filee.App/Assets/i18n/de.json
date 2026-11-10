@@ -30,6 +30,7 @@
   "nav.about": "Über Filee",
   "nav.collapse": "Seitenleiste einklappen",
   "nav.expand": "Seitenleiste ausklappen",
+  "nav.page_error": "Diese Seite ließ sich nicht öffnen. Details stehen im Protokoll.",
   "tray.open": "Filee öffnen",
   "tray.pause": "Tastenkürzel pausieren",
   "tray.resume": "Tastenkürzel fortsetzen",
