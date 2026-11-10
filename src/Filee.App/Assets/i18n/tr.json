@@ -769,6 +769,7 @@
   "toolbar.hint_remove": "Kaldırmak için bir dilimi buraya sürükleyin",
   "toolbar.hint_reorder": "Sıralamak için dilimleri birbirinin üzerine sürükleyin",
   "toolbar.hint_edit": "Düzenlemek için dilime sağ tıklayın veya ✎ kullanın",
+  "toolbar.group_hint": "Listeden ön ayarları sürükleyip bırakın, sıralamak için dilimleri sürükleyin, çıkarmak için birini listeye sürükleyin.",
   "toolbar.max_reached": "Bir halka en fazla {0} ön ayar tutar",
   "toolbar.appearance": "Görünüm",
   "toolbar.size": "Boyut",

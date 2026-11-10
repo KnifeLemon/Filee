@@ -783,6 +783,7 @@
   "toolbar.hint_remove": "Kéo một phần trở lại đây để gỡ bỏ",
   "toolbar.hint_reorder": "Kéo các phần chồng lên nhau để sắp xếp lại",
   "toolbar.hint_edit": "Nhấp chuột phải vào một phần hoặc dùng ✎ để chỉnh sửa",
+  "toolbar.group_hint": "Kéo cấu hình sẵn từ danh sách vào, kéo các phần để sắp xếp lại, và kéo một phần vào danh sách để bỏ ra.",
   "toolbar.max_reached": "Một vòng tròn chứa tối đa {0} cấu hình sẵn",
   "toolbar.appearance": "Giao diện",
   "toolbar.size": "Kích thước",

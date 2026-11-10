@@ -768,6 +768,7 @@
 "toolbar.hint_remove": "Trascina una fetta qui per rimuoverla",
 "toolbar.hint_reorder": "Trascina le fette l'una sull'altra per riordinarle",
 "toolbar.hint_edit": "Clic destro su una fetta o usa ✎ per modificare",
+"toolbar.group_hint": "Trascina i preset dall'elenco, trascina le fette per riordinarle e trascinane una sull'elenco per toglierla.",
 "toolbar.max_reached": "Un donut contiene fino a {0} preset",
 "toolbar.appearance": "Aspetto",
 "toolbar.size": "Dimensione",

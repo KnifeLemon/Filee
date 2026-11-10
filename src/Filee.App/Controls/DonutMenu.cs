@@ -265,6 +265,12 @@ public sealed partial class DonutMenu : Control
     /// <summary>Right-click or ✎ on a slice.</summary>
     public event EventHandler<int>? SegmentContextRequested;
 
+    /// <summary>
+    /// A group slice was clicked (not its ✎): in the editor (<see cref="IsEditMode"/>), to open it and edit what it fans
+    /// out; on the live donut, after it opened at once.
+    /// </summary>
+    public event EventHandler<int>? GroupOpenRequested;
+
     /// <summary>Right-click on a slice of a group's ring (live toolbar, click mode): (group, slice in the group).</summary>
     public event EventHandler<(int Group, int Sub)>? SubSegmentContextRequested;
 
@@ -631,11 +637,15 @@ public sealed partial class DonutMenu : Control
             case DonutHitKind.EditButton:
                 SegmentContextRequested?.Invoke(this, hit.Index);
                 break;
+            case DonutHitKind.Segment when IsEditMode && Items![hit.Index].IsGroup:
+                GroupOpenRequested?.Invoke(this, hit.Index);
+                break;
             case DonutHitKind.Segment when !IsEditMode && Items![hit.Index] is { IsEnabled: true, IsGroup: false }:
                 SegmentInvoked?.Invoke(this, hit.Index);
                 break;
             case DonutHitKind.Segment when !IsEditMode && Items![hit.Index].Children is { Count: > 0 }:
                 Expand(hit.Index); // no waiting when clicked; a tap has no hover to rest on at all
+                GroupOpenRequested?.Invoke(this, hit.Index);
                 break;
             case DonutHitKind.Outside when !IsEditMode && _expanded >= 0:
                 CollapseGroup(); // clicked past the ring

@@ -769,6 +769,7 @@
   "toolbar.hint_remove": "項目をここにドラッグして削除",
   "toolbar.hint_reorder": "項目を重ねるようにドラッグして並べ替え",
   "toolbar.hint_edit": "項目を右クリックするか、✎を使って編集",
+  "toolbar.group_hint": "リストからプリセットをドラッグして追加し、スライスをドラッグして並べ替え、リストにドラッグすると外せます。",
   "toolbar.max_reached": "ドーナツメニューには最大{0}個のプリセットを登録できます",
   "toolbar.appearance": "外観",
   "toolbar.size": "サイズ",

@@ -783,6 +783,7 @@
   "toolbar.hint_remove": "將扇形拖回這裡即可移除",
   "toolbar.hint_reorder": "扇形之間互相拖曳可調整順序",
   "toolbar.hint_edit": "右鍵扇形或點擊 ✎ 編輯",
+  "toolbar.group_hint": "從清單拖入預設，拖曳切片調整順序，拖回清單即可移出。",
   "toolbar.max_reached": "圓環最多容納 {0} 個預設",
   "toolbar.appearance": "外觀",
   "toolbar.size": "大小",

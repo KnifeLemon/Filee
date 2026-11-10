@@ -769,6 +769,7 @@
   "toolbar.hint_remove": "Seret irisan kembali ke sini untuk menghapusnya",
   "toolbar.hint_reorder": "Seret irisan satu ke yang lain untuk mengubah urutan",
   "toolbar.hint_edit": "Klik kanan irisan atau gunakan ✎ untuk mengedit",
+  "toolbar.group_hint": "Seret preset dari daftar, seret irisan untuk mengurutkannya, dan seret satu ke daftar untuk mengeluarkannya.",
   "toolbar.max_reached": "Satu menu donut menampung hingga {0} preset",
   "toolbar.appearance": "Tampilan",
   "toolbar.size": "Ukuran",

@@ -783,6 +783,7 @@
   "toolbar.hint_remove": "세그먼트를 여기로 끌면 빼기",
   "toolbar.hint_reorder": "세그먼트끼리 끌면 순서 변경",
   "toolbar.hint_edit": "우클릭 또는 ✎로 프리셋 편집",
+  "toolbar.group_hint": "목록에서 프리셋을 끌어 넣고, 세그먼트를 끌어 순서를 바꾸고, 목록으로 끌어다 놓으면 빠져요.",
   "toolbar.max_reached": "도넛에는 최대 {0}개까지 넣을 수 있어요",
   "toolbar.appearance": "모양",
   "toolbar.size": "크기",

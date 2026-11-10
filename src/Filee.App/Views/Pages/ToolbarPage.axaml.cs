@@ -6,6 +6,8 @@
 // A floating "ghost" chip follows the pointer, and the donut opens a gap where the drop would land, with a
 // translucent slice of the dragged preset in it (DonutMenu.SetDropPreview). The Front / Back switch shows the other
 // face of the profile, and the donut turns in to it as the open donut does on Tab.
+// A click on a group slice opens the group (ToolbarPageViewModel.OpenGroup): the donut then shows its presets, and the
+// same drags add, reorder and take them out of the group.
 //
 // Chip tooltips: an available chip's tip lists the formats it takes (PresetFormatTip), as a card. Holding either Shift
 // shows the whole list while it is open; Tab or the arrow keys open a chip's tip as hover does, and pressing or
@@ -77,6 +79,12 @@ public partial class ToolbarPage : UserControl
         {
             if (Vm is not null && _drag is null)
                 await Vm.EditAsync(index);
+        };
+        // A click on a group slice opens it, as a folder: the editor then edits what it fans out.
+        Donut.GroupOpenRequested += (_, index) =>
+        {
+            if (_drag is null)
+                Vm?.OpenGroupAt(index);
         };
         DataContextChanged += (_, _) =>
         {

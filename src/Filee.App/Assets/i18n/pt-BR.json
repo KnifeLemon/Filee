@@ -783,6 +783,7 @@
   "toolbar.hint_remove": "Arraste uma fatia de volta para cá para removê-la",
   "toolbar.hint_reorder": "Arraste fatias umas sobre as outras para reordenar",
   "toolbar.hint_edit": "Clique com o botão direito numa fatia ou use ✎ para editar",
+  "toolbar.group_hint": "Arraste predefinições da lista, arraste as fatias para reordenar e arraste uma para a lista para tirá-la.",
   "toolbar.max_reached": "Um menu comporta até {0} predefinições",
   "toolbar.appearance": "Aparência",
   "toolbar.size": "Tamanho",

@@ -283,6 +283,20 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// <summary>The donut shows and edits the back face of the profile (the Front / Back switch).</summary>
     [ObservableProperty] private bool _editingBack;
 
+    /// <summary>
+    /// The group open in the editor (a group slice clicked), or null: the donut then shows and edits the presets it fans
+    /// out, as a folder opens, and the Front / Back switch makes way for a way back.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditingGroup))]
+    private Preset? _openGroup;
+
+    /// <summary>A group is open in the editor (<see cref="OpenGroup"/>).</summary>
+    public bool IsEditingGroup => OpenGroup is not null;
+
+    /// <summary>Where the way back out of a group leads: the donut's name.</summary>
+    public string GroupBackText => Profile is { } profile ? _loc.DisplayName(profile) : "";
+
     /// <summary>The front face is edited: the other half of the switch.</summary>
     public bool EditingFront
     {
@@ -349,14 +363,50 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
 
     private ToolbarProfile? Profile => SelectedProfile?.Profile;
 
-    /// <summary>The preset ids of the face being edited (null without a profile).</summary>
+    /// <summary>The preset ids being edited: the open group's, or the face's (null without a profile).</summary>
     private List<string>? Slices => Profile is not { } profile ? null
+        : OpenGroup is { } group ? group.SubPresetIds
         : EditingBack ? (profile.BackPresetIds ??= []) : profile.PresetIds;
+
+    /// <summary>How many presets <see cref="Slices"/> may hold.</summary>
+    private int Capacity => OpenGroup is null ? ToolbarProfile.MaxSlices : Preset.MaxSubPresets;
+
+    /// <summary>
+    /// Where the open group is on the face being edited (-1 with none open, or once it has left the face): the donut on
+    /// screen opens it there.
+    /// </summary>
+    public int OpenGroupIndex => OpenGroup is { } group && Profile is { } profile
+        ? (EditingBack ? profile.BackPresetIds ?? [] : profile.PresetIds).IndexOf(group.Id) : -1;
+
+    /// <summary>Opens the group at <paramref name="index"/> on the face being edited, to edit what it fans out.</summary>
+    public void OpenGroupAt(int index)
+    {
+        if (OpenGroup is not null || Slices is not { } slices || index < 0 || index >= slices.Count
+            || _store.FindPreset(slices[index]) is not { IsGroup: true } group)
+            return;
+        Message = null;
+        OpenGroup = group;
+        // A search typed for the donut's presets would hide the group's.
+        PaletteSearch = "";
+        Rebuild();
+    }
+
+    /// <summary>Back from the open group to the whole donut.</summary>
+    [RelayCommand]
+    private void CloseGroup()
+    {
+        if (OpenGroup is null)
+            return;
+        Message = null;
+        OpenGroup = null;
+        Rebuild();
+    }
 
     partial void OnEditingBackChanged(bool value)
     {
         OnPropertyChanged(nameof(EditingFront));
         Message = null;
+        OpenGroup = null;
         Rebuild();
     }
 
@@ -370,6 +420,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         ProfileName = value is null ? "" : _loc.DisplayName(value.Profile);
         _loading = false;
         Message = null;
+        OpenGroup = null;
+        OnPropertyChanged(nameof(GroupBackText));
         // A search typed for the last donut's presets would hide this one's (#427).
         PaletteSearch = "";
         RebuildProfileEditor();
@@ -386,7 +438,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             return;
         Profile.Name = value.Trim();
         SelectedProfile!.Refresh(_loc);
-        CenterTitle = value.Trim();
+        OnPropertyChanged(nameof(GroupBackText));
+        if (OpenGroup is null)
+            CenterTitle = value.Trim();
         SaveOwnLibrary();
     }
 
@@ -560,12 +614,12 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
 
     // ───────── Editing operations called by the view's drag & drop ─────────
 
-    /// <summary>Slices on the face being edited.</summary>
+    /// <summary>Slices on the face being edited, or in the open group.</summary>
     public int SliceCount => Slices?.Count ?? 0;
 
     /// <summary>
-    /// Adds a palette preset to the face being edited at <paramref name="index"/> (clamped). Returns false when that
-    /// face is full.
+    /// Adds a palette preset to the face being edited, or to the open group, at <paramref name="index"/> (clamped).
+    /// Returns false when it is full, or the preset can't go there.
     /// </summary>
     public bool Insert(string presetId, int index)
     {
@@ -576,9 +630,12 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         }
         if (Slices is not { } slices || slices.Contains(presetId))
             return false;
-        if (slices.Count >= ToolbarProfile.MaxSlices)
+        if (OpenGroup is not null && _store.FindPreset(presetId) is not { IsGroup: false })
+            return false; // a group never holds a group
+        if (slices.Count >= Capacity)
         {
-            Message = _loc.Format("toolbar.max_reached", ToolbarProfile.MaxSlices);
+            Message = OpenGroup is null ? _loc.Format("toolbar.max_reached", ToolbarProfile.MaxSlices)
+                : _loc.Format("group.full", Preset.MaxSubPresets);
             return false;
         }
         slices.Insert(Math.Clamp(index, 0, slices.Count), presetId);
@@ -648,6 +705,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// <summary>Adds a group made in the editor to the available presets.</summary>
     internal void AddGroup(Preset group)
     {
+        // Out of an open group, which can't hold it: the new group is right there to drag.
+        OpenGroup = null;
         _store.Presets.Add(group);
         PaletteSearch = "";
         Commit();
@@ -670,7 +729,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             return;
         _store.Presets.Add(preset);
         EditingBack = true;
-        if (Slices is { Count: < ToolbarProfile.MaxSlices } slices)
+        if (Slices is { } slices && slices.Count < Capacity)
             slices.Add(preset.Id);
         else
             _newPresetToSelect = preset.Id;
@@ -684,7 +743,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         if (!await _windows.EditPresetAsync(preset, _windows.Main, folderInput: SelectedProfile?.Profile.Id == "folders"))
             return;
         _store.Presets.Add(preset);
-        if (Slices is { Count: < ToolbarProfile.MaxSlices } slices)
+        if (Slices is { } slices && slices.Count < Capacity)
             slices.Add(preset.Id);
         else
             _newPresetToSelect = preset.Id;
@@ -807,6 +866,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private void Rebuild()
     {
         var profile = Profile;
+        // The open group was deleted (its own editor can do that), or left the face: back to the whole donut.
+        if (OpenGroup is { } open && (!_store.Presets.Contains(open) || OpenGroupIndex < 0))
+            OpenGroup = null;
         var used = Slices ?? [];
         DonutItems = used
             .Select(_store.FindPreset)
@@ -828,7 +890,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             .ToList();
 
         Palette.Clear();
-        var placed = profile is null ? [] : profile.PresetIds.Concat(profile.BackPresetIds ?? []).ToHashSet();
+        var placed = Placed(profile);
         var judge = JudgesCurrentProfile;
         _judgingByProfile.TryGetValue(profile?.Id ?? "", out var judging);
         var pending = profile?.Id == "folders" && ShownPresets().Any(p => !p.IsGroup && judging?.Judged.ContainsKey(p.Id) != true);
@@ -939,13 +1001,23 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         }
         RefreshVisiblePalette(candidates);
 
-        CenterTitle = profile is null ? "" : _loc.DisplayName(profile);
-        CenterSubtitle = EditingBack
+        CenterTitle = OpenGroup is { } inside ? _loc.DisplayName(inside) : profile is null ? "" : _loc.DisplayName(profile);
+        CenterSubtitle = OpenGroup is not null ? $"{used.Count} / {Preset.MaxSubPresets}"
+            : EditingBack
             ? $"{_loc["toolbar.face_back"]} · {used.Count} / {ToolbarProfile.MaxSlices}"
             : $"{used.Count} / {ToolbarProfile.MaxSlices}";
         OnPropertyChanged(nameof(FrontCount));
         OnPropertyChanged(nameof(BackCount));
     }
+
+    /// <summary>
+    /// The presets the palette leaves out: those on the donut (either face), or, with a group open, those in the group
+    /// and every group (a group never holds one). The palette, its search and the judging must agree on it: judging waits
+    /// for exactly the presets the palette shows.
+    /// </summary>
+    private HashSet<string> Placed(ToolbarProfile? profile) => profile is null ? []
+        : OpenGroup is { } editing ? editing.SubPresetIds.Concat(_store.Presets.Where(p => p.IsGroup).Select(p => p.Id)).ToHashSet()
+        : profile.PresetIds.Concat(profile.BackPresetIds ?? []).ToHashSet();
 
     private IEnumerable<Preset> ShownPresets()
     {
@@ -956,7 +1028,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private void RefreshVisiblePalette()
     {
         var query = PaletteSearch.Trim();
-        var placed = Profile is null ? [] : Profile.PresetIds.Concat(Profile.BackPresetIds ?? []).ToHashSet();
+        var placed = Placed(Profile);
         _judgingByProfile.TryGetValue(Profile?.Id ?? "", out var judging);
         var candidates = new List<(PaletteChip Chip, PaletteTab Tab, bool Group)>();
         foreach (var preset in ShownPresets().Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
@@ -999,7 +1071,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         var profile = Profile;
         if (!_judgingByProfile.TryGetValue(profileId, out var judging))
             _judgingByProfile[profileId] = judging = new PaletteJudging();
-        var placed = profile.PresetIds.Concat(profile.BackPresetIds ?? []).ToHashSet();
+        var placed = Placed(profile);
         var pending = ShownPresets().Where(p => !p.IsGroup && (profile.Id == "folders" || !placed.Contains(p.Id)) && !judging.Judged.ContainsKey(p.Id)).ToList();
         if (pending.Count > 0)
         {

@@ -783,6 +783,7 @@
   "toolbar.hint_remove": "Glissez une tranche ici pour la retirer",
   "toolbar.hint_reorder": "Glissez les tranches l'une sur l'autre pour les réordonner",
   "toolbar.hint_edit": "Clic droit sur une tranche ou ✎ pour la modifier",
+  "toolbar.group_hint": "Glissez des préréglages depuis la liste, glissez les parts pour les réordonner, et glissez-en une sur la liste pour la retirer.",
   "toolbar.max_reached": "Un menu circulaire contient au plus {0} préréglages",
   "toolbar.appearance": "Apparence",
   "toolbar.size": "Taille",

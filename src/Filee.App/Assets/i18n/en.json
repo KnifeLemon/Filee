@@ -783,6 +783,7 @@
   "toolbar.hint_remove": "Drag a slice back here to remove it",
   "toolbar.hint_reorder": "Drag slices onto each other to reorder",
   "toolbar.hint_edit": "Right-click a slice or use ✎ to edit",
+  "toolbar.group_hint": "Drag presets in from the list, drag slices to reorder them, and drag one onto the list to take it out.",
   "toolbar.max_reached": "A donut holds up to {0} presets",
   "toolbar.appearance": "Appearance",
   "toolbar.size": "Size",

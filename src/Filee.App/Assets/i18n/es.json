@@ -769,6 +769,7 @@
   "toolbar.hint_remove": "Arrastra una porción aquí para quitarla",
   "toolbar.hint_reorder": "Arrastra una porción sobre otra para reordenar",
   "toolbar.hint_edit": "Haz clic derecho en una porción o usa ✎ para editarla",
+  "toolbar.group_hint": "Arrastra ajustes preestablecidos desde la lista, arrastra las porciones para reordenarlas y arrastra una a la lista para quitarla.",
   "toolbar.max_reached": "Un menú circular admite hasta {0} ajustes preestablecidos",
   "toolbar.appearance": "Aspecto",
   "toolbar.size": "Tamaño",

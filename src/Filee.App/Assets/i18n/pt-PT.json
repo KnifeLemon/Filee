@@ -783,6 +783,7 @@
   "toolbar.hint_remove": "Arrasta um segmento para aqui para o remover",
   "toolbar.hint_reorder": "Arrasta os segmentos uns sobre os outros para os reordenar",
   "toolbar.hint_edit": "Clica num segmento com o botão direito ou utiliza ✎ para editar",
+  "toolbar.group_hint": "Arraste predefinições da lista, arraste as fatias para reordenar e arraste uma para a lista para a retirar.",
   "toolbar.max_reached": "Uma barra circular admite até {0} predefinições",
   "toolbar.appearance": "Aspeto",
   "toolbar.size": "Tamanho",

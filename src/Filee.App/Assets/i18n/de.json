@@ -769,6 +769,7 @@
   "toolbar.hint_remove": "Segment zum Entfernen hierher zurückziehen",
   "toolbar.hint_reorder": "Segmente aufeinanderziehen, um sie umzuordnen",
   "toolbar.hint_edit": "Segment mit Rechtsklick oder ✎ bearbeiten",
+  "toolbar.group_hint": "Vorlagen aus der Liste hineinziehen, Segmente zum Umsortieren ziehen und eins auf die Liste ziehen, um es herauszunehmen.",
   "toolbar.max_reached": "Ein Ringmenü fasst bis zu {0} Vorlagen",
   "toolbar.appearance": "Darstellung",
   "toolbar.size": "Größe",
