@@ -544,6 +544,7 @@
   "general.start_with_system": "म साइन इन गर्दा Filee सुरु गर्नुहोस्",
   "general.show_in_dock": "Dock मा Filee देखाउनुहोस्",
   "general.show_menu_bar_icon": "मेनु पट्टीमा Filee देखाउनुहोस्",
+  "general.colored_menu_bar_icon": "मेनु पट्टीको आइकन रङ्गीन देखाउनुहोस्",
   "general.dock_failed": "Dock मा Filee को आइकन परिवर्तन गर्न सकिएन।",
   "general.context_menu": "Explorer दायाँ-क्लिक मेनुमा “Filee मार्फत रूपान्तरण गर्नुहोस्” देखाउनुहोस्",
   "general.context_menu_label": "Filee मार्फत रूपान्तरण गर्नुहोस्",

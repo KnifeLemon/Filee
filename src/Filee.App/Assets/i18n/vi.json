@@ -556,6 +556,7 @@
   "general.start_with_system": "Khởi động Filee khi tôi đăng nhập",
   "general.show_in_dock": "Hiện Filee trong Dock",
   "general.show_menu_bar_icon": "Hiện Filee trên thanh menu",
+  "general.colored_menu_bar_icon": "Hiện biểu tượng thanh menu có màu",
   "general.dock_failed": "Không thể thay đổi biểu tượng Dock của Filee.",
   "general.context_menu": "Hiện “Chuyển đổi bằng Filee” trong menu ngữ cảnh của Explorer",
   "general.context_menu_label": "Chuyển đổi bằng Filee",

@@ -556,6 +556,7 @@
   "general.start_with_system": "Запускать Filee при входе в систему",
   "general.show_in_dock": "Показывать Filee в Dock",
   "general.show_menu_bar_icon": "Показывать Filee в строке меню",
+  "general.colored_menu_bar_icon": "Показывать цветной значок в строке меню",
   "general.dock_failed": "Не удалось изменить значок Filee в Dock.",
   "general.context_menu": "Показывать «Конвертировать с помощью Filee» в контекстном меню Проводника",
   "general.context_menu_label": "Конвертировать с помощью Filee",

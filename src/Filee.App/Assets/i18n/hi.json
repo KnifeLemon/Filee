@@ -544,6 +544,7 @@
   "general.start_with_system": "साइन इन करने पर Filee शुरू करें",
   "general.show_in_dock": "Dock में Filee दिखाएँ",
   "general.show_menu_bar_icon": "मेनू बार में Filee दिखाएँ",
+  "general.colored_menu_bar_icon": "मेनू बार आइकन रंगीन दिखाएँ",
   "general.dock_failed": "Dock में Filee का आइकन नहीं बदला जा सका।",
   "general.context_menu": "Explorer के राइट-क्लिक मेनू में “Filee से कन्वर्ट करें” दिखाएँ",
   "general.context_menu_label": "Filee से कन्वर्ट करें",

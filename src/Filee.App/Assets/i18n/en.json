@@ -556,6 +556,7 @@
   "general.start_with_system": "Start Filee when I sign in",
   "general.show_in_dock": "Show Filee in the Dock",
   "general.show_menu_bar_icon": "Show Filee in the menu bar",
+  "general.colored_menu_bar_icon": "Show the menu bar icon in colour",
   "general.dock_failed": "Could not change Filee's Dock icon.",
   "general.context_menu": "Show “Convert with Filee” in the Explorer context menu",
   "general.context_menu_label": "Convert with Filee",

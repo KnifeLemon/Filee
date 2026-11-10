@@ -544,6 +544,7 @@
   "general.start_with_system": "サインイン時にFileeを起動",
   "general.show_in_dock": "DockにFileeを表示",
   "general.show_menu_bar_icon": "メニューバーにFileeを表示",
+  "general.colored_menu_bar_icon": "メニューバーのアイコンをカラーで表示",
   "general.dock_failed": "DockのFileeアイコンを変更できませんでした。",
   "general.context_menu": "エクスプローラーのコンテキストメニューに「Fileeで変換」を表示",
   "general.context_menu_label": "Fileeで変換",

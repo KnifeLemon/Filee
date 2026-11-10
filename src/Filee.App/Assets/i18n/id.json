@@ -544,6 +544,7 @@
   "general.start_with_system": "Mulai Filee saat saya masuk",
   "general.show_in_dock": "Tampilkan Filee di Dock",
   "general.show_menu_bar_icon": "Tampilkan Filee di bilah menu",
+  "general.colored_menu_bar_icon": "Tampilkan ikon bilah menu berwarna",
   "general.dock_failed": "Tidak dapat mengubah ikon Dock Filee.",
   "general.context_menu": "Tampilkan “Konversi dengan Filee” di menu konteks Explorer",
   "general.context_menu_label": "Konversi dengan Filee",

@@ -543,6 +543,7 @@
 "general.start_with_system": "Avvia Filee quando accedo",
 "general.show_in_dock": "Mostra Filee nel Dock",
 "general.show_menu_bar_icon": "Mostra Filee nella barra dei menu",
+"general.colored_menu_bar_icon": "Mostra l'icona della barra dei menu a colori",
 "general.dock_failed": "Impossibile cambiare l'icona di Filee nel Dock.",
 "general.context_menu": "Mostra “Converti con Filee” nel menu contestuale di Esplora file",
 "general.context_menu_label": "Converti con Filee",
