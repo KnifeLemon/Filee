@@ -259,6 +259,7 @@ public static class FormatRegistry
         new("mp3", "MP3", FormatCategory.Audio, ["mp3"]),
         new("m4a", "M4A", FormatCategory.Audio, ["m4a"]),
         new("m4b", "M4B", FormatCategory.Audio, ["m4b"]),
+        new("m4r", "M4R", FormatCategory.Audio, ["m4r"]),
         new("aac", "AAC", FormatCategory.Audio, ["aac"]),
         new("wav", "WAV", FormatCategory.Audio, ["wav", "wave"]),
         new("flac", "FLAC", FormatCategory.Audio, ["flac"]),

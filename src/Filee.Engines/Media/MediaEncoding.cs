@@ -60,6 +60,8 @@ internal static partial class MediaEncoding
         // The iPod muxer writes the M4A/M4B brands iTunes and phones expect.
         ["m4a"] = new("ipod", null, "aac"),
         ["m4b"] = new("ipod", null, "aac"),
+        // An iPhone ringtone is an M4A (the "M4A" brand) of at most 40 s that iOS recognises by the .m4r extension (#1291).
+        ["m4r"] = new("ipod", null, "aac"),
         ["aac"] = new("adts", null, "aac"),
         ["wav"] = new("wav", null, "pcm_s16le"),
         ["flac"] = new("flac", null, "flac"),
@@ -730,7 +732,7 @@ internal static partial class MediaEncoding
     internal static IEnumerable<string> ContainerArguments(string target) => target switch
     {
         // Moves the index to the front so playback (and web streaming) can start before the file is loaded.
-        "mp4" or "m4v" or "mov" or "3gp" or "3g2" or "m4a" or "m4b" => ["-movflags", "+faststart"],
+        "mp4" or "m4v" or "mov" or "3gp" or "3g2" or "m4a" or "m4b" or "m4r" => ["-movflags", "+faststart"],
         // Blu-ray / AVCHD transport stream: 192-byte packets with timestamps.
         "m2ts" => ["-mpegts_m2ts_mode", "1"],
         // DVD program stream: 10.08 Mbit/s mux rate and 2 KB sectors.
@@ -760,11 +762,18 @@ internal static partial class MediaEncoding
         CoverExtras? extras)
     {
         var audio = info.Audio ?? throw new InvalidOperationException("The file has no audio track.");
-        List<string> args = [.. Common, "-i", input];
+        // An iPhone ringtone is a part of the sound (at most 40 s): the input is read from where it starts.
+        var ringtone = RingtoneRange(target, options, info);
+        List<string> args = [.. Common];
+        if (ringtone is { } part)
+            args.AddRange(["-ss", ClipRange.Ffmpeg(part.Start)]);
+        args.AddRange(["-i", input]);
         // Ogg: the tags, and the picture as a comment, come from a metadata file (input 1) instead of the source.
         if (extras?.MetadataFile is { } metadata)
             args.AddRange(["-i", metadata]);
         args.AddRange(["-map", $"0:a:{audio.Ordinal}"]);
+        if (ringtone is { } window)
+            args.AddRange(["-t", ClipRange.Ffmpeg(window.Length)]);
         if (info.CoverStreamIndex is { } cover && CoverTargets.Contains(target))
             args.AddRange(["-map", $"0:{cover}", "-c:v", "copy", "-disposition:v:0", "attached_pic"]);
         if (extras is { AttachmentFile: { } picture, AttachmentMime: { } mime })
@@ -785,6 +794,17 @@ internal static partial class MediaEncoding
         args.AddRange(["-f", spec.Muxer, "-progress", "pipe:1", output]);
         return args;
     }
+
+    /// <summary>An M4R whose preset asks for more than <see cref="MediaOptions.MaxRingtoneLength"/> seconds: it is cut at that.</summary>
+    internal static bool RingtoneCutShort(string target, MediaOptions options) =>
+        target == "m4r" && double.IsFinite(options.RingtoneLength) && options.RingtoneLength > MediaOptions.MaxRingtoneLength;
+
+    /// <summary>
+    /// The part of the sound an iPhone ringtone (M4R) is made of: where it starts and how long it is (at most 40 s,
+    /// <see cref="MediaOptions.RingtoneWindow"/>). Null for every other target, which keeps the whole sound.
+    /// </summary>
+    internal static (double Start, double Length)? RingtoneRange(string target, MediaOptions options, MediaInfo info) =>
+        target == "m4r" ? options.RingtoneWindow(info.Duration?.TotalSeconds) : null;
 
     /// <summary>Audio codecs an audio target takes as they are (<see cref="MediaOptions.CopyAudioWhenPossible"/>).</summary>
     private static readonly Dictionary<string, HashSet<string>> CopyableAudio = new()

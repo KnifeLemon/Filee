@@ -1081,13 +1081,25 @@ internal static class SettingsMigrations
         //      images donut; custom claims stay put.
         if (from < 76)
             changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
+        // v77: iPhone ringtones (#1291): M4R files learn the audio donut (custom claims stay put), and the "iPhone
+        //      ringtone" preset comes to libraries saved before it existed, after the built-in preset before it as in a
+        //      new library; no donut gets a slot (#806).
+        if (from < 77)
+        {
+            changed |= LearnExtensions(profiles, out _, ["m4r"]);
+            if (presets.All(p => p.Id != BuiltInData.RingtoneId))
+                changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
+        }
         return changed;
     }
 
-    private static bool AddTranslatePreset(List<Preset> presets)
+    private static bool AddTranslatePreset(List<Preset> presets) => AddLikeNewLibrary(presets, "translate");
+
+    /// <summary>Adds the built-in preset <paramref name="id"/> after the built-in preset before it in a new library.</summary>
+    private static bool AddLikeNewLibrary(List<Preset> presets, string id)
     {
         var defaults = BuiltInData.CreatePresets();
-        var at = defaults.FindIndex(p => p.Id == "translate");
+        var at = defaults.FindIndex(p => p.Id == id);
         var after = defaults.Take(at).Select(p => presets.FindIndex(existing => existing.Id == p.Id)).LastOrDefault(i => i >= 0, -1);
         presets.Insert(after + 1, defaults[at]);
         return true;
