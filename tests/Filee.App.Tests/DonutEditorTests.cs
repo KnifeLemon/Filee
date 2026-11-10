@@ -1,7 +1,8 @@
 // Settings → Donut toolbar as an editor (#873): the sliders save the donut's look without applying every setting again;
 // the donut in the page is drawn as it opens, only smaller when its column is narrower; a group clicked in the editor
 // opens like a folder to edit what it fans out; and Edit Donut Size shows the donut on screen at its real size while
-// it is adjusted or a group is edited, beside the window, never over it.
+// it is adjusted or a group is edited, beside the window, never over it, holding a group open (or an example ring) once
+// a ring setting changes.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -551,5 +552,151 @@ public class DonutEditorTests
         Assert.NotNull(ToolbarPage.Beside(area, centred.WithX(x), side));
         // A screen too narrow for both: no slide.
         Assert.Null(ToolbarPage.SlideFor(new PixelRect(0, 0, 1440, 900), centred, side));
+    }
+
+    [AvaloniaFact]
+    public void A_ring_setting_holds_this_donuts_group_open_on_screen_and_the_picker_chooses_which()
+    {
+        var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var saved = (store.Settings.Donut.GroupRingSize, store.Settings.Donut.GroupRingSpread);
+        var pdf = store.Profiles.Single(p => p.Id == "pdf");
+        var (front, backFace) = (pdf.PresetIds.ToList(), pdf.BackPresetIds!.ToList());
+        var other = store.Presets.First(p => p.IsGroup && p.Id != "pdf-edit" && p.SubPresetIds.Count > 0);
+        try
+        {
+            // One group, PDF Edit, on the back face (whatever other groups the library puts on this donut).
+            pdf.PresetIds.RemoveAll(id => store.FindPreset(id)?.IsGroup == true);
+            pdf.BackPresetIds!.RemoveAll(id => id != "pdf-edit" && store.FindPreset(id)?.IsGroup == true);
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "pdf");
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var preview = page.Preview!;
+            // Until a ring setting changes, nothing is held: resting on a group opens it as on the real donut.
+            Assert.Null(preview.DonutControl.HeldGroupId);
+            Assert.False(((RadialViewModel)preview.DataContext!).IsBackFace);
+            Assert.False(page.FindControl<ComboBox>("GroupShownChoice")!.IsEffectivelyVisible);
+
+            page.FindControl<Slider>("RingSizeSlider")!.Value = 125;
+            RenderTests.Pump();
+            // The donut's one group, on its back face: the donut on screen turns to it and holds it open.
+            Assert.Equal(new ToolbarPageViewModel.RingGroupChoice("pdf-edit", vm.RingGroups[0].Name, true), vm.ShownGroup);
+            Assert.True(((RadialViewModel)preview.DataContext!).IsBackFace);
+            Assert.Equal("pdf-edit", preview.DonutControl.HeldGroupId);
+            Assert.Equal(pdf.BackPresetIds!.IndexOf("pdf-edit"), preview.DonutControl.OpenedGroup);
+            Assert.False(page.FindControl<ComboBox>("GroupShownChoice")!.IsEffectivelyVisible);
+            // Restyling keeps it open.
+            page.FindControl<Slider>("RingSpreadSlider")!.Value = 150;
+            RenderTests.Pump();
+            Assert.Equal(1.5, preview.DonutControl.GroupRingSpread, 3);
+            Assert.Equal(pdf.BackPresetIds!.IndexOf("pdf-edit"), preview.DonutControl.OpenedGroup);
+
+            // Two groups: the picker shows, front face first, and picking one turns the donut to it.
+            vm.DoneAdjustingLookCommand.Execute(null);
+            vm.EditingBack = false;
+            vm.RemoveAt(0); // the front face is full
+            Assert.True(vm.Insert(other.Id, 0));
+            vm.AdjustLookCommand.Execute(null);
+            page.FindControl<Slider>("RingSizeSlider")!.Value = 130;
+            RenderTests.Pump();
+            Assert.Equal([(other.Id, false), ("pdf-edit", true)], vm.RingGroups.Select(g => (g.Id, g.Back)));
+            Assert.EndsWith(" · " + AppHost.Get<ILocalizer>()["toolbar.face_back"], vm.RingGroups[1].Name);
+            var picker = page.FindControl<ComboBox>("GroupShownChoice")!;
+            Assert.True(picker.IsEffectivelyVisible);
+            Assert.Equal(other.Id, vm.ShownGroup!.Id); // the first, until another is picked
+            Assert.Equal(other.Id, preview.DonutControl.HeldGroupId);
+            Assert.Equal(0, preview.DonutControl.OpenedGroup);
+            picker.SelectedIndex = 1;
+            RenderTests.Pump();
+            Assert.True(((RadialViewModel)preview.DataContext!).IsBackFace);
+            Assert.Equal("pdf-edit", preview.DonutControl.HeldGroupId);
+
+            // A group clicked on the donut on screen is the one held from then on.
+            var model = (RadialViewModel)preview.DataContext!;
+            model.ToggleFace();
+            RenderTests.Pump();
+            var center = preview.DonutControl.Bounds.Width / 2;
+            var mid = DonutGeometry.MidAngle(0, model.Items.Count);
+            var r = preview.DonutControl.OuterRadius * (1 + preview.DonutControl.HoleRatio) / 2;
+            var at = preview.DonutControl.TranslatePoint(new Point(center + r * Math.Sin(mid), center - r * Math.Cos(mid)), preview)!.Value;
+            preview.MouseMove(at);
+            preview.MouseDown(at, MouseButton.Left);
+            preview.MouseUp(at, MouseButton.Left);
+            RenderTests.Pump();
+            Assert.Equal(other.Id, vm.ShownGroup!.Id);
+            Assert.Equal(other.Id, preview.DonutControl.HeldGroupId);
+
+            vm.DoneAdjustingLookCommand.Execute(null);
+            Assert.False(vm.ShowsRing);
+            Assert.Null(vm.ShownGroup);
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.Null(page.Preview!.DonutControl.HeldGroupId); // nothing held again until a ring setting changes
+        }
+        finally
+        {
+            pdf.PresetIds.Clear();
+            pdf.PresetIds.AddRange(front);
+            pdf.BackPresetIds!.Clear();
+            pdf.BackPresetIds.AddRange(backFace);
+            store.SaveLibrary();
+            (vm.GroupRingSize, vm.GroupRingSpread) = (saved.GroupRingSize * 100, saved.GroupRingSpread * 100);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_donut_with_no_group_shows_an_example_ring_while_its_ring_is_adjusted()
+    {
+        TestServices.EnsureInitialized("en");
+        var store = AppHost.Get<UserDataStore>();
+        var saved = store.Settings.Donut.GroupRingSpread;
+        var images = store.Profiles.Single(p => p.Id == "images");
+        var (front, back) = (images.PresetIds.ToList(), images.BackPresetIds?.ToList());
+        // A donut with no group on either face, before the page reads it.
+        images.PresetIds.RemoveAll(id => store.FindPreset(id)?.IsGroup == true);
+        images.BackPresetIds?.RemoveAll(id => store.FindPreset(id)?.IsGroup == true);
+        var (window, page, vm) = Open();
+        try
+        {
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "images");
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var preview = page.Preview!;
+            Assert.NotEqual(RadialViewModel.ExampleGroupId, preview.DonutControl.Items![0].Id);
+            Assert.False(page.FindControl<ComboBox>("GroupShownChoice")!.IsEffectivelyVisible);
+
+            page.FindControl<Slider>("RingSpreadSlider")!.Value = 200;
+            RenderTests.Pump();
+            var donut = preview.DonutControl;
+            Assert.Equal(RadialViewModel.ExampleGroupId, donut.Items![0].Id);
+            Assert.Equal(images.PresetIds.Count, donut.Items.Count); // in place of the top slice, not added
+            Assert.Equal(0, donut.OpenedGroup);
+            Assert.Equal("Example group", donut.CenterTitle);
+            Assert.Equal("This donut has no groups", donut.CenterSubtitle);
+            // Restyling keeps it.
+            page.FindControl<Slider>("RingSpreadSlider")!.Value = 250;
+            RenderTests.Pump();
+            Assert.Equal(0, donut.OpenedGroup);
+            Assert.Equal(2.5, donut.GroupRingSpread, 3);
+
+            vm.DoneAdjustingLookCommand.Execute(null);
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.NotEqual(RadialViewModel.ExampleGroupId, page.Preview!.DonutControl.Items![0].Id);
+        }
+        finally
+        {
+            images.PresetIds.Clear();
+            images.PresetIds.AddRange(front);
+            if (back is not null)
+            {
+                images.BackPresetIds!.Clear();
+                images.BackPresetIds.AddRange(back);
+            }
+            store.SaveLibrary();
+            vm.GroupRingSpread = saved * 100;
+            window.Close();
+        }
     }
 }

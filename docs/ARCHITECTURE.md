@@ -186,8 +186,10 @@ the palette offers what the group doesn't hold and no groups (`Placed`, shared w
 the ✎ still opens each preset's own editor. *Edit Donut Size* (`IsAdjustingLook`) swaps the editor for the size, look
 and label settings. While either is open, `DonutPreviewWindow` shows the donut on screen beside the main window at its
 real size, filled by a `RadialViewModel` of its own as the donut opens for the profile's files (`LoadPreview`, with the
-turned-off fields left out); it follows every change and converts nothing. It holds the group open in the editor open
-(`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it). Dragging its middle moves it, and it opens
+turned-off fields left out); it follows every change and converts nothing. It holds a group open
+(`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it): the one open in the editor, or, once a ring
+setting changes, the one picked under the ring sliders (*Group shown*, offered with two or more) or clicked on it, the
+first until then; a donut with none fans an example ring off its top slice (`RadialViewModel.ShowExampleGroup`). Dragging its middle moves it, and it opens
 there again (`AppSettings.DonutPreviewPlace`, against the main window). Otherwise it goes beside the main window, then
 on another screen; with no room, the main window slides over to make room and back when the donut goes. It never
 opens over the main window, and unlike the live donut it isn't Topmost: a click on the main window brings that in

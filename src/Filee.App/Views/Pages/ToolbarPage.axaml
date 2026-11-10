@@ -417,6 +417,16 @@
                         Value="{Binding GroupRingSpread}" AutomationProperties.Name="{DynamicResource toolbar.ring_spread}" />
                 <TextBlock Grid.Column="2" Classes="caption" MinWidth="44" VerticalAlignment="Center" TextAlignment="Right" Text="{Binding GroupRingSpreadText}" />
               </Grid>
+              <!-- Which of this donut's groups the donut on screen holds open, when it has more than one. -->
+              <Grid ColumnSpacing="12" IsVisible="{Binding ShowsGroupPicker}">
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="Auto" SharedSizeGroup="LookName" />
+                  <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center" MinWidth="110" MaxWidth="170" TextWrapping="Wrap" Text="{DynamicResource toolbar.group_shown}" />
+                <ComboBox x:Name="GroupShownChoice" Grid.Column="1" ItemsSource="{Binding RingGroups}" SelectedItem="{Binding ShownGroup}"
+                          HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource toolbar.group_shown}" />
+              </Grid>
               <!-- Longer than the names above in most languages: it wraps next to a bare switch, as the mixed one does. -->
               <DockPanel>
                 <ToggleSwitch x:Name="CaptionsToggle" DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0"

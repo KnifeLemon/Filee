@@ -11,7 +11,9 @@
 //
 // The donut on screen: while Edit Donut Size is open, or a group is open in the editor, the donut is also shown at its
 // real size next to this window (DonutPreviewWindow), filled and styled as it opens for the selected profile's files. It
-// follows every change made here, and holds the group open in the editor open (DonutMenu.HeldGroupId).
+// follows every change made here, and holds a group open (DonutMenu.HeldGroupId): the one open in the editor, or, once a
+// ring setting changes, the one picked (Group shown, or clicked on it; the first until then), or an example ring on a
+// donut with none.
 // Where it goes: where it was last dragged (against this window), else beside this window, else on another screen;
 // with no room anywhere, this window slides over to make room and back when the donut goes. Never over this window.
 //
@@ -80,7 +82,8 @@ public partial class ToolbarPage : UserControl
     private static readonly HashSet<string> ContentProperties =
     [
         nameof(ToolbarPageViewModel.IsAdjustingLook), nameof(ToolbarPageViewModel.OpenGroup), nameof(ToolbarPageViewModel.DonutItems),
-        nameof(ToolbarPageViewModel.SelectedProfile), nameof(ToolbarPageViewModel.EditingBack),
+        nameof(ToolbarPageViewModel.SelectedProfile), nameof(ToolbarPageViewModel.EditingBack), nameof(ToolbarPageViewModel.ShowsRing),
+        nameof(ToolbarPageViewModel.ShownGroup), nameof(ToolbarPageViewModel.RingGroups),
     ];
 
     // This window slid over to make room for the donut: from where, to where (it slides back unless moved since).
@@ -180,12 +183,22 @@ public partial class ToolbarPage : UserControl
                 Vm?.CloseGroupCommand.Execute(null);
             };
             _preview.Moved += OnPreviewMoved;
+            // A group clicked on it is the one held open from then on.
+            _preview.DonutControl.GroupOpenRequested += (_, index) =>
+            {
+                if (_previewModel is { } model && index < model.Items.Count && model.Items[index].Id != RadialViewModel.ExampleGroupId)
+                    Vm?.HoldGroup(model.Items[index].Id, model.IsBackFace);
+            };
             _preview.Closed += (_, _) => (_preview, _previewModel) = (null, null);
         }
         var held = HeldGroup(vm, out var back);
         var shown = _preview.IsVisible;
         if (reload || !shown)
+        {
             _previewModel.LoadPreview(profile, back);
+            if (held == RadialViewModel.ExampleGroupId)
+                _previewModel.ShowExampleGroup(Loc["toolbar.example_group"], Loc["toolbar.example_none"]);
+        }
         else
             _previewModel.ApplyLook(profile);
         _preview.DonutControl.HeldGroupId = held;
@@ -193,14 +206,28 @@ public partial class ToolbarPage : UserControl
             _preview.ShowAt(PlacePreview(main, _previewModel));
     }
 
+    private static ILocalizer Loc => AppHost.Get<ILocalizer>();
+
     /// <summary>
     /// The group the donut on screen holds open, and the face it is on (<paramref name="back"/>): the one open in the
-    /// editor, else none, on the face being edited.
+    /// editor; once a ring setting changed, the one shown (or the example); else none, on the face being edited.
     /// </summary>
     private static string? HeldGroup(ToolbarPageViewModel vm, out bool back)
     {
         back = vm.EditingBack;
-        return vm.OpenGroup?.Id;
+        if (vm.OpenGroup is { } editing)
+            return editing.Id;
+        if (vm.ShowsExampleRing)
+        {
+            back = false;
+            return RadialViewModel.ExampleGroupId;
+        }
+        if (vm.IsAdjustingLook && vm.ShowsRing && vm.ShownGroup is { } group)
+        {
+            back = group.Back;
+            return group.Id;
+        }
+        return null;
     }
 
     private void HidePreview()

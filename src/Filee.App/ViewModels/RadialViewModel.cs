@@ -287,6 +287,36 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         CenterSubtitle = null;
     }
 
+    /// <summary>The id of the example group <see cref="ShowExampleGroup"/> hangs off the top slice.</summary>
+    public const string ExampleGroupId = "filee-example-group";
+
+    /// <summary>
+    /// For a donut with no group, while its ring settings are adjusted: the top slice fans out an example ring of four
+    /// formats, and the centre says so (<paramref name="title"/>, <paramref name="subtitle"/>). Nothing converts here.
+    /// </summary>
+    public void ShowExampleGroup(string title, string subtitle)
+    {
+        if (Items.Count == 0)
+            return;
+        var top = Items[0];
+        Items =
+        [
+            new DonutItem
+            {
+                Id = ExampleGroupId,
+                Label = top.Label,
+                FullName = top.FullName,
+                IconKey = top.IconKey,
+                Show = top.Show,
+                Direction = top.Direction,
+                Children = new[] { "JPG", "PNG", "WebP", "HEIC" }.Select(name => new DonutItem { Id = ExampleGroupId + "-" + name, Label = name }).ToList(),
+            },
+            .. Items.Skip(1),
+        ];
+        ReserveSubRing = true;
+        (CenterTitle, CenterSubtitle) = (title, subtitle);
+    }
+
     /// <summary>The donut's look from the settings and <paramref name="profile"/>'s labels, while it is previewed.</summary>
     public void ApplyLook(ToolbarProfile profile)
     {

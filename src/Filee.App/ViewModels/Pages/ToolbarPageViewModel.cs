@@ -303,6 +303,87 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// </summary>
     [ObservableProperty] private bool _isAdjustingLook;
 
+    /// <summary>A group of the selected donut in the Group shown picker: its preset, its name and the face it's on.</summary>
+    public sealed record RingGroupChoice(string Id, string Name, bool Back)
+    {
+        public override string ToString() => Name;
+    }
+
+    /// <summary>The groups on the selected donut, front face first, for Edit Donut Size → Group shown.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsGroupPicker), nameof(ShowsExampleRing))]
+    private IReadOnlyList<RingGroupChoice> _ringGroups = [];
+
+    /// <summary>
+    /// The donut on screen holds a group's ring open: a ring setting was changed, or a group picked, while Edit Donut
+    /// Size is open. Hovering alone would fold the ring as the pointer goes back to the sliders.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsExampleRing))]
+    private bool _showsRing;
+
+    /// <summary>The group the donut on screen holds open (<see cref="ShowsRing"/>): the first one until another is picked.</summary>
+    [ObservableProperty] private RingGroupChoice? _shownGroup;
+
+    /// <summary>The Group shown picker: only when there is a choice.</summary>
+    public bool ShowsGroupPicker => IsAdjustingLook && RingGroups.Count >= 2;
+
+    /// <summary>A donut with no group shows an example ring, so the ring settings still show what they do.</summary>
+    public bool ShowsExampleRing => IsAdjustingLook && ShowsRing && RingGroups.Count == 0;
+
+    partial void OnIsAdjustingLookChanged(bool value)
+    {
+        OnPropertyChanged(nameof(ShowsGroupPicker));
+        OnPropertyChanged(nameof(ShowsExampleRing));
+        if (!value)
+            (ShowsRing, ShownGroup) = (false, null);
+    }
+
+    partial void OnShowsRingChanged(bool value)
+    {
+        if (value)
+            ShownGroup ??= RingGroups.FirstOrDefault();
+    }
+
+    partial void OnShownGroupChanged(RingGroupChoice? value)
+    {
+        if (value is not null && IsAdjustingLook)
+            ShowsRing = true;
+    }
+
+    /// <summary>A group was clicked on the donut on screen: it is the one held open from now on.</summary>
+    public void HoldGroup(string id, bool back)
+    {
+        if (!IsAdjustingLook)
+            return;
+        ShownGroup = RingGroups.FirstOrDefault(g => g.Id == id && g.Back == back)
+                     ?? RingGroups.FirstOrDefault(g => g.Id == id) ?? ShownGroup;
+    }
+
+    /// <summary>The groups on the selected donut (<see cref="RingGroups"/>), kept when they haven't changed.</summary>
+    private void RefreshRingGroups()
+    {
+        var groups = Profile is not { } profile ? []
+            : Groups(profile.PresetIds, false).Concat(Groups(profile.BackPresetIds ?? [], true)).ToList();
+        if (!groups.SequenceEqual(RingGroups))
+            RingGroups = groups;
+        if (ShownGroup is { } shown && !groups.Contains(shown))
+            ShownGroup = null;
+        if (ShowsRing)
+            ShownGroup ??= groups.FirstOrDefault();
+
+        // A group with nothing to fan out (its presets deleted, or all of a turned-off field) has no ring to show.
+        IEnumerable<RingGroupChoice> Groups(IEnumerable<string> ids, bool back)
+        {
+            var shown = ShownPresets().Select(p => p.Id).ToHashSet();
+            return ids
+                .Select(_store.FindPreset)
+                .OfType<Preset>()
+                .Where(p => p.IsGroup && p.SubPresetIds.Any(shown.Contains))
+                .Select(p => new RingGroupChoice(p.Id, back ? $"{_loc.DisplayName(p)} · {_loc["toolbar.face_back"]}" : _loc.DisplayName(p), back));
+        }
+    }
+
     /// <summary>The donut whose labels the panel's lower part adjusts: "This donut: Images".</summary>
     public string ThisDonutText => _loc.Format("toolbar.look_this", GroupBackText);
 
@@ -598,8 +679,16 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     partial void OnHoleRatioChanged(double value) => SaveAppearance();
     partial void OnSliceOpacityChanged(double value) => SaveAppearance();
     partial void OnShowCaptionsChanged(bool value) => SaveAppearance();
-    partial void OnGroupRingSizeChanged(double value) => SaveAppearance();
-    partial void OnGroupRingSpreadChanged(double value) => SaveAppearance();
+    partial void OnGroupRingSizeChanged(double value) => RingChanged();
+    partial void OnGroupRingSpreadChanged(double value) => RingChanged();
+
+    // A ring setting changed: saved, and the donut on screen holds a group open so the change shows.
+    private void RingChanged()
+    {
+        SaveAppearance();
+        if (IsAdjustingLook && !_loading)
+            ShowsRing = true;
+    }
 
     /// <summary>The four Show modes, in the order the combo boxes list them.</summary>
     internal static readonly LabelShow[] LabelShows = [LabelShow.Auto, LabelShow.IconAndText, LabelShow.TextOnly, LabelShow.IconOnly];
@@ -907,6 +996,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         // The open group was deleted (its own editor can do that), or left the face: back to the whole donut.
         if (OpenGroup is { } open && (!_store.Presets.Contains(open) || OpenGroupIndex < 0))
             OpenGroup = null;
+        RefreshRingGroups();
         var used = Slices ?? [];
         DonutItems = used
             .Select(_store.FindPreset)
