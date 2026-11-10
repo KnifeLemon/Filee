@@ -164,6 +164,7 @@
   "error.fit_not_activity": "Tệp FIT này không phải một hoạt động (chỉ hoạt động mới được chuyển đổi)",
   "error.fit_no_positions": "Hoạt động không có vị trí nào được ghi lại: hãy chuyển đổi sang CSV, XLSX hoặc JSON",
   "error.fit_no_records": "Hoạt động không có dữ liệu nào được ghi lại",
+  "error.osm_too_large": "Tệp OpenStreetMap quá lớn để chuyển đổi",
   "error.fon_vector": "Đây là phông chữ vector; chỉ phông chữ bitmap .fon mới chuyển đổi được",
   "error.fon_unsupported": "Loại phông chữ .fon này không được hỗ trợ",
   "error.fon_too_large": "Phông chữ .fon quá lớn để chuyển đổi",
@@ -201,6 +202,7 @@
   "notice.geo_field_names": "Tên trường Shapefile dài tối đa 10 ký tự: một số tên đã được rút ngắn",
   "notice.geo_shapefile_split": "Shapefile chỉ chứa một loại hình, nên điểm, đường và đa giác đã được lưu thành các tệp riêng",
   "notice.geo_heights_dropped": "Một số điểm không có độ cao mà Shapefile không thể bỏ trống, nên mọi độ cao đã bị bỏ qua",
+  "notice.osm_incomplete": "Một số đường và vùng dùng các điểm không có trong tệp (một vùng cắt ra), nên đã bị bỏ qua",
 
   "engine.reason.not_installed": "Chưa cài đặt",
   "engine.reason.error": "Lỗi khi kiểm tra",

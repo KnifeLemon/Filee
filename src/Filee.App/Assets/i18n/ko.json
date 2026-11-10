@@ -164,6 +164,7 @@
   "error.fit_not_activity": "활동 기록이 아닌 FIT 파일이에요 (활동만 변환해요)",
   "error.fit_no_positions": "위치 기록이 없는 활동이에요. CSV, XLSX, JSON으로 변환하세요",
   "error.fit_no_records": "활동에 기록된 데이터가 없어요",
+  "error.osm_too_large": "OpenStreetMap 파일이 너무 커서 변환할 수 없어요",
   "error.fon_vector": "벡터 글꼴이에요. 비트맵 .fon 글꼴만 변환할 수 있어요",
   "error.fon_unsupported": "지원하지 않는 종류의 .fon 글꼴이에요",
   "error.fon_too_large": ".fon 글꼴이 너무 커서 변환할 수 없어요",
@@ -201,6 +202,7 @@
   "notice.geo_field_names": "Shapefile 필드 이름은 10자까지라서 일부를 줄였어요",
   "notice.geo_shapefile_split": "Shapefile은 한 종류의 도형만 담아서 점·선·면을 파일로 나눠 저장했어요",
   "notice.geo_heights_dropped": "일부 점에 높이가 없는데 Shapefile은 점마다 비워 둘 수 없어서 높이를 모두 뺐어요",
+  "notice.osm_incomplete": "파일에 없는 점을 쓰는 선과 영역이 있어서(잘라 낸 지역) 뺐어요",
 
   "engine.reason.not_installed": "설치되지 않음",
   "engine.reason.error": "확인 중 오류",

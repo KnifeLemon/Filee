@@ -164,6 +164,7 @@
   "error.fit_not_activity": "Ten plik FIT nie jest aktywnością (konwertowane są tylko aktywności)",
   "error.fit_no_positions": "Aktywność nie zawiera zapisanych położeń: przekonwertuj ją do CSV, XLSX lub JSON",
   "error.fit_no_records": "Aktywność nie zawiera zapisanych danych",
+  "error.osm_too_large": "Plik OpenStreetMap jest za duży do konwersji",
   "error.fon_vector": "To czcionka wektorowa; można konwertować tylko bitmapowe czcionki .fon",
   "error.fon_unsupported": "Ten rodzaj czcionki .fon nie jest obsługiwany",
   "error.fon_too_large": "Czcionka .fon jest zbyt duża, aby ją przekonwertować",
@@ -201,6 +202,7 @@
   "notice.geo_field_names": "Nazwy pól Shapefile mają najwyżej 10 znaków: niektóre skrócono",
   "notice.geo_shapefile_split": "Shapefile przechowuje jeden rodzaj kształtu, więc punkty, linie i poligony zapisano w osobnych plikach",
   "notice.geo_heights_dropped": "Niektóre punkty nie mają wysokości, a Shapefile nie może pominąć tylko jednej, więc pominięto wszystkie wysokości",
+  "notice.osm_incomplete": "Niektóre linie i obszary używają punktów, których nie ma w pliku (wycięty fragment), więc je pominięto",
 
   "engine.reason.not_installed": "Nie zainstalowano",
   "engine.reason.error": "Błąd podczas sprawdzania",

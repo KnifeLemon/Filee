@@ -164,6 +164,7 @@
   "error.fit_not_activity": "This FIT file isn't an activity (only activities are converted)",
   "error.fit_no_positions": "The activity has no recorded positions: convert it to CSV, XLSX or JSON",
   "error.fit_no_records": "The activity has no recorded data",
+  "error.osm_too_large": "The OpenStreetMap file is too large to convert",
   "error.fon_vector": "This is a vector font; only bitmap .fon fonts can be converted",
   "error.fon_unsupported": "This kind of .fon font isn't supported",
   "error.fon_too_large": "The .fon font is too large to convert",
@@ -201,6 +202,7 @@
   "notice.geo_field_names": "Shapefile field names are 10 characters at most: some were shortened",
   "notice.geo_shapefile_split": "A Shapefile holds one kind of shape, so points, lines and polygons were saved as separate files",
   "notice.geo_heights_dropped": "Some points have no height and a Shapefile can't leave one out, so all heights were left out",
+  "notice.osm_incomplete": "Some lines and areas use points that aren't in the file (a cut-out extract) and were left out",
 
   "engine.reason.not_installed": "Not installed",
   "engine.reason.error": "Error while checking",
