@@ -713,9 +713,17 @@ public sealed class ImageOptions
 
     /// <summary>
     /// Keep each picture under this many MB of 1,000,000 bytes; 0 = no limit. A larger one is saved again at a lower
-    /// quality, then smaller (down to a long edge of 640 px), until it fits (#553).
+    /// quality, then smaller (down to a long edge of 640 px), until it fits (#553); with
+    /// <see cref="MaxSizeKeepsPixels"/> only at a lower quality.
     /// </summary>
     public double MaxSizeMb { get; set; }
+
+    /// <summary>
+    /// With <see cref="MaxSizeMb"/>: the picture keeps the size it has after resizing, and only the quality goes down,
+    /// further than it otherwise would; one that still doesn't fit is refused instead of made smaller (#1270). A field
+    /// of its own, so an older version skips it and fits the picture as it always did.
+    /// </summary>
+    public bool MaxSizeKeepsPixels { get; set; }
 
     /// <summary>
     /// Keep each picture at least this many MB of 1,000,000 bytes; 0 = no minimum. A smaller one in a lossy format is
@@ -817,7 +825,8 @@ public sealed class ImageOptions
 
     /// <summary>
     /// Free width x height resizing (issue #576): stretched to exactly that size, or with
-    /// <see cref="CustomImageSize.LockAspect"/> scaled (up or down) to the largest size that fits inside. When set it
+    /// <see cref="CustomImageSize.LockAspect"/> scaled (up or down, or with <see cref="CustomImageSize.ShrinkOnly"/> only
+    /// down) to the largest size that fits inside. When set it
     /// wins over <see cref="Resize"/>; null leaves <see cref="Resize"/> in charge. Stored as one object so a
     /// presets.json written by this version never carries a resize name an older version rejects: older versions skip
     /// the unknown property and simply do not resize.
@@ -1007,7 +1016,7 @@ public sealed class ImageOptions
         copy.Backdrop = Backdrop?.Clone();
         copy.BackdropLook = BackdropLook?.Clone();
         copy.CustomSize = CustomSize is { } size
-            ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, Unit = size.Unit, Dpi = size.Dpi }
+            ? new CustomImageSize { Width = size.Width, Height = size.Height, LockAspect = size.LockAspect, ShrinkOnly = size.ShrinkOnly, Unit = size.Unit, Dpi = size.Dpi }
             : null;
         return copy;
     }
@@ -1036,6 +1045,31 @@ public sealed class CustomImageSize
     /// stretching it to exactly that size.
     /// </summary>
     public bool LockAspect { get; set; }
+
+    /// <summary>
+    /// With <see cref="LockAspect"/>: the box is a maximum (#1270). A picture larger than it is scaled down to fit, one
+    /// that already fits stays as it is. Without the lock the picture is stretched to the exact size, so this has no
+    /// effect there. An older version skips the field and scales smaller pictures up, as it always did.
+    /// </summary>
+    public bool ShrinkOnly { get; set; }
+
+    /// <summary>
+    /// The side the editors store for a width or height left empty with <see cref="LockAspect"/> (#1270): the largest
+    /// one, so the other side is what limits the picture (the free side still never goes past the largest side the
+    /// editors offer). Stored as a real size rather than 0: an older version ignores a box with a side of 0, and its
+    /// editors show and save that side as the smallest one, which would shrink every picture to a sliver.
+    /// </summary>
+    public const int FreeSide = MaxSide;
+
+    /// <summary>
+    /// The one scale that fits a width x height picture inside the box with <see cref="LockAspect"/>: up or down, and
+    /// with <see cref="ShrinkOnly"/> never above 1.
+    /// </summary>
+    public double FitScale(double width, double height)
+    {
+        var scale = Math.Min(ClampedWidth / width, ClampedHeight / height);
+        return ShrinkOnly ? Math.Min(1, scale) : scale;
+    }
 
     /// <summary>
     /// The unit the Edit pictures window shows the size in (#725). <see cref="Width"/> and <see cref="Height"/> stay in

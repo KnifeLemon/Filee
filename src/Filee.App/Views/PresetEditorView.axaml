@@ -141,6 +141,9 @@
                       AutomationProperties.Name="{DynamicResource presets.size_unit}" />
           </Grid>
           <TextBlock Classes="caption danger" Text="{Binding SizeRangeError}" IsVisible="{Binding SizeRangeError, Converter={x:Static ObjectConverters.IsNotNull}}" />
+          <!-- #1270: the picture keeps its size, only the quality goes down; without a maximum there is nothing to fit. -->
+          <CheckBox Name="MaxSizeKeepsPixels" Content="{DynamicResource presets.keep_pixels}" IsChecked="{Binding MaxSizeKeepsPixels}" IsEnabled="{Binding HasImageMaxSize}"
+                    ToolTip.Tip="{DynamicResource presets.keep_pixels_hint}" AutomationProperties.Name="{DynamicResource presets.keep_pixels}" />
         </StackPanel>
         <Grid ColumnDefinitions="*,12,*">
           <StackPanel>
@@ -163,10 +166,17 @@
                clipped a three-digit size to its first digit, so width and height each get the whole row. -->
           <StackPanel Grid.Column="2" IsVisible="{Binding ShowCustom}">
             <TextBlock Classes="label" Text="{DynamicResource presets.width}" />
-            <NumericUpDown Value="{Binding CustomWidth}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource presets.width}" />
+            <NumericUpDown Name="CustomWidth" Value="{Binding CustomWidth}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center"
+                           ToolTip.Tip="{DynamicResource presets.custom_size_empty_hint}" AutomationProperties.Name="{DynamicResource presets.width}" />
             <TextBlock Classes="label" Margin="0,8,0,0" Text="{DynamicResource presets.height}" />
-            <NumericUpDown Value="{Binding CustomHeight}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center" AutomationProperties.Name="{DynamicResource presets.height}" />
+            <NumericUpDown Name="CustomHeight" Value="{Binding CustomHeight}" Minimum="16" Maximum="16384" Increment="10" FormatString="0" ShowButtonSpinner="False" HorizontalContentAlignment="Center"
+                           ToolTip.Tip="{DynamicResource presets.custom_size_empty_hint}" AutomationProperties.Name="{DynamicResource presets.height}" />
             <CheckBox Content="{DynamicResource presets.lock_aspect}" IsChecked="{Binding LockAspect}" Margin="0,8,0,0" AutomationProperties.Name="{DynamicResource presets.lock_aspect}" />
+            <!-- #1270: with the shape kept, the box can be a maximum that leaves smaller pictures as they are. -->
+            <CheckBox Name="ShrinkOnly" Content="{DynamicResource presets.never_enlarge}" IsChecked="{Binding ShrinkOnly}" IsVisible="{Binding LockAspect}"
+                      ToolTip.Tip="{DynamicResource presets.never_enlarge_hint}" AutomationProperties.Name="{DynamicResource presets.never_enlarge}" />
+            <TextBlock Classes="caption danger" Margin="0,4,0,0" TextWrapping="Wrap" Text="{Binding CustomSizeError}"
+                       IsVisible="{Binding CustomSizeError, Converter={x:Static ObjectConverters.IsNotNull}}" />
           </StackPanel>
           <StackPanel Grid.Column="2" IsVisible="{Binding ShowMinShortEdge}">
             <TextBlock Classes="label" Text="{DynamicResource presets.min_short_edge}" />

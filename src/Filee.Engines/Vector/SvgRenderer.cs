@@ -170,9 +170,12 @@ internal static class SvgRenderer
         {
             // Render at the size the custom resize asks for, so the box is not reached by stretching a default-size
             // bitmap, which comes out soft. With the lock, at the fit-inside scale; without, at the larger side's
-            // scale, so the stretch that follows only ever shrinks the other side.
+            // scale, so the stretch that follows only ever shrinks the other side. A box that is a maximum (#1270) keeps
+            // the usual render size and only brings a larger one down into the box: a drawing has no size of its own
+            // in pixels, the usual one stands in for it.
+            var fit = Math.Min(custom.ClampedWidth / bounds.Width, custom.ClampedHeight / bounds.Height);
             scale = custom.LockAspect
-                ? Math.Min(custom.ClampedWidth / bounds.Width, custom.ClampedHeight / bounds.Height)
+                ? custom.ShrinkOnly ? Math.Min(scale, fit) : fit
                 : Math.Max(custom.ClampedWidth / bounds.Width, custom.ClampedHeight / bounds.Height);
         }
         else if (image.ClampedMinShortEdge is { } minShortEdge)
