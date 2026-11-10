@@ -1081,9 +1081,13 @@ internal static class SettingsMigrations
         //      images donut; custom claims stay put.
         if (from < 76)
             changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
-        // v77: Windows programs and libraries (.exe, .dll, #1188), read as their icon, learn the images donut; custom
-        //      claims stay put. (Schema 77 may be renumbered if another change takes it first.)
+        // v77: OpenStreetMap XML (.osm, #713) learns the geospatial donut; custom claims stay put. (Schema 77 may be
+        //      renumbered if another change takes it first.)
         if (from < 77)
+            changed |= LearnExtensions(profiles, out _, ["osm"]);
+        // v78: Windows programs and libraries (.exe, .dll, #1188), read as their icon, learn the images donut; custom
+        //      claims stay put. (Schema 78 may be renumbered if another change takes it first.)
+        if (from < 78)
             changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
         return changed;
     }

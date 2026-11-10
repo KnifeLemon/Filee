@@ -20,20 +20,20 @@ public class ProgramFormatTests
     }
 
     [Fact]
-    public void Version_76_libraries_learn_exe_and_dll_without_taking_custom_claims()
+    public void Version_77_libraries_learn_exe_and_dll_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var images = profiles.Single(p => p.Id == "images");
         images.Extensions.RemoveAll(e => e is "exe" or "dll");
-        Assert.True(SettingsMigrations.ApplyToLibrary(76, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(77, presets, profiles));
         Assert.Contains("exe", images.Extensions);
         Assert.Contains("dll", images.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(76, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(77, presets, profiles));
 
         images.Extensions.RemoveAll(e => e is "exe" or "dll");
         profiles.Insert(0, new ToolbarProfile { Id = "my-icons", Extensions = ["EXE"] });
-        Assert.True(SettingsMigrations.ApplyToLibrary(76, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(77, presets, profiles));
         Assert.DoesNotContain("exe", images.Extensions); // the user's own donut has it
         Assert.Contains("dll", images.Extensions);
         Assert.Equal("my-icons", ProfileSelector.Select(profiles, ["setup.exe"])?.Id);
