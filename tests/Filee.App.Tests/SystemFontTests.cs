@@ -4,6 +4,7 @@
 using Avalonia;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Media.Fonts;
 using Filee.App.Services;
 using Filee.App.ViewModels.Pages;
 using Filee.Core.Localization;
@@ -64,33 +65,59 @@ public class SystemFontTests
         Assert.Contains(families.First(allCjk.Contains), CjkFonts[region]);
     }
 
-    /// <summary>What Windows' own UI draws each script in; skipped where the machine lacks that font.</summary>
+    /// <summary>
+    /// A letter takes the first of the chain's system fonts whose face at that weight has it, and the embedded font when
+    /// none has: never the platform's fallback. Which fonts have which letters differs between machines (on GitHub's
+    /// Windows Server images Segoe UI has no Arabic), so each face is asked. Han also has to land in the UI language's
+    /// region, whichever of its fonts is installed.
+    /// </summary>
     [AvaloniaTheory]
-    [InlineData("en", 'A', "Segoe UI Variable Text", "Segoe UI")]
-    [InlineData("ar", 'م', "Segoe UI", null)]
-    [InlineData("hi", 'न', "Nirmala UI", null)]
-    [InlineData("th", 'ก', "Leelawadee UI", null)]
-    [InlineData("ja", '直', "Yu Gothic UI", null)] // 直 has a different shape in each region's font
-    [InlineData("ko", '直', "Malgun Gothic", null)]
-    [InlineData("en", '直', "Malgun Gothic", null)]
-    [InlineData("zh-CN", '直', "Microsoft YaHei", null)]
-    [InlineData("zh-TW", '直', "Microsoft JhengHei UI", null)]
-    public void On_windows_a_letter_takes_the_systems_font(string language, char letter, string expected, string? orElse)
+    [InlineData("en", 'A', "Noto Sans", null)]
+    [InlineData("ar", 'م', "Noto Sans Arabic", null)]
+    [InlineData("hi", 'न', "Noto Sans Devanagari", null)]
+    [InlineData("th", 'ก', "Noto Sans Thai", null)]
+    [InlineData("ja", '直', "Noto Sans JP", "ja")] // 直 has a different shape in each region's font
+    [InlineData("ko", '直', "Noto Sans KR", "ko")]
+    [InlineData("en", '直', "Noto Sans KR", "ko")]
+    [InlineData("zh-CN", '直', "Noto Sans SC", "zh-CN")]
+    [InlineData("zh-TW", '直', null, "zh-TW")] // no embedded Traditional font
+    public void On_windows_a_letter_takes_the_first_system_font_that_has_it(string language, char letter, string? embedded, string? region)
     {
         Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows' UI fonts.");
         TestServices.EnsureInitialized("en");
-        var want = Installed(expected) ? expected : orElse;
-        Assert.SkipUnless(want is not null && Installed(want), $"{expected} isn't installed.");
+        var systemFamilies = ThemeService.FontFamilies(language, systemFont: true).Split(", ")
+            .TakeWhile(f => f.StartsWith(SoftPalette.SystemKey + "#", StringComparison.Ordinal))
+            .Select(f => f[(SoftPalette.SystemKey.Length + 1)..])
+            .ToList();
+        Assert.NotEmpty(systemFamilies);
 
         foreach (var weight in new[] { FontWeight.Normal, FontWeight.SemiBold })
         {
+            var expected = systemFamilies.Select(f => Face(FontManager.Current.SystemFonts, f, weight, letter)).FirstOrDefault(f => f is not null)
+                           ?? (embedded is null ? null : Face(null, $"fonts:Filee#{embedded}", weight, letter));
+            Assert.SkipUnless(expected is not null, $"Neither a system font in the chain nor the embedded one has {letter}.");
+
             Assert.True(FontManager.Current.TryMatchCharacter(letter, FontStyle.Normal, weight, FontStretch.Normal,
                 SoftPalette.FontFamilyFor(language, systemFont: true), null, out var typeface));
-            // Windows names a weight's face by its own family ("Segoe UI Semibold"), and a font by the family of its
-            // file ("Segoe UI Variable", "Microsoft JhengHei").
-            var stem = want.Replace(" Text", "").Replace(" JhengHei UI", " JhengHei");
-            Assert.StartsWith(stem, typeface.GlyphTypeface.FamilyName, StringComparison.OrdinalIgnoreCase);
+            var actual = typeface.GlyphTypeface.FamilyName;
+            Assert.Equal(expected, actual);
+            if (region is not null)
+                Assert.Contains(CjkFonts[region], f => actual.StartsWith(f.Replace(" UI", ""), StringComparison.OrdinalIgnoreCase));
         }
+    }
+
+    /// <summary>
+    /// The family of <paramref name="family"/>'s face at <paramref name="weight"/> when it has the letter: from the
+    /// system's fonts, or (no collection) an embedded font, which counts only when it was fetched and not stood in for.
+    /// </summary>
+    private static string? Face(IFontCollection? collection, string family, FontWeight weight, char letter)
+    {
+        GlyphTypeface? face;
+        var found = collection is null
+            ? FontManager.Current.TryGetGlyphTypeface(new Typeface(family, FontStyle.Normal, weight), out face)
+              && face.FamilyName == family[(family.IndexOf('#') + 1)..]
+            : collection.TryGetGlyphTypeface(family, FontStyle.Normal, weight, FontStretch.Normal, out face);
+        return found && face!.CharacterToGlyphMap.TryGetGlyph(letter, out _) ? face.FamilyName : null;
     }
 
     [Fact]
