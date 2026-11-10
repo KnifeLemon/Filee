@@ -2,6 +2,7 @@
 // Used by MagickImageConverter and by PdfiumConverter (PDF pages → images).
 
 using Filee.Core.Conversion;
+using Filee.Core.Formats;
 using Filee.Core.Presets;
 using ImageMagick;
 
@@ -82,14 +83,16 @@ internal static class ImageEncoder
     public static readonly HashSet<string> ExplicitCoder =
         ["mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff", "dcm", "pcd", "exr", "hdr"];
 
-    /// <summary>Formats holding one picture in several sizes (icons) or mipmaps: the largest is converted.</summary>
-    private static readonly HashSet<string> SizeVariants = ["ico", "cur", "dds"];
+    /// <summary>
+    /// Formats holding one picture in several sizes (icons, the icon of a program) or mipmaps: the largest is converted.
+    /// </summary>
+    private static readonly HashSet<string> SizeVariants = ["ico", "cur", "dds", FormatRegistry.Program];
 
     /// <summary>
     /// Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP, a Krita
-    /// KRA.
+    /// KRA, the icon of a Windows program or library (<see cref="ProgramIcon"/>).
     /// </summary>
-    public static readonly string[] Packages = ["livp", "kra"];
+    public static readonly string[] Packages = ["livp", "kra", FormatRegistry.Program];
 
     /// <summary>
     /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on
@@ -158,8 +161,8 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Chooses which frames of a (possibly multi-frame) source are converted.
-    /// ICO, CUR, DDS: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF): every frame for an animated or
-    /// TIFF target, else the first frame.
+    /// ICO, CUR, DDS, a program's icon: the largest image. Animations (GIF, WebP, APNG, MNG, JPEG XL, AVIF): every frame
+    /// for an animated or TIFF target, else the first frame.
     /// PSD/PSB: the composite (frame 0; any further frames are layers). Otherwise: all frames/pages.
     /// </summary>
     public static List<IMagickImage<byte>> SelectFrames(MagickImageCollection images, string sourceFormat, string targetFormat)

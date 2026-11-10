@@ -346,7 +346,8 @@ internal static class Cli
 
     /// <summary>
     /// Files from the arguments: files as given, wildcards ("*.heic", which cmd.exe and PowerShell pass on unexpanded)
-    /// and folders (their files in formats Filee knows; with --recursive also in sub folders).
+    /// and folders (their files in formats Filee knows, programs left out as in watch folders: the installers in a folder
+    /// aren't pictures to convert; with --recursive also in sub folders).
     /// </summary>
     internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing, bool foldersAsInputs = false)
     {
@@ -367,7 +368,8 @@ internal static class Cli
             else if (Directory.Exists(input))
             {
                 if (foldersAsInputs) files.Add(Path.TrimEndingDirectorySeparator(input));
-                else files.AddRange(Directory.EnumerateFiles(input, "*", option).Where(f => FormatRegistry.Detect(f) is not null));
+                else files.AddRange(Directory.EnumerateFiles(input, "*", option)
+                    .Where(f => FormatRegistry.Detect(f) is not null && !FormatRegistry.IsProgram(f)));
             }
             else if (File.Exists(input))
                 files.Add(input);

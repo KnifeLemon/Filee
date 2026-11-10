@@ -1085,6 +1085,10 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 77)
             changed |= LearnExtensions(profiles, out _, ["osm"]);
+        // v78: Windows programs and libraries (.exe, .dll, #1188), read as their icon, learn the images donut; custom
+        //      claims stay put. (Schema 78 may be renumbered if another change takes it first.)
+        if (from < 78)
+            changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
         return changed;
     }
 
