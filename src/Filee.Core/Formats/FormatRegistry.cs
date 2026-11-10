@@ -370,6 +370,8 @@ public static class FormatRegistry
         new("shp", "Shapefile", FormatCategory.Geo, ["shp"]),
         // Activity files read by the geo engine (issue #451); .fits/.fts stay FITS.
         new("fit", "Garmin FIT", FormatCategory.Geo, ["fit"], Writable: false),
+        // OpenStreetMap XML exports read by the geo engine (issue #713); the binary .osm.pbf is not read.
+        new("osm", "OpenStreetMap", FormatCategory.Geo, ["osm"], Writable: false),
     ];
 
     private static readonly Dictionary<string, FileFormat> ById =

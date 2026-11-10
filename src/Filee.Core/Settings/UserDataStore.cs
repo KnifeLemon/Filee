@@ -1081,6 +1081,10 @@ internal static class SettingsMigrations
         //      images donut; custom claims stay put.
         if (from < 76)
             changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
+        // v77: OpenStreetMap XML (.osm, #713) learns the geospatial donut; custom claims stay put. (Schema 77 may be
+        //      renumbered if another change takes it first.)
+        if (from < 77)
+            changed |= LearnExtensions(profiles, out _, ["osm"]);
         return changed;
     }
 

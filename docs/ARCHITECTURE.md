@@ -313,6 +313,9 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
   pixels, where the size chip goes, where the dial opens) and is unit tested.
 
 `tool-pdf-pages` opens `Views/PdfPageEditorWindow`: it previews, reorders, rotates, deletes, adds and extracts pages.
+Ctrl / Shift + click selects several pages, and every action works on the whole selection: the pages move up or down
+as a block, dragging them moves them to the line drawn between two pages, Insert puts another PDF's pages before or
+after the selection and Replace puts them where the selection was, removing it (#860).
 Each source PDF's bytes and page sizes are cached once after the window has appeared; thumbnails and the large preview
 render off the UI thread. A whole-document edit keeps the original catalogue and changes `/Rotate` in modify mode.
 An actual reorder, deletion, addition or extraction builds a new PDF from selected page objects. A PDF that opens
