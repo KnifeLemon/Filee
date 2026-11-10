@@ -70,6 +70,7 @@ public sealed class RadialController(
     private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
     private Action<ConversionJob>? _onJob;  // told the conversion the donut starts (the Home page's list follows it)
     private bool _forLaunches;  // the click-mode donut's files came from later launches, so more of them can join it
+    private bool _dragBackFace; // the drag gesture opens the donut on its back face, once files enter it
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -85,8 +86,10 @@ public sealed class RadialController(
     /// Drag gesture started at the given physical screen point. The window is placed under the cursor but stays
     /// invisible until files are dragged into it (FilesEntered); a gesture without files (text, a rubber-band
     /// selection, nothing at all) never shows anything and closes when the button is released.
+    /// <paramref name="backFace"/>: the gesture opens the donut on its back face (the front when the back has no slice
+    /// for the files).
     /// </summary>
-    public void ShowForDrag(int x, int y)
+    public void ShowForDrag(int x, int y, bool backFace = false)
     {
         // A donut with files that nothing was dropped on yet is about to lose them (#784): a line, as it looks like a
         // drop that did nothing.
@@ -104,6 +107,7 @@ public sealed class RadialController(
         _converted = false;
         _keepOrder = false;
         _onJob = null;
+        _dragBackFace = backFace;
         viewModel.ResetForDrag();
         window.DonutControl.AllowContextEdit = false;
         PlaceAndShow(window, x, y, activate: false);
@@ -123,12 +127,14 @@ public sealed class RadialController(
     /// donut may lose focus once while Filee becomes the active app. <paramref name="web"/>: the files are placeholders
     /// of this browser drop (the drop zone, a picture on the clipboard), which the donut now owns.
     /// <paramref name="toClipboard"/>: the files came from the clipboard, and their results go back on it.
+    /// <paramref name="backFace"/>: open on the back face (a shortcut set to it), or the front when the back has no slice
+    /// for the files.
     /// </summary>
     /// <param name="keepOrder">
     /// The files are merged in the order given (the Home page's queue, which the user sorted), not sorted by name first.
     /// </param>
     public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
-        bool toClipboard = false, bool keepOrder = false, Action<ConversionJob>? onJob = null)
+        bool toClipboard = false, bool keepOrder = false, Action<ConversionJob>? onJob = null, bool backFace = false)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -150,7 +156,7 @@ public sealed class RadialController(
         var window = EnsureWindow();
         _dropped = false;
         _converted = false;
-        viewModel.Load(files, clickMode: true);
+        viewModel.Load(files, clickMode: true, backFace);
         viewModel.FitToThisDonut();
         window.DonutControl.AllowContextEdit = true;
         // Set the initial pose before showing the reused window, avoiding a fully-open flash.
@@ -294,7 +300,7 @@ public sealed class RadialController(
         {
             if (viewModel.IsClickMode || SameFiles(files, viewModel.Files) || SameWebFiles(files, viewModel.Files))
                 return;
-            viewModel.Load(files, clickMode: false);
+            viewModel.Load(files, clickMode: false, _dragBackFace);
             donut.PlayOpenAnimation();
             TakeKeyboard(window);
             WatchFlipKey();
