@@ -1186,6 +1186,8 @@
   "theme.custom_color": "Personalizada",
   "theme.corner_radius": "Arredondamento",
   "theme.donut_opacity": "Opacidade da barra circular",
+  "theme.system_font": "Usar o tipo de letra do sistema",
+  "theme.system_font_hint": "Mostra o texto no tipo de letra do sistema, como as outras aplicações. Os tipos de letra incluídos no Filee continuam a desenhar as escritas que lhe faltem.",
   "theme.reduce_motion": "Reduzir animações",
   "theme.reduce_motion_hint": "Recomendado para computadores antigos. Desativa as transições e o efeito de ressalto da barra circular.",
   "theme.window_size": "Escala da interface",

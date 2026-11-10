@@ -1186,6 +1186,8 @@
   "theme.custom_color": "自訂",
   "theme.corner_radius": "圓角",
   "theme.donut_opacity": "環形工具列不透明度",
+  "theme.system_font": "使用系統字型",
+  "theme.system_font_hint": "像其他應用程式一樣，以系統本身的字型顯示文字。系統字型缺少的文字仍由 Filee 內建的字型顯示。",
   "theme.reduce_motion": "減少動畫",
   "theme.reduce_motion_hint": "適合效能較低的電腦。關閉轉場效果和圓環的彈跳效果。",
   "theme.window_size": "視窗大小",

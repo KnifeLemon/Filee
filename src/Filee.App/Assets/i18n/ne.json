@@ -1170,6 +1170,8 @@
   "theme.custom_color": "अनुकूलित",
   "theme.corner_radius": "कुनाको गोलाइ (Softness)",
   "theme.donut_opacity": "डोनट टुलबार अपारदर्शिता",
+  "theme.system_font": "सिस्टमको फन्ट प्रयोग गर्नुहोस्",
+  "theme.system_font_hint": "अन्य एपजस्तै पाठलाई तपाईंको सिस्टमकै फन्टमा देखाउँछ। त्यो फन्टमा नभएका लिपिहरू Filee कै फन्टले देखाउँछन्।",
   "theme.reduce_motion": "एनिमेसन कम गर्नुहोस्",
   "theme.reduce_motion_hint": "पुराना कम्प्युटरहरूका लागि सिफारिस गरिन्छ। ट्रान्जिसन र डोनटको बाउन्स बन्द गर्दछ।",
   "theme.window_size": "विन्डोको आकार",

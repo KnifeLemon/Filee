@@ -1169,6 +1169,8 @@
 "theme.custom_color": "Personalizzato",
 "theme.corner_radius": "Morbidezza",
 "theme.donut_opacity": "Opacità della barra donut",
+"theme.system_font": "Usa il carattere di sistema",
+"theme.system_font_hint": "Mostra il testo con il carattere del sistema, come le altre app. Le scritture che gli mancano restano disegnate con i caratteri integrati di Filee.",
 "theme.reduce_motion": "Riduci le animazioni",
 "theme.reduce_motion_hint": "Consigliato per i PC più vecchi. Disattiva le transizioni e il rimbalzo del donut.",
 "theme.window_size": "Dimensione delle finestre",

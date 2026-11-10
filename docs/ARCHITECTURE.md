@@ -395,6 +395,12 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- The UI font is one chain (`SoftPalette.FontFamilies`): the embedded Noto fonts (`FileeFontCollection`,
+  `fonts:Filee#…`), with the UI language's CJK font first so Han takes that region's shapes. Theme → *Use the system
+  font* puts the system's UI fonts ahead of them (Segoe UI and Windows' script fonts, San Francisco on macOS,
+  fontconfig's default on Linux), named `fonts:System#…` (`SystemUiFontCollection`): Avalonia's own system collection
+  answers any letter with the platform's fallback font, whatever family is asked, so a plain name would draw every
+  language's Han in Yu Gothic UI on Windows. Annotate's labels follow the same chain (`AnnotationFonts`).
 - What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
   (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
   their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.

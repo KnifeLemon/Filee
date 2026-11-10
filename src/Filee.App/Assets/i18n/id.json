@@ -1170,6 +1170,8 @@
   "theme.custom_color": "Kustom",
   "theme.corner_radius": "Kelengkungan",
   "theme.donut_opacity": "Transparansi toolbar donut",
+  "theme.system_font": "Gunakan font sistem",
+  "theme.system_font_hint": "Menampilkan teks dengan font sistem Anda sendiri, seperti aplikasi lain. Aksara yang tidak dimiliki font itu tetap digambar dengan font bawaan Filee.",
   "theme.reduce_motion": "Kurangi animasi",
   "theme.reduce_motion_hint": "Disarankan untuk PC lama. Menonaktifkan transisi dan pantulan menu donut.",
   "theme.window_size": "Ukuran jendela",

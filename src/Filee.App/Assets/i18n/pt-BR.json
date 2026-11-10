@@ -1186,6 +1186,8 @@
   "theme.custom_color": "Personalizada",
   "theme.corner_radius": "Suavidade",
   "theme.donut_opacity": "Opacidade do menu circular",
+  "theme.system_font": "Usar a fonte do sistema",
+  "theme.system_font_hint": "Mostra o texto na fonte do seu sistema, como os outros apps. As fontes embutidas do Filee continuam desenhando as escritas que faltarem nela.",
   "theme.reduce_motion": "Reduzir animações",
   "theme.reduce_motion_hint": "Recomendado para PCs mais antigos. Desliga as transições e o salto do menu.",
   "theme.window_size": "Tamanho das janelas",

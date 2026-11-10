@@ -1186,6 +1186,8 @@
   "theme.custom_color": "Tùy chỉnh",
   "theme.corner_radius": "Độ bo góc",
   "theme.donut_opacity": "Độ mờ đục của thanh công cụ vòng tròn",
+  "theme.system_font": "Dùng phông chữ hệ thống",
+  "theme.system_font_hint": "Hiển thị chữ bằng phông chữ của hệ thống, giống các ứng dụng khác. Những chữ viết mà phông đó không có vẫn được vẽ bằng phông chữ có sẵn của Filee.",
   "theme.reduce_motion": "Giảm hiệu ứng động",
   "theme.reduce_motion_hint": "Khuyên dùng cho máy tính cũ. Tắt hiệu ứng chuyển tiếp và hiệu ứng nảy của vòng tròn.",
   "theme.window_size": "Kích thước cửa sổ",

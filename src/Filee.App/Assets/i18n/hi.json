@@ -1170,6 +1170,8 @@
   "theme.custom_color": "कस्टम",
   "theme.corner_radius": "कोमलता",
   "theme.donut_opacity": "डोनट टूलबार की अपारदर्शिता",
+  "theme.system_font": "सिस्टम फ़ॉन्ट इस्तेमाल करें",
+  "theme.system_font_hint": "दूसरे ऐप की तरह टेक्स्ट को आपके सिस्टम के अपने फ़ॉन्ट में दिखाता है। जो लिपि उस फ़ॉन्ट में नहीं है, उसे Filee के अपने फ़ॉन्ट ही दिखाते हैं।",
   "theme.reduce_motion": "एनिमेशन कम करें",
   "theme.reduce_motion_hint": "पुराने PC के लिए अनुशंसित। ट्रांज़िशन और डोनट की उछाल बंद कर देता है।",
   "theme.window_size": "विंडो का आकार",

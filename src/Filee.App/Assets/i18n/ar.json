@@ -1170,6 +1170,8 @@
   "theme.custom_color": "لون مخصّص",
   "theme.corner_radius": "استدارة الزوايا",
   "theme.donut_opacity": "شفافية شريط الأدوات الدائري",
+  "theme.system_font": "استخدام خط النظام",
+  "theme.system_font_hint": "يعرض النصوص بخط نظامك نفسه، كما في التطبيقات الأخرى. تبقى خطوط Filee المدمجة لرسم أي كتابة لا يدعمها.",
   "theme.reduce_motion": "تقليل الرسوم المتحركة",
   "theme.reduce_motion_hint": "موصى به للحواسيب القديمة. يعطّل الانتقالات وحركة ارتداد الشريط الدائري.",
   "theme.window_size": "حجم النوافذ",

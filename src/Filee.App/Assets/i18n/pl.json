@@ -1186,6 +1186,8 @@
   "theme.custom_color": "Własny",
   "theme.corner_radius": "Zaokrąglenie",
   "theme.donut_opacity": "Krycie paska-pierścienia",
+  "theme.system_font": "Użyj czcionki systemowej",
+  "theme.system_font_hint": "Wyświetla tekst czcionką systemu, jak inne aplikacje. Pisma, których jej brakuje, nadal rysują wbudowane czcionki Filee.",
   "theme.reduce_motion": "Ogranicz animacje",
   "theme.reduce_motion_hint": "Zalecane na starszych komputerach. Wyłącza przejścia i odbijanie pierścienia.",
   "theme.window_size": "Rozmiar okien",
