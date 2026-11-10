@@ -1,268 +1,394 @@
-// Fields and grades of every format (#844): the table is complete, matches the classification published in #844, and
-// IsShown hides a format only when every field it belongs to can be turned off and is off.
-//
-// The id lists below are pinned on purpose (#844): adding a format or changing a grade or field must update them, so the
-// change shows up in review. They are written out here, not computed from FormatFields.
+// Root settings object persisted to settings.json.
 
-using Filee.Core.Formats;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Filee.Core.Presets;
 
-namespace Filee.Core.Tests;
+namespace Filee.Core.Settings;
 
-public class FormatFieldsTests
+public enum ThemeMode
 {
-    private static readonly FileFormat[] Formats = [.. FormatRegistry.Known.Where(f => f.Id != FormatRegistry.Folder)];
+    System,
+    Light,
+    Dark,
+}
 
-    private static readonly string[] TurnOffFields =
-        ["cad", "model3d", "geo", "font", "game", "design", "science", "developer", "writing", "video-pro", "audio-pro", "legacy"];
+public enum ThemeStyle
+{
+    Soft,
+    MaterialYou,
+}
 
-    private static HashSet<string> Off(params string[] fields) => new(fields);
+/// <summary>What closing the main window does (Settings → General).</summary>
+public enum CloseAction
+{
+    /// <summary>Ask, with "Don't ask again" (which saves the answer).</summary>
+    Ask,
 
-    private static string[] Hidden(IReadOnlySet<string> turnedOff) =>
-        [.. Formats.Where(f => !FormatFields.IsShown(f.Id, turnedOff)).Select(f => f.Id).Order(StringComparer.Ordinal)];
+    /// <summary>Hide the window; Filee keeps running in the tray.</summary>
+    Tray,
 
-    private static string[] Sorted(string[] ids) => [.. ids.Order(StringComparer.Ordinal)];
+    /// <summary>Quit Filee.</summary>
+    Quit,
+}
 
-    // Every specialist and legacy format.
-    private static readonly string[] HiddenWithEverythingOff =
-    [
-        "3g2", "3gp", "3mf", "602", "ac3", "adoc", "ai", "amr", "ape", "arj", "ass", "au", "azw", "azw4", "bik",
-        "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
-        "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
-        "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
-        "hdr", "htmlz", "icns", "ipynb", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
-        "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mediawiki", "miff", "mng", "mobi",
-        "mod", "mp2", "mpc", "mrpack", "mxf", "obj", "oeb",
-        "org", "otf", "pam", "pcd", "pcx", "pdb", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
-        "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
-        "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
-        "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "usm", "vob", "voc", "w64", "wbmp", "wmf", "woff", "woff2",
-        "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xpm", "xz", "yaml", "z"
-    ];
+/// <summary>Look and feel.</summary>
+public sealed class ThemeSettings
+{
+    public ThemeStyle Style { get; set; } = ThemeStyle.Soft;
 
-    public static TheoryData<string, string[]> HiddenWithOneFieldOff => new()
+    public ThemeMode Mode { get; set; } = ThemeMode.System;
+
+    /// <summary>Accent colour as <c>#RRGGBB</c>.</summary>
+    public string Accent { get; set; } = "#7F77DD";
+
+    /// <summary>Active curated preset key (e.g. "mint", "peach") when a coordinated light/dark pair is used; null for custom choices.</summary>
+    public string? PresetKey { get; set; }
+
+    /// <summary>Base corner radius in pixels. Larger = "softer" UI.</summary>
+    public double CornerRadius { get; set; } = 16;
+
+    /// <summary>
+    /// Disables animations (for low-end PCs or motion sensitivity).
+    /// <c>null</c> follows the operating system setting.
+    /// </summary>
+    public bool? ReduceMotion { get; set; }
+
+    /// <summary>
+    /// Draws the UI in the system's own font (Segoe UI on Windows, San Francisco on macOS, fontconfig's default on
+    /// Linux) instead of the embedded Noto fonts, which still draw what it lacks. Off as before it existed; a missing
+    /// value reads as off, so it needs no schema step.
+    /// </summary>
+    public bool UseSystemFont { get; set; }
+
+    public ThemeSettings Clone() => (ThemeSettings)MemberwiseClone();
+}
+
+/// <summary>Geometry and appearance of the donut toolbar.</summary>
+public sealed class DonutSettings
+{
+    /// <summary>Outer radius in logical pixels.</summary>
+    public double OuterRadius { get; set; } = 150;
+
+    /// <summary>Inner (hole) radius as a fraction of the outer radius (0.2 - 0.7).</summary>
+    public double HoleRatio { get; set; } = 0.42;
+
+    /// <summary>Background opacity of the slices (<see cref="MinOpacity"/> - 1); labels and outlines stay opaque.</summary>
+    public double Opacity { get; set; } = 0.96;
+
+    /// <summary>The lowest <see cref="Opacity"/> the Theme and Donut toolbar pages offer.</summary>
+    public const double MinOpacity = 0.1;
+
+    /// <summary>
+    /// The small line under a slice's name saying what it makes ("SVG" under Trace, the file's own format under a
+    /// preset that keeps it, "Group of N" under a group). Off, the name stands alone in the middle of its slice; a
+    /// group is still marked by its chevron. A folder slice keeps its "Move" or "Copy", which says what it does, and
+    /// two slices of one name keep theirs, the only thing that tells them apart.
+    /// On as before it existed; a missing value (settings from before it) reads as on, so it needs no schema step.
+    /// </summary>
+    public bool ShowCaptions { get; set; } = true;
+
+    /// <summary>The flip key unless the user picks another one (Settings → Shortcuts).</summary>
+    public const string DefaultFlipKey = "Tab";
+
+    /// <summary>
+    /// The key that flips the open donut to its other face, as a SharpHook key name without "Vc" ("Tab", "F2", "Q");
+    /// empty for none. See <see cref="EffectiveFlipKey"/>.
+    /// </summary>
+    public string FlipKey { get; set; } = DefaultFlipKey;
+
+    /// <summary>A turn of the mouse wheel flips the open donut to its other face.</summary>
+    public bool FlipWithWheel { get; set; } = true;
+
+    /// <summary>
+    /// Keys that never flip the donut: Esc closes it, Enter and Space convert or open a group, the arrows move between
+    /// slices and Backspace folds a group's ring.
+    /// </summary>
+    public static readonly IReadOnlySet<string> ReservedFlipKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        { "cad", ["dwg"] },
-        { "model3d", ["fbx", "glb", "gltf", "ply"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
-        { "font", ["otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "usm"] },
-        { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "plt", "ps", "psb", "psd", "raw", "xcf"] },
-        { "science", ["dcm", "fits"] },
-        { "developer", [
-                "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har", "icns", "jar",
-                "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi", "rpm", "tar", "tar7z",
-                "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
-            ] },
-        { "writing", ["adoc", "cgm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
-        { "video-pro", [
-                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "scc", "ssa", "ttml"
-            ] },
-        { "audio-pro", ["ape", "dff", "dsf", "dss", "tak", "tta", "w64", "wv"] },
-        { "legacy", [
-                "3g2", "3gp", "602", "amr", "arj", "au", "azw", "azw4", "cwk", "dot", "flv", "lha", "lit", "lrf",
-                "lwp", "mcw", "mng", "mobi", "mod", "oeb", "pcx", "pdb", "pml", "prc", "psw", "ras", "rb", "rm",
-                "sda", "sdc", "sdw", "sgi", "snb", "spx", "sub", "swf", "tcr", "tz", "vob", "voc", "wbmp", "wmf",
-                "wpd", "wtv", "xlt", "z"
-            ] },
+        "Escape", "Enter", "Space", "Left", "Right", "Up", "Down", "Backspace",
     };
 
-    public static TheoryData<string, string[]> FieldMembers => new()
-    {
-        { "cad", ["3mf", "dwg", "dxf", "obj", "stl"] },
-        { "model3d", ["3mf", "fbx", "glb", "gltf", "obj", "ply", "stl"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
-        { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
-        { "game", ["bik", "dds", "flc", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm"] },
-        { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "plt", "ps", "psb", "psd", "raw", "xcf"] },
-        { "science", ["dcm", "fits", "ipynb", "jp2"] },
-        { "developer", [
-                "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
-                "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi",
-                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
-            ] },
-        { "writing", ["adoc", "cgm", "chm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
-        { "video-pro", [
-                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "scc", "ssa", "ttml"
-            ] },
-        { "audio-pro", ["ape", "caf", "dff", "dsf", "dss", "mpc", "tak", "tta", "w64", "wv"] },
-        { "legacy", [
-                "3g2", "3gp", "602", "amr", "arj", "au", "azw", "azw4", "cwk", "dot", "eot", "flc", "flv", "fon", "lha",
-                "lit", "lrf", "lwp", "mcw", "mng", "mobi", "mod", "mpc", "oeb", "pcd", "pcx", "pdb", "pml", "prc",
-                "psw", "ras", "rb", "rm", "sda", "sdc", "sdw", "sgi", "snb", "spx", "sub", "swf", "tcr", "tz", "vob",
-                "voc", "wbmp", "wmf", "wpd", "wtv", "xlt", "z"
-            ] },
-    };
+    /// <summary>
+    /// Whether <paramref name="key"/> may flip the donut: not a key the donut uses (<see cref="ReservedFlipKeys"/>), nor
+    /// the key of a keyboard shortcut in <paramref name="gestures"/>. While a drag holds its modifier that shortcut would
+    /// fire too, and open the donut for the selected files instead.
+    /// </summary>
+    public static bool IsFlipKeyAllowed(string key, IEnumerable<TriggerGesture> gestures) =>
+        !string.IsNullOrWhiteSpace(key) && !ReservedFlipKeys.Contains(key) &&
+        !gestures.Any(g => g.Kind == TriggerKind.KeyChord && string.Equals(g.Key, key, StringComparison.OrdinalIgnoreCase));
 
-    // Every format registered when the admission rule came in (#844): they aren't held to it.
-    private static readonly HashSet<string> FormatsBeforeAdmissionRule =
+    /// <summary>
+    /// The key that flips the donut now: none when the user cleared it; Tab in place of one that isn't allowed (a file
+    /// edited by hand, or a keyboard shortcut that took the key since), or none when Tab isn't either.
+    /// </summary>
+    public string? EffectiveFlipKey(IEnumerable<TriggerGesture> gestures)
+    {
+        if (string.IsNullOrWhiteSpace(FlipKey))
+            return null;
+        var list = gestures as IReadOnlyCollection<TriggerGesture> ?? gestures.ToList();
+        if (IsFlipKeyAllowed(FlipKey.Trim(), list))
+            return FlipKey.Trim();
+        return IsFlipKeyAllowed(DefaultFlipKey, list) ? DefaultFlipKey : null;
+    }
+
+    public DonutSettings Clone() => (DonutSettings)MemberwiseClone();
+}
+
+/// <summary>All user settings except presets and profiles (which have their own files).</summary>
+public sealed class AppSettings
+{
+    /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
+    public const int CurrentSchemaVersion = 78;
+
+    public int SchemaVersion { get; set; } = CurrentSchemaVersion;
+
+    /// <summary><c>"auto"</c>, <c>"en"</c>, <c>"ko"</c> or <c>"zh-CN"</c>.</summary>
+    public string Language { get; set; } = "auto";
+
+    public bool StartWithSystem { get; set; } = true;
+
+    /// <summary>Show the Explorer "Convert with Filee" context menu entry.</summary>
+    public bool ContextMenuEnabled { get; set; } = true;
+
+    public bool CheckForUpdates { get; set; } = true;
+
+    /// <summary>What closing the main window does. A value from a newer Filee reads as <see cref="CloseAction.Ask"/>.</summary>
+    [JsonConverter(typeof(LenientEnumJsonConverter<CloseAction>))]
+    public CloseAction CloseAction { get; set; } = CloseAction.Ask;
+
+    /// <summary>Record finished conversions in the history (home page). Off: nothing new is recorded.</summary>
+    public bool KeepHistory { get; set; } = true;
+
+    /// <summary>
+    /// How many finished conversions the history keeps, newest first (<see cref="MinHistoryLimit"/> to
+    /// <see cref="MaxHistoryLimit"/>; a value outside is taken as the nearest end). The home page lists the latest
+    /// ones and searches all of them.
+    /// </summary>
+    public int HistoryLimit { get; set; } = 200;
+
+    public const int MinHistoryLimit = 50;
+    public const int MaxHistoryLimit = 2000;
+
+    /// <summary><see cref="HistoryLimit"/> within its range.</summary>
+    [JsonIgnore]
+    public int EffectiveHistoryLimit => Math.Clamp(HistoryLimit, MinHistoryLimit, MaxHistoryLimit);
+
+    /// <summary>Whether the macOS Dock shows Filee.</summary>
+    [JsonConverter(typeof(IconPreferenceJsonConverter))]
+    public bool ShowInDock { get; set; } = true;
+
+    /// <summary>Whether the macOS menu bar shows Filee's status icon.</summary>
+    [JsonConverter(typeof(IconPreferenceJsonConverter))]
+    public bool ShowMenuBarIcon { get; set; } = true;
+
+    /// <summary>Newest version the user was already told about, so the update notice shows once per release.</summary>
+    public string? NotifiedUpdateVersion { get; set; }
+
+    /// <summary>
+    /// The version whose "What's new" slides were last shown (or that was installed fresh, which needs none). Null in
+    /// settings from before the slides existed: Filee was updated from an older version.
+    /// </summary>
+    public string? WhatsNewSeenVersion { get; set; }
+
+    /// <summary>Engine package id → the new version the engine update notice was shown for (once per version).</summary>
+    public Dictionary<string, string> NotifiedEngineVersions { get; set; } = [];
+
+    /// <summary>Temporarily disable all trigger gestures (tray "Pause").</summary>
+    public bool Paused { get; set; }
+
+    public ThemeSettings Theme { get; set; } = new();
+
+    public DonutSettings Donut { get; set; } = new();
+
+    public List<TriggerGesture> Triggers { get; set; } = TriggerGesture.Defaults();
+
+    /// <summary>Process names (without .exe) in which gestures never trigger.</summary>
+    public List<string> ExcludedProcesses { get; set; } = [];
+
+    /// <summary>Engine ids in preferred order (see <see cref="Conversion.ConverterCatalog.Priority"/>).</summary>
+    public List<string> EnginePriority { get; set; } =
     [
-        "png", "jpg", "webp", "tiff", "bmp", "gif", "ico", "avif", "heic", "jxl", "jp2", "psd", "psb", "tga", "ppm",
-        "icns", "apng", "mng", "qoi", "dds", "pcx", "cur", "xpm", "xbm", "wbmp", "pam", "pfm", "sgi", "ras", "miff",
-        "dcm", "pcd", "exr", "hdr", "fits", "jxr", "xcf", "livp", "raw", "svg", "svgz", "eps", "ps", "ai", "emf",
-        "wmf", "cdr", "cgm", "plt", "vsd", "dst", "odg", "fodg", "pdf", "docx", "docm", "dotx", "dotm", "doc", "dot",
-        "odt", "fodt", "ott", "rtf", "wps", "ofd", "wpd", "lwp", "abw", "pages", "sdw", "cwk", "mcw", "602", "psw",
-        "pub", "eml", "msg", "hwpx", "hwp", "xlsx", "xlsm", "xltx", "xls", "xlt", "ods", "ots", "fods", "csv", "tsv",
-        "et", "numbers", "sdc", "pptx", "pptm", "potx", "potm", "ppsx", "ppt", "odp", "otp", "fodp", "key", "dps",
-        "sda", "txt", "md", "html", "mhtml", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb",
-        "textile", "man", "opml", "json", "jsonl", "yaml", "toml", "xml", "vcf", "har", "ics", "epub", "kepub",
-        "mobi", "azw3", "azw", "azw4", "prc", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "htmlz", "txtz", "chm",
-        "lit", "lrf", "pdb", "pml", "rb", "snb", "tcr", "oeb", "mp4", "m4v", "mov", "mkv", "webm", "avi", "wmv",
-        "flv", "mpg", "ts", "m2ts", "3gp", "3g2", "ogv", "vob", "mod", "dv", "mxf", "rm", "swf", "wtv", "cavs",
-        "usm", "m4s", "dav", "bik", "h265", "h264", "mp3", "m4a", "m4b", "aac", "wav", "flac", "ogg", "opus", "wma",
-        "aiff", "ac3", "amr", "au", "caf", "weba", "mka", "mp2", "dss", "voc", "wv", "tta", "w64", "eac3", "ape",
-        "mpc", "tak", "dsf", "dff", "dts", "spx", "qta", "zip", "7z", "rar", "tar", "tgz", "tbz2", "txz", "tar7z",
-        "tlz", "tz", "gz", "bz2", "xz", "lz", "lzma", "z", "jar", "cab", "cpio", "deb", "rpm", "dmg", "iso", "img",
-        "lha", "arj", "alz", "egg", "split", "dwg", "dxf", "ttf", "otf", "woff", "woff2", "eot", "fon", "srt", "ass",
-        "ssa", "vtt", "smi", "lrc", "ttml", "sub", "scc", "glb", "gltf", "stl", "obj", "3mf", "ply", "fbx",
-        "geojson", "kml", "kmz", "gpx", "shp", "fit"
+        "magick", "pdfium", "pdfsharp", "rhwp", "unhwp", "markdown", "spreadsheet", "ooxml", "hwpx-writer", "docx-writer",
+        "pdf-text", "pdf-slides", "email", "data", "vector", "icns", "font", "cad", "model3d", "geo", "archive", "ebook",
+        "subtitle", "wic", "ffmpeg", "pandoc", "ghostscript", "calibre", "libreoffice",
     ];
 
-    [Fact]
-    public void Every_format_has_a_grade_and_at_least_one_known_field()
-    {
-        var fieldIds = FormatFields.All.Select(f => f.Id).ToHashSet();
+    /// <summary>Set once the first-run welcome has been shown.</summary>
+    public bool FirstRunCompleted { get; set; }
 
-        foreach (var format in Formats)
+    /// <summary>Conversions that succeeded completely, counted until the feedback card has been shown.</summary>
+    public int SuccessfulConversions { get; set; }
+
+    /// <summary>Set once the "Is Filee helping you?" card (GitHub star / feedback) has been shown.</summary>
+    public bool FeedbackPromptShown { get; set; }
+
+    /// <summary>macOS: set once Filee has shown the system's Accessibility alert, which it shows only once (#316).</summary>
+    public bool AccessibilityPromptShown { get; set; }
+
+    /// <summary>Folders whose new files are converted automatically (Settings → Watch folders).</summary>
+    public List<Watching.WatchRule> WatchFolders { get; set; } = [];
+
+    /// <summary>Where presets set to "Default" save (Settings → General).</summary>
+    public DefaultOutputSettings DefaultOutput { get; set; } = new();
+
+    /// <summary>Where files dragged from a web browser are saved (Settings → General).</summary>
+    public BrowserDropSettings BrowserDrops { get; set; } = new();
+
+    /// <summary>
+    /// Optional engines the user already has: package id ("ffmpeg", "calibre", …) → the program they picked. Used
+    /// instead of Filee's download (Settings → Engines).
+    /// </summary>
+    public Dictionary<string, string> EngineOwnCopies { get; set; } = [];
+
+    /// <summary>
+    /// With LibreOffice installed, presentations (PPTX, PPT, ODP) → PDF go through it instead of the built-in route
+    /// (HWPX writer and rhwp): slide backgrounds and shape positions come out as in PowerPoint.
+    /// </summary>
+    public bool LibreOfficeForSlides { get; set; } = true;
+
+    /// <summary>Active local model for offline translation (e.g. "llama3.2", "qwen2.5").</summary>
+    public string? PreferredOllamaModel { get; set; }
+
+    /// <summary>
+    /// With LibreOffice and H2Orestart installed, HWP / HWPX → PDF go through it instead of rhwp: a way around a
+    /// document rhwp lays out wrong (each engine gets different documents right).
+    /// </summary>
+    public bool LibreOfficeForHwp { get; set; }
+
+    /// <summary>
+    /// With LibreOffice installed, Word documents (DOCX, DOC, ODT, RTF) → PDF go through it instead of the built-in
+    /// route: Chinese punctuation and line-start rules, fonts the built-in route lacks.
+    /// </summary>
+    public bool LibreOfficeForDocuments { get; set; }
+
+    /// <summary>
+    /// With LibreOffice installed, spreadsheets (XLSX, XLS, ODS, CSV) → PDF go through it: print areas, page setup and
+    /// page breaks as Excel prints them.
+    /// </summary>
+    public bool LibreOfficeForSheets { get; set; }
+
+    /// <summary>Every conversion keeps the created and modified dates of the original, whatever the preset says.</summary>
+    public bool KeepFileDates { get; set; }
+
+    /// <summary>
+    /// Files dropped or picked on the Home page wait in its list (<c>true</c>), instead of opening the donut for each drop.
+    /// </summary>
+    public bool CollectDroppedFiles { get; set; } = false;
+
+    /// <summary>Every geospatial conversion is saved as a ZIP, whatever the preset says (see <see cref="OutputRule.ZipResult"/>).</summary>
+    public bool ZipGeoResults { get; set; }
+
+    /// <summary>
+    /// How large Filee's windows draw everything (Theme → Window size; Ctrl + mouse wheel, Ctrl + plus / minus, Ctrl + 0):
+    /// 1 as designed, 0.7 to 1.8. A missing value (settings from before it) reads as 1, so it needs no schema step.
+    /// </summary>
+    public double UiScale { get; set; } = 1;
+
+    /// <summary>
+    /// The main window's navigation is collapsed to an icon rail (the button at its bottom). A missing value (settings from
+    /// before it) reads as expanded, so it needs no schema step.
+    /// </summary>
+    public bool NavCollapsed { get; set; }
+
+    /// <summary>
+    /// Where the main window was when it last closed, so the next start opens it there (#586). Null until it has closed
+    /// once. A Filee from before it skips the property, so it needs no schema step.
+    /// </summary>
+    public WindowBounds? MainWindow { get; set; }
+
+    /// <summary>
+    /// The fields turned off on the Fields page (ids of <see cref="Formats.FormatFields.All"/>): a format that belongs only to
+    /// them is left out of the donut and the preset lists. An empty list and a missing value both mean every field is on, so
+    /// settings from before it read as every field on and need no schema step. A new install gets its defaults from
+    /// <see cref="UserDataStore.Load"/>.
+    /// </summary>
+    public List<string> TurnedOffFields { get; set; } = [];
+
+    /// <summary><see cref="TurnedOffFields"/> as a set that ignores case, for <see cref="Formats.FormatFields.IsShown"/>.</summary>
+    public IReadOnlySet<string> TurnedOffFieldSet() => TurnedOffFields.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Returns <paramref name="preset"/> itself, or a copy with the app-wide output settings applied: it saves to
+    /// <see cref="DefaultOutput"/> when the preset's location is <see cref="OutputLocation.Default"/>, and keeps the
+    /// original dates when <see cref="KeepFileDates"/> is on and is saved as a ZIP when <see cref="ZipGeoResults"/> is on and the
+    /// target is geospatial. Name pattern and conflict handling stay the preset's.
+    /// </summary>
+    public Preset WithDefaultOutput(Preset preset)
+    {
+        var location = preset.Output.Location == OutputLocation.Default;
+        var dates = KeepFileDates && !preset.Output.KeepDates;
+        var zip = ZipGeoResults && !preset.Output.ZipResult && Formats.FormatRegistry.FindById(preset.TargetFormat)?.Category == Formats.FormatCategory.Geo;
+        if (!location && !dates && !zip)
+            return preset;
+        var copy = preset.Clone();
+        if (location)
         {
-            FormatFields.GradeOf(format);
-            var fields = FormatFields.Of(format);
-            Assert.NotEmpty(fields);
-            Assert.All(fields, field => Assert.Contains(field.Id, fieldIds));
+            copy.Output.Location = DefaultOutput.Location == OutputLocation.Default ? OutputLocation.SameFolder : DefaultOutput.Location;
+            copy.Output.SubfolderName = DefaultOutput.SubfolderName;
+            copy.Output.SubfolderOnlyForSeveralFiles = false;
+            copy.Output.CustomFolder = DefaultOutput.CustomFolder;
         }
+        if (dates)
+            copy.Output.KeepDates = true;
+        if (zip)
+            copy.Output.ZipResult = true;
+        return copy;
     }
+}
 
-    [Fact]
-    public void Field_ids_are_unique() =>
-        Assert.Equal(FormatFields.All.Count, FormatFields.All.Select(f => f.Id).Distinct(StringComparer.OrdinalIgnoreCase).Count());
-
-    [Fact]
-    public void Grade_counts_match_the_published_table()
+/// <summary>Reads unexpected icon preference values as enabled while preserving valid booleans.</summary>
+internal sealed class IconPreferenceJsonConverter : JsonConverter<bool>
+{
+    public override bool Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        var counts = Formats.GroupBy(FormatFields.GradeOf).ToDictionary(g => g.Key, g => g.Count());
+        if (reader.TokenType is JsonTokenType.True or JsonTokenType.False)
+            return reader.GetBoolean();
 
-        Assert.Equal(
-            new Dictionary<FormatGrade, int>
-            {
-                [FormatGrade.Everyday] = 19,
-                [FormatGrade.General] = 97,
-                [FormatGrade.Specialist] = 114,
-                [FormatGrade.Legacy] = 51,
-            },
-            counts);
+        reader.Skip();
+        return true;
     }
 
-    [Fact]
-    public void Turning_every_field_off_hides_exactly_the_specialist_and_legacy_formats() =>
-        Assert.Equal(Sorted(HiddenWithEverythingOff), Hidden(Off(TurnOffFields)));
+    public override void Write(Utf8JsonWriter writer, bool value, JsonSerializerOptions options) =>
+        writer.WriteBooleanValue(value);
+}
 
-    [Theory]
-    [MemberData(nameof(HiddenWithOneFieldOff))]
-    public void Turning_one_field_off_hides_only_the_formats_nobody_else_makes(string field, string[] hidden) =>
-        Assert.Equal(Sorted(hidden), Hidden(Off(field)));
+/// <summary>
+/// A window's place (<see cref="AppSettings.MainWindow"/>): its top-left corner in screen pixels and its size in
+/// device-independent pixels, as Avalonia gives them; a part not known is null. Maximized keeps the size it had before.
+/// </summary>
+public sealed class WindowBounds
+{
+    public int? X { get; set; }
+    public int? Y { get; set; }
+    public double? Width { get; set; }
+    public double? Height { get; set; }
+    public bool Maximized { get; set; }
+}
 
-    [Fact]
-    public void A_format_in_two_fields_hides_only_when_both_are_off()
-    {
-        Assert.True(FormatFields.IsShown("stl", Off("cad")));
-        Assert.True(FormatFields.IsShown("stl", Off("model3d")));
-        Assert.False(FormatFields.IsShown("stl", Off("cad", "model3d")));
-    }
+/// <summary>The save location presets set to "Default" use. Starts as "next to the source file", as before 1.4.</summary>
+public sealed class DefaultOutputSettings
+{
+    /// <summary><see cref="OutputLocation.SameFolder"/>, <see cref="OutputLocation.Subfolder"/> or <see cref="OutputLocation.CustomFolder"/>.</summary>
+    public OutputLocation Location { get; set; } = OutputLocation.SameFolder;
 
-    [Theory]
-    [MemberData(nameof(FieldMembers))]
-    public void Fields_that_can_be_turned_off_hold_the_published_formats(string field, string[] members) =>
-        Assert.Equal(
-            Sorted(members),
-            Formats.Where(f => FormatFields.Of(f).Any(x => x.Id == field)).Select(f => f.Id).Order(StringComparer.Ordinal));
+    public string SubfolderName { get; set; } = "converted";
 
-    [Theory]
-    [InlineData("tga", new[] { "image", "game" })]
-    [InlineData("dxf", new[] { "cad", "vector" })]
-    [InlineData("srt", new[] { "subtitle", "video", "audio" })]
-    [InlineData("png", new[] { "image" })]
-    public void Formats_get_their_exact_fields(string id, string[] fields) =>
-        Assert.Equal(fields, FormatFields.Of(FormatRegistry.Get(id)).Select(f => f.Id));
+    public string CustomFolder { get; set; } = "";
+}
 
-    [Theory]
-    [InlineData("png")]
-    [InlineData("jpg")]
-    [InlineData("webp")]
-    [InlineData("gif")]
-    [InlineData("heic")]
-    [InlineData("pdf")]
-    [InlineData("docx")]
-    [InlineData("hwpx")]
-    [InlineData("hwp")]
-    [InlineData("xlsx")]
-    [InlineData("csv")]
-    [InlineData("pptx")]
-    [InlineData("txt")]
-    [InlineData("md")]
-    [InlineData("mp4")]
-    [InlineData("mp3")]
-    [InlineData("m4a")]
-    [InlineData("srt")]
-    [InlineData("zip")]
-    [InlineData("svg")]
-    [InlineData("json")]
-    [InlineData("epub")]
-    public void Everyday_formats_stay_with_every_field_off(string id) =>
-        Assert.True(FormatFields.IsShown(id, Off(TurnOffFields)));
+/// <summary>Files dragged out of a web browser (Settings → General).</summary>
+public sealed class BrowserDropSettings
+{
+    /// <summary>Where they are saved; empty means the user's Downloads folder (looked up each time, as it can move).</summary>
+    public string Folder { get; set; } = "";
 
-    [Fact]
-    public void Turning_off_fields_that_cant_be_turned_off_or_dont_exist_hides_nothing() =>
-        Assert.Empty(Hidden(Off("image", "video", "archive", "no-such-field")));
+    /// <summary>Keep only the converted file: the original goes into a work folder and is deleted after the conversion.</summary>
+    public bool SaveOnlyConverted { get; set; }
 
-    [Fact]
-    public void Ids_ignore_case()
-    {
-        Assert.False(FormatFields.IsShown("DWG", Off("cad")));
-        Assert.False(FormatFields.IsShown("dwg", Off("CAD")));
-        Assert.True(FormatFields.IsShown("DXF", Off("CAD")));
-    }
-
-    [Theory]
-    [InlineData("no-such-format")]
-    [InlineData("*")]
-    // Folder is in the archive field, which can't be turned off today; this guards "Extract" if that changes.
-    [InlineData(FormatRegistry.Folder)]
-    public void Ids_that_arent_formats_are_always_shown(string id) =>
-        Assert.True(FormatFields.IsShown(id, Off([.. TurnOffFields, "archive"])));
-
-    [Fact]
-    public void Specialist_and_legacy_formats_belong_only_to_fields_that_can_be_turned_off() =>
-        Assert.All(
-            Formats.Where(f => FormatFields.GradeOf(f) is FormatGrade.Specialist or FormatGrade.Legacy),
-            f => Assert.All(FormatFields.Of(f), field => Assert.True(field.CanTurnOff, $"{f.Id} is in {field.Id}")));
-
-    [Fact]
-    public void Legacy_formats_belong_to_the_legacy_field() =>
-        Assert.All(
-            Formats.Where(f => FormatFields.GradeOf(f) == FormatGrade.Legacy),
-            f => Assert.Contains(FormatFields.Of(f), field => field.Id == "legacy"));
-
-    [Fact]
-    public void Everyday_and_general_formats_belong_to_a_field_that_cant_be_turned_off() =>
-        Assert.All(
-            Formats.Where(f => FormatFields.GradeOf(f) is FormatGrade.Everyday or FormatGrade.General),
-            f => Assert.Contains(FormatFields.Of(f), field => !field.CanTurnOff));
-
-    [Fact]
-    public void New_specialist_and_legacy_outputs_go_only_into_fields_that_are_off_by_default() =>
-        Assert.All(
-            Formats.Where(f => f.Writable && !FormatsBeforeAdmissionRule.Contains(f.Id)
-                && FormatFields.GradeOf(f) is FormatGrade.Specialist or FormatGrade.Legacy),
-            f => Assert.All(FormatFields.Of(f), field => Assert.True(field.CanTurnOff && !field.OnByDefault, $"{f.Id} is in {field.Id}")));
-
-    [Fact]
-    public void Only_the_extra_fields_and_four_categories_can_be_turned_off_and_only_developer_starts_on()
-    {
-        Assert.Equal(TurnOffFields.Order(StringComparer.Ordinal), FormatFields.All.Where(f => f.CanTurnOff).Select(f => f.Id).Order(StringComparer.Ordinal));
-        Assert.Equal(["developer"], FormatFields.All.Where(f => f.CanTurnOff && f.OnByDefault).Select(f => f.Id));
-        Assert.All(FormatFields.All.Where(f => !f.CanTurnOff), f => Assert.True(f.OnByDefault, f.Id));
-    }
-
-    [Fact]
-    public void The_folder_target_has_no_grade() =>
-        Assert.Throws<KeyNotFoundException>(() => FormatFields.GradeOf(FormatRegistry.Get(FormatRegistry.Folder)));
+    /// <summary>
+    /// Links may lead to this computer and the local network (an intranet, a NAS). Off: a web page could otherwise make
+    /// Filee send requests to the router or other devices at home or at work.
+    /// </summary>
+    public bool AllowLocalNetwork { get; set; }
 }
