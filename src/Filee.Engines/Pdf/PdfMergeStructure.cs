@@ -113,7 +113,8 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
 
     // One indirect string read at many places yields the same string instance, so a long one is measured
     // and looked up once. Short strings are cheap and may be shared instances such as string.Empty.
-    private const int SharedLength = 256;
+    private const int CacheLength = 256;
+    private const int SharedNameBytes = 32;
     private readonly Dictionary<string, int> _byteCounts = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<string, (PdfItem Name, PdfArray Destination)?> _lookups = new(ReferenceEqualityComparer.Instance);
     // The next suffix to try for a name already taken, so later sources do not walk the taken ones again.
@@ -124,7 +125,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
 
     private int ByteCount(PdfString text)
     {
-        if (text.Value.Length < SharedLength)
+        if (text.Value.Length < CacheLength)
             return Count(text);
         if (!_byteCounts.TryGetValue(text.Value, out var count))
         {
@@ -173,12 +174,13 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
             "/FitR" => 6,
             _ => -1,
         };
-        if (source.Elements.Count != length)
+        if (length < 0 || source.Elements.Count > length ||
+            (kind == "/FitR" && source.Elements.Count != length))
             return null;
         var values = new List<PdfItem>(length) { page.Reference!, new PdfName(kind!) };
         for (var i = 2; i < length; i++)
         {
-            var value = Value(source.Elements[i]);
+            var value = i < source.Elements.Count ? Value(source.Elements[i]) : PdfNull.Value;
             if (value is not (PdfInteger or PdfReal) && !(value is PdfNull && kind != "/FitR"))
                 return null;
             values.Add(value switch
@@ -219,7 +221,7 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                 return true;
             // Direct short names have bounded size; long names must not be written once per link.
             PdfItem name = Raw(renamed);
-            if (renamed.Length >= SharedLength)
+            if (renamed.Length >= SharedNameBytes)
             {
                 var shared = new PdfStringObject(output, renamed) { Encoding = PdfStringEncoding.RawEncoding };
                 output.Internals.AddObject(shared);
@@ -257,8 +259,8 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
                         // Keys are unique in a name tree; a long key repeated by reference would be converted
                         // and hashed again for every pair.
                         if (Text(pairs.Elements[i]) is { } key && ByteCount(key) <= limits.StringBytes - _stringBytes &&
-                            (key.Value.Length < SharedLength || !seenKeys.Contains(key.Value)) &&
-                            Register(false, () => Bytes(key), pairs.Elements[i + 1]) && key.Value.Length >= SharedLength)
+                            (key.Value.Length < CacheLength || !seenKeys.Contains(key.Value)) &&
+                            Register(false, () => Bytes(key), pairs.Elements[i + 1]) && key.Value.Length >= CacheLength)
                             seenKeys.Add(key.Value);
                     }
                 if (Array(entry.Node.Elements["/Kids"]) is { } kids &&
@@ -304,11 +306,11 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         };
         if (value is null)
             return null;
-        if (value.Length < SharedLength || !_lookups.TryGetValue(value, out var resolved))
+        if (value.Length < CacheLength || !_lookups.TryGetValue(value, out var resolved))
         {
             var key = item is PdfString text ? (false, Bytes(text)) : (true, value[1..]);
             resolved = names.TryGetValue(key, out var found) ? _destinations[found] : null;
-            if (value.Length >= SharedLength)
+            if (value.Length >= CacheLength)
                 _lookups.Add(value, resolved);
         }
         if (resolved is not { } hit)
@@ -1015,10 +1017,10 @@ internal sealed class PdfMergeStructure(PdfDocument output, PdfMergeStructure.Li
         if (_destinations.Count > 0)
         {
             var pairs = new PdfArray(output);
-            foreach (var (key, value) in _destinations)
+            foreach (var value in _destinations.Values)
             {
                 ct.ThrowIfCancellationRequested();
-                pairs.Elements.Add(Raw(key));
+                pairs.Elements.Add(value.Name);
                 pairs.Elements.Add(value.Destination);
             }
             var tree = new PdfDictionary(output);

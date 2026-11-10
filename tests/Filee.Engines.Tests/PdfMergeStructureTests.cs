@@ -321,14 +321,19 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
 
     private static string Key(PdfItem item)
     {
-        var text = Assert.IsType<PdfString>(V(item));
-        return text.Encoding == PdfStringEncoding.Unicode
-            ? "\xfe\xff" + Encoding.Latin1.GetString(Encoding.BigEndianUnicode.GetBytes(text.Value))
-            : text.Value;
+        var (value, encoding) = V(item) switch
+        {
+            PdfString text => (text.Value, text.Encoding),
+            PdfStringObject text => (text.Value, text.Encoding),
+            _ => throw new InvalidOperationException("Not a PDF string"),
+        };
+        return encoding == PdfStringEncoding.Unicode
+            ? "\xfe\xff" + Encoding.Latin1.GetString(Encoding.BigEndianUnicode.GetBytes(value))
+            : value;
     }
 
     private static PdfArray Resolved(PdfDocument document, PdfItem? item) =>
-        V(item) is PdfString ? Destinations(document)[Key(item!)] : A(item);
+        V(item) is PdfString or PdfStringObject ? Destinations(document)[Key(item!)] : A(item);
 
     private static void View(PdfDocument document, PdfArray destination, int page, string kind, params string[] values)
     {
@@ -941,7 +946,12 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         {
             var items = OutlineItems(result);
             Assert.Equal(new[] { "before", "broken", "after" }, items.Select(d => S(d.Elements["/Title"])));
-            if (kind.StartsWith("destination", StringComparison.Ordinal))
+            if (kind == "destination-count")
+            {
+                View(result, A(items[1].Elements["/Dest"]), 1, "/XYZ", "1", "null", "null");
+                View(result, A(Links(result, 0)[0].Elements["/Dest"]), 1, "/XYZ", "1", "null", "null");
+            }
+            else if (kind.StartsWith("destination", StringComparison.Ordinal))
             {
                 Assert.False(items[1].Elements.ContainsKey("/Dest"));
                 Assert.False(Links(result, 0)[0].Elements.ContainsKey("/Dest"));
@@ -1021,6 +1031,584 @@ public class PdfMergeStructureTests(EngineFixture fx) : IClassFixture<EngineFixt
         var outlines = OutlineItems(result);
         View(result, A(outlines[0].Elements["/Dest"]), 0, "/Fit");
         View(result, A(outlines[1].Elements["/Dest"]), 1, "/Fit");
+    }
+
+    private string MergeAfterPrefix(string source, PdfMergeStructure.Limits? limits = null)
+    {
+        var prefix = Source(_ => { });
+        var path = Path.Combine(Path.GetDirectoryName(source)!, "prefixed.pdf");
+        PdfSharpConverter.Merge([prefix, source], path, TestContext.Current.CancellationToken, limits);
+        return path;
+    }
+
+    private static Dictionary<string, PdfItem> NameKeys(PdfDocument document)
+    {
+        var pairs = A(D(D(document.Internals.Catalog.Elements["/Names"]).Elements["/Dests"]).Elements["/Names"]);
+        return Enumerable.Range(0, pairs.Elements.Count / 2)
+            .ToDictionary(i => Key(pairs.Elements[2 * i]), i => pairs.Elements[2 * i], StringComparer.Ordinal);
+    }
+
+    private static void SharedName(PdfDocument document, string bytes, IEnumerable<PdfItem> uses)
+    {
+        var key = NameKeys(document)[bytes];
+        Assert.Equal(bytes, Key(key));
+        if (bytes.Length < 32)
+        {
+            Assert.IsType<PdfString>(key);
+            Assert.All(uses, item =>
+            {
+                Assert.IsType<PdfString>(item);
+                Assert.Equal(bytes, Key(item));
+            });
+            return;
+        }
+        var reference = Assert.IsType<PdfReference>(key);
+        Assert.All(uses, item =>
+        {
+            Assert.Equal(reference.ObjectID, Assert.IsType<PdfReference>(item).ObjectID);
+            Assert.Equal(bytes, Key(item));
+        });
+        Assert.Single(document.Internals.GetAllObjects().OfType<PdfStringObject>(), item => Key(item) == bytes);
+    }
+
+    [Theory]
+    [InlineData(31, false)]
+    [InlineData(32, false)]
+    [InlineData(33, false)]
+    [InlineData(128, false)]
+    [InlineData(255, false)]
+    [InlineData(256, false)]
+    [InlineData(14, true)]
+    [InlineData(15, true)]
+    [InlineData(16, true)]
+    public void Named_destinations_share_strings_at_the_byte_boundary(int length, bool unicode)
+    {
+        var text = new string('k', length);
+        var encoding = unicode ? PdfStringEncoding.Unicode : PdfStringEncoding.RawEncoding;
+        var bytes = Key(new PdfString(text, encoding));
+        var source = Source(pdf =>
+        {
+            NameTree(pdf).Elements["/Names"] = Items(pdf, new PdfString(text, encoding),
+                Dest(pdf, 1, "/XYZ", new PdfInteger(10), PdfNull.Value, new PdfReal(1.5)));
+            for (var i = 0; i < 100; i++)
+                if (i % 2 == 0)
+                    Link(pdf, 0, new PdfString(text, encoding));
+                else
+                    Link(pdf, 0, action: Action(pdf, "/GoTo", new PdfString(text, encoding)));
+        });
+        using var result = PdfReader.Open(MergeAfterPrefix(source), PdfDocumentOpenMode.Import);
+        Assert.Equal(4, result.PageCount);
+        var links = Links(result, 2);
+        Assert.Equal(100, links.Count);
+        var uses = links.Select(link => link.Elements["/Dest"] ?? D(link.Elements["/A"]).Elements["/D"]!).ToArray();
+        SharedName(result, bytes, uses);
+        View(result, Assert.Single(Destinations(result)).Value, 3, "/XYZ", "10", "null", "1.5");
+        Assert.All(uses, item => View(result, Resolved(result, item), 3, "/XYZ", "10", "null", "1.5"));
+    }
+
+    [Theory]
+    [InlineData(31)]
+    [InlineData(32)]
+    public void Renamed_names_choose_sharing_after_the_suffix(int length)
+    {
+        var name = new string('k', length);
+        string Make() => Source(pdf =>
+        {
+            NameTree(pdf).Elements["/Names"] = Items(pdf, new PdfString(name), Dest(pdf, 1));
+            Link(pdf, 0, new PdfString(name));
+            Link(pdf, 0, action: Action(pdf, "/GoTo", new PdfString(name)));
+        });
+        var first = Make();
+        var path = Path.Combine(Path.GetDirectoryName(first)!, "collision.pdf");
+        PdfSharpConverter.Merge([first, Make()], path, TestContext.Current.CancellationToken);
+        using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        Assert.Equal(4, result.PageCount);
+        Assert.Equal(new[] { name, name + "-2" }, Destinations(result).Keys);
+        for (var i = 0; i < 2; i++)
+        {
+            var bytes = i == 0 ? name : name + "-2";
+            var links = Links(result, i * 2);
+            SharedName(result, bytes, [links[0].Elements["/Dest"]!, D(links[1].Elements["/A"]).Elements["/D"]!]);
+            View(result, Destinations(result)[bytes], i * 2 + 1, "/Fit");
+        }
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(31)]
+    [InlineData(32)]
+    [InlineData(33)]
+    [InlineData(255)]
+    public void Shared_short_instances_keep_distinct_encodings(int length)
+    {
+        foreach (var narrow in new[] { false, true })
+        {
+            using var source = new PdfDocument();
+            source.AddPage();
+            source.AddPage();
+            var shared = length == 0 ? string.Empty : new string('k', length);
+            var raw = new PdfString(shared, PdfStringEncoding.RawEncoding);
+            var unicode = new PdfString(shared, PdfStringEncoding.Unicode);
+            Assert.Same(raw.Value, unicode.Value);
+            NameTree(source).Elements["/Names"] = Items(source, raw, Dest(source, 0), unicode, Dest(source, 1),
+                new PdfString("z"), Dest(source, 1));
+            var rawLink = new PdfString(shared, PdfStringEncoding.RawEncoding);
+            var unicodeLink = new PdfString(shared, PdfStringEncoding.Unicode);
+            Assert.Same(raw.Value, rawLink.Value);
+            Assert.Same(unicode.Value, unicodeLink.Value);
+            Link(source, 0, rawLink);
+            Link(source, 0, unicodeLink);
+            Link(source, 0, new PdfString("z"));
+
+            var folder = fx.NewFolder();
+            using var output = new PdfDocument();
+            output.AddPage();
+            output.AddPage();
+            var pages = new Dictionary<PdfObjectID, PdfPage>();
+            for (var p = 0; p < 2; p++)
+                pages[source.Pages[p].Reference!.ObjectID] = output.AddPage();
+            // Carry's positional fallback rewrites these page-backed links without serializing the source.
+            for (var i = 0; i < 3; i++)
+                Link(output, 2);
+            var structure = new PdfMergeStructure(output, new()
+            {
+                StringBytes = narrow ? length + 2 + 2 * length - 1 : 4096,
+            });
+            structure.Carry(source, pages, TestContext.Current.CancellationToken);
+            structure.Write(TestContext.Current.CancellationToken);
+            var path = Path.Combine(folder, "memory.pdf");
+            output.Save(path);
+            using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+            var names = Destinations(result);
+            Assert.Equal(narrow ? 2 : 3, names.Count);
+            View(result, names[Key(raw)], 2, "/Fit");
+            View(result, names["z"], 3, "/Fit");
+            var links = Links(result, 2);
+            View(result, Resolved(result, links[0].Elements["/Dest"]), 2, "/Fit");
+            View(result, Resolved(result, links[2].Elements["/Dest"]), 3, "/Fit");
+            if (narrow)
+            {
+                Assert.DoesNotContain(Key(unicode), names.Keys);
+                Assert.False(links[1].Elements.ContainsKey("/Dest"));
+            }
+            else
+            {
+                View(result, names[Key(unicode)], 3, "/Fit");
+                View(result, Resolved(result, links[1].Elements["/Dest"]), 3, "/Fit");
+            }
+        }
+    }
+
+    private void DestinationPaths(Func<PdfDocument, PdfItem> make, string kind, string[] values, bool valid = true)
+    {
+        var source = Source(pdf =>
+        {
+            var destination = make(pdf);
+            NameTree(pdf).Elements["/Names"] = Items(pdf, new PdfString("a"), Dest(pdf, 0),
+                new PdfString("tree"), destination, new PdfString("z"), Dest(pdf, 1));
+            var legacy = new PdfDictionary(pdf);
+            legacy.Elements["/legacy"] = destination;
+            pdf.Internals.Catalog.Elements["/Dests"] = legacy;
+            var bookmarks = new List<PdfDictionary> { Bookmark(pdf, "before", Dest(pdf, 0)) };
+            Link(pdf, 0, Dest(pdf, 0));
+            foreach (var target in new PdfItem[] { destination, new PdfString("tree"), new PdfName("/legacy") })
+                foreach (var action in new[] { false, true })
+                {
+                    var bookmark = Bookmark(pdf, $"route-{bookmarks.Count}");
+                    if (action)
+                    {
+                        bookmark.Elements["/A"] = Action(pdf, "/GoTo", target);
+                        Link(pdf, 0, action: Action(pdf, "/GoTo", target));
+                    }
+                    else
+                    {
+                        bookmark.Elements["/Dest"] = target;
+                        Link(pdf, 0, target);
+                    }
+                    bookmarks.Add(bookmark);
+                }
+            bookmarks.Add(Bookmark(pdf, "after", Dest(pdf, 1)));
+            Link(pdf, 0, Dest(pdf, 1));
+            Children(OutlineRoot(pdf), bookmarks.ToArray());
+        });
+        using var result = PdfReader.Open(MergeAfterPrefix(source), PdfDocumentOpenMode.Import);
+        Assert.Equal(4, result.PageCount);
+        var names = Destinations(result);
+        Assert.Equal(valid ? 4 : 2, names.Count);
+        View(result, names["a"], 2, "/Fit");
+        View(result, names["z"], 3, "/Fit");
+        var bookmarks = OutlineItems(result);
+        Assert.Equal(new[] { "before", "route-1", "route-2", "route-3", "route-4", "route-5", "route-6", "after" },
+            bookmarks.Select(item => S(item.Elements["/Title"])));
+        var links = Links(result, 2);
+        Assert.Equal(8, links.Count);
+        View(result, A(bookmarks[0].Elements["/Dest"]), 2, "/Fit");
+        View(result, A(bookmarks[^1].Elements["/Dest"]), 3, "/Fit");
+        View(result, A(links[0].Elements["/Dest"]), 2, "/Fit");
+        View(result, A(links[^1].Elements["/Dest"]), 3, "/Fit");
+        if (valid)
+        {
+            View(result, names["tree"], 3, kind, values);
+            View(result, names["legacy"], 3, kind, values);
+        }
+        else
+        {
+            Assert.DoesNotContain("tree", names.Keys);
+            Assert.DoesNotContain("legacy", names.Keys);
+        }
+        for (var i = 1; i <= 6; i++)
+            if (valid)
+            {
+                View(result, A(bookmarks[i].Elements["/Dest"]), 3, kind, values);
+                var item = links[i].Elements["/Dest"] ?? D(links[i].Elements["/A"]).Elements["/D"];
+                View(result, Resolved(result, item), 3, kind, values);
+            }
+            else
+            {
+                Assert.False(bookmarks[i].Elements.ContainsKey("/Dest"));
+                Assert.False(bookmarks[i].Elements.ContainsKey("/A"));
+                Assert.False(links[i].Elements.ContainsKey("/Dest"));
+                Assert.False(links[i].Elements.ContainsKey("/A"));
+            }
+    }
+
+    [Theory]
+    [InlineData("/XYZ", "")]
+    [InlineData("/XYZ", "10")]
+    [InlineData("/XYZ", "null")]
+    [InlineData("/XYZ", "10,20")]
+    [InlineData("/XYZ", "10,null")]
+    [InlineData("/XYZ", "null,20")]
+    [InlineData("/FitH", "")]
+    [InlineData("/FitV", "")]
+    [InlineData("/FitBH", "")]
+    [InlineData("/FitBV", "")]
+    public void Trailing_destination_values_are_padded_with_null(string kind, string input)
+    {
+        var values = input.Length == 0 ? [] : input.Split(',');
+        var expected = values.Concat(Enumerable.Repeat("null", (kind == "/XYZ" ? 3 : 1) - values.Length)).ToArray();
+        DestinationPaths(pdf => Dest(pdf, 1, kind, values.Select(value =>
+            value == "null" ? (PdfItem)PdfNull.Value : new PdfInteger(int.Parse(value, System.Globalization.CultureInfo.InvariantCulture))).ToArray()),
+            kind, expected);
+    }
+
+    [Theory]
+    [InlineData("/XYZ", "10,20,2")]
+    [InlineData("/XYZ", "null,20,2")]
+    [InlineData("/XYZ", "10,null,2")]
+    [InlineData("/XYZ", "10,20,null")]
+    [InlineData("/XYZ", "null,null,2")]
+    [InlineData("/XYZ", "null,20,null")]
+    [InlineData("/XYZ", "10,null,null")]
+    [InlineData("/XYZ", "null,null,null")]
+    [InlineData("/Fit", "")]
+    [InlineData("/FitB", "")]
+    [InlineData("/FitH", "20")]
+    [InlineData("/FitH", "null")]
+    [InlineData("/FitV", "10")]
+    [InlineData("/FitV", "null")]
+    [InlineData("/FitBH", "20")]
+    [InlineData("/FitBH", "null")]
+    [InlineData("/FitBV", "10")]
+    [InlineData("/FitBV", "null")]
+    [InlineData("/FitR", "1,2,30,40")]
+    public void Complete_destinations_keep_each_kind_and_value(string kind, string input)
+    {
+        var values = input.Length == 0 ? [] : input.Split(',');
+        DestinationPaths(pdf => Dest(pdf, 1, kind, values.Select(value =>
+            value == "null" ? (PdfItem)PdfNull.Value : new PdfInteger(int.Parse(value, System.Globalization.CultureInfo.InvariantCulture))).ToArray()),
+            kind, values);
+    }
+
+    [Theory]
+    [InlineData("fitr-short-0")]
+    [InlineData("fitr-short-1")]
+    [InlineData("fitr-short-2")]
+    [InlineData("fitr-short-3")]
+    [InlineData("fitr-null-0")]
+    [InlineData("fitr-null-1")]
+    [InlineData("fitr-null-2")]
+    [InlineData("fitr-null-3")]
+    [InlineData("/XYZ")]
+    [InlineData("/Fit")]
+    [InlineData("/FitB")]
+    [InlineData("/FitH")]
+    [InlineData("/FitBH")]
+    [InlineData("/FitV")]
+    [InlineData("/FitBV")]
+    [InlineData("/FitR")]
+    [InlineData("string")]
+    [InlineData("name")]
+    [InlineData("array")]
+    [InlineData("boolean")]
+    [InlineData("missing-page")]
+    [InlineData("object-page")]
+    [InlineData("integer-page")]
+    [InlineData("unknown")]
+    [InlineData("missing-kind")]
+    [InlineData("empty")]
+    [InlineData("not-array")]
+    public void Invalid_destinations_stay_rejected_beside_healthy_items(string failure)
+    {
+        DestinationPaths(pdf =>
+        {
+            if (failure == "not-array")
+                return new PdfInteger(42);
+            if (failure == "empty")
+                return Items(pdf);
+            if (failure == "missing-kind")
+                return Items(pdf, pdf.Pages[1].Reference!);
+            if (failure.StartsWith("fitr-short-", StringComparison.Ordinal))
+                return Dest(pdf, 1, "/FitR", Enumerable.Range(0, failure[^1] - '0').Select(i => (PdfItem)new PdfInteger(i)).ToArray());
+            if (failure.StartsWith("fitr-null-", StringComparison.Ordinal))
+            {
+                var values = Enumerable.Range(0, 4).Select(i => (PdfItem)new PdfInteger(i)).ToArray();
+                values[failure[^1] - '0'] = PdfNull.Value;
+                return Dest(pdf, 1, "/FitR", values);
+            }
+            if (failure.StartsWith('/'))
+            {
+                var length = failure switch
+                {
+                    "/XYZ" => 3,
+                    "/Fit" or "/FitB" => 0,
+                    "/FitR" => 4,
+                    _ => 1,
+                };
+                return Dest(pdf, 1, failure, Enumerable.Range(0, length + 1).Select(i => (PdfItem)new PdfInteger(i)).ToArray());
+            }
+            if (failure == "unknown")
+                return Dest(pdf, 1, "/Unknown");
+            if (failure is "missing-page" or "object-page" or "integer-page")
+            {
+                var destination = Dest(pdf, 1);
+                destination.Elements[0] = failure switch
+                {
+                    "missing-page" => pdf.AddPage().Reference!,
+                    "object-page" => Resource(pdf).Reference!,
+                    _ => new PdfInteger(1),
+                };
+                // A real page reference outside the source page tree has no entry in the merge map.
+                if (failure == "missing-page")
+                    pdf.Pages.RemoveAt(2);
+                return destination;
+            }
+            PdfItem bad = failure switch
+            {
+                "string" => new PdfString("bad"),
+                "name" => new PdfName("/bad"),
+                "array" => Items(pdf),
+                _ => new PdfBoolean(true),
+            };
+            return Dest(pdf, 1, "/XYZ", new PdfInteger(10), bad);
+        }, "/Fit", [], valid: false);
+    }
+
+    [Theory]
+    [InlineData(31, 1)]
+    [InlineData(31, 1000)]
+    [InlineData(32, 1)]
+    [InlineData(32, 1000)]
+    [InlineData(33, 1)]
+    [InlineData(33, 1000)]
+    public void Names_spend_the_budget_once_and_leave_room_for_neighbours(int length, int repeats)
+    {
+        var name = new string('k', length);
+        var over = new string('x', 80 - 1 - length + 1);
+        var source = Source(pdf =>
+        {
+            NameTree(pdf).Elements["/Names"] = Items(pdf, new PdfString("a"), Dest(pdf, 0),
+                new PdfString(name), Dest(pdf, 1), new PdfString(over), Dest(pdf, 0), new PdfString("z"), Dest(pdf, 1));
+            Link(pdf, 0, new PdfString("a"));
+            for (var i = 0; i < repeats; i++)
+                Link(pdf, 0, new PdfString(name));
+            for (var i = 0; i < 1000; i++)
+                Link(pdf, 0, new PdfString(over));
+            Link(pdf, 0, new PdfString("z"));
+            Children(OutlineRoot(pdf), Bookmark(pdf, "ok", Dest(pdf, 1)));
+        });
+        using (var result = PdfReader.Open(MergeAfterPrefix(source, new() { StringBytes = 80 }), PdfDocumentOpenMode.Import))
+        {
+            Assert.Equal(new[] { "a", name, "z" }, Destinations(result).Keys);
+            Assert.Equal("ok", S(Assert.Single(OutlineItems(result)).Elements["/Title"]));
+            var links = Links(result, 2);
+            Assert.Equal(repeats + 1002, links.Count);
+            View(result, Resolved(result, links[0].Elements["/Dest"]), 2, "/Fit");
+            View(result, Resolved(result, links[^1].Elements["/Dest"]), 3, "/Fit");
+            foreach (var link in links.Skip(1).Take(repeats))
+                View(result, Resolved(result, link.Elements["/Dest"]), 3, "/Fit");
+            SharedName(result, name, links.Skip(1).Take(repeats).Select(link => link.Elements["/Dest"]!));
+            Assert.All(links.Skip(1 + repeats).Take(1000), link => Assert.False(link.Elements.ContainsKey("/Dest")));
+        }
+
+        string Make(bool second) => Source(pdf =>
+        {
+            NameTree(pdf).Elements["/Names"] = Items(pdf, new PdfString(name), Dest(pdf, 1),
+                new PdfString(second ? "y" : "z"), Dest(pdf, 0));
+            Link(pdf, 0, new PdfString(name));
+            Link(pdf, 0, new PdfString(second ? "y" : "z"));
+        });
+        var first = Make(false);
+        var path = Path.Combine(Path.GetDirectoryName(first)!, "suffix-budget.pdf");
+        PdfSharpConverter.Merge([first, Make(true)], path, TestContext.Current.CancellationToken, new() { StringBytes = length + 1 });
+        using var suffixed = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        Assert.Equal(new[] { name, "y", "z" }, Destinations(suffixed).Keys);
+        View(suffixed, Resolved(suffixed, Links(suffixed, 0)[0].Elements["/Dest"]), 1, "/Fit");
+        Assert.False(Links(suffixed, 2)[0].Elements.ContainsKey("/Dest"));
+        View(suffixed, Resolved(suffixed, Links(suffixed, 2)[1].Elements["/Dest"]), 2, "/Fit");
+    }
+
+    [Theory]
+    [InlineData(false, -2)]
+    [InlineData(false, -1)]
+    [InlineData(false, 0)]
+    [InlineData(true, -2)]
+    [InlineData(true, -1)]
+    [InlineData(true, 0)]
+    public void Default_string_budget_is_exact_and_resets_per_source(bool title, int offset)
+    {
+        const int budget = 4 * 1024 * 1024;
+        Assert.Equal(budget, new PdfMergeStructure.Limits().StringBytes);
+        var length = budget + offset;
+        var keep = 1 + length <= budget;
+        string Make(bool second) => Source(pdf =>
+        {
+            var normal = second ? "m" : "n";
+            var text = new string(second ? 'b' : 'a', length);
+            var pairs = Items(pdf, new PdfString(normal), Dest(pdf, 0));
+            NameTree(pdf).Elements["/Names"] = pairs;
+            for (var i = 0; i < 100; i++)
+                Link(pdf, 0, new PdfString(normal));
+            var shared = new PdfStringObject(pdf, text) { Encoding = PdfStringEncoding.RawEncoding };
+            pdf.Internals.AddObject(shared);
+            if (title)
+            {
+                var bookmark = Bookmark(pdf, "unused", Dest(pdf, 1));
+                bookmark.Elements["/Title"] = shared.Reference;
+                Children(OutlineRoot(pdf), bookmark);
+            }
+            else
+            {
+                pairs.Elements.Add(shared.Reference!);
+                pairs.Elements.Add(Dest(pdf, 1));
+                for (var i = 0; i < 100; i++)
+                    Link(pdf, 0, shared.Reference);
+            }
+        });
+        var first = Make(false);
+        var path = Path.Combine(Path.GetDirectoryName(first)!, "default-budget.pdf");
+        PdfSharpConverter.Merge([first, Make(true)], path, TestContext.Current.CancellationToken);
+        using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        Assert.Equal(4, result.PageCount);
+        var names = Destinations(result);
+        Assert.Equal(!title && keep ? 4 : 2, names.Count);
+        var outlines = OutlineItems(result);
+        Assert.Equal(title && keep ? 2 : 0, outlines.Count);
+        for (var source = 0; source < 2; source++)
+        {
+            var normal = source == 0 ? "n" : "m";
+            var text = new string(source == 0 ? 'a' : 'b', length);
+            var links = Links(result, source * 2);
+            Assert.Equal(title ? 100 : 200, links.Count);
+            View(result, names[normal], source * 2, "/Fit");
+            Assert.All(links.Take(100), link => View(result, Resolved(result, link.Elements["/Dest"]), source * 2, "/Fit"));
+            if (title && keep)
+            {
+                Assert.Equal(text, S(outlines[source].Elements["/Title"]));
+                View(result, A(outlines[source].Elements["/Dest"]), source * 2 + 1, "/Fit");
+            }
+            else if (!title && keep)
+            {
+                View(result, names[text], source * 2 + 1, "/Fit");
+                Assert.All(links.Skip(100), link =>
+                {
+                    Assert.Equal(text, Key(link.Elements["/Dest"]!));
+                    View(result, names[text], source * 2 + 1, "/Fit");
+                });
+            }
+            else if (!title)
+            {
+                Assert.DoesNotContain(text, names.Keys);
+                Assert.All(links.Skip(100), link => Assert.False(link.Elements.ContainsKey("/Dest")));
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData(256)]
+    [InlineData(4096)]
+    public void A_repeated_indirect_key_keeps_its_first_valid_destination(int length)
+    {
+        var name = new string('k', length);
+        var source = Source(pdf =>
+        {
+            var shared = new PdfStringObject(pdf, name) { Encoding = PdfStringEncoding.RawEncoding };
+            pdf.Internals.AddObject(shared);
+            var pairs = Items(pdf, new PdfString("a"), Dest(pdf, 0));
+            for (var i = 0; i < 100; i++)
+            {
+                pairs.Elements.Add(shared.Reference!);
+                pairs.Elements.Add(i == 0 ? new PdfInteger(42) : Dest(pdf, i == 1 ? 1 : 0));
+                Link(pdf, 0, shared.Reference);
+            }
+            pairs.Elements.Add(new PdfString("z"));
+            pairs.Elements.Add(Dest(pdf, 1));
+            NameTree(pdf).Elements["/Names"] = pairs;
+            Link(pdf, 0, new PdfString("a"));
+            Link(pdf, 0, new PdfString("z"));
+        });
+        using var result = PdfReader.Open(MergeAfterPrefix(source), PdfDocumentOpenMode.Import);
+        var names = Destinations(result);
+        Assert.Equal(new[] { "a", name, "z" }, names.Keys);
+        View(result, names["a"], 2, "/Fit");
+        View(result, names["z"], 3, "/Fit");
+        View(result, names[name], 3, "/Fit");
+        var links = Links(result, 2);
+        Assert.Equal(102, links.Count);
+        SharedName(result, name, links.Take(100).Select(link => link.Elements["/Dest"]!));
+        Assert.All(links.Take(100), link => View(result, Resolved(result, link.Elements["/Dest"]), 3, "/Fit"));
+        View(result, Resolved(result, links[100].Elements["/Dest"]), 2, "/Fit");
+        View(result, Resolved(result, links[101].Elements["/Dest"]), 3, "/Fit");
+    }
+
+    [Fact]
+    public void A_repeated_long_key_over_budget_after_suffix_stays_unregistered()
+    {
+        var name = new string('k', 256);
+        string Make(bool second) => Source(pdf =>
+        {
+            var shared = new PdfStringObject(pdf, name) { Encoding = PdfStringEncoding.RawEncoding };
+            pdf.Internals.AddObject(shared);
+            var pairs = new PdfArray(pdf);
+            for (var i = 0; i < (second ? 100 : 1); i++)
+            {
+                pairs.Elements.Add(shared.Reference!);
+                pairs.Elements.Add(Dest(pdf, 1));
+                Link(pdf, 0, shared.Reference);
+            }
+            pairs.Elements.Add(new PdfString(second ? "z" : "a"));
+            pairs.Elements.Add(Dest(pdf, 0));
+            Link(pdf, 0, new PdfString(second ? "z" : "a"));
+            NameTree(pdf).Elements["/Names"] = pairs;
+        });
+        var first = Make(false);
+        var path = Path.Combine(Path.GetDirectoryName(first)!, "repeated-suffix.pdf");
+        PdfSharpConverter.Merge([first, Make(true)], path, TestContext.Current.CancellationToken, new() { StringBytes = 257 });
+        using var result = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        var names = Destinations(result);
+        Assert.Equal(new[] { "a", name, "z" }, names.Keys);
+        View(result, names[name], 1, "/Fit");
+        View(result, names["a"], 0, "/Fit");
+        View(result, names["z"], 2, "/Fit");
+        var firstLinks = Links(result, 0);
+        SharedName(result, name, [firstLinks[0].Elements["/Dest"]!]);
+        View(result, Resolved(result, firstLinks[0].Elements["/Dest"]), 1, "/Fit");
+        View(result, Resolved(result, firstLinks[1].Elements["/Dest"]), 0, "/Fit");
+        var secondLinks = Links(result, 2);
+        Assert.Equal(101, secondLinks.Count);
+        Assert.All(secondLinks.Take(100), link => Assert.False(link.Elements.ContainsKey("/Dest")));
+        View(result, Resolved(result, secondLinks[^1].Elements["/Dest"]), 2, "/Fit");
     }
 
     [Fact]
