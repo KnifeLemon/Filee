@@ -1202,6 +1202,8 @@
   "theme.custom_color": "Custom",
   "theme.corner_radius": "Softness",
   "theme.donut_opacity": "Donut toolbar opacity",
+  "theme.system_font": "Use the system font",
+  "theme.system_font_hint": "Shows text in your system's own font, like other apps. Filee's built-in fonts still draw any script it lacks.",
   "theme.reduce_motion": "Reduce animations",
   "theme.reduce_motion_hint": "Recommended for older PCs. Turns off transitions and the donut's bounce.",
   "theme.window_size": "Window size",

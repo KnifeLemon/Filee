@@ -1186,6 +1186,8 @@
   "theme.custom_color": "カスタム",
   "theme.corner_radius": "角の丸み",
   "theme.donut_opacity": "ドーナツメニューの不透明度",
+  "theme.system_font": "システムのフォントを使う",
+  "theme.system_font_hint": "ほかのアプリと同じく、システムのフォントで文字を表示します。そのフォントにない文字は、引き続き Filee 内蔵のフォントで表示します。",
   "theme.reduce_motion": "アニメーションを減らす",
   "theme.reduce_motion_hint": "古いPCにおすすめです。画面切り替え時のアニメーションと、ドーナツメニューの弾む動きを無効にします。",
   "theme.window_size": "ウィンドウのサイズ",

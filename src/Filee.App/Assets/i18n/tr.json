@@ -1186,6 +1186,8 @@
   "theme.custom_color": "Özel",
   "theme.corner_radius": "Yumuşaklık",
   "theme.donut_opacity": "Halka araç çubuğu opaklığı",
+  "theme.system_font": "Sistem yazı tipini kullan",
+  "theme.system_font_hint": "Metni diğer uygulamalar gibi sisteminizin kendi yazı tipiyle gösterir. Bu yazı tipinde olmayan yazı sistemlerini yine Filee'nin yerleşik yazı tipleri çizer.",
   "theme.reduce_motion": "Animasyonları azalt",
   "theme.reduce_motion_hint": "Eski bilgisayarlar için önerilir. Geçişleri ve halkanın sıçrama efektini kapatır.",
   "theme.window_size": "Pencere ölçeği",

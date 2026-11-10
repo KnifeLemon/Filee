@@ -1186,6 +1186,8 @@
   "theme.custom_color": "Benutzerdefiniert",
   "theme.corner_radius": "Abrundung",
   "theme.donut_opacity": "Deckkraft des Ringmenüs",
+  "theme.system_font": "Systemschrift verwenden",
+  "theme.system_font_hint": "Zeigt Text in der Schrift Ihres Systems, wie andere Apps. Schriftsysteme, die ihr fehlen, zeichnen weiterhin die mitgelieferten Schriften von Filee.",
   "theme.reduce_motion": "Animationen reduzieren",
   "theme.reduce_motion_hint": "Für ältere PCs empfohlen. Deaktiviert Übergänge und das Federn des Ringmenüs.",
   "theme.window_size": "Fenstergröße",

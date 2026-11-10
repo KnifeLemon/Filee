@@ -1202,6 +1202,8 @@
   "theme.custom_color": "직접 선택",
   "theme.corner_radius": "말랑함",
   "theme.donut_opacity": "원형 툴바 불투명도",
+  "theme.system_font": "시스템 글꼴 사용",
+  "theme.system_font_hint": "다른 앱처럼 시스템 글꼴로 글자를 보여 줘요. 그 글꼴에 없는 문자는 Filee에 들어 있는 글꼴로 그려요.",
   "theme.reduce_motion": "애니메이션 줄이기",
   "theme.reduce_motion_hint": "저사양 PC에 권장해요. 전환 효과와 도넛의 튕김 효과를 꺼요.",
   "theme.window_size": "창 크기",

@@ -1202,6 +1202,8 @@
   "theme.custom_color": "Personnalisée",
   "theme.corner_radius": "Arrondi",
   "theme.donut_opacity": "Opacité du menu circulaire",
+  "theme.system_font": "Utiliser la police du système",
+  "theme.system_font_hint": "Affiche le texte dans la police de votre système, comme les autres applications. Les polices intégrées de Filee dessinent toujours les écritures qui lui manquent.",
   "theme.reduce_motion": "Réduire les animations",
   "theme.reduce_motion_hint": "Recommandé pour les PC anciens. Désactive les transitions et le rebond du menu circulaire.",
   "theme.window_size": "Taille des fenêtres",
