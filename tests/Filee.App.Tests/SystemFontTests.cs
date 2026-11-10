@@ -140,6 +140,27 @@ public class SystemFontTests
         Assert.False(fonts.TryMatchCharacter('A', FontStyle.Normal, FontWeight.Normal, FontStretch.Normal, "Not a font", null, out _));
     }
 
+    /// <summary>
+    /// The font manager passes over a match named like its default font unless that family ends the chain; the
+    /// collection's answer is a real one, so the default font (Segoe UI on Windows) still draws what it has.
+    /// </summary>
+    [AvaloniaFact]
+    public void The_default_font_is_not_passed_over_in_the_middle_of_the_chain()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows' UI fonts.");
+        TestServices.EnsureInitialized("en");
+        var defaultFont = FontManager.Current.DefaultFontFamily.Name;
+        Assert.SkipUnless(Face(FontManager.Current.SystemFonts, defaultFont, FontWeight.Normal, 'A') is not null
+                          && Face(FontManager.Current.SystemFonts, "Tahoma", FontWeight.Normal, 'A') is not null, "The default font and Tahoma.");
+        var chain = FontFamily.Parse($"{SoftPalette.SystemKey}#Not a font, {SoftPalette.SystemKey}#{defaultFont}, {SoftPalette.SystemKey}#Tahoma");
+
+        foreach (var weight in new[] { FontWeight.Normal, FontWeight.SemiBold })
+        {
+            Assert.True(FontManager.Current.TryMatchCharacter('A', FontStyle.Normal, weight, FontStretch.Normal, chain, null, out var typeface));
+            Assert.Equal(Face(FontManager.Current.SystemFonts, defaultFont, weight, 'A'), typeface.GlyphTypeface.FamilyName);
+        }
+    }
+
     [AvaloniaFact]
     public void The_switch_is_saved_and_puts_the_system_font_into_the_ui()
     {
