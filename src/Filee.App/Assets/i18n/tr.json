@@ -30,6 +30,7 @@
   "nav.about": "Hakkında",
   "nav.collapse": "Kenar çubuğunu daralt",
   "nav.expand": "Kenar çubuğunu genişlet",
+  "nav.page_error": "Bu sayfa açılamadı. Ayrıntılar günlükte.",
   "tray.open": "Filee'yi aç",
   "tray.pause": "Kısayolları duraklat",
   "tray.resume": "Kısayolları sürdür",

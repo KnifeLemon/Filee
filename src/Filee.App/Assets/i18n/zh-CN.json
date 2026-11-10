@@ -31,6 +31,7 @@
   "nav.about": "关于",
   "nav.collapse": "收起侧边栏",
   "nav.expand": "展开侧边栏",
+  "nav.page_error": "无法打开此页面。详细信息见日志。",
 
   "tray.open": "打开 Filee",
   "tray.pause": "暂停快捷操作",

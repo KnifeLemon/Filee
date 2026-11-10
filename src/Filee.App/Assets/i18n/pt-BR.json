@@ -31,6 +31,7 @@
   "nav.about": "Sobre",
   "nav.collapse": "Recolher barra lateral",
   "nav.expand": "Expandir barra lateral",
+  "nav.page_error": "Não foi possível abrir esta página. Os detalhes estão no registro.",
 
   "tray.open": "Abrir o Filee",
   "tray.pause": "Pausar atalhos",

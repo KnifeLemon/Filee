@@ -31,6 +31,7 @@
   "nav.about": "關於",
   "nav.collapse": "收合側邊欄",
   "nav.expand": "展開側邊欄",
+  "nav.page_error": "無法開啟此頁面。詳細資訊見記錄檔。",
 
   "tray.open": "開啟 Filee",
   "tray.pause": "暫停快捷操作",

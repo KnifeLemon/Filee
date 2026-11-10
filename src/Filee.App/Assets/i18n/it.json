@@ -29,6 +29,7 @@
 "nav.about": "Informazioni",
 "nav.collapse": "Comprimi barra laterale",
 "nav.expand": "Espandi barra laterale",
+"nav.page_error": "Impossibile aprire questa pagina. I dettagli sono nel log.",
 "tray.open": "Apri Filee",
 "tray.pause": "Sospendi le scorciatoie",
 "tray.resume": "Riattiva le scorciatoie",
