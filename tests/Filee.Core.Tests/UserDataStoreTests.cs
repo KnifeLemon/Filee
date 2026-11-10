@@ -232,6 +232,52 @@ public partial class UserDataStoreTests
     }
 
     [Fact]
+    public void A_maximum_box_is_stored_as_sizes_an_older_version_still_reads_and_older_files_read_unchanged()
+    {
+        // #1270: a height-only box that never enlarges, under a size limit met by quality alone.
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        var preset = store.Presets[0];
+        preset.Image.CustomSize = new CustomImageSize { Width = CustomImageSize.FreeSide, Height = 2300, LockAspect = true, ShrinkOnly = true };
+        preset.Image.MaxSizeMb = 0.3;
+        preset.Image.MaxSizeKeepsPixels = true;
+        Assert.True(preset.Image.Clone().CustomSize!.ShrinkOnly);
+        store.SaveLibrary();
+
+        // Both sides are real sizes, never 0: an older version skips a box with a side of 0, and its editors would
+        // show and save that side as 16 px. It reads 16384 x 2300 with the aspect kept, the same height limit.
+        var path = Path.Combine(dir.Path, "presets.json");
+        var stored = JsonDocument.Parse(File.ReadAllText(path));
+        var image = stored.RootElement.EnumerateArray().Single(p => p.GetProperty("id").GetString() == preset.Id).GetProperty("image");
+        var size = image.GetProperty("customSize");
+        Assert.Equal((16384, 2300, true, true),
+            (size.GetProperty("width").GetInt32(), size.GetProperty("height").GetInt32(), size.GetProperty("lockAspect").GetBoolean(), size.GetProperty("shrinkOnly").GetBoolean()));
+        Assert.True(image.GetProperty("maxSizeKeepsPixels").GetBoolean());
+
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+        var back = reloaded.Presets.Single(p => p.Id == preset.Id).Image;
+        Assert.Equal((CustomImageSize.FreeSide, 2300, true, true), (back.CustomSize!.Width, back.CustomSize.Height, back.CustomSize.LockAspect, back.CustomSize.ShrinkOnly));
+        Assert.True(back.MaxSizeKeepsPixels);
+
+        // A file written before either option: the box keeps enlarging, and the size limit keeps shrinking pixels.
+        var older = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsArray();
+        foreach (var entry in older)
+        {
+            var options = entry!["image"]!.AsObject();
+            options.Remove("maxSizeKeepsPixels");
+            (options["customSize"] as System.Text.Json.Nodes.JsonObject)?.Remove("shrinkOnly");
+        }
+        File.WriteAllText(path, older.ToJsonString());
+        var old = new UserDataStore(dir.Path);
+        old.Load();
+        var oldImage = old.Presets.Single(p => p.Id == preset.Id).Image;
+        Assert.False(oldImage.CustomSize!.ShrinkOnly);
+        Assert.False(oldImage.MaxSizeKeepsPixels);
+    }
+
+    [Fact]
     public void A_resize_mode_of_Custom_is_never_written_to_presets_json()
     {
         using var dir = new TempDir();

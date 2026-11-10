@@ -509,6 +509,67 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void A_box_that_never_enlarges_shrinks_large_pictures_and_leaves_small_ones()
+    {
+        // The case from #1270: at most 2300 x 2300, a smaller picture stays as it is.
+        var options = new ImageOptions { CustomSize = new() { Width = 2300, Height = 2300, LockAspect = true, ShrinkOnly = true } };
+
+        using var large = new MagickImage(MagickColors.White, 4000, 3000);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(large, options, "jpg");
+        Assert.Equal((2300u, 1725u), (large.Width, large.Height));
+
+        using var small = new MagickImage(MagickColors.White, 1000, 800);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(small, options, "jpg");
+        Assert.Equal((1000u, 800u), (small.Width, small.Height));
+
+        Assert.Equal(1, Filee.Engines.Magick.ImageEncoder.ResizeScale(1000, 800, options), 3);
+        Assert.Equal(0.575, Filee.Engines.Magick.ImageEncoder.ResizeScale(4000, 3000, options), 3);
+    }
+
+    [Fact]
+    public void A_box_with_only_a_height_limits_the_height_and_leaves_the_width_free()
+    {
+        // #1270: "at most 2300 px tall", the width free. The editors store the empty side as the largest one.
+        var options = new ImageOptions
+        {
+            CustomSize = new() { Width = CustomImageSize.FreeSide, Height = 2300, LockAspect = true, ShrinkOnly = true },
+        };
+
+        using var large = new MagickImage(MagickColors.White, 4000, 3000);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(large, options, "jpg");
+        Assert.Equal(2300u, large.Height);
+        Assert.InRange(large.Width, 3066u, 3067u);
+
+        // A wide panorama is limited by its height too, not squeezed into some width.
+        using var wide = new MagickImage(MagickColors.White, 9000, 3000);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(wide, options, "jpg");
+        Assert.Equal((6900u, 2300u), (wide.Width, wide.Height));
+
+        using var small = new MagickImage(MagickColors.White, 1000, 800);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(small, options, "jpg");
+        Assert.Equal((1000u, 800u), (small.Width, small.Height));
+
+        // Without "Never enlarge" a smaller picture grows to the height, the width still following it.
+        options.CustomSize.ShrinkOnly = false;
+        using var grown = new MagickImage(MagickColors.White, 1000, 800);
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(grown, options, "jpg");
+        Assert.Equal(2300u, grown.Height);
+        Assert.InRange(grown.Width, 2874u, 2876u);
+    }
+
+    [Fact]
+    public void Never_enlarge_does_not_change_a_stretch()
+    {
+        // Without the lock the picture gets exactly the asked size, so the flag has nothing to keep.
+        var options = new ImageOptions { CustomSize = new() { Width = 500, Height = 2000, ShrinkOnly = true } };
+        using var small = new MagickImage(MagickColors.White, 250, 444);
+
+        Filee.Engines.Magick.ImageEncoder.ApplyOptions(small, options, "png");
+
+        Assert.Equal((500u, 2000u), (small.Width, small.Height));
+    }
+
+    [Fact]
     public void A_custom_size_read_from_a_file_with_a_side_of_zero_or_below_is_skipped()
     {
         // The editor keeps both sides within 16-16384, but a hand-edited presets.json or an imported bundle can
