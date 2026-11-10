@@ -190,6 +190,8 @@
   "notice.macros_not_run": "The document has macros. They weren't run",
   "notice.ocr_has_text": "Every page already has text, so it was copied as it is",
   "notice.live_photo_pair": "Saved as a photo and a MOV with the same name. Import both together (iCloud Photos, AirDrop or Photos on a Mac) to get a Live Photo",
+  "notice.picture_subtitles_left_out": "Picture subtitles (Blu-ray, DVD) can't go into this format and were left out. Convert to MKV to keep them",
+  "notice.subtitles_not_kept": "The subtitle tracks couldn't be kept, so the video was converted without them",
   "notice.geo_datum_assumed": "The datum isn't WGS 84; positions were converted as if it were and can be off by up to hundreds of metres",
   "notice.geo_gpx_lossy": "GPX holds only points, routes and tracks with a few fields: other attributes were left out and polygons became tracks",
   "notice.geo_text_cut": "Some text was longer than a Shapefile field allows (254 bytes) and was cut",

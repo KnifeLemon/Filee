@@ -190,6 +190,8 @@
   "notice.macros_not_run": "Dokument zawiera makra. Nie zostały uruchomione",
   "notice.ocr_has_text": "Każda strona ma już tekst, więc skopiowano bez zmian",
   "notice.live_photo_pair": "Zapisano jako zdjęcie i plik MOV o tej samej nazwie. Zaimportuj je razem (Zdjęcia iCloud, AirDrop lub Zdjęcia na Macu), aby otrzymać Live Photo",
+  "notice.picture_subtitles_left_out": "Napisy obrazkowe (Blu-ray, DVD) nie mieszczą się w tym formacie i zostały pominięte. Przekonwertuj do MKV, aby je zachować",
+  "notice.subtitles_not_kept": "Nie udało się zachować ścieżek napisów, więc wideo przekonwertowano bez nich",
   "notice.geo_datum_assumed": "Datum nie jest WGS 84; pozycje przeliczono tak, jakby było, więc mogą się różnić nawet o setki metrów",
   "notice.geo_gpx_lossy": "GPX przechowuje tylko punkty, trasy i ślady z kilkoma polami: pozostałe atrybuty pominięto, a poligony stały się śladami",
   "notice.geo_text_cut": "Część tekstu była dłuższa niż pole Shapefile (254 bajty) i została przycięta",

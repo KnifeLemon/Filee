@@ -190,6 +190,8 @@
   "notice.macros_not_run": "文档包含宏，这些宏没有运行",
   "notice.ocr_has_text": "每页都已有文字，已原样复制",
   "notice.live_photo_pair": "已保存为同名的照片和 MOV。将两者一起导入（iCloud 照片、隔空投送或 Mac 上的“照片”）即可得到实况照片",
+  "notice.picture_subtitles_left_out": "图形字幕（蓝光、DVD）无法放入此格式，已省略。要保留它们，请转换为 MKV",
+  "notice.subtitles_not_kept": "无法保留字幕轨，因此视频已在不含字幕的情况下转换",
   "notice.geo_datum_assumed": "基准面不是 WGS 84，已按相同处理，位置可能偏差数百米",
   "notice.geo_gpx_lossy": "GPX 只能保存点、路线和轨迹及少数字段，其他属性已省略，面变成了轨迹",
   "notice.geo_text_cut": "部分文字超过 Shapefile 字段长度（254 字节），已被截断",

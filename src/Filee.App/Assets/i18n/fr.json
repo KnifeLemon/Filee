@@ -190,6 +190,8 @@
   "notice.macros_not_run": "Le document contient des macros. Elles n'ont pas été exécutées",
   "notice.ocr_has_text": "Toutes les pages ont déjà du texte : copié tel quel",
   "notice.live_photo_pair": "Enregistré en une photo et un MOV de même nom. Importez-les ensemble (Photos iCloud, AirDrop ou Photos sur Mac) pour obtenir une Live Photo",
+  "notice.picture_subtitles_left_out": "Les sous-titres en images (Blu-ray, DVD) ne peuvent pas aller dans ce format et ont été omis. Convertissez en MKV pour les garder",
+  "notice.subtitles_not_kept": "Les pistes de sous-titres n'ont pas pu être conservées : la vidéo a été convertie sans elles",
   "notice.geo_datum_assumed": "Le datum n'est pas WGS 84 ; les positions ont été converties comme s'il l'était et peuvent être décalées de plusieurs centaines de mètres",
   "notice.geo_gpx_lossy": "GPX ne contient que des points, des routes et des traces avec quelques champs : les autres attributs ont été omis et les polygones sont devenus des traces",
   "notice.geo_text_cut": "Certains textes dépassaient la taille d'un champ Shapefile (254 octets) et ont été tronqués",
