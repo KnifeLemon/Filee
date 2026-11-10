@@ -1641,5 +1641,7 @@
   "connect.picker_files_title": "انتخاب فایل‌ها برای بارگذاری",
   "connect.picker_folder_title": "انتخاب پوشه برای بارگذاری",
   "connect.pin_label": "پین:",
-  "connect.firewall_hint_generic": "توجه: اگر تلفن شما متصل نمی‌شود، به Filee در فایروال سیستم اجازه دسترسی دهید."
+  "connect.firewall_hint_generic": "توجه: اگر تلفن شما متصل نمی‌شود، به Filee در فایروال سیستم اجازه دسترسی دهید.",
+  "connect.no_network_message": "Filee Connect راه‌اندازی نشد. لطفاً مطمئن شوید این دستگاه به شبکه Wi-Fi یا اترنت محلی متصل است.",
+  "connect.save_as": "ذخیره به عنوان…"
 }

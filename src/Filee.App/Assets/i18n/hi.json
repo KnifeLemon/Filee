@@ -1645,5 +1645,7 @@
   "connect.picker_files_title": "अपलोड करने के लिए फ़ाइलें चुनें",
   "connect.picker_folder_title": "अपलोड करने के लिए फ़ोल्डर चुनें",
   "connect.pin_label": "पिन:",
-  "connect.firewall_hint_generic": "नोट: यदि आपका फ़ोन कनेक्ट नहीं हो पा रहा है, तो सिस्टम फ़ायरवॉल में Filee को अनुमति दें।"
+  "connect.firewall_hint_generic": "नोट: यदि आपका फ़ोन कनेक्ट नहीं हो पा रहा है, तो सिस्टम फ़ायरवॉल में Filee को अनुमति दें।",
+  "connect.no_network_message": "Filee Connect प्रारंभ नहीं किया जा सका। कृपया सुनिश्चित करें कि यह डिवाइस स्थानीय वाई-फ़ाई या ईथरनेट नेटवर्क से कनेक्ट है।",
+  "connect.save_as": "इस रूप में सहेजें…"
 }

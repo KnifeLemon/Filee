@@ -1642,5 +1642,7 @@
   "connect.picker_files_title": "Seleziona i file da caricare",
   "connect.picker_folder_title": "Seleziona la cartella da caricare",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Nota: se il telefono non si connette, autorizza Filee nel firewall di sistema."
+  "connect.firewall_hint_generic": "Nota: se il telefono non si connette, autorizza Filee nel firewall di sistema.",
+  "connect.no_network_message": "Impossibile avviare Filee Connect. Assicurati che questo dispositivo sia connesso a una rete Wi-Fi o Ethernet locale.",
+  "connect.save_as": "Salva con nome…"
 }

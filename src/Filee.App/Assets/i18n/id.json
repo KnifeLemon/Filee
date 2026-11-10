@@ -1643,5 +1643,7 @@
   "connect.picker_files_title": "Pilih file untuk diunggah",
   "connect.picker_folder_title": "Pilih folder untuk diunggah",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Catatan: Jika ponsel Anda tidak dapat terhubung, izinkan Filee di firewall sistem."
+  "connect.firewall_hint_generic": "Catatan: Jika ponsel Anda tidak dapat terhubung, izinkan Filee di firewall sistem.",
+  "connect.no_network_message": "Tidak dapat memulai Filee Connect. Pastikan perangkat ini terhubung ke jaringan Wi-Fi atau Ethernet lokal.",
+  "connect.save_as": "Simpan sebagai…"
 }

@@ -1665,5 +1665,7 @@
   "connect.picker_files_title": "Выберите файлы для загрузки",
   "connect.picker_folder_title": "Выберите папку для загрузки",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Примечание: если телефон не подключается, разрешите Filee в системном брандмауэре."
+  "connect.firewall_hint_generic": "Примечание: если телефон не подключается, разрешите Filee в системном брандмауэре.",
+  "connect.no_network_message": "Не удалось запустить Filee Connect. Убедитесь, что это устройство подключено к локальной сети Wi-Fi или Ethernet.",
+  "connect.save_as": "Сохранить как…"
 }

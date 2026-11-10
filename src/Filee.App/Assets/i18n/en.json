@@ -1665,5 +1665,7 @@
   "connect.picker_files_title": "Select files to upload",
   "connect.picker_folder_title": "Select folder to upload",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Note: If your phone cannot connect, allow Filee in your system firewall."
+  "connect.firewall_hint_generic": "Note: If your phone cannot connect, allow Filee in your system firewall.",
+  "connect.no_network_message": "Could not start Filee Connect. Please ensure this device is connected to a local Wi-Fi or Ethernet network.",
+  "connect.save_as": "Save as…"
 }

@@ -290,20 +290,164 @@ public sealed class FileeConnectTests : IDisposable
     }
 
     [Fact]
-    public async Task Qr_pairing_secret_is_single_use()
+    public async Task Qr_pairing_secret_is_single_use_and_redirects()
     {
         var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
         await service.StartSessionAsync();
         try
         {
-            using var http = new HttpClient();
+            using var handler = new HttpClientHandler { AllowAutoRedirect = false };
+            using var http = new HttpClient(handler);
 
             var firstResponse = await http.GetAsync(service.MobileUrl, TestContext.Current.CancellationToken);
-            Assert.Equal(HttpStatusCode.OK, firstResponse.StatusCode);
+            Assert.Equal(HttpStatusCode.Redirect, firstResponse.StatusCode);
+            Assert.Equal("/mobile", firstResponse.Headers.Location?.OriginalString);
 
-            // Second request with same URL should now 404 because secret was consumed on first pair
+            // Verify Set-Cookie header contains filee_token and is HttpOnly
+            Assert.True(firstResponse.Headers.TryGetValues("Set-Cookie", out var cookies));
+            var cookieStr = string.Join("; ", cookies);
+            Assert.Contains("filee_token=", cookieStr);
+            Assert.Contains("httponly", cookieStr, StringComparison.OrdinalIgnoreCase);
+
+            // Second request with same URL must 404 because secret was consumed atomically on first pair
             var secondResponse = await http.GetAsync(service.MobileUrl, TestContext.Current.CancellationToken);
             Assert.Equal(HttpStatusCode.NotFound, secondResponse.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Http_folder_zip_download_streams_valid_zip_archive()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            var uri = new Uri(service.MobileUrl!);
+            var baseAuthority = $"{uri.Scheme}://{uri.Authority}";
+
+            // 1. Pair device via PIN to obtain auth token
+            using var http = new HttpClient();
+            var pairResponse = await http.PostAsync($"{baseAuthority}/api/pair/pin",
+                new StringContent(JsonSerializer.Serialize(new { pin = service.CurrentPin, deviceName = "TestDevice" }), Encoding.UTF8, "application/json"),
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, pairResponse.StatusCode);
+            var pairJson = JsonDocument.Parse(await pairResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            var token = pairJson.RootElement.GetProperty("token").GetString()!;
+
+            // 2. Add files to shared folder
+            using var stream = new MemoryStream(Encoding.UTF8.GetBytes("Zip streaming test content"));
+            await _manager.SaveStreamAsync(stream, "test.txt", "test.txt", "pc", "text/plain");
+
+            // 3. Request folder zip with Authorization header
+            using var req = new HttpRequestMessage(HttpMethod.Get, $"{baseAuthority}/api/folder.zip");
+            req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+            var zipResponse = await http.SendAsync(req, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, zipResponse.StatusCode);
+
+            // 4. Verify stream unpacks as valid zip archive
+            var zipBytes = await zipResponse.Content.ReadAsByteArrayAsync(TestContext.Current.CancellationToken);
+            using var mem = new MemoryStream(zipBytes);
+            using var archive = new ZipArchive(mem, ZipArchiveMode.Read);
+            Assert.Contains(archive.Entries, e => e.Name == "test.txt");
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Http_upload_over_64kb_succeeds_for_authenticated_client()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            var uri = new Uri(service.MobileUrl!);
+            var baseAuthority = $"{uri.Scheme}://{uri.Authority}";
+
+            // 1. Pair device via PIN
+            using var http = new HttpClient();
+            var pairResponse = await http.PostAsync($"{baseAuthority}/api/pair/pin",
+                new StringContent(JsonSerializer.Serialize(new { pin = service.CurrentPin, deviceName = "TestDevice" }), Encoding.UTF8, "application/json"),
+                TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, pairResponse.StatusCode);
+            var pairJson = JsonDocument.Parse(await pairResponse.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
+            var token = pairJson.RootElement.GetProperty("token").GetString()!;
+
+            // 2. Create payload over 64 KB (128 KB)
+            var largePayload = new byte[128 * 1024];
+            Array.Fill(largePayload, (byte)'A');
+
+            using var form = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(largePayload);
+            fileContent.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/octet-stream");
+            form.Add(fileContent, "file", "large_file.bin");
+            form.Add(new StringContent("large_file.bin"), "relativePath");
+
+            using var uploadReq = new HttpRequestMessage(HttpMethod.Post, $"{baseAuthority}/api/upload")
+            {
+                Content = form
+            };
+            uploadReq.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+
+            var uploadResponse = await http.SendAsync(uploadReq, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.OK, uploadResponse.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Http_upload_without_token_is_rejected_unauthorized()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            var uri = new Uri(service.MobileUrl!);
+            var baseAuthority = $"{uri.Scheme}://{uri.Authority}";
+
+            var largePayload = new byte[128 * 1024];
+            using var form = new MultipartFormDataContent();
+            form.Add(new ByteArrayContent(largePayload), "file", "large.bin");
+
+            using var http = new HttpClient();
+            var response = await http.PostAsync($"{baseAuthority}/api/upload", form, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+        finally
+        {
+            await service.StopSessionAsync();
+        }
+    }
+
+    [Fact]
+    public async Task WebSocket_request_with_mismatched_origin_is_rejected_forbidden()
+    {
+        var service = new FileeConnectService(NullLogger<FileeConnectService>.Instance, _manager);
+        await service.StartSessionAsync();
+        try
+        {
+            var uri = new Uri(service.MobileUrl!);
+            var baseAuthority = $"{uri.Scheme}://{uri.Authority}";
+
+            using var http = new HttpClient();
+            var req = new HttpRequestMessage(HttpMethod.Get, $"{baseAuthority}/ws");
+            req.Headers.TryAddWithoutValidation("Upgrade", "websocket");
+            req.Headers.TryAddWithoutValidation("Connection", "Upgrade");
+            req.Headers.TryAddWithoutValidation("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==");
+            req.Headers.TryAddWithoutValidation("Sec-WebSocket-Version", "13");
+            req.Headers.TryAddWithoutValidation("Origin", "http://evil.example.com");
+
+            var response = await http.SendAsync(req, TestContext.Current.CancellationToken);
+            Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
         }
         finally
         {

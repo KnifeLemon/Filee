@@ -10,12 +10,7 @@
   let currentPath = '';
 
   function headers() {
-    const tok = window.getFileeToken ? window.getFileeToken() : '';
-    const h = {};
-    if (tok) {
-      h['Authorization'] = 'Bearer ' + tok;
-    }
-    return h;
+    return {};
   }
 
   function formatSize(bytes) {
@@ -45,9 +40,6 @@
   }
 
   async function refresh() {
-    const tok = window.getFileeToken ? window.getFileeToken() : '';
-    if (!tok) return;
-
     try {
       const response = await request('/api/files');
       const data = await response.json();

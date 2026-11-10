@@ -1665,5 +1665,7 @@
   "connect.picker_files_title": "업로드할 파일 선택",
   "connect.picker_folder_title": "업로드할 폴더 선택",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "참고: 휴대폰이 연결되지 않으면 시스템 방화벽에서 Filee를 허용하세요."
+  "connect.firewall_hint_generic": "참고: 휴대폰이 연결되지 않으면 시스템 방화벽에서 Filee를 허용하세요.",
+  "connect.no_network_message": "Filee Connect를 시작할 수 없습니다. 이 기기가 로컬 Wi-Fi 또는 이더넷 네트워크에 연결되어 있는지 확인하세요.",
+  "connect.save_as": "다른 이름으로 저장…"
 }

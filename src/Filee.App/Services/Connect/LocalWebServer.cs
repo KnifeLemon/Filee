@@ -95,7 +95,13 @@ public sealed class LocalWebServer : IAsyncDisposable
 
         var app = builder.Build();
 
-        // 1. Host and Origin verification middleware (defeats DNS rebinding)
+        // 1. Enable WebSockets first so WebSocketMiddleware inspects headers and populates IHttpWebSocketFeature
+        app.UseWebSockets(new WebSocketOptions
+        {
+            KeepAliveInterval = TimeSpan.FromSeconds(20)
+        });
+
+        // 2. Host and Origin verification middleware (defeats DNS rebinding and cross-origin attacks)
         app.Use(async (context, next) =>
         {
             var hostHeader = context.Request.Host.Value;
@@ -111,7 +117,8 @@ public sealed class LocalWebServer : IAsyncDisposable
                                   HttpMethods.IsDelete(context.Request.Method) ||
                                   HttpMethods.IsPatch(context.Request.Method);
 
-            var isWs = context.WebSockets.IsWebSocketRequest;
+            var isWs = context.WebSockets.IsWebSocketRequest ||
+                       string.Equals(context.Request.Headers.Upgrade, "websocket", StringComparison.OrdinalIgnoreCase);
 
             if (isStateChanging || isWs)
             {
@@ -140,17 +147,11 @@ public sealed class LocalWebServer : IAsyncDisposable
             await next(context);
         });
 
-        // 2. Base security response headers
+        // 3. Base security response headers
         app.Use(async (context, next) =>
         {
             context.Response.Headers.XContentTypeOptions = "nosniff";
             await next(context);
-        });
-
-        // Enable WebSockets
-        app.UseWebSockets(new WebSocketOptions
-        {
-            KeepAliveInterval = TimeSpan.FromSeconds(20)
         });
 
         // Map feature-specific routes

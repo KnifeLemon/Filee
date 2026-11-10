@@ -1665,5 +1665,7 @@
   "connect.picker_files_title": "Wybierz pliki do przesłania",
   "connect.picker_folder_title": "Wybierz folder do przesłania",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Uwaga: jeśli telefon nie może się połączyć, zezwól na Filee w zaporze systemowej."
+  "connect.firewall_hint_generic": "Uwaga: jeśli telefon nie może się połączyć, zezwól na Filee w zaporze systemowej.",
+  "connect.no_network_message": "Nie można uruchomić Filee Connect. Upewnij się, że to urządzenie jest połączone z lokalną siecią Wi-Fi lub Ethernet.",
+  "connect.save_as": "Zapisz jako…"
 }

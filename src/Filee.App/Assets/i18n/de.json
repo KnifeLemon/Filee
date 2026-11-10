@@ -1643,5 +1643,7 @@
   "connect.picker_files_title": "Dateien zum Hochladen auswählen",
   "connect.picker_folder_title": "Ordner zum Hochladen auswählen",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Hinweis: Wenn dein Smartphone keine Verbindung herstellen kann, erlaube Filee in der System-Firewall."
+  "connect.firewall_hint_generic": "Hinweis: Wenn dein Smartphone keine Verbindung herstellen kann, erlaube Filee in der System-Firewall.",
+  "connect.no_network_message": "Filee Connect konnte nicht gestartet werden. Bitte stelle sicher, dass dieses Gerät mit einem lokalen WLAN- oder Ethernet-Netzwerk verbunden ist.",
+  "connect.save_as": "Speichern unter…"
 }

@@ -72,16 +72,19 @@ public sealed partial class ConnectFileItemViewModel : ObservableObject
     public bool IsFolder { get; }
     public string IconText { get; }
     public bool CanPreview { get; }
+    public bool CanSaveAs => !IsFolder;
 
     public IRelayCommand OpenOrFolderCommand { get; }
     public IRelayCommand DeleteCommand { get; }
     public IRelayCommand PreviewCommand { get; }
+    public IRelayCommand SaveAsCommand { get; }
 
     public ConnectFileItemViewModel(
         SharedFileMetadata meta,
         Action<ConnectFileItemViewModel> openFolder,
         Action<ConnectFileItemViewModel> delete,
         Action<ConnectFileItemViewModel> preview,
+        Action<ConnectFileItemViewModel> saveAs,
         ILocalizer loc)
     {
         Id = meta.Id;
@@ -108,6 +111,7 @@ public sealed partial class ConnectFileItemViewModel : ObservableObject
         OpenOrFolderCommand = new RelayCommand(() => preview(this));
         DeleteCommand = new RelayCommand(() => delete(this));
         PreviewCommand = new RelayCommand(() => preview(this));
+        SaveAsCommand = new RelayCommand(() => saveAs(this));
     }
 
     public ConnectFileItemViewModel(
@@ -133,6 +137,7 @@ public sealed partial class ConnectFileItemViewModel : ObservableObject
         OpenOrFolderCommand = new RelayCommand(() => openFolder(this));
         DeleteCommand = new RelayCommand(() => delete(this));
         PreviewCommand = new RelayCommand(() => { });
+        SaveAsCommand = new RelayCommand(() => { });
     }
 
     public static string FormatSize(long bytes)
@@ -369,7 +374,7 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
 
         foreach (var file in directFiles.OrderBy(f => f.Name))
         {
-            Files.Add(new ConnectFileItemViewModel(file, OpenSubfolder, DeleteItem, PreviewFile, _loc));
+            Files.Add(new ConnectFileItemViewModel(file, OpenSubfolder, DeleteItem, PreviewFile, SaveAsFile, _loc));
         }
 
         var usage = _connect.FolderManager.GetUsage();
@@ -447,6 +452,18 @@ public sealed partial class FileeConnectViewModel : ObservableObject, IDisposabl
         {
             _platform.RevealInFileManager(fullPath);
         }
+    }
+
+    public Action<ConnectFileItemViewModel>? SaveAsHandler { get; private set; }
+
+    public void SetSaveAsHandler(Action<ConnectFileItemViewModel> handler)
+    {
+        SaveAsHandler = handler;
+    }
+
+    private void SaveAsFile(ConnectFileItemViewModel item)
+    {
+        SaveAsHandler?.Invoke(item);
     }
 
     [RelayCommand]

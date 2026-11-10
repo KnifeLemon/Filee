@@ -292,13 +292,17 @@ public sealed class FileeConnectService : IAsyncDisposable
                 return Results.NotFound();
             }
 
-            // Single-use: consumed upon successful pairing
-            _pairingSecret = null;
+            // Atomically consume the secret: only the single request that succeeds the CompareExchange proceeds to pair
+            var consumed = Interlocked.CompareExchange(ref _pairingSecret, null, activeSecret);
+            if (!string.Equals(consumed, activeSecret, StringComparison.Ordinal))
+            {
+                return Results.NotFound();
+            }
 
             var device = PairNewDevice(context.Request.Headers.UserAgent.ToString());
             SetDeviceTokenCookie(context, device.Token);
 
-            return ServeMobileHtml();
+            return Results.Redirect("/mobile");
         });
 
         // Direct Mobile Page (either already paired via cookie or shows PIN prompt)
@@ -319,7 +323,8 @@ public sealed class FileeConnectService : IAsyncDisposable
                 "connect.no_messages", "connect.no_files", "connect.upload_files",
                 "connect.upload_folder", "connect.end_session", "connect.waiting_device",
                 "connect.sender_pc", "connect.sender_phone", "connect.view",
-                "connect.stored_locally", "connect.caption"
+                "connect.stored_locally", "connect.caption", "connect.input_placeholder",
+                "connect.manual_instruction_pin", "connect.disconnect_device", "connect.title"
             };
             var dict = new Dictionary<string, string>();
             foreach (var k in keys)
@@ -339,8 +344,11 @@ public sealed class FileeConnectService : IAsyncDisposable
 
             try
             {
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+                cts.CancelAfter(TimeSpan.FromSeconds(5));
+
                 using var reader = new StreamReader(context.Request.Body, Encoding.UTF8);
-                var body = await reader.ReadToEndAsync();
+                var body = await reader.ReadToEndAsync(cts.Token);
                 if (body.Length > 2048)
                 {
                     return Results.BadRequest(new { error = "payload_too_large" });
@@ -381,6 +389,7 @@ public sealed class FileeConnectService : IAsyncDisposable
                         attemptState.FailedAttempts = 0;
                         attemptState.LockoutUntilUtc = null;
                         RefreshPin();
+                        _pairingSecret = null; // Also invalidate the QR secret when paired via PIN
                         Dispatcher.UIThread.Post(() => PinRefreshed?.Invoke());
 
                         var device = PairNewDevice(req.DeviceName ?? context.Request.Headers.UserAgent.ToString());
@@ -472,14 +481,14 @@ public sealed class FileeConnectService : IAsyncDisposable
         // Upload Single File: POST /api/upload
         app.MapPost("/api/upload", async (HttpContext context) =>
         {
+            if (!TryValidateDeviceToken(context, out var device))
+                return Results.Unauthorized();
+
             var sizeFeature = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpMaxRequestBodySizeFeature>();
             if (sizeFeature is not null && !sizeFeature.IsReadOnly)
             {
                 sizeFeature.MaxRequestBodySize = 510L * 1024 * 1024;
             }
-
-            if (!TryValidateDeviceToken(context, out var device))
-                return Results.Unauthorized();
 
             try
             {
@@ -551,7 +560,16 @@ public sealed class FileeConnectService : IAsyncDisposable
         app.MapGet("/api/folder.zip", async (HttpContext context, CancellationToken ct) =>
         {
             if (!TryValidateDeviceToken(context, out _))
-                return Results.Unauthorized();
+            {
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                return;
+            }
+
+            var syncIo = context.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpBodyControlFeature>();
+            if (syncIo != null)
+            {
+                syncIo.AllowSynchronousIO = true;
+            }
 
             context.Response.ContentType = "application/zip";
             context.Response.Headers.ContentDisposition = "attachment; filename=\"shared-folder.zip\"";
@@ -565,7 +583,7 @@ public sealed class FileeConnectService : IAsyncDisposable
                 await _folderManager.WriteAllZipAsync(context.Response.Body, ct).ConfigureAwait(false);
             }
 
-            return Results.Empty;
+            await context.Response.Body.FlushAsync(ct).ConfigureAwait(false);
         });
 
         // WebSocket endpoint: GET /ws
@@ -597,7 +615,7 @@ public sealed class FileeConnectService : IAsyncDisposable
             var oldest = _pairedDevices.Values.OrderBy(d => d.LastSeen).FirstOrDefault();
             if (oldest is not null)
             {
-                _pairedDevices.TryRemove(oldest.Token, out _);
+                _ = DisconnectDeviceAsync(oldest.Id);
             }
         }
 
@@ -638,8 +656,8 @@ public sealed class FileeConnectService : IAsyncDisposable
         context.Response.Cookies.Append("filee_token", token, new CookieOptions
         {
             Path = "/",
-            SameSite = SameSiteMode.Strict,
-            HttpOnly = false,
+            SameSite = SameSiteMode.Lax,
+            HttpOnly = true,
             IsEssential = true
         });
     }
@@ -822,6 +840,12 @@ public sealed class FileeConnectService : IAsyncDisposable
     {
         try
         {
+            if (_qrBitmap is not null)
+            {
+                _qrBitmap.Dispose();
+                _qrBitmap = null;
+            }
+
             using var generator = new QRCodeGenerator();
             var data = generator.CreateQrCode(url, QRCodeGenerator.ECCLevel.Q);
             using var qrCode = new PngByteQRCode(data);

@@ -38,9 +38,13 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     internal FileeConnectWindow? ConnectWindow => _connectWindow;
 
     internal FormatRequestNoticeWindow? FormatRequestNotice => _formatRequestNotice;
+    private bool _isOpeningConnect;
 
     public async void ShowFileeConnect()
     {
+        if (_isOpeningConnect) return;
+        _isOpeningConnect = true;
+
         try
         {
             if (_connectWindow is not null && _connectWindow.IsVisible)
@@ -118,6 +122,11 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         catch (Exception ex)
         {
             services.GetService<ILogger<WindowService>>()?.LogError(ex, "Could not start Filee Connect session");
+            await MessageAsync(null, loc["connect.no_network_message"] ?? "Could not start Filee Connect. Please ensure this device is connected to a local Wi-Fi or Ethernet network.");
+        }
+        finally
+        {
+            _isOpeningConnect = false;
         }
     }
 

@@ -1665,5 +1665,7 @@
   "connect.picker_files_title": "Sélectionner les fichiers à envoyer",
   "connect.picker_folder_title": "Sélectionner le dossier à envoyer",
   "connect.pin_label": "Code PIN :",
-  "connect.firewall_hint_generic": "Remarque : Si votre téléphone ne peut pas se connecter, autorisez Filee dans le pare-feu du système."
+  "connect.firewall_hint_generic": "Remarque : Si votre téléphone ne peut pas se connecter, autorisez Filee dans le pare-feu du système.",
+  "connect.no_network_message": "Impossible de démarrer Filee Connect. Veuillez vous assurer que cet appareil est connecté à un réseau Wi-Fi ou Ethernet local.",
+  "connect.save_as": "Enregistrer sous…"
 }

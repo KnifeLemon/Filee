@@ -1644,5 +1644,7 @@
   "connect.picker_files_title": "تحديد الملفات المراد رفعها",
   "connect.picker_folder_title": "تحديد المجلد المراد رفعه",
   "connect.pin_label": "رمز PIN:",
-  "connect.firewall_hint_generic": "ملاحظة: إذا لم يتمكن هاتفك من الاتصال، اسمح لـ Filee في جدار الحماية الخاص بالنظام."
+  "connect.firewall_hint_generic": "ملاحظة: إذا لم يتمكن هاتفك من الاتصال، اسمح لـ Filee في جدار الحماية الخاص بالنظام.",
+  "connect.no_network_message": "تعذر بدء Filee Connect. يرجى التأكد من اتصال هذا الجهاز بشبكة Wi-Fi أو شبكة إيثرنت محلية.",
+  "connect.save_as": "حفظ باسم…"
 }

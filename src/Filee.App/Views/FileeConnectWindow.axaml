@@ -200,6 +200,8 @@
                         <DockPanel LastChildFill="True">
                           <!-- Action Buttons on Right -->
                           <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Button Content="{DynamicResource connect.save_as}" Command="{Binding SaveAsCommand}"
+                                    IsVisible="{Binding CanSaveAs}" Padding="8,3" FontSize="11.5" />
                             <Button Content="{DynamicResource connect.view}" Command="{Binding PreviewCommand}"
                                     IsVisible="{Binding CanPreview}" Padding="8,3" FontSize="11.5" />
                             <Button Classes="danger" Content="×" Command="{Binding DeleteCommand}"

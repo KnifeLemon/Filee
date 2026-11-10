@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using Filee.App.Services;
 using Filee.App.Services.Connect;
 using Filee.App.ViewModels;
 
@@ -21,6 +22,36 @@ public partial class FileeConnectWindow : Window
         if (DataContext is FileeConnectViewModel vm)
         {
             vm.RequestClose += () => Close();
+            vm.SetSaveAsHandler(async item =>
+            {
+                try
+                {
+                    var fullPath = vm.ConnectService.FolderManager.GetFullPath(item.Id);
+                    if (string.IsNullOrEmpty(fullPath) || !System.IO.File.Exists(fullPath)) return;
+
+                    var ext = System.IO.Path.GetExtension(item.Name)?.TrimStart('.');
+                    var saveFile = await StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                    {
+                        Title = vm.Localizer["connect.save_as"] ?? "Save as…",
+                        SuggestedFileName = item.Name,
+                        DefaultExtension = string.IsNullOrEmpty(ext) ? null : ext
+                    });
+
+                    if (saveFile is not null)
+                    {
+                        var dest = saveFile.TryGetLocalPath();
+                        if (!string.IsNullOrEmpty(dest))
+                        {
+                            System.IO.File.Copy(fullPath, dest, overwrite: true);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Save As failed: {ex.Message}");
+                    await AppHost.Get<WindowService>().MessageAsync(this, ex.Message);
+                }
+            });
         }
     }
 
@@ -37,17 +68,27 @@ public partial class FileeConnectWindow : Window
     {
         if (DataContext is not FileeConnectViewModel vm) return;
 
+        IReadOnlyList<IStorageFile>? files = null;
         try
         {
-            var files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+            files = await StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
             {
                 Title = vm.Localizer["connect.picker_files_title"],
                 AllowMultiple = true
             });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Upload files picker failed: {ex.Message}");
+            return;
+        }
 
-            if (files is null || files.Count == 0) return;
+        if (files is null || files.Count == 0) return;
 
-            foreach (var file in files)
+        var failedFiles = new List<string>();
+        foreach (var file in files)
+        {
+            try
             {
                 var localPath = file.TryGetLocalPath();
                 if (!string.IsNullOrEmpty(localPath) && System.IO.File.Exists(localPath))
@@ -58,10 +99,19 @@ public partial class FileeConnectWindow : Window
                     await vm.ConnectService.AddLocalFileAsync(localPath, targetRel);
                 }
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to upload {file.Name}: {ex.Message}");
+                failedFiles.Add(file.Name);
+            }
         }
-        catch (Exception ex)
+
+        if (failedFiles.Count > 0)
         {
-            Debug.WriteLine($"Upload files failed: {ex.Message}");
+            var msg = failedFiles.Count == 1
+                ? $"Could not upload \"{failedFiles[0]}\"."
+                : $"Could not upload {failedFiles.Count} files.";
+            await AppHost.Get<WindowService>().MessageAsync(this, msg);
         }
     }
 
@@ -69,22 +119,41 @@ public partial class FileeConnectWindow : Window
     {
         if (DataContext is not FileeConnectViewModel vm) return;
 
+        IReadOnlyList<IStorageFolder>? folders = null;
         try
         {
-            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
             {
                 Title = vm.Localizer["connect.picker_folder_title"]
             });
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Upload folder picker failed: {ex.Message}");
+            return;
+        }
 
-            if (folders is null || folders.Count == 0) return;
+        if (folders is null || folders.Count == 0) return;
 
-            var folderPath = folders[0].TryGetLocalPath();
-            if (string.IsNullOrEmpty(folderPath) || !System.IO.Directory.Exists(folderPath)) return;
+        var folderPath = folders[0].TryGetLocalPath();
+        if (string.IsNullOrEmpty(folderPath) || !System.IO.Directory.Exists(folderPath)) return;
 
-            var baseFolder = new System.IO.DirectoryInfo(folderPath);
-            var files = System.IO.Directory.EnumerateFiles(folderPath, "*", System.IO.SearchOption.AllDirectories);
+        var baseFolder = new System.IO.DirectoryInfo(folderPath);
+        IEnumerable<string> files;
+        try
+        {
+            files = System.IO.Directory.EnumerateFiles(folderPath, "*", System.IO.SearchOption.AllDirectories);
+        }
+        catch (Exception ex)
+        {
+            await AppHost.Get<WindowService>().MessageAsync(this, ex.Message);
+            return;
+        }
 
-            foreach (var f in files)
+        var failedFiles = new List<string>();
+        foreach (var f in files)
+        {
+            try
             {
                 var relFromFolder = System.IO.Path.GetRelativePath(baseFolder.FullName, f).Replace('\\', '/');
                 var targetRel = string.IsNullOrEmpty(vm.CurrentPath)
@@ -92,10 +161,19 @@ public partial class FileeConnectWindow : Window
                     : $"{vm.CurrentPath.TrimEnd('/')}/{baseFolder.Name}/{relFromFolder}";
                 await vm.ConnectService.AddLocalFileAsync(f, targetRel);
             }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Failed to upload {f}: {ex.Message}");
+                failedFiles.Add(System.IO.Path.GetFileName(f));
+            }
         }
-        catch (Exception ex)
+
+        if (failedFiles.Count > 0)
         {
-            Debug.WriteLine($"Upload folder failed: {ex.Message}");
+            var msg = failedFiles.Count == 1
+                ? $"Could not upload \"{failedFiles[0]}\"."
+                : $"Could not upload {failedFiles.Count} files.";
+            await AppHost.Get<WindowService>().MessageAsync(this, msg);
         }
     }
 

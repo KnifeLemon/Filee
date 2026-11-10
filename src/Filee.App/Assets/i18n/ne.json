@@ -1645,5 +1645,7 @@
   "connect.picker_files_title": "अपलोड गर्न फाइलहरू चयन गर्नुहोस्",
   "connect.picker_folder_title": "अपलोड गर्न फोल्डर चयन गर्नुहोस्",
   "connect.pin_label": "पिन:",
-  "connect.firewall_hint_generic": "नोट: यदि तपाईंको फोन जडान हुन सकेन भने, प्रणाली फायरवालमा Filee लाई अनुमति दिनुहोस्।"
+  "connect.firewall_hint_generic": "नोट: यदि तपाईंको फोन जडान हुन सकेन भने, प्रणाली फायरवालमा Filee लाई अनुमति दिनुहोस्।",
+  "connect.no_network_message": "Filee Connect सुरु गर्न सकिएन। कृपया यो यन्त्र स्थानीय Wi-Fi वा इथरनेट नेटवर्कमा जडान भएको निश्चित गर्नुहोस्।",
+  "connect.save_as": "यस रूपमा बचत गर्नुहोस्…"
 }

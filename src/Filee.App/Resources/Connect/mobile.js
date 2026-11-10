@@ -42,18 +42,6 @@
   tabBtnText?.addEventListener('click', () => switchTab('tabText'));
   tabBtnFiles?.addEventListener('click', () => switchTab('tabFiles'));
 
-  function getCookie(name) {
-    const value = `; ${document.cookie}`;
-    const parts = value.split(`; ${name}=`);
-    if (parts.length === 2) return parts.pop().split(';').shift();
-    return null;
-  }
-
-  function getDeviceToken() {
-    return getCookie('filee_token') || sessionStorage.getItem('filee_device_token') || '';
-  }
-  window.getFileeToken = getDeviceToken;
-
   function getDeviceName() {
     const ua = navigator.userAgent || '';
     if (/iPhone/i.test(ua)) return 'iPhone';
@@ -138,11 +126,6 @@
 
   function connect() {
     if (ended) return;
-    const token = getDeviceToken();
-    if (!token) {
-      showPairingView();
-      return;
-    }
 
     const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const deviceName = encodeURIComponent(getDeviceName());
@@ -168,8 +151,6 @@
       } else if (data.type === 'files-changed') {
         if (window.refreshSharedFiles) window.refreshSharedFiles();
       } else if (data.type === 'device-disconnected') {
-        sessionStorage.removeItem('filee_device_token');
-        document.cookie = 'filee_token=; Max-Age=0; path=/; SameSite=Lax';
         showPairingView();
       } else if (data.type === 'session-ended') {
         endUI(data.reason || 'Session ended');
@@ -178,8 +159,6 @@
 
     socket.onclose = (event) => {
       if (event.code === 4401 || event.code === 4001) {
-        sessionStorage.removeItem('filee_device_token');
-        document.cookie = 'filee_token=; Max-Age=0; path=/; SameSite=Lax';
         showPairingView();
         return;
       }
@@ -193,8 +172,6 @@
   }
 
   function showPairingView() {
-    sessionStorage.removeItem('filee_device_token');
-    document.cookie = 'filee_token=; Max-Age=0; path=/; SameSite=Lax';
     if (pairingView) pairingView.hidden = false;
     if (appView) appView.hidden = true;
     setStatus('Pairing required', false);
@@ -212,16 +189,8 @@
   }
 
   async function checkAuthAndStart() {
-    const token = getDeviceToken();
-    if (!token) {
-      showPairingView();
-      return;
-    }
-
     try {
-      const res = await fetch('/api/auth/check', {
-        headers: { 'Authorization': 'Bearer ' + token }
-      });
+      const res = await fetch('/api/auth/check');
       if (res.ok) {
         showAppView();
       } else {
@@ -256,8 +225,6 @@
 
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.token) {
-        sessionStorage.setItem('filee_device_token', data.token);
-        document.cookie = `filee_token=${encodeURIComponent(data.token)}; path=/; max-age=86400; SameSite=Lax`;
         showAppView();
       } else if (res.status === 429) {
         if (pinError) {
@@ -291,13 +258,11 @@
         input.focus();
       }
     } else {
-      // Fallback HTTP POST
-      const token = getDeviceToken();
+      // Fallback HTTP POST (cookies sent automatically)
       fetch('/api/send', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer ' + token
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({ text })
       }).then(() => {
@@ -347,21 +312,21 @@
       if (!res.ok) return;
       const s = await res.json();
       if (s['connect.tab_text'] && tabBtnText) tabBtnText.textContent = s['connect.tab_text'];
-      if (s['connect.tab_files'] && tabBtnFiles) tabBtnFiles.textContent = s['connect.tab_files'];
-      if (s['connect.send_placeholder'] && input) input.placeholder = s['connect.send_placeholder'];
-      if (s['connect.btn_paste'] && pasteBtn) pasteBtn.textContent = s['connect.btn_paste'];
-      if (s['connect.btn_send'] && send) send.textContent = s['connect.btn_send'];
+      if (s['connect.tab_shared_folder'] && tabBtnFiles) tabBtnFiles.textContent = s['connect.tab_shared_folder'];
+      if (s['connect.input_placeholder'] && input) input.placeholder = s['connect.input_placeholder'];
+      if (s['connect.paste_clipboard'] && pasteBtn) pasteBtn.textContent = s['connect.paste_clipboard'];
+      if (s['connect.send'] && send) send.textContent = s['connect.send'];
       const uploadBtn = $('chooseFiles');
-      if (s['connect.btn_upload'] && uploadBtn) uploadBtn.textContent = s['connect.btn_upload'];
-      if (s['connect.pair_title'] && pairingView) {
+      if (s['connect.upload_files'] && uploadBtn) uploadBtn.textContent = s['connect.upload_files'];
+      if (s['connect.title'] && pairingView) {
         const h2 = pairingView.querySelector('h2');
-        if (h2) h2.textContent = s['connect.pair_title'];
+        if (h2) h2.textContent = s['connect.title'];
       }
-      if (s['connect.pair_hint'] && pairingView) {
+      if (s['connect.manual_instruction_pin'] && pairingView) {
         const p = pairingView.querySelector('.muted.small');
-        if (p) p.textContent = s['connect.pair_hint'];
+        if (p) p.textContent = s['connect.manual_instruction_pin'];
       }
-      if (s['connect.btn_pair'] && pinSubmit) pinSubmit.textContent = s['connect.btn_pair'];
+      if (s['connect.send'] && pinSubmit) pinSubmit.textContent = s['connect.send'];
     } catch (_) { }
   }
 })();

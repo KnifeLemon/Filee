@@ -1645,5 +1645,7 @@
   "connect.picker_files_title": "アップロードするファイルを選択",
   "connect.picker_folder_title": "アップロードするフォルダーを選択",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "注: スマートフォンが接続できない場合は、システムファイアウォールでFileeを許可してください。"
+  "connect.firewall_hint_generic": "注: スマートフォンが接続できない場合は、システムファイアウォールでFileeを許可してください。",
+  "connect.no_network_message": "Filee Connectを開始できませんでした。このデバイスがローカルのWi-Fiまたは有線LANネットワークに接続されていることを確認してください。",
+  "connect.save_as": "名前を付けて保存…"
 }

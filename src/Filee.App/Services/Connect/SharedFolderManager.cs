@@ -69,6 +69,20 @@ public sealed class SharedFolderManager
             }
             Directory.CreateDirectory(_tempDir);
 
+            // Clean any leftover FileeConnect_* temp folders from previous crashed sessions
+            try
+            {
+                var tempRoot = Path.GetTempPath();
+                foreach (var dir in Directory.EnumerateDirectories(tempRoot, "FileeConnect_*"))
+                {
+                    if (!string.Equals(dir, _tempDir, StringComparison.OrdinalIgnoreCase))
+                    {
+                        try { Directory.Delete(dir, recursive: true); } catch { }
+                    }
+                }
+            }
+            catch { }
+
             _files.Clear();
             _totalStorage = 0;
             _reservedBytes = 0;

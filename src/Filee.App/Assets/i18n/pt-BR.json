@@ -1665,5 +1665,7 @@
   "connect.picker_files_title": "Selecionar arquivos para enviar",
   "connect.picker_folder_title": "Selecionar pasta para enviar",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Observação: se o seu celular não conseguir se conectar, permita o Filee no firewall do sistema."
+  "connect.firewall_hint_generic": "Observação: se o seu celular não conseguir se conectar, permita o Filee no firewall do sistema.",
+  "connect.no_network_message": "Não foi possível iniciar o Filee Connect. Certifique-se de que este dispositivo esteja conectado a uma rede Wi-Fi ou Ethernet local.",
+  "connect.save_as": "Salvar como…"
 }

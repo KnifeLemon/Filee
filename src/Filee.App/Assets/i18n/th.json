@@ -1645,5 +1645,7 @@
   "connect.picker_files_title": "เลือกไฟล์ที่จะอัปโหลด",
   "connect.picker_folder_title": "เลือกโฟลเดอร์ที่จะอัปโหลด",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "หมายเหตุ: หากโทรศัพท์ของคุณไม่สามารถเชื่อมต่อได้ ให้เปิดการอนุญาต Filee ในไฟร์วอลล์ของระบบ"
+  "connect.firewall_hint_generic": "หมายเหตุ: หากโทรศัพท์ของคุณไม่สามารถเชื่อมต่อได้ ให้เปิดการอนุญาต Filee ในไฟร์วอลล์ของระบบ",
+  "connect.no_network_message": "ไม่สามารถเริ่ม Filee Connect ได้ โปรดตรวจสอบให้แน่ใจว่าอุปกรณ์นี้เชื่อมต่อกับเครือข่าย Wi-Fi หรืออีเทอร์เน็ตในเครื่อง",
+  "connect.save_as": "บันทึกเป็น…"
 }

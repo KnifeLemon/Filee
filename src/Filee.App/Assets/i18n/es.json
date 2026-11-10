@@ -1645,5 +1645,7 @@
   "connect.picker_files_title": "Seleccionar archivos para subir",
   "connect.picker_folder_title": "Seleccionar carpeta para subir",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Nota: Si tu teléfono no puede conectarse, permite Filee en el cortafuegos del sistema."
+  "connect.firewall_hint_generic": "Nota: Si tu teléfono no puede conectarse, permite Filee en el cortafuegos del sistema.",
+  "connect.no_network_message": "No se pudo iniciar Filee Connect. Asegúrate de que este dispositivo esté conectado a una red Wi-Fi o Ethernet local.",
+  "connect.save_as": "Guardar como…"
 }

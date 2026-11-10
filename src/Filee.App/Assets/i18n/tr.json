@@ -1643,5 +1643,7 @@
   "connect.picker_files_title": "Yüklenecek dosyaları seçin",
   "connect.picker_folder_title": "Yüklenecek klasörü seçin",
   "connect.pin_label": "PIN:",
-  "connect.firewall_hint_generic": "Not: Telefonunuz bağlanamıyorsa, sistem güvenlik duvarında Filee'ye izin verin."
+  "connect.firewall_hint_generic": "Not: Telefonunuz bağlanamıyorsa, sistem güvenlik duvarında Filee'ye izin verin.",
+  "connect.no_network_message": "Filee Connect başlatılamadı. Lütfen bu cihazın yerel bir Wi-Fi veya Ethernet ağına bağlı olduğundan emin olun.",
+  "connect.save_as": "Farklı kaydet…"
 }

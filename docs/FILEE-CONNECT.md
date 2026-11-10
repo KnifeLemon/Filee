@@ -60,7 +60,8 @@
 
 ```
 [Shortcut Trigger]
-(Ctrl + Alt + Left Click)
+(Windows/Linux: Ctrl + Alt + Left Click)
+(macOS: ⌥ Option + ⇧ Shift + Left Click)
           │
           ▼
     [Donut Menu]
@@ -78,8 +79,8 @@
 ```
 
 ### 1. Triggering Filee Connect
-- **Global Shortcut**: Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Left Click</kbd> anywhere on your screen (inside any application window or desktop, except on files where file conversions take priority).
-- **Customizable**: Go to **Settings → Shortcuts**. The **"Filee Connect Server Shortcut"** section allows configuring custom modifier keys, mouse buttons, and triggers.
+- **Global Shortcut**: Press <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Left Click</kbd> on Windows/Linux, or <kbd>⌥ Option</kbd> + <kbd>⇧ Shift</kbd> + <kbd>Left Click</kbd> on macOS, anywhere on your screen (inside any application window or desktop, except on files where file conversions take priority).
+- **Customizable**: This default shortcut applies to new installs. Go to **Settings → Shortcuts** at any time: the **"Filee Connect Server Shortcut"** section allows configuring custom modifier keys, mouse buttons, and triggers.
 
 ### 2. QR Code Pairing Modal
 - Choosing **Filee Connect** from the Donut toolbar launches the centered **QR Code Modal** (`FileeConnectQrWindow`).
