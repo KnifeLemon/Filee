@@ -36,6 +36,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         Scopes = Enum.GetValues<TriggerScope>()
             .Select(s => new Choice<TriggerScope>(s, loc[s == TriggerScope.FileManager ? $"triggers.scope.{s}{platform}" : $"triggers.scope.{s}"]))
             .ToList();
+        Faces = Enum.GetValues<DonutFace>().Select(f => new Choice<DonutFace>(f, loc[$"triggers.face.{f}"])).ToList();
         RecordLabel = loc["triggers.record"];
         RecordingLabel = loc["triggers.recording"];
         SystemLabel = loc["triggers.threshold_system"];
@@ -52,6 +53,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         HoldMilliseconds = gesture.HoldMilliseconds;
         Scope = Scopes.First(s => s.Value == gesture.Scope);
         Clipboard = gesture.Clipboard;
+        Face = Faces.First(f => f.Value == gesture.Face);
         _loading = false;
     }
 
@@ -59,6 +61,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     public IReadOnlyList<Choice<TriggerKind>> Kinds { get; }
     public IReadOnlyList<Choice<TriggerMouseButton>> Buttons { get; }
     public IReadOnlyList<Choice<TriggerScope>> Scopes { get; }
+    public IReadOnlyList<Choice<DonutFace>> Faces { get; }
     public string RecordLabel { get; }
     public string RecordingLabel { get; }
     public string SystemLabel { get; }
@@ -80,6 +83,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     [ObservableProperty] private int _holdMilliseconds;
     [ObservableProperty] private Choice<TriggerScope> _scope = null!;
     [ObservableProperty] private bool _clipboard;
+    [ObservableProperty] private Choice<DonutFace> _face = null!;
     [ObservableProperty, NotifyPropertyChangedFor(nameof(KeyText))] private bool _isRecording;
 
     public bool UsesMouse => Kind.Value != TriggerKind.KeyChord;
@@ -96,6 +100,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
     partial void OnKindChanged(Choice<TriggerKind>? oldValue, Choice<TriggerKind> newValue) => Choices.Restore(oldValue, newValue, v => Kind = v);
     partial void OnButtonChanged(Choice<TriggerMouseButton>? oldValue, Choice<TriggerMouseButton> newValue) => Choices.Restore(oldValue, newValue, v => Button = v);
     partial void OnScopeChanged(Choice<TriggerScope>? oldValue, Choice<TriggerScope> newValue) => Choices.Restore(oldValue, newValue, v => Scope = v);
+    partial void OnFaceChanged(Choice<DonutFace>? oldValue, Choice<DonutFace> newValue) => Choices.Restore(oldValue, newValue, v => Face = v);
 
     protected override void OnPropertyChanged(System.ComponentModel.PropertyChangedEventArgs e)
     {
@@ -114,6 +119,7 @@ public sealed partial class TriggerGestureViewModel : ObservableObject
         _gesture.HoldMilliseconds = Math.Clamp(HoldMilliseconds, 150, 3000);
         _gesture.Scope = Scope.Value;
         _gesture.Clipboard = Clipboard;
+        _gesture.Face = Face.Value;
         OnPropertyChanged(nameof(Summary));
         _save();
     }

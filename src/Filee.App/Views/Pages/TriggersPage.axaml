@@ -43,7 +43,7 @@
             <StackPanel Spacing="14">
               <!-- Header: on/off, summary, remove -->
               <DockPanel>
-                <Button DockPanel.Dock="Right" Classes="icon"
+                <Button DockPanel.Dock="Right" Classes="icon danger"
                         Command="{Binding $parent[ItemsControl].((vm:TriggersPageViewModel)DataContext).RemoveCommand}"
                         CommandParameter="{Binding}" ToolTip.Tip="{DynamicResource triggers.remove}" AutomationProperties.Name="{DynamicResource triggers.remove}">
                   <PathIcon Width="15" Height="15" Data="{StaticResource Icon.Delete}" />
@@ -55,7 +55,7 @@
                 </Border>
               </DockPanel>
 
-              <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto">
+              <Grid ColumnDefinitions="*,16,*" RowDefinitions="Auto,14,Auto,14,Auto">
                 <StackPanel>
                   <TextBlock Classes="label" Text="{DynamicResource triggers.kind}" />
                   <ComboBox ItemsSource="{Binding Kinds}" SelectedItem="{Binding Kind}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.kind}" />
@@ -92,10 +92,18 @@
                           <TextBlock Text="{Binding RecordLabel}" />
                         </StackPanel>
                       </ToggleButton>
-                      <Button Classes="ghost" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
+                      <Button Classes="ghost danger" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
                     </StackPanel>
                   </StackPanel>
                 </StackPanel>
+
+                <!-- Which face the donut opens on: a second gesture with other modifiers opens the back (#195) -->
+                <StackPanel Grid.Row="4">
+                  <TextBlock Classes="label" Text="{DynamicResource triggers.face}" />
+                  <ComboBox ItemsSource="{Binding Faces}" SelectedItem="{Binding Face}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource triggers.face}" />
+                </StackPanel>
+                <TextBlock Grid.Row="4" Grid.Column="2" Classes="caption" TextWrapping="Wrap" VerticalAlignment="Bottom"
+                           Text="{DynamicResource triggers.face_note}" />
               </Grid>
 
               <!-- Clipboard shortcut: converts the files or the picture on the clipboard and puts the results back -->
@@ -148,7 +156,7 @@
             </StackPanel>
           </ToggleButton>
           <Button Classes="ghost" Content="{DynamicResource triggers.flip_reset}" Command="{Binding ResetKeyCommand}" />
-          <Button Classes="ghost" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
+          <Button Classes="ghost danger" Content="{DynamicResource triggers.clear}" Command="{Binding ClearKeyCommand}" />
         </StackPanel>
         <TextBlock Classes="caption danger" TextWrapping="Wrap" Text="{Binding Error}"
                    IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

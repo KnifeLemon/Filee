@@ -188,7 +188,8 @@ internal static partial class MediaEncoding
         out int width, out int frameHeight)
     {
         (width, frameHeight) = ClipSize(video, height);
-        var graph = ClipGraphOf(input, edit, false, width, frameHeight, fps.ToString(CultureInfo.InvariantCulture), "bgra");
+        // Pictures only: FFmpeg refuses a graph with a sound output nothing takes, the music's included.
+        var graph = ClipGraphOf(input, edit, false, width, frameHeight, fps.ToString(CultureInfo.InvariantCulture), "bgra", music: false);
         return [.. Common, .. graph.Inputs, "-filter_complex", graph.Filter, "-map", "[v]", "-f", "rawvideo", "-pix_fmt", "bgra", "pipe:1"];
     }
 

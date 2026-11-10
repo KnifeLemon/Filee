@@ -47,6 +47,7 @@
                  OuterRadius="{Binding OuterRadius}"
                  HoleRatio="{Binding HoleRatio}"
                  SliceOpacity="{Binding SliceOpacity}"
+                 ShowCaptions="{Binding ShowCaptions}"
                  ReserveSubRing="{Binding ReserveSubRing}"
                  CanFlip="{Binding CanFlip}"
                  CenterHint="{Binding FlipHint}"

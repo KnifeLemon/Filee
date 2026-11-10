@@ -89,6 +89,8 @@ public sealed class EngineEnvironment(string dataDirectory)
         ["7zip"] = [windows ? "7z.exe" : "7zz"],
         ["tesseract"] = [windows ? "tesseract.exe" : "tesseract"],
         ["whisper"] = [windows ? "whisper-cli.exe" : "whisper-cli"],
+        ["exiftool"] = [windows ? "exiftool.exe" : "exiftool"],
+        ["upscayl-bin"] = [windows ? "upscayl-bin.exe" : "upscayl-bin"],
     };
 
     public static string ProgramName(string name) => OperatingSystem.IsWindows() ? name

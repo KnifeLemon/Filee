@@ -6,6 +6,9 @@
 # The release is a draft with the Linux and macOS packages: the Windows files are signed on a PC signed in to Certum's
 # SimplySign cloud (its key needs a phone token), so this run keeps the tested, unsigned build as the artifact
 # windows-unsigned, and build/sign-release.ps1 signs it, packs Setup again, uploads the Windows files and publishes.
+# The SHA256SUMS files are signed there too, with the update key that never leaves that PC: it uploads a .sig next to
+# every SHA256SUMS file of the release (the Linux and macOS ones drafted here as well), and official builds refuse an
+# update without one.
 # Release notes: the version's section of CHANGELOG.md (what changed, for people using Filee), then the list GitHub
 # generates from the pull requests merged since the previous release, grouped by label (.github/release.yml), with
 # their authors and new contributors.

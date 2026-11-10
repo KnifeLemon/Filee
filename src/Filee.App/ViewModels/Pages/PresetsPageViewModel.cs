@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services;
+using Filee.Core.Formats;
 using Filee.Core.Localization;
 using Filee.Core.Presets;
 using Filee.Core.Settings;
@@ -24,7 +25,8 @@ public sealed partial class PresetListItem(Preset preset, ILocalizer loc) : Obse
     }
 
     private static string TargetLabel(Preset p, ILocalizer l) =>
-        p.TargetFormat == BuiltInData.SameAsSource ? l["presets.same_as_source"]
+        p.IsUpscaleTool ? l["preset.upscale"]
+        : p.TargetFormat == BuiltInData.SameAsSource ? l["presets.same_as_source"]
         : "→ " + (FormatLabels.NameOf(l, p.TargetFormat) ?? p.TargetFormat);
 }
 
@@ -43,11 +45,13 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
         _loc = loc;
         _windows = windows;
         VisiblePresets = new FilteredList<PresetListItem>(Presets, p => [p.Name, p.Target, p.Preset.TargetFormat]);
+        var off = store.Settings.TurnedOffFieldSet();
         // Groups and tools convert nothing: they live on the donut only (Settings → Toolbar).
-        foreach (var preset in store.Presets.Where(p => !p.IsGroup && !p.IsTool))
+        foreach (var preset in store.Presets.Where(p => !p.IsGroup && (!p.IsTool || p.IsUpscaleTool) && FormatFields.IsShown(p.TargetFormat, off)))
             Presets.Add(new PresetListItem(preset, loc));
         SelectedPreset = Presets.FirstOrDefault();
-        PlacePresets = [.. BuiltInData.PlacePresets().Select(p => new PresetListItem(p, loc))];
+        PlacePresets = [.. BuiltInData.PlacePresets().Where(p => FormatFields.IsShown(p.TargetFormat, off))
+            .Select(p => new PresetListItem(p, loc))];
     }
 
     public ObservableCollection<PresetListItem> Presets { get; } = [];
@@ -65,7 +69,7 @@ public sealed partial class PresetsPageViewModel : ObservableObject, IFitsWindow
 
     partial void OnSelectedPresetChanged(PresetListItem? value)
     {
-        Editor = value is null ? null : new PresetEditorViewModel(value.Preset, _loc);
+        Editor = value is null ? null : new PresetEditorViewModel(value.Preset, _loc, _store.Settings.TurnedOffFieldSet());
         SavedMessage = null;
     }
 

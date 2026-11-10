@@ -152,6 +152,22 @@ public class DocxChineseLayoutTests(EngineFixture fx) : IClassFixture<EngineFixt
     }
 
     [Fact]
+    public void The_degree_sign_in_a_Chinese_font_gets_its_full_width()
+    {
+        // rhwp moves on half a character after ℃, drawn a full one wide: the comma after it landed on it (issue #280).
+        var dir = fx.NewFolder();
+        var docx = new DocxBuilder { Styles = ChineseStyles }.Paragraph(P(R("0～50℃，湿度")));
+        var hwpx = Path.Combine(dir, "out.hwpx");
+        HwpxWriter.Write(DocxReader.Read(docx.Save(Path.Combine(dir, "source.docx")), Path.Combine(dir, "media")), hwpx);
+
+        var copy = RhwpInput.Prepare(hwpx, dir, ChineseComputer);
+
+        Assert.NotNull(copy);
+        var run = Xml(copy).Descendants(Hp + "run").Single(r => r.Element(Hp + "t")?.Value == "℃");
+        Assert.Equal(100, (int)HeadItem(copy, "charPr", (string)run.Attribute("charPrIDRef")!).Element(Hh + "spacing")!.Attribute("hangul")!);
+    }
+
+    [Fact]
     public void Punctuation_in_Korean_and_Latin_fonts_is_left_to_rhwp()
     {
         var dir = fx.NewFolder();

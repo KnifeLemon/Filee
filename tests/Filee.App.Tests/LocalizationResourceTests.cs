@@ -2,6 +2,8 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
+using Avalonia.Media.TextFormatting;
+using Avalonia.Platform;
 using Avalonia.VisualTree;
 using Filee.App.Controls;
 using Filee.App.Services;
@@ -26,6 +28,77 @@ public class LocalizationResourceTests
             Assert.True(FontManager.Current.TryMatchCharacter(0x0645, FontStyle.Normal, FontWeight.Normal,
                 FontStretch.Normal, family, System.Globalization.CultureInfo.GetCultureInfo("ar"), out var arabic));
             Assert.NotEqual((ushort)0, arabic.GlyphTypeface.CharacterToGlyphMap.GetGlyph(0x0645));
+        }
+        finally { TestServices.EnsureInitialized("en"); }
+    }
+
+    /// <summary>What a piece of text is drawn in, run by run, as a TextBlock lays it out (it passes no culture).</summary>
+    private static List<(string Text, string Family)> FontsDrawing(string text, string language, FontWeight weight = FontWeight.Normal)
+    {
+        var family = FontFamily.Parse(ThemeService.FontFamilies(language));
+        using var layout = new TextLayout(text, new Typeface(family, FontStyle.Normal, weight), 14, Brushes.Black);
+        return [.. layout.TextLines.SelectMany(l => l.TextRuns).OfType<ShapedTextRun>()
+            .Select(r => (r.Text.ToString(), r.GlyphRun.GlyphTypeface.FamilyName))];
+    }
+
+    /// <summary>
+    /// #1095: these Han characters differ between the regions and every embedded CJK font has them, so only the font
+    /// chain's order can pick the font. Before, it was Noto Sans JP in every language.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData("zh-CN", "Noto Sans SC")]
+    [InlineData("ja", "Noto Sans JP")]
+    [InlineData("ko", "Noto Sans KR")]
+    [InlineData("en", "Noto Sans KR")]
+    public void Han_characters_take_the_embedded_font_of_the_ui_languages_region(string language, string font)
+    {
+        Assert.SkipUnless(AssetLoader.Exists(new Uri("avares://Filee/Assets/Fonts/NotoSansSC-Regular.otf")), "Needs build/fetch-fonts.ps1.");
+        TestServices.EnsureInitialized(language);
+        try
+        {
+            var family = FontFamily.Parse(ThemeService.FontFamilies(language));
+            foreach (var character in "将系与所")
+            {
+                Assert.True(FontManager.Current.TryMatchCharacter(character, FontStyle.Normal, FontWeight.Normal, FontStretch.Normal, family, null, out var typeface));
+                Assert.Equal(font, typeface.GlyphTypeface.FamilyName);
+            }
+            foreach (var weight in new[] { FontWeight.Normal, FontWeight.SemiBold, FontWeight.Bold })
+                Assert.Equal([("Save ", "Noto Sans"), ("将系与所", font)],
+                    FontsDrawing("Save 将系与所", language, weight));
+        }
+        finally { TestServices.EnsureInitialized("en"); }
+    }
+
+    /// <summary>#1095's strings: 跟随系 stayed Japanese up to 统, the first character Noto Sans JP doesn't have.</summary>
+    [AvaloniaTheory]
+    [InlineData("将文件拖放到这里")]
+    [InlineData("跟随系统")]
+    [InlineData("与源文件相同的文件夹")]
+    [InlineData("所有转换都保留原文件日期")]
+    public void Simplified_chinese_text_is_one_run_of_noto_sans_sc(string text)
+    {
+        Assert.SkipUnless(AssetLoader.Exists(new Uri("avares://Filee/Assets/Fonts/NotoSansSC-Regular.otf")), "Needs build/fetch-fonts.ps1.");
+        TestServices.EnsureInitialized("zh-CN");
+        try
+        {
+            Assert.Equal([(text, "Noto Sans SC")], FontsDrawing(text, "zh-CN"));
+        }
+        finally { TestServices.EnsureInitialized("en"); }
+    }
+
+    /// <summary>
+    /// #1095: the only embedded font zh-TW may land on is Noto Sans SC, and that only on a machine with no Traditional
+    /// one (macOS answers PingFang TC here, Windows Microsoft JhengHei UI).
+    /// </summary>
+    [AvaloniaFact]
+    public void Traditional_chinese_text_reaches_the_system_traditional_font()
+    {
+        Assert.SkipUnless(AssetLoader.Exists(new Uri("avares://Filee/Assets/Fonts/NotoSansSC-Regular.otf")), "Needs build/fetch-fonts.ps1.");
+        TestServices.EnsureInitialized("zh-TW");
+        try
+        {
+            string[] allowed = ["Microsoft JhengHei UI", "Microsoft JhengHei", "PingFang TC", "Noto Sans CJK TC", "Noto Sans SC"];
+            Assert.All(FontsDrawing("將文件體", "zh-TW"), run => Assert.Contains(run.Family, allowed));
         }
         finally { TestServices.EnsureInitialized("en"); }
     }

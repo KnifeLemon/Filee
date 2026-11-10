@@ -21,6 +21,7 @@ public partial class App : Application
 {
     private readonly List<string> _pendingConvertFiles = [];
     private IDisposable? _convertDebounce;
+    private SelectionLaunches? _launches;
     private bool _selectionPending;
 
     /// <summary>Forwarded launches and empty selections can come in bursts: a few lines a minute are enough.</summary>
@@ -83,13 +84,20 @@ public partial class App : Application
         });
         // Every engine's availability, checked once off the UI thread: the first donut or drop otherwise starts
         // every engine's check (FFmpeg -version, folder searches) on the UI thread and freezes it meanwhile.
-        _ = AppHost.Get<ConverterCatalog>().CheckInBackgroundAsync();
+        var catalog = AppHost.Get<ConverterCatalog>();
+        _ = catalog.CheckInBackgroundAsync();
+        Filee.Engines.Translation.TranslatorConverter.StatusChanged += () =>
+            Dispatcher.UIThread.Post(() =>
+            {
+                catalog.Refresh();
+                _ = catalog.CheckInBackgroundAsync();
+            });
 
         // Global gestures → donut toolbar
         var triggers = AppHost.Get<TriggerService>();
         var radial = AppHost.Get<RadialController>();
         var platform = AppHost.Get<IPlatformServices>();
-        triggers.DragStarted += (_, e) => radial.ShowForDrag(e.X, e.Y);
+        triggers.DragStarted += (_, e) => radial.ShowForDrag(e.X, e.Y, OpensBack(e));
         triggers.DragEnded += (_, _) => radial.OnDragGestureEnded();
         triggers.SelectionGesture += async (_, e) =>
         {
@@ -104,13 +112,13 @@ public partial class App : Application
                 if (e.Gesture is { Clipboard: true })
                 {
                     if (platform.SupportsClipboard)
-                        ShowForClipboard(radial, platform, e.X, e.Y, log);
+                        ShowForClipboard(radial, platform, e.X, e.Y, OpensBack(e), log);
                     return;
                 }
                 var files = OperatingSystem.IsMacOS()
                     ? await Task.Run(platform.GetFileManagerSelection) : platform.GetFileManagerSelection();
                 if (files.Count > 0 && !store.Settings.Paused)
-                    radial.ShowForFiles(e.X, e.Y, files);
+                    radial.ShowForFiles(e.X, e.Y, files, backFace: OpensBack(e));
                 else if (files.Count == 0 && Throttle.TryEnter("empty-selection", out var held))
                     log.LogInformation("The selection shortcut found no selected files in {Window}{Elevation}{Held}",
                         platform.DescribeForegroundWindow() is { Length: > 0 } window ? window : "the foreground window",
@@ -137,6 +145,8 @@ public partial class App : Application
             log.LogInformation("{Rendering}", WindowsRendering.Describe(Environment.GetEnvironmentVariable(WindowsRendering.Variable)));
             TransparentWindows.Watch(log);
         }
+        else if (Program.LinuxDrawsInSoftware)
+            log.LogInformation("Rendering: software ({Variable})", WindowsRendering.Variable);
         // macOS: ask for Accessibility with the system's own alert when the user opened Filee (not at sign-in) and
         // a drag gesture is on, once ever (see ShouldAskForPermission). The home page keeps a reminder until it is
         // given. Asked once the main window is up: asked earlier, the alert ends up behind it.
@@ -181,6 +191,7 @@ public partial class App : Application
             AppHost.Get<TriggerService>().Dispose();
             AppHost.Get<TrayService>().Dispose();
             AppHost.Get<WatchFolderService>().DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            Filee.App.ViewModels.OllamaModelManagerViewModel.StopFileeStartedServer();
         };
 
         // Before HandleCommandLine marks the first run complete: a fresh install gets no slides (an update by the
@@ -205,18 +216,24 @@ public partial class App : Application
                     });
             };
         WatchForUpdates(store);
+        // Started to the tray (at sign-in): no job or window would ask for a trim, however long Filee waits there (#957).
+        if (AppHost.Get<WindowService>().Main is null)
+            AppHost.Get<MemoryTrimmer>().Request();
         // Filee runs as administrator while Explorer doesn't (an installer started "as administrator" started it):
         // say so once, next to the tray, and on the Home page for as long as it lasts.
         if (AppHost.Get<ElevationService>().ShellCannotReachFilee)
             DispatcherTimer.RunOnce(() => AppHost.Get<WindowService>().ShowElevationNotice(), TimeSpan.FromSeconds(2));
     }
 
+    /// <summary>The gesture is set to open the donut on its back face.</summary>
+    private static bool OpensBack(GestureEventArgs e) => e.Gesture is { Face: DonutFace.Back };
+
     /// <summary>
     /// Opens the donut for the files on the clipboard, else for its picture (a screenshot), which is saved when it
     /// converts, like a picture from a browser, without keeping the original. The results go back on the clipboard.
     /// With neither on the clipboard, nothing opens.
     /// </summary>
-    private static void ShowForClipboard(RadialController radial, IPlatformServices platform, int x, int y, ILogger log)
+    private static void ShowForClipboard(RadialController radial, IPlatformServices platform, int x, int y, bool backFace, ILogger log)
     {
         ClipboardContent? content;
         try
@@ -230,7 +247,7 @@ public partial class App : Application
         }
         if (content is { Files.Count: > 0 })
         {
-            radial.ShowForFiles(x, y, content.Files, toClipboard: true);
+            radial.ShowForFiles(x, y, content.Files, toClipboard: true, backFace: backFace);
             return;
         }
         if (content?.Picture is not { Length: > 0 } picture)
@@ -246,7 +263,7 @@ public partial class App : Application
         };
         log.LogInformation("The clipboard shortcut opens the donut for a {Extension} picture of {Bytes} bytes",
             content.PictureExtension, picture.Length);
-        radial.ShowForFiles(x, y, web.Placeholders, web: web, toClipboard: true);
+        radial.ShowForFiles(x, y, web.Placeholders, web: web, toClipboard: true, backFace: backFace);
     }
 
     private void ListenForLaterLaunches(SingleInstance instance, ILogger log)
@@ -256,6 +273,11 @@ public partial class App : Application
             if (Throttle.TryEnter("forwarded", out var held))
                 log.LogInformation("A later launch handed over {Count} argument(s){Held}", args.Length, LogThrottle.HeldText(held));
             Dispatcher.UIThread.Post(() => HandleCommandLine(CommandLine.Parse(args), forwarded: true));
+        };
+        instance.ListeningFailed += ex =>
+        {
+            if (Throttle.TryEnter("listening", out var held))
+                log.LogWarning(ex, "A later launch couldn't be taken, trying the next{Held}", LogThrottle.HeldText(held));
         };
         instance.StartListening();
     }
@@ -355,8 +377,13 @@ public partial class App : Application
         options.DeleteListFile();
         if (options.ConvertFiles.Count > 0)
         {
-            // Explorer may start one process per selected file: collect them for a moment, then open once.
-            _pendingConvertFiles.AddRange(options.ConvertFiles);
+            // Explorer may start one process per selected file: the first one brings the selection, or (when it can't
+            // be read) they are collected for a moment and later ones join the donut (see OpenPendingFiles).
+            _launches ??= new SelectionLaunches(ReadSelectionForLaunch);
+            var added = _launches.Arrived(options.ConvertFiles);
+            if (added.Count == 0)
+                return;
+            _pendingConvertFiles.AddRange(added);
             _convertDebounce?.Dispose();
             _convertDebounce = DispatcherTimer.RunOnce(OpenPendingFiles, TimeSpan.FromMilliseconds(350));
             return;
@@ -410,10 +437,34 @@ public partial class App : Application
     {
         var files = _pendingConvertFiles.Distinct(FileSystemPaths.Comparer).ToList();
         _pendingConvertFiles.Clear();
+        var radial = AppHost.Get<RadialController>();
+        // A launch that came after a longer gap belongs with the ones the open donut has: replacing them lost those files.
+        if (radial.TryAddFiles(files))
+            return;
         var (x, y) = AppHost.Get<TriggerService>().LastCursor;
         if (x == 0 && y == 0 && AppHost.Get<WindowService>().Main is { } main)
             (x, y) = (main.Position.X + 200, main.Position.Y + 200);
-        AppHost.Get<RadialController>().ShowForFiles(x, y, files, forAnotherProcess: true);
+        radial.ShowForFiles(x, y, files, forAnotherProcess: true);
+    }
+
+    /// <summary>The selection a launch for one file may be part of. Only Windows' menu entry starts one process per file.</summary>
+    private static IReadOnlyList<string> ReadSelectionForLaunch()
+    {
+        if (!OperatingSystem.IsWindows())
+            return [];
+        var log = AppHost.Get<ILogger<App>>();
+        try
+        {
+            var selection = AppHost.Get<IPlatformServices>().GetFileManagerSelection();
+            log.LogInformation("A launch for one file found {Count} selected file(s) in {Window}", selection.Count,
+                AppHost.Get<IPlatformServices>().DescribeForegroundWindow());
+            return selection;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogWarning(ex, "Could not read the selection for a launch");
+            return [];
+        }
     }
 
 }

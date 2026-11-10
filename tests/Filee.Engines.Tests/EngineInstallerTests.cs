@@ -16,7 +16,7 @@ public sealed class EngineInstallerTests : IDisposable
 
     public void Dispose()
     {
-        try { Directory.Delete(_root, true); } catch (IOException) { }
+        try { EngineInstaller.DeleteFolder(_root); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     [Fact]
@@ -134,6 +134,52 @@ public sealed class EngineInstallerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_package_another_Filee_is_installing_is_neither_downloaded_nor_removed()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var server = new FakeServer(new() { [component.Url] = archive });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        var update = component with { Version = "2.0", Sha256 = new string('1', 64) };
+        var updating = Installer(server, update);
+
+        var locks = Path.Combine(_root, ".downloads", "locks");
+        using (new FileStream(Path.Combine(locks, "tool.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+        {
+            var busy = await Assert.ThrowsAsync<EngineBusyException>(() => updating.InstallAsync(package, null, TestContext.Current.CancellationToken));
+            Assert.Equal("tool", busy.PackageId);
+            Assert.Contains("another Filee", busy.Message);
+            Assert.Throws<EngineBusyException>(() => installer.Uninstall(package));
+        }
+
+        Assert.Single(server.Requests);
+        Assert.True(installer.IsUpToDate(package));
+        installer.Uninstall(package);
+        Assert.False(installer.IsInstalled(package));
+    }
+
+    [Fact]
+    public async Task The_copy_in_use_is_Filees_download_until_it_is_removed()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var installer = Installer(new FakeServer(new() { [component.Url] = archive }), component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        Assert.Equal(new EngineCopy(EngineCopyStatus.NotInstalled, null, false, false), installer.StatusOf(package));
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, false), installer.StatusOf(package));
+
+        var newer = Installer(new FakeServer(new()), component with { Version = "2.0", Sha256 = new string('1', 64) });
+        Assert.Equal(new EngineCopy(EngineCopyStatus.Installed, null, false, true), newer.StatusOf(package));
+
+        installer.Uninstall(package);
+        Assert.Equal(EngineCopyStatus.NotInstalled, installer.StatusOf(package).Status);
+    }
+
+    [Fact]
     public void Transfer_rate_averages_over_the_last_seconds_and_estimates_the_time_left()
     {
         var rate = new TransferRate(TimeSpan.FromSeconds(5));
@@ -152,6 +198,294 @@ public sealed class EngineInstallerTests : IDisposable
         for (var second = 11; second <= 20; second++)
             rate.Add(TimeSpan.FromSeconds(second), 10_000_000L + (second - 10) * 100_000L);
         Assert.Equal(100_000, rate.BytesPerSecond, 0);
+    }
+
+    /// <summary>Serves <paramref name="bytes"/> but breaks off after half of them, as a dropped connection does.</summary>
+    private sealed class BrokenServer(byte[] bytes) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BreakingStream(bytes)) });
+
+        private sealed class BreakingStream(byte[] bytes) : MemoryStream(bytes)
+        {
+            public override int Read(byte[] buffer, int offset, int count) =>
+                Position >= Length / 2 ? throw new IOException("The connection was reset.") : base.Read(buffer, offset, Math.Min(count, 64));
+
+            public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+                Position >= Length / 2 ? throw new IOException("The connection was reset.") : base.ReadAsync(buffer[..Math.Min(buffer.Length, 64)], cancellationToken);
+        }
+    }
+
+    [Fact]
+    public async Task A_broken_off_download_leaves_no_partial_file()
+    {
+        // #963: the .part file of an interrupted download stayed (up to ~420 MB for LibreOffice).
+        var archive = Zip(("tool.exe", new string('x', 4096)));
+        var component = Component("tool", "zip", archive);
+        var installer = new EngineInstaller(new HttpClient(new BrokenServer(archive)), _root, new Dictionary<string, EngineComponent> { ["tool"] = component });
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+
+        await Assert.ThrowsAnyAsync<IOException>(() => installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.False(installer.IsInstalled(package));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, ".downloads")));
+    }
+
+    [Fact]
+    public async Task Removing_a_package_with_a_file_in_use_leaves_it_whole_and_installed()
+    {
+        // #963: the delete went in name order, so the marker went first and a half-deleted engine looked not installed.
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows refuses to move a folder with an open file.");
+        var first = Zip(("a.exe", "first"));
+        var second = Zip(("b.exe", "second"));
+        var a = Component("a", "zip", first);
+        var b = Component("b", "zip", second);
+        var installer = Installer(new FakeServer(new() { [a.Url] = first, [b.Url] = second }), a, b);
+        var package = new EnginePackage("pair", ["a", "b"], 1000, ["pair"]);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        using (new FileStream(Path.Combine(_root, "b", "b.exe"), FileMode.Open, FileAccess.Read, FileShare.None))
+            Assert.ThrowsAny<IOException>(() => installer.Uninstall(package));
+
+        Assert.True(installer.IsInstalled(package));
+        Assert.True(File.Exists(Path.Combine(_root, "a", "a.exe")));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+
+        installer.Uninstall(package);
+        Assert.False(installer.IsInstalled(package));
+        Assert.Equal([".downloads"], Directory.GetDirectories(_root).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task What_a_cut_short_removal_left_aside_goes_with_the_next_install()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var installer = Installer(new FakeServer(new() { [component.Url] = archive }), component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        var left = Directory.CreateDirectory(Path.Combine(_root, "~removed-tool-0badf00d")).FullName;
+        File.WriteAllText(Path.Combine(left, "soffice.exe"), "leftover");
+        var other = Directory.CreateDirectory(Path.Combine(_root, "~removed-other-0badf00d")).FullName;
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.False(Directory.Exists(left));
+        Assert.True(Directory.Exists(other)); // another package's leftovers wait for that package's lock
+        Assert.True(installer.IsInstalled(package));
+    }
+
+    /// <summary>Installs version 1.0 of a package and leaves its files read-only, as the calibre MSI does.</summary>
+    private async Task<(EnginePackage Package, string Folder)> InstallReadOnly(string id)
+    {
+        var archive = Zip(($"{id}-1.0/old.exe", "old"), ($"{id}-1.0/app/bin/amatch.dll", "old"));
+        var component = Component(id, "zip", archive);
+        var package = new EnginePackage(id, [id], 1, [id]);
+        await Installer(new FakeServer(new() { [component.Url] = archive }), component).InstallAsync(package, null, TestContext.Current.CancellationToken);
+        var folder = Path.Combine(_root, id);
+        foreach (var file in Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Where(f => Path.GetFileName(f) != ".filee-component"))
+            File.SetAttributes(file, FileAttributes.ReadOnly);
+        return (package, folder);
+    }
+
+    [Fact]
+    public async Task An_update_replaces_a_copy_with_read_only_files()
+    {
+        // #1084, #1092, #1109: every file of the calibre MSI is read-only, so its first update failed on 'amatch.dll' for
+        // good: the delete took the marker first, the card went back to Install and each retry stopped at the same file.
+        var (package, folder) = await InstallReadOnly("tool");
+        var update = Zip(("tool-2.0/new.exe", "new"));
+        var component = Component("tool", "zip", update) with { Version = "2.0" };
+        var installer = Installer(new FakeServer(new() { [component.Url] = update }), component);
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(installer.IsUpToDate(package));
+        Assert.Equal("new", File.ReadAllText(Path.Combine(folder, "new.exe")));
+        Assert.False(File.Exists(Path.Combine(folder, "old.exe")));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+    }
+
+    [Fact]
+    public async Task A_LibreOffice_extension_update_replaces_read_only_files()
+    {
+        var extensions = Path.Combine(_root, "libreoffice", "share", "extensions");
+        var old = Directory.CreateDirectory(Path.Combine(extensions, "H2Orestart")).FullName;
+        var jar = Path.Combine(old, "old.jar");
+        File.WriteAllText(jar, "old");
+        File.SetAttributes(jar, FileAttributes.ReadOnly);
+        var oxt = Zip(("new.jar", "new"));
+        var extension = Component("h2orestart", "oxt", oxt);
+        var installer = Installer(new FakeServer(new() { [extension.Url] = oxt }), extension);
+
+        await installer.InstallAsync(new EnginePackage("filter", ["h2orestart"], 1, []), null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(old, "new.jar")));
+        Assert.False(File.Exists(jar));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+    }
+
+    [Fact]
+    public async Task Removing_a_package_with_read_only_files_leaves_nothing_aside()
+    {
+        var (package, _) = await InstallReadOnly("tool");
+
+        Installer(new FakeServer([])).Uninstall(package);
+
+        Assert.Equal([".downloads"], Directory.GetDirectories(_root).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task An_update_while_the_engine_runs_leaves_the_working_copy_and_its_marker()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Windows refuses to move a folder with an open file.");
+        var (package, folder) = await InstallReadOnly("tool");
+        var marker = File.ReadAllText(Path.Combine(folder, ".filee-component"));
+        var update = Zip(("tool-2.0/new.exe", "new"));
+        var component = Component("tool", "zip", update) with { Version = "2.0" };
+        var installer = Installer(new FakeServer(new() { [component.Url] = update }), component);
+
+        using (new FileStream(Path.Combine(folder, "old.exe"), FileMode.Open, FileAccess.Read, FileShare.None))
+            await Assert.ThrowsAnyAsync<Exception>(() => installer.InstallAsync(package, null, TestContext.Current.CancellationToken));
+
+        Assert.Equal(marker, File.ReadAllText(Path.Combine(folder, ".filee-component")));
+        Assert.Equal("old", File.ReadAllText(Path.Combine(folder, "old.exe")));
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+        Assert.True(installer.IsUpToDate(package));
+    }
+
+    [Fact]
+    public async Task The_error_of_a_failed_unpack_is_not_replaced_by_its_cleanup_and_read_only_files_go()
+    {
+        // #1092: the delete in 'finally' threw on a read-only file and hid what had gone wrong in the try block.
+        var installer = Installer(new FakeServer([]));
+
+        var error = await Assert.ThrowsAsync<InvalidDataException>(() => installer.InStagingAsync(staging =>
+        {
+            var bin = Directory.CreateDirectory(Path.Combine(staging, "app", "bin")).FullName;
+            File.WriteAllText(Path.Combine(bin, "amatch.dll"), "unpacked");
+            File.SetAttributes(Path.Combine(bin, "amatch.dll"), FileAttributes.ReadOnly);
+            throw new InvalidDataException("the real error");
+        }));
+
+        Assert.Equal("the real error", error.Message);
+        Assert.Empty(Directory.GetDirectories(_root, "~*"));
+    }
+
+    [Fact]
+    public async Task The_error_of_a_failed_unpack_is_not_replaced_by_a_file_that_stays_locked()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows refuses to delete an open file.");
+        var installer = Installer(new FakeServer([]));
+        FileStream? open = null;
+        try
+        {
+            var error = await Assert.ThrowsAsync<InvalidDataException>(() => installer.InStagingAsync(staging =>
+            {
+                Directory.CreateDirectory(staging);
+                open = new FileStream(Path.Combine(staging, "held.dll"), FileMode.Create, FileAccess.Write, FileShare.None);
+                throw new InvalidDataException("the real error");
+            }));
+
+            Assert.Equal("the real error", error.Message);
+        }
+        finally
+        {
+            open?.Dispose();
+        }
+    }
+
+    [Fact]
+    public void A_file_held_briefly_doesnt_stop_a_folder_being_deleted()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "folder")).FullName;
+        var file = Path.Combine(folder, "scanned.dll");
+        File.WriteAllText(file, "bytes");
+        var held = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+        // On its own thread: under load the pool can get to a release only as the retries below give up.
+        var release = new Thread(() =>
+        {
+            Thread.Sleep(100);
+            held.Dispose();
+        })
+        { IsBackground = true };
+        release.Start();
+
+        EngineInstaller.DeleteFolder(folder);
+        release.Join();
+
+        Assert.False(Directory.Exists(folder));
+    }
+
+    /// <summary>A junction on Windows, a symbolic link elsewhere.</summary>
+    private static void LinkFolder(string link, string target)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("This machine doesn't let the test make a symbolic link.");
+            }
+            return;
+        }
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        mklink.WaitForExit();
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
+    }
+
+    /// <summary>A folder elsewhere with a read-only file, which must stay as it is.</summary>
+    private string ForeignFolder()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "elsewhere")).FullName;
+        File.WriteAllText(Path.Combine(folder, "keep.txt"), "mine");
+        File.SetAttributes(Path.Combine(folder, "keep.txt"), FileAttributes.ReadOnly);
+        return folder;
+    }
+
+    private static void AssertUntouched(string foreign)
+    {
+        var kept = Path.Combine(foreign, "keep.txt");
+        Assert.Equal("mine", File.ReadAllText(kept));
+        Assert.True(File.GetAttributes(kept).HasFlag(FileAttributes.ReadOnly));
+    }
+
+    [Fact]
+    public void Deleting_a_folder_with_a_link_in_it_leaves_what_the_link_leads_to()
+    {
+        var foreign = ForeignFolder();
+        var folder = Directory.CreateDirectory(Path.Combine(_root, "engine")).FullName;
+        File.WriteAllText(Path.Combine(folder, "tool.exe"), "binary");
+        File.SetAttributes(Path.Combine(folder, "tool.exe"), FileAttributes.ReadOnly);
+        LinkFolder(Path.Combine(folder, "link"), foreign);
+
+        EngineInstaller.DeleteFolder(folder);
+
+        Assert.False(Directory.Exists(folder));
+        AssertUntouched(foreign);
+    }
+
+    [Fact]
+    public void Deleting_a_folder_that_is_a_link_removes_only_the_link()
+    {
+        var foreign = ForeignFolder();
+        Directory.CreateDirectory(_root);
+        var link = Path.Combine(_root, "engines");
+        LinkFolder(link, foreign);
+
+        EngineInstaller.DeleteFolder(link);
+
+        Assert.False(Directory.Exists(link));
+        AssertUntouched(foreign);
     }
 
     [Fact]
@@ -349,8 +683,175 @@ public sealed class EngineInstallerTests : IDisposable
             Directory.GetFiles(root, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(root, f).Replace('\\', '/')).Order(StringComparer.Ordinal));
     }
 
+    [Fact]
+    public async Task Model_components_are_copied_and_marked_installed()
+    {
+        var modelBytes = "ggml-model-bytes"u8.ToArray();
+        var component = Component("whisper-model", "model", modelBytes);
+        var server = new FakeServer(new() { [component.Url] = modelBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("whisper", ["whisper-model"], modelBytes.Length, ["whisper"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", "whisper-model.model")));
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", ".filee-component")));
+        Assert.True(installer.IsInstalled(package));
+        Assert.True(installer.IsUpToDate(package));
+    }
+
+    [Fact]
+    public async Task Ncnn_components_write_custom_marker_and_are_reported_installed()
+    {
+        var paramBytes = "ncnn-param-bytes"u8.ToArray();
+        var component = Component("model-param", "ncnn-param", paramBytes);
+        var server = new FakeServer(new() { [component.Url] = paramBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("ncnn-test", ["model-param"], paramBytes.Length, ["upscaler"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "model", ".model-param")));
+        Assert.True(installer.IsInstalled(package));
+    }
+
+    [Fact]
+    public async Task Uninstalling_a_package_leaves_components_shared_with_another_installed_package_intact()
+    {
+        var archiveA = Zip(("toolA.exe", "binaryA"));
+        var compA = Component("toolA", "zip", archiveA);
+        var archiveB = Zip(("toolB.exe", "binaryB"));
+        var compB = Component("toolB", "zip", archiveB);
+        var archiveShared = Zip(("shared.dll", "sharedDll"));
+        var compShared = Component("shared", "zip", archiveShared);
+
+        var server = new FakeServer(new()
+        {
+            [compA.Url] = archiveA,
+            [compB.Url] = archiveB,
+            [compShared.Url] = archiveShared,
+        });
+
+        var packageA = new EnginePackage("pkgA", ["toolA", "shared"], 1000, ["toolA"]);
+        var packageB = new EnginePackage("pkgB", ["toolB", "shared"], 1000, ["toolB"]);
+
+        var installer = new EngineInstaller(new HttpClient(server), _root,
+            new Dictionary<string, EngineComponent>
+            {
+                ["toolA"] = compA,
+                ["toolB"] = compB,
+                ["shared"] = compShared,
+            },
+            packages: [packageA, packageB]);
+
+        await installer.InstallAsync(packageA, null, TestContext.Current.CancellationToken);
+        await installer.InstallAsync(packageB, null, TestContext.Current.CancellationToken);
+
+        Assert.True(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgA: shared component is still used by pkgB, so shared must stay intact.
+        installer.Uninstall(packageA);
+
+        Assert.False(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolA")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgB: now shared is no longer used by any installed package, so it is removed.
+        installer.Uninstall(packageB);
+
+        Assert.False(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "shared")));
+    }
+
+    [Fact]
+    public void An_empty_package_is_neither_installed_nor_up_to_date()
+    {
+        var empty = new EnginePackage("empty", [], 0, []);
+        var installer = Installer(new FakeServer([]));
+
+        Assert.False(installer.IsInstalled(empty));
+        Assert.False(installer.IsUpToDate(empty));
+    }
+
+    [Fact]
+    public async Task CopyRuntime_copies_vcruntime_and_vcomp14_dlls_next_to_zip_component()
+    {
+        var vcConda = Conda(("Library/bin/vcruntime140.dll", "vc"));
+        var vcComp = Conda(("Library/bin/vcomp140.dll", "vcomp"));
+        // The installer checks for the program under its name on this OS.
+        var program = OperatingSystem.IsWindows() ? "upscayl-bin.exe" : "upscayl-bin";
+        var zip = Zip(($"tool/{program}", "bin"));
+
+        var compVc = Component("vcruntime", "conda", vcConda);
+        var compVcomp = Component("vcomp14", "conda", vcComp);
+        var compTool = Component("upscayl-bin", "zip", zip);
+
+        var package = new EnginePackage("upscayl-bin", ["upscayl-bin", "vcruntime", "vcomp14"], 1, ["upscaler"]);
+        var server = new FakeServer(new()
+        {
+            [compVc.Url] = vcConda,
+            [compVcomp.Url] = vcComp,
+            [compTool.Url] = zip,
+        });
+
+        var installer = Installer(server, compVc, compVcomp, compTool);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        var toolDir = Path.Combine(_root, "upscayl-bin");
+        Assert.True(File.Exists(Path.Combine(toolDir, program)));
+        Assert.True(File.Exists(Path.Combine(toolDir, "vcruntime140.dll")));
+        Assert.True(File.Exists(Path.Combine(toolDir, "vcomp140.dll")));
+        Assert.Equal("vc", File.ReadAllText(Path.Combine(toolDir, "vcruntime140.dll")));
+        Assert.Equal("vcomp", File.ReadAllText(Path.Combine(toolDir, "vcomp140.dll")));
+    }
+
     private sealed class SyncProgress(Action<EngineInstallProgress> report) : IProgress<EngineInstallProgress>
     {
         public void Report(EngineInstallProgress value) => report(value);
+    }
+
+    [Fact]
+    public void ExifTools_Windows_build_is_renamed_so_it_doesnt_wait_for_a_key_and_its_folder_is_found()
+    {
+        var root = Directory.CreateTempSubdirectory("filee-exiftool-").FullName;
+        try
+        {
+            File.WriteAllText(Path.Combine(root, "exiftool(-k).exe"), "");
+            Directory.CreateDirectory(Path.Combine(root, "exiftool_files"));
+
+            EngineInstaller.RenameExifTool("exiftool", root);
+
+            Assert.True(File.Exists(Path.Combine(root, "exiftool.exe")));
+            Assert.False(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
+            Assert.Equal(root, EngineEnvironment.FolderWithPrograms("exiftool", root, windows: true));
+            // Another package's files are left as they are.
+            File.WriteAllText(Path.Combine(root, "exiftool(-k).exe"), "");
+            EngineInstaller.RenameExifTool("pandoc", root);
+            Assert.True(File.Exists(Path.Combine(root, "exiftool(-k).exe")));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ExifTool_is_offered_on_every_platform_and_runs_the_Metadata_tools_converter()
+    {
+        var package = Assert.Single(EngineDownloads.Packages, p => p.Id == "exiftool");
+        Assert.Equal(["exiftool"], package.ConverterIds);
+        foreach (var runtime in new[] { "win-x64", "osx-arm64", "osx-x64", "linux-x64", "linux-arm64" })
+        {
+            var component = EngineDownloads.ComponentsForRuntime(runtime)["exiftool"];
+            Assert.Equal("13.60", component.Version);
+            Assert.Equal(runtime == "win-x64" ? "zip" : "tar.gz", component.Kind);
+        }
     }
 }

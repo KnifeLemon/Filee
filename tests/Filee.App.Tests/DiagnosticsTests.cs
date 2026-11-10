@@ -211,6 +211,30 @@ public class StartupDiagnosticsTests
     }
 
     [Fact]
+    public void Logs_are_kept_for_two_weeks()
+    {
+        var folder = Directory.CreateTempSubdirectory("filee-log-retention-").FullName;
+        try
+        {
+            var tenDays = Path.Combine(folder, "filee-20000110.log");
+            var fifteenDays = Path.Combine(folder, "filee-20000105.log");
+            File.WriteAllText(tenDays, "");
+            File.WriteAllText(fifteenDays, "");
+            File.SetLastWriteTime(tenDays, DateTime.Now.AddDays(-10));
+            File.SetLastWriteTime(fifteenDays, DateTime.Now.AddDays(-15));
+
+            using var _ = new FileLoggerProvider(folder);
+
+            Assert.True(File.Exists(tenDays));
+            Assert.False(File.Exists(fifteenDays));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Early_store_load_logs_corrupt_settings_and_keeps_broken_copy()
     {
         var folder = Directory.CreateTempSubdirectory("filee-early-store-").FullName;
@@ -300,7 +324,7 @@ public class ElevationServiceTests
         TestServices.EnsureInitialized();
         var elevation = Create(relaunchError: "Explorer did not answer.");
         using var page = new ViewModels.Pages.HomePageViewModel(AppHost.Get<Filee.Core.Settings.UserDataStore>(),
-            AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<IPlatformServices>(), elevation: elevation);
+            AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<IPlatformServices>(), AppHost.Get<Filee.App.Services.StagedFiles>(), elevation: elevation);
         var changed = new List<string?>();
         page.PropertyChanged += (_, e) => changed.Add(e.PropertyName);
         Assert.True(page.IsElevated);
@@ -319,7 +343,7 @@ public class ElevationServiceTests
         TestServices.EnsureInitialized();
         using var page = new ViewModels.Pages.HomePageViewModel(AppHost.Get<Filee.Core.Settings.UserDataStore>(),
             AppHost.Get<Filee.Core.Localization.ILocalizer>(), AppHost.Get<IPlatformServices>(),
-            elevation: AppHost.Get<ElevationService>()); // tests never run Program: the state stays unknown
+            AppHost.Get<Filee.App.Services.StagedFiles>(), elevation: AppHost.Get<ElevationService>()); // tests never run Program: the state stays unknown
         Assert.False(page.IsElevated);
     }
 }

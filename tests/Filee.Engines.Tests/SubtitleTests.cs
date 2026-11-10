@@ -46,6 +46,9 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("ttml", "srt")]
     [InlineData("sub", "srt")]
     [InlineData("scc", "vtt")]
+    [InlineData("srt", "txt")]
+    [InlineData("vtt", "txt")]
+    [InlineData("ass", "txt")]
     public void Subtitles_convert_in_one_built_in_step(string from, string to)
     {
         var route = fx.Catalog.CreatePlanner([]).Plan(from, to);
@@ -64,6 +67,9 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
         // Subtitles never become video, and audio has no subtitles.
         Assert.Null(planner.Plan("srt", "mp4"));
         Assert.Null(planner.Plan("mp3", "srt"));
+        // Plain text comes from a subtitle file only: not from a video's track, and not on into documents.
+        Assert.DoesNotContain(planner.Plan("mkv", "txt")?.Steps ?? [], s => s.To == "srt");
+        Assert.DoesNotContain(planner.Plan("srt", "pdf")?.Steps ?? [], s => s.To == "txt");
     }
 
     // ───────────────────────── Encodings ─────────────────────────
@@ -350,6 +356,36 @@ public class SubtitleTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Contains("""<p begin="00:00:01.000" end="00:00:02.500"><span tts:fontStyle="italic">Hello</span> &amp; <span tts:fontWeight="bold">bye</span><br /><span tts:color="#FFFF00">yellow</span> 1 &lt; 2</p>""", ttml);
 
         Assert.StartsWith("{1}{1}23.976\r\n{24}{60}Hello & bye|yellow 1 < 2\r\n", Write(document, "sub"));
+    }
+
+    [Fact]
+    public void Plain_text_has_the_spoken_lines_only()
+    {
+        var document = Sample();
+        // A repeated line (Whisper, roll-up captions) comes once; the same words later on stay.
+        document.Add(Ms(7000), Ms(8000), "<i>Last one</i>");
+        document.Add(Ms(8000), Ms(9000), " Last  one ");
+        document.Add(Ms(9000), Ms(10000), "Next");
+        document.Add(Ms(10000), Ms(11000), "Last one");
+        document.Finish();
+
+        var bytes = SubtitleWriter.Write(document, "txt");
+        Assert.Equal(Encoding.UTF8.GetPreamble(), bytes[..3]);
+        Assert.Equal("Hello & bye yellow 1 < 2\r\n다음 줄\r\nLast one\r\nNext\r\nLast one\r\n", Write(document, "txt"));
+    }
+
+    [Fact]
+    public async Task A_subtitle_file_becomes_plain_text()
+    {
+        var folder = fx.NewFolder();
+        var vtt = Path.Combine(folder, "talk.vtt");
+        File.WriteAllText(vtt, "WEBVTT\n\n00:00:01.000 --> 00:00:02.000 align:start\n<v Ann><b>Hi</b> there\n\n00:00:02.000 --> 00:00:03.000\nHow are you?\n", new UTF8Encoding(false));
+
+        var job = await fx.ConvertAsync([vtt], new Preset { TargetFormat = "txt" });
+        Assert.True(job.State == JobState.Completed, string.Join("; ", job.Files.Select(f => $"{f.ErrorKey} {f.ErrorDetail}")));
+        var output = job.Outputs.Single();
+        Assert.Equal(".txt", Path.GetExtension(output));
+        Assert.Equal("Hi there\r\nHow are you?\r\n", File.ReadAllText(output));
     }
 
     [Theory]

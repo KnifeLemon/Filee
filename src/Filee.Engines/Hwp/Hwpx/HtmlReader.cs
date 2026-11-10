@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using AngleSharp.Dom;
 using AngleSharp.Html.Parser;
+using Filee.Engines.Infrastructure;
 using ImageMagick;
 
 namespace Filee.Engines.Hwp.Hwpx;
@@ -27,7 +28,10 @@ internal sealed class HtmlReadOptions
     /// <summary>Folder that receives images embedded as data: URIs (created on demand).</summary>
     public required string MediaFolder { get; init; }
 
-    /// <summary>When set, local images and style sheets must be inside this folder (e.g. an unpacked e-book).</summary>
+    /// <summary>
+    /// Folder that local images and style sheets must be inside (e.g. an unpacked e-book); default: <see cref="BaseFolder"/>,
+    /// so a page reads only the files in its own folder and below (<see cref="DocumentFiles"/>).
+    /// </summary>
     public string? ResourceRoot { get; init; }
 
     /// <summary>Maps an href to the link target to write, or null to keep only the link text. Default: unchanged.</summary>
@@ -78,7 +82,6 @@ internal sealed partial class HtmlReader
 
     private readonly HtmlReadOptions _options;
     private readonly CssStyleSheet _sheet = new();
-    private int _embedded;
 
     private HtmlReader(HtmlReadOptions options) => _options = options;
 
@@ -125,7 +128,9 @@ internal sealed partial class HtmlReader
         var blocks = new List<HBlock>();
         var sink = new Sink(blocks);
         if (document.Body is { } body)
-            OnLargeStack(() => reader.Children(body, sink, new Context(default, null, 0, 0, null, 0, false, null)));
+            // The walk recurses per element level, and deeply nested pages (up to MaxDepth levels) would exhaust a
+            // thread-pool thread's stack.
+            Nesting.OnLargeStack(() => reader.Children(body, sink, new Context(default, null, 0, 0, null, 0, false, null)));
         reader.Flush(sink);
         if (sink.PendingBookmarks.Count > 0 && blocks.OfType<HParagraph>().LastOrDefault() is { } last)
             last.Inlines.AddRange(sink.PendingBookmarks);
@@ -135,31 +140,6 @@ internal sealed partial class HtmlReader
         var title = document.Title?.Trim();
         var language = document.DocumentElement?.GetAttribute("lang") ?? document.DocumentElement?.GetAttribute("xml:lang");
         return new HtmlContent(blocks, string.IsNullOrWhiteSpace(title) ? null : title, string.IsNullOrWhiteSpace(language) ? null : language);
-    }
-
-    /// <summary>
-    /// Runs the tree walk on a thread with a 16 MB stack: the walk recurses per element level, and deeply nested
-    /// pages (up to <see cref="MaxDepth"/> levels) would exhaust the 1 MB of a thread-pool thread. A stack overflow
-    /// cannot be caught; it would end the whole app.
-    /// </summary>
-    private static void OnLargeStack(Action work)
-    {
-        Exception? error = null;
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                work();
-            }
-            catch (Exception ex)
-            {
-                error = ex;
-            }
-        }, 16 * 1024 * 1024);
-        thread.Start();
-        thread.Join();
-        if (error is not null)
-            System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error).Throw();
     }
 
     /// <summary>Removes bookmarks that no link points to (every element id becomes one while reading).</summary>
@@ -275,7 +255,7 @@ internal sealed partial class HtmlReader
     /// <param name="FirstLine">First line indent (CSS text-indent).</param>
     /// <param name="Depth">Element nesting depth, limited so that absurdly deep HTML cannot exhaust the stack.</param>
     private readonly record struct Context(
-        HCharFormat Format, HAlign? Align, int Indent, int ListLevel, ListItem? Item, int Heading, bool Pre, int? FirstLine, int Depth = 0);
+        HCharFormat Format, HAlign? Align, int Indent, int ListLevel, ListItem? Item, int Heading, bool Pre, int? FirstLine, int Depth = 0, string? Backdrop = null);
 
     /// <summary>A list item: its paragraphs share the list, only the first one is numbered.</summary>
     private sealed class ListItem(HNumbering numbering, int level)
@@ -345,7 +325,7 @@ internal sealed partial class HtmlReader
             sink.BreakPending = true;
         }
 
-        var c = context with { Format = CharFormat(name, element, style, context.Format), Depth = context.Depth + 1 };
+        var c = context with { Format = CharFormat(name, element, style, context.Format, context.Backdrop), Depth = context.Depth + 1 };
         if (Align(element.GetAttribute("align") ?? style.Get("text-align")) is { } align)
             c = c with { Align = align };
         if (style.Get("white-space") is { } whiteSpace)
@@ -389,7 +369,7 @@ internal sealed partial class HtmlReader
                 Block(element, sink, c with { Indent = c.Indent + QuoteIndent });
                 break;
             case "pre" or "listing" or "xmp" or "plaintext":
-                Block(element, sink, c with { Pre = true, Format = c.Format with { Shade = CodeShade } });
+                Block(element, sink, c with { Pre = true }); // its shade comes from CharFormat, where a style can replace it
                 break;
             case "figure" or "center":
                 Block(element, sink, c with { Align = c.Align ?? HAlign.Center });
@@ -697,7 +677,7 @@ internal sealed partial class HtmlReader
 
     // ───────────────────────── Formatting ─────────────────────────
 
-    private static HCharFormat CharFormat(string name, IElement element, CssDeclarations style, HCharFormat format)
+    private static HCharFormat CharFormat(string name, IElement element, CssDeclarations style, HCharFormat format, string? backdrop)
     {
         var size = format.Size ?? BaseSize;
         format = name switch
@@ -709,6 +689,7 @@ internal sealed partial class HtmlReader
             "sub" => format with { Subscript = true, Superscript = null },
             "sup" => format with { Superscript = true, Subscript = null },
             "code" or "kbd" or "samp" or "tt" => format with { Shade = CodeShade },
+            "pre" or "listing" or "xmp" or "plaintext" => format with { Shade = CodeShade },
             "mark" => format with { Shade = MarkShade },
             "small" => format with { Size = (int)(size * 0.83) },
             "big" => format with { Size = (int)(size * 1.2) },
@@ -748,11 +729,47 @@ internal sealed partial class HtmlReader
         }
         if (CssValues.Color(style.Get("color")) is { } color)
             format = format with { Color = color };
-        if (CssValues.FirstColor(style.Get("background-color") ?? style.Get("background")) is { } shade && shade != "#FFFFFF")
+        // Code keeps its shade whatever the style sheet says (pre { background: #282c34 }, code { background: #f6f8fa }): the
+        // Markdown, text, XHTML and FB2 writers know code only by CodeShade. Readable() turns light text dark on it.
+        if (CssValues.FirstColor(style.Get("background-color") ?? style.Get("background")) is { } shade && shade != "#FFFFFF" && format.Shade != CodeShade)
             format = format with { Shade = shade };
         if (CssValues.FontSize(style.Get("font-size"), size) is { } fontSize)
             format = format with { Size = fontSize };
-        return format;
+        return Readable(format, backdrop);
+    }
+
+    /// <summary>Text the page coloured and its background this close in brightness (WCAG contrast ratio below this) cannot be read.</summary>
+    private const double MinContrast = 1.25;
+
+    /// <summary>
+    /// Text with no colour of its own is black because nobody chose it (the page colour is not kept), so it needs a
+    /// higher contrast than text the page coloured: black stays on #1f2937 at 1.5 only because the style sheet's white
+    /// body colour was dropped.
+    /// </summary>
+    private const double MinDefaultContrast = 4.5;
+
+    /// <summary>
+    /// Code always gets the light <see cref="CodeShade"/>, also when a dark highlight theme drew it on a dark background.
+    /// That theme's token colours were picked for the dark background and show at 1.3 to 2.9 on the code shade (Atom One
+    /// Dark, VS Code Dark+), above <see cref="MinContrast"/> but pale. Light themes' tokens (GitHub, Bootstrap's pink
+    /// code) stay above 3 and keep their colours.
+    /// </summary>
+    private const double MinCodeContrast = 3.0;
+
+    /// <summary>
+    /// Keeps text readable when a style sheet only half describes a dark or light page: the page background is not
+    /// kept (see <see cref="CssStyleSheet"/>), so "color: #fff" can end up on white paper and a dark card ("background:
+    /// #111827") under the default black text. When the text colour (black if none) and what is behind it (the shade,
+    /// else the fill of the table cell, else white paper) are too close, the background stays and the text becomes
+    /// black or white, whichever shows on it.
+    /// </summary>
+    private static HCharFormat Readable(HCharFormat format, string? backdrop)
+    {
+        var background = format.Shade ?? backdrop ?? "#FFFFFF";
+        var needed = format.Color is null ? MinDefaultContrast : format.Shade == CodeShade ? MinCodeContrast : MinContrast;
+        if (CssValues.Contrast(format.Color ?? "#000000", background) >= needed)
+            return format;
+        return format with { Color = CssValues.Luminance(background) > 0.179 ? "#000000" : "#FFFFFF" };
     }
 
     /// <summary>&lt;font size="1..7"&gt; (3 is normal), also relative "+1" / "-2".</summary>
@@ -816,7 +833,7 @@ internal sealed partial class HtmlReader
                 : inner with { Item = new ListItem(numbering, level) };
             if (Align(item.GetAttribute("align") ?? itemStyle.Get("text-align")) is { } align)
                 itemContext = itemContext with { Align = align };
-            Children(item, sink, itemContext with { Format = CharFormat("li", item, itemStyle, context.Format) });
+            Children(item, sink, itemContext with { Format = CharFormat("li", item, itemStyle, context.Format, context.Backdrop) });
             Flush(sink);
         }
         Flush(sink);
@@ -944,10 +961,11 @@ internal sealed partial class HtmlReader
             },
         };
         var cellSink = new Sink(hCell.Blocks);
-        var format = CharFormat(cell.LocalName, cell, style, context.Format);
+        var backdrop = hCell.Fill ?? context.Backdrop; // what the text is drawn on: a cell without a fill shows the one behind it
+        var format = CharFormat(cell.LocalName, cell, style, context.Format, backdrop);
         if (header)
             format = format with { Bold = format.Bold ?? true };
-        var cellContext = new Context(format, Align(cell.GetAttribute("align") ?? style.Get("text-align")) ?? (cell.LocalName == "th" ? HAlign.Center : null), 0, 0, null, 0, false, null, context.Depth + 1);
+        var cellContext = new Context(format, Align(cell.GetAttribute("align") ?? style.Get("text-align")) ?? (cell.LocalName == "th" ? HAlign.Center : null), 0, 0, null, 0, false, null, context.Depth + 1, backdrop);
         Bookmark(cell, cellSink);
         Children(cell, cellSink, cellContext);
         Flush(cellSink);
@@ -1054,49 +1072,25 @@ internal sealed partial class HtmlReader
         if (string.IsNullOrWhiteSpace(source))
             return null;
         source = source.Trim();
-        if (source.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            return SaveDataUri(source);
-        return LocalFile(source) is { } path ? UsableImage(path, _options.MediaFolder) : null;
+        var path = source.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? SaveDataUri(source, _options.MediaFolder) : LocalFile(source);
+        return path is null ? null : UsableImage(path, _options.MediaFolder);
     }
 
-    /// <summary>A local file referenced from the document, or null for remote and missing files.</summary>
+    /// <summary>
+    /// A local file referenced from the document, or null for remote and missing files and files outside
+    /// <see cref="HtmlReadOptions.ResourceRoot"/>.
+    /// </summary>
     private string? LocalFile(string? reference)
     {
         if (string.IsNullOrWhiteSpace(reference))
             return null;
-        try
-        {
-            if (reference.StartsWith("file:", StringComparison.OrdinalIgnoreCase))
-                return new Uri(reference).LocalPath is var local && InsideFolder(local, _options.ResourceRoot) && File.Exists(local) ? local : null;
-            if (reference.Contains("://", StringComparison.Ordinal) || reference.StartsWith("//", StringComparison.Ordinal)
-                || reference.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase))
-                return null;
-            var cut = reference.IndexOfAny(['?', '#']);
-            var relative = Uri.UnescapeDataString(cut >= 0 ? reference[..cut] : reference);
-            if (relative.Length == 0)
-                return null;
-            var candidate = Path.GetFullPath(Path.Combine(_options.BaseFolder, relative));
-            return InsideFolder(candidate, _options.ResourceRoot) && File.Exists(candidate) ? candidate : null;
-        }
-        catch (Exception ex) when (ex is ArgumentException or UriFormatException or NotSupportedException or PathTooLongException)
-        {
-            return null;
-        }
+        // A query or fragment is no part of the file name (a file: URL drops them itself).
+        var cut = reference.StartsWith("file:", StringComparison.OrdinalIgnoreCase) ? -1 : reference.IndexOfAny(['?', '#']);
+        return DocumentFiles.Find(cut >= 0 ? reference[..cut] : reference, _options.BaseFolder, _options.ResourceRoot ?? _options.BaseFolder);
     }
 
-    /// <summary>Packaged books may only refer to files in their own unpacked folder: true when there is no
-    /// <paramref name="root"/> or <paramref name="path"/> is inside it.</summary>
-    internal static bool InsideFolder(string path, string? root)
-    {
-        if (root is null)
-            return true;
-        root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root)) + Path.DirectorySeparatorChar;
-        var comparison = OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
-        return Path.GetFullPath(path).StartsWith(root, comparison);
-    }
-
-    /// <summary>Writes the image of a data: URI to the media folder.</summary>
-    private string? SaveDataUri(string uri)
+    /// <summary>Writes the image of a data: URI into <paramref name="folder"/>; null when it is not a picture.</summary>
+    internal static string? SaveDataUri(string uri, string folder)
     {
         var comma = uri.IndexOf(',');
         if (comma < 0)
@@ -1126,10 +1120,10 @@ internal sealed partial class HtmlReader
         {
             return null;
         }
-        Directory.CreateDirectory(_options.MediaFolder);
-        var path = Path.Combine(_options.MediaFolder, $"embedded-{Guid.NewGuid():N}-{++_embedded}.{extension}");
+        Directory.CreateDirectory(folder);
+        var path = Path.Combine(folder, $"embedded-{Guid.NewGuid():N}.{extension}");
         File.WriteAllBytes(path, data);
-        return UsableImage(path, _options.MediaFolder);
+        return path;
     }
 
     /// <summary>

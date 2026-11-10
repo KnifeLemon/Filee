@@ -4,7 +4,8 @@
 // checksum file only shows the download arrived intact; whoever could replace the installer on the release could
 // replace that file too. The signature shows the installer comes from the publisher that signed this copy of Filee.
 // WinVerifyTrust checks the signature and its chain, and the signer is read from the same check, so the certificate
-// compared is the one Windows verified.
+// compared is the one Windows verified. A subject is only text that any certificate authority could write into a
+// certificate, so the signer comes with its issuer and a hash of its public key to compare as well.
 
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
@@ -13,17 +14,28 @@ using System.Security.Cryptography.X509Certificates;
 
 namespace Filee.Platform.Windows;
 
+/// <summary>The certificate that signed a program.</summary>
+/// <param name="Subject">Who it was issued to, e.g. "CN=Open Source Developer, …".</param>
+/// <param name="Issuer">The certificate authority that issued it, e.g. "CN=Certum Code Signing 2021 CA, …".</param>
+/// <param name="KeySha256">SHA-256 of its public key (SubjectPublicKeyInfo), lowercase hex.</param>
+public sealed record AuthenticodeSigner(string Subject, string Issuer, string KeySha256)
+{
+    /// <summary>Same subject from the same certificate authority (a renewed certificate may have a new key).</summary>
+    public bool SamePublisher(AuthenticodeSigner other) =>
+        Subject == other.Subject && Issuer == other.Issuer;
+}
+
 /// <summary>Authenticode checks. Every member is safe to call on any OS.</summary>
 public static partial class Authenticode
 {
     /// <summary>
-    /// The subject of the certificate that signed <paramref name="path"/> (e.g. "CN=Open Source Developer, …"), or null
-    /// when the file is not signed, Windows does not trust its signature, or this is not Windows.
+    /// The certificate that signed <paramref name="path"/>, or null when the file is not signed, Windows does not trust
+    /// its signature, or this is not Windows.
     /// </summary>
     /// <param name="checkRevocation">
     /// Also asks the certificate authorities whether a certificate in the chain was revoked (needs the network).
     /// </param>
-    public static string? TrustedSigner(string path, bool checkRevocation)
+    public static AuthenticodeSigner? TrustedSigner(string path, bool checkRevocation)
     {
         if (!OperatingSystem.IsWindows())
             return null;
@@ -38,7 +50,7 @@ public static partial class Authenticode
     }
 
     [SupportedOSPlatform("windows")]
-    private static unsafe string? Verify(string path, bool checkRevocation)
+    private static unsafe AuthenticodeSigner? Verify(string path, bool checkRevocation)
     {
         var action = GenericVerifyV2;
         fixed (char* file = Path.GetFullPath(path))
@@ -69,7 +81,8 @@ public static partial class Authenticode
                 if (context == 0)
                     return null;
                 using var x509 = new X509Certificate2(context);
-                return x509.Subject;
+                var key = Convert.ToHexStringLower(SHA256.HashData(x509.PublicKey.ExportSubjectPublicKeyInfo()));
+                return new AuthenticodeSigner(x509.Subject, x509.Issuer, key);
             }
             finally
             {

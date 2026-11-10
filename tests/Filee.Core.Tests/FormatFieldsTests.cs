@@ -43,7 +43,7 @@ public class FormatFieldsTests
     {
         { "cad", ["dwg"] },
         { "model3d", ["fbx", "glb", "gltf", "ply"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "shp"] },
+        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
         { "font", ["otf", "ttf", "woff", "woff2"] },
         { "game", ["bik", "dds", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "usm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "plt", "ps", "psb", "psd", "raw", "xcf"] },
@@ -70,7 +70,7 @@ public class FormatFieldsTests
     {
         { "cad", ["3mf", "dwg", "dxf", "obj", "stl"] },
         { "model3d", ["3mf", "fbx", "glb", "gltf", "obj", "ply", "stl"] },
-        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "shp"] },
+        { "geo", ["fit", "geojson", "gpx", "kml", "kmz", "osm", "shp"] },
         { "font", ["eot", "fon", "otf", "ttf", "woff", "woff2"] },
         { "game", ["bik", "dds", "flc", "mcaddon", "mcpack", "mctemplate", "mcworld", "mrpack", "tga", "usm"] },
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "plt", "ps", "psb", "psd", "raw", "xcf"] },

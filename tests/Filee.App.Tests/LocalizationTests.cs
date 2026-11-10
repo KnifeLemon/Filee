@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Filee.App.Services;
+using Filee.Core.Formats;
 
 namespace Filee.App.Tests;
 
@@ -38,7 +39,21 @@ public partial class LocalizationTests
         Assert.Equal("ar", LocalizationService.Resolve("AR"));
         Assert.Contains("fonts:Filee#Noto Sans Arabic", ThemeService.FontFamilies("ar"));
         Assert.True(SoftPalette.IsRightToLeft("ar"));
-        Assert.All(LocalizationService.Languages.Where(l => l.Code != "ar"), l => Assert.False(SoftPalette.IsRightToLeft(l.Code)));
+        Assert.All(LocalizationService.Languages.Where(l => l.Code != "ar" && l.Code != "fa"), l => Assert.False(SoftPalette.IsRightToLeft(l.Code)));
+    }
+
+    [Fact]
+    public void Persian_is_offered_under_its_own_name_and_reads_right_to_left()
+    {
+        Assert.Contains(("fa", "فارسی"), LocalizationService.Languages);
+        Assert.Equal("fa", LocalizationService.Resolve("FA"));
+        Assert.True(SoftPalette.IsRightToLeft("fa"));
+    }
+
+    [Fact]
+    public void Bengali_uses_the_embedded_font()
+    {
+        Assert.Contains("fonts:Filee#Noto Sans Bengali", ThemeService.FontFamilies("bn-BD"));
     }
 
     [Theory]
@@ -108,6 +123,39 @@ public partial class LocalizationTests
 
     [Theory]
     [MemberData(nameof(Languages))]
+    public void Line_breaks_are_real_line_breaks(string code)
+    {
+        // "\\n" in the JSON is a backslash and an n on screen; English writes "\n".
+        foreach (var (key, value) in Load(code))
+            Assert.False(value.Contains("\\n"), $"{code}:{key} has a literal \\n");
+    }
+
+    [Fact]
+    public void Field_switch_texts_exist_in_every_language()
+    {
+        string[] required =
+        [
+            "nav.fields",
+            "fields.title",
+            "fields.description",
+            "fields.formats",
+            "fields.always_shown",
+            "presets.target_hidden",
+            .. FormatFields.All.Where(f => f.CanTurnOff).Select(f => $"fields.name.{f.Id}")
+        ];
+        foreach (var language in LocalizationService.Languages)
+        {
+            var translations = Load(language.Code);
+            foreach (var key in required)
+            {
+                Assert.True(translations.TryGetValue(key, out var value), $"{language.Code}:{key} is missing");
+                Assert.False(string.IsNullOrWhiteSpace(value), $"{language.Code}:{key} is empty");
+            }
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(Languages))]
     public void Format_placeholders_match_english(string code)
     {
         var english = Load("en");
@@ -148,6 +196,9 @@ public partial class LocalizationTests
     [InlineData("en-US", "en")]
     [InlineData("pl-PL", "pl")]
     [InlineData("ar-EG", "ar")]
+    [InlineData("fa-IR", "fa")]
+    [InlineData("fa", "fa")]
+    [InlineData("fan-GA", "en")]
     [InlineData("pt-BR", "pt-BR")]
     [InlineData("pt-PT", "pt-PT")]
     [InlineData("zh-CN", "zh-CN")]
@@ -179,6 +230,9 @@ public partial class LocalizationTests
     [InlineData("id-ID", "id")]
     [InlineData("id", "id")]
     [InlineData("idu-NG", "en")]
+    [InlineData("vi-VN", "vi")]
+    [InlineData("vi", "vi")]
+    [InlineData("vin-TZ", "en")]
     [InlineData("sv-SE", "en")]
     [InlineData("", "en")] // Linux without LANG: the invariant culture
     public void Auto_follows_the_language_the_user_reads_the_os_in(string os, string expected) =>
@@ -189,7 +243,9 @@ public partial class LocalizationTests
     [InlineData("de")]
     [InlineData("it")]
     [InlineData("id")]
+    [InlineData("vi")]
     [InlineData("ar")]
+    [InlineData("fa")]
     [InlineData("ne")]
     [InlineData("en")]
     [InlineData("pt-PT")]
@@ -256,6 +312,13 @@ public partial class LocalizationTests
     {
         Assert.Contains(("id", "Bahasa Indonesia"), LocalizationService.Languages);
         Assert.Equal("id", LocalizationService.Resolve("ID"));
+    }
+
+    [Fact]
+    public void Vietnamese_is_offered_under_its_own_name()
+    {
+        Assert.Contains(("vi", "Tiếng Việt"), LocalizationService.Languages);
+        Assert.Equal("vi", LocalizationService.Resolve("VI"));
     }
 
     [Fact]
