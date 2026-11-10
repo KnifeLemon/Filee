@@ -155,14 +155,20 @@ public sealed class Preset
     /// <summary><see cref="Icon"/> meaning "no icon", even where there would be a default.</summary>
     public const string NoIcon = "none";
 
-    /// <summary>A shorter name shown on its donut slice instead of the usual one. Null or blank: the usual name.</summary>
+    /// <summary>
+    /// A shorter name shown on its donut slice instead of the usual one. Null or blank: the usual name.
+    /// </summary>
     public string? ShortName { get; set; }
 
-    /// <summary>What its donut slice shows. Null: whatever its donut says (<see cref="Profiles.ToolbarProfile.LabelShow"/>).</summary>
+    /// <summary>
+    /// What its donut slice shows. Null: whatever its donut says (<see cref="Profiles.ToolbarProfile.LabelShow"/>).
+    /// </summary>
     [JsonConverter(typeof(LabelShowJsonConverter))]
     public LabelShow? Show { get; set; }
 
-    /// <summary>Which way its donut slice's name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).</summary>
+    /// <summary>
+    /// Which way its donut slice's name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).
+    /// </summary>
     [JsonConverter(typeof(LabelDirectionJsonConverter))]
     public LabelDirection? Direction { get; set; }
 

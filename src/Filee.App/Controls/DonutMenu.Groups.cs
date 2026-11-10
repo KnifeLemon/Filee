@@ -28,7 +28,8 @@ public sealed partial class DonutMenu
     /// <summary>
     /// How large a group's ring is against the default: it follows the donut's size (radius ÷ 150) times the Group ring
     /// size setting, but is never smaller than the default ring on the smallest donut (<see cref="MinRingScale"/>):
-    /// smaller, a 10 px name (the floor) no longer fits its slices. Its depth, gap, narrowest slice and labels scale with it.
+    /// smaller, a 10 px name (the floor) no longer fits its slices. Its depth, gap, narrowest slice and labels scale
+    /// with it.
     /// </summary>
     public static double RingScaleFor(double outerRadius, double ringSize) =>
         Math.Max(MinRingScale, outerRadius / SliceLabelLayout.DefaultRadius * ringSize);
@@ -43,7 +44,9 @@ public sealed partial class DonutMenu
     public static double SubRingSpaceFor(double outerRadius, double ringSize) =>
         (SubGap + SubBand + 10) * RingScaleFor(outerRadius, ringSize);
 
-    /// <summary>Width and height of a donut of <paramref name="outerRadius"/>, with room for group rings when asked.</summary>
+    /// <summary>
+    /// Width and height of a donut of <paramref name="outerRadius"/>, with room for group rings when asked.
+    /// </summary>
     public static double SideFor(double outerRadius, bool subRing, double ringSize = 1) =>
         2 * (outerRadius + PopOut + 14 + (subRing ? SubRingSpaceFor(outerRadius, ringSize) : 0));
 

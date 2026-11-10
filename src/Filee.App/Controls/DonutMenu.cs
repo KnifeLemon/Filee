@@ -50,7 +50,10 @@ public sealed class DonutItem
     /// </summary>
     public IReadOnlyList<DonutItem>? Children { get; init; }
 
-    /// <summary>The preset's full name, for the centre hint: the slice may show an icon or a shorter name. Null: <see cref="Label"/>.</summary>
+    /// <summary>
+    /// The preset's full name, for the centre hint: the slice may show an icon or a shorter name. Null:
+    /// <see cref="Label"/>.
+    /// </summary>
     public string? FullName { get; init; }
 
     /// <summary>The icon the slice can show (a <see cref="SliceIcons"/> key), or null for none.</summary>
@@ -59,7 +62,9 @@ public sealed class DonutItem
     /// <summary>What the slice shows. Null: the donut's <see cref="DonutMenu.DefaultShow"/>.</summary>
     public LabelShow? Show { get; init; }
 
-    /// <summary>Which way its name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).</summary>
+    /// <summary>
+    /// Which way its name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).
+    /// </summary>
     public LabelDirection? Direction { get; init; }
 
     /// <summary>A group slice (<see cref="Children"/> set), even one left with nothing to fan out.</summary>
@@ -215,12 +220,14 @@ public sealed partial class DonutMenu : Control
     public bool ShowCaptions { get => GetValue(ShowCaptionsProperty); set => SetValue(ShowCaptionsProperty, value); }
 
     /// <summary>
-    /// How large the slices' names and icons are (the donut's Label scale, 0.8 to 1.6); they also follow the donut's size
-    /// (<see cref="DonutScale"/>).
+    /// How large the slices' names and icons are (the donut's Label scale, 0.8 to 1.6); they also follow the donut's
+    /// size (<see cref="DonutScale"/>).
     /// </summary>
     public double LabelScale { get => GetValue(LabelScaleProperty); set => SetValue(LabelScaleProperty, value); }
 
-    /// <summary>How large a group's ring is, against its size on a donut of this radius (Group ring size, 1 = 100 %).</summary>
+    /// <summary>
+    /// How large a group's ring is, against its size on a donut of this radius (Group ring size, 1 = 100 %).
+    /// </summary>
     public double GroupRingSize { get => GetValue(GroupRingSizeProperty); set => SetValue(GroupRingSizeProperty, value); }
 
     /// <summary>How wide a group's ring spreads, against the default fan (Group ring spread, 1 = 100 %).</summary>
@@ -1173,8 +1180,8 @@ public sealed partial class DonutMenu : Control
     }
 
     /// <summary>
-    /// The labels of one ring of <paramref name="items"/> between <paramref name="inner"/> and <paramref name="outer"/>,
-    /// slice <c>i</c> centred on <c>slice(i).Mid</c> and <c>slice(i).Span</c> wide.
+    /// The labels of one ring of <paramref name="items"/> between <paramref name="inner"/> and
+    /// <paramref name="outer"/>, slice <c>i</c> centred on <c>slice(i).Mid</c> and <c>slice(i).Span</c> wide.
     /// </summary>
     private IReadOnlyList<SliceLabel> LabelPlan(IReadOnlyList<DonutItem> items, Point center, double inner, double outer,
         Func<int, (double Mid, double Span)> slice, double scale, Typeface bold, Typeface regular, bool fitScale = false)
@@ -1195,9 +1202,11 @@ public sealed partial class DonutMenu : Control
         var inputs = items.Select((item, i) =>
         {
             var (mid, span) = slice(i);
+            // The slices of this ring only: the outgoing face of a flip, or a group's ring, compares among its own.
             return new SliceLabelInput(item.Label, item.Caption, item.IconKey, item.Show ?? DefaultShow,
-                new SliceShape(center, inner, outer, mid, span, GapPixels, item.IsGroup ? ChevronKeepOut : 0),
-                item.Direction ?? LabelDirection.Auto);
+                new SliceShape(center, inner, outer, mid, span, GapPixels, item.IsGroup ? ChevronIn : 0, item.IsGroup ? ChevronReach : 0),
+                item.Direction ?? LabelDirection.Auto,
+                NeedsCaption: item.KeepsCaption || SharesItsName(item, items));
         }).ToList();
         PlansMade++;
         return _labelPlans[key] = fitScale
@@ -1209,8 +1218,8 @@ public sealed partial class DonutMenu : Control
     internal int PlansMade { get; private set; }
 
     /// <summary>
-    /// The labels of the face (at rest) and of every group's ring, laid out as they are drawn, in the given fonts (tests:
-    /// whether names fit, without drawing).
+    /// The labels of the face (at rest) and of every group's ring, laid out as they are drawn, in the given fonts
+    /// (tests: whether names fit, without drawing).
     /// </summary>
     internal (IReadOnlyList<SliceLabel> Face, IReadOnlyList<IReadOnlyList<SliceLabel>> Rings) PlanLabels(Typeface bold, Typeface regular)
     {
@@ -1233,7 +1242,9 @@ public sealed partial class DonutMenu : Control
         return (face, rings);
     }
 
-    /// <summary>Draws a slice's laid-out icon and name in its text colour (on the accent when it's highlighted).</summary>
+    /// <summary>
+    /// Draws a slice's laid-out icon and name in its text colour (on the accent when it's highlighted).
+    /// </summary>
     private void DrawSliceLabel(DrawingContext context, SliceLabel label, bool enabled, bool hot)
     {
         var brush = hot ? OnAccentBrush : enabled ? Foreground : SecondaryForeground;
@@ -1334,8 +1345,15 @@ public sealed partial class DonutMenu : Control
     // far to each side, and its line this thick.
     private const double GroupMarkInset = 7, GroupMarkDepth = 4.5, GroupMarkHalfWidth = 5, GroupMarkStroke = 1.6;
 
-    /// <summary>How far in from a group slice's outer edge its label keeps clear of the chevron.</summary>
-    private double ChevronKeepOut => (GroupMarkInset + GroupMarkDepth + 4) * DonutScale;
+    /// <summary>
+    /// A group slice's chevron, for its label to keep clear of: its middle this far in from the outer edge, and its
+    /// arms' ends and line this far round that.
+    /// </summary>
+    private double ChevronIn => (GroupMarkInset + GroupMarkDepth / 2) * DonutScale;
+
+    /// <inheritdoc cref="ChevronIn"/>
+    private double ChevronReach =>
+        (Math.Sqrt(GroupMarkHalfWidth * GroupMarkHalfWidth + GroupMarkDepth * GroupMarkDepth / 4) + GroupMarkStroke / 2) * DonutScale;
 
     /// <summary>Chinese characters, kana and the CJK symbols and full-width forms: a line may break between any two.</summary>
     internal static bool IsHanOrKana(char c) =>
@@ -1435,7 +1453,8 @@ public sealed partial class DonutMenu : Control
             // One slice of its own: laid out each frame as it grows in, never cached.
             var layout = LabelLayout(bold, regular);
             var label = layout.PlanRing([new SliceLabelInput(_previewLabel, null, null, LabelShow.TextOnly,
-                new SliceShape(center, r1, r2, mid, span, GapPixels, _previewGroup ? ChevronKeepOut : 0))], LabelScale, DonutScale,
+                new SliceShape(center, r1, r2, mid, span, GapPixels, _previewGroup ? ChevronIn : 0, _previewGroup ? ChevronReach : 0))],
+                LabelScale, DonutScale,
                 false)[0];
             DrawSliceLabel(context, label, enabled: true, hot: false);
             if (_previewGroup)

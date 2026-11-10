@@ -1,5 +1,6 @@
 // The slice-label fields of the preset and group editors: the slice's icon (picked in the icon picker), a short name
-// for the donut, what the slice shows, and which way its name runs. Shared by PresetEditorViewModel and GroupEditorViewModel.
+// for the donut, what the slice shows, and which way its name runs. Shared by PresetEditorViewModel and
+// GroupEditorViewModel.
 
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;

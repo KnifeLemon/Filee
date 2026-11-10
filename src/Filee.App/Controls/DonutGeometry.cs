@@ -80,9 +80,9 @@ public static class DonutGeometry
     public const double MinSubWidth = 44;
 
     /// <summary>
-    /// How many slices share the fan of a group at its narrowest (<see cref="SubSpan"/>): every ring slice is as wide as
-    /// one of this many, so a group of six fans out twice as far as a group of three, and Group ring spread looks the same
-    /// on every group.
+    /// How many slices share the fan of a group at its narrowest (<see cref="SubSpan"/>): every ring slice is as wide
+    /// as one of this many, so a group of six fans out twice as far as a group of three, and Group ring spread looks
+    /// the same on every group.
     /// </summary>
     public const int SubReferenceCount = 3;
 

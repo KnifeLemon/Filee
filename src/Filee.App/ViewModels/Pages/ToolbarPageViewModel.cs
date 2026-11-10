@@ -324,7 +324,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private static string Percent(double value) =>
         (Math.Round(value) / 100).ToString("P0", System.Globalization.CultureInfo.CurrentCulture);
 
-    /// <summary>How large the selected donut's slice names and icons are, in percent (<see cref="ToolbarProfile.LabelScale"/>).</summary>
+    /// <summary>
+    /// How large the selected donut's slice names and icons are, in percent (<see cref="ToolbarProfile.LabelScale"/>).
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(LabelScaleText))]
     private double _labelScale = 100;
@@ -332,7 +334,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// <summary>The Label scale as the slider's value shows it: "125 %".</summary>
     public string LabelScaleText => Percent(LabelScale);
 
-    /// <summary>What the selected donut's slices show when their preset doesn't say (<see cref="ToolbarProfile.LabelShow"/>).</summary>
+    /// <summary>
+    /// What the selected donut's slices show when their preset doesn't say (<see cref="ToolbarProfile.LabelShow"/>).
+    /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(DefaultShow))]
     private Choice<LabelShow> _sliceLabels = null!;

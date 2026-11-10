@@ -16,7 +16,9 @@ public sealed class IconChoice(string key, bool isCurrent)
 {
     public string Key { get; } = key;
 
-    /// <summary>Its key in words, for the tooltip and screen readers: "image-edit-outline" → "Image edit outline".</summary>
+    /// <summary>
+    /// Its key in words, for the tooltip and screen readers: "image-edit-outline" → "Image edit outline".
+    /// </summary>
     public string Name { get; } = IconPickerViewModel.NameOf(key);
 
     public Geometry? Data => SliceIcons.Geometry(Key);
@@ -34,8 +36,10 @@ public sealed partial class IconPickerViewModel : ObservableObject
     private readonly string? _current;
     private readonly Action<string?> _picked;
 
-    /// <param name="current">The preset's <see cref="Preset.Icon"/>: null (its default), <see cref="Preset.NoIcon"/> or a key.</param>
-    /// <param name="picked">Called with the choice: null for Default, <see cref="Preset.NoIcon"/> for None, else a key.</param>
+    /// <param name="current">The preset's <see cref="Preset.Icon"/>: null (its default), <see cref="Preset.NoIcon"/> or
+    /// a key.</param>
+    /// <param name="picked">Called with the choice: null for Default, <see cref="Preset.NoIcon"/> for None, else a
+    /// key.</param>
     public IconPickerViewModel(ILocalizer loc, string? current, Action<string?> picked)
     {
         _loc = loc;

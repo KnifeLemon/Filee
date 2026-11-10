@@ -53,9 +53,12 @@ internal static partial class SliceIcons
 
     internal static bool Exists(string? key) => key is not null && Index.ContainsKey(key);
 
+    /// <summary>The built-in presets that have an icon of their own (tests: each is one).</summary>
+    internal static IEnumerable<string> DefaultIds => DefaultData.Keys;
+
     /// <summary>
-    /// The icon <paramref name="preset"/> shows when it has none of its own: a built-in preset's (by id), else its tool's,
-    /// else none. Plain format conversions have none: their name is their label.
+    /// The icon <paramref name="preset"/> shows when it has none of its own: a built-in preset's (by id), else its
+    /// tool's, else none. Plain format conversions have none: their name is their label.
     /// </summary>
     internal static string? DefaultFor(Preset preset) =>
         DefaultData.TryGetValue(preset.Id, out var key) ? key
@@ -71,7 +74,9 @@ internal static partial class SliceIcons
         : Exists(preset.Icon) ? preset.Icon
         : DefaultFor(preset);
 
-    /// <summary>The shape of icon <paramref name="key"/> in a <see cref="Box"/> × <see cref="Box"/> square, or null.</summary>
+    /// <summary>
+    /// The shape of icon <paramref name="key"/> in a <see cref="Box"/> × <see cref="Box"/> square, or null.
+    /// </summary>
     internal static Geometry? Geometry(string? key)
     {
         if (key is null || !Index.TryGetValue(key, out var i))

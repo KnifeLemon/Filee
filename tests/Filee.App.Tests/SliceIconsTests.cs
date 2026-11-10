@@ -43,14 +43,19 @@ public class SliceIconsTests
             else
                 Assert.Equal(PresetKind.Convert, preset.Kind); // a conversion to a format, named by it
         }
-        // 48 here (the 53 reviewed, less the Actions branch's 6, plus AI Captions) and 89 format conversions without one.
-        Assert.Equal(89, BuiltInData.CreatePresets().Count(p => SliceIcons.DefaultFor(p) is null));
         // The ones the user reviewed, spot-checked.
         Assert.Equal("crop", SliceIcons.DefaultFor(Find("tool-crop")));
         Assert.Equal("auto-fix", SliceIcons.DefaultFor(Find("remove-background")));
         Assert.Equal("rotate-right", SliceIcons.DefaultFor(Find("rotate")));
         Assert.Null(SliceIcons.DefaultFor(Find("to-png")));
         Assert.Null(SliceIcons.DefaultFor(Find("mp4-720")));
+    }
+
+    [Fact]
+    public void Every_preset_given_an_icon_is_a_built_in_one()
+    {
+        var ids = BuiltInData.CreatePresets().Select(p => p.Id).ToHashSet();
+        Assert.All(SliceIcons.DefaultIds, id => Assert.Contains(id, ids));
     }
 
     [Fact]

@@ -143,7 +143,9 @@ internal static partial class SliceIcons
         (SliceIconCategory.General, ["lightning-bolt-outline", "star-outline", "heart-outline", "bookmark-outline", "flag-outline", "check-circle-outline", "cog-outline", "magnify", "eye-outline", "lock-outline", "shield-outline", "clock-outline", "delete-outline", "sync", "map-marker-outline", "cube-outline", "drawing", "application-outline"]),
     ];
 
-    /// <summary>The built-in presets' icons, by preset id. Plain format conversions have none: their name is the label.</summary>
+    /// <summary>
+    /// The built-in presets' icons, by preset id. Plain format conversions have none: their name is the label.
+    /// </summary>
     private static readonly Dictionary<string, string> DefaultData = new()
     {
         ["half-size"] = "resize",
@@ -194,11 +196,11 @@ internal static partial class SliceIcons
         ["caption-video"] = "microphone-outline", // AI Captions: speech to subtitles
         ["trace-svg"] = "vector-curve",
         ["trace-line-art"] = "draw",
-        ["action-share"] = "share-variant-outline",
-        ["action-copy-to"] = "content-copy",
-        ["action-move-to"] = "folder-move-outline",
-        ["action-copy-path"] = "link-variant",
-        ["action-terminal"] = "console",
-        ["actions"] = "lightning-bolt-outline",
+        ["tool-annotate"] = "brush-outline",
+        ["tool-background"] = "palette-outline",
+        ["tool-metadata"] = "tag-outline",
+        ["tool-upscale"] = "arrow-expand-all",
+        ["pdf-nup"] = "book-open-variant",
+        ["crop-video"] = "crop-landscape",
     };
 }

@@ -1,5 +1,5 @@
-// The Toolbar page's slice-label settings: each donut keeps its own Label scale and Slice labels, and the page's preview
-// donut shows them, with the slices' icons and their presets' own Show settings.
+// The Toolbar page's slice-label settings: each donut keeps its own Label scale and Slice labels, and the page's
+// preview donut shows them, with the slices' icons and their presets' own Show settings.
 
 using Avalonia.Headless.XUnit;
 using Filee.App.Services;
@@ -78,7 +78,8 @@ public class ToolbarLabelSettingsTests
             Assert.Equal("crop", item.IconKey);
             Assert.Equal(LabelShow.TextOnly, item.Show);
             Assert.Equal("Crop", item.FullName);
-            Assert.Null(vm.DonutItems.Single(i => i.Id == "to-avif").IconKey);
+            vm.EditingBack = false;
+            Assert.Null(vm.DonutItems.Single(i => i.Id == "to-png").IconKey); // a format conversion, on the front
         }
         finally
         {

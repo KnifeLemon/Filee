@@ -52,14 +52,16 @@ public sealed class ToolbarProfile
 
     /// <summary>
     /// How large its slices' names and icons are, from <see cref="MinLabelScale"/> to <see cref="MaxLabelScale"/> in
-    /// steps of <see cref="LabelScaleStep"/>: 1 is 13 px names on a donut of the default size. They also grow and shrink
-    /// with the donut.
+    /// steps of <see cref="LabelScaleStep"/>: 1 is 13 px names on a donut of the default size. They also grow and
+    /// shrink with the donut.
     /// </summary>
     public double LabelScale { get; set; } = 1;
 
     public const double MinLabelScale = 0.8, MaxLabelScale = 1.6, LabelScaleStep = 0.05;
 
-    /// <summary><paramref name="scale"/> within the allowed range, on a step; 1 for a value that isn't a number.</summary>
+    /// <summary>
+    /// <paramref name="scale"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
     public static double ClampLabelScale(double scale) =>
         double.IsFinite(scale)
             ? Math.Round(Math.Round(Math.Clamp(scale, MinLabelScale, MaxLabelScale) / LabelScaleStep) * LabelScaleStep, 2)

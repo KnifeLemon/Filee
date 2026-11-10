@@ -31,7 +31,8 @@ public class RadialLabelTests
         {
             vm.Load([@"C:\photos\a.jpg"], clickMode: true, backFace: true);
             Assert.Equal("crop", ItemFor(vm, "tool-crop").IconKey); // the built-in default
-            Assert.Null(ItemFor(vm, "to-avif").IconKey); // a format conversion
+            vm.Load([@"C:\photos\a.jpg"], clickMode: true, backFace: false);
+            Assert.Null(ItemFor(vm, "to-png").IconKey); // a format conversion, on the front
 
             crop.Icon = "star-outline";
             vm.Load([@"C:\photos\a.jpg"], clickMode: true, backFace: true);

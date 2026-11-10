@@ -82,26 +82,30 @@ public sealed class DonutSettings
     public bool ShowCaptions { get; set; } = true;
 
     /// <summary>
-    /// How large the ring a group fans out is, against its size on a donut of the same radius before this setting
-    /// (<see cref="MinGroupRingSize"/> to <see cref="MaxGroupRingSize"/>): its depth, its gap from the donut and its labels.
+    /// How large the ring a group fans out is, against its size on a donut of the same radius before this setting (<see
+    /// cref="MinGroupRingSize"/> to <see cref="MaxGroupRingSize"/>): its depth, its gap from the donut and its labels.
     /// A missing value reads as 1, today's ring, so it needs no schema step.
     /// </summary>
     public double GroupRingSize { get; set; } = 1;
 
     /// <summary>
     /// How wide the ring a group fans out spreads, against the default fan (the group's slice and a quarter of each
-    /// neighbour): <see cref="MinGroupRingSpread"/> to <see cref="MaxGroupRingSpread"/>. Wider slices have room for longer
-    /// names. A missing value reads as 1.
+    /// neighbour): <see cref="MinGroupRingSpread"/> to <see cref="MaxGroupRingSpread"/>. Wider slices have room for
+    /// longer names. A missing value reads as 1.
     /// </summary>
     public double GroupRingSpread { get; set; } = 1;
 
     public const double MinGroupRingSize = 0.75, MaxGroupRingSize = 1.5, GroupRingSizeStep = 0.05;
     public const double MinGroupRingSpread = 1, MaxGroupRingSpread = 3, GroupRingSpreadStep = 0.1;
 
-    /// <summary><paramref name="size"/> within the allowed range, on a step; 1 for a value that isn't a number.</summary>
+    /// <summary>
+    /// <paramref name="size"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
     public static double ClampGroupRingSize(double size) => OnStep(size, MinGroupRingSize, MaxGroupRingSize, GroupRingSizeStep);
 
-    /// <summary><paramref name="spread"/> within the allowed range, on a step; 1 for a value that isn't a number.</summary>
+    /// <summary>
+    /// <paramref name="spread"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
     public static double ClampGroupRingSpread(double spread) =>
         OnStep(spread, MinGroupRingSpread, MaxGroupRingSpread, GroupRingSpreadStep);
 

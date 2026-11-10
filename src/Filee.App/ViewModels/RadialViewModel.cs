@@ -34,10 +34,14 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// <summary>How wide a group's ring spreads (Appearance → Group ring spread).</summary>
     [ObservableProperty] private double _groupRingSpread = 1;
 
-    /// <summary>How large the slices' names and icons are (the donut's <see cref="ToolbarProfile.LabelScale"/>).</summary>
+    /// <summary>
+    /// How large the slices' names and icons are (the donut's <see cref="ToolbarProfile.LabelScale"/>).
+    /// </summary>
     [ObservableProperty] private double _labelScale = 1;
 
-    /// <summary>What a slice shows when its preset doesn't say (the donut's <see cref="ToolbarProfile.LabelShow"/>).</summary>
+    /// <summary>
+    /// What a slice shows when its preset doesn't say (the donut's <see cref="ToolbarProfile.LabelShow"/>).
+    /// </summary>
     [ObservableProperty] private LabelShow _defaultShow = LabelShow.Auto;
 
     /// <summary>The other face has a slice for these files: Tab flips to it.</summary>
