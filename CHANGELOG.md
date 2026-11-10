@@ -111,7 +111,6 @@ Fixes for two advisories, [GHSA-gw2f-hq9g-3jc2](https://github.com/KnifeLemon/Fi
 - **Accent colours:** text on an accent fill now takes the colour with the better contrast, in every control and state. The default lavender and most accents now have dark text on buttons and checks.
 - **Donut toolbar** (by @lightscape-jm): changing profile or resetting while holding a slice can no longer remove or move the wrong preset.
 - **Selecting many files in Explorer:** the launches of one selection make one donut, and none of them are lost, also on macOS and Linux. On macOS and Linux one error can no longer lose the launches waiting in line or stop Filee from taking new ones (by @lightscape-jm).
-- **Error messages:** a failed conversion's notice shows the whole message, which you can select, copy and scroll.
 - **Donut toolbar editor** (by @lightscape-jm): a drag whose release got lost ends instead of staying on screen and acting on the next press.
 - **Points to CSV** (by @mertkayacs): an attribute named like a geometry column (`wkt`, `shape`, …) no longer takes over the points' position when the CSV is read back.
 - **Logs** are kept for 14 days instead of 7, so a log is still there when you report a problem a week later.
