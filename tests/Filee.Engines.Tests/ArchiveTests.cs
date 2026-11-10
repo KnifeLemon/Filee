@@ -47,6 +47,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData("tz")]
     [InlineData("iso")]
     [InlineData("dmg")]
+    [InlineData("udf")]
     [InlineData("cab")]
     [InlineData("rpm")]
     [InlineData("deb")]
@@ -111,7 +112,11 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         ZipFile.ExtractToDirectory(current, check);
         Assert.Equal(expected, Snapshot(Path.Combine(check, "프로젝트")));
         var time = File.GetLastWriteTime(Path.Combine(check, "프로젝트", "readme.txt"));
-        Assert.True(Math.Abs((time - KnownTime).TotalSeconds) <= 2, $"time {time} instead of {KnownTime}");
+        // 7-Zip turns a ZIP's local times into UTC with Windows' current offset, which in a time zone with daylight
+        // saving time can be an hour off .NET's offset for that date (seen on a Pacific-time CI runner).
+        var off = Math.Abs((time - KnownTime).TotalSeconds);
+        var dstHour = TimeZoneInfo.Local.SupportsDaylightSavingTime && Math.Abs(off - 3600) <= 2;
+        Assert.True(off <= 2 || dstHour, $"time {time} instead of {KnownTime}");
     }
 
     [Fact]
@@ -314,6 +319,154 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(JobState.Failed, job.State);
         Assert.Contains("not a valid archive", job.Files[0].ErrorDetail);
         Assert.Equal(["fake.zip"], Directory.GetFileSystemEntries(dir).Select(Path.GetFileName));
+    }
+
+    [Fact]
+    public async Task Extract_into_an_existing_folder_refuses_a_link_inside_it_before_moving_anything()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var tree = MakeTree(dir, "data");
+        var zip = Path.Combine(dir, "data.zip");
+        ZipFile.CreateFromDirectory(tree, zip, CompressionLevel.Fastest, includeBaseDirectory: false, Encoding.UTF8);
+        Directory.Delete(tree, true);
+        var target = Directory.CreateDirectory(Path.Combine(dir, "data")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(target, "readme.txt"), "old", Ct);
+        var elsewhere = Directory.CreateDirectory(Path.Combine(dir, "elsewhere")).FullName;
+        var link = Path.Combine(target, "docs"); // "docs/보고서/data.csv" would land in elsewhere
+        LinkFolder(link, elsewhere);
+        try
+        {
+            var overwrite = Extract;
+            overwrite.Output.Conflict = ConflictPolicy.Overwrite;
+            var job = await fx.ConvertAsync([zip], overwrite);
+
+            Assert.Equal(JobState.Failed, job.State);
+            Assert.Contains("is a link", job.Files[0].ErrorDetail);
+            Assert.Empty(Directory.EnumerateFileSystemEntries(elsewhere));
+            Assert.Equal("old", await File.ReadAllTextAsync(Path.Combine(target, "readme.txt"), Ct));
+        }
+        finally
+        {
+            Directory.Delete(link); // the link only, before the fixture deletes the folders
+        }
+    }
+
+    // ───────── Mark of the Web ─────────
+
+    [Fact]
+    public async Task Unpacked_files_keep_the_mark_of_the_web_of_their_archive()
+    {
+        SkipWithout7Zip();
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The Mark of the Web is a Windows (NTFS) stream.");
+        var dir = fx.NewFolder();
+        var tree = MakeTree(dir, "tree");
+        var zip = Path.Combine(dir, "tools.zip");
+        ZipFile.CreateFromDirectory(tree, zip, CompressionLevel.Fastest, includeBaseDirectory: false, Encoding.UTF8);
+        var tgz = Path.Combine(dir, "tools.tar.gz");
+        await using (var file = File.Create(tgz))
+        await using (var gzip = new GZipStream(file, CompressionLevel.Fastest))
+            await TarFile.CreateFromDirectoryAsync(tree, gzip, includeBaseDirectory: false, Ct);
+        var alz = Path.Combine(dir, "tools.alz");
+        WriteAlz(alz, [new("setup.txt", Words(1_000), Method: 2)]);
+        var egg = Path.Combine(dir, "tools.egg");
+        WriteEgg(egg, [new("setup.txt", false, new EggBlock(Words(1_000), 1))]);
+        var lz = Path.Combine(dir, "setup.txt.lz");
+        await File.WriteAllBytesAsync(lz, await LzipAsync(Words(1_000), dir), Ct);
+
+        var mark = Filee.Core.Platform.MarkOfTheWeb.Internet(new Uri("https://example.com/tools.zip"));
+        foreach (var archive in new[] { zip, tgz, alz, egg, lz })
+        {
+            Assert.SkipUnless(Filee.Core.Platform.MarkOfTheWeb.TryWrite(archive, mark), "The temp drive holds no NTFS streams.");
+            var folder = (await ConvertOkAsync(archive, Extract)).Outputs.Single();
+            var files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
+            Assert.NotEmpty(files);
+            foreach (var file in files)
+                Assert.Contains("ZoneId=3", Filee.Core.Platform.MarkOfTheWeb.Read(file) ?? $"no mark on {file}");
+        }
+
+        // An archive without a mark gives files without one.
+        var plain = Path.Combine(dir, "plain.zip");
+        ZipFile.CreateFromDirectory(tree, plain, CompressionLevel.Fastest, includeBaseDirectory: false, Encoding.UTF8);
+        var unmarked = (await ConvertOkAsync(plain, Extract)).Outputs.Single();
+        Assert.All(Directory.GetFiles(unmarked, "*", SearchOption.AllDirectories), f => Assert.Null(Filee.Core.Platform.MarkOfTheWeb.Read(f)));
+    }
+
+    // ───────── Disk space ─────────
+
+    [Fact]
+    public async Task A_compressed_stream_that_unpacks_past_the_limit_is_stopped_and_nothing_is_kept()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var zeros = new byte[16 * 1024 * 1024]; // a few hundred bytes as .bz2 and a few KB as .gz
+        var bz2 = Path.Combine(dir, "zeros.bin.bz2");
+        await File.WriteAllBytesAsync(bz2, await Bzip2Async(zeros, dir), Ct);
+        var gz = Path.Combine(dir, "zeros.bin.gz");
+        await using (var file = File.Create(gz))
+        await using (var gzip = new GZipStream(file, CompressionLevel.SmallestSize))
+            await gzip.WriteAsync(zeros, Ct);
+        var tgz = Path.Combine(dir, "zeros.tar.gz");
+        await using (var file = File.Create(tgz))
+        await using (var gzip = new GZipStream(file, CompressionLevel.SmallestSize))
+        await using (var tar = new TarWriter(gzip, TarEntryFormat.Pax))
+            await tar.WriteEntryAsync(new PaxTarEntry(TarEntryType.RegularFile, "zeros.bin") { DataStream = new MemoryStream(zeros) }, Ct);
+
+        var extractor = new ArchiveExtractor(SevenZip.Locate(), _ => 1024 * 1024);
+        foreach (var (archive, format) in new[] { (bz2, "bz2"), (gz, "gz"), (tgz, "tgz") })
+        {
+            var scratch = Directory.CreateDirectory(Path.Combine(dir, "scratch-" + format)).FullName;
+            var error = await Assert.ThrowsAsync<IOException>(() => extractor.ExtractAsync(archive, format, scratch, Ct));
+            Assert.Contains("unpacks to more than 1.0 MB", error.Message);
+            Assert.Empty(Directory.EnumerateFiles(scratch, "*", SearchOption.AllDirectories));
+        }
+
+        // Under the limit, the same files unpack as before.
+        var roomy = new ArchiveExtractor(SevenZip.Locate(), _ => 32 * 1024 * 1024);
+        var unpacked = await roomy.ExtractAsync(bz2, "bz2", Directory.CreateDirectory(Path.Combine(dir, "roomy")).FullName, Ct);
+        Assert.Equal(zeros.Length, new FileInfo(Path.Combine(unpacked, "zeros.bin")).Length);
+    }
+
+    [Fact]
+    public async Task An_lzip_member_longer_than_its_trailer_says_is_stopped_at_that_size()
+    {
+        SkipWithout7Zip();
+        var dir = fx.NewFolder();
+        var member = await LzipAsync(Words(200_000), dir);
+        BitConverter.GetBytes(1_000L).CopyTo(member, member.Length - 16); // the trailer's data size
+        var lz = Path.Combine(dir, "log.txt.lz");
+        await File.WriteAllBytesAsync(lz, member, Ct);
+
+        var job = await fx.ConvertAsync([lz], Extract);
+
+        Assert.Equal(JobState.Failed, job.State);
+        Assert.Contains("more than the archive declares", job.Files[0].ErrorDetail);
+        Assert.Equal(["log.txt.lz"], Directory.GetFileSystemEntries(dir).Where(File.Exists).Select(Path.GetFileName));
+    }
+
+    /// <summary>A junction on Windows (no rights needed), a symbolic link elsewhere; skips when neither can be made.</summary>
+    private static void LinkFolder(string link, string target)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            try
+            {
+                Directory.CreateSymbolicLink(link, target);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Assert.Skip("This machine doesn't let the test make a symbolic link.");
+            }
+            return;
+        }
+        using var mklink = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", ["/c", "mklink", "/J", link, target])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        })!;
+        mklink.WaitForExit();
+        Assert.SkipUnless(mklink.ExitCode == 0, "This drive can't hold a junction.");
     }
 
     // ───────── Compress into one archive ─────────
@@ -576,6 +729,7 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
             Path = dir\file.txt
             Folder = -
             Size = 7
+            Modified = 2021-05-06 07:08:10
             Mode = -rw-r--r--
             Symbolic Link =
             Hard Link =
@@ -600,6 +754,8 @@ public class ArchiveTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.True(entries[2].IsFolder);
         Assert.True(entries[2].IsEncrypted);
         Assert.Equal(7, entries[0].Size);
+        Assert.Equal(KnownTime.ToUniversalTime(), entries[0].Modified);
+        Assert.Null(entries[1].Modified);
     }
 
     [Fact]
