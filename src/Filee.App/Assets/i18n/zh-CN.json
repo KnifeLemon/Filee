@@ -163,6 +163,7 @@
   "error.fit_not_activity": "此 FIT 文件不是活动记录（只能转换活动记录）",
   "error.fit_no_positions": "活动没有记录位置信息，请转换为 CSV、XLSX 或 JSON",
   "error.fit_no_records": "活动没有记录数据",
+  "error.osm_too_large": "OpenStreetMap 文件太大，无法转换",
   "error.fon_vector": "这是矢量字体，只能转换位图 .fon 字体",
   "error.fon_unsupported": "不支持此类 .fon 字体",
   "error.fon_too_large": ".fon 字体太大，无法转换",
@@ -200,6 +201,7 @@
   "notice.geo_field_names": "Shapefile 字段名最多 10 个字符，部分名称已缩短",
   "notice.geo_shapefile_split": "Shapefile 只能保存一种形状，因此点、线、面被分别存成了多个文件",
   "notice.geo_heights_dropped": "部分点没有高度，而 Shapefile 无法只省略其中一个点的高度，因此已省略所有高度",
+  "notice.osm_incomplete": "部分线和区域用到了文件中没有的点（截取的局部数据），因此已省略",
 
   "engine.reason.not_installed": "未安装",
   "engine.reason.error": "检查时出错",
