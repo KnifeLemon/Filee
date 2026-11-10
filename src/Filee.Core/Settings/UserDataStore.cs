@@ -1082,11 +1082,14 @@ internal static class SettingsMigrations
         if (from < 76)
             changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
         // v77: Mermaid diagrams (#1309) and Rust, Go, Kotlin, Swift, Scala, SCSS, Vue and TSX sources learn the text donut,
-        //      UDF disc images (#1338) the archives donut and iPhone ringtones (#1291) the audio donut; custom claims
-        //      stay put.
+        //      UDF disc images (#1338) the archives donut, iPhone ringtones (#1291) the audio donut and OpenStreetMap XML
+        //      (#713) the geospatial donut; custom claims stay put.
         if (from < 77)
             changed |= LearnExtensions(profiles, out _,
-                ["mermaid", "mmd", "rs", "go", "kt", "swift", "scala", "scss", "vue", "tsx", "udf", "m4r"]);
+                ["mermaid", "mmd", "rs", "go", "kt", "swift", "scala", "scss", "vue", "tsx", "udf", "m4r", "osm"]);
+        // v78: Windows programs and libraries (.exe, .dll; #1188) learn the images donut; custom claims stay put.
+        if (from < 78)
+            changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
         return changed;
     }
 
