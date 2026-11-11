@@ -93,6 +93,8 @@
   "toast.skipped": "تم التخطي (الملف موجود)",
   "toast.open_folder": "إظهار",
   "toast.cancel": "إلغاء",
+  "toast.copy": "نسخ التفاصيل",
+  "toast.copied": "تم النسخ",
   "toast.missing_fonts": "خطوط المستند المفقودة: {0}",
   "toast.get_fonts": "الحصول على الخطوط",
   "download.badge": "{0}/ث · {1}",

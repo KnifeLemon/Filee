@@ -93,6 +93,8 @@
   "toast.skipped": "Übersprungen (Datei vorhanden)",
   "toast.open_folder": "Anzeigen",
   "toast.cancel": "Abbrechen",
+  "toast.copy": "Details kopieren",
+  "toast.copied": "Kopiert",
   "toast.missing_fonts": "Fehlende Dokumentschriften: {0}",
   "toast.get_fonts": "Schriftarten herunterladen",
   "download.badge": "{0}/s · {1}",

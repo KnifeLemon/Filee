@@ -98,6 +98,8 @@
   "toast.skipped": "已跳过（文件已存在）",
   "toast.open_folder": "查看",
   "toast.cancel": "取消",
+  "toast.copy": "复制详细信息",
+  "toast.copied": "已复制",
   "toast.missing_fonts": "文档缺少字体：{0}",
   "toast.get_fonts": "获取字体",
   "download.badge": "{0}/s · {1}",

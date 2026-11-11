@@ -98,6 +98,8 @@
   "toast.skipped": "Ignoré (le fichier existe)",
   "toast.open_folder": "Afficher",
   "toast.cancel": "Annuler",
+  "toast.copy": "Copier les détails",
+  "toast.copied": "Copié",
   "toast.missing_fonts": "Polices manquantes du document : {0}",
   "toast.get_fonts": "Obtenir les polices",
   "download.badge": "{0}/s · {1}",

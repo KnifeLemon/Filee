@@ -92,6 +92,8 @@
 "toast.skipped": "Saltato (il file esiste)",
 "toast.open_folder": "Mostra",
 "toast.cancel": "Annulla",
+"toast.copy": "Copia i dettagli",
+"toast.copied": "Copiato",
 "toast.missing_fonts": "Font del documento mancanti: {0}",
 "toast.get_fonts": "Scarica i font",
 "download.badge": "{0}/s · {1}",

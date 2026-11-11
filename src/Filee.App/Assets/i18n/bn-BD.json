@@ -92,6 +92,8 @@
   "toast.skipped": "উপেক্ষা করা হয়েছে (ফাইলটি বিদ্যমান)",
   "toast.open_folder": "দেখান",
   "toast.cancel": "বাতিল করুন",
+  "toast.copy": "বিবরণ কপি করুন",
+  "toast.copied": "কপি করা হয়েছে",
   "toast.missing_fonts": "ডকুমেন্টর ফন্ট অনুপস্থিত: {0}",
   "toast.get_fonts": "ফন্ট সংগ্রহ করুন",
   "download.badge": "{0}/সেকেন্ড · {1}",
