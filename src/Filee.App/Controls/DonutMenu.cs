@@ -7,6 +7,7 @@
 //
 // After a drop the donut turns into a progress ring: see DonutMenu.Progress.cs. Group slices, which fan out a ring
 // of presets, and the keyboard: DonutMenu.Groups.cs. Tab (or the wheel) flips the donut over: DonutMenu.Flip.cs.
+// How each slice's name and icon fit inside it (the safe zone, one size and one style per ring): SliceLabelLayout.cs.
 
 using System.Globalization;
 using Avalonia;
@@ -16,6 +17,7 @@ using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Filee.App.Services;
+using Filee.Core.Presets;
 
 namespace Filee.App.Controls;
 
@@ -48,6 +50,23 @@ public sealed class DonutItem
     /// </summary>
     public IReadOnlyList<DonutItem>? Children { get; init; }
 
+    /// <summary>
+    /// The preset's full name, for the centre hint: the slice may show an icon or a shorter name. Null:
+    /// <see cref="Label"/>.
+    /// </summary>
+    public string? FullName { get; init; }
+
+    /// <summary>The icon the slice can show (a <see cref="SliceIcons"/> key), or null for none.</summary>
+    public string? IconKey { get; init; }
+
+    /// <summary>What the slice shows. Null: the donut's <see cref="DonutMenu.DefaultShow"/>.</summary>
+    public LabelShow? Show { get; init; }
+
+    /// <summary>
+    /// Which way its name runs. Null: whichever reads best there (<see cref="LabelDirection.Auto"/>).
+    /// </summary>
+    public LabelDirection? Direction { get; init; }
+
     /// <summary>A group slice (<see cref="Children"/> set), even one left with nothing to fan out.</summary>
     public bool IsGroup => Children is not null;
 
@@ -76,8 +95,16 @@ public sealed partial class DonutMenu : Control
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(AllowContextEdit));
     public static readonly StyledProperty<bool> ReserveSubRingProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(ReserveSubRing));
+    public static readonly StyledProperty<double> LabelScaleProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(LabelScale), 1);
+    public static readonly StyledProperty<LabelShow> DefaultShowProperty =
+        AvaloniaProperty.Register<DonutMenu, LabelShow>(nameof(DefaultShow), LabelShow.Auto);
     public static readonly StyledProperty<bool> ShowCaptionsProperty =
         AvaloniaProperty.Register<DonutMenu, bool>(nameof(ShowCaptions), true);
+    public static readonly StyledProperty<double> GroupRingSizeProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSize), 1);
+    public static readonly StyledProperty<double> GroupRingSpreadProperty =
+        AvaloniaProperty.Register<DonutMenu, double>(nameof(GroupRingSpread), 1);
 
     /// <summary>The theme's softness (Styles/Controls.axaml binds SoftRadius): rounds the corners of the slices.</summary>
     public static readonly StyledProperty<CornerRadius> CornerRadiusProperty =
@@ -142,11 +169,12 @@ public sealed partial class DonutMenu : Control
 
     static DonutMenu()
     {
-        AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty);
+        AffectsMeasure<DonutMenu>(OuterRadiusProperty, ReserveSubRingProperty, GroupRingSizeProperty);
         AffectsRender<DonutMenu>(HoleRatioProperty, SliceOpacityProperty, CenterTitleProperty, CenterSubtitleProperty,
             IsEditModeProperty, SliceBrushProperty, SliceBorderBrushProperty, CenterBrushProperty, AccentBrushProperty,
             OnAccentBrushProperty, ForegroundProperty, SecondaryForegroundProperty, SuccessBrushProperty, CornerRadiusProperty,
-            CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty);
+            CenterHintProperty, CenterHintWheelProperty, ShowCaptionsProperty, LabelScaleProperty, DefaultShowProperty,
+            GroupRingSizeProperty, GroupRingSpreadProperty);
         ItemsProperty.Changed.AddClassHandler<DonutMenu>((d, _) => d.OnItemsChanged());
     }
 
@@ -190,6 +218,23 @@ public sealed partial class DonutMenu : Control
     /// name with another on the face: nothing else would tell them apart.
     /// </summary>
     public bool ShowCaptions { get => GetValue(ShowCaptionsProperty); set => SetValue(ShowCaptionsProperty, value); }
+
+    /// <summary>
+    /// How large the slices' names and icons are (the donut's Label scale, 0.8 to 1.6); they also follow the donut's
+    /// size (<see cref="DonutScale"/>).
+    /// </summary>
+    public double LabelScale { get => GetValue(LabelScaleProperty); set => SetValue(LabelScaleProperty, value); }
+
+    /// <summary>
+    /// How large a group's ring is, against its size on a donut of this radius (Group ring size, 1 = 100 %).
+    /// </summary>
+    public double GroupRingSize { get => GetValue(GroupRingSizeProperty); set => SetValue(GroupRingSizeProperty, value); }
+
+    /// <summary>How wide a group's ring spreads, against the default fan (Group ring spread, 1 = 100 %).</summary>
+    public double GroupRingSpread { get => GetValue(GroupRingSpreadProperty); set => SetValue(GroupRingSpreadProperty, value); }
+
+    /// <summary>What a slice shows when its item doesn't say (<see cref="DonutItem.Show"/>).</summary>
+    public LabelShow DefaultShow { get => GetValue(DefaultShowProperty); set => SetValue(DefaultShowProperty, value); }
 
     public CornerRadius CornerRadius { get => GetValue(CornerRadiusProperty); set => SetValue(CornerRadiusProperty, value); }
 
@@ -421,7 +466,7 @@ public sealed partial class DonutMenu : Control
 
     protected override Size MeasureOverride(Size availableSize)
     {
-        var side = SideFor(OuterRadius, ReserveSubRing || (!IsEditMode && Items?.Any(i => i.IsGroup) == true));
+        var side = SideFor(OuterRadius, ReserveSubRing || (!IsEditMode && Items?.Any(i => i.IsGroup) == true), GroupRingSize);
         return new Size(side, side);
     }
 
@@ -798,7 +843,7 @@ public sealed partial class DonutMenu : Control
                 active |= i == ActiveIndex ? _hover[i].Step(1, dt) : _hover[i].Step(0, dt, 320, CriticalDamping);
             active |= _centerPulse.Step(0, dt, 260, 12);
             // A soft bounce opening, like the slices popping out; folding away settles without one. The bounce grows the
-            // ring by about a pixel, well inside the room kept for it (SubRingSpace).
+            // ring by about a pixel, well inside the room kept for it (SubRingSpaceFor).
             active |= _expanded >= 0 ? _expand.Step(1, dt, 320, 24) : _expand.Step(0, dt, 320, CriticalDamping);
             if (_expanded < 0 && _expand.Value <= 0.001)
                 _shownExpanded = -1;
@@ -899,6 +944,11 @@ public sealed partial class DonutMenu : Control
                 context.DrawGeometry(WithOpacity(AccentBrush, 0.35), null, ring);
         }
 
+        var labels = n > 0
+            ? LabelPlan(Items!, center, r1, r2, i => IsEditMode && i < _mid.Length
+                ? (_mid[i].Value, _span[i].Value)
+                : (DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n)), DonutScale, typeface, typefaceRegular)
+            : [];
         for (var i = 0; i < n; i++)
         {
             if (IsFlipping && SliceFlipWidth(false, i) == 0)
@@ -938,14 +988,14 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(emphasis, 0, 1)), null, wedge);
 
                 var hot = (i == ActiveIndex || i == _dropTargetIndex) && item.IsEnabled;
-                DrawSliceLabel(context, item, Items!, center, r1, r2, mid, span, typeface, typefaceRegular, hot);
+                DrawSliceLabel(context, labels[i], item.IsEnabled, hot);
+                DrawGroupMark(context, item, center, r2, mid, hot);
             }
         }
 
-        if (_oldFace is { } old)
+        if (_oldFace is { } old && _oldFaceItems is { } oldItems)
         {
-            // Items holds the incoming face by now: the outgoing slices are compared with their own face.
-            var oldItems = Array.ConvertAll(old, slice => slice.Item);
+            var oldLabels = LabelPlan(oldItems, center, r1, r2, i => (old[i].Mid, old[i].Span), DonutScale, typeface, typefaceRegular);
             for (var i = 0; i < old.Length; i++)
             {
                 var slice = old[i];
@@ -965,8 +1015,8 @@ public sealed partial class DonutMenu : Control
                     context.DrawGeometry(WithOpacity(SliceBrush, SliceOpacity * (slice.Item.IsEnabled ? 1 : 0.55)), BorderPen(), wedge);
                     if (slice.Emphasis > 0.01 && slice.Item.IsEnabled)
                         context.DrawGeometry(WithOpacity(AccentBrush, 0.82 * Math.Clamp(slice.Emphasis, 0, 1)), null, wedge);
-                    DrawSliceLabel(context, slice.Item, oldItems, center, r1, r2, slice.Mid, slice.Span, typeface,
-                        typefaceRegular, slice.Hot && slice.Item.IsEnabled);
+                    DrawSliceLabel(context, oldLabels[i], slice.Item.IsEnabled, slice.Hot && slice.Item.IsEnabled);
+                    DrawGroupMark(context, slice.Item, center, r2, slice.Mid, slice.Hot && slice.Item.IsEnabled);
                 }
             }
         }
@@ -1003,7 +1053,11 @@ public sealed partial class DonutMenu : Control
         if (cancelHot)
             context.DrawEllipse(WithOpacity(DangerBrush, 0.18), null, center, radius, radius);
 
-        var maxWidth = radius * 1.6;
+        // The text and its icons grow and shrink with the donut, as the hub does.
+        var scale = DonutScale;
+        using var scaled = context.PushTransform(Matrix.CreateTranslation(-center.X, -center.Y) * Matrix.CreateScale(scale, scale) *
+                                                 Matrix.CreateTranslation(center.X, center.Y));
+        var maxWidth = radius * 1.6 / scale;
         var title = CachedText(CenterTitle ?? "", bold, 14, Foreground, maxWidth, maxLines: 2);
         var subtitle = CachedText(CenterSubtitle ?? "", regular, 11.5, cancelHot ? DangerBrush : SecondaryForeground, maxWidth, maxLines: 2);
         // "⟳ Tab back": small, under the rest, a little narrower (the hub is round), with room for its icons.
@@ -1097,43 +1151,147 @@ public sealed partial class DonutMenu : Control
         context.DrawLine(pen, new Point(box.Center.X, box.Top + 2), new Point(box.Center.X, box.Top + 4.5));
     }
 
-    /// <param name="face">The slices <paramref name="item"/> is shown among: its face, or its group's ring.</param>
-    private void DrawLabel(DrawingContext context, DonutItem item, IReadOnlyList<DonutItem> face, Point center,
-        double radius, double angle, double maxWidth, double maxHeight, Typeface bold, Typeface regular, bool hot)
-    {
-        var foreground = hot ? OnAccentBrush : item.IsEnabled ? Foreground : SecondaryForeground;
-        var width = Math.Clamp(maxWidth, 30, 120);
-        var text = KeepKoreanWords(item.Label);
-        var label = CachedText(text, bold, LabelSize(text, bold, width), foreground, width, maxLines: 2);
-        var showCaption = (ShowCaptions || item.KeepsCaption || SharesItsName(item, face)) &&
-                          !string.IsNullOrEmpty(item.Caption) &&
-                          !string.Equals(item.Caption, item.Label, StringComparison.OrdinalIgnoreCase) &&
-                          label.Height + 14 < maxHeight;
-        var caption = showCaption
-            ? CachedText(item.Caption!, regular, 10.5, hot ? OnAccentBrush : SecondaryForeground, width,
-                maxLines: label.Height + 28 < maxHeight ? 2 : 1)
-            : null;
+    // ───────────────────────── Slice labels ─────────────────────────
 
-        var total = label.Height + (caption?.Height ?? 0);
-        var anchor = DonutGeometry.PointAt(center, radius, angle);
-        var y = anchor.Y - total / 2;
-        DrawCentered(context, label, anchor.X, y);
-        if (caption is not null)
-            DrawCentered(context, caption, anchor.X, y + label.Height);
+    /// <summary>
+    /// How large the donut is against the default size (radius 150): names, icons, margins, the chevron and the centre
+    /// text grow and shrink with it.
+    /// </summary>
+    internal double DonutScale => OuterRadius / SliceLabelLayout.DefaultRadius;
+
+    private SliceLabelLayout? _labelLayout;
+    private readonly Dictionary<LabelPlanKey, IReadOnlyList<SliceLabel>> _labelPlans = new();
+    private const int MaxCachedPlans = 64;
+
+    // A ring's labels are laid out again only when something they depend on changes: its items, its slices' shapes, the
+    // donut's size or the label settings. Animations move the drawn labels with transforms.
+    private readonly record struct LabelPlanKey(IReadOnlyList<DonutItem> Items, Point Center, double Inner, double Outer,
+        int Shapes, double Scale, double LabelScale, bool Captions, LabelShow Show);
+
+    private SliceLabelLayout LabelLayout(Typeface bold, Typeface regular)
+    {
+        var fonts = new LabelFonts(bold, regular, TextDirection);
+        if (_labelLayout is null || _labelLayout.Fonts != fonts)
+        {
+            _labelLayout = new SliceLabelLayout(fonts);
+            _labelPlans.Clear();
+        }
+        return _labelLayout;
+    }
+
+    /// <summary>
+    /// The labels of one ring of <paramref name="items"/> between <paramref name="inner"/> and
+    /// <paramref name="outer"/>, slice <c>i</c> centred on <c>slice(i).Mid</c> and <c>slice(i).Span</c> wide.
+    /// </summary>
+    private IReadOnlyList<SliceLabel> LabelPlan(IReadOnlyList<DonutItem> items, Point center, double inner, double outer,
+        Func<int, (double Mid, double Span)> slice, double scale, Typeface bold, Typeface regular, bool fitScale = false)
+    {
+        var layout = LabelLayout(bold, regular);
+        var shapes = new HashCode();
+        for (var i = 0; i < items.Count; i++)
+        {
+            var (mid, span) = slice(i);
+            shapes.Add(mid);
+            shapes.Add(span);
+        }
+        var key = new LabelPlanKey(items, center, inner, outer, shapes.ToHashCode(), scale, LabelScale, ShowCaptions, DefaultShow);
+        if (_labelPlans.TryGetValue(key, out var plan))
+            return plan;
+        if (_labelPlans.Count >= MaxCachedPlans)
+            _labelPlans.Clear();
+        var inputs = items.Select((item, i) =>
+        {
+            var (mid, span) = slice(i);
+            // The slices of this ring only: the outgoing face of a flip, or a group's ring, compares among its own.
+            return new SliceLabelInput(item.Label, item.Caption, item.IconKey, item.Show ?? DefaultShow,
+                new SliceShape(center, inner, outer, mid, span, GapPixels, item.IsGroup ? ChevronIn : 0, item.IsGroup ? ChevronReach : 0),
+                item.Direction ?? LabelDirection.Auto,
+                NeedsCaption: item.KeepsCaption || SharesItsName(item, items));
+        }).ToList();
+        PlansMade++;
+        return _labelPlans[key] = fitScale
+            ? layout.PlanRingToFit(inputs, LabelScale, scale, ShowCaptions)
+            : layout.PlanRing(inputs, LabelScale, scale, ShowCaptions);
+    }
+
+    /// <summary>How many ring layouts were worked out (tests: not one per frame).</summary>
+    internal int PlansMade { get; private set; }
+
+    /// <summary>
+    /// The labels of the face (at rest) and of every group's ring, laid out as they are drawn, in the given fonts
+    /// (tests: whether names fit, without drawing).
+    /// </summary>
+    internal (IReadOnlyList<SliceLabel> Face, IReadOnlyList<IReadOnlyList<SliceLabel>> Rings) PlanLabels(Typeface bold, Typeface regular)
+    {
+        var items = Items ?? [];
+        var n = items.Count;
+        var space = SubRingSpaceFor(OuterRadius, GroupRingSize);
+        var center = new Point(OuterRadius + space, OuterRadius + space);
+        var face = n == 0 ? [] : LabelPlan(items, center, InnerRadius, OuterRadius,
+            i => (DonutGeometry.MidAngle(i, n), DonutGeometry.Span(n)), DonutScale, bold, regular);
+        var (inner, outer) = SubRadii;
+        var rings = items.Select((item, group) =>
+        {
+            if (item.Children is not { Count: > 0 } children)
+                return (IReadOnlyList<SliceLabel>)[];
+            var span = SubSpanOf(children.Count);
+            var mid = DonutGeometry.MidAngle(group, n);
+            return LabelPlan(children, center, inner, outer,
+                k => (DonutGeometry.SubMidAngle(mid, k, children.Count, span), span), RingScale, bold, regular, fitScale: true);
+        }).ToList();
+        return (face, rings);
+    }
+
+    /// <summary>
+    /// Draws a slice's laid-out icon and name in its text colour (on the accent when it's highlighted).
+    /// </summary>
+    private void DrawSliceLabel(DrawingContext context, SliceLabel label, bool enabled, bool hot)
+    {
+        var brush = hot ? OnAccentBrush : enabled ? Foreground : SecondaryForeground;
+        if (label.IconSize > 0 && SliceIcons.Geometry(label.IconKey) is { } icon)
+        {
+            var k = label.IconSize / SliceIcons.Box;
+            using (context.PushTransform(Matrix.CreateTranslation(-SliceIcons.Box / 2, -SliceIcons.Box / 2) *
+                                         Matrix.CreateScale(k, k) *
+                                         Matrix.CreateTranslation(label.IconCenter.X, label.IconCenter.Y)))
+                context.DrawGeometry(brush, null, icon);
+        }
+        if (label.Text is not { } text || _labelLayout is not { } layout)
+            return;
+        var fonts = layout.Fonts;
+        var at = text.Anchor;
+        if (text.Curved)
+        {
+            // Bent along the ring: each letter on its line's circle, upright to the reader.
+            foreach (var glyph in layout.CurvedGlyphs(label.Zone, text))
+            {
+                var letter = new FormattedText(KeepKoreanWords(glyph.Text), CultureInfo.CurrentUICulture, fonts.Direction,
+                    fonts.Bold, text.Size, brush);
+                using (context.PushTransform(Matrix.CreateTranslation(-glyph.Advance / 2, -text.LineHeights[glyph.Line] / 2) *
+                                             Matrix.CreateRotation(glyph.Rotation) *
+                                             Matrix.CreateTranslation(glyph.At.X, glyph.At.Y)))
+                    context.DrawText(letter, new Point(0, 0));
+            }
+            return;
+        }
+        using (context.PushTransform(Matrix.CreateTranslation(-at.X, -at.Y) * Matrix.CreateRotation(text.Rotation) *
+                                     Matrix.CreateTranslation(at.X, at.Y)))
+        {
+            var y = at.Y - text.Height / 2;
+            for (var i = 0; i < text.Lines.Count; i++)
+            {
+                DrawCentered(context, SliceLabelLayout.MakeLine(text.Lines[i], fonts.Bold, text.Size, brush, fonts.Direction, text.Width), at.X, y);
+                y += text.LineHeights[i];
+            }
+            if (text.Caption is { } caption)
+                DrawCentered(context, SliceLabelLayout.MakeLine(caption, fonts.Regular, text.CaptionSize,
+                    hot ? OnAccentBrush : SecondaryForeground, fonts.Direction, text.Width), at.X, y);
+        }
     }
 
     /// <summary>Another slice of <paramref name="face"/> has the name, and only the caption tells them apart.</summary>
     private static bool SharesItsName(DonutItem item, IReadOnlyList<DonutItem> face) =>
         face.Any(other => !ReferenceEquals(other, item) && string.Equals(other.Label, item.Label, StringComparison.OrdinalIgnoreCase));
-
-    /// <summary>A slice's name and caption, and a group's mark, the name moved in to leave the mark room.</summary>
-    private void DrawSliceLabel(DrawingContext context, DonutItem item, IReadOnlyList<DonutItem> face, Point center,
-        double r1, double r2, double mid, double span, Typeface bold, Typeface regular, bool hot)
-    {
-        var room = item.IsGroup ? GroupMarkRoom * GroupMarkScale : 0;
-        DrawLabel(context, item, face, center, (r1 + r2 - room) / 2, mid, span * (r1 + r2) / 2 - 10, r2 - r1 - 16, bold, regular, hot);
-        DrawGroupMark(context, item, center, r2, mid, hot);
-    }
 
     /// <summary>
     /// A group slice's mark: a small chevron by its outer edge pointing outward, where its ring fans out, as a
@@ -1146,7 +1304,7 @@ public sealed partial class DonutMenu : Control
         var brush = hot ? OnAccentBrush : SecondaryForeground;
         if (brush is null)
             return;
-        var size = GroupMarkScale;
+        var size = DonutScale;
         var pen = new Pen(brush, GroupMarkStroke * size, lineCap: PenLineCap.Round, lineJoin: PenLineJoin.Round);
         using (context.PushOpacity(item.IsEnabled ? 1 : 0.5))
             context.DrawGeometry(null, pen, CreateGroupMark(center, r2, mid, size));
@@ -1181,52 +1339,24 @@ public sealed partial class DonutMenu : Control
         return mark;
     }
 
-    /// <summary>The group mark's size follows the donut's: 1 at the default radius.</summary>
-    private double GroupMarkScale => OuterRadius / DefaultOuterRadius;
-
     private const double DefaultOuterRadius = 150;
 
     // The group mark at the default radius: its tip this far in from the outer edge, its arms this far back and this
-    // far to each side, its line this thick, and how far a group's text area gives way for it.
-    private const double GroupMarkInset = 7, GroupMarkDepth = 4.5, GroupMarkHalfWidth = 5, GroupMarkStroke = 1.6, GroupMarkRoom = 6;
+    // far to each side, and its line this thick.
+    private const double GroupMarkInset = 7, GroupMarkDepth = 4.5, GroupMarkHalfWidth = 5, GroupMarkStroke = 1.6;
 
     /// <summary>
-    /// A slice's caption under its name: one line, or two where the slice is deep enough, so a caption wider than the
-    /// slice ("Same format" on a small donut) wraps instead of ending in "Same for…".
+    /// A group slice's chevron, for its label to keep clear of: its middle this far in from the outer edge, and its
+    /// arms' ends and line this far round that.
     /// </summary>
-    internal static FormattedText MakeCaption(string caption, Typeface typeface, IBrush? brush, double width,
-        double labelHeight, double maxHeight) =>
-        MakeText(caption, typeface, 10.5, brush, width, maxLines: labelHeight + 28 < maxHeight ? 2 : 1);
+    private double ChevronIn => (GroupMarkInset + GroupMarkDepth / 2) * DonutScale;
 
-    private const double LabelFontSize = 13;
-    private const double MinLabelFontSize = 10;
-    private readonly Dictionary<(string Text, Typeface Typeface, double Width), double> _labelSizes = new();
-
-    /// <summary>
-    /// The size a slice's name is drawn at: 13, or smaller (down to 10) when one of its words is wider than the slice
-    /// (<paramref name="width"/>), which would otherwise break in the middle ("Grayscal|e" on a thin slice). Words in
-    /// Chinese or Japanese are left out: those break between any two characters.
-    /// </summary>
-    internal double LabelSize(string text, Typeface typeface, double width)
-    {
-        var line = Math.Round(width);
-        var key = (text, typeface, line);
-        if (_labelSizes.TryGetValue(key, out var size))
-            return size;
-        if (_labelSizes.Count >= MaxCachedWedges)
-            _labelSizes.Clear();
-        var widest = text.Split(' ', StringSplitOptions.RemoveEmptyEntries)
-            .Where(word => !word.Any(IsHanOrKana))
-            .Select(word => new FormattedText(word, CultureInfo.CurrentUICulture, TextDirection, typeface, LabelFontSize, null).Width)
-            .DefaultIfEmpty(0)
-            .Max();
-        // A pixel to spare: a word exactly as wide as the line still wraps.
-        size = widest < line ? LabelFontSize : Math.Max(MinLabelFontSize, LabelFontSize * (line - 1) / widest);
-        return _labelSizes[key] = size;
-    }
+    /// <inheritdoc cref="ChevronIn"/>
+    private double ChevronReach =>
+        (Math.Sqrt(GroupMarkHalfWidth * GroupMarkHalfWidth + GroupMarkDepth * GroupMarkDepth / 4) + GroupMarkStroke / 2) * DonutScale;
 
     /// <summary>Chinese characters, kana and the CJK symbols and full-width forms: a line may break between any two.</summary>
-    private static bool IsHanOrKana(char c) =>
+    internal static bool IsHanOrKana(char c) =>
         c is >= '\u2E80' and <= '\u312F' or >= '\u3190' and <= '\u9FFF' or >= '\uF900' and <= '\uFAFF' or >= '\uFF00' and <= '\uFFEF';
 
     /// <summary>
@@ -1319,8 +1449,17 @@ public sealed partial class DonutMenu : Control
         if (_previewLabel is null || span < 0.25)
             return;
         using (context.PushOpacity(Math.Clamp((span - 0.25) / 0.3, 0, 1) * 0.9))
-            DrawSliceLabel(context, new DonutItem { Id = "", Label = _previewLabel, Children = _previewGroup ? [] : null }, [], center,
-                r1, r2, mid, span, bold, regular, hot: false);
+        {
+            // One slice of its own: laid out each frame as it grows in, never cached.
+            var layout = LabelLayout(bold, regular);
+            var label = layout.PlanRing([new SliceLabelInput(_previewLabel, null, null, LabelShow.TextOnly,
+                new SliceShape(center, r1, r2, mid, span, GapPixels, _previewGroup ? ChevronIn : 0, _previewGroup ? ChevronReach : 0))],
+                LabelScale, DonutScale,
+                false)[0];
+            DrawSliceLabel(context, label, enabled: true, hot: false);
+            if (_previewGroup)
+                DrawGroupMark(context, new DonutItem { Id = "", Label = _previewLabel, Children = [] }, center, r2, mid, hot: false);
+        }
     }
 
     /// <summary>

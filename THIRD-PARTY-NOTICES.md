@@ -21,6 +21,7 @@ Each component remains under its own license.
 | HarfBuzzSharp | MIT | https://github.com/mono/SkiaSharp |
 | SharpCompress (zstd decompression for engine downloads; RAR, 7z and TAR comics) | MIT | https://github.com/adamhathcock/sharpcompress |
 | DiscUtils.Iso9660 (including DiscUtils.Core and DiscUtils.Streams; ISO creation) | MIT | https://github.com/DiscUtils/DiscUtils |
+| QRCoder | MIT | https://github.com/codebude/QRCoder |
 | Unhwp | MIT | https://github.com/iyulab/unhwp |
 | Markdig | BSD-2-Clause | https://github.com/xoofx/markdig |
 | ExifTool (optional engine, downloaded on request: the Metadata tool reads and writes with it) | Perl's licence (Artistic or GPL), separate program | https://exiftool.org |

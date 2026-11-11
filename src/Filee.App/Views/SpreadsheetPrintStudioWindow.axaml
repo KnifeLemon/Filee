@@ -193,6 +193,8 @@
           <ProgressBar Height="3" Maximum="100" Value="{Binding ExportProgress}" IsVisible="{Binding IsExporting}" />
         </StackPanel>
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+          <CheckBox VerticalAlignment="Center" Margin="0,0,8,0" Content="{DynamicResource sheet_studio.one_per_sheet}"
+                    IsChecked="{Binding OnePdfPerSheet}" IsEnabled="{Binding !IsExporting}" />
           <Button Content="{DynamicResource common.cancel}" Click="OnClose" IsCancel="True" />
           <Button Classes="accent" Content="{DynamicResource sheet_studio.export_pdf}" Click="OnExport"
                   IsEnabled="{Binding CanExport}" IsDefault="True" />

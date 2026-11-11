@@ -126,6 +126,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _edit = preset.Clone();
         _loc = loc;
         FolderInput = folderInput || preset.TargetFormat == "iso";
+        Labels = new SliceLabelFields(preset, loc);
 
         // ~150 formats in registry order, which groups them by category; the category is shown next to each name
         // and typing the first letters of a name jumps to it.
@@ -290,15 +291,19 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             new Choice<string>("ja", "日本語"),
             new Choice<string>("ko", "한국어"),
             new Choice<string>("ru", "Русский"),
+            new Choice<string>("uk", "Українська"),
             new Choice<string>("pt", "Português"),
             new Choice<string>("ar", "العربية"),
+            new Choice<string>("fa", "فارسی"),
             new Choice<string>("it", "Italiano"),
             new Choice<string>("nl", "Nederlands"),
             new Choice<string>("pl", "Polski"),
             new Choice<string>("tr", "Türkçe"),
             new Choice<string>("ne", "नेपाली"),
             new Choice<string>("th", "ไทย"),
-            new Choice<string>("id", "Bahasa Indonesia")
+            new Choice<string>("id", "Bahasa Indonesia"),
+            new Choice<string>("vi", "Tiếng Việt"),
+            new Choice<string>("bn", "বাংলা")
         ];
         _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
             ?? TranslationLanguageChoices[0];
@@ -509,6 +514,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NameError), nameof(IsValid))]
     private string _name;
+
+    partial void OnNameChanged(string value) => Labels.NameChanged(value);
+
+    /// <summary>The slice's icon, short name and what it shows.</summary>
+    public SliceLabelFields Labels { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
@@ -1256,6 +1266,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Keep a built-in preset's translatable name unless the user actually renamed it.
         if (_original.NameKey is null || Name.Trim() != _loc.DisplayName(_original))
             _original.Name = Name.Trim();
+        Labels.Apply(_original);
 
         _original.TargetFormat = TargetId;
         var image = _original.Image;

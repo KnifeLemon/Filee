@@ -16,7 +16,6 @@ namespace Filee.Engines.Translation;
 public sealed class TranslationService : ITranslationService
 {
     private static readonly TimeSpan OllamaTimeout = TimeSpan.FromMinutes(2);
-    private static readonly Uri LocalOllamaBase = new("http://127.0.0.1:11434");
 
     private static readonly HttpClient SharedHttpClient = new(new SocketsHttpHandler
     {
@@ -32,7 +31,7 @@ public sealed class TranslationService : ITranslationService
     {
         UseProxy = false,
         AllowAutoRedirect = false,
-        ConnectTimeout = TimeSpan.FromMilliseconds(500)
+        ConnectTimeout = TimeSpan.FromSeconds(1)
     })
     {
         Timeout = TimeSpan.FromSeconds(2)
@@ -98,8 +97,8 @@ public sealed class TranslationService : ITranslationService
         try
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            cts.CancelAfter(TimeSpan.FromMilliseconds(500));
-            using var res = await SharedPingClient.GetAsync(new Uri(LocalOllamaBase, "/api/tags"), cts.Token);
+            cts.CancelAfter(TranslatorConverter.CheckLimit);
+            using var res = await SharedPingClient.GetAsync(new Uri(OllamaEndpoint.Base, "/api/tags"), cts.Token);
             return res.IsSuccessStatusCode;
         }
         catch
@@ -114,7 +113,7 @@ public sealed class TranslationService : ITranslationService
         {
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(TimeSpan.FromSeconds(2));
-            using var res = await SharedPingClient.GetAsync(new Uri(LocalOllamaBase, "/api/tags"), cts.Token);
+            using var res = await SharedPingClient.GetAsync(new Uri(OllamaEndpoint.Base, "/api/tags"), cts.Token);
             if (!res.IsSuccessStatusCode)
                 return null;
 
@@ -164,7 +163,7 @@ public sealed class TranslationService : ITranslationService
 
         var preferred = await GetPreferredLocalOllamaModelAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(preferred))
-            throw new ConversionRefusedException("engines.package.translator.no_model");
+            throw new ConversionRefusedException("engines.package.translator.no_model", OllamaEndpoint.Address);
 
         if (IsCloudModel(preferred) || await CheckModelRemoteCloudAsync(preferred, cancellationToken))
             throw new ConversionRefusedException("error.translation_cloud_model_forbidden");
@@ -179,7 +178,7 @@ public sealed class TranslationService : ITranslationService
         {
             var client = _http ?? SharedHttpClient;
             var body = new { model = modelName };
-            using var res = await client.PostAsJsonAsync(new Uri(LocalOllamaBase, "/api/show"), body, cancellationToken);
+            using var res = await client.PostAsJsonAsync(new Uri(OllamaEndpoint.Base, "/api/show"), body, cancellationToken);
             if (res.StatusCode == System.Net.HttpStatusCode.NotFound)
                 throw new ConversionRefusedException("error.translation_model_not_found");
 
@@ -249,7 +248,7 @@ public sealed class TranslationService : ITranslationService
         };
 
         var client = _http ?? SharedHttpClient;
-        using var response = await client.PostAsJsonAsync(new Uri(LocalOllamaBase, "/api/generate"), requestBody, cancellationToken);
+        using var response = await client.PostAsJsonAsync(new Uri(OllamaEndpoint.Base, "/api/generate"), requestBody, cancellationToken);
         response.EnsureSuccessStatusCode();
 
         using var json = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken: cancellationToken);
@@ -319,7 +318,22 @@ public sealed class TranslationService : ITranslationService
         ["polski"] = "pl",
         ["tr"] = "tr",
         ["turkish"] = "tr",
-        ["türkçe"] = "tr"
+        ["türkçe"] = "tr",
+        ["uk"] = "uk",
+        ["ukrainian"] = "uk",
+        ["українська"] = "uk",
+        ["vi"] = "vi",
+        ["vietnamese"] = "vi",
+        ["tiếng việt"] = "vi",
+        ["bn"] = "bn",
+        ["bn-bd"] = "bn",
+        ["bengali"] = "bn",
+        ["bangla"] = "bn",
+        ["বাংলা"] = "bn",
+        ["fa"] = "fa",
+        ["persian"] = "fa",
+        ["farsi"] = "fa",
+        ["فارسی"] = "fa"
     };
 
     private static readonly Dictionary<string, string> CodeToNameMap = new(StringComparer.OrdinalIgnoreCase)
@@ -341,6 +355,10 @@ public sealed class TranslationService : ITranslationService
         ["pl"] = "Polish",
         ["tr"] = "Turkish",
         ["th"] = "Thai",
-        ["id"] = "Indonesian"
+        ["id"] = "Indonesian",
+        ["uk"] = "Ukrainian",
+        ["vi"] = "Vietnamese",
+        ["bn"] = "Bengali",
+        ["fa"] = "Persian"
     };
 }

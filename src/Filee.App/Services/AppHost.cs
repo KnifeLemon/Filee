@@ -68,6 +68,8 @@ public static class AppHost
         services.AddSingleton<ConversionService>();
         services.AddSingleton<SpreadsheetPrintService>();
         services.AddSingleton<WatchFolderService>();
+        services.AddSingleton<Filee.App.Services.Connect.SharedFolderManager>();
+        services.AddSingleton<Filee.App.Services.Connect.FileeConnectService>();
         services.AddSingleton<TriggerService>();
         services.AddSingleton<RadialController>();
         services.AddSingleton<StagedFiles>();
