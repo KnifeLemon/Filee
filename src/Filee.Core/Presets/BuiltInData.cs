@@ -14,6 +14,9 @@ public static class BuiltInData
     /// <summary>The "iPhone ringtone" preset (#1291): an M4R of at most 40 seconds, from where its Start field says.</summary>
     public const string RingtoneId = "iphone-ringtone";
 
+    /// <summary>The "PDF/A" preset (#1367): any PDF Filee writes, PDF → PDF too, made PDF/A-2b for archiving.</summary>
+    public const string PdfAId = "pdf-a";
+
     /// <summary>Whether a conversion target accepts a folder directly.</summary>
     public static bool SupportsFolderTarget(string target) => target == "iso";
 
@@ -135,6 +138,7 @@ public static class BuiltInData
         },
         .. PdfCompressionPresets(),
         .. OcrPresets(),
+        .. PdfAPresets(),
         .. PdfSlidesPresets(),
         .. FramePresets(),
         .. MotionPhotoPresets(),
@@ -480,6 +484,19 @@ public static class BuiltInData
         {
             Id = "searchable-pdf", NameKey = "preset.searchable_pdf", TargetFormat = "pdf",
             Pdf = { Ocr = true }, Output = { FileNamePattern = "{name}_searchable" },
+        },
+    ];
+
+    /// <summary>
+    /// "PDF/A": a PDF, or a document converted to PDF, as PDF/A-2b (added in settings schema 80). LibreOffice writes it
+    /// itself; any other PDF is rewritten by Ghostscript. On no donut, like "Compress PDF".
+    /// </summary>
+    public static List<Preset> PdfAPresets() =>
+    [
+        new()
+        {
+            Id = PdfAId, NameKey = "preset.pdf_a", TargetFormat = "pdf",
+            Document = { PdfA = true }, Output = { FileNamePattern = "{name}_pdfa" },
         },
     ];
 
