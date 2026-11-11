@@ -260,6 +260,21 @@ public interface IPdfFinisher
 }
 
 /// <summary>
+/// Makes a finished PDF a PDF/A (<see cref="Presets.DocumentOptions.PdfA"/>). Implemented by the Ghostscript engine;
+/// <see cref="JobQueue"/> runs it after the finishing on every PDF a job writes, whichever engine made it, and on a
+/// merged PDF once, so the box means the same for every route.
+/// </summary>
+public interface IPdfArchiver
+{
+    /// <summary>
+    /// Rewrites <paramref name="path"/> in place as PDF/A, unless it already is one and <paramref name="changed"/> is
+    /// false (LibreOffice and Skia write PDF/A themselves; a watermark added since breaks it).
+    /// </summary>
+    /// <returns>False when it can't (Ghostscript isn't installed): the PDF is left as it is.</returns>
+    Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken);
+}
+
+/// <summary>
 /// Writes TIFF pages (and every page of multi-page TIFFs) into one multi-page TIFF, in order. Implemented by the
 /// ImageMagick engine; <see cref="JobQueue"/> uses it when a preset sets <see cref="Presets.ImageOptions.MultiPageTiff"/>.
 /// </summary>

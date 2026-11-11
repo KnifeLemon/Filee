@@ -1097,6 +1097,10 @@ internal static class SettingsMigrations
             if (presets.All(p => p.Id != BuiltInData.RingtoneId))
                 changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
         }
+        // v80: the "PDF/A" preset (#1367) comes to libraries saved before it existed, after the built-in preset before it
+        //      as in a new library; no donut gets a slot. (Schema 80 may be renumbered if another change takes it first.)
+        if (from < 80 && presets.All(p => p.Id != BuiltInData.PdfAId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.PdfAId);
         // v82: Adobe extension packages (.zxp, #1382) learn the archives donut; custom claims stay put. (Schema 82 may be
         //      renumbered if another change takes it first.)
         if (from < 82)
