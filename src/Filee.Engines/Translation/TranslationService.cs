@@ -318,7 +318,22 @@ public sealed class TranslationService : ITranslationService
         ["polski"] = "pl",
         ["tr"] = "tr",
         ["turkish"] = "tr",
-        ["türkçe"] = "tr"
+        ["türkçe"] = "tr",
+        ["uk"] = "uk",
+        ["ukrainian"] = "uk",
+        ["українська"] = "uk",
+        ["vi"] = "vi",
+        ["vietnamese"] = "vi",
+        ["tiếng việt"] = "vi",
+        ["bn"] = "bn",
+        ["bn-bd"] = "bn",
+        ["bengali"] = "bn",
+        ["bangla"] = "bn",
+        ["বাংলা"] = "bn",
+        ["fa"] = "fa",
+        ["persian"] = "fa",
+        ["farsi"] = "fa",
+        ["فارسی"] = "fa"
     };
 
     private static readonly Dictionary<string, string> CodeToNameMap = new(StringComparer.OrdinalIgnoreCase)
@@ -340,6 +355,10 @@ public sealed class TranslationService : ITranslationService
         ["pl"] = "Polish",
         ["tr"] = "Turkish",
         ["th"] = "Thai",
-        ["id"] = "Indonesian"
+        ["id"] = "Indonesian",
+        ["uk"] = "Ukrainian",
+        ["vi"] = "Vietnamese",
+        ["bn"] = "Bengali",
+        ["fa"] = "Persian"
     };
 }

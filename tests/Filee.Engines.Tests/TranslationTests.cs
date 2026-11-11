@@ -34,6 +34,62 @@ public class TranslationTests
         Assert.Equal("fr", TranslationService.NormalizeLanguage("french"));
     }
 
+    // The four app UI languages that were missing from the translate targets (#1344): the code the preset stores,
+    // the English and native names, and the UI's own regional code all land on one code.
+    [Theory]
+    [InlineData("uk", "uk")]
+    [InlineData("Ukrainian", "uk")]
+    [InlineData("Українська", "uk")]
+    [InlineData("vi", "vi")]
+    [InlineData("Vietnamese", "vi")]
+    [InlineData("Tiếng Việt", "vi")]
+    [InlineData("bn", "bn")]
+    [InlineData("bn-BD", "bn")]
+    [InlineData("Bengali", "bn")]
+    [InlineData("বাংলা", "bn")]
+    [InlineData("fa", "fa")]
+    [InlineData("Persian", "fa")]
+    [InlineData("Farsi", "fa")]
+    [InlineData("فارسی", "fa")]
+    public void Normalizes_the_added_target_languages(string input, string expected)
+    {
+        Assert.Equal(expected, TranslationService.NormalizeLanguage(input));
+    }
+
+    [Theory]
+    [InlineData("uk", "Ukrainian")]
+    [InlineData("vi", "Vietnamese")]
+    [InlineData("bn", "Bengali")]
+    [InlineData("fa", "Persian")]
+    public async Task The_prompt_names_the_target_language_in_English(string code, string name)
+    {
+        var handler = new PromptCapturingHandler();
+        using var client = new HttpClient(handler);
+        var service = new TranslationService(new Filee.Core.Presets.TranslateOptions { Model = "gemma3:12b" }, client);
+
+        var result = await service.TranslateTextAsync("Hello", code, "en", TestContext.Current.CancellationToken);
+
+        Assert.Equal("ok", result);
+        Assert.Contains($"into {name}.", handler.SystemPrompt);
+    }
+
+    // Answers /api/show as a local model and /api/generate with "ok", keeping the system prompt it was sent.
+    private sealed class PromptCapturingHandler : HttpMessageHandler
+    {
+        public string SystemPrompt { get; private set; } = "";
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request.RequestUri!.AbsolutePath == "/api/generate")
+            {
+                using var body = System.Text.Json.JsonDocument.Parse(await request.Content!.ReadAsStringAsync(cancellationToken));
+                SystemPrompt = body.RootElement.GetProperty("system").GetString() ?? "";
+                return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{\"response\":\"ok\"}") };
+            }
+            return new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent("{}") };
+        }
+    }
+
     [Theory]
     [InlineData("gpt-oss:120b-cloud", true)]
     [InlineData("model-cloud", true)]
