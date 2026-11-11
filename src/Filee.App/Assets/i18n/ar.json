@@ -557,6 +557,7 @@
   "general.start_with_system": "تشغيل Filee عند تسجيل الدخول",
   "general.show_in_dock": "إظهار Filee في شريط Dock",
   "general.show_menu_bar_icon": "إظهار Filee في شريط القوائم",
+  "general.colored_menu_bar_icon": "إظهار أيقونة شريط القوائم بالألوان",
   "general.dock_failed": "تعذّر تغيير أيقونة Filee في Dock.",
   "general.context_menu": "إظهار «تحويل باستخدام Filee» في قائمة مستكشف الملفات",
   "general.context_menu_label": "تحويل باستخدام Filee",

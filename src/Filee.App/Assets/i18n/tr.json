@@ -557,6 +557,7 @@
   "general.start_with_system": "Oturum açtığımda Filee'yi başlat",
   "general.show_in_dock": "Filee'yi Dock'ta göster",
   "general.show_menu_bar_icon": "Filee'yi menü çubuğunda göster",
+  "general.colored_menu_bar_icon": "Menü çubuğu simgesini renkli göster",
   "general.dock_failed": "Filee'nin Dock simgesi değiştirilemedi.",
   "general.context_menu": "Dosya Gezgini sağ tık menüsünde “Filee ile dönüştür” seçeneğini göster",
   "general.context_menu_label": "Filee ile dönüştür",

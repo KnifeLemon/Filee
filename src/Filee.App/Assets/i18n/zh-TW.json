@@ -569,6 +569,7 @@
   "general.start_with_system": "登入時啟動 Filee",
   "general.show_in_dock": "在 Dock 中顯示 Filee",
   "general.show_menu_bar_icon": "在選單列中顯示 Filee 圖示",
+  "general.colored_menu_bar_icon": "以彩色顯示選單列圖示",
   "general.dock_failed": "無法變更 Filee 在 Dock 中的圖示。",
   "general.context_menu": "在檔案總管右鍵選單中顯示「用 Filee 轉換」",
   "general.context_menu_label": "用 Filee 轉換",

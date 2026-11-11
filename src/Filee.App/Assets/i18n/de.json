@@ -557,6 +557,7 @@
   "general.start_with_system": "Filee bei der Anmeldung starten",
   "general.show_in_dock": "Filee im Dock anzeigen",
   "general.show_menu_bar_icon": "Filee in der Menüleiste anzeigen",
+  "general.colored_menu_bar_icon": "Menüleistensymbol farbig anzeigen",
   "general.dock_failed": "Das Dock-Symbol von Filee konnte nicht geändert werden.",
   "general.context_menu": "„Mit Filee konvertieren“ im Explorer-Kontextmenü anzeigen",
   "general.context_menu_label": "Mit Filee konvertieren",

@@ -569,6 +569,7 @@
   "general.start_with_system": "로그인할 때 Filee 시작",
   "general.show_in_dock": "Dock에 Filee 표시",
   "general.show_menu_bar_icon": "메뉴 막대에 Filee 아이콘 표시",
+  "general.colored_menu_bar_icon": "메뉴 막대 아이콘을 컬러로 표시",
   "general.dock_failed": "Dock의 Filee 아이콘을 변경하지 못했어요.",
   "general.context_menu": "탐색기 우클릭 메뉴에 “Filee로 변환” 표시",
   "general.context_menu_label": "Filee로 변환",

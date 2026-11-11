@@ -569,6 +569,7 @@
   "general.start_with_system": "Uruchamiaj Filee po zalogowaniu",
   "general.show_in_dock": "Pokazuj Filee w Docku",
   "general.show_menu_bar_icon": "Pokazuj ikonę Filee na pasku menu",
+  "general.colored_menu_bar_icon": "Pokazuj kolorową ikonę na pasku menu",
   "general.dock_failed": "Nie udało się zmienić ikony Filee w Docku.",
   "general.context_menu": "Pokazuj „Konwertuj w Filee” w menu kontekstowym Eksploratora",
   "general.context_menu_label": "Konwertuj w Filee",

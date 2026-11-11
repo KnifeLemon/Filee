@@ -569,6 +569,7 @@
   "general.start_with_system": "Abrir o Filee ao iniciar sessão",
   "general.show_in_dock": "Mostrar o Filee na Dock",
   "general.show_menu_bar_icon": "Mostrar o Filee na barra de menus",
+  "general.colored_menu_bar_icon": "Mostrar o ícone da barra de menus a cores",
   "general.dock_failed": "Não foi possível alterar o ícone do Filee na Dock.",
   "general.context_menu": "Mostrar «Converter com o Filee» no menu de contexto do Explorador",
   "general.context_menu_label": "Converter com o Filee",

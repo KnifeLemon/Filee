@@ -556,6 +556,7 @@
   "general.start_with_system": "اجرای Filee هنگام ورود به سیستم",
   "general.show_in_dock": "نمایش Filee در Dock",
   "general.show_menu_bar_icon": "نمایش Filee در نوار منو",
+  "general.colored_menu_bar_icon": "نمایش نماد نوار منو به‌صورت رنگی",
   "general.dock_failed": "امکان تغییر آیکون Dock برنامه Filee نبود.",
   "general.context_menu": "نمایش «تبدیل با Filee» در منوی راست‌کلیک فایل اکسپلورر",
   "general.context_menu_label": "تبدیل با Filee",

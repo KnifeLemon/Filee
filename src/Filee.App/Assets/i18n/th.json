@@ -557,6 +557,7 @@
   "general.start_with_system": "เปิด Filee อัตโนมัติเมื่อเข้าสู่ระบบ",
   "general.show_in_dock": "แสดง Filee ใน Dock",
   "general.show_menu_bar_icon": "แสดง Filee ในแถบเมนู",
+  "general.colored_menu_bar_icon": "แสดงไอคอนแถบเมนูแบบสี",
   "general.dock_failed": "ไม่สามารถเปลี่ยนไอคอน Dock ของ Filee ได้",
   "general.context_menu": "แสดง “แปลงไฟล์ด้วย Filee” ในเมนูคลิกขวาของ Explorer",
   "general.context_menu_label": "แปลงไฟล์ด้วย Filee",

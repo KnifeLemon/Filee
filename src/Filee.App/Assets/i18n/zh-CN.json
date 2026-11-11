@@ -569,6 +569,7 @@
   "general.start_with_system": "登录时启动 Filee",
   "general.show_in_dock": "在程序坞中显示 Filee",
   "general.show_menu_bar_icon": "在菜单栏中显示 Filee 图标",
+  "general.colored_menu_bar_icon": "以彩色显示菜单栏图标",
   "general.dock_failed": "无法更改 Filee 在程序坞中的图标。",
   "general.context_menu": "在资源管理器右键菜单中显示“用 Filee 转换”",
   "general.context_menu_label": "用 Filee 转换",

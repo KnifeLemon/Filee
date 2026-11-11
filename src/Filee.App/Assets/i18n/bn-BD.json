@@ -556,6 +556,7 @@
   "general.start_with_system": "কম্পিউটার চালু হলে ফাইলি চালু করুন",
   "general.show_in_dock": "Dock-এ ফাইলি দেখান",
   "general.show_menu_bar_icon": "মেনু বারে ফাইলি দেখান",
+  "general.colored_menu_bar_icon": "মেনু বারের আইকন রঙিন দেখান",
   "general.dock_failed": "ফাইলি-র Dock আইকন পরিবর্তন করা যায়নি।",
   "general.context_menu": "Explorer-এর কনটেক্সট মেনুতে “Convert with Filee” দেখান",
   "general.context_menu_label": "ফাইলি দিয়ে রূপান্তর করুন",
