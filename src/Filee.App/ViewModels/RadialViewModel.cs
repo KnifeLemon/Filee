@@ -228,7 +228,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             Items = face.Items;
         }
         var other = back ? _front : checkBack ? BackFace() : _back;
-        CanFlip = other?.IsUsable == true;
+        // The front was already shown, even when every slice was disabled. Do not strand the user on the back face.
+        CanFlip = back ? _front.Items.Count > 0 : other?.IsUsable == true;
         var how = FlipKey is { } key ? KeyNames.Display(key) : "";
         FlipHint = CanFlip && (FlipKey is not null || FlipWithWheel)
             ? loc.Format(back ? "donut.flip_to_front" : "donut.flip_to_back", how).Trim()
