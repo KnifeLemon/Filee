@@ -194,6 +194,28 @@ public class AniTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.Equal(65_535u, Ani.Delay(uint.MaxValue));
     }
 
+    /// <summary>A PNG of one colour, <paramref name="side"/> px square: a few hundred bytes even at 1024 px.</summary>
+    private static byte[] Png(uint side)
+    {
+        using var image = new MagickImage(MagickColors.Red, side, side);
+        return image.ToByteArray(MagickFormat.Png);
+    }
+
+    /// <summary>A .cur whose directory lists <paramref name="count"/> sizes, all pointing at the same <paramref name="png"/>.</summary>
+    private static byte[] SharedSizes(byte[] png, int count)
+    {
+        var cur = new byte[6 + count * 16 + png.Length];
+        BinaryPrimitives.WriteUInt16LittleEndian(cur.AsSpan(2), 2);
+        BinaryPrimitives.WriteUInt16LittleEndian(cur.AsSpan(4), (ushort)count);
+        for (var i = 0; i < count; i++)
+        {
+            BinaryPrimitives.WriteUInt32LittleEndian(cur.AsSpan(6 + i * 16 + 8), (uint)png.Length);
+            BinaryPrimitives.WriteUInt32LittleEndian(cur.AsSpan(6 + i * 16 + 12), (uint)(6 + count * 16));
+        }
+        png.CopyTo(cur, 6 + count * 16);
+        return cur;
+    }
+
     public static TheoryData<string, string> Broken => new()
     {
         { "cut short", "cut short" },
@@ -204,6 +226,9 @@ public class AniTests(EngineFixture fx) : IClassFixture<EngineFixture>
         { "seq past the frames", "damaged" },
         { "damaged frame", "damaged" },
         { "huge frame", "too large" },
+        { "too many sizes", "more than 32 sizes" },
+        { "sizes over the budget", "too many or too large pictures" },
+        { "steps over the budget", "too many steps" },
     };
 
     [Theory]
@@ -240,6 +265,27 @@ public class AniTests(EngineFixture fx) : IClassFixture<EngineFixture>
                 var damaged = new AniBuilder();
                 damaged.Frames.Add([0, 0, 2, 0, 1, 0, 32, 32, 0, 0, 0, 0, 0, 0, 0xff, 0xff, 0, 0, 22, 0, 0, 0]);
                 data = damaged.Build();
+                break;
+            case "too many sizes":
+                var many = new AniBuilder();
+                many.Frames.Add(SharedSizes(Png(32), 33));
+                data = many.Build();
+                break;
+            case "sizes over the budget":
+                // A small file whose frames list sizes that all point at one well-compressed 1024 px PNG: 3 × 32 of them
+                // would make 100 million pixels. Refused before ImageMagick decodes any.
+                var shared = new AniBuilder();
+                var frame = SharedSizes(Png(1024), 32);
+                shared.Frames.AddRange([frame, frame, frame]);
+                data = shared.Build();
+                Assert.True(data.Length < 64 * 1024, $"{data.Length} bytes");
+                break;
+            case "steps over the budget":
+                // 4,096 steps of one 256 px frame: each step is a copy of it.
+                var steps = new AniBuilder();
+                steps.Frames.Add(SharedSizes(Png(256), 1));
+                steps.Sequence = new uint[4096];
+                data = steps.Build();
                 break;
             default:
                 // A frame whose directory says it holds a 4096 px picture.

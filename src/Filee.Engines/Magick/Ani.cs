@@ -27,7 +27,13 @@ internal static class Ani
     /// <summary>The widest or tallest picture a frame may hold. A cursor stores at most 256 px.</summary>
     private const int MaxSide = 1024;
 
-    /// <summary>All steps together: 1,024 steps of a 256 px cursor.</summary>
+    /// <summary>Sizes in one frame. Real cursors have a handful; a cursor theme's largest have about fifteen.</summary>
+    private const int MaxSizesPerFrame = 32;
+
+    /// <summary>
+    /// The most pixels a file may make: all steps together, and all sizes of all frames together (ImageMagick decodes
+    /// every size of a frame). 1,024 steps of a 256 px cursor.
+    /// </summary>
     private const long MaxAnimationPixels = 1024L * 256 * 256;
 
     /// <summary>The longest step a GIF stores (65,535 hundredths of a second).</summary>
@@ -35,14 +41,17 @@ internal static class Ani
 
     private const uint IconFlag = 1; // AF_ICON: the frames are .ico/.cur files, not raw bitmaps
 
-    /// <summary>One frame: a whole .cur or .ico file.</summary>
-    private sealed record Frame(byte[] Data, bool IsCursor);
+    /// <summary>One frame: a whole .cur or .ico file, and its sizes as its directory lists them.</summary>
+    private sealed record Frame(byte[] Data, bool IsCursor, List<Entry> Sizes);
 
     /// <summary>A step of the animation: the frame it shows and for how long, in jiffies (1/60 s).</summary>
     private readonly record struct Step(int Frame, uint Jiffies);
 
-    /// <summary>One size of a frame as its directory lists it: the cursor's hotspot (0, 0 in an .ico).</summary>
-    private readonly record struct Entry(int HotspotX, int HotspotY);
+    /// <summary>
+    /// One size of a frame as its directory lists it: the cursor's hotspot (0, 0 in an .ico) and the size of the picture
+    /// it points to.
+    /// </summary>
+    private readonly record struct Entry(int HotspotX, int HotspotY, long Width, long Height);
 
     /// <summary>
     /// The animation: one image per step, each as large as the largest frame (smaller frames at the top left), with the
@@ -132,7 +141,6 @@ internal static class Ani
         var frame = frames[steps[0].Frame];
         if (!frame.IsCursor)
             return null;
-        Entries(frame.Data); // checked as Read would
         progress?.Report(0.5);
         var path = step.Output.Allocate("cur");
         if (path is null)
@@ -153,7 +161,7 @@ internal static class Ani
         {
             foreach (var frame in frames)
             {
-                var entries = Entries(frame.Data);
+                var entries = frame.Sizes;
                 using var sizes = new MagickImageCollection();
                 try
                 {
@@ -182,14 +190,17 @@ internal static class Ani
     }
 
     /// <summary>
-    /// The directory of a frame (a .cur or .ico file): each size's hotspot, after checking that the sizes it points to
-    /// are in the frame and are not larger than a cursor can be.
+    /// The directory of a frame (a .cur or .ico file): each size's hotspot and picture size, after checking that the
+    /// frame has no more sizes than a cursor does, and that the pictures they point to are in the frame and are not larger
+    /// than a cursor can be.
     /// </summary>
     private static List<Entry> Entries(byte[] icon)
     {
         var count = BinaryPrimitives.ReadUInt16LittleEndian(icon.AsSpan(4));
         if (count == 0 || 6 + count * 16 > icon.Length)
             throw Damaged();
+        if (count > MaxSizesPerFrame)
+            throw new InvalidDataException($"A frame of this animated cursor has more than {MaxSizesPerFrame} sizes, which no cursor has.");
         var entries = new List<Entry>(count);
         for (var i = 0; i < count; i++)
         {
@@ -208,7 +219,8 @@ internal static class Ani
                     : throw Damaged();
             if (width > MaxSide || height > MaxSide)
                 throw new InvalidDataException("A frame of this animated cursor is too large to be a cursor.");
-            entries.Add(new Entry(BinaryPrimitives.ReadUInt16LittleEndian(entry[4..]), BinaryPrimitives.ReadUInt16LittleEndian(entry[6..])));
+            entries.Add(new Entry(BinaryPrimitives.ReadUInt16LittleEndian(entry[4..]), BinaryPrimitives.ReadUInt16LittleEndian(entry[6..]),
+                width, height));
         }
         return entries;
     }
@@ -292,6 +304,12 @@ internal static class Ani
                 throw Damaged();
             steps.Add(new Step((int)frame, rates is not null && i < rates.Length ? rates[i] : defaultJiffies.Value));
         }
+        // Before anything is decoded: ImageMagick decodes every size of every frame (several sizes can point at the same
+        // well-compressed picture), and each step is a copy of its frame's largest size on the largest frame's canvas.
+        var decoded = frames.Sum(f => f.Sizes.Sum(s => s.Width * s.Height));
+        var canvas = frames.Max(f => f.Sizes.Max(s => s.Width)) * frames.Max(f => f.Sizes.Max(s => s.Height));
+        if (decoded > MaxAnimationPixels || steps.Count * canvas > MaxAnimationPixels)
+            throw new InvalidDataException("This animated cursor has too many steps or too many or too large pictures to convert.");
         return (frames, steps);
     }
 
@@ -329,15 +347,15 @@ internal static class Ani
         return numbers;
     }
 
-    /// <summary>A frame: a .cur (type 2) or .ico (type 1) file.</summary>
+    /// <summary>A frame: a .cur (type 2) or .ico (type 1) file, with its directory read and checked.</summary>
     private static Frame ReadFrame(byte[] icon)
     {
         if (icon.Length < 6 || BinaryPrimitives.ReadUInt16LittleEndian(icon) != 0)
             throw Damaged();
         return BinaryPrimitives.ReadUInt16LittleEndian(icon.AsSpan(2)) switch
         {
-            1 => new Frame(icon, false),
-            2 => new Frame(icon, true),
+            1 => new Frame(icon, false, Entries(icon)),
+            2 => new Frame(icon, true, Entries(icon)),
             _ => throw Damaged(),
         };
     }
