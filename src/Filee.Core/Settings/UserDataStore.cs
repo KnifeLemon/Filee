@@ -1097,6 +1097,10 @@ internal static class SettingsMigrations
             if (presets.All(p => p.Id != BuiltInData.RingtoneId))
                 changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
         }
+        // v81: tracker modules (.xm, .it, .s3m, #1376) learn the audio donut; custom claims stay put. (Schema 81 may be
+        //      renumbered if another change takes it first.)
+        if (from < 81)
+            changed |= LearnExtensions(profiles, out _, ["xm", "it", "s3m"]);
         return changed;
     }
 

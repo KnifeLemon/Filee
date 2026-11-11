@@ -132,6 +132,7 @@
   "error.no_motion_photo": "В этом фото нет видео, которое Filee может прочитать (Motion Photo с Android или Live Photo с iPhone с файлом MOV рядом)",
   "error.live_photo_start": "Клип начинается после конца этого видео. Выберите более раннее «Начало клипа»",
   "error.live_photo_hdr": "В этом FFmpeg нет фильтра zscale, поэтому из этого HDR-видео нельзя сделать Live Photo или Motion Photo. В FFmpeg, который скачивает Filee, он есть",
+  "error.tracker_needs_openmpt": "Этот FFmpeg не читает трекерные модули (XM, IT, S3M): он собран без libopenmpt. В FFmpeg, который Filee скачивает для Windows и Linux, эта библиотека есть",
   "error.rhwp_timeout": "rhwp не успел обработать этот длинный документ",
   "error.rhwp_timeout_calibre": "rhwp не успел обработать этот длинный документ. Для электронной книги поставьте Calibre выше HWPX writer в разделе «Настройки → Движки» — так Calibre сделает PDF намного быстрее",
   "error.engine_stalled": "Движок перестал отвечать: он долго не продвигался и был остановлен",

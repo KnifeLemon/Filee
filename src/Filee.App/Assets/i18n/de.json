@@ -126,6 +126,7 @@
   "error.no_motion_photo": "Dieses Foto enthält kein für Filee lesbares Video (Android Motion Photo oder iPhone Live Photo mit zugehöriger MOV-Datei im selben Ordner)",
   "error.live_photo_start": "Der Clip beginnt nach dem Ende dieses Videos. Wähle einen früheren „Clipbeginn“",
   "error.live_photo_hdr": "Dieser FFmpeg-Version fehlt der zscale-Filter. Deshalb lässt sich dieses HDR-Video nicht in ein Live / Motion Photo umwandeln. Der FFmpeg-Download von Filee enthält den Filter",
+  "error.tracker_needs_openmpt": "Dieses FFmpeg kann keine Tracker-Module (XM, IT, S3M) lesen, weil es ohne libopenmpt gebaut wurde. Der FFmpeg-Download von Filee für Windows und Linux enthält libopenmpt",
   "error.rhwp_timeout": "rhwp konnte dieses lange Dokument nicht rechtzeitig fertigstellen",
   "error.rhwp_timeout_calibre": "rhwp konnte dieses lange Dokument nicht rechtzeitig fertigstellen. Verschiebe bei E-Books Calibre unter Einstellungen → Module über den HWPX-Writer. Calibre erstellt die PDF deutlich schneller",
   "error.engine_stalled": "Das Modul reagiert nicht mehr: Es kam lange nicht voran und wurde beendet",

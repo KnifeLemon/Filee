@@ -1788,6 +1788,14 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   Apple Voice Memos recordings (`.qta`, read only, #646) are QuickTime audio: FFmpeg's mov demuxer reads them and
   they go to every audio target, from the first audio track FFmpeg can decode, like any other source
   (iOS 26 memos also carry a spatial APAC track FFmpeg has no decoder for).
+  Tracker modules (FastTracker 2 `.xm`, Impulse Tracker `.it`, Scream Tracker 3 `.s3m`; read only, #1376) are songs
+  stored as note patterns and samples. FFmpeg renders them through its `libopenmpt` demuxer (or the older
+  `libmodplug`), which exists only in builds linked with that library: the gyan.dev full build (its README lists
+  libopenmpt) and BtbN's Linux GPL builds for x64 and ARM64 (`scripts.d/50-openmpt.sh`) have it, Homebrew's `ffmpeg`
+  on macOS has neither. Filee reads `ffmpeg -demuxers` (cached per executable) and, without either demuxer, stops
+  the file with "This FFmpeg can't read tracker modules" instead of FFmpeg's "Invalid data found". Amiga `.mod` files
+  are not among them: that extension is the camcorder MOD video above. Settings schema 81 adds the three extensions to
+  existing audio donuts.
 
 - **Rewrapping instead of re-encoding.** When the target container takes the source's codecs as they are
   (`MediaEncoding.Remuxable`: H.264/HEVC + AAC, ALAC, AC-3, E-AC-3 or MP3 for MP4/M4V/MOV, also ProRes and PCM for

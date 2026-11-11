@@ -125,6 +125,7 @@
   "error.no_motion_photo": "এই ছবিতে ফাইলি পড়তে পারে এমন কোনো ভিডিও নেই (একটি Android Motion Photo, অথবা পাশে MOV ফাইলসহ iPhone Live Photo)",
   "error.live_photo_start": "ক্লিপটি এই ভিডিওর সমাপ্তির পরে শুরু হচ্ছে। আগের একটি \"ক্লিপ শুরু\" নির্বাচন করুন",
   "error.live_photo_hdr": "এই FFmpeg-এ কোনো zscale ফিল্টার নেই, তাই এই HDR ভিডিওটি Live / Motion Photo করা যাচ্ছে না। ফাইলি-র FFmpeg ডাউনলোডে এটি রয়েছে",
+  "error.tracker_needs_openmpt": "এই FFmpeg ট্র্যাকার মডিউল (XM, IT, S3M) পড়তে পারে না, কারণ এটি libopenmpt ছাড়া তৈরি। Windows ও Linux-এর জন্য ফাইলি-র FFmpeg ডাউনলোডে এটি রয়েছে",
   "error.rhwp_timeout": "rhwp এই দীর্ঘ ডকুমেন্টটি যথাসময়ে শেষ করতে পারেনি",
   "error.rhwp_timeout_calibre": "rhwp এই দীর্ঘ ডকুমেন্টটি যথাসময়ে শেষ করতে পারেনি। ই-বুকের ক্ষেত্রে, সেটিংস → ইঞ্জিন-এ HWPX রাইটারের ওপরে Calibre নিয়ে আসুন, Calibre অনেক দ্রুত পিডিএফ তৈরি করবে",
   "error.engine_stalled": "ইঞ্জিন সাড়া দেওয়া বন্ধ করে দিয়েছে: দীর্ঘ সময় ধরে কোনো অগ্রগতি দেখা যায়নি, তাই এটি বন্ধ করা হয়েছে",

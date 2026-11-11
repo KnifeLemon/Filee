@@ -297,6 +297,12 @@ public static class FormatRegistry
         new("spx", "Speex", FormatCategory.Audio, ["spx"], Writable: false),
         // Apple Voice Memos recordings (#646): QuickTime audio, read by FFmpeg's mov demuxer.
         new("qta", "QTA", FormatCategory.Audio, ["qta"], Writable: false),
+        // Tracker modules (#1376): FastTracker 2, Impulse Tracker and Scream Tracker 3 songs, stored as note patterns and
+        // samples. FFmpeg reads them only when built with libopenmpt or libmodplug (FfmpegConverter checks).
+        // Amiga .mod is left out: that extension is the camcorder video above.
+        new("xm", "XM (FastTracker 2 module)", FormatCategory.Audio, ["xm"], Writable: false),
+        new("it", "IT (Impulse Tracker module)", FormatCategory.Audio, ["it"], Writable: false),
+        new("s3m", "S3M (Scream Tracker 3 module)", FormatCategory.Audio, ["s3m"], Writable: false),
 
         // Archives
         // ANSYS Workbench project archives use the ZIP container (issue #294).

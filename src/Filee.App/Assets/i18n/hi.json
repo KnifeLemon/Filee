@@ -126,6 +126,7 @@
   "error.no_motion_photo": "इस फ़ोटो में ऐसा कोई वीडियो नहीं है जिसे Filee पढ़ सके (Android मोशन फ़ोटो, या पास में अपनी MOV फ़ाइल वाली iPhone लाइव फ़ोटो)",
   "error.live_photo_start": "क्लिप इस वीडियो के ख़त्म होने के बाद शुरू होती है। \"क्लिप की शुरुआत\" पहले चुनें",
   "error.live_photo_hdr": "इस FFmpeg में zscale फ़िल्टर नहीं है, इसलिए यह HDR वीडियो लाइव / मोशन फ़ोटो नहीं बन सकता। Filee से डाउनलोड होने वाले FFmpeg में यह है",
+  "error.tracker_needs_openmpt": "यह FFmpeg ट्रैकर मॉड्यूल (XM, IT, S3M) नहीं पढ़ सकता, क्योंकि इसे libopenmpt के बिना बनाया गया है। Windows और Linux पर Filee से डाउनलोड होने वाले FFmpeg में यह है",
   "error.rhwp_timeout": "rhwp इस लंबे दस्तावेज़ को समय पर पूरा नहीं कर सका",
   "error.rhwp_timeout_calibre": "rhwp इस लंबे दस्तावेज़ को समय पर पूरा नहीं कर सका। ई-बुक के लिए, सेटिंग्स → इंजन में Calibre को HWPX writer के ऊपर ले जाएँ, तब Calibre PDF बहुत तेज़ी से बनाएगा",
   "error.engine_stalled": "इंजन ने जवाब देना बंद कर दिया: लंबे समय तक कोई प्रगति नहीं हुई, इसलिए इसे रोक दिया गया",

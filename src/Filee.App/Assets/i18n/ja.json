@@ -126,6 +126,7 @@
   "error.no_motion_photo": "この写真には、Fileeが読み取れる動画がありません（Androidのモーションフォト、または隣にMOVがあるiPhoneのLive Photo）",
   "error.live_photo_start": "クリップの開始位置が動画の終わりより後です。「クリップの開始」をもっと前にしてください",
   "error.live_photo_hdr": "このFFmpegにはzscaleフィルターがないため、HDR動画をLive Photo／モーションフォトにできません。FileeからダウンロードするFFmpegにはあります",
+  "error.tracker_needs_openmpt": "このFFmpegはlibopenmptなしでビルドされているため、トラッカーモジュール（XM、IT、S3M）を読み込めません。WindowsとLinuxでFileeからダウンロードするFFmpegにはあります",
   "error.rhwp_timeout": "文書が長いため、rhwpが制限時間内に処理を終えられませんでした",
   "error.rhwp_timeout_calibre": "文書が長いため、rhwpが制限時間内に処理を終えられませんでした。電子書籍の場合は、「設定」→「変換エンジン」でCalibreを「HWPX writer」より上に移動してください。CalibreならPDFを大幅に速く作成できます",
   "error.engine_stalled": "変換エンジンが応答しなくなりました。長時間進まなかったため停止しました",

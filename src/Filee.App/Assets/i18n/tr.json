@@ -126,6 +126,7 @@
   "error.no_motion_photo": "Bu fotoğrafta Filee'nin okuyabileceği video yok (Android Motion Photo veya yanında MOV dosyası bulunan iPhone Live Photo)",
   "error.live_photo_start": "Klip bu videonun bitiminden sonra başlıyor. Daha erken bir “Klip başlangıcı” seçin",
   "error.live_photo_hdr": "Bu FFmpeg'de zscale filtresi yok; bu yüzden HDR video Live / Motion Photo'ya dönüştürülemiyor. Filee'nin indirdiği FFmpeg bu filtreyi içerir",
+  "error.tracker_needs_openmpt": "Bu FFmpeg libopenmpt olmadan derlendiği için tracker modüllerini (XM, IT, S3M) okuyamıyor. Filee'nin Windows ve Linux için indirdiği FFmpeg bu kütüphaneyi içerir",
   "error.rhwp_timeout": "rhwp bu uzun belgeyi zamanında tamamlayamadı",
   "error.rhwp_timeout_calibre": "rhwp bu uzun belgeyi zamanında tamamlayamadı. E-kitaplar için Ayarlar → Dönüştürme motorları bölümünde Calibre'yi HWPX yazıcısının üstüne taşıyın; Calibre PDF'yi çok daha hızlı oluşturur",
   "error.engine_stalled": "Motor yanıt vermeyi bıraktı: uzun süre ilerleme göstermediği için durduruldu",
