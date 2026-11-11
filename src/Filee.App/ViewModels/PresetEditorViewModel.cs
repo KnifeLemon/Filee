@@ -42,6 +42,17 @@ public enum VideoSizeUnit
     Percent,
 }
 
+/// <summary>
+/// The number of a video split into parts in the preset editor (#1259): seconds or minutes per part, or the equal parts.
+/// The preset itself keeps seconds (MediaOptions.SplitEverySeconds) or the parts (MediaOptions.SplitParts).
+/// </summary>
+public enum VideoSplitKind
+{
+    Seconds,
+    Minutes,
+    EqualParts,
+}
+
 /// <summary>A value with a localized label for combo boxes.</summary>
 public sealed record Choice<T>(T Value, string Label, string? Detail = null) : IChoice
 {
@@ -169,6 +180,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             new(ViewModels.PageOutput.Groups, loc["pages.groups"]),
         ];
         GroupKinds = PageOutputs.Kinds(loc);
+        VideoOutputChoices = [new(false, loc["presets.video_one"]), new(true, loc["presets.video_parts"])];
+        VideoSplitKinds =
+        [
+            new(ViewModels.VideoSplitKind.Seconds, loc["presets.split_seconds"]),
+            new(ViewModels.VideoSplitKind.Minutes, loc["presets.split_minutes"]),
+            new(ViewModels.VideoSplitKind.EqualParts, loc["pages.equal_parts"]),
+        ];
         SheetPapers = Enum.GetValues<PdfSheetPaper>().Select(v => new Choice<PdfSheetPaper>(v, loc[$"presets.sheet_paper.{v}"])).ToList();
         SheetOrientations = Enum.GetValues<PdfSheetOrientation>().Select(v => new Choice<PdfSheetOrientation>(v, loc[$"presets.sheet_orientation.{v}"])).ToList();
         SheetOrders = Enum.GetValues<PdfSheetOrder>().Select(v => new Choice<PdfSheetOrder>(v, loc[$"presets.sheet_order.{v}"])).ToList();
@@ -241,6 +259,17 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _sheetBorders = _edit.Pdf.SheetBorders;
         _audioBitrate = AudioBitrates.First(b => b.Value == _edit.Media.AudioBitrateKbps);
         _removeAudio = _edit.Media.RemoveAudio;
+        _videoOutput = VideoOutputChoices[_edit.Media.Splits ? 1 : 0];
+        // Whole minutes show as minutes; 90 seconds stays 90 seconds.
+        var (splitKind, splitSize) = _edit.Media switch
+        {
+            { SplitParts: > 1 } m => (ViewModels.VideoSplitKind.EqualParts, m.SplitParts),
+            { SplitEverySeconds: > 0 } m when m.SplitEverySeconds % 60 == 0 => (ViewModels.VideoSplitKind.Minutes, m.SplitEverySeconds / 60),
+            { SplitEverySeconds: > 0 } m => (ViewModels.VideoSplitKind.Seconds, m.SplitEverySeconds),
+            _ => (ViewModels.VideoSplitKind.Minutes, 10),
+        };
+        _videoSplitKind = VideoSplitKinds.First(k => k.Value == splitKind);
+        _videoSplitSize = splitSize;
         _audioChannels = AudioChannelChoices.FirstOrDefault(c => c.Value == _edit.Media.AudioChannels) ?? AudioChannelChoices[0];
         _sampleRate = SampleRates.First(r => r.Value == _edit.Media.AudioSampleRate);
         _wavFormat = WavFormats.First(f => f.Value == _edit.Media.WavFormat);
@@ -453,6 +482,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>PDF → PDF: one PDF, one file per page, or several pages per file (#1259).</summary>
     public IReadOnlyList<Choice<PageOutput>> PageOutputChoices { get; }
     public IReadOnlyList<Choice<PageGroupKind>> GroupKinds { get; }
+
+    /// <summary>Video → video: one video, or several parts copied as they are (#1259).</summary>
+    public IReadOnlyList<Choice<bool>> VideoOutputChoices { get; }
+    public IReadOnlyList<Choice<VideoSplitKind>> VideoSplitKinds { get; }
     public IReadOnlyList<Choice<PdfSheetPaper>> SheetPapers { get; }
     public IReadOnlyList<Choice<PdfSheetOrientation>> SheetOrientations { get; }
     public IReadOnlyList<Choice<PdfSheetOrder>> SheetOrders { get; }
@@ -482,6 +515,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowAskPages), nameof(ShowAskPagesHint),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
+        nameof(ShowVideoSplit), nameof(ShowVideoParts),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
@@ -935,6 +969,21 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<WavSampleFormat> _wavFormat;
     [ObservableProperty] private bool _removeAudio;
 
+    /// <summary>One video or several parts (MediaOptions.SplitEverySeconds, SplitParts).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowVideoParts))]
+    private Choice<bool> _videoOutput;
+
+    partial void OnVideoOutputChanged(Choice<bool>? oldValue, Choice<bool> newValue) =>
+        Choices.Restore(oldValue, newValue, v => VideoOutput = v);
+
+    /// <summary>With several parts: the number is seconds or minutes per part, or the equal parts.</summary>
+    [ObservableProperty] private Choice<VideoSplitKind> _videoSplitKind;
+
+    partial void OnVideoSplitKindChanged(Choice<VideoSplitKind>? oldValue, Choice<VideoSplitKind> newValue) =>
+        Choices.Restore(oldValue, newValue, v => VideoSplitKind = v);
+
+    [ObservableProperty] private int _videoSplitSize;
+
     /// <summary>Encode H.264 / HEVC / AV1 on the graphics chip when one works (MediaOptions.HardwareEncoding).</summary>
     [ObservableProperty] private bool _hardwareEncoding;
     /// <summary>Burn subtitles from speech recognized by Whisper AI (MediaOptions.Caption).</summary>
@@ -1128,6 +1177,14 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         && !_original.Media.JoinIntoOne && !_isSlideshow && TargetId is not ("vob" or "dv");
     public bool ShowAudioBitrate => TargetIsLossyMedia;
     public bool ShowRemoveAudio => TargetIsVideo;
+
+    /// <summary>
+    /// Split into parts (#1259): a video converted to a video. Not for a tool (a clip is cut, not split), a join, a
+    /// slideshow or "Crop video", which make one file of their own.
+    /// </summary>
+    public bool ShowVideoSplit => TargetCategory == FormatCategory.Video && !IsTool && !_original.Media.JoinIntoOne && !_isSlideshow
+        && !ShowCropFrame;
+    public bool ShowVideoParts => ShowVideoSplit && VideoOutput.Value;
     /// <summary>ISO creation has no archive compression settings.</summary>
     public bool ShowArchive => TargetCategory == FormatCategory.Archive && TargetId != "iso";
     public bool ShowArchiveOptions => ShowArchive && TargetId != FormatRegistry.Folder;
@@ -1331,6 +1388,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         }
         media.AudioBitrateKbps = AudioBitrate.Value;
         media.RemoveAudio = RemoveAudio;
+        // Only where the option is shown, as with SaveEveryFrame below.
+        (media.SplitEverySeconds, media.SplitParts) = !ShowVideoParts ? (0, 0) : VideoSplitKind.Value switch
+        {
+            ViewModels.VideoSplitKind.EqualParts => (0, Math.Clamp(VideoSplitSize, 2, MediaOptions.MaxSplitParts)),
+            ViewModels.VideoSplitKind.Minutes => (Math.Clamp(VideoSplitSize, 1, 24 * 60) * 60, 0),
+            _ => (Math.Clamp(VideoSplitSize, 1, 24 * 3600), 0),
+        };
         media.AudioChannels = AudioChannels.Value;
         media.AudioSampleRate = SampleRate.Value;
         media.WavFormat = WavFormat.Value;

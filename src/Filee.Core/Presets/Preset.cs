@@ -351,6 +351,16 @@ public sealed class Preset
     public bool CutsClipOf(string sourceFormat) =>
         Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
+    /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file splits it into parts by stream copy
+    /// (<see cref="MediaOptions.SplitEverySeconds"/>, <see cref="MediaOptions.SplitParts"/>): the file is a video and the
+    /// target a video format. A clip, a crop, a join or a photo of a video does what it does instead.
+    /// </summary>
+    public bool SplitsVideoOf(string sourceFormat) =>
+        Media.Splits && !CutsClipOf(sourceFormat) && !CropsVideo && !JoinsIntoOneMedia
+        && Formats.FormatRegistry.FindById(TargetFormat)?.Category == Formats.FormatCategory.Video
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+
     /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
     [JsonIgnore]
     public bool CropsVideo => VideoCrop.Crops(Media.CropFrame);
@@ -1508,6 +1518,29 @@ public sealed class MediaOptions
     /// takes a moment and loses nothing, but the clip starts at the key frame before the chosen start.
     /// </summary>
     public bool ExactCut { get; set; }
+
+    /// <summary>
+    /// Video → video: a part for every this many seconds of the video (#1259), copied as it is (<see cref="Preset.SplitsVideoOf"/>).
+    /// A copy can only break at a key frame, so each part ends at the first one from there on. 0 is off, so presets
+    /// saved before it read unchanged.
+    /// </summary>
+    public int SplitEverySeconds { get; set; }
+
+    /// <summary>
+    /// Video → video: the video in this many parts of about the same length (halves, thirds, #1259), copied as it is.
+    /// Over <see cref="SplitEverySeconds"/>; 0 or 1 is off.
+    /// </summary>
+    public int SplitParts { get; set; }
+
+    /// <summary>
+    /// Most parts one video is split into (<see cref="SplitEverySeconds"/>, <see cref="SplitParts"/>): a two-hour film
+    /// every 10 seconds, already more files than anyone wants in a folder.
+    /// </summary>
+    public const int MaxSplitParts = 1000;
+
+    /// <summary>True when <see cref="SplitEverySeconds"/> or <see cref="SplitParts"/> asks for parts.</summary>
+    [JsonIgnore]
+    public bool Splits => SplitParts > 1 || SplitEverySeconds > 0;
 
     /// <summary>
     /// A clip of a video (<see cref="Preset.CutsClipOf"/>): its parts, their volume and speed, and its fades. Set by the

@@ -352,6 +352,23 @@
           <TextBlock Classes="label" Text="{DynamicResource presets.crop_frame}" />
           <ComboBox ItemsSource="{Binding CropFrames}" SelectedItem="{Binding CropFrame}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.crop_frame}" />
         </StackPanel>
+        <!-- Video → video: one video, or parts every so many seconds or minutes, or equal parts, copied as they are (#1259) -->
+        <StackPanel x:Name="VideoOutputPanel" Spacing="8" IsVisible="{Binding ShowVideoSplit}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.video_output}" />
+            <ComboBox x:Name="VideoOutput" ItemsSource="{Binding VideoOutputChoices}" SelectedItem="{Binding VideoOutput}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.video_output}" />
+          </StackPanel>
+          <StackPanel Spacing="2" IsVisible="{Binding ShowVideoParts}">
+            <Grid ColumnDefinitions="*,12,*">
+              <NumericUpDown x:Name="VideoSplitSize" Value="{Binding VideoSplitSize}" Minimum="1" Maximum="86400" Increment="1" FormatString="0"
+                             AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+              <ComboBox x:Name="VideoSplitKind" Grid.Column="2" ItemsSource="{Binding VideoSplitKinds}" SelectedItem="{Binding VideoSplitKind}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.video_parts_hint}" />
+          </StackPanel>
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />

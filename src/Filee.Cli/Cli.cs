@@ -317,11 +317,17 @@ internal static class Cli
         // The pages of PDFs; asked for on the donut (AskedPages), given here.
         if (options.Pages is { } pages)
             preset.Pdf.PageRange = pages;
-        // PDF → PDF in files of so many pages, or in equal parts (#1259), over the preset's split.
+        // PDF → PDF in files of so many pages, a video in parts of so long, or either in equal parts (#1259), over the
+        // preset's split. Each only touches files of its kind, so PDFs and videos can go in one command.
         if (options.SplitEvery is { } every)
             (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, every, 0);
+        if (options.SplitEverySeconds is { } seconds)
+            (preset.Media.SplitEverySeconds, preset.Media.SplitParts) = (seconds, 0);
         if (options.SplitParts is { } parts)
+        {
             (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, 0, parts);
+            (preset.Media.SplitEverySeconds, preset.Media.SplitParts) = (0, parts);
+        }
         if (options.Conflict is { } conflict)
             preset.Output.Conflict = conflict;
         if (options.KeepDates)

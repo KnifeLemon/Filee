@@ -3,6 +3,7 @@
 // against the pinned FFmpeg build (engines.json: `ffmpeg -encoders` / `ffmpeg -muxers`).
 
 using System.Globalization;
+using Filee.Core.Conversion;
 using Filee.Core.Presets;
 
 namespace Filee.Engines.Media;
@@ -396,12 +397,106 @@ internal static partial class MediaEncoding
     /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
     internal static List<string> ClipCopy(string input, string output, string target, ClipRange clip, MediaOptions options, MediaInfo info)
     {
+        var (args, spec) = CopyStreams(input, target, ClipInput(clip), options, info);
+        args.AddRange(ContainerArguments(target));
+        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
+        return args;
+    }
+
+    /// <summary>
+    /// The whole video in parts (#1259), copied as it is like <see cref="ClipCopy"/>: FFmpeg's segment muxer writes
+    /// them as <paramref name="pattern"/> (<c>part%04d.mp4</c>), each starting at 0. A copy can only break at a key
+    /// frame, so a part ends at the first one at or after its point (<see cref="SplitPoints"/>): parts never overlap
+    /// and nothing is encoded, but one may be a few seconds longer than asked, and a video with few key frames gives
+    /// fewer parts.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">The file has no video stream.</exception>
+    /// <exception cref="NotSupportedException">FFmpeg cannot write <paramref name="target"/>.</exception>
+    /// <exception cref="ConversionRefusedException">Equal parts of a video of unknown length, or too many parts.</exception>
+    internal static List<string> SplitCopy(string input, string pattern, string target, MediaOptions options, MediaInfo info)
+    {
+        var (args, spec) = CopyStreams(input, target, [], options, info);
+        args.AddRange(["-f", "segment", "-segment_format", spec.Muxer]);
+        // A raw stream (no length) can still be cut every so many seconds, just not into equal parts.
+        if (SplitPoints(options, info.Duration?.TotalSeconds) is { } points)
+        {
+            if (points.Count > 0)
+                args.AddRange(["-segment_times", string.Join(",", points.Select(ClipRange.Ffmpeg))]);
+            else // shorter than one part: one file, as asked, rather than a refusal
+                args.AddRange(["-segment_time", ClipRange.Ffmpeg(info.Duration!.Value.TotalSeconds + 1)]);
+        }
+        else
+            args.AddRange(["-segment_time", options.SplitEverySeconds.ToString(CultureInfo.InvariantCulture)]);
+        args.AddRange(["-reset_timestamps", "1"]);
+        // The container's own options belong to each part, not to the segment muxer, which would refuse them.
+        if (SegmentFormatOptions(target) is { Length: > 0 } formatOptions)
+            args.AddRange(["-segment_format_options", formatOptions]);
+        args.AddRange(["-max_muxing_queue_size", "4096", "-progress", "pipe:1", pattern]);
+        return args;
+    }
+
+    /// <summary>
+    /// Where the parts of a <paramref name="duration"/>-second video begin, after the first: every
+    /// <see cref="MediaOptions.SplitEverySeconds"/>, or <see cref="MediaOptions.SplitParts"/> parts of the same length
+    /// (a 10-minute video in thirds: 200 and 400). A point closer than a second to the end would only make a part of the
+    /// last frames, so it is left out. Null when the length is unknown and the parts go by seconds (FFmpeg counts them).
+    /// </summary>
+    /// <exception cref="ConversionRefusedException">
+    /// Equal parts of a video of unknown length, or more than <see cref="MediaOptions.MaxSplitParts"/> parts.
+    /// </exception>
+    internal static IReadOnlyList<double>? SplitPoints(MediaOptions options, double? duration)
+    {
+        var known = duration is { } d && double.IsFinite(d) && d > 0;
+        if (options.SplitParts > 1)
+        {
+            if (!known)
+                throw new ConversionRefusedException("error.split_unknown_length");
+            if (options.SplitParts > MediaOptions.MaxSplitParts)
+                throw new ConversionRefusedException("error.too_many_parts", $"{options.SplitParts} > {MediaOptions.MaxSplitParts}");
+            return [.. Enumerable.Range(1, options.SplitParts - 1).Select(i => duration!.Value * i / options.SplitParts)];
+        }
+        if (!known)
+            return null;
+        var every = Math.Max(1, options.SplitEverySeconds);
+        // The points i × every before the last second: counted first, so a long film cut every second is refused
+        // without listing them.
+        var count = Math.Max(0, Math.Ceiling((duration!.Value - 1) / every) - 1);
+        if (count + 1 > MediaOptions.MaxSplitParts)
+            throw new ConversionRefusedException("error.too_many_parts", $"{count + 1:0} > {MediaOptions.MaxSplitParts}");
+        return [.. Enumerable.Range(1, (int)count).Select(i => (double)i * every)];
+    }
+
+    /// <summary>
+    /// False when a split into <paramref name="target"/> can't copy the streams: the target is one whose players Filee
+    /// keeps to (<see cref="Remuxable"/>) and the video, or the sound it keeps, is not in that list (H.264 into WebM).
+    /// A split never encodes, so it is refused before anything is written instead of failing in FFmpeg.
+    /// </summary>
+    internal static bool SplitTakes(string target, MediaInfo info, MediaOptions options) =>
+        !Remuxable.TryGetValue(target, out var codecs)
+        || info.Video?.Codec is { } video && codecs.Video.Contains(video)
+            && (options.RemoveAudio || info.Audio is not { } audio || audio.Codec is { } sound && codecs.Audio.Contains(sound));
+
+    /// <summary><see cref="ContainerArguments"/> as the segment muxer hands them to each part: <c>movflags=+faststart</c>.</summary>
+    internal static string SegmentFormatOptions(string target)
+    {
+        var options = ContainerArguments(target).ToList();
+        return string.Join(":", Enumerable.Range(0, options.Count / 2).Select(i => $"{options[2 * i].TrimStart('-')}={options[2 * i + 1]}"));
+    }
+
+    /// <summary>
+    /// The start of a stream copy (<see cref="ClipCopy"/>, <see cref="SplitCopy"/>): the first video stream and the
+    /// first audio track (none with <see cref="MediaOptions.RemoveAudio"/>) copied with their tags, the output and
+    /// its container still to come.
+    /// </summary>
+    private static (List<string> Args, MediaTarget Spec) CopyStreams(string input, string target, IEnumerable<string> inputOptions,
+        MediaOptions options, MediaInfo info)
+    {
         var video = info.Video ?? throw new InvalidOperationException("The file has no video stream.");
         if (!VideoTargets.TryGetValue(target, out var spec))
             throw new NotSupportedException($"FFmpeg cannot write '{target}'.");
         var audio = !options.RemoveAudio && info.Audio is not null;
 
-        List<string> args = [.. Common, .. ClipInput(clip), "-i", input, "-map", "0:V:0"];
+        List<string> args = [.. Common, .. inputOptions, "-i", input, "-map", "0:V:0"];
         if (audio)
             args.AddRange(["-map", $"0:a:{info.Audio!.Ordinal}"]);
         args.AddRange(["-c", "copy"]);
@@ -413,9 +508,7 @@ internal static partial class MediaEncoding
         // The copied packets keep their timestamps from the key frame on: shifted so the clip starts at 0.
         args.AddRange(["-avoid_negative_ts", "make_zero"]);
         args.AddRange(MetadataArguments());
-        args.AddRange(ContainerArguments(target));
-        args.AddRange(["-max_muxing_queue_size", "4096", "-f", spec.Muxer, "-progress", "pipe:1", output]);
-        return args;
+        return (args, spec);
     }
 
     /// <summary>
