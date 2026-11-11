@@ -1089,6 +1089,10 @@ internal static class SettingsMigrations
         //      claims stay put. (Schema 78 may be renumbered if another change takes it first.)
         if (from < 78)
             changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
+        // v79: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put. (Schema 79 may be renumbered if
+        //      another change takes it first.)
+        if (from < 79)
+            changed |= LearnExtensions(profiles, out _, ["pdn"]);
         return changed;
     }
 

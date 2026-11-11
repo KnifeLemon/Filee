@@ -40,6 +40,7 @@ Each component remains under its own license.
 | AngleSharp | MIT | https://github.com/AngleSharp/AngleSharp |
 | pypandoc-hwpx (Pandoc AST mapping and package layout in `Filee.Engines/Hwp/Hwpx`, incl. the `blank.hwpx` reference document) | MIT, Copyright (c) 2024 pypandoc-hwpx Contributors | https://github.com/msjang/pypandoc-hwpx |
 | Microsoft.Extensions.* | MIT | https://github.com/dotnet/runtime |
+| System.Formats.Nrbf (reads Paint.NET .pdn files) | MIT | https://github.com/dotnet/runtime |
 | cu2qu (fontTools): the cubic-to-quadratic approach followed by `Filee.Engines/Fonts/Cff/CubicToQuadratic.cs` | Apache-2.0, Copyright 2016 Google Inc. | https://github.com/fonttools/fonttools |
 
 libuiohook (the native input hook inside SharpHook) is the fork https://github.com/TolikPylypchuk/libuiohook, licensed

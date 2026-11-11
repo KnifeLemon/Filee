@@ -93,6 +93,9 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // A program's icon as ICO is the icon itself, with the sizes drawn for it, unless the preset changes it.
             if (step.From == FormatRegistry.Program && step.To == "ico" && ProgramIcon.KeptAsItIs(step.Preset.Image))
                 return ProgramIcon.Save(step, progress);
+            // A Paint.NET file as PSD keeps its layers, unless the preset changes the picture.
+            if (step.From == "pdn" && step.To is "psd" or "psb" && PaintNet.KeepsLayers(step.Preset.Image))
+                return PaintNet.SaveLayered(step, progress, cancellationToken);
             // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
             // animation only when it is an image sequence.
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);
