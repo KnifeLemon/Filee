@@ -12,22 +12,23 @@ namespace Filee.App.Services;
 internal static class AnnotationFonts
 {
     private const string EmbeddedPrefix = "fonts:Filee#";
+    private const string SystemPrefix = SoftPalette.SystemKey + "#";
 
     private static readonly Lazy<IReadOnlyList<SKTypeface>> Embedded = new(LoadEmbedded);
-    private static string? _language;
+    private static (string Language, bool SystemFont)? _chain;
 
     /// <summary>
     /// Gives the painter the chain of <paramref name="language"/>'s UI font, in bold: at start and when the language
-    /// changes, so a conversion run later (a queued one, a retry) draws its labels as the window showed them. The fonts
-    /// are read the first time a label is drawn.
+    /// or the system font switch changes, so a conversion run later (a queued one, a retry) draws its labels as the
+    /// window showed them. The fonts are read the first time a label is drawn.
     /// </summary>
-    public static void Use(string language)
+    public static void Use(string language, bool systemFont = false)
     {
-        if (_language == language)
+        if (_chain == (language, systemFont))
             return;
-        _language = language;
-        AnnotationPainter.UseFonts(() => Chain(language));
-        var family = SoftPalette.FontFamilyFor(language);
+        _chain = (language, systemFont);
+        AnnotationPainter.UseFonts(() => Chain(language, systemFont));
+        var family = SoftPalette.FontFamilyFor(language, systemFont);
         AnnotationPainter.UseFallback(codePoint => FallbackFor(codePoint, family));
     }
 
@@ -55,17 +56,18 @@ internal static class AnnotationFonts
         }
     }
 
-    private static List<SKTypeface> Chain(string language)
+    private static List<SKTypeface> Chain(string language, bool systemFont)
     {
         var chain = new List<SKTypeface>();
-        foreach (var family in SoftPalette.FontFamilies(language).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+        foreach (var family in SoftPalette.FontFamilies(language, systemFont).Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
         {
             // "sans-serif" ends the chain: what no family has, the painter finds as the text box's fallback does.
-            var face = family.StartsWith(EmbeddedPrefix, StringComparison.Ordinal)
-                ? Embedded.Value.FirstOrDefault(f => f.FamilyName == family[EmbeddedPrefix.Length..])
-                : family == "sans-serif" ? null
-                : SKFontManager.Default.MatchFamily(family, SKFontStyle.Bold) is { } system
-                  && string.Equals(system.FamilyName, family, StringComparison.OrdinalIgnoreCase) ? system : null;
+            var name = family.StartsWith(SystemPrefix, StringComparison.Ordinal) ? family[SystemPrefix.Length..] : family;
+            var face = name.StartsWith(EmbeddedPrefix, StringComparison.Ordinal)
+                ? Embedded.Value.FirstOrDefault(f => f.FamilyName == name[EmbeddedPrefix.Length..])
+                : name == "sans-serif" ? null
+                : SKFontManager.Default.MatchFamily(name, SKFontStyle.Bold) is { } system
+                  && string.Equals(system.FamilyName, name, StringComparison.OrdinalIgnoreCase) ? system : null;
             if (face is not null && !chain.Contains(face))
                 chain.Add(face);
         }

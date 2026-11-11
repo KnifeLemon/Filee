@@ -214,7 +214,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         // Throws for a missing stream before anything is written (an existing file of that name stays untouched).
         var passes = Capped(subtitles: true);
         // FFmpeg reports the position in the output, which a speed change makes longer or shorter.
-        var duration = still ? MediaEncoding.StillDuration : info.Duration / speed;
+        var duration = still ? MediaEncoding.StillDuration
+            : MediaEncoding.RingtoneRange(step.To, media, info) is { } ringtone ? TimeSpan.FromSeconds(ringtone.Length)
+            : info.Duration / speed;
         // With a size limit the first encode takes most of the bar, a second one (if needed) the rest.
         var encoding = limit > 0 && progress is not null ? new Progress<double>(p => progress.Report(p * 0.9)) : progress;
         var withoutSubtitles = false;
@@ -241,6 +243,10 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             step.Notice?.Invoke("notice.subtitles_not_kept");
         else if (!still && MediaEncoding.LeavesOutPictureSubtitles(step.To, info))
             step.Notice?.Invoke("notice.picture_subtitles_left_out");
+
+        // A ringtone is only a part of the sound (at most 40 s): the result says so instead of leaving the person to wonder.
+        if (MediaEncoding.RingtoneCutShort(step.To, media, info))
+            step.Notice?.Invoke("notice.ringtone_cut");
         progress?.Report(1);
         return [output];
     }

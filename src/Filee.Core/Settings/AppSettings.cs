@@ -54,6 +54,13 @@ public sealed class ThemeSettings
     /// </summary>
     public bool? ReduceMotion { get; set; }
 
+    /// <summary>
+    /// Draws the UI in the system's own font (Segoe UI on Windows, San Francisco on macOS, fontconfig's default on
+    /// Linux) instead of the embedded Noto fonts, which still draw what it lacks. Off as before it existed; a missing
+    /// value reads as off, so it needs no schema step.
+    /// </summary>
+    public bool UseSystemFont { get; set; }
+
     public ThemeSettings Clone() => (ThemeSettings)MemberwiseClone();
 }
 
@@ -163,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 78;
+    public const int CurrentSchemaVersion = 79;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -205,6 +212,12 @@ public sealed class AppSettings
     /// <summary>Whether the macOS menu bar shows Filee's status icon.</summary>
     [JsonConverter(typeof(IconPreferenceJsonConverter))]
     public bool ShowMenuBarIcon { get; set; } = true;
+
+    /// <summary>
+    /// Whether the macOS menu bar icon keeps the coloured donut. Off by default: a one-colour template icon that macOS
+    /// paints white or black to match the bar, like the system's own icons.
+    /// </summary>
+    public bool ColoredMenuBarIcon { get; set; }
 
     /// <summary>Newest version the user was already told about, so the update notice shows once per release.</summary>
     public string? NotifiedUpdateVersion { get; set; }

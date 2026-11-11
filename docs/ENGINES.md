@@ -99,6 +99,14 @@ they can be installed or removed later in Settings → *Engines*. A conversion t
   name the oldest macOS it runs on (`minimumMacOS`); an older Mac isn't offered it.
 - `EngineInstaller` verifies the SHA-256 before unpacking and unpacks into a staging folder that replaces the
   engine folder only when complete. Redirects to mirrors (even plain HTTP) are followed, because the hash decides.
+- Without internet (#447) the same downloads can come from a folder: the card's *Offline* menu saves them on a
+  computer with internet (*Save the files for another computer…*, `filee engines download <id> -o <folder>`), copies
+  their links, and installs them (*Install from downloaded files…*, `filee engines install <id> --from <folder>`). A
+  file counts as a component's when it has the exact size engines.json pins (its download's name breaks a tie), and
+  only the top level of a folder is looked at. Every file is copied into `.downloads` and checked against its
+  SHA-256 before the first one is unpacked, so a missing or wrong file leaves the package as it was. Only the
+  downloads are taken, never an installed engine folder: an unpacked and trimmed folder has nothing pinned to check
+  it against. The other computer needs the same Filee version (the same engines.json).
 - Engines go to `%LOCALAPPDATA%\Filee\engines`: outside the app folder, so updates keep them, and inside Filee's
   install root, so uninstalling removes them.
 - LibreOffice and calibre come as MSIs and are unpacked with an administrative install (`msiexec /a`): files only,
@@ -1769,9 +1777,11 @@ format, and FFmpeg reads what the file holds, so a `.dat` with no video in it fa
   | APNG | one pass with the `apng` encoder (24-bit RGB, mixed prediction) and muxer, looping; the same frame rates, widths and playback speed as GIF |
   | MP4, M4V, MKV with *Video codec* HEVC · MOV with HEVC | x265 (preset medium, `hvc1` tag in MP4/M4V/MOV) + AAC |
   | MP4, M4V, MKV, WEBM with *Video codec* AV1 | SVT-AV1 (preset 8), or libaom-av1 (cpu-used 6, row multithreading) with an FFmpeg that lacks SVT-AV1 |
-  | MP3 · M4A/M4B · AAC · OGG · OPUS · WEBA · MKA · WMA · MP2 · AC3 · E-AC3 · AMR | LAME VBR (V0/V2/V5) or CBR · AAC, or ALAC with *Audio codec* ALAC · AAC (ADTS) · Vorbis · Opus · Opus · Opus · WMA 2 · MP2 · AC-3 · E-AC-3 · AMR-NB 12.2k (8 kHz mono) |
+  | MP3 · M4A/M4B/M4R · AAC · OGG · OPUS · WEBA · MKA · WMA · MP2 · AC3 · E-AC3 · AMR | LAME VBR (V0/V2/V5) or CBR · AAC, or ALAC with *Audio codec* ALAC (M4R: always AAC, see below) · AAC (ADTS) · Vorbis · Opus · Opus · Opus · WMA 2 · MP2 · AC-3 · E-AC-3 · AMR-NB 12.2k (8 kHz mono) |
   | WAV · W64 · AIFF · AU · CAF · VOC · FLAC · WV · TTA | 16-bit PCM (WAV and W64: 8/16/24/32-bit or 32-bit float; WAV switches to RF64 over 4 GB, Sony Wave64 has no limit) · FLAC · WavPack (lossless) · TTA |
   | SRT · ASS · VTT (from video) | the video's first text subtitle track, copied when it already is that format, else converted by FFmpeg |
+
+  **M4R (iPhone ringtone, #1291).** AAC in the M4A container (`-f ipod`, `+faststart`) with the `.m4r` extension, which is what iOS looks for. It is always encoded, never stream-copied, so the cut is exact. The ringtone window is the preset's `RingtoneStart` and `RingtoneLength` (the editor's *Ringtone start* and *Ringtone length*; defaults 0 s and 30 s): `-ss` before the input and `-t` after it, at most 40 s (`MediaOptions.RingtoneWindow`). A length that goes past the end of the sound is cut there, and a start past the end moves back so the ringtone keeps its length and ends where the sound ends. When the ringtone is only a part of the sound, the result carries the note `notice.ringtone_cut`. The built-in *iPhone ringtone* preset is in the palette only (no donut slot).
 
   Read only (FFmpeg's decoders): APE (Monkey's Audio), Musepack (MPC), TAK, DSF and DFF (DSD), DTS, Speex (SPX) and the
   formats above. No encoder for them is in the build, or (DTS) only an experimental one.

@@ -65,6 +65,28 @@ public static class EngineDownloads
 
     public static bool CanDownload(EnginePackage package) => package.Components.Count > 0 && package.Components.All(Components.ContainsKey);
 
+    /// <summary>
+    /// The name a browser saves the download under ("LibreOffice_26.2.6_Win_x86-64.msi"), which Filee also saves it
+    /// under for another computer (#447); "&lt;id&gt;-&lt;version&gt;" when the URL doesn't end in a usable file name.
+    /// </summary>
+    public static string FileName(EngineComponent component)
+    {
+        var name = Path.GetFileName(Uri.UnescapeDataString(new Uri(component.Url).AbsolutePath).Replace('\\', '/'));
+        return name.Length == 0 || name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            ? $"{component.Id}-{component.Version}"
+            : name;
+    }
+
+    /// <summary>
+    /// The package's downloads as text to copy (#447): per file its name, URL and SHA-256, to fetch them on a computer
+    /// with internet and install them here with "Install from downloaded files…".
+    /// </summary>
+    public static string DownloadList(EnginePackage package, IReadOnlyDictionary<string, EngineComponent> components) =>
+        string.Join(Environment.NewLine + Environment.NewLine, package.Components
+            .Where(components.ContainsKey)
+            .Select(id => components[id])
+            .Select(c => $"{FileName(c)}{Environment.NewLine}{c.Url}{Environment.NewLine}SHA-256: {c.Sha256}"));
+
     public static string? UnavailableReason(EnginePackage package)
     {
         if (CanDownload(package))

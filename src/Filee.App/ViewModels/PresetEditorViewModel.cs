@@ -285,6 +285,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _livePhotoStart = _edit.Media.LivePhotoStart;
         _livePhotoLength = _edit.Media.LivePhotoLength;
         _livePhotoCover = _edit.Media.LivePhotoCover;
+        _ringtoneStart = _edit.Media.RingtoneStart;
+        _ringtoneLength = _edit.Media.RingtoneLength;
         _frameInterval = _edit.Media.FrameInterval > 0 ? _edit.Media.FrameInterval : 1;
         _isSlideshow = _edit.Media.Slideshow;
         _slideSeconds = _edit.Media.SlideDuration;
@@ -489,7 +491,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
-        nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec),
+        nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
         nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
@@ -551,6 +553,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private double _livePhotoStart;
     [ObservableProperty] private double _livePhotoLength;
     [ObservableProperty] private double _livePhotoCover;
+
+    /// <summary>M4R (iPhone ringtone): where the ringtone starts in the sound, and how long it is (at most 40 s).</summary>
+    [ObservableProperty] private double _ringtoneStart;
+    [ObservableProperty] private double _ringtoneLength;
 
     /// <summary>The clip's video codec: H.264, or HEVC for smaller files (MediaOptions.VideoCodec).</summary>
     public IReadOnlyList<Choice<VideoCodec>> LivePhotoCodecs =>
@@ -1108,7 +1114,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     public bool ShowDocument => TargetId == "pdf";
     /// <summary>Markdown can't hold pictures: they go into a folder next to it, or are left out.</summary>
     public bool ShowLeaveOutPictures => TargetId == "md";
-    public bool ShowMedia => ShowCropFrame || ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption;
+    public bool ShowMedia => ShowCropFrame || ShowMediaQuality || ShowMaxHeight || ShowRemoveAudio || ShowAudioChannels || ShowVideoCodec || ShowAudioCodec || ShowCaption
+        || ShowRingtone;
+    /// <summary>An iPhone ringtone (M4R) is a part of the sound of at most 40 s: where it starts and how long it is.</summary>
+    public bool ShowRingtone => !IsTool && TargetId == "m4r";
     /// <summary>Mono / stereo for every audio target but AMR, which is mono by definition.</summary>
     public bool ShowAudioChannels => TargetIsAudio && TargetId != "amr";
     /// <summary>Sample rate and sample format: the PCM of WAV and W64 takes any.</summary>
@@ -1364,6 +1373,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         media.LivePhotoStart = Seconds(LivePhotoStart, 0, 0, 24 * 3600);
         media.LivePhotoLength = Seconds(LivePhotoLength, 3, MediaOptions.MinLivePhotoLength, MediaOptions.MaxLivePhotoLength);
         media.LivePhotoCover = Seconds(LivePhotoCover, 1.5, 0, MediaOptions.MaxLivePhotoLength);
+        media.RingtoneStart = Seconds(RingtoneStart, 0, 0, 24 * 3600);
+        media.RingtoneLength = Seconds(RingtoneLength, MediaOptions.DefaultRingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength);
         _original.Archive.Level = ArchiveLevel.Value;
         _original.Archive.CombineIntoOne = TargetId != "iso" && CombineIntoOne;
         _original.Trace.Mode = TraceMode.Value;

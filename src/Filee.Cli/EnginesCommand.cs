@@ -1,5 +1,6 @@
 // "filee engines": the optional engines of Settings → Engines, listed, installed and removed with the app's own
-// installer (EngineInstaller), so the CLI downloads, verifies and unpacks exactly as the app does. Results go to
+// installer (EngineInstaller), so the CLI downloads, verifies and unpacks exactly as the app does. 'download' saves an
+// engine's files for a computer without internet, where 'install --from' installs them (#447). Results go to
 // stdout (one JSON document with --json, errors included); progress goes to stderr (one JSON object per line with
 // --json, so stderr stays readable line by line).
 
@@ -22,17 +23,22 @@ internal static class EnginesCommand
             errors.WriteLine($"filee: unknown engine '{id}'. Run 'filee engines' for the list.");
             return Cli.UsageError;
         }
-        var result = options.Inputs[0].Equals("install", StringComparison.OrdinalIgnoreCase)
-            ? await InstallAsync(package, options, host, errors, cancellationToken)
-            : Remove(package, host.Engines);
+        var result = options.Inputs[0].ToLowerInvariant() switch
+        {
+            "install" => await InstallAsync(package, options, host, errors, cancellationToken),
+            "download" => await DownloadAsync(package, options, host, errors, cancellationToken),
+            _ => Remove(package, host.Engines),
+        };
         Report(result, options, output, errors);
         return result.State is "failed" or "cancelled" ? Cli.SomeFailed : Cli.Success;
     }
 
-    /// <summary>What install or remove did: <paramref name="State"/> is installed, removed, skipped, failed or cancelled.</summary>
+    /// <summary>What install, download or remove did: <paramref name="State"/> is installed, saved, removed, skipped, failed or cancelled.</summary>
     /// <param name="Message">The line for people: what was done, why nothing was, or the error.</param>
-    /// <param name="Version">The version of Filee's download, once it is installed.</param>
-    private sealed record Result(string Id, string State, string Message, string? Version = null, string? ErrorKey = null);
+    /// <param name="Version">The version of Filee's download, once it is installed or saved.</param>
+    /// <param name="Files">The files 'download' saved.</param>
+    private sealed record Result(string Id, string State, string Message, string? Version = null, string? ErrorKey = null,
+        IReadOnlyList<string>? Files = null);
 
     private static void Report(Result result, CliOptions options, TextWriter output, TextWriter errors)
     {
@@ -46,6 +52,8 @@ internal static class EnginesCommand
                 json.WriteString("state", result.State);
                 if (result.Version is not null)
                     json.WriteString("version", result.Version);
+                if (result.Files is not null)
+                    Cli.WriteStrings(json, "files", result.Files);
                 if (result.State == "skipped")
                     json.WriteString("reason", result.Message);
                 if (failed)
@@ -108,6 +116,7 @@ internal static class EnginesCommand
             output.WriteLine($"{line.Id.PadRight(idWidth)}  {line.Status.PadRight(statusWidth)}  {line.Version.PadRight(versionWidth)}  {line.Size}");
         output.WriteLine();
         output.WriteLine("Install one with: filee engines install <id>");
+        output.WriteLine("Without internet: 'filee engines download <id> -o <folder>' on another computer, then 'filee engines install <id> --from <folder>' here.");
         return Cli.Success;
     }
 
@@ -170,7 +179,10 @@ internal static class EnginesCommand
             live: ReferenceEquals(errors, Console.Error) && !Console.IsErrorRedirected);
         try
         {
-            await engines.InstallAsync(package, progress, cancellationToken);
+            if (options.From.Count > 0)
+                await engines.InstallFromFilesAsync(package, options.From.Select(Path.GetFullPath).ToList(), progress, cancellationToken);
+            else
+                await engines.InstallAsync(package, progress, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -187,6 +199,42 @@ internal static class EnginesCommand
         }
         return new Result(package.Id, "installed",
             copy.Outdated ? $"Updated {package.Id} to {version}." : $"Installed {package.Id} {version}.", version);
+    }
+
+    /// <summary>
+    /// Saves the package's downloads in the -o folder, checked as an install checks them, for 'install --from' on a
+    /// computer without internet (#447). Whatever is installed here stays as it is.
+    /// </summary>
+    private static async Task<Result> DownloadAsync(EnginePackage package, CliOptions options, CliHost host, TextWriter errors,
+        CancellationToken cancellationToken)
+    {
+        var engines = host.Engines;
+        if (!CanDownload(engines, package))
+            return new Result(package.Id, "failed", UnavailableReason(package));
+        var version = Version(engines, package);
+        var folder = Path.GetFullPath(options.Output!);
+        var progress = new InstallProgress(package.Id, version, options.Quiet ? null : errors, options.Json,
+            live: ReferenceEquals(errors, Console.Error) && !Console.IsErrorRedirected);
+        IReadOnlyList<string> files;
+        try
+        {
+            files = await engines.SaveFilesAsync(package, folder, progress, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            return new Result(package.Id, "cancelled", $"Downloading {package.Id} was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            return new Result(package.Id, "failed", ErrorText(ex, host));
+        }
+        finally
+        {
+            progress.Finish();
+        }
+        return new Result(package.Id, "saved",
+            $"Saved {package.Id} {version} to {folder}: {string.Join(", ", files.Select(Path.GetFileName))}. "
+            + $"Install it there with: filee engines install {package.Id} --from <folder>", version, Files: files);
     }
 
     /// <summary>Removes Filee's download, as the Engines page allows it; a copy Filee didn't download is never touched.</summary>
@@ -272,9 +320,12 @@ internal static class EnginesCommand
                     errors.WriteLine(JsonLine(value));
                     return;
                 }
-                var line = value.Stage == EngineInstallStage.Downloading
-                    ? $"Downloading {id} {version}: {Amount(value.BytesDone)} / {Amount(value.BytesTotal)} ({(int)(value.Fraction * 100)}%)"
-                    : $"Unpacking {value.ComponentId}…";
+                var line = value.Stage switch
+                {
+                    EngineInstallStage.Downloading => $"Downloading {id} {version}: {Amount(value.BytesDone)} / {Amount(value.BytesTotal)} ({(int)(value.Fraction * 100)}%)",
+                    EngineInstallStage.Copying => $"Copying {id} {version}: {Amount(value.BytesDone)} / {Amount(value.BytesTotal)} ({(int)(value.Fraction * 100)}%)",
+                    _ => $"Unpacking {value.ComponentId}…",
+                };
                 var step = (value.Stage, value.ComponentId);
                 var newStep = _step != step;
                 var tenth = (int)(value.Fraction * 10);
