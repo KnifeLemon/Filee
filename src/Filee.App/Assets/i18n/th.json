@@ -129,6 +129,7 @@
   "error.no_motion_photo": "รูปภาพนี้ไม่มีวิดีโอที่ Filee สามารถอ่านได้ (เช่น ภาพเคลื่อนไหวของ Android หรือ Live Photo ของ iPhone ที่มีไฟล์ MOV อยู่คู่กัน)",
   "error.live_photo_start": "คลิปเริ่มต้นหลังจุดสิ้นสุดของวิดีโอนี้ โปรดเลือกจุดเริ่มต้นคลิปให้เร็วกว่านี้",
   "error.live_photo_hdr": "FFmpeg นี้ไม่มีตัวกรอง zscale จึงไม่สามารถแปลงวิดีโอ HDR นี้เป็น Live / Motion Photo ได้ (FFmpeg ที่ Filee ดาวน์โหลดจะมีตัวกรองนี้)",
+  "error.tracker_needs_openmpt": "FFmpeg นี้อ่านโมดูลแทร็กเกอร์ (XM, IT, S3M) ไม่ได้ เพราะสร้างมาโดยไม่มี libopenmpt (FFmpeg ที่ Filee ดาวน์โหลดบน Windows และ Linux มีไลบรารีนี้)",
   "error.rhwp_timeout": "rhwp ไม่สามารถประมวลผลเอกสารขนาดยาวนี้ได้ทันเวลา",
   "error.rhwp_timeout_calibre": "rhwp ไม่สามารถประมวลผลเอกสารขนาดยาวนี้ได้ทันเวลา สำหรับอีบุ๊ก ให้ย้าย Calibre ไปไว้เหนือตัวเขียน HWPX ใน การตั้งค่า → เครื่องมือแปลงไฟล์ Calibre จะสร้าง PDF ได้เร็วกว่ามาก",
   "error.engine_stalled": "เครื่องมือแปลงไฟล์หยุดตอบสนอง: ไม่มีความคืบหน้าเป็นเวลานาน จึงถูกหยุดการทำงาน",

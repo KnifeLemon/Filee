@@ -135,6 +135,7 @@
   "error.no_motion_photo": "This photo has no video Filee can read (an Android Motion Photo, or an iPhone Live Photo with its MOV next to it)",
   "error.live_photo_start": "The clip starts after the end of this video. Choose an earlier \"Clip start\"",
   "error.live_photo_hdr": "This FFmpeg has no zscale filter, so this HDR video can't become a Live / Motion Photo. Filee's FFmpeg download has it",
+  "error.tracker_needs_openmpt": "This FFmpeg can't read tracker modules (XM, IT, S3M): it was built without libopenmpt. Filee's FFmpeg download for Windows and Linux has it",
   "error.rhwp_timeout": "rhwp couldn't finish this long document in time",
   "error.rhwp_timeout_calibre": "rhwp couldn't finish this long document in time. For an e-book, move Calibre above the HWPX writer in Settings → Engines, and Calibre makes the PDF much faster",
   "error.engine_stalled": "The engine stopped responding: it showed no progress for a long time, so it was stopped",

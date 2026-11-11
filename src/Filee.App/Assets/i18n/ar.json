@@ -129,6 +129,7 @@
   "error.no_motion_photo": "لا تحتوي هذه الصورة على فيديو يستطيع Filee قراءته (صورة Motion Photo من Android، أو Live Photo من iPhone مع ملف MOV بجانبها)",
   "error.live_photo_start": "يبدأ المقطع بعد نهاية هذا الفيديو. اختر «بداية المقطع» أبكر",
   "error.live_photo_hdr": "لا يحتوي FFmpeg هذا على مرشح zscale، لذا لا يمكن تحويل فيديو HDR هذا إلى Live / Motion Photo. يحتوي FFmpeg الذي ينزّله Filee عليه",
+  "error.tracker_needs_openmpt": "لا يستطيع FFmpeg هذا قراءة وحدات التراكر (XM وIT وS3M) لأنه بُني دون libopenmpt. يحتوي FFmpeg الذي ينزّله Filee على Windows وLinux عليها",
   "error.rhwp_timeout": "لم يتمكن rhwp من إكمال هذا المستند الطويل في الوقت المحدد",
   "error.rhwp_timeout_calibre": "لم يتمكن rhwp من إكمال هذا المستند الطويل في الوقت المحدد. للكتب الإلكترونية، انقل Calibre فوق محرك كتابة HWPX من الإعدادات ← المحركات، ليُنشئ Calibre ملف PDF بسرعة أكبر بكثير",
   "error.engine_stalled": "توقف المحرك عن الاستجابة: لم يحرز أي تقدم لفترة طويلة، لذا تم إيقافه",

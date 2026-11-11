@@ -135,6 +135,7 @@
   "error.no_motion_photo": "這張照片中沒有可讀取的影片（Android 動態相片，或旁邊有 MOV 的 iPhone 原況照片）",
   "error.live_photo_start": "片段開始位置在影片結束之後。請把「片段開始」設得更早",
   "error.live_photo_hdr": "此 FFmpeg 沒有 zscale 濾鏡，無法把 HDR 影片製作成原況/動態相片。Filee 下載的 FFmpeg 帶有該濾鏡",
+  "error.tracker_needs_openmpt": "此 FFmpeg 編譯時未包含 libopenmpt，無法讀取 Tracker 音樂模組（XM、IT、S3M）。Filee 在 Windows 和 Linux 上下載的 FFmpeg 帶有該函式庫",
   "error.rhwp_timeout": "文件太長，rhwp 未能在時限內完成",
   "error.rhwp_timeout_calibre": "文件太長，rhwp 未能在時限內完成。如果是電子書，請在「設定 → 轉換引擎」中把 Calibre 移到 HWPX writer 之上，Calibre 產生 PDF 要快得多",
   "error.engine_stalled": "轉換引擎停止回應：長時間沒有進展，已將其停止",

@@ -1105,6 +1105,10 @@ internal static class SettingsMigrations
         //      as in a new library; no donut gets a slot. (Schema 80 may be renumbered if another change takes it first.)
         if (from < 80 && presets.All(p => p.Id != BuiltInData.PdfAId))
             changed |= AddLikeNewLibrary(presets, BuiltInData.PdfAId);
+        // v81: tracker modules (.xm, .it, .s3m, #1376) learn the audio donut; custom claims stay put. (Schema 81 may be
+        //      renumbered if another change takes it first.)
+        if (from < 81)
+            changed |= LearnExtensions(profiles, out _, ["xm", "it", "s3m"]);
         return changed;
     }
 

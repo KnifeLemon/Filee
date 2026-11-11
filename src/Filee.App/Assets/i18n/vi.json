@@ -135,6 +135,7 @@
   "error.no_motion_photo": "Ảnh này không có video mà Filee đọc được (ảnh Motion Photo của Android, hoặc Live Photo của iPhone kèm tệp MOV bên cạnh)",
   "error.live_photo_start": "Đoạn cắt bắt đầu sau khi video này kết thúc. Hãy chọn “Điểm bắt đầu đoạn cắt” sớm hơn",
   "error.live_photo_hdr": "FFmpeg này không có bộ lọc zscale nên video HDR này không thể thành Live / Motion Photo. FFmpeg do Filee tải xuống có bộ lọc này",
+  "error.tracker_needs_openmpt": "FFmpeg này không đọc được mô-đun tracker (XM, IT, S3M) vì được biên dịch không kèm libopenmpt. FFmpeg do Filee tải xuống trên Windows và Linux có thư viện này",
   "error.rhwp_timeout": "rhwp không kịp xử lý xong tài liệu dài này",
   "error.rhwp_timeout_calibre": "rhwp không kịp xử lý xong tài liệu dài này. Với sách điện tử, hãy chuyển Calibre lên trên trình ghi HWPX trong Cài đặt → Bộ xử lý, Calibre sẽ tạo PDF nhanh hơn nhiều",
   "error.engine_stalled": "Bộ xử lý đã ngừng phản hồi: rất lâu không có tiến triển nên đã bị dừng",

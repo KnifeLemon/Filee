@@ -128,6 +128,7 @@
   "error.no_motion_photo": "این عکس ویدیویی ندارد که Filee بتواند بخواند (یک Motion Photo اندروید یا یک Live Photo آیفون به همراه فایل MOV در کنار آن)",
   "error.live_photo_start": "کلیپ بعد از پایان این ویدیو شروع می‌شود. نقطه شروع زودتری برای کلیپ انتخاب کنید",
   "error.live_photo_hdr": "این نسخه FFmpeg فیلتر zscale ندارد، بنابراین این ویدیوی HDR نمی‌تواند به Live / Motion Photo تبدیل شود. نسخه دانلودی FFmpeg برنامه Filee آن را دارد",
+  "error.tracker_needs_openmpt": "این نسخه FFmpeg نمی‌تواند ماژول‌های ترکر (XM، IT، S3M) را بخواند، چون بدون libopenmpt ساخته شده است. نسخه دانلودی FFmpeg برنامه Filee برای Windows و Linux آن را دارد",
   "error.rhwp_timeout": "موتور rhwp نتوانست این سند طولانی را در زمان مقرر تمام کند",
   "error.rhwp_timeout_calibre": "موتور rhwp نتوانست این سند طولانی را به موقع تمام کند. برای کتاب‌های الکترونیکی، Calibre را در تنظیمات ← موتورها بالاتر از HWPX writer قرار دهید تا بسیار سریع‌تر PDF ساخته شود",
   "error.engine_stalled": "موتور پاسخ نمی‌دهد: برای مدت طولانی هیچ پیشرفتی نشان نداد، بنابراین متوقف شد",

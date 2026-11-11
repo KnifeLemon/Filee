@@ -135,6 +135,7 @@
   "error.no_motion_photo": "이 사진에서 읽을 수 있는 동영상을 찾지 못했어요 (안드로이드 모션 포토, 또는 옆에 MOV가 있는 아이폰 라이브 포토)",
   "error.live_photo_start": "클립 시작이 동영상 끝보다 뒤예요. \"클립 시작\"을 더 앞으로 정해 주세요",
   "error.live_photo_hdr": "이 FFmpeg에는 zscale 필터가 없어서 HDR 동영상을 라이브/모션 포토로 만들 수 없어요. Filee에서 내려받는 FFmpeg에는 있어요",
+  "error.tracker_needs_openmpt": "이 FFmpeg는 libopenmpt 없이 빌드되어서 트래커 모듈(XM, IT, S3M)을 읽을 수 없어요. Windows와 Linux에서 Filee가 내려받는 FFmpeg에는 있어요",
   "error.rhwp_timeout": "문서가 길어서 rhwp가 제한 시간 안에 끝내지 못했어요",
   "error.rhwp_timeout_calibre": "문서가 길어서 rhwp가 제한 시간 안에 끝내지 못했어요. 전자책이라면 설정 → 변환 엔진에서 Calibre를 HWPX writer보다 위로 옮겨 주세요. Calibre가 PDF를 훨씬 빨리 만들어요",
   "error.engine_stalled": "엔진이 응답하지 않아요. 오랫동안 진행되지 않아서 중지했어요",

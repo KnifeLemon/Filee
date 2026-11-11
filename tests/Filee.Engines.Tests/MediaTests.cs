@@ -334,6 +334,144 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
         }
     }
 
+    [Theory]
+    [InlineData("xm")]
+    [InlineData("it")]
+    [InlineData("s3m")]
+    public void Tracker_modules_go_to_every_audio_target_in_one_ffmpeg_step(string module)
+    {
+        // #1376: read through FFmpeg's libopenmpt demuxer; never a target.
+        foreach (var target in MediaEncoding.AudioTargets.Keys)
+        {
+            var route = Planner().Plan(module, target);
+            Assert.True(route is not null, target);
+            Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        }
+        Assert.DoesNotContain(new FfmpegConverter().Edges, e => e.To == module);
+        Assert.Contains(module, FfmpegConverter.TrackerModules);
+    }
+
+    [Fact]
+    public void Tracker_modules_need_an_ffmpeg_with_libopenmpt_or_libmodplug()
+    {
+        var demuxers = FfmpegConverter.ParseDemuxers("""
+            Formats:
+             D.. = Demuxing supported
+             .E. = Muxing supported
+             ..d = Is a device
+             ---
+             D   aac             raw ADTS AAC (Advanced Audio Coding)
+             D d dshow           DirectShow capture
+             D   libopenmpt      Tracker formats (libopenmpt)
+             D   mov,mp4,m4a,3gp,3g2,mj2 QuickTime / MOV
+            """);
+        Assert.Equal(["3g2", "3gp", "aac", "dshow", "libopenmpt", "m4a", "mj2", "mov", "mp4"], demuxers.Order(StringComparer.Ordinal));
+        Assert.True(FfmpegConverter.ReadsTrackerModules(demuxers));
+        Assert.True(FfmpegConverter.ReadsTrackerModules(new HashSet<string> { "libmodplug" }));
+        // Homebrew's FFmpeg: neither library.
+        Assert.False(FfmpegConverter.ReadsTrackerModules(new HashSet<string> { "aac", "mov", "mp4" }));
+        // A list that can't be read leaves the decision to FFmpeg.
+        Assert.True(FfmpegConverter.ReadsTrackerModules(null));
+    }
+
+    [Fact]
+    public async Task A_fasttracker_xm_module_converts_to_audio()
+    {
+        SkipUnlessInstalled();
+        var module = Path.Combine(fx.NewFolder(), "song.xm");
+        await File.WriteAllBytesAsync(module, MakeXm(), TestContext.Current.CancellationToken);
+
+        if (!FfmpegConverter.ReadsTrackerModules(await FfmpegConverter.DemuxersOfAsync(Tools!.Value.Ffmpeg)))
+        {
+            // An FFmpeg built without libopenmpt: Filee's message, not FFmpeg's "Invalid data found".
+            var job = await fx.ConvertAsync([module], new Preset { TargetFormat = "wav" });
+            var file = Assert.Single(job.Files);
+            Assert.Equal((FileState.Failed, "error.tracker_needs_openmpt"), (file.State, file.ErrorKey));
+            return;
+        }
+        foreach (var target in new[] { "wav", "mp3", "flac" })
+        {
+            var output = await ConvertAsync(module, target);
+            var probed = await ProbeAsync(output);
+            Assert.NotNull(probed.Audio);
+            // 16 rows at speed 6 and 125 BPM: 16 × 0.12 s.
+            Assert.InRange(probed.Duration, 1.5, 2.6);
+            // The note on the first row is heard, so the song is not rendered as silence.
+            if (target == "wav")
+                Assert.Contains((await File.ReadAllBytesAsync(output, TestContext.Current.CancellationToken)).Skip(1024), b => b != 0);
+        }
+    }
+
+    /// <summary>
+    /// A FastTracker 2 module (XM 1.04): two channels, one 16-row pattern with a C-4 on its first row, played by one
+    /// instrument whose sample is a short 8-bit square wave.
+    /// </summary>
+    private static byte[] MakeXm()
+    {
+        using var stream = new MemoryStream();
+        using var w = new BinaryWriter(stream);
+        static byte[] Text(string text, int length) => [.. Encoding.ASCII.GetBytes(text.PadRight(length))];
+
+        w.Write(Text("Extended Module: ", 17));
+        w.Write(Text("Filee test", 20));
+        w.Write((byte)0x1A);
+        w.Write(Text("Filee", 20));
+        w.Write((ushort)0x0104);
+        w.Write(276u); // header size, counted from this field: 20 bytes of fields + the 256-entry order table
+        w.Write((ushort)1); // song length (orders)
+        w.Write((ushort)0); // restart position
+        w.Write((ushort)2); // channels
+        w.Write((ushort)1); // patterns
+        w.Write((ushort)1); // instruments
+        w.Write((ushort)1); // linear frequency table
+        w.Write((ushort)6); // speed (ticks per row)
+        w.Write((ushort)125); // BPM
+        w.Write(new byte[256]); // order table: pattern 0
+
+        // Pattern 0, packed: a note byte with bit 7 set says which fields follow, 0x80 is an empty cell.
+        var rows = new List<byte> { 0x83, 49, 1, 0x80 }; // C-4 with instrument 1, then an empty channel
+        for (var row = 1; row < 16; row++)
+            rows.AddRange([0x80, 0x80]);
+        w.Write(9u); // pattern header size
+        w.Write((byte)0); // packing type
+        w.Write((ushort)16); // rows
+        w.Write((ushort)rows.Count);
+        w.Write(rows.ToArray());
+
+        // Instrument 1 with one sample: no envelopes, every note on sample 0.
+        w.Write(263u); // instrument header size
+        w.Write(Text("square", 22));
+        w.Write((byte)0); // type
+        w.Write((ushort)1); // samples
+        w.Write(40u); // sample header size
+        w.Write(new byte[96 + 48 + 48]); // note → sample map, volume and panning envelope points
+        w.Write(new byte[14]); // envelope counts, sustain and loop points, envelope types, vibrato
+        w.Write((ushort)0); // fadeout
+        w.Write(new byte[22]); // reserved
+
+        // The sample: 4000 bytes of 8-bit delta-coded square wave, played once at 8363 Hz (about half a second).
+        const int length = 4000;
+        w.Write((uint)length);
+        w.Write(0u); // loop start
+        w.Write(0u); // loop length
+        w.Write((byte)64); // volume
+        w.Write((sbyte)0); // finetune
+        w.Write((byte)0); // no loop, 8-bit
+        w.Write((byte)128); // panning
+        w.Write((sbyte)0); // relative note
+        w.Write((byte)0); // reserved
+        w.Write(Text("square", 22));
+        sbyte previous = 0;
+        for (var i = 0; i < length; i++)
+        {
+            var value = (sbyte)(i / 16 % 2 == 0 ? 64 : -64);
+            w.Write(unchecked((sbyte)(value - previous)));
+            previous = value;
+        }
+        w.Flush();
+        return stream.ToArray();
+    }
+
     [Fact]
     public async Task A_quicktime_named_movie_converts_like_a_mov()
     {
