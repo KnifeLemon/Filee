@@ -268,11 +268,22 @@ public sealed class CompressionEstimator : IDisposable
         return AskedCompression.Result(entry.Bytes, compressed, 0, onlyIfSmaller: true);
     }
 
+    /// <summary>Lets go of the pictures read, once an estimate under way has ended (it waits for it).</summary>
     public void Dispose()
     {
-        foreach (var entry in _entries)
-            entry.Tile?.Dispose();
-        _gate.Dispose();
+        _gate.Wait();
+        try
+        {
+            foreach (var entry in _entries)
+            {
+                entry.Tile?.Dispose();
+                entry.Tile = null;
+            }
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
 
     private sealed class Entry(string path, CompressionKind kind, long bytes)
