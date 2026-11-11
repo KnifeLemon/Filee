@@ -560,7 +560,7 @@
   "portable.import_existing": "Importa dati esistenti",
   "portable.start_fresh": "Inizia da zero",
   "portable.import_summary": "Copia impostazioni, preimpostazioni, cronologia e motori scaricati in questa cartella portatile. Gli originali non verranno modificati o eliminati.",
-  "portable.import_next": "Filee continua con i dati scelti. Senza le impostazioni, si apre la configurazione iniziale predefinita. Le vecchie voci di avvio o di Esplora file di questo eseguibile saranno rimosse solo dopo una conferma separata. Le altre installazioni non cambieranno.",
+  "portable.import_next": "Filee continua con i dati scelti. Senza le impostazioni, si apre la configurazione iniziale predefinita. Le vecchie voci di avvio o di gestore file di questo eseguibile saranno rimosse solo dopo una conferma separata. Le altre installazioni non cambieranno.",
   "portable.fresh_next": "Inizia da zero salta la copia e apre la configurazione predefinita. I dati esistenti restano al loro posto.",
   "portable.choose_settings": "Impostazioni",
   "portable.choose_presets": "Preimpostazioni",

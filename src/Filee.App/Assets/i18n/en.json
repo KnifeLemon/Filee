@@ -573,7 +573,7 @@
   "portable.import_existing": "Import existing data",
   "portable.start_fresh": "Start fresh",
   "portable.import_summary": "Copy your settings, presets, history and downloaded engines into this portable folder. The original files will not be changed or deleted.",
-  "portable.import_next": "After copying, Filee continues with your selected data. If settings are not selected, normal setup opens with defaults. If this executable has old startup or Explorer menu entries, a separate confirmation will ask whether to remove them. Other installations stay unchanged.",
+  "portable.import_next": "After copying, Filee continues with your selected data. If settings are not selected, normal setup opens with defaults. If this executable has old startup or file-manager entries, a separate confirmation will ask whether to remove them. Other installations stay unchanged.",
   "portable.fresh_next": "Start fresh skips copying and opens normal setup with default settings. Your existing data stays where it is.",
   "portable.choose_settings": "Settings",
   "portable.choose_presets": "Presets",

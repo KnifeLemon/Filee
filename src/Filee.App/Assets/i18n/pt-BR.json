@@ -573,7 +573,7 @@
   "portable.import_existing": "Importar dados existentes",
   "portable.start_fresh": "Começar do zero",
   "portable.import_summary": "Copiar configurações, predefinições, histórico e mecanismos baixados para esta pasta portátil. Os originais não serão alterados nem excluídos.",
-  "portable.import_next": "O Filee continua com os dados escolhidos. Sem as configurações, abre a configuração inicial padrão. Entradas antigas de inicialização ou do Explorador deste executável só serão removidas após outra confirmação. Outras instalações não mudarão.",
+  "portable.import_next": "O Filee continua com os dados escolhidos. Sem as configurações, abre a configuração inicial padrão. Entradas antigas de inicialização ou do gerenciador de arquivos deste executável só serão removidas após outra confirmação. Outras instalações não mudarão.",
   "portable.fresh_next": "Começar do zero ignora a cópia e abre a configuração padrão. Seus dados existentes permanecem onde estão.",
   "portable.choose_settings": "Configurações",
   "portable.choose_presets": "Predefinições",

@@ -573,7 +573,7 @@
   "portable.import_existing": "Importer les données existantes",
   "portable.start_fresh": "Repartir de zéro",
   "portable.import_summary": "Copier les paramètres, préréglages, l’historique et les moteurs téléchargés dans ce dossier portable. Les originaux ne seront ni modifiés ni supprimés.",
-  "portable.import_next": "Filee continue avec les données choisies. Sans les paramètres, la configuration initiale utilise les valeurs par défaut. Une confirmation séparée proposera de supprimer les anciennes entrées de démarrage ou de l’Explorateur liées à cet exécutable. Les autres installations resteront intactes.",
+  "portable.import_next": "Filee continue avec les données choisies. Sans les paramètres, la configuration initiale utilise les valeurs par défaut. Une confirmation séparée proposera de supprimer les anciennes entrées de démarrage ou du gestionnaire de fichiers liées à cet exécutable. Les autres installations resteront intactes.",
   "portable.fresh_next": "Repartir de zéro ouvre la configuration par défaut sans copier les données existantes.",
   "portable.choose_settings": "Paramètres",
   "portable.choose_presets": "Préréglages",

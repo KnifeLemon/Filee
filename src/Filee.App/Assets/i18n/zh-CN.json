@@ -573,7 +573,7 @@
   "portable.import_existing": "导入现有数据",
   "portable.start_fresh": "全新开始",
   "portable.import_summary": "将设置、预设、历史记录和已下载的引擎复制到此便携文件夹。原始文件不会更改或删除。",
-  "portable.import_next": "复制后使用所选数据继续。未选择设置时，将打开默认初始设置。 若此程序有旧的启动项或资源管理器菜单项，会另行询问是否删除。其他安装保持不变。",
+  "portable.import_next": "复制后使用所选数据继续。未选择设置时，将打开默认初始设置。 若此程序有旧的启动项或文件管理器菜单项，会另行询问是否删除。其他安装保持不变。",
   "portable.fresh_next": "全新开始将跳过复制并打开默认初始设置。现有数据保留在原处。",
   "portable.choose_settings": "设置",
   "portable.choose_presets": "预设",

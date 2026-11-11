@@ -4,7 +4,6 @@ using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Filee.Core.Settings;
-using Filee.Platform.Windows;
 
 namespace Filee.App.Services;
 
@@ -30,10 +29,21 @@ internal static class PortableFirstStart
                 selection: selection, enginesPath: engines, engineBytes: engineBytes);
             if (!imported) PortableImport.Decline(destination);
         }
-        if (OperatingSystem.IsWindows() && Environment.ProcessPath is { } executable
-            && PortableIntegration.HasOwnedEntries(executable))
-            await AskAsync(LocalizationService.EarlyText("portable.cleanup_prompt"),
-                _ => OperatingSystem.IsWindows() ? PortableIntegration.RemoveOwnedEntriesAsync(executable) : Task.CompletedTask);
+        if (Environment.ProcessPath is { } executable)
+            await OfferCleanupAsync(destination, () => PortableIntegrationCleanup.HasOwnedEntries(executable),
+                () => PortableIntegrationCleanup.RemoveOwnedEntriesAsync(executable),
+                remove => AskAsync(LocalizationService.EarlyText("portable.cleanup_prompt"), _ => remove()));
+    }
+
+    internal const string CleanupDecisionFile = ".portable-cleanup-decided";
+
+    internal static async Task OfferCleanupAsync(string destination, Func<bool> hasOwnedEntries,
+        Func<Task> remove, Func<Func<Task>, Task<bool>> ask)
+    {
+        var decision = Path.Combine(destination, CleanupDecisionFile);
+        if (File.Exists(decision) || !hasOwnedEntries()) return;
+        var accepted = await ask(remove);
+        File.WriteAllText(decision, accepted ? "completed" : "declined");
     }
 
     internal static Task<bool> AskAsync(string message, Func<IProgress<double>, Task> accept, bool determinate = false,

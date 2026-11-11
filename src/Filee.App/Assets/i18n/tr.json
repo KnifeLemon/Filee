@@ -561,7 +561,7 @@
   "portable.import_existing": "Mevcut verileri içe aktar",
   "portable.start_fresh": "Sıfırdan başla",
   "portable.import_summary": "Ayarları, ön ayarları, geçmişi ve indirilen motorları bu taşınabilir klasöre kopyalayın. Asıllar değişmez veya silinmez.",
-  "portable.import_next": "Filee seçilen verilerle devam eder. Ayarlar seçilmezse varsayılan kurulum açılır. Bu programın eski başlangıç veya Gezgin girdilerini kaldırmak için ayrıca onay istenir. Diğer kurulumlar değişmez.",
+  "portable.import_next": "Filee seçilen verilerle devam eder. Ayarlar seçilmezse varsayılan kurulum açılır. Bu programın eski başlangıç veya dosya yöneticisi girdilerini kaldırmak için ayrıca onay istenir. Diğer kurulumlar değişmez.",
   "portable.fresh_next": "Sıfırdan başla kopyalamayı atlar ve varsayılan kurulumu açar. Mevcut veriler yerinde kalır.",
   "portable.choose_settings": "Ayarlar",
   "portable.choose_presets": "Ön ayarlar",

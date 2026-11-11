@@ -561,7 +561,7 @@
   "portable.import_existing": "Vorhandene Daten importieren",
   "portable.start_fresh": "Neu beginnen",
   "portable.import_summary": "Einstellungen, Vorgaben, Verlauf und heruntergeladene Engines in diesen portablen Ordner kopieren. Die Originale werden weder geändert noch gelöscht.",
-  "portable.import_next": "Danach verwendet Filee die ausgewählten Daten. Ohne Einstellungen öffnet sich die normale Einrichtung mit Standardwerten. Alte Autostart- oder Explorer-Einträge dieser Programmdatei werden nur nach separater Bestätigung entfernt. Andere Installationen bleiben unverändert.",
+  "portable.import_next": "Danach verwendet Filee die ausgewählten Daten. Ohne Einstellungen öffnet sich die normale Einrichtung mit Standardwerten. Alte Autostart- oder Dateimanager-Einträge dieser Programmdatei werden nur nach separater Bestätigung entfernt. Andere Installationen bleiben unverändert.",
   "portable.fresh_next": "Neu beginnen überspringt das Kopieren und öffnet die Einrichtung mit Standardwerten. Vorhandene Daten bleiben erhalten.",
   "portable.choose_settings": "Einstellungen",
   "portable.choose_presets": "Vorgaben",

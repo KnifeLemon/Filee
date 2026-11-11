@@ -27,10 +27,18 @@ remember that choice. This appears before Home and engine setup. A failed copy c
 existing portable data is never overwritten. Start the desktop app before using the CLI if you want to import.
 Custom engine paths remain external; downloaded copies travel with the portable folder.
 
-If this same executable previously registered startup or file-manager integration on Windows, the app asks before
+If this same executable previously registered startup or file-manager integration, the app asks before
 removing those entries. Entries targeting another executable are preserved. Cleanup is offered independently of
-import, so declining import does not hide obsolete integration. If cleanup fails or is cancelled, it is offered
-again next time while owned entries remain. `--uninstall-cleanup` also removes only this copy's entries.
+import, so declining import does not hide obsolete integration. Declining cleanup is remembered in
+`data/.portable-cleanup-decided`, so the app does not ask on every launch. Remove that file to be asked again.
+A failed cleanup can be retried in the dialog. Closing the dialog also remembers a declined cleanup.
+`--uninstall-cleanup` removes only this copy's entries, regardless of the remembered choice.
+
+On Linux, cleanup checks autostart, Thunar actions and shortcuts, and the Thunar, Nautilus, Nemo and KDE file-manager
+entries. On macOS, it checks the LaunchAgent and legacy Automator Quick Action. The shared Finder service preference
+is left alone because it does not identify a specific executable. Cleanup recognizes the command formats Filee
+generated; malformed or unrecognized entries and linked files are preserved. Removing a macOS LaunchAgent prevents
+future login starts; it does not terminate an already running copy.
 
 ### macOS quarantine
 

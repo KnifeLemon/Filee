@@ -561,7 +561,7 @@
   "portable.import_existing": "Importar datos existentes",
   "portable.start_fresh": "Empezar de cero",
   "portable.import_summary": "Copiar ajustes, preajustes, historial y motores descargados a esta carpeta portátil. Los originales no se modificarán ni eliminarán.",
-  "portable.import_next": "Filee continúa con los datos elegidos. Sin los ajustes, se abre la configuración inicial predeterminada. Si este ejecutable tiene entradas antiguas de inicio o del Explorador, se pedirá confirmación para quitarlas. Otras instalaciones no cambiarán.",
+  "portable.import_next": "Filee continúa con los datos elegidos. Sin los ajustes, se abre la configuración inicial predeterminada. Si este ejecutable tiene entradas antiguas de inicio o del gestor de archivos, se pedirá confirmación para quitarlas. Otras instalaciones no cambiarán.",
   "portable.fresh_next": "Empezar de cero omite la copia y abre la configuración inicial. Los datos existentes permanecen donde están.",
   "portable.choose_settings": "Ajustes",
   "portable.choose_presets": "Preajustes",

@@ -561,7 +561,7 @@
   "portable.import_existing": "Impor data yang ada",
   "portable.start_fresh": "Mulai baru",
   "portable.import_summary": "Salin pengaturan, preset, riwayat dan mesin unduhan ke folder portabel ini. Berkas asli tidak diubah atau dihapus.",
-  "portable.import_next": "Filee melanjutkan dengan data pilihan. Tanpa pengaturan, penyiapan awal memakai nilai bawaan. Penghapusan entri mulai otomatis atau Explorer lama milik program ini memerlukan konfirmasi terpisah. Instalasi lain tidak berubah.",
+  "portable.import_next": "Filee melanjutkan dengan data pilihan. Tanpa pengaturan, penyiapan awal memakai nilai bawaan. Penghapusan entri mulai otomatis atau pengelola berkas lama milik program ini memerlukan konfirmasi terpisah. Instalasi lain tidak berubah.",
   "portable.fresh_next": "Mulai baru melewati penyalinan dan membuka pengaturan awal. Data lama tetap di tempatnya.",
   "portable.choose_settings": "Pengaturan",
   "portable.choose_presets": "Preset",

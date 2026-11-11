@@ -573,7 +573,7 @@
   "portable.import_existing": "기존 데이터 가져오기",
   "portable.start_fresh": "새로 시작",
   "portable.import_summary": "설정, 프리셋, 기록과 다운로드한 엔진을 이 포터블 폴더로 복사합니다. 원본은 변경하거나 삭제하지 않습니다.",
-  "portable.import_next": "선택한 데이터로 계속합니다. 설정을 선택하지 않으면 기본 초기 설정이 열립니다. 이 실행 파일의 이전 자동 시작 및 탐색기 항목을 제거하려면 별도로 확인합니다. 다른 설치는 변경하지 않습니다.",
+  "portable.import_next": "선택한 데이터로 계속합니다. 설정을 선택하지 않으면 기본 초기 설정이 열립니다. 이 실행 파일의 이전 자동 시작 및 파일 관리자 항목을 제거하려면 별도로 확인합니다. 다른 설치는 변경하지 않습니다.",
   "portable.fresh_next": "새로 시작은 복사를 건너뛰고 기본 초기 설정을 엽니다. 기존 데이터는 그대로 유지됩니다.",
   "portable.choose_settings": "설정",
   "portable.choose_presets": "프리셋",

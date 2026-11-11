@@ -573,7 +573,7 @@
   "portable.import_existing": "Importuj istniejące dane",
   "portable.start_fresh": "Zacznij od nowa",
   "portable.import_summary": "Skopiuj ustawienia, presety, historię i pobrane silniki do tego folderu przenośnego. Oryginały nie zostaną zmienione ani usunięte.",
-  "portable.import_next": "Filee użyje wybranych danych. Bez ustawień otworzy się konfiguracja domyślna. Usunięcie starych wpisów autostartu lub Eksploratora tego programu wymaga osobnego potwierdzenia. Inne instalacje pozostaną bez zmian.",
+  "portable.import_next": "Filee użyje wybranych danych. Bez ustawień otworzy się konfiguracja domyślna. Usunięcie starych wpisów autostartu lub menedżera plików tego programu wymaga osobnego potwierdzenia. Inne instalacje pozostaną bez zmian.",
   "portable.fresh_next": "Zacznij od nowa pomija kopiowanie i otwiera konfigurację domyślną. Obecne dane pozostaną na miejscu.",
   "portable.choose_settings": "Ustawienia",
   "portable.choose_presets": "Presety",
