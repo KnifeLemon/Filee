@@ -8,6 +8,7 @@ using System.Runtime.Versioning;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
 using Filee.App.Services;
+using Filee.Core.Platform;
 using Filee.Platform.Windows;
 
 namespace Filee.App.Tests;
@@ -122,6 +123,30 @@ public class ExplorerMenuTests
         if (ExplorerMenuRegistration.Find() is { } package)
             Assert.False(string.IsNullOrEmpty(package.ExternalLocation), package.FullName);
         _ = ExplorerMenuRegistration.GetState(BuiltFolder);
+    }
+
+    [Fact]
+    public void A_package_of_the_other_architecture_is_outdated_and_replaced()
+    {
+        // Setup switches an install between x64 and ARM64 in place: same folder, same package version.
+        const string folder = @"C:\Program Files\Filee";
+        var version = ExplorerMenuPackage.ManifestVersion;
+        var x64 = new ExplorerMenuRegistration.RegisteredPackage($"Filee.ExplorerMenu_{version}_x64__c73vxh346rtay", version, folder, "x64");
+        var arm64 = x64 with { FullName = $"Filee.ExplorerMenu_{version}_arm64__c73vxh346rtay", Architecture = "arm64" };
+
+        Assert.Equal(ModernContextMenuState.On, ExplorerMenuRegistration.StateOf(x64, folder, "x64"));
+        Assert.Equal(ModernContextMenuState.On, ExplorerMenuRegistration.StateOf(arm64, folder, "arm64"));
+        Assert.Equal(ModernContextMenuState.Outdated, ExplorerMenuRegistration.StateOf(x64, folder, "arm64"));
+        Assert.Equal(ModernContextMenuState.Outdated, ExplorerMenuRegistration.StateOf(arm64, folder, "x64"));
+        Assert.Equal(ModernContextMenuState.Outdated, ExplorerMenuRegistration.StateOf(x64, @"D:\Other\Filee", "x64"));
+        Assert.Equal(ModernContextMenuState.Off, ExplorerMenuRegistration.StateOf(null, folder, "x64"));
+        Assert.True(ExplorerMenuRegistration.IsOtherArchitecture(x64, "arm64"));
+        Assert.False(ExplorerMenuRegistration.IsOtherArchitecture(arm64, "ARM64"));
+        Assert.Equal(RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64", ExplorerMenuRegistration.BuildArchitecture);
+
+        var replace = ExplorerMenuRegistration.BuildAddScript(@"C:\Program Files\Filee\FileeExplorerMenu.msix", folder, @"C:\Temp\err.txt", removeFirst: true);
+        Assert.Matches(@"Get-AppxPackage -Name 'Filee\.ExplorerMenu' \| Remove-AppxPackage; Add-AppxPackage ", replace);
+        Assert.DoesNotContain("Remove-AppxPackage", ExplorerMenuRegistration.BuildAddScript(@"C:\a.msix", folder, @"C:\Temp\err.txt"));
     }
 
     [Fact]

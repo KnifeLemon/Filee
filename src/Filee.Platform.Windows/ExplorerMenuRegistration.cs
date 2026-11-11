@@ -26,7 +26,15 @@ public static class ExplorerMenuRegistration
     /// <param name="FullName">Package full name, e.g. <c>Filee.ExplorerMenu_1.0.0.0_x64__c73vxh346rtay</c>.</param>
     /// <param name="Version">Identity version from the full name.</param>
     /// <param name="ExternalLocation">Folder the package points at (null when Windows does not say).</param>
-    public sealed record RegisteredPackage(string FullName, Version Version, string? ExternalLocation);
+    /// <param name="Architecture">Identity architecture from the full name ("x64" or "arm64").</param>
+    public sealed record RegisteredPackage(string FullName, Version Version, string? ExternalLocation, string Architecture = "");
+
+    /// <summary>
+    /// The package architecture of the running build ("x64" or "arm64"): the DLL next to Filee.exe and the package's
+    /// manifest are built for it (build/build-explorer-menu.ps1 -Architecture).
+    /// </summary>
+    public static string BuildArchitecture =>
+        RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : ExplorerMenuPackage.Architecture;
 
     /// <summary>
     /// Windows 11 on x64 or ARM64: the new context menu exists, and Explorer can load the DLL shipped with this build
@@ -50,14 +58,31 @@ public static class ExplorerMenuRegistration
     {
         if (!IsSupportedOs || !HasFiles(installFolder))
             return ModernContextMenuState.Unsupported;
-        var package = Find();
+        return StateOf(Find(), installFolder, BuildArchitecture);
+    }
+
+    /// <summary>
+    /// On when <paramref name="package"/> is this build's: registered for <paramref name="installFolder"/>, at least at
+    /// this manifest version and for <paramref name="architecture"/>. Setup switches an install between x64 and ARM64
+    /// in place (same folder, same version), after which the package registered before is the other architecture's:
+    /// Outdated, so it is registered again.
+    /// </summary>
+    public static ModernContextMenuState StateOf(RegisteredPackage? package, string installFolder, string architecture)
+    {
         if (package is null)
             return ModernContextMenuState.Off;
         var sameFolder = package.ExternalLocation is null || SamePath(package.ExternalLocation, installFolder);
-        return sameFolder && package.Version >= ExplorerMenuPackage.ManifestVersion
+        return sameFolder && !IsOtherArchitecture(package, architecture) && package.Version >= ExplorerMenuPackage.ManifestVersion
             ? ModernContextMenuState.On
             : ModernContextMenuState.Outdated;
     }
+
+    /// <summary>
+    /// Registered for another architecture than <paramref name="architecture"/>. To Windows that is another package
+    /// of the same family, so it is removed before this build's is added rather than updated.
+    /// </summary>
+    public static bool IsOtherArchitecture(RegisteredPackage package, string architecture) =>
+        !string.Equals(package.Architecture, architecture, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>The package as registered for the current user, or null.</summary>
     public static unsafe RegisteredPackage? Find()
@@ -82,7 +107,7 @@ public static class ExplorerMenuRegistration
         // Full name = Name_Version_Architecture_ResourceId_PublisherId.
         var parts = fullName.Split('_');
         var version = parts.Length > 1 && Version.TryParse(parts[1], out var v) ? v : new Version(0, 0);
-        return new RegisteredPackage(fullName, version, ExternalLocationOf(fullName));
+        return new RegisteredPackage(fullName, version, ExternalLocationOf(fullName), parts.Length > 2 ? parts[2] : "");
     }
 
     /// <summary>
@@ -128,7 +153,8 @@ public static class ExplorerMenuRegistration
             return new ModernContextMenuResult(false, Error: $"{ExplorerMenuPackage.PackageFileName} or {ExplorerMenuPackage.DllFileName} is missing in {installFolder}.");
 
         var package = Path.Combine(installFolder, ExplorerMenuPackage.PackageFileName);
-        var result = await RunPowerShellAsync(errorFile => BuildAddScript(package, installFolder, errorFile), elevated: true);
+        var replace = Find() is { } registered && IsOtherArchitecture(registered, BuildArchitecture);
+        var result = await RunPowerShellAsync(errorFile => BuildAddScript(package, installFolder, errorFile, removeFirst: replace), elevated: true);
         if (result.Succeeded && GetState(installFolder) != ModernContextMenuState.On)
         {
             return new ModernContextMenuResult(false, Error:
@@ -153,9 +179,13 @@ public static class ExplorerMenuRegistration
             : result;
     }
 
-    /// <summary>PowerShell that registers the package and writes the error message to <paramref name="errorFile"/>.</summary>
-    public static string BuildAddScript(string packagePath, string externalLocation, string errorFile) =>
+    /// <summary>
+    /// PowerShell that registers the package and writes the error message to <paramref name="errorFile"/>; with
+    /// <paramref name="removeFirst"/> it removes the registered one first (see <see cref="IsOtherArchitecture"/>).
+    /// </summary>
+    public static string BuildAddScript(string packagePath, string externalLocation, string errorFile, bool removeFirst = false) =>
         WrapScript(
+            (removeFirst ? $"Get-AppxPackage -Name {Quote(ExplorerMenuPackage.PackageName)} | Remove-AppxPackage; " : "") +
             $"Add-AppxPackage -Path {Quote(packagePath)} -ExternalLocation {Quote(externalLocation)} -AllowUnsigned -ForceUpdateFromAnyVersion",
             errorFile);
 

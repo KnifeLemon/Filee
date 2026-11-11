@@ -93,6 +93,7 @@ winget install KnifeLemon.Filee
 ```
 
 - **Windows 10/11** : exécutez `Filee-<version>-win-Setup.exe`, ou décompressez `win-Portable.zip` et lancez `Filee.exe`.
+  - Sur un PC Windows on ARM (Paramètres → Système → Informations système indique « processeur ARM »), prenez plutôt `win-arm64-Setup.exe` ou `win-arm64-Portable.zip` : il s'exécute en natif, sans émulation x64.
   - Le programme d'installation est celui de Filee, dans les langues de Filee, et ne demande rien d'autre sur le PC.
   - Il peut ajouter le menu de l'Explorateur, le démarrage à l'ouverture de session, la commande `filee` et des moteurs facultatifs.
   - Les installations silencieuses acceptent les options d'Inno Setup (`/VERYSILENT /SUPPRESSMSGBOXES`).
