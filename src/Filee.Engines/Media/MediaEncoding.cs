@@ -795,9 +795,20 @@ internal static partial class MediaEncoding
         return args;
     }
 
-    /// <summary>An M4R whose preset asks for more than <see cref="MediaOptions.MaxRingtoneLength"/> seconds: it is cut at that.</summary>
-    internal static bool RingtoneCutShort(string target, MediaOptions options) =>
-        target == "m4r" && double.IsFinite(options.RingtoneLength) && options.RingtoneLength > MediaOptions.MaxRingtoneLength;
+    /// <summary>
+    /// An M4R that is only a part of the sound (it doesn't start at the beginning or doesn't end at the end): the result
+    /// says so, so the person isn't left to wonder why a song became thirty seconds. When the sound's length is unknown,
+    /// one asked to be longer than <see cref="MediaOptions.MaxRingtoneLength"/> seconds.
+    /// </summary>
+    internal static bool RingtoneCutShort(string target, MediaOptions options, MediaInfo info)
+    {
+        if (target != "m4r")
+            return false;
+        if (info.Duration is not { TotalSeconds: > 0 } duration)
+            return double.IsFinite(options.RingtoneLength) && options.RingtoneLength > MediaOptions.MaxRingtoneLength;
+        var window = options.RingtoneWindow(duration.TotalSeconds);
+        return window.Start > 0.05 || window.Length < duration.TotalSeconds - 0.05;
+    }
 
     /// <summary>
     /// The part of the sound an iPhone ringtone (M4R) is made of: where it starts and how long it is (at most 40 s,

@@ -244,8 +244,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         else if (!still && MediaEncoding.LeavesOutPictureSubtitles(step.To, info))
             step.Notice?.Invoke("notice.picture_subtitles_left_out");
 
-        // A ringtone asked to be longer than iPhones take is cut at 40 s, and the result says so instead of failing.
-        if (MediaEncoding.RingtoneCutShort(step.To, media))
+        // A ringtone is only a part of the sound (at most 40 s): the result says so instead of leaving the person to wonder.
+        if (MediaEncoding.RingtoneCutShort(step.To, media, info))
             step.Notice?.Invoke("notice.ringtone_cut");
         progress?.Report(1);
         return [output];

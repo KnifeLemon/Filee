@@ -40,7 +40,9 @@ public class RingtonePresetTests
     [InlineData(-5, 30, null, 0, 30)]
     [InlineData(double.NaN, double.NaN, null, 0, 30)] // a hand-edited preset file may hold anything
     [InlineData(5, 30, 20.0, 5, 15)] // the sound ends sooner
-    [InlineData(50, 30, 20.0, 19, 1)] // the start is after the end: the last second is used
+    [InlineData(50, 30, 20.0, 0, 20)] // the start is after the end of a short sound: all of it
+    [InlineData(150, 30, 100.0, 70, 30)] // the start is after the end: the last 30 seconds, as asked
+    [InlineData(80, 30, 100.0, 80, 20)] // the length goes past the end: it is cut there
     [InlineData(0, 40, 0.5, 0, 0.5)] // a sound shorter than a second is taken as it is
     public void The_window_is_kept_within_the_limits_and_the_sound(double start, double length, double? source, double expectedStart, double expectedLength)
     {

@@ -1502,7 +1502,9 @@ public sealed class MediaOptions
     /// <summary>
     /// The part of a sound of <paramref name="sourceSeconds"/> (null when unknown) that becomes the ringtone: where it
     /// starts and how long it is. A hand-edited preset file may hold anything, so both are brought within their limits:
-    /// the length to 1–40 s and, when the sound's length is known, the start so that at least a second is left.
+    /// the length to 1–40 s and, when the sound's length is known, the window to the sound: a start past its end moves
+    /// back so that the ringtone keeps the length asked for and ends where the sound ends, and a length that goes past
+    /// the end is cut there.
     /// </summary>
     public (double Start, double Length) RingtoneWindow(double? sourceSeconds)
     {
@@ -1510,7 +1512,8 @@ public sealed class MediaOptions
         var start = double.IsFinite(RingtoneStart) ? Math.Max(0, RingtoneStart) : 0;
         if (sourceSeconds is { } total && total > 0)
         {
-            start = Math.Min(start, Math.Max(0, total - MinRingtoneLength));
+            if (start >= total)
+                start = Math.Max(0, total - length);
             length = Math.Min(length, total - start);
         }
         return (start, length);

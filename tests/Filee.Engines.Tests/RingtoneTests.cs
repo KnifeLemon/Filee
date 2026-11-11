@@ -41,12 +41,23 @@ public class RingtoneTests
     }
 
     [Fact]
-    public void A_ringtone_asked_to_be_longer_than_forty_seconds_is_cut_and_the_result_says_so()
+    public void The_result_says_so_when_the_ringtone_is_only_a_part_of_the_sound()
     {
-        Assert.True(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneLength = 90 }));
-        Assert.False(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneLength = 40 }));
-        Assert.False(MediaEncoding.RingtoneCutShort("m4a", new MediaOptions { RingtoneLength = 90 }));
-        Assert.False(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneLength = double.NaN }));
+        // A 3 minute song from 0:00 for 30 s, the common case.
+        Assert.True(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions(), Song));
+        Assert.True(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneStart = 170, RingtoneLength = 5 }, Song));
+
+        // All of a short sound: nothing was cut, even when more was asked for.
+        var short25 = Song with { Duration = TimeSpan.FromSeconds(25) };
+        Assert.False(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneLength = 60 }, short25));
+        Assert.False(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneLength = 25 }, short25));
+        Assert.True(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneLength = 10 }, short25));
+
+        // Not for other targets, and with an unknown length only for one asked to be longer than 40 s.
+        Assert.False(MediaEncoding.RingtoneCutShort("m4a", new MediaOptions(), Song));
+        var unknown = Song with { Duration = null };
+        Assert.False(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions(), unknown));
+        Assert.True(MediaEncoding.RingtoneCutShort("m4r", new MediaOptions { RingtoneLength = 90 }, unknown));
     }
 
     [Fact]
