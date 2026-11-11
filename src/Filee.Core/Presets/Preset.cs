@@ -351,6 +351,16 @@ public sealed class Preset
     public bool CutsClipOf(string sourceFormat) =>
         Media.Clip is { Parts.Count: > 0 } && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
 
+    /// <summary>
+    /// True if converting a <paramref name="sourceFormat"/> file splits it into parts by stream copy
+    /// (<see cref="MediaOptions.SplitEverySeconds"/>, <see cref="MediaOptions.SplitParts"/>): the file is a video and the
+    /// target a video format. A clip, a crop, a join or a photo of a video does what it does instead.
+    /// </summary>
+    public bool SplitsVideoOf(string sourceFormat) =>
+        Media.Splits && !CutsClipOf(sourceFormat) && !CropsVideo && !JoinsIntoOneMedia
+        && Formats.FormatRegistry.FindById(TargetFormat)?.Category == Formats.FormatCategory.Video
+        && Formats.FormatRegistry.FindById(sourceFormat)?.Category == Formats.FormatCategory.Video;
+
     /// <summary>True for "Crop video" (<see cref="MediaOptions.CropFrame"/>): it works on videos only.</summary>
     [JsonIgnore]
     public bool CropsVideo => VideoCrop.Crops(Media.CropFrame);
@@ -1502,12 +1512,67 @@ public sealed class MediaOptions
     /// <summary>With <see cref="SaveEveryFrame"/>: extract every Nth frame (1 = every frame).</summary>
     public int FrameInterval { get; set; } = 1;
 
+    /// <summary>Shortest, usual and longest iPhone ringtone, in seconds: iOS only takes a ringtone of at most 40 s (#1291).</summary>
+    public const double MinRingtoneLength = 1, DefaultRingtoneLength = 30, MaxRingtoneLength = 40;
+
+    /// <summary>M4R (iPhone ringtone): where the ringtone starts in the sound, in seconds.</summary>
+    public double RingtoneStart { get; set; }
+
+    /// <summary>
+    /// M4R (iPhone ringtone): how long the ringtone is, in seconds (<see cref="MinRingtoneLength"/> to
+    /// <see cref="MaxRingtoneLength"/>), shorter when the sound ends sooner.
+    /// </summary>
+    public double RingtoneLength { get; set; } = DefaultRingtoneLength;
+
+    /// <summary>
+    /// The part of a sound of <paramref name="sourceSeconds"/> (null when unknown) that becomes the ringtone: where it
+    /// starts and how long it is. A hand-edited preset file may hold anything, so both are brought within their limits:
+    /// the length to 1–40 s and, when the sound's length is known, the window to the sound: a start past its end moves
+    /// back so that the ringtone keeps the length asked for and ends where the sound ends, and a length that goes past
+    /// the end is cut there.
+    /// </summary>
+    public (double Start, double Length) RingtoneWindow(double? sourceSeconds)
+    {
+        var length = double.IsFinite(RingtoneLength) ? Math.Clamp(RingtoneLength, MinRingtoneLength, MaxRingtoneLength) : DefaultRingtoneLength;
+        var start = double.IsFinite(RingtoneStart) ? Math.Max(0, RingtoneStart) : 0;
+        if (sourceSeconds is { } total && total > 0)
+        {
+            if (start >= total)
+                start = Math.Max(0, total - length);
+            length = Math.Min(length, total - start);
+        }
+        return (start, length);
+    }
+
     /// <summary>
     /// "Cut a clip": cut exactly at the chosen frames by encoding the clip again (with <see cref="Quality"/>,
     /// <see cref="MaxHeight"/>, <see cref="VideoCodec"/>, …). Off by default: the streams are copied as they are, which
     /// takes a moment and loses nothing, but the clip starts at the key frame before the chosen start.
     /// </summary>
     public bool ExactCut { get; set; }
+
+    /// <summary>
+    /// Video → video: a part for every this many seconds of the video (#1259), copied as it is (<see cref="Preset.SplitsVideoOf"/>).
+    /// A copy can only break at a key frame, so each part ends at the first one from there on. 0 is off, so presets
+    /// saved before it read unchanged.
+    /// </summary>
+    public int SplitEverySeconds { get; set; }
+
+    /// <summary>
+    /// Video → video: the video in this many parts of about the same length (halves, thirds, #1259), copied as it is.
+    /// Over <see cref="SplitEverySeconds"/>; 0 or 1 is off.
+    /// </summary>
+    public int SplitParts { get; set; }
+
+    /// <summary>
+    /// Most parts one video is split into (<see cref="SplitEverySeconds"/>, <see cref="SplitParts"/>): a two-hour film
+    /// every 10 seconds, already more files than anyone wants in a folder.
+    /// </summary>
+    public const int MaxSplitParts = 1000;
+
+    /// <summary>True when <see cref="SplitEverySeconds"/> or <see cref="SplitParts"/> asks for parts.</summary>
+    [JsonIgnore]
+    public bool Splits => SplitParts > 1 || SplitEverySeconds > 0;
 
     /// <summary>
     /// A clip of a video (<see cref="Preset.CutsClipOf"/>): its parts, their volume and speed, and its fades. Set by the

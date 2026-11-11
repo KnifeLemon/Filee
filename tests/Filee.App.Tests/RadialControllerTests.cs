@@ -393,7 +393,7 @@ public class RadialControllerTests
     }
 
     [Fact]
-    public void Folders_only_go_into_one_archive()
+    public void Folder_archive_presets_keep_folders_while_image_presets_take_only_files()
     {
         var folder = Directory.CreateTempSubdirectory("filee-donut-folder-").FullName;
         try
@@ -401,10 +401,10 @@ public class RadialControllerTests
             var file = Path.Combine(folder, "1.png");
             var zip = new Preset { TargetFormat = "zip", Archive = { CombineIntoOne = true } };
 
-            // Issue #186: a dragged folder goes into "Compress into one archive"; other presets take only the files.
+            // Folder archives keep dragged directories (#1345); image presets still take only files.
             Assert.Equal([folder, file], RadialController.SourcesFor(zip, [folder, file]));
             Assert.Equal([file], RadialController.SourcesFor(new Preset { TargetFormat = "jpg" }, [folder, file]));
-            Assert.Empty(RadialController.SourcesFor(new Preset { TargetFormat = "zip" }, [folder]));
+            Assert.Equal([folder], RadialController.SourcesFor(new Preset { TargetFormat = "zip" }, [folder]));
         }
         finally
         {

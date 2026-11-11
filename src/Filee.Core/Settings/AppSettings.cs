@@ -139,7 +139,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 79;
+    public const int CurrentSchemaVersion = 81;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -181,6 +181,12 @@ public sealed class AppSettings
     /// <summary>Whether the macOS menu bar shows Filee's status icon.</summary>
     [JsonConverter(typeof(IconPreferenceJsonConverter))]
     public bool ShowMenuBarIcon { get; set; } = true;
+
+    /// <summary>
+    /// Whether the macOS menu bar icon keeps the coloured donut. Off by default: a one-colour template icon that macOS
+    /// paints white or black to match the bar, like the system's own icons.
+    /// </summary>
+    public bool ColoredMenuBarIcon { get; set; }
 
     /// <summary>Newest version the user was already told about, so the update notice shows once per release.</summary>
     public string? NotifiedUpdateVersion { get; set; }
