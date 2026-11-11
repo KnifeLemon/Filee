@@ -26,8 +26,9 @@ internal static class PsdLayerRecords
         {
             return ReadRecords(file, psb);
         }
-        catch (EndOfStreamException)
+        catch (Exception ex) when (ex is EndOfStreamException or ArgumentException or OverflowException)
         {
+            // Not laid out as expected: the caller keeps ImageMagick's names.
             return null;
         }
     }
@@ -35,24 +36,31 @@ internal static class PsdLayerRecords
     private static List<Record>? ReadRecords(Stream file, bool psb)
     {
         var reader = new BinaryReader(file, Encoding.ASCII, leaveOpen: true);
-        uint UInt32() => BinaryPrimitives.ReadUInt32BigEndian(reader.ReadBytes(4));
+        // Exactly count bytes, or EndOfStreamException: past the end ReadBytes gives fewer, which the parsers below
+        // would fail on with another exception.
+        byte[] Bytes(int count)
+        {
+            var bytes = reader.ReadBytes(count);
+            return bytes.Length == count ? bytes : throw new EndOfStreamException();
+        }
+        uint UInt32() => BinaryPrimitives.ReadUInt32BigEndian(Bytes(4));
         void Skip(long length) => file.Position += length;
 
         file.Position = 0;
-        if (!reader.ReadBytes(4).AsSpan().SequenceEqual("8BPS"u8))
+        if (!Bytes(4).AsSpan().SequenceEqual("8BPS"u8))
             return null;
         file.Position = 26;                     // file header
         Skip(UInt32());                         // colour mode data
         Skip(UInt32());                         // image resources
         Skip(psb ? 16 : 8);                     // layer and mask information length, layer information length
-        var count = Math.Abs(BinaryPrimitives.ReadInt16BigEndian(reader.ReadBytes(2)));
+        var count = Math.Abs(BinaryPrimitives.ReadInt16BigEndian(Bytes(2)));
         var records = new List<Record>(count);
         for (var i = 0; i < count; i++)
         {
             Skip(16);                           // bounds
-            var channels = BinaryPrimitives.ReadUInt16BigEndian(reader.ReadBytes(2));
+            var channels = BinaryPrimitives.ReadUInt16BigEndian(Bytes(2));
             Skip(channels * (psb ? 10 : 6));
-            if (!reader.ReadBytes(4).AsSpan().SequenceEqual("8BIM"u8))
+            if (!Bytes(4).AsSpan().SequenceEqual("8BIM"u8))
                 return null;
             Skip(6);                            // blend mode, opacity, clipping
             var flags = file.Position;
@@ -63,17 +71,17 @@ internal static class PsdLayerRecords
                 return null;
             Skip(UInt32());                     // layer mask data
             Skip(UInt32());                     // blending ranges
-            var nameLength = reader.ReadByte();
-            var name = Encoding.GetEncoding(10000).GetString(reader.ReadBytes(nameLength)); // Mac Roman
+            var nameLength = Bytes(1)[0];
+            var name = Encoding.GetEncoding(10000).GetString(Bytes(nameLength)); // Mac Roman
             Skip((4 - (nameLength + 1) % 4) % 4);
             while (file.Position + 12 <= end)
             {
-                var signature = Encoding.ASCII.GetString(reader.ReadBytes(4));
+                var signature = Encoding.ASCII.GetString(Bytes(4));
                 if (signature is not ("8BIM" or "8B64"))
                     break;
-                var key = Encoding.ASCII.GetString(reader.ReadBytes(4));
+                var key = Encoding.ASCII.GetString(Bytes(4));
                 var length = psb && LongKeysInPsb.Contains(key)
-                    ? (long)BinaryPrimitives.ReadUInt64BigEndian(reader.ReadBytes(8))
+                    ? (long)BinaryPrimitives.ReadUInt64BigEndian(Bytes(8))
                     : UInt32();
                 if (length < 0 || file.Position + length > end)
                     break;
@@ -81,7 +89,7 @@ internal static class PsdLayerRecords
                 {
                     var characters = UInt32();
                     if (characters <= (length - 4) / 2)
-                        name = Encoding.BigEndianUnicode.GetString(reader.ReadBytes((int)characters * 2)).TrimEnd('\0');
+                        name = Encoding.BigEndianUnicode.GetString(Bytes((int)characters * 2)).TrimEnd('\0');
                     break;
                 }
                 Skip(length);

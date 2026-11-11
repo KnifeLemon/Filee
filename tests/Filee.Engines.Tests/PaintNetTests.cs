@@ -193,4 +193,76 @@ public class PaintNetTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var merged = new MagickImage(Assert.Single(png.Outputs));
         AssertColour(merged, 2, 4, 139, 89, 50);
     }
+
+    [Fact]
+    public async Task Two_pdn_merged_make_one_pdn()
+    {
+        // "Merge images" keeps the first file's format: a .pdn, written by Filee, not ImageMagick.
+        var first = Pdn("first.pdn");
+        var second = Pdn("second.pdn");
+        var preset = Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "merge-images").Clone();
+
+        var job = await fx.ConvertAsync([first, second], preset);
+        Assert.True(job.State == JobState.Completed, Errors(job));
+        var merged = Assert.Single(job.Outputs);
+        Assert.EndsWith(".pdn", merged);
+        var (width, height, layers) = Magick.PaintNet.Open(merged);
+        Assert.Single(layers.ToList());
+        Assert.True(width * height >= 2 * Width * Height);
+    }
+
+    [Fact]
+    public void A_pdn_claiming_more_pixels_than_it_holds_is_refused_before_anything_is_allocated()
+    {
+        var folder = fx.NewFolder();
+        // A 16 × 8 file whose header and serialized document claim 20,000 × 20,000 with 3 layers.
+        var huge = Path.Combine(folder, "huge.pdn");
+        File.WriteAllBytes(huge, PdnBuilder.Build(20_000, 20_000,
+            [new("A", []), new("B", []), new("C", [])], pixelsWritten: false));
+        var ex = Assert.Throws<InvalidDataException>(() => Magick.PaintNet.Open(huge));
+        Assert.Contains("too large", ex.Message);
+
+        // Within the budget but far more than a few hundred bytes can unpack to.
+        var claimed = Path.Combine(folder, "claimed.pdn");
+        File.WriteAllBytes(claimed, PdnBuilder.Build(4_000, 4_000, [new("A", [])], pixelsWritten: false));
+        Assert.Throws<InvalidDataException>(() => Magick.PaintNet.Open(claimed));
+    }
+
+    [Fact]
+    public void A_large_layer_in_tiny_chunks_is_refused()
+    {
+        // 256 × 256 (256 KB) in 16-byte chunks: 16,384 chunks, damage rather than a Paint.NET file.
+        var path = Path.Combine(fx.NewFolder(), "chunks.pdn");
+        File.WriteAllBytes(path, PdnBuilder.Build(256, 256, [new("A", PdnBuilder.Fill(256, 256, 1, 2, 3, 255))], chunkSize: 16));
+        var (_, _, layers) = Magick.PaintNet.Open(path);
+        Assert.Throws<InvalidDataException>(() => layers.ToList());
+    }
+
+    [Fact]
+    public async Task A_picture_wider_than_paint_net_opens_is_scaled_to_fit()
+    {
+        var png = Path.Combine(fx.NewFolder(), "strip.png");
+        using (var strip = new MagickImage(MagickColors.Orange, 70_000, 2))
+            strip.Write(png);
+
+        var job = await fx.ConvertAsync([png], new Preset { TargetFormat = "pdn" });
+        Assert.True(job.State == JobState.Completed, Errors(job));
+        var (width, _, _) = Magick.PaintNet.Open(Assert.Single(job.Outputs));
+        Assert.True(width <= Magick.PaintNetWriter.MaxSide);
+    }
+
+    [Fact]
+    public async Task A_cut_off_psd_gives_no_layer_names_instead_of_failing()
+    {
+        var psdJob = await fx.ConvertAsync([Pdn()], new Preset { TargetFormat = "psd" });
+        var psd = Assert.Single(psdJob.Outputs);
+        // Cut inside the last layer record's Unicode name: no names (PSD → PDN then keeps ImageMagick's), no exception.
+        var bytes = File.ReadAllBytes(psd);
+        var luni = bytes.AsSpan().LastIndexOf("8BIMluni"u8);
+        using (var file = File.OpenRead(psd))
+            Assert.NotNull(Magick.PsdLayerRecords.Read(file, psb: false));
+        File.WriteAllBytes(psd, bytes[..(luni + 10)]);
+        using (var file = File.OpenRead(psd))
+            Assert.Null(Magick.PsdLayerRecords.Read(file, psb: false));
+    }
 }

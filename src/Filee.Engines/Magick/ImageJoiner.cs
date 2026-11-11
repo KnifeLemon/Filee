@@ -118,7 +118,8 @@ internal static class ImageJoiner
             ImageEncoder.ApplyOptions(merged, rest, format);
             cancellationToken.ThrowIfCancellationRequested();
             ImageEncoder.WriteImage(merged, outputPath, format);
-            if (options.MaxSizeMb > 0 || options.MinSizeMb > 0)
+            // A PDN (lossless, written by Filee) isn't fitted, like an animation: the queue refuses one too large.
+            if ((options.MaxSizeMb > 0 || options.MinSizeMb > 0) && format != "pdn")
                 ImageEncoder.FitToSize(merged, outputPath, ImageEncoder.OutputFormat(format, rest).Format, SizeLimit.Bytes(options.MaxSizeMb),
                     SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
             progress?.Report(1);

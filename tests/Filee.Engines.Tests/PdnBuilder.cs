@@ -27,7 +27,9 @@ internal static class PdnBuilder
 
     /// <summary>The bytes of a .pdn holding <paramref name="layers"/>, bottom first.</summary>
     /// <param name="chunkSize">Bytes of a layer per chunk; small ones make several chunks of a small picture.</param>
-    public static byte[] Build(int width, int height, IReadOnlyList<Layer> layers, int chunkSize = 100)
+    /// <param name="pixelsWritten">False ends the file after the document: a header that claims pixels it lacks.</param>
+    public static byte[] Build(int width, int height, IReadOnlyList<Layer> layers, int chunkSize = 100,
+        bool pixelsWritten = true)
     {
         using var file = new MemoryStream();
         var xml = Encoding.UTF8.GetBytes(
@@ -90,7 +92,7 @@ internal static class PdnBuilder
         nrbf.Write((byte)11); // MessageEnd
         nrbf.Flush();
 
-        foreach (var layer in layers)
+        foreach (var layer in pixelsWritten ? layers : [])
         {
             file.WriteByte(0); // gzip
             WriteUInt32(file, (uint)chunkSize);

@@ -32,6 +32,22 @@ internal static class PaintNet
     /// <summary>More layers than Paint.NET users make; a file claiming more is damaged.</summary>
     private const int MaxLayers = 4_096;
 
+    /// <summary>
+    /// The most pixels Filee reads from a .pdn, every layer counted (layers × width × height), as for FITS: 1 GB of BGRA.
+    /// Checked before anything is allocated, so a small file that claims a huge canvas or thousands of layers asks for
+    /// nothing.
+    /// </summary>
+    internal const long MaxPixels = 256L * 1024 * 1024;
+
+    /// <summary>
+    /// gzip never packs more than about 1,032 bytes into one: the pixels a file claims can't be much more than this many
+    /// times what is left of it.
+    /// </summary>
+    private const long MaxPackingRatio = 1_100;
+
+    /// <summary>Fewest bytes a layer's chunks hold (Paint.NET writes 256 KB): smaller ones only on a small layer.</summary>
+    private const int MinChunkSize = 4_096;
+
     private static readonly InvalidDataException Damaged =
         new("This Paint.NET file is damaged or of an unknown kind. Open it in Paint.NET and save it again.");
 
@@ -64,9 +80,13 @@ internal static class PaintNet
         var height = document.GetInt32("height");
         if (width is < 1 or > MaxSide || height is < 1 or > MaxSide)
             throw Damaged;
-        if ((long)width * height * 4 > Array.MaxLength)
-            throw new InvalidDataException("This Paint.NET picture is too large to convert.");
         var layers = Layers(document);
+        var pixels = (long)width * height * Math.Max(1, layers.Count);
+        if (pixels > MaxPixels)
+            throw new InvalidDataException("This Paint.NET picture is too large to convert.");
+        // A file can't hold far more pixels than its size allows; with everything gzip-wrapped (old files) it can.
+        if (data == stream && pixels * 4 > (stream.Length - stream.Position) * MaxPackingRatio)
+            throw Damaged;
         return (width, height, ReadPixels(stream, data, layers, width, height));
     }
 
@@ -269,6 +289,9 @@ internal static class PaintNet
         if (chunkSize == 0)
             throw Damaged;
         var chunks = (int)((length + (long)chunkSize - 1) / chunkSize);
+        // Tiny chunks over a large layer are damage, and would make the bookkeeping below large.
+        if (chunkSize < MinChunkSize && chunks > Math.Max(64, length / MinChunkSize))
+            throw Damaged;
         var seen = new bool[chunks];
         for (var i = 0; i < chunks; i++)
         {

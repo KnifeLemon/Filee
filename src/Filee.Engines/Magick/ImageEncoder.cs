@@ -191,6 +191,7 @@ internal static class ImageEncoder
         "jpg" or "jpeg" => 65_500,
         "webp" => 16_383,
         "avif" => 16_384,
+        "pdn" => PaintNetWriter.MaxSide,
         _ => double.PositiveInfinity,
     };
 
@@ -603,11 +604,16 @@ internal static class ImageEncoder
         }
     }
 
-    /// <summary>Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>).</summary>
+    /// <summary>
+    /// Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>, Paint.NET's PDN through
+    /// <see cref="PaintNetWriter"/>).
+    /// </summary>
     public static void WriteImage(IMagickImage<byte> image, string path, string targetFormat)
     {
         if (targetFormat == "apng")
             Apng.Write([image], path);
+        else if (targetFormat == "pdn")
+            PaintNetWriter.Write(image, path);
         else
             image.Write(path, ToMagickFormat(targetFormat));
     }
