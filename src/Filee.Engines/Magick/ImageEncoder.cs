@@ -502,6 +502,9 @@ internal static class ImageEncoder
             // Animations and multi-page files written above aren't fitted: the queue refuses them when they're too large.
             if (options is { MaxSizeMb: > 0 } or { MinSizeMb: > 0 })
                 FitToSize(frames[i], path, format, SizeLimit.Bytes(options.MaxSizeMb), SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
+            // ImageMagick writes a CUR as an icon: made a cursor, its hotspot at the top left (CursorFile).
+            if (targetFormat == "cur")
+                CursorFile.Write(path);
             written.Add(path);
         }
         return written;

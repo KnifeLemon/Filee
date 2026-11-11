@@ -263,7 +263,10 @@ in it also builds the package (artifact `windows-arm64-package`).
 - **More raster formats** through ImageMagick's own coders, each checked against `MagickNET.SupportedFormats` and
   converted there and back in `ImageFormatTests`: QOI, MNG (animated), DDS (DXT block compression, which is lossy; of
   a texture with mipmaps the largest image is read; uncompressed 32-bit pixels stored R, G, B, A, which ImageMagick
-  reads with red and blue swapped, are swapped back when converting and in the crop tool), PCX, CUR (at most 256 × 256, larger pictures are scaled down), XPM,
+  reads with red and blue swapped, are swapped back when converting and in the crop tool), PCX, CUR (at most 256 × 256, larger pictures are scaled down; ImageMagick writes it as an icon, type 1, whose
+  directory holds colour planes and bits per pixel where Windows reads the hotspot, so `CursorFile` makes every .cur a
+  real cursor, type 2, clicking at the top left corner, or, from a CUR or ANI, where the source's hotspot is once the
+  picture is resized, turned or mirrored), XPM,
   XBM and WBMP (1-bit), PAM, PFM, SGI (`.sgi`, `.rgb`, `.rgba`, `.bw`, always read as SGI; ImageMagick would take
   `.rgb` for headerless pixels), Sun Raster (`.ras`, `.sun`) and MIFF. XBM, WBMP, PFM, PCX and Sun Raster are written
   without transparency (flattened onto the preset's background): PFM has none, and the alpha planes ImageMagick can
@@ -350,9 +353,9 @@ in it also builds the package (artifact `windows-arm64-package`).
   (jiffies of 1/60 s, rounded to hundredths), looping forever; other targets get the first step. To **CUR** the first
   frame is written as stored, every size and its hotspot; a preset that changes the picture converts it, and the
   hotspot follows it when it is resized, turned or mirrored (trimmed or set on a background, it goes to the top left
-  corner). ImageMagick writes a CUR as an icon (type 1, no hotspot): that file is made a cursor afterwards. Files are
-  read in memory with their sizes checked (at most 64 MB, 1,024 frames, 4,096 steps, 1,024 px a side); frames stored
-  as raw bitmaps (no `AF_ICON` flag, which Windows' own loaders hardly use) and damaged files give a clear error.
+  corner; see CUR above). Files are read in memory with their sizes checked (at most 64 MB, 1,024 frames, 4,096
+  steps, 1,024 px a side); frames stored as raw bitmaps (no `AF_ICON` flag, which Windows' own loaders hardly use) and
+  damaged files give a clear error.
 - **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
 - **Camera RAW** (DNG, CR2, CR3, NEF, ARW, …, and `.raw`) is decoded by LibRaw with the camera's white balance,

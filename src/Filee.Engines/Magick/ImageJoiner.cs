@@ -121,6 +121,8 @@ internal static class ImageJoiner
             if (options.MaxSizeMb > 0 || options.MinSizeMb > 0)
                 ImageEncoder.FitToSize(merged, outputPath, ImageEncoder.OutputFormat(format, rest).Format, SizeLimit.Bytes(options.MaxSizeMb),
                     SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
+            if (format == "cur")
+                CursorFile.Write(outputPath);
             progress?.Report(1);
         }
         finally

@@ -183,7 +183,7 @@ public class AniTests(EngineFixture fx) : IClassFixture<EngineFixture>
     [InlineData(ImageRotation.None, ImageFlip.Horizontal, 32, 32, 21, 20)]
     [InlineData(ImageRotation.None, ImageFlip.Vertical, 32, 32, 10, 11)]
     public void The_hotspot_follows_the_picture(ImageRotation rotation, ImageFlip flip, int width, int height, int x, int y) =>
-        Assert.Equal((x, y), Ani.Moved((10, 20, 32, 32), new ImageOptions { Rotation = rotation, Flip = flip }, (uint)width, (uint)height));
+        Assert.Equal((x, y), CursorFile.Moved((10, 20, 32, 32), new ImageOptions { Rotation = rotation, Flip = flip }, (uint)width, (uint)height));
 
     [Fact]
     public void Jiffies_become_hundredths_of_a_second()

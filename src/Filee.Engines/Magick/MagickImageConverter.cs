@@ -88,7 +88,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
         Task.Run<IReadOnlyList<string>>(async () =>
         {
             // An animated cursor as CUR is its first frame as stored, every size and the hotspot, unless the preset
-            // changes it; then the hotspot follows the picture into the converted cursor.
+            // changes it; then the hotspot follows the picture into the converted cursor (below).
             if (step.From == "ani" && step.To == "cur" && Ani.KeptAsItIs(step.Preset.Image) && Ani.SaveFirstCursor(step, progress) is { } cursor)
                 return cursor;
             // FITS → TIFF keeps the file's depth (16 or 32 bits), which the Q8 build can't: Filee writes it.
@@ -102,8 +102,14 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);
             using var images = ImageReader.Read(step.InputPath, from, step.Preset);
             var written = await WriteAsync(images, from, step, progress, cancellationToken, LocateFfmpeg);
-            if (from == "ani" && step.To == "cur")
-                Ani.KeepHotspot(step.InputPath, written, step.Preset.Image);
+            // From a cursor, the hotspot follows the picture into the new one (every CUR is already a cursor, its
+            // hotspot at the top left).
+            if (step.To == "cur" && from is "cur" or "ani" && CursorFile.HotspotFollows(step.Preset.Image)
+                && (from == "ani" ? Ani.Hotspot(step.InputPath) : CursorFile.Hotspot(step.InputPath)) is { } hotspot)
+            {
+                foreach (var path in written)
+                    CursorFile.Write(path, hotspot, step.Preset.Image);
+            }
             return written;
         }, cancellationToken);
 

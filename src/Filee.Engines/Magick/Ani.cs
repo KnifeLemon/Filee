@@ -142,60 +142,6 @@ internal static class Ani
         return [path];
     }
 
-    /// <summary>
-    /// Makes the .cur ImageMagick wrote from the ANI's first picture a cursor with that picture's hotspot, where it is
-    /// after the preset turned, mirrored or resized the picture. ImageMagick's CUR writer writes an icon (type 1), whose
-    /// directory holds colour planes and bits per pixel where a cursor's holds its hotspot. When the hotspot isn't known
-    /// (the frame is an .ico, or the picture was trimmed or set on a background) it is the top left corner.
-    /// </summary>
-    public static void KeepHotspot(string sourcePath, IEnumerable<string> written, ImageOptions options)
-    {
-        var hotspot = options.TrimTransparent || options.AddsBackdrop ? null : Hotspot(sourcePath);
-        foreach (var path in written)
-        {
-            var data = File.ReadAllBytes(path);
-            if (data.Length < 22 || BinaryPrimitives.ReadUInt16LittleEndian(data) != 0
-                || BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(2)) is not (1 or 2))
-                continue;
-            BinaryPrimitives.WriteUInt16LittleEndian(data.AsSpan(2), 2);
-            var count = BinaryPrimitives.ReadUInt16LittleEndian(data.AsSpan(4));
-            for (var i = 0; i < count && 6 + i * 16 + 16 <= data.Length; i++)
-            {
-                var entry = data.AsSpan(6 + i * 16);
-                var (x, y) = hotspot is { } known ? Moved(known, options, Side(entry[0]), Side(entry[1])) : (0, 0);
-                BinaryPrimitives.WriteUInt16LittleEndian(entry[4..], (ushort)x);
-                BinaryPrimitives.WriteUInt16LittleEndian(entry[6..], (ushort)y);
-            }
-            File.WriteAllBytes(path, data);
-        }
-    }
-
-    private static uint Side(byte stored) => stored == 0 ? 256u : stored;
-
-    /// <summary>
-    /// Where the hotspot of a <paramref name="hotspot"/>.Width × Height picture is once it is turned and mirrored as
-    /// <paramref name="options"/> say (<see cref="ImageEncoder.Turn"/>) and scaled to <paramref name="width"/> × <paramref name="height"/>.
-    /// </summary>
-    internal static (int X, int Y) Moved((int X, int Y, uint Width, uint Height) hotspot, ImageOptions options, uint width, uint height)
-    {
-        var (x, y, w, h) = (hotspot.X, hotspot.Y, (int)hotspot.Width, (int)hotspot.Height);
-        (x, y, w, h) = options.Rotation switch
-        {
-            ImageRotation.Right90 => (h - 1 - y, x, h, w),
-            ImageRotation.Left90 => (y, w - 1 - x, h, w),
-            ImageRotation.Rotate180 => (w - 1 - x, h - 1 - y, w, h),
-            _ => (x, y, w, h),
-        };
-        if (options.Flip == ImageFlip.Horizontal)
-            x = w - 1 - x;
-        else if (options.Flip == ImageFlip.Vertical)
-            y = h - 1 - y;
-        // The centre of the hotspot's pixel is scaled, so it stays on the same part of the picture.
-        var scaledX = (int)Math.Floor((x + 0.5) * width / w);
-        var scaledY = (int)Math.Floor((y + 0.5) * height / h);
-        return (Math.Clamp(scaledX, 0, (int)width - 1), Math.Clamp(scaledY, 0, (int)height - 1));
-    }
-
     private static (uint Width, uint Height) Canvas(List<(MagickImage Image, Entry Hotspot)> pictures) =>
         (pictures.Max(p => p.Image.Width), pictures.Max(p => p.Image.Height));
 
