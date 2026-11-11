@@ -10,6 +10,7 @@ namespace Filee.Engines.Infrastructure;
 /// <summary>Unpacks a document's entries to files, up to <paramref name="maxBytes"/> in all.</summary>
 internal sealed class UnpackLimit(long maxBytes)
 {
+    private readonly long _max = maxBytes;
     private long _left = maxBytes;
 
     /// <summary>The limit of the package at <paramref name="path"/>: the one its copies have (<see cref="PackageRepacker"/>).</summary>
@@ -35,5 +36,5 @@ internal sealed class UnpackLimit(long maxBytes)
     }
 
     private ConversionRefusedException TooLarge(ZipArchiveEntry entry) =>
-        new("error.document_too_large", $"{entry.FullName}: unpacks to over {BoundedXml.Size(maxBytes)}");
+        new("error.document_too_large", $"{entry.FullName}: unpacks to over {BoundedXml.Size(_max)}");
 }

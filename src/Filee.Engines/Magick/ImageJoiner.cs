@@ -120,7 +120,7 @@ internal static class ImageJoiner
             ImageEncoder.WriteImage(merged, outputPath, format);
             if (options.MaxSizeMb > 0 || options.MinSizeMb > 0)
                 ImageEncoder.FitToSize(merged, outputPath, ImageEncoder.OutputFormat(format, rest).Format, SizeLimit.Bytes(options.MaxSizeMb),
-                    SizeLimit.MinimumBytes(options.MinSizeMb));
+                    SizeLimit.MinimumBytes(options.MinSizeMb), options.MaxSizeKeepsPixels);
             progress?.Report(1);
         }
         finally

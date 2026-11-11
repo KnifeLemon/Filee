@@ -21,7 +21,14 @@ internal static class SoftPalette
     private const string Latin = "fonts:Filee#Noto Sans";
     private const string Arabic = "fonts:Filee#Noto Sans Arabic";
     private const string Devanagari = "fonts:Filee#Noto Sans Devanagari";
+    private const string Bengali = "fonts:Filee#Noto Sans Bengali";
     private const string Thai = "fonts:Filee#Noto Sans Thai";
+
+    /// <summary>
+    /// The installed fonts as SystemUiFontCollection serves them, a letter matched only in the family asked for. Plain
+    /// names go to Avalonia's system collection, which answers any letter with the platform's fallback font.
+    /// </summary>
+    internal const string SystemKey = "fonts:System";
 
     /// <summary>Each CJK region's embedded font and its system fonts (Windows, then macOS).</summary>
     private static readonly (string Embedded, string System) Japanese =
@@ -216,19 +223,56 @@ internal static class SoftPalette
 
     /// <summary>
     /// The UI font chain. Han characters look different in Japanese, Korean and Chinese fonts, so the UI language's
-    /// CJK fonts come first, embedded and system ones alike; other languages keep Korean first.
+    /// CJK fonts come first, embedded and system ones alike; other languages keep Korean first. With
+    /// <paramref name="systemFont"/> (Theme → Use the system font, #1065) the system's own UI fonts come before the
+    /// embedded ones, which then only draw what the system's lack.
     /// </summary>
-    public static string FontFamilies(string language)
+    public static string FontFamilies(string language, bool systemFont = false)
     {
-        (string Embedded, string System)[] cjk =
-            language.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? [Japanese, Korean, Chinese]
-            : language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? [Chinese, Korean, Japanese]
-            : [Korean, Chinese, Japanese];
+        var cjk = CjkOrder(language);
         var traditional = AppLanguages.IsTraditionalChinese(language) ? $"{TraditionalChineseSystem}, " : "";
         // Noto Sans comes first: the first face also draws the trimming ellipsis, which Noto Sans Arabic lacks.
-        return $"{Latin}, {Arabic}, {Devanagari}, {Thai}, {traditional}{string.Join(", ", cjk.Select(f => f.Embedded))}, Segoe UI, Nirmala UI, Leelawadee UI, "
+        var embedded = $"{Latin}, {Arabic}, {Devanagari}, {Bengali}, {Thai}, {traditional}{string.Join(", ", cjk.Select(f => f.Embedded))}, Segoe UI, Nirmala UI, Leelawadee UI, "
             + $"{string.Join(", ", cjk.Select(f => f.System))}, Kohinoor Devanagari, Geeza Pro, Thonburi, sans-serif";
+        if (!systemFont)
+            return embedded;
+
+        // Only system fonts without Han go ahead of the CJK list, so Han still takes the UI language's shapes.
+        var system = OperatingSystem.IsWindows() ? $"Segoe UI Variable Text, Segoe UI, Nirmala UI, Leelawadee UI, {traditional}{string.Join(", ", cjk.Select(f => f.System))}"
+            : OperatingSystem.IsMacOS() ? $".AppleSystemUIFont, SF Pro Text, SF Pro, Geeza Pro, Kohinoor Devanagari, Kohinoor Bangla, Thonburi, {traditional}{string.Join(", ", cjk.Select(f => f.System))}"
+            : LinuxDefaultFont();
+        if (string.IsNullOrEmpty(system))
+            return embedded;
+        return string.Join(", ", system.Split(", ").Select(name => $"{SystemKey}#{name}")) + ", " + embedded;
     }
+
+    private static (string Embedded, string System)[] CjkOrder(string language) =>
+        language.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? [Japanese, Korean, Chinese]
+        : language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? [Chinese, Korean, Japanese]
+        : [Korean, Chinese, Japanese];
+
+    /// <summary>
+    /// Linux has no one UI font: fontconfig's default sans-serif, the desktop's usual choice, stands in. Left out when it
+    /// draws Han (a CJK default would give every UI language its Han shapes) or can't be read. Read once, after the font
+    /// manager is up.
+    /// </summary>
+    private static string LinuxDefaultFont()
+    {
+        if (_linuxDefaultFont is { } known)
+            return known;
+        try
+        {
+            var name = FontManager.Current.DefaultFontFamily.Name;
+            return _linuxDefaultFont = FontManager.Current.TryGetGlyphTypeface(new Typeface(name), out var glyphs)
+                                       && glyphs.CharacterToGlyphMap.GetGlyph('一') == 0 ? glyphs.FamilyName : "";
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return "";
+        }
+    }
+
+    private static string? _linuxDefaultFont;
 
     /// <summary>
     /// The font chain from Windows' own UI fonts only (no embedded fonts), with the UI language's CJK font first: what
@@ -236,10 +280,7 @@ internal static class SoftPalette
     /// </summary>
     public static string SystemFontFamilies(string language)
     {
-        (string Embedded, string System)[] cjk =
-            language.StartsWith("ja", StringComparison.OrdinalIgnoreCase) ? [Japanese, Korean, Chinese]
-            : language.StartsWith("zh", StringComparison.OrdinalIgnoreCase) ? [Chinese, Korean, Japanese]
-            : [Korean, Chinese, Japanese];
+        var cjk = CjkOrder(language);
         var traditional = AppLanguages.IsTraditionalChinese(language) ? $"{TraditionalChineseSystem}, " : "";
         return $"Segoe UI, Nirmala UI, Leelawadee UI, {traditional}{string.Join(", ", cjk.Select(f => f.System))}, sans-serif";
     }
@@ -274,8 +315,8 @@ internal static class SoftPalette
         }
     }
 
-    /// <summary>The UI font for <paramref name="language"/>.</summary>
-    public static FontFamily FontFamilyFor(string language) => FontFamily.Parse(FontFamilies(language));
+    /// <summary>The UI font for <paramref name="language"/> (see <see cref="FontFamilies"/>).</summary>
+    public static FontFamily FontFamilyFor(string language, bool systemFont = false) => FontFamily.Parse(FontFamilies(language, systemFont));
 
     /// <summary>Lightens (amount &gt; 0) or darkens (amount &lt; 0) a colour.</summary>
     public static Color Shade(Color c, double amount)

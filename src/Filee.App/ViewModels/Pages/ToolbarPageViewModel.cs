@@ -124,6 +124,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         OuterRadius = store.Settings.Donut.OuterRadius;
         HoleRatio = store.Settings.Donut.HoleRatio * 100;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1) * 100;
+        ShowCaptions = store.Settings.Donut.ShowCaptions;
         _loading = false;
 
         SelectedProfile = Profiles.FirstOrDefault();
@@ -297,6 +298,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _holeRatio;
     [ObservableProperty] private double _sliceOpacity;
 
+    /// <summary>The output format under the slices' names (Appearance → Show output format).</summary>
+    [ObservableProperty] private bool _showCaptions;
+
     private ToolbarProfile? Profile => SelectedProfile?.Profile;
 
     /// <summary>The preset ids of the face being edited (null without a profile).</summary>
@@ -451,6 +455,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     partial void OnOuterRadiusChanged(double value) => SaveAppearance();
     partial void OnHoleRatioChanged(double value) => SaveAppearance();
     partial void OnSliceOpacityChanged(double value) => SaveAppearance();
+    partial void OnShowCaptionsChanged(bool value) => SaveAppearance();
 
     private void SaveAppearance()
     {
@@ -459,6 +464,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         _store.Settings.Donut.OuterRadius = Math.Round(OuterRadius);
         _store.Settings.Donut.HoleRatio = Math.Round(HoleRatio) / 100;
         _store.Settings.Donut.Opacity = Math.Round(SliceOpacity) / 100;
+        _store.Settings.Donut.ShowCaptions = ShowCaptions;
         _store.SaveSettings();
     }
 
@@ -515,7 +521,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         if (Slices is not { } slices || index < 0 || index >= slices.Count)
             return;
         var preset = _store.FindPreset(slices[index]);
-        if (preset is not null && await _windows.EditPresetAsync(preset, _windows.Main))
+        if (preset is not null && await _windows.EditPresetAsync(preset, _windows.Main, folderInput: SelectedProfile?.Profile.Id == "folders"))
             PresetEdited(preset);
     }
 
@@ -523,7 +529,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     public async Task EditChipAsync(string presetId)
     {
         var preset = _store.FindPreset(presetId);
-        if (preset is not null && await _windows.EditPresetAsync(preset, _windows.Main))
+        if (preset is not null && await _windows.EditPresetAsync(preset, _windows.Main, folderInput: SelectedProfile?.Profile.Id == "folders"))
             PresetEdited(preset);
     }
 
@@ -544,7 +550,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private async Task NewGroup()
     {
         var group = new Preset { Name = _loc["toolbar.new_group"], Kind = PresetKind.Group, TargetFormat = Preset.GroupTarget };
-        if (!await _windows.EditGroupAsync(group, _windows.Main, isNew: true))
+        if (!await _windows.EditGroupAsync(group, _windows.Main, isNew: true, folderInput: SelectedProfile?.Profile.Id == "folders"))
             return;
         AddGroup(group);
     }
@@ -584,8 +590,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task NewPreset()
     {
-        var preset = new Preset { Name = _loc["toolbar.new_preset"], TargetFormat = "png" };
-        if (!await _windows.EditPresetAsync(preset, _windows.Main))
+        var preset = new Preset { Name = _loc["toolbar.new_preset"], TargetFormat = SelectedProfile?.Profile.Id == "folders" ? "iso" : "png" };
+        if (!await _windows.EditPresetAsync(preset, _windows.Main, folderInput: SelectedProfile?.Profile.Id == "folders"))
             return;
         _store.Presets.Add(preset);
         if (Slices is { Count: < ToolbarProfile.MaxSlices } slices)
@@ -692,6 +698,21 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         return tip;
     }
 
+    // Unlike an unrestricted mixed profile, Folders has a concrete input type without file extensions.
+    private bool JudgesCurrentProfile => Profile is { Extensions.Count: > 0 } || Profile?.Id == "folders";
+
+
+    // Folder profiles have a real input type despite having no extensions. Groups must offer a compatible action too.
+    private bool AllowedForFolder(Preset preset, PaletteJudging? judging)
+    {
+        if (Profile?.Id != "folders")
+            return true;
+        if (preset.IsGroup)
+            return preset.SubPresetIds.Select(_store.FindPreset).OfType<Preset>()
+                .Any(child => !child.IsGroup && AllowedForFolder(child, judging));
+        return judging is not null && judging.Judged.TryGetValue(preset.Id, out var result) && result.Use != PresetUse.Unusable;
+    }
+
     /// <summary>Rebuilds the donut slices (of the face being edited) and the palette from the model.</summary>
     private void Rebuild()
     {
@@ -702,15 +723,19 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             .OfType<Preset>()
             // A group is marked as one (no children: the editor doesn't fan them out), so the preview draws it as the
             // donut does.
-            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p), Children = p.IsGroup ? [] : null })
+            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p), KeepsCaption = p.IsCopyToFolder, Children = p.IsGroup ? [] : null })
             .ToList();
 
         Palette.Clear();
         var placed = profile is null ? [] : profile.PresetIds.Concat(profile.BackPresetIds ?? []).ToHashSet();
-        var judge = profile is { Extensions.Count: > 0 };
+        var judge = JudgesCurrentProfile;
         _judgingByProfile.TryGetValue(profile?.Id ?? "", out var judging);
-        var pending = false;
+        var pending = profile?.Id == "folders" && ShownPresets().Any(p => !p.IsGroup && judging?.Judged.ContainsKey(p.Id) != true);
         var query = PaletteSearch.Trim();
+        if (profile?.Id == "folders" && _newPresetToSelect is { } newFolderId
+            && judging?.Judged.TryGetValue(newFolderId, out var folderJudgement) == true
+            && folderJudgement.Use == PresetUse.Unusable)
+            _newPresetToSelect = null;
         if (_newPresetToSelect is { } newId && (!judge || judging?.Judged.ContainsKey(newId) == true)
             && _store.FindPreset(newId) is { } newPreset)
         {
@@ -743,6 +768,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                 use = judgement.Use;
                 reason = judgement.Reason;
             }
+            if (!AllowedForFolder(preset, judging))
+                continue;
             var label = _loc.DisplayName(preset);
             var caption = Caption(preset);
             // "GIF  GIF" says nothing twice: only show the format when the name doesn't already.
@@ -750,9 +777,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                 caption = null;
             var chip = new PaletteChip(preset.Id, label, caption, reason, use)
             { Tip = TipFor(preset, use, reason), IsGroup = preset.IsGroup };
-            if (use != PresetUse.Unusable)
+            if (chip.CanAdd)
                 Palette.Add(chip);
-            if ((query.Length == 0 && use != PresetUse.Unusable)
+            if ((query.Length == 0 && chip.CanAdd)
                 || (query.Length > 0 && (label.Contains(query, StringComparison.CurrentCultureIgnoreCase)
                     || caption?.Contains(query, StringComparison.CurrentCultureIgnoreCase) == true)))
                 candidates.Add((chip, preset.IsGroup ? PaletteTab.All : TabOf(preset), preset.IsGroup));
@@ -834,7 +861,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         foreach (var preset in ShownPresets().Where(p => !placed.Contains(p.Id)).OrderBy(p => !p.IsGroup))
         {
             var judgement = judging?.Judged.GetValueOrDefault(preset.Id) ?? new(PresetUse.Usable, null);
-            if (Profile is { Extensions.Count: > 0 } && !preset.IsGroup && !HasJudgement(Profile.Id, preset.Id))
+            if (!AllowedForFolder(preset, judging))
+                continue;
+            if (JudgesCurrentProfile && !preset.IsGroup && !HasJudgement(Profile!.Id, preset.Id))
                 continue;
             if (judgement.Use == PresetUse.Unusable && query.Length == 0)
                 continue;
@@ -845,8 +874,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             if (query.Length > 0 && !label.Contains(query, StringComparison.CurrentCultureIgnoreCase)
                 && caption?.Contains(query, StringComparison.CurrentCultureIgnoreCase) != true)
                 continue;
-            candidates.Add((new PaletteChip(preset.Id, label, caption, judgement.Reason, judgement.Use)
-            { Tip = TipFor(preset, judgement.Use, judgement.Reason), IsGroup = preset.IsGroup },
+            var reason = judgement.Reason;
+            candidates.Add((new PaletteChip(preset.Id, label, caption, reason, judgement.Use)
+            { Tip = TipFor(preset, judgement.Use, reason), IsGroup = preset.IsGroup },
                 preset.IsGroup ? PaletteTab.All : TabOf(preset), preset.IsGroup));
         }
         RefreshVisiblePalette(candidates);
@@ -869,10 +899,10 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         if (!_judgingByProfile.TryGetValue(profileId, out var judging))
             _judgingByProfile[profileId] = judging = new PaletteJudging();
         var placed = profile.PresetIds.Concat(profile.BackPresetIds ?? []).ToHashSet();
-        var pending = ShownPresets().Where(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)).ToList();
+        var pending = ShownPresets().Where(p => !p.IsGroup && (profile.Id == "folders" || !placed.Contains(p.Id)) && !judging.Judged.ContainsKey(p.Id)).ToList();
         if (pending.Count > 0)
         {
-            judging.Session ??= _availability.ForPalette(profile.Extensions.Select(FormatRegistry.FindByExtension)
+            judging.Session ??= _availability.ForPalette(profile.Id == "folders" ? [FormatRegistry.FindById(FormatRegistry.Folder)!] : profile.Extensions.Select(FormatRegistry.FindByExtension)
                 .OfType<FileFormat>().DistinctBy(f => f.Id).ToList());
             var clock = Stopwatch.StartNew();
             foreach (var preset in pending)
@@ -883,7 +913,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
                     break;
             }
         }
-        if (ShownPresets().Any(p => !p.IsGroup && !placed.Contains(p.Id) && !judging.Judged.ContainsKey(p.Id)))
+        if (ShownPresets().Any(p => !p.IsGroup && (profile.Id == "folders" || !placed.Contains(p.Id)) && !judging.Judged.ContainsKey(p.Id)))
             Dispatcher.UIThread.Post(() => JudgeSome(pass, profileId), DispatcherPriority.Background);
         else
         {
@@ -892,8 +922,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    // A preset whose judging throws stays usable (not dimmed) and the rest go on: this runs as a dispatcher job, where an
-    // exception would end Filee.
+    // A failed probe must not end this dispatcher job. Folder offers fail closed; other profiles keep their fallback.
     private PresetJudgement JudgeOne(PresetAvailability.PaletteSession session, Preset preset)
     {
         try
@@ -903,7 +932,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
             _log.LogWarning(ex, "Judging preset {Preset} for the palette failed", preset.Id);
-            return new PresetJudgement(PresetUse.Usable, null);
+            return new PresetJudgement(Profile?.Id == "folders" ? PresetUse.Unusable : PresetUse.Usable, null);
         }
     }
 

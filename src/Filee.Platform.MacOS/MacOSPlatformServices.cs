@@ -136,6 +136,12 @@ public sealed class MacOSPlatformServices : IPlatformServices
             NativeMethods.RaiseTopmost(windowHandle);
     }
 
+    public void MoveToActiveSpace(nint windowHandle)
+    {
+        if (windowHandle != 0)
+            NativeMethods.MoveToActiveSpace(windowHandle);
+    }
+
     /// <summary>Restores a topmost window's native class and style after it hides or before it closes.</summary>
     public void RestoreWindow(nint windowHandle)
     {

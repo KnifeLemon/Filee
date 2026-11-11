@@ -142,7 +142,7 @@ public class ApngTests(EngineFixture fx) : IClassFixture<EngineFixture>
             pixels.SetArea(10, 20, 4, 3, Enumerable.Repeat(new byte[] { 0, 0, 255 }, 12).SelectMany(p => p).ToArray());
         var path = Path.Combine(dir, "merged.apng");
 
-        Apng.Write([first, same, dot], path);
+        Apng.Write([first, same, dot], path, TestContext.Current.CancellationToken);
 
         var controls = ApngBuilder.Chunks(File.ReadAllBytes(path)).Where(c => c.Type == "fcTL").Select(c => c.Data).ToList();
         Assert.Equal(2, controls.Count);
@@ -164,7 +164,7 @@ public class ApngTests(EngineFixture fx) : IClassFixture<EngineFixture>
         using var small = new MagickImage(MagickColors.Blue, 40, 30);
         var path = Path.Combine(dir, "sizes.apng");
 
-        Apng.Write([big, small], path);
+        Apng.Write([big, small], path, TestContext.Current.CancellationToken);
 
         using var frames = Apng.Read(path);
         Assert.All(frames, f => Assert.Equal((80u, 60u), (f.Width, f.Height)));

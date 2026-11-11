@@ -232,6 +232,52 @@ public partial class UserDataStoreTests
     }
 
     [Fact]
+    public void A_maximum_box_is_stored_as_sizes_an_older_version_still_reads_and_older_files_read_unchanged()
+    {
+        // #1270: a height-only box that never enlarges, under a size limit met by quality alone.
+        using var dir = new TempDir();
+        var store = new UserDataStore(dir.Path);
+        store.Load();
+        var preset = store.Presets[0];
+        preset.Image.CustomSize = new CustomImageSize { Width = CustomImageSize.FreeSide, Height = 2300, LockAspect = true, ShrinkOnly = true };
+        preset.Image.MaxSizeMb = 0.3;
+        preset.Image.MaxSizeKeepsPixels = true;
+        Assert.True(preset.Image.Clone().CustomSize!.ShrinkOnly);
+        store.SaveLibrary();
+
+        // Both sides are real sizes, never 0: an older version skips a box with a side of 0, and its editors would
+        // show and save that side as 16 px. It reads 16384 x 2300 with the aspect kept, the same height limit.
+        var path = Path.Combine(dir.Path, "presets.json");
+        var stored = JsonDocument.Parse(File.ReadAllText(path));
+        var image = stored.RootElement.EnumerateArray().Single(p => p.GetProperty("id").GetString() == preset.Id).GetProperty("image");
+        var size = image.GetProperty("customSize");
+        Assert.Equal((16384, 2300, true, true),
+            (size.GetProperty("width").GetInt32(), size.GetProperty("height").GetInt32(), size.GetProperty("lockAspect").GetBoolean(), size.GetProperty("shrinkOnly").GetBoolean()));
+        Assert.True(image.GetProperty("maxSizeKeepsPixels").GetBoolean());
+
+        var reloaded = new UserDataStore(dir.Path);
+        reloaded.Load();
+        var back = reloaded.Presets.Single(p => p.Id == preset.Id).Image;
+        Assert.Equal((CustomImageSize.FreeSide, 2300, true, true), (back.CustomSize!.Width, back.CustomSize.Height, back.CustomSize.LockAspect, back.CustomSize.ShrinkOnly));
+        Assert.True(back.MaxSizeKeepsPixels);
+
+        // A file written before either option: the box keeps enlarging, and the size limit keeps shrinking pixels.
+        var older = System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))!.AsArray();
+        foreach (var entry in older)
+        {
+            var options = entry!["image"]!.AsObject();
+            options.Remove("maxSizeKeepsPixels");
+            (options["customSize"] as System.Text.Json.Nodes.JsonObject)?.Remove("shrinkOnly");
+        }
+        File.WriteAllText(path, older.ToJsonString());
+        var old = new UserDataStore(dir.Path);
+        old.Load();
+        var oldImage = old.Presets.Single(p => p.Id == preset.Id).Image;
+        Assert.False(oldImage.CustomSize!.ShrinkOnly);
+        Assert.False(oldImage.MaxSizeKeepsPixels);
+    }
+
+    [Fact]
     public void A_resize_mode_of_Custom_is_never_written_to_presets_json()
     {
         using var dir = new TempDir();
@@ -1139,7 +1185,7 @@ public partial class UserDataStoreTests
         Assert.Equal(ids.IndexOf("models") + 1, ids.IndexOf("geo"));
         Assert.Equal(ids.IndexOf("mixed") - 1, ids.IndexOf("geo"));
         var geo = profiles.Single(p => p.Id == "geo");
-        Assert.Equal(["geojson", "kml", "kmz", "gpx", "shp", "fit"], geo.Extensions);
+        Assert.Equal(["geojson", "kml", "kmz", "gpx", "shp", "fit", "osm"], geo.Extensions);
         Assert.Equal(BuiltInData.GeoProfile().PresetIds, geo.PresetIds);
         Assert.All(geo.PresetIds, id => Assert.Contains(presets, p => p.Id == id));
         Assert.False(SettingsMigrations.ApplyToLibrary(24, presets, profiles)); // once only
@@ -1153,10 +1199,10 @@ public partial class UserDataStoreTests
         profiles.Insert(0, new ToolbarProfile { Id = "earth", Name = "Earth", Extensions = ["kml", "kmz"] });
 
         Assert.True(SettingsMigrations.ApplyToLibrary(24, presets, profiles));
-        Assert.Equal(["geojson", "gpx", "shp", "fit"], profiles.Single(p => p.Id == "geo").Extensions);
+        Assert.Equal(["geojson", "gpx", "shp", "fit", "osm"], profiles.Single(p => p.Id == "geo").Extensions);
 
         var taken = BuiltInData.ProfilesSchema58().Where(p => p.Id != "geo").ToList();
-        taken.Insert(0, new ToolbarProfile { Id = "all", Name = "All", Extensions = ["geojson", "kml", "kmz", "gpx", "shp", "fit"] });
+        taken.Insert(0, new ToolbarProfile { Id = "all", Name = "All", Extensions = ["geojson", "kml", "kmz", "gpx", "shp", "fit", "osm"] });
         var geoIds = BuiltInData.GeoPresets().Select(p => p.Id).ToHashSet();
         var withoutPresets = BuiltInData.CreatePresets().Where(p => !geoIds.Contains(p.Id)).ToList();
 
@@ -1179,7 +1225,7 @@ public partial class UserDataStoreTests
         var geo = profiles.Single(p => p.Id == "geo");
         Assert.Equal(["to-kml"], geo.PresetIds);
         // The extensions of the default donut that no donut takes yet are added to it, after the user's own.
-        Assert.Equal(["kml", "geojson", "kmz", "gpx", "shp", "fit"], geo.Extensions);
+        Assert.Equal(["kml", "geojson", "kmz", "gpx", "shp", "fit", "osm"], geo.Extensions);
     }
 
     [Fact]

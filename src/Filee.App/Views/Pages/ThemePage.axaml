@@ -264,6 +264,14 @@
           </StackPanel>
         </Border>
 
+        <!-- The system's UI font instead of the embedded Noto fonts, which still draw the scripts it lacks (#1065). -->
+        <Border Classes="card">
+          <StackPanel Spacing="4">
+            <CheckBox Content="{DynamicResource theme.system_font}" IsChecked="{Binding UseSystemFont}" FontWeight="SemiBold" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource theme.system_font_hint}" Margin="28,0,0,0" />
+          </StackPanel>
+        </Border>
+
         <!-- Reduced Motion -->
         <Border Classes="card">
           <StackPanel Spacing="4">
@@ -303,7 +311,8 @@
           <!-- The donut over a stand-in for the desktop, so its opacity shows. -->
           <Border Background="{Binding PreviewBackdrop}" CornerRadius="{DynamicResource SoftRadiusLarge}" Padding="0,10" ClipToBounds="True">
             <c:DonutMenu x:Name="PreviewDonut" Items="{Binding PreviewItems}" OuterRadius="120" CenterTitle="JPG × 3" HorizontalAlignment="Center"
-                         SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}" />
+                         SliceOpacity="{Binding DonutOpacity, Converter={x:Static vm:ToolbarConverters.Percent}}"
+                         ShowCaptions="{Binding DonutCaptions}" />
           </Border>
           <!-- Sample buttons are decorative; the switch below is an isolated interactive demo. -->
           <StackPanel Spacing="14">

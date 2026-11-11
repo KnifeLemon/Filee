@@ -1047,13 +1047,74 @@ internal static class SettingsMigrations
             presets.InsertRange(background < 0 ? presets.Count : background + 1, BuiltInData.MetadataPresets());
             changed = true;
         }
+        // v73: the "Upscale" tool, in the palette only, after "Metadata" (or "Add background") as in a new library (at
+        //      the end without either, #806).
+        if (from < 73 && presets.All(p => p.Id != BuiltInData.UpscaleId))
+        {
+            var after = presets.FindIndex(p => p.Id == BuiltInData.MetadataId);
+            if (after < 0)
+                after = presets.FindIndex(p => p.Id == BuiltInData.BackgroundId);
+            presets.InsertRange(after < 0 ? presets.Count : after + 1, BuiltInData.UpscalePresets());
+            changed = true;
+        }
+        // v74: folder inputs have their own small ISO donut; existing archive donuts remain untouched. (Schema 74 may
+        //      be renumbered if another change takes it first.)
+        if (from < 74)
+        {
+            var hadIsoPreset = presets.Any(p => p.Id == "to-iso");
+            if (presets.All(p => p.Id != "to-iso"))
+            {
+                var at = presets.FindIndex(p => p.Id == "zip-all");
+                presets.Insert(at >= 0 ? at : presets.Count, BuiltInData.CreatePresets().Single(p => p.Id == "to-iso"));
+                changed = true;
+            }
+            // A library already containing our ISO preset may have deliberately removed its Folders donut.
+            if (!hadIsoPreset && profiles.All(p => p.Id != "folders"))
+            {
+                var at = profiles.FindIndex(p => p.Id == "archives");
+                if (at >= 0) at++;
+                else { at = profiles.FindIndex(p => p.IsFallback); if (at < 0) at = profiles.Count; }
+                profiles.Insert(at, BuiltInData.CreateProfiles().Single(p => p.Id == "folders"));
+                changed = true;
+            }
+        }
+        // v75: property lists (#1256) learn the data donut; custom claims stay put.
+        if (from < 75)
+            changed |= LearnExtensions(profiles, out _, ["plist"]);
+        // v76: QuickTime movies saved as .quicktime (#1283) learn the video donut and Insta360 .insp photos (#711) the
+        //      images donut; custom claims stay put.
+        if (from < 76)
+            changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
+        // v77: OpenStreetMap XML (.osm, #713) learns the geospatial donut; custom claims stay put.
+        if (from < 77)
+            changed |= LearnExtensions(profiles, out _, ["osm"]);
+        // v78: Windows programs and libraries (.exe, .dll, #1188), read as their icon, learn the images donut; custom
+        //      claims stay put.
+        if (from < 78)
+            changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
+        // v79: iPhone ringtones (#1291): M4R files learn the audio donut (custom claims stay put), and the "iPhone
+        //      ringtone" preset comes to libraries saved before it existed, after the built-in preset before it as in a
+        //      new library; no donut gets a slot (#806).
+        if (from < 79)
+        {
+            changed |= LearnExtensions(profiles, out _, ["m4r"]);
+            if (presets.All(p => p.Id != BuiltInData.RingtoneId))
+                changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
+        }
+        // v80: the "PDF/A" preset (#1367) comes to libraries saved before it existed, after the built-in preset before it
+        //      as in a new library; no donut gets a slot. (Schema 80 may be renumbered if another change takes it first.)
+        if (from < 80 && presets.All(p => p.Id != BuiltInData.PdfAId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.PdfAId);
         return changed;
     }
 
-    private static bool AddTranslatePreset(List<Preset> presets)
+    private static bool AddTranslatePreset(List<Preset> presets) => AddLikeNewLibrary(presets, "translate");
+
+    /// <summary>Adds the built-in preset <paramref name="id"/> after the built-in preset before it in a new library.</summary>
+    private static bool AddLikeNewLibrary(List<Preset> presets, string id)
     {
         var defaults = BuiltInData.CreatePresets();
-        var at = defaults.FindIndex(p => p.Id == "translate");
+        var at = defaults.FindIndex(p => p.Id == id);
         var after = defaults.Take(at).Select(p => presets.FindIndex(existing => existing.Id == p.Id)).LastOrDefault(i => i >= 0, -1);
         presets.Insert(after + 1, defaults[at]);
         return true;

@@ -106,7 +106,7 @@ public partial class App : Application
         var triggers = AppHost.Get<TriggerService>();
         var radial = AppHost.Get<RadialController>();
         var platform = AppHost.Get<IPlatformServices>();
-        triggers.DragStarted += (_, e) => radial.ShowForDrag(e.X, e.Y);
+        triggers.DragStarted += (_, e) => radial.ShowForDrag(e.X, e.Y, OpensBack(e));
         triggers.DragEnded += (_, _) => radial.OnDragGestureEnded();
         triggers.SelectionGesture += async (_, e) =>
         {
@@ -121,13 +121,13 @@ public partial class App : Application
                 if (e.Gesture is { Clipboard: true })
                 {
                     if (platform.SupportsClipboard)
-                        ShowForClipboard(radial, platform, e.X, e.Y, log);
+                        ShowForClipboard(radial, platform, e.X, e.Y, OpensBack(e), log);
                     return;
                 }
                 var files = OperatingSystem.IsMacOS()
                     ? await Task.Run(platform.GetFileManagerSelection) : platform.GetFileManagerSelection();
                 if (files.Count > 0 && !store.Settings.Paused)
-                    radial.ShowForFiles(e.X, e.Y, files);
+                    radial.ShowForFiles(e.X, e.Y, files, backFace: OpensBack(e));
                 else if (files.Count == 0 && Throttle.TryEnter("empty-selection", out var held))
                     log.LogInformation("The selection shortcut found no selected files in {Window}{Elevation}{Held}",
                         platform.DescribeForegroundWindow() is { Length: > 0 } window ? window : "the foreground window",
@@ -234,12 +234,15 @@ public partial class App : Application
             DispatcherTimer.RunOnce(() => AppHost.Get<WindowService>().ShowElevationNotice(), TimeSpan.FromSeconds(2));
     }
 
+    /// <summary>The gesture is set to open the donut on its back face.</summary>
+    private static bool OpensBack(GestureEventArgs e) => e.Gesture is { Face: DonutFace.Back };
+
     /// <summary>
     /// Opens the donut for the files on the clipboard, else for its picture (a screenshot), which is saved when it
     /// converts, like a picture from a browser, without keeping the original. The results go back on the clipboard.
     /// With neither on the clipboard, nothing opens.
     /// </summary>
-    private static void ShowForClipboard(RadialController radial, IPlatformServices platform, int x, int y, ILogger log)
+    private static void ShowForClipboard(RadialController radial, IPlatformServices platform, int x, int y, bool backFace, ILogger log)
     {
         ClipboardContent? content;
         try
@@ -253,7 +256,7 @@ public partial class App : Application
         }
         if (content is { Files.Count: > 0 })
         {
-            radial.ShowForFiles(x, y, content.Files, toClipboard: true);
+            radial.ShowForFiles(x, y, content.Files, toClipboard: true, backFace: backFace);
             return;
         }
         if (content?.Picture is not { Length: > 0 } picture)
@@ -269,7 +272,7 @@ public partial class App : Application
         };
         log.LogInformation("The clipboard shortcut opens the donut for a {Extension} picture of {Bytes} bytes",
             content.PictureExtension, picture.Length);
-        radial.ShowForFiles(x, y, web.Placeholders, web: web, toClipboard: true);
+        radial.ShowForFiles(x, y, web.Placeholders, web: web, toClipboard: true, backFace: backFace);
     }
 
     private void ListenForLaterLaunches(SingleInstance instance, ILogger log)

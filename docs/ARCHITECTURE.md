@@ -52,7 +52,7 @@
    writing, but only at a path that was its alone: nothing was there before and no other conversion was handed the
    same name ("Overwrite"). It frees its names and removes an output folder it made if that is left empty.
    A PDF target's finishing (watermark, page numbers, password; `IPdfFinisher`) runs after the last step, on every
-   PDF a file became, and once on a merged PDF.
+   PDF a file became, and once on a merged PDF; PDF/A (`IPdfArchiver`, Ghostscript) follows it there.
    *Replace the original* (`OutputRule.ReplaceOriginal`, off by default) comes after that, for a finished result of
    the source's own format and extension, or another spelling of it (`.jpeg` / `.jpg`; TXT also covers scripts and
    logs, PPT also `.pps` and `.pot`, so those need the same extension). The result is first
@@ -62,7 +62,8 @@
    (no Recycle Bin on the drive, a file open elsewhere, a read-only file), both stay and the file's notice says why,
    with a translated reason (`trash.*`). A result "Only if smaller" copied from the source leaves the source alone.
    Watch folders and files from a browser never replace.
-   "Merge into one PDF" converts each file to PDF and merges with PDFsharp.
+   "Merge into one PDF" converts each file to PDF and merges with PDFsharp, preserving bookmarks, internal links,
+   named destinations and page-backed AcroForm fields. Fields with colliding names get a file-position prefix.
    "Compress into one archive" packs the dropped files, unconverted, with the archive engine (`IFileCombiner`).
    "Merge videos", "Merge audio" and "Video from images" join the files, in the order picked in the merge order
    window, into one file with FFmpeg (`IMediaJoiner`); pictures become PNG through the image engines first. Like the
@@ -168,6 +169,11 @@ per press, following `IsActive`); key window status is explicitly released once 
 with Filee when the drop opens a window of its own (a tool, the merge order, the save dialog). Not on Windows, where taking the keyboard
 during a drag breaks Explorer's.
 The editor's Front / Back switch (`ToolbarPageViewModel.EditingBack`) edits either list with the same drag and drop.
+Each gesture says which face the donut opens on (`TriggerGesture.Face`, the front unless set to the back in Settings →
+Shortcuts), so gestures with different modifiers open different sets of slices (#195). `RadialController.ShowForDrag`
+keeps it until files enter, `ShowForFiles` takes it for the selection and clipboard shortcuts, and
+`RadialViewModel.Load` opens the front instead when the back has no slice for the files. The flip key and the wheel
+turn it over from there. Thunar's shortcut on Linux goes through the context-menu action, which always opens the front.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools
 (for example the PDF Edit group contains Crop and the page editor); groups cannot contain another group. The group
@@ -266,8 +272,14 @@ without touching the file's content.
   picture, a gain map, a Samsung trailer) doesn't offer it, and the window says why: it would orphan what's there and
   leave that metadata, which no field shows. Camera RAW and DNG don't offer it either.
 - Without ExifTool the window reads nothing and offers Settings → Engines: a metadata library inside Filee can be made
-  to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under a time limit. It
-  reads the file with ExifTool once it is installed.
+  to hang or fill the memory by a small file, and can't be stopped, while ExifTool runs apart under limits of time,
+  memory and output: a small file can make it hold and print gigabytes of text, and a file over them goes to the summary
+  as holding too much past the output or memory limit, as unreadable past the time limit, or with more than 3,000
+  fields, 256 KB of text to show or a field name over 256 characters, as the window lays out every row, and search waits
+  for a pause in the typing above 500 rows. A row shows and searches the first 32 KB of a value, and one longer can be
+  removed but not typed in. Closing the window stops the read. ExifTool's write has only its time limit, but the reads
+  around a save have these limits, so a conversion of a file over them is refused. It reads the file with ExifTool once
+  it is installed.
 - `MetadataViewModel` keeps one row per field (edited, removed, added; a list one entry per line) and turns them into
   `MetadataEdits`. Add field offers XMP's descriptive fields, IPTC's where the kind of file has IPTC (JPEG, TIFF, PSD),
   a PDF's document info for a PDF. The keys, the summary of files that could not be opened or saved, and texts that
@@ -306,6 +318,9 @@ text, vectors, outlines, forms, page labels and document information remain PDF 
   pixels, where the size chip goes, where the dial opens) and is unit tested.
 
 `tool-pdf-pages` opens `Views/PdfPageEditorWindow`: it previews, reorders, rotates, deletes, adds and extracts pages.
+Ctrl / Shift + click selects several pages, and every action works on the whole selection: the pages move up or down
+as a block, dragging them moves them to the line drawn between two pages, Insert puts another PDF's pages before or
+after the selection and Replace puts them where the selection was, removing it (#860).
 Each source PDF's bytes and page sizes are cached once after the window has appeared; thumbnails and the large preview
 render off the UI thread. A whole-document edit keeps the original catalogue and changes `/Rotate` in modify mode.
 An actual reorder, deletion, addition or extraction builds a new PDF from selected page objects. A PDF that opens
@@ -350,8 +365,8 @@ stretch the crop back: `VideoCrop.TargetFor`) and sets `MediaOptions.CropFrame` 
   (`MediaEncoding.FinalCrop`, `LargestCrop`); no black bars, or a box under a quarter of the picture, refuses the file
   (`error.no_black_bars`), and cropdetect failing everywhere is an error with FFmpeg's message.
 - The crop goes before the scale filter, so the video is always encoded: an HEVC or AV1 source stays in its codec where
-  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and an
-  MKV keeps its subtitles and attachments.
+  the target and FFmpeg allow it (keeping 10 bits and HDR tags), the sound is copied where the container takes it, and the
+  subtitle tracks stay as in any video conversion (see *FFmpeg* in `docs/ENGINES.md`).
 
 ## Spreadsheet print studio
 
@@ -402,6 +417,12 @@ Bump `AppSettings.CurrentSchemaVersion` and add a step to `SettingsMigrations` w
   stay left to right. Light/dark surface colours are theme dictionaries in `Styles/Soft.axaml`; a user's
   `theme.json` (`CustomTheme`, see [CUSTOM-THEMES.md](CUSTOM-THEMES.md)) overrides them with theme dictionaries in
   application resources, which are searched first.
+- The UI font is one chain (`SoftPalette.FontFamilies`): the embedded Noto fonts (`FileeFontCollection`,
+  `fonts:Filee#…`), with the UI language's CJK font first so Han takes that region's shapes. Theme → *Use the system
+  font* puts the system's UI fonts ahead of them (Segoe UI and Windows' script fonts, San Francisco on macOS,
+  fontconfig's default on Linux), named `fonts:System#…` (`SystemUiFontCollection`): Avalonia's own system collection
+  answers any letter with the platform's fallback font, whatever family is asked, so a plain name would draw every
+  language's Han in Yu Gothic UI on Windows. Annotate's labels follow the same chain (`AnnotationFonts`).
 - What sits on an accent fill is `OnAccentBrush`: white or dark, whichever has the higher WCAG contrast
   (`SoftPalette.OnAccent`). `SoftPalette.ApplyAccentStates` also gives Fluent's accent controls this label instead of
   their fixed white, and their hover and pressed fills, which move away from the label when they would cost it contrast.
@@ -520,10 +541,12 @@ transparent area into a blurred rectangle (issue #269). Filee sets neither, so o
 program: each time the window shows, a backdrop is set back to none and the accent (which can't be read back) is
 turned off. For a report that still shows the wrong thing, the `FILEE_RENDERING` environment variable picks another
 way to draw (`WindowsRendering`): `dcomp` (skip WinUI composition), `redirection` (Direct3D into the redirection
-surface) or `software` (no GPU); unset or `auto` keeps the defaults. Filee reads it at start. On ARM64, Avalonia's
-Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236), and three values try the GPU
-there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver), `vulkan` and `wgl` (OpenGL), the
-last two falling back to software when they can't start. On Linux (X11) only `software` applies: the GPU's driver stays
+surface) or `software` (no GPU); `auto` keeps the defaults, and so does unset except on ARM64. Filee reads it at
+start. On ARM64, Avalonia's Adreno blocklist draws on the CPU through the Microsoft Basic Render Driver (issue #236),
+and three values try the GPU there again: `gpu` (Direct3D on the first adapter that isn't the Basic Render Driver),
+`vulkan` and `wgl` (OpenGL), the last two falling back to software when they can't start. On a Snapdragon X Elite `gpu`
+was smooth and kept transparency, `vulkan` drew the donut on black and `wgl` didn't start, so unset means `gpu` on
+ARM64; `auto` goes back to Avalonia's blocklist. On Linux (X11) only `software` applies: the GPU's driver stays
 in memory for as long as Filee runs, also with no window open, so this is the way to a smaller tray app (issue #957).
 
 ## Explorer integration

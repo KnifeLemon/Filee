@@ -67,9 +67,10 @@ public sealed partial class JobQueue : IAsyncDisposable
 
     /// <summary>Adds a job to the queue and returns it immediately.</summary>
     /// <param name="fetcher">Saves sources that aren't files yet (files from a browser) when the job runs.</param>
-    public ConversionJob Enqueue(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null)
+    public ConversionJob Enqueue(IReadOnlyList<string> sources, Preset preset, string presetDisplayName, ISourceFetcher? fetcher = null,
+        IReadOnlySet<string>? folderSources = null)
     {
-        var job = new ConversionJob(sources, preset, presetDisplayName, fetcher);
+        var job = new ConversionJob(sources, preset, presetDisplayName, fetcher, folderSources);
         Interlocked.Increment(ref _busy); // until the worker is done with it
         _channel.Writer.TryWrite(job);
         JobUpdated?.Invoke(this, job);
@@ -260,6 +261,25 @@ public sealed partial class JobQueue : IAsyncDisposable
             await finisher.FinishAsync(pdf, preset.Pdf, ct);
     }
 
+    /// <summary>
+    /// Makes the PDFs among <paramref name="outputs"/> PDF/A when the preset asks for it (<see cref="DocumentOptions.PdfA"/>),
+    /// after the finishing, which would undo it. Without Ghostscript they stay as they are and the file says so, rather
+    /// than pass for PDF/A.
+    /// </summary>
+    /// <param name="changed">Rewritten since the engine wrote it: a PDF/A from LibreOffice no longer is one.</param>
+    private async Task ArchivePdfsAsync(Preset preset, IReadOnlyList<string> outputs, FileResult file, string workDir, bool changed,
+        CancellationToken ct)
+    {
+        if (!preset.Document.PdfA)
+            return;
+        var archiver = _catalog.All.OfType<IPdfArchiver>().FirstOrDefault();
+        foreach (var pdf in outputs.Where(o => FormatRegistry.Detect(o)?.Id == "pdf"))
+        {
+            if (archiver is null || !await archiver.ArchiveAsync(pdf, changed, workDir, ct))
+                file.NoticeKey = "notice.pdfa_needs_ghostscript";
+        }
+    }
+
     /// <summary>Converts every file to PDF in the work directory, then merges them into one output.</summary>
     private async Task RunMergedAsync(ConversionJob job, RoutePlanner planner, string workDir)
     {
@@ -302,8 +322,9 @@ public sealed partial class JobQueue : IAsyncDisposable
         try
         {
             await _pdfMerger!.MergeAsync(inputs, output, job.CancellationToken);
-            // Once for the merged PDF, so its pages are numbered through.
+            // Once for the merged PDF, so its pages are numbered through. PDFsharp wrote it, so it is no PDF/A yet.
             await FinishPdfsAsync(job.Preset, [output], job.CancellationToken);
+            await ArchivePdfsAsync(job.Preset, [output], first, workDir, changed: true, job.CancellationToken);
         }
         catch
         {
@@ -768,7 +789,7 @@ public sealed partial class JobQueue : IAsyncDisposable
         var runWith = options ?? job.Preset;
         if (Stopped(file))
             return [];
-        var source = FormatRegistry.Detect(file.SourcePath);
+        var source = file.IsFolder ? FormatRegistry.FindById(FormatRegistry.Folder) : FormatRegistry.Detect(file.SourcePath);
         if (source is null)
             return Fail(file, "error.unsupported_source", "." + FormatRegistry.ExtensionOf(file.SourcePath));
         // A file just made with "New" in the file manager stays 0 bytes until its app saves it: no engine can read it,
@@ -808,6 +829,9 @@ public sealed partial class JobQueue : IAsyncDisposable
         var translate = finalOutput && runWith.Translate.Enabled;
         if (translate && !runWith.TranslatesDocument(from.Id))
             return Fail(file, "error.no_route", $"{from.Id} → {target}", new RouteRequest(from.Id, target, Translate: true));
+        var upscale = finalOutput && runWith.Upscale.Enabled;
+        if (upscale && !UpscaleTool.CanUpscale(from.Id))
+            return Fail(file, "error.no_route", $"{from.Id} → {target}", new RouteRequest(from.Id, target, Upscale: true));
         // "Recognize text": Tesseract writes a searchable PDF first, read on into DOCX, TXT, … from there. Also for the
         // PDFs that are merged into one.
         var ocr = (finalOutput || target == "pdf") && runWith.RecognizesTextOf(from.Id);
@@ -816,11 +840,13 @@ public sealed partial class JobQueue : IAsyncDisposable
         var metadata = finalOutput && runWith.EditsMetadata;
         var route = opener is null || metadata
             ? planner.Plan(source.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate,
-                metadata: metadata)
-            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate);
+                metadata: metadata, upscale: upscale)
+            : planner.PlanThrough(source.Id, from.Id, target, frames, motionPhoto: motionPhoto, livePhoto: livePhoto, ocr: ocr, caption: caption, translate: translate,
+                upscale: upscale);
         if (route is null)
             return Fail(file, "error.no_route", $"{from.Id} → {target}",
-                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Metadata: metadata));
+                new RouteRequest(from.Id, target, Frames: frames, MotionPhoto: motionPhoto, LivePhoto: livePhoto, Ocr: ocr, Translate: translate, Metadata: metadata,
+                    Upscale: upscale));
 
         // A step that draws text without shaping (rhwp) would break Arabic, Hebrew, Indic or Thai text: such a file
         // takes a route without it (LibreOffice), or is refused with the reason rather than written broken. One
@@ -876,7 +902,7 @@ public sealed partial class JobQueue : IAsyncDisposable
                 var isLast = s == route.Steps.Count - 1;
                 IOutputAllocator allocator = isLast && finalOutput && !zipResult
                     ? final = CreateFinalAllocator(job, file.SourcePath, index)
-                    : new TempAllocator(workDir, FormatRegistry.NameWithoutExtension(file.SourcePath));
+                    : new TempAllocator(workDir, file.IsFolder ? Path.GetFileName(Path.TrimEndingDirectorySeparator(file.SourcePath)) : FormatRegistry.NameWithoutExtension(file.SourcePath));
 
                 var outputs = new List<string>();
                 foreach (var input in inputs)
@@ -934,9 +960,12 @@ public sealed partial class JobQueue : IAsyncDisposable
                 && CopyIfNotSmaller(file.SourcePath, inputs[0]);
             if (copiedSource)
                 file.NoticeKey = "notice.pdf_not_smaller";
-            // Watermark, page numbers, password: on every PDF this file became, from whichever engine.
+            // Watermark, page numbers, password, then PDF/A: on every PDF this file became, from whichever engine.
             if (finalOutput && runWith.TargetFormat == "pdf")
+            {
                 await FinishPdfsAsync(runWith, inputs, ct);
+                await ArchivePdfsAsync(runWith, inputs, file, workDir, changed: runWith.Pdf.FinishesPdf, ct);
+            }
             // The size limit (#553): a result the engine couldn't fit (HEIC, a render, an animation) isn't handed over.
             if (finalOutput)
                 SizeLimit.Check(runWith, inputs, file.SourcePath);
@@ -1109,7 +1138,8 @@ public sealed partial class JobQueue : IAsyncDisposable
     /// <param name="oneFile">The output is one file whatever happens (a merged PDF, a multi-page TIFF, an archive).</param>
     private FinalAllocator CreateFinalAllocator(ConversionJob job, string sourcePath, int index, bool oneFile = false) =>
         new(this, oneFile ? ForOneFile(job.Preset.Output) : job.Preset.Output,
-            new OutputPathResolver.Tokens(sourcePath, job.PresetDisplayName, index, job.CreatedAt));
+            new OutputPathResolver.Tokens(sourcePath, job.PresetDisplayName, index, job.CreatedAt,
+                job.Files.Any(f => f.IsFolder && FileSystemPaths.Comparer.Equals(f.SourcePath, sourcePath))));
 
     /// <summary>
     /// The rule for a single output file: with <see cref="OutputRule.SubfolderOnlyForSeveralFiles"/> it is saved next to
@@ -1143,7 +1173,7 @@ public sealed partial class JobQueue : IAsyncDisposable
 
         lock (_reservedOutputs)
         {
-            var tokens = new OutputPathResolver.Tokens(file.SourcePath, job.PresetDisplayName, index, job.CreatedAt);
+            var tokens = new OutputPathResolver.Tokens(file.SourcePath, job.PresetDisplayName, index, job.CreatedAt, file.IsFolder);
             var target = OutputPathResolver.Resolve(rule, tokens, Path.GetExtension(output),
                 p => !PathsEqual(p, output) && (File.Exists(p) || Directory.Exists(p) || _reservedOutputs.ContainsKey(p)));
             if (target is null || PathsEqual(target, output))

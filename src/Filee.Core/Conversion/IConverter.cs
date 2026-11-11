@@ -56,7 +56,7 @@ namespace Filee.Core.Conversion;
 /// asking for it the route starts with it.
 /// </param>
 /// <param name="Caption">
-/// The edge transcribes speech to SRT subtitles using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
+/// The edge transcribes speech to SRT subtitles or plain text using Whisper (<see cref="Presets.MediaOptions.Caption"/>).
 /// </param>
 /// <param name="Metadata">
 /// The edge writes a file's metadata changes into a copy of it in its own format, the picture, sound or document itself
@@ -66,7 +66,7 @@ namespace Filee.Core.Conversion;
 public readonly record struct ConversionEdge(
     string From, string To, int Cost = 10, bool ImageSourcesOnly = false, bool NotForImageSources = false,
     bool DirectOnly = false, bool FrameSequence = false, bool Unshaped = false, bool MotionPhoto = false, bool LivePhoto = false,
-    bool Ocr = false, bool Caption = false, bool Translate = false, bool Metadata = false);
+    bool Ocr = false, bool Caption = false, bool Translate = false, bool Metadata = false, bool Upscale = false);
 
 /// <summary>
 /// A conversion an engine refuses with a reason the user can act on, shown in their language (the file's
@@ -257,6 +257,21 @@ public interface IPdfFinisher
 {
     /// <summary>Rewrites <paramref name="path"/> in place.</summary>
     Task FinishAsync(string path, Presets.PdfOptions options, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Makes a finished PDF a PDF/A (<see cref="Presets.DocumentOptions.PdfA"/>). Implemented by the Ghostscript engine;
+/// <see cref="JobQueue"/> runs it after the finishing on every PDF a job writes, whichever engine made it, and on a
+/// merged PDF once, so the box means the same for every route.
+/// </summary>
+public interface IPdfArchiver
+{
+    /// <summary>
+    /// Rewrites <paramref name="path"/> in place as PDF/A, unless it already is one and <paramref name="changed"/> is
+    /// false (LibreOffice and Skia write PDF/A themselves; a watermark added since breaks it).
+    /// </summary>
+    /// <returns>False when it can't (Ghostscript isn't installed): the PDF is left as it is.</returns>
+    Task<bool> ArchiveAsync(string path, bool changed, string workDirectory, CancellationToken cancellationToken);
 }
 
 /// <summary>

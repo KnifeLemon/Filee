@@ -113,6 +113,9 @@ public sealed class PresetAvailability
     {
         if (preset.IsCopyToFolder)
             return new(PresetUse.Usable, null);
+        // Single-file compressors also implement combining, but cannot hold a directory tree.
+        if (formats.Count > 0 && formats.All(f => f.Id == FormatRegistry.Folder) && !BuiltInData.AcceptsFolders(preset))
+            return new(PresetUse.Unusable, _loc["error.no_route"]);
 
         if (preset.IsClipTool)
         {
@@ -147,6 +150,10 @@ public sealed class PresetAvailability
                 : new(PresetUse.Unusable, _loc["error.unsupported_source"]);
         if (preset.IsHideTool)
             return formats.Any(f => HideService.CanOpen(f.Id))
+                ? new(PresetUse.Usable, null)
+                : new(PresetUse.Unusable, _loc["error.images_only"]);
+        if (preset.IsUpscaleTool)
+            return formats.Any(f => UpscaleTool.CanUpscale(f.Id))
                 ? new(PresetUse.Usable, null)
                 : new(PresetUse.Unusable, _loc["error.images_only"]);
 
@@ -273,6 +280,16 @@ public sealed class PresetAvailability
                 return new(PresetUse.Usable, null);
             return packageEnabling(Joinable) is { } joiner
                 ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", joiner.Name))
+                : new(PresetUse.Unusable, _loc["error.no_route"]);
+        }
+
+        // PDF/A of PDFs is Ghostscript's (the job queue's IPdfArchiver): without it they would only be copied. Other files
+        // may get it from LibreOffice, or are converted with a notice that the PDF isn't PDF/A.
+        static bool Archives(RoutePlanner planner) => planner.Includes("ghostscript");
+        if (preset.TargetFormat == "pdf" && preset.Document.PdfA && formats.All(f => f.Id == "pdf") && !Archives(installedPlanner()))
+        {
+            return packageEnabling(Archives) is { } archiver
+                ? new(PresetUse.NeedsPackage, _loc.Format("engine.reason.needs_package", archiver.Name))
                 : new(PresetUse.Unusable, _loc["error.no_route"]);
         }
 

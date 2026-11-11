@@ -16,6 +16,52 @@ namespace Filee.Cli.Tests;
 [Collection("Cli")] // shares EngineEnvironment state with EnginesCommandTests
 public sealed class CliTests : IDisposable
 {
+    [Fact]
+    public async Task Folder_to_iso_uses_the_folder_itself_and_preserves_a_dotted_name()
+    {
+        var folder = Directory.CreateDirectory(Path.Combine(_folder, "photos.jpg")).FullName;
+        await File.WriteAllTextAsync(Path.Combine(folder, "input.txt"), "ISO contents", TestContext.Current.CancellationToken);
+        var result = await Run("convert", folder, "--to", "iso", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(folder + ".iso"));
+        Assert.True(File.Exists(Path.Combine(folder, "input.txt")));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Drive_root_to_iso_is_refused_clearly_without_writing_an_image(bool json)
+    {
+        var output = Path.Combine(_folder, "root-output");
+        var args = new List<string> { "convert", Path.GetPathRoot(_folder)!, "--to", "iso", "--output", output };
+        if (json) args.AddRange(["--json", "--quiet"]);
+
+        var result = await Run(args.ToArray());
+
+        Assert.Equal(1, result.Code);
+        Assert.Contains("Select a folder inside", result.Output + result.Errors);
+        Assert.False(Directory.Exists(output));
+        if (json)
+        {
+            using var document = JsonDocument.Parse(result.Output);
+            Assert.Equal(1, document.RootElement.GetProperty("failed").GetInt32());
+            Assert.Equal(0, document.RootElement.GetProperty("converted").GetInt32());
+            Assert.Equal("error.iso_root", document.RootElement.GetProperty("files")[0].GetProperty("errorKey").GetString());
+        }
+    }
+
+    [Fact]
+    public async Task Zip_to_iso_converts_archive_contents_without_manual_extraction()
+    {
+        var input = Path.Combine(_folder, "backup.zip");
+        using (var zip = System.IO.Compression.ZipFile.Open(input, System.IO.Compression.ZipArchiveMode.Create))
+        using (var writer = new StreamWriter(zip.CreateEntry("contents.txt").Open())) writer.Write("archived contents");
+        var result = await Run("convert", input, "--to", "iso", "--output", _folder);
+        Assert.True(result.Code == 0, result.Errors + result.Output);
+        Assert.True(File.Exists(Path.Combine(_folder, "backup.iso")));
+        Assert.True(File.Exists(input));
+    }
+
     private readonly string _folder = Directory.CreateTempSubdirectory("filee-cli-").FullName;
     private readonly string _settings = Directory.CreateTempSubdirectory("filee-cli-settings-").FullName;
 
@@ -107,6 +153,34 @@ public sealed class CliTests : IDisposable
         string[] args = value is null ? ["convert", "a.pdf", "--to", "pdf", option] : ["convert", "a.pdf", "--to", "pdf", option, value];
         Assert.StartsWith(error, CliOptions.Parse(args).Error);
     }
+
+    /// <summary>--split-every with a length (#1259): parts of a video; a plain number stays pages of a PDF.</summary>
+    [Theory]
+    [InlineData("50", 50, null)]
+    [InlineData("90s", null, 90)]
+    [InlineData("10m", null, 600)]
+    [InlineData("10min", null, 600)]
+    [InlineData("2.5m", null, 150)]
+    [InlineData("1h30m", null, 5400)]
+    [InlineData("1H", null, 3600)]
+    [InlineData("10:00", null, 600)]
+    [InlineData("1:30:00", null, 5400)]
+    public void Split_every_takes_pages_or_a_length_of_video(string value, int? pages, int? seconds)
+    {
+        var options = CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]);
+        Assert.Null(options.Error);
+        Assert.Equal((pages, seconds), (options.SplitEvery, options.SplitEverySeconds));
+    }
+
+    [Theory]
+    [InlineData("10x")]
+    [InlineData("m")]
+    [InlineData("1:2:3:4")]
+    [InlineData("0s")]
+    [InlineData("25h")]
+    [InlineData("-5m")]
+    public void Split_every_refuses_what_is_neither_pages_nor_a_length(string value) =>
+        Assert.StartsWith("--split-every must be", CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]).Error);
 
     [Fact]
     public void Sort_is_refused_by_watch_rather_than_ignored() =>
@@ -300,11 +374,38 @@ public sealed class CliTests : IDisposable
         Assert.Equal(3, extract.PageCount);
     }
 
+    /// <summary>--split-every and --split-parts (#1259): a PDF in files of so many pages, or in equal parts.</summary>
+    [Fact]
+    public async Task Split_every_and_split_parts_cut_a_pdf_into_files()
+    {
+        var source = Path.Combine(_folder, "book.pdf");
+        using (var document = new PdfSharp.Pdf.PdfDocument())
+        {
+            for (var i = 0; i < 10; i++)
+                document.AddPage();
+            document.Save(source);
+        }
+
+        var (code, _, errors) = await Run("convert", source, "--preset", "pdf-split", "--split-every", "4");
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(["book_p1-4.pdf", "book_p5-8.pdf", "book_p9-10.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "book"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+
+        (code, _, errors) = await Run("convert", source, "--to", "pdf", "--pages", "2-", "--split-parts", "2", "-o", Path.Combine(_folder, "halves"));
+        Assert.Equal(Cli.Success, code);
+        Assert.Equal("", errors);
+        Assert.Equal(["book_p2-6.pdf", "book_p7-10.pdf"],
+            Directory.EnumerateFiles(Path.Combine(_folder, "halves"), "*.pdf").Select(path => Path.GetFileName(path)).Order().ToArray());
+    }
+
     [Fact]
     public async Task A_folder_converts_the_files_filee_knows()
     {
         Png("a.png");
         File.WriteAllText(Path.Combine(_folder, "notes.unknownformat"), "x");
+        // Filee reads a program's icon only when the program is named, not every installer in a folder (#1188).
+        File.WriteAllBytes(Path.Combine(_folder, "setup.exe"), "MZ"u8.ToArray());
 
         var (code, output, _) = await Run("convert", _folder, "--preset", BuiltInData.CreatePresets().First(p => p.TargetFormat == "jpg").Id);
 
@@ -345,6 +446,15 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "--to", "jpg" }, "at least one file")]
     [InlineData(new[] { "convert", "a.png", "--to", "jpg", "--quality", "300" }, "--quality")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--pages", "1-x" }, "--pages")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "0" }, "--split-every")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-parts", "1" }, "--split-parts")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "5", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10m", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    // Pages for a video, or a length for a PDF, would split nothing (#1259).
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10" }, "Give a length, e.g. 10s or 10m")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mkv", "--split-every", "3" }, "--split-every 3 is a number of pages, but this makes videos")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "10m" }, "--split-every 10m is a length of video, but this makes PDFs")]
+    [InlineData(new[] { "convert", "a.png", "--preset", "pdf-split", "--split-every", "1:30" }, "Give a number of pages")]
     [InlineData(new[] { "frobnicate" }, "Unknown command")]
     public async Task Wrong_arguments_explain_themselves_with_exit_code_2(string[] args, string message)
     {

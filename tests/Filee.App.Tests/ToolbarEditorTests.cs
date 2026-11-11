@@ -760,9 +760,9 @@ public class PresetAvailabilityTests
             vm.Palette.Single(c => c.PresetId == "test-mp4").Reason);
         Assert.DoesNotContain(vm.Palette, c => c.PresetId == "test-wav");
         var warning = Assert.Single(log.Warnings);
+        Assert.Contains("test-pack", warning.Message);
         Assert.Equal(LogLevel.Warning, warning.Level);
         Assert.IsType<InvalidOperationException>(warning.Exception);
-        Assert.Contains("test-pack", warning.Message);
         Assert.DoesNotContain(vm.Palette, c => c.PresetId == "zip-all");
     }
 

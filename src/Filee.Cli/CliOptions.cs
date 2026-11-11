@@ -13,10 +13,28 @@ internal sealed record CliOptions
     public string? To { get; set; }
     public string? Preset { get; set; }
     public string? Output { get; set; }
+
+    /// <summary>--from: files or folders 'engines install' takes the downloads from instead of the internet (#447).</summary>
+    public List<string> From { get; } = [];
     public bool Recursive { get; set; }
     public FileSortOrder? Sort { get; set; }
     public int? Quality { get; set; }
     public string? Pages { get; set; }
+
+    /// <summary>--split-every: PDF → PDF in files of this many pages (#1259).</summary>
+    public int? SplitEvery { get; set; }
+
+    /// <summary>--split-every with a length (10m, 90s, 1:30:00): video → video in parts of this many seconds (#1259).</summary>
+    public int? SplitEverySeconds { get; set; }
+
+    /// <summary>--split-every as it was typed, for the message when it doesn't suit the target.</summary>
+    public string? SplitEveryText { get; set; }
+
+    /// <summary>--split-parts: PDF → PDF, or video → video, in this many files of the same length (#1259).</summary>
+    public int? SplitParts { get; set; }
+
+    /// <summary>The longest part --split-every takes: a day.</summary>
+    internal const int MaxSplitSeconds = 24 * 3600;
     public ConflictPolicy? Conflict { get; set; }
     public bool Json { get; set; }
     public bool Quiet { get; set; }
@@ -69,6 +87,10 @@ internal sealed record CliOptions
                 case "-o" or "--output":
                     options.Output = Value();
                     break;
+                case "--from":
+                    if (Value() is { } from)
+                        options.From.Add(from);
+                    break;
                 case "-r" or "--recursive":
                     options.Recursive = true;
                     break;
@@ -109,6 +131,31 @@ internal sealed record CliOptions
                             options.Pages = check.Text;
                         else
                             options.Error ??= "--pages must be page numbers or ranges from 1, e.g. 13-55 or 1-3,8,12-15.";
+                    }
+                    break;
+                case "--split-every":
+                    var every = Value();
+                    if (every is not null)
+                    {
+                        options.SplitEveryText = every;
+                        // A plain number is pages; a length with a unit or colons is for videos.
+                        if (int.TryParse(every, out var size) && size is >= 1 and <= Filee.Core.Conversion.PageGroups.MaxSize)
+                            options.SplitEvery = size;
+                        else if (TryParseLength(every, out var seconds) && seconds is >= 1 and <= MaxSplitSeconds)
+                            options.SplitEverySeconds = seconds;
+                        else
+                            options.Error ??= $"--split-every must be a number of pages from 1 to {Filee.Core.Conversion.PageGroups.MaxSize}, "
+                                + "or a length of video such as 90s, 10m, 1h30m or 1:30:00.";
+                    }
+                    break;
+                case "--split-parts":
+                    var parts = Value();
+                    if (parts is not null)
+                    {
+                        if (int.TryParse(parts, out var count) && count is >= 2 and <= Filee.Core.Conversion.PageGroups.MaxSize)
+                            options.SplitParts = count;
+                        else
+                            options.Error ??= $"--split-parts must be a number of parts from 2 to {Filee.Core.Conversion.PageGroups.MaxSize}.";
                     }
                     break;
                 case "--overwrite":
@@ -158,14 +205,55 @@ internal sealed record CliOptions
         {
             "convert" when options.Inputs.Count == 0 => "Give at least one file or folder to convert.",
             "convert" or "watch" when options.To is null == (options.Preset is null) => "Use either --to <format> or --preset <preset>.",
+            "convert" or "watch" when (options.SplitEvery ?? options.SplitEverySeconds) is not null && options.SplitParts is not null =>
+                "Use either --split-every or --split-parts.",
             "watch" when options.Inputs.Count != 1 => "Give exactly one folder to watch.",
             "watch" when options.Sort is not null => "--sort only works with 'filee convert'.",
-            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove") =>
-                $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>' or 'filee engines remove <id>'.",
+            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove" or "download") =>
+                $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>', 'filee engines download <id> -o <folder>' or 'filee engines remove <id>'.",
             "engines" when options.Inputs.Count == 1 => $"Give the engine to {options.Inputs[0].ToLowerInvariant()}, e.g. 'filee engines {options.Inputs[0].ToLowerInvariant()} pandoc'.",
             "engines" when options.Inputs.Count > 2 => "Give one engine at a time.",
+            "engines" when options.From.Count > 0 && (options.Inputs.Count == 0 || options.Inputs[0].ToLowerInvariant() != "install") =>
+                "--from only works with 'filee engines install'.",
+            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() == "download" && options.Output is null =>
+                "Give the folder to save the files in, e.g. 'filee engines download pandoc -o Engines'.",
             _ => null,
         };
         return options;
+    }
+
+    /// <summary>
+    /// A length of video in whole seconds: units (<c>90s</c>, <c>10m</c>, <c>1h30m</c>, <c>2.5m</c>) or colons
+    /// (<c>10:00</c>, <c>1:30:00</c>). A plain number has no unit and is left to the caller (pages).
+    /// </summary>
+    internal static bool TryParseLength(string text, out int seconds)
+    {
+        seconds = 0;
+        text = text.Trim().ToLowerInvariant();
+        double total = 0;
+        if (text.Contains(':'))
+        {
+            var fields = text.Split(':');
+            if (fields.Length > 3)
+                return false;
+            foreach (var field in fields)
+            {
+                if (!double.TryParse(field, System.Globalization.NumberStyles.AllowDecimalPoint, System.Globalization.CultureInfo.InvariantCulture, out var value))
+                    return false;
+                total = total * 60 + value;
+            }
+        }
+        else
+        {
+            var match = System.Text.RegularExpressions.Regex.Match(text, @"^(?:(\d+(?:\.\d+)?)h)?(?:(\d+(?:\.\d+)?)m(?:in)?)?(?:(\d+(?:\.\d+)?)s)?$");
+            if (!match.Success || text.Length == 0)
+                return false;
+            double Group(int i) => match.Groups[i].Success ? double.Parse(match.Groups[i].Value, System.Globalization.CultureInfo.InvariantCulture) : 0;
+            total = Group(1) * 3600 + Group(2) * 60 + Group(3);
+        }
+        if (!double.IsFinite(total) || total > int.MaxValue)
+            return false;
+        seconds = (int)Math.Round(total);
+        return true;
     }
 }

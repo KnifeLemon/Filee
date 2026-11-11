@@ -61,7 +61,8 @@ internal static class Cli
             UseFolder(preset, options.Output);
 
         var missing = new List<string>();
-        var files = ExpandInputs(options.Inputs, options.Recursive, missing);
+        var files = ExpandInputs(options.Inputs, options.Recursive, missing,
+            foldersAsInputs: preset.TargetFormat == "iso" || preset.PacksIntoOneArchive);
         foreach (var path in missing)
             errors.WriteLine($"filee: not found: {path}");
         if (missing.Count > 0)
@@ -142,7 +143,8 @@ internal static class Cli
     private static async Task<ConversionJob> RunJobAsync(IReadOnlyList<string> files, Preset preset, CliHost host, TextWriter? output,
         JobEvents? events, CancellationToken cancellationToken)
     {
-        var job = new ConversionJob(files, preset, host.Texts.DisplayName(preset));
+        var job = new ConversionJob(files, preset, host.Texts.DisplayName(preset),
+            folderSources: files.Where(Directory.Exists).ToHashSet(FileSystemPaths.Comparer));
         var printed = new HashSet<FileResult>();
         void Print(object? sender, ConversionJob updated)
         {
@@ -315,6 +317,31 @@ internal static class Cli
         // The pages of PDFs; asked for on the donut (AskedPages), given here.
         if (options.Pages is { } pages)
             preset.Pdf.PageRange = pages;
+        // PDF → PDF in files of so many pages, a video in parts of so long, or either in equal parts (#1259), over the
+        // preset's split. Each only touches files of its kind, so PDFs and videos can go in one command; but pages for
+        // a video target, or a length for a PDF one, would split nothing, so they are refused rather than ignored.
+        var category = FormatRegistry.FindById(preset.TargetFormat)?.Category;
+        if (options.SplitEvery is { } pagesEvery && category == FormatCategory.Video)
+        {
+            errors.WriteLine($"filee: --split-every {options.SplitEveryText} is a number of pages, but this makes videos. "
+                + $"Give a length, e.g. {pagesEvery}s or {pagesEvery}m.");
+            return null;
+        }
+        if (options.SplitEverySeconds is not null && preset.TargetFormat == "pdf")
+        {
+            errors.WriteLine($"filee: --split-every {options.SplitEveryText} is a length of video, but this makes PDFs. "
+                + "Give a number of pages, e.g. --split-every 10.");
+            return null;
+        }
+        if (options.SplitEvery is { } every)
+            (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, every, 0);
+        if (options.SplitEverySeconds is { } seconds)
+            (preset.Media.SplitEverySeconds, preset.Media.SplitParts) = (seconds, 0);
+        if (options.SplitParts is { } parts)
+        {
+            (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, 0, parts);
+            (preset.Media.SplitEverySeconds, preset.Media.SplitParts) = (0, parts);
+        }
         if (options.Conflict is { } conflict)
             preset.Output.Conflict = conflict;
         if (options.KeepDates)
@@ -339,9 +366,10 @@ internal static class Cli
 
     /// <summary>
     /// Files from the arguments: files as given, wildcards ("*.heic", which cmd.exe and PowerShell pass on unexpanded)
-    /// and folders (their files in formats Filee knows; with --recursive also in sub folders).
+    /// and folders (their files in formats Filee knows, programs left out as in watch folders: the installers in a folder
+    /// aren't pictures to convert; with --recursive also in sub folders).
     /// </summary>
-    internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing)
+    internal static List<string> ExpandInputs(IEnumerable<string> inputs, bool recursive, List<string> missing, bool foldersAsInputs = false)
     {
         var option = recursive ? SearchOption.AllDirectories : SearchOption.TopDirectoryOnly;
         var files = new List<string>();
@@ -358,7 +386,11 @@ internal static class Cli
                 files.AddRange(matches);
             }
             else if (Directory.Exists(input))
-                files.AddRange(Directory.EnumerateFiles(input, "*", option).Where(f => FormatRegistry.Detect(f) is not null));
+            {
+                if (foldersAsInputs) files.Add(Path.TrimEndingDirectorySeparator(input));
+                else files.AddRange(Directory.EnumerateFiles(input, "*", option)
+                    .Where(f => FormatRegistry.Detect(f) is not null && !FormatRegistry.IsProgram(f)));
+            }
             else if (File.Exists(input))
                 files.Add(input);
             else

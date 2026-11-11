@@ -70,6 +70,7 @@ public sealed class RadialController(
     private bool _keepOrder;    // the click-mode donut's files come in the order given (the Home page's queue), not sorted
     private Action<ConversionJob>? _onJob;  // told the conversion the donut starts (the Home page's list follows it)
     private bool _forLaunches;  // the click-mode donut's files came from later launches, so more of them can join it
+    private bool _dragBackFace; // the drag gesture opens the donut on its back face, once files enter it
 
     /// <summary>
     /// How long a drag that never brought files may keep the invisible window up, in case the button release is
@@ -85,8 +86,10 @@ public sealed class RadialController(
     /// Drag gesture started at the given physical screen point. The window is placed under the cursor but stays
     /// invisible until files are dragged into it (FilesEntered); a gesture without files (text, a rubber-band
     /// selection, nothing at all) never shows anything and closes when the button is released.
+    /// <paramref name="backFace"/>: the gesture opens the donut on its back face (the front when the back has no slice
+    /// for the files).
     /// </summary>
-    public void ShowForDrag(int x, int y)
+    public void ShowForDrag(int x, int y, bool backFace = false)
     {
         // A donut with files that nothing was dropped on yet is about to lose them (#784): a line, as it looks like a
         // drop that did nothing.
@@ -104,6 +107,7 @@ public sealed class RadialController(
         _converted = false;
         _keepOrder = false;
         _onJob = null;
+        _dragBackFace = backFace;
         viewModel.ResetForDrag();
         window.DonutControl.AllowContextEdit = false;
         PlaceAndShow(window, x, y, activate: false);
@@ -123,12 +127,14 @@ public sealed class RadialController(
     /// donut may lose focus once while Filee becomes the active app. <paramref name="web"/>: the files are placeholders
     /// of this browser drop (the drop zone, a picture on the clipboard), which the donut now owns.
     /// <paramref name="toClipboard"/>: the files came from the clipboard, and their results go back on it.
+    /// <paramref name="backFace"/>: open on the back face (a shortcut set to it), or the front when the back has no slice
+    /// for the files.
     /// </summary>
     /// <param name="keepOrder">
     /// The files are merged in the order given (the Home page's queue, which the user sorted), not sorted by name first.
     /// </param>
     public void ShowForFiles(int x, int y, IReadOnlyList<string> files, bool forAnotherProcess = false, WebDrop? web = null,
-        bool toClipboard = false, bool keepOrder = false, Action<ConversionJob>? onJob = null)
+        bool toClipboard = false, bool keepOrder = false, Action<ConversionJob>? onJob = null, bool backFace = false)
     {
         if (web is null)
             files = platform.ResolveShortcuts(files);
@@ -150,7 +156,7 @@ public sealed class RadialController(
         var window = EnsureWindow();
         _dropped = false;
         _converted = false;
-        viewModel.Load(files, clickMode: true);
+        viewModel.Load(files, clickMode: true, backFace);
         viewModel.FitToThisDonut();
         window.DonutControl.AllowContextEdit = true;
         // Set the initial pose before showing the reused window, avoiding a fully-open flash.
@@ -294,7 +300,7 @@ public sealed class RadialController(
         {
             if (viewModel.IsClickMode || SameFiles(files, viewModel.Files) || SameWebFiles(files, viewModel.Files))
                 return;
-            viewModel.Load(files, clickMode: false);
+            viewModel.Load(files, clickMode: false, _dragBackFace);
             donut.PlayOpenAnimation();
             TakeKeyboard(window);
             WatchFlipKey();
@@ -539,8 +545,8 @@ public sealed class RadialController(
                     return;
                 }
                 chosen.Add((pdfs[i], choice));
-                // The next PDF's window starts with this one's choice of one PDF or one file per page.
-                asked = AskedPages.Apply(preset, preset.Pdf.PageRange, choice.SplitPages);
+                // The next PDF's window starts with this one's choice of one PDF or how it is split.
+                asked = AskedPages.Apply(preset, preset.Pdf.PageRange, choice.SplitPages, choice.SplitEvery, choice.SplitParts);
             }
             if (chosen.Count == 0)
                 return;
@@ -551,7 +557,7 @@ public sealed class RadialController(
             if (others.Count > 0)
                 runs.Add((others, preset));
             runs.AddRange(chosen.GroupBy(c => c.Choice).Select(group =>
-                ((IReadOnlyList<string>)[.. group.Select(c => c.File)], AskedPages.Apply(preset, group.Key.Range, group.Key.SplitPages))));
+                ((IReadOnlyList<string>)[.. group.Select(c => c.File)], AskedPages.Apply(preset, group.Key.Range, group.Key.SplitPages, group.Key.SplitEvery, group.Key.SplitParts))));
             log.LogInformation("Converting {Count} PDF(s) with preset {Preset} on the pages chosen", pdfs.Count, preset.Id);
             foreach (var (runFiles, runPreset) in runs)
             {
@@ -572,21 +578,28 @@ public sealed class RadialController(
     }
 
     /// <summary>
-    /// "Choose pages": one PDF or one file per page, as chosen last (<paramref name="chosen"/>), goes into the preset as
-    /// saved, so the window starts with it next time (as "Merge images" keeps its layout). The range is not kept.
+    /// "Choose pages": one PDF, one file per page or the pages per file or parts, as chosen last
+    /// (<paramref name="chosen"/>), goes into the preset as saved, so the window starts with it next time (as "Merge
+    /// images" keeps its layout). The range is not kept; with one PDF the numbers of the last split stay.
     /// </summary>
     private void RememberSplitChoice(Preset preset, PageChoice chosen)
     {
-        if (!AskedPages.OffersSplit(preset) || store.FindPreset(preset.Id) is not { } saved || saved.Pdf.SplitPages == chosen.SplitPages)
+        if (!AskedPages.OffersSplit(preset) || store.FindPreset(preset.Id) is not { } saved)
             return;
-        saved.Pdf.SplitPages = chosen.SplitPages;
+        var pdf = saved.Pdf;
+        if (pdf.SplitPages == chosen.SplitPages
+            && (!chosen.SplitPages || (pdf.SplitEvery, pdf.SplitParts) == (chosen.SplitEvery, chosen.SplitParts)))
+            return;
+        pdf.SplitPages = chosen.SplitPages;
+        if (chosen.SplitPages)
+            (pdf.SplitEvery, pdf.SplitParts) = (chosen.SplitEvery, chosen.SplitParts);
         try
         {
             store.SaveLibrary();
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            log.LogWarning(ex, "Could not remember one PDF or one file per page");
+            log.LogWarning(ex, "Could not remember how the pages were split");
         }
     }
 
@@ -621,7 +634,7 @@ public sealed class RadialController(
     /// archive"; any other preset converts the files beside them (issue #186).
     /// </summary>
     internal static IReadOnlyList<string> SourcesFor(Preset preset, IReadOnlyList<string> files) =>
-        preset.PacksIntoOneArchive || preset.IsCopyToFolder ? files : [.. files.Where(path => !Directory.Exists(path))];
+        preset.PacksIntoOneArchive || preset.IsCopyToFolder || preset.TargetFormat == "iso" ? files : [.. files.Where(path => !Directory.Exists(path))];
 
     // ───────── Progress ring ─────────
 
@@ -708,7 +721,8 @@ public sealed class RadialController(
         _editing = true;
         try
         {
-            if (await windows.EditPresetAsync(preset, _window))
+            if (await windows.EditPresetAsync(preset, _window,
+                folderInput: viewModel.Files.Count > 0 && viewModel.Files.All(Directory.Exists)))
             {
                 store.SaveLibrary();
                 viewModel.Load(viewModel.Files, viewModel.IsClickMode, viewModel.IsBackFace);

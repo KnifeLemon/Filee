@@ -23,6 +23,8 @@
                       IsChecked="{Binding ShowInDock}" IsVisible="{Binding SupportsDockVisibility}" />
         <ToggleSwitch x:Name="ShowMenuBarIconSwitch" Content="{DynamicResource general.show_menu_bar_icon}"
                       IsChecked="{Binding ShowMenuBarIcon}" IsVisible="{Binding SupportsDockVisibility}" />
+        <ToggleSwitch x:Name="ColoredMenuBarIconSwitch" Content="{DynamicResource general.colored_menu_bar_icon}"
+                      IsChecked="{Binding ColoredMenuBarIcon}" IsVisible="{Binding ShowColoredMenuBarIconOption}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding DockStatus}"
                    IsVisible="{Binding DockStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <StackPanel>
@@ -99,7 +101,7 @@
                          HorizontalAlignment="Left" MinWidth="160" AutomationProperties.Name="{DynamicResource general.history_limit}" />
         </StackPanel>
         <StackPanel Orientation="Horizontal" Spacing="10">
-          <Button Content="{DynamicResource general.clear_history}" Command="{Binding ClearHistoryCommand}" />
+          <Button Classes="danger" Content="{DynamicResource general.clear_history}" Command="{Binding ClearHistoryCommand}" />
           <TextBlock Classes="muted" VerticalAlignment="Center" Text="{Binding HistoryText}" />
         </StackPanel>
       </StackPanel>

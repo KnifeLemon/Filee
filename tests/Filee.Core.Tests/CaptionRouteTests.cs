@@ -80,6 +80,22 @@ public class CaptionRouteTests
     }
 
     [Fact]
+    public void A_txt_preset_with_caption_transcribes_speech_to_plain_text()
+    {
+        var preset = new Preset { TargetFormat = "txt", Media = { Caption = true } };
+        Assert.True(preset.CaptionsVideo("mp4"));
+        Assert.True(preset.CaptionsVideo("mp3"));
+        Assert.False(preset.CaptionsVideo("srt"));
+        Assert.False(new Preset { TargetFormat = "txt" }.CaptionsVideo("mp4"));
+        Assert.False(new Preset { TargetFormat = "pdf", Media = { Caption = true } }.CaptionsVideo("mp4"));
+
+        var planner = new RoutePlanner([new FakeConverter("whisper", [.. CaptionEdges, new("mp4", "txt", Caption: true), new("mp3", "txt", Caption: true)])]);
+        Assert.Equal("whisper:mp4→txt", Steps(planner.Plan("mp4", "txt", caption: true)));
+        Assert.Equal("whisper:mp3→txt", Steps(planner.Plan("mp3", "txt", caption: true)));
+        Assert.Null(planner.Plan("mp4", "txt"));
+    }
+
+    [Fact]
     public void Schema_56_library_gets_caption_preset_on_both_video_and_audio_donuts()
     {
         var presets = BuiltInData.CreatePresets().Where(p => p.Id != "caption-video").ToList();

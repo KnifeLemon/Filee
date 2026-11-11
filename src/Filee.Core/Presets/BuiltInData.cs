@@ -11,6 +11,19 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>The "iPhone ringtone" preset (#1291): an M4R of at most 40 seconds, from where its Start field says.</summary>
+    public const string RingtoneId = "iphone-ringtone";
+
+    /// <summary>The "PDF/A" preset (#1367): any PDF Filee writes, PDF → PDF too, made PDF/A-2b for archiving.</summary>
+    public const string PdfAId = "pdf-a";
+
+    /// <summary>Whether a conversion target accepts a folder directly.</summary>
+    public static bool SupportsFolderTarget(string target) => target == "iso";
+
+    /// <summary>Whether a preset accepts folders without converting their individual files.</summary>
+    public static bool AcceptsFolders(Preset preset) => !preset.IsGroup
+        && (preset.IsCopyToFolder || SupportsFolderTarget(preset.TargetFormat));
+
     /// <summary>Creates the default preset list.</summary>
     public static List<Preset> CreatePresets() =>
     [
@@ -62,6 +75,7 @@ public static class BuiltInData
         .. AnnotatePresets(),
         .. BackgroundPresets(),
         .. MetadataPresets(),
+        .. UpscalePresets(),
         new()
         {
             Id = "tool-sheet-studio", NameKey = "preset.sheet_studio", TargetFormat = "pdf",
@@ -124,6 +138,7 @@ public static class BuiltInData
         },
         .. PdfCompressionPresets(),
         .. OcrPresets(),
+        .. PdfAPresets(),
         .. PdfSlidesPresets(),
         .. FramePresets(),
         .. MotionPhotoPresets(),
@@ -347,6 +362,22 @@ public static class BuiltInData
         },
     ];
 
+    /// <summary>Id of the built-in "Upscale" tool (settings schema 73): in the palette, on no donut.</summary>
+    public const string UpscaleId = "tool-upscale";
+
+    /// <summary>
+    /// "Upscale Quality" (settings schema 73): upscale images using local AI models (Real-ESRGAN / NCNN).
+    /// In the palette only: the picture donuts are full.
+    /// </summary>
+    public static List<Preset> UpscalePresets() =>
+    [
+        new()
+        {
+            Id = UpscaleId, NameKey = "preset.upscale", TargetFormat = SameAsSource,
+            Kind = PresetKind.Tool, Tool = Preset.UpscaleTool, Output = { FileNamePattern = "{name}_upscaled" },
+        },
+    ];
+
     /// <summary>
     /// "Trim transparent borders" (issue #332, added in settings schema 33): a copy cropped to the visible pixels, in the
     /// same format. On the images donut's back face after "Remove background".
@@ -453,6 +484,19 @@ public static class BuiltInData
         {
             Id = "searchable-pdf", NameKey = "preset.searchable_pdf", TargetFormat = "pdf",
             Pdf = { Ocr = true }, Output = { FileNamePattern = "{name}_searchable" },
+        },
+    ];
+
+    /// <summary>
+    /// "PDF/A": a PDF, or a document converted to PDF, as PDF/A-2b (added in settings schema 80). LibreOffice writes it
+    /// itself; any other PDF is rewritten by Ghostscript. On no donut, like "Compress PDF".
+    /// </summary>
+    public static List<Preset> PdfAPresets() =>
+    [
+        new()
+        {
+            Id = PdfAId, NameKey = "preset.pdf_a", TargetFormat = "pdf",
+            Document = { PdfA = true }, Output = { FileNamePattern = "{name}_pdfa" },
         },
     ];
 
@@ -609,8 +653,14 @@ public static class BuiltInData
         new() { Id = "to-ogg", Name = "OGG", TargetFormat = "ogg" },
         new() { Id = "to-opus", Name = "OPUS", TargetFormat = "opus" },
         new() { Id = "to-aac", Name = "AAC", TargetFormat = "aac" },
+        new()
+        {
+            Id = RingtoneId, NameKey = "preset.iphone_ringtone", TargetFormat = "m4r",
+            Media = { RingtoneStart = 0, RingtoneLength = MediaOptions.DefaultRingtoneLength },
+        },
 
         // Archives
+        new() { Id = "to-iso", NameKey = "preset.iso_image", TargetFormat = "iso" },
         new() { Id = "to-zip", Name = "ZIP", TargetFormat = "zip" },
         new() { Id = "to-7z", Name = "7Z", TargetFormat = "7z" },
         new() { Id = "to-tgz", Name = "TAR.GZ", TargetFormat = "tgz" },
@@ -739,6 +789,15 @@ public static class BuiltInData
             };
             (profile.PresetIds, profile.BackPresetIds) = layout;
         }
+        var folders = new ToolbarProfile
+        {
+            Id = "folders",
+            NameKey = "profile.folders",
+            Extensions = [],
+            PresetIds = ["to-iso"],
+            BackPresetIds = [],
+        };
+        profiles.Insert(profiles.FindIndex(p => p.Id == "archives") + 1, folders);
         return profiles;
     }
 

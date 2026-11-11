@@ -43,6 +43,7 @@ public static class EngineRegistry
     public static IReadOnlyList<IConverter> CreateAll(EngineEnvironment env, ILoggerFactory? loggers = null) =>
     [
         new MagickImageConverter(),
+        new FolderIsoConverter(),
         new PdfSharpConverter(),
         new PdfiumConverter(),
         new RhwpConverter(),
@@ -60,6 +61,7 @@ public static class EngineRegistry
         new PdfTextConverter(),
         new PdfSlidesConverter(),
         new PdfTablesConverter(),
+        new DocumentTablesConverter(),
         new EmlConverter(),
         new P7mConverter(),
         new DataConverter(),
@@ -67,6 +69,7 @@ public static class EngineRegistry
         new WicImageConverter(),
         new WhisperConverter(loggers?.CreateLogger<WhisperConverter>()),
         new ExifToolConverter(),
+        new Upscale.UpscalerConverter(),
         new FfmpegConverter(loggers?.CreateLogger<FfmpegConverter>()),
         new CadConverter(),
         new ModelConverter(),

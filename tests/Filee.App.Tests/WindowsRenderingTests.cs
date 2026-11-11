@@ -26,6 +26,18 @@ public class WindowsRenderingTests
         Assert.Equal(expected, WindowsRendering.Normalize(value));
 
     [Theory]
+    [InlineData(null, Architecture.Arm64, "gpu")]
+    [InlineData("", Architecture.Arm64, "gpu")]
+    [InlineData(null, Architecture.X64, null)]
+    [InlineData("", Architecture.X64, null)]
+    [InlineData("auto", Architecture.Arm64, null)]
+    [InlineData(" Vulkan ", Architecture.Arm64, "vulkan")]
+    [InlineData("software", Architecture.Arm64, "software")]
+    [InlineData("gpu", Architecture.X64, "gpu")]
+    public void Unset_means_gpu_on_ARM64_and_other_values_stay_as_asked(string? value, Architecture architecture, string? expected) =>
+        Assert.Equal(expected, WindowsRendering.Choose(value, architecture));
+
+    [Theory]
     [InlineData(null)]
     [InlineData("opengl")]
     public void Unset_and_unknown_values_keep_Avalonias_defaults(string? choice)
@@ -176,10 +188,12 @@ public class WindowsRenderingTests
     public void The_log_line_says_what_was_asked()
     {
         Assert.StartsWith("Rendering: ", WindowsRendering.Describe(null));
-        Assert.EndsWith("(FILEE_RENDERING not set)", WindowsRendering.Describe(null));
         Assert.EndsWith("(FILEE_RENDERING=software)", WindowsRendering.Describe(" Software"));
         Assert.EndsWith("(FILEE_RENDERING=vulkan)", WindowsRendering.Describe("Vulkan"));
         Assert.EndsWith("(FILEE_RENDERING=opengl is unknown and ignored)", WindowsRendering.Describe("opengl"));
+        Assert.EndsWith("(FILEE_RENDERING not set)", WindowsRendering.Describe(null, Architecture.X64));
+        Assert.EndsWith("(FILEE_RENDERING not set, gpu on ARM64)", WindowsRendering.Describe(null, Architecture.Arm64));
+        Assert.EndsWith("(FILEE_RENDERING=auto)", WindowsRendering.Describe(" Auto", Architecture.Arm64));
     }
 }
 

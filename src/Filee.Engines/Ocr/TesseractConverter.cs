@@ -8,7 +8,8 @@
 // without any are rendered at 300 dpi and recognized, page by page, at most four at a time. A small picture (a
 // screenshot) is read from a copy at twice its size, as its letters are too small for Tesseract (#138); the page still
 // shows the picture itself, with the words in their places on it. The language data comes from OcrLanguages,
-// downloaded the first time a language is used, and is copied into the job's folder so Tesseract reads only it.
+// downloaded the first time a language is used, and is copied into the job's folder so Tesseract reads only it. A
+// preset can name several languages (#1123): each one's data is there, and Tesseract gets them all (-l chi_sim+eng).
 
 using Filee.Core.Conversion;
 using Filee.Core.Presets;
@@ -83,22 +84,15 @@ public sealed class TesseractConverter : IConverter
     public async Task<IReadOnlyList<string>> ConvertAsync(ConversionStep step, IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var tesseract = _executable ?? Locate() ?? throw new InvalidOperationException("Tesseract is not installed.");
-        var language = OcrLanguages.Find(step.Preset.Pdf.OcrLanguage) ?? OcrLanguages.Find(OcrLanguages.Default)!;
-        string data;
-        try
-        {
-            data = await OcrLanguages.EnsureAsync(language.Code, cancellationToken);
-        }
-        catch (HttpRequestException ex)
-        {
-            throw new ConversionRefusedException("error.ocr_language_download", $"{language.NativeName}: {ex.Message}");
-        }
+        var languages = OcrLanguages.Parse(step.Preset.Pdf.OcrLanguage);
+        var data = await LanguageDataAsync(languages, OcrLanguages.EnsureAsync, cancellationToken);
         var scratch = Path.Combine(step.WorkDirectory, "ocr-" + Guid.NewGuid().ToString("N")[..8]);
         var tessdata = Path.Combine(scratch, "tessdata");
         Directory.CreateDirectory(tessdata);
-        File.Copy(data, Path.Combine(tessdata, Path.GetFileName(data)));
+        foreach (var file in data)
+            File.Copy(file, Path.Combine(tessdata, Path.GetFileName(file)));
         CopyPdfFont(tessdata, PdfFontFolders(tesseract, System.Environment.GetEnvironmentVariable("TESSDATA_PREFIX")));
-        var ocr = new Run(tesseract, scratch, language.Code);
+        var ocr = new Run(tesseract, scratch, OcrLanguages.Join(languages.Select(l => l.Code)));
         progress?.Report(0.05);
 
         var output = step.Output.Allocate("pdf");
@@ -128,6 +122,28 @@ public sealed class TesseractConverter : IConverter
         }
         progress?.Report(1);
         return [output];
+    }
+
+    /// <summary>
+    /// The data file of each language, one after the other as <paramref name="ensure"/> downloads what is missing
+    /// (<see cref="OcrLanguages.EnsureAsync"/>). A download that fails refuses the file and says which language it was.
+    /// </summary>
+    internal static async Task<IReadOnlyList<string>> LanguageDataAsync(IReadOnlyList<OcrLanguage> languages,
+        Func<string, CancellationToken, Task<string>> ensure, CancellationToken cancellationToken)
+    {
+        var data = new List<string>();
+        foreach (var language in languages)
+        {
+            try
+            {
+                data.Add(await ensure(language.Code, cancellationToken));
+            }
+            catch (HttpRequestException ex)
+            {
+                throw new ConversionRefusedException("error.ocr_language_download", $"{language.NativeName}: {ex.Message}");
+            }
+        }
+        return data;
     }
 
     /// <summary>
@@ -359,10 +375,10 @@ public sealed class TesseractConverter : IConverter
         if (letters.Any(l => l.RenderingMode is TextRenderingMode.Neither or TextRenderingMode.NeitherClip))
             return true;
         var area = page.Width * page.Height;
-        if (area <= 0 || letters.Sum(l => l.GlyphRectangle.Area) >= StampCoverage * area)
+        if (area <= 0 || letters.Sum(l => l.BoundingBox.Area) >= StampCoverage * area)
             return true;
         // A page drawn with little text and no picture under it (a cover, a short note) is not a scan.
-        return !page.GetImages().Any(image => image.Bounds.Area >= area / 2);
+        return !page.GetImages().Any(image => image.BoundingBox.Area >= area / 2);
     }
 
     /// <summary>
@@ -492,11 +508,12 @@ public sealed class TesseractConverter : IConverter
     }
 
     /// <summary>
-    /// One language, one Tesseract, working in <paramref name="Folder"/> (the job's scratch folder, with the language in
-    /// its <c>tessdata</c>). Tesseract only ever sees plain relative names there: some Windows builds of Tesseract and
-    /// Leptonica open files through the ANSI code page and fail on a user name or folder in Korean or Cyrillic.
+    /// One Tesseract reading <paramref name="Languages"/> (joined as its <c>-l</c> takes them), working in
+    /// <paramref name="Folder"/> (the job's scratch folder, with their data in its <c>tessdata</c>). Tesseract only ever
+    /// sees plain relative names there: some Windows builds of Tesseract and Leptonica open files through the ANSI code
+    /// page and fail on a user name or folder in Korean or Cyrillic.
     /// </summary>
-    private sealed record Run(string Executable, string Folder, string Language)
+    private sealed record Run(string Executable, string Folder, string Languages)
     {
         /// <summary>
         /// Reads <paramref name="input"/> and writes <c>{outputBase}.pdf</c>, both names in <see cref="Folder"/>; with
@@ -505,7 +522,7 @@ public sealed class TesseractConverter : IConverter
         public async Task ToPdfAsync(string input, string outputBase, int? dpi, CancellationToken cancellationToken, bool textOnly = false)
         {
             // tessedit_create_pdf instead of the "pdf" config file, which lives in Tesseract's own tessdata folder.
-            List<string> args = [input, outputBase, "--tessdata-dir", "tessdata", "-l", Language, "-c", "tessedit_create_pdf=1"];
+            List<string> args = [input, outputBase, "--tessdata-dir", "tessdata", "-l", Languages, "-c", "tessedit_create_pdf=1"];
             if (textOnly)
                 args.AddRange(["-c", "textonly_pdf=1"]);
             if (dpi is { } value)

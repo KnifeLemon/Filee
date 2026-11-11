@@ -12,6 +12,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Filee.Core.Formats;
 using Filee.Core.Presets;
+using Filee.Engines.Archives;
 using Filee.Engines.Infrastructure;
 
 namespace Filee.Engines.Metadata;
@@ -20,6 +21,19 @@ public static partial class ExifTool
 {
     /// <summary>The longest a read may take.</summary>
     private static readonly TimeSpan ReadLimit = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The most a read may print, the file's own text: a TIFF can hold a long description. The richest of ExifTool's
+    /// own sample files prints 26 KB, as large binary values print as a note of their size, but a compressed PNG text
+    /// chunk prints a thousand times the size of the file.
+    /// </summary>
+    private const long ReadOutputLimit = 64L * 1024 * 1024;
+
+    /// <summary>
+    /// The most memory a read may use. ExifTool holds a file's values before it prints any of them, so the output limit
+    /// comes too late: it reached 6 GB on a 1.5 MB PNG.
+    /// </summary>
+    private const long ReadMemoryLimit = 2L * 1024 * 1024 * 1024;
 
     /// <summary>
     /// Families whose fields are written into the file and can be changed. The others describe the file or are
@@ -241,7 +255,9 @@ public static partial class ExifTool
         .Any(folder => File.Exists(Path.Combine(folder, program)));
 
     /// <summary>
-    /// Every field of <paramref name="path"/>, in the file's order. Throws when ExifTool can't read it.
+    /// Every field of <paramref name="path"/>, in the file's order. Throws <see cref="IOException"/> when ExifTool
+    /// can't read it or the file holds far more than a file's fields do, <see cref="TimeoutException"/> after the time
+    /// limit.
     /// </summary>
     public static async Task<IReadOnlyList<MetadataField>> ReadAsync(string exifTool, string path, CancellationToken cancellationToken = default)
     {
@@ -251,10 +267,28 @@ public static partial class ExifTool
         var work = Directory.CreateTempSubdirectory("filee-exiftool-").FullName;
         try
         {
-            var result = await RunAsync(exifTool, work, ["-j", "-G0:1", "-a", "-s"], [], path, ReadLimit, cancellationToken);
-            if (string.IsNullOrWhiteSpace(result.StandardOutput))
-                throw new IOException(ErrorOf(result) ?? "ExifTool could not read the file.");
-            var fields = Parse(result.StandardOutput);
+            using var output = new MemoryStream();
+            var result = await ProcessRunner.RunWithOutputAsync(exifTool, await CommandAsync(work, ["-j", "-G0:1", "-a", "-s"], [], path, cancellationToken),
+                (from, token) => ArchiveFiles.CopyLimited(from, output, ReadOutputLimit, token, tooLarge: () => new MetadataTooLargeException("ExifTool printed more than a file's fields.")),
+                ReadLimit, cancellationToken, work, ReadMemoryLimit);
+            // What it printed stops where it was stopped, or is only that it ran out.
+            if (result.StoppedForMemory)
+                throw new MetadataTooLargeException("ExifTool needed more memory than a file's fields take.");
+            // Off the caller's thread, which can be the UI's: this can be megabytes of text.
+            var fields = await Task.Run(() =>
+            {
+                var json = Encoding.UTF8.GetString(output.GetBuffer(), 0, (int)output.Length);
+                if (string.IsNullOrWhiteSpace(json))
+                    throw new IOException(ErrorOf(result) ?? "ExifTool could not read the file.");
+                try
+                {
+                    return Parse(json);
+                }
+                catch (JsonException ex)
+                {
+                    throw new IOException("ExifTool stopped part way through the file's fields.", ex);
+                }
+            }, CancellationToken.None);
             // A file it can't read still gets its JSON, the file's own facts and this.
             return fields.FirstOrDefault(f => f is { Family: "ExifTool", Tag: "Error" }) is { } error ? throw new IOException(error.Value) : fields;
         }
@@ -285,11 +319,58 @@ public static partial class ExifTool
                 ? [.. property.Value.EnumerateArray().Select(Text)] : [Text(property.Value)];
             fields.Add(new MetadataField(family, group, tag, items, isList, IsEditable(family, group, tag, items)));
         }
-        return fields;
+        return MarkCutShort(fields);
 
         // As ExifTool printed it: a title "true" comes without quotes, and isn't "True".
         static string Text(JsonElement value) => value.ValueKind == JsonValueKind.String ? value.GetString() ?? "" : value.GetRawText();
     }
+
+    /// <summary>
+    /// How many entries of an XMP list ExifTool reads. Past that it stops, unless minor errors are ignored (<c>-m</c>),
+    /// which isn't done on a read: it also brings back a PDF's replaced fields, and slows long logs and encrypted PDFs.
+    /// </summary>
+    internal const int ListLimit = 1000;
+
+    /// <summary>
+    /// Marks the fields of each XMP list ExifTool stopped reading (<see cref="MetadataField.CutShortList"/>): the one its
+    /// warning names, and any of <see cref="ListLimit"/> entries or more, as <c>-j</c> prints only a file's first
+    /// warning. A list of structures is every field it was flattened into ("HistoryInstanceID", "HistorySoftwareAgent"
+    /// of xmpMM:History), and one of them can show a single entry when the others are past the 1,000th. Without the
+    /// warning the structure's name isn't known, so the tag's first word stands for it, which may take in a neighbour.
+    /// </summary>
+    private static List<MetadataField> MarkCutShort(List<MetadataField> fields)
+    {
+        var lists = new List<(string Group, string Name)>();
+        foreach (var field in fields)
+        {
+            if (field is { Family: "ExifTool", Tag: "Warning" } && CutShortWarning().Match(field.Value) is { Success: true } warning)
+                lists.Add(($"XMP-{warning.Groups[1].Value}", char.ToUpperInvariant(warning.Groups[2].Value[0]) + warning.Groups[2].Value[1..]));
+            else if (field.Family == "XMP" && field.Items.Count >= ListLimit)
+                lists.Add((field.Group, FirstWord().Match(field.Tag) is { Length: > 0 } word ? word.Value : field.Tag));
+        }
+        if (lists.Count == 0)
+            return fields;
+        return
+        [
+            .. fields.Select(f => f.Family == "XMP" && lists.FindIndex(l => l.Group == f.Group && f.Tag.StartsWith(l.Name, StringComparison.OrdinalIgnoreCase)) is >= 0 and var at
+                ? f with { CutShortList = $"{lists[at].Group}:{lists[at].Name}" } : f),
+        ];
+    }
+
+    /// <summary>ExifTool's "[Minor] Extracted only 1000 xmpMM:History items. Ignore minor errors to extract all".</summary>
+    [GeneratedRegex(@"Extracted only \d+ ([\w-]+):([\w-]+) items")]
+    private static partial Regex CutShortWarning();
+
+    /// <summary>"History" of "HistoryInstanceID", "GPS" of "GPSLatitude", "Subject" of "Subject".</summary>
+    [GeneratedRegex("^(?:[A-Z]+(?=[A-Z][a-z])|[A-Z]?[a-z0-9]+|[A-Z0-9]+)")]
+    private static partial Regex FirstWord();
+
+    /// <summary>
+    /// The XMP lists ExifTool read only the first <see cref="ListLimit"/> entries of ("XMP-xmpMM:History"), each once:
+    /// a place in an entry past them is never seen, so Remove location can't say it took all.
+    /// </summary>
+    public static IReadOnlyList<string> CutShortLists(IEnumerable<MetadataField> fields) =>
+        [.. fields.Select(f => f.CutShortList).OfType<string>().Distinct()];
 
     internal static bool IsEditable(string family, string group, string tag, IReadOnlyList<string> items) =>
         EditableFamilies.Contains(family) && !ReadOnlyGroups.Contains(group) && !group.StartsWith("Track", StringComparison.Ordinal)
@@ -550,13 +631,17 @@ public static partial class ExifTool
     /// names in it are.
     /// </summary>
     private static async Task<ProcessResult> RunAsync(string exifTool, string work, IEnumerable<string> options, IEnumerable<string> lines, string path,
-        TimeSpan limit, CancellationToken cancellationToken)
+        TimeSpan limit, CancellationToken cancellationToken) =>
+        await ProcessRunner.RunAsync(exifTool, await CommandAsync(work, options, lines, path, cancellationToken), limit, cancellationToken, workingDirectory: work);
+
+    /// <summary>The command line for a run in <paramref name="work"/>, with its argument file written.</summary>
+    private static async Task<string[]> CommandAsync(string work, IEnumerable<string> options, IEnumerable<string> lines, string path, CancellationToken cancellationToken)
     {
         const string argFile = "args.txt";
         await File.WriteAllTextAsync(Path.Combine(work, argFile), ArgumentFile(PathsInArgumentFile ? [.. lines, path] : lines), new UTF8Encoding(false), cancellationToken);
         // The options first: ExifTool takes "-config" nowhere else.
         string[] command = [.. options, "-charset", "filename=utf8", "-api", "LargeFileSupport=1", "-@", argFile];
-        return await ProcessRunner.RunAsync(exifTool, PathsInArgumentFile ? command : [.. command, path], limit, cancellationToken, workingDirectory: work);
+        return PathsInArgumentFile ? command : [.. command, path];
     }
 
     private static string? ErrorOf(ProcessResult result) =>
@@ -583,3 +668,6 @@ public static partial class ExifTool
 /// A change ExifTool would not write as asked; the message says which (ExifTool's words, in English).
 /// </summary>
 public sealed class MetadataRefusedException(string message) : IOException(message);
+
+/// <summary>A file that holds far more metadata than Filee takes in; it can be fine otherwise.</summary>
+public sealed class MetadataTooLargeException(string message) : IOException(message);

@@ -174,6 +174,59 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
         Assert.False(fields.Single(f => f.Key == "IFD1:ThumbnailImage").Editable);
     }
 
+    [Theory]
+    [InlineData(1000, true)]
+    [InlineData(999, false)]
+    public void A_list_of_structures_ExifTool_stopped_at_1000_entries_is_marked_in_every_field_of_it(int entries, bool cut)
+    {
+        // The software agent of entry 1,200 isn't read: only entry 1's shows, as one value.
+        var ids = string.Join(",", Enumerable.Range(1, entries).Select(i => $"\"xmp.iid:{i}\""));
+        var fields = ExifTool.Parse($$"""
+            [{"SourceFile": "long-history.png",
+              "XMP:XMP-xmpMM:DocumentID": "xmp.did:1",
+              "XMP:XMP-xmpMM:HistoryInstanceID": [{{ids}}],
+              "XMP:XMP-xmpMM:HistorySoftwareAgent": "Camera app 1.0",
+              "XMP:XMP-dc:Title": "Long history"}]
+            """);
+
+        string? list = cut ? "XMP-xmpMM:History" : null;
+        Assert.Equal(list, fields.Single(f => f.Key == "XMP-xmpMM:HistoryInstanceID").CutShortList);
+        Assert.Equal(list, fields.Single(f => f.Key == "XMP-xmpMM:HistorySoftwareAgent").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-xmpMM:DocumentID").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-dc:Title").CutShortList);
+        // Still taken out whole, by Remove location or by hand: ExifTool writes with every entry read.
+        Assert.True(fields.Single(f => f.Key == "XMP-xmpMM:HistorySoftwareAgent").Editable);
+        string[] lists = cut ? ["XMP-xmpMM:History"] : [];
+        Assert.Equal(lists, ExifTool.CutShortLists(fields));
+    }
+
+    [Fact]
+    public void The_warning_ExifTool_gives_marks_a_cut_list_whose_fields_read_fewer_than_1000_entries()
+    {
+        var fields = ExifTool.Parse("""
+            [{"SourceFile": "long-history.png",
+              "XMP:XMP-xmpMM:HistoryInstanceID": ["xmp.iid:1", "xmp.iid:2"],
+              "XMP:XMP-xmpMM:HistorySoftwareAgent": "Camera app 1.0",
+              "XMP:XMP-xmpMM:InstanceID": "xmp.iid:3",
+              "XMP:XMP-iptcExt:LocationShownCity": "Venice",
+              "ExifTool:Warning": "[Minor] Extracted only 1000 xmpMM:History items. Ignore minor errors to extract all"}]
+            """);
+
+        Assert.Equal("XMP-xmpMM:History", fields.Single(f => f.Key == "XMP-xmpMM:HistoryInstanceID").CutShortList);
+        Assert.Equal("XMP-xmpMM:History", fields.Single(f => f.Key == "XMP-xmpMM:HistorySoftwareAgent").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-xmpMM:InstanceID").CutShortList);
+        Assert.Null(fields.Single(f => f.Key == "XMP-iptcExt:LocationShownCity").CutShortList);
+        Assert.Equal(["XMP-xmpMM:History"], ExifTool.CutShortLists(fields));
+
+        // A tag ID starts in lower case ("subject"); the field's name doesn't.
+        var keywords = ExifTool.Parse("""
+            [{"XMP:XMP-dc:Subject": ["a", "b"], "XMP:XMP-dc:Title": "x",
+              "ExifTool:Warning": "[Minor] Extracted only 1000 dc:subject items. Ignore minor errors to extract all"}]
+            """);
+        Assert.Equal("XMP-dc:Subject", keywords.Single(f => f.Key == "XMP-dc:Subject").CutShortList);
+        Assert.Null(keywords.Single(f => f.Key == "XMP-dc:Title").CutShortList);
+    }
+
     [Fact]
     public async Task Changes_removals_and_additions_go_into_a_copy_and_the_picture_stays_as_it_was()
     {
@@ -959,6 +1012,219 @@ public class MetadataTests(EngineFixture fx) : IClassFixture<EngineFixture>
         await ExifTool.ReadAsync(exifTool, path, Token);
 
         Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), clock.Elapsed.ToString());
+    }
+
+    /// <summary>One pixel and a text chunk compressed down to a thousandth of its size.</summary>
+    private static byte[] PngWithComment(int megabytes, char letter = 'a')
+    {
+        static byte[] Chunk(string type, byte[] data)
+        {
+            byte[] typed = [.. System.Text.Encoding.ASCII.GetBytes(type), .. data];
+            var crc = uint.MaxValue;
+            foreach (var value in typed)
+            {
+                crc ^= value;
+                for (var bit = 0; bit < 8; bit++)
+                    crc = (crc & 1) != 0 ? crc >> 1 ^ 0xEDB88320 : crc >> 1;
+            }
+            var length = new byte[4];
+            var sum = new byte[4];
+            System.Buffers.Binary.BinaryPrimitives.WriteInt32BigEndian(length, data.Length);
+            System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(sum, ~crc);
+            return [.. length, .. typed, .. sum];
+        }
+        using var text = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(text, System.IO.Compression.CompressionLevel.SmallestSize, leaveOpen: true))
+        {
+            var block = new byte[1024 * 1024];
+            Array.Fill(block, (byte)letter);
+            for (var i = 0; i < megabytes; i++)
+                zlib.Write(block);
+        }
+        using var pixels = new MemoryStream();
+        using (var zlib = new System.IO.Compression.ZLibStream(pixels, System.IO.Compression.CompressionLevel.Fastest, leaveOpen: true))
+            zlib.Write([0, 0]);
+        return
+        [
+            0x89, .. "PNG\r\n\u001a\n"u8,
+            .. Chunk("IHDR", [0, 0, 0, 1, 0, 0, 0, 1, 8, 0, 0, 0, 0]),
+            .. Chunk("zTXt", [.. "Comment\0\0"u8, .. text.ToArray()]),
+            .. Chunk("IDAT", pixels.ToArray()),
+            .. Chunk("IEND", []),
+        ];
+    }
+
+    [Fact]
+    public async Task A_small_file_that_unpacks_to_far_more_text_than_a_file_holds_is_refused()
+    {
+        var exifTool = ExifToolOrSkip();
+        var path = Path.Combine(fx.NewFolder(), "packed.png");
+        await File.WriteAllBytesAsync(path, PngWithComment(100), Token);
+
+        await Assert.ThrowsAsync<MetadataTooLargeException>(() => ExifTool.ReadAsync(exifTool, path, Token));
+    }
+
+    [Fact]
+    public async Task A_read_of_a_slow_file_stops_when_cancelled()
+    {
+        var exifTool = ExifToolOrSkip();
+        var path = Path.Combine(fx.NewFolder(), "packed.png");
+        await File.WriteAllBytesAsync(path, PngWithComment(1400, '\0'), Token);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        cancel.CancelAfter(TimeSpan.FromMilliseconds(300));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExifTool.ReadAsync(exifTool, path, cancel.Token));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), clock.Elapsed.ToString());
+    }
+
+    [Fact]
+    public async Task A_conversion_of_a_file_over_a_reads_limits_is_refused_and_says_why()
+    {
+        var converter = fx.Converters.OfType<ExifToolConverter>().Single();
+        Assert.SkipUnless(fx.Catalog.StatusOf(converter).IsAvailable, "Filee doesn't find this ExifTool (Settings → Engines).");
+        var path = Path.Combine(fx.NewFolder(), "packed.png");
+        await File.WriteAllBytesAsync(path, PngWithComment(100), Token);
+        var tool = BuiltInData.CreatePresets().Single(p => p.Id == BuiltInData.MetadataId);
+        tool.Output.Conflict = ConflictPolicy.Rename;
+
+        var job = await fx.ConvertAsync([path], MetadataTool.ConversionOf(tool, new MetadataEdits { RemoveAll = true }, replaceOriginal: false));
+
+        var file = Assert.Single(job.Files);
+        Assert.Equal((FileState.Failed, "error.metadata_refused"), (file.State, file.ErrorKey));
+    }
+
+    [Fact]
+    public async Task Remove_everything_takes_a_value_too_long_to_type_in()
+    {
+        var (path, exifTool) = await PhotoAsync();
+        var filled = Target(path, "filled");
+        await ExifTool.WriteAsync(exifTool, path, filled, Setting(("XMP-dc:Description", [new string('a', 70_000)])), Token);
+        var cleared = Target(path, "cleared");
+
+        await ExifTool.WriteAsync(exifTool, filled, cleared, new MetadataEdits { RemoveAll = true }, Token);
+
+        Assert.Null(ValueOf(await ExifTool.ReadAsync(exifTool, cleared, Token), "XMP-dc:Description"));
+    }
+
+    [Fact]
+    public async Task A_small_file_that_takes_gigabytes_and_prints_almost_nothing_is_refused()
+    {
+        // Zeros print as next to nothing, so only the memory limit can stop this: ExifTool peaks at 4 GB without it,
+        // through the launcher and its Perl on Windows too.
+        var exifTool = ExifToolOrSkip();
+        var path = Path.Combine(fx.NewFolder(), "packed.png");
+        await File.WriteAllBytesAsync(path, PngWithComment(1400, '\0'), Token);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        // Too much, not unreadable: what it printed before it was stopped is no reason.
+        await Assert.ThrowsAsync<MetadataTooLargeException>(() => ExifTool.ReadAsync(exifTool, path, Token));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(100), clock.Elapsed.ToString());
+    }
+
+    [Fact]
+    public async Task A_long_value_a_file_really_holds_is_read_whole()
+    {
+        var exifTool = ExifToolOrSkip();
+        var path = Path.Combine(fx.NewFolder(), "long.png");
+        await File.WriteAllBytesAsync(path, PngWithComment(4), Token);
+
+        var fields = await ExifTool.ReadAsync(exifTool, path, Token);
+
+        Assert.Equal(4 * 1024 * 1024, ValueOf(fields, "PNG:Comment")?.Length);
+    }
+
+    private static void MakeRunnable(string script)
+    {
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(script, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+    }
+
+    /// <summary>A file to read and where a script standing in for ExifTool goes: these need no ExifTool.</summary>
+    private (string Path, string Spy) SpyPaths()
+    {
+        var folder = fx.NewFolder();
+        var path = Path.Combine(folder, "photo.jpg");
+        File.WriteAllText(path, "x");
+        return (path, Path.Combine(folder, "exiftool"));
+    }
+
+    [Fact]
+    public async Task A_read_cancelled_stops_ExifTool_and_leaves_no_folder()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var (path, spy) = SpyPaths();
+        var seen = Path.Combine(Path.GetDirectoryName(spy)!, "seen.txt");
+        File.WriteAllText(spy, $"#!/bin/sh\n{{ echo $$; pwd; }} > \"{seen}.tmp\"\nmv \"{seen}.tmp\" \"{seen}\"\nexec sleep 300\n");
+        MakeRunnable(spy);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+
+        var read = ExifTool.ReadAsync(spy, path, cancel.Token);
+        while (!File.Exists(seen))
+            await Task.Delay(20, Token);
+        var lines = await File.ReadAllLinesAsync(seen, Token);
+        await cancel.CancelAsync();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => read);
+        Assert.False(Directory.Exists(lines[1]));
+        Assert.Throws<ArgumentException>(() => System.Diagnostics.Process.GetProcessById(int.Parse(lines[0])));
+    }
+
+    [Fact]
+    public async Task A_read_stops_when_cancelled_though_a_child_holds_the_output()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var (path, spy) = SpyPaths();
+        File.WriteAllText(spy, "#!/bin/sh\nsleep 30 &\nprintf '[{}]'\n");
+        MakeRunnable(spy);
+        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(Token);
+        cancel.CancelAfter(TimeSpan.FromSeconds(1));
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ExifTool.ReadAsync(spy, path, cancel.Token));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(10), clock.Elapsed.ToString());
+    }
+
+    [Fact]
+    public async Task ExifTool_stopped_part_way_through_printing_is_a_failed_read()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var (path, spy) = SpyPaths();
+        File.WriteAllText(spy, "#!/bin/sh\nprintf '[{\"File:FileType\": \"PN'\n");
+        MakeRunnable(spy);
+
+        await Assert.ThrowsAsync<IOException>(() => ExifTool.ReadAsync(spy, path, Token));
+    }
+
+    [Fact]
+    public async Task ExifTool_printing_without_end_is_stopped()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var (path, spy) = SpyPaths();
+        File.WriteAllText(spy, "#!/bin/sh\nexec yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+        MakeRunnable(spy);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAsync<MetadataTooLargeException>(() => ExifTool.ReadAsync(spy, path, Token));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(30), clock.Elapsed.ToString());
+    }
+
+    [Fact]
+    public async Task ExifTool_filling_the_memory_is_stopped()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var (path, spy) = SpyPaths();
+        File.WriteAllText(spy, "#!/bin/sh\nexec perl -e 'my @held; push @held, q(a) x 10_000_000 for 1..300; sleep 300'\n");
+        MakeRunnable(spy);
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+
+        await Assert.ThrowsAsync<MetadataTooLargeException>(() => ExifTool.ReadAsync(spy, path, Token));
+
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(60), clock.Elapsed.ToString());
     }
 
     [Fact]

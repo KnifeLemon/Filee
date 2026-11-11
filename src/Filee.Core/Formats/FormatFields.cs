@@ -64,12 +64,12 @@ public static class FormatFields
         ]),
         (FormatGrade.General,
         [
-            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "svg", "svgz", "emf", "vsd", "odg",
+            "tiff", "bmp", "ico", "avif", "jxl", "tga", "apng", "jxr", "livp", "exe", "svg", "svgz", "emf", "vsd", "odg",
             "docm", "dotx", "dotm", "doc", "odt", "ott", "rtf", "wps", "ofd", "abw", "pages", "pub", "eml", "msg",
             "p7m", "xlsm", "xltx", "xls", "ods", "ots", "tsv", "et", "numbers", "pptm", "potx", "potm", "ppsx", "ppt",
             "odp", "otp", "key", "dps", "md", "html", "mhtml", "opml", "json", "xml", "vcf", "ics", "epub", "kepub",
             "azw3", "fb2", "cbz", "cbr", "cb7", "cbt", "cbc", "m4v", "mkv", "webm", "avi", "wmv", "mpg", "ts",
-            "m2ts", "ogv", "m4b", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
+            "m2ts", "ogv", "m4b", "m4r", "aac", "flac", "ogg", "opus", "wma", "aiff", "weba", "mka", "qta", "7z", "rar",
             "dmg", "iso", "img", "alz", "egg", "split", "dxf", "srt", "vtt", "smi", "lrc"
         ]),
         (FormatGrade.Specialist,
@@ -77,12 +77,12 @@ public static class FormatFields
             "jp2", "psd", "psb", "ppm", "icns", "qoi", "dds", "cur", "xpm", "xbm", "pam", "pfm", "miff", "dcm",
             "exr", "hdr", "fits", "xcf", "kra", "raw", "eps", "ps", "ai", "cdr", "cgm", "plt", "dst", "fodg", "fodt",
             "fods", "fodp", "rst", "tex", "org", "adoc", "typ", "mediawiki", "dbk", "ipynb", "textile", "man",
-            "jsonl", "yaml", "toml", "har", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
+            "jsonl", "yaml", "toml", "har", "plist", "htmlz", "txtz", "chm", "dv", "mxf", "cavs", "usm", "m4s", "dav", "bik",
             "h265", "h264", "ac3", "caf", "mp2", "dss", "wv", "tta", "w64", "eac3", "ape", "tak", "dsf", "dff",
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "mcpack", "mcaddon",
             "mcworld", "mctemplate", "mrpack", "cab",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit"
+            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm"
         ]),
         (FormatGrade.Legacy,
         [
@@ -106,7 +106,7 @@ public static class FormatFields
         // ODF for version control, man pages, streaming segments, packages and compressed archives.
         ([
             "ppm", "icns", "qoi", "cur", "xpm", "xbm", "pam", "pfm", "miff", "fodg", "fodt", "fods", "fodp", "man",
-            "jsonl", "yaml", "toml", "har", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
+            "jsonl", "yaml", "toml", "har", "plist", "m4s", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz",
             "lz", "lzma", "jar", "cab", "cpio", "deb", "rpm"
         ], ["developer"]),
         // Markup sources, papers and outlines, maintenance-doc drawings (CGM), Calibre's ebook formats.

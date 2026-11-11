@@ -68,7 +68,7 @@ public sealed class MetadataWindowTests : IDisposable
         public MetadataEngines Engines => new()
         {
             Locate = () => Installed ? "/fake/exiftool" : null,
-            Read = (_, path) => Fails || Unreadable.Contains(Path.GetFileName(path))
+            Read = (_, path, _) => Fails || Unreadable.Contains(Path.GetFileName(path))
                 ? Task.FromException<IReadOnlyList<MetadataField>>(new IOException("bad file"))
                 : Task.FromResult<IReadOnlyList<MetadataField>>(Photo),
         };
@@ -234,7 +234,7 @@ public sealed class MetadataWindowTests : IDisposable
         var engines = new MetadataEngines
         {
             Locate = () => "/fake/exiftool",
-            Read = (_, _) => Task.FromResult<IReadOnlyList<MetadataField>>(
+            Read = (_, _, _) => Task.FromResult<IReadOnlyList<MetadataField>>(
                 [new("EXIF", "GPS", "GPSLatitude", "45", true), new("MakerNotes", "Panasonic", "City", "Venice", false), new("MakerNotes", "Sony", "FocusLocation", "1", false)]),
         };
         var vm = new MetadataViewModel(Files("trip.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
@@ -273,7 +273,7 @@ public sealed class MetadataWindowTests : IDisposable
         var engines = new MetadataEngines
         {
             Locate = () => "/fake/exiftool",
-            Read = (_, _) => Task.FromResult<IReadOnlyList<MetadataField>>([new("EXIF", "IFD0", "Make", "Acme", true)]),
+            Read = (_, _, _) => Task.FromResult<IReadOnlyList<MetadataField>>([new("EXIF", "IFD0", "Make", "Acme", true)]),
         };
         var vm = new MetadataViewModel(Files(name), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
         Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
@@ -344,7 +344,7 @@ public sealed class MetadataWindowTests : IDisposable
         var engines = new MetadataEngines
         {
             Locate = () => "/fake/exiftool",
-            Read = (_, _) => Task.FromResult<IReadOnlyList<MetadataField>>(
+            Read = (_, _, _) => Task.FromResult<IReadOnlyList<MetadataField>>(
                 [new("EXIF", "GPS", "GPSLatitude", "45", true), new("MPF", "MPF0", "NumberOfImages", "2", false)]),
         };
         var vm = new MetadataViewModel(Files("two.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
@@ -411,7 +411,7 @@ public sealed class MetadataWindowTests : IDisposable
         var engines = new MetadataEngines
         {
             Locate = () => "/fake/exiftool",
-            Read = (_, _) => Task.FromResult<IReadOnlyList<MetadataField>>([new("PNG", "PNG", "Parameters", "A prompt", false)]),
+            Read = (_, _, _) => Task.FromResult<IReadOnlyList<MetadataField>>([new("PNG", "PNG", "Parameters", "A prompt", false)]),
         };
         var vm = new MetadataViewModel(Files("art.png"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
         Wait(() => !vm.IsBusy && vm.Groups.Count > 0);
@@ -668,6 +668,302 @@ public sealed class MetadataWindowTests : IDisposable
         Assert.True(used < 500L * 1024 * 1024, $"{used} bytes allocated");
     }
 
+    [AvaloniaFact]
+    public void ExifTool_printing_without_end_puts_the_file_in_the_summary()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var spy = Path.Combine(_folder, "exiftool");
+        File.WriteAllText(spy, "#!/bin/sh\nexec yes aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(spy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var engines = new MetadataEngines { Locate = () => spy, NeedsPerl = _ => false };
+
+        var vm = new MetadataViewModel(Files("packed.png"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => vm.IsFinished, 30);
+
+        Assert.Equal(1, vm.FailedCount);
+        Assert.Equal("packed.png: " + AppHost.Get<ILocalizer>()["metadata.too_much"], Assert.Single(vm.Problems));
+    }
+
+    [AvaloniaFact]
+    public void ExifTool_filling_the_memory_puts_the_file_in_the_summary_as_too_much()
+    {
+        Assert.SkipUnless(!OperatingSystem.IsWindows(), "A shell script stands in for it.");
+        var spy = Path.Combine(_folder, "exiftool");
+        // Half a JSON array first, as ExifTool stopped part way would have printed.
+        File.WriteAllText(spy, "#!/bin/sh\nexec perl -e '$| = 1; print q([{\"SourceFile\": \"x\",); my @held; push @held, q(a) x 10_000_000 for 1..300; sleep 300'\n");
+        if (!OperatingSystem.IsWindows())
+            File.SetUnixFileMode(spy, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        var engines = new MetadataEngines { Locate = () => spy, NeedsPerl = _ => false };
+
+        var vm = new MetadataViewModel(Files("packed.png"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => vm.IsFinished, 60);
+
+        Assert.Equal(1, vm.FailedCount);
+        Assert.Equal("packed.png: " + AppHost.Get<ILocalizer>()["metadata.too_much"], Assert.Single(vm.Problems));
+    }
+
+    private MetadataViewModel Reading(IReadOnlyList<MetadataField> fields, params string[] files) => new(Files(files), Tool(),
+        AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(),
+        new MetadataEngines { Locate = () => "/fake/exiftool", Read = (_, _, _) => Task.FromResult(fields) }, (_, _) => { });
+
+    [AvaloniaTheory]
+    [InlineData(MetadataViewModel.FieldLimit, 0)]
+    [InlineData(MetadataViewModel.FieldLimit + 1, 1)]
+    public void A_file_with_more_fields_than_the_window_can_take_goes_to_the_summary(int count, int failed)
+    {
+        var vm = Reading([.. Enumerable.Range(0, count).Select(i => new MetadataField("XMP", "XMP-dc", $"Tag{i}", "x", true))], "many.jpg");
+
+        Wait(() => !vm.IsBusy);
+
+        Assert.Equal(failed, vm.Problems.Count);
+        if (failed > 0)
+            Assert.Equal("many.jpg: " + AppHost.Get<ILocalizer>()["metadata.too_much"], vm.Problems[0]);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(291, 900, 0)]
+    [InlineData(292, 900, 1)] // the text to lay out, each row counted up to what it shows
+    [InlineData(2900, 90, 0)]
+    [InlineData(2900, 100, 1)]
+    public void A_file_with_more_text_than_the_window_can_lay_out_goes_to_the_summary(int rows, int length, int failed)
+    {
+        var value = new string('a', length);
+        var vm = Reading([.. Enumerable.Range(0, rows).Select(i => new MetadataField("XMP", "XMP-dc", $"Tag{i}", value, true))], "text.jpg");
+
+        Wait(() => !vm.IsBusy, 30);
+
+        Assert.Equal(failed, vm.Problems.Count);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(MetadataViewModel.LongestName, 0)]
+    [InlineData(MetadataViewModel.LongestName + 1, 1)]
+    public void A_field_name_no_real_file_has_goes_to_the_summary(int length, int failed)
+    {
+        var vm = Reading([new MetadataField("PNG", "PNG", "GPS" + new string('a', length - "PNG:GPS".Length), "x", false)], "name.png");
+
+        Wait(() => !vm.IsBusy);
+
+        Assert.Equal(failed, vm.Problems.Count);
+    }
+
+    [AvaloniaFact]
+    public void The_notice_of_what_stays_names_a_dozen_fields_and_no_more()
+    {
+        var vm = Reading([.. Enumerable.Range(0, 200).Select(i => new MetadataField("PNG", "PNG", $"Location{i}", "here", false))], "many.png");
+
+        Wait(() => !vm.IsBusy);
+
+        Assert.Contains("Location11", vm.LocationNotice, StringComparison.Ordinal);
+        Assert.DoesNotContain("Location12", vm.LocationNotice, StringComparison.Ordinal);
+        Assert.Contains(", …", vm.LocationNotice, StringComparison.Ordinal);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(2000, 1)] // past what a row shows
+    [InlineData(40_000, 0)] // past what is searched
+    public void Search_looks_at_the_start_of_a_long_value(int before, int groups)
+    {
+        var vm = Reading([new MetadataField("XMP", "XMP-dc", "Description", new string('a', before) + " needle", true)], "long.jpg");
+        Wait(() => !vm.IsBusy);
+
+        vm.SearchText = "needle";
+        for (var i = 0; i < 20; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
+
+        Assert.Equal(groups, vm.Groups.Count);
+    }
+
+    [AvaloniaFact]
+    public void Above_500_rows_search_waits_for_a_pause_in_the_typing()
+    {
+        var vm = Reading([.. Enumerable.Range(0, 501).Select(i => new MetadataField("XMP", $"XMP-g{i}", "Title", $"value{i}", true))], "many.jpg");
+        Wait(() => !vm.IsBusy);
+        var groups = vm.Groups.Count;
+
+        vm.SearchText = "value1";
+        Dispatcher.UIThread.RunJobs();
+
+        Assert.Equal(groups, vm.Groups.Count);
+        Wait(() => vm.Groups.Count < groups);
+    }
+
+    [AvaloniaFact]
+    public void Closing_twice_is_closing_once()
+    {
+        var (vm, _, _) = Create();
+
+        vm.Dispose();
+        vm.Dispose();
+    }
+
+    [AvaloniaFact]
+    public void A_value_of_megabytes_is_shown_and_spoken_cut_short_and_stays_whole_in_the_file()
+    {
+        var value = new string('a', 4 * 1024 * 1024);
+        var vm = Reading([new MetadataField("XMP", "XMP-dc", "Title", value, true)], "long.jpg");
+        Wait(() => !vm.IsBusy);
+
+        var row = Row(vm, "XMP-dc:Title");
+
+        Assert.True(row.ShownValue.Length < 33_000);
+        Assert.True(row.SpokenValue.Length < 1100);
+        Assert.Equal(value, row.Value);
+        Assert.False(row.IsChanged);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(1, 32 * 1024, true)]
+    [InlineData(1, 32 * 1024 + 1, false)]
+    [InlineData(100, 1024, false)] // a list counts whole: the box holds all of it
+    [InlineData(1000, 1, true)]
+    public void A_value_too_long_for_a_text_box_is_locked_and_can_still_be_removed(int entries, int length, bool editable)
+    {
+        string[] items = [.. Enumerable.Repeat(new string('a', length), entries)];
+        var vm = Reading([new MetadataField("XMP", "XMP-dc", "Subject", items, entries > 1, true)], "long.jpg");
+        Wait(() => !vm.IsBusy);
+        var row = Row(vm, "XMP-dc:Subject");
+
+        row.EditCommand.Execute(null);
+
+        Assert.Equal(editable, row.IsEditing);
+        Assert.False(row.ShowsLock); // the × beside it works
+        Assert.Equal(editable, row.CanType);
+        Assert.Equal(editable, row.TooLongNote is null);
+        Assert.Equal(!editable, row.SpokenValue.Contains(AppHost.Get<ILocalizer>()["metadata.too_long"], StringComparison.Ordinal));
+        row.IsEditing = false;
+        vm.RemoveAllCommand.Execute(null);
+        Assert.True(row.IsRemoved);
+        Assert.True(vm.RemovesAll);
+    }
+
+    [AvaloniaFact]
+    public void A_field_of_a_list_ExifTool_read_only_part_of_says_why_it_cant_be_typed_in_and_can_still_be_removed()
+    {
+        var loc = AppHost.Get<ILocalizer>();
+        var vm = Reading(
+        [
+            new MetadataField("XMP", "XMP-xmpMM", "HistorySoftwareAgent", "Camera app 1.0", true) { CutShortList = "XMP-xmpMM:History" },
+            new MetadataField("XMP", "XMP-dc", "Title", "Long history", true),
+        ], "long-history.png");
+        Wait(() => !vm.IsBusy);
+        var row = Row(vm, "XMP-xmpMM:HistorySoftwareAgent");
+
+        row.EditCommand.Execute(null);
+
+        Assert.False(row.IsEditing);
+        Assert.False(row.CanType);
+        Assert.False(row.ShowsLock); // the × beside it works
+        Assert.Equal(loc.Format("metadata.list_cut_short", "XMP-xmpMM:History"), row.Note);
+        Assert.Contains(row.Note!, row.SpokenValue, StringComparison.Ordinal);
+        Assert.True(Row(vm, "XMP-dc:Title").CanType);
+        // Remove location can't check what wasn't read for a place, and says so before anything is saved.
+        Assert.Equal(loc.Format("metadata.location_unread", "XMP-xmpMM:History"), vm.LocationNotice);
+        row.RemoveCommand.Execute(null);
+        Assert.Equal(["XMP-xmpMM:HistorySoftwareAgent"], vm.Changes().Remove);
+    }
+
+    [AvaloniaFact]
+    public void A_long_value_removed_is_struck_through_like_any_other()
+    {
+        var vm = Reading([new MetadataField("XMP", "XMP-dc", "Title", new string('a', 40_000), true)], "long.jpg");
+        Wait(() => !vm.IsBusy);
+        var window = new MetadataWindow { DataContext = vm };
+        window.Show();
+        try
+        {
+            Row(vm, "XMP-dc:Title").RemoveCommand.Execute(null);
+            RenderTests.Pump();
+
+            var value = window.GetVisualDescendants().OfType<SelectableTextBlock>().Single(text => text.IsEffectivelyVisible);
+            Assert.NotNull(value.TextDecorations);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_long_prompt_in_a_picture_stays_whole_to_copy()
+    {
+        var prompt = new string('a', 30_000);
+        var vm = Reading([new MetadataField("PNG", "PNG", "Parameters", prompt, false)], "ai.png");
+        Wait(() => !vm.IsBusy);
+
+        Assert.Equal(prompt, Row(vm, "PNG:Parameters").ShownValue);
+    }
+
+    [AvaloniaFact]
+    public void A_value_cut_short_doesnt_cut_a_letter_in_two()
+    {
+        var vm = Reading([new MetadataField("XMP", "XMP-dc", "Title", "a" + string.Concat(Enumerable.Repeat("😀", 20_000)), true)], "long.jpg");
+        Wait(() => !vm.IsBusy);
+
+        var shown = Row(vm, "XMP-dc:Title").ShownValue;
+
+        Assert.EndsWith("😀…", shown, StringComparison.Ordinal);
+    }
+
+    [AvaloniaFact]
+    public void Closing_the_window_stops_the_read()
+    {
+        var started = false;
+        var stopped = new TaskCompletionSource();
+        var engines = new MetadataEngines
+        {
+            Locate = () => "/fake/exiftool",
+            Read = async (_, _, token) =>
+            {
+                started = true;
+                try
+                {
+                    await Task.Delay(Timeout.Infinite, token);
+                }
+                finally
+                {
+                    stopped.TrySetResult();
+                }
+                return [];
+            },
+        };
+        var vm = new MetadataViewModel(Files("slow.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+        Wait(() => started);
+
+        vm.Dispose();
+
+        Wait(() => stopped.Task.IsCompleted);
+    }
+
+    [AvaloniaFact]
+    public void A_window_closed_while_the_picture_loads_starts_no_read()
+    {
+        var looked = 0;
+        var engines = new MetadataEngines
+        {
+            Locate = () =>
+            {
+                looked++;
+                return "/fake/exiftool";
+            },
+            Read = (_, _, _) => Task.FromResult<IReadOnlyList<MetadataField>>([]),
+        };
+        var vm = new MetadataViewModel(Files("slow.jpg"), Tool(), AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
+
+        vm.Dispose();
+
+        for (var i = 0; i < 40; i++)
+        {
+            Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(5);
+        }
+        Assert.Equal(0, looked);
+    }
+
     /// <summary>XMP nested in itself: a reader that walks it takes about twice as long for every level and a half.</summary>
     private static byte[] NestedXmp(int levels) => Encoding.UTF8.GetBytes(
         "<x:xmpmeta xmlns:x='adobe:ns:meta/'><rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'><rdf:Description rdf:about='' xmlns:a='a:'>"
@@ -771,10 +1067,10 @@ public sealed class MetadataWindowTests : IDisposable
         var vm = new MetadataViewModel(Files("bad.jpg"), tool, AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), new MetadataEngines
         {
             Locate = engines.Locate,
-            Read = (path, file) =>
+            Read = (path, file, token) =>
             {
                 reads++;
-                return engines.Read(path, file);
+                return engines.Read(path, file, token);
             },
         }, (_, _) => { });
         Wait(() => vm.IsFinished);
@@ -793,7 +1089,7 @@ public sealed class MetadataWindowTests : IDisposable
         var engines = new MetadataEngines
         {
             Locate = () => "/fake/exiftool",
-            Read = (_, _) => Task.FromResult<IReadOnlyList<MetadataField>>([new("EXIF", "IFD0", "Make", "Apple", true)]),
+            Read = (_, _, _) => Task.FromResult<IReadOnlyList<MetadataField>>([new("EXIF", "IFD0", "Make", "Apple", true)]),
         };
         var vm = new MetadataViewModel(Files("plain.jpg"), tool, AppHost.Get<ILocalizer>(), AppHost.Get<UserDataStore>(), engines, (_, _) => { });
         Wait(() => !vm.IsBusy && vm.Groups.Count > 0);

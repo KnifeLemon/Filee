@@ -54,6 +54,7 @@ public static class EngineDownloads
         new("ffmpeg", ["ffmpeg"], 272_000_000, ["ffmpeg"]),
         new("calibre", ["calibre"], 663_000_000, ["calibre"]),
         new("tesseract", ["tesseract"], 168_000_000, ["tesseract"]),
+        new("upscayl-bin", OperatingSystem.IsWindows() && RuntimeInformation.ProcessArchitecture != Architecture.Arm64 ? ["upscayl-bin", "vcruntime", "vcomp14"] : OperatingSystem.IsWindows() ? [] : ["upscayl-bin"], 8_600_000, ["upscaler"]),
         .. (OperatingSystem.IsWindows() ? [new EnginePackage("whisper", ["whisper", "whisper-model"], 156_880_105, ["whisper"])] : Array.Empty<EnginePackage>()),
         // The Metadata tool reads with it and its conversions write with it (Filee.Engines.Metadata).
         new("exiftool", ["exiftool"], 30_000_000, ["exiftool"]),
@@ -63,6 +64,28 @@ public static class EngineDownloads
     public static long DownloadSize(EnginePackage package) => package.Components.Sum(c => Components.GetValueOrDefault(c)?.Size ?? 0);
 
     public static bool CanDownload(EnginePackage package) => package.Components.Count > 0 && package.Components.All(Components.ContainsKey);
+
+    /// <summary>
+    /// The name a browser saves the download under ("LibreOffice_26.2.6_Win_x86-64.msi"), which Filee also saves it
+    /// under for another computer (#447); "&lt;id&gt;-&lt;version&gt;" when the URL doesn't end in a usable file name.
+    /// </summary>
+    public static string FileName(EngineComponent component)
+    {
+        var name = Path.GetFileName(Uri.UnescapeDataString(new Uri(component.Url).AbsolutePath).Replace('\\', '/'));
+        return name.Length == 0 || name is "." or ".." || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            ? $"{component.Id}-{component.Version}"
+            : name;
+    }
+
+    /// <summary>
+    /// The package's downloads as text to copy (#447): per file its name, URL and SHA-256, to fetch them on a computer
+    /// with internet and install them here with "Install from downloaded files…".
+    /// </summary>
+    public static string DownloadList(EnginePackage package, IReadOnlyDictionary<string, EngineComponent> components) =>
+        string.Join(Environment.NewLine + Environment.NewLine, package.Components
+            .Where(components.ContainsKey)
+            .Select(id => components[id])
+            .Select(c => $"{FileName(c)}{Environment.NewLine}{c.Url}{Environment.NewLine}SHA-256: {c.Sha256}"));
 
     public static string? UnavailableReason(EnginePackage package)
     {
@@ -99,7 +122,7 @@ public static class EngineDownloads
     /// only needed for EPS / PostScript and for scans.
     /// </summary>
     public static bool IsSuggested(EnginePackage package) =>
-        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract");
+        CanDownload(package) && DownloadSize(package) < SuggestLimit && package.Id is not ("ghostscript" or "tesseract" or "upscayl-bin");
 
     /// <param name="macOSVersion">The running macOS; downloads whose minimumMacOS is newer are left out. Null keeps all.</param>
     public static IReadOnlyDictionary<string, EngineComponent> ComponentsForRuntime(string runtimeIdentifier, Version? macOSVersion = null)

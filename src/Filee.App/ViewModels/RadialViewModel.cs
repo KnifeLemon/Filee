@@ -25,6 +25,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     [ObservableProperty] private double _holeRatio = 0.42;
     [ObservableProperty] private double _sliceOpacity = 0.96;
 
+    /// <summary>The output format under the slices' names (Settings → Donut toolbar → Appearance).</summary>
+    [ObservableProperty] private bool _showCaptions = true;
+
     /// <summary>The other face has a slice for these files: Tab flips to it.</summary>
     [ObservableProperty] private bool _canFlip;
 
@@ -157,9 +160,15 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
         // A Shapefile selected with its .dbf, .shx, ... picks the donut of the .shp, not the one for unknown files, and
         // counts as one file.
-        var counted = CompanionFiles.WithoutCompanions(files);
-        var profile = ProfileSelector.Select(store.Profiles, counted);
-        var formats = ProfileSelector.DetectFormats(counted);
+        var folders = files.Where(Directory.Exists).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
+        var mainFiles = CompanionFiles.WithoutCompanions(files.Where(p => !folders.Contains(p)).ToList()).ToHashSet(Filee.Core.Platform.FileSystemPaths.Comparer);
+        var counted = files.Where(p => folders.Contains(p) || mainFiles.Contains(p)).ToList();
+        var foldersOnly = counted.Count > 0 && counted.All(folders.Contains);
+        var profile = (foldersOnly ? store.Profiles.FirstOrDefault(p => p.Id == "folders") : null)
+            ?? ProfileSelector.Select(store.Profiles, counted);
+        var formats = ProfileSelector.DetectFormats(counted.Where(p => !folders.Contains(p))).ToList();
+        if (folders.Count > 0)
+            formats.Add(FormatRegistry.FindById(FormatRegistry.Folder)!);
         // A turned-off field still shows the formats of the dropped files' own fields (FORMAT-RULES rule 4): a font file
         // offers font conversions with Fonts off. The front takes this local, not _off, which holds the last load's set
         // until the line after it.
@@ -219,7 +228,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             Items = face.Items;
         }
         var other = back ? _front : checkBack ? BackFace() : _back;
-        CanFlip = other?.IsUsable == true;
+        // The front was already shown, even when every slice was disabled. Do not strand the user on the back face.
+        CanFlip = back ? _front.Items.Count > 0 : other?.IsUsable == true;
         var how = FlipKey is { } key ? KeyNames.Display(key) : "";
         FlipHint = CanFlip && (FlipKey is not null || FlipWithWheel)
             ? loc.Format(back ? "donut.flip_to_front" : "donut.flip_to_back", how).Trim()
@@ -272,6 +282,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                     : p.TargetFormat == BuiltInData.SameAsSource
                         ? string.Join("/", formats.Select(f => f.DisplayName).Take(2))
                         : FormatLabels.NameOf(loc, p.TargetFormat),
+                KeepsCaption = p.IsCopyToFolder,
                 IsEnabled = reason is null,
                 DisabledReason = reason,
             };
@@ -329,6 +340,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         OuterRadius = Math.Clamp(store.Settings.Donut.OuterRadius, 100, 240);
         HoleRatio = store.Settings.Donut.HoleRatio;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1);
+        ShowCaptions = store.Settings.Donut.ShowCaptions;
         FlipKey = store.Settings.Donut.EffectiveFlipKey(store.Settings.Triggers);
         FlipWithWheel = store.Settings.Donut.FlipWithWheel;
     }

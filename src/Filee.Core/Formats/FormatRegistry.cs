@@ -7,15 +7,21 @@ namespace Filee.Core.Formats;
 /// <summary>Lookup table of every format Filee knows about.</summary>
 public static class FormatRegistry
 {
-    /// <summary>Pseudo format of the "Extract" preset: the output is a folder with the archive's files.</summary>
+    /// <summary>Pseudo format for archive extraction outputs and folders explicitly classified at input handling.</summary>
     public const string Folder = "folder";
+
+    /// <summary>
+    /// Windows programs and libraries (.exe, .dll), read as the icon Explorer shows for them (#1188). They are never run.
+    /// </summary>
+    public const string Program = "exe";
 
     /// <summary>All known formats. Order is the order shown in format pickers.</summary>
     public static IReadOnlyList<FileFormat> Known { get; } =
     [
         // Raster images
         new("png", "PNG", FormatCategory.Image, ["png", "png_large"]),
-        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jif", "jpg_large"]),
+        // Insta360 .insp photos (#711) are JPEGs of both fisheye circles; stitching them needs Insta360's lens data.
+        new("jpg", "JPG", FormatCategory.Image, ["jpg", "jpeg", "jpe", "jfif", "jif", "insp", "jpg_large"]),
         new("webp", "WEBP", FormatCategory.Image, ["webp"]),
         new("tiff", "TIFF", FormatCategory.Image, ["tiff", "tif"]),
         new("bmp", "BMP", FormatCategory.Image, ["bmp", "dib"]),
@@ -59,6 +65,8 @@ public static class FormatRegistry
         new("kra", "Krita (KRA)", FormatCategory.Image, ["kra", "kra~"], Writable: false),
         // iPhone Live Photo as one ZIP (iCloud downloads): the photo, or its video with FFmpeg.
         new("livp", "Live Photo (LIVP)", FormatCategory.Image, ["livp"], Writable: false),
+        // A Windows program or library (#1188), read as its icon: the picture Explorer shows for the file.
+        new(Program, "Windows program icon (EXE, DLL)", FormatCategory.Image, ["exe", "dll"], Writable: false),
         new("raw", "RAW", FormatCategory.Image,
             ["dng", "cr2", "cr3", "crw", "nef", "nrw", "arw", "srf", "sr2", "orf", "rw2", "raf", "pef", "dcr", "kdc",
              "erf", "mos", "mrw", "x3f", "3fr", "fff", "iiq", "mef", "rwl", "srw", "raw"], Writable: false),
@@ -183,6 +191,8 @@ public static class FormatRegistry
         // A browser's recorded network requests (HTTP Archive): JSON, read as one table row per request (issue #328).
         new("har", "HAR", FormatCategory.Data, ["har"], Writable: false),
         new("ics", "iCalendar", FormatCategory.Data, ["ics", "ical"]),
+        // The settings and data files of macOS and iOS apps, XML or binary, read into the data tree (issue #1256).
+        new("plist", "Property list", FormatCategory.Data, ["plist"], Writable: false),
 
         // E-books
         new("epub", "EPUB", FormatCategory.Ebook, ["epub"]),
@@ -213,7 +223,8 @@ public static class FormatRegistry
         // Video
         new("mp4", "MP4", FormatCategory.Video, ["mp4"]),
         new("m4v", "M4V", FormatCategory.Video, ["m4v"]),
-        new("mov", "MOV", FormatCategory.Video, ["mov", "qt"]),
+        // Some downloaders name video/quicktime files ".quicktime" (#1283); MOV stays the extension Filee writes.
+        new("mov", "MOV", FormatCategory.Video, ["mov", "qt", "quicktime"]),
         new("mkv", "MKV", FormatCategory.Video, ["mkv"]),
         new("webm", "WEBM", FormatCategory.Video, ["webm"]),
         new("avi", "AVI", FormatCategory.Video, ["avi", "divx"]),
@@ -255,6 +266,8 @@ public static class FormatRegistry
         new("mp3", "MP3", FormatCategory.Audio, ["mp3"]),
         new("m4a", "M4A", FormatCategory.Audio, ["m4a"]),
         new("m4b", "M4B", FormatCategory.Audio, ["m4b"]),
+        // iPhone ringtones (#1291): AAC in the same container as M4A, which iOS takes as a ringtone by its .m4r extension.
+        new("m4r", "M4R", FormatCategory.Audio, ["m4r"]),
         new("aac", "AAC", FormatCategory.Audio, ["aac"]),
         new("wav", "WAV", FormatCategory.Audio, ["wav", "wave"]),
         new("flac", "FLAC", FormatCategory.Audio, ["flac"]),
@@ -317,7 +330,7 @@ public static class FormatRegistry
         new("deb", "DEB", FormatCategory.Archive, ["deb"], Writable: false),
         new("rpm", "RPM", FormatCategory.Archive, ["rpm"], Writable: false),
         new("dmg", "DMG", FormatCategory.Archive, ["dmg"], Writable: false),
-        new("iso", "ISO", FormatCategory.Archive, ["iso"], Writable: false),
+        new("iso", "ISO", FormatCategory.Archive, ["iso"]),
         new("img", "IMG", FormatCategory.Archive, ["img"], Writable: false),
         new("lha", "LHA", FormatCategory.Archive, ["lha", "lzh"], Writable: false),
         new("arj", "ARJ", FormatCategory.Archive, ["arj"], Writable: false),
@@ -366,6 +379,8 @@ public static class FormatRegistry
         new("shp", "Shapefile", FormatCategory.Geo, ["shp"]),
         // Activity files read by the geo engine (issue #451); .fits/.fts stay FITS.
         new("fit", "Garmin FIT", FormatCategory.Geo, ["fit"], Writable: false),
+        // OpenStreetMap XML exports read by the geo engine (issue #713); the binary .osm.pbf is not read.
+        new("osm", "OpenStreetMap", FormatCategory.Geo, ["osm"], Writable: false),
     ];
 
     private static readonly Dictionary<string, FileFormat> ById =
@@ -392,6 +407,12 @@ public static class FormatRegistry
 
     /// <summary>Detects the format of a file from its extension, or <c>null</c> if it is not supported.</summary>
     public static FileFormat? Detect(string path) => FindByExtension(ExtensionOf(path));
+
+    /// <summary>
+    /// True for a Windows program or library (<see cref="Program"/>). Filee reads its icon when the file is dropped or
+    /// named, but never opens one (it would start the program) and never takes one from a folder by itself.
+    /// </summary>
+    public static bool IsProgram(string path) => Detect(path)?.Id == Program;
 
     /// <summary>
     /// The extension of <paramref name="path"/> without the dot, including known two-part extensions

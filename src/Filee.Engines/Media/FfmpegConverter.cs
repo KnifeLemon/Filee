@@ -7,7 +7,7 @@
 // Live / Motion Photos (Android, iPhone) give their video when a preset asks for it (LivePhotoSource, MotionPhoto), and
 // a clip of a video becomes one (LivePhotoWriter). Clips and pictures are joined into one file by IMediaJoiner
 // (MediaJoining), and "Remove metadata" copies a file's streams without its tags. "Cut a clip" copies or encodes a part
-// of a video (CutClipAsync).
+// of a video (CutClipAsync), and a video is split into parts by stream copy (SplitAsync).
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
@@ -136,6 +136,8 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             return await FrameSequenceWriter.ConvertAsync(ffmpeg, step, input, info, progress, cancellationToken);
         if (step.Preset.CutsClipOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
             return await CutClipAsync(ffmpeg, ffprobe, step, input, info, progress, cancellationToken);
+        if (step.Preset.SplitsVideoOf(step.From) && MediaEncoding.VideoTargets.ContainsKey(step.To))
+            return await SplitAsync(ffmpeg, step, input, info, progress, cancellationToken);
 
         var output = step.Output.Allocate(FormatRegistry.Get(step.To).PrimaryExtension);
         if (output is null)
@@ -205,21 +207,30 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
 
         // Video → animated GIF / APNG can play faster or slower (the image options' playback speed).
         var speed = step.To is "gif" or "apng" ? step.Preset.Image.PlaybackSpeed : 1;
-        IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder) => still
+        IReadOnlyList<FfmpegPass> Plan(HardwareEncoder? encoder, bool subtitles) => still
             ? MediaEncoding.PlanStill(input, output, step.To, media, info)
-            : MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, cover, encoders, encoder, speed, crop: crop);
+            : MediaEncoding.Plan(input, output, step.To, media, info, step.WorkDirectory, cover, encoders, encoder, speed, crop: crop,
+                subtitles: subtitles);
+        IReadOnlyList<FfmpegPass> Capped(bool subtitles) =>
+            kbps > 0 ? MediaEncoding.WithMaxRate(Plan(hardware, subtitles), kbps) : Plan(hardware, subtitles);
         // Throws for a missing stream before anything is written (an existing file of that name stays untouched).
-        var passes = kbps > 0 ? MediaEncoding.WithMaxRate(Plan(hardware), kbps) : Plan(hardware);
+        var passes = Capped(subtitles: true);
         // FFmpeg reports the position in the output, which a speed change makes longer or shorter.
-        var duration = still ? MediaEncoding.StillDuration : info.Duration / speed;
+        var duration = still ? MediaEncoding.StillDuration
+            : MediaEncoding.RingtoneRange(step.To, media, info) is { } ringtone ? TimeSpan.FromSeconds(ringtone.Length)
+            : info.Duration / speed;
         // With a size limit the first encode takes most of the bar, a second one (if needed) the rest.
         var encoding = limit > 0 && progress is not null ? new Progress<double>(p => progress.Report(p * 0.9)) : progress;
+        var withoutSubtitles = false;
         try
         {
-            await RunWithFallbackAsync(passes, hardware, Plan,
-                planned => RunPassesAsync(ffmpeg, planned, output, duration, encoding, cancellationToken), output, _logger, cancellationToken);
+            withoutSubtitles = await RunWithoutSubtitlesOnFailureAsync(MediaEncoding.MapsSubtitles(passes),
+                subtitles => RunWithFallbackAsync(subtitles ? passes : Capped(subtitles: false), hardware, encoder => Plan(encoder, subtitles),
+                    planned => RunPassesAsync(ffmpeg, planned, output, duration, encoding, cancellationToken), output, _logger, cancellationToken),
+                output, _logger, cancellationToken);
             if (limit > 0)
-                await FitAgainAsync(ffmpeg, step, input, output, media, info, encoders, cover, crop, limit, kbps, progress, cancellationToken);
+                await FitAgainAsync(ffmpeg, step, input, output, media, info, encoders, cover, crop, limit, kbps, !withoutSubtitles, progress,
+                    cancellationToken);
         }
         catch
         {
@@ -228,6 +239,16 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             throw;
         }
 
+        // The user learns that the subtitles are gone (#789); Blu-ray and DVD subtitles can't go into MP4, MOV or WebM,
+        // and MKV keeps them.
+        if (withoutSubtitles)
+            step.Notice?.Invoke("notice.subtitles_not_kept");
+        else if (!still && MediaEncoding.LeavesOutPictureSubtitles(step.To, info))
+            step.Notice?.Invoke("notice.picture_subtitles_left_out");
+
+        // A ringtone is only a part of the sound (at most 40 s): the result says so instead of leaving the person to wonder.
+        if (MediaEncoding.RingtoneCutShort(step.To, media, info))
+            step.Notice?.Invoke("notice.ringtone_cut");
         progress?.Report(1);
         return [output];
     }
@@ -238,15 +259,16 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     /// when that still doesn't fit (or the length is unknown), rather than hand over a file too large.
     /// </summary>
     private static async Task FitAgainAsync(string ffmpeg, ConversionStep step, string input, string output, MediaOptions fitting,
-        MediaInfo info, IReadOnlySet<string>? encoders, CoverExtras? cover, string? crop, long limit, int kbps, IProgress<double>? progress,
-        CancellationToken cancellationToken)
+        MediaInfo info, IReadOnlySet<string>? encoders, CoverExtras? cover, string? crop, long limit, int kbps, bool subtitles,
+        IProgress<double>? progress, CancellationToken cancellationToken)
     {
         var size = new FileInfo(output).Length;
         if (size > limit && kbps > 0)
         {
             kbps = (int)(kbps * (double)limit / size * 0.95);
             var again = progress is null ? null : new Progress<double>(p => progress.Report(0.9 + p * 0.1));
-            var passes = MediaEncoding.AtBitrate(MediaEncoding.Plan(input, output, step.To, fitting, info, step.WorkDirectory, cover, encoders, null, 1, crop: crop), kbps);
+            var passes = MediaEncoding.AtBitrate(MediaEncoding.Plan(input, output, step.To, fitting, info, step.WorkDirectory, cover, encoders, null, 1, crop: crop,
+                subtitles: subtitles), kbps);
             await RunPassesAsync(ffmpeg, passes, output, info.Duration, again, cancellationToken);
             size = new FileInfo(output).Length;
         }
@@ -476,6 +498,50 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
     }
 
     /// <summary>
+    /// A video in parts (#1259), every so many seconds or in equal parts, copied as it is (<see cref="MediaEncoding.SplitCopy"/>).
+    /// FFmpeg writes the parts into the work directory, and only once all are written do they move to their places as
+    /// <c>name_part1</c>, <c>name_part2</c>, …: a failed or cancelled split leaves nothing half-done next to the video,
+    /// and the number of parts (a key frame decides where each ends) is known before any name is taken.
+    /// </summary>
+    private static async Task<IReadOnlyList<string>> SplitAsync(string ffmpeg, ConversionStep step, string input, MediaInfo info,
+        IProgress<double>? progress, CancellationToken cancellationToken)
+    {
+        // A file split into its own format holds its streams already.
+        if (step.From != step.To && !MediaEncoding.SplitTakes(step.To, info, step.Preset.Media))
+            throw new ConversionRefusedException("error.split_needs_copy", $"{info.Video?.Codec}/{info.Audio?.Codec} → {step.To}");
+        var extension = FormatRegistry.Get(step.To).PrimaryExtension.TrimStart('.');
+        // In the job's work directory, which the queue deletes afterwards, after a failure too.
+        var scratch = Directory.CreateDirectory(Path.Combine(step.WorkDirectory, "split-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        // The segment muxer reads % in the name as the part number: a % in the folder stays a %.
+        var pattern = Path.Combine(scratch.Replace("%", "%%"), "part%04d." + extension);
+        var pass = new FfmpegPass(MediaEncoding.SplitCopy(input, pattern, step.To, step.Preset.Media, info), 1);
+        await RunPassAsync(ffmpeg, pass, info.Duration, progress, 0, cancellationToken);
+        var parts = Directory.GetFiles(scratch, "part*." + extension).Order(StringComparer.Ordinal).ToList();
+        if (parts.Count == 0 || parts.Any(part => new FileInfo(part).Length == 0))
+            throw new InvalidOperationException("FFmpeg did not write any output.");
+
+        var written = new List<string>();
+        var digits = parts.Count.ToString(System.Globalization.CultureInfo.InvariantCulture).Length;
+        for (var i = 0; i < parts.Count; i++)
+        {
+            var output = step.Output.Allocate(extension, PartSuffix(i + 1, digits));
+            if (output is null)
+                continue;
+            File.Move(parts[i], output, overwrite: true);
+            written.Add(output);
+        }
+        progress?.Report(1);
+        return written;
+    }
+
+    /// <summary>
+    /// The name suffix of part <paramref name="number"/>: <c>_part1</c>, or <c>_part01</c> when there are ten or more, so
+    /// the parts sort in order everywhere.
+    /// </summary>
+    internal static string PartSuffix(int number, int digits) =>
+        "_part" + number.ToString(new string('0', Math.Max(1, digits)), System.Globalization.CultureInfo.InvariantCulture);
+
+    /// <summary>
     /// The video of a Live / Motion Photo as <see cref="ConversionStep.To"/>: copied out of the photo (or from next to
     /// it) into the work directory, converted there like any video and moved into place once finished, so a failure
     /// never touches a file the output would replace.
@@ -549,6 +615,46 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
             await run(plan(null));
         }
     }
+
+    /// <summary>
+    /// Runs the conversion with the subtitle tracks (<paramref name="run"/>(true)); when FFmpeg fails with them, once more
+    /// without (#789). A video converted before subtitles were kept must not start failing over a track FFmpeg can't
+    /// convert or mux. Returns true when the subtitles were left out. Cancellation and failures that are about the
+    /// output, not the subtitles (<see cref="RetriesWithoutSubtitles"/>), are not retried.
+    /// </summary>
+    internal static async Task<bool> RunWithoutSubtitlesOnFailureAsync(bool mapsSubtitles, Func<bool, Task> run, string output, ILogger logger,
+        CancellationToken cancellationToken)
+    {
+        if (!mapsSubtitles)
+        {
+            await run(true);
+            return false;
+        }
+        try
+        {
+            await run(true);
+            return false;
+        }
+        catch (Exception ex) when (RetriesWithoutSubtitles(ex, cancellationToken))
+        {
+            logger.LogWarning("{File}: FFmpeg failed with the subtitle tracks ({Reason}); converting it again without them", output, ex.Message);
+            TryDelete(output);
+            await run(false);
+            return true;
+        }
+    }
+
+    /// <summary>
+    /// True when a conversion that failed with subtitle tracks is worth running again without them: FFmpeg itself failed
+    /// (not cancelled, not stalled), and not because the output can't be written (a full disk, no permission), which
+    /// would fail the same way again.
+    /// </summary>
+    internal static bool RetriesWithoutSubtitles(Exception error, CancellationToken cancellationToken) =>
+        error is InvalidOperationException && !cancellationToken.IsCancellationRequested
+        && !OutputErrors.Any(reason => error.Message.Contains(reason, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>FFmpeg's words (its C library's error texts) for an output it can't write.</summary>
+    private static readonly string[] OutputErrors = ["No space left on device", "Permission denied", "File too large", "Disk quota exceeded"];
 
     /// <summary>Runs every pass, then checks that FFmpeg wrote something.</summary>
     private static async Task RunPassesAsync(string ffmpeg, IReadOnlyList<FfmpegPass> passes, string output, TimeSpan? duration,

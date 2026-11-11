@@ -5,6 +5,7 @@ using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using Filee.Core.Conversion;
 using Filee.Engines.Infrastructure;
 using SharpCompress.Compressors.ZStandard;
 
@@ -14,9 +15,13 @@ public sealed class EngineInstallerTests : IDisposable
 {
     private readonly string _root = Path.Combine(Path.GetTempPath(), "filee-installer-" + Guid.NewGuid().ToString("N")[..8]);
 
+    /// <summary>Where the user keeps engine files they brought (#447), outside the engines folder.</summary>
+    private readonly string _files = Path.Combine(Path.GetTempPath(), "filee-installer-files-" + Guid.NewGuid().ToString("N")[..8]);
+
     public void Dispose()
     {
-        try { EngineInstaller.DeleteFolder(_root); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        foreach (var folder in new[] { _root, _files })
+            try { EngineInstaller.DeleteFolder(folder); } catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     [Fact]
@@ -681,6 +686,283 @@ public sealed class EngineInstallerTests : IDisposable
 
         Assert.Equal(["doc/LICENSE", "libtesseract-5.dll", "tesseract.exe"],
             Directory.GetFiles(root, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(root, f).Replace('\\', '/')).Order(StringComparer.Ordinal));
+    }
+
+    [Fact]
+    public async Task Model_components_are_copied_and_marked_installed()
+    {
+        var modelBytes = "ggml-model-bytes"u8.ToArray();
+        var component = Component("whisper-model", "model", modelBytes);
+        var server = new FakeServer(new() { [component.Url] = modelBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("whisper", ["whisper-model"], modelBytes.Length, ["whisper"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", "whisper-model.model")));
+        Assert.True(File.Exists(Path.Combine(_root, "whisper-model", ".filee-component")));
+        Assert.True(installer.IsInstalled(package));
+        Assert.True(installer.IsUpToDate(package));
+    }
+
+    [Fact]
+    public async Task Ncnn_components_write_custom_marker_and_are_reported_installed()
+    {
+        var paramBytes = "ncnn-param-bytes"u8.ToArray();
+        var component = Component("model-param", "ncnn-param", paramBytes);
+        var server = new FakeServer(new() { [component.Url] = paramBytes });
+        var installer = Installer(server, component);
+        var package = new EnginePackage("ncnn-test", ["model-param"], paramBytes.Length, ["upscaler"]);
+
+        Assert.False(installer.IsInstalled(package));
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "model", ".model-param")));
+        Assert.True(installer.IsInstalled(package));
+    }
+
+    [Fact]
+    public async Task Uninstalling_a_package_leaves_components_shared_with_another_installed_package_intact()
+    {
+        var archiveA = Zip(("toolA.exe", "binaryA"));
+        var compA = Component("toolA", "zip", archiveA);
+        var archiveB = Zip(("toolB.exe", "binaryB"));
+        var compB = Component("toolB", "zip", archiveB);
+        var archiveShared = Zip(("shared.dll", "sharedDll"));
+        var compShared = Component("shared", "zip", archiveShared);
+
+        var server = new FakeServer(new()
+        {
+            [compA.Url] = archiveA,
+            [compB.Url] = archiveB,
+            [compShared.Url] = archiveShared,
+        });
+
+        var packageA = new EnginePackage("pkgA", ["toolA", "shared"], 1000, ["toolA"]);
+        var packageB = new EnginePackage("pkgB", ["toolB", "shared"], 1000, ["toolB"]);
+
+        var installer = new EngineInstaller(new HttpClient(server), _root,
+            new Dictionary<string, EngineComponent>
+            {
+                ["toolA"] = compA,
+                ["toolB"] = compB,
+                ["shared"] = compShared,
+            },
+            packages: [packageA, packageB]);
+
+        await installer.InstallAsync(packageA, null, TestContext.Current.CancellationToken);
+        await installer.InstallAsync(packageB, null, TestContext.Current.CancellationToken);
+
+        Assert.True(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgA: shared component is still used by pkgB, so shared must stay intact.
+        installer.Uninstall(packageA);
+
+        Assert.False(installer.IsInstalled(packageA));
+        Assert.True(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolA")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.True(Directory.Exists(Path.Combine(_root, "shared")));
+
+        // Uninstall pkgB: now shared is no longer used by any installed package, so it is removed.
+        installer.Uninstall(packageB);
+
+        Assert.False(installer.IsInstalled(packageB));
+        Assert.False(Directory.Exists(Path.Combine(_root, "toolB")));
+        Assert.False(Directory.Exists(Path.Combine(_root, "shared")));
+    }
+
+    [Fact]
+    public void An_empty_package_is_neither_installed_nor_up_to_date()
+    {
+        var empty = new EnginePackage("empty", [], 0, []);
+        var installer = Installer(new FakeServer([]));
+
+        Assert.False(installer.IsInstalled(empty));
+        Assert.False(installer.IsUpToDate(empty));
+    }
+
+    [Fact]
+    public async Task CopyRuntime_copies_vcruntime_and_vcomp14_dlls_next_to_zip_component()
+    {
+        var vcConda = Conda(("Library/bin/vcruntime140.dll", "vc"));
+        var vcComp = Conda(("Library/bin/vcomp140.dll", "vcomp"));
+        // The installer checks for the program under its name on this OS.
+        var program = OperatingSystem.IsWindows() ? "upscayl-bin.exe" : "upscayl-bin";
+        var zip = Zip(($"tool/{program}", "bin"));
+
+        var compVc = Component("vcruntime", "conda", vcConda);
+        var compVcomp = Component("vcomp14", "conda", vcComp);
+        var compTool = Component("upscayl-bin", "zip", zip);
+
+        var package = new EnginePackage("upscayl-bin", ["upscayl-bin", "vcruntime", "vcomp14"], 1, ["upscaler"]);
+        var server = new FakeServer(new()
+        {
+            [compVc.Url] = vcConda,
+            [compVcomp.Url] = vcComp,
+            [compTool.Url] = zip,
+        });
+
+        var installer = Installer(server, compVc, compVcomp, compTool);
+        await installer.InstallAsync(package, null, TestContext.Current.CancellationToken);
+
+        var toolDir = Path.Combine(_root, "upscayl-bin");
+        Assert.True(File.Exists(Path.Combine(toolDir, program)));
+        Assert.True(File.Exists(Path.Combine(toolDir, "vcruntime140.dll")));
+        Assert.True(File.Exists(Path.Combine(toolDir, "vcomp140.dll")));
+        Assert.Equal("vc", File.ReadAllText(Path.Combine(toolDir, "vcruntime140.dll")));
+        Assert.Equal("vcomp", File.ReadAllText(Path.Combine(toolDir, "vcomp140.dll")));
+    }
+
+    // ───────────────────────── Without internet (#447) ─────────────────────────
+
+    /// <summary>The downloads in a folder outside the engines folder, as on a USB stick or in Downloads.</summary>
+    private string Files(params (EngineComponent Component, byte[] Bytes)[] files)
+    {
+        Directory.CreateDirectory(_files);
+        foreach (var (component, bytes) in files)
+            File.WriteAllBytes(Path.Combine(_files, EngineDownloads.FileName(component)), bytes);
+        return _files;
+    }
+
+    [Fact]
+    public async Task Files_brought_from_another_computer_are_checked_and_installed_without_the_network()
+    {
+        var archive = Zip(("tool-1.0/tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var server = new FakeServer([]);
+        var installer = Installer(server, component);
+        var package = new EnginePackage("tool", ["tool"], 1000, ["tool"]);
+        // A file of another size in the folder is passed over.
+        File.WriteAllText(Path.Combine(Files((component, archive)), "notes.txt"), "not an engine");
+        var reports = new List<EngineInstallProgress>();
+
+        await installer.InstallFromFilesAsync(package, [_files], new SyncProgress(reports.Add), TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "tool", "tool.exe")));
+        Assert.True(installer.IsUpToDate(package));
+        Assert.Empty(server.Requests);
+        Assert.Contains(reports, r => r.Stage == EngineInstallStage.Copying);
+        Assert.DoesNotContain(reports, r => r.Stage == EngineInstallStage.Downloading);
+        // The user's file stays where it was; the copy that was unpacked is gone.
+        Assert.Equal(archive, File.ReadAllBytes(Path.Combine(_files, EngineDownloads.FileName(component))));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, ".downloads")));
+    }
+
+    [Fact]
+    public async Task A_file_of_the_right_size_under_another_name_is_found_too()
+    {
+        var archive = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", archive);
+        var installer = Installer(new FakeServer([]), component);
+        Directory.CreateDirectory(_files);
+        var renamed = Path.Combine(_files, "tool (1).zip");
+        File.WriteAllBytes(renamed, archive);
+
+        await installer.InstallFromFilesAsync(new EnginePackage("tool", ["tool"], 1, ["tool"]), [renamed], null, TestContext.Current.CancellationToken);
+
+        Assert.True(File.Exists(Path.Combine(_root, "tool", "tool.exe")));
+    }
+
+    [Fact]
+    public async Task A_wrong_file_installs_nothing_of_the_package()
+    {
+        var tool = Zip(("tool.exe", "binary"));
+        var expected = Zip(("other.exe", "binary"));
+        var toolComponent = Component("tool", "zip", tool);
+        var otherComponent = Component("other", "zip", expected);
+        // The download's size with other bytes: a damaged copy or another build.
+        var damaged = expected.ToArray();
+        damaged[^10] ^= 0xFF;
+        var installer = Installer(new FakeServer([]), toolComponent, otherComponent);
+        var package = new EnginePackage("pair", ["tool", "other"], 1, []);
+
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => installer.InstallFromFilesAsync(package,
+            [Files((toolComponent, tool), (otherComponent, damaged))], null, TestContext.Current.CancellationToken));
+
+        Assert.Equal("error.engine_file_mismatch", error.ErrorKey);
+        Assert.Equal(EngineDownloads.FileName(otherComponent), error.Detail);
+        // The first file was fine, but nothing is unpacked before every file has been checked.
+        Assert.False(Directory.Exists(Path.Combine(_root, "tool")));
+        Assert.False(installer.IsInstalled(package));
+        Assert.Empty(Directory.GetFiles(Path.Combine(_root, ".downloads")));
+    }
+
+    [Fact]
+    public async Task Missing_files_are_named_and_nothing_is_installed()
+    {
+        var tool = Zip(("tool.exe", "binary"));
+        var filter = Zip(("filter.xml", "<filter/>"));
+        var toolComponent = Component("tool", "zip", tool);
+        var filterComponent = Component("filter", "zip", filter);
+        var installer = Installer(new FakeServer([]), toolComponent, filterComponent);
+        var package = new EnginePackage("tool", ["tool", "filter"], 1, ["tool"]);
+
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() =>
+            installer.InstallFromFilesAsync(package, [Files((toolComponent, tool))], null, TestContext.Current.CancellationToken));
+
+        Assert.Equal("error.engine_files_missing", error.ErrorKey);
+        Assert.Equal("filter.zip", error.Detail);
+        Assert.False(Directory.Exists(Path.Combine(_root, "tool")));
+    }
+
+    [Fact]
+    public async Task Saved_files_install_on_another_computer_and_are_not_downloaded_twice()
+    {
+        var tool = Zip(("tool-1.0/tool.exe", "binary"));
+        var filter = Zip(("filter.xml", "<filter/>"));
+        var toolComponent = Component("tool", "zip", tool);
+        var filterComponent = Component("filter", "zip", filter);
+        var server = new FakeServer(new() { [toolComponent.Url] = tool, [filterComponent.Url] = filter });
+        var installer = Installer(server, toolComponent, filterComponent);
+        var package = new EnginePackage("tool", ["tool", "filter"], 1, ["tool"]);
+        var folder = Path.Combine(_files, "Filee engines");
+        var reports = new List<EngineInstallProgress>();
+
+        var saved = await installer.SaveFilesAsync(package, folder, new SyncProgress(reports.Add), TestContext.Current.CancellationToken);
+
+        Assert.Equal([Path.Combine(folder, "tool.zip"), Path.Combine(folder, "filter.zip")], saved);
+        Assert.Equal(["filter.zip", "tool.zip"], Directory.GetFiles(folder).Select(Path.GetFileName).Order());
+        Assert.Equal(1.0, reports.Max(r => r.Fraction), 3);
+        Assert.False(installer.IsInstalled(package)); // saving installs nothing here
+        Assert.Equal(2, server.Requests.Count);
+
+        // Saving again keeps the files that match.
+        await installer.SaveFilesAsync(package, folder, null, TestContext.Current.CancellationToken);
+        Assert.Equal(2, server.Requests.Count);
+
+        // The other computer: an engines folder of its own and no network.
+        var offline = new EngineInstaller(new HttpClient(new FakeServer([])), Path.Combine(_files, "other-pc"),
+            new[] { toolComponent, filterComponent }.ToDictionary(c => c.Id));
+        await offline.InstallFromFilesAsync(package, [folder], null, TestContext.Current.CancellationToken);
+        Assert.True(offline.IsUpToDate(package));
+    }
+
+    [Fact]
+    public async Task A_download_that_doesnt_match_is_not_saved()
+    {
+        var tool = Zip(("tool.exe", "binary"));
+        var component = Component("tool", "zip", tool, sha256: new string('0', 64));
+        var installer = Installer(new FakeServer(new() { [component.Url] = tool }), component);
+        var folder = Path.Combine(_files, "out");
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            installer.SaveFilesAsync(new EnginePackage("tool", ["tool"], 1, ["tool"]), folder, null, TestContext.Current.CancellationToken));
+
+        Assert.Empty(Directory.GetFiles(folder));
+    }
+
+    [Theory]
+    [InlineData("https://example.test/jdk-21%2B9/OpenJDK21U-jre_21.0.13_9.zip", "OpenJDK21U-jre_21.0.13_9.zip")]
+    [InlineData("https://example.test/a/b%2F..%2F..%2Fevil.zip", "evil.zip")]
+    [InlineData("https://example.test/a/b%5C..%5Cevil.zip", "evil.zip")]
+    [InlineData("https://example.test/", "tool-1.0")]
+    public void The_saved_name_is_the_downloads_and_stays_in_the_folder(string url, string name)
+    {
+        Assert.Equal(name, EngineDownloads.FileName(new EngineComponent("tool", "1.0", url, "", 1, "zip")));
     }
 
     private sealed class SyncProgress(Action<EngineInstallProgress> report) : IProgress<EngineInstallProgress>

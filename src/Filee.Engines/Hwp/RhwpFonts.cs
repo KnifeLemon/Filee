@@ -5,6 +5,10 @@
 //   Japanese document those drew Korean-style Hanja and, for characters they lack, a different fallback font per
 //   character (issue #64). Without Hangul in the text, Korean fonts are swapped for an installed Chinese (Simplified
 //   or Traditional) or Japanese font of the same style.
+// - Latin in Chinese and Japanese text: rhwp lays out characters with width tables of its own and guesses 0.5 em for
+//   a font it has none for, as for Microsoft YaHei, DengXian, Yu Gothic or PingFang SC. English in such a font came
+//   out evenly spaced and stretched to fit (issue #1207). The LATIN slot gets an installed Latin font of the same
+//   style that rhwp measures; without one it gets the language font as before.
 // - Coverage: rhwp draws a character with the font of its slot when that font has it, else with a fallback of its own
 //   (Arabic came out in a calligraphic font). In text without Hangul, Han or kana, a slot's font is swapped for an
 //   installed one of the same style that has every character of the text the old one had, and more of the rest:
@@ -44,6 +48,10 @@ internal static class RhwpFonts
             ["Segoe UI", "Tahoma", "Arial", "Noto Sans", "DejaVu Sans", "Helvetica", "Liberation Sans"]),
     };
 
+    /// <summary>Latin fonts of <see cref="Candidates"/> rhwp 0.8.7 has width tables for, by exact name.</summary>
+    private static readonly HashSet<string> MeasuredLatin =
+        ["Times New Roman", "DejaVu Serif", "Georgia", "Segoe UI", "Tahoma", "Arial", "DejaVu Sans"];
+
     /// <summary>Scripts whose fonts rhwp falls back to on its own and the computer may have better ones for.</summary>
     private static readonly string[] WideFonts = ["Leelawadee UI", "Nirmala UI", "Microsoft Sans Serif", "Arial Unicode MS"];
 
@@ -78,10 +86,14 @@ internal static class RhwpFonts
             var current = lookup(face);
 
             // Korean fonts in a Chinese or Japanese text; a font rhwp cannot embed.
-            if (language is not ("ko" or "") && Script(face) == "ko" || current is { Usable: false })
+            var korean = language is not ("ko" or "") && Script(face) == "ko";
+            if (korean || current is { Usable: false })
             {
                 var script = current is { Usable: false } && Script(face) is { Length: > 0 } own ? own : language;
-                if (Preferred(script, serif).FirstOrDefault(name => lookup(name) is { Usable: true }) is { } replacement)
+                var latin = korean && slot == "LATIN"
+                    ? (serif ? Candidates[""].Serif : Candidates[""].Sans).Where(MeasuredLatin.Contains)
+                    : [];
+                if (latin.Concat(Preferred(script, serif)).FirstOrDefault(name => lookup(name) is { Usable: true }) is { } replacement)
                     chosen = replacement;
             }
 

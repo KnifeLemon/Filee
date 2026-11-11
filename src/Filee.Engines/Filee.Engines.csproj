@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <PackageReference Include="Magick.NET-Q8-AnyCPU" />
+    <PackageReference Include="DiscUtils.Iso9660" />
     <PackageReference Include="PDFsharp" />
     <PackageReference Include="System.Security.Cryptography.Pkcs" />
     <PackageReference Include="PDFtoImage" />
@@ -58,5 +59,6 @@
     <EmbeddedResource Include="Infrastructure\engines.json" LogicalName="Filee.Engines.engines.json" />
     <!-- Pinned Tesseract language data, downloaded when an OCR preset needs it (Ocr/OcrLanguages.cs). -->
     <EmbeddedResource Include="Infrastructure\ocr-languages.json" LogicalName="Filee.Engines.ocr-languages.json" />
+    <EmbeddedResource Include="Infrastructure\upscale-models.json" LogicalName="Filee.Engines.upscale-models.json" />
   </ItemGroup>
 </Project>
