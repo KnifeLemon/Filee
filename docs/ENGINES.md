@@ -2072,9 +2072,21 @@ Transcription runs entirely locally and offline on your computer; no audio or da
 
 ## Document & Book Translator (Offline AI)
 
-Filee translates documents, books, and text files locally using a local Ollama instance over loopback (`http://127.0.0.1:11434`). Translation runs entirely on the user's computer: no text or document data is ever uploaded or sent to third-party web services.
+Filee translates documents, books, and text files locally using a local Ollama instance over loopback (`http://127.0.0.1:11434` by default). Translation runs entirely on the user's computer: no text or document data is ever uploaded or sent to third-party web services.
 
-- **Offline privacy**: Adheres strictly to Filee's offline promise: "Filee converts files on your own computer and never uploads them." Translation exclusively uses local Ollama over loopback (`127.0.0.1:11434`). Cloud-forwarded models (`*-cloud` or models reporting remote endpoints) are refused with a security block to ensure privacy. No external web services or network calls outside loopback are ever made.
+- **Offline privacy**: Adheres strictly to Filee's offline promise: "Filee converts files on your own computer and never uploads them." Translation exclusively uses local Ollama over loopback (`127.0.0.1:11434` unless `OLLAMA_HOST` moves it, see below). Cloud-forwarded models (`*-cloud` or models reporting remote endpoints) are refused with a security block to ensure privacy. No external web services or network calls outside loopback are ever made.
+- **Address (`OLLAMA_HOST`)**: Filee reads Ollama's own `OLLAMA_HOST` variable, so an Ollama started on another port is
+  found too. The forms Ollama accepts work: `:8080`, `127.0.0.1:8080`, `localhost:8080`, `[::1]:8080` and
+  `http://127.0.0.1:8080` (no port and no scheme means port 11434). Filee follows the variable only when it names this
+  computer: `localhost`, a loopback address (`127.x.x.x`, `::1`), or `0.0.0.0` / `::` / an empty host, which mean Ollama
+  listens everywhere, so Filee connects through loopback on that port. Any other host (a LAN address, a server name) is
+  ignored and Filee uses `http://127.0.0.1:11434`, with a warning in the log. The reason is privacy: the translator sends
+  the whole text of the document to Ollama, and a remote host would carry it off the computer. When Filee starts the
+  Ollama server itself (**Manage Ollama** → **Start Ollama Server**) while such a host is set, it starts it on
+  `127.0.0.1:11434` so both sides meet. The variable is read once when Filee starts.
+- **Status check**: To show whether the translator is available, Filee asks Ollama for its model list. Only the first check, which
+  the caller waits for, gives up after 250 ms; later checks run in the background and allow 1 s to connect and 2 s in
+  total, so a busy or just-starting Ollama isn't reported as missing. A conversion checks again (2 s) before it starts.
 - **Where it lives**:
   - Available as the **Translate** preset in Settings → *Presets*, where the target language (e.g. English, Spanish, Hindi, French, German, Chinese, Japanese, etc.) is configured as the single source of truth.
   - Sits cleanly on the back face (`BackPresetIds`) of document and text profiles for fresh installs, keeping front faces clean and untouched (#806 compliance).
