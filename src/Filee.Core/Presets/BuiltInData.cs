@@ -11,6 +11,9 @@ public static class BuiltInData
     /// <summary>Special target format meaning "same format as the source file" (e.g. resize only).</summary>
     public const string SameAsSource = "*";
 
+    /// <summary>The "iPhone ringtone" preset (#1291): an M4R of at most 40 seconds, from where its Start field says.</summary>
+    public const string RingtoneId = "iphone-ringtone";
+
     /// <summary>Whether a conversion target accepts a folder directly.</summary>
     public static bool SupportsFolderTarget(string target) => target == "iso";
 
@@ -635,6 +638,11 @@ public static class BuiltInData
         new() { Id = "to-ogg", Name = "OGG", TargetFormat = "ogg" },
         new() { Id = "to-opus", Name = "OPUS", TargetFormat = "opus" },
         new() { Id = "to-aac", Name = "AAC", TargetFormat = "aac" },
+        new()
+        {
+            Id = RingtoneId, NameKey = "preset.iphone_ringtone", TargetFormat = "m4r",
+            Media = { RingtoneStart = 0, RingtoneLength = MediaOptions.DefaultRingtoneLength },
+        },
 
         // Archives
         new() { Id = "to-iso", NameKey = "preset.iso_image", TargetFormat = "iso" },

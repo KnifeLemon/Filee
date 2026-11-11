@@ -406,7 +406,16 @@
             <TextBlock Classes="label" Text="{DynamicResource presets.wav_format}" />
             <ComboBox ItemsSource="{Binding WavFormats}" SelectedItem="{Binding WavFormat}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.wav_format}" />
           </StackPanel>
+          <StackPanel IsVisible="{Binding ShowRingtone}">
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_start}" />
+            <NumericUpDown Value="{Binding RingtoneStart}" Minimum="0" Maximum="86400" Increment="1" FormatString="0.##" AutomationProperties.Name="{DynamicResource presets.ringtone_start}" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding ShowRingtone}">
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_length}" />
+            <NumericUpDown Value="{Binding RingtoneLength}" Minimum="1" Maximum="40" Increment="1" FormatString="0.##" AutomationProperties.Name="{DynamicResource presets.ringtone_length}" />
+          </StackPanel>
         </UniformGrid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_hint}" IsVisible="{Binding ShowRingtone}" />
         <!-- #1353: a small window asks for the quality or bitrate of the files dropped on the donut. -->
         <StackPanel Spacing="2" IsVisible="{Binding ShowAskCompressionMedia}">
           <CheckBox x:Name="AskCompressionMedia" Content="{DynamicResource presets.ask_compression}" IsChecked="{Binding AskCompression}" />

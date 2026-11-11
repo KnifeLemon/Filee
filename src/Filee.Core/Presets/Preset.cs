@@ -1511,6 +1511,38 @@ public sealed class MediaOptions
     /// <summary>With <see cref="SaveEveryFrame"/>: extract every Nth frame (1 = every frame).</summary>
     public int FrameInterval { get; set; } = 1;
 
+    /// <summary>Shortest, usual and longest iPhone ringtone, in seconds: iOS only takes a ringtone of at most 40 s (#1291).</summary>
+    public const double MinRingtoneLength = 1, DefaultRingtoneLength = 30, MaxRingtoneLength = 40;
+
+    /// <summary>M4R (iPhone ringtone): where the ringtone starts in the sound, in seconds.</summary>
+    public double RingtoneStart { get; set; }
+
+    /// <summary>
+    /// M4R (iPhone ringtone): how long the ringtone is, in seconds (<see cref="MinRingtoneLength"/> to
+    /// <see cref="MaxRingtoneLength"/>), shorter when the sound ends sooner.
+    /// </summary>
+    public double RingtoneLength { get; set; } = DefaultRingtoneLength;
+
+    /// <summary>
+    /// The part of a sound of <paramref name="sourceSeconds"/> (null when unknown) that becomes the ringtone: where it
+    /// starts and how long it is. A hand-edited preset file may hold anything, so both are brought within their limits:
+    /// the length to 1–40 s and, when the sound's length is known, the window to the sound: a start past its end moves
+    /// back so that the ringtone keeps the length asked for and ends where the sound ends, and a length that goes past
+    /// the end is cut there.
+    /// </summary>
+    public (double Start, double Length) RingtoneWindow(double? sourceSeconds)
+    {
+        var length = double.IsFinite(RingtoneLength) ? Math.Clamp(RingtoneLength, MinRingtoneLength, MaxRingtoneLength) : DefaultRingtoneLength;
+        var start = double.IsFinite(RingtoneStart) ? Math.Max(0, RingtoneStart) : 0;
+        if (sourceSeconds is { } total && total > 0)
+        {
+            if (start >= total)
+                start = Math.Max(0, total - length);
+            length = Math.Min(length, total - start);
+        }
+        return (start, length);
+    }
+
     /// <summary>
     /// "Cut a clip": cut exactly at the chosen frames by encoding the clip again (with <see cref="Quality"/>,
     /// <see cref="MaxHeight"/>, <see cref="VideoCodec"/>, …). Off by default: the streams are copied as they are, which

@@ -1,4 +1,4 @@
-// Tray visibility follows the macOS menu bar preference without changing other platforms.
+// Tray visibility and the template icon follow the macOS menu bar preferences without changing other platforms.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -52,6 +52,67 @@ public sealed class TrayServiceTests
             {
                 nonMacService.Create(app);
                 Assert.True(Assert.Single(TrayIcon.GetIcons(app)!).IsVisible);
+            }
+            finally
+            {
+                nonMacService.Dispose();
+            }
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    [AvaloniaFact]
+    public void Mac_menu_bar_icon_is_a_template_unless_the_colored_one_is_chosen()
+    {
+        TestServices.EnsureInitialized("en");
+        var app = Application.Current!;
+        var directory = Directory.CreateTempSubdirectory("filee-tray-template-").FullName;
+        try
+        {
+            var store = new UserDataStore(directory);
+            store.Load();
+            Assert.False(store.Settings.ColoredMenuBarIcon);
+            var service = new TrayService(store, AppHost.Get<ILocalizer>(), new IconPlatform { SupportsDockVisibility = true },
+                AppHost.Get<WindowService>(), AppHost.Get<UpdateService>());
+            try
+            {
+                service.Create(app);
+                var tray = Assert.Single(TrayIcon.GetIcons(app)!);
+                Assert.True(MacOSProperties.GetIsTemplateIcon(tray));
+                var template = tray.Icon;
+
+                store.Settings.ColoredMenuBarIcon = true;
+                store.SaveSettings();
+                Assert.False(MacOSProperties.GetIsTemplateIcon(tray));
+                Assert.NotSame(template, tray.Icon);
+                var colored = tray.Icon;
+
+                // Saving an unrelated setting keeps the icon instead of loading it again.
+                store.Settings.Paused = true;
+                store.SaveSettings();
+                Assert.Same(colored, tray.Icon);
+
+                store.Settings.ColoredMenuBarIcon = false;
+                store.SaveSettings();
+                Assert.True(MacOSProperties.GetIsTemplateIcon(tray));
+            }
+            finally
+            {
+                service.Dispose();
+            }
+
+            // The setting is macOS only: elsewhere the tray keeps the coloured icon.
+            var nonMacService = new TrayService(store, AppHost.Get<ILocalizer>(), new IconPlatform(),
+                AppHost.Get<WindowService>(), AppHost.Get<UpdateService>());
+            try
+            {
+                nonMacService.Create(app);
+                var tray = Assert.Single(TrayIcon.GetIcons(app)!);
+                Assert.False(MacOSProperties.GetIsTemplateIcon(tray));
+                Assert.NotNull(tray.Icon);
             }
             finally
             {
