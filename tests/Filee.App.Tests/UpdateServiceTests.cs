@@ -450,6 +450,19 @@ public class UpdateServiceTests
     public void Architecture_unsupported_throws(Architecture arch) =>
         Assert.Throws<PlatformNotSupportedException>(() => UpdateService.GetLinuxRid(arch));
 
+    [Theory]
+    [InlineData(Architecture.X64, "osx-x64")]
+    [InlineData(Architecture.Arm64, "osx-arm64")]
+    public void Architecture_maps_to_macos_rid(Architecture arch, string expectedRid) =>
+        Assert.Equal(expectedRid, UpdateService.GetMacRid(arch));
+
+    [Theory]
+    [InlineData(Architecture.Arm)]
+    [InlineData(Architecture.S390x)]
+    [InlineData(Architecture.Wasm)]
+    public void Mac_architecture_unsupported_throws(Architecture arch) =>
+        Assert.Throws<PlatformNotSupportedException>(() => UpdateService.GetMacRid(arch));
+
     [Fact]
     public void IsLinuxInstalled_checks_marker_file()
     {
@@ -465,6 +478,16 @@ public class UpdateServiceTests
     }
 
     [Fact]
+    public void IsMacInstalled_accepts_only_standard_applications_locations()
+    {
+        var home = Path.Combine(TempFolder(), "home");
+        var userBundle = Path.Combine(home, "Applications", "Filee.app", "Contents", "MacOS");
+        Assert.True(UpdateService.IsMacInstalled(userBundle, home));
+        Assert.True(UpdateService.IsMacInstalled("/Applications/Filee.app/Contents/MacOS", home));
+        Assert.False(UpdateService.IsMacInstalled(Path.Combine(home, "Desktop", "Filee.app", "Contents", "MacOS"), home));
+    }
+
+    [Fact]
     public void FindFiles_selects_linux_assets_for_specific_rid()
     {
         using var release = JsonDocument.Parse($$"""
@@ -474,7 +497,9 @@ public class UpdateServiceTests
               {"name": "Filee-1.2.3-linux-x64.tar.gz", "size": 2000, "browser_download_url": "{{Base}}Filee-1.2.3-linux-x64.tar.gz"},
               {"name": "Filee-1.2.3-linux-x64-SHA256SUMS.txt", "size": 90, "browser_download_url": "{{Base}}Filee-1.2.3-linux-x64-SHA256SUMS.txt"},
               {"name": "Filee-1.2.3-linux-arm64.tar.gz", "size": 1900, "browser_download_url": "{{Base}}Filee-1.2.3-linux-arm64.tar.gz"},
-              {"name": "Filee-1.2.3-linux-arm64-SHA256SUMS.txt", "size": 92, "browser_download_url": "{{Base}}Filee-1.2.3-linux-arm64-SHA256SUMS.txt"}
+              {"name": "Filee-1.2.3-linux-arm64-SHA256SUMS.txt", "size": 92, "browser_download_url": "{{Base}}Filee-1.2.3-linux-arm64-SHA256SUMS.txt"},
+              {"name": "Filee-1.2.3-osx-arm64.tar.gz", "size": 1800, "browser_download_url": "{{Base}}Filee-1.2.3-osx-arm64.tar.gz"},
+              {"name": "Filee-1.2.3-osx-arm64-SHA256SUMS.txt", "size": 88, "browser_download_url": "{{Base}}Filee-1.2.3-osx-arm64-SHA256SUMS.txt"}
             ]}
             """);
 
@@ -489,6 +514,10 @@ public class UpdateServiceTests
         var (installerWin, sumsWin) = UpdateService.FindFiles(release.RootElement, "win");
         Assert.Equal("Filee-1.2.3-win-Setup.exe", installerWin?.Name);
         Assert.Equal("Filee-1.2.3-SHA256SUMS.txt", sumsWin?.Name);
+
+        var (installerMac, sumsMac) = UpdateService.FindFiles(release.RootElement, "osx-arm64");
+        Assert.Equal("Filee-1.2.3-osx-arm64.tar.gz", installerMac?.Name);
+        Assert.Equal("Filee-1.2.3-osx-arm64-SHA256SUMS.txt", sumsMac?.Name);
     }
 
     [Fact]
@@ -498,7 +527,7 @@ public class UpdateServiceTests
         var hash = Sha256(installerData);
         var folder = TempFolder();
 
-        var updates = new UpdateService(NullLogger<UpdateService>.Instance, new FakeLinuxRelease(
+        var updates = new UpdateService(NullLogger<UpdateService>.Instance, new FakeUnixRelease(
             installerData, hash, sumsArtifact: "Filee-1.2.3-linux-arm64.tar.gz"));
         updates.UseRelease(
             new UpdateService.ReleaseFile("Filee-1.2.3-linux-x64.tar.gz", Base + "Filee-1.2.3-linux-x64.tar.gz", installerData.Length),
@@ -538,6 +567,25 @@ public class UpdateServiceTests
             var fileeMode = File.GetUnixFileMode(fileeExe);
             Assert.True((fileeMode & UnixFileMode.UserExecute) != 0, "Filee must be executable");
         }
+    }
+
+    [Fact]
+    public void ExtractMacArchive_requires_a_filee_application_bundle()
+    {
+        var folder = TempFolder();
+        var archiveFile = Path.Combine(folder, "package.tar.gz");
+        var destFolder = Path.Combine(folder, "extracted");
+        var root = "Filee-1.0.0-osx-arm64";
+        File.WriteAllBytes(archiveFile, CreateTarGz(writer =>
+        {
+            AddFileEntry(writer, $"{root}/install.sh", "#!/bin/sh\nexit 0\n");
+            AddFileEntry(writer, $"{root}/Filee.app/Contents/MacOS/Filee", "app");
+        }));
+
+        var payloadDir = UpdateService.ExtractMacArchive(archiveFile, destFolder);
+
+        Assert.Equal(Path.Combine(destFolder, root), payloadDir);
+        Assert.True(File.Exists(Path.Combine(payloadDir, "Filee.app", "Contents", "MacOS", "Filee")));
     }
 
     [Fact]
@@ -614,7 +662,7 @@ public class UpdateServiceTests
             AddFileEntry(writer, "Filee-9.9.9-linux-x64/filee.png", "png data");
         });
         var hash = Sha256(tarBytes);
-        var network = new FakeLinuxRelease(tarBytes, hash, "Filee-9.9.9-linux-x64.tar.gz", "9.9.9");
+        var network = new FakeUnixRelease(tarBytes, hash, "Filee-9.9.9-linux-x64.tar.gz", "9.9.9");
 
         var mockInstallDir = TempFolder();
 
@@ -647,17 +695,56 @@ public class UpdateServiceTests
         Assert.Equal("/bin/sh", helperPsi.FileName);
         Assert.Equal("-c", helperPsi.ArgumentList[0]);
         Assert.Contains("kill -0 \"$1\"", helperPsi.ArgumentList[1]);
-        Assert.Contains("\"$2\" --upgrade >> \"$4\" 2>&1", helperPsi.ArgumentList[1]);
-        Assert.Contains("exec \"$3\" --background --whats-new", helperPsi.ArgumentList[1]);
-        Assert.Contains("exec \"$3\" --background", helperPsi.ArgumentList[1]);
-        Assert.Contains("rm -rf \"$5\"", helperPsi.ArgumentList[1]);
+        Assert.Contains("\"$2\" --upgrade >> \"$5\" 2>&1", helperPsi.ArgumentList[1]);
+        Assert.Contains("exec \"$4\" --background --whats-new", helperPsi.ArgumentList[1]);
+        Assert.Contains("exec \"$4\" --background", helperPsi.ArgumentList[1]);
+        Assert.Contains("rm -rf \"$6\"", helperPsi.ArgumentList[1]);
         Assert.Equal(Environment.ProcessId.ToString(), helperPsi.ArgumentList[3]);
         Assert.EndsWith("install.sh", helperPsi.ArgumentList[4]);
-        Assert.Equal(Path.Combine(mockInstallDir, "Filee"), helperPsi.ArgumentList[5]);
-        Assert.EndsWith(".log", helperPsi.ArgumentList[6]);
-        Assert.EndsWith(".update-failed", helperPsi.ArgumentList[8]);
+        Assert.Equal(mockInstallDir, helperPsi.ArgumentList[5]);
+        Assert.Equal(Path.Combine(mockInstallDir, "Filee"), helperPsi.ArgumentList[6]);
+        Assert.EndsWith(".log", helperPsi.ArgumentList[7]);
+        Assert.EndsWith(".update-failed", helperPsi.ArgumentList[9]);
 
         Assert.True(shutdownRequested, "Application shutdown must be requested before file swap");
+    }
+
+    [AvaloniaFact]
+    public async Task UpdateAsync_on_macos_downloads_the_matching_archive_and_delegates_to_the_bundle_upgrader()
+    {
+        var root = "Filee-9.9.9-osx-arm64";
+        var tarBytes = CreateTarGz(writer =>
+        {
+            AddFileEntry(writer, $"{root}/install.sh", "#!/bin/sh\nexit 0\n");
+            AddFileEntry(writer, $"{root}/Filee.app/Contents/MacOS/Filee", "app");
+        });
+        var hash = Sha256(tarBytes);
+        var network = new FakeUnixRelease(tarBytes, hash, "Filee-9.9.9-osx-arm64.tar.gz", "9.9.9", "osx-arm64");
+        var bundle = Path.Combine(TempFolder(), "Filee.app");
+        var updates = new UpdateService(NullLogger<UpdateService>.Instance, network)
+        {
+            InstallsItself = true,
+            TargetPlatform = "osx-arm64",
+            MacInstallDirectoryOverride = bundle,
+        };
+        updates.UseRelease(
+            new UpdateService.ReleaseFile("Filee-9.9.9-osx-arm64.tar.gz", Base + "Filee-9.9.9-osx-arm64.tar.gz", tarBytes.Length),
+            new UpdateService.ReleaseFile("Filee-9.9.9-osx-arm64-SHA256SUMS.txt", Base + "Filee-9.9.9-osx-arm64-SHA256SUMS.txt", 100));
+
+        var processes = new List<ProcessStartInfo>();
+        var shutdownRequested = false;
+        updates.RequestApplicationShutdown = () => shutdownRequested = true;
+        updates.StartProcess = psi => { processes.Add(psi); return null; };
+
+        await updates.UpdateAsync();
+
+        Assert.Equal(UpdateStep.Installing, updates.Step);
+        var helper = Assert.Single(processes);
+        Assert.Equal("/bin/sh", helper.FileName);
+        Assert.Contains("\"$2\" --upgrade \"$3\" >> \"$5\" 2>&1", helper.ArgumentList[1]);
+        Assert.Equal(bundle, helper.ArgumentList[5]);
+        Assert.Equal(Path.Combine(bundle, "Contents", "MacOS", "Filee"), helper.ArgumentList[6]);
+        Assert.True(shutdownRequested, "Application shutdown must be requested before the app bundle is replaced");
     }
 
     [AvaloniaFact]
@@ -670,7 +757,7 @@ public class UpdateServiceTests
             AddFileEntry(writer, "Filee-9.9.9-linux-x64/filee.png", "png data");
         });
         var hash = Sha256(tarBytes);
-        var network = new FakeLinuxRelease(tarBytes, hash, "Filee-9.9.9-linux-x64.tar.gz", "9.9.9");
+        var network = new FakeUnixRelease(tarBytes, hash, "Filee-9.9.9-linux-x64.tar.gz", "9.9.9");
 
         var mockInstallDir = TempFolder();
 
@@ -1140,7 +1227,8 @@ public class UpdateServiceTests
         writer.WriteEntry(entry);
     }
 
-    private sealed class FakeLinuxRelease(byte[] archive, string hash, string sumsArtifact = "Filee-9.9.9-linux-x64.tar.gz", string version = "9.9.9") : HttpMessageHandler
+    private sealed class FakeUnixRelease(byte[] archive, string hash, string sumsArtifact = "Filee-9.9.9-linux-x64.tar.gz",
+        string version = "9.9.9", string target = "linux-x64") : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
@@ -1149,8 +1237,8 @@ public class UpdateServiceTests
             {
                 var json = $$"""
                     {"tag_name":"v{{version}}","assets":[
-                      {"name":"Filee-{{version}}-linux-x64.tar.gz","browser_download_url":"{{Base}}Filee-{{version}}-linux-x64.tar.gz","size":{{archive.Length}}},
-                      {"name":"Filee-{{version}}-linux-x64-SHA256SUMS.txt","browser_download_url":"{{Base}}Filee-{{version}}-linux-x64-SHA256SUMS.txt","size":100}]}
+                      {"name":"Filee-{{version}}-{{target}}.tar.gz","browser_download_url":"{{Base}}Filee-{{version}}-{{target}}.tar.gz","size":{{archive.Length}}},
+                      {"name":"Filee-{{version}}-{{target}}-SHA256SUMS.txt","browser_download_url":"{{Base}}Filee-{{version}}-{{target}}-SHA256SUMS.txt","size":100}]}
                     """;
                 return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {

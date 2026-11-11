@@ -95,13 +95,14 @@ public sealed partial class UpdateService : ObservableObject
     public const string WebsiteUrl = "https://filee.sh/";
 
     /// <summary>
-    /// True when this copy was installed by Setup on Windows (uninstall.exe; the Inno Setup installer of 1.x put unins000.exe there)
-    /// or by install.sh on Linux (.filee-package marker containing com.filee.app).
+    /// True when this copy was installed by Setup on Windows (uninstall.exe; the Inno Setup installer of 1.x put unins000.exe there),
+    /// by install.sh on Linux (.filee-package marker containing com.filee.app), or as a Filee bundle in a standard macOS Applications folder.
     /// Only then can the new installer update it in place; the portable zip and a copy run from source have no uninstaller.
     /// </summary>
     public static bool IsInstalled { get; } =
         OperatingSystem.IsWindows() && IsInstalledIn(AppContext.BaseDirectory)
-        || OperatingSystem.IsLinux() && IsLinuxInstalled(AppContext.BaseDirectory);
+        || OperatingSystem.IsLinux() && IsLinuxInstalled(AppContext.BaseDirectory)
+        || OperatingSystem.IsMacOS() && IsMacInstalled(AppContext.BaseDirectory);
 
     internal static bool IsInstalledIn(string folder) =>
         File.Exists(Path.Combine(folder, "uninstall.exe")) || File.Exists(Path.Combine(folder, "unins000.exe"));
@@ -119,6 +120,22 @@ public sealed partial class UpdateService : ObservableObject
         }
     }
 
+    /// <summary>Checks whether the running app is the Filee bundle in /Applications or the current user's Applications folder.</summary>
+    internal static bool IsMacInstalled(string baseDirectory, string? homeDirectory = null)
+    {
+        try
+        {
+            var bundle = Path.GetFullPath(Path.Combine(baseDirectory, "..", ".."));
+            var home = homeDirectory ?? Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            return bundle.Equals(Path.Combine("/Applications", "Filee.app"), StringComparison.Ordinal)
+                   || bundle.Equals(Path.Combine(home, "Applications", "Filee.app"), StringComparison.Ordinal);
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Returns the RID for the current Linux process architecture ("linux-x64" or "linux-arm64").</summary>
     internal static string GetLinuxRid() => GetLinuxRid(RuntimeInformation.ProcessArchitecture);
 
@@ -129,6 +146,18 @@ public sealed partial class UpdateService : ObservableObject
             Architecture.X64 => "linux-x64",
             Architecture.Arm64 => "linux-arm64",
             var arch => throw new PlatformNotSupportedException($"Unsupported Linux architecture: {arch}"),
+        };
+
+    /// <summary>Returns the RID for the current macOS process architecture ("osx-x64" or "osx-arm64").</summary>
+    internal static string GetMacRid() => GetMacRid(RuntimeInformation.ProcessArchitecture);
+
+    /// <summary>Maps <paramref name="architecture"/> to supported macOS RIDs or throws <see cref="PlatformNotSupportedException"/>.</summary>
+    internal static string GetMacRid(Architecture architecture) =>
+        architecture switch
+        {
+            Architecture.X64 => "osx-x64",
+            Architecture.Arm64 => "osx-arm64",
+            var arch => throw new PlatformNotSupportedException($"Unsupported macOS architecture: {arch}"),
         };
 
     /// <summary>Target platform for release assets ("win", "linux-x64", "linux-arm64"). Tests can override this.</summary>
@@ -149,6 +178,17 @@ public sealed partial class UpdateService : ObservableObject
                 return "unsupported";
             }
         }
+        if (OperatingSystem.IsMacOS())
+        {
+            try
+            {
+                return GetMacRid();
+            }
+            catch (PlatformNotSupportedException)
+            {
+                return "unsupported";
+            }
+        }
         return "unsupported";
     }
 
@@ -160,6 +200,9 @@ public sealed partial class UpdateService : ObservableObject
 
     /// <summary>Allows tests to redirect Linux installation target directory to an isolated temporary folder.</summary>
     internal string? LinuxInstallDirectoryOverride { get; set; }
+
+    /// <summary>Allows tests to redirect the macOS application bundle updated by the detached helper.</summary>
+    internal string? MacInstallDirectoryOverride { get; set; }
 
     /// <summary>Allows tests to redirect update failure marker path to an isolated temporary location.</summary>
     internal string? FailureMarkerPathOverride { get; set; }
@@ -414,7 +457,9 @@ public sealed partial class UpdateService : ObservableObject
             return;
         }
 
-        if (TargetPlatform.StartsWith("linux-", StringComparison.OrdinalIgnoreCase))
+        var isLinux = TargetPlatform.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
+        var isMac = TargetPlatform.StartsWith("osx-", StringComparison.OrdinalIgnoreCase);
+        if (isLinux || isMac)
         {
             string? workspace = null;
             string installer;
@@ -437,7 +482,7 @@ public sealed partial class UpdateService : ObservableObject
             try
             {
                 Directory.CreateDirectory(stagingDir);
-                payloadDir = ExtractLinuxArchive(installer, stagingDir);
+                payloadDir = isLinux ? ExtractLinuxArchive(installer, stagingDir) : ExtractMacArchive(installer, stagingDir);
             }
             catch (Exception ex) when (ex is InvalidDataException or IOException or UnauthorizedAccessException)
             {
@@ -447,8 +492,11 @@ public sealed partial class UpdateService : ObservableObject
             }
 
             var scriptPath = Path.Combine(payloadDir, "install.sh");
-            var targetInstallDir = LinuxInstallDirectoryOverride ?? GetLinuxInstallDirectory();
-            var newExe = Path.Combine(targetInstallDir, "Filee");
+            var targetInstallDir = isLinux
+                ? LinuxInstallDirectoryOverride ?? GetLinuxInstallDirectory()
+                : MacInstallDirectoryOverride ?? GetMacInstallDirectory();
+            var newExe = isLinux ? Path.Combine(targetInstallDir, "Filee")
+                : Path.Combine(targetInstallDir, "Contents", "MacOS", "Filee");
             var currentPid = Environment.ProcessId;
             var logDir = Path.Combine(UserDataStore.DefaultDirectory, "logs");
             Directory.CreateDirectory(logDir);
@@ -466,21 +514,22 @@ public sealed partial class UpdateService : ObservableObject
                 startInfo.ArgumentList.Add("-c");
                 startInfo.ArgumentList.Add(
                     "for _ in $(seq 1 600); do if ! kill -0 \"$1\" 2>/dev/null; then break; fi; sleep 0.1; done; " +
-                    "if kill -0 \"$1\" 2>/dev/null; then echo \"Update aborted: Filee (PID $1) did not exit within timeout\" >> \"$4\"; rm -rf \"$5\" 2>/dev/null; exit 1; fi; " +
-                    "\"$2\" --upgrade >> \"$4\" 2>&1; " +
+                    "if kill -0 \"$1\" 2>/dev/null; then echo \"Update aborted: Filee (PID $1) did not exit within timeout\" >> \"$5\"; rm -rf \"$6\" 2>/dev/null; exit 1; fi; " +
+                    (isLinux ? "\"$2\" --upgrade" : "\"$2\" --upgrade \"$3\"") + " >> \"$5\" 2>&1; " +
                     "status=$?; " +
-                    "rm -rf \"$5\" 2>/dev/null; " +
+                    "rm -rf \"$6\" 2>/dev/null; " +
                     "if [ $status -eq 0 ]; then " +
-                    "if [ -x \"$3\" ]; then exec \"$3\" --background --whats-new; else echo \"Update succeeded but '$3' is not executable\" >> \"$4\"; exit 1; fi; " +
+                    "if [ -x \"$4\" ]; then exec \"$4\" --background --whats-new; else echo \"Update succeeded but '$4' is not executable\" >> \"$5\"; exit 1; fi; " +
                     "else " +
-                    "echo \"Update failed with status $status\" >> \"$4\"; " +
-                    "echo \"$4\" > \"$6.tmp\" 2>/dev/null && mv -f \"$6.tmp\" \"$6\" 2>/dev/null || true; " +
-                    "if [ -x \"$3\" ]; then exec \"$3\" --background; else echo \"Cannot restart Filee: '$3' is not executable after rollback\" >> \"$4\"; exit $status; fi; " +
+                    "echo \"Update failed with status $status\" >> \"$5\"; " +
+                    "echo \"$5\" > \"$7.tmp\" 2>/dev/null && mv -f \"$7.tmp\" \"$7\" 2>/dev/null || true; " +
+                    "if [ -x \"$4\" ]; then exec \"$4\" --background; else echo \"Cannot restart Filee: '$4' is not executable after rollback\" >> \"$5\"; exit $status; fi; " +
                     "fi"
                 );
                 startInfo.ArgumentList.Add("_");
                 startInfo.ArgumentList.Add(currentPid.ToString());
                 startInfo.ArgumentList.Add(scriptPath);
+                startInfo.ArgumentList.Add(targetInstallDir);
                 startInfo.ArgumentList.Add(newExe);
                 startInfo.ArgumentList.Add(logFile);
                 startInfo.ArgumentList.Add(workspace);
@@ -501,7 +550,7 @@ public sealed partial class UpdateService : ObservableObject
             return;
         }
 
-        throw new PlatformNotSupportedException("In-app update is only supported on Windows and Linux");
+        throw new PlatformNotSupportedException("In-app update is only supported on Windows, Linux and macOS");
     }
 
     /// <summary>
@@ -774,9 +823,10 @@ public sealed partial class UpdateService : ObservableObject
         if (!release.TryGetProperty("assets", out var assets) || assets.ValueKind != JsonValueKind.Array)
             return (null, null);
 
-        var isLinux = target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase);
-        var expectedInstallerSuffix = isLinux ? $"-{target}.tar.gz" : "-win-Setup.exe";
-        var expectedChecksumsSuffix = isLinux ? $"-{target}-SHA256SUMS.txt" : "-SHA256SUMS.txt";
+        var isUnix = target.StartsWith("linux-", StringComparison.OrdinalIgnoreCase)
+                     || target.StartsWith("osx-", StringComparison.OrdinalIgnoreCase);
+        var expectedInstallerSuffix = isUnix ? $"-{target}.tar.gz" : "-win-Setup.exe";
+        var expectedChecksumsSuffix = isUnix ? $"-{target}-SHA256SUMS.txt" : "-SHA256SUMS.txt";
 
         foreach (var asset in assets.EnumerateArray())
         {
@@ -793,7 +843,7 @@ public sealed partial class UpdateService : ObservableObject
             else if (name.EndsWith(expectedChecksumsSuffix, StringComparison.OrdinalIgnoreCase))
             {
                 // When targeting Windows, exclude platform-specific checksum files (e.g. -linux-x64-SHA256SUMS.txt, -osx-...)
-                if (!isLinux && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase) || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)))
+                if (!isUnix && (name.Contains("-linux-", StringComparison.OrdinalIgnoreCase) || name.Contains("-osx-", StringComparison.OrdinalIgnoreCase)))
                     continue;
 
                 checksums = new ReleaseFile(name, url, size);
@@ -812,7 +862,14 @@ public sealed partial class UpdateService : ObservableObject
     /// (rejecting path traversal, absolute paths, unsafe entry types, directory symlinks, and escaping/component symlinks).
     /// Returns the path to the extracted payload folder containing <c>install.sh</c>.
     /// </summary>
-    internal static string ExtractLinuxArchive(string archivePath, string destinationDirectory)
+    internal static string ExtractLinuxArchive(string archivePath, string destinationDirectory) =>
+        ExtractUnixArchive(archivePath, destinationDirectory, "Filee", "filee-cli");
+
+    /// <summary>Extracts a macOS release archive and requires a complete Filee application bundle.</summary>
+    internal static string ExtractMacArchive(string archivePath, string destinationDirectory) =>
+        ExtractUnixArchive(archivePath, destinationDirectory, Path.Combine("Filee.app", "Contents", "MacOS", "Filee"), null);
+
+    private static string ExtractUnixArchive(string archivePath, string destinationDirectory, string executablePath, string? cliPath)
     {
         if (!File.Exists(archivePath))
             throw new FileNotFoundException("Archive file not found", archivePath);
@@ -876,7 +933,7 @@ public sealed partial class UpdateService : ObservableObject
 
                         entry.ExtractToFile(destinationPath, overwrite: true);
 
-                        if (OperatingSystem.IsLinux())
+                        if (!OperatingSystem.IsWindows())
                         {
                             var mode = (entry.Mode & RwxMask) | UnixFileMode.UserRead | UnixFileMode.UserWrite;
                             File.SetUnixFileMode(destinationPath, mode);
@@ -985,19 +1042,18 @@ public sealed partial class UpdateService : ObservableObject
         }
 
         var installSh = Path.Combine(payloadDir, "install.sh");
-        var fileeExe = Path.Combine(payloadDir, "Filee");
+        var fileeExe = Path.Combine(payloadDir, executablePath);
         if (!File.Exists(installSh) || !File.Exists(fileeExe))
         {
             throw new InvalidDataException("Archive is missing install.sh or Filee executable in the payload directory.");
         }
 
-        if (OperatingSystem.IsLinux())
+        if (!OperatingSystem.IsWindows())
         {
             EnsureExecutable(installSh);
             EnsureExecutable(fileeExe);
-            var cli = Path.Combine(payloadDir, "filee-cli");
-            if (File.Exists(cli))
-                EnsureExecutable(cli);
+            if (cliPath is { } cliRelativePath && File.Exists(Path.Combine(payloadDir, cliRelativePath)))
+                EnsureExecutable(Path.Combine(payloadDir, cliRelativePath));
             var uninstall = Path.Combine(payloadDir, "uninstall.sh");
             if (File.Exists(uninstall))
                 EnsureExecutable(uninstall);
@@ -1031,7 +1087,7 @@ public sealed partial class UpdateService : ObservableObject
 
     private static void EnsureExecutable(string path)
     {
-        if (OperatingSystem.IsLinux() && File.Exists(path))
+        if (!OperatingSystem.IsWindows() && File.Exists(path))
         {
             var mode = (File.GetUnixFileMode(path) & RwxMask) | UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
             File.SetUnixFileMode(path, mode);
@@ -1082,6 +1138,8 @@ public sealed partial class UpdateService : ObservableObject
                 : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             return Path.Combine(root, "filee");
         }
+        if (OperatingSystem.IsMacOS())
+            return Path.Combine(UserDataStore.DefaultDirectory, "updates");
         return Path.GetTempPath();
     }
 
@@ -1102,7 +1160,7 @@ public sealed partial class UpdateService : ObservableObject
             if (Path.Exists(candidate))
                 continue;
 
-            if (OperatingSystem.IsLinux())
+            if (OperatingSystem.IsLinux() || OperatingSystem.IsMacOS())
             {
                 Directory.CreateDirectory(candidate, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
                 File.SetUnixFileMode(candidate, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
@@ -1207,9 +1265,9 @@ public sealed partial class UpdateService : ObservableObject
     /// </summary>
     public static void DeleteStaleWorkspaces(string? root = null, TimeSpan? age = null, ILogger? log = null)
     {
-        // Workspaces are only made on Linux, under Filee's own data folder. Elsewhere the default root is the shared
+        // Linux and macOS workspaces live under Filee's own data folder. Elsewhere the default root is the shared
         // temp folder, where other programs' folders live.
-        if (root is null && !OperatingSystem.IsLinux())
+        if (root is null && !OperatingSystem.IsLinux() && !OperatingSystem.IsMacOS())
             return;
         var threshold = age ?? TimeSpan.FromDays(1);
         try
@@ -1262,6 +1320,14 @@ public sealed partial class UpdateService : ObservableObject
             ? dataHome
             : Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         return Path.Combine(root, "filee", "application");
+    }
+
+    /// <summary>Locates the Filee application bundle being updated on macOS.</summary>
+    internal static string GetMacInstallDirectory()
+    {
+        if (!IsMacInstalled(AppContext.BaseDirectory))
+            throw new InvalidOperationException("Filee is not installed in a supported macOS Applications folder.");
+        return Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", ".."));
     }
 
     /// <summary>True when release tag <paramref name="tag"/> ("v1.2.0") is a higher version than <paramref name="current"/>.</summary>

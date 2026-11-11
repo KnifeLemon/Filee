@@ -675,3 +675,19 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   (`~/.local/share/Filee/engines`) and user settings (`~/.config/Filee`) remain untouched.
 - **Uninstallation**: `uninstall.sh` removes the application directory, desktop launcher, and `~/.local/bin/filee` symlink
   after verifying the `.filee-package` marker. User settings and converted files are kept.
+
+## macOS installer and updates
+
+macOS packages contain a signed `Filee.app` in both the disk image and the architecture-specific archive. The archive's
+`install.sh` installs to `~/Applications/Filee.app` and adds the `filee` command; dragging from the disk image installs
+the app in `/Applications/Filee.app` without the command. Both locations are managed by the in-app updater.
+
+- **In-app updates** (`UpdateService`): Selects the matching `osx-x64` or `osx-arm64` archive and its
+  `<rid>-SHA256SUMS.txt`, verifies the archive before extracting it in a private workspace, waits for Filee to exit,
+  and runs `install.sh --upgrade` through a detached helper. The script validates both bundles, stages the replacement,
+  rolls back if activation fails, and restarts Filee with `--background --whats-new`.
+- **Permissions**: Updating `~/Applications` needs no elevation. Replacing an app in `/Applications` uses macOS's
+  administrator prompt for the exact verified script and bundle path. The update never replaces an app outside those
+  two documented locations.
+- **Trust**: Official builds also verify the release checksum signature with Filee's update key. macOS packages remain
+  a preview until Developer ID signing and notarization are available; the update path does not weaken that warning.
