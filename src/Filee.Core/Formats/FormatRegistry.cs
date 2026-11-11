@@ -317,6 +317,9 @@ public static class FormatRegistry
         new("lzma", "LZMA", FormatCategory.Archive, ["lzma"], Writable: false),
         new("z", "Z", FormatCategory.Archive, ["z"], Writable: false),
         new("jar", "JAR", FormatCategory.Archive, ["jar"], Writable: false),
+        // Adobe extension packages for After Effects, Premiere Pro, Photoshop … (#1382): signed ZIPs. Never a target,
+        // since installing one needs the signature its developer makes with Adobe's ZXPSignCmd.
+        new("zxp", "ZXP (Adobe extension)", FormatCategory.Archive, ["zxp"], Writable: false),
         // Minecraft Bedrock packs, add-ons, worlds and world templates, and Modrinth modpacks (#824, #898): ZIP archives
         // under their own extensions, written with their marker file (manifest.json, level.dat, modrinth.index.json) at
         // the top.

@@ -36,7 +36,7 @@ public class FormatFieldsTests
         "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
         "tta", "ttf", "ttml", "txtz", "txz", "typ", "tz", "usm", "vob", "voc", "w64", "wbmp", "wmf", "woff", "woff2",
-        "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xpm", "xz", "yaml", "z"
+        "wpd", "wtv", "wv", "xbm", "xcf", "xlt", "xpm", "xz", "yaml", "z", "zxp"
     ];
 
     public static TheoryData<string, string[]> HiddenWithOneFieldOff => new()
@@ -51,7 +51,7 @@ public class FormatFieldsTests
         { "developer", [
                 "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har", "icns", "jar",
                 "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi", "rpm", "tar", "tar7z",
-                "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
+                "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
@@ -78,7 +78,7 @@ public class FormatFieldsTests
         { "developer", [
                 "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
                 "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi",
-                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
+                "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml", "zxp"
             ] },
         { "writing", ["adoc", "cgm", "chm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 97,
-                [FormatGrade.Specialist] = 115,
+                [FormatGrade.Specialist] = 116,
                 [FormatGrade.Legacy] = 51,
             },
             counts);

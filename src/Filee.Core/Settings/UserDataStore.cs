@@ -1097,6 +1097,10 @@ internal static class SettingsMigrations
             if (presets.All(p => p.Id != BuiltInData.RingtoneId))
                 changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
         }
+        // v82: Adobe extension packages (.zxp, #1382) learn the archives donut; custom claims stay put. (Schema 82 may be
+        //      renumbered if another change takes it first.)
+        if (from < 82)
+            changed |= LearnExtensions(profiles, out _, ["zxp"]);
         return changed;
     }
 
