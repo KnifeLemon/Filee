@@ -751,3 +751,12 @@ and standalone shell scripts (`install.sh`, `uninstall.sh`).
   (`~/.local/share/Filee/engines`) and user settings (`~/.config/Filee`) remain untouched.
 - **Uninstallation**: `uninstall.sh` removes the application directory, desktop launcher, and `~/.local/bin/filee` symlink
   after verifying the `.filee-package` marker. User settings and converted files are kept.
+
+## Filee Connect
+
+Filee Connect (`Filee.App.Services.Connect`) is an embedded local Wi-Fi server providing instant device-to-device file transfers and quick note exchanges between desktop and mobile devices. See [FILEE-CONNECT.md](FILEE-CONNECT.md) for full details.
+
+- **Embedded Server**: Powered by Microsoft ASP.NET Core Kestrel with HTTP REST endpoints and WebSockets for real-time bi-directional messaging and presence detection.
+- **Security & Scope**: Runs locally without cloud dependencies. Secured with cryptographically random pairing tokens, LAN-only binding, and strict relative-path normalization preventing directory traversal.
+- **Shared Folder Manager**: Enforces a 2 GB total quota in `UserDataStore.Directory / ConnectShared` (fully supporting Portable mode) with instant ZIP streaming on folder download. Files outside the safe allowlist are stored as `{id}.bin` to prevent Explorer NTLM leak attacks.
+- **Workflow**: A global trigger gesture (`Ctrl + Alt + Left Click` on Windows/Linux, `⌥ Option + ⇧ Shift + Left Click` on macOS, or custom configuration for new installs) opens the Donut with the Filee Connect slice. Selecting it presents a QR code modal (`FileeConnectQrWindow`), and scanning it from any phone browser automatically transitions to the desktop Filee Connect application window (`FileeConnectWindow`) and mobile light-mode web client.

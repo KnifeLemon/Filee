@@ -137,6 +137,30 @@ public partial class App : Application
                 _selectionPending = false;
             }
         };
+        triggers.ClickTriggered += async (_, e) =>
+        {
+            if (_selectionPending || store.Settings.Paused)
+                return;
+            try
+            {
+                var files = platform.IsFileManagerAt(e.X, e.Y)
+                    ? (OperatingSystem.IsMacOS() ? await Task.Run(platform.GetFileManagerSelection) : platform.GetFileManagerSelection())
+                    : (IReadOnlyList<string>)[];
+                if (files.Count > 0)
+                {
+                    radial.ShowForFiles(e.X, e.Y, files);
+                }
+                else
+                {
+                    radial.ShowForConnect(e.X, e.Y);
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                log.LogWarning(ex, "Could not check file manager selection on click");
+                radial.ShowForConnect(e.X, e.Y);
+            }
+        };
         triggers.Start();
         log.LogInformation("Filee {Version} started", UpdateService.CurrentVersion);
         // Which way the transparent windows (donut, toast) are drawn, for reports of one that isn't see-through (#269).
