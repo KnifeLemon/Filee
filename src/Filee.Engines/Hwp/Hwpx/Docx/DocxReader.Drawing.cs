@@ -190,10 +190,15 @@ internal sealed partial class DocxReader
         return box;
     }
 
-    /// <summary>Text box paragraphs; Word's document grid does not apply inside text boxes.</summary>
+    /// <summary>
+    /// Text box paragraphs; Word's document grid does not apply inside text boxes, nor does the style of a table the
+    /// text box sits in.
+    /// </summary>
     private void ReadTextBoxContent(XElement content, List<HBlock> output)
     {
         _textBoxDepth++;
+        var tableStyleLayer = _tableStyleLayer;
+        _tableStyleLayer = null;
         try
         {
             ReadNestedBlocks(content, output);
@@ -201,6 +206,7 @@ internal sealed partial class DocxReader
         finally
         {
             _textBoxDepth--;
+            _tableStyleLayer = tableStyleLayer;
         }
     }
 
