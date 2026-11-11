@@ -839,4 +839,56 @@ public class ImageAndPdfTests(EngineFixture fx) : IClassFixture<EngineFixture>
         AssertDone(job);
         Assert.Equal(["pages_p2.pdf", "pages_p3.pdf"], job.Outputs.Select(Path.GetFileName).Order(StringComparer.Ordinal));
     }
+
+    /// <summary>A PDF whose page widths (100 + its index, in points) tell its pages apart in the results.</summary>
+    private static string NumberedPdf(string dir, string name, int pages)
+    {
+        var path = Path.Combine(dir, name);
+        using var document = new PdfSharp.Pdf.PdfDocument();
+        for (var i = 0; i < pages; i++)
+            document.AddPage().Width = PdfSharp.Drawing.XUnit.FromPoint(100 + i);
+        document.Save(path);
+        return path;
+    }
+
+    private static double[] Widths(string path)
+    {
+        using var document = PdfReader.Open(path, PdfDocumentOpenMode.Import);
+        return [.. document.Pages.Cast<PdfSharp.Pdf.PdfPage>().Select(p => p.Width.Point)];
+    }
+
+    /// <summary>Split PDF every N pages and into equal parts (#1259), also of a range and turned.</summary>
+    [Fact]
+    public async Task Split_pdf_every_n_pages_or_into_equal_parts()
+    {
+        var dir = fx.NewFolder();
+        var book = NumberedPdf(dir, "book.pdf", 120);
+
+        var every = await fx.ConvertAsync([book], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { SplitPages = true, SplitEvery = 50 },
+            Output = { Location = OutputLocation.Subfolder, SubfolderName = "every" },
+        });
+        AssertDone(every);
+        var files = every.Outputs.ToList();
+        Assert.Equal(["book_p1-50.pdf", "book_p51-100.pdf", "book_p101-120.pdf"], files.Select(Path.GetFileName));
+        Assert.Equal([50, 50, 20], files.Select(f => Widths(f).Length));
+        var second = Widths(files[1]);
+        Assert.Equal((150d, 199d), (second[0], second[^1]));
+
+        var thirds = await fx.ConvertAsync([book], new Preset
+        {
+            TargetFormat = "pdf",
+            Pdf = { SplitPages = true, SplitParts = 3, PageRange = "1-10", Rotation = PdfRotation.Right90 },
+            Output = { Location = OutputLocation.Subfolder, SubfolderName = "thirds" },
+        });
+        AssertDone(thirds);
+        Assert.Equal(["book_p1-4.pdf", "book_p5-7.pdf", "book_p8-10.pdf"],
+            thirds.Outputs.Select(Path.GetFileName).Order(StringComparer.Ordinal));
+        var last = thirds.Outputs.Single(o => o.EndsWith("_p8-10.pdf", StringComparison.Ordinal));
+        Assert.Equal([107d, 108d, 109d], Widths(last));
+        using var turned = PdfReader.Open(last, PdfDocumentOpenMode.Import);
+        Assert.All(turned.Pages.Cast<PdfSharp.Pdf.PdfPage>(), page => Assert.Equal(90, page.Rotate));
+    }
 }

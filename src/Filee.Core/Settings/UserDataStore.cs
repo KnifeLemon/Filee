@@ -1081,10 +1081,17 @@ internal static class SettingsMigrations
         //      images donut; custom claims stay put.
         if (from < 76)
             changed |= LearnExtensions(profiles, out _, ["quicktime", "insp"]);
-        // v77: iPhone ringtones (#1291): M4R files learn the audio donut (custom claims stay put), and the "iPhone
+        // v77: OpenStreetMap XML (.osm, #713) learns the geospatial donut; custom claims stay put.
+        if (from < 77)
+            changed |= LearnExtensions(profiles, out _, ["osm"]);
+        // v78: Windows programs and libraries (.exe, .dll, #1188), read as their icon, learn the images donut; custom
+        //      claims stay put.
+        if (from < 78)
+            changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
+        // v79: iPhone ringtones (#1291): M4R files learn the audio donut (custom claims stay put), and the "iPhone
         //      ringtone" preset comes to libraries saved before it existed, after the built-in preset before it as in a
         //      new library; no donut gets a slot (#806).
-        if (from < 77)
+        if (from < 79)
         {
             changed |= LearnExtensions(profiles, out _, ["m4r"]);
             if (presets.All(p => p.Id != BuiltInData.RingtoneId))

@@ -375,6 +375,8 @@ public class FolderWatcherTests
     [InlineData("photo.jpg.crdownload")]
     [InlineData("~$report.docx")]
     [InlineData("sketch.kra~")] // Krita's backup of the previous save, written next to sketch.kra
+    [InlineData("setup.exe")] // programs only when dropped or named (#1188): a downloaded installer is no picture
+    [InlineData("plugin.DLL")]
     [InlineData(".hidden.jpg")]
     [InlineData("notes.unknownformat")]
     [InlineData("converted/photo.jpg")]

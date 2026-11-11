@@ -296,7 +296,11 @@ internal static class Program
             builder = builder.With(new X11PlatformOptions { RenderingMode = [X11RenderingMode.Software] });
 
         builder = builder
-            .ConfigureFonts(fonts => fonts.AddFontCollection(new FileeFontCollection()))
+            .ConfigureFonts(fonts =>
+            {
+                fonts.AddFontCollection(new FileeFontCollection());
+                fonts.AddFontCollection(new SystemUiFontCollection());
+            })
 #if DEBUG
             .WithDeveloperTools()
 #endif

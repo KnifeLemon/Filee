@@ -1,5 +1,5 @@
 // iPhone ringtones (#1291): M4R is an audio format, the "iPhone ringtone" preset makes one of at most 40 seconds from
-// where its Start field says, and settings schema 77 brings the preset and the extension to libraries saved before.
+// where its Start field says, and settings schema 79 brings the preset and the extension to libraries saved before.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -52,7 +52,7 @@ public class RingtonePresetTests
     }
 
     [Fact]
-    public void Version_76_libraries_get_the_preset_in_place_and_learn_the_extension_without_a_slot()
+    public void Version_78_libraries_get_the_preset_in_place_and_learn_the_extension_without_a_slot()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
@@ -61,13 +61,13 @@ public class RingtonePresetTests
         var audio = profiles.Single(p => p.Id == "audio").Extensions;
         audio.Remove("m4r");
 
-        Assert.True(SettingsMigrations.ApplyToLibrary(76, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(78, presets, profiles));
 
         Assert.Equal(before + 1, presets.FindIndex(p => p.Id == BuiltInData.RingtoneId)); // right after the AAC preset, as in a new library
         Assert.Contains("m4r", audio);
         Assert.DoesNotContain(profiles, p => p.PresetIds.Contains(BuiltInData.RingtoneId) || p.BackPresetIds?.Contains(BuiltInData.RingtoneId) == true);
 
-        // Run again (a library already at 77), nothing changes; a preset the user deleted doesn't come back.
+        // Run again (a library already at 79), nothing changes; a preset the user deleted doesn't come back.
         Assert.False(SettingsMigrations.ApplyToLibrary(AppSettings.CurrentSchemaVersion, presets, profiles));
         presets.RemoveAll(p => p.Id == BuiltInData.RingtoneId);
         Assert.False(SettingsMigrations.ApplyToLibrary(AppSettings.CurrentSchemaVersion, presets, profiles));
@@ -81,7 +81,7 @@ public class RingtonePresetTests
         var profiles = BuiltInData.CreateProfiles();
         presets.Single(p => p.Id == BuiltInData.RingtoneId).Media.RingtoneLength = 25;
 
-        SettingsMigrations.ApplyToLibrary(76, presets, profiles);
+        SettingsMigrations.ApplyToLibrary(78, presets, profiles);
 
         Assert.Single(presets, p => p.Id == BuiltInData.RingtoneId);
         Assert.Equal(25, presets.Single(p => p.Id == BuiltInData.RingtoneId).Media.RingtoneLength);
@@ -97,7 +97,7 @@ public class RingtonePresetTests
         profiles.Single(p => p.Id == "audio").Extensions.Remove("m4r");
         profiles.Insert(0, new ToolbarProfile { Id = "my-tones", Name = "Tones", Extensions = ["M4R"] });
 
-        SettingsMigrations.ApplyToLibrary(76, presets, profiles);
+        SettingsMigrations.ApplyToLibrary(78, presets, profiles);
 
         Assert.DoesNotContain("m4r", profiles.Single(p => p.Id == "audio").Extensions); // the user's own donut has it
     }

@@ -54,6 +54,13 @@ public sealed class ThemeSettings
     /// </summary>
     public bool? ReduceMotion { get; set; }
 
+    /// <summary>
+    /// Draws the UI in the system's own font (Segoe UI on Windows, San Francisco on macOS, fontconfig's default on
+    /// Linux) instead of the embedded Noto fonts, which still draw what it lacks. Off as before it existed; a missing
+    /// value reads as off, so it needs no schema step.
+    /// </summary>
+    public bool UseSystemFont { get; set; }
+
     public ThemeSettings Clone() => (ThemeSettings)MemberwiseClone();
 }
 
@@ -132,7 +139,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 77;
+    public const int CurrentSchemaVersion = 79;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 

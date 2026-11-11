@@ -509,8 +509,22 @@
       <StackPanel Spacing="10">
         <TextBlock Classes="h2" Text="{DynamicResource presets.group.pdf}" />
         <CheckBox Content="{DynamicResource presets.merge}" IsChecked="{Binding Merge}" IsVisible="{Binding ShowPdfBuild}" />
-        <CheckBox Content="{DynamicResource presets.split}" IsChecked="{Binding SplitPages}" IsVisible="{Binding ShowPdfSplit}" />
+        <!-- PDF → PDF: one PDF, one file per page, or several pages per file (#1259) -->
+        <StackPanel x:Name="PageOutputPanel" Spacing="8" IsVisible="{Binding ShowPdfSplit}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.page_output}" />
+            <ComboBox x:Name="PageOutput" ItemsSource="{Binding PageOutputChoices}" SelectedItem="{Binding PageOutput}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.page_output}" />
+          </StackPanel>
+          <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowPageGroups}">
+            <NumericUpDown x:Name="GroupSize" Value="{Binding GroupSize}" Minimum="2" Maximum="9999" Increment="1" FormatString="0"
+                           AutomationProperties.Name="{DynamicResource pages.groups}" />
+            <ComboBox x:Name="GroupKind" Grid.Column="2" ItemsSource="{Binding GroupKinds}" SelectedItem="{Binding GroupKind}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource pages.groups}" />
+          </Grid>
+        </StackPanel>
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.document_tables_note}" IsVisible="{Binding ShowPdfTablesNote}" />
         <!-- "Pages per sheet" (#737): several pages on each sheet -->
         <StackPanel Spacing="10" IsVisible="{Binding ShowSheets}">
           <Grid ColumnDefinitions="*,12,*">

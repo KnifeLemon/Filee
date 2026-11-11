@@ -13,10 +13,19 @@ internal sealed record CliOptions
     public string? To { get; set; }
     public string? Preset { get; set; }
     public string? Output { get; set; }
+
+    /// <summary>--from: files or folders 'engines install' takes the downloads from instead of the internet (#447).</summary>
+    public List<string> From { get; } = [];
     public bool Recursive { get; set; }
     public FileSortOrder? Sort { get; set; }
     public int? Quality { get; set; }
     public string? Pages { get; set; }
+
+    /// <summary>--split-every: PDF → PDF in files of this many pages (#1259).</summary>
+    public int? SplitEvery { get; set; }
+
+    /// <summary>--split-parts: PDF → PDF in this many files of the same length (#1259).</summary>
+    public int? SplitParts { get; set; }
     public ConflictPolicy? Conflict { get; set; }
     public bool Json { get; set; }
     public bool Quiet { get; set; }
@@ -69,6 +78,10 @@ internal sealed record CliOptions
                 case "-o" or "--output":
                     options.Output = Value();
                     break;
+                case "--from":
+                    if (Value() is { } from)
+                        options.From.Add(from);
+                    break;
                 case "-r" or "--recursive":
                     options.Recursive = true;
                     break;
@@ -109,6 +122,26 @@ internal sealed record CliOptions
                             options.Pages = check.Text;
                         else
                             options.Error ??= "--pages must be page numbers or ranges from 1, e.g. 13-55 or 1-3,8,12-15.";
+                    }
+                    break;
+                case "--split-every":
+                    var every = Value();
+                    if (every is not null)
+                    {
+                        if (int.TryParse(every, out var size) && size is >= 1 and <= Filee.Core.Conversion.PageGroups.MaxSize)
+                            options.SplitEvery = size;
+                        else
+                            options.Error ??= $"--split-every must be a number of pages from 1 to {Filee.Core.Conversion.PageGroups.MaxSize}.";
+                    }
+                    break;
+                case "--split-parts":
+                    var parts = Value();
+                    if (parts is not null)
+                    {
+                        if (int.TryParse(parts, out var count) && count is >= 2 and <= Filee.Core.Conversion.PageGroups.MaxSize)
+                            options.SplitParts = count;
+                        else
+                            options.Error ??= $"--split-parts must be a number of parts from 2 to {Filee.Core.Conversion.PageGroups.MaxSize}.";
                     }
                     break;
                 case "--overwrite":
@@ -158,12 +191,17 @@ internal sealed record CliOptions
         {
             "convert" when options.Inputs.Count == 0 => "Give at least one file or folder to convert.",
             "convert" or "watch" when options.To is null == (options.Preset is null) => "Use either --to <format> or --preset <preset>.",
+            "convert" or "watch" when options.SplitEvery is not null && options.SplitParts is not null => "Use either --split-every or --split-parts.",
             "watch" when options.Inputs.Count != 1 => "Give exactly one folder to watch.",
             "watch" when options.Sort is not null => "--sort only works with 'filee convert'.",
-            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove") =>
-                $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>' or 'filee engines remove <id>'.",
+            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() is not ("install" or "remove" or "download") =>
+                $"Unknown engines command '{options.Inputs[0]}'. Use 'filee engines', 'filee engines install <id>', 'filee engines download <id> -o <folder>' or 'filee engines remove <id>'.",
             "engines" when options.Inputs.Count == 1 => $"Give the engine to {options.Inputs[0].ToLowerInvariant()}, e.g. 'filee engines {options.Inputs[0].ToLowerInvariant()} pandoc'.",
             "engines" when options.Inputs.Count > 2 => "Give one engine at a time.",
+            "engines" when options.From.Count > 0 && (options.Inputs.Count == 0 || options.Inputs[0].ToLowerInvariant() != "install") =>
+                "--from only works with 'filee engines install'.",
+            "engines" when options.Inputs.Count > 0 && options.Inputs[0].ToLowerInvariant() == "download" && options.Output is null =>
+                "Give the folder to save the files in, e.g. 'filee engines download pandoc -o Engines'.",
             _ => null,
         };
         return options;

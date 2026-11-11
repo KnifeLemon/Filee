@@ -1,5 +1,5 @@
-// Theme: light/dark, accent colour, softness (corner radius), the donut's opacity, reduce animations, and the window
-// size (UiZoom). Changes apply live.
+// Theme: light/dark, accent colour, softness (corner radius), the donut's opacity, the system font, reduce animations,
+// and the window size (UiZoom). Changes apply live.
 
 using Avalonia;
 using Avalonia.Media;
@@ -47,6 +47,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
         DonutOpacity = Math.Round(Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1) * 100);
         DonutCaptions = store.Settings.Donut.ShowCaptions;
         ReduceMotion = theme.ReduceMotion ?? platform.PrefersReducedMotion;
+        UseSystemFont = theme.UseSystemFont;
         PreviewItems =
         [
             new DonutItem { Id = "a", Label = "PNG" },
@@ -107,6 +108,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     };
     [ObservableProperty] private double _cornerRadius;
     [ObservableProperty] private bool _reduceMotion;
+    [ObservableProperty] private bool _useSystemFont;
 
     /// <summary>
     /// The donut toolbar's opacity in percent: the one setting Donut toolbar → Appearance → Opacity edits too (each
@@ -245,6 +247,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
     }
     partial void OnCornerRadiusChanged(double value) => Save(t => t.CornerRadius = Math.Round(value));
     partial void OnReduceMotionChanged(bool value) => Save(t => t.ReduceMotion = value);
+    partial void OnUseSystemFontChanged(bool value) => Save(t => t.UseSystemFont = value);
 
     partial void OnDonutOpacityChanged(double value)
     {
