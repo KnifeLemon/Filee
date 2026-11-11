@@ -126,6 +126,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _edit = preset.Clone();
         _loc = loc;
         FolderInput = folderInput || preset.TargetFormat == "iso";
+        Labels = new SliceLabelFields(preset, loc);
 
         // ~150 formats in registry order, which groups them by category; the category is shown next to each name
         // and typing the first letters of a name jumps to it.
@@ -509,6 +510,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NameError), nameof(IsValid))]
     private string _name;
+
+    partial void OnNameChanged(string value) => Labels.NameChanged(value);
+
+    /// <summary>The slice's icon, short name and what it shows.</summary>
+    public SliceLabelFields Labels { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
@@ -1256,6 +1262,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Keep a built-in preset's translatable name unless the user actually renamed it.
         if (_original.NameKey is null || Name.Trim() != _loc.DisplayName(_original))
             _original.Name = Name.Trim();
+        Labels.Apply(_original);
 
         _original.TargetFormat = TargetId;
         var image = _original.Image;

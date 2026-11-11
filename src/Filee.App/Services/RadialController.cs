@@ -817,7 +817,7 @@ public sealed class RadialController(
         var scaling = OperatingSystem.IsMacOS() ? 1 : screen?.Scaling ?? 1;
 
         // Window size follows the donut size (SizeToContent); compute it up front to centre on the cursor.
-        var side = DonutMenu.SideFor(viewModel.OuterRadius, viewModel.ReserveSubRing);
+        var side = DonutMenu.SideFor(viewModel.OuterRadius, viewModel.ReserveSubRing, viewModel.GroupRingSize);
         var sidePx = (int)Math.Ceiling(side * scaling);
         var position = WindowPosition(cursor, screen?.WorkingArea, sidePx);
 
