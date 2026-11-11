@@ -25,7 +25,7 @@ public class FormatFieldsTests
     // Every specialist and legacy format.
     private static readonly string[] HiddenWithEverythingOff =
     [
-        "3g2", "3gp", "3mf", "602", "ac3", "adoc", "ai", "amr", "ape", "arj", "ass", "au", "azw", "azw4", "bik",
+        "3g2", "3gp", "3mf", "602", "ac3", "adoc", "ai", "amr", "ani", "ape", "arj", "ass", "au", "azw", "azw4", "bik",
         "bz2", "cab", "caf", "cavs", "cdr", "cgm", "chm", "cpio", "cur", "cwk", "dav", "dbk", "dcm", "dds", "deb",
         "dff", "dot", "dsf", "dss", "dst", "dts", "dv", "dwg", "eac3", "eot", "eps", "exr", "fbx", "fit", "fits",
         "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
@@ -49,7 +49,7 @@ public class FormatFieldsTests
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "kra", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits"] },
         { "developer", [
-                "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har", "icns", "jar",
+                "ani", "bz2", "cab", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har", "icns", "jar",
                 "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi", "rpm", "tar", "tar7z",
                 "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
             ] },
@@ -76,7 +76,7 @@ public class FormatFieldsTests
         { "design", ["ai", "cdr", "dst", "eps", "exr", "hdr", "jp2", "kra", "pcd", "plt", "ps", "psb", "psd", "raw", "xcf"] },
         { "science", ["dcm", "fits", "ipynb", "jp2"] },
         { "developer", [
-                "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
+                "ani", "bz2", "cab", "caf", "chm", "cpio", "cur", "deb", "fodg", "fodp", "fods", "fodt", "gz", "har",
                 "icns", "ipynb", "jar", "jsonl", "lz", "lzma", "m4s", "man", "miff", "pam", "pfm", "plist", "ppm", "qoi",
                 "rpm", "tar", "tar7z", "tbz2", "tgz", "tlz", "toml", "txz", "xbm", "xpm", "xz", "yaml"
             ] },
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 96,
-                [FormatGrade.Specialist] = 115,
+                [FormatGrade.Specialist] = 116,
                 [FormatGrade.Legacy] = 51,
             },
             counts);

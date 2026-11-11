@@ -1089,6 +1089,10 @@ internal static class SettingsMigrations
         //      claims stay put. (Schema 78 may be renumbered if another change takes it first.)
         if (from < 78)
             changed |= LearnExtensions(profiles, out _, ["exe", "dll"]);
+        // v80: Windows animated cursors (.ani, #1365) learn the images donut; custom claims stay put. (Schema 80 may be
+        //      renumbered if another change takes it first: 79 is taken by Paint.NET files in #1384.)
+        if (from < 80)
+            changed |= LearnExtensions(profiles, out _, ["ani"]);
         return changed;
     }
 
