@@ -880,6 +880,7 @@
   "presets.ico_sizes": "أحجام الأيقونة",
   "presets.group.pdf": "PDF",
   "presets.merge": "دمج كل الملفات في PDF واحد",
+  "presets.source_bookmarks": "إضافة إشارة مرجعية لكل ملف أصلي",
   "presets.page_size": "حجم الصفحة",
   "presets.page_size.FitImage": "ملاءمة الصورة",
   "presets.page_size.A4": "A4",

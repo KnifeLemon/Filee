@@ -880,6 +880,7 @@
   "presets.ico_sizes": "Simge boyutları",
   "presets.group.pdf": "PDF",
   "presets.merge": "Tüm dosyaları tek PDF'de birleştir",
+  "presets.source_bookmarks": "Her özgün dosya için bir yer imi ekle",
   "presets.page_size": "Sayfa boyutu",
   "presets.page_size.FitImage": "Görsele sığdır",
   "presets.page_size.A4": "A4",

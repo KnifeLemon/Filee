@@ -879,6 +879,7 @@
   "presets.ico_sizes": "আইকন আকার",
   "presets.group.pdf": "পিডিএফ",
   "presets.merge": "সব ফাইল একটি একক পিডিএফ-এ একত্রিত করুন",
+  "presets.source_bookmarks": "প্রতিটি মূল ফাইলের জন্য একটি বুকমার্ক যোগ করুন",
   "presets.page_size": "পৃষ্ঠার আকার",
   "presets.page_size.FitImage": "ছবির সাথে মানানসই",
   "presets.page_size.A4": "A4",

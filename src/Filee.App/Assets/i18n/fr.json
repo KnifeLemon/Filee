@@ -895,6 +895,7 @@
   "presets.ico_sizes": "Tailles d'icône",
   "presets.group.pdf": "PDF",
   "presets.merge": "Fusionner tous les fichiers en un seul PDF",
+  "presets.source_bookmarks": "Ajouter un signet par fichier original",
   "presets.page_size": "Format de page",
   "presets.page_size.FitImage": "Ajuster à l'image",
   "presets.page_size.A4": "A4",

@@ -880,6 +880,7 @@
   "presets.ico_sizes": "Ukuran ikon",
   "presets.group.pdf": "PDF",
   "presets.merge": "Gabungkan semua file menjadi satu PDF",
+  "presets.source_bookmarks": "Tambahkan penanda untuk setiap file asli",
   "presets.page_size": "Ukuran halaman",
   "presets.page_size.FitImage": "Sesuaikan dengan gambar",
   "presets.page_size.A4": "A4",

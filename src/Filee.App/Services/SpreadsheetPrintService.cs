@@ -54,7 +54,8 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
                 progress?.Report(0.85 * (index + 1) / regions.Count);
             }
             TryDelete(temporaryOutput);
-            await _pdfMerger.MergeAsync(rendered.Select(item => item.PdfPath).ToArray(), temporaryOutput, cancellationToken);
+            await _pdfMerger.MergeAsync(rendered.Select(item => new PdfMergeInput(item.PdfPath, Path.GetFileName(item.PdfPath))).ToArray(),
+                temporaryOutput, sourceBookmarks: false, cancellationToken);
             File.Move(temporaryOutput, outputPath, overwrite: true);
             progress?.Report(1);
         }

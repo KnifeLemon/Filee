@@ -879,6 +879,7 @@
 "presets.ico_sizes": "Dimensioni dell'icona",
 "presets.group.pdf": "PDF",
 "presets.merge": "Unisci tutti i file in un unico PDF",
+"presets.source_bookmarks": "Aggiungi un segnalibro per ogni file originale",
 "presets.page_size": "Formato pagina",
 "presets.page_size.FitImage": "Adatta all'immagine",
 "presets.page_size.A4": "A4",

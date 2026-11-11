@@ -895,6 +895,7 @@
   "presets.ico_sizes": "Icon sizes",
   "presets.group.pdf": "PDF",
   "presets.merge": "Merge all files into one PDF",
+  "presets.source_bookmarks": "Add a bookmark per source file",
   "presets.page_size": "Page size",
   "presets.page_size.FitImage": "Fit to image",
   "presets.page_size.A4": "A4",

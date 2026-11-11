@@ -880,6 +880,7 @@
   "presets.ico_sizes": "Tamaños de icono",
   "presets.group.pdf": "PDF",
   "presets.merge": "Combinar todos los archivos en un PDF",
+  "presets.source_bookmarks": "Añadir un marcador por cada archivo original",
   "presets.page_size": "Tamaño de página",
   "presets.page_size.FitImage": "Ajustar a la imagen",
   "presets.page_size.A4": "A4",

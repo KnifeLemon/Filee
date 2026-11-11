@@ -242,10 +242,15 @@ public interface IEnvelopeOpener
     string InnerFormat(string path, string format);
 }
 
+/// <summary>A PDF to merge and the name of its original source file.</summary>
+/// <param name="PdfPath">The PDF path, possibly produced by conversion or OCR.</param>
+/// <param name="SourceName">The original source's basename, including its extension, without directories.</param>
+public sealed record PdfMergeInput(string PdfPath, string SourceName);
+
 /// <summary>Merges several PDF files into one. Implemented by the PDF engine.</summary>
 public interface IPdfMerger
 {
-    Task MergeAsync(IReadOnlyList<string> inputPaths, string outputPath, CancellationToken cancellationToken);
+    Task MergeAsync(IReadOnlyList<PdfMergeInput> inputs, string outputPath, bool sourceBookmarks, CancellationToken cancellationToken);
 }
 
 /// <summary>
