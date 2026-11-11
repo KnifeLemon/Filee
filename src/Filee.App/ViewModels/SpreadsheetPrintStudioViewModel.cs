@@ -9,6 +9,7 @@ using Filee.App.Services;
 using Filee.Core.Conversion;
 using Filee.Core.History;
 using Filee.Core.Localization;
+using Filee.Core.Presets;
 using Filee.Core.Settings;
 using Filee.Engines.Office.Sheets;
 using Microsoft.Extensions.Logging;
@@ -192,6 +193,8 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         Initialization = InitializeAsync();
     }
 
+    private const string PresetId = "tool-sheet-studio";
+
     public string FileName { get; }
     internal Task Initialization { get; }
     public ObservableCollection<SpreadsheetSheetPlan> Sheets { get; } = [];
@@ -318,8 +321,15 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         try
         {
             var progress = new Progress<double>(value => ExportProgress = value * 100);
-            var outputs = await _service.ExportAsync(_workbook, regions, outputPath, onePerSheet, progress,
+            // The tool's own output setting, as for every other Filee output; Rename when it was never changed.
+            var conflict = _store.FindPreset(PresetId)?.Output.Conflict ?? ConflictPolicy.Rename;
+            var outputs = await _service.ExportAsync(_workbook, regions, outputPath, onePerSheet, conflict, progress,
                 _exportCancellation.Token);
+            if (outputs.Count == 0)
+            {
+                Status = _loc["toast.skipped"];
+                return;
+            }
             Status = outputs.Count == 1
                 ? _loc.Format("sheet_studio.exported", Path.GetFileName(outputs[0]))
                 : _loc.Format("sheet_studio.exported_files", outputs.Count);
@@ -329,7 +339,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
                 {
                     JobId = Guid.NewGuid().ToString("N")[..12],
                     FinishedAt = DateTime.Now,
-                    PresetId = "tool-sheet-studio",
+                    PresetId = PresetId,
                     PresetName = _loc["preset.sheet_studio"],
                     State = JobState.Completed,
                     Sources = [_workbook.Path],

@@ -8,6 +8,7 @@ using Filee.App.ViewModels;
 using Filee.App.Views;
 using Filee.Core.Conversion;
 using Filee.Core.Localization;
+using Filee.Core.Presets;
 using Filee.Core.Settings;
 
 namespace Filee.App.Tests;
@@ -125,7 +126,7 @@ public class SpreadsheetPrintStudioTests
     {
         var folder = Path.Combine(Path.GetTempPath(), "exports");
         var paths = SpreadsheetPrintService.PerSheetPaths(Path.Combine(folder, "Report.pdf"),
-            ["Sales", "Q1/Q2", "Sales", "q1:q2", "  ", "DATA", "data"]);
+            ["Sales", "Q1/Q2", "Sales", "q1:q2", "  ", "DATA", "data"], exists: _ => false);
 
         Assert.Equal(
         [
@@ -133,6 +134,24 @@ public class SpreadsheetPrintStudioTests
             "Report_DATA.pdf", "Report_data_2.pdf",
         ], paths.Select(Path.GetFileName));
         Assert.All(paths, path => Assert.Equal(folder, Path.GetDirectoryName(path)));
+    }
+
+    [Theory]
+    [InlineData(ConflictPolicy.Rename, "Report_Sales (3).pdf|Report_Sales_2 (2).pdf|Report_Data.pdf")]
+    [InlineData(ConflictPolicy.Overwrite, "Report_Sales.pdf|Report_Sales_2.pdf|Report_Data.pdf")]
+    [InlineData(ConflictPolicy.Skip, "-|-|Report_Data.pdf")]
+    public void One_pdf_per_sheet_follows_the_conflict_policy_for_files_already_there(ConflictPolicy conflict,
+        string expected)
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "exports");
+        // An earlier export left Report_Sales.pdf, Report_Sales (2).pdf and Report_Sales_2.pdf behind.
+        var existing = new HashSet<string>(["Report_Sales.pdf", "Report_Sales (2).pdf", "Report_Sales_2.pdf"],
+            StringComparer.OrdinalIgnoreCase);
+
+        var paths = SpreadsheetPrintService.PerSheetPaths(Path.Combine(folder, "Report.pdf"),
+            ["Sales", "Sales", "Data"], conflict, path => existing.Contains(Path.GetFileName(path)));
+
+        Assert.Equal(expected.Split('|'), paths.Select(path => path is null ? "-" : Path.GetFileName(path)));
     }
 
     [AvaloniaFact]
@@ -151,11 +170,15 @@ public class SpreadsheetPrintStudioTests
             await vm.Initialization;
             vm.AddRegionCommand.Execute(null);
             vm.OnePdfPerSheet = true;
+            // An earlier export must survive: the tool's default policy numbers the new file instead.
+            var earlier = Path.Combine(folder, "book_Data.pdf");
+            File.WriteAllText(earlier, "earlier export");
 
             await vm.ExportAsync(Path.Combine(folder, "book.pdf"));
 
-            string[] expected = [Path.Combine(folder, "book_Data.pdf"), Path.Combine(folder, "book_Data_2.pdf")];
+            string[] expected = [Path.Combine(folder, "book_Data (2).pdf"), Path.Combine(folder, "book_Data_2.pdf")];
             Assert.All(expected, path => Assert.True(File.Exists(path), path));
+            Assert.Equal("earlier export", File.ReadAllText(earlier));
             Assert.False(File.Exists(Path.Combine(folder, "book.pdf")));
             Assert.Empty(Directory.GetFiles(folder, "*.filee-tmp"));
             Assert.Contains(store.History, entry => entry.Outputs.SequenceEqual(expected));
