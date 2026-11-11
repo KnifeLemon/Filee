@@ -95,6 +95,7 @@
   "toast.cancel": "İptal",
   "toast.copy": "Ayrıntıları kopyala",
   "toast.copied": "Kopyalandı",
+  "toast.more": "{0} tane daha",
   "toast.missing_fonts": "Eksik belge yazı tipleri: {0}",
   "toast.get_fonts": "Yazı tiplerini edin",
   "download.badge": "{0}/sn · {1}",

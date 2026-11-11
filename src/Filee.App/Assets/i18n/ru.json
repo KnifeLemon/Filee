@@ -100,6 +100,7 @@
   "toast.cancel": "Отмена",
   "toast.copy": "Копировать подробности",
   "toast.copied": "Скопировано",
+  "toast.more": "Ещё {0}",
   "toast.missing_fonts": "Отсутствуют шрифты документа: {0}",
   "toast.get_fonts": "Получить шрифты",
   "download.badge": "{0}/с · {1}",

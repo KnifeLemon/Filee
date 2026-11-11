@@ -95,6 +95,7 @@
   "toast.cancel": "キャンセル",
   "toast.copy": "詳細をコピー",
   "toast.copied": "コピーしました",
+  "toast.more": "ほか{0}件",
   "toast.missing_fonts": "文書にないフォント: {0}",
   "toast.get_fonts": "フォントを入手",
   "download.badge": "{0}/秒 · {1}",

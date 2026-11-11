@@ -100,6 +100,7 @@
   "toast.cancel": "Hủy",
   "toast.copy": "Sao chép chi tiết",
   "toast.copied": "Đã sao chép",
+  "toast.more": "Thêm {0}",
   "toast.missing_fonts": "Thiếu phông chữ của tài liệu: {0}",
   "toast.get_fonts": "Tải phông chữ",
   "download.badge": "{0}/s · {1}",
