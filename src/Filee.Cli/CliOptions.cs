@@ -27,6 +27,9 @@ internal sealed record CliOptions
     /// <summary>--split-every with a length (10m, 90s, 1:30:00): video → video in parts of this many seconds (#1259).</summary>
     public int? SplitEverySeconds { get; set; }
 
+    /// <summary>--split-every as it was typed, for the message when it doesn't suit the target.</summary>
+    public string? SplitEveryText { get; set; }
+
     /// <summary>--split-parts: PDF → PDF, or video → video, in this many files of the same length (#1259).</summary>
     public int? SplitParts { get; set; }
 
@@ -134,6 +137,7 @@ internal sealed record CliOptions
                     var every = Value();
                     if (every is not null)
                     {
+                        options.SplitEveryText = every;
                         // A plain number is pages; a length with a unit or colons is for videos.
                         if (int.TryParse(every, out var size) && size is >= 1 and <= Filee.Core.Conversion.PageGroups.MaxSize)
                             options.SplitEvery = size;

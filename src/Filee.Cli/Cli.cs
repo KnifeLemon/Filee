@@ -318,7 +318,21 @@ internal static class Cli
         if (options.Pages is { } pages)
             preset.Pdf.PageRange = pages;
         // PDF → PDF in files of so many pages, a video in parts of so long, or either in equal parts (#1259), over the
-        // preset's split. Each only touches files of its kind, so PDFs and videos can go in one command.
+        // preset's split. Each only touches files of its kind, so PDFs and videos can go in one command; but pages for
+        // a video target, or a length for a PDF one, would split nothing, so they are refused rather than ignored.
+        var category = FormatRegistry.FindById(preset.TargetFormat)?.Category;
+        if (options.SplitEvery is { } pagesEvery && category == FormatCategory.Video)
+        {
+            errors.WriteLine($"filee: --split-every {options.SplitEveryText} is a number of pages, but this makes videos. "
+                + $"Give a length, e.g. {pagesEvery}s or {pagesEvery}m.");
+            return null;
+        }
+        if (options.SplitEverySeconds is not null && preset.TargetFormat == "pdf")
+        {
+            errors.WriteLine($"filee: --split-every {options.SplitEveryText} is a length of video, but this makes PDFs. "
+                + "Give a number of pages, e.g. --split-every 10.");
+            return null;
+        }
         if (options.SplitEvery is { } every)
             (preset.Pdf.SplitPages, preset.Pdf.SplitEvery, preset.Pdf.SplitParts) = (true, every, 0);
         if (options.SplitEverySeconds is { } seconds)
