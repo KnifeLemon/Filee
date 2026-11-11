@@ -261,15 +261,19 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             new Choice<string>("ja", "日本語"),
             new Choice<string>("ko", "한국어"),
             new Choice<string>("ru", "Русский"),
+            new Choice<string>("uk", "Українська"),
             new Choice<string>("pt", "Português"),
             new Choice<string>("ar", "العربية"),
+            new Choice<string>("fa", "فارسی"),
             new Choice<string>("it", "Italiano"),
             new Choice<string>("nl", "Nederlands"),
             new Choice<string>("pl", "Polski"),
             new Choice<string>("tr", "Türkçe"),
             new Choice<string>("ne", "नेपाली"),
             new Choice<string>("th", "ไทย"),
-            new Choice<string>("id", "Bahasa Indonesia")
+            new Choice<string>("id", "Bahasa Indonesia"),
+            new Choice<string>("vi", "Tiếng Việt"),
+            new Choice<string>("bn", "বাংলা")
         ];
         _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
             ?? TranslationLanguageChoices[0];
