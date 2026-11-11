@@ -354,7 +354,8 @@ in it also builds the package (artifact `windows-arm64-package`).
   frame is written as stored, every size and its hotspot; a preset that changes the picture converts it, and the
   hotspot follows it when it is resized, turned or mirrored (trimmed or set on a background, it goes to the top left
   corner; see CUR above). Files are read in memory with their sizes checked (at most 64 MB, 1,024 frames, 4,096
-  steps, 1,024 px a side); frames stored as raw bitmaps (no `AF_ICON` flag, which Windows' own loaders hardly use) and
+  steps, 32 sizes a frame, 1,024 px a side, and a pixel budget for all sizes and steps together, checked before
+  ImageMagick decodes anything); frames stored as raw bitmaps (no `AF_ICON` flag, which Windows' own loaders hardly use) and
   damaged files give a clear error.
 - **Live / Motion Photos from a video** (JPG and HEIC targets) are FFmpeg's: the clip and the photo's frame come from
   it, ImageMagick or the HEIC writer only encode that frame (see *Making Live / Motion Photos* there).
