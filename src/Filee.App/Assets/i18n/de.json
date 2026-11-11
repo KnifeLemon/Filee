@@ -1749,6 +1749,8 @@
   "connect.manual_instruction_pin": "Oder die obige Adresse im mobilen Browser öffnen und die PIN eingeben.",
   "connect.picker_files_title": "Dateien zum Hochladen auswählen",
   "connect.picker_folder_title": "Ordner zum Hochladen auswählen",
+  "connect.upload_failed_one": "\"{0}\" konnte nicht hochgeladen werden.",
+  "connect.upload_failed_many": "{0} Dateien konnten nicht hochgeladen werden.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Hinweis: Wenn dein Smartphone keine Verbindung herstellen kann, erlaube Filee in der System-Firewall.",
   "connect.no_network_message": "Filee Connect konnte nicht gestartet werden. Bitte stelle sicher, dass dieses Gerät mit einem lokalen WLAN- oder Ethernet-Netzwerk verbunden ist.",

@@ -1751,6 +1751,8 @@
   "connect.manual_instruction_pin": "หรือเปิดที่อยู่ด้านบนในเบราว์เซอร์โทรศัพท์ของคุณแล้วป้อนรหัส PIN",
   "connect.picker_files_title": "เลือกไฟล์ที่จะอัปโหลด",
   "connect.picker_folder_title": "เลือกโฟลเดอร์ที่จะอัปโหลด",
+  "connect.upload_failed_one": "อัปโหลด \"{0}\" ไม่ได้",
+  "connect.upload_failed_many": "อัปโหลดไฟล์ {0} ไฟล์ไม่ได้",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "หมายเหตุ: หากโทรศัพท์ของคุณไม่สามารถเชื่อมต่อได้ ให้เปิดการอนุญาต Filee ในไฟร์วอลล์ของระบบ",
   "connect.no_network_message": "ไม่สามารถเริ่ม Filee Connect ได้ โปรดตรวจสอบให้แน่ใจว่าอุปกรณ์นี้เชื่อมต่อกับเครือข่าย Wi-Fi หรืออีเทอร์เน็ตในเครื่อง",

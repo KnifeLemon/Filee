@@ -109,8 +109,8 @@ public partial class FileeConnectWindow : Window
         if (failedFiles.Count > 0)
         {
             var msg = failedFiles.Count == 1
-                ? $"Could not upload \"{failedFiles[0]}\"."
-                : $"Could not upload {failedFiles.Count} files.";
+                ? vm.Localizer.Format("connect.upload_failed_one", failedFiles[0])
+                : vm.Localizer.Format("connect.upload_failed_many", failedFiles.Count);
             await AppHost.Get<WindowService>().MessageAsync(this, msg);
         }
     }
@@ -171,8 +171,8 @@ public partial class FileeConnectWindow : Window
         if (failedFiles.Count > 0)
         {
             var msg = failedFiles.Count == 1
-                ? $"Could not upload \"{failedFiles[0]}\"."
-                : $"Could not upload {failedFiles.Count} files.";
+                ? vm.Localizer.Format("connect.upload_failed_one", failedFiles[0])
+                : vm.Localizer.Format("connect.upload_failed_many", failedFiles.Count);
             await AppHost.Get<WindowService>().MessageAsync(this, msg);
         }
     }

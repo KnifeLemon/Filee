@@ -1748,6 +1748,8 @@
   "connect.manual_instruction_pin": "Oppure apri l'indirizzo sopra nel browser del telefono e inserisci il PIN.",
   "connect.picker_files_title": "Seleziona i file da caricare",
   "connect.picker_folder_title": "Seleziona la cartella da caricare",
+  "connect.upload_failed_one": "Impossibile caricare \"{0}\".",
+  "connect.upload_failed_many": "Impossibile caricare {0} file.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Nota: se il telefono non si connette, autorizza Filee nel firewall di sistema.",
   "connect.no_network_message": "Impossibile avviare Filee Connect. Assicurati che questo dispositivo sia connesso a una rete Wi-Fi o Ethernet locale.",

@@ -1749,6 +1749,8 @@
   "connect.manual_instruction_pin": "Atau buka alamat di atas di browser ponsel Anda dan masukkan PIN.",
   "connect.picker_files_title": "Pilih file untuk diunggah",
   "connect.picker_folder_title": "Pilih folder untuk diunggah",
+  "connect.upload_failed_one": "Tidak dapat mengunggah \"{0}\".",
+  "connect.upload_failed_many": "Tidak dapat mengunggah {0} file.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Catatan: Jika ponsel Anda tidak dapat terhubung, izinkan Filee di firewall sistem.",
   "connect.no_network_message": "Tidak dapat memulai Filee Connect. Pastikan perangkat ini terhubung ke jaringan Wi-Fi atau Ethernet lokal.",

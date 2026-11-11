@@ -1771,6 +1771,8 @@
   "connect.manual_instruction_pin": "Ou abra o endereço acima no navegador do telemóvel e introduza o PIN.",
   "connect.picker_files_title": "Selecionar ficheiros para enviar",
   "connect.picker_folder_title": "Selecionar pasta para enviar",
+  "connect.upload_failed_one": "Não foi possível carregar \"{0}\".",
+  "connect.upload_failed_many": "Não foi possível carregar {0} ficheiros.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Nota: se o seu telemóvel não conseguir ligar-se, permita o Filee na firewall do sistema.",
   "connect.no_network_message": "Não foi possível iniciar o Filee Connect. Certifique-se de que este dispositivo está ligado a uma rede Wi-Fi ou Ethernet local.",

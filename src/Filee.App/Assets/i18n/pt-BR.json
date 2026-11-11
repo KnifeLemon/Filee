@@ -1771,6 +1771,8 @@
   "connect.manual_instruction_pin": "Ou abra o endereço acima no navegador do celular e digite o PIN.",
   "connect.picker_files_title": "Selecionar arquivos para enviar",
   "connect.picker_folder_title": "Selecionar pasta para enviar",
+  "connect.upload_failed_one": "Não foi possível enviar \"{0}\".",
+  "connect.upload_failed_many": "Não foi possível enviar {0} arquivos.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Observação: se o seu celular não conseguir se conectar, permita o Filee no firewall do sistema.",
   "connect.no_network_message": "Não foi possível iniciar o Filee Connect. Certifique-se de que este dispositivo esteja conectado a uma rede Wi-Fi ou Ethernet local.",

@@ -1771,6 +1771,8 @@
   "connect.manual_instruction_pin": "或在手机浏览器中打开上方地址并输入 PIN 码。",
   "connect.picker_files_title": "选择要上传的文件",
   "connect.picker_folder_title": "选择要上传的文件夹",
+  "connect.upload_failed_one": "无法上传\"{0}\"。",
+  "connect.upload_failed_many": "无法上传 {0} 个文件。",
   "connect.pin_label": "PIN 码：",
   "connect.firewall_hint_generic": "注意：如果您的手机无法连接，请在系统防火墙中允许 Filee。",
   "connect.no_network_message": "无法启动 Filee Connect。请确保此设备已连接到本地 Wi-Fi 或有线以太网。",

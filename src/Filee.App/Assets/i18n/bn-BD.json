@@ -1747,6 +1747,8 @@
   "connect.manual_instruction_pin": "অথবা আপনার ফোনের ব্রাউজারে উপরের ঠিকানাটি খুলুন এবং পিন দিন।",
   "connect.picker_files_title": "আপলোড করার জন্য ফাইল নির্বাচন করুন",
   "connect.picker_folder_title": "আপলোড করার জন্য ফোল্ডার নির্বাচন করুন",
+  "connect.upload_failed_one": "\"{0}\" আপলোড করা যায়নি।",
+  "connect.upload_failed_many": "{0}টি ফাইল আপলোড করা যায়নি।",
   "connect.pin_label": "পিন:",
   "connect.firewall_hint_generic": "নোট: আপনার ফোন সংযোগ করতে না পারলে, সিস্টেম ফায়ারওয়ালে Filee অনুমতি দিন।",
   "connect.no_network_message": "Filee Connect শুরু করা যায়নি। অনুগ্রহ করে নিশ্চিত করুন যে এই ডিভাইসটি একটি স্থানীয় Wi-Fi বা ইথারনেট নেটওয়ার্কের সাথে সংযুক্ত রয়েছে।",
