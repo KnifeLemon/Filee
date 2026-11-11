@@ -1,5 +1,5 @@
-// Paint.NET pictures (.pdn) are read as their merged picture, or as layers for PSD: they open the images donut, which
-// existing libraries learn without taking a donut of the user's own.
+// Paint.NET pictures (.pdn), read and written by Filee: they open the images donut, which existing libraries learn without
+// taking a donut of the user's own, and are a target only where the Design & print field is on.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -20,11 +20,14 @@ public class PaintNetFormatTests
     }
 
     [Fact]
-    public void A_pdn_is_read_only()
+    public void A_pdn_is_a_design_target()
     {
         var pdn = FormatRegistry.Get("pdn")!;
         Assert.Equal(FormatCategory.Image, pdn.Category);
-        Assert.False(pdn.Writable);
+        Assert.True(pdn.Writable);
+        Assert.Equal(FormatGrade.Specialist, FormatFields.GradeOf(pdn));
+        Assert.False(FormatFields.IsShown("pdn", new HashSet<string> { "design" }));
+        Assert.True(FormatFields.IsShown("pdn", new HashSet<string>()));
     }
 
     [Fact]

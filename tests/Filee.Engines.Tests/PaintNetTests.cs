@@ -1,5 +1,6 @@
 // Paint.NET's .pdn: merged as Paint.NET shows it for PNG, JPG and the other picture targets, and kept as layers (names,
-// opacity, blend mode, visibility) for PSD, which Photoshop, GIMP and Krita open. The files are built by PdnBuilder.
+// opacity, blend mode, visibility) for PSD, which Photoshop, GIMP and Krita open. The other way, pictures become a .pdn
+// of one layer and a PSD a .pdn with its layers. The test files are built by PdnBuilder.
 
 using System.Text;
 using Filee.Core.Conversion;
@@ -140,5 +141,56 @@ public class PaintNetTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var file = Assert.Single(job.Files);
         Assert.Equal(FileState.Failed, file.State);
         Assert.Contains("Paint.NET", file.ErrorDetail);
+    }
+
+    [Fact]
+    public async Task A_png_becomes_a_pdn_of_one_layer()
+    {
+        var folder = fx.NewFolder();
+        var png = Path.Combine(folder, "photo.png");
+        using (var picture = new MagickImage(MagickColors.Transparent, 40, 20))
+        {
+            picture.Draw(new ImageMagick.Drawing.Drawables().FillColor(MagickColors.Red).Rectangle(0, 0, 19, 19));
+            picture.Write(png);
+        }
+
+        var job = await fx.ConvertAsync([png], new Preset { TargetFormat = "pdn" });
+        Assert.True(job.State == JobState.Completed, Errors(job));
+        var pdn = Assert.Single(job.Outputs);
+        Assert.Equal("photo.pdn", Path.GetFileName(pdn));
+        Assert.Equal("PDN3"u8.ToArray(), File.ReadAllBytes(pdn)[..4]);
+
+        var (width, height, layers) = Magick.PaintNet.Open(pdn);
+        var layer = Assert.Single(layers.ToList());
+        Assert.Equal((40, 20), (width, height));
+        Assert.Equal(("Background", true, (byte)255), (layer.Name, layer.Visible, layer.Opacity));
+        Assert.Equal(new byte[] { 0, 0, 255, 255 }, layer.Bgra[..4]);                                // red
+        Assert.Equal(0, layer.Bgra[(10 * 40 + 30) * 4 + 3]);                                        // transparent
+    }
+
+    [Fact]
+    public async Task A_pdn_through_psd_and_back_keeps_its_layers()
+    {
+        var psdJob = await fx.ConvertAsync([Pdn()], new Preset { TargetFormat = "psd" });
+        Assert.True(psdJob.State == JobState.Completed, Errors(psdJob));
+        var job = await fx.ConvertAsync([Assert.Single(psdJob.Outputs)], new Preset { TargetFormat = "pdn" });
+        Assert.True(job.State == JobState.Completed, Errors(job));
+
+        var (_, _, read) = Magick.PaintNet.Open(Assert.Single(job.Outputs));
+        var layers = read.ToList();
+        Assert.Equal(
+            [("Arrière-plan", true, 255, Magick.PaintNet.BlendMode.Normal),
+             ("Calque 2", true, 128, Magick.PaintNet.BlendMode.Multiply),
+             ("Hidden", false, 255, Magick.PaintNet.BlendMode.Normal)],
+            layers.Select(l => (l.Name, l.Visible, (int)l.Opacity, l.Blend)));
+        // The layer's own pixels, without its opacity baked in: opaque light blue left, transparent right.
+        var pixel = (4 * Width + 2) * 4;
+        Assert.Equal(new byte[] { 255, 200, 100, 255 }, layers[1].Bgra[pixel..(pixel + 4)]);
+        Assert.Equal(0, layers[1].Bgra[(4 * Width + 12) * 4 + 3]);
+
+        // And it still converts to the same picture.
+        var png = await fx.ConvertAsync([Assert.Single(job.Outputs)], new Preset { TargetFormat = "png" });
+        using var merged = new MagickImage(Assert.Single(png.Outputs));
+        AssertColour(merged, 2, 4, 139, 89, 50);
     }
 }

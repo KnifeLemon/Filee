@@ -29,9 +29,13 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
     internal Func<(string Ffmpeg, string Ffprobe)?> LocateFfmpeg { get; init; } = FfmpegConverter.Locate;
 
     public IReadOnlyList<ConversionEdge> Edges { get; } =
-        (from source in ImageEncoder.Sources
-         from target in ImageEncoder.Writable
-         select ImageEncoder.Edge(source, target)).ToList();
+    [
+        .. from source in ImageEncoder.Sources
+           from target in ImageEncoder.Writable
+           select ImageEncoder.Edge(source, target),
+        // Paint.NET's own file, written by Filee (PaintNetWriter); a PSD keeps its layers there.
+        .. ImageEncoder.Sources.Where(source => source != "pdn").Select(source => ImageEncoder.Edge(source, "pdn")),
+    ];
 
     public EngineStatus GetStatus() =>
         EngineStatus.Available(MagickNET.ImageMagickVersion,
@@ -77,7 +81,7 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
 
     public bool CanRead(string format) => ImageEncoder.Sources.Contains(format);
 
-    public bool CanWrite(string format) => ImageEncoder.Writable.Contains(format);
+    public bool CanWrite(string format) => format == "pdn" || ImageEncoder.Writable.Contains(format);
 
     /// <summary>"Merge images": the pictures one under another or side by side in one image (<see cref="ImageJoiner"/>).</summary>
     public Task JoinAsync(IReadOnlyList<(string Path, string Format)> inputs, string outputPath, string format,
@@ -96,6 +100,9 @@ public sealed class MagickImageConverter : IConverter, ITiffMerger, IImageTransf
             // A Paint.NET file as PSD keeps its layers, unless the preset changes the picture.
             if (step.From == "pdn" && step.To is "psd" or "psb" && PaintNet.KeepsLayers(step.Preset.Image))
                 return PaintNet.SaveLayered(step, progress, cancellationToken);
+            // A PSD as a Paint.NET file keeps its layers too.
+            if (step.From is "psd" or "psb" && step.To == "pdn" && PaintNet.KeepsLayers(step.Preset.Image))
+                return PaintNetWriter.SaveLayered(step, progress, cancellationToken);
             // Animated PNGs are often saved as .png: read them as APNG, so they stay animated as GIF or WebP. An AVIF is an
             // animation only when it is an image sequence.
             var from = step.From == "png" && Apng.IsAnimated(step.InputPath) ? "apng" : AvifSequence.SourceFormat(step.From, step.InputPath);

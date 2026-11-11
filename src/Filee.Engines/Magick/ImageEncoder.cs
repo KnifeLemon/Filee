@@ -463,6 +463,19 @@ internal static class ImageEncoder
         ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {
         var written = new List<string>();
+        if (targetFormat == "pdn")
+        {
+            // Paint.NET's own file, written by Filee (PaintNetWriter): one picture per file, as one layer.
+            for (var i = 0; i < frames.Count; i++)
+            {
+                var pdn = output.Allocate("pdn", frames.Count > 1 ? $"_p{i + 1}" : null);
+                if (pdn is null)
+                    continue;
+                PaintNetWriter.Write(frames[i], pdn);
+                written.Add(pdn);
+            }
+            return written;
+        }
         var (format, extension) = OutputFormat(targetFormat, options ?? new ImageOptions(), sourcePath);
 
         if (targetFormat == "apng")

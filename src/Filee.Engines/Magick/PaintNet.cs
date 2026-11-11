@@ -421,38 +421,12 @@ internal static class PaintNet
     internal static void SetLayerFlags(string path, IReadOnlyList<bool> visible, bool psb)
     {
         using var file = File.Open(path, FileMode.Open, FileAccess.ReadWrite);
-        var reader = new BinaryReader(file);
-        // Reads a section's length and moves past the section.
-        void Skip()
-        {
-            var length = BinaryPrimitives.ReadUInt32BigEndian(reader.ReadBytes(4));
-            file.Position += length;
-        }
-        file.Position = 26;                // file header
-        Skip();                            // colour mode data
-        Skip();                            // image resources
-        file.Position += psb ? 16 : 8;     // layer and mask information length, layer information length
-        var count = Math.Abs(BinaryPrimitives.ReadInt16BigEndian(reader.ReadBytes(2)));
-        if (count != visible.Count)
+        var records = PsdLayerRecords.Read(file, psb);
+        if (records is null || records.Count != visible.Count)
             return;
-        var flags = new List<long>(count);
-        for (var i = 0; i < count; i++)
+        for (var i = 0; i < records.Count; i++)
         {
-            file.Position += 16;           // bounds
-            var channels = BinaryPrimitives.ReadUInt16BigEndian(reader.ReadBytes(2));
-            file.Position += channels * (psb ? 10 : 6);
-            if (!reader.ReadBytes(4).AsSpan().SequenceEqual("8BIM"u8))
-                return;
-            file.Position += 6;            // blend mode, opacity, clipping
-            flags.Add(file.Position);
-            file.Position += 2;            // flags, filler
-            Skip();                        // extra data: mask, blending ranges, name, additional information
-            if (file.Position > file.Length)
-                return;
-        }
-        for (var i = 0; i < count; i++)
-        {
-            file.Position = flags[i];
+            file.Position = records[i].FlagsOffset;
             file.WriteByte(visible[i] ? (byte)0 : (byte)2);
         }
     }
