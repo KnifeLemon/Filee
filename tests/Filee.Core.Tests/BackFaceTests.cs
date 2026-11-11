@@ -141,9 +141,7 @@ public partial class BackFaceTests
 
         foreach (var profile in profiles.Where(p => p != mine && p.Id != "folders"))
         {
-            // Schema 80 then gives the untouched PDF back XLSX (#1343).
-            var expected = (profile.Id == "pdf" ? PdfXlsxSlotTests.Schema58PdfBackAt80() : Schema58(profile.Id).BackPresetIds!)
-                .Where(id => id != "to-gif");
+            var expected = Schema58(profile.Id).BackPresetIds!.Where(id => id != "to-gif");
             Assert.Equal(expected, profile.BackPresetIds);
         }
         Assert.Null(mine.BackPresetIds); // the store gives it an empty one (below)

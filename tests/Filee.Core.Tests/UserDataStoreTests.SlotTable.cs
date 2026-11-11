@@ -77,10 +77,6 @@ public partial class UserDataStoreTests
             "UserWithoutBack" => UserWithoutBackKept(),
             _ => Schema58Library(),
         };
-        // Loading runs schema 80, which gives the untouched PDF back face XLSX (#1343); import runs no migration.
-        if (!import && expected.Profiles.SingleOrDefault(p => p.Id == "pdf") is { } pdf
-            && pdf.BackPresetIds?.SequenceEqual(PdfXlsxSlotTests.Schema58PdfBack()) == true)
-            pdf.BackPresetIds = PdfXlsxSlotTests.Schema58PdfBackAt80();
         Assert.Equal(JsonSerializer.Serialize(expected.Profiles, FileeJsonContext.Default.ListToolbarProfile),
             JsonSerializer.Serialize(store.Profiles, FileeJsonContext.Default.ListToolbarProfile));
         Assert.Equal(JsonSerializer.Serialize(expected.Presets, FileeJsonContext.Default.ListPreset),

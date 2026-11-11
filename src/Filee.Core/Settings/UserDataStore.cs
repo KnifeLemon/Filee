@@ -1097,36 +1097,7 @@ internal static class SettingsMigrations
             if (presets.All(p => p.Id != BuiltInData.RingtoneId))
                 changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
         }
-        // v80: PDF → XLSX (#1343, #1187) was on no PDF donut, so people didn't find it. A PDF donut face that is still
-        //      exactly as Filee made it gets the slot: the front of a library made since the slot cleanup, after
-        //      "DOCX" as in a new library, or else the back of an older one, whose front is full, after "Compress
-        //      PDF". A face the user changed stays as it is (#806). (Schema 80 may be renumbered if another change
-        //      takes it first.)
-        if (from < 80)
-            changed |= AddPdfXlsx(presets, profiles);
         return changed;
-    }
-
-    /// <summary>The PDF front of a new library from the slot cleanup (2.3.0) until XLSX joined it in schema 80.</summary>
-    private static readonly string[] PdfFrontBefore80 = ["to-png", "to-jpg", "to-docx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"];
-
-    private static bool AddPdfXlsx(List<Preset> presets, List<ToolbarProfile> profiles)
-    {
-        const string id = "to-xlsx";
-        if (presets.All(p => p.Id != id) || profiles.FirstOrDefault(p => p.Id == "pdf") is not { } pdf
-            || pdf.PresetIds.Contains(id) || pdf.BackPresetIds?.Contains(id) == true)
-            return false;
-        if (pdf.PresetIds.SequenceEqual(PdfFrontBefore80))
-        {
-            pdf.PresetIds.Insert(pdf.PresetIds.IndexOf("to-docx") + 1, id);
-            return true;
-        }
-        if (pdf.BackPresetIds is { } back && back.SequenceEqual(BuiltInData.ProfilesSchema58().Single(p => p.Id == "pdf").BackPresetIds!))
-        {
-            back.Insert(back.IndexOf("compress-pdf") + 1, id);
-            return true;
-        }
-        return false;
     }
 
     private static bool AddTranslatePreset(List<Preset> presets) => AddLikeNewLibrary(presets, "translate");

@@ -1092,7 +1092,7 @@ public partial class UserDataStoreTests
         Assert.False(SettingsMigrations.ApplyToLibrary(21, presets, profiles)); // once only
 
         // A donut of the user that already opens FBX files keeps them.
-        profiles = PdfXlsxSlotTests.Schema58ProfilesAt80();
+        profiles = BuiltInData.ProfilesSchema58();
         profiles.Single(p => p.Id == "models").Extensions.Remove("fbx");
         profiles.Insert(0, new ToolbarProfile { Id = "games", Name = "Games", Extensions = ["fbx"] });
         Assert.False(SettingsMigrations.ApplyToLibrary(21, presets, profiles));
@@ -1139,7 +1139,7 @@ public partial class UserDataStoreTests
         Assert.False(SettingsMigrations.ApplyToLibrary(23, presets, profiles)); // once only
 
         // A donut of the user that already opens .potm files keeps them.
-        profiles = PdfXlsxSlotTests.Schema58ProfilesAt80();
+        profiles = BuiltInData.ProfilesSchema58();
         profiles.Single(p => p.Id == "presentations").Extensions.Remove("potm");
         profiles.Insert(0, new ToolbarProfile { Id = "templates", Name = "Templates", Extensions = ["potm"] });
         Assert.False(SettingsMigrations.ApplyToLibrary(23, presets, profiles));
@@ -1162,7 +1162,7 @@ public partial class UserDataStoreTests
         Assert.False(SettingsMigrations.ApplyToLibrary(26, presets, profiles)); // once only
 
         // A donut of the user that already opens .ofd files keeps them.
-        profiles = PdfXlsxSlotTests.Schema58ProfilesAt80();
+        profiles = BuiltInData.ProfilesSchema58();
         profiles.Single(p => p.Id == "office").Extensions.Remove("ofd");
         profiles.Insert(0, new ToolbarProfile { Id = "invoices", Name = "Invoices", Extensions = ["ofd"] });
         Assert.False(SettingsMigrations.ApplyToLibrary(26, presets, profiles));
