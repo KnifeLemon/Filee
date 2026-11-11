@@ -141,6 +141,29 @@ public class CompressionEstimatorTests(EngineFixture fx) : IClassFixture<EngineF
         Assert.Null(await estimator.EstimateAsync(CompressionChoice.Of(preset), Ct));
     }
 
+    /// <summary>
+    /// A file that can't be estimated next to one that can counts at the other's ratio: left out, the total would read
+    /// too small next to the size now, and "% smaller" too large.
+    /// </summary>
+    [Fact]
+    public async Task A_file_that_cannot_be_estimated_counts_at_the_ratio_of_the_others()
+    {
+        var good = Photo(1600, 1200);
+        var broken = Path.Combine(fx.NewFolder(), "broken.jpg");
+        await File.WriteAllBytesAsync(broken, [0xFF, 0xD8, 0xFF, .. new byte[400_000]], Ct);
+        var preset = BuiltIn("compress-image");
+        using var alone = await CompressionEstimator.ReadAsync([good], preset, cancellationToken: Ct);
+        using var both = await CompressionEstimator.ReadAsync([good, broken], preset, cancellationToken: Ct);
+
+        var one = (await alone.EstimateAsync(With(preset, 50), Ct))!.Value;
+        var total = (await both.EstimateAsync(With(preset, 50), Ct))!.Value;
+
+        Assert.Equal(alone.SourceBytes + 400_003, both.SourceBytes);
+        var ratio = (double)one / alone.SourceBytes;
+        Assert.Equal(one + 400_003 * ratio, total, 1.0);
+        Assert.Equal(ratio, (double)total / both.SourceBytes, 0.001);
+    }
+
     [Fact]
     public async Task A_pdf_is_estimated_by_its_compression_itself()
     {

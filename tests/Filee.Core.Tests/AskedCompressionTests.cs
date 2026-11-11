@@ -38,6 +38,7 @@ public class AskedCompressionTests
     [InlineData("compress-image", "photo.jpg", CompressionKind.Image)]
     [InlineData("compress-image", "photo.webp", CompressionKind.Image)]
     [InlineData("compress-image", "screen.png", null)]
+    [InlineData("compress-image", "phone.heic", null)]
     [InlineData("compress-image", "scan.tiff", null)]
     [InlineData("compress-video", "clip.mov", CompressionKind.Video)]
     [InlineData("compress-video", "photo.jpg", null)]
@@ -56,6 +57,26 @@ public class AskedCompressionTests
         Assert.Equal(CompressionKind.Image, AskedCompression.KindOf(toJpg, "screen.png"));
         Assert.Equal([CompressionKind.Image, CompressionKind.Pdf],
             AskedCompression.KindsOf(new Preset { TargetFormat = BuiltInData.SameAsSource }, ["b.pdf", "a.jpg", "c.jpg", "notes.txt"]));
+    }
+
+    /// <summary>
+    /// The level chosen for the JPGs goes to them only: a PNG or a HEIC dropped with them converts with the preset as it
+    /// is, in a run of its own.
+    /// </summary>
+    [Fact]
+    public void Files_without_a_level_keep_the_preset_as_it_is()
+    {
+        var preset = BuiltIn("compress-image");
+        var choice = CompressionChoice.Of(preset) with { ImageQuality = 40 };
+
+        var runs = AskedCompression.Runs(preset, choice, ["a.jpg", "phone.heic", "b.webp", "screen.png"]);
+
+        Assert.Equal(2, runs.Count);
+        Assert.Equal(["a.jpg", "b.webp"], runs[0].Files);
+        Assert.Equal((40, false), (runs[0].Preset.Image.Quality, runs[0].Preset.AskCompression));
+        Assert.Equal(["phone.heic", "screen.png"], runs[1].Files);
+        Assert.Same(preset, runs[1].Preset);
+        Assert.Single(AskedCompression.Runs(preset, choice, ["a.jpg"]));
     }
 
     [Fact]

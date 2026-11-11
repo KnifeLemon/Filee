@@ -31,8 +31,12 @@ public sealed record CompressionChoice(int ImageQuality, MediaQuality VideoQuali
 
 public static class AskedCompression
 {
-    /// <summary>Picture formats with a quality to choose (the ones the preset editor shows its slider for).</summary>
-    public static readonly IReadOnlySet<string> LossyImageTargets = new HashSet<string>(["jpg", "webp", "avif", "heic"]);
+    /// <summary>
+    /// Picture formats with a quality to choose and a size the window can estimate. Not HEIC, though the preset editor
+    /// has a quality for it: Filee writes it through FFmpeg, and ImageMagick can't encode the tile the estimate rests
+    /// on. A HEIC file converts with the preset's own quality, as a PNG does.
+    /// </summary>
+    public static readonly IReadOnlySet<string> LossyImageTargets = new HashSet<string>(["jpg", "webp", "avif"]);
 
     /// <summary>
     /// The preset asks for the compression of the files dropped on it (<see cref="Preset.AskCompression"/>). Not a
@@ -80,6 +84,24 @@ public static class AskedCompression
         copy.Pdf.Compression = choice.Pdf;
         copy.AskCompression = false;
         return copy;
+    }
+
+    /// <summary>
+    /// The conversions a drop makes once the window has answered: the files with a level to choose at the
+    /// <paramref name="choice"/>, the others (a PNG or a HEIC on "Compress image") with the preset as it is, so a level
+    /// chosen for the JPGs never reaches them. One run when every file is of one sort.
+    /// </summary>
+    public static IReadOnlyList<(IReadOnlyList<string> Files, Preset Preset)> Runs(Preset preset, CompressionChoice choice,
+        IReadOnlyList<string> files)
+    {
+        var asked = files.Where(f => KindOf(preset, f) is not null).ToList();
+        var others = files.Where(f => KindOf(preset, f) is null).ToList();
+        var runs = new List<(IReadOnlyList<string>, Preset)>();
+        if (asked.Count > 0)
+            runs.Add((asked, Apply(preset, choice)));
+        if (others.Count > 0)
+            runs.Add((others, preset));
+        return runs;
     }
 
     /// <summary>

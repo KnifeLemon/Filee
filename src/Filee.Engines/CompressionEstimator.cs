@@ -12,7 +12,7 @@
 //   also tries it, is not run: it can only make the result smaller.
 //
 // The preset's size limit and "only keep if smaller" cap the result, as they do when it converts. Only the first files
-// of each kind are read; the others count at the same ratio.
+// of each kind are read; the others, and any that can't be estimated, count at the same ratio.
 
 using Filee.Core.Formats;
 using Filee.Core.Presets;
@@ -130,20 +130,24 @@ public sealed class CompressionEstimator : IDisposable
         var any = false;
         foreach (var group in _entries.GroupBy(e => e.Kind))
         {
-            long sourceKnown = 0, estimated = 0;
-            foreach (var entry in group.Where(e => e.Sampled))
+            // Files not read, and read files that can't be estimated (a damaged one, a "video" with no picture), count at
+            // the ratio of the ones that could: left out, they would make the total too small next to the size now.
+            long sourceKnown = 0, estimated = 0, rest = 0;
+            foreach (var entry in group)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (EstimateOne(entry, preset, cancellationToken) is not { } bytes)
-                    continue;
-                sourceKnown += entry.Bytes;
-                estimated += bytes;
+                if (entry.Sampled && EstimateOne(entry, preset, cancellationToken) is { } bytes)
+                {
+                    sourceKnown += entry.Bytes;
+                    estimated += bytes;
+                }
+                else
+                    rest += entry.Bytes;
             }
             if (sourceKnown == 0)
-                return null; // a kind none of whose files could be read: any total would leave them out
+                return null; // a kind none of whose files could be estimated: there is no ratio to count them at
             any = true;
-            var ratio = (double)estimated / sourceKnown;
-            total += estimated + (long)Math.Round(group.Where(e => !e.Sampled).Sum(e => e.Bytes) * ratio);
+            total += estimated + (long)Math.Round(rest * ((double)estimated / sourceKnown));
         }
         return any ? total : null;
     }
