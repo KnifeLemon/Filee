@@ -100,7 +100,7 @@ public class MergeImagesTests
     public void Schema_53_leaves_a_donut_where_the_user_put_merge_images_or_has_no_gif_to_give()
     {
         var presets = BuiltInData.CreatePresets();
-        var profiles = BuiltInData.ProfilesSchema58();
+        var profiles = PdfXlsxSlotTests.Schema58ProfilesAt80();
         var images = profiles.Single(p => p.Id == "images");
         images.PresetIds = ["merge-images", "to-png"];
         images.BackPresetIds = [.. BackBefore53];

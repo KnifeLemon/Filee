@@ -739,7 +739,7 @@ public static class BuiltInData
             {
                 "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"],
                     ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
-                "pdf" => (["to-png", "to-jpg", "to-docx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"],
+                "pdf" => (["to-png", "to-jpg", "to-docx", "to-xlsx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"],
                     ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
                 "office" => (["to-pdf", "to-hwpx", "to-hwp", "to-docx", "to-txt", "to-png", "merge-pdf"],
                     ["translate", "to-md", "pdf-long-image", "zip-all"]),
