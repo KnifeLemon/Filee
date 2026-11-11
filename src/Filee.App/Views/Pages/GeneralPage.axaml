@@ -17,6 +17,8 @@
                       IsChecked="{Binding ShowInDock}" IsVisible="{Binding SupportsDockVisibility}" />
         <ToggleSwitch x:Name="ShowMenuBarIconSwitch" Content="{DynamicResource general.show_menu_bar_icon}"
                       IsChecked="{Binding ShowMenuBarIcon}" IsVisible="{Binding SupportsDockVisibility}" />
+        <ToggleSwitch x:Name="ColoredMenuBarIconSwitch" Content="{DynamicResource general.colored_menu_bar_icon}"
+                      IsChecked="{Binding ColoredMenuBarIcon}" IsVisible="{Binding ShowColoredMenuBarIconOption}" />
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{Binding DockStatus}"
                    IsVisible="{Binding DockStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
         <StackPanel>

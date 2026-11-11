@@ -105,11 +105,20 @@ public class RenderTests
                     var menu = page.FindControl<ToggleSwitch>("ShowMenuBarIconSwitch")!;
                     Assert.Equal(supported, dock.IsVisible);
                     Assert.Equal(supported, menu.IsVisible);
+                    var colored = page.FindControl<ToggleSwitch>("ColoredMenuBarIconSwitch")!;
+                    Assert.Equal(supported, colored.IsVisible);
+                    Assert.False(colored.IsChecked);
                     Assert.False(dock.IsChecked);
                     Assert.True(menu.IsChecked);
                     Assert.Empty(platform.DockCalls);
                     if (supported)
                         Save(window, "page-general-icons-en.png");
+
+                    // Without a menu bar icon there is no icon colour to pick.
+                    vm.ShowMenuBarIcon = false;
+                    Pump();
+                    Assert.False(colored.IsVisible);
+                    vm.ShowMenuBarIcon = true;
                 }
                 finally
                 {
