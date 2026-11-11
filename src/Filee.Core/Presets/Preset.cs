@@ -146,6 +146,14 @@ public sealed class Preset
     /// <summary>Where and how output files are written.</summary>
     public OutputRule Output { get; set; } = new();
 
+    /// <summary>
+    /// "Ask every time" for the compression (#1353): files dropped on the donut open a small window first, where the
+    /// picture quality, the video quality, the audio bitrate or the PDF level is chosen with the size it will roughly
+    /// come to (<see cref="AskedCompression"/>). Off by default; watch folders and the command line use the preset's
+    /// own values.
+    /// </summary>
+    public bool AskCompression { get; set; }
+
     /// <summary>A conversion or a group. A kind this version doesn't know (from a newer Filee) is read as a group.</summary>
     [JsonConverter(typeof(PresetKindJsonConverter))]
     public PresetKind Kind { get; set; } = PresetKind.Convert;
@@ -404,6 +412,7 @@ public sealed class Preset
         Upscale = Upscale.Clone(),
         Metadata = Metadata?.Clone(),
         Output = Output.Clone(),
+        AskCompression = AskCompression,
         Kind = Kind,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],
