@@ -208,6 +208,7 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
     [ObservableProperty] private bool _isExporting;
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private double _exportProgress;
+    [ObservableProperty] private bool _onePdfPerSheet;
 
     public bool CanExport => _workbook is not null && !IsBusy && !IsExporting && Sheets.Any(sheet => sheet.Included);
     public bool CanRemoveSelectedRegion => SelectedSheet is { } selected
@@ -312,12 +313,16 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
         _pageCancellation?.Cancel();
         _exportCancellation = new CancellationTokenSource();
         ExportProgress = 0;
-        Status = _loc["sheet_studio.exporting"];
+        var onePerSheet = OnePdfPerSheet;
+        Status = _loc[onePerSheet ? "sheet_studio.exporting_each" : "sheet_studio.exporting"];
         try
         {
             var progress = new Progress<double>(value => ExportProgress = value * 100);
-            await _service.ExportAsync(_workbook, regions, outputPath, progress, _exportCancellation.Token);
-            Status = _loc.Format("sheet_studio.exported", Path.GetFileName(outputPath));
+            var outputs = await _service.ExportAsync(_workbook, regions, outputPath, onePerSheet, progress,
+                _exportCancellation.Token);
+            Status = outputs.Count == 1
+                ? _loc.Format("sheet_studio.exported", Path.GetFileName(outputs[0]))
+                : _loc.Format("sheet_studio.exported_files", outputs.Count);
             try
             {
                 _store.AddHistory(new HistoryEntry
@@ -328,12 +333,12 @@ public sealed partial class SpreadsheetPrintStudioViewModel : ObservableObject, 
                     PresetName = _loc["preset.sheet_studio"],
                     State = JobState.Completed,
                     Sources = [_workbook.Path],
-                    Outputs = [outputPath],
+                    Outputs = [.. outputs],
                 });
             }
             catch (Exception ex) when (ex is not OutOfMemoryException)
             {
-                // The PDF is already safely in place; a history write must not turn that success into an error.
+                // The PDFs are already safely in place; a history write must not turn that success into an error.
                 _log?.LogWarning(ex, "Could not record spreadsheet studio export in history");
             }
         }

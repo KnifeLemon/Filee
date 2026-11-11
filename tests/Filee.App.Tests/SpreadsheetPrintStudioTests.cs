@@ -120,6 +120,52 @@ public class SpreadsheetPrintStudioTests
         }
     }
 
+    [Fact]
+    public void One_pdf_per_sheet_names_follow_the_chosen_file_and_never_collide()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "exports");
+        var paths = SpreadsheetPrintService.PerSheetPaths(Path.Combine(folder, "Report.pdf"),
+            ["Sales", "Q1/Q2", "Sales", "q1:q2", "  ", "DATA", "data"]);
+
+        Assert.Equal(
+        [
+            "Report_Sales.pdf", "Report_Q1_Q2.pdf", "Report_Sales_2.pdf", "Report_q1_q2_2.pdf", "Report_Sheet.pdf",
+            "Report_DATA.pdf", "Report_data_2.pdf",
+        ], paths.Select(Path.GetFileName));
+        Assert.All(paths, path => Assert.Equal(folder, Path.GetDirectoryName(path)));
+    }
+
+    [AvaloniaFact]
+    public async Task One_pdf_per_sheet_writes_a_file_for_each_region_and_records_them_all()
+    {
+        TestServices.EnsureInitialized();
+        var service = AppHost.Get<SpreadsheetPrintService>();
+        Assert.SkipUnless(service.Status.IsAvailable, "LibreOffice not found");
+        var folder = Directory.CreateTempSubdirectory("filee-sheet-studio-split-").FullName;
+        var store = AppHost.Get<UserDataStore>();
+        try
+        {
+            var source = Path.Combine(folder, "book.xlsx");
+            WriteWorkbook(source);
+            using var vm = new SpreadsheetPrintStudioViewModel(source, service, AppHost.Get<ILocalizer>(), store);
+            await vm.Initialization;
+            vm.AddRegionCommand.Execute(null);
+            vm.OnePdfPerSheet = true;
+
+            await vm.ExportAsync(Path.Combine(folder, "book.pdf"));
+
+            string[] expected = [Path.Combine(folder, "book_Data.pdf"), Path.Combine(folder, "book_Data_2.pdf")];
+            Assert.All(expected, path => Assert.True(File.Exists(path), path));
+            Assert.False(File.Exists(Path.Combine(folder, "book.pdf")));
+            Assert.Empty(Directory.GetFiles(folder, "*.filee-tmp"));
+            Assert.Contains(store.History, entry => entry.Outputs.SequenceEqual(expected));
+        }
+        finally
+        {
+            try { Directory.Delete(folder, recursive: true); } catch (IOException) { }
+        }
+    }
+
     private static HashSet<string> WorkFolders() => Directory.Exists(JobQueue.DefaultWorkRoot)
         ? Directory.GetDirectories(JobQueue.DefaultWorkRoot).ToHashSet(StringComparer.Ordinal)
         : [];

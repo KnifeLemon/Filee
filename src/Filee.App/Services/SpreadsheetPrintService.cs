@@ -37,15 +37,24 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
         }
     }
 
-    public async Task ExportAsync(SpreadsheetWorkbookInfo workbook, IReadOnlyList<SpreadsheetPrintRegion> regions,
-        string outputPath, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Renders every region and writes them to <paramref name="outputPath"/> as one merged PDF, or, with
+    /// <paramref name="onePerSheet"/>, as one PDF per region named after <paramref name="outputPath"/> and the sheet
+    /// (see <see cref="PerSheetPaths"/>). Returns the files written.
+    /// </summary>
+    public async Task<IReadOnlyList<string>> ExportAsync(SpreadsheetWorkbookInfo workbook,
+        IReadOnlyList<SpreadsheetPrintRegion> regions, string outputPath, bool onePerSheet = false,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
         if (regions.Count == 0)
             throw new ArgumentException("At least one region must be exported.", nameof(regions));
-        if (_pdfMerger is null)
+        if (!onePerSheet && _pdfMerger is null)
             throw new InvalidOperationException("The PDF merger is not available.");
         var rendered = new List<(string PdfPath, string TemporaryDirectory)>();
-        var temporaryOutput = outputPath + ".filee-tmp";
+        var targets = onePerSheet
+            ? PerSheetPaths(outputPath, regions.Select(region => region.Sheet.Name).ToArray())
+            : [outputPath];
+        var temporaryOutputs = targets.Select(target => target + ".filee-tmp").ToArray();
         try
         {
             for (var index = 0; index < regions.Count; index++)
@@ -53,17 +62,55 @@ public sealed class SpreadsheetPrintService(IReadOnlyList<IConverter> converters
                 rendered.Add(await MakePdfAsync(workbook, regions[index], cancellationToken));
                 progress?.Report(0.85 * (index + 1) / regions.Count);
             }
-            TryDelete(temporaryOutput);
-            await _pdfMerger.MergeAsync(rendered.Select(item => item.PdfPath).ToArray(), temporaryOutput, cancellationToken);
-            File.Move(temporaryOutput, outputPath, overwrite: true);
+            foreach (var temporary in temporaryOutputs)
+                TryDelete(temporary);
+            if (onePerSheet)
+            {
+                // Nothing reaches the chosen folder until every sheet has rendered, so a failure or a cancel in the
+                // middle leaves no half set of files behind.
+                for (var index = 0; index < rendered.Count; index++)
+                    File.Copy(rendered[index].PdfPath, temporaryOutputs[index], overwrite: true);
+            }
+            else
+            {
+                await _pdfMerger!.MergeAsync(rendered.Select(item => item.PdfPath).ToArray(), temporaryOutputs[0],
+                    cancellationToken);
+            }
+            for (var index = 0; index < targets.Count; index++)
+                File.Move(temporaryOutputs[index], targets[index], overwrite: true);
             progress?.Report(1);
+            return targets;
         }
         finally
         {
-            TryDelete(temporaryOutput);
+            foreach (var temporary in temporaryOutputs)
+                TryDelete(temporary);
             foreach (var item in rendered)
                 TryDelete(item.TemporaryDirectory);
         }
+    }
+
+    /// <summary>
+    /// The files for a one-PDF-per-sheet export: <c>Report.pdf</c> with sheets "Sales" and "Q1/Q2" gives
+    /// <c>Report_Sales.pdf</c> and <c>Report_Q1_Q2.pdf</c> in the same folder. A sheet listed twice (an added region)
+    /// or two names that clean up to the same file get <c>_2</c>, <c>_3</c> so no export overwrites another.
+    /// </summary>
+    public static IReadOnlyList<string> PerSheetPaths(string outputPath, IReadOnlyList<string> sheetNames)
+    {
+        var folder = Path.GetDirectoryName(Path.GetFullPath(outputPath)) ?? "";
+        var baseName = OutputPathResolver.Sanitize(Path.GetFileNameWithoutExtension(outputPath), "export");
+        // File names on Windows and macOS ignore case, so "Data" and "DATA" would land on the same file.
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var paths = new List<string>(sheetNames.Count);
+        foreach (var sheetName in sheetNames)
+        {
+            var name = $"{baseName}_{OutputPathResolver.Sanitize(sheetName, "Sheet")}";
+            var candidate = name;
+            for (var number = 2; !used.Add(candidate); number++)
+                candidate = $"{name}_{number}";
+            paths.Add(Path.Combine(folder, candidate + ".pdf"));
+        }
+        return paths;
     }
 
     private async Task<(string PdfPath, string TemporaryDirectory)> MakePdfAsync(SpreadsheetWorkbookInfo workbook,

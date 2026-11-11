@@ -381,7 +381,8 @@ hidden rows and manual breaks, then see the PDF that those settings will produce
   named range so cross-sheet formulas remain valid, hides the sheets not being rendered, and changes only the chosen
   sheet's print settings. A new print area is written only after the user explicitly changes or accepts the range.
 - `SpreadsheetPrintService` runs LibreOffice once for each region. Preview and export use the same disposable-workbook
-  path; export then joins the region PDFs in the chosen order with PDFsharp. The ordinary XLSX → PDF donut conversion
+  path; export then joins the region PDFs in the chosen order with PDFsharp, or, with **One PDF per sheet**, writes
+  each region as `<chosen name>_<sheet>.pdf` (`PerSheetPaths` cleans the names and adds `_2` for repeats). The ordinary XLSX → PDF donut conversion
   can still differ because route planning may select Filee's built-in spreadsheet reader instead of LibreOffice.
 - `PdfPreviewDocument` caches a PDF's bytes and page geometry. The studio asks PDFium/PDFtoImage for small thumbnails
   and only one large selected page, all decoded away from the UI thread; exporting never performs preview rendering.
