@@ -615,9 +615,10 @@ public sealed class RadialController(
 
     /// <summary>
     /// "Choose the compression" (#1353): one window for all the files dropped, since one setting goes for every file of a
-    /// kind. Cancelling it starts nothing. The files then convert as one job with the setting chosen; ones without a
-    /// level to choose (a PNG on "Compress image") convert as the preset says. Files from a browser are saved first,
-    /// as for a tool: the estimate reads the files themselves.
+    /// kind. Cancelling it starts nothing. The files then convert with the setting chosen, for this conversion only (as
+    /// "Choose pages"); ones without a level to choose (a PNG on "Compress image") convert as the preset says, in a job
+    /// of their own. The preset keeps the setting only with "Remember for this preset". Files from a browser are saved
+    /// first, as for a tool: the estimate reads the files themselves.
     /// </summary>
     private async Task AskCompressionThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
         Action<ConversionJob>? onJob)
@@ -631,18 +632,21 @@ public sealed class RadialController(
                 files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
                     log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
             }
-            if (await windows.AskCompressionAsync(files, preset) is not { } choice)
+            if (await windows.AskCompressionAsync(files, preset) is not { } answer)
             {
                 log.LogInformation("Choosing the compression for {Preset} was cancelled; nothing converts", preset.Id);
                 return;
             }
-            RememberCompression(preset, choice, files);
-            var asked = AskedCompression.Apply(preset, choice);
+            if (answer.Remember)
+                RememberCompression(preset, answer.Choice, files);
             log.LogInformation("Converting {Count} file(s) with preset {Preset} at the compression chosen", files.Count, preset.Id);
-            if (asked.Output.AskEveryTime)
-                await AskThenConvertAsync(files, asked, toClipboard, null, onJob);
-            else if (conversions.Start(files, asked, toClipboard: toClipboard) is { } job)
-                onJob?.Invoke(job.Job);
+            foreach (var (runFiles, runPreset) in AskedCompression.Runs(preset, answer.Choice, files))
+            {
+                if (runPreset.Output.AskEveryTime)
+                    await AskThenConvertAsync(runFiles, runPreset, toClipboard, null, onJob);
+                else if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+            }
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -655,8 +659,9 @@ public sealed class RadialController(
     }
 
     /// <summary>
-    /// "Choose the compression": the settings chosen for the kinds of file dropped (<paramref name="files"/>) go into
-    /// the preset as saved, so the window starts with them next time (as "Choose pages" keeps its split).
+    /// "Choose the compression" with "Remember for this preset": the settings chosen for the kinds of file dropped
+    /// (<paramref name="files"/>) go into the preset as saved, so the window, watch folders and the command line use
+    /// them from now on.
     /// </summary>
     private void RememberCompression(Preset preset, CompressionChoice chosen, IReadOnlyList<string> files)
     {

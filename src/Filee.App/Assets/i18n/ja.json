@@ -920,6 +920,7 @@
   "compression.unknown": "これらのファイルのサイズは推定できません。",
   "compression.estimate_hint": "推定値です。実際のサイズはファイルの内容によって変わります。",
   "compression.estimate_hint_video": "推定値です。動画の実際のサイズは映像によって大きく変わります（動きの少ない画面録画はずっと小さくなります）。",
+  "compression.remember": "このプリセットに記憶する",
   "pages.title": "ページの選択",
   "pages.file_of": "ファイル {0}/{1}",
   "pages.count": "このPDFのページ数: {0}",

@@ -81,13 +81,15 @@ public class AskCompressionTests
 
     /// <summary>
     /// "Compress image" in a new library asks: the window shows the photo, its size and about what it comes to at the
-    /// preset's quality, and a lower quality estimates smaller. Enter compresses it at that quality, which the preset
-    /// keeps for the next time; Esc starts nothing and changes nothing.
+    /// preset's quality, and a lower quality estimates smaller. Enter compresses it at that quality, for this conversion
+    /// only: the preset (also used by watch folders and the command line) keeps it only with "Remember for this
+    /// preset", which is off. Esc starts nothing and changes nothing.
     /// </summary>
     [AvaloniaTheory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public async Task Dropping_a_photo_asks_for_the_quality_then_compresses_it_or_esc_starts_nothing(bool cancel)
+    [InlineData(false, false)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task Dropping_a_photo_asks_for_the_quality_then_compresses_it_or_esc_starts_nothing(bool cancel, bool remember)
     {
         TestServices.EnsureInitialized();
         var folder = Directory.CreateTempSubdirectory("filee-ask-compression-").FullName;
@@ -130,6 +132,10 @@ public class AskCompressionTests
             await WaitForEstimate(vm);
             var atForty = vm.EstimatedBytes!.Value;
             Assert.True(atForty < atPreset, $"{atForty} vs {atPreset}");
+            var rememberBox = dialog.FindControl<CheckBox>("RememberChoice")!;
+            Assert.True(rememberBox.IsEffectivelyVisible);
+            Assert.False(rememberBox.IsChecked);
+            rememberBox.IsChecked = remember;
 
             dialog.FindControl<Slider>("QualitySlider")!.Focus();
             Press(dialog, cancel ? Key.Escape : Key.Enter);
@@ -152,8 +158,8 @@ public class AskCompressionTests
                 Assert.InRange(written.Quality, 38u, 42u);
             // The estimate was about right for this photo.
             Assert.InRange(new FileInfo(output).Length, atForty * 0.75, atForty * 1.25);
-            // The saved preset still asks, now starting at 40.
-            Assert.Equal((40, true), (preset.Image.Quality, preset.AskCompression));
+            // The saved preset still asks; it starts at 40 next time only when that was asked for.
+            Assert.Equal((remember ? 40 : 75, true), (preset.Image.Quality, preset.AskCompression));
         }
         finally
         {
@@ -267,7 +273,7 @@ public class AskCompressionTests
                 return new Rect(control.Bounds.Size).TransformToAABB(control.TransformToVisual(window)!.Value);
             }
             var bounds = new Rect(window.Bounds.Size);
-            string[] names = ["FilesText", "SizeNow", "EstimateText", "EstimateHint", "StartCompression", "CancelCompression",
+            string[] names = ["FilesText", "SizeNow", "EstimateText", "EstimateHint", "RememberChoice", "StartCompression", "CancelCompression",
                 dark ? "VideoQuality" : "QualitySlider"];
             foreach (var name in names)
             {

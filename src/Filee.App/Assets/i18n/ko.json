@@ -935,6 +935,7 @@
   "compression.unknown": "이 파일들의 크기는 예상할 수 없습니다.",
   "compression.estimate_hint": "예상치입니다. 실제 크기는 파일 내용에 따라 달라집니다.",
   "compression.estimate_hint_video": "예상치입니다. 동영상의 실제 크기는 화면에 따라 크게 달라집니다(움직임 없는 화면 녹화는 훨씬 작아집니다).",
+  "compression.remember": "이 프리셋에 기억",
   "pages.title": "페이지 선택",
   "pages.file_of": "파일 {0}/{1}",
   "pages.count": "이 PDF의 페이지 수: {0}",

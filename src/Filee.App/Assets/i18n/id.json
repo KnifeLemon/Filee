@@ -920,6 +920,7 @@
   "compression.unknown": "Filee tidak dapat memperkirakan ukuran file ini.",
   "compression.estimate_hint": "Ini perkiraan: ukuran sebenarnya bergantung pada isi file.",
   "compression.estimate_hint_video": "Ini perkiraan: ukuran sebenarnya sebuah video sangat bergantung pada gambarnya (rekaman layar yang diam jauh lebih kecil).",
+  "compression.remember": "Ingat untuk preset ini",
   "pages.title": "Pilih halaman",
   "pages.file_of": "File {0} dari {1}",
   "pages.count": "Jumlah halaman PDF ini: {0}",

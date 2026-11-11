@@ -2,7 +2,6 @@ using Avalonia.Controls;
 using Avalonia.Interactivity;
 using Filee.App.Services;
 using Filee.App.ViewModels;
-using Filee.Core.Presets;
 
 namespace Filee.App.Views;
 
@@ -25,13 +24,13 @@ public partial class AskCompressionWindow : Window
     }
 
     /// <summary>The settings chosen, or null when the window was cancelled or closed.</summary>
-    public CompressionChoice? Result { get; private set; }
+    public CompressionAnswer? Result { get; private set; }
 
     private void OnStart(object? sender, RoutedEventArgs e)
     {
         if (DataContext is not AskCompressionViewModel vm)
             return;
-        Result = vm.Result();
+        Result = vm.Answer();
         Close();
     }
 

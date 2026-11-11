@@ -919,6 +919,7 @@
   "compression.unknown": "Filee non riesce a stimare la dimensione di questi file.",
   "compression.estimate_hint": "È una stima: la dimensione reale dipende dal contenuto dei file.",
   "compression.estimate_hint_video": "È una stima: la dimensione reale di un video dipende molto dalle immagini (una registrazione dello schermo statica risulta molto più piccola).",
+  "compression.remember": "Ricorda per questo preset",
 "pages.title": "Scegli le pagine",
 "pages.file_of": "File {0} di {1}",
 "pages.count": "Pagine di questo PDF: {0}",

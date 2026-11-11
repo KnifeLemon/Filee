@@ -75,6 +75,9 @@
           <TextBlock x:Name="EstimateHint" Classes="caption" Text="{Binding HintText}" TextWrapping="Wrap" />
         </StackPanel>
       </Border>
+      <!-- Off by default: the choice is for this conversion; the preset (also used by watch folders and the command
+           line) changes only when asked. -->
+      <CheckBox x:Name="RememberChoice" Content="{DynamicResource compression.remember}" IsChecked="{Binding Remember}" />
     </StackPanel>
   </DockPanel>
 </Window>

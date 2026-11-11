@@ -935,6 +935,7 @@
   "compression.unknown": "Filee không thể ước tính kích thước của các tệp này.",
   "compression.estimate_hint": "Đây là ước tính: kích thước thật phụ thuộc vào nội dung tệp.",
   "compression.estimate_hint_video": "Đây là ước tính: kích thước thật của video phụ thuộc nhiều vào hình ảnh (bản quay màn hình tĩnh sẽ nhỏ hơn nhiều).",
+  "compression.remember": "Ghi nhớ cho cấu hình sẵn này",
   "pages.title": "Chọn trang",
   "pages.file_of": "Tệp {0}/{1}",
   "pages.count": "Số trang của PDF này: {0}",

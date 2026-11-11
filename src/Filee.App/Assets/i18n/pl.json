@@ -935,6 +935,7 @@
   "compression.unknown": "Filee nie może oszacować rozmiaru tych plików.",
   "compression.estimate_hint": "To szacunek: rzeczywisty rozmiar zależy od zawartości plików.",
   "compression.estimate_hint_video": "To szacunek: rzeczywisty rozmiar wideo mocno zależy od obrazu (nieruchome nagranie ekranu będzie znacznie mniejsze).",
+  "compression.remember": "Zapamiętaj dla tego ustawienia wstępnego",
   "pages.title": "Wybierz strony",
   "pages.file_of": "Plik {0} z {1}",
   "pages.count": "Liczba stron w tym PDF: {0}",

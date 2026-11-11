@@ -920,6 +920,7 @@
   "compression.unknown": "لا يستطيع Filee تقدير حجم هذه الملفات.",
   "compression.estimate_hint": "هذا تقدير: الحجم الفعلي يعتمد على محتوى الملفات.",
   "compression.estimate_hint_video": "هذا تقدير: يعتمد الحجم الفعلي للفيديو كثيرًا على صورته (تسجيل شاشة ثابت يكون أصغر بكثير).",
+  "compression.remember": "تذكّر لهذا الإعداد المسبق",
   "pages.title": "اختيار الصفحات",
   "pages.file_of": "الملف {0} من {1}",
   "pages.count": "عدد صفحات ملف PDF هذا: {0}",

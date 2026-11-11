@@ -8,6 +8,12 @@ using Filee.Core.Presets;
 
 namespace Filee.App.ViewModels;
 
+/// <summary>
+/// What the window answered: the settings for this conversion, and whether they also go into the preset (off unless
+/// the user ticks it: watch folders and the command line use the preset too).
+/// </summary>
+public sealed record CompressionAnswer(CompressionChoice Choice, bool Remember);
+
 public sealed partial class AskCompressionViewModel : ObservableObject, IDisposable
 {
     /// <summary>How long the slider rests before the size is estimated again: one encode per stop, not per step.</summary>
@@ -101,6 +107,10 @@ public sealed partial class AskCompressionViewModel : ObservableObject, IDisposa
     [ObservableProperty]
     private bool _isEstimating;
 
+    /// <summary>"Remember for this preset": the settings also go into the preset as saved. Off by default.</summary>
+    [ObservableProperty]
+    private bool _remember;
+
     partial void OnQualityChanged(int value) => _ = EstimateAsync(_delay);
 
     partial void OnVideoQualityChanged(Choice<MediaQuality>? oldValue, Choice<MediaQuality> newValue)
@@ -123,6 +133,9 @@ public sealed partial class AskCompressionViewModel : ObservableObject, IDisposa
 
     /// <summary>The settings chosen.</summary>
     public CompressionChoice Result() => new(Quality, VideoQuality.Value, AudioBitrate.Value, PdfLevel.Value);
+
+    /// <summary>The settings chosen, and whether the preset keeps them.</summary>
+    public CompressionAnswer Answer() => new(Result(), Remember);
 
     /// <summary>The estimate for the settings as they are now; one started before it is dropped.</summary>
     internal async Task EstimateAsync(TimeSpan delay)

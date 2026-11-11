@@ -920,6 +920,7 @@
   "compression.unknown": "Filee bu dosyaların boyutunu tahmin edemiyor.",
   "compression.estimate_hint": "Bu bir tahmindir: gerçek boyut dosyaların içeriğine bağlıdır.",
   "compression.estimate_hint_video": "Bu bir tahmindir: bir videonun gerçek boyutu büyük ölçüde görüntüsüne bağlıdır (hareketsiz bir ekran kaydı çok daha küçük olur).",
+  "compression.remember": "Bu ön ayar için hatırla",
   "pages.title": "Sayfaları seçin",
   "pages.file_of": "Dosya {0}/{1}",
   "pages.count": "Bu PDF'deki sayfa sayısı: {0}",

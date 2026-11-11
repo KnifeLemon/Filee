@@ -136,7 +136,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     /// among them and the size they will roughly come to, read from the files while the window is open. Null when
     /// cancelled.
     /// </summary>
-    public async Task<CompressionChoice?> AskCompressionAsync(IReadOnlyList<string> files, Preset preset)
+    public async Task<CompressionAnswer?> AskCompressionAsync(IReadOnlyList<string> files, Preset preset)
     {
         _askCompression?.Close();
         var asked = files.Where(f => AskedCompression.KindOf(preset, f) is not null).ToList();

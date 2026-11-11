@@ -935,6 +935,7 @@
   "compression.unknown": "Filee 无法估算这些文件的大小。",
   "compression.estimate_hint": "这是估计值，实际大小取决于文件内容。",
   "compression.estimate_hint_video": "这是估计值，视频的实际大小很大程度上取决于画面（静止的屏幕录制会小得多）。",
+  "compression.remember": "为此预设记住",
   "pages.title": "选择页面",
   "pages.file_of": "第 {0} 个文件，共 {1} 个",
   "pages.count": "此 PDF 的页数：{0}",

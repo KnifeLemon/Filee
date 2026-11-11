@@ -920,6 +920,7 @@
   "compression.unknown": "Filee kann die Größe dieser Dateien nicht schätzen.",
   "compression.estimate_hint": "Eine Schätzung: Die tatsächliche Größe hängt vom Inhalt der Dateien ab.",
   "compression.estimate_hint_video": "Eine Schätzung: Die tatsächliche Größe eines Videos hängt stark vom Bild ab (eine ruhige Bildschirmaufnahme wird viel kleiner).",
+  "compression.remember": "Für diese Vorlage merken",
   "pages.title": "Seiten auswählen",
   "pages.file_of": "Datei {0} von {1}",
   "pages.count": "Seiten in dieser PDF: {0}",
