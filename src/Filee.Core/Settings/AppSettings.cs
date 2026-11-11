@@ -88,6 +88,37 @@ public sealed class DonutSettings
     /// </summary>
     public bool ShowCaptions { get; set; } = true;
 
+    /// <summary>
+    /// How large the ring a group fans out is, against its size on a donut of the same radius before this setting (<see
+    /// cref="MinGroupRingSize"/> to <see cref="MaxGroupRingSize"/>): its depth, its gap from the donut and its labels.
+    /// A missing value reads as 1, today's ring, so it needs no schema step.
+    /// </summary>
+    public double GroupRingSize { get; set; } = 1;
+
+    /// <summary>
+    /// How wide the ring a group fans out spreads, against the default fan (the group's slice and a quarter of each
+    /// neighbour): <see cref="MinGroupRingSpread"/> to <see cref="MaxGroupRingSpread"/>. Wider slices have room for
+    /// longer names. A missing value reads as 1.
+    /// </summary>
+    public double GroupRingSpread { get; set; } = 1;
+
+    public const double MinGroupRingSize = 0.75, MaxGroupRingSize = 1.5, GroupRingSizeStep = 0.05;
+    public const double MinGroupRingSpread = 1, MaxGroupRingSpread = 3, GroupRingSpreadStep = 0.1;
+
+    /// <summary>
+    /// <paramref name="size"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
+    public static double ClampGroupRingSize(double size) => OnStep(size, MinGroupRingSize, MaxGroupRingSize, GroupRingSizeStep);
+
+    /// <summary>
+    /// <paramref name="spread"/> within the allowed range, on a step; 1 for a value that isn't a number.
+    /// </summary>
+    public static double ClampGroupRingSpread(double spread) =>
+        OnStep(spread, MinGroupRingSpread, MaxGroupRingSpread, GroupRingSpreadStep);
+
+    private static double OnStep(double value, double min, double max, double step) =>
+        double.IsFinite(value) ? Math.Round(Math.Round(Math.Clamp(value, min, max) / step) * step, 2) : 1;
+
     /// <summary>The flip key unless the user picks another one (Settings → Shortcuts).</summary>
     public const string DefaultFlipKey = "Tab";
 
@@ -139,7 +170,7 @@ public sealed class DonutSettings
 public sealed class AppSettings
 {
     /// <summary>Current schema version. Increase when the format changes and add a migration.</summary>
-    public const int CurrentSchemaVersion = 78;
+    public const int CurrentSchemaVersion = 80;
 
     public int SchemaVersion { get; set; } = CurrentSchemaVersion;
 
@@ -181,6 +212,12 @@ public sealed class AppSettings
     /// <summary>Whether the macOS menu bar shows Filee's status icon.</summary>
     [JsonConverter(typeof(IconPreferenceJsonConverter))]
     public bool ShowMenuBarIcon { get; set; } = true;
+
+    /// <summary>
+    /// Whether the macOS menu bar icon keeps the coloured donut. Off by default: a one-colour template icon that macOS
+    /// paints white or black to match the bar, like the system's own icons.
+    /// </summary>
+    public bool ColoredMenuBarIcon { get; set; }
 
     /// <summary>Newest version the user was already told about, so the update notice shows once per release.</summary>
     public string? NotifiedUpdateVersion { get; set; }

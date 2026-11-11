@@ -37,6 +37,7 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
         _startWithSystem = store.Settings.StartWithSystem;
         _showInDock = store.Settings.ShowInDock;
         _showMenuBarIcon = store.Settings.ShowMenuBarIcon;
+        _coloredMenuBarIcon = store.Settings.ColoredMenuBarIcon;
         _contextMenu = store.Settings.ContextMenuEnabled;
         _noHistory = !store.Settings.KeepHistory;
         _historyLimit = store.Settings.EffectiveHistoryLimit;
@@ -65,6 +66,8 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     public bool HasSystemIntegration => _platform is not NullPlatformServices;
     /// <summary>Whether this platform supports changing Filee's Dock visibility.</summary>
     public bool SupportsDockVisibility => _platform.SupportsDockVisibility;
+    /// <summary>The icon colour choice only matters while there is a menu bar icon.</summary>
+    public bool ShowColoredMenuBarIconOption => SupportsDockVisibility && ShowMenuBarIcon;
     public string ContextMenuText => _loc[OperatingSystem.IsMacOS() ? "general.context_menu_macos"
         : OperatingSystem.IsLinux() ? "general.context_menu_linux" : "general.context_menu"];
     public string? IntegrationMessage => _integration?.Error ?? (OperatingSystem.IsMacOS()
@@ -147,7 +150,9 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private Choice<string> _language;
     [ObservableProperty] private bool _startWithSystem;
     [ObservableProperty] private bool _showInDock;
-    [ObservableProperty] private bool _showMenuBarIcon;
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowColoredMenuBarIconOption))]
+    private bool _showMenuBarIcon;
+    [ObservableProperty] private bool _coloredMenuBarIcon;
     [ObservableProperty] private string? _dockStatus;
     [ObservableProperty] private bool _contextMenu;
     [ObservableProperty] private string? _libraryMessage;
@@ -203,6 +208,8 @@ public sealed partial class GeneralPageViewModel : ObservableObject, IDisposable
     }
 
     partial void OnShowMenuBarIconChanged(bool value) => Save(s => s.ShowMenuBarIcon = value);
+
+    partial void OnColoredMenuBarIconChanged(bool value) => Save(s => s.ColoredMenuBarIcon = value);
 
     partial void OnContextMenuChanged(bool value)
     {

@@ -6,6 +6,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Filee.App.ViewModels"
              xmlns:upscale="using:Filee.Engines.Upscale"
+             xmlns:v="using:Filee.App.Views"
              x:Class="Filee.App.Views.PresetEditorView"
              x:DataType="vm:PresetEditorViewModel">
   <UserControl.Styles>
@@ -64,6 +65,9 @@
         <TextBlock Classes="caption" Text="{Binding HiddenTargetNote}" TextWrapping="Wrap" IsVisible="{Binding HiddenTargetNote, Converter={x:Static ObjectConverters.IsNotNull}}" Margin="2,4,0,0" />
       </StackPanel>
     </Grid>
+
+    <!-- The slice on the donut: icon, short name, what it shows -->
+    <v:SliceLabelFieldsView DataContext="{Binding Labels}" />
 
     <!-- Live / Motion Photo of a video (JPG, HEIC): the kind on a row of its own, so its names are never cut off -->
     <Border x:Name="LivePhotoCard" Classes="card" IsVisible="{Binding ShowLivePhotoChoice}" Padding="14">
@@ -352,6 +356,23 @@
           <TextBlock Classes="label" Text="{DynamicResource presets.crop_frame}" />
           <ComboBox ItemsSource="{Binding CropFrames}" SelectedItem="{Binding CropFrame}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.crop_frame}" />
         </StackPanel>
+        <!-- Video → video: one video, or parts every so many seconds or minutes, or equal parts, copied as they are (#1259) -->
+        <StackPanel x:Name="VideoOutputPanel" Spacing="8" IsVisible="{Binding ShowVideoSplit}">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.video_output}" />
+            <ComboBox x:Name="VideoOutput" ItemsSource="{Binding VideoOutputChoices}" SelectedItem="{Binding VideoOutput}" HorizontalAlignment="Stretch"
+                      AutomationProperties.Name="{DynamicResource presets.video_output}" />
+          </StackPanel>
+          <StackPanel Spacing="2" IsVisible="{Binding ShowVideoParts}">
+            <Grid ColumnDefinitions="*,12,*">
+              <NumericUpDown x:Name="VideoSplitSize" Value="{Binding VideoSplitSize}" Minimum="1" Maximum="86400" Increment="1" FormatString="0"
+                             AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+              <ComboBox x:Name="VideoSplitKind" Grid.Column="2" ItemsSource="{Binding VideoSplitKinds}" SelectedItem="{Binding VideoSplitKind}" HorizontalAlignment="Stretch"
+                        AutomationProperties.Name="{DynamicResource presets.video_parts}" />
+            </Grid>
+            <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.video_parts_hint}" />
+          </StackPanel>
+        </StackPanel>
         <Grid ColumnDefinitions="*,12,*" IsVisible="{Binding ShowMediaQuality}">
           <StackPanel>
             <TextBlock Classes="label" Text="{DynamicResource presets.media_quality}" />
@@ -401,7 +422,16 @@
             <TextBlock Classes="label" Text="{DynamicResource presets.wav_format}" />
             <ComboBox ItemsSource="{Binding WavFormats}" SelectedItem="{Binding WavFormat}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.wav_format}" />
           </StackPanel>
+          <StackPanel IsVisible="{Binding ShowRingtone}">
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_start}" />
+            <NumericUpDown Value="{Binding RingtoneStart}" Minimum="0" Maximum="86400" Increment="1" FormatString="0.##" AutomationProperties.Name="{DynamicResource presets.ringtone_start}" />
+          </StackPanel>
+          <StackPanel IsVisible="{Binding ShowRingtone}">
+            <TextBlock Classes="label" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_length}" />
+            <NumericUpDown Value="{Binding RingtoneLength}" Minimum="1" Maximum="40" Increment="1" FormatString="0.##" AutomationProperties.Name="{DynamicResource presets.ringtone_length}" />
+          </StackPanel>
         </UniformGrid>
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_hint}" IsVisible="{Binding ShowRingtone}" />
         <StackPanel Spacing="2" IsVisible="{Binding ShowHardwareEncoding}">
           <CheckBox Content="{DynamicResource presets.hardware_encoding}" IsChecked="{Binding HardwareEncoding}" />
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.hardware_encoding_hint}" />

@@ -250,6 +250,34 @@ public sealed class CliTests : IDisposable
         Assert.StartsWith(error, CliOptions.Parse(args).Error);
     }
 
+    /// <summary>--split-every with a length (#1259): parts of a video; a plain number stays pages of a PDF.</summary>
+    [Theory]
+    [InlineData("50", 50, null)]
+    [InlineData("90s", null, 90)]
+    [InlineData("10m", null, 600)]
+    [InlineData("10min", null, 600)]
+    [InlineData("2.5m", null, 150)]
+    [InlineData("1h30m", null, 5400)]
+    [InlineData("1H", null, 3600)]
+    [InlineData("10:00", null, 600)]
+    [InlineData("1:30:00", null, 5400)]
+    public void Split_every_takes_pages_or_a_length_of_video(string value, int? pages, int? seconds)
+    {
+        var options = CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]);
+        Assert.Null(options.Error);
+        Assert.Equal((pages, seconds), (options.SplitEvery, options.SplitEverySeconds));
+    }
+
+    [Theory]
+    [InlineData("10x")]
+    [InlineData("m")]
+    [InlineData("1:2:3:4")]
+    [InlineData("0s")]
+    [InlineData("25h")]
+    [InlineData("-5m")]
+    public void Split_every_refuses_what_is_neither_pages_nor_a_length(string value) =>
+        Assert.StartsWith("--split-every must be", CliOptions.Parse(["convert", "a.mp4", "--to", "mp4", "--split-every", value]).Error);
+
     [Fact]
     public void Sort_is_refused_by_watch_rather_than_ignored() =>
         Assert.Contains("--sort", CliOptions.Parse(["watch", "inbox", "--to", "pdf", "--sort", "name"]).Error);
@@ -517,6 +545,12 @@ public sealed class CliTests : IDisposable
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "0" }, "--split-every")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-parts", "1" }, "--split-parts")]
     [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "5", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10m", "--split-parts", "2" }, "either --split-every or --split-parts")]
+    // Pages for a video, or a length for a PDF, would split nothing (#1259).
+    [InlineData(new[] { "convert", "a.png", "--to", "mp4", "--split-every", "10" }, "Give a length, e.g. 10s or 10m")]
+    [InlineData(new[] { "convert", "a.png", "--to", "mkv", "--split-every", "3" }, "--split-every 3 is a number of pages, but this makes videos")]
+    [InlineData(new[] { "convert", "a.png", "--to", "pdf", "--split-every", "10m" }, "--split-every 10m is a length of video, but this makes PDFs")]
+    [InlineData(new[] { "convert", "a.png", "--preset", "pdf-split", "--split-every", "1:30" }, "Give a number of pages")]
     [InlineData(new[] { "frobnicate" }, "Unknown command")]
     public async Task Wrong_arguments_explain_themselves_with_exit_code_2(string[] args, string message)
     {
