@@ -37,9 +37,10 @@ public partial class DonutPreviewWindow : Window
         // window manager's move keeps the release; macOS and X11 move the window on their own).
         AddHandler(PointerReleasedEvent, (_, _) => EndDrag(), RoutingStrategies.Tunnel, handledEventsToo: true);
         AddHandler(PointerMovedEvent, EndIfButtonUp, RoutingStrategies.Tunnel, handledEventsToo: true);
-        // Entered and left are raised on this window only (direct).
-        AddHandler(PointerEnteredEvent, EndIfButtonUp, RoutingStrategies.Direct, handledEventsToo: true);
-        AddHandler(PointerExitedEvent, EndIfButtonUp, RoutingStrategies.Direct, handledEventsToo: true);
+        // Entered and left are raised on this window only (direct), and by Avalonia on its own too, after a repaint,
+        // with no button state at all: only those the pointer itself made count.
+        AddHandler(PointerEnteredEvent, EndIfPointerSeenUp, RoutingStrategies.Direct, handledEventsToo: true);
+        AddHandler(PointerExitedEvent, EndIfPointerSeenUp, RoutingStrategies.Direct, handledEventsToo: true);
         AddHandler(PointerMovedEvent, (_, e) => Cursor = OnHandle(e) ? MoveCursor : null, RoutingStrategies.Tunnel, handledEventsToo: true);
         PositionChanged += (_, _) => OnMoved();
     }
@@ -120,6 +121,14 @@ public partial class DonutPreviewWindow : Window
     {
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
             EndDrag();
+    }
+
+    // A real enter or leave carries the pointer's own state (an update of kind Other); one Avalonia raises after a
+    // repaint carries none (PointerPointProperties.None) and says nothing about the button.
+    private void EndIfPointerSeenUp(object? sender, PointerEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.PointerUpdateKind == PointerUpdateKind.Other)
+            EndIfButtonUp(sender, e);
     }
 
     /// <summary>A drag of its middle is over: a move from now on is not the user's.</summary>

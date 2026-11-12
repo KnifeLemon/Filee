@@ -362,7 +362,14 @@ public partial class ToolbarPage : UserControl
         }
         _slidTo = to.Position;
         _landed = null;
-        Slide(main, to.Position, () => _landed = main.Position);
+        if (main is MainWindow on)
+            on.Landed = null;
+        Slide(main, to.Position, () =>
+        {
+            _landed = main.Position;
+            if (main is MainWindow there)
+                there.Landed = _landed;
+        });
     }
 
     /// <summary>
@@ -374,8 +381,7 @@ public partial class ToolbarPage : UserControl
         // Maximized meanwhile: it goes back once it is a normal window again (see OnWindowPropertyChanged).
         if (_topLevel is not MainWindow { WindowState: WindowState.Normal } main || main.RestPlace is not { } rest)
             return;
-        var stillThere = _sliding || main.Position is var at && (_landed ?? _slidTo) is { } there
-            && Math.Abs(at.X - there.X) <= 2 && Math.Abs(at.Y - there.Y) <= 2;
+        var stillThere = _sliding || (_landed ?? _slidTo) is { } there && MainWindow.IsNear(main.Position, there);
         // Its own width back, unless the user resized it since it was made narrower (or it never was).
         var narrowed = _narrowedTo is { } width && Math.Abs(main.ClientSize.Width - width) <= 0.5;
         _slidTo = _landed = null;
@@ -467,20 +473,38 @@ public partial class ToolbarPage : UserControl
             UpdatePreview(reload: true);
         if (e.Property == Window.WindowStateProperty || e.Property == TopLevel.ClientSizeProperty)
             KeepClearOfWindow();
-        if (_topLevel is MainWindow { WindowState: WindowState.Normal, RestPlace: { } rest } main)
+        if (e.Property == TopLevel.ClientSizeProperty)
+            NoteUserResize();
+        // A normal window again after Done (it was maximized meanwhile): it goes back now.
+        if (e.Property == Window.WindowStateProperty && _preview is not { IsVisible: true }
+            && _topLevel is MainWindow { WindowState: WindowState.Normal, RestPlace: not null })
+            SlideBack(animate: false);
+    }
+
+    private bool _userResizePosted;
+
+    /// <summary>
+    /// This window was resized while it made room: the size the user gave it is theirs, kept on Done and remembered on
+    /// close (<see cref="MainWindow.RestPlace"/>). Judged once the change has settled, on a normal window: Windows
+    /// reports a maximized window's new size before its new state.
+    /// </summary>
+    private void NoteUserResize()
+    {
+        if (_userResizePosted)
+            return;
+        _userResizePosted = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
-            // Resized by the user while it made room: that size is theirs, kept on Done and remembered on close.
-            if (e.Property == TopLevel.ClientSizeProperty
-                && Math.Abs(main.ClientSize.Width - (_narrowedTo ?? rest.ClientSize.Width)) > 0.5
+            _userResizePosted = false;
+            if (_sliding || _topLevel is not MainWindow { IsVisible: true, WindowState: WindowState.Normal, RestPlace: { } rest } main)
+                return;
+            if (Math.Abs(main.ClientSize.Width - (_narrowedTo ?? rest.ClientSize.Width)) > 0.5
                 && Math.Abs(main.ClientSize.Width - rest.ClientSize.Width) > 0.5)
             {
                 _narrowedTo = null;
-                main.RestPlace = (rest.Position, main.ClientSize);
+                main.RestPlace = rest = (rest.Position, main.ClientSize);
             }
-            // A normal window again after Done (it was maximized meanwhile): it goes back now.
-            if (e.Property == Window.WindowStateProperty && _preview is not { IsVisible: true })
-                SlideBack(animate: false);
-        }
+        }, Avalonia.Threading.DispatcherPriority.Background);
     }
 
     /// <summary>

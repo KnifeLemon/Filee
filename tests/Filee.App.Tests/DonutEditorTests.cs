@@ -1305,6 +1305,17 @@ public class DonutEditorTests
             // Closed now, it opens next time as wide as the user had it.
             var closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
             Assert.Equal(width, closing.Size!.Value.Width);
+            // Maximized and restored meanwhile, as Windows reports it: the new size first, then the new state. Not the
+            // user's size: Done still gives it its width back.
+            var narrowed = window.ClientSize.Width;
+            window.Width = 1920;
+            window.WindowState = WindowState.Maximized;
+            RenderTests.Pump();
+            window.Width = narrowed;
+            window.WindowState = WindowState.Normal;
+            RenderTests.Pump();
+            closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
+            Assert.Equal(width, closing.Size!.Value.Width);
             vm.DoneAdjustingLookCommand.Execute(null);
             RenderTests.Pump();
             Assert.Equal((start, width), (window.Position, window.ClientSize.Width));
@@ -1340,6 +1351,38 @@ public class DonutEditorTests
             RenderTests.Pump();
             var closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
             Assert.Equal(new PixelPoint(60, 80), closing.Position);
+        }
+        finally
+        {
+            Motion.Set(motion);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_place_the_user_moves_the_window_to_meanwhile_is_kept_and_remembered_on_close()
+    {
+        var (window, page, vm) = Open();
+        var motion = Motion.Enabled;
+        Motion.Set(false);
+        var main = (MainWindow)window;
+        var start = window.Position;
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.NotEqual(start, window.Position);
+            foreach (var to in new[] { new PixelPoint(800, 100), new PixelPoint(700, 120) })
+            {
+                window.Position = to;
+                RenderTests.Pump();
+                // Closed now, it opens next time where the user moved it.
+                Assert.Equal(to, WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null).Position);
+            }
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.Equal(new PixelPoint(700, 120), window.Position);
+            Assert.Null(main.RestPlace);
         }
         finally
         {
@@ -1407,6 +1450,12 @@ public class DonutEditorTests
             preview.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
             preview.MouseMove(middle, RawInputModifiers.LeftMouseButton); // the button still down
             RunUntil(() => false, TimeSpan.FromSeconds(1));
+            Assert.True(IsDragging(preview));
+            // A leave Avalonia raises on its own after a repaint (the window moved out from under where it last saw the
+            // pointer) carries no button state: the drag goes on.
+            preview.RaiseEvent(new PointerEventArgs(InputElement.PointerExitedEvent, preview,
+                new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, true), preview, new Point(-5, -5), 0,
+                PointerPointProperties.None, KeyModifiers.None));
             Assert.True(IsDragging(preview));
             Assert.True(preview.Box.Intersects(FrameOf(window)));
             preview.Position = new PixelPoint(frame.X + 140, frame.Y + 120);

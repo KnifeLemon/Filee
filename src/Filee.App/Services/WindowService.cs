@@ -1174,7 +1174,7 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         public static MainWindowPlacement Of(MainWindow window, MainWindowViewModel vm, MainWindowPlacement? last) =>
             window.WindowState switch
             {
-                WindowState.Normal => new(window.RestPlace?.Position ?? window.Position, window.RestPlace?.ClientSize ?? window.ClientSize,
+                WindowState.Normal => new(window.PlaceToRemember, window.RestPlace?.ClientSize ?? window.ClientSize,
                     false, vm.SelectedItem.Key),
                 WindowState.Maximized => (last ?? new(null, null, false, "")) with { Maximized = true, Page = vm.SelectedItem.Key },
                 _ => (last ?? new(null, null, false, "")) with { Page = vm.SelectedItem.Key },

@@ -104,6 +104,20 @@ public partial class MainWindow : Window
     internal (PixelPoint Position, Size ClientSize)? RestPlace { get; set; }
 
     /// <summary>
+    /// Where it landed, moved over (null while it is on its way): moved by the user since, it stays where they put it,
+    /// and closing remembers that rather than <see cref="RestPlace"/>'s place.
+    /// </summary>
+    internal PixelPoint? Landed { get; set; }
+
+    /// <summary>
+    /// The place closing remembers: where it was before it moved over, unless the user moved it since.
+    /// </summary>
+    internal PixelPoint PlaceToRemember => RestPlace is { } rest && (Landed is not { } at || IsNear(Position, at)) ? rest.Position : Position;
+
+    /// <summary>Within 2 pixels (a window manager may nudge a window it moved).</summary>
+    internal static bool IsNear(PixelPoint a, PixelPoint b) => Math.Abs(a.X - b.X) <= 2 && Math.Abs(a.Y - b.Y) <= 2;
+
+    /// <summary>
     /// Leaves Filee in the tray: hides the window at once, then closes it for real, so its pages, visuals and images
     /// don't stay in memory until the next time (issue #119). <see cref="WindowService.ShowMain"/> opens a new one.
     /// </summary>
