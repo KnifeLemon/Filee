@@ -92,9 +92,9 @@ internal static class ImageEncoder
 
     /// <summary>
     /// Packages of a picture and more, of which the picture is read (<see cref="ImageReader"/>): an iPhone LIVP, a Krita
-    /// KRA, the icon of a Windows program or library (<see cref="ProgramIcon"/>).
+    /// KRA, a Paint.NET PDN (<see cref="PaintNet"/>), the icon of a Windows program or library (<see cref="ProgramIcon"/>).
     /// </summary>
-    public static readonly string[] Packages = ["livp", "kra", FormatRegistry.Program];
+    public static readonly string[] Packages = ["livp", "kra", "pdn", FormatRegistry.Program];
 
     /// <summary>
     /// Every format ImageMagick reads as input: the raster formats, the picture of <see cref="Packages"/> and, on
@@ -193,6 +193,7 @@ internal static class ImageEncoder
         "jpg" or "jpeg" => 65_500,
         "webp" => 16_383,
         "avif" => 16_384,
+        "pdn" => PaintNetWriter.MaxSide,
         _ => double.PositiveInfinity,
     };
 
@@ -465,6 +466,19 @@ internal static class ImageEncoder
         ImageOptions? options = null, string? sourcePath = null, bool animation = false)
     {
         var written = new List<string>();
+        if (targetFormat == "pdn")
+        {
+            // Paint.NET's own file, written by Filee (PaintNetWriter): one picture per file, as one layer.
+            for (var i = 0; i < frames.Count; i++)
+            {
+                var pdn = output.Allocate("pdn", frames.Count > 1 ? $"_p{i + 1}" : null);
+                if (pdn is null)
+                    continue;
+                PaintNetWriter.Write(frames[i], pdn);
+                written.Add(pdn);
+            }
+            return written;
+        }
         var (format, extension) = OutputFormat(targetFormat, options ?? new ImageOptions(), sourcePath);
 
         if (targetFormat == "apng")
@@ -595,11 +609,16 @@ internal static class ImageEncoder
         }
     }
 
-    /// <summary>Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>).</summary>
+    /// <summary>
+    /// Writes one image as <paramref name="targetFormat"/> (APNG through <see cref="Apng"/>, Paint.NET's PDN through
+    /// <see cref="PaintNetWriter"/>).
+    /// </summary>
     public static void WriteImage(IMagickImage<byte> image, string path, string targetFormat)
     {
         if (targetFormat == "apng")
             Apng.Write([image], path);
+        else if (targetFormat == "pdn")
+            PaintNetWriter.Write(image, path);
         else
             image.Write(path, ToMagickFormat(targetFormat));
     }

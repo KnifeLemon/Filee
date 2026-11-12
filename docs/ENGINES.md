@@ -5,7 +5,7 @@ Filee chooses engines automatically. Settings → *Engines* shows their status, 
 
 | Engine | How it gets there | Handles |
 |---|---|---|
-| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
+| ImageMagick (Magick.NET) | built in (library) | JPG, PNG, WEBP, TIFF, BMP, GIF, ICO, AVIF, JPEG XL, JPEG 2000, PSD/PSB, TGA, PPM, MNG, QOI, DDS, PCX, CUR, XPM, XBM, WBMP, PAM, PFM, SGI, Sun Raster, MIFF ↔ each other, and **APNG** (Filee's own reader and writer); HEIC (written with FFmpeg), XCF, camera RAW (LibRaw), DICOM (uncompressed ones by Filee's own reader), **FITS** (Filee's own reader; TIFF at the file's own depth by Filee's own writer), Photo CD, OpenEXR, Radiance HDR, EMF/WMF (Windows), the photo of an iPhone LIVP, the merged picture of a Krita KRA, a **Paint.NET PDN** (Filee's own reader and writer: layers merged as Paint.NET shows them, or kept between PDN and PSD/PSB), the icon of a Windows program or library (EXE, DLL) and a Windows **animated cursor** (ANI, Filee's own reader) read |
 | Windows Imaging Component | part of Windows (Windows only) | **JPEG XR** (JXR, WDP, HDP; HDR screenshots of Windows) → the images ImageMagick writes, and PDF, ICNS, HEIC and SVG through PNG; HDR tone-mapped to SDR |
 | Vector graphics | built in (Svg.Skia, SkiaSharp, ACadSharp) | **SVG/SVGZ → PDF (vector) and images**, SVG ↔ SVGZ, **SVG → DXF** (→ DWG with the CAD engine), **raster images → SVG (tracing)**, PDF-compatible AI → PDF, **HP-GL / HP-GL/2 plot files (PLT) → SVG**, PDF and images (pen moves, packed PE polylines, arcs and filled polygons; text labels are not drawn), **Tajima DST embroidery → SVG** (stitches as lines, a palette colour per thread; → PNG, JPG, PDF from there) |
 | ICNS | built in | images → ICNS (16–1024 px), ICNS → images |
@@ -346,6 +346,20 @@ in it also builds the package (artifact `windows-arm64-package`).
   without one gives a clear error. Krita's backup of the previous save, `name.kra~`, is the same file and is read the
   same way; its output is named `name.png`. Watch folders skip it (and any name ending in `~`), as it is written next
   to the drawing on every save.
+- **PDN** (Paint.NET's own file) is read by Filee itself (`PaintNet`): an XML header, the document in .NET binary
+  serialization, read as plain data with System.Formats.Nrbf (no type it names is ever created), then each layer's BGRA
+  pixels in gzip-compressed chunks. For PNG, JPG and every other target the visible layers are merged with Paint.NET's
+  own blend formulas (all 14 modes, layer opacity), so the picture looks as it does in Paint.NET. To **PSD / PSB** the
+  layers are kept, for Photoshop, GIMP and Krita: names (also as Unicode, `luni`), opacity, visibility and the blend
+  modes Photoshop shares (Multiply, Additive as Linear Dodge, Color Burn, Color Dodge, Overlay, Difference, Lighten,
+  Darken, Screen; Reflect, Glow, Negation and Xor become Normal), with the merged picture first. ImageMagick's PSD
+  writer stores a layer's visibility in the wrong bit and locks its transparency, so `PaintNet.SetLayerFlags` sets the
+  flags afterwards. A preset that changes the picture (resize, rotate, …) gives one merged picture instead.
+  Filee also **writes** PDN (`PaintNetWriter`), in the shape Paint.NET 4.2 saves and every later version opens (the
+  same records, class metadata and 256 KB gzip chunks, and a thumbnail in the header): any picture becomes one layer
+  named Background, and a **PSD / PSB** keeps its pixel layers, each at its place on the canvas, with its Unicode name,
+  opacity, visibility and the blend modes Paint.NET shares. PDN → PSD → PDN gives back the same layers, pixel for
+  pixel. A PDN is a target only where the Design & print field is on.
 - **EXE / DLL** (a Windows program or library, #1188) is read as its icon, the one Explorer shows: the first icon group
   of its resources, put back together as an `.ico` in memory (`ProgramIcon`, Filee's own reader for 32 and 64-bit PE
   files; only the headers and the icon are read, at most 64 MB, and the file is never loaded or run). To ICO it is
