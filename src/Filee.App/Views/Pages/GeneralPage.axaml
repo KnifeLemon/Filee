@@ -91,6 +91,21 @@
       </StackPanel>
     </Border>
 
+    <!-- The proxy for Filee's own downloads (AppSettings.Proxy, ProxySetting): engines, updates, dragged links. -->
+    <Border Classes="card">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource general.network}" />
+        <StackPanel>
+          <TextBlock Classes="label" Text="{DynamicResource general.proxy}" />
+          <TextBox Text="{Binding Proxy}" PlaceholderText="http://127.0.0.1:7890" Width="440" HorizontalAlignment="Left"
+                   AutomationProperties.Name="{DynamicResource general.proxy}" />
+        </StackPanel>
+        <TextBlock Classes="caption" Foreground="{DynamicResource WarningBrush}" TextWrapping="Wrap" Text="{DynamicResource general.proxy_invalid}"
+                   IsVisible="{Binding ProxyInvalid}" Margin="0,-6,0,0" />
+        <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource general.proxy_hint}" />
+      </StackPanel>
+    </Border>
+
     <Border Classes="card">
       <StackPanel Spacing="12">
         <TextBlock Classes="h2" Text="{DynamicResource general.history}" />

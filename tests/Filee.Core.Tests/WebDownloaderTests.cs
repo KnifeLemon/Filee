@@ -458,6 +458,94 @@ public sealed class WebDownloaderTests : IDisposable
             program.SaveAsync(_dir.Path, downloader, null, TestContext.Current.CancellationToken))).ErrorKey);
     }
 
+    [Fact]
+    public async Task An_https_link_tunnels_through_a_proxy_on_this_computer()
+    {
+        // Clash and the like listen on 127.0.0.1. For an https site the handler first sends CONNECT to the proxy,
+        // naming the proxy as its address: that connection must not be taken for a link to this computer.
+        await using var proxy = new FakeProxy("HTTP/1.1 502 Bad Gateway\r\nContent-Length: 0\r\n\r\n"u8.ToArray());
+        using var downloader = new WebDownloader(null, null, new SettingsWebProxy(() => proxy.Address, null));
+        var ct = TestContext.Current.CancellationToken;
+
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() =>
+            downloader.DownloadAsync(new Uri("https://files.example/photo.png"), _dir.Path, null, null, ct));
+
+        Assert.Equal("error.web_download_failed", error.ErrorKey);
+        Assert.StartsWith("CONNECT files.example:443 ", await proxy.Request);
+    }
+
+    [Fact]
+    public async Task An_http_link_is_fetched_through_a_proxy_on_this_computer()
+    {
+        var head = "HTTP/1.1 200 OK\r\nContent-Type: image/png\r\nContent-Length: 16\r\nConnection: close\r\n\r\n"u8.ToArray();
+        await using var proxy = new FakeProxy([.. head, .. Png]);
+        using var downloader = new WebDownloader(null, null, new SettingsWebProxy(() => proxy.Address, null));
+        var ct = TestContext.Current.CancellationToken;
+
+        var path = await downloader.DownloadAsync(new Uri("http://files.example/photo.png"), _dir.Path, null, null, ct);
+
+        Assert.Equal(Png, await File.ReadAllBytesAsync(path, ct));
+        Assert.StartsWith("GET http://files.example/photo.png ", await proxy.Request);
+    }
+
+    [Fact]
+    public async Task With_a_proxy_a_link_to_this_computer_is_still_refused_and_never_sent_to_it()
+    {
+        await using var proxy = new FakeProxy([]);
+        using var downloader = new WebDownloader(null, null, new SettingsWebProxy(() => proxy.Address, null));
+        var ct = TestContext.Current.CancellationToken;
+
+        var error = await Assert.ThrowsAsync<ConversionRefusedException>(() => downloader.DownloadAsync(Url("/photo.png"), _dir.Path, null, null, ct));
+
+        Assert.Equal("error.web_local_address", error.ErrorKey);
+        Assert.False(proxy.Request.IsCompleted);
+    }
+
+    /// <summary>A proxy on 127.0.0.1 that reads one request's head and answers with fixed bytes.</summary>
+    private sealed class FakeProxy : IAsyncDisposable
+    {
+        private readonly TcpListener _server = new(IPAddress.Loopback, 0);
+        private readonly CancellationTokenSource _stop = new();
+
+        public FakeProxy(byte[] answer)
+        {
+            _server.Start();
+            Address = $"http://127.0.0.1:{((IPEndPoint)_server.LocalEndpoint).Port}";
+            Request = Task.Run(async () =>
+            {
+                using var client = await _server.AcceptTcpClientAsync(_stop.Token);
+                await using var stream = client.GetStream();
+                var head = new List<byte>();
+                var one = new byte[1];
+                while (!head.TakeLast(4).SequenceEqual("\r\n\r\n"u8.ToArray()) && await stream.ReadAsync(one, _stop.Token) == 1)
+                    head.Add(one[0]);
+                await stream.WriteAsync(answer, _stop.Token);
+                return System.Text.Encoding.ASCII.GetString([.. head]);
+            });
+        }
+
+        public string Address { get; }
+
+        /// <summary>The request the proxy got, from its first line on.</summary>
+        public Task<string> Request { get; }
+
+        public async ValueTask DisposeAsync()
+        {
+            await _stop.CancelAsync();
+            _server.Stop();
+            try
+            {
+                await Request;
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SocketException or IOException or ObjectDisposedException
+                                           or InvalidOperationException)
+            {
+                // Never connected to, or the client hung up; or stopped before the accept even began.
+            }
+            _stop.Dispose();
+        }
+    }
+
     private sealed class ProgressCallback(Action<TransferProgress> report) : IProgress<TransferProgress>
     {
         public void Report(TransferProgress value) => report(value);

@@ -123,7 +123,10 @@ second with the Engines page's `TransferRate` and units, rewritten four times a 
   private, carrier-grade NAT, link-local, unique local, multicast, `localhost` and `.local` names, IPv4 inside IPv6)
   is refused (`error.web_local_address`), on every redirect and after the name is looked up: the handler's
   `ConnectCallback` connects only to the checked addresses, so a name that changes its answer (DNS rebinding) gets
-  nowhere. A connection to the user's proxy isn't checked; the names and numbers in the address still are.
+  nowhere. A connection to the user's proxy isn't checked, including the CONNECT tunnel the handler opens to an
+  https site through a proxy on this computer (`127.0.0.1:7890`); the names and numbers in the address still are.
+  The proxy is Settings → General → Network (`ProxySetting`, which never sends local addresses through it) or the
+  system's.
   "Allow links to this computer and the local network" (Settings → General, `BrowserDropSettings.AllowLocalNetwork`,
   off by default, read for each drop) lifts this for an intranet or a NAS. Those downloads go through an `HttpClient`
   of their own, so a pooled connection to a local address never serves a drop that may not go there.
