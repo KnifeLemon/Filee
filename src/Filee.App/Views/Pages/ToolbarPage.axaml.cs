@@ -366,12 +366,22 @@ public partial class ToolbarPage : UserControl
     }
 
     // This window moved over to make room for the donut: where it went (it goes back unless moved since), the slide
-    // under way, where it actually landed (a window manager may keep it off the menu bar), and the width it was made
-    // narrower to (it goes back to its own unless the user resized it since).
+    // under way, and the width it was made narrower to (it goes back to its own unless the user resized it since).
+    // Where it actually landed (a window manager may keep it off the menu bar) is the window's own, for closing to
+    // judge by too (MainWindow.Landed): null while it is on its way, over or back.
     private PixelPoint? _slidTo;
-    private PixelPoint? _landed;
     private bool _sliding;
     private double? _narrowedTo;
+
+    private PixelPoint? LandedAt
+    {
+        get => (_topLevel as MainWindow)?.Landed;
+        set
+        {
+            if (_topLevel is MainWindow main)
+                main.Landed = value;
+        }
+    }
 
     /// <summary>
     /// Moves this window to <paramref name="to"/> (narrower if it must be), remembering where it was.
@@ -380,11 +390,14 @@ public partial class ToolbarPage : UserControl
     {
         if (main is MainWindow mw)
         {
-            // Moved by the user since it last moved over (while the donut was put away): there is where it goes back.
-            if (mw.RestPlace is not null && !_sliding && (_landed ?? _slidTo) is { } at && !MainWindow.IsNear(main.Position, at))
+            // Moved by the user since it last moved over (while the donut was put away): there is where it goes back,
+            // as wide as it was unless the user resized it too.
+            if (mw.RestPlace is { } rest && !_sliding && (LandedAt ?? _slidTo) is { } at && !MainWindow.IsNear(main.Position, at))
             {
-                mw.RestPlace = (main.Position, main.ClientSize);
-                _narrowedTo = null;
+                var narrowed = _narrowedTo is { } width && Math.Abs(main.ClientSize.Width - width) <= 0.5;
+                mw.RestPlace = (main.Position, narrowed ? rest.ClientSize.WithHeight(main.ClientSize.Height) : main.ClientSize);
+                if (!narrowed)
+                    _narrowedTo = null;
             }
             mw.RestPlace ??= (main.Position, main.ClientSize);
         }
@@ -395,15 +408,8 @@ public partial class ToolbarPage : UserControl
             main.Width = _narrowedTo.Value;
         }
         _slidTo = to.Position;
-        _landed = null;
-        if (main is MainWindow on)
-            on.Landed = null;
-        Slide(main, to.Position, () =>
-        {
-            _landed = main.Position;
-            if (main is MainWindow there)
-                there.Landed = _landed;
-        });
+        LandedAt = null;
+        Slide(main, to.Position, () => LandedAt = main.Position);
     }
 
     /// <summary>
@@ -415,10 +421,10 @@ public partial class ToolbarPage : UserControl
         // Maximized meanwhile: it goes back once it is a normal window again (see OnWindowPropertyChanged).
         if (_topLevel is not MainWindow { WindowState: WindowState.Normal } main || main.RestPlace is not { } rest)
             return;
-        var stillThere = _sliding || (_landed ?? _slidTo) is { } there && MainWindow.IsNear(main.Position, there);
+        var stillThere = _sliding || (LandedAt ?? _slidTo) is { } there && MainWindow.IsNear(main.Position, there);
         // Its own width back, unless the user resized it since it was made narrower (or it never was).
         var narrowed = _narrowedTo is { } width && Math.Abs(main.ClientSize.Width - width) <= 0.5;
-        _slidTo = _landed = null;
+        _slidTo = LandedAt = null;
         _narrowedTo = null;
         if (narrowed)
             main.Width = rest.ClientSize.Width;
@@ -591,7 +597,7 @@ public partial class ToolbarPage : UserControl
             // where it moved to is where it is, and where closing remembers.
             StopSlide();
             away.RestPlace = null;
-            _slidTo = _landed = null;
+            _slidTo = LandedAt = null;
             _narrowedTo = null;
         }
         _topLevel = null;

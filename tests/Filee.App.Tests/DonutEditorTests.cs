@@ -1028,9 +1028,14 @@ public class DonutEditorTests
             RunUntil(() => window.Position != start);
             Assert.NotEqual(start, window.Position); // on its way
             Assert.True(IsSliding(page));
-            ToolbarPage.SlideTime = TimeSpan.FromSeconds(0.25); // the way back at its own pace
+            // Closed on its way over, or back: it opens next time where the user had it.
+            Assert.Equal(start, WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null).Position);
             vm.DoneAdjustingLookCommand.Execute(null);
-            RunUntil(() => main.RestPlace is null);
+            RunUntil(() => window.Position != start);
+            Assert.True(IsSliding(page));
+            Assert.Equal(start, WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null).Position);
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(0.25);
+            RunUntil(() => main.RestPlace is null, TimeSpan.FromSeconds(6)); // the way back at the slowed pace
             Assert.Equal(start, window.Position);
             Assert.Null(main.RestPlace);
         }
@@ -1319,6 +1324,25 @@ public class DonutEditorTests
             vm.DoneAdjustingLookCommand.Execute(null);
             RenderTests.Pump();
             Assert.Equal((start, width), (window.Position, window.ClientSize.Width));
+
+            // Moved by the user while the donut is put away (a profile search hides it), still narrowed: on Done it
+            // goes back where they moved it, as wide as it was.
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.True(window.ClientSize.Width < width - 1);
+            vm.ProfileSearch = "zzzz-no-profile";
+            RenderTests.Pump();
+            var theirs = new PixelPoint(start.X - 30, start.Y - 30);
+            window.Position = theirs;
+            RenderTests.Pump();
+            vm.ProfileSearch = "";
+            vm.SelectedProfile = vm.Profiles[0];
+            RenderTests.Pump();
+            closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
+            Assert.Equal((theirs, width), (closing.Position!.Value, closing.Size!.Value.Width));
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.Equal((theirs, width), (window.Position, window.ClientSize.Width));
         }
         finally
         {
@@ -1411,9 +1435,16 @@ public class DonutEditorTests
             var preview = page.Preview!;
 
             // Down and back up (the list drops its selection for a moment on the way back).
+            var hidden = 0;
+            preview.PropertyChanged += (_, e) =>
+            {
+                if (e.Property == Visual.IsVisibleProperty && !preview.IsVisible)
+                    hidden++;
+            };
             foreach (var move in new[] { vm.MoveProfileDownCommand, vm.MoveProfileUpCommand })
             {
                 move.Execute(null);
+                Assert.Equal(0, hidden); // not put away for a moment either
                 RunUntil(() => false, TimeSpan.FromMilliseconds(500));
                 Assert.Same(selected, vm.SelectedProfile);
                 Assert.False(IsSliding(page));
@@ -1526,6 +1557,35 @@ public class DonutEditorTests
         finally
         {
             vm.ProfileSearch = "";
+            Motion.Set(motion);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Closed_on_its_way_back_the_window_opens_where_the_user_had_it()
+    {
+        var (window, page, vm) = Open();
+        var motion = Motion.Enabled;
+        Motion.Set(true); // animated, as in the app
+        var main = (MainWindow)window;
+        var start = window.Position;
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RunUntil(() => window.Position != start && !IsSliding(page));
+            var landed = window.Position;
+            Assert.NotEqual(start, landed);
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(3); // to be caught on its way back
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RunUntil(() => window.Position != landed);
+            Assert.True(IsSliding(page));
+            Assert.NotEqual(start, window.Position);
+            Assert.Equal(start, WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null).Position);
+        }
+        finally
+        {
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(0.25);
             Motion.Set(motion);
             window.Close();
         }

@@ -68,7 +68,8 @@ public partial class DonutPreviewWindow : Window
 
     private void OnPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !OnHandle(e))
+        // Not a second finger: the system moves a window by its primary pointer only.
+        if (!e.Pointer.IsPrimary || !e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !OnHandle(e))
             return;
         e.Handled = true;
         _dragging = true;
