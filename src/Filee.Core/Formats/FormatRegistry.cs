@@ -221,7 +221,8 @@ public static class FormatRegistry
         new("oeb", "OEB", FormatCategory.Ebook, ["oeb", "opf"], Writable: false),
 
         // Video
-        new("mp4", "MP4", FormatCategory.Video, ["mp4"]),
+        // Some Instagram downloads are saved as ".mpg4" (#1397); MP4 stays the extension Filee writes.
+        new("mp4", "MP4", FormatCategory.Video, ["mp4", "mpg4"]),
         new("m4v", "M4V", FormatCategory.Video, ["m4v"]),
         // Some downloaders name video/quicktime files ".quicktime" (#1283); MOV stays the extension Filee writes.
         new("mov", "MOV", FormatCategory.Video, ["mov", "qt", "quicktime"]),

@@ -489,6 +489,24 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public async Task An_mpg4_named_video_converts_like_an_mp4()
+    {
+        // #1397: FFmpeg probes the content, so the .mpg4 name only has to reach the MP4 routes; an MP4 output is written
+        // as .mp4.
+        SkipUnlessInstalled();
+        var video = await MakeClipAsync(fx.NewFolder(), "reel.mpg4", size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac", "-f", "mp4"]);
+
+        foreach (var target in new[] { "mp4", "mov", "mp3" })
+        {
+            var output = await ConvertAsync(video, target);
+            Assert.Equal("." + target, Path.GetExtension(output));
+            var probed = await ProbeAsync(output);
+            Assert.InRange(probed.Duration, 1.7, 2.4);
+            Assert.Equal(target != "mp3", probed.Video is not null);
+        }
+    }
+
+    [Fact]
     public async Task A_qta_with_more_tracks_converts_its_first_audio_track()
     {
         // #646: audio targets take the first sound track (-map 0:a:0), not the second one or a mix of both, and leave
