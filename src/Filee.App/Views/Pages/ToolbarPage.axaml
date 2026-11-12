@@ -428,8 +428,8 @@
                 <ComboBox x:Name="GroupShownChoice" Grid.Column="1" ItemsSource="{Binding RingGroups}" SelectedItem="{Binding ShownGroup}"
                           HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource toolbar.group_shown}" />
               </Grid>
-              <!-- Longer than the names above in most languages: it wraps next to a bare switch, as the mixed one
-                   does. -->
+              <!-- Longer than the names above in most languages: it wraps next to a bare switch, as the mixed one does.
+                   -->
               <DockPanel>
                 <ToggleSwitch x:Name="CaptionsToggle" DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0"
                               Margin="12,0,0,0" VerticalAlignment="Center" IsChecked="{Binding ShowCaptions}"

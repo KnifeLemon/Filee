@@ -123,13 +123,19 @@ public partial class DonutPreviewWindow : Window
             EndDrag();
     }
 
-    // A real enter or leave carries the pointer's own state (an update of kind Other); one Avalonia raises after a
-    // repaint carries none (PointerPointProperties.None) and says nothing about the button.
+    // A real enter or leave is an update of kind Other; one Avalonia raises after a repaint carries no state at all
+    // (PointerPointProperties.None) and says nothing about the button.
     private void EndIfPointerSeenUp(object? sender, PointerEventArgs e)
     {
-        if (e.GetCurrentPoint(this).Properties.PointerUpdateKind == PointerUpdateKind.Other)
+        if (LeaveTellsTheButton && e.GetCurrentPoint(this).Properties.PointerUpdateKind == PointerUpdateKind.Other)
             EndIfButtonUp(sender, e);
     }
+
+    /// <summary>
+    /// Whether a real enter or leave tells whether the button is down. Not on Windows, where Avalonia builds a leave
+    /// with the keyboard's modifiers only; there the system's move always ends with a button-up instead.
+    /// </summary>
+    internal static bool LeaveTellsTheButton { get; set; } = !OperatingSystem.IsWindows();
 
     /// <summary>A drag of its middle is over: a move from now on is not the user's.</summary>
     private void EndDrag()

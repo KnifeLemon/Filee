@@ -1504,6 +1504,24 @@ public class DonutEditorTests
             vm.DoneAdjustingLookCommand.Execute(null);
             RenderTests.Pump();
             Assert.Equal(start, window.Position);
+
+            // Moved by the user while the donut is put away, to where it must make room again: on Done it goes back
+            // there, and closing meanwhile remembers there.
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            vm.ProfileSearch = "pdf";
+            RenderTests.Pump();
+            var theirs = new PixelPoint(start.X - 20, start.Y - 40);
+            window.Position = theirs;
+            RenderTests.Pump();
+            vm.ProfileSearch = "";
+            vm.SelectedProfile = images;
+            RenderTests.Pump();
+            Assert.NotEqual(theirs, window.Position); // made room again
+            Assert.Equal(theirs, WindowService.MainWindowPlacement.Of((MainWindow)window, (MainWindowViewModel)window.DataContext!, null).Position);
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.Equal(theirs, window.Position);
         }
         finally
         {
@@ -1654,7 +1672,8 @@ public class DonutEditorTests
         var store = AppHost.Get<UserDataStore>();
         var motion = Motion.Enabled;
         Motion.Set(false);
-        var drag = DonutPreviewWindow.MoveDrag;
+        var (drag, leave) = (DonutPreviewWindow.MoveDrag, DonutPreviewWindow.LeaveTellsTheButton);
+        DonutPreviewWindow.LeaveTellsTheButton = false; // as on Windows
         try
         {
             vm.AdjustLookCommand.Execute(null);
@@ -1680,6 +1699,12 @@ public class DonutEditorTests
                 Posted(moved, () =>
                 {
                     moved.Position = new PixelPoint(frame.X + 100, frame.Y + 100);
+                    // A leave Windows reports during its move: built with the keyboard's modifiers only, it says the
+                    // button is up when it isn't. The drag goes on.
+                    moved.RaiseEvent(new PointerEventArgs(InputElement.PointerExitedEvent, moved,
+                        new Pointer(Pointer.GetNextFreeId(), PointerType.Mouse, true), moved, new Point(-1, -1), 0,
+                        new PointerPointProperties(RawInputModifiers.None, PointerUpdateKind.Other), KeyModifiers.None));
+                    Assert.True(IsDragging((DonutPreviewWindow)moved), "a leave during the move ended it");
                     RunUntil(() => false, TimeSpan.FromSeconds(1));
                     Assert.True(((DonutPreviewWindow)moved).Box.Intersects(FrameOf(window)), "moved off the window while still dragged");
                     moved.Position = new PixelPoint(frame.X + 150, frame.Y + 120);
@@ -1719,7 +1744,7 @@ public class DonutEditorTests
         }
         finally
         {
-            DonutPreviewWindow.MoveDrag = drag;
+            (DonutPreviewWindow.MoveDrag, DonutPreviewWindow.LeaveTellsTheButton) = (drag, leave);
             Motion.Set(motion);
             store.Settings.DonutPreviewPlace = null;
             DonutLookSave.Flush();

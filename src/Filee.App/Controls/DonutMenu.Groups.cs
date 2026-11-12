@@ -345,7 +345,7 @@ public sealed partial class DonutMenu
     /// <summary>The group fanned out (-1 none).</summary>
     internal int OpenedGroup => _expanded;
 
-    /// <summary>Opens group <paramref name="index"/> as resting on it would.</summary>
+    /// <summary>Opens group <paramref name="index"/> as resting on it would (for tests).</summary>
     internal void OpenGroup(int index)
     {
         if (index >= 0 && index < Count && Items![index].CanExpand)

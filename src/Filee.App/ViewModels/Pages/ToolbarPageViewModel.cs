@@ -510,8 +510,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private int Capacity => OpenGroup is null ? ToolbarProfile.MaxSlices : Preset.MaxSubPresets;
 
     /// <summary>
-    /// Where the open group is on the face being edited (-1 with none open, or once it has left the face): the donut on
-    /// screen opens it there.
+    /// Where the open group is on the face being edited (-1 with none open, or once it has left the face, which closes
+    /// it: see Rebuild).
     /// </summary>
     public int OpenGroupIndex => OpenGroup is { } group && Profile is { } profile
         ? (EditingBack ? profile.BackPresetIds ?? [] : profile.PresetIds).IndexOf(group.Id) : -1;

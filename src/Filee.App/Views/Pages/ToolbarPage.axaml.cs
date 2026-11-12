@@ -379,7 +379,15 @@ public partial class ToolbarPage : UserControl
     private void MoveMain(Window main, PixelRect to, double scaling)
     {
         if (main is MainWindow mw)
+        {
+            // Moved by the user since it last moved over (while the donut was put away): there is where it goes back.
+            if (mw.RestPlace is not null && !_sliding && (_landed ?? _slidTo) is { } at && !MainWindow.IsNear(main.Position, at))
+            {
+                mw.RestPlace = (main.Position, main.ClientSize);
+                _narrowedTo = null;
+            }
             mw.RestPlace ??= (main.Position, main.ClientSize);
+        }
         var narrower = (main.FrameSize?.Width ?? main.Bounds.Width) * scaling - to.Width;
         if (narrower > 0)
         {
