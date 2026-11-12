@@ -277,7 +277,11 @@ public class GcodeTests(EngineFixture fx) : IClassFixture<EngineFixture>
         var output = Assert.Single(job.Files[0].Outputs);
         Assert.Equal("." + target, Path.GetExtension(output));
         if (target == "svg")
+        {
             Assert.Contains("<path", File.ReadAllText(output));
+            using var drawing = Vector.SvgRenderer.Load(output); // well-formed: the vector engine reads it back
+            Assert.True(drawing.Bounds.Width > 20);
+        }
         else if (target == "pdf")
             Assert.StartsWith("%PDF", File.ReadAllText(output));
         else
@@ -285,6 +289,17 @@ public class GcodeTests(EngineFixture fx) : IClassFixture<EngineFixture>
             using var image = new MagickImage(output);
             Assert.True(image.Width >= 1000); // drawn at its render size, not 20 pixels for 20 mm
         }
+    }
+
+    [Theory]
+    [InlineData("dxf")]
+    [InlineData("dwg")]
+    public async Task The_cad_donut_reaches_dxf_and_dwg_through_the_svg(string target)
+    {
+        var job = await fx.ConvertAsync([Write("pocket.ngc", "G0 X0 Y0\nG1 Z-1 F100\nG1 X10\nG2 X20 Y0 R5\n")], new Preset { TargetFormat = target });
+
+        Assert.Equal(JobState.Completed, job.State);
+        Assert.True(new FileInfo(Assert.Single(job.Files[0].Outputs)).Length > 0);
     }
 
     [Theory]

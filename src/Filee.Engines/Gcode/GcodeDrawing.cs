@@ -186,8 +186,9 @@ internal static class GcodeDrawing
             }
             var color = $"#{stroke.Color.Red:X2}{stroke.Color.Green:X2}{stroke.Color.Blue:X2}";
             var opacity = stroke.Opacity < 1 ? $" stroke-opacity=\"{N(stroke.Opacity)}\"" : "";
+            svg.Append('"');
             svg.Append(CultureInfo.InvariantCulture,
-                $"""" fill="none" stroke="{color}"{opacity} stroke-width="{N(stroke.Width)}" stroke-linecap="round" stroke-linejoin="round"/>"""");
+                $""" fill="none" stroke="{color}"{opacity} stroke-width="{N(stroke.Width)}" stroke-linecap="round" stroke-linejoin="round"/>""");
         }
         svg.Append("</svg>");
         return svg.ToString();
