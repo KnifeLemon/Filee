@@ -244,7 +244,16 @@ public partial class ToolbarPage : UserControl
             _previewModel.ApplyLook(profile);
         _preview.DonutControl.HeldGroupId = held;
         if (!shown)
+        {
+            // Back while this window slides back (or over): it stops there, as if it had landed there, and is placed
+            // from there; where it was before it moved over is still where Done takes it.
+            if (_sliding)
+            {
+                StopSlide();
+                _slidTo = LandedAt = main.Position;
+            }
             PlacePreview(main, moveWindow: true);
+        }
     }
 
     // What the donut on screen shows, so a rebuild of the editor that changed none of it (a palette search) doesn't
@@ -404,7 +413,8 @@ public partial class ToolbarPage : UserControl
         var narrower = (main.FrameSize?.Width ?? main.Bounds.Width) * scaling - to.Width;
         if (narrower > 0)
         {
-            _narrowedTo = Math.Max(main.MinWidth, main.ClientSize.Width - narrower / scaling); // first: resizing reports it
+            // Recorded first: resizing reports it, and must not take it for the user's.
+            _narrowedTo = Math.Max(main.MinWidth, main.ClientSize.Width - narrower / scaling);
             main.Width = _narrowedTo.Value;
         }
         _slidTo = to.Position;

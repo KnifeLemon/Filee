@@ -851,6 +851,52 @@ public class DonutEditorTests
     }
 
     [AvaloniaFact]
+    public void The_group_picked_in_group_shown_stays_picked_when_it_is_renamed_elsewhere()
+    {
+        var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var images = store.Profiles.Single(p => p.Id == "images");
+        var front = images.PresetIds.ToList();
+        var group = new Preset { Name = "Picked group", Kind = PresetKind.Group };
+        group.SubPresetIds.Add(store.Presets.First(p => !p.IsGroup && images.PresetIds.Contains(p.Id)).Id);
+        store.Presets.Add(group);
+        images.PresetIds.Insert(0, group.Id);
+        store.SaveLibrary();
+        var saved = vm.GroupRingSize;
+        (Preset Preset, string? Name)? renamed = null;
+        try
+        {
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile == images);
+            vm.AdjustLookCommand.Execute(null);
+            vm.GroupRingSize = saved + 10;
+            RenderTests.Pump();
+            Assert.True(vm.RingGroups.Count >= 2);
+            vm.ShownGroup = vm.RingGroups.Single(g => g.Id == group.Id);
+            vm.ShownGroup = vm.RingGroups.First(g => g.Id != group.Id);
+            var picked = vm.ShownGroup!;
+            // Renamed in another window (the presets page): still the one shown.
+            var other = store.FindPreset(picked.Id)!;
+            renamed = (other, other.Name);
+            other.Name = "Renamed elsewhere";
+            store.SaveLibrary();
+            RenderTests.Pump();
+            Assert.Equal((picked.Id, picked.Back), (vm.ShownGroup!.Id, vm.ShownGroup.Back));
+            Assert.Contains("Renamed elsewhere", vm.ShownGroup.Name);
+        }
+        finally
+        {
+            vm.GroupRingSize = saved;
+            if (renamed is { } back)
+                back.Preset.Name = back.Name!;
+            store.Presets.Remove(group);
+            images.PresetIds.Clear();
+            images.PresetIds.AddRange(front);
+            store.SaveLibrary();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_donut_with_no_group_shows_an_example_ring_while_its_ring_is_adjusted()
     {
         TestServices.EnsureInitialized("en");
@@ -1582,6 +1628,28 @@ public class DonutEditorTests
             Assert.True(IsSliding(page));
             Assert.NotEqual(start, window.Position);
             Assert.Equal(start, WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null).Position);
+
+            // Edit Donut Size again on its way back, before it has gone anywhere (Done and Edit Donut Size at once): it
+            // stops there, the donut beside it, never over it, and Done still takes it back to where the user had it.
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(0.25);
+            RunUntil(() => main.RestPlace is null, TimeSpan.FromSeconds(6));
+            vm.AdjustLookCommand.Execute(null);
+            RunUntil(() => window.Position != start && !IsSliding(page));
+            landed = window.Position;
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(3);
+            vm.DoneAdjustingLookCommand.Execute(null);
+            vm.AdjustLookCommand.Execute(null);
+            Assert.False(IsSliding(page));
+            RunUntil(() => false, TimeSpan.FromSeconds(3.5)); // as long as the slide back would have gone on
+            Assert.Equal(landed, window.Position);
+            var preview = page.Preview!;
+            Assert.True(preview.IsVisible);
+            Assert.False(preview.Place!.Over);
+            AssertNotUnder(preview, window);
+            ToolbarPage.SlideTime = TimeSpan.FromSeconds(0.25);
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RunUntil(() => main.RestPlace is null);
+            Assert.Equal(start, window.Position);
         }
         finally
         {

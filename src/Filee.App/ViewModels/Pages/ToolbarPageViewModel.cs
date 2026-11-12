@@ -380,10 +380,12 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private void RefreshRingGroups()
     {
         var groups = Profile is not { } profile ? [] : RingGroupsOf(profile);
+        // Read first: the picker drops its choice while its list is replaced. The same group, renamed meanwhile, stays
+        // the one shown.
+        var shown = ShownGroup;
         if (!groups.SequenceEqual(RingGroups))
             RingGroups = groups;
-        if (ShownGroup is { } shown && !groups.Contains(shown))
-            ShownGroup = null;
+        ShownGroup = shown is null ? null : groups.FirstOrDefault(g => g.Id == shown.Id && g.Back == shown.Back);
         if (ShowsRing)
             ShownGroup ??= groups.FirstOrDefault();
     }
