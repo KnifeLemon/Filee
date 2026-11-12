@@ -147,6 +147,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     public void Dispose()
     {
         _disposed = true;
+        DonutLookSave.Flush();
         _catalog.Changed -= OnCatalogChanged;
         _store.LibraryChanged -= OnLibraryChanged;
         StopJudging();
@@ -284,8 +285,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     [ObservableProperty] private bool _editingBack;
 
     /// <summary>
-    /// The group open in the editor (a group slice clicked), or null: the donut then shows and edits the presets it fans
-    /// out, as a folder opens, and the Front / Back switch makes way for a way back.
+    /// The group open in the editor (a group slice clicked), or null: the donut then shows and edits the presets it
+    /// fans out, as a folder opens, and the Front / Back switch makes way for a way back.
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsEditingGroup))]
@@ -297,13 +298,18 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// <summary>Where the way back out of a group leads: the donut's name.</summary>
     public string GroupBackText => Profile is { } profile ? _loc.DisplayName(profile) : "";
 
+    /// <summary>The way back's name for screen readers: "Back to Images".</summary>
+    public string GroupBackName => _loc.Format("toolbar.group_back", GroupBackText);
+
     /// <summary>
     /// The donut's size and look are being adjusted (Edit Donut Size): the editor makes way for their settings, and the
     /// donut shows on screen at its real size.
     /// </summary>
     [ObservableProperty] private bool _isAdjustingLook;
 
-    /// <summary>A group of the selected donut in the Group shown picker: its preset, its name and the face it's on.</summary>
+    /// <summary>
+    /// A group of the selected donut in the Group shown picker: its preset, its name and the face it's on.
+    /// </summary>
     public sealed record RingGroupChoice(string Id, string Name, bool Back)
     {
         public override string ToString() => Name;
@@ -322,7 +328,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(ShowsExampleRing))]
     private bool _showsRing;
 
-    /// <summary>The group the donut on screen holds open (<see cref="ShowsRing"/>): the first one until another is picked.</summary>
+    /// <summary>
+    /// The group the donut on screen holds open (<see cref="ShowsRing"/>): the first one until another is picked.
+    /// </summary>
     [ObservableProperty] private RingGroupChoice? _shownGroup;
 
     /// <summary>The Group shown picker: only when there is a choice.</summary>
@@ -424,7 +432,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     [NotifyPropertyChangedFor(nameof(SliceOpacityText))]
     private double _sliceOpacity;
 
-    /// <summary>The size as its slider's value shows it: the donut's radius in pixels, as it is stored ("150 px").</summary>
+    /// <summary>
+    /// The size as its slider's value shows it: the donut's radius in pixels, as it is stored ("150 px").
+    /// </summary>
     public string OuterRadiusText => $"{Math.Round(OuterRadius).ToString(System.Globalization.CultureInfo.CurrentCulture)} px";
 
     /// <summary>The hole as its slider's value shows it: "42 %".</summary>
@@ -495,7 +505,9 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     public int OpenGroupIndex => OpenGroup is { } group && Profile is { } profile
         ? (EditingBack ? profile.BackPresetIds ?? [] : profile.PresetIds).IndexOf(group.Id) : -1;
 
-    /// <summary>Opens the group at <paramref name="index"/> on the face being edited, to edit what it fans out.</summary>
+    /// <summary>
+    /// Opens the group at <paramref name="index"/> on the face being edited, to edit what it fans out.
+    /// </summary>
     public void OpenGroupAt(int index)
     {
         if (OpenGroup is not null || Slices is not { } slices || index < 0 || index >= slices.Count
@@ -539,6 +551,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         Message = null;
         OpenGroup = null;
         OnPropertyChanged(nameof(GroupBackText));
+        OnPropertyChanged(nameof(GroupBackName));
         OnPropertyChanged(nameof(ThisDonutText));
         // A search typed for the last donut's presets would hide this one's (#427).
         PaletteSearch = "";
@@ -557,6 +570,7 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         Profile.Name = value.Trim();
         SelectedProfile!.Refresh(_loc);
         OnPropertyChanged(nameof(GroupBackText));
+        OnPropertyChanged(nameof(GroupBackName));
         OnPropertyChanged(nameof(ThisDonutText));
         if (OpenGroup is null)
             CenterTitle = value.Trim();
@@ -735,8 +749,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         _store.Settings.Donut.ShowCaptions = ShowCaptions;
         _store.Settings.Donut.GroupRingSize = DonutSettings.ClampGroupRingSize(GroupRingSize / 100);
         _store.Settings.Donut.GroupRingSpread = DonutSettings.ClampGroupRingSpread(GroupRingSpread / 100);
-        // Quietly: re-applying every setting for each pixel a slider moved made the sliders stick.
-        _store.SaveDonutLook();
+        // Quietly, and once the slider rests: re-applying every setting for each pixel a slider moved made them stick.
+        DonutLookSave.Schedule(_store);
     }
 
     // ───────── Editing operations called by the view's drag & drop ─────────
@@ -750,10 +764,20 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// </summary>
     public bool Insert(string presetId, int index)
     {
-        if (!EditingBack && BelongsOnBack(_store.FindPreset(presetId)))
+        if (BelongsOnBack(_store.FindPreset(presetId)))
         {
-            Message = _loc["presets.copy_back"];
-            return false;
+            // Copy to folder goes on a back face only, and so does a group holding one: a group open in the editor may
+            // be on a front face too, of this donut or another one.
+            if (OpenGroup is { } group && _store.Profiles.Any(p => p.PresetIds.Contains(group.Id)))
+            {
+                Message = _loc["group.copy_front"];
+                return false;
+            }
+            if (OpenGroup is null && !EditingBack)
+            {
+                Message = _loc["presets.copy_back"];
+                return false;
+            }
         }
         if (Slices is not { } slices || slices.Contains(presetId))
             return false;
@@ -1140,8 +1164,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// The presets the palette leaves out: those on the donut (either face), or, with a group open, those in the group
-    /// and every group (a group never holds one). The palette, its search and the judging must agree on it: judging waits
-    /// for exactly the presets the palette shows.
+    /// and every group (a group never holds one). The palette, its search and the judging must agree on it: judging
+    /// waits for exactly the presets the palette shows.
     /// </summary>
     private HashSet<string> Placed(ToolbarProfile? profile) => profile is null ? []
         : OpenGroup is { } editing ? editing.SubPresetIds.Concat(_store.Presets.Where(p => p.IsGroup).Select(p => p.Id)).ToHashSet()

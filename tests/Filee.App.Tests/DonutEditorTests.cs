@@ -33,7 +33,8 @@ public class DonutEditorTests
         var main = new MainWindowViewModel(AppHost.Services, AppHost.Get<ILocalizer>(), AppHost.Get<UpdateService>(), AppHost.Get<UserDataStore>());
         main.Navigate("toolbar");
         var window = new MainWindow { DataContext = main, Width = width, Height = height };
-        // As WindowService does in the app: a page left open would go on reacting to every library change after the test.
+        // As WindowService does in the app: a page left open would go on reacting to every library change after the
+        // test.
         window.Closed += (_, _) => main.Dispose();
         window.Show();
         RenderTests.Pump();
@@ -57,17 +58,30 @@ public class DonutEditorTests
             vm.SliceOpacity = 70;
             vm.GroupRingSize = 125;
             RenderTests.Pump();
-            // Written as it moves (the donut reads it when it opens), without the theme, triggers and integration that
-            // a settings change applies again: that is what made the sliders stick.
+            // In the settings at once, without the theme, triggers and integration that a settings change applies
+            // again (that is what made the sliders stick); written once the slider rests.
             Assert.Equal(189, store.Settings.Donut.OuterRadius);
+            Assert.Equal(0, applied);
+            Assert.True(DonutLookSave.IsPending);
+            DonutLookSave.Flush();
             Assert.Contains("\"outerRadius\": 189", File.ReadAllText(Path.Combine(store.Directory, "settings.json")));
             Assert.Equal(0, applied);
+            // The donut takes it the next time it opens.
+            var donut = new RadialViewModel(store, AppHost.Get<ILocalizer>(), AppHost.Get<PresetAvailability>());
+            donut.Load(["/tmp/picture.png"], clickMode: true);
+            Assert.Equal(189, donut.OuterRadius);
+            Assert.Equal(0.7, donut.SliceOpacity, 3);
+            Assert.Equal(1.25, donut.GroupRingSize, 3);
 
+            // The Theme page's opacity slider too; leaving the page writes what is still waiting.
             ((MainWindowViewModel)window.DataContext!).Navigate("theme");
             RenderTests.Pump();
             var theme = Assert.IsType<ThemePageViewModel>(((MainWindowViewModel)window.DataContext!).CurrentPage);
             theme.DonutOpacity = 55;
             Assert.Equal(0.55, store.Settings.Donut.Opacity, 3);
+            Assert.True(DonutLookSave.IsPending);
+            ((MainWindowViewModel)window.DataContext!).Navigate("general");
+            Assert.False(DonutLookSave.IsPending);
             Assert.Contains("\"opacity\": 0.55", File.ReadAllText(Path.Combine(store.Directory, "settings.json")));
             Assert.Equal(0, applied);
         }
@@ -77,6 +91,40 @@ public class DonutEditorTests
             (store.Settings.Donut.OuterRadius, store.Settings.Donut.Opacity, store.Settings.Donut.GroupRingSize) = saved;
             store.SaveDonutLook();
             window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_slider_moving_writes_the_settings_once_it_rests()
+    {
+        TestServices.EnsureInitialized("en");
+        var dir = Directory.CreateTempSubdirectory("filee-donut-look-").FullName;
+        var store = new UserDataStore(dir);
+        store.Load();
+        store.SaveSettings();
+        var path = Path.Combine(dir, "settings.json");
+        var before = File.ReadAllText(path);
+        try
+        {
+            // Every step of a drag: the settings in memory change, the file waits.
+            foreach (var radius in new[] { 160.0, 170.0, 180.0 })
+            {
+                store.Settings.Donut.OuterRadius = radius;
+                DonutLookSave.Schedule(store);
+            }
+            Assert.Equal(before, File.ReadAllText(path));
+            Assert.True(DonutLookSave.IsPending);
+            DonutLookSave.Flush();
+            Assert.Contains("\"outerRadius\": 180", File.ReadAllText(path));
+            Assert.False(DonutLookSave.IsPending);
+            // Nothing waiting: a flush writes nothing.
+            File.WriteAllText(path, before);
+            DonutLookSave.Flush();
+            Assert.Equal(before, File.ReadAllText(path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
         }
     }
 
@@ -92,25 +140,31 @@ public class DonutEditorTests
             {
                 store.Settings.Donut.OuterRadius = radius;
                 var (window, page, _) = Open(width);
-                var donut = page.FindControl<DonutMenu>("Donut")!;
-                var fit = page.FindControl<Viewbox>("DonutFit")!;
-                var card = page.FindControl<Border>("EditorCard")!;
-                // Laid out at its real size, so names wrap and icons show as on the donut itself...
-                Assert.Equal(DonutMenu.SideFor(radius, false), donut.DesiredSize.Width, 1);
-                Assert.Equal(DonutMenu.SideFor(radius, false), donut.Bounds.Width, 1);
-                // ...and never wider than its card: drawn smaller there, at full size once there is room.
-                Assert.True(fit.Bounds.Width <= card.Bounds.Width - card.Padding.Left - card.Padding.Right + 0.5,
-                    $"{width} px, radius {radius}: {fit.Bounds.Width} in a card of {card.Bounds.Width}");
-                var scale = fit.Bounds.Width / donut.Bounds.Width;
-                if (fits)
-                    Assert.Equal(1, scale, 3);
-                else
-                    Assert.InRange(scale, 0.4, 0.99);
-                // The column beside it is not covered: the palette starts right of the card.
-                var palette = page.FindControl<StackPanel>("PaletteColumn")!;
-                Assert.True(card.TranslatePoint(new Point(card.Bounds.Width, 0), page)!.Value.X
-                    <= palette.TranslatePoint(default, page)!.Value.X + 0.5);
-                window.Close();
+                try
+                {
+                    var donut = page.FindControl<DonutMenu>("Donut")!;
+                    var fit = page.FindControl<Viewbox>("DonutFit")!;
+                    var card = page.FindControl<Border>("EditorCard")!;
+                    // Laid out at its real size, so names wrap and icons show as on the donut itself...
+                    Assert.Equal(DonutMenu.SideFor(radius, false), donut.DesiredSize.Width, 1);
+                    Assert.Equal(DonutMenu.SideFor(radius, false), donut.Bounds.Width, 1);
+                    // ...and never wider than its card: drawn smaller there, at full size once there is room.
+                    Assert.True(fit.Bounds.Width <= card.Bounds.Width - card.Padding.Left - card.Padding.Right + 0.5,
+                        $"{width} px, radius {radius}: {fit.Bounds.Width} in a card of {card.Bounds.Width}");
+                    var scale = fit.Bounds.Width / donut.Bounds.Width;
+                    if (fits)
+                        Assert.Equal(1, scale, 3);
+                    else
+                        Assert.InRange(scale, 0.4, 0.99);
+                    // The column beside it is not covered: the palette starts right of the card.
+                    var palette = page.FindControl<StackPanel>("PaletteColumn")!;
+                    Assert.True(card.TranslatePoint(new Point(card.Bounds.Width, 0), page)!.Value.X
+                        <= palette.TranslatePoint(default, page)!.Value.X + 0.5);
+                }
+                finally
+                {
+                    window.Close();
+                }
             }
         }
         finally
@@ -276,7 +330,7 @@ public class DonutEditorTests
             vm.OpenGroupAt(images.PresetIds.IndexOf("rotate"));
             Assert.Same(rotate, vm.OpenGroup);
             Assert.False(vm.Insert(copy.Id, 0));
-            Assert.Equal(loc["presets.copy_back"], vm.Message);
+            Assert.Equal(loc["group.copy_front"], vm.Message);
             Assert.Equal(members, rotate.SubPresetIds);
 
             // Taken off the face (dragged off elsewhere, or the profile reset), it closes on the next rebuild.
@@ -367,6 +421,7 @@ public class DonutEditorTests
             RenderTests.Pump();
             Assert.False(preview.IsVisible);
             Assert.False(vm.IsAdjustingLook);
+            Assert.Null(page.Preview); // closed, not only hidden
         }
         finally
         {
@@ -381,7 +436,7 @@ public class DonutEditorTests
     public void Every_slider_of_the_panel_shows_its_value()
     {
         var (window, page, vm) = Open();
-        var saved = vm.OuterRadius;
+        var saved = (vm.OuterRadius, vm.HoleRatio);
         try
         {
             vm.AdjustLookCommand.Execute(null);
@@ -403,7 +458,7 @@ public class DonutEditorTests
         }
         finally
         {
-            vm.OuterRadius = saved;
+            (vm.OuterRadius, vm.HoleRatio) = saved;
             window.Close();
         }
     }
@@ -531,27 +586,113 @@ public class DonutEditorTests
         }
     }
 
-    [Fact]
-    public void The_donut_goes_beside_the_window_and_the_window_slides_over_when_there_is_no_room()
+    // The donut at the default size with a group's ring (466), and at its largest: Size 220, the ring at 150 % (755).
+    // Properties, not fields: DonutMenu needs the Avalonia platform, which these tests (on it too) start.
+    private static double Default => DonutMenu.SideFor(150, true, 1);
+    private static double Largest => DonutMenu.SideFor(220, true, DonutSettings.MaxGroupRingSize);
+
+    private static PreviewPlace Place(PixelRect window, PreviewScreen[] screens, double? size = null, PixelPoint? dragged = null,
+        int? minWidth = 860, bool overRight = true) =>
+        DonutPreviewPlacement.Place(window, screens, 0, size ?? Default, dragged, minWidth, overRight);
+
+    /// <summary>Clear of the window (or of where it moved to) and all of it on the screen.</summary>
+    private static void AssertClear(PreviewPlace place, PixelRect window, PreviewScreen screen, double size)
     {
-        var gap = ToolbarPage.PreviewGap;
-        var area = new PixelRect(0, 25, 1728, 1050);
-        const int side = 540;
-        // Room on the right: there, level with the window's middle.
-        Assert.Equal(new PixelPoint(80 + 1080 + gap + side / 2, 150 + 760 / 2), ToolbarPage.Beside(area, new PixelRect(80, 150, 1080, 760), side));
-        // No room on the right, room on the left: the left.
-        Assert.Equal(new PixelPoint(1728 - 1080 - gap - side / 2, 150 + 760 / 2), ToolbarPage.Beside(area, new PixelRect(1728 - 1080, 150, 1080, 760), side));
-        // Low on the screen: still all of it on the screen.
-        Assert.Equal(1075 - side / 2, ToolbarPage.Beside(area, new PixelRect(80, 700, 1080, 760), side)!.Value.Y);
-        // Centred on the screen: no room either side...
-        var centred = new PixelRect((1728 - 1080) / 2, 150, 1080, 760);
-        Assert.Null(ToolbarPage.Beside(area, centred, side));
-        // ...so the window slides the shorter way, just far enough, and the donut fits beside it.
-        var x = ToolbarPage.SlideFor(area, centred, side)!.Value;
-        Assert.Equal(1728 - gap - side - 1080, x);
-        Assert.NotNull(ToolbarPage.Beside(area, centred.WithX(x), side));
-        // A screen too narrow for both: no slide.
-        Assert.Null(ToolbarPage.SlideFor(new PixelRect(0, 0, 1440, 900), centred, side));
+        Assert.False(place.Over);
+        var box = place.BoxFor(DonutPreviewPlacement.Pixels(size, screen));
+        Assert.False(box.Intersects(place.MovedWindow ?? window), $"{box} over {place.MovedWindow ?? window}");
+        Assert.True(screen.Area.Contains(box), $"{box} off {screen.Area}");
+    }
+
+    [AvaloniaTheory]
+    // A wide screen, the window on the left, in the middle, on the right; scaled 100 % and 200 % (a retina Windows).
+    [InlineData(2560, 1400, 1.0, 100)]
+    [InlineData(2560, 1400, 1.0, 740)]
+    [InlineData(2560, 1400, 1.0, 1400)]
+    [InlineData(5120, 2800, 2.0, 1480)]
+    // Laptops with no room beside the window as it is: it moves over, narrower if it must.
+    [InlineData(1440, 900, 1.0, 180)]
+    [InlineData(1470, 956, 1.0, 195)]
+    [InlineData(1366, 768, 1.0, 143)]
+    [InlineData(1920, 1080, 1.25, 120)]
+    public void The_donut_goes_beside_the_window_never_over_it_and_the_window_makes_room_when_it_must(int width, int height, double scaling, int x)
+    {
+        var screen = new PreviewScreen(new PixelRect(0, 25, width, height - 25), scaling);
+        var window = new PixelRect(x, 100, (int)(1080 * scaling), Math.Min((int)(760 * scaling), height - 140));
+        var place = Place(window, [screen], minWidth: (int)(860 * scaling));
+        AssertClear(place, window, screen, Default);
+        // Moved over only when there was no room beside it as it was, and kept as wide as it could be.
+        var room = DonutPreviewPlacement.Beside(screen.Area, window, DonutPreviewPlacement.Pixels(Default, screen));
+        Assert.Equal(room is null, place.MovedWindow is not null);
+        if (place.MovedWindow is { } moved)
+            Assert.InRange(moved.Width, (int)(860 * scaling), window.Width);
+    }
+
+    [AvaloniaFact]
+    public void With_no_room_anywhere_the_donut_goes_over_the_column_not_in_use_and_above_the_window()
+    {
+        // 1280 × 720 at 150 %: too small for the window at its narrowest and the donut beside it.
+        var screen = new PreviewScreen(new PixelRect(0, 0, 1920, 1080), 1.5);
+        var window = new PixelRect(100, 60, 1620, 900);
+        var right = Place(window, [screen], minWidth: 1290, overRight: true);
+        Assert.True(right.Over);
+        Assert.Equal((PreviewAnchor.Right, screen.Area.Right), (right.Anchor, right.Point.X));
+        var left = Place(window, [screen], minWidth: 1290, overRight: false);
+        Assert.Equal((PreviewAnchor.Left, screen.Area.X), (left.Anchor, left.Point.X));
+        // Maximized or full screen (it can't move): the same, or another screen when there is one.
+        Assert.True(Place(window, [screen], minWidth: null).Over);
+        var other = new PreviewScreen(new PixelRect(1920, 0, 1600, 900), 1.0);
+        var there = Place(window, [screen, other], minWidth: null);
+        Assert.Equal((PreviewAnchor.Centre, other.Area.Center, false), (there.Anchor, there.Point, there.Over));
+    }
+
+    [AvaloniaFact]
+    public void Another_screen_is_judged_at_its_own_scaling()
+    {
+        var home = new PreviewScreen(new PixelRect(0, 0, 1400, 900), 1.0);
+        var window = new PixelRect(0, 0, 1400, 900); // fills its screen
+        // Wide enough in pixels for the donut at 100 %, not at 200 %: the donut goes there only at 100 %.
+        var pixels = (int)Math.Ceiling(Default * 1.5);
+        var at100 = new PreviewScreen(new PixelRect(1400, 0, pixels, pixels), 1.0);
+        Assert.Equal(at100.Area.Center, Place(window, [home, at100], minWidth: null).Point);
+        Assert.True(Place(window, [home, at100 with { Scaling = 2.0 }], minWidth: null).Over);
+    }
+
+    [AvaloniaFact]
+    public void Where_it_was_dragged_counts_only_while_all_of_it_is_on_a_screen_and_clear_of_the_window()
+    {
+        var screen = new PreviewScreen(new PixelRect(0, 0, 2560, 1400), 1.0);
+        var window = new PixelRect(100, 100, 1080, 760);
+        // Dragged below the window: there, by its centre.
+        var below = Place(window, [screen], dragged: new PixelPoint(500, 1000));
+        Assert.Equal((PreviewAnchor.Centre, new PixelPoint(600, 1100)), (below.Anchor, below.Point));
+        // Dragged over the window, or partly off the screen: beside the window instead.
+        Assert.Equal(PreviewAnchor.Left, Place(window, [screen], dragged: new PixelPoint(400, 300)).Anchor);
+        Assert.Equal(PreviewAnchor.Left, Place(window, [screen], dragged: new PixelPoint(2400, 300)).Anchor);
+        // The same place with the donut at its largest, now reaching the window: beside it.
+        Assert.Equal(PreviewAnchor.Left, Place(window, [screen], size: Largest, dragged: new PixelPoint(500, 1000)).Anchor);
+    }
+
+    [AvaloniaFact]
+    public void A_donut_beside_the_window_grows_away_from_it_and_is_placed_again_when_it_no_longer_fits()
+    {
+        var screen = new PreviewScreen(new PixelRect(0, 0, 2560, 1400), 1.0);
+        var window = new PixelRect(100, 100, 1080, 760);
+        var small = (int)Default;
+        var large = (int)Math.Ceiling(Largest);
+        var right = Place(window, [screen]);
+        Assert.Equal(PreviewAnchor.Left, right.Anchor);
+        Assert.Equal(right.BoxFor(small).X, right.BoxFor(large).X); // its edge facing the window stays
+        Assert.True(right.Fits(large, window, [screen]));
+        var left = Place(new PixelRect(1400, 100, 1080, 760), [screen]);
+        Assert.Equal(PreviewAnchor.Right, left.Anchor);
+        Assert.Equal(left.BoxFor(small).Right, left.BoxFor(large).Right);
+        // Beside a window near the screen's edge, grown past the edge: it no longer fits there and is placed again.
+        var tight = new PixelRect(100, 100, 1900, 760);
+        var beside = Place(tight, [screen], minWidth: null);
+        Assert.True(beside.Fits(small, tight, [screen]));
+        Assert.False(beside.Fits(large, tight, [screen]));
+        Assert.True(Place(tight, [screen], size: Largest, minWidth: null).Over);
     }
 
     [AvaloniaFact]
@@ -696,6 +837,280 @@ public class DonutEditorTests
             }
             store.SaveLibrary();
             vm.GroupRingSpread = saved * 100;
+            window.Close();
+        }
+    }
+
+    private static PixelRect FrameOf(Window window) => new(window.Position, PixelSize.FromSize(window.FrameSize ?? window.Bounds.Size, 1));
+
+    private static bool IsSliding(ToolbarPage page) =>
+        (bool)typeof(ToolbarPage).GetField("_sliding", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!.GetValue(page)!;
+
+    /// <summary>
+    /// Lets the window's slide (a quarter of a second when animated) run until <paramref name="done"/>.
+    /// </summary>
+    private static void RunUntil(Func<bool> done)
+    {
+        for (var i = 0; i < 400 && !done(); i++)
+        {
+            Thread.Sleep(5);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        }
+        RenderTests.Pump();
+    }
+
+    /// <summary>
+    /// On a screen; clear of the window, or over it only when there was no room, then above it (owned by it).
+    /// </summary>
+    private static void AssertNotUnder(DonutPreviewWindow preview, Window window)
+    {
+        Assert.Contains(window.Screens.All, screen => screen.WorkingArea.Contains(preview.Box));
+        if (preview.Place is { Over: true })
+            Assert.Same(window, preview.Owner);
+        else
+        {
+            Assert.False(preview.Box.Intersects(FrameOf(window)), $"{preview.Box} under {FrameOf(window)}");
+            Assert.Null(preview.Owner);
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_window_makes_room_for_the_donut_and_goes_back_where_it_was_unless_moved_meanwhile()
+    {
+        // The test screen is 1920 wide; the window, 1280 wide in its middle, leaves no room beside it.
+        var (window, page, vm) = Open();
+        Motion.Configure(true, () => false); // at once (the theme set it as the window opened)
+        var main = (MainWindow)window;
+        var start = window.Position;
+        var width = window.ClientSize.Width;
+        var saved = (vm.OuterRadius, vm.GroupRingSize);
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RunUntil(() => !IsSliding(page));
+            var preview = page.Preview!;
+            Assert.NotEqual(start, window.Position);
+            Assert.Equal((start, width), (main.RestPlace!.Value.Position, main.RestPlace.Value.ClientSize.Width));
+            AssertNotUnder(preview, window);
+            Assert.False(preview.Place!.Over);
+            // Closing now remembers where the user had it, not where it moved over to.
+            Assert.Equal(start, WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null).Position);
+
+            // The window made wider, or moved, over it meanwhile: placed again.
+            var landed = window.Position;
+            var placeWidth = window.Width;
+            window.Width = 1500;
+            RenderTests.Pump();
+            AssertNotUnder(preview, window);
+            window.Width = placeWidth;
+            RenderTests.Pump();
+            window.Position = landed;
+            RenderTests.Pump();
+            Assert.False(preview.Place!.Over); // beside it again
+            window.Position = new PixelPoint(preview.Box.X - 200, landed.Y);
+            RenderTests.Pump();
+            AssertNotUnder(preview, window);
+            window.Position = landed;
+            RenderTests.Pump();
+
+            // Grown to its largest: placed again, still never under the window.
+            page.FindControl<Slider>("SizeSlider")!.Value = 220;
+            page.FindControl<Slider>("RingSizeSlider")!.Value = 150;
+            RenderTests.Pump();
+            AssertNotUnder(preview, window);
+
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RunUntil(() => main.RestPlace is null);
+            Assert.Equal((start, width), (window.Position, window.ClientSize.Width));
+            Assert.Null(main.RestPlace);
+
+            // Moved by the user while the donut was out: it stays where they put it.
+            vm.OuterRadius = saved.OuterRadius;
+            vm.GroupRingSize = saved.GroupRingSize;
+            vm.AdjustLookCommand.Execute(null);
+            RunUntil(() => window.Position != start && !IsSliding(page));
+            window.Position = new PixelPoint(40, 60);
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RenderTests.Pump();
+            Assert.Equal(new PixelPoint(40, 60), window.Position);
+            Assert.Null(main.RestPlace);
+
+            // Done while it is still sliding over: back where it was all the same.
+            Motion.Configure(false, () => false);
+            window.Position = start;
+            vm.AdjustLookCommand.Execute(null);
+            for (var i = 0; i < 200 && window.Position == start; i++)
+            {
+                Thread.Sleep(5);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            }
+            Assert.NotEqual(start, window.Position); // on its way
+            vm.DoneAdjustingLookCommand.Execute(null);
+            RunUntil(() => main.RestPlace is null);
+            Assert.Equal(start, window.Position);
+            Assert.Null(main.RestPlace);
+        }
+        finally
+        {
+            Motion.Configure(false, () => false);
+            (vm.OuterRadius, vm.GroupRingSize) = saved;
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void Leaving_the_page_while_the_window_made_room_puts_it_back_at_once()
+    {
+        Motion.Configure(false, () => false); // animated, as in the app
+        var (window, page, vm) = Open();
+        var start = window.Position;
+        try
+        {
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            ((MainWindowViewModel)window.DataContext!).Navigate("general");
+            Assert.Equal(start, window.Position);
+            Assert.Null(((MainWindow)window).RestPlace);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void The_keyboard_goes_where_the_hidden_button_was_replaced()
+    {
+        var (window, page, vm) = Open();
+        try
+        {
+            IInputElement? Focused() => window.FocusManager?.GetFocusedElement();
+            var editSize = page.FindControl<Button>("EditSize")!;
+            editSize.Focus();
+            editSize.Command!.Execute(null);
+            RenderTests.Pump();
+            Assert.Same(page.FindControl<Button>("LookDone"), Focused());
+            page.FindControl<Button>("LookDone")!.Command!.Execute(null);
+            RenderTests.Pump();
+            Assert.Same(editSize, Focused());
+
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "images");
+            vm.EditingBack = true;
+            vm.OpenGroupAt(vm.SelectedProfile.Profile.BackPresetIds!.IndexOf("rotate"));
+            RenderTests.Pump();
+            var back = page.FindControl<Button>("GroupBack")!;
+            Assert.Equal("Back to Images", Avalonia.Automation.AutomationProperties.GetName(back));
+            back.Focus();
+            back.Command!.Execute(null);
+            RenderTests.Pump();
+            Assert.Same(editSize, Focused());
+            // A control still shown keeps the keyboard: a profile picked in the list leaves it there.
+            var list = page.FindControl<TextBox>("PaletteSearchBox")!;
+            list.Focus();
+            vm.OpenGroupAt(vm.SelectedProfile.Profile.BackPresetIds!.IndexOf("rotate"));
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "pdf");
+            RenderTests.Pump();
+            Assert.Same(list, Focused());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_search_in_the_palette_does_not_fill_the_donut_on_screen_again()
+    {
+        var (window, page, vm) = Open();
+        try
+        {
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "images");
+            vm.EditingBack = true;
+            vm.OpenGroupAt(vm.SelectedProfile.Profile.BackPresetIds!.IndexOf("rotate"));
+            RenderTests.Pump();
+            var items = page.Preview!.DonutControl.Items;
+            vm.PaletteSearch = "png";
+            vm.PaletteSearch = "pn";
+            RenderTests.Pump();
+            Assert.Same(items, page.Preview.DonutControl.Items);
+            // An edit of the group does.
+            Assert.True(vm.Insert("to-png", 0));
+            RenderTests.Pump();
+            Assert.NotSame(items, page.Preview.DonutControl.Items);
+        }
+        finally
+        {
+            var rotate = AppHost.Get<UserDataStore>().FindPreset("rotate")!;
+            rotate.SubPresetIds.Remove("to-png");
+            AppHost.Get<UserDataStore>().SaveLibrary();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_mixed_profile_that_takes_anything_shows_its_slices_ready_on_the_donut_on_screen()
+    {
+        var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        try
+        {
+            var mixed = vm.Profiles.First(p => p.Profile.IsFallback && p.Profile.Extensions.Count == 0);
+            vm.SelectedProfile = mixed;
+            vm.AdjustLookCommand.Execute(null);
+            RenderTests.Pump();
+            var items = page.Preview!.DonutControl.Items!;
+            Assert.NotEmpty(items);
+            Assert.All(items, item => Assert.True(item.IsEnabled, item.Id));
+            Assert.Equal(AppHost.Get<ILocalizer>().DisplayName(mixed.Profile), page.Preview.DonutControl.CenterTitle);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
+    public void A_group_also_on_a_front_face_takes_no_copy_to_folder_from_its_back_face_either()
+    {
+        var (window, _, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var loc = AppHost.Get<ILocalizer>();
+        var pdf = store.Profiles.Single(p => p.Id == "pdf");
+        var front = pdf.PresetIds.ToList();
+        var rotate = store.FindPreset("rotate")!;
+        var members = rotate.SubPresetIds.ToList();
+        var copy = new Preset
+        {
+            Name = "Copy to test",
+            Kind = PresetKind.CopyToFolder,
+            TargetFormat = Preset.CopyTarget,
+            Output = new OutputRule { Location = OutputLocation.CustomFolder, CustomFolder = Path.GetTempPath() },
+        };
+        store.Presets.Add(copy);
+        try
+        {
+            // Rotate is on the images donut's back face; on another donut's front face too.
+            pdf.PresetIds[^1] = "rotate";
+            store.SaveLibrary();
+            vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "images");
+            vm.EditingBack = true;
+            vm.OpenGroupAt(vm.SelectedProfile.Profile.BackPresetIds!.IndexOf("rotate"));
+            Assert.False(vm.Insert(copy.Id, 0));
+            Assert.Equal(loc["group.copy_front"], vm.Message);
+            Assert.Equal(members, rotate.SubPresetIds);
+            // On no front face: it may.
+            pdf.PresetIds[^1] = front[^1];
+            store.SaveLibrary();
+            Assert.True(vm.Insert(copy.Id, 0));
+        }
+        finally
+        {
+            store.Presets.Remove(copy);
+            rotate.SubPresetIds.Clear();
+            rotate.SubPresetIds.AddRange(members);
+            pdf.PresetIds.Clear();
+            pdf.PresetIds.AddRange(front);
+            store.SaveLibrary();
             window.Close();
         }
     }

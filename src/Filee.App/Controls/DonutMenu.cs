@@ -269,8 +269,8 @@ public sealed partial class DonutMenu : Control
     public event EventHandler<int>? SegmentContextRequested;
 
     /// <summary>
-    /// A group slice was clicked (not its ✎): in the editor (<see cref="IsEditMode"/>), to open it and edit what it fans
-    /// out; on the live donut, after it opened at once.
+    /// A group slice was clicked (not its ✎): in the editor (<see cref="IsEditMode"/>), to open it and edit what it
+    /// fans out; on the live donut, after it opened at once.
     /// </summary>
     public event EventHandler<int>? GroupOpenRequested;
 

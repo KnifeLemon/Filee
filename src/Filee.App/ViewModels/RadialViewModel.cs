@@ -210,6 +210,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         DonutOpacity = 1;
         HitBackground = "Transparent";
         ApplyAppearance();
+        _checked = true;
 
         // A Shapefile selected with its .dbf, .shx, ... picks the donut of the .shp, not the one for unknown files, and
         // counts as one file.
@@ -270,16 +271,40 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         DonutOpacity = 1;
         HitBackground = "Transparent";
         ApplyLook(profile);
-        var formats = profile.Id == "folders"
-            ? [FormatRegistry.FindById(FormatRegistry.Folder)!]
-            : ProfileSelector.DetectFormats(profile.Extensions.Take(profile.IsFallback ? 2 : 1).Select(e => "preview." + e)).ToList();
+        // One file of the donut's first format; two different ones for a mixed profile (its first two extensions may
+        // share one). A profile with none (the mixed profile that takes anything) is judged against no file at all.
+        var formats = new List<FileFormat>();
+        if (profile.Id == "folders")
+            formats.Add(FormatRegistry.FindById(FormatRegistry.Folder)!);
+        else
+            foreach (var extension in profile.Extensions)
+            {
+                if (formats.Count == (profile.IsFallback ? 2 : 1))
+                    break;
+                if (ProfileSelector.DetectFormats(["preview." + extension]).FirstOrDefault() is { } format && !formats.Contains(format))
+                    formats.Add(format);
+            }
         var off = store.Settings.TurnedOffFields
             .Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _checked = formats.Count > 0;
         _front = BuildFace(profile.PresetIds, formats, off);
         (_back, _backIds, _formats, _off) = (null, [.. profile.BackPresetIds ?? []], formats, off);
-        _loads++;
-        ShowFace(backFace && BackFace().IsUsable);
+        var load = ++_loads;
+        if (backFace)
+            ShowFace(BackFace().Items.Count > 0); // asked for its back (a group held open there): shown, greyed or not
+        else
+        {
+            ShowFace(back: false, checkBack: false);
+            // As Load: the back is checked once the front is on screen, for the flip, leaving the slices shown as they
+            // are (an example ring may have replaced the top one by then).
+            if (_backIds.Count > 0)
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (load == _loads && _back is null)
+                        ShowFlip(IsBackFace);
+                }, DispatcherPriority.Background);
+        }
         ReserveSubRing = _front.Items.Any(item => item.IsGroup) || HasGroups(_backIds);
         CenterTitle = formats.Count == 1
             ? loc.Format("donut.files_same", 1, formats[0].DisplayName)
@@ -317,7 +342,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         (CenterTitle, CenterSubtitle) = (title, subtitle);
     }
 
-    /// <summary>The donut's look from the settings and <paramref name="profile"/>'s labels, while it is previewed.</summary>
+    /// <summary>
+    /// The donut's look from the settings and <paramref name="profile"/>'s labels, while it is previewed.
+    /// </summary>
     public void ApplyLook(ToolbarProfile profile)
     {
         ApplyAppearance();
@@ -351,6 +378,12 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             _subPresets = face.SubPresets;
             Items = face.Items;
         }
+        ShowFlip(back, checkBack);
+    }
+
+    /// <summary>Whether, and how, the face shown flips to the other (<see cref="CanFlip"/>, the hint).</summary>
+    private void ShowFlip(bool back, bool checkBack = true)
+    {
         var other = back ? _front : checkBack ? BackFace() : _back;
         // The front was already shown, even when every slice was disabled. Do not strand the user on the back face.
         CanFlip = back ? _front.Items.Count > 0 : other?.IsUsable == true;
@@ -363,6 +396,9 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
     /// <summary>The back face's slices for the files, checked now if they weren't yet.</summary>
     private Face BackFace() => _back ??= BuildFace(_backIds, _formats, _off);
+
+    // Slices are judged against the files (LoadPreview for a profile without extensions has none to judge against).
+    private bool _checked = true;
 
     private bool HasGroups(IEnumerable<string> presetIds) => presetIds.Any(id => store.FindPreset(id)?.IsGroup == true);
 
@@ -395,7 +431,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
 
         DonutItem ItemOf(Preset p, bool caption = true)
         {
-            var reason = availability.Check(p, formats);
+            var reason = _checked ? availability.Check(p, formats) : null;
             return new DonutItem
             {
                 Id = p.Id,

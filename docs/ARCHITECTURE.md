@@ -189,11 +189,16 @@ real size, filled by a `RadialViewModel` of its own as the donut opens for the p
 turned-off fields left out); it follows every change and converts nothing. It holds a group open
 (`DonutMenu.HeldGroupId`, by preset id, so a flip or a reload keeps it): the one open in the editor, or, once a ring
 setting changes, the one picked under the ring sliders (*Group shown*, offered with two or more) or clicked on it, the
-first until then; a donut with none fans an example ring off its top slice (`RadialViewModel.ShowExampleGroup`). Dragging its middle moves it, and it opens
-there again (`AppSettings.DonutPreviewPlace`, against the main window). Otherwise it goes beside the main window, then
-on another screen; with no room, the main window slides over to make room and back when the donut goes. It never
-opens over the main window, and unlike the live donut it isn't Topmost: a click on the main window brings that in
-front of it. The look sliders save with `UserDataStore.SaveDonutLook`, which doesn't raise `SettingsChanged`:
+first until then; a donut with none fans an example ring off its top slice (`RadialViewModel.ShowExampleGroup`). Where
+it goes is `DonutPreviewPlacement` (pure, in screen pixels at each screen's own scaling): where it was last dragged
+(`AppSettings.DonutPreviewPlace`, against the main window) if all of it is on a screen there and clear of the window;
+beside the main window; on another screen; else the main window moves over, narrower down to its minimum width if it
+must, and back when the donut goes (`MainWindow.RestPlace` keeps where it was, so closing meanwhile remembers that).
+Beside the window its facing edge stays put as a slider grows it, and it is placed again when it no longer fits, when
+the window is resized, moved or maximized. On a screen too small for both it goes over the column not in use, owned by
+the main window so it stays above it; otherwise it isn't Topmost or owned, unlike the live donut: a click on the main
+window brings that in front of it. The look sliders change the settings at once and write them once the slider rests
+(`DonutLookSave`, as `UiZoom` does), with `UserDataStore.SaveDonutLook`, which doesn't raise `SettingsChanged`:
 re-applying the theme for every pixel a slider moved made them stick.
 
 A group is one slice that opens up to six non-group actions. Its members may be conversions or interactive tools

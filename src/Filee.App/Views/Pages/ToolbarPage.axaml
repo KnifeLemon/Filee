@@ -297,13 +297,14 @@
         <!-- 2. Donut -->
         <StackPanel Grid.Column="2" Spacing="12">
           <TextBlock Classes="label" Text="{DynamicResource toolbar.step_arrange}" />
-          <!-- The editor: the donut's slices, or the presets of the group open in it. The donut is laid out at its real size,
-               so names wrap and icons show as on the donut itself, and drawn smaller only when its column is narrower. -->
+          <!-- The editor: the donut's slices, or the presets of the group open in it. The donut is laid out at its real
+               size, so names wrap and icons show as on the donut itself, and drawn smaller only when its column is
+               narrower. -->
           <Border x:Name="EditorCard" Classes="card" Padding="8" IsVisible="{Binding !IsAdjustingLook}">
             <StackPanel>
               <!-- A group is open: the way back to the whole donut, named after it. -->
               <Button x:Name="GroupBack" HorizontalAlignment="Left" Margin="4,4,0,0" Command="{Binding CloseGroupCommand}"
-                      IsVisible="{Binding IsEditingGroup}" AutomationProperties.Name="{Binding GroupBackText}">
+                      IsVisible="{Binding IsEditingGroup}" AutomationProperties.Name="{Binding GroupBackName}">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                   <!-- Points back along the line: left, and right in Arabic. -->
                   <PathIcon Classes="reading" Width="12" Height="12" Data="{StaticResource Icon.ChevronRight}" RenderTransform="scaleX(-1)" />
@@ -353,9 +354,9 @@
               </Button>
             </StackPanel>
           </Border>
-          <!-- Edit Donut Size: the donut is on screen at its real size meanwhile (ToolbarPage.axaml.cs), so it can be judged
-               over the desktop and tried out (a group opens on it, it flips) while these change. Names in a shared first
-               column; the value of each slider in the last. -->
+          <!-- Edit Donut Size: the donut is on screen at its real size meanwhile (ToolbarPage.axaml.cs), so it can be
+               judged over the desktop and tried out (a group opens on it, it flips) while these change. Names in a shared
+               first column; the value of each slider in the last. -->
           <Border x:Name="LookCard" Classes="card" IsVisible="{Binding IsAdjustingLook}">
             <StackPanel Spacing="8" Grid.IsSharedSizeScope="True">
               <DockPanel>
@@ -427,7 +428,8 @@
                 <ComboBox x:Name="GroupShownChoice" Grid.Column="1" ItemsSource="{Binding RingGroups}" SelectedItem="{Binding ShownGroup}"
                           HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource toolbar.group_shown}" />
               </Grid>
-              <!-- Longer than the names above in most languages: it wraps next to a bare switch, as the mixed one does. -->
+              <!-- Longer than the names above in most languages: it wraps next to a bare switch, as the mixed one
+                   does. -->
               <DockPanel>
                 <ToggleSwitch x:Name="CaptionsToggle" DockPanel.Dock="Right" OnContent="{x:Null}" OffContent="{x:Null}" MinWidth="0"
                               Margin="12,0,0,0" VerticalAlignment="Center" IsChecked="{Binding ShowCaptions}"

@@ -365,8 +365,8 @@ public sealed partial class DonutMenu
 
     /// <summary>
     /// The group kept open, by its id (<see cref="DonutItem.Id"/>), or null: the Donut toolbar page's donut on screen
-    /// holds one open while it is edited or its ring adjusted. An id not on the face shown holds nothing (a group of the
-    /// other face), and the editor (<see cref="IsEditMode"/>) never holds one.
+    /// holds one open while it is edited or its ring adjusted. An id not on the face shown holds nothing (a group of
+    /// the other face), and the editor (<see cref="IsEditMode"/>) never holds one.
     /// </summary>
     public string? HeldGroupId { get => GetValue(HeldGroupIdProperty); set => SetValue(HeldGroupIdProperty, value); }
 

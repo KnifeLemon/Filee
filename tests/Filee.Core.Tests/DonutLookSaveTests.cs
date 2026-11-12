@@ -41,7 +41,8 @@ public class DonutLookSaveTests
 
         var raised = 0;
         store.SettingsChanged += (_, _) => raised++;
-        store.SaveDonutPreviewPlace(1320, -40);
+        store.Settings.DonutPreviewPlace = new WindowBounds { X = 1320, Y = -40 };
+        store.SaveDonutLook();
         Assert.Equal(0, raised);
         var reloaded = new UserDataStore(old.Path);
         reloaded.Load();

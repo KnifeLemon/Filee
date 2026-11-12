@@ -1,21 +1,19 @@
 // Drag & drop for the donut editor.
 //
-// Sources: a palette chip (add) or a donut slice (reorder / remove).
-// Targets: a donut slice (insert at / move to that position), the empty ring or the hole (append),
-//          or the palette box (remove a slice).
-// A floating "ghost" chip follows the pointer, and the donut opens a gap where the drop would land, with a
-// translucent slice of the dragged preset in it (DonutMenu.SetDropPreview). The Front / Back switch shows the other
-// face of the profile, and the donut turns in to it as the open donut does on Tab.
-// A click on a group slice opens the group (ToolbarPageViewModel.OpenGroup): the donut then shows its presets, and the
-// same drags add, reorder and take them out of the group.
+// Sources: a palette chip (add) or a donut slice (reorder / remove). Targets: a donut slice (insert at / move to that
+// position), the empty ring or the hole (append), or the palette box (remove a slice). A floating "ghost" chip follows
+// the pointer, and the donut opens a gap where the drop would land, with a translucent slice of the dragged preset in
+// it (DonutMenu.SetDropPreview). The Front / Back switch shows the other face of the profile, and the donut turns in to
+// it as the open donut does on Tab. A click on a group slice opens the group (ToolbarPageViewModel.OpenGroup): the
+// donut then shows its presets, and the same drags add, reorder and take them out of the group.
 //
 // The donut on screen: while Edit Donut Size is open, or a group is open in the editor, the donut is also shown at its
-// real size next to this window (DonutPreviewWindow), filled and styled as it opens for the selected profile's files. It
-// follows every change made here, and holds a group open (DonutMenu.HeldGroupId): the one open in the editor, or, once a
-// ring setting changes, the one picked (Group shown, or clicked on it; the first until then), or an example ring on a
-// donut with none.
-// Where it goes: where it was last dragged (against this window), else beside this window, else on another screen;
-// with no room anywhere, this window slides over to make room and back when the donut goes. Never over this window.
+// real size next to this window (DonutPreviewWindow), filled and styled as it opens for the selected profile's files.
+// It follows every change made here, and holds a group open (DonutMenu.HeldGroupId): the one open in the editor, or,
+// once a ring setting changes, the one picked (Group shown, or clicked on it; the first until then), or an example ring
+// on a donut with none. Where it goes: where it was last dragged (against this window), else beside this window, else
+// on another screen; with no room anywhere, this window slides over to make room and back when the donut goes. Never
+// over this window.
 //
 // Chip tooltips: an available chip's tip lists the formats it takes (PresetFormatTip), as a card. Holding either Shift
 // shows the whole list while it is open; Tab or the arrow keys open a chip's tip as hover does, and pressing or
@@ -68,9 +66,6 @@ public partial class ToolbarPage : UserControl
     /// <summary>The donut on screen, once made (null before).</summary>
     internal DonutPreviewWindow? Preview => _preview;
 
-    /// <summary>Room between this window and the donut beside it.</summary>
-    internal const int PreviewGap = 24;
-
     // What changes the donut's look (the settings and this donut's labels), and what changes what is on it.
     private static readonly HashSet<string> LookProperties =
     [
@@ -86,10 +81,6 @@ public partial class ToolbarPage : UserControl
         nameof(ToolbarPageViewModel.ShownGroup), nameof(ToolbarPageViewModel.RingGroups),
     ];
 
-    // This window slid over to make room for the donut: from where, to where (it slides back unless moved since).
-    private (PixelPoint From, PixelPoint To)? _slid;
-    private Avalonia.Threading.DispatcherTimer? _slide;
-
     public ToolbarPage()
     {
         InitializeComponent();
@@ -102,6 +93,7 @@ public partial class ToolbarPage : UserControl
         // rebuild doesn't get here: the pressed chip has left the tree by then and its panel takes the capture, so the
         // drag goes on.
         Root.AddHandler(PointerCaptureLostEvent, OnRootCaptureLost, RoutingStrategies.Direct, handledEventsToo: true);
+        AddHandler(GotFocusEvent, (_, e) => _lastFocused = e.Source as Control, RoutingStrategies.Bubble, handledEventsToo: true);
         // Before the list box, which doesn't move between the rows of its wrap panel.
         PaletteTabs.AddHandler(KeyDownEvent, OnTabsKeyDown, RoutingStrategies.Tunnel);
 
@@ -155,22 +147,47 @@ public partial class ToolbarPage : UserControl
                 EndDrag();
                 break;
         }
+        if (e.PropertyName is nameof(ToolbarPageViewModel.OpenGroup) or nameof(ToolbarPageViewModel.IsAdjustingLook))
+            Avalonia.Threading.Dispatcher.UIThread.Post(KeepFocus, Avalonia.Threading.DispatcherPriority.Loaded);
         if (e.PropertyName is { } name && (ContentProperties.Contains(name) || LookProperties.Contains(name)))
             UpdatePreview(reload: ContentProperties.Contains(name));
     }
 
-    /// <summary>The donut on screen while it's wanted, refilled (<paramref name="reload"/>) or restyled; put away otherwise.</summary>
+    /// <summary>
+    /// The control that had the keyboard was hidden with its part of the page (the way back out of a group, Edit Donut
+    /// Size, Done): the one that took its place has it now, rather than nothing.
+    /// </summary>
+    private void KeepFocus()
+    {
+        // Hidden, the focused control lets go of the keyboard (nothing has it then): the one this page last gave it to.
+        var focused = _topLevel?.FocusManager?.GetFocusedElement() as Control;
+        if (Vm is not { } vm || (focused ?? _lastFocused) is not { IsEffectivelyVisible: false } hidden
+            || !hidden.GetVisualAncestors().Contains(this))
+            return;
+        Control next = vm.IsAdjustingLook ? LookDone : vm.IsEditingGroup ? GroupBack : EditSize;
+        next.Focus(NavigationMethod.Tab);
+    }
+
+    // The control of this page that last had the keyboard (see KeepFocus).
+    private Control? _lastFocused;
+
+    /// <summary>
+    /// The donut on screen while it's wanted: refilled when what is on it changed (<paramref name="reload"/>, and only
+    /// then: a search typed in the palette rebuilds the editor but changes nothing on it), else restyled; put away
+    /// otherwise, and this window back where it was.
+    /// </summary>
     private void UpdatePreview(bool reload)
     {
         if (Vm is not { } vm || vm.SelectedProfile?.Profile is not { } profile || !(vm.IsAdjustingLook || vm.IsEditingGroup))
         {
             HidePreview();
-            SlideBack();
+            SlideBack(animate: true);
             return;
         }
         if (_topLevel is not Window { IsVisible: true, WindowState: not WindowState.Minimized } main)
         {
             HidePreview();
+            SlideBack(animate: false); // out of sight: back where it was when it comes back
             return;
         }
         if (_preview is null || _previewModel is null)
@@ -183,27 +200,64 @@ public partial class ToolbarPage : UserControl
                 Vm?.CloseGroupCommand.Execute(null);
             };
             _preview.Moved += OnPreviewMoved;
+            // Grown off its screen or onto this window (Size or Group ring size moved up): placed again.
+            _preview.SizeChanged += (_, _) =>
+            {
+                if (_preview is { IsVisible: true, Place: { } place } preview && _topLevel is Window window && !_sliding
+                    && !place.Fits(preview.Box.Width, FrameOf(window), ScreensOf(window)))
+                    PlacePreview(window, moveWindow: false);
+            };
             // A group clicked on it is the one held open from then on.
             _preview.DonutControl.GroupOpenRequested += (_, index) =>
             {
                 if (_previewModel is { } model && index < model.Items.Count && model.Items[index].Id != RadialViewModel.ExampleGroupId)
                     Vm?.HoldGroup(model.Items[index].Id, model.IsBackFace);
             };
-            _preview.Closed += (_, _) => (_preview, _previewModel) = (null, null);
+            _preview.Closed += (_, _) => (_preview, _previewModel, _previewContent) = (null, null, null);
         }
         var held = HeldGroup(vm, out var back);
         var shown = _preview.IsVisible;
-        if (reload || !shown)
+        var content = ContentOf(profile, held, back);
+        if (!shown || reload && content != _previewContent)
         {
             _previewModel.LoadPreview(profile, back);
             if (held == RadialViewModel.ExampleGroupId)
                 _previewModel.ShowExampleGroup(Loc["toolbar.example_group"], Loc["toolbar.example_none"]);
+            _previewContent = content;
         }
         else
             _previewModel.ApplyLook(profile);
         _preview.DonutControl.HeldGroupId = held;
         if (!shown)
-            _preview.ShowAt(PlacePreview(main, _previewModel));
+            PlacePreview(main, moveWindow: true);
+    }
+
+    // What the donut on screen shows, so a rebuild of the editor that changed none of it doesn't fill it again.
+    private string? _previewContent;
+
+    private string ContentOf(Filee.Core.Profiles.ToolbarProfile profile, string? held, bool back)
+    {
+        var store = AppHost.Get<UserDataStore>();
+        var text = new System.Text.StringBuilder().Append(profile.Id).Append('|').Append(held).Append('|').Append(back);
+        foreach (var id in profile.PresetIds.Append("|").Concat(profile.BackPresetIds ?? []))
+        {
+            text.Append('|').Append(id);
+            if (store.FindPreset(id) is not { } preset)
+                continue;
+            AppendPreset(preset);
+            foreach (var member in preset.SubPresetIds)
+                if (store.FindPreset(member) is { } child)
+                {
+                    text.Append(',').Append(member);
+                    AppendPreset(child);
+                }
+        }
+        text.Append('|').Append(string.Join(',', store.Settings.TurnedOffFields));
+        return text.ToString();
+
+        void AppendPreset(Filee.Core.Presets.Preset p) => text.Append(':').Append(Loc.DisplayName(p)).Append(':').Append(p.ShortName)
+            .Append(':').Append(p.Icon).Append(':').Append(p.Show).Append(':').Append(p.Direction).Append(':').Append(p.TargetFormat)
+            .Append(':').Append(p.Output.MoveInsteadOfCopy);
     }
 
     private static ILocalizer Loc => AppHost.Get<ILocalizer>();
@@ -236,112 +290,136 @@ public partial class ToolbarPage : UserControl
             preview.Hide();
     }
 
-    /// <summary>The donut was dragged: it opens there, against this window, from now on.</summary>
+    /// <summary>
+    /// The donut was dragged: it opens there, against this window, from now on (written once it rests).
+    /// </summary>
     private void OnPreviewMoved(PixelPoint center)
     {
-        if (_topLevel is Window main)
-            AppHost.Get<UserDataStore>().SaveDonutPreviewPlace(center.X - main.Position.X, center.Y - main.Position.Y);
+        if (_topLevel is not Window main)
+            return;
+        var store = AppHost.Get<UserDataStore>();
+        store.Settings.DonutPreviewPlace = new WindowBounds { X = center.X - main.Position.X, Y = center.Y - main.Position.Y };
+        DonutLookSave.Schedule(store);
+    }
+
+    // macOS reports window positions and screens in points, the others in device pixels.
+    private static double ScalingOf(Avalonia.Platform.Screen? screen) => OperatingSystem.IsMacOS() ? 1 : screen?.Scaling ?? 1;
+
+    private static List<PreviewScreen> ScreensOf(Window window) =>
+        window.Screens.All.Select(s => new PreviewScreen(s.WorkingArea, ScalingOf(s))).ToList();
+
+    private static PixelRect FrameOf(Window window) =>
+        new(window.Position, PixelSize.FromSize(window.FrameSize ?? window.Bounds.Size, ScalingOf(window.Screens.ScreenFromWindow(window))));
+
+    /// <summary>
+    /// Puts the donut on screen where <see cref="DonutPreviewPlacement"/> says, moving this window over first when it
+    /// must (<paramref name="moveWindow"/>: only as the donut first appears, never while the user works).
+    /// </summary>
+    private void PlacePreview(Window main, bool moveWindow)
+    {
+        if (_preview is not { } preview || _previewModel is not { } donut || Vm is not { } vm)
+            return;
+        var all = main.Screens.All.ToList();
+        var home = main.Screens.ScreenFromWindow(main) ?? main.Screens.Primary;
+        var screens = ScreensOf(main);
+        var index = Math.Max(0, home is null ? 0 : all.FindIndex(s => s.WorkingArea == home.WorkingArea));
+        var scaling = ScalingOf(home);
+        var frame = main.FrameSize ?? main.Bounds.Size;
+        var window = new PixelRect(main.Position, PixelSize.FromSize(frame, scaling));
+        var current = DonutMenu.SideFor(donut.OuterRadius, donut.ReserveSubRing, donut.GroupRingSize);
+        var dragged = AppHost.Get<UserDataStore>().Settings.DonutPreviewPlace is { X: { } dx, Y: { } dy } ? new PixelPoint(dx, dy) : (PixelPoint?)null;
+        int? minWidth = moveWindow && main.WindowState == WindowState.Normal
+            ? (int)Math.Ceiling((main.MinWidth + frame.Width - main.ClientSize.Width) * scaling)
+            : null;
+        // With nothing else left, it goes over the column not in use: the profile list while a group is open (its
+        // presets come from Available presets), else Available presets; the profile list is on the right in Arabic.
+        var overRight = !vm.IsEditingGroup ^ FlowDirection == Avalonia.Media.FlowDirection.RightToLeft;
+        var place = DonutPreviewPlacement.Place(window, screens, index, current, dragged, minWidth, overRight);
+        if (place.MovedWindow is { } moved)
+            MoveMain(main, moved, scaling);
+        preview.ShowAt(place, (int)Math.Ceiling(current * scaling), main);
+    }
+
+    // This window moved over to make room for the donut: where it went (it goes back unless moved since), the slide
+    // under way, and where it actually landed (a window manager may keep it off the menu bar).
+    private PixelPoint? _slidTo;
+    private PixelPoint? _landed;
+    private bool _sliding;
+
+    /// <summary>
+    /// Moves this window to <paramref name="to"/> (narrower if it must be), remembering where it was.
+    /// </summary>
+    private void MoveMain(Window main, PixelRect to, double scaling)
+    {
+        if (main is MainWindow mw)
+            mw.RestPlace ??= (main.Position, main.ClientSize);
+        var narrower = (main.FrameSize?.Width ?? main.Bounds.Width) * scaling - to.Width;
+        if (narrower > 0)
+            main.Width = Math.Max(main.MinWidth, main.ClientSize.Width - narrower / scaling);
+        _slidTo = to.Position;
+        _landed = null;
+        Slide(main, to.Position, () => _landed = main.Position);
     }
 
     /// <summary>
-    /// Where the donut on screen goes (its centre, in screen pixels), never over this window: where it was last dragged,
-    /// if all of it is on a screen there; beside this window, on whichever side its screen has room for the donut at its
-    /// largest (a group open); on another screen with room for it; else this window slides over to make room (and back
-    /// when the donut goes). On a screen too narrow for both, the donut goes to the side with more room.
+    /// The donut went: this window goes back to where it was, and as wide, unless the user moved it since it moved
+    /// over. <paramref name="animate"/> false puts it back at once (leaving the page, closing, hiding).
     /// </summary>
-    private PixelPoint PlacePreview(Window main, RadialViewModel donut)
+    private void SlideBack(bool animate)
     {
-        var screen = main.Screens.ScreenFromWindow(main) ?? main.Screens.Primary;
-        var scaling = OperatingSystem.IsMacOS() ? 1 : screen?.Scaling ?? 1;
-        var side = (int)Math.Ceiling(DonutMenu.SideFor(donut.OuterRadius, true, donut.GroupRingSize) * scaling);
-        var size = PixelSize.FromSize(main.FrameSize ?? main.Bounds.Size, scaling);
-        var window = new PixelRect(main.Position, size);
-        var area = screen?.WorkingArea ?? window;
-
-        if (AppHost.Get<UserDataStore>().Settings.DonutPreviewPlace is { X: { } dx, Y: { } dy })
-        {
-            var center = new PixelPoint(window.X + dx, window.Y + dy);
-            var box = new PixelRect(center.X - side / 2, center.Y - side / 2, side, side);
-            if (main.Screens.All.Any(s => s.WorkingArea.Contains(box)))
-                return center;
-        }
-        if (Beside(area, window, side) is { } beside)
-            return beside;
-        if (main.Screens.All.FirstOrDefault(s => !Equals(s, screen) && s.WorkingArea.Width >= side && s.WorkingArea.Height >= side)
-            is { } other)
-            return other.WorkingArea.Center;
-        if (main.WindowState == WindowState.Normal && SlideFor(area, window, side) is { } x)
-        {
-            var to = new PixelPoint(x, window.Y);
-            SlideMain(main, to);
-            if (Beside(area, new PixelRect(to, size), side) is { } made)
-                return made;
-        }
-        var y = Math.Clamp(window.Y + window.Height / 2, area.Y + side / 2, Math.Max(area.Y + side / 2, area.Bottom - side / 2));
-        return window.Center.X > area.Center.X ? new PixelPoint(area.X + side / 2, y) : new PixelPoint(area.Right - side / 2, y);
-    }
-
-    /// <summary>
-    /// Where <paramref name="window"/> slides to (its left edge) so the donut fits beside it on <paramref name="area"/>:
-    /// the shorter way, left to leave room on the right or right to leave room on the left. Null if both don't fit.
-    /// </summary>
-    internal static int? SlideFor(PixelRect area, PixelRect window, int side)
-    {
-        if (window.Width + PreviewGap + side > area.Width)
-            return null;
-        var left = area.Right - PreviewGap - side - window.Width;
-        var right = area.X + side + PreviewGap;
-        return Math.Abs(left - window.X) <= Math.Abs(right - window.X) ? left : right;
-    }
-
-    /// <summary>The donut's centre beside <paramref name="window"/>, right then left, where <paramref name="area"/> has room; or null.</summary>
-    internal static PixelPoint? Beside(PixelRect area, PixelRect window, int side)
-    {
-        var y = Math.Clamp(window.Y + window.Height / 2, area.Y + side / 2, Math.Max(area.Y + side / 2, area.Bottom - side / 2));
-        if (window.Right + PreviewGap + side <= area.Right)
-            return new PixelPoint(window.Right + PreviewGap + side / 2, y);
-        if (window.X - PreviewGap - side >= area.X)
-            return new PixelPoint(window.X - PreviewGap - side / 2, y);
-        return null;
-    }
-
-    /// <summary>Slides this window to <paramref name="to"/> to make room for the donut, remembering where it was.</summary>
-    private void SlideMain(Window main, PixelPoint to)
-    {
-        if (main.Position == to)
+        if (_topLevel is not MainWindow main || main.RestPlace is not { } rest)
             return;
-        _slid = (_slid?.From ?? main.Position, to);
-        Slide(main, to);
+        var stillThere = _sliding || main.Position is var at && (_landed ?? _slidTo) is { } there
+            && Math.Abs(at.X - there.X) <= 2 && Math.Abs(at.Y - there.Y) <= 2;
+        _slidTo = _landed = null;
+        if (!stillThere)
+        {
+            StopSlide();
+            main.RestPlace = null; // moved by the user: where it is now is theirs
+            return;
+        }
+        if (Math.Abs(main.ClientSize.Width - rest.ClientSize.Width) > 0.5)
+            main.Width = rest.ClientSize.Width;
+        if (animate)
+            Slide(main, rest.Position, () => main.RestPlace = null);
+        else
+        {
+            StopSlide();
+            main.Position = rest.Position;
+            main.RestPlace = null;
+        }
     }
 
-    /// <summary>The donut went: this window slides back to where it was, unless it was moved since it slid over.</summary>
-    private void SlideBack()
+    private Avalonia.Threading.DispatcherTimer? _slide;
+
+    private void StopSlide()
     {
-        if (_slid is not { } slid || _topLevel is not Window main)
-            return;
-        _slid = null;
-        if (main.Position == slid.To)
-            Slide(main, slid.From);
+        _slide?.Stop();
+        _sliding = false;
     }
 
     // Eased over a quarter of a second, or at once without animations.
-    private void Slide(Window main, PixelPoint to)
+    private void Slide(Window main, PixelPoint to, Action done)
     {
-        _slide?.Stop();
+        StopSlide();
         var from = main.Position;
-        if (!Motion.Enabled)
+        if (!Motion.Enabled || from == to)
         {
             main.Position = to;
+            done();
             return;
         }
         var started = DateTime.UtcNow;
+        _sliding = true;
         _slide = new Avalonia.Threading.DispatcherTimer(TimeSpan.FromMilliseconds(16), Avalonia.Threading.DispatcherPriority.Render, (_, _) =>
         {
             var t = Math.Min(1, (DateTime.UtcNow - started).TotalSeconds / 0.25);
             var eased = 1 - Math.Pow(1 - t, 3);
             main.Position = new PixelPoint((int)Math.Round(from.X + (to.X - from.X) * eased), (int)Math.Round(from.Y + (to.Y - from.Y) * eased));
-            if (t >= 1)
-                _slide?.Stop();
+            if (t < 1)
+                return;
+            StopSlide();
+            done();
         });
         _slide.Start();
     }
@@ -362,18 +440,45 @@ public partial class ToolbarPage : UserControl
             window.Activated += OnWindowActivationChanged;
             window.Deactivated += OnWindowActivationChanged;
             window.PropertyChanged += OnWindowPropertyChanged;
+            window.PositionChanged += OnWindowPositionChanged;
         }
         UpdatePreview(reload: true);
     }
 
     /// <summary>
-    /// The window hidden (to the tray) or minimised puts the donut on screen away with it, and brings it back when shown.
+    /// The window hidden (to the tray) or minimised puts the donut on screen away with it, and brings it back when
+    /// shown.
     /// </summary>
     private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
     {
         if (e.Property == Visual.IsVisibleProperty || e.Property == Window.WindowStateProperty)
             UpdatePreview(reload: true);
+        if (e.Property == Window.WindowStateProperty || e.Property == TopLevel.ClientSizeProperty)
+            KeepClearOfWindow();
     }
+
+    /// <summary>
+    /// This window was resized, maximized or moved while the donut is on screen: the donut is placed again, so it stays
+    /// beside the window (or where it was dragged, against it) and never ends up under it.
+    /// </summary>
+    private void KeepClearOfWindow()
+    {
+        // Once the window's new size and frame are laid out (they follow the size it was given), and once for a burst
+        // of moves.
+        if (_clearPosted)
+            return;
+        _clearPosted = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            _clearPosted = false;
+            if (!_sliding && _topLevel is Window { IsVisible: true, WindowState: not WindowState.Minimized } main && _preview is { IsVisible: true })
+                PlacePreview(main, moveWindow: false);
+        }, Avalonia.Threading.DispatcherPriority.Loaded);
+    }
+
+    private bool _clearPosted;
+
+    private void OnWindowPositionChanged(object? sender, PixelPointEventArgs e) => KeepClearOfWindow();
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
@@ -387,11 +492,11 @@ public partial class ToolbarPage : UserControl
                 window.Activated -= OnWindowActivationChanged;
                 window.Deactivated -= OnWindowActivationChanged;
                 window.PropertyChanged -= OnWindowPropertyChanged;
+                window.PositionChanged -= OnWindowPositionChanged;
             }
         }
-        // Another page: the editor's modes end with the page, the donut on screen goes, and this window slides back.
-        _slide?.Stop();
-        SlideBack();
+        // Another page: the editor's modes end with the page, the donut on screen goes, and this window goes back.
+        SlideBack(animate: false);
         _topLevel = null;
         Vm?.DoneAdjustingLookCommand.Execute(null);
         Vm?.CloseGroupCommand.Execute(null);

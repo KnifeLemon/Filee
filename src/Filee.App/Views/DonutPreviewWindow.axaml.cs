@@ -1,6 +1,6 @@
 // The donut on screen of Settings → Donut toolbar (see DonutPreviewWindow.axaml). ToolbarPage shows, fills and places
-// it; this keeps it where it was put while its size changes, flips it as the live donut flips, and moves it where its
-// middle is dragged.
+// it (DonutPreviewPlacement); this keeps its anchored edge where it was put while its size changes, flips it as the
+// live donut flips, and moves it where its middle is dragged.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -16,11 +16,9 @@ public partial class DonutPreviewWindow : Window
 {
     private static readonly Cursor MoveCursor = new(StandardCursorType.SizeAll);
 
-    // Where the donut's centre stays (in screen pixels) while the sliders change its size.
-    private PixelPoint? _center;
-
-    // Set from a press on the middle until the page places the donut again: only then is a move the user's.
-    private bool _dragging;
+    // Where it was put (its anchored edge stays there while the sliders change its size), and whether a move is ours.
+    private PreviewPlace? _place;
+    private bool _placing;
 
     public DonutPreviewWindow()
     {
@@ -28,8 +26,9 @@ public partial class DonutPreviewWindow : Window
         Motion.Track(this);
         // Halfway through a flip (Tab or the wheel) the donut shows the other face of the profile.
         Donut.FaceSwapping += (_, _) => (DataContext as RadialViewModel)?.ToggleFace();
-        SizeChanged += (_, _) => KeepCentered();
-        // The middle is the handle: pressed there, the window moves with the pointer (before the donut takes the press).
+        SizeChanged += (_, _) => KeepPlace();
+        // The middle is the handle: pressed there, the window moves with the pointer (before the donut takes the
+        // press).
         AddHandler(PointerPressedEvent, OnPressed, RoutingStrategies.Tunnel);
         AddHandler(PointerMovedEvent, (_, e) => Cursor = OnHandle(e) ? MoveCursor : null, RoutingStrategies.Tunnel, handledEventsToo: true);
         PositionChanged += (_, _) => OnMoved();
@@ -37,14 +36,17 @@ public partial class DonutPreviewWindow : Window
 
     public DonutMenu DonutControl => Donut;
 
-    /// <summary>The user dragged the donut somewhere else: its new centre, in screen pixels.</summary>
+    /// <summary>The user moved the donut (dragged its middle): its new centre, in screen pixels.</summary>
     public event Action<PixelPoint>? Moved;
 
     /// <summary>Escape was pressed on it (with no ring of its own to fold): the page puts it away.</summary>
     public event Action? EscapePressed;
 
-    /// <summary>Where the donut's centre is kept, in screen pixels (null before it is first shown).</summary>
-    public PixelPoint? Center => _center;
+    /// <summary>Where it was put, or last moved to (null before it is first shown).</summary>
+    internal PreviewPlace? Place => _place;
+
+    /// <summary>The square it takes on screen, in pixels.</summary>
+    internal PixelRect Box => new(Position, PixelSize.FromSize(Bounds.Size, Scaling));
 
     private bool OnHandle(PointerEventArgs e) => Donut.HitTest(e.GetPosition(Donut)).Kind == DonutHitKind.Center;
 
@@ -53,38 +55,63 @@ public partial class DonutPreviewWindow : Window
         if (!e.GetCurrentPoint(this).Properties.IsLeftButtonPressed || !OnHandle(e))
             return;
         e.Handled = true;
-        _dragging = true;
         BeginMoveDrag(e);
     }
 
     // macOS reports window positions in points, the others in device pixels.
     private double Scaling => OperatingSystem.IsMacOS() ? 1 : RenderScaling;
 
+    private int Side => (int)Math.Ceiling(Math.Max(Bounds.Width, Bounds.Height) * Scaling);
+
+    // A move this window didn't make is the user's: dragged by its middle. It stays centred there from then on.
     private void OnMoved()
     {
-        if (!_dragging || !IsVisible)
+        if (_placing || !IsVisible || _place is null)
             return;
-        _center = new PixelPoint(Position.X + (int)Math.Round(Bounds.Width * Scaling / 2),
-            Position.Y + (int)Math.Round(Bounds.Height * Scaling / 2));
-        Moved?.Invoke(_center.Value);
+        var box = Box;
+        _place = new PreviewPlace(box.Center, PreviewAnchor.Centre);
+        Moved?.Invoke(box.Center);
     }
 
-    /// <summary>Shows the donut centred on <paramref name="center"/> (screen pixels), or moves it there.</summary>
-    public void ShowAt(PixelPoint center)
+    /// <summary>
+    /// Shows the donut at <paramref name="place"/>, or moves it there, above <paramref name="owner"/> when it can only
+    /// go over that window (<see cref="PreviewPlace.Over"/>). <paramref name="side"/>: its size in pixels, until it is
+    /// laid out, so it appears where it belongs rather than jumping there.
+    /// </summary>
+    internal void ShowAt(PreviewPlace place, int side, Window? owner)
     {
-        _center = center;
-        _dragging = false;
+        _place = place;
+        var wantOwner = place.Over ? owner : null;
+        if (IsVisible && !ReferenceEquals(Owner, wantOwner))
+            Hide(); // the owner is set by Show only
+        Move(place.TopLeftFor(IsVisible ? Side : side));
         if (!IsVisible)
-            Show();
-        KeepCentered();
+        {
+            if (wantOwner is not null)
+                Show(wantOwner);
+            else
+                Show();
+        }
+        KeepPlace(); // again, in case showing changed the scale
     }
 
-    private void KeepCentered()
+    private void KeepPlace()
     {
-        if (_center is not { } center)
-            return;
-        Position = new PixelPoint(center.X - (int)Math.Round(Bounds.Width * Scaling / 2),
-            center.Y - (int)Math.Round(Bounds.Height * Scaling / 2));
+        if (_place is { } place && IsVisible)
+            Move(place.TopLeftFor(Side));
+    }
+
+    private void Move(PixelPoint to)
+    {
+        _placing = true;
+        try
+        {
+            Position = to;
+        }
+        finally
+        {
+            _placing = false;
+        }
     }
 
     protected override void OnKeyDown(KeyEventArgs e)

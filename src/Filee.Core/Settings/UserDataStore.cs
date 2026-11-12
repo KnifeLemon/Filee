@@ -118,10 +118,10 @@ public sealed class UserDataStore
     }
 
     /// <summary>
-    /// Remembers the donut's look (<see cref="AppSettings.Donut"/>: size, hole, opacity, output format, group ring),
-    /// quietly as <see cref="SaveUiScale"/>: a slider sends a change for every pixel it moves, the donut reads its look
-    /// each time it opens, and the theme, triggers and integration that <see cref="SettingsChanged"/> applies again
-    /// haven't changed.
+    /// Remembers the donut's look (<see cref="AppSettings.Donut"/>: size, hole, opacity, output format, group ring) and
+    /// where its preview was dragged (<see cref="AppSettings.DonutPreviewPlace"/>), quietly as
+    /// <see cref="SaveUiScale"/>: the donut reads its look each time it opens, and the theme, triggers and integration
+    /// that <see cref="SettingsChanged"/> applies again haven't changed.
     /// </summary>
     public void SaveDonutLook() => Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
 
@@ -142,16 +142,6 @@ public sealed class UserDataStore
     public void SaveNavCollapsed(bool collapsed)
     {
         Settings.NavCollapsed = collapsed;
-        Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
-    }
-
-    /// <summary>
-    /// Remembers where the donut on screen was dragged (<see cref="AppSettings.DonutPreviewPlace"/>), quietly as
-    /// <see cref="SaveUiScale"/>: only the next showing of it reads it.
-    /// </summary>
-    public void SaveDonutPreviewPlace(int x, int y)
-    {
-        Settings.DonutPreviewPlace = new WindowBounds { X = x, Y = y };
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
     }
 

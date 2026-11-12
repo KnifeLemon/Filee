@@ -97,6 +97,13 @@ public partial class MainWindow : Window
         (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.Shutdown());
 
     /// <summary>
+    /// <summary>
+    /// Where the window was, and how large, before Settings → Donut toolbar moved it over for a moment to make room for
+    /// the donut on screen: what closing it remembers instead (<see cref="WindowService"/>). Null while it is where the
+    /// user put it.
+    /// </summary>
+    internal (PixelPoint Position, Size ClientSize)? RestPlace { get; set; }
+
     /// Leaves Filee in the tray: hides the window at once, then closes it for real, so its pages, visuals and images
     /// don't stay in memory until the next time (issue #119). <see cref="WindowService.ShowMain"/> opens a new one.
     /// </summary>

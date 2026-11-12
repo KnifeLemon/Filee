@@ -148,6 +148,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        DonutLookSave.Flush();
         UiZoom.Changed -= OnZoomChanged;
         _loc.LanguageChanged -= OnLanguageChanged;
     }
@@ -254,7 +255,7 @@ public sealed partial class ThemePageViewModel : ObservableObject, IDisposable
         if (_loading)
             return;
         _store.Settings.Donut.Opacity = Math.Round(value) / 100;
-        _store.SaveDonutLook(); // the donut reads it when it opens: nothing to apply again
+        DonutLookSave.Schedule(_store); // the donut reads it when it opens: nothing to apply again
     }
 
     private void Save(Action<ThemeSettings> change)
