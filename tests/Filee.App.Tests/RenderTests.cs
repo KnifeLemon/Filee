@@ -935,7 +935,7 @@ public class RenderTests
         window.DonutControl.SetExternalHighlight(1);
         Pump();
 
-        Assert.Equal(6, vm.Items.Count); // conversions only; GIF follows WEBP
+        Assert.Equal(7, vm.Items.Count); // conversions and Merge PDF after PDF; GIF follows WEBP
         Assert.Equal(title, vm.CenterTitle);
         Save(window, $"donut-images-{language}.png");
         window.Close();
