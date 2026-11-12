@@ -1559,6 +1559,13 @@ minutes, Ghostscript 5, Pandoc 2 and calibre 10 (it made the 640-page novel's PD
 
 ## Archives
 
+Folders can be packed directly as ZIP, 7Z, TAR, TAR.GZ, TAR.BZ2 or TAR.XZ. The Folders donut offers the existing
+ZIP preset (one archive per folder) and One ZIP (one archive containing all selected files/folders), alongside ISO.
+Other container formats can be added from the palette; single-file GZ/BZ2/XZ are not offered for folders.
+Folder contents are stored under the selected folder's name, retaining Unicode names and empty directories.
+7Z stages directory inputs through the same link-skipping copy used for renamed items, so nested symbolic links
+and junctions cannot add files outside the selected tree. Custom folder donut layouts are preserved on upgrade.
+
 The archive engine (`Archives/ArchiveConverter.cs`, id `archive`) uses Filee's own copy of the 7-Zip console program
 (`7z.exe` + `7z.dll`, taken from the official x64 MSI with `msiexec /a` by `build/fetch-engines.ps1 -Only 7zip` and
 bundled with the installer), never a 7-Zip installed on the PC. It runs as a separate process (LGPL).

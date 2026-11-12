@@ -171,7 +171,7 @@ public class FolderIso632Tests
                 var dialog = Assert.Single(windows.Main!.OwnedWindows.OfType<PresetEditorWindow>());
                 var editor = Assert.IsType<PresetEditorViewModel>(dialog.DataContext);
                 Assert.True(editor.FolderInput);
-                Assert.Single(editor.Targets);
+                Assert.Equal(7, editor.Targets.Count);
                 dialog.Close();
                 await editing.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
             }
@@ -185,13 +185,14 @@ public class FolderIso632Tests
     }
 
     [AvaloniaFact]
-    public void Folder_editor_only_offers_iso_without_compression_or_filesystem_options()
+    public void Folder_editor_offers_folder_archives_but_keeps_iso_compression_hidden()
     {
         TestServices.EnsureInitialized("en");
         var loc = AppHost.Get<ILocalizer>();
         var preset = new Preset { Name = "Folder action", TargetFormat = "iso", Output = { ReplaceOriginal = true } };
         var editor = new PresetEditorViewModel(preset, loc, folderInput: true);
-        Assert.Equal("iso", Assert.Single(editor.Targets).Value);
+        Assert.Equal("iso", editor.Target.Value);
+        Assert.Equal(7, editor.Targets.Count);
         Assert.False(editor.ShowReplaceOriginal);
         // Cancel has not changed the saved preset.
         Assert.Equal("iso", preset.TargetFormat);
@@ -209,7 +210,7 @@ public class FolderIso632Tests
         var newFolder = new PresetEditorViewModel(new Preset { TargetFormat = "png" }, loc, folderInput: true);
         Assert.Equal("iso", newFolder.Target.Value);
         var availability = AppHost.Get<PresetAvailability>();
-        foreach (var target in new[] { "zip", "7z", "tar", "tgz", "tbz2", "txz", "gz", "bz2", "xz", "w64", "eac3" })
+        foreach (var target in new[] { "gz", "bz2", "xz", "w64", "eac3" })
         {
             var incompatible = new Preset { TargetFormat = target, Archive = { CombineIntoOne = true } };
             Assert.Equal(PresetUse.Unusable,
@@ -230,7 +231,7 @@ public class FolderIso632Tests
             var editor = new GroupEditorViewModel(group, store, AppHost.Get<ILocalizer>(), folderInput: true);
             Assert.Single(editor.Members);
             Assert.Contains(editor.Available, t => t.Value == "to-iso");
-            Assert.DoesNotContain(editor.Available, t => t.Value == "zip-all");
+            Assert.Contains(editor.Available, t => t.Value == "zip-all");
             Assert.All(editor.Available, t => Assert.True(BuiltInData.AcceptsFolders(store.FindPreset(t.Value)!)));
             editor.ToAdd = editor.Available.Single(t => t.Value == "to-iso");
             editor.AddCommand.Execute(null);
@@ -308,7 +309,7 @@ public class FolderIso632Tests
             var vm = new RadialViewModel(store, AppHost.Get<ILocalizer>(), AppHost.Get<PresetAvailability>());
             vm.Load([folder], clickMode: false);
             Assert.Equal("Folders", AppHost.Get<ILocalizer>()[store.Profiles.Single(p => p.Id == "folders").NameKey!]);
-            Assert.Single(vm.Items);
+            Assert.Equal(3, vm.Items.Count);
             var item = Assert.Single(vm.Items, i => i.Id == "to-iso");
             Assert.Equal("to-iso", item.Id);
             Assert.True(item.IsEnabled, item.DisabledReason);
@@ -324,7 +325,7 @@ public class FolderIso632Tests
                 Assert.Null(view.FindControl<Border>("IsoCard"));
                 Assert.False(view.FindControl<Border>("ArchiveCard")!.IsVisible);
                 var targets = view.FindControl<ComboBox>("TargetBox")!;
-                Assert.Equal(1, targets.ItemCount);
+                Assert.Equal(7, targets.ItemCount);
                 Assert.DoesNotContain(targets.Items.OfType<Choice<string>>(), t => t.Value is "w64" or "eac3" or "gz" or "bz2" or "xz");
                 Assert.Null(view.FindControl<ComboBox>("IsoStandardBox"));
                 RenderTests.Pump();

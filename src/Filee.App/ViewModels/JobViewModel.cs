@@ -69,6 +69,11 @@ public sealed partial class JobViewModel : ObservableObject
 
     public string Title { get; }
 
+    /// <summary>The header and complete message, including details truncated or scrolled in a toast.</summary>
+    public string NotificationText => string.Join(Environment.NewLine,
+        new[] { Title, Status, IsDownloading ? DownloadText : null, ErrorDetails, Notices, MissingFontsText }
+            .Where(text => !string.IsNullOrWhiteSpace(text)));
+
     [ObservableProperty] private double _progress;
     [ObservableProperty] private string _status = "";
     [ObservableProperty] private bool _isRunning = true;
