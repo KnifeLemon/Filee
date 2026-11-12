@@ -13,7 +13,8 @@ public class LibreOfficeRouteTests(EngineFixture fx) : IClassFixture<EngineFixtu
     private RoutePlanner Planner(bool slides, bool hwpToPdf, bool documents = false, bool sheets = false)
     {
         var libreOffice = new InstalledLibreOffice(LibreOfficeConverter.BuildEdges(hwp: true, slides, hwpToPdf, documents, sheets));
-        var converters = fx.Converters.Where(c => c.Id != "libreoffice").Append(libreOffice).ToList();
+        // WeasyPrint, which takes HTML, Markdown and e-mails to PDF when installed, has its own tests (WeasyPrintTests).
+        var converters = fx.Converters.Where(c => c.Id is not ("libreoffice" or "weasyprint")).Append(libreOffice).ToList();
         var priority = new AppSettings().EnginePriority;
         return new RoutePlanner(converters, c => Math.Min(priority.IndexOf(c.Id) is >= 0 and var i ? i : priority.Count, 9));
     }

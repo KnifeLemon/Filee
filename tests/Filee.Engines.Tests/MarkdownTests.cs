@@ -39,7 +39,7 @@ public class MarkdownTests(EngineFixture fx) : IClassFixture<EngineFixture>
         """;
 
     /// <summary>Only engines that ship with the app (or run in-process): no Pandoc or LibreOffice.</summary>
-    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice"];
+    private static readonly string[] OptionalEngines = ["pandoc", "libreoffice", "weasyprint"];
 
     private RoutePlanner BuiltInPlanner(params string[] assumeInstalled) =>
         new ConverterCatalog(fx.Converters.Where(c => !OptionalEngines.Contains(c.Id))) { Priority = fx.Catalog.Priority }
