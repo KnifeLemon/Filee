@@ -208,6 +208,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         CadVersions = Enum.GetValues<CadVersion>().Select(v => new Choice<CadVersion>(v,
             v == Core.Presets.CadVersion.SameAsSource ? loc["presets.cad_version.same"] : "AutoCAD " + v.ToString()["AutoCad".Length..])).ToList();
         CadColorChoices = Enum.GetValues<CadColors>().Select(v => new Choice<CadColors>(v, loc[$"presets.cad_colors.{v}"])).ToList();
+        GcodeViews = Enum.GetValues<GcodeView>().Select(v => new Choice<GcodeView>(v, loc[$"presets.gcode_view.{v}"])).ToList();
+        // G-code belongs to the 3D and CAD fields only: with both off, its card is left out like its files' slots.
+        _gcodeShown = turnedOff is null || FormatFields.IsShown("gcode", turnedOff);
         // A speed set outside the editor (a hand-edited preset file) is offered too, instead of being lost.
         AnimationSpeeds = [.. ImageOptions.AnimationSpeeds.Append(_edit.Image.PlaybackSpeed).Distinct().Order()
             .Select(s => new Choice<double>(s, s == 1 ? loc["presets.animation_speed.original"] : SpeedLabel(s)))];
@@ -330,6 +333,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _traceMode = TraceModes.First(m => m.Value == _edit.Trace.Mode);
         _cadVersion = CadVersions.First(v => v.Value == _edit.Cad.Version);
         _cadColors = CadColorChoices.FirstOrDefault(c => c.Value == _edit.Cad.Colors) ?? CadColorChoices[0];
+        _gcodeView = GcodeViews.FirstOrDefault(v => v.Value == _edit.Gcode.View) ?? GcodeViews[0];
         _animationSpeed = AnimationSpeeds.First(s => s.Value == _edit.Image.PlaybackSpeed);
         _traceColors = Math.Clamp(_edit.Trace.Colors, TracingOptions.MinColors, TracingOptions.MaxColors);
         _traceDetail = Math.Clamp(_edit.Trace.Detail, 0, 100);
@@ -514,6 +518,11 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>The colours a drawing is drawn in: as drawn, black and white, grayscale (CadOptions.Colors, #411).</summary>
     public IReadOnlyList<Choice<CadColors>> CadColorChoices { get; }
 
+    /// <summary>What a G-code file shows: from above, isometric, the slicer's preview (GcodeOptions.View).</summary>
+    public IReadOnlyList<Choice<GcodeView>> GcodeViews { get; }
+
+    private readonly bool _gcodeShown;
+
     /// <summary>Playback speeds of animations, 0.25× to 4× (ImageOptions.AnimationSpeed).</summary>
     public IReadOnlyList<Choice<double>> AnimationSpeeds { get; }
 
@@ -536,7 +545,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
-        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
+        nameof(ShowSaveEveryFrame), nameof(ShowAnimationSpeed), nameof(ShowTrace), nameof(ShowCad), nameof(ShowCadColors), nameof(ShowGcode), nameof(ShowExtractMotionPhoto), nameof(ShowSlideshow),
         nameof(ShowLivePhotoChoice), nameof(LivePhotoKinds), nameof(LivePhotoChoice), nameof(IsLivePhoto), nameof(LivePhotoHint),
         nameof(ShowImageSize), nameof(SizeRangeError), nameof(CustomSizeError), nameof(IsValid))]
     private Choice<string> _target;
@@ -1035,6 +1044,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private int _traceColors;
     [ObservableProperty] private Choice<CadVersion> _cadVersion;
     [ObservableProperty] private Choice<CadColors> _cadColors;
+    [ObservableProperty] private Choice<GcodeView> _gcodeView;
     [ObservableProperty] private int _traceDetail;
     [ObservableProperty] private Choice<double> _animationSpeed;
 
@@ -1102,6 +1112,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     partial void OnTraceModeChanged(Choice<TracingMode>? oldValue, Choice<TracingMode> newValue) => Choices.Restore(oldValue, newValue, v => TraceMode = v);
     partial void OnCadVersionChanged(Choice<CadVersion>? oldValue, Choice<CadVersion> newValue) => Choices.Restore(oldValue, newValue, v => CadVersion = v);
     partial void OnCadColorsChanged(Choice<CadColors>? oldValue, Choice<CadColors> newValue) => Choices.Restore(oldValue, newValue, v => CadColors = v);
+    partial void OnGcodeViewChanged(Choice<GcodeView>? oldValue, Choice<GcodeView> newValue) => Choices.Restore(oldValue, newValue, v => GcodeView = v);
     partial void OnCompressionLevelChanged(Choice<PdfCompression>? oldValue, Choice<PdfCompression> newValue) =>
         Choices.Restore(oldValue, newValue, v => CompressionLevel = v);
     partial void OnAnimationSpeedChanged(Choice<double>? oldValue, Choice<double> newValue) =>
@@ -1254,6 +1265,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
     /// <summary>The colours, for the targets a DWG or DXF is drawn into: PDF, SVG and pictures.</summary>
     public bool ShowCadColors => !IsTool && (TargetId is "pdf" or "svg" || TargetCategory == FormatCategory.Image);
+
+    /// <summary>The G-code view, for the targets a toolpath is drawn into, while the 3D or CAD field is on.</summary>
+    public bool ShowGcode => _gcodeShown && ShowCadColors;
     public bool ShowTraceColors => TraceMode.Value == TracingMode.Color;
     public bool ShowPercent => Resize.Value == ResizeMode.Percent;
     public bool ShowLongEdge => Resize.Value == ResizeMode.LongEdge;
@@ -1477,6 +1491,8 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // black and white chosen for PDF and left behind by a DWG target.
         _original.Cad.Version = ShowCad ? CadVersion.Value : default;
         _original.Cad.Colors = ShowCadColors ? CadColors.Value : default;
+        // A view kept while the card is hidden by the field switches: turning them on again shows it unchanged.
+        _original.Gcode.View = ShowCadColors ? GcodeView.Value : default;
         _original.Translate.TargetLanguage = TargetLanguage.Value;
         _original.Translate.Enabled = ShowTranslate;
         if (ShowUpscale)

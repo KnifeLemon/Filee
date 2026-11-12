@@ -82,7 +82,7 @@ public static class FormatFields
             "dts", "tar", "tgz", "tbz2", "txz", "tar7z", "tlz", "gz", "bz2", "xz", "lz", "lzma", "jar", "zxp", "mcpack", "mcaddon",
             "mcworld", "mctemplate", "mrpack", "cab",
             "cpio", "deb", "rpm", "dwg", "ttf", "otf", "woff", "woff2", "ass", "ssa", "ttml", "scc", "glb", "gltf",
-            "stl", "obj", "3mf", "ply", "fbx", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani"
+            "stl", "obj", "3mf", "ply", "fbx", "gcode", "geojson", "kml", "kmz", "gpx", "shp", "fit", "osm", "xm", "it", "ani"
         ]),
         (FormatGrade.Legacy,
         [
@@ -120,6 +120,8 @@ public static class FormatFields
         (["dss", "wv", "tta", "w64", "ape", "tak", "dsf", "dff"], ["audio-pro"]),
         // 3D printing exports from CAD designs (STL, 3MF) and CAD models handed to renderers (OBJ).
         (["stl", "obj", "3mf"], ["model3d", "cad"]),
+        // G-code: what slicers make for 3D printers and CAM programs for CNC machines.
+        (["gcode"], ["model3d", "cad"]),
         // JPEG 2000: digital cinema, archives and medical imaging.
         (["jp2"], ["design", "science"]),
         // Jupyter notebooks: development and data science.

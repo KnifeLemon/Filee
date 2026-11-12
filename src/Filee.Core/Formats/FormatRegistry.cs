@@ -356,6 +356,9 @@ public static class FormatRegistry
         // CAD
         new("dwg", "DWG", FormatCategory.Cad, ["dwg"]),
         new("dxf", "DXF", FormatCategory.Cad, ["dxf"]),
+        // Toolpaths of 3D printers (slicers) and CNC machines, read only and drawn as a picture. ".nc" stays out: it is
+        // also NetCDF (#562, #244). ".g" is RepRapFirmware's macro extension; another kind of .g file fails with a reason.
+        new("gcode", "G-code", FormatCategory.Cad, ["gcode", "gco", "g", "ngc"], Writable: false),
 
         // Fonts
         new("ttf", "TTF", FormatCategory.Font, ["ttf"]),

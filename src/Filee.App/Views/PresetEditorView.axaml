@@ -736,6 +736,21 @@
       </StackPanel>
     </Border>
 
+    <!-- G-code (3D printers, CNC) drawn into a PDF, SVG or picture: from above, isometric or the slicer's preview. After
+         the CAD card, and only while the 3D or CAD field is on. -->
+    <Border x:Name="GcodeCard" Classes="card" IsVisible="{Binding ShowGcode}" Padding="14">
+      <StackPanel Spacing="10">
+        <TextBlock Classes="h2" Text="{DynamicResource presets.group.gcode}" />
+        <Grid ColumnDefinitions="*,12,*">
+          <StackPanel>
+            <TextBlock Classes="label" Text="{DynamicResource presets.gcode_view}" />
+            <ComboBox ItemsSource="{Binding GcodeViews}" SelectedItem="{Binding GcodeView}" HorizontalAlignment="Stretch" AutomationProperties.Name="{DynamicResource presets.gcode_view}" />
+          </StackPanel>
+        </Grid>
+        <TextBlock Classes="caption" Text="{DynamicResource presets.gcode_view_hint}" TextWrapping="Wrap" />
+      </StackPanel>
+    </Border>
+
     <TextBlock Text="{Binding CopyHint}" IsVisible="{Binding IsCopyToFolder}" TextWrapping="Wrap" />
 
     <!-- Output -->
