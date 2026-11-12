@@ -179,6 +179,8 @@
   "error.fon_too_large": "La police .fon est trop grande pour être convertie",
   "error.fon_damaged": "Le fichier .fon est endommagé ou incomplet",
   "error.m4s_needs_init": "Ce .m4s est un morceau d'une vidéo diffusée en streaming : il ne peut pas être lu sans son segment de départ (init) séparé",
+  "error.nov_password": "Cet export est protégé par un mot de passe, sa vidéo est donc chiffrée : exportez-le à nouveau depuis Wisenet WAVE / Nx Witness sans mot de passe",
+  "error.nov_no_video": "Cet export ne contient aucun enregistrement de caméra",
   "error.exe_unreadable": "Ce n'est pas un programme ni une bibliothèque Windows que Filee peut lire, ou le fichier est endommagé",
   "error.exe_no_icon": "Ce fichier n'a pas d'icône propre (Windows lui affiche une icône standard)",
   "notice.pdf_not_smaller": "Impossible de réduire sa taille : le fichier a été copié tel quel",

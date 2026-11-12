@@ -179,6 +179,8 @@
   "error.fon_too_large": ".fon 字体太大，无法转换",
   "error.fon_damaged": ".fon 文件已损坏或不完整",
   "error.m4s_needs_init": "此 .m4s 是流媒体视频的一个片段，没有单独的起始（init）分段就无法读取",
+  "error.nov_password": "此导出文件受密码保护，视频已加密：请在 Wisenet WAVE / Nx Witness 中不设密码重新导出",
+  "error.nov_no_video": "此导出文件中没有摄像机录像",
   "error.exe_unreadable": "这不是 Filee 能读取的 Windows 程序或库，或文件已损坏",
   "error.exe_no_icon": "此文件没有自己的图标（Windows 会为它显示标准图标）",
   "notice.pdf_not_smaller": "无法再缩小，已原样复制",

@@ -1134,6 +1134,9 @@ internal static class SettingsMigrations
         // v86: Paint.NET pictures (.pdn) learn the images donut; custom claims stay put.
         if (from < 86)
             changed |= LearnExtensions(profiles, out _, ["pdn"]);
+        // v87: Wisenet WAVE / Nx Witness exports (.nov) learn the video donut; custom claims stay put.
+        if (from < 87)
+            changed |= LearnExtensions(profiles, out _, ["nov"]);
         return changed;
     }
 

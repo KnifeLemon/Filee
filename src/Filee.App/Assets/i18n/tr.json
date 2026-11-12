@@ -173,6 +173,8 @@
   "error.fon_too_large": ".fon yazı tipi dönüştürmek için çok büyük",
   "error.fon_damaged": ".fon dosyası hasarlı veya eksik",
   "error.m4s_needs_init": "Bu .m4s, akışla gelen bir videonun bir parçası: ayrı başlangıç (init) segmenti olmadan okunamaz",
+  "error.nov_password": "Bu dışa aktarma parolayla korunuyor, bu yüzden videosu şifreli: Wisenet WAVE / Nx Witness'tan parolasız olarak yeniden dışa aktarın",
+  "error.nov_no_video": "Bu dışa aktarmada kamera kaydı yok",
   "error.exe_unreadable": "Bu, Filee'nin okuyabildiği bir Windows programı veya kitaplığı değil ya da dosya hasarlı",
   "error.exe_no_icon": "Bu dosyanın kendi simgesi yok (Windows onun için standart bir simge gösterir)",
   "notice.pdf_not_smaller": "Küçültülemediği için olduğu gibi kopyalandı",

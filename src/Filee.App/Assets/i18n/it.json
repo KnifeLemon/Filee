@@ -172,6 +172,8 @@
 "error.fon_too_large": "Il font .fon è troppo grande per essere convertito",
 "error.fon_damaged": "Il file .fon è danneggiato o troncato",
 "error.m4s_needs_init": "Questo .m4s è un frammento di un video in streaming: non può essere letto senza il suo segmento iniziale (init) separato",
+"error.nov_password": "Questa esportazione è protetta da password, quindi il video è cifrato: esportala di nuovo da Wisenet WAVE / Nx Witness senza password",
+"error.nov_no_video": "Questa esportazione non contiene registrazioni di telecamere",
 "error.exe_unreadable": "Non è un programma o una libreria di Windows che Filee può leggere, oppure il file è danneggiato",
 "error.exe_no_icon": "Questo file non ha un'icona propria (Windows gli mostra un'icona standard)",
 "notice.pdf_not_smaller": "Impossibile ridurlo, quindi è stato copiato così com'è",

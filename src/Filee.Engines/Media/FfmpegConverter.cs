@@ -130,6 +130,9 @@ public sealed partial class FfmpegConverter(ILogger? logger = null) : IConverter
         if (step.To == "heic")
             return await HeicWriter.ConvertAsync(ffmpeg, step, progress, cancellationToken);
         var input = Path.GetFullPath(step.InputPath);
+        // A Wisenet WAVE / Nx Witness export: FFmpeg reads its camera recording from inside it.
+        if (step.From == "nov")
+            input = NovExport.InputFor(input);
         var info = await MediaInfo.ProbeAsync(ffprobe, input, cancellationToken);
         progress?.Report(0.02);
 

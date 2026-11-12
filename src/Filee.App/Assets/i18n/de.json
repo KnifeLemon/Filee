@@ -173,6 +173,8 @@
   "error.fon_too_large": "Die .fon-Schrift ist zu groß zum Konvertieren",
   "error.fon_damaged": "Die .fon-Datei ist beschädigt oder unvollständig",
   "error.m4s_needs_init": "Diese .m4s-Datei ist ein Stück eines gestreamten Videos und lässt sich ohne ihr separates Startsegment (init) nicht lesen",
+  "error.nov_password": "Dieser Export ist mit einem Passwort geschützt, sein Video ist daher verschlüsselt: Exportieren Sie ihn in Wisenet WAVE / Nx Witness erneut ohne Passwort",
+  "error.nov_no_video": "Dieser Export enthält keine Kameraaufnahme",
   "error.exe_unreadable": "Das ist kein Windows-Programm und keine Bibliothek, die Filee lesen kann, oder die Datei ist beschädigt",
   "error.exe_no_icon": "Diese Datei hat kein eigenes Symbol (Windows zeigt für sie ein Standardsymbol)",
   "notice.pdf_not_smaller": "Die Datei ließ sich nicht verkleinern und wurde unverändert kopiert",

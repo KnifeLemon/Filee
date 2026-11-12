@@ -179,6 +179,8 @@
   "error.fon_too_large": "Phông chữ .fon quá lớn để chuyển đổi",
   "error.fon_damaged": "Tệp .fon bị hỏng hoặc bị cắt cụt",
   "error.m4s_needs_init": "Tệp .m4s này là một phần của video phát trực tuyến: không thể đọc nếu thiếu đoạn đầu (init) riêng của nó",
+  "error.nov_password": "Bản xuất này được bảo vệ bằng mật khẩu nên video bị mã hóa: hãy xuất lại từ Wisenet WAVE / Nx Witness mà không đặt mật khẩu",
+  "error.nov_no_video": "Bản xuất này không có bản ghi camera nào",
   "error.exe_unreadable": "Đây không phải chương trình hay thư viện Windows mà Filee đọc được, hoặc tệp bị hỏng",
   "error.exe_no_icon": "Tệp này không có biểu tượng riêng (Windows hiển thị biểu tượng mặc định cho nó)",
   "notice.pdf_not_smaller": "Không thể làm nhỏ hơn nên đã sao chép nguyên trạng",

@@ -158,6 +158,45 @@ public class MediaTests(EngineFixture fx) : IClassFixture<EngineFixture>
     }
 
     [Fact]
+    public void Nov_exports_are_read_but_never_written()
+    {
+        // Wisenet WAVE / Nx Witness exports: their recordings are read by FFmpeg from inside the file; never a target.
+        var route = Planner().Plan("nov", "mp4");
+        Assert.NotNull(route);
+        Assert.Equal("ffmpeg", Assert.Single(route.Steps).Converter.Id);
+        Assert.Null(Planner().Plan("mp4", "nov"));
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task A_wisenet_wave_export_converts_its_largest_recording_to_mp4(int version)
+    {
+        // The client stores each camera's recording as a Matroska stream among the layout's other streams; a short
+        // recording of the same camera comes first, the longer one is converted.
+        SkipUnlessInstalled();
+        var folder = fx.NewFolder();
+        var shorter = await MakeClipAsync(folder, "short.mkv", seconds: 1, size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac"]);
+        var longer = await MakeClipAsync(folder, "long.mkv", seconds: 2, size: "160x120", extra: ["-c:v", "libx264", "-c:a", "aac"]);
+        var export = Path.Combine(folder, "Parking lot.nov");
+        var ct = TestContext.Current.CancellationToken;
+        await File.WriteAllBytesAsync(export, NovFile.Write(
+        [
+            ("uuid.bin", "{5b3c0f8e-0000-4000-8000-000000000001}"u8.ToArray()),
+            ("e3e9a385-7fe0-3ba5-5482-a86cde7faf48_1791212400000.mkv", await File.ReadAllBytesAsync(shorter, ct)),
+            ("e3e9a385-7fe0-3ba5-5482-a86cde7faf48_1791212460000.mkv", await File.ReadAllBytesAsync(longer, ct)),
+            ("range.bin", new byte[16]),
+        ], version), ct);
+
+        var probed = await ProbeAsync(await ConvertAsync(export, "mp4"));
+        var video = probed.Video;
+        Assert.NotNull(video);
+        Assert.Equal(("h264", 160, 120, 50), (video.Codec, video.Width, video.Height, video.Frames));
+        Assert.Equal("aac", probed.Audio?.Codec);
+        Assert.InRange(probed.Duration, 1.7, 2.4);
+    }
+
+    [Fact]
     public void Flic_animations_are_read_but_never_written()
     {
         // #940: Autodesk Animator's FLIC, read by FFmpeg's flic demuxer; FFmpeg has no FLIC encoder, so never a target.

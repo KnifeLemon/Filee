@@ -179,6 +179,8 @@
   "error.fon_too_large": "A fonte .fon é demasiado grande para converter",
   "error.fon_damaged": "O ficheiro .fon está danificado ou incompleto",
   "error.m4s_needs_init": "Este .m4s é um pedaço de um vídeo em streaming e não pode ser lido sem o respetivo segmento inicial (init) separado",
+  "error.nov_password": "Esta exportação está protegida por palavra-passe, por isso o vídeo está cifrado: exporte-a de novo no Wisenet WAVE / Nx Witness sem palavra-passe",
+  "error.nov_no_video": "Esta exportação não contém nenhuma gravação de câmara",
   "error.exe_unreadable": "Não é um programa ou biblioteca do Windows que o Filee consiga ler, ou o ficheiro está danificado",
   "error.exe_no_icon": "Este ficheiro não tem ícone próprio (o Windows mostra-lhe um ícone predefinido)",
   "notice.pdf_not_smaller": "Não foi possível reduzir o tamanho, pelo que o ficheiro foi copiado sem alterações",

@@ -31,7 +31,7 @@ public class FormatFieldsTests
         "flc", "flv", "fodg", "fodp", "fods", "fodt", "fon", "geojson", "glb", "gltf", "gpx", "gz", "h264", "h265", "har",
         "hdr", "htmlz", "icns", "ipynb", "it", "jar", "jp2", "jsonl", "kml", "kmz", "kra", "lha", "lit", "lrf", "lwp", "lz",
         "lzma", "m4s", "man", "mcaddon", "mcpack", "mctemplate", "mcw", "mcworld", "mediawiki", "miff", "mng", "mobi",
-        "mod", "mp2", "mpc", "mrpack", "mxf", "obj", "oeb",
+        "mod", "mp2", "mpc", "mrpack", "mxf", "nov", "obj", "oeb",
         "org", "osm", "otf", "pam", "pcd", "pcx", "pdb", "pdn", "pfm", "plist", "plt", "ply", "pml", "ppm", "prc", "ps", "psb", "psd",
         "psw", "qoi", "ras", "raw", "rb", "rm", "rpm", "rst", "s3m", "scc", "sda", "sdc", "sdw", "sgi", "shp", "snb", "spx",
         "ssa", "stl", "sub", "swf", "tak", "tar", "tar7z", "tbz2", "tcr", "tex", "textile", "tgz", "tlz", "toml",
@@ -55,7 +55,7 @@ public class FormatFieldsTests
             ] },
         { "writing", ["adoc", "cgm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
-                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "scc", "ssa", "ttml"
+                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "nov", "scc", "ssa", "ttml"
             ] },
         { "audio-pro", ["ape", "dff", "dsf", "dss", "tak", "tta", "w64", "wv"] },
         { "legacy", [
@@ -82,7 +82,7 @@ public class FormatFieldsTests
             ] },
         { "writing", ["adoc", "cgm", "chm", "dbk", "htmlz", "mediawiki", "org", "rst", "tex", "textile", "txtz", "typ"] },
         { "video-pro", [
-                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "scc", "ssa", "ttml"
+                "ac3", "ass", "cavs", "dav", "dts", "dv", "eac3", "h264", "h265", "mp2", "mxf", "nov", "scc", "ssa", "ttml"
             ] },
         { "audio-pro", ["ape", "caf", "dff", "dsf", "dss", "it", "mpc", "s3m", "tak", "tta", "w64", "wv", "xm"] },
         { "legacy", [
@@ -145,7 +145,7 @@ public class FormatFieldsTests
             {
                 [FormatGrade.Everyday] = 19,
                 [FormatGrade.General] = 97,
-                [FormatGrade.Specialist] = 120,
+                [FormatGrade.Specialist] = 121,
                 [FormatGrade.Legacy] = 52,
             },
             counts);

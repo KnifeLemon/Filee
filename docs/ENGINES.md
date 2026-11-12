@@ -1811,6 +1811,16 @@ Dahua DVR / NVR recordings (`.dav`, read only, #594) are read by FFmpeg's `dhav`
 the target and preset allow it (`CanCopyVideo`), like any other container's; G.711 sound is encoded for targets that
 can't hold it. The chunks carry the camera's wall-clock time, so FFmpeg reports the recording date as the start time;
 the output starts at zero.
+Wisenet WAVE / Nx Witness exports (`.nov`, read only) are layout files written by Network Optix's client: named
+streams (a NUL-terminated name, then the data) and an index of where each starts, after them with a 20-byte footer
+(version 2) or before them (version 1), as `nx_open`'s `layout_file_info.h` (MPL-2.0) describes. Each camera's
+recording is a Matroska stream named `<camera id>_<start ms>.mkv`; `Media/NovExport.cs` reads the index and gives
+FFmpeg the largest recording through the `subfile` protocol, so nothing is copied, and it goes to every video and audio
+target. An export of several cameras, or of one camera with gaps, converts only that largest recording. A
+password-protected export is encrypted (AES-256, keyed by the password) and refused (`error.nov_password`), as is one
+without a recording (`error.nov_no_video`); a damaged index throws `InvalidDataException`, checked against the file's
+size before anything is allocated. The `.exe` export is the client's player with the same streams appended: it stays a
+Windows program (`.exe` is read for its icon) and is never run.
 Bink videos (`.bik`, read only, #751), the cutscene format of many games, are read by FFmpeg's `bink` demuxer and
 decoder and go to every video and audio target. FFmpeg has no Bink encoder, so nothing writes `.bik`.
 FLIC animations (`.flc` and `.fli`, read only, #940), from Autodesk Animator and Animator Pro and the cutscenes of DOS
