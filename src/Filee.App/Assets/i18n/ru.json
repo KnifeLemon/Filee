@@ -1772,6 +1772,8 @@
   "connect.manual_instruction_pin": "Либо откройте адрес выше в браузере телефона и введите PIN-код.",
   "connect.picker_files_title": "Выберите файлы для загрузки",
   "connect.picker_folder_title": "Выберите папку для загрузки",
+  "connect.upload_failed_one": "Не удалось загрузить \"{0}\".",
+  "connect.upload_failed_many": "Не удалось загрузить файлов: {0}.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Примечание: если телефон не подключается, разрешите Filee в системном брандмауэре.",
   "connect.no_network_message": "Не удалось запустить Filee Connect. Убедитесь, что это устройство подключено к локальной сети Wi-Fi или Ethernet.",

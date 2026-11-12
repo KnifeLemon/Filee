@@ -1748,6 +1748,8 @@
   "connect.manual_instruction_pin": "یا آدرس بالا را در مرورگر گوشی باز کرده و پین را وارد کنید.",
   "connect.picker_files_title": "انتخاب فایل‌ها برای بارگذاری",
   "connect.picker_folder_title": "انتخاب پوشه برای بارگذاری",
+  "connect.upload_failed_one": "بارگذاری \"{0}\" ممکن نشد.",
+  "connect.upload_failed_many": "بارگذاری {0} فایل ممکن نشد.",
   "connect.pin_label": "پین:",
   "connect.firewall_hint_generic": "توجه: اگر تلفن شما متصل نمی‌شود، به Filee در فایروال سیستم اجازه دسترسی دهید.",
   "connect.no_network_message": "Filee Connect راه‌اندازی نشد. لطفاً مطمئن شوید این دستگاه به شبکه Wi-Fi یا اترنت محلی متصل است.",

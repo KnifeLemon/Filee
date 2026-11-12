@@ -1752,6 +1752,8 @@
   "connect.manual_instruction_pin": "वा आफ्नो फोनको ब्राउजरमा माथिको ठेगाना खोल्नुहोस् र पिन हाल्नुहोस्।",
   "connect.picker_files_title": "अपलोड गर्न फाइलहरू चयन गर्नुहोस्",
   "connect.picker_folder_title": "अपलोड गर्न फोल्डर चयन गर्नुहोस्",
+  "connect.upload_failed_one": "\"{0}\" अपलोड गर्न सकिएन।",
+  "connect.upload_failed_many": "{0} फाइलहरू अपलोड गर्न सकिएन।",
   "connect.pin_label": "पिन:",
   "connect.firewall_hint_generic": "नोट: यदि तपाईंको फोन जडान हुन सकेन भने, प्रणाली फायरवालमा Filee लाई अनुमति दिनुहोस्।",
   "connect.no_network_message": "Filee Connect सुरु गर्न सकिएन। कृपया यो यन्त्र स्थानीय Wi-Fi वा इथरनेट नेटवर्कमा जडान भएको निश्चित गर्नुहोस्।",

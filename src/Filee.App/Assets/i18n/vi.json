@@ -1772,6 +1772,8 @@
   "connect.manual_instruction_pin": "Hoặc mở địa chỉ trên trong trình duyệt điện thoại và nhập mã PIN.",
   "connect.picker_files_title": "Chọn tệp để tải lên",
   "connect.picker_folder_title": "Chọn thư mục để tải lên",
+  "connect.upload_failed_one": "Không thể tải lên \"{0}\".",
+  "connect.upload_failed_many": "Không thể tải lên {0} tệp.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Lưu ý: Nếu điện thoại không thể kết nối, hãy cho phép Filee trong tường lửa hệ thống.",
   "connect.no_network_message": "Không thể khởi động Filee Connect. Vui lòng đảm bảo thiết bị này được kết nối với mạng Wi-Fi hoặc Ethernet cục bộ.",

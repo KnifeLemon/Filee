@@ -1752,6 +1752,8 @@
   "connect.manual_instruction_pin": "O abra la dirección anterior en el navegador de su teléfono e introduzca el PIN.",
   "connect.picker_files_title": "Seleccionar archivos para subir",
   "connect.picker_folder_title": "Seleccionar carpeta para subir",
+  "connect.upload_failed_one": "No se pudo subir \"{0}\".",
+  "connect.upload_failed_many": "No se pudieron subir {0} archivos.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Nota: Si tu teléfono no puede conectarse, permite Filee en el cortafuegos del sistema.",
   "connect.no_network_message": "No se pudo iniciar Filee Connect. Asegúrate de que este dispositivo esté conectado a una red Wi-Fi o Ethernet local.",

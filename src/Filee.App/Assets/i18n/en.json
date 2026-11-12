@@ -1772,6 +1772,8 @@
   "connect.manual_instruction_pin": "Or open the address above in your phone's browser and enter the PIN.",
   "connect.picker_files_title": "Select files to upload",
   "connect.picker_folder_title": "Select folder to upload",
+  "connect.upload_failed_one": "Could not upload \"{0}\".",
+  "connect.upload_failed_many": "Could not upload {0} files.",
   "connect.pin_label": "PIN:",
   "connect.firewall_hint_generic": "Note: If your phone cannot connect, allow Filee in your system firewall.",
   "connect.no_network_message": "Could not start Filee Connect. Please ensure this device is connected to a local Wi-Fi or Ethernet network.",
