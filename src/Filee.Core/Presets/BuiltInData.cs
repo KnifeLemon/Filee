@@ -756,7 +756,7 @@ public static class BuiltInData
         {
             (List<string> Front, List<string> Back) layout = profile.Id switch
             {
-                "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "trace-svg"],
+                "images" => (["to-png", "to-jpg", "to-webp", "to-gif", "to-pdf", "merge-pdf", "trace-svg"],
                     ["tool-crop", "rotate", "remove-background", "merge-images", "compress-image", "half-size", "tool-image-edit", "zip-all"]),
                 "pdf" => (["to-png", "to-jpg", "to-docx", "to-xlsx", "pdf-slides", "to-txt", "to-hwpx", "to-hwp"],
                     ["pdf-edit", "pdf-split", "merge-pdf", "compress-pdf", "remove-metadata", "to-tiff", "to-html", "zip-all"]),
