@@ -147,6 +147,14 @@ public sealed class Preset
     public OutputRule Output { get; set; } = new();
 
     /// <summary>
+    /// "Ask every time" for the compression (#1353): files dropped on the donut open a small window first, where the
+    /// picture quality, the video quality, the audio bitrate or the PDF level is chosen with the size it will roughly
+    /// come to (<see cref="AskedCompression"/>). Off by default; watch folders and the command line use the preset's
+    /// own values.
+    /// </summary>
+    public bool AskCompression { get; set; }
+
+    /// <summary>
     /// The icon its donut slice shows: the key of one of the app's slice icons, <see cref="NoIcon"/> for none, or null
     /// for the default (a built-in preset's own icon; none for plain format conversions and the user's presets).
     /// </summary>
@@ -444,6 +452,7 @@ public sealed class Preset
         ShortName = ShortName,
         Show = Show,
         Direction = Direction,
+        AskCompression = AskCompression,
         Kind = Kind,
         Tool = Tool,
         SubPresetIds = [.. SubPresetIds],

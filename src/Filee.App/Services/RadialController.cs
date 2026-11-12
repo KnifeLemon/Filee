@@ -456,6 +456,16 @@ public sealed class RadialController(
             return;
         }
 
+        // "Ask every time" for the compression (#1353): a small window for the files with a level to choose first, then
+        // the save dialog when that asks too; the toast shows the job, the donut has closed for the window.
+        if (AskedCompression.Asks(preset) && sources.Any(s => AskedCompression.KindOf(preset, s) is not null))
+        {
+            KeepKeyboard(); // for the compression window
+            Close(animate: false);
+            _ = AskCompressionThenConvertAsync(sources, preset, web, _toClipboard, _onJob);
+            return;
+        }
+
         // "Ask every time" (#521): the save dialog first; the toast shows the job, the donut has closed for the dialog.
         // shortcut: files from a browser aren't asked about, they save into the download folder as "next to the source".
         if (preset.Output.AskEveryTime && (web is null || preset.IsCopyToFolder))
@@ -645,6 +655,106 @@ public sealed class RadialController(
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log.LogWarning(ex, "Could not remember how the pages were split");
+        }
+    }
+
+    /// <summary>
+    /// "Choose the compression" (#1353): one window for all the files dropped, since one setting goes for every file of a
+    /// kind. Cancelling it starts nothing. The files then convert with the setting chosen, for this conversion only (as
+    /// "Choose pages"); ones without a level to choose (a PNG on "Compress image") convert as the preset says, in a job
+    /// of their own. The preset keeps the setting only with "Remember for this preset". Files from a browser are saved
+    /// first, as for a tool: the estimate reads the files themselves.
+    /// </summary>
+    private async Task AskCompressionThenConvertAsync(IReadOnlyList<string> files, Preset preset, WebDrop? web, bool toClipboard,
+        Action<ConversionJob>? onJob)
+    {
+        try
+        {
+            if (web is not null)
+            {
+                var drop = web;
+                web = null; // saving it disposes it
+                files = await conversions.SaveBrowserFilesAsync(drop, (placeholder, ex) =>
+                    log.LogWarning(ex, "Saving {File} from a browser for {Preset} failed", Path.GetFileName(placeholder), preset.Id));
+            }
+            if (await windows.AskCompressionAsync(files, preset) is not { } answer)
+            {
+                log.LogInformation("Choosing the compression for {Preset} was cancelled; nothing converts", preset.Id);
+                return;
+            }
+            if (answer.Remember)
+                RememberCompression(preset, answer.Choice, files);
+            var runs = AskedCompression.Runs(preset, answer.Choice, files);
+            if (preset.Output.AskEveryTime)
+            {
+                // "Ask every time" (#521): one save dialog for the whole drop, its place for every run, so a JPG and a
+                // PNG dropped together aren't asked about twice nor saved apart.
+                var running = store.Settings.WithDefaultOutput(preset);
+                if (await windows.AskSaveLocationAsync(files, running, AskedLocation.MakesOneResult(running, files.Count)) is not { } located)
+                {
+                    log.LogInformation("Choosing where to save for {Preset} was cancelled; nothing converts", preset.Id);
+                    return;
+                }
+                runs = AskedCompression.Runs(preset, answer.Choice, files, located.Output);
+            }
+            log.LogInformation("Converting {Count} file(s) with preset {Preset} at the compression chosen", files.Count, preset.Id);
+            foreach (var (runFiles, runPreset) in runs)
+            {
+                if (conversions.Start(runFiles, runPreset, toClipboard: toClipboard) is { } job)
+                    onJob?.Invoke(job.Job);
+            }
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            log.LogError(ex, "Could not convert at the compression chosen");
+        }
+        finally
+        {
+            web?.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// "Choose the compression" with "Remember for this preset": the settings chosen for the kinds of file dropped
+    /// (<paramref name="files"/>) go into the preset as saved, so the window, watch folders and the command line use
+    /// them from now on.
+    /// </summary>
+    private void RememberCompression(Preset preset, CompressionChoice chosen, IReadOnlyList<string> files)
+    {
+        if (store.FindPreset(preset.Id) is not { } saved)
+            return;
+        var changed = false;
+        foreach (var kind in AskedCompression.KindsOf(preset, files))
+        {
+            switch (kind)
+            {
+                case CompressionKind.Image when saved.Image.Quality != chosen.ImageQuality:
+                    saved.Image.Quality = chosen.ImageQuality;
+                    changed = true;
+                    break;
+                case CompressionKind.Video when saved.Media.Quality != chosen.VideoQuality:
+                    saved.Media.Quality = chosen.VideoQuality;
+                    changed = true;
+                    break;
+                case CompressionKind.Audio when saved.Media.AudioBitrateKbps != chosen.AudioBitrateKbps:
+                    saved.Media.AudioBitrateKbps = chosen.AudioBitrateKbps;
+                    changed = true;
+                    break;
+                case CompressionKind.Pdf when saved.Pdf.Compression != chosen.Pdf:
+                    saved.Pdf.Compression = chosen.Pdf;
+                    changed = true;
+                    break;
+            }
+        }
+        if (!changed)
+            return;
+        try
+        {
+            store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remember the compression chosen");
         }
     }
 

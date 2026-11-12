@@ -129,6 +129,11 @@
             <TextBlock Classes="label" Text="{DynamicResource presets.quality}" />
           </DockPanel>
           <Slider Minimum="1" Maximum="100" Value="{Binding Quality}" TickFrequency="1" IsSnapToTickEnabled="True" AutomationProperties.Name="{DynamicResource presets.quality}" />
+          <!-- #1353: a small window asks for the quality of the pictures dropped on the donut, with the size they come to. -->
+          <StackPanel Spacing="2" IsVisible="{Binding ShowAskCompressionImage}">
+            <CheckBox x:Name="AskCompressionImage" Content="{DynamicResource presets.ask_compression}" IsChecked="{Binding AskCompression}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.ask_compression_hint}" IsVisible="{Binding AskCompression}" />
+          </StackPanel>
         </StackPanel>
         <!-- File size range (#553, #662): both ends in one unit; the preset keeps megabytes. -->
         <StackPanel IsVisible="{Binding ShowQuality}" Spacing="4">
@@ -432,6 +437,11 @@
           </StackPanel>
         </UniformGrid>
         <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.ringtone_hint}" IsVisible="{Binding ShowRingtone}" />
+        <!-- #1353: a small window asks for the quality or bitrate of the files dropped on the donut. -->
+        <StackPanel Spacing="2" IsVisible="{Binding ShowAskCompressionMedia}">
+          <CheckBox x:Name="AskCompressionMedia" Content="{DynamicResource presets.ask_compression}" IsChecked="{Binding AskCompression}" />
+          <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.ask_compression_hint}" IsVisible="{Binding AskCompression}" />
+        </StackPanel>
         <StackPanel Spacing="2" IsVisible="{Binding ShowHardwareEncoding}">
           <CheckBox Content="{DynamicResource presets.hardware_encoding}" IsChecked="{Binding HardwareEncoding}" />
           <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.hardware_encoding_hint}" />
@@ -592,6 +602,11 @@
             </StackPanel>
           </Grid>
           <TextBlock Classes="caption" TextWrapping="Wrap" Text="{DynamicResource presets.pdf_compression_hint}" />
+          <!-- #1353: a small window asks for the level of the PDFs dropped on the donut, with the size they come to. -->
+          <StackPanel Spacing="2" Margin="0,6,0,0" IsVisible="{Binding ShowAskCompressionPdf}">
+            <CheckBox x:Name="AskCompressionPdf" Content="{DynamicResource presets.ask_compression}" IsChecked="{Binding AskCompression}" />
+            <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.ask_compression_hint}" IsVisible="{Binding AskCompression}" />
+          </StackPanel>
           <StackPanel Spacing="2" Margin="0,6,0,0" IsVisible="{Binding ShowPdfCompressionOptions}">
             <CheckBox Content="{DynamicResource presets.pdf_ghostscript}" IsChecked="{Binding CompressWithGhostscript}" />
             <TextBlock Classes="caption" TextWrapping="Wrap" Margin="28,0,0,0" Text="{DynamicResource presets.pdf_ghostscript_hint}" />

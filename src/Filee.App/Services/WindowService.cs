@@ -258,6 +258,54 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
         return dialog.Result;
     }
 
+    private AskCompressionWindow? _askCompression;
+
+    internal AskCompressionWindow? AskCompression => _askCompression;
+
+    /// <summary>
+    /// "Choose the compression" (#1353) for the files dropped on <paramref name="preset"/>: the setting of each kind
+    /// among them and the size they will roughly come to, read from the files while the window is open. Null when
+    /// cancelled.
+    /// </summary>
+    public async Task<CompressionAnswer?> AskCompressionAsync(IReadOnlyList<string> files, Preset preset)
+    {
+        _askCompression?.Close();
+        var asked = files.Where(f => AskedCompression.KindOf(preset, f) is not null).ToList();
+        var sourceBytes = asked.Sum(f => File.Exists(f) ? new FileInfo(f).Length : 0);
+        var logger = services.GetService<ILogger<WindowService>>();
+        using var closing = new CancellationTokenSource();
+        var reading = Filee.Engines.CompressionEstimator.ReadAsync(asked, preset, logger, closing.Token);
+        using var vm = new AskCompressionViewModel(preset, asked, sourceBytes,
+            async (choice, ct) => await (await reading).EstimateAsync(choice, ct), loc);
+        var dialog = new AskCompressionWindow { DataContext = vm };
+        dialog.StartCompression.Content = loc.DisplayName(preset);
+        PrepareWindow(dialog);
+        var closed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        dialog.Closed += (_, _) =>
+        {
+            if (_askCompression == dialog) _askCompression = null;
+            closed.TrySetResult();
+        };
+        _askCompression = dialog;
+        dialog.Show();
+        dialog.Activate();
+        await closed.Task;
+        // The pictures read for the estimate are let go once it is no longer shown, after the estimate under way ends.
+        vm.Dispose();
+        await closing.CancelAsync();
+        try
+        {
+            var estimator = await reading;
+            await Task.Run(estimator.Dispose);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (ex is not OperationCanceledException)
+                logger?.LogInformation(ex, "Reading the files for the compression estimate failed");
+        }
+        return dialog.Result;
+    }
+
     /// <summary>The pages of a PDF, or null when it can't be read (damaged, locked with a password, gone).</summary>
     internal int? CountPages(string path)
     {
