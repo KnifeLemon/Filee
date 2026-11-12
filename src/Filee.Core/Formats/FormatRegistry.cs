@@ -42,6 +42,8 @@ public static class FormatRegistry
         new("dds", "DDS", FormatCategory.Image, ["dds"]),
         new("pcx", "PCX", FormatCategory.Image, ["pcx"]),
         new("cur", "CUR", FormatCategory.Image, ["cur"]),
+        // Windows animated cursor (#1365), read by Filee: every step with its time, or the first one as a picture.
+        new("ani", "Animated cursor (ANI)", FormatCategory.Image, ["ani"], Writable: false),
         new("xpm", "XPM", FormatCategory.Image, ["xpm"]),
         new("xbm", "XBM", FormatCategory.Image, ["xbm"]),
         new("wbmp", "WBMP", FormatCategory.Image, ["wbmp"]),
