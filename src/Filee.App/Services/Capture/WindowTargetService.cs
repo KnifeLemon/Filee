@@ -57,6 +57,13 @@ public sealed class WindowTargetService
     private delegate bool EnumWindowsProc(nint hWnd, nint lParam);
 
     [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern nint GetWindow(nint hWnd, uint uCmd);
+    private const uint GW_HWNDNEXT = 2;
+
+    [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, nint lParam);
 
@@ -67,41 +74,123 @@ public sealed class WindowTargetService
 
         try
         {
-            var hwnd = WindowFromPoint(new POINT { X = x, Y = y });
-            if (hwnd == 0)
-                return null;
+            var myPid = (uint)Environment.ProcessId;
 
-            var root = GetAncestor(hwnd, GA_ROOT);
-            if (root != 0)
-                hwnd = root;
-
-            var className = GetWindowClassName(hwnd);
-            if (IsShellOrDesktopClass(className))
-                return null;
-
-            var title = GetWindowTitle(hwnd);
-            GetWindowThreadProcessId(hwnd, out var pid);
-
-            string processName = "Unknown";
-            try
+            // Strategy 1: If coordinates given, enumerate top-level windows in Z-order to find the topmost
+            // non-Filee, non-desktop application window containing (x, y).
+            if (x != 0 || y != 0)
             {
-                using var proc = Process.GetProcessById((int)pid);
-                processName = proc.ProcessName;
-                if (string.IsNullOrWhiteSpace(title))
-                    title = proc.MainWindowTitle;
-            }
-            catch
-            {
-                // Process may have exited or insufficient permissions
-            }
-
-            if (GetWindowRect(hwnd, out var rect))
-            {
-                var width = rect.Right - rect.Left;
-                var height = rect.Bottom - rect.Top;
-                if (width > 50 && height > 50)
+                WindowTargetInfo? targetUnderCursor = null;
+                EnumWindows((hwnd, _) =>
                 {
-                    return new WindowTargetInfo(hwnd, title, processName, rect.Left, rect.Top, width, height);
+                    if (!IsWindowVisible(hwnd) || IsIconic(hwnd))
+                        return true;
+
+                    var className = GetWindowClassName(hwnd);
+                    if (IsShellOrDesktopClass(className))
+                        return true;
+
+                    GetWindowThreadProcessId(hwnd, out var pid);
+                    if (pid == myPid)
+                        return true;
+
+                    if (GetWindowRect(hwnd, out var rect))
+                    {
+                        if (rect.Left <= x && x <= rect.Right && rect.Top <= y && y <= rect.Bottom)
+                        {
+                            var width = rect.Right - rect.Left;
+                            var height = rect.Bottom - rect.Top;
+                            if (width > 80 && height > 80)
+                            {
+                                var title = GetWindowTitle(hwnd);
+                                string procName = "App";
+                                try
+                                {
+                                    using var proc = Process.GetProcessById((int)pid);
+                                    procName = proc.ProcessName;
+                                    if (string.IsNullOrWhiteSpace(title))
+                                        title = proc.MainWindowTitle;
+                                }
+                                catch { }
+
+                                targetUnderCursor = new WindowTargetInfo(hwnd, title, procName, rect.Left, rect.Top, width, height);
+                                return false; // Found topmost window under cursor
+                            }
+                        }
+                    }
+                    return true;
+                }, 0);
+
+                if (targetUnderCursor != null)
+                    return targetUnderCursor;
+            }
+
+            // Strategy 2: Check current foreground window
+            var fg = GetForegroundWindow();
+            if (fg != 0)
+            {
+                GetWindowThreadProcessId(fg, out var fgPid);
+                if (fgPid != myPid)
+                {
+                    var fgClass = GetWindowClassName(fg);
+                    if (!IsShellOrDesktopClass(fgClass) && GetWindowRect(fg, out var rect))
+                    {
+                        var width = rect.Right - rect.Left;
+                        var height = rect.Bottom - rect.Top;
+                        if (width > 80 && height > 80)
+                        {
+                            var title = GetWindowTitle(fg);
+                            string procName = "App";
+                            try
+                            {
+                                using var proc = Process.GetProcessById((int)fgPid);
+                                procName = proc.ProcessName;
+                                if (string.IsNullOrWhiteSpace(title))
+                                    title = proc.MainWindowTitle;
+                            }
+                            catch { }
+
+                            return new WindowTargetInfo(fg, title, procName, rect.Left, rect.Top, width, height);
+                        }
+                    }
+                }
+            }
+
+            // Strategy 3: Direct WindowFromPoint with ancestor resolution
+            var hwndFromPoint = WindowFromPoint(new POINT { X = x, Y = y });
+            if (hwndFromPoint != 0)
+            {
+                var root = GetAncestor(hwndFromPoint, GA_ROOT);
+                if (root != 0)
+                    hwndFromPoint = root;
+
+                GetWindowThreadProcessId(hwndFromPoint, out var pid);
+                if (pid != myPid)
+                {
+                    var className = GetWindowClassName(hwndFromPoint);
+                    if (!IsShellOrDesktopClass(className))
+                    {
+                        var title = GetWindowTitle(hwndFromPoint);
+                        string processName = "App";
+                        try
+                        {
+                            using var proc = Process.GetProcessById((int)pid);
+                            processName = proc.ProcessName;
+                            if (string.IsNullOrWhiteSpace(title))
+                                title = proc.MainWindowTitle;
+                        }
+                        catch { }
+
+                        if (GetWindowRect(hwndFromPoint, out var rect))
+                        {
+                            var width = rect.Right - rect.Left;
+                            var height = rect.Bottom - rect.Top;
+                            if (width > 50 && height > 50)
+                            {
+                                return new WindowTargetInfo(hwndFromPoint, title, processName, rect.Left, rect.Top, width, height);
+                            }
+                        }
+                    }
                 }
             }
         }

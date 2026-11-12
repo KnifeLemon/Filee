@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Filee.App.Services.Capture;
@@ -15,10 +16,28 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     private bool _isPaused = false;
 
     [ObservableProperty]
+    private bool _isCollapsed = false;
+
+    [ObservableProperty]
     private string _elapsedTimeText = "00:00";
 
     [ObservableProperty]
     private AnnotationTool _selectedTool = AnnotationTool.Pointer;
+
+    [ObservableProperty]
+    private string _selectedColorHex = "#FF3B30";
+
+    public ObservableCollection<string> PaletteColors { get; } =
+    [
+        "#FF3B30", // Red
+        "#FF9500", // Orange
+        "#FFCC00", // Yellow
+        "#34C759", // Green
+        "#007AFF", // Blue
+        "#AF52DE", // Purple
+        "#FFFFFF", // White
+        "#1C1C1E"  // Black / Dark
+    ];
 
     [ObservableProperty]
     private bool _isMicMuted = false;
@@ -41,6 +60,7 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
     public event Action? PauseToggled;
     public event Action? StopRequested;
     public event Action<AnnotationTool>? ToolSelected;
+    public event Action<string>? ColorSelected;
     public event Action? ClearAnnotationsRequested;
     public event Action<bool>? CursorHighlightToggled;
     public event Action<bool>? SpotlightToggled;
@@ -87,6 +107,22 @@ public sealed partial class CaptureStudioBarViewModel : ObservableObject
         IsRecording = false;
         _service.RecordingEngine.ElapsedTimeTicked -= OnTimeTicked;
         StopRequested?.Invoke();
+    }
+
+    [RelayCommand]
+    private void ToggleCollapse()
+    {
+        IsCollapsed = !IsCollapsed;
+    }
+
+    [RelayCommand]
+    private void SelectColor(string hex)
+    {
+        if (!string.IsNullOrWhiteSpace(hex))
+        {
+            SelectedColorHex = hex;
+            ColorSelected?.Invoke(hex);
+        }
     }
 
     [RelayCommand]

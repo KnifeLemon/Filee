@@ -78,6 +78,15 @@ public sealed class CaptureStudioTests
         vm.ToggleSpotlightCommand.Execute(null);
         Assert.True(vm.IsSpotlightActive);
         Assert.True(spotlightNotified);
+
+        string? colorChosen = null;
+        vm.ColorSelected += c => colorChosen = c;
+        vm.SelectColorCommand.Execute("#007AFF");
+        Assert.Equal("#007AFF", vm.SelectedColorHex);
+        Assert.Equal("#007AFF", colorChosen);
+
+        vm.ToggleCollapseCommand.Execute(null);
+        Assert.True(vm.IsCollapsed);
     }
 
     [Fact]

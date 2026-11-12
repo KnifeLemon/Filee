@@ -212,9 +212,13 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             _captureOverlayWindow = overlayWindow;
 
             barVm.ToolSelected += tool => overlayWindow.UpdateTool(tool);
+            barVm.ColorSelected += hex => overlayWindow.UpdateColor(hex);
             barVm.ClearAnnotationsRequested += () => overlayWindow.ClearAnnotations();
             barVm.CursorHighlightToggled += active => overlayWindow.UpdateCursorHighlight(active);
             barVm.SpotlightToggled += active => overlayWindow.UpdateSpotlight(active, barVm.SpotlightRadius);
+
+            barWindow.HoverChanged += hovered => overlayWindow.SetToolbarHover(hovered);
+            barWindow.BoundsChangedNotification += bounds => overlayWindow.UpdateToolbarBounds(bounds);
 
             barVm.MobileMirrorToggled += () =>
             {
@@ -251,13 +255,14 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
             };
 
             overlayWindow.Show();
-            barWindow.Show();
+            barWindow.Show(overlayWindow);
 
             var screen = barWindow.Screens.ScreenFromWindow(barWindow) ?? barWindow.Screens.Primary;
             if (screen != null)
             {
                 var wa = screen.WorkingArea;
                 barWindow.Position = new PixelPoint(wa.X + (wa.Width - 620) / 2, wa.Y + 20);
+                barWindow.NotifyBounds();
             }
         };
 

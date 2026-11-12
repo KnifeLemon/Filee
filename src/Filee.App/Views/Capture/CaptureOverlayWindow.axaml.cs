@@ -23,6 +23,13 @@ public partial class CaptureOverlayWindow : Window
     private double _spotlightRadius = 120;
     private bool _cursorHighlightActive = true;
 
+    private IBrush _activeBrush = new SolidColorBrush(Color.FromRgb(255, 59, 48)); // #FF3B30
+    private Color _activeColor = Color.FromRgb(255, 59, 48);
+
+    private bool _isToolbarHovered;
+    private Rect _toolbarBounds;
+    private Control? _activePreviewControl;
+
     public CaptureOverlayWindow()
     {
         InitializeComponent();
@@ -57,8 +64,27 @@ public partial class CaptureOverlayWindow : Window
     public void UpdateTool(AnnotationTool tool)
     {
         _currentTool = tool;
-        // If pointer, make canvas pass through clicks when not annotating
-        OverlayCanvas.IsHitTestVisible = tool != AnnotationTool.Pointer;
+        OverlayCanvas.IsHitTestVisible = !_isToolbarHovered && tool != AnnotationTool.Pointer;
+    }
+
+    public void UpdateColor(string hex)
+    {
+        if (Color.TryParse(hex, out var c))
+        {
+            _activeColor = c;
+            _activeBrush = new SolidColorBrush(c);
+        }
+    }
+
+    public void SetToolbarHover(bool hovered)
+    {
+        _isToolbarHovered = hovered;
+        OverlayCanvas.IsHitTestVisible = !hovered && _currentTool != AnnotationTool.Pointer;
+    }
+
+    public void UpdateToolbarBounds(Rect bounds)
+    {
+        _toolbarBounds = bounds;
     }
 
     public void UpdateSpotlight(bool active, double radius = 120)
@@ -83,6 +109,11 @@ public partial class CaptureOverlayWindow : Window
 
     public void ClearAnnotations()
     {
+        if (_activePreviewControl != null)
+        {
+            OverlayCanvas.Children.Remove(_activePreviewControl);
+            _activePreviewControl = null;
+        }
         foreach (var ctrl in _annotationControls)
         {
             OverlayCanvas.Children.Remove(ctrl);
@@ -92,10 +123,15 @@ public partial class CaptureOverlayWindow : Window
 
     private void OnCanvasPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        if (_currentTool == AnnotationTool.Pointer)
+        if (_isToolbarHovered || _currentTool == AnnotationTool.Pointer)
             return;
 
         var p = e.GetPosition(OverlayCanvas);
+
+        // Discard clicks physically inside toolbar bounds
+        if (_toolbarBounds.Width > 0 && _toolbarBounds.Contains(p))
+            return;
+
         _startPoint = p;
         _isDrawing = true;
 
@@ -103,6 +139,72 @@ public partial class CaptureOverlayWindow : Window
         {
             AddTextCallout(p);
             _isDrawing = false;
+            return;
+        }
+
+        // Live visual feedback: create preview shape immediately starting at point p
+        switch (_currentTool)
+        {
+            case AnnotationTool.Circle:
+                _activePreviewControl = new Ellipse
+                {
+                    Stroke = _activeBrush,
+                    StrokeThickness = 3,
+                    Fill = new SolidColorBrush(Color.FromArgb(25, _activeColor.R, _activeColor.G, _activeColor.B)),
+                    Width = 2,
+                    Height = 2,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(_activePreviewControl, p.X);
+                Canvas.SetTop(_activePreviewControl, p.Y);
+                OverlayCanvas.Children.Add(_activePreviewControl);
+                break;
+
+            case AnnotationTool.Rectangle:
+                _activePreviewControl = new Rectangle
+                {
+                    Stroke = _activeBrush,
+                    StrokeThickness = 3,
+                    RadiusX = 4,
+                    RadiusY = 4,
+                    Fill = new SolidColorBrush(Color.FromArgb(25, _activeColor.R, _activeColor.G, _activeColor.B)),
+                    Width = 2,
+                    Height = 2,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(_activePreviewControl, p.X);
+                Canvas.SetTop(_activePreviewControl, p.Y);
+                OverlayCanvas.Children.Add(_activePreviewControl);
+                break;
+
+            case AnnotationTool.Arrow:
+                _activePreviewControl = new Line
+                {
+                    StartPoint = p,
+                    EndPoint = p,
+                    Stroke = _activeBrush,
+                    StrokeThickness = 4,
+                    StrokeLineCap = PenLineCap.Round,
+                    IsHitTestVisible = false
+                };
+                OverlayCanvas.Children.Add(_activePreviewControl);
+                break;
+
+            case AnnotationTool.Blur:
+                _activePreviewControl = new Rectangle
+                {
+                    Stroke = Brushes.LightGray,
+                    StrokeThickness = 2,
+                    StrokeDashArray = [4, 4],
+                    Fill = new SolidColorBrush(Color.FromArgb(120, 200, 200, 200)),
+                    Width = 2,
+                    Height = 2,
+                    IsHitTestVisible = false
+                };
+                Canvas.SetLeft(_activePreviewControl, p.X);
+                Canvas.SetTop(_activePreviewControl, p.Y);
+                OverlayCanvas.Children.Add(_activePreviewControl);
+                break;
         }
     }
 
@@ -134,13 +236,37 @@ public partial class CaptureOverlayWindow : Window
             {
                 StartPoint = _startPoint,
                 EndPoint = p,
-                Stroke = Brushes.Red,
+                Stroke = _activeBrush,
                 StrokeThickness = 4,
-                StrokeLineCap = PenLineCap.Round
+                StrokeLineCap = PenLineCap.Round,
+                IsHitTestVisible = false
             };
             OverlayCanvas.Children.Add(line);
             _annotationControls.Add(line);
             _startPoint = p;
+            return;
+        }
+
+        // Dynamic rubber-band expansion/shrinking with mouse movement for shapes
+        if (_activePreviewControl != null)
+        {
+            var minX = Math.Min(_startPoint.X, p.X);
+            var minY = Math.Min(_startPoint.Y, p.Y);
+            var w = Math.Max(2, Math.Abs(p.X - _startPoint.X));
+            var h = Math.Max(2, Math.Abs(p.Y - _startPoint.Y));
+
+            if (_activePreviewControl is Ellipse or Rectangle)
+            {
+                _activePreviewControl.Width = w;
+                _activePreviewControl.Height = h;
+                Canvas.SetLeft(_activePreviewControl, minX);
+                Canvas.SetTop(_activePreviewControl, minY);
+            }
+            else if (_activePreviewControl is Line line)
+            {
+                line.StartPoint = _startPoint;
+                line.EndPoint = p;
+            }
         }
     }
 
@@ -152,16 +278,25 @@ public partial class CaptureOverlayWindow : Window
         _isDrawing = false;
         var endPoint = e.GetPosition(OverlayCanvas);
 
+        if (_activePreviewControl != null)
+        {
+            if (_currentTool is AnnotationTool.Circle or AnnotationTool.Rectangle)
+            {
+                // Shape is finalized in place
+                _annotationControls.Add(_activePreviewControl);
+                _activePreviewControl = null;
+                return;
+            }
+
+            // Remove preview wireframe before creating composite shapes
+            OverlayCanvas.Children.Remove(_activePreviewControl);
+            _activePreviewControl = null;
+        }
+
         switch (_currentTool)
         {
             case AnnotationTool.Arrow:
                 AddArrow(_startPoint, endPoint);
-                break;
-            case AnnotationTool.Rectangle:
-                AddRectangle(_startPoint, endPoint);
-                break;
-            case AnnotationTool.Circle:
-                AddCircle(_startPoint, endPoint);
                 break;
             case AnnotationTool.Blur:
                 AddBlurMask(_startPoint, endPoint);
@@ -190,9 +325,10 @@ public partial class CaptureOverlayWindow : Window
         {
             StartPoint = from,
             EndPoint = to,
-            Stroke = Brushes.Red,
+            Stroke = _activeBrush,
             StrokeThickness = 4,
-            StrokeLineCap = PenLineCap.Round
+            StrokeLineCap = PenLineCap.Round,
+            IsHitTestVisible = false
         };
         OverlayCanvas.Children.Add(line);
         _annotationControls.Add(line);
@@ -205,45 +341,13 @@ public partial class CaptureOverlayWindow : Window
         var head1 = new Point(to.X - arrowLength * Math.Cos(angle - arrowAngle), to.Y - arrowLength * Math.Sin(angle - arrowAngle));
         var head2 = new Point(to.X - arrowLength * Math.Cos(angle + arrowAngle), to.Y - arrowLength * Math.Sin(angle + arrowAngle));
 
-        var l1 = new Line { StartPoint = to, EndPoint = head1, Stroke = Brushes.Red, StrokeThickness = 4, StrokeLineCap = PenLineCap.Round };
-        var l2 = new Line { StartPoint = to, EndPoint = head2, Stroke = Brushes.Red, StrokeThickness = 4, StrokeLineCap = PenLineCap.Round };
+        var l1 = new Line { StartPoint = to, EndPoint = head1, Stroke = _activeBrush, StrokeThickness = 4, StrokeLineCap = PenLineCap.Round, IsHitTestVisible = false };
+        var l2 = new Line { StartPoint = to, EndPoint = head2, Stroke = _activeBrush, StrokeThickness = 4, StrokeLineCap = PenLineCap.Round, IsHitTestVisible = false };
 
         OverlayCanvas.Children.Add(l1);
         OverlayCanvas.Children.Add(l2);
         _annotationControls.Add(l1);
         _annotationControls.Add(l2);
-    }
-
-    private void AddRectangle(Point p1, Point p2)
-    {
-        var rect = new Rectangle
-        {
-            Width = Math.Max(4, Math.Abs(p2.X - p1.X)),
-            Height = Math.Max(4, Math.Abs(p2.Y - p1.Y)),
-            Stroke = Brushes.Red,
-            StrokeThickness = 3,
-            RadiusX = 4,
-            RadiusY = 4
-        };
-        Canvas.SetLeft(rect, Math.Min(p1.X, p2.X));
-        Canvas.SetTop(rect, Math.Min(p1.Y, p2.Y));
-        OverlayCanvas.Children.Add(rect);
-        _annotationControls.Add(rect);
-    }
-
-    private void AddCircle(Point p1, Point p2)
-    {
-        var circle = new Ellipse
-        {
-            Width = Math.Max(4, Math.Abs(p2.X - p1.X)),
-            Height = Math.Max(4, Math.Abs(p2.Y - p1.Y)),
-            Stroke = Brushes.Red,
-            StrokeThickness = 3
-        };
-        Canvas.SetLeft(circle, Math.Min(p1.X, p2.X));
-        Canvas.SetTop(circle, Math.Min(p1.Y, p2.Y));
-        OverlayCanvas.Children.Add(circle);
-        _annotationControls.Add(circle);
     }
 
     private void AddBlurMask(Point p1, Point p2)
@@ -256,6 +360,7 @@ public partial class CaptureOverlayWindow : Window
             BorderBrush = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)),
             BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(4),
+            IsHitTestVisible = false,
             Child = new TextBlock
             {
                 Text = "░░ MASKED ░░",
@@ -276,17 +381,18 @@ public partial class CaptureOverlayWindow : Window
     {
         var border = new Border
         {
-            Background = new SolidColorBrush(Color.FromArgb(230, 255, 235, 59)),
-            BorderBrush = Brushes.Black,
-            BorderThickness = new Thickness(1.5),
+            Background = new SolidColorBrush(Color.FromArgb(235, 255, 255, 255)),
+            BorderBrush = _activeBrush,
+            BorderThickness = new Thickness(2),
             CornerRadius = new CornerRadius(6),
             Padding = new Thickness(8, 4),
+            BoxShadow = new BoxShadows(new BoxShadow { Blur = 8, Color = Color.FromArgb(80, 0, 0, 0) }),
             Child = new TextBlock
             {
-                Text = "Note: Focus here",
+                Text = "Note",
                 FontSize = 13,
                 FontWeight = FontWeight.Bold,
-                Foreground = Brushes.Black
+                Foreground = _activeBrush
             }
         };
         Canvas.SetLeft(border, p.X);

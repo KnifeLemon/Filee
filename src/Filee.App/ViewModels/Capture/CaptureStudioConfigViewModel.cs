@@ -18,6 +18,18 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
     private WindowTargetInfo? _detectedWindow;
 
     [ObservableProperty]
+    private bool _isAppTargetMode;
+
+    [ObservableProperty]
+    private bool _showAllSources;
+
+    [ObservableProperty]
+    private string _detectedAppTitle = "";
+
+    [ObservableProperty]
+    private string _detectedAppProcess = "";
+
+    [ObservableProperty]
     private WindowTargetInfo? _selectedWindow;
 
     [ObservableProperty]
@@ -76,15 +88,20 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
 
         if (DetectedWindow != null)
         {
-            // Find in list or insert
             var match = OpenWindows.FirstOrDefault(w => w.Handle == DetectedWindow.Handle);
             SelectedWindow = match ?? DetectedWindow;
-            SelectedSourceIndex = 0; // Default to App Window if one detected
+            SelectedSourceIndex = 0; // Default to App Window
+            IsAppTargetMode = true;
+            ShowAllSources = false;
+            DetectedAppTitle = SelectedWindow.DisplayName;
+            DetectedAppProcess = SelectedWindow.ProcessName;
         }
         else
         {
             SelectedWindow = OpenWindows.FirstOrDefault();
             SelectedSourceIndex = 1; // Default to Full Screen if clicked on desktop/empty area
+            IsAppTargetMode = false;
+            ShowAllSources = true;
         }
 
         Screens.Clear();
@@ -97,6 +114,23 @@ public sealed partial class CaptureStudioConfigViewModel : ObservableObject
         foreach (var d in _targetService.GetAudioInputDevices())
             AudioDevices.Add(d);
         SelectedAudioDevice = AudioDevices.FirstOrDefault() ?? "Default Microphone";
+    }
+
+    [RelayCommand]
+    private void ToggleShowAllSources()
+    {
+        ShowAllSources = !ShowAllSources;
+    }
+
+    [RelayCommand]
+    private void SwitchToAppMode()
+    {
+        if (DetectedWindow != null)
+        {
+            SelectedWindow = DetectedWindow;
+            SelectedSourceIndex = 0;
+            ShowAllSources = false;
+        }
     }
 
     [RelayCommand]
