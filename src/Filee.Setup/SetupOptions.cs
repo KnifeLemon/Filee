@@ -28,8 +28,9 @@
 //   /UNINSTALL              uninstall (uninstall.exe, which has no payload, does this without the switch)
 //   /LAUNCHFILE="file"      internal: the unelevated Setup that asked for administrator rights starts Filee as the
 //                           signed-in user from what the elevated one writes into this file
-//   /FIRSTPHASE=<id>        internal: the uninstaller's copy in %TEMP% lets the uninstaller in the install folder
-//                           (process <id>) end before it deletes its file
+//   /FIRSTPHASE=<id>,<id>   internal: the uninstaller's copy lets the uninstallers in the install folder (these
+//                           processes: the one that started it, and the unelevated one that asked for administrator
+//                           rights before) end before it deletes their file
 
 namespace Filee.Setup;
 
@@ -74,7 +75,7 @@ public sealed record SetupOptions
     public bool Uninstall { get; init; }
     public string? Sandbox { get; init; }
     public string? LaunchFile { get; init; }
-    public int? FirstPhase { get; init; }
+    public IReadOnlyList<int> FirstPhase { get; init; } = [];
 
     /// <summary>Inno Setup switches that are accepted but change nothing.</summary>
     public IReadOnlyList<string> Ignored { get; init; } = [];
@@ -157,8 +158,8 @@ public sealed record SetupOptions
                 case "SANDBOX" when !string.IsNullOrWhiteSpace(value):
                     options = options with { Sandbox = value };
                     break;
-                case "FIRSTPHASE" when int.TryParse(value, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id):
-                    options = options with { FirstPhase = id };
+                case "FIRSTPHASE" when ProcessIds(value) is { } ids:
+                    options = options with { FirstPhase = ids };
                     break;
                 case "LAUNCHFILE" when !string.IsNullOrWhiteSpace(value):
                     options = options with { LaunchFile = value };
@@ -174,6 +175,19 @@ public sealed record SetupOptions
             }
         }
         return options with { Ignored = ignored, Unknown = unknown };
+    }
+
+    /// <summary>"12,34": the process numbers, or null when a part isn't one.</summary>
+    private static List<int>? ProcessIds(string? value)
+    {
+        var ids = new List<int>();
+        foreach (var part in (value ?? "").Split(','))
+        {
+            if (!int.TryParse(part, System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var id))
+                return null;
+            ids.Add(id);
+        }
+        return ids;
     }
 
     /// <summary>Inno Setup takes /DIR="C:\a b" and /DIR=C:\a b alike; quotes left over from a hand-made command line go.</summary>
