@@ -1,7 +1,8 @@
 // The order of a merge into one PDF (issue #268), one video or one image (#645): the files start sorted by name the way
 // people count ("page 2" before "page 10"); the user can sort them by name or date, and move them, before the merge
 // starts. Moving a row changes only this copy of the selection. Pictures merged into one image also get their layout
-// here: one under another or side by side, the same width or their own sizes, the gap and the background.
+// here: one under another or side by side, the same width or their own sizes, the gap and the background. Videos get
+// their music (#1402): songs added to the list play one after another under them, once or over and over.
 
 using System.Collections.ObjectModel;
 using System.Globalization;
@@ -32,6 +33,9 @@ public sealed partial class MergeSource(string path, Action<MergeSource> remove,
 
     /// <summary>The format, or null when Filee doesn't know it (the file then shows no picture).</summary>
     public FileFormat? Format { get; } = FormatRegistry.Detect(path);
+
+    /// <summary>An audio file: in a merge of videos, music played under them.</summary>
+    public bool IsMusic => Format?.Category == FormatCategory.Audio;
 
     /// <summary>The extension ("PDF", "PNG"), shown when the file has no picture.</summary>
     public string FormatBadge => Format is null ? "" : Format.PrimaryExtension.TrimStart('.').ToUpperInvariant();
@@ -129,18 +133,32 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
     /// Null for other merges.
     /// </param>
     /// <param name="keepOrder">The files are already in the order to merge them in (the Home page's queue): not sorted by name.</param>
-    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null, bool keepOrder = false, ILocalizer? loc = null)
+    /// <param name="videos">
+    /// "Merge videos" (#1402): its options, of which the window offers whether the music repeats. Null for other merges.
+    /// </param>
+    public MergeOrderViewModel(IReadOnlyList<string> files, ImageOptions? images = null, bool keepOrder = false, ILocalizer? loc = null,
+        MediaOptions? videos = null)
     {
+        _loc = loc;
         var sources = files.Select(file => new MergeSource(file, RemoveFile, loc));
         // The Home page's queue keeps the order it was given; otherwise the files start by name.
         Files = new(keepOrder ? sources : FileSorter.Sort(sources, file => file.Stamp, FileSortOrder.NameAscending));
         if (keepOrder)
             _sortIndex = CustomSortIndex;
-        Files.CollectionChanged += (_, _) => OnPropertyChanged(nameof(CanMerge));
+        Files.CollectionChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(CanMerge));
+            OnPropertyChanged(nameof(HasMusic));
+        };
         Renumber();
         foreach (var source in Files)
             _ = source.LoadPreviewAsync();
         SelectedFile = Files.FirstOrDefault();
+        if (videos is not null)
+        {
+            MergesVideos = true;
+            _loopMusic = videos.LoopMusic;
+        }
         if (images is null)
             return;
         MergesImages = true;
@@ -154,8 +172,61 @@ public sealed partial class MergeOrderViewModel : ObservableObject, IDisposable
 
     public ObservableCollection<MergeSource> Files { get; }
 
-    /// <summary>Merge needs at least two files: the button is off below that.</summary>
-    public bool CanMerge => Files.Count >= 2;
+    private readonly ILocalizer? _loc;
+
+    /// <summary>Merge needs at least two files, and videos at least one video for their music: the button is off below that.</summary>
+    public bool CanMerge => Files.Count >= 2 && (!MergesVideos || Files.Any(file => !file.IsMusic));
+
+    /// <summary>The files are videos that become one: the window offers music under them.</summary>
+    public bool MergesVideos { get; }
+
+    /// <summary>Some of the files are songs to play under the videos.</summary>
+    public bool HasMusic => Files.Any(file => file.IsMusic);
+
+    /// <summary>The songs start again from the first until the videos end (<see cref="MediaOptions.LoopMusic"/>).</summary>
+    [ObservableProperty]
+    private bool _loopMusic;
+
+    /// <summary>The title of the file picker that adds music.</summary>
+    public string MusicPickerTitle => _loc?["merge.music_pick"] ?? "Music";
+
+    /// <summary>The name of the picker's audio file type.</summary>
+    public string MusicFilesName => _loc?["format.category.Audio"] ?? "Audio";
+
+    /// <summary>The patterns of the audio files the picker shows: the formats Filee reads as sound.</summary>
+    public static IReadOnlyList<string> MusicPatterns { get; } =
+        [.. FormatRegistry.Known.Where(f => f.Category == FormatCategory.Audio).SelectMany(f => f.Extensions).Distinct().Select(e => "*." + e)];
+
+    /// <summary>
+    /// Songs picked with "Add music…": the audio files among <paramref name="paths"/> that aren't in the list yet go to
+    /// its end (into the sort, while the list is sorted), and the first of them is selected.
+    /// </summary>
+    public void AddMusic(IEnumerable<string> paths)
+    {
+        var added = new List<MergeSource>();
+        foreach (var path in paths)
+        {
+            if (FormatRegistry.Detect(path)?.Category != FormatCategory.Audio
+                || Files.Concat(added).Any(file => string.Equals(file.Path, path, StringComparison.OrdinalIgnoreCase)))
+                continue;
+            var source = new MergeSource(path, RemoveFile, _loc);
+            Files.Add(source);
+            added.Add(source);
+            _ = source.LoadPreviewAsync();
+        }
+        if (added.Count == 0)
+            return;
+        SelectedFile = added[0];
+        if (SortIndex is >= 0 and < CustomSortIndex)
+            ApplySort((FileSortOrder)SortIndex);
+        else
+            Renumber();
+        MoveUpCommand.NotifyCanExecuteChanged();
+        MoveDownCommand.NotifyCanExecuteChanged();
+    }
+
+    /// <summary>Writes the music choice made here into <paramref name="media"/>.</summary>
+    public void ApplyTo(MediaOptions media) => media.LoopMusic = LoopMusic;
 
     partial void OnSelectedFileChanged(MergeSource? value)
     {

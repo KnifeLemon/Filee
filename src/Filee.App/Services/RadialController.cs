@@ -487,12 +487,15 @@ public sealed class RadialController(
         try
         {
             // The queue's order is the one the user already set on the Home page: the chooser only shows for a merge that
-            // has a layout to pick (merged pictures).
-            var ordered = keepOrder && !preset.JoinsImages
+            // has more to pick (the layout of merged pictures, the music of merged videos).
+            var videos = preset is { JoinsIntoOneMedia: true, TargetFormat: "mp4", Media.Slideshow: false };
+            var ordered = keepOrder && !preset.JoinsImages && !videos
                 ? files
                 : await windows.ChooseMergeOrderAsync(files, preset, keepOrder);
             if (ordered is not null && preset.JoinsImages)
                 RememberMergeLayout(preset);
+            if (ordered is not null && videos)
+                RememberLoopMusic(preset);
             if (ordered is not null && preset.Output.AskEveryTime && web is null)
                 await AskThenConvertAsync(ordered, preset, toClipboard, null, onJob);
             else if (ordered is not null)
@@ -536,6 +539,25 @@ public sealed class RadialController(
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             log.LogWarning(ex, "Could not remember the layout of merged pictures");
+        }
+    }
+
+    /// <summary>
+    /// "Merge videos": whether the music repeats, as chosen in the merge order window (<paramref name="chosen"/>, a copy
+    /// of the preset), goes into the preset as saved, as the layout of merged pictures does.
+    /// </summary>
+    private void RememberLoopMusic(Preset chosen)
+    {
+        if (store.FindPreset(chosen.Id) is not { JoinsIntoOneMedia: true } saved || saved.Media.LoopMusic == chosen.Media.LoopMusic)
+            return;
+        saved.Media.LoopMusic = chosen.Media.LoopMusic;
+        try
+        {
+            store.SaveLibrary();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            log.LogWarning(ex, "Could not remember whether merged videos loop their music");
         }
     }
 

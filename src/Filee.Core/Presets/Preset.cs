@@ -1624,9 +1624,17 @@ public sealed class MediaOptions
 
     /// <summary>
     /// MP4 or M4A: every dropped video (or audio file) goes, in order and without gaps, into one file named after the
-    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first.
+    /// first. Clips that share codecs and picture size are copied; others are encoded to match the first. Audio files
+    /// dropped with videos into MP4 become music under them (<see cref="LoopMusic"/>).
     /// </summary>
     public bool JoinIntoOne { get; set; }
+
+    /// <summary>
+    /// With <see cref="JoinIntoOne"/> into MP4 (#1402): the audio files among the videos are music, played one after
+    /// another under them; this repeats that music from the start until the videos end, where it fades out. Off: the
+    /// music stops when the last song ends. The music never plays past the videos either way.
+    /// </summary>
+    public bool LoopMusic { get; set; }
 
     /// <summary>
     /// MP4: the dropped pictures become one 1080p video, each shown for <see cref="SlideSeconds"/>, fitted in with

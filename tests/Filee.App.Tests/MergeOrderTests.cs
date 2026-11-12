@@ -1,5 +1,5 @@
 // Merge order (issue #268): the real chooser opened from the donut, then the pages of the merged PDF; for "Merge images"
-// (#645) the layout below the list, the merged image and the choices remembered.
+// (#645) the layout below the list, the merged image and the choices remembered; for "Merge videos" (#1402) the music.
 
 using Avalonia;
 using Avalonia.Controls;
@@ -529,6 +529,118 @@ public class MergeOrderTests
         Assert.False(new MergeOrderViewModel(["a.pdf", "b.pdf"]).MergesImages);
         // A colour that isn't one (a hand-edited file) shows white.
         Assert.Equal(Avalonia.Media.Colors.White, new MergeOrderViewModel(["a.png"], new() { JoinBackground = "blue-ish" }).BackgroundColor);
+    }
+
+    [Fact]
+    public void Songs_added_to_a_merge_of_videos_join_the_list_and_their_loop_is_written_into_the_merge()
+    {
+        var media = new Filee.Core.Presets.MediaOptions { JoinIntoOne = true, LoopMusic = true };
+        var vm = new MergeOrderViewModel([@"C:\v\b.mp4", @"C:\v\a.mp4"], videos: media);
+        Assert.True(vm.MergesVideos);
+        Assert.False(vm.MergesImages);
+        Assert.True(vm.LoopMusic);
+        Assert.False(vm.HasMusic);
+
+        // Only sound files, each once; sorted by name with the rest while the list is sorted.
+        vm.AddMusic([@"C:\m\c song.mp3", @"C:\m\notes.txt", @"C:\m\clip.mov", @"C:\m\C SONG.MP3", @"C:\m\0 start.flac"]);
+        Assert.Equal([@"C:\m\0 start.flac", @"C:\v\a.mp4", @"C:\v\b.mp4", @"C:\m\c song.mp3"], vm.OrderedFiles);
+        Assert.Equal(@"C:\m\c song.mp3", vm.SelectedFile!.Path);
+        Assert.True(vm.HasMusic);
+        Assert.Equal([1, 2, 3, 4], vm.Files.Select(f => f.Position));
+        Assert.Contains("*.mp3", MergeOrderViewModel.MusicPatterns);
+        Assert.DoesNotContain("*.mp4", MergeOrderViewModel.MusicPatterns);
+
+        // In a custom order a song goes to the end.
+        vm.SortIndex = MergeOrderViewModel.CustomSortIndex;
+        vm.AddMusic([@"C:\m\b song.wav"]);
+        Assert.Equal(@"C:\m\b song.wav", vm.OrderedFiles[^1]);
+
+        vm.LoopMusic = false;
+        vm.ApplyTo(media);
+        Assert.False(media.LoopMusic);
+
+        // Songs alone are no video: nothing to merge them under.
+        var songs = new MergeOrderViewModel([@"C:\m\a.mp3", @"C:\m\b.mp3"], videos: new());
+        Assert.False(songs.CanMerge);
+        Assert.True(new MergeOrderViewModel([@"C:\m\a.mp3", @"C:\m\b.mp3"]).CanMerge); // other merges as before
+        Assert.False(new MergeOrderViewModel(["a.pdf", "b.pdf"]).MergesVideos);
+    }
+
+    [AvaloniaFact]
+    public async Task Merge_order_of_videos_shows_the_music_and_writes_the_loop_into_the_preset()
+    {
+        TestServices.EnsureInitialized();
+        var windows = AppHost.Get<WindowService>();
+        var preset = Filee.Core.Presets.BuiltInData.CreatePresets().Single(p => p.Id == "merge-videos");
+        var choosing = windows.ChooseMergeOrderAsync([@"C:\v\a.mp4", @"C:\v\b.mp4", @"C:\m\song.mp3"], preset);
+        RenderTests.Pump();
+        var dialog = Assert.IsType<MergeOrderWindow>(windows.MergeOrder);
+        try
+        {
+            Assert.True(dialog.FindControl<Border>("MergeMusic")!.IsEffectivelyVisible);
+            Assert.False(dialog.FindControl<Border>("MergeLayout")!.IsEffectivelyVisible);
+            Assert.True(dialog.MinHeight >= 580);
+            var loop = dialog.FindControl<CheckBox>("LoopMusic")!;
+            Assert.True(loop.IsEffectivelyEnabled);
+            Assert.False(loop.IsChecked);
+            ClickControl(dialog, "LoopMusic");
+            Assert.True(loop.IsChecked);
+            ClickControl(dialog, "StartMerge");
+            Assert.Equal(3, (await choosing)!.Count);
+            Assert.True(preset.Media.LoopMusic);
+        }
+        finally
+        {
+            dialog.Close();
+        }
+    }
+
+    public static TheoryData<string, bool> MergeVideosLooks => new()
+    {
+        { "en", false }, { "de", true }, { "ar", false }, { "ko", true }, { "ru", false }, { "fa", true }, { "ne", false }, { "th", false },
+    };
+
+    /// <summary>The music of "Merge videos" at the smallest size the window opens with for it: whole and inside the window.</summary>
+    [AvaloniaTheory]
+    [MemberData(nameof(MergeVideosLooks))]
+    public void Merge_videos_music_fits_at_its_minimum_size(string language, bool dark)
+    {
+        TestServices.EnsureInitialized(language);
+        var theme = AppHost.Get<ThemeService>();
+        theme.Apply(new ThemeSettings { Mode = dark ? ThemeMode.Dark : ThemeMode.Light }, language);
+        var vm = new MergeOrderViewModel([
+            @"C:\Users\me\Videos\Holiday, day one, beach and harbour.mp4",
+            @"C:\Users\me\Videos\Holiday, day two.mov",
+            @"C:\Users\me\Music\Summer song.mp3"], videos: new());
+        var window = new MergeOrderWindow { DataContext = vm, Width = 440, Height = 580 };
+        try
+        {
+            window.Show();
+            RenderTests.Pump();
+            Rect Box(string name)
+            {
+                var control = window.FindControl<Control>(name)!;
+                return new Rect(control.Bounds.Size).TransformToAABB(control.TransformToVisual(window)!.Value);
+            }
+            var music = Box("MergeMusic");
+            var add = Box("AddMusic");
+            var loop = Box("LoopMusic");
+            foreach (var (name, box) in new[] { ("AddMusic", add), ("LoopMusic", loop) })
+                Assert.True(box.Width > 0 && box.Left >= music.Left - 0.5 && box.Right <= music.Right + 0.5 && box.Bottom <= music.Bottom + 0.5,
+                    $"{name} {box} outside {music}");
+            Assert.False(add.Deflate(1).Intersects(loop.Deflate(1)), $"{add} overlaps {loop}");
+            var checkBox = window.FindControl<CheckBox>("LoopMusic")!;
+            // Shown whole: as wide as it asks to be (the margin from the row's style aside).
+            Assert.True(checkBox.Bounds.Width >= checkBox.DesiredSize.Width - checkBox.Margin.Left - checkBox.Margin.Right - 0.5);
+            Assert.True(window.FindControl<ListBox>("FileOrder")!.Bounds.Height > 60);
+            Assert.True(Box("StartMerge").Right <= window.Bounds.Width && Box("StartMerge").Left >= 0);
+            RenderTests.Save(window, $"merge-videos-music-{language}-{(dark ? "dark" : "light")}.png");
+        }
+        finally
+        {
+            window.Close();
+            theme.Apply(new ThemeSettings(), language);
+        }
     }
 
     [Fact]

@@ -297,7 +297,8 @@ public interface IMediaJoiner
 {
     /// <summary>
     /// Writes every file of <paramref name="inputPaths"/>, in order, into <paramref name="outputPath"/>: video or audio
-    /// clips back to back, or pictures shown one after the other (<see cref="MediaOptions.Slideshow"/>).
+    /// clips back to back, or pictures shown one after the other (<see cref="MediaOptions.Slideshow"/>). Into MP4,
+    /// audio files among the videos are music: played in their order under the videos (<see cref="MediaOptions.LoopMusic"/>).
     /// </summary>
     /// <param name="inputPaths">Videos, audio files, or pictures (PNG, as the image engines wrote them).</param>
     /// <param name="outputPath">File to create; removed again when the join fails.</param>
