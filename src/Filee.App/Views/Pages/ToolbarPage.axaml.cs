@@ -252,8 +252,9 @@ public partial class ToolbarPage : UserControl
             // from there; where it was before it moved over is still where Done takes it.
             if (_sliding)
             {
+                var at = SlidingAt(main);
                 StopSlide();
-                SlidTo = LandedAt = main.Position;
+                SlidTo = LandedAt = at;
             }
             PlacePreview(main, moveWindow: true);
         }
@@ -364,7 +365,8 @@ public partial class ToolbarPage : UserControl
         var window = new PixelRect(main.Position, PixelSize.FromSize(frame, scaling));
         var current = DonutMenu.SideFor(donut.OuterRadius, donut.ReserveSubRing, donut.GroupRingSize);
         var dragged = AppHost.Get<UserDataStore>().Settings.DonutPreviewPlace is { X: { } dx, Y: { } dy } ? new PixelPoint(dx, dy) : (PixelPoint?)null;
-        int? minWidth = moveWindow && main.WindowState == WindowState.Normal
+        // Not on native Wayland, where a window can't place itself: it would only be made narrower.
+        int? minWidth = moveWindow && main.WindowState == WindowState.Normal && !Filee.Platform.Linux.WaylandSupport.NativeWaylandRequested
             ? (int)Math.Ceiling((main.MinWidth + frame.Width - main.ClientSize.Width) * scaling)
             : null;
         // With nothing else left, it goes over the navigation and the profile list, which neither Edit Donut Size nor
@@ -478,13 +480,20 @@ public partial class ToolbarPage : UserControl
     {
         _slide?.Stop();
         _sliding = false;
+        _slideAt = null;
     }
+
+    // Where the slide under way last put this window: an X11 window reports a new place only once the window manager
+    // has moved it, a frame or so later.
+    private PixelPoint? _slideAt;
+
+    private PixelPoint SlidingAt(Window main) => _sliding && _slideAt is { } at ? at : main.Position;
 
     // Eased over a quarter of a second, or at once without animations.
     private void Slide(Window main, PixelPoint to, Action done)
     {
+        var from = SlidingAt(main);
         StopSlide();
-        var from = main.Position;
         if (!Motion.Enabled || from == to)
         {
             main.Position = to;
@@ -498,7 +507,8 @@ public partial class ToolbarPage : UserControl
         {
             var t = Math.Min(1, (DateTime.UtcNow - started).TotalSeconds / duration);
             var eased = 1 - Math.Pow(1 - t, 3);
-            main.Position = new PixelPoint((int)Math.Round(from.X + (to.X - from.X) * eased), (int)Math.Round(from.Y + (to.Y - from.Y) * eased));
+            _slideAt = new PixelPoint((int)Math.Round(from.X + (to.X - from.X) * eased), (int)Math.Round(from.Y + (to.Y - from.Y) * eased));
+            main.Position = _slideAt.Value;
             if (t < 1)
                 return;
             StopSlide();

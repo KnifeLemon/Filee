@@ -91,7 +91,10 @@ internal static class DonutPreviewPlacement
                     return new PreviewPlace(centre, PreviewAnchor.Centre);
             }
         }
-        if (Beside(home.Area, window, side) is { } beside)
+        // Beside it only if as tall as the donut too; else another screen first, and beside it, past the screen's top
+        // and bottom, only then.
+        var beside = Beside(home.Area, window, side);
+        if (beside is not null && side <= home.Area.Height)
             return beside;
         for (var i = 0; i < screens.Count; i++)
         {
@@ -103,6 +106,8 @@ internal static class DonutPreviewPlacement
             if (screens[i].Area.Width >= there && screens[i].Area.Height >= there && !middle.BoxFor(there).Intersects(window))
                 return middle;
         }
+        if (beside is not null)
+            return beside;
         if (minWidth is { } min)
         {
             // As wide as it is first; only then narrower, just enough, down to its minimum.

@@ -666,6 +666,15 @@ public class DonutEditorTests
         Assert.Equal(at100.Area.Center, Place(window, [home, at100], minWidth: null).Point);
         Assert.True(Place(window, [home, at100 with { Scaling = 2.0 }], minWidth: null).Over);
 
+        // A screen less tall than the donut (2560 × 1080 at 150 %, the donut at its largest): another screen with room
+        // first; beside the window, past the screen's edges, only with none.
+        var low = new PreviewScreen(new PixelRect(0, 0, 2560, 1008), 1.5);
+        var tall = new PreviewScreen(new PixelRect(2560, 0, 3840, 2100), 1.5);
+        var narrow = new PixelRect(100, 100, 1254, 800);
+        var elsewhere = DonutPreviewPlacement.Place(narrow, [low, tall], 0, Largest, null, null, false);
+        Assert.Equal((PreviewAnchor.Centre, tall.Area.Center), (elsewhere.Anchor, elsewhere.Point));
+        Assert.False(DonutPreviewPlacement.Place(narrow, [low], 0, Largest, null, null, false).Over);
+
         // A window reaching onto the other screen, over its middle: not there, under it.
         var other = new PreviewScreen(new PixelRect(1400, 0, 1400, 900), 1.0);
         var across = new PixelRect(0, 0, 2400, 900);
@@ -904,12 +913,13 @@ public class DonutEditorTests
         var saved = store.Settings.Donut.GroupRingSpread;
         var images = store.Profiles.Single(p => p.Id == "images");
         var (front, back) = (images.PresetIds.ToList(), images.BackPresetIds?.ToList());
-        // A donut with no group on either face, before the page reads it.
-        images.PresetIds.RemoveAll(id => store.FindPreset(id)?.IsGroup == true);
-        images.BackPresetIds?.RemoveAll(id => store.FindPreset(id)?.IsGroup == true);
-        var (window, page, vm) = Open();
+        Window? window = null;
         try
         {
+            // A donut with no group on either face, before the page reads it.
+            images.PresetIds.RemoveAll(id => store.FindPreset(id)?.IsGroup == true);
+            images.BackPresetIds?.RemoveAll(id => store.FindPreset(id)?.IsGroup == true);
+            (window, var page, var vm) = Open();
             vm.SelectedProfile = vm.Profiles.Single(p => p.Profile.Id == "images");
             vm.AdjustLookCommand.Execute(null);
             RenderTests.Pump();
@@ -957,8 +967,9 @@ public class DonutEditorTests
                 images.BackPresetIds.AddRange(back);
             }
             store.SaveLibrary();
-            vm.GroupRingSpread = saved * 100;
-            window.Close();
+            store.Settings.Donut.GroupRingSpread = saved;
+            store.SaveDonutLook();
+            window?.Close();
         }
     }
 
@@ -1009,7 +1020,7 @@ public class DonutEditorTests
         // The test screen is 1920 wide; the window, 1280 wide in its middle, leaves no room beside it.
         var (window, page, vm) = Open();
         var motion = Motion.Enabled;
-        Motion.Configure(true, () => false); // at once (the theme set it as the window opened)
+        Motion.Set(false); // at once (the theme set it as the window opened)
         var main = (MainWindow)window;
         var start = window.Position;
         var width = window.ClientSize.Width;
@@ -1067,7 +1078,7 @@ public class DonutEditorTests
 
             // Done while it is still sliding over: back where it was all the same (slowed down, to be caught on its way
             // on a busy machine).
-            Motion.Configure(false, () => false);
+            Motion.Set(true);
             ToolbarPage.SlideTime = TimeSpan.FromSeconds(3);
             window.Position = start;
             vm.AdjustLookCommand.Execute(null);
@@ -1499,6 +1510,8 @@ public class DonutEditorTests
     public void Moving_the_profile_in_the_list_leaves_the_donut_on_screen_and_the_window_where_they_are()
     {
         var (window, page, vm) = Open();
+        var store = AppHost.Get<UserDataStore>();
+        var order = store.Profiles.ToList();
         var motion = Motion.Enabled;
         Motion.Set(true); // animated, as in the app: a slide back would be under way
         var main = (MainWindow)window;
@@ -1538,6 +1551,9 @@ public class DonutEditorTests
         finally
         {
             Motion.Set(motion);
+            store.Profiles.Clear();
+            store.Profiles.AddRange(order);
+            store.SaveLibrary();
             window.Close();
         }
     }
