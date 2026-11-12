@@ -35,6 +35,8 @@ internal static class Program
     {
         if (!OperatingSystem.IsWindows())
             return ExitInitFailed;
+        // Before anything loads a native library: Windows' own only from System32 (see NativeLibraries).
+        NativeLibraries.Guard();
         // Never hold a folder Setup may delete (the install folder) as the current directory.
         Environment.CurrentDirectory = Environment.SystemDirectory;
         NativeMethods.QuietErrors();
@@ -92,6 +94,7 @@ internal static class Program
         finally
         {
             payload?.Dispose();
+            NativeLibraries.RemoveAfterExit(log);
         }
     }
 
@@ -153,7 +156,7 @@ internal static class Program
             {
                 LogFile = log.File,
             };
-            RunWindow(model, texts, options.Ui == SetupUi.Silent);
+            RunWindow(model, texts, options.Ui == SetupUi.Silent, paths, log);
             result = model.Result;
             exitCode = model.ExitCode;
             launch = options.Ui == SetupUi.Silent ? result?.Launch : model.Launch;
@@ -261,7 +264,7 @@ internal static class Program
                 LogFile = log.File,
                 SettingsFolder = paths.SettingsFolder,
             };
-            RunWindow(model, texts, options.Ui == SetupUi.Silent);
+            RunWindow(model, texts, options.Ui == SetupUi.Silent, paths, log);
             exitCode = model.ExitCode;
             if (exitCode == 1 && options.IsSilent)
                 Tell(options, model.ErrorText, NativeMethods.MB_ICONERROR);
@@ -373,18 +376,30 @@ internal static class Program
             new SandboxSetupSystem(log, paths.SettingsFolder), paths, log, Sandbox: true);
     }
 
-    private static void RunWindow(SetupViewModel model, SetupTexts texts, bool silent)
+    private static void RunWindow(SetupViewModel model, SetupTexts texts, bool silent, SetupPaths paths, SetupLog log)
     {
+        // Skia and HarfBuzz: from a folder of this run's own, where only administrators can change them when this one
+        // is elevated.
+        NativeLibraries.Unpack(paths, NativeMethods.IsElevated(), log);
         App.Model = model;
         App.Texts = texts;
         App.Silent = silent;
         BuildAvaloniaApp().StartWithClassicDesktopLifetime([]);
     }
 
-    /// <summary>Also used by the XAML previewer and the tests' headless platform (with their own builder).</summary>
+    /// <summary>
+    /// Also used by the XAML previewer (the tests have their own, headless, builder). Software rendering: Setup's one
+    /// small window doesn't need the GPU, and without ANGLE there is no av_libglesv2.dll to carry (see
+    /// NativeLibraries). The redirection surface keeps the window's transparency.
+    /// </summary>
     public static AppBuilder BuildAvaloniaApp() =>
         AppBuilder.Configure<App>()
             .UsePlatformDetect()
+            .With(new Win32PlatformOptions
+            {
+                RenderingMode = [Win32RenderingMode.Software],
+                CompositionMode = [Win32CompositionMode.RedirectionSurface],
+            })
             .LogToTrace();
 
     /// <summary>
