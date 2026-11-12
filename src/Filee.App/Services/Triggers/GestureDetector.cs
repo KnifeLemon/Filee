@@ -24,7 +24,7 @@ public sealed class GestureDetector
     private int _lastX, _lastY;
 
     /// <summary>A press that may still become a drag, a hold, or both until one of them happens.</summary>
-    private sealed record Armed(TriggerGesture? Drag, TriggerGesture? Hold, int X, int Y, long Token);
+    private sealed record Armed(TriggerGesture? Drag, TriggerGesture? Hold, TriggerGesture? Click, int X, int Y, long Token);
 
     /// <summary>
     /// Decides whether a gesture may start at a screen point (scope / excluded apps / own windows).
@@ -42,6 +42,7 @@ public sealed class GestureDetector
     public event Action<int, int>? DragEnded;
     public event Action<TriggerGesture, int, int>? HoldTriggered;
     public event Action<TriggerGesture, int, int>? KeyChordTriggered;
+    public event Action<TriggerGesture, int, int>? ClickTriggered;
 
     /// <summary>Raised when a hold gesture is armed; the owner must call <see cref="HoldElapsed"/> after the delay.</summary>
     public event Action<long, int>? HoldTimerRequested;
@@ -73,11 +74,12 @@ public sealed class GestureDetector
             // next decides between them.
             var drag = FirstInScope(TriggerKind.Drag, button, modifiers, x, y);
             holdGesture = FirstInScope(TriggerKind.Hold, button, modifiers, x, y);
-            if (drag is null && holdGesture is null)
+            var click = FirstInScope(TriggerKind.Click, button, modifiers, x, y);
+            if (drag is null && holdGesture is null && click is null)
                 return;
 
             token = Environment.TickCount64 ^ (x * 7919L) ^ y;
-            _armed = new Armed(drag, holdGesture, x, y, token);
+            _armed = new Armed(drag, holdGesture, click, x, y, token);
         }
 
         if (holdGesture is not null)
@@ -113,18 +115,22 @@ public sealed class GestureDetector
         var armed = _armed!;
         if (armed.Hold is { } hold && Moved(hold, armed, x, y))
             armed = armed with { Hold = null };
+        if (armed.Click is { } click && Moved(click, armed, x, y))
+            armed = armed with { Click = null };
         if (armed.Drag is { } drag && Moved(drag, armed, x, y))
         {
             _armed = null;
             return drag;
         }
-        _armed = armed.Drag is null && armed.Hold is null ? null : armed;
+        _armed = armed.Drag is null && armed.Hold is null && armed.Click is null ? null : armed;
         return null;
     }
 
     private bool Moved(TriggerGesture gesture, Armed armed, int x, int y)
     {
-        var threshold = gesture.DragThreshold > 0 ? gesture.DragThreshold : SystemDragThreshold;
+        var threshold = gesture.Kind == TriggerKind.Click
+            ? Math.Max(24, (gesture.DragThreshold > 0 ? gesture.DragThreshold : SystemDragThreshold) * 4)
+            : (gesture.DragThreshold > 0 ? gesture.DragThreshold : SystemDragThreshold);
         return Math.Abs(x - armed.X) > threshold || Math.Abs(y - armed.Y) > threshold;
     }
 
@@ -153,10 +159,18 @@ public sealed class GestureDetector
     public void MouseUp(TriggerMouseButton button, int x, int y)
     {
         bool ended;
+        TriggerGesture? clickFire = null;
+        int clickX = x, clickY = y;
         lock (_lock)
         {
             _lastX = x;
             _lastY = y;
+            if (_armed is { Click: { } click } armed && (button == TriggerMouseButton.None || click.Button == button))
+            {
+                clickFire = click;
+                clickX = armed.X;
+                clickY = armed.Y;
+            }
             _armed = null;
             ended = _dragActive;
             _dragActive = false;
@@ -165,6 +179,8 @@ public sealed class GestureDetector
         }
         if (ended)
             DragEnded?.Invoke(x, y);
+        if (clickFire is not null)
+            ClickTriggered?.Invoke(clickFire, clickX, clickY);
     }
 
     /// <summary>Called when the hold timer for <paramref name="token"/> fires.</summary>

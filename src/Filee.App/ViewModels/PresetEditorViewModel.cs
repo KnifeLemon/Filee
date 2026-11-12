@@ -42,6 +42,17 @@ public enum VideoSizeUnit
     Percent,
 }
 
+/// <summary>
+/// The number of a video split into parts in the preset editor (#1259): seconds or minutes per part, or the equal parts.
+/// The preset itself keeps seconds (MediaOptions.SplitEverySeconds) or the parts (MediaOptions.SplitParts).
+/// </summary>
+public enum VideoSplitKind
+{
+    Seconds,
+    Minutes,
+    EqualParts,
+}
+
 /// <summary>A value with a localized label for combo boxes.</summary>
 public sealed record Choice<T>(T Value, string Label, string? Detail = null) : IChoice
 {
@@ -115,6 +126,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _edit = preset.Clone();
         _loc = loc;
         FolderInput = folderInput || preset.TargetFormat == "iso";
+        Labels = new SliceLabelFields(preset, loc);
 
         // ~150 formats in registry order, which groups them by category; the category is shown next to each name
         // and typing the first letters of a name jumps to it.
@@ -169,6 +181,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             new(ViewModels.PageOutput.Groups, loc["pages.groups"]),
         ];
         GroupKinds = PageOutputs.Kinds(loc);
+        VideoOutputChoices = [new(false, loc["presets.video_one"]), new(true, loc["presets.video_parts"])];
+        VideoSplitKinds =
+        [
+            new(ViewModels.VideoSplitKind.Seconds, loc["presets.split_seconds"]),
+            new(ViewModels.VideoSplitKind.Minutes, loc["presets.split_minutes"]),
+            new(ViewModels.VideoSplitKind.EqualParts, loc["pages.equal_parts"]),
+        ];
         SheetPapers = Enum.GetValues<PdfSheetPaper>().Select(v => new Choice<PdfSheetPaper>(v, loc[$"presets.sheet_paper.{v}"])).ToList();
         SheetOrientations = Enum.GetValues<PdfSheetOrientation>().Select(v => new Choice<PdfSheetOrientation>(v, loc[$"presets.sheet_orientation.{v}"])).ToList();
         SheetOrders = Enum.GetValues<PdfSheetOrder>().Select(v => new Choice<PdfSheetOrder>(v, loc[$"presets.sheet_order.{v}"])).ToList();
@@ -241,6 +260,17 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _sheetBorders = _edit.Pdf.SheetBorders;
         _audioBitrate = AudioBitrates.First(b => b.Value == _edit.Media.AudioBitrateKbps);
         _removeAudio = _edit.Media.RemoveAudio;
+        _videoOutput = VideoOutputChoices[_edit.Media.Splits ? 1 : 0];
+        // Whole minutes show as minutes; 90 seconds stays 90 seconds.
+        var (splitKind, splitSize) = _edit.Media switch
+        {
+            { SplitParts: > 1 } m => (ViewModels.VideoSplitKind.EqualParts, m.SplitParts),
+            { SplitEverySeconds: > 0 } m when m.SplitEverySeconds % 60 == 0 => (ViewModels.VideoSplitKind.Minutes, m.SplitEverySeconds / 60),
+            { SplitEverySeconds: > 0 } m => (ViewModels.VideoSplitKind.Seconds, m.SplitEverySeconds),
+            _ => (ViewModels.VideoSplitKind.Minutes, 10),
+        };
+        _videoSplitKind = VideoSplitKinds.First(k => k.Value == splitKind);
+        _videoSplitSize = splitSize;
         _audioChannels = AudioChannelChoices.FirstOrDefault(c => c.Value == _edit.Media.AudioChannels) ?? AudioChannelChoices[0];
         _sampleRate = SampleRates.First(r => r.Value == _edit.Media.AudioSampleRate);
         _wavFormat = WavFormats.First(f => f.Value == _edit.Media.WavFormat);
@@ -261,15 +291,19 @@ public sealed partial class PresetEditorViewModel : ObservableObject
             new Choice<string>("ja", "日本語"),
             new Choice<string>("ko", "한국어"),
             new Choice<string>("ru", "Русский"),
+            new Choice<string>("uk", "Українська"),
             new Choice<string>("pt", "Português"),
             new Choice<string>("ar", "العربية"),
+            new Choice<string>("fa", "فارسی"),
             new Choice<string>("it", "Italiano"),
             new Choice<string>("nl", "Nederlands"),
             new Choice<string>("pl", "Polski"),
             new Choice<string>("tr", "Türkçe"),
             new Choice<string>("ne", "नेपाली"),
             new Choice<string>("th", "ไทย"),
-            new Choice<string>("id", "Bahasa Indonesia")
+            new Choice<string>("id", "Bahasa Indonesia"),
+            new Choice<string>("vi", "Tiếng Việt"),
+            new Choice<string>("bn", "বাংলা")
         ];
         _targetLanguage = TranslationLanguageChoices.FirstOrDefault(l => string.Equals(l.Value, _edit.Translate.TargetLanguage, StringComparison.OrdinalIgnoreCase))
             ?? TranslationLanguageChoices[0];
@@ -333,6 +367,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         _multiPageTiff = _edit.Image.MultiPageTiff;
         _icoSizes = string.Join(", ", _edit.Image.IcoSizes);
         _merge = _edit.Pdf.MergeIntoSingle;
+        _sourceBookmarks = _edit.Pdf.SourceBookmarks;
         _marginMm = _edit.Pdf.MarginMm;
         _renderDpi = _edit.Pdf.RenderDpi;
         _pageRange = _edit.Pdf.PageRange;
@@ -455,6 +490,10 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>PDF → PDF: one PDF, one file per page, or several pages per file (#1259).</summary>
     public IReadOnlyList<Choice<PageOutput>> PageOutputChoices { get; }
     public IReadOnlyList<Choice<PageGroupKind>> GroupKinds { get; }
+
+    /// <summary>Video → video: one video, or several parts copied as they are (#1259).</summary>
+    public IReadOnlyList<Choice<bool>> VideoOutputChoices { get; }
+    public IReadOnlyList<Choice<VideoSplitKind>> VideoSplitKinds { get; }
     public IReadOnlyList<Choice<PdfSheetPaper>> SheetPapers { get; }
     public IReadOnlyList<Choice<PdfSheetOrientation>> SheetOrientations { get; }
     public IReadOnlyList<Choice<PdfSheetOrder>> SheetOrders { get; }
@@ -477,13 +516,19 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty, NotifyPropertyChangedFor(nameof(NameError), nameof(IsValid))]
     private string _name;
 
+    partial void OnNameChanged(string value) => Labels.NameChanged(value);
+
+    /// <summary>The slice's icon, short name and what it shows.</summary>
+    public SliceLabelFields Labels { get; }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ShowImage), nameof(ShowTurnForPdf), nameof(ShowQuality), nameof(ShowTiff), nameof(ShowMultiPageTiff), nameof(ShowWebp), nameof(ShowIco),
         nameof(ShowFitsTiff), nameof(ShowFitsDebayer),
-        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
+        nameof(ShowZipResult), nameof(ShowPdf), nameof(ShowPdfBuild), nameof(ShowSourceBookmarks), nameof(ShowDocument), nameof(ShowLeaveOutPictures), nameof(ShowPdfSplit), nameof(ShowPageGroups), nameof(ShowPdfCombine),
         nameof(ShowAskPages), nameof(ShowAskPagesHint),
         nameof(ShowPdfCompression), nameof(ShowPdfCompressionOptions), nameof(ShowSheets), nameof(ShowOcr), nameof(ShowPageSize), nameof(ShowPdfTablesNote),
         nameof(ShowMedia), nameof(ShowMediaQuality), nameof(ShowMaxHeight), nameof(ShowVideoMaxSize), nameof(ShowAudioBitrate), nameof(ShowRemoveAudio),
+        nameof(ShowVideoSplit), nameof(ShowVideoParts),
         nameof(ShowAudioChannels), nameof(ShowWav), nameof(VideoCodecs), nameof(VideoCodecChoice), nameof(ShowVideoCodec), nameof(ShowHardwareEncoding), nameof(ShowCaption),
         nameof(AudioCodecs), nameof(AudioCodecChoice), nameof(ShowAudioCodec), nameof(ShowRingtone),
         nameof(ShowArchive), nameof(ShowArchiveOptions), nameof(ShowExtractNote),
@@ -759,8 +804,9 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private bool _webpLossless;
     [ObservableProperty] private bool _multiPageTiff;
     [ObservableProperty] private string _icoSizes;
-    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint))]
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowAskPages), nameof(ShowAskPagesHint), nameof(ShowSourceBookmarks))]
     private bool _merge;
+    [ObservableProperty] private bool _sourceBookmarks;
     [ObservableProperty] private double _marginMm;
     [ObservableProperty] private int _renderDpi;
     [ObservableProperty] private string _pageRange;
@@ -941,6 +987,21 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     [ObservableProperty] private Choice<WavSampleFormat> _wavFormat;
     [ObservableProperty] private bool _removeAudio;
 
+    /// <summary>One video or several parts (MediaOptions.SplitEverySeconds, SplitParts).</summary>
+    [ObservableProperty, NotifyPropertyChangedFor(nameof(ShowVideoParts))]
+    private Choice<bool> _videoOutput;
+
+    partial void OnVideoOutputChanged(Choice<bool>? oldValue, Choice<bool> newValue) =>
+        Choices.Restore(oldValue, newValue, v => VideoOutput = v);
+
+    /// <summary>With several parts: the number is seconds or minutes per part, or the equal parts.</summary>
+    [ObservableProperty] private Choice<VideoSplitKind> _videoSplitKind;
+
+    partial void OnVideoSplitKindChanged(Choice<VideoSplitKind>? oldValue, Choice<VideoSplitKind> newValue) =>
+        Choices.Restore(oldValue, newValue, v => VideoSplitKind = v);
+
+    [ObservableProperty] private int _videoSplitSize;
+
     /// <summary>Encode H.264 / HEVC / AV1 on the graphics chip when one works (MediaOptions.HardwareEncoding).</summary>
     [ObservableProperty] private bool _hardwareEncoding;
     /// <summary>Burn subtitles from speech recognized by Whisper AI (MediaOptions.Caption).</summary>
@@ -1079,6 +1140,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
     /// <summary>"Save as ZIP" is offered for geospatial targets, whose results are several files (a Shapefile) or travel zipped.</summary>
     public bool ShowZipResult => TargetCategory == FormatCategory.Geo;
     public bool ShowPdfBuild => TargetId == "pdf";
+    public bool ShowSourceBookmarks => ShowPdfBuild && Merge;
 
     /// <summary>Page size and margin of a PDF built from pictures; not with text recognition (<see cref="Recognizes"/>).</summary>
     public bool ShowPageSize => ShowPdfBuild && !Recognizes;
@@ -1137,6 +1199,14 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         && !_original.Media.JoinIntoOne && !_isSlideshow && TargetId is not ("vob" or "dv");
     public bool ShowAudioBitrate => TargetIsLossyMedia;
     public bool ShowRemoveAudio => TargetIsVideo;
+
+    /// <summary>
+    /// Split into parts (#1259): a video converted to a video. Not for a tool (a clip is cut, not split), a join, a
+    /// slideshow or "Crop video", which make one file of their own.
+    /// </summary>
+    public bool ShowVideoSplit => TargetCategory == FormatCategory.Video && !IsTool && !_original.Media.JoinIntoOne && !_isSlideshow
+        && !ShowCropFrame;
+    public bool ShowVideoParts => ShowVideoSplit && VideoOutput.Value;
     /// <summary>ISO creation has no archive compression settings.</summary>
     public bool ShowArchive => TargetCategory == FormatCategory.Archive && TargetId != "iso";
     public bool ShowArchiveOptions => ShowArchive && TargetId != FormatRegistry.Folder;
@@ -1199,6 +1269,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         // Keep a built-in preset's translatable name unless the user actually renamed it.
         if (_original.NameKey is null || Name.Trim() != _loc.DisplayName(_original))
             _original.Name = Name.Trim();
+        Labels.Apply(_original);
 
         _original.TargetFormat = TargetId;
         var image = _original.Image;
@@ -1267,6 +1338,7 @@ public sealed partial class PresetEditorViewModel : ObservableObject
 
         var pdf = _original.Pdf;
         pdf.MergeIntoSingle = Merge;
+        pdf.SourceBookmarks = SourceBookmarks;
         pdf.PageSize = PageSize.Value;
         pdf.MarginMm = Math.Clamp(MarginMm, 0, 100);
         pdf.RenderDpi = Math.Clamp(RenderDpi, 36, 1200);
@@ -1340,6 +1412,13 @@ public sealed partial class PresetEditorViewModel : ObservableObject
         }
         media.AudioBitrateKbps = AudioBitrate.Value;
         media.RemoveAudio = RemoveAudio;
+        // Only where the option is shown, as with SaveEveryFrame below.
+        (media.SplitEverySeconds, media.SplitParts) = !ShowVideoParts ? (0, 0) : VideoSplitKind.Value switch
+        {
+            ViewModels.VideoSplitKind.EqualParts => (0, Math.Clamp(VideoSplitSize, 2, MediaOptions.MaxSplitParts)),
+            ViewModels.VideoSplitKind.Minutes => (Math.Clamp(VideoSplitSize, 1, 24 * 60) * 60, 0),
+            _ => (Math.Clamp(VideoSplitSize, 1, 24 * 3600), 0),
+        };
         media.AudioChannels = AudioChannels.Value;
         media.AudioSampleRate = SampleRate.Value;
         media.WavFormat = WavFormat.Value;

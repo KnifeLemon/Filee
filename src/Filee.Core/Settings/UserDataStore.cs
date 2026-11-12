@@ -84,6 +84,8 @@ public sealed class UserDataStore
 
         var schema = Settings.SchemaVersion;
         SettingsMigrations.Apply(Settings);
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         var libraryChanged = File.Exists(ProfilesPath) && SettingsMigrations.ApplyToLibrary(schema, Presets, Profiles);
         EnsureConsistency();
 
@@ -99,6 +101,8 @@ public sealed class UserDataStore
 
     public void SaveSettings()
     {
+        if (PortableMode.IsEnabled)
+            PortableMode.DisableIntegration(Settings);
         Write(SettingsPath, Settings, FileeJsonContext.Default.AppSettings);
         SettingsChanged?.Invoke(this, EventArgs.Empty);
     }
@@ -292,12 +296,16 @@ public sealed class UserDataStore
     /// <summary>Removes dangling preset references and guarantees at least one mixed-selection profile.</summary>
     private void EnsureConsistency()
     {
+        Settings.Donut.GroupRingSize = DonutSettings.ClampGroupRingSize(Settings.Donut.GroupRingSize);
+        Settings.Donut.GroupRingSpread = DonutSettings.ClampGroupRingSpread(Settings.Donut.GroupRingSpread);
         var ids = Presets.Select(p => p.Id).ToHashSet();
         foreach (var profile in Profiles)
         {
             profile.PresetIds = profile.PresetIds.Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
             // No back face known by now (a donut the user made, read from an older file): it has none.
             profile.BackPresetIds = (profile.BackPresetIds ?? []).Where(ids.Contains).Distinct().Take(ToolbarProfile.MaxSlices).ToList();
+            // A hand-edited or out-of-range label size: back within the slider's range, on one of its steps.
+            profile.LabelScale = ToolbarProfile.ClampLabelScale(profile.LabelScale);
         }
         // A Filee from before groups drops "kind" (and the presets) when it saves a group, which comes back as a
         // conversion to "group": still a group, now an empty one, rather than a conversion that can never run.
@@ -1097,9 +1105,25 @@ internal static class SettingsMigrations
             if (presets.All(p => p.Id != BuiltInData.RingtoneId))
                 changed |= AddLikeNewLibrary(presets, BuiltInData.RingtoneId);
         }
-        // v80: Windows animated cursors (.ani, #1365) learn the images donut; custom claims stay put. (Schema 80 may be
+        // v80: the "PDF/A" preset (#1367) comes to libraries saved before it existed, after the built-in preset before it
+        //      as in a new library; no donut gets a slot. (Schema 80 may be renumbered if another change takes it first.)
+        if (from < 80 && presets.All(p => p.Id != BuiltInData.PdfAId))
+            changed |= AddLikeNewLibrary(presets, BuiltInData.PdfAId);
+        // v81: tracker modules (.xm, .it, .s3m, #1376) learn the audio donut; custom claims stay put. (Schema 81 may be
         //      renumbered if another change takes it first.)
-        if (from < 80)
+        if (from < 81)
+            changed |= LearnExtensions(profiles, out _, ["xm", "it", "s3m"]);
+        // v82: Adobe extension packages (.zxp, #1382) learn the archives donut; custom claims stay put. (Schema 82 may be
+        //      renumbered if another change takes it first.)
+        if (from < 82)
+            changed |= LearnExtensions(profiles, out _, ["zxp"]);
+        // v83: MP4 videos saved as .mpg4 (#1397) learn the video donut; custom claims stay put. (Schema 83 may be
+        //      renumbered if another change takes it first.)
+        if (from < 83)
+            changed |= LearnExtensions(profiles, out _, ["mpg4"]);
+        // v84: Windows animated cursors (.ani, #1365) learn the images donut; custom claims stay put. (Schema 84 may be
+        //      renumbered if another change takes it first.)
+        if (from < 84)
             changed |= LearnExtensions(profiles, out _, ["ani"]);
         return changed;
     }

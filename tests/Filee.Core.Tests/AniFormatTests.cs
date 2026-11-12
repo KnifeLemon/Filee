@@ -29,19 +29,19 @@ public class AniFormatTests
     }
 
     [Fact]
-    public void Version_80_libraries_learn_ani_without_taking_custom_claims()
+    public void Version_84_libraries_learn_ani_without_taking_custom_claims()
     {
         var presets = BuiltInData.CreatePresets();
         var profiles = BuiltInData.CreateProfiles();
         var images = profiles.Single(p => p.Id == "images");
         images.Extensions.Remove("ani");
-        Assert.True(SettingsMigrations.ApplyToLibrary(79, presets, profiles));
+        Assert.True(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
         Assert.Contains("ani", images.Extensions);
-        Assert.False(SettingsMigrations.ApplyToLibrary(79, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
 
         images.Extensions.Remove("ani");
         profiles.Insert(0, new ToolbarProfile { Id = "my-cursors", Extensions = ["ANI"] });
-        Assert.False(SettingsMigrations.ApplyToLibrary(79, presets, profiles));
+        Assert.False(SettingsMigrations.ApplyToLibrary(83, presets, profiles));
         Assert.DoesNotContain("ani", images.Extensions); // the user's own donut has it
         Assert.Equal("my-cursors", ProfileSelector.Select(profiles, ["busy.ani"])?.Id);
     }

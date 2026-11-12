@@ -178,6 +178,8 @@ else {
     Copy-Item -LiteralPath (Join-Path $root 'docs/GNOME-WAYLAND.md') -Destination $package
 }
 Invoke-Checked 'Installer permissions' { chmod +x (Join-Path $package 'install.sh') (Join-Path $package 'uninstall.sh') }
+# Keep the marker outside the signed macOS bundle. The install scripts keep installed copies separate.
+New-Item -ItemType File -Path (Join-Path $package 'filee.portable') | Out-Null
 $temporaryArchive = "$archive.$([Guid]::NewGuid().ToString('N')).partial"
 Invoke-Checked 'Create tar.gz' { tar -czf $temporaryArchive -C $stage $packageName }
 Move-Item -LiteralPath $temporaryArchive -Destination $archive

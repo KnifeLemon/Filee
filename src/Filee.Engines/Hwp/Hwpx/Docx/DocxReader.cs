@@ -682,7 +682,7 @@ internal sealed partial class DocxReader
         var (props, mark) = ParagraphProperties(pPr);
         var builder = new ParagraphBuilder(this, output, props, mark, pPr);
         // Run formatting starts from the paragraph style, not from the paragraph mark's direct formatting.
-        var styleRun = ResolveStyle(Val(pPr?.Element(W + "pStyle")) ?? _defaultParagraphStyle).Run;
+        var styleRun = ParagraphStyle(Val(pPr?.Element(W + "pStyle")) ?? _defaultParagraphStyle).Run;
         ParagraphContent(p.Elements(), builder, styleRun);
         builder.Finish();
     }
@@ -949,6 +949,9 @@ internal sealed partial class DocxReader
             return null;
         var note = new HNote(endnote);
         _inNote = true;
+        // A note referenced from a table cell is its own story: the table's style doesn't reach it.
+        var tableStyleLayer = _tableStyleLayer;
+        _tableStyleLayer = null;
         try
         {
             WithPart(part, () =>
@@ -960,6 +963,7 @@ internal sealed partial class DocxReader
         finally
         {
             _inNote = false;
+            _tableStyleLayer = tableStyleLayer;
         }
         // Word notes start with the reference mark and a space; 한글 writes its own number.
         if (note.Blocks.FirstOrDefault() is HParagraph first && first.Inlines.FirstOrDefault() is HText { Text: var text } leading)

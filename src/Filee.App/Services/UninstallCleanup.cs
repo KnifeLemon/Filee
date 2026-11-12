@@ -18,6 +18,8 @@ internal static class UninstallCleanup
         var succeeded = true;
         // A copy with its own data folder (FILEE_DATA_DIR) never registered anything: only its engines go.
         var integrated = UserDataStore.OverrideDirectory is null;
+        if (PortableMode.IsEnabled && Environment.ProcessPath is { } executable)
+            Clean(() => PortableIntegrationCleanup.RemoveOwnedEntriesAsync(executable).GetAwaiter().GetResult());
         if (integrated)
         {
             Clean(() => platform.SetContextMenu(false, "", ""));

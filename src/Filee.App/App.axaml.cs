@@ -33,10 +33,19 @@ public partial class App : Application
         SingleSelectionGuard.Register();
     }
 
-    public override void OnFrameworkInitializationCompleted()
+    public override async void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            try { await PortableFirstStart.RunAsync(); }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                Program.Log.LogError(ex, "Portable first-start preparation failed");
+                desktop.Shutdown(1);
+                return;
+            }
+            // macOS preloads settings to configure its Dock; reload after a possible import.
+            if (PortableMode.IsEnabled) Program.PreloadedStore?.Load();
             AppHost.Build(preloadedStore: Program.PreloadedStore);
             Start(desktop);
         }
@@ -135,6 +144,30 @@ public partial class App : Application
             finally
             {
                 _selectionPending = false;
+            }
+        };
+        triggers.ClickTriggered += async (_, e) =>
+        {
+            if (_selectionPending || store.Settings.Paused)
+                return;
+            try
+            {
+                var files = platform.IsFileManagerAt(e.X, e.Y)
+                    ? (OperatingSystem.IsMacOS() ? await Task.Run(platform.GetFileManagerSelection) : platform.GetFileManagerSelection())
+                    : (IReadOnlyList<string>)[];
+                if (files.Count > 0)
+                {
+                    radial.ShowForFiles(e.X, e.Y, files);
+                }
+                else
+                {
+                    radial.ShowForConnect(e.X, e.Y);
+                }
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                log.LogWarning(ex, "Could not check file manager selection on click");
+                radial.ShowForConnect(e.X, e.Y);
             }
         };
         triggers.Start();

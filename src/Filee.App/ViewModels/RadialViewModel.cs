@@ -28,6 +28,22 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     /// <summary>The output format under the slices' names (Settings → Donut toolbar → Appearance).</summary>
     [ObservableProperty] private bool _showCaptions = true;
 
+    /// <summary>How large a group's ring is (Appearance → Group ring size).</summary>
+    [ObservableProperty] private double _groupRingSize = 1;
+
+    /// <summary>How wide a group's ring spreads (Appearance → Group ring spread).</summary>
+    [ObservableProperty] private double _groupRingSpread = 1;
+
+    /// <summary>
+    /// How large the slices' names and icons are (the donut's <see cref="ToolbarProfile.LabelScale"/>).
+    /// </summary>
+    [ObservableProperty] private double _labelScale = 1;
+
+    /// <summary>
+    /// What a slice shows when its preset doesn't say (the donut's <see cref="ToolbarProfile.LabelShow"/>).
+    /// </summary>
+    [ObservableProperty] private LabelShow _defaultShow = LabelShow.Auto;
+
     /// <summary>The other face has a slice for these files: Tab flips to it.</summary>
     [ObservableProperty] private bool _canFlip;
 
@@ -128,11 +144,47 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     public bool IsClickMode { get; private set; }
 
     public bool HasFiles => Files.Count > 0;
+    public bool IsConnectMode { get; private set; }
+
+    public void LoadForConnect()
+    {
+        IsClickMode = true;
+        IsConnectMode = true;
+        Files = [];
+        DonutOpacity = 1;
+        HitBackground = "Transparent";
+        ApplyAppearance();
+
+        var connectPreset = new Preset
+        {
+            Id = "preset.filee_connect",
+            TargetFormat = "connect",
+        };
+
+        var connectItem = new DonutItem
+        {
+            Id = "preset.filee_connect",
+            Label = loc["preset.filee_connect"],
+            Caption = loc["connect.caption"],
+            IsEnabled = true,
+        };
+
+        _front = new Face([connectPreset], [[]], [connectItem]);
+        (_back, _backIds, _formats, _off) = (null, [], [], new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        Presets = _front.Presets;
+        _subPresets = _front.SubPresets;
+        Items = _front.Items;
+        CanFlip = false;
+        FlipHint = null;
+        CenterTitle = loc["preset.filee_connect"];
+        CenterSubtitle = loc["donut.close_hint"];
+    }
 
     /// <summary>Drag mode before any file entered: an empty ring saying "Bring files here".</summary>
     public void ResetForDrag()
     {
         IsClickMode = false;
+        IsConnectMode = false;
         Files = [];
         ApplyAppearance();
         ReserveSubRing = store.Profiles.Any(profile => HasGroups(profile.PresetIds.Concat(profile.BackPresetIds ?? [])));
@@ -153,6 +205,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
     public void Load(IReadOnlyList<string> files, bool clickMode, bool backFace = false)
     {
         IsClickMode = clickMode;
+        IsConnectMode = false;
         Files = files;
         DonutOpacity = 1;
         HitBackground = "Transparent";
@@ -175,6 +228,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         var off = store.Settings.TurnedOffFields
             .Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        LabelScale = ToolbarProfile.ClampLabelScale(profile?.LabelScale ?? 1);
+        DefaultShow = profile?.LabelShow ?? LabelShow.Auto;
         // Both faces follow the same rule: a slice that can't convert these files is greyed out and says why.
         _front = BuildFace(profile?.PresetIds ?? [], formats, off);
         (_back, _backIds, _formats, _off) = (null, [.. profile?.BackPresetIds ?? []], formats, off);
@@ -285,6 +340,10 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                 KeepsCaption = p.IsCopyToFolder,
                 IsEnabled = reason is null,
                 DisabledReason = reason,
+                FullName = loc.DisplayName(p),
+                IconKey = SliceIcons.For(p),
+                Show = p.Show,
+                Direction = p.Direction,
             };
         }
 
@@ -297,13 +356,17 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
             return new DonutItem
             {
                 Id = p.Id,
-                Label = loc.DisplayName(p),
+                Label = loc.DonutName(p),
                 Caption = loc.Format("donut.group_caption", children.Count),
                 IsEnabled = children.Any(c => c.IsEnabled),
                 // Its presets were all deleted since it was made: say so rather than show a dead slice.
                 DisabledReason = children.Count == 0 ? loc["donut.group_empty"]
                     : children.Select(c => c.DisabledReason).FirstOrDefault(r => r is not null),
                 Children = children,
+                FullName = loc.DisplayName(p),
+                IconKey = SliceIcons.For(p),
+                Show = p.Show,
+                Direction = p.Direction,
             };
         }).ToList();
         return new Face(presets, subPresets, items);
@@ -318,16 +381,19 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
                  (sub >= 0 || Items[index].IsEnabled))
             CenterSubtitle = sub >= 0 && sub < children.Count
                 ? children[sub].IsEnabled
-                    ? loc.Format(IsClickMode ? "donut.click_to" : "donut.drop_to", $"{Items[index].Label} · {children[sub].Label}")
+                    ? loc.Format(IsClickMode ? "donut.click_to" : "donut.drop_to", $"{NameOf(Items[index])} · {NameOf(children[sub])}")
                     : children[sub].DisabledReason
                 : loc["donut.pick_in_group"];
         else if (index >= 0 && index < Items.Count)
             CenterSubtitle = Items[index].IsEnabled
-                ? loc.Format(IsClickMode ? "donut.click_to" : "donut.drop_to", Items[index].Label)
+                ? loc.Format(IsClickMode ? "donut.click_to" : "donut.drop_to", NameOf(Items[index]))
                 : Items[index].DisabledReason;
         else
             CenterSubtitle = IsClickMode ? loc["donut.close_hint"] : null;
     }
+
+    // The slice may show an icon, a short name or a shortened one: the hint names it in full.
+    private static string NameOf(DonutItem item) => item.FullName ?? item.Label;
 
     /// <summary>
     /// Click mode, before the window is placed: room for a group's ring only if this donut has a group, on either face
@@ -341,6 +407,8 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         HoleRatio = store.Settings.Donut.HoleRatio;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1);
         ShowCaptions = store.Settings.Donut.ShowCaptions;
+        GroupRingSize = DonutSettings.ClampGroupRingSize(store.Settings.Donut.GroupRingSize);
+        GroupRingSpread = DonutSettings.ClampGroupRingSpread(store.Settings.Donut.GroupRingSpread);
         FlipKey = store.Settings.Donut.EffectiveFlipKey(store.Settings.Triggers);
         FlipWithWheel = store.Settings.Donut.FlipWithWheel;
     }

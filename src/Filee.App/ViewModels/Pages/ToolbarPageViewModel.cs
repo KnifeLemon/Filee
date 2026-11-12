@@ -125,6 +125,10 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         HoleRatio = store.Settings.Donut.HoleRatio * 100;
         SliceOpacity = Math.Clamp(store.Settings.Donut.Opacity, DonutSettings.MinOpacity, 1) * 100;
         ShowCaptions = store.Settings.Donut.ShowCaptions;
+        GroupRingSize = DonutSettings.ClampGroupRingSize(store.Settings.Donut.GroupRingSize) * 100;
+        GroupRingSpread = DonutSettings.ClampGroupRingSpread(store.Settings.Donut.GroupRingSpread) * 100;
+        SliceLabelChoices = [.. LabelShows.Select(v => new Choice<LabelShow>(v, loc[LabelShowKey(v)]))];
+        SliceLabels = SliceLabelChoices[0];
         _loading = false;
 
         SelectedProfile = Profiles.FirstOrDefault();
@@ -301,6 +305,48 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     /// <summary>The output format under the slices' names (Appearance → Show output format).</summary>
     [ObservableProperty] private bool _showCaptions;
 
+    /// <summary>How large a group's ring is, in percent (Appearance → Group ring size).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupRingSizeText))]
+    private double _groupRingSize = 100;
+
+    /// <summary>How wide a group's ring spreads, in percent (Appearance → Group ring spread).</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(GroupRingSpreadText))]
+    private double _groupRingSpread = 100;
+
+    /// <summary>The ring size as its slider shows it: "125 %".</summary>
+    public string GroupRingSizeText => Percent(GroupRingSize);
+
+    /// <summary>The ring spread as its slider shows it: "150 %".</summary>
+    public string GroupRingSpreadText => Percent(GroupRingSpread);
+
+    private static string Percent(double value) =>
+        (Math.Round(value) / 100).ToString("P0", System.Globalization.CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// How large the selected donut's slice names and icons are, in percent (<see cref="ToolbarProfile.LabelScale"/>).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LabelScaleText))]
+    private double _labelScale = 100;
+
+    /// <summary>The Label scale as the slider's value shows it: "125 %".</summary>
+    public string LabelScaleText => Percent(LabelScale);
+
+    /// <summary>
+    /// What the selected donut's slices show when their preset doesn't say (<see cref="ToolbarProfile.LabelShow"/>).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DefaultShow))]
+    private Choice<LabelShow> _sliceLabels = null!;
+
+    /// <summary>Auto, Icon &amp; text, Text only, Icon only.</summary>
+    public IReadOnlyList<Choice<LabelShow>> SliceLabelChoices { get; private set; } = [];
+
+    /// <summary>The preview donut's <see cref="DonutMenu.DefaultShow"/>.</summary>
+    public LabelShow DefaultShow => SliceLabels?.Value ?? LabelShow.Auto;
+
     private ToolbarProfile? Profile => SelectedProfile?.Profile;
 
     /// <summary>The preset ids of the face being edited (null without a profile).</summary>
@@ -441,6 +487,10 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         CanChangeMixed = profile is not null && !(profile.IsFallback && mixedCount <= 1);
         CanDelete = CanChangeMixed;
         CanReset = profile is not null && _store.CanResetProfile(profile);
+        _loading = true;
+        LabelScale = ToolbarProfile.ClampLabelScale(profile?.LabelScale ?? 1) * 100;
+        SliceLabels = SliceLabelChoices.First(c => c.Value == (profile?.LabelShow ?? LabelShow.Auto));
+        _loading = false;
         ExtensionTags = profile is { IsFallback: false } ? new ExtensionTagsViewModel(profile, _store.Profiles, _loc, OnExtensionsSaved) : null;
         MixedExtensions = profile is { IsFallback: true } ? new MixedExtensionsViewModel(profile, _store.Profiles, _loc, OnExtensionsSaved) : null;
     }
@@ -456,6 +506,43 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     partial void OnHoleRatioChanged(double value) => SaveAppearance();
     partial void OnSliceOpacityChanged(double value) => SaveAppearance();
     partial void OnShowCaptionsChanged(bool value) => SaveAppearance();
+    partial void OnGroupRingSizeChanged(double value) => SaveAppearance();
+    partial void OnGroupRingSpreadChanged(double value) => SaveAppearance();
+
+    /// <summary>The four Show modes, in the order the combo boxes list them.</summary>
+    internal static readonly LabelShow[] LabelShows = [LabelShow.Auto, LabelShow.IconAndText, LabelShow.TextOnly, LabelShow.IconOnly];
+
+    /// <summary>The name of Show mode <paramref name="show"/> ("labels.icon_text").</summary>
+    internal static string LabelShowKey(LabelShow show) => show switch
+    {
+        LabelShow.IconAndText => "labels.icon_text",
+        LabelShow.TextOnly => "labels.text_only",
+        LabelShow.IconOnly => "labels.icon_only",
+        _ => "labels.auto",
+    };
+
+    partial void OnLabelScaleChanged(double value)
+    {
+        if (_loading || Profile is not { } profile)
+            return;
+        var scale = ToolbarProfile.ClampLabelScale(value / 100);
+        if (scale == profile.LabelScale)
+            return;
+        profile.LabelScale = scale;
+        SaveOwnLibrary();
+    }
+
+    partial void OnSliceLabelsChanged(Choice<LabelShow>? oldValue, Choice<LabelShow> newValue)
+    {
+        if (Choices.Restore(oldValue, newValue, v => SliceLabels = v) || _loading || Profile is not { } profile)
+            return;
+        // Auto is the default: left unset, as on a donut that never chose.
+        var show = newValue.Value == LabelShow.Auto ? (LabelShow?)null : newValue.Value;
+        if (show == profile.LabelShow)
+            return;
+        profile.LabelShow = show;
+        SaveOwnLibrary();
+    }
 
     private void SaveAppearance()
     {
@@ -465,6 +552,8 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
         _store.Settings.Donut.HoleRatio = Math.Round(HoleRatio) / 100;
         _store.Settings.Donut.Opacity = Math.Round(SliceOpacity) / 100;
         _store.Settings.Donut.ShowCaptions = ShowCaptions;
+        _store.Settings.Donut.GroupRingSize = DonutSettings.ClampGroupRingSize(GroupRingSize / 100);
+        _store.Settings.Donut.GroupRingSpread = DonutSettings.ClampGroupRingSpread(GroupRingSpread / 100);
         _store.SaveSettings();
     }
 
@@ -723,7 +812,18 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
             .OfType<Preset>()
             // A group is marked as one (no children: the editor doesn't fan them out), so the preview draws it as the
             // donut does.
-            .Select(p => new DonutItem { Id = p.Id, Label = _loc.DonutName(p), Caption = Caption(p), KeepsCaption = p.IsCopyToFolder, Children = p.IsGroup ? [] : null })
+            .Select(p => new DonutItem
+            {
+                Id = p.Id,
+                Label = _loc.DonutName(p),
+                Caption = Caption(p),
+                KeepsCaption = p.IsCopyToFolder,
+                Children = p.IsGroup ? [] : null,
+                FullName = _loc.DisplayName(p),
+                IconKey = SliceIcons.For(p),
+                Show = p.Show,
+                Direction = p.Direction,
+            })
             .ToList();
 
         Palette.Clear();
