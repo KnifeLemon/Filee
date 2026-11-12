@@ -102,6 +102,12 @@ public sealed partial class ToolbarPageViewModel : ObservableObject, IDisposable
     private static readonly TimeSpan JudgeSlice = TimeSpan.FromMilliseconds(8);
     private bool _loading;
     private bool _repositioning;
+
+    /// <summary>
+    /// The selected profile is being moved in the list, which drops the list's selection for a moment: the same profile
+    /// stays selected.
+    /// </summary>
+    internal bool IsRepositioning => _repositioning;
     private string? _newPresetToSelect;
     private PaletteTab? _pendingTabRestore;
     private bool _updatingTabs;

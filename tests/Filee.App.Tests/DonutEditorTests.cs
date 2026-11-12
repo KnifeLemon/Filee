@@ -1392,6 +1392,46 @@ public class DonutEditorTests
     }
 
     [AvaloniaFact]
+    public void Moving_the_profile_in_the_list_leaves_the_donut_on_screen_and_the_window_where_they_are()
+    {
+        var (window, page, vm) = Open();
+        var motion = Motion.Enabled;
+        Motion.Set(true); // animated, as in the app: a slide back would be under way
+        var main = (MainWindow)window;
+        var start = window.Position;
+        try
+        {
+            vm.SelectedProfile = vm.Profiles[0];
+            Assert.True(vm.MoveProfileDownCommand.CanExecute(null));
+            var selected = vm.SelectedProfile;
+            vm.AdjustLookCommand.Execute(null);
+            RunUntil(() => window.Position != start && !IsSliding(page));
+            var landed = window.Position;
+            Assert.NotEqual(start, landed);
+            var preview = page.Preview!;
+
+            // Down and back up (the list drops its selection for a moment on the way back).
+            foreach (var move in new[] { vm.MoveProfileDownCommand, vm.MoveProfileUpCommand })
+            {
+                move.Execute(null);
+                RunUntil(() => false, TimeSpan.FromMilliseconds(500));
+                Assert.Same(selected, vm.SelectedProfile);
+                Assert.False(IsSliding(page));
+                Assert.Equal(landed, window.Position);
+                Assert.Same(preview, page.Preview);
+                Assert.True(preview.IsVisible);
+                AssertNotUnder(preview, window);
+                Assert.False(preview.Place!.Over);
+            }
+        }
+        finally
+        {
+            Motion.Set(motion);
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact]
     public void A_size_the_user_gives_the_window_meanwhile_is_kept_on_done()
     {
         var (window, page, vm) = Open();
@@ -1405,10 +1445,11 @@ public class DonutEditorTests
             RenderTests.Pump();
             Assert.NotEqual(start, window.Position);
             window.Width = 1100;
+            window.Height = 760;
             RenderTests.Pump();
             // Closed now, it opens next time where the user had it, at the size they gave it.
             var closing = WindowService.MainWindowPlacement.Of(main, (MainWindowViewModel)window.DataContext!, null);
-            Assert.Equal((start, 1100.0), (closing.Position, closing.Size!.Value.Width));
+            Assert.Equal((start, new Size(1100, 760)), (closing.Position, closing.Size!.Value));
             vm.DoneAdjustingLookCommand.Execute(null);
             RenderTests.Pump();
             Assert.Equal(start, window.Position);
@@ -1460,6 +1501,15 @@ public class DonutEditorTests
             Assert.True(preview.Box.Intersects(FrameOf(window)));
             preview.Position = new PixelPoint(frame.X + 140, frame.Y + 120);
             Assert.NotNull(store.Settings.DonutPreviewPlace);
+            // Resized while it is dragged (moved onto a screen of other scaling, or a slider): it stays under the
+            // pointer.
+            var held = preview.Position;
+            vm.OuterRadius += 10;
+            RenderTests.Pump();
+            Assert.True(IsDragging(preview));
+            Assert.Equal(held, preview.Position);
+            vm.OuterRadius -= 10;
+            RenderTests.Pump();
             // Let go there: off it at once, and the place isn't kept.
             preview.MouseUp(middle, MouseButton.Left);
             Assert.False(IsDragging(preview));
@@ -1486,6 +1536,13 @@ public class DonutEditorTests
             RenderTests.Pump();
             Assert.Same(kept, store.Settings.DonutPreviewPlace);
             Assert.Equal(clear, preview.Position - new PixelVector(0, 20));
+
+            // Let go partly off the screen: placed again, all of it on a screen.
+            var area = window.Screens.All[0].WorkingArea;
+            preview.MouseDown(middle, MouseButton.Left);
+            preview.Position = new PixelPoint(area.Right - preview.Box.Width / 2, area.Y + 40);
+            preview.MouseUp(middle, MouseButton.Left);
+            AssertNotUnder(preview, window);
 
             // Dropped onto the window with the release lost, and the pointer only seen leaving the donut, the button
             // up: the drag is over all the same, and it moves off the window.

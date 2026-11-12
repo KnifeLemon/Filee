@@ -149,7 +149,9 @@ public partial class ToolbarPage : UserControl
         }
         if (e.PropertyName is nameof(ToolbarPageViewModel.OpenGroup) or nameof(ToolbarPageViewModel.IsAdjustingLook))
             Avalonia.Threading.Dispatcher.UIThread.Post(KeepFocus, Avalonia.Threading.DispatcherPriority.Loaded);
-        if (e.PropertyName is { } name && (ContentProperties.Contains(name) || LookProperties.Contains(name)))
+        // Not while the profile moves in the list: its selection is gone for a moment, the profile the same.
+        if (e.PropertyName is { } name && (ContentProperties.Contains(name) || LookProperties.Contains(name))
+            && !(name == nameof(ToolbarPageViewModel.SelectedProfile) && Vm is { IsRepositioning: true }))
             UpdatePreview(reload: ContentProperties.Contains(name));
     }
 
@@ -207,8 +209,8 @@ public partial class ToolbarPage : UserControl
             // window for want of room, it goes back beside it once it is small enough again.
             _preview.SizeChanged += (_, _) =>
             {
-                if (_preview is { IsVisible: true, Place: { } place } preview && _topLevel is Window window && !_sliding
-                    && (place.Over || !place.Fits(preview.Box.Width, FrameOf(window), ScreensOf(window))))
+                if (_preview is { IsVisible: true, IsDragging: false, Place: { } place } preview && _topLevel is Window window
+                    && !_sliding && (place.Over || !place.Fits(preview.Box.Width, FrameOf(window), ScreensOf(window))))
                     PlacePreview(window, moveWindow: false);
             };
             // A group clicked on it is the one held open from then on.
@@ -288,16 +290,22 @@ public partial class ToolbarPage : UserControl
 
     /// <summary>
     /// The drag is over: dropped onto this window, where a click would bury it, the donut goes back beside it, and the
-    /// place isn't kept.
+    /// place isn't kept. Left across two screens, or grown off one meanwhile, it is placed again.
     /// </summary>
     private void CheckDrop()
     {
-        if (_preview is not { IsVisible: true } preview || _topLevel is not Window main || !preview.Box.Intersects(FrameOf(main)))
+        if (_preview is not { IsVisible: true } preview || _topLevel is not Window main)
             return;
-        var store = AppHost.Get<UserDataStore>();
-        store.Settings.DonutPreviewPlace = null;
-        DonutLookSave.Schedule(store);
-        PlacePreview(main, moveWindow: false);
+        var frame = FrameOf(main);
+        if (preview.Box.Intersects(frame))
+        {
+            var store = AppHost.Get<UserDataStore>();
+            store.Settings.DonutPreviewPlace = null;
+            DonutLookSave.Schedule(store);
+            PlacePreview(main, moveWindow: false);
+        }
+        else if (preview.Place is { } place && !place.Fits(preview.Box.Width, frame, ScreensOf(main)))
+            PlacePreview(main, moveWindow: false);
     }
 
     // macOS reports window positions and screens in points, the others in device pixels.
@@ -498,12 +506,15 @@ public partial class ToolbarPage : UserControl
             _userResizePosted = false;
             if (_sliding || _topLevel is not MainWindow { IsVisible: true, WindowState: WindowState.Normal, RestPlace: { } rest } main)
                 return;
-            if (Math.Abs(main.ClientSize.Width - (_narrowedTo ?? rest.ClientSize.Width)) > 0.5
-                && Math.Abs(main.ClientSize.Width - rest.ClientSize.Width) > 0.5)
+            // Its width the user's unless it is the one it was made narrower to; its height always.
+            var width = rest.ClientSize.Width;
+            if (Math.Abs(main.ClientSize.Width - (_narrowedTo ?? width)) > 0.5 && Math.Abs(main.ClientSize.Width - width) > 0.5)
             {
                 _narrowedTo = null;
-                main.RestPlace = rest = (rest.Position, main.ClientSize);
+                width = main.ClientSize.Width;
             }
+            if (new Size(width, main.ClientSize.Height) is var size && size != rest.ClientSize)
+                main.RestPlace = (rest.Position, size);
         }, Avalonia.Threading.DispatcherPriority.Background);
     }
 
@@ -521,7 +532,8 @@ public partial class ToolbarPage : UserControl
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
         {
             _clearPosted = false;
-            if (!_sliding && _topLevel is Window { IsVisible: true, WindowState: not WindowState.Minimized } main && _preview is { IsVisible: true })
+            if (!_sliding && _topLevel is Window { IsVisible: true, WindowState: not WindowState.Minimized } main
+                && _preview is { IsVisible: true, IsDragging: false })
                 PlacePreview(main, moveWindow: false);
         }, Avalonia.Threading.DispatcherPriority.Loaded);
     }

@@ -140,11 +140,15 @@ public partial class DonutPreviewWindow : Window
         DragFinished?.Invoke();
     }
 
+    // Not while it is dragged: resized meanwhile (moved onto a screen of other scaling), it stays under the pointer.
     private void KeepPlace()
     {
-        if (_place is { } place && IsVisible)
+        if (_place is { } place && IsVisible && !_dragging)
             Move(place.TopLeftFor(Side));
     }
+
+    /// <summary>Its middle is pressed and it moves with the pointer: placed again only once it is let go.</summary>
+    internal bool IsDragging => _dragging;
 
     private void Move(PixelPoint to)
     {

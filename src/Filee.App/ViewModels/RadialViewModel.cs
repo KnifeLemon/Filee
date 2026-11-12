@@ -227,9 +227,7 @@ public sealed partial class RadialViewModel(UserDataStore store, ILocalizer loc,
         // A turned-off field still shows the formats of the dropped files' own fields (FORMAT-RULES rule 4): a font file
         // offers font conversions with Fonts off. The front takes this local, not _off, which holds the last load's set
         // until the line after it.
-        var off = store.Settings.TurnedOffFields
-            .Except(formats.SelectMany(FormatFields.Of).Select(field => field.Id), StringComparer.OrdinalIgnoreCase)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var off = TurnedOffBesides(store.Settings.TurnedOffFields, formats);
         LabelScale = ToolbarProfile.ClampLabelScale(profile?.LabelScale ?? 1);
         DefaultShow = profile?.LabelShow ?? LabelShow.Auto;
         // Both faces follow the same rule: a slice that can't convert these files is greyed out and says why.
