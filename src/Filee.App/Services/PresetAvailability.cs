@@ -119,8 +119,8 @@ public sealed class PresetAvailability
 
         if (preset.IsClipTool)
         {
-            // Any video among the files: the others are left out when the clip window opens.
-            var videos = formats.Where(f => f.Category == FormatCategory.Video).ToList();
+            // Any video or sound among the files: the others are left out when the clip window opens.
+            var videos = formats.Where(f => f.Category is FormatCategory.Video or FormatCategory.Audio).ToList();
             if (videos.Count == 0)
                 return new(PresetUse.Unusable, _loc["error.unsupported_source"]);
             bool CanCut(RoutePlanner planner) => videos.Any(f => ClipTool.CanCut(f.Id, planner));

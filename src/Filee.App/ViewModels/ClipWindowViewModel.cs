@@ -83,6 +83,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     private readonly Action<string, Preset> _export;
     private readonly ILogger? _log;
     private readonly string _workFolder;
+    private readonly bool _ringtone;
 
     private CancellationTokenSource _fileCts = new();
     private CancellationTokenSource? _previewCts;
@@ -202,6 +203,12 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
 
     [ObservableProperty] private double _detailEnd;
 
+    /// <summary>The file has a picture; a sound alone shows its waveform in place of the pictures.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsSoundOnly))]
+    [NotifyPropertyChangedFor(nameof(TimelineHeight))]
+    private bool _hasPicture = true;
+
     /// <summary>The loudness of the sound over the video (0 to 1), empty until read or without sound.</summary>
     [ObservableProperty] private IReadOnlyList<float> _loudness = [];
 
@@ -314,7 +321,27 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     public string ViewEndText => ClipRange.Display(ViewEnd);
     public bool Can15 => Duration > QuickLengths[0];
     public bool Can30 => Duration > QuickLengths[1];
-    public bool Can60 => Duration > QuickLengths[2];
+    public bool Can60 => Duration > LongLength;
+
+    /// <summary>The longest quick length: 60 s for a clip, the 40 s an iPhone takes for a ringtone.</summary>
+    public double LongLength => _ringtone ? MediaOptions.MaxRingtoneLength : QuickLengths[2];
+
+    public string LongLengthParameter => LongLength.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>Taller for a sound: the timeline is its waveform.</summary>
+    public double TimelineHeight => HasPicture ? 58 : 110;
+
+    /// <summary>The window picks the part of a sound that becomes an iPhone ringtone: no editing, only the part.</summary>
+    public bool IsRingtone => _ringtone;
+
+    /// <summary>The whole editor (pieces, volume, speed, music, fades) is shown: not when only a ringtone's part is chosen.</summary>
+    public bool ShowsEditor => !_ringtone;
+
+    /// <summary>The window shows a waveform in place of the pictures.</summary>
+    public bool IsSoundOnly => !HasPicture;
+
+    /// <summary>"At most 40 seconds", under the ringtone's part.</summary>
+    public string RingtoneLimitText => _loc.Format("clip.ringtone_limit", (int)MediaOptions.MaxRingtoneLength);
     public string PlayToolTip => _loc[IsPlaying ? "clip.pause" : "clip.play"];
     public string FastToolTip => _loc[CanFast ? "clip.fast_hint" : "clip.fast_needs_encode"];
 
@@ -466,7 +493,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <summary>"15 s", "30 s", "60 s" on the quick length buttons.</summary>
     public string Length15Text => _loc.Format("clip.seconds", QuickLengths[0]);
     public string Length30Text => _loc.Format("clip.seconds", QuickLengths[1]);
-    public string Length60Text => _loc.Format("clip.seconds", QuickLengths[2]);
+    public string Length60Text => _loc.Format("clip.seconds", LongLength);
 
     public event Action? CloseRequested;
 
@@ -475,9 +502,13 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <param name="frames">Length, pictures, sound and playing of a video (FFmpeg).</param>
     /// <param name="targetFor">The format a clip of the file at a path is written in.</param>
     /// <param name="export">Starts the conversion that writes a clip (the file, the conversion's preset).</param>
+    /// <param name="ringtone">
+    /// <paramref name="tool"/> is a ringtone preset (<see cref="AskedRingtone"/>) and the window only picks the part of each sound.
+    /// </param>
     public ClipWindowViewModel(IReadOnlyList<string> files, Preset tool, ILocalizer loc, UserDataStore store, IVideoFrameSource frames,
-        Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null)
+        Func<string, string> targetFor, Action<string, Preset> export, ILogger? log = null, bool ringtone = false)
     {
+        _ringtone = ringtone;
         _files = files;
         _tool = tool;
         _loc = loc;
@@ -535,7 +566,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             Directory.CreateDirectory(_workFolder);
             video = await _frames.ProbeAsync(path, ct);
             if (video.Duration <= 0)
-                throw new InvalidDataException("The video doesn't say how long it is.");
+                throw new InvalidDataException("The file doesn't say how long it is.");
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -554,18 +585,22 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
             return;
 
         _video = video;
+        HasPicture = video.HasPicture;
         Duration = video.Duration;
         ViewEnd = video.Duration;
         SelectedLane = ClipLane.Video;
         SelectedIndices = [];
-        UseCutter(new ClipCutter(video.Duration, new ClipRange(0, Math.Min(video.Duration, FirstClipLength))));
+        var first = _ringtone ? Math.Clamp(_tool.Media.RingtoneLength, MediaOptions.MinRingtoneLength, MediaOptions.MaxRingtoneLength) : FirstClipLength;
+        UseCutter(new ClipCutter(video.Duration, new ClipRange(0, Math.Min(video.Duration, first))));
         ActiveHandle = ClipHandle.Start;
         Playhead = 0;
         SelectedIndex = -1;
         IsLoading = false;
         SchedulePreview(immediately: true);
         _ = ReadLoudnessAsync(path, video.Duration, ct);
-        await FillTimelineAsync(path, video.Duration, ct);
+        // A sound has no pictures to take: its waveform is the timeline.
+        if (video.HasPicture)
+            await FillTimelineAsync(path, video.Duration, ct);
     }
 
     /// <summary>Takes the timeline's pictures, a few at a time, each shown as soon as it is there.</summary>
@@ -891,7 +926,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <summary>Puts the sound of the file at <paramref name="path"/> under the clip as music (A2), from the clip's start.</summary>
     public async Task AddMusicAsync(string path)
     {
-        if (!CanEdit || _cutter is null)
+        if (!CanEdit || _ringtone || _cutter is null)
             return;
         StopPlaying();
         var cutter = _cutter;
@@ -960,7 +995,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// <summary>Takes new pictures and loudness of the clip's stretch of the video once its ends rest.</summary>
     private void ScheduleDetail()
     {
-        if (_cutter is null || _closed || _video is null)
+        if (_cutter is null || _closed || _video is not { HasPicture: true } || _ringtone)
             return;
         _detailWanted = (_cutter.Start, _cutter.End);
         _detailCts?.Cancel();
@@ -1099,7 +1134,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void Split()
     {
-        if (!CanEdit || _cutter is null)
+        if (!CanEdit || _ringtone || _cutter is null)
             return;
         StopPlaying();
         if (_cutter.Split(Playhead))
@@ -1115,7 +1150,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     public void Delete(bool closeUp)
     {
-        if (!CanEdit || _cutter is null)
+        if (!CanEdit || _ringtone || _cutter is null)
             return;
         StopPlaying();
         if (IsMusicSelected)
@@ -1175,7 +1210,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public void CloseGaps()
     {
-        if (CanEdit && _cutter is not null)
+        if (CanEdit && !_ringtone && _cutter is not null)
         {
             StopPlaying();
             _cutter.CloseGaps();
@@ -1186,7 +1221,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     [RelayCommand]
     public async Task RemoveSilenceAsync()
     {
-        if (!CanEdit || _cutter is null || IsFindingSilence)
+        if (!CanEdit || _ringtone || _cutter is null || IsFindingSilence)
             return;
         StopPlaying();
         var cutter = _cutter;
@@ -1306,6 +1341,18 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     {
         if (ct.IsCancellationRequested || _closed)
             return;
+        if (width <= 0 || height <= 0)
+        {
+            // A sound has no pictures: only the playhead moves.
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (ct.IsCancellationRequested || _closed)
+                    return;
+                IsBuffering = false;
+                Playhead = sourceTime;
+            });
+            return;
+        }
         WriteableBitmap bitmap;
         lock (_playFramesLock)
         {
@@ -1345,7 +1392,10 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
         tool.Media.ExactCut = !IsFast;
         try
         {
-            _export(path, ClipTool.ConversionOf(tool, _targetFor(path), _cutter.ToEdit()));
+            // A ringtone is the ordinary M4R conversion of the part between the handles; the clip tool encodes a clip.
+            _export(path, _ringtone
+                ? AskedRingtone.Apply(_tool, _cutter.Start, _cutter.End - _cutter.Start)
+                : ClipTool.ConversionOf(tool, _targetFor(path), _cutter.ToEdit()));
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
         {
@@ -1380,7 +1430,7 @@ public sealed partial class ClipWindowViewModel : ObservableObject, IDisposable
     /// </summary>
     private void SchedulePreview(bool immediately = false)
     {
-        if (_closed || _video is null || IsPlaying)
+        if (_closed || _video is not { HasPicture: true } || IsPlaying)
             return;
         var nearest = NearestThumbnail(PreviewTime);
         if (nearest is not null && !ReferenceEquals(nearest, Preview) && !immediately)

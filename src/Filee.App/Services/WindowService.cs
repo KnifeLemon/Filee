@@ -420,22 +420,35 @@ public sealed class WindowService(ILocalizer loc, IServiceProvider services, Mem
     }
 
     /// <summary>
-    /// Opens the "Cut a clip" window on the videos among the files. Each clip is written by an ordinary conversion,
+    /// Opens the "Cut a clip" window on the videos and sounds among the files. Each clip is written by an ordinary conversion,
     /// shown in the toast.
     /// </summary>
-    public void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null)
+    public void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near = null) =>
+        ShowClipWindow(files, preset, near, ringtone: false);
+
+    /// <summary>
+    /// Opens the "Cut a clip" window on the sounds among the files to choose the part that becomes an iPhone ringtone
+    /// (<see cref="MediaOptions.AskRingtonePart"/>, #1291). Its Save starts an ordinary M4R conversion of that part.
+    /// </summary>
+    public void ShowRingtoneWindow(IReadOnlyList<string> files, Preset preset) =>
+        ShowClipWindow(files, preset, null, ringtone: true);
+
+    private void ShowClipWindow(IReadOnlyList<string> files, Preset preset, PixelPoint? near, bool ringtone)
     {
-        var videos = files.Where(f => FormatRegistry.Detect(f)?.Category == FormatCategory.Video).ToList();
+        var catalog = services.GetRequiredService<ConverterCatalog>();
+        var cutters = catalog.CreatePlanner();
+        var videos = files.Where(f => FormatRegistry.Detect(f) is { } format
+            && (ringtone ? format.Category == FormatCategory.Audio
+                : format.Category is FormatCategory.Video or FormatCategory.Audio && ClipTool.CanCut(format.Id, cutters))).ToList();
         if (videos.Count == 0)
             return;
         _clipWindow?.Close();
         var store = services.GetRequiredService<UserDataStore>();
-        var catalog = services.GetRequiredService<ConverterCatalog>();
         var conversions = services.GetRequiredService<ConversionService>();
         var log = services.GetService<ILogger<ClipWindowViewModel>>();
         var vm = new ClipWindowViewModel(videos, preset, loc, store, new FfmpegFrameSource(),
             path => ClipTool.TargetFor(FormatRegistry.Detect(path)?.Id ?? ClipTool.FallbackTarget, catalog.CreatePlanner()),
-            (path, conversion) => conversions.Start([path], conversion), log);
+            (path, conversion) => conversions.Start([path], conversion), log, ringtone);
         var win = new ClipWindow { DataContext = vm };
         win.PositionOnScreen(near);
         win.Closed += (_, _) =>
