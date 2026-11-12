@@ -1113,6 +1113,10 @@ internal static class SettingsMigrations
         //      renumbered if another change takes it first.)
         if (from < 82)
             changed |= LearnExtensions(profiles, out _, ["zxp"]);
+        // v83: MP4 videos saved as .mpg4 (#1397) learn the video donut; custom claims stay put. (Schema 83 may be
+        //      renumbered if another change takes it first.)
+        if (from < 83)
+            changed |= LearnExtensions(profiles, out _, ["mpg4"]);
         return changed;
     }
 
