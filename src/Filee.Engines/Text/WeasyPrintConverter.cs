@@ -56,8 +56,9 @@ public sealed partial class WeasyPrintConverter : IConverter
     public EngineStatus GetStatus()
     {
         _executable = Locate();
+        // Filee has no WeasyPrint download for Linux and macOS yet (#1403): "not installed" would point to nothing.
         return _executable is null
-            ? EngineStatus.Unavailable("engine.reason.not_installed")
+            ? EngineStatus.Unavailable(OperatingSystem.IsWindows() ? "engine.reason.not_installed" : "engine.reason.unsupported_platform")
             : EngineStatus.Available(_executable, EngineEnvironment.UsesFileesCopy("weasyprint") ? EngineVersions.Component("weasyprint") : null);
     }
 
@@ -68,10 +69,13 @@ public sealed partial class WeasyPrintConverter : IConverter
         var page = PreparePage(step.InputPath, work, step.OriginalSourcePath);
         var temp = Path.Combine(work, "output.pdf");
 
+        // For a WeasyPrint installed with pip. The onedir weasyprint.exe ignores both (PyInstaller starts Python with an
+        // isolated configuration); its progress still arrives line by line, as WeasyPrint logs to stderr, which stays
+        // line-buffered.
         var environment = new Dictionary<string, string>
         {
             ["PYTHONIOENCODING"] = "utf-8",
-            ["PYTHONUNBUFFERED"] = "1", // each step and page as it is printed: the stall watch counts on them
+            ["PYTHONUNBUFFERED"] = "1",
         };
         progress?.Report(0.02);
         var result = await ProcessRunner.RunAsync(executable, Arguments(page, temp), MaxDuration, cancellationToken,

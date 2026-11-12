@@ -201,9 +201,9 @@ public sealed partial class WeasyPrintTests(EngineFixture fx) : IClassFixture<En
     {
         foreach (var gone in new[] { "file:", "https:", "127.0.0.1", "../", "secret.png", "linked.css", "imported.css", "@import", folders.Secret })
             Assert.DoesNotContain(gone, html, StringComparison.OrdinalIgnoreCase);
-        // Every address left is a data: URI (a <link> stays, without its href).
+        // Every address left is a data: URI or names an element of the page (a <link> stays, without its href).
         Assert.All(Address().Matches(html),
-            m => Assert.StartsWith("data:", m.Groups[1].Value, StringComparison.OrdinalIgnoreCase));
+            m => Assert.True(m.Groups[1].Value.StartsWith("data:", StringComparison.OrdinalIgnoreCase) || m.Groups[1].Value.StartsWith('#'), m.Value));
     }
 
     [Fact]
@@ -248,6 +248,40 @@ public sealed partial class WeasyPrintTests(EngineFixture fx) : IClassFixture<En
         var html = File.ReadAllText(WeasyPrintConverter.PreparePage(page, fx.NewFolder(), page));
 
         Assert.Contains("src=\"data:image/svg+xml;base64,", html, StringComparison.Ordinal);
+    }
+
+    /// <summary>An inline SVG whose parts refer to each other: a symbol used twice, a gradient built on another, url(#…) fills.</summary>
+    private const string InlineSvg = """
+        <style>.bar { fill: url(#g); }</style>
+        <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="60">
+        <defs><linearGradient id="base"><stop offset="0" stop-color="teal"/></linearGradient>
+        <linearGradient id="g" xlink:href="#base"/><text id="s" x="5" y="20">USEDSYMBOL</text></defs>
+        <use href="#s"/><use xlink:href="#s" y="20"/><rect class="bar" style="fill: url(#g)" y="45" width="100" height="10"/>
+        </svg>
+        """;
+
+    [Fact]
+    public void References_to_the_pages_own_elements_stay()
+    {
+        var folders = Make();
+        var page = Page(folders, port: 9, extra: InlineSvg);
+
+        var html = File.ReadAllText(WeasyPrintConverter.PreparePage(page, fx.NewFolder(), page));
+
+        Assert.Contains("<use href=\"#s\"/>", html, StringComparison.Ordinal);
+        Assert.Contains("<use xlink:href=\"#s\"", html, StringComparison.Ordinal);
+        Assert.Contains("xlink:href=\"#base\"", html, StringComparison.Ordinal);
+        Assert.Contains(".bar { fill: url(#g); }", html, StringComparison.Ordinal);
+        Assert.Contains("style=\"fill: url(#g)\"", html, StringComparison.Ordinal);
+        AssertNothingLoadable(html, folders);
+    }
+
+    [Fact]
+    public void Off_windows_a_missing_weasyprint_is_not_offered_as_an_install()
+    {
+        Assert.SkipWhen(WeasyPrintConverter.Locate() is not null, "a WeasyPrint is installed here");
+        Assert.Equal(OperatingSystem.IsWindows() ? "engine.reason.not_installed" : "engine.reason.unsupported_platform",
+            new WeasyPrintConverter().GetStatus().ReasonKey);
     }
 
     [GeneratedRegex("data:image/[a-z]+;base64,([A-Za-z0-9+/=]+)")]
@@ -333,6 +367,20 @@ public sealed partial class WeasyPrintTests(EngineFixture fx) : IClassFixture<En
         Assert.DoesNotContain("IMPORTEDSTYLE", text, StringComparison.Ordinal);
         Assert.False(listener.Contacted);
         Assert.Contains("disallowed protocol", result.StandardError, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task An_inline_svg_draws_the_symbol_it_uses()
+    {
+        Assert.SkipUnless(HasWeasyPrint, NotInstalled);
+        var folders = Make();
+        using var listener = new Listener();
+
+        var pdf = await ToPdfAsync(Page(folders, listener.Port, InlineSvg));
+
+        Assert.Contains("USEDSYMBOL", PdfText(pdf), StringComparison.Ordinal);
+        Assert.Equal([(4, 4)], PdfPictures(pdf));
+        Assert.False(listener.Contacted);
     }
 
     [Fact]

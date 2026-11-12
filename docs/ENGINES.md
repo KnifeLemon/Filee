@@ -141,6 +141,7 @@ the runtime next to every program that needs it and does not ship it (`Infrastru
 | Ghostscript (download) | `vcruntime` component copied next to `gswin64c.exe` (`EngineInstaller`, `fetch-engines.ps1`) |
 | LibreOffice (download) | its own copy, which the administrative install leaves in `System64`, copied into `program/` (`EngineInstaller`, `fetch-engines.ps1`; `LibreOfficeConverter` also repairs a copy installed by an earlier Filee) |
 | calibre, Java (downloads) | ship their own next to their programs (`app/bin`, `bin`) |
+| WeasyPrint (download) | ships its own (the MinGW / UCRT runtime and `VCRUNTIME140.dll` of its Python) in `_internal` |
 | 7-Zip, FFmpeg (GyanD), Tesseract (UB Mannheim, MinGW), Pandoc, PDFium, SkiaSharp / HarfBuzz, Magick.Native, the Explorer menu DLL, .NET | import neither (static runtime or MinGW / GHC builds) |
 
 The installer and the portable zip are made from the same publish folder, so both have the DLLs. Filee installed in
@@ -1543,7 +1544,9 @@ in the right order. The built-in route (HWPX writer → rhwp) keeps structure on
 - **Locked down**: WeasyPrint gets a copy of the page (`WeasyPrintConverter.PreparePage`, the HTML rule of
   `LinkedContent`): pictures inside the document's own folder (or the Markdown file's or e-mail's, for a page made
   from it; `DocumentFiles.cs`) become `data:` URIs, SVG included; every other picture, frame, object, embed, `<base>`,
-  `<link>` style sheet, `@import` and CSS `url()` address is taken out. It then runs with `--allowed-protocols data`,
+  `<link>` style sheet, `@import` and CSS `url()` address is taken out, except references to the page's own elements
+  (`#id`: an inline SVG's `<use href="#icon">`, a gradient's `xlink:href`, `fill: url(#g)`), which WeasyPrint resolves
+  within the page. It then runs with `--allowed-protocols data`,
   so whatever the copy still names (a relative or absolute path, a `file:`, `http:` or `https:` address, an
   attachment link, a CSS `image-set()` string the copy didn't recognise) is refused by WeasyPrint itself: no local
   file outside the document is read and no address is contacted. Removing first and refusing second means a
